@@ -175,8 +175,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M5-C5** ATTRACT (join QR + ticker) / LOADING / WAITING ("🔥 Still cooking") states wired to
   `GaplessController`; held-slot guard shows WAITING for a not-ready file current (M7 path).
   **Verified:** eyes-on attract↔playing transition; states typecheck + build clean.
-- [ ] **M5-C6** TV reconnect resilience: socket drop mid-song doesn't stop playback; resyncs.
-  **Done-when:** kill socket during PLAYING → video continues → state resyncs on reconnect.
+- [x] **M5-C6** TV reconnect resilience: capped-backoff auto-reconnect; video/iframe plays
+  independently of the socket so a drop never stops playback. **Caught+fixed a real bug:** `hello`
+  now replays queue **+ playback:state + nowplaying** so a reconnecting client resumes the live song.
+  **Verified:** full reload mid-song → resyncs (playing=1, connected=1). **M5 milestone COMPLETE ★★.**
 
 ---
 

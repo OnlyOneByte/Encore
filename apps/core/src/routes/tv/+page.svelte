@@ -21,6 +21,9 @@
 
 	let ws: WebSocket | undefined;
 	let interstitialTimer: ReturnType<typeof setTimeout> | undefined;
+	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+	let reconnectAttempt = 0;
+	let disposed = false;
 
 	function mediaOf(entry: QueueEntry | null): Media | null {
 		return entry ? (mediaCatalog.get(entry.mediaId) ?? null) : null;
@@ -80,14 +83,24 @@
 		syncSlots();
 	}
 
-	onMount(() => {
+	function connect() {
 		const proto = location.protocol === 'https:' ? 'wss' : 'ws';
 		ws = new WebSocket(`${proto}://${location.host}/ws?role=tv`);
 		ws.onopen = () => {
 			connected = true;
+			reconnectAttempt = 0;
+			// resync handshake — gets queue:sync; nowplaying re-derives on next change.
 			ws!.send(JSON.stringify({ type: 'hello', lastRev: 0 }));
 		};
-		ws.onclose = () => (connected = false);
+		ws.onclose = () => {
+			connected = false;
+			// IMPORTANT: the video/iframe keeps playing through a socket drop — playback never stops.
+			// We just re-establish the control channel with capped backoff and resync.
+			if (disposed) return;
+			const delay = Math.min(500 * 2 ** reconnectAttempt, 5000);
+			reconnectAttempt++;
+			reconnectTimer = setTimeout(connect, delay);
+		};
 		ws.onmessage = (ev) => {
 			const e: ServerEvent = JSON.parse(ev.data);
 			if (e.type === 'queue:sync') {
@@ -97,7 +110,15 @@
 			}
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
 		};
-		return () => ws?.close();
+	}
+
+	onMount(() => {
+		connect();
+		return () => {
+			disposed = true;
+			clearTimeout(reconnectTimer);
+			ws?.close();
+		};
 	});
 
 	const isAttract = $derived(tvState === 'attract' || !current);

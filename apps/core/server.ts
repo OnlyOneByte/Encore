@@ -15,6 +15,7 @@ import {
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry } from './src/server/realtime/player';
+import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -105,10 +106,17 @@ const server = Bun.serve<{ role: string }>({
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 
 			switch (evt.type) {
-				case 'hello':
-					// resync handshake: reply with authoritative full state to this client only
+				case 'hello': {
+					// resync handshake: reply with authoritative full state to this client only —
+					// queue + current playback + nowplaying, so a reconnecting TV/phone resumes
+					// exactly where the room is (M5-C6).
 					ws.send(JSON.stringify(syncEvent(state, deps)));
+					ws.send(JSON.stringify({ type: 'playback:state', state: state.playback, rev: state.rev }));
+					const cur = state.entries.find((e) => e.id === state.playback.currentEntryId) ?? null;
+					const upNext = upNextAfter(cur?.id ?? null, state.entries, mediaById);
+					ws.send(JSON.stringify({ type: 'nowplaying:changed', current: cur, upNext }));
 					break;
+				}
 				case 'queue:command':
 					handleQueueCommand(evt.command, deps, sendToOrigin);
 					break;
