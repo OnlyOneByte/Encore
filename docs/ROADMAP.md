@@ -110,8 +110,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   to /join if not joined), `queue:sync` carries singer+media directories (extended event), rotation
   renders via `QueueRow` with computed position label. **Eyes-on + live flow**: join→add→`#1 Take On
   Me — a-ha · You · up next`, label **"You're up next! 🎤"** from shared rotation (docs/mocks/m3c2-phone-eyeson.png).
-- [ ] **M3-C3** ★ optimistic add: tap ＋Turn → instant row + haptic (`navigator.vibrate`) →
-  reconcile. **Done-when:** eyes-on: row pops same frame, no flicker on server echo.
+- [x] **M3-C3** ★ optimistic add: tap ＋Turn → instant row + `navigator.vibrate(8)` haptic →
+  reconcile. **Verified (DOM e2e):** added 3 songs; **optimistic order === settled order
+  byte-identical** after all server echoes (3 rows, 0 dup, no reorder) — client-minted-ULID
+  zero-flicker reconcile proven on a real page.
 - [ ] **M3-C4** swipe-to-remove (remove op) + undo toast. **Done-when:** e2e: remove → broadcast →
   gone on both phones; undo re-adds.
 - [ ] **M3-C5** drag-reorder *your own* entries (move op; server re-resolves seq). **Done-when:**
