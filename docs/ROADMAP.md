@@ -34,9 +34,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   reconcile, idempotent unknown-id, purity) + `inverseOp` (round-trip restore) + `rotate`/
   `assignSeqs` (3-singer interleave, next-gap join) + `ulid` (sortable/unique). Fairness test is
   NON-VACUOUS (explicitly asserts round-robin ≠ FIFO).
-- [ ] **M0-C5** design tokens → `app.css` (port the mock's palette/radii/gradient) + base
-  mobile-first layout shell + safe-area insets. **Done-when:** empty shell renders, matches mock
-  tokens, eyes-on.
+- [x] **M0-C5** design tokens → `app.css` (palette/radii/gradient ported from mock) + `.app-shell`
+  (mobile-first, dvh, safe-area insets) + primitives (`.card`/`.btn-accent`/`.pop-in`). **Eyes-on
+  confirmed** at 390x844: gradient wordmark, dark radial bg, token swatches all match the mock
+  (docs/mocks/m0c5-shell-eyeson.png). svelte-check 0 errors.
 - [ ] **M0-C6** PWA: manifest + service worker (app-shell precache), installable.
   **Done-when:** Lighthouse "installable" passes; warm load serves shell offline.
 

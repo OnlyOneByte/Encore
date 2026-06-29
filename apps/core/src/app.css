@@ -1,0 +1,100 @@
+/* Encore design tokens — ported from docs/mocks/phone-ui-mock.html.
+   Clean, dark, premium, mobile-first. A theme is a pure token swap on these custom
+   properties (R1 principle): components read var(--*), never hard-coded colors. */
+
+:root {
+	/* surfaces */
+	--bg: #0b0b12;
+	--bg2: #12121d;
+	--card: #1a1a28;
+	--card2: #212133;
+	--line: #2a2a3e;
+
+	/* ink */
+	--ink: #f3f3fb;
+	--ink-dim: #9a9ab5;
+
+	/* accents */
+	--accent: #7c5cff;
+	--accent2: #ff5cae;
+	--ok: #33d6a6;
+	--warn: #ffb84d;
+	--grad: linear-gradient(135deg, var(--accent), var(--accent2));
+
+	/* shape + depth */
+	--radius: 18px;
+	--radius-sm: 12px;
+	--shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+
+	/* layout */
+	--max-w: 480px;
+
+	color-scheme: dark;
+}
+
+* {
+	box-sizing: border-box;
+	-webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+	margin: 0;
+	height: 100%;
+}
+
+body {
+	background: radial-gradient(120% 80% at 50% -10%, #1b1430 0%, var(--bg) 55%);
+	color: var(--ink);
+	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, system-ui, sans-serif;
+	font-size: 16px;
+	-webkit-font-smoothing: antialiased;
+}
+
+/* mobile-first app shell: centered column, safe-area aware (notches/home indicator) */
+.app-shell {
+	width: 100%;
+	max-width: var(--max-w);
+	min-height: 100dvh;
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	padding:
+		env(safe-area-inset-top) env(safe-area-inset-right)
+		env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* shared primitives used across surfaces */
+.card {
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+}
+.btn-accent {
+	border: 0;
+	border-radius: 10px;
+	background: var(--grad);
+	color: #fff;
+	font-weight: 700;
+	cursor: pointer;
+}
+.btn-accent:active {
+	transform: scale(0.96);
+}
+
+/* GPU-composited motion only (transform/opacity) — never animate layout props. */
+@media (prefers-reduced-motion: no-preference) {
+	.pop-in {
+		animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+	}
+}
+@keyframes pop {
+	from {
+		opacity: 0;
+		transform: translateY(-6px) scale(0.97);
+	}
+	to {
+		opacity: 1;
+		transform: none;
+	}
+}
