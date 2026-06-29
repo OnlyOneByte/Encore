@@ -106,9 +106,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M3-C1** ★ ported `SongCard`, `QueueRow` (mine/up/pending states), `ProcessingCard` (live
   bar + stage chips), `NowPlaying` (greyed key-shift) to `$lib/components` + `/components` gallery.
   **Eyes-on confirmed** 390x900 — all four match the mock (docs/mocks/m3c1-components-eyeson.png). svelte-check 0/0.
-- [ ] **M3-C2** ★ phone `+page.svelte`: wire queue/rotation screen to the optimistic store
-  (live `queue:patch`). **Done-when:** eyes-on: queued songs render in rotation order, "you're
-  3rd · after Maya" computed from shared rotation.
+- [x] **M3-C2** ★ phone `+page.svelte` wired to `QueueStore` + `WsClient` live: `/api/me` (redirect
+  to /join if not joined), `queue:sync` carries singer+media directories (extended event), rotation
+  renders via `QueueRow` with computed position label. **Eyes-on + live flow**: join→add→`#1 Take On
+  Me — a-ha · You · up next`, label **"You're up next! 🎤"** from shared rotation (docs/mocks/m3c2-phone-eyeson.png).
 - [ ] **M3-C3** ★ optimistic add: tap ＋Turn → instant row + haptic (`navigator.vibrate`) →
   reconcile. **Done-when:** eyes-on: row pops same frame, no flicker on server echo.
 - [ ] **M3-C4** swipe-to-remove (remove op) + undo toast. **Done-when:** e2e: remove → broadcast →

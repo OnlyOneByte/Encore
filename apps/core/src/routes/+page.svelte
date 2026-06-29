@@ -1,40 +1,132 @@
 <script lang="ts">
-	// M0-C5 shell — verifies design tokens render. The real phone remote (M3) replaces this.
+	import { onMount } from 'svelte';
+	import { goto } from '$app/navigation';
+	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
+	import { QueueStore } from '$lib/stores/queue';
+	import { WsClient } from '$lib/ws/client';
+	import QueueRow from '$lib/components/QueueRow.svelte';
+	import SongCard from '$lib/components/SongCard.svelte';
+
+	let me = $state<PublicSinger | null>(null);
+	let entries = $state<QueueEntry[]>([]);
+	let singers = $state<Map<string, PublicSinger>>(new Map());
+	let mediaCatalog = $state<Map<string, Media>>(new Map());
+	let connected = $state(false);
+
+	let store: QueueStore;
+	let ws: WsClient;
+
+	// derived: my position in the rotation + who's right before me
+	const myNextEntry = $derived(
+		entries.filter((e) => e.singerId === me?.id && e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq)[0]
+	);
+	const myPositionLabel = $derived.by(() => {
+		if (!myNextEntry) return '';
+		const queued = entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
+		const idx = queued.findIndex((e) => e.id === myNextEntry.id);
+		if (idx < 0) return '';
+		if (idx === 0) return "You're up next! 🎤";
+		const before = queued[idx - 1];
+		const beforeName = before ? singers.get(before.singerId)?.displayName ?? 'someone' : 'someone';
+		return `You're #${idx + 1} · after ${beforeName}`;
+	});
+
+	function mediaTitle(id: string): string {
+		const m = mediaCatalog.get(id);
+		return m ? `${m.title}${m.artist ? ' — ' + m.artist : ''}` : id;
+	}
+	function singerOf(id: string): PublicSinger | undefined {
+		return singers.get(id);
+	}
+
+	onMount(() => {
+		let disposed = false;
+		(async () => {
+			// who am I? (redirect to join if not)
+			const res = await fetch('/api/me');
+			if (!res.ok) {
+				await goto('/join');
+				return;
+			}
+			me = (await res.json()).singer;
+			if (disposed || !me) return;
+
+			store = new QueueStore({
+				singerId: me.id,
+				sendCommand: (cmd) => ws.send({ type: 'queue:command', command: cmd })
+			});
+			store.subscribe((e) => (entries = e));
+
+			ws = new WsClient({
+				url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
+				getLastRev: () => store.rev,
+				onEvent: (e: ServerEvent) => {
+					if (e.type === 'queue:sync') {
+						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
+						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
+					}
+					if (e.type === 'singer:joined') {
+						singers = new Map(singers).set(e.singer.id, e.singer);
+					}
+					store.onServerEvent(e);
+				}
+			});
+			ws.open();
+			connected = true;
+		})();
+		return () => {
+			disposed = true;
+			ws?.close();
+		};
+	});
+
+	function addSong(mediaId: string) {
+		store?.addSong(mediaId);
+		if (navigator.vibrate) navigator.vibrate(8); // haptic tick
+	}
+
+	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
 </script>
 
-<header style="padding:18px 18px 12px;display:flex;align-items:center;gap:10px;">
-	<div style="font-weight:800;font-size:1.3rem;letter-spacing:.5px;">
-		🎤 <span
-			style="background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;"
-			>Encore</span
-		>
-	</div>
+<header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
+	<div style="font-weight:800;font-size:1.25rem;">🎤 <span style="background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;">Encore</span></div>
+	{#if me}
+		<div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim);">
+			<span>{me.displayName}</span>
+			<span style="width:22px;height:22px;border-radius:50%;background:{me.color};box-shadow:0 0 0 3px {me.color}30;"></span>
+		</div>
+	{/if}
 </header>
 
-<main style="flex:1;padding:6px 18px 24px;">
-	<p style="color:var(--ink-dim);margin:0 4px 18px;">
-		Self-hosted karaoke. Wicked fast. Mobile-first.
-	</p>
-
-	<div class="card pop-in" style="padding:14px;margin-bottom:10px;">
-		<div style="font-weight:700;">Design tokens online</div>
-		<div style="color:var(--ink-dim);font-size:.85rem;margin-top:2px;">
-			Surfaces, ink, accents, radii — ported from the mock.
+<main style="flex:1;padding:6px 18px 120px;">
+	{#if myPositionLabel}
+		<div class="card" style="padding:12px 14px;margin-bottom:14px;background:linear-gradient(var(--card),#1d1830);border-color:#3a3155;">
+			<strong>{myPositionLabel}</strong>
 		</div>
-	</div>
+	{/if}
 
-	<div style="display:flex;gap:8px;margin-bottom:18px;">
-		<button class="btn-accent" style="padding:10px 14px;">＋ Accent button</button>
-		<span class="card" style="padding:10px 14px;color:var(--ok);">● ok</span>
-		<span class="card" style="padding:10px 14px;color:var(--warn);">● warn</span>
-	</div>
+	<!-- quick-add demo catalog (real search lands in M4) -->
+	<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:6px 4px 10px;">Add a song</div>
+	{#each [...mediaCatalog.values()] as m (m.id)}
+		<SongCard title={m.title} sub={`${m.artist ?? ''} · tap to queue`} onadd={() => addSong(m.id)} />
+	{/each}
 
-	<div style="display:flex;gap:6px;">
-		{#each ['--bg', '--card', '--card2', '--accent', '--accent2', '--ok', '--warn'] as token}
-			<div
-				title={token}
-				style="width:36px;height:36px;border-radius:8px;border:1px solid var(--line);background:var({token});"
-			></div>
+	<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:18px 4px 10px;">Up next · rotation</div>
+	{#if queued.length === 0}
+		<p style="color:var(--ink-dim);padding:0 4px;">Queue's empty — add a song to start the party ✨</p>
+	{:else}
+		{#each queued as e, i (e.id)}
+			{@const s = singerOf(e.singerId)}
+			<QueueRow
+				seq={i + 1}
+				title={mediaTitle(e.mediaId)}
+				singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
+				singerColor={s?.color ?? '#7c5cff'}
+				mine={e.singerId === me?.id}
+				up={i === 0}
+				pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
+				subtitle={i === 0 ? 'up next' : ''}
+			/>
 		{/each}
-	</div>
+	{/if}
 </main>

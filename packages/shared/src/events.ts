@@ -14,10 +14,14 @@ export type MediaStatus =
   | 'ready'
   | 'failed';
 
+// A singer safe to broadcast (no sessionToken).
+export type PublicSinger = Omit<Singer, 'sessionToken'>;
+
 // ── core -> all clients (broadcasts) ───────────────────────────────────────
 export type ServerEvent =
   | { type: 'queue:patch'; patch: ServerPatch }
-  | { type: 'queue:sync'; rev: number; entries: QueueEntry[] }
+  // singers/media are optional directories so clients can render names/titles per entry
+  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[] }
   | { type: 'playback:state'; state: PlaybackState; rev: number }
   | { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
   | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number }

@@ -44,6 +44,11 @@ export class SingerRepository {
 	byId(id: string): Singer | null {
 		return this.#db.select().from(singers).where(eq(singers.id, id)).all()[0] ?? null;
 	}
+
+	/** All singers, without session tokens (safe to broadcast). */
+	listPublic(): Omit<Singer, 'sessionToken'>[] {
+		return this.#db.select().from(singers).all().map(({ sessionToken: _t, ...rest }) => rest);
+	}
 }
 
 /** Build the Set-Cookie header value for a singer session (HttpOnly, SameSite=Lax). */

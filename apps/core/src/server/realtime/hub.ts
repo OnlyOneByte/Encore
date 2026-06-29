@@ -8,7 +8,8 @@ import type {
 	ClientCommand,
 	ServerEvent,
 	QueueEntry,
-	Media
+	Media,
+	PublicSinger
 } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
 
@@ -20,6 +21,8 @@ export interface HubDeps {
 	publish: Publish; // broadcast to the whole room
 	/** Look up media to validate adds (e.g. reject unknown mediaId). */
 	mediaById: Map<string, Media>;
+	/** Optional: list known singers (sans token) for the sync directory. */
+	listSingers?: () => PublicSinger[];
 }
 
 /** Validate a command against current state. Returns an error string, or null if valid. */
@@ -61,11 +64,21 @@ export function handleQueueCommand(
 	// Broadcast the patch. We attach the authoritative entries snapshot via queue:sync semantics
 	// so clients can adopt server-assigned rotationSeq without guessing (small payload at party scale).
 	deps.publish(patch);
-	deps.publish({ type: 'queue:sync', rev, entries });
+	deps.publish(syncEvent(deps.state, deps));
 	return patch;
 }
 
-/** Full-state response for a (re)connecting client — the resync path. */
-export function syncEvent(state: AuthoritativeState): Extract<ServerEvent, { type: 'queue:sync' }> {
-	return { type: 'queue:sync', rev: state.rev, entries: state.entries as QueueEntry[] };
+/** Full-state response for a (re)connecting client — the resync path. Includes singer + media
+ *  directories (when the hub has them) so clients can render names/titles per entry. */
+export function syncEvent(
+	state: AuthoritativeState,
+	deps?: Pick<HubDeps, 'mediaById' | 'listSingers'>
+): Extract<ServerEvent, { type: 'queue:sync' }> {
+	return {
+		type: 'queue:sync',
+		rev: state.rev,
+		entries: state.entries as QueueEntry[],
+		singers: deps?.listSingers?.(),
+		media: deps ? [...deps.mediaById.values()] : undefined
+	};
 }

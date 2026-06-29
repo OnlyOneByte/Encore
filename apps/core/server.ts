@@ -87,14 +87,15 @@ const server = Bun.serve<{ role: string }>({
 			const deps: HubDeps = {
 				state,
 				publish: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)),
-				mediaById
+				mediaById,
+				listSingers: () => app.singers.listPublic()
 			};
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 
 			switch (evt.type) {
 				case 'hello':
 					// resync handshake: reply with authoritative full state to this client only
-					ws.send(JSON.stringify(syncEvent(state)));
+					ws.send(JSON.stringify(syncEvent(state, deps)));
 					break;
 				case 'queue:command':
 					handleQueueCommand(evt.command, deps, sendToOrigin);
