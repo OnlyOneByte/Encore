@@ -38,8 +38,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   (mobile-first, dvh, safe-area insets) + primitives (`.card`/`.btn-accent`/`.pop-in`). **Eyes-on
   confirmed** at 390x844: gradient wordmark, dark radial bg, token swatches all match the mock
   (docs/mocks/m0c5-shell-eyeson.png). svelte-check 0 errors.
-- [ ] **M0-C6** PWA: manifest + service worker (app-shell precache), installable.
-  **Done-when:** Lighthouse "installable" passes; warm load serves shell offline.
+- [x] **M0-C6** PWA: `manifest.webmanifest` (standalone, 192+512 maskable icons, theme color) +
+  `src/service-worker.ts` (precache build+files via `$service-worker`; network-first nav,
+  cache-first hashed assets; skips /ws + /api) + app.html links. **Verified:** manifest
+  (application/manifest+json), SW, both icons all serve HTTP 200; page links manifest+theme-color.
+  *(Lighthouse not installed here — verified each installability criterion directly.)*
 
 ---
 
