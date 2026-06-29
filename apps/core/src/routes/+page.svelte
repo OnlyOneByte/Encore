@@ -66,6 +66,8 @@
 					if (e.type === 'queue:sync') {
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
+						// after a (re)sync, replay any still-pending optimistic ops (server dedupes)
+						queueMicrotask(() => store.resendPending());
 					}
 					if (e.type === 'singer:joined') {
 						singers = new Map(singers).set(e.singer.id, e.singer);

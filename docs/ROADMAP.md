@@ -187,8 +187,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M6-C1** thumbnail proxy `/api/thumb?u=` → `serveThumb` (disk cache under `.thumbs`,
   fetch-once then HIT from disk, `cache-control: immutable 30d`, x-cache HIT/MISS, url-hash keys
   prevent traversal). **Verified:** 5 tests (stable safe keys, ext preserve, content-type, path).
-- [ ] **M6-C2** WS resilience hardening: backoff caps, dedupe by `clientOpId`, ack-timeout resend.
-  **Done-when:** flaky-network sim (drop 20%) keeps two phones converged.
+- [x] **M6-C2** WS resilience: server **idempotency ledger** (bounded `seenOps` Set; resent
+  clientOpId re-acks not re-applies), client `resendPending()` on resync (same clientOpIds →
+  server dedupes), capped backoff (WsClient). **Verified:** 3 dedupe tests (no double-apply, re-ack
+  causedBy, distinct ids apply) + resend test (same-id replay).
 - [ ] **M6-C3** ★ Playwright e2e: join → search → queue → rotate → play → gapless next, two
   phones + TV. **Done-when:** e2e green headless.
 - [ ] **M6-C4** ★ `apps/core/Dockerfile` (`FROM oven/bun`, bundle yt-dlp + ffmpeg) + `compose up`

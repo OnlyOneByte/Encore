@@ -25,6 +25,10 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 const app = getApp();
 const state = app.state;
 
+// bounded idempotency ledger of applied clientOpIds (M6-C2): dedupes resent commands across
+// reconnects so a retry never double-applies. In-memory (process-lifetime), insertion-ordered.
+const seenOps = new Set<string>();
+
 // MVP/harness media catalog. Real media is resolved via /api/search (M4) + persisted on demand.
 // Seed a few youtube demos so the dev harness can add songs that validate even without yt-dlp.
 const mediaById = app.mediaById;
@@ -101,7 +105,13 @@ const server = Bun.serve<{ role: string }>({
 				publish: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)),
 				mediaById,
 				listSingers: () => app.singers.listPublic(),
-				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now())
+				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
+				seenOp: (id) => {
+					if (seenOps.has(id)) return true;
+					seenOps.add(id);
+					if (seenOps.size > 4096) seenOps.delete(seenOps.values().next().value!); // bounded
+					return false;
+				}
 			};
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 

@@ -20,6 +20,7 @@ import {
 interface PendingOp {
 	op: QueueOp;
 	inverse: QueueOp | null;
+	baseRev: number; // rev when issued — for resend
 }
 
 export interface QueueStoreDeps {
@@ -86,10 +87,20 @@ export class QueueStore {
 	#optimistic(op: QueueOp): void {
 		const inverse = inverseOp(this.#entries, op);
 		const clientOpId = (this.#deps.mintId ?? ulid)();
-		this.#pending.set(clientOpId, { op, inverse });
+		this.#pending.set(clientOpId, { op, inverse, baseRev: this.#rev });
 		this.#entries = applyOp(this.#entries, op); // render THIS FRAME
 		this.#emit();
 		this.#deps.sendCommand({ clientOpId, baseRev: this.#rev, op });
+	}
+
+	/**
+	 * Resend every still-pending command (call on WS reconnect). Safe because the server dedupes
+	 * by clientOpId (M6-C2): an already-applied op is re-acked, not double-applied.
+	 */
+	resendPending(): void {
+		for (const [clientOpId, p] of this.#pending) {
+			this.#deps.sendCommand({ clientOpId, baseRev: p.baseRev, op: p.op });
+		}
 	}
 
 	// ── server events (from WsClient.onEvent) ─────────────────────────────────

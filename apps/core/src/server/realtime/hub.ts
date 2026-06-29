@@ -25,6 +25,8 @@ export interface HubDeps {
 	listSingers?: () => PublicSinger[];
 	/** Optional: record a queue-add for popularity shortcuts. */
 	recordAdd?: (mediaId: string) => void;
+	/** Optional: idempotency ledger — returns true if this clientOpId was already applied. */
+	seenOp?: (clientOpId: string) => boolean;
 }
 
 /** Validate a command against current state. Returns an error string, or null if valid. */
@@ -52,6 +54,13 @@ export function handleQueueCommand(
 	deps: HubDeps,
 	sendToOrigin?: SendToOrigin
 ): Extract<ServerEvent, { type: 'queue:patch' }> | null {
+	// idempotency: a resent command (e.g. after reconnect) must not double-apply. Re-ack with the
+	// current rev so the originator clears its pending op, but don't mutate state again.
+	if (deps.seenOp?.(cmd.clientOpId)) {
+		deps.publish({ type: 'queue:patch', patch: { rev: deps.state.rev, ops: [], causedBy: cmd.clientOpId } });
+		return null;
+	}
+
 	const err = validateCommand(cmd, deps);
 	if (err) {
 		sendToOrigin?.({ type: 'op:reject', clientOpId: cmd.clientOpId, reason: err });

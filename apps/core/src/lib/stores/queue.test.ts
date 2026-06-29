@@ -87,6 +87,20 @@ test('resync REBASE: authoritative truth + still-pending local ops re-applied on
 	expect(store.rev).toBe(4);
 });
 
+test('resendPending re-sends all in-flight commands (reconnect replay)', () => {
+	const { store, sent } = makeStore();
+	store.addSong('m1'); // 1 pending
+	store.addSong('m2'); // 2 pending
+	const sentBefore = sent.length;
+	expect(store.pendingCount).toBe(2);
+	store.resendPending();
+	expect(sent.length).toBe(sentBefore + 2); // both re-sent
+	// re-sent commands carry the SAME clientOpIds (so the server dedupes them)
+	const ids = sent.slice(sentBefore).map((c) => c.clientOpId);
+	const originalIds = sent.slice(0, sentBefore).map((c) => c.clientOpId);
+	expect(new Set(ids)).toEqual(new Set(originalIds));
+});
+
 test('subscribe fires on mutation', () => {
 	const { store } = makeStore();
 	const seen: number[] = [];
