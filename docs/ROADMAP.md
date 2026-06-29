@@ -83,8 +83,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 
 ## M2 — Join & identity  → *ships: scan QR → you're in*
 
-- [ ] **M2-C1** singer session: `crypto` session token, cookie-backed, `singerRepository`.
-  **Done-when:** unit test: create singer → token set → resolve from cookie.
+- [x] **M2-C1** singer session: `SingerRepository` (create/bySessionToken/byId) + `randomBytes`
+  base64url token + cookie helpers (`sessionCookie` HttpOnly/SameSite=Lax/Secure, `readSessionToken`).
+  Name sanitize (Guest fallback, 32-char cap). **Verified:** 7 tests — create→token→resolve,
+  unknown→null, unique tokens, cookie round-trip.
 - [ ] **M2-C2** `POST /api/join` (name + color) + color picker palette. **Done-when:** e2e: join →
   `singer:joined` broadcast → singer appears.
 - [ ] **M2-C3** `/join` page: name field + avatar-color grid, no signup wall. **Done-when:**
