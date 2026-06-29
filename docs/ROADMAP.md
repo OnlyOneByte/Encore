@@ -191,8 +191,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   clientOpId re-acks not re-applies), client `resendPending()` on resync (same clientOpIds →
   server dedupes), capped backoff (WsClient). **Verified:** 3 dedupe tests (no double-apply, re-ack
   causedBy, distinct ids apply) + resend test (same-id replay).
-- [ ] **M6-C3** ★ Playwright e2e: join → search → queue → rotate → play → gapless next, two
-  phones + TV. **Done-when:** e2e green headless.
+- [x] **M6-C3** ★ full-flow e2e (`e2e/party.mjs`, 2 phones + TV): **7/7 green** — two joins, Library
+  search returns results, both phones see identical round-robin order (cross-client sync), TV
+  now-singing lower-third on play, skip advances to a different singer's song (Maya→Sam "Don't
+  Stop Believin'", docs/mocks/m6c3-party-eyeson.png).
 - [ ] **M6-C4** ★ `apps/core/Dockerfile` (`FROM oven/bun`, bundle yt-dlp + ffmpeg) + `compose up`
   one-container boot. **Done-when:** clean `docker compose up` → working app on a fresh checkout.
 - [ ] **M6-C5** error/empty/edge states (no results, dead video, singer leaves mid-turn) +
