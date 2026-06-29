@@ -69,10 +69,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   ping), capped-backoff reconnect, `hello{lastRev}`→`queue:sync` resync, gap-detection (rev-skip →
   resync, don't apply). Injectable socket factory + timers for deterministic tests. **Verified:**
   6 tests — **kill+restore reconnects & resyncs rev 5→9**, gap→resync, contiguous apply, no-reconnect-on-close.
-- [ ] **M1-C6** ★ optimistic queue store (`src/lib/stores`): client-minted ULID, instant local
-  `applyOp`, `pending` map (op+inverse), reconcile on `causedBy`, rollback on `op:reject`,
-  rebase pending on resync. **Done-when:** component test: add renders pre-broadcast, reconciles
-  with zero reorder; reject rolls back via inverse.
+- [x] **M1-C6** ★ optimistic queue store (`src/lib/stores/queue.ts`): `QueueStore` — client-minted
+  ULID, instant local `applyOp`, `pending` map (op+inverse), reconcile-on-`causedBy` (zero
+  duplicate, adopt server seq), rollback-on-`op:reject` via inverse, **rebase pending on resync**.
+  Framework-agnostic (subscribe hook) for DOM-free tests. **Verified:** 6 tests cover all five paths.
 - [ ] **M1-C7** dev harness page: two iframes (sim two phones) + raw queue JSON, to eyeball sync.
   **Done-when:** add in pane A appears in pane B over WS; eyes-on.
 
