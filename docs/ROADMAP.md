@@ -19,10 +19,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 ## M0 — Foundation & de-risk  → *ships: the stack proven end-to-end*
 
 - [x] **M0-C0** ★ scaffold monorepo (Bun + shared contract + Bun.serve WS hub) — *done `9858d05`*
-- [ ] **M0-C1** ⚠★ `svelte-adapter-bun` smoke test: scaffold SvelteKit into `apps/core`, set
-  adapter, `bun build && bun start`, serve a hello page under Bun on aarch64.
-  **Done-when:** prod build serves at `:3000` under Bun; if rough, fall back to `adapter-node`
-  on Bun and record the decision in README. *This gate unblocks all UI work.*
+- [x] **M0-C1** ⚠★ `svelte-adapter-bun` smoke test — **PASSED**. SvelteKit 2.68 + Svelte 5.56 +
+  Vite 8 scaffolded into `apps/core`; `svelte-adapter-bun@1.0.1` prod build serves under Bun on
+  aarch64 (HTTP 200, SSR'd). **No adapter-node fallback needed.** Findings: (1) repo-local
+  `.npmrc` → public npm (personal project, not CodeArtifact); (2) scripts MUST use `bun --bun`
+  or Bun defers to Node 18 and Vite 8 breaks. *UI work unblocked.*
 - [ ] **M0-C2** ★ unify the process: `Bun.serve` hands HTTP off to SvelteKit's handler while
   keeping `/ws` on the native pub/sub hub. **Done-when:** one process serves a Svelte route
   AND `/health` AND a WS round-trip.

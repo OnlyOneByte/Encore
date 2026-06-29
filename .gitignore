@@ -6,6 +6,7 @@ node_modules/
 .svelte-kit/
 build/
 dist/
+vite.config.ts.timestamp-*
 
 # data + media (runtime volumes — never commit)
 data/

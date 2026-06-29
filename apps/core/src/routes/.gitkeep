@@ -1,5 +1,0 @@
-SvelteKit routes land here after the step-one adapter smoke test:
-  +page.svelte   phone remote (the star) — port the docs/mocks/phone-ui-mock.html design
-  join/          QR join (name + color)
-  tv/            stage/TV renderer (two-player gapless swap — see docs/tv-preload-state-machine.md)
-  api/           +server.ts REST: join, search, queue CRUD, library
