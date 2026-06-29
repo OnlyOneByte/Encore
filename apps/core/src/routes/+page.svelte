@@ -125,6 +125,45 @@
 	}
 	// the entry that's currently playing (for the now-playing strip)
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
+
+	// ── search (debounced + cancel-in-flight) ────────────────────────────────
+	let query = $state('');
+	let searchSource = $state<'youtube' | 'local'>('youtube');
+	let results = $state<Media[]>([]);
+	let searching = $state(false);
+	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let inflight: AbortController | undefined;
+
+	function onQueryInput() {
+		clearTimeout(debounceTimer);
+		const q = query.trim();
+		if (!q) {
+			results = [];
+			searching = false;
+			inflight?.abort();
+			return;
+		}
+		debounceTimer = setTimeout(() => runSearch(q), 150); // debounce ~150ms
+	}
+	async function runSearch(q: string) {
+		inflight?.abort(); // cancel the previous in-flight request
+		const ctrl = new AbortController();
+		inflight = ctrl;
+		searching = true;
+		try {
+			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&source=${searchSource}`, { signal: ctrl.signal });
+			if (ctrl.signal.aborted) return;
+			results = (await res.json()).results ?? [];
+		} catch (e) {
+			if ((e as Error).name !== 'AbortError') results = [];
+		} finally {
+			if (inflight === ctrl) searching = false;
+		}
+	}
+	function setSource(s: 'youtube' | 'local') {
+		searchSource = s;
+		if (query.trim()) runSearch(query.trim());
+	}
 </script>
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
@@ -144,10 +183,34 @@
 		</div>
 	{/if}
 
-	<!-- quick-add demo catalog (real search lands in M4) -->
-	<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:6px 4px 10px;">Add a song</div>
-	{#each [...mediaCatalog.values()] as m (m.id)}
-		<SongCard title={m.title} sub={`${m.artist ?? ''} · tap to queue`} onadd={() => addSong(m.id)} />
+	<!-- search -->
+	<div class="card" style="display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:10px;">
+		<span style="color:var(--ink-dim)">🔎</span>
+		<input
+			bind:value={query}
+			oninput={onQueryInput}
+			placeholder="Search a song or artist…"
+			style="border:0;background:transparent;color:var(--ink);font-size:1rem;width:100%;outline:none;"
+		/>
+		{#if searching}<span style="font-size:.75rem;color:var(--ink-dim)">…</span>{/if}
+	</div>
+	<div style="display:flex;gap:8px;margin-bottom:12px;">
+		<button class="tab" class:active={searchSource === 'youtube'} onclick={() => setSource('youtube')}>YouTube</button>
+		<button class="tab" class:active={searchSource === 'local'} onclick={() => setSource('local')}>Library</button>
+	</div>
+
+	{#if query.trim() && results.length === 0 && !searching}
+		<p style="color:var(--ink-dim);padding:0 4px;font-size:.9rem;">
+			No results{searchSource === 'youtube' ? ' (YouTube search needs yt-dlp installed on the server)' : ' in your library'}.
+		</p>
+	{/if}
+	{#each results as m (m.id)}
+		<SongCard
+			title={m.title}
+			sub={`${m.artist ?? (m.source === 'youtube' ? 'YouTube' : 'Library')} · tap to queue`}
+			processing={m.playMode === 'file' && m.stemStatus !== 'ready'}
+			onadd={() => addSong(m.id)}
+		/>
 	{/each}
 
 	<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:18px 4px 10px;">Up next · rotation</div>
@@ -196,6 +259,11 @@
 {/if}
 
 <style>
+	.tab {
+		flex: 1; text-align: center; padding: 8px; border-radius: 12px; font-size: 0.85rem;
+		font-weight: 600; background: var(--card); color: var(--ink-dim); border: 1px solid var(--line); cursor: pointer;
+	}
+	.tab.active { background: var(--grad); color: #fff; border-color: transparent; }
 	.undo-toast {
 		position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
 		display: flex; align-items: center; gap: 14px; z-index: 30;

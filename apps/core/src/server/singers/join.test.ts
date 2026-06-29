@@ -5,6 +5,8 @@ import { SingerRepository } from './repository';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
 import { SINGER_COLORS, type ServerEvent } from '@encore/shared';
+import { LocalLibrary } from '../media/local';
+import { YouTubeResolver } from '../media/youtube';
 import type { EncoreApp } from '../app';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
@@ -16,6 +18,8 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		state: null as never,
 		singers: new SingerRepository(db),
 		mediaById: new Map(),
+		localLibrary: new LocalLibrary(),
+		youtube: new YouTubeResolver(async () => []),
 		publish: (e) => published.push(e),
 		now: () => 1_700_000_000_000
 	};

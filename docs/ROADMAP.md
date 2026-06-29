@@ -143,8 +143,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M4-C3** yt-dlp backend (**keyless** `ytsearchN:` via `Bun.spawn`, default per 2026-06-29) +
   `parseSearchJson` + per-video-id meta cache + **graceful degrade** (returns `[]` not throw when
   binary absent — confirmed live in dev). **Verified:** 5 tests (parse/round/fallbacks, cache, degrade).
-- [ ] **M4-C4** ★ search UI: unified bar, YouTube/Library tabs, debounce ~150ms, **cancel
-  in-flight** on keystroke. **Done-when:** eyes-on: typing cancels stale requests; results stream.
+- [x] **M4-C4** ★ search UI: unified bar + YouTube/Library tabs, **debounce 150ms** + **AbortController
+  cancel-in-flight** per keystroke; `/api/search` materializes results → queue-able Media in the
+  catalog. **Eyes-on + e2e**: Library "queen" → "Bohemian Rhapsody ✨" → add → #1 in rotation
+  (docs/mocks/m4c4-search-eyeson.png). **Caught+fixed a real bug:** SvelteKit handler is a separate
+  bundle → `getApp()` was split-brain; backed singleton on `globalThis` (one shared instance).
 - [ ] **M4-C5** zero-keystroke shortcuts: "recently queued" + "popular tonight". **Done-when:**
   eyes-on populated from session history.
 

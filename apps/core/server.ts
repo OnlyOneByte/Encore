@@ -24,8 +24,8 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 const app = getApp();
 const state = app.state;
 
-// MVP/harness media catalog. Real media is resolved in M4 (search) + persisted; seed a few so
-// the dev harness + join flow can add songs that validate.
+// MVP/harness media catalog. Real media is resolved via /api/search (M4) + persisted on demand.
+// Seed a few youtube demos so the dev harness can add songs that validate even without yt-dlp.
 const mediaById = app.mediaById;
 for (const m of [
 	{ id: 'demo-takeonme', source: 'youtube', sourceRef: 'djV11Xbc914', title: 'Take On Me', artist: 'a-ha', durationSec: 225, stemStatus: 'none', playMode: 'iframe' },
@@ -34,6 +34,16 @@ for (const m of [
 ] as Media[]) {
 	mediaById.set(m.id, m);
 }
+
+// Seed the local library FTS index so the "Library" tab returns results in dev (and as a demo
+// of local search). A real deployment would scan MEDIA_DIR here. The demo tracks are also added
+// to mediaById so they're queue-able by id.
+app.localLibrary.index([
+	{ sourceRef: 'library/dont-stop-believin.mp4', title: "Don't Stop Believin'", artist: 'Journey', durationSec: 250 },
+	{ sourceRef: 'library/sweet-caroline.mp4', title: 'Sweet Caroline', artist: 'Neil Diamond', durationSec: 201 },
+	{ sourceRef: 'library/bohemian-rhapsody.mp4', title: 'Bohemian Rhapsody', artist: 'Queen', durationSec: 355 },
+	{ sourceRef: 'library/livin-on-a-prayer.mp4', title: "Livin' on a Prayer", artist: 'Bon Jovi', durationSec: 249 }
+]);
 
 // SvelteKit handler from the Bun adapter's build output (guarded so WS still boots pre-build).
 type SvelteHandler = (req: Request, server: import('bun').Server) => Response | Promise<Response>;
