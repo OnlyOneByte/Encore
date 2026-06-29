@@ -38,7 +38,7 @@
 	<div class="meta">
 		<div class="t">{title} <span class="sparkle">✨</span></div>
 		<div class="who"><i style="background:{singerColor}"></i> {singerName} · being prepared</div>
-		<div class="bar"><i style="width:{pct}%"></i></div>
+		<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
 		<div class="stage"><span>{stageLabel}</span><span>{pct}%</span></div>
 		<div class="chips">
 			{#each STAGES as s}
@@ -60,7 +60,8 @@
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
 	.who i { width: 10px; height: 10px; border-radius: 50%; }
 	.bar { height: 6px; border-radius: 6px; background: #2a2440; overflow: hidden; margin-top: 9px; }
-	.bar > i { display: block; height: 100%; background: var(--grad); border-radius: 6px; transition: width 0.4s ease; }
+	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
+	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 6px; transform-origin: left center; transition: transform 0.4s ease; }
 	.stage { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--warn); margin-top: 7px; }
 	.chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 	.chip { font-size: 0.66rem; padding: 3px 8px; border-radius: 20px; background: #241f38; color: var(--ink-dim); }

@@ -125,8 +125,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   first playable, pause/seek/restart/skip mutate `PlaybackState` → broadcast `playback:state`).
   Strip shows on current entry, reflects state. **Verified:** 5 unit + e2e (strip 0→1 on play,
   'Take On Me' + ⏸, tap → pause → ▶). (No UI Start button yet — M5/TV owns starting playback.)
-- [ ] **M3-C7** 60fps motion pass: transform/opacity-only animations, spring reorder, finger-
-  tracking bottom sheet. **Done-when:** no layout-thrash in devtools; eyes-on smoothness.
+- [x] **M3-C7** 60fps motion pass: audited all animations → transform/opacity/background only;
+  fixed ProcessingCard bar (`width` → `transform:scaleX`, GPU-composited). Source-scan guard
+  (motion.test) asserts no transition/keyframe touches a layout prop — **non-vacuous** (injecting
+  `transition:width` fails it). **M3 milestone COMPLETE** — phone remote is live & smooth.
 
 ---
 
