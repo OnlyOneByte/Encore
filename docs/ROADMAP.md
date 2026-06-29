@@ -134,8 +134,9 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 
 ## M4 — Search & media resolve  → *ships: find a song, queue it*
 
-- [ ] **M4-C1** ★ media resolver iface (`src/server/media`) + `local` library scan + SQLite FTS.
-  **Done-when:** unit test: FTS returns ranked local matches.
+- [x] **M4-C1** ★ `MediaResolver` iface + `resultToMedia` (local→file, youtube→iframe) + `LocalLibrary`
+  (SQLite **FTS5** virtual table, bm25 ranking, prefix match over title/artist). **Verified:** 6 tests —
+  title/artist match ('queen'→3 ranked), prefix, limit, empty, local→playMode:file.
 - [ ] **M4-C2** ★ YouTube search proxy + result cache + dedupe by query. **Done-when:** unit test:
   second identical query served from cache (no upstream call).
 - [ ] **M4-C3** yt-dlp metadata resolver (title/artist/duration/thumb) + per-video-id cache.
