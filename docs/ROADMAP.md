@@ -30,9 +30,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M0-C3** Drizzle schema + `bun:sqlite` (WAL) for all 6 entities + migration
   `0000_chubby_maestro` + programmatic `runMigrations`/`hydrate` boot helpers. **Verified:**
   `bun test` migrates a `:memory:` db and round-trips every table (2 pass, 9 asserts).
-- [ ] **M0-C4** ★ shared-contract unit tests: `applyOp`/`inverseOp` (incl. idempotent unknown-id),
-  `rotate`/`assignSeqs` (round-robin fairness + tie-break), `ulid` (sortable, unique).
-  **Done-when:** `bun test packages/shared` green, fairness assertion non-vacuous.
+- [x] **M0-C4** ★ shared-contract unit tests — **20 pass / 26 asserts**. `applyOp` (add-in-place
+  reconcile, idempotent unknown-id, purity) + `inverseOp` (round-trip restore) + `rotate`/
+  `assignSeqs` (3-singer interleave, next-gap join) + `ulid` (sortable/unique). Fairness test is
+  NON-VACUOUS (explicitly asserts round-robin ≠ FIFO).
 - [ ] **M0-C5** design tokens → `app.css` (port the mock's palette/radii/gradient) + base
   mobile-first layout shell + safe-area insets. **Done-when:** empty shell renders, matches mock
   tokens, eyes-on.
