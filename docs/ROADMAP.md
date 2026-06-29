@@ -53,9 +53,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   queue+playback in RAM, monotonic `rev`, server-owned `assignSeqs` on every mutation, debounced
   write-behind via `sqlitePersistence`, `hydrate()` on boot, defensive-copy getters. **Verified:**
   5 tests — rev bumps, fair re-seq, no external mutation, **reload-from-db == memory**, debounce coalesce.
-- [ ] **M1-C2** ★ rotation server module (`src/server/rotation`): wraps shared `assignSeqs`,
-  assigns server-owned `rotationSeq` on every queue mutation. **Done-when:** unit test: 3 singers
-  interleave fairly; new joiner slots into next gap.
+- [x] **M1-C2** ★ rotation server module (`src/server/rotation`): `reseq` (server-owned fair
+  order), `nextPlayable` (held-slot rule: skip cooking media, keep its seq), `upNextAfter` (TV
+  preload target), `isEntryReady` (iframe always / file when stems ready). **Verified:** 6 tests —
+  3-singer interleave, next-gap join, **held-slot skip+restore**, ready-gating. (Held-slot seam
+  de-risks M5/M7 early.)
 - [ ] **M1-C3** ★ WS hub: handle `queue:command` → validate → apply via shared `applyOp` →
   `server.publish` a `queue:patch{rev,ops,causedBy}`. **Done-when:** unit test drives a command,
   asserts the broadcast envelope + new rev.
