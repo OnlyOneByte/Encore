@@ -13,22 +13,26 @@ import {
 	type ServerEvent,
 	type Media
 } from '@encore/shared';
-import { AuthoritativeState } from './src/server/state/store';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
+import { getApp, setPublish } from './src/server/app';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
-// ── authoritative state (in-memory; M0-C3 will hydrate from SQLite at boot in a later wire-up) ──
-const state = new AuthoritativeState();
+// shared singleton — the SAME authoritative state instance the SvelteKit /api routes use.
+const app = getApp();
+const state = app.state;
 
-// MVP/harness media catalog. Real media is resolved in M4 (search) + persisted; for now seed a
-// few so the dev harness can add songs that validate.
-const mediaById = new Map<string, Media>([
-	['demo-takeonme', { id: 'demo-takeonme', source: 'youtube', sourceRef: 'djV11Xbc914', title: 'Take On Me', artist: 'a-ha', durationSec: 225, stemStatus: 'none', playMode: 'iframe' }],
-	['demo-mrbrightside', { id: 'demo-mrbrightside', source: 'youtube', sourceRef: 'gGdGFtwCNBE', title: 'Mr. Brightside', artist: 'The Killers', durationSec: 223, stemStatus: 'none', playMode: 'iframe' }],
-	['demo-dancingqueen', { id: 'demo-dancingqueen', source: 'youtube', sourceRef: 'xFrGuyw1V8s', title: 'Dancing Queen', artist: 'ABBA', durationSec: 231, stemStatus: 'none', playMode: 'iframe' }]
-]);
+// MVP/harness media catalog. Real media is resolved in M4 (search) + persisted; seed a few so
+// the dev harness + join flow can add songs that validate.
+const mediaById = app.mediaById;
+for (const m of [
+	{ id: 'demo-takeonme', source: 'youtube', sourceRef: 'djV11Xbc914', title: 'Take On Me', artist: 'a-ha', durationSec: 225, stemStatus: 'none', playMode: 'iframe' },
+	{ id: 'demo-mrbrightside', source: 'youtube', sourceRef: 'gGdGFtwCNBE', title: 'Mr. Brightside', artist: 'The Killers', durationSec: 223, stemStatus: 'none', playMode: 'iframe' },
+	{ id: 'demo-dancingqueen', source: 'youtube', sourceRef: 'xFrGuyw1V8s', title: 'Dancing Queen', artist: 'ABBA', durationSec: 231, stemStatus: 'none', playMode: 'iframe' }
+] as Media[]) {
+	mediaById.set(m.id, m);
+}
 
 // SvelteKit handler from the Bun adapter's build output (guarded so WS still boots pre-build).
 type SvelteHandler = (req: Request, server: import('bun').Server) => Response | Promise<Response>;
@@ -69,6 +73,9 @@ const server = Bun.serve<{ role: string }>({
 	websocket: {
 		open(ws) {
 			ws.subscribe(ROOM_TOPIC);
+			// route the shared app's broadcasts through Bun's native pub/sub (e.g. singer:joined
+			// from the /api/join route reaches every socket).
+			setPublish((e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)));
 		},
 		message(ws, raw) {
 			let evt: ClientEvent;

@@ -5,3 +5,4 @@ export * from './ops';
 export * from './rotation';
 export * from './events';
 export * from './ulid';
+export * from './colors';

@@ -87,8 +87,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   base64url token + cookie helpers (`sessionCookie` HttpOnly/SameSite=Lax/Secure, `readSessionToken`).
   Name sanitize (Guest fallback, 32-char cap). **Verified:** 7 tests — create→token→resolve,
   unknown→null, unique tokens, cookie round-trip.
-- [ ] **M2-C2** `POST /api/join` (name + color) + color picker palette. **Done-when:** e2e: join →
-  `singer:joined` broadcast → singer appears.
+- [x] **M2-C2** `POST /api/join` + `SINGER_COLORS` palette (shared) + **app singleton** (`$server/app`,
+  the SvelteKit↔WS-hub seam; `setPublish` routes broadcasts through Bun pub/sub). **Verified:** unit
+  (doJoin: create+singer:joined+color-fallback+blank-reject, 3) AND **live HTTP**: join→200+HttpOnly
+  cookie+singer JSON (no token leak), blank→400. (`bun:sqlite` adapter warning is cosmetic — Bun resolves natively.)
 - [ ] **M2-C3** `/join` page: name field + avatar-color grid, no signup wall. **Done-when:**
   eyes-on desktop + mobile; lands on phone remote after join.
 - [ ] **M2-C4** TV `/tv` attract screen: big join QR + "up next" ticker + ambient motion.
