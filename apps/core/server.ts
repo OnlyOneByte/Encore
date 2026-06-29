@@ -99,7 +99,8 @@ const server = Bun.serve<{ role: string }>({
 				state,
 				publish: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)),
 				mediaById,
-				listSingers: () => app.singers.listPublic()
+				listSingers: () => app.singers.listPublic(),
+				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now())
 			};
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 

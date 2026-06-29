@@ -78,6 +78,7 @@
 			});
 			ws.open();
 			connected = true;
+			loadShortcuts();
 		})();
 		return () => {
 			disposed = true;
@@ -88,6 +89,7 @@
 	function addSong(mediaId: string) {
 		store?.addSong(mediaId);
 		if (navigator.vibrate) navigator.vibrate(8); // haptic tick
+		setTimeout(loadShortcuts, 300); // refresh popular/recent after the add lands
 	}
 
 	// remove + undo toast
@@ -141,6 +143,7 @@
 			results = [];
 			searching = false;
 			inflight?.abort();
+			loadShortcuts(); // box cleared → refresh recent/popular
 			return;
 		}
 		debounceTimer = setTimeout(() => runSearch(q), 150); // debounce ~150ms
@@ -163,6 +166,20 @@
 	function setSource(s: 'youtube' | 'local') {
 		searchSource = s;
 		if (query.trim()) runSearch(query.trim());
+	}
+
+	// zero-keystroke shortcuts (shown when the search box is empty)
+	let recent = $state<Media[]>([]);
+	let popular = $state<Media[]>([]);
+	async function loadShortcuts() {
+		try {
+			const res = await fetch('/api/search?q=');
+			const j = await res.json();
+			recent = j.recent ?? [];
+			popular = j.popular ?? [];
+		} catch {
+			/* ignore */
+		}
 	}
 </script>
 
@@ -199,19 +216,38 @@
 		<button class="tab" class:active={searchSource === 'local'} onclick={() => setSource('local')}>Library</button>
 	</div>
 
-	{#if query.trim() && results.length === 0 && !searching}
-		<p style="color:var(--ink-dim);padding:0 4px;font-size:.9rem;">
-			No results{searchSource === 'youtube' ? ' (YouTube search needs yt-dlp installed on the server)' : ' in your library'}.
-		</p>
+	{#if query.trim()}
+		{#if results.length === 0 && !searching}
+			<p style="color:var(--ink-dim);padding:0 4px;font-size:.9rem;">
+				No results{searchSource === 'youtube' ? ' (YouTube search needs yt-dlp installed on the server)' : ' in your library'}.
+			</p>
+		{/if}
+		{#each results as m (m.id)}
+			<SongCard
+				title={m.title}
+				sub={`${m.artist ?? (m.source === 'youtube' ? 'YouTube' : 'Library')} · tap to queue`}
+				processing={m.playMode === 'file' && m.stemStatus !== 'ready'}
+				onadd={() => addSong(m.id)}
+			/>
+		{/each}
+	{:else}
+		<!-- zero-keystroke shortcuts -->
+		{#if popular.length}
+			<div style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:4px 4px 8px;">🔥 Popular tonight</div>
+			{#each popular as m (m.id)}
+				<SongCard title={m.title} sub={`${m.artist ?? ''} · tap to queue`} onadd={() => addSong(m.id)} />
+			{/each}
+		{/if}
+		{#if recent.length}
+			<div style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:14px 4px 8px;">🕑 Recently queued</div>
+			{#each recent as m (m.id)}
+				<SongCard title={m.title} sub={`${m.artist ?? ''} · tap to queue`} onadd={() => addSong(m.id)} />
+			{/each}
+		{/if}
+		{#if !popular.length && !recent.length}
+			<p style="color:var(--ink-dim);padding:0 4px;font-size:.9rem;">Search for a song above, or be the first to queue one ✨</p>
+		{/if}
 	{/if}
-	{#each results as m (m.id)}
-		<SongCard
-			title={m.title}
-			sub={`${m.artist ?? (m.source === 'youtube' ? 'YouTube' : 'Library')} · tap to queue`}
-			processing={m.playMode === 'file' && m.stemStatus !== 'ready'}
-			onadd={() => addSong(m.id)}
-		/>
-	{/each}
 
 	<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:18px 4px 10px;">Up next · rotation</div>
 	{#if queued.length === 0}

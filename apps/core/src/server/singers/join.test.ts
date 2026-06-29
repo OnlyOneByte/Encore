@@ -7,6 +7,7 @@ import { runMigrations } from '../db/migrate';
 import { SINGER_COLORS, type ServerEvent } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
+import { createPopularityTracker } from '../media/popularity';
 import type { EncoreApp } from '../app';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
@@ -20,6 +21,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		mediaById: new Map(),
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(async () => []),
+		popularity: createPopularityTracker(),
 		publish: (e) => published.push(e),
 		now: () => 1_700_000_000_000
 	};

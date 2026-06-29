@@ -11,6 +11,7 @@ import { sqlitePersistence } from './state/persistence';
 import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
+import { createPopularityTracker, type PopularityTracker } from './media/popularity';
 import type { ServerEvent, Media } from '@encore/shared';
 
 export interface EncoreApp {
@@ -20,6 +21,7 @@ export interface EncoreApp {
 	mediaById: Map<string, Media>;
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
+	popularity: PopularityTracker;
 	publish: (e: ServerEvent) => void; // room broadcast; replaced by server.ts at boot
 	now: () => number;
 }
@@ -50,6 +52,7 @@ export function getApp(): EncoreApp {
 		mediaById: new Map(),
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(ytDlpSearch),
+		popularity: createPopularityTracker(),
 		// no-op until server.ts wires Bun.serve's publish; routes still work (state mutates)
 		publish: () => {},
 		now: () => Date.now()

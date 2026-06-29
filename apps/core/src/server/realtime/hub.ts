@@ -23,6 +23,8 @@ export interface HubDeps {
 	mediaById: Map<string, Media>;
 	/** Optional: list known singers (sans token) for the sync directory. */
 	listSingers?: () => PublicSinger[];
+	/** Optional: record a queue-add for popularity shortcuts. */
+	recordAdd?: (mediaId: string) => void;
 }
 
 /** Validate a command against current state. Returns an error string, or null if valid. */
@@ -56,6 +58,7 @@ export function handleQueueCommand(
 		return null;
 	}
 
+	if (cmd.op.op === 'add') deps.recordAdd?.(cmd.op.entry.mediaId); // popularity shortcut tracking
 	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(cmd.op);
 	const patch: Extract<ServerEvent, { type: 'queue:patch' }> = {
 		type: 'queue:patch',

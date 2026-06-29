@@ -10,9 +10,15 @@ import { ulid, type Media } from '@encore/shared';
 export const GET: RequestHandler = async ({ url }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
 	const source = url.searchParams.get('source') === 'local' ? 'local' : 'youtube';
-	if (!q) return json({ results: [] });
-
 	const app = getApp();
+
+	// zero-keystroke shortcuts: empty query returns recent + popular from this session
+	if (!q) {
+		const byId = (id: string) => app.mediaById.get(id);
+		const recent = app.popularity.recent(6).map(byId).filter(Boolean);
+		const popular = app.popularity.popular(6).map(byId).filter(Boolean);
+		return json({ results: [], recent, popular });
+	}
 	const resolver = source === 'local' ? app.localLibrary : app.youtube;
 	const found = resolver ? await resolver.search(q, 12) : [];
 

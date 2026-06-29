@@ -148,8 +148,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   catalog. **Eyes-on + e2e**: Library "queen" → "Bohemian Rhapsody ✨" → add → #1 in rotation
   (docs/mocks/m4c4-search-eyeson.png). **Caught+fixed a real bug:** SvelteKit handler is a separate
   bundle → `getApp()` was split-brain; backed singleton on `globalThis` (one shared instance).
-- [ ] **M4-C5** zero-keystroke shortcuts: "recently queued" + "popular tonight". **Done-when:**
-  eyes-on populated from session history.
+- [x] **M4-C5** zero-keystroke shortcuts: `PopularityTracker` (recordAdd on queue; recent by time,
+  popular by count+recency tie-break) → `/api/search?q=` returns recent+popular → phone shows
+  "🔥 Popular tonight" + "🕑 Recently queued" when box empty. **Eyes-on confirmed** (Sweet Caroline
+  in both sections, docs/mocks/m4c5-shortcuts-eyeson.png) — 5 unit tests. **M4 milestone COMPLETE.**
 
 ---
 
