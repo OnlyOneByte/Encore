@@ -1,42 +1,62 @@
-// Encore core — the one Bun process. HTTP + native WebSocket pub/sub hub.
-// This is the entry point locked in docs/MASTER-DESIGN.md §2/§2a: Bun.serve owns both
-// the SvelteKit request handler AND the realtime hub, so there is no network hop between
-// layers and the in-memory authoritative state lives in this process.
+// Encore core — the one Bun process. HTTP (SvelteKit) + native WebSocket pub/sub hub.
+// Locked in docs/MASTER-DESIGN.md §2/§2a: Bun.serve owns BOTH the SvelteKit request handler
+// AND the realtime hub, so there is no network hop between layers and the in-memory
+// authoritative state lives in this one process.
 //
-// SCAFFOLD STAGE: this stands up the WS pub/sub skeleton + a health route. The SvelteKit
-// handler is wired in once `svelte-adapter-bun` is smoke-tested (see README "step one").
+// This is the PRODUCTION entry (replaces the adapter's generated build/index.js).
+//   build:  bun run build      # vite build -> emits build/handler.js
+//   start:  bun run server.ts  # this file, importing that handler
+// In dev, `vite dev` serves the UI (HMR) but NOT this WS hub; realtime dev uses the built
+// server or the M1-C7 harness. See ROADMAP M1.
 
 import { ROOM_TOPIC, type ClientEvent } from '@encore/shared';
 
 const PORT = Number(process.env.PORT ?? 3000);
+const HOST = process.env.HOST ?? '0.0.0.0';
+
+// SvelteKit's request handler from the Bun adapter's build output. Guarded so the WS hub
+// can still boot before a build exists (prints a hint instead of crashing).
+type SvelteHandler = (req: Request, server: import('bun').Server) => Response | Promise<Response>;
+let svelteKitFetch: SvelteHandler | null = null;
+try {
+  const { getHandler } = (await import('./build/handler.js')) as {
+    getHandler: () => { fetch: SvelteHandler };
+  };
+  svelteKitFetch = getHandler().fetch;
+} catch {
+  console.warn('[core] build/handler.js not found — run `bun run build` first. Serving WS + /health only.');
+}
 
 const server = Bun.serve<{ role: string }>({
   port: PORT,
+  hostname: HOST,
+  idleTimeout: 30, // seconds; our WS heartbeat is well under this
 
-  fetch(req, server) {
+  async fetch(req, server) {
     const url = new URL(req.url);
 
-    // WebSocket upgrade — phones, TV, and (later) the loopback worker all connect here.
+    // 1. WebSocket upgrade — phones, TV, and (later) the loopback worker connect here.
     if (url.pathname === '/ws') {
       const role = url.searchParams.get('role') ?? 'phone';
-      if (server.upgrade(req, { data: { role } })) return; // upgraded
+      if (server.upgrade(req, { data: { role } })) return undefined as unknown as Response;
       return new Response('ws upgrade failed', { status: 400 });
     }
 
+    // 2. Health/liveness.
     if (url.pathname === '/health') {
       return Response.json({ ok: true, runtime: `bun ${Bun.version}`, room: ROOM_TOPIC });
     }
 
-    // TODO: hand off to SvelteKit's handler once the Bun adapter is verified.
-    return new Response('Encore core is up. SvelteKit handler not yet wired.', {
-      headers: { 'content-type': 'text/plain' },
+    // 3. Everything else -> SvelteKit (the phone remote, /join, /tv, /api/*).
+    if (svelteKitFetch) return svelteKitFetch(req, server);
+    return new Response('Encore core up (WS + /health). Run `bun run build` to serve the UI.', {
+      headers: { 'content-type': 'text/plain' }
     });
   },
 
   websocket: {
     open(ws) {
-      // every client subscribes to the single room topic — native C++ fan-out.
-      ws.subscribe(ROOM_TOPIC);
+      ws.subscribe(ROOM_TOPIC); // native C++ fan-out topic
       console.log(`[ws] open role=${ws.data.role}`);
     },
     message(ws, raw) {
@@ -46,14 +66,14 @@ const server = Bun.serve<{ role: string }>({
       } catch {
         return;
       }
-      // SCAFFOLD: echo a stub ack. Real handlers (queue:command, player:command,
-      // tv:telemetry, hello/resync) land with the state + rotation modules.
+      // SCAFFOLD: real handlers (queue:command, player:command, tv:telemetry, hello/resync)
+      // land in M1 with the in-memory state + rotation modules.
       console.log(`[ws] ${ws.data.role} -> ${evt.type}`);
     },
     close(ws) {
       console.log(`[ws] close role=${ws.data.role}`);
-    },
-  },
+    }
+  }
 });
 
 /** Broadcast helper used by the realtime hub — one native publish to the whole room. */
@@ -61,4 +81,6 @@ export function publishToRoom(payload: unknown): void {
   server.publish(ROOM_TOPIC, JSON.stringify(payload));
 }
 
-console.log(`🎤 Encore core listening on http://localhost:${PORT}  (ws: /ws, health: /health)`);
+console.log(
+  `🎤 Encore core on http://${HOST}:${PORT}  (ws:/ws · health:/health · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
+);

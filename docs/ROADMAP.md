@@ -24,9 +24,9 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   aarch64 (HTTP 200, SSR'd). **No adapter-node fallback needed.** Findings: (1) repo-local
   `.npmrc` → public npm (personal project, not CodeArtifact); (2) scripts MUST use `bun --bun`
   or Bun defers to Node 18 and Vite 8 breaks. *UI work unblocked.*
-- [ ] **M0-C2** ★ unify the process: `Bun.serve` hands HTTP off to SvelteKit's handler while
-  keeping `/ws` on the native pub/sub hub. **Done-when:** one process serves a Svelte route
-  AND `/health` AND a WS round-trip.
+- [x] **M0-C2** ★ unify the process — `server.ts` imports the adapter's `getHandler().fetch`,
+  intercepts `/ws` (native pub/sub) + `/health`, falls through to SvelteKit. **Verified:** one
+  Bun process served `/` (SSR), `/health`, and a WS round-trip on one port.
 - [ ] **M0-C3** Drizzle schema + `bun:sqlite` (WAL pragma) for Room/Singer/Media/QueueEntry/
   PlaybackState/Job + first migration + boot-hydrate stub. **Done-when:** `bun test` migrates a
   temp db and round-trips one row of each table.
