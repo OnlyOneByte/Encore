@@ -1,0 +1,222 @@
+# 🎤 Encore — Build Roadmap (commit-level)
+
+Status: **LIVING** · the ordered path from scaffold → MVP → smart feature → scoring → accounts.
+
+## How to read this
+- Each line is **one commit** — small, shippable, and green before the next starts.
+- **Done-when** is the merge gate (a test, a verified behavior, or an eyes-on).
+- **WIP = 1.** Finish a commit (build + its done-when) before starting the next.
+- `[ ]` todo · `[~]` in progress · `[x]` done.
+- **★ = critical path.** **⚠ = de-risk / decision gate.**
+- Test discipline: `packages/shared` + `src/server` logic → `bun test` units; UI → component
+  tests + eyes-on screenshot; full flows → Playwright e2e. Mirror VROOM: nothing "done" on a
+  passing-text assertion alone — eyes-on any rendered surface.
+
+Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already committed (`9858d05`).
+
+---
+
+## M0 — Foundation & de-risk  → *ships: the stack proven end-to-end*
+
+- [x] **M0-C0** ★ scaffold monorepo (Bun + shared contract + Bun.serve WS hub) — *done `9858d05`*
+- [ ] **M0-C1** ⚠★ `svelte-adapter-bun` smoke test: scaffold SvelteKit into `apps/core`, set
+  adapter, `bun build && bun start`, serve a hello page under Bun on aarch64.
+  **Done-when:** prod build serves at `:3000` under Bun; if rough, fall back to `adapter-node`
+  on Bun and record the decision in README. *This gate unblocks all UI work.*
+- [ ] **M0-C2** ★ unify the process: `Bun.serve` hands HTTP off to SvelteKit's handler while
+  keeping `/ws` on the native pub/sub hub. **Done-when:** one process serves a Svelte route
+  AND `/health` AND a WS round-trip.
+- [ ] **M0-C3** Drizzle schema + `bun:sqlite` (WAL pragma) for Room/Singer/Media/QueueEntry/
+  PlaybackState/Job + first migration + boot-hydrate stub. **Done-when:** `bun test` migrates a
+  temp db and round-trips one row of each table.
+- [ ] **M0-C4** ★ shared-contract unit tests: `applyOp`/`inverseOp` (incl. idempotent unknown-id),
+  `rotate`/`assignSeqs` (round-robin fairness + tie-break), `ulid` (sortable, unique).
+  **Done-when:** `bun test packages/shared` green, fairness assertion non-vacuous.
+- [ ] **M0-C5** design tokens → `app.css` (port the mock's palette/radii/gradient) + base
+  mobile-first layout shell + safe-area insets. **Done-when:** empty shell renders, matches mock
+  tokens, eyes-on.
+- [ ] **M0-C6** PWA: manifest + service worker (app-shell precache), installable.
+  **Done-when:** Lighthouse "installable" passes; warm load serves shell offline.
+
+---
+
+## M1 — The realtime spine  → *ships: two browsers, one synced queue (no media yet)*
+*The engine every incumbent gets wrong. Build it before any feature.*
+
+- [ ] **M1-C1** ★ in-memory authoritative state module (`src/server/state`): queue + playback in
+  RAM, monotonic `rev`, write-behind to SQLite. **Done-when:** unit test: mutate → rev bumps →
+  async persist → reload-from-db equals memory.
+- [ ] **M1-C2** ★ rotation server module (`src/server/rotation`): wraps shared `assignSeqs`,
+  assigns server-owned `rotationSeq` on every queue mutation. **Done-when:** unit test: 3 singers
+  interleave fairly; new joiner slots into next gap.
+- [ ] **M1-C3** ★ WS hub: handle `queue:command` → validate → apply via shared `applyOp` →
+  `server.publish` a `queue:patch{rev,ops,causedBy}`. **Done-when:** unit test drives a command,
+  asserts the broadcast envelope + new rev.
+- [ ] **M1-C4** `op:reject` path: invalid command → targeted reject to originator only.
+  **Done-when:** unit test: bad mediaId → `op:reject{clientOpId,reason}`, no broadcast.
+- [ ] **M1-C5** ★ client ws store (`src/lib/ws`): connect, heartbeat ping/pong, reconnect w/
+  backoff, `hello{lastRev}` → `queue:sync` resync, gap-detection (rev jump → request sync).
+  **Done-when:** kill+restore socket in test → client re-syncs to authoritative rev.
+- [ ] **M1-C6** ★ optimistic queue store (`src/lib/stores`): client-minted ULID, instant local
+  `applyOp`, `pending` map (op+inverse), reconcile on `causedBy`, rollback on `op:reject`,
+  rebase pending on resync. **Done-when:** component test: add renders pre-broadcast, reconciles
+  with zero reorder; reject rolls back via inverse.
+- [ ] **M1-C7** dev harness page: two iframes (sim two phones) + raw queue JSON, to eyeball sync.
+  **Done-when:** add in pane A appears in pane B over WS; eyes-on.
+
+---
+
+## M2 — Join & identity  → *ships: scan QR → you're in*
+
+- [ ] **M2-C1** singer session: `crypto` session token, cookie-backed, `singerRepository`.
+  **Done-when:** unit test: create singer → token set → resolve from cookie.
+- [ ] **M2-C2** `POST /api/join` (name + color) + color picker palette. **Done-when:** e2e: join →
+  `singer:joined` broadcast → singer appears.
+- [ ] **M2-C3** `/join` page: name field + avatar-color grid, no signup wall. **Done-when:**
+  eyes-on desktop + mobile; lands on phone remote after join.
+- [ ] **M2-C4** TV `/tv` attract screen: big join QR + "up next" ticker + ambient motion.
+  **Done-when:** eyes-on; QR resolves to `/join`.
+
+---
+
+## M3 — Phone remote (the star)  → *ships: the mock, made real & live*
+
+- [ ] **M3-C1** ★ port components from mock: `SongCard`, `QueueRow`, `NowPlaying`,
+  `ProcessingCard` (static props first). **Done-when:** Storybook/route renders each, matches
+  mock, eyes-on.
+- [ ] **M3-C2** ★ phone `+page.svelte`: wire queue/rotation screen to the optimistic store
+  (live `queue:patch`). **Done-when:** eyes-on: queued songs render in rotation order, "you're
+  3rd · after Maya" computed from shared rotation.
+- [ ] **M3-C3** ★ optimistic add: tap ＋Turn → instant row + haptic (`navigator.vibrate`) →
+  reconcile. **Done-when:** eyes-on: row pops same frame, no flicker on server echo.
+- [ ] **M3-C4** swipe-to-remove (remove op) + undo toast. **Done-when:** e2e: remove → broadcast →
+  gone on both phones; undo re-adds.
+- [ ] **M3-C5** drag-reorder *your own* entries (move op; server re-resolves seq). **Done-when:**
+  e2e: reorder persists, other phones see canonical order.
+- [ ] **M3-C6** now-playing control strip → `player:command` (play/pause/skip/restart/seek).
+  **Done-when:** commands reach server (stubbed playback), strip reflects `playback:state`.
+- [ ] **M3-C7** 60fps motion pass: transform/opacity-only animations, spring reorder, finger-
+  tracking bottom sheet. **Done-when:** no layout-thrash in devtools; eyes-on smoothness.
+
+---
+
+## M4 — Search & media resolve  → *ships: find a song, queue it*
+
+- [ ] **M4-C1** ★ media resolver iface (`src/server/media`) + `local` library scan + SQLite FTS.
+  **Done-when:** unit test: FTS returns ranked local matches.
+- [ ] **M4-C2** ★ YouTube search proxy + result cache + dedupe by query. **Done-when:** unit test:
+  second identical query served from cache (no upstream call).
+- [ ] **M4-C3** yt-dlp metadata resolver (title/artist/duration/thumb) + per-video-id cache.
+  **Done-when:** unit test: resolve memoizes; cache hit on repeat id.
+- [ ] **M4-C4** ★ search UI: unified bar, YouTube/Library tabs, debounce ~150ms, **cancel
+  in-flight** on keystroke. **Done-when:** eyes-on: typing cancels stale requests; results stream.
+- [ ] **M4-C5** zero-keystroke shortcuts: "recently queued" + "popular tonight". **Done-when:**
+  eyes-on populated from session history.
+
+---
+
+## M5 — Playback & gapless TV  → *ships: songs actually play, with zero dead air* ★★
+
+- [ ] **M5-C1** ★ player state machine (`src/server/playback`): authoritative; advances on
+  `tv:telemetry {ended}`, emits `nowplaying:changed{current,upNext}`. **Done-when:** unit test:
+  ended telemetry advances rotation, picks next by seq.
+- [ ] **M5-C2** ★ TV player abstraction over `playMode`: `iframe` (YouTube IFrame API) + `file`
+  (`<video>`). **Done-when:** eyes-on: a YouTube song and a local file both play on `/tv`.
+- [ ] **M5-C3** ★★ two-player gapless preload (`src/lib/tv`): A visible / B hidden-warming,
+  preload `upNext` at ~25%, swap on `ended`. **Done-when:** eyes-on: back-to-back songs with **no
+  black gap**; `bufferedNextPct` reported in telemetry.
+- [ ] **M5-C4** interstitial + `Now singing` lower-third (configurable 0–4s). **Done-when:**
+  eyes-on: "Next up: NAME — SONG" reveal, then hard-cut/crossfade.
+- [ ] **M5-C5** ATTRACT/LOADING/WAITING states wired to the machine (held-slot stub: skip if
+  next not ready). **Done-when:** eyes-on: empty queue → attract; song flows return.
+- [ ] **M5-C6** TV reconnect resilience: socket drop mid-song doesn't stop playback; resyncs.
+  **Done-when:** kill socket during PLAYING → video continues → state resyncs on reconnect.
+
+---
+
+## M6 — MVP hardening & ship  → *ships: `docker compose up`, a real party* ★
+
+- [ ] **M6-C1** thumbnail proxy + on-disk cache + long cache headers. **Done-when:** repeat thumb
+  served from disk; eyes-on grid.
+- [ ] **M6-C2** WS resilience hardening: backoff caps, dedupe by `clientOpId`, ack-timeout resend.
+  **Done-when:** flaky-network sim (drop 20%) keeps two phones converged.
+- [ ] **M6-C3** ★ Playwright e2e: join → search → queue → rotate → play → gapless next, two
+  phones + TV. **Done-when:** e2e green headless.
+- [ ] **M6-C4** ★ `apps/core/Dockerfile` (`FROM oven/bun`, bundle yt-dlp + ffmpeg) + `compose up`
+  one-container boot. **Done-when:** clean `docker compose up` → working app on a fresh checkout.
+- [ ] **M6-C5** error/empty/edge states (no results, dead video, singer leaves mid-turn) +
+  graceful toasts. **Done-when:** eyes-on each edge; no dead-ends.
+- [ ] **M6-C6** README quickstart + screenshots; tag **v0.1.0 (MVP)**. **Done-when:** a stranger
+  can stand it up from README alone.
+
+---
+
+## M7 — Smart feature: make-karaoke (container 2)  → *ships: drop a song → stems* ★
+
+- [ ] **M7-C1** ★ job ledger (`src/server/jobs`): Drizzle `jobs` table, dedup `(mediaId,jobType)`,
+  state machine queued→assigned→running→ready/failed/canceled. **Done-when:** unit test: full
+  lifecycle + dedup + idempotent re-add.
+- [ ] **M7-C2** ★ leases + reaper (ack 10s / progress 30s), boot resets assigned/running→queued.
+  **Done-when:** unit test: stalled job requeues; boot recovery clears in-flight.
+- [ ] **M7-C3** ★ dial-home worker protocol on core: `worker:hello/heartbeat`, dispatch by
+  priority(=rotationSeq), `job:assign/accept/progress/complete/failed`. **Done-when:** unit test
+  with a fake worker socket drives a job to `ready`.
+- [ ] **M7-C4** ★ worker container: Python `dial_home` full + `Bun.spawn`-free pull/push via
+  MediaStore; `apps/worker/Dockerfile` (torch+ffmpeg). **Done-when:** `--profile stems` worker
+  registers with core.
+- [ ] **M7-C5** ★ Demucs `htdemucs` stems pipeline → instrumental written to MediaStore.
+  **Done-when:** a real song yields an instrumental track on the volume.
+- [ ] **M7-C6** ★ `playMode` flip iframe→file on `ready`; rotation **held-slot** real impl
+  (keep seq, slot back when ready). **Done-when:** queue a make-karaoke song; it cooks, then
+  plays gaplessly at its fair position.
+- [ ] **M7-C7** ★ live progress UI: `media:status` → `ProcessingCard` bar (`Separating… 68%`) +
+  stage chips. **Done-when:** eyes-on: phone shows live stages end-to-end.
+- [ ] **M7-C8** WhisperX align → word-timed lyrics artifact. **Done-when:** lyrics JSON with word
+  timestamps stored; unit test on shape.
+- [ ] **M7-C9** `+key/−key` pitch shift (ffmpeg/rubberband on the instrumental). **Done-when:**
+  eyes-on: control strip shifts key on a `file` song.
+- [ ] **M7-C10** MediaStore `object` impl (MinIO/S3) for remote workers + env flip. **Done-when:**
+  worker on a second box processes via object-store; integration test.
+- [ ] **M7-C11** tag **v0.2.0 (stems)**.
+
+---
+
+## M8 — Scoring  → *ships: SingStar-style scoring*
+
+- [ ] **M8-C1** pitch extraction from the isolated vocal stem (per-frame f0). **Done-when:** unit
+  test: known tone → expected pitch track.
+- [ ] **M8-C2** aligned lyrics overlay on TV (bouncing-ball from WhisperX timings). **Done-when:**
+  eyes-on: words highlight in time.
+- [ ] **M8-C3** live mic pitch compare → `score:update` WS event (computed server-side).
+  **Done-when:** eyes-on: score moves with sung pitch; TV overlay + phone reflect it.
+- [ ] **M8-C4** end-of-song score reveal + session leaderboard. **Done-when:** eyes-on reveal;
+  leaderboard persists for the session. Tag **v0.3.0 (scoring)**.
+
+---
+
+## M9 — Accounts (additive, never gates the party)  → *ships: persistence across nights*
+
+- [ ] **M9-C1** real accounts layered over ephemeral singers (OAuth or local). **Done-when:**
+  ephemeral singer can "claim" an account; nothing about join flow regresses.
+- [ ] **M9-C2** history + favorites + saved-karaoke library. **Done-when:** re-queue a saved
+  karaoke instantly (skips the worker). 
+- [ ] **M9-C3** multi-room (the deferred scale knob): room codes, per-room topics. **Done-when:**
+  two independent rooms run on one core. Tag **v1.0.0**.
+
+---
+
+## Critical path (the spine, in order)
+`M0-C1 (adapter gate)` → `M0-C2/C4` → **M1 (realtime spine)** → `M3-C2/C3 (live optimistic queue)`
+→ `M4-C1/C4 (search)` → **M5-C1/C3 (gapless playback)** → `M6-C3/C4 (e2e + one-container ship)` =
+**MVP / v0.1.0**. Everything in M7+ hangs off the `playMode` flag and job ledger without a rewrite.
+
+## Parallelizable (off the critical path)
+- M0-C5/C6 (tokens, PWA) alongside M1.
+- M2 (join) alongside late M1.
+- M3-C7 (motion polish), M6-C1 (thumbs) anytime after their surface exists.
+- All of M7's Python worker (M7-C4/C5/C8) can be built in parallel with core once the protocol
+  (M7-C3) is fixed.
+
+## Counts
+M0:7 · M1:7 · M2:4 · M3:7 · M4:5 · M5:6 · M6:6  → **MVP = ~42 commits**
+M7:11 · M8:4 · M9:3  → **full vision = ~60 commits**
