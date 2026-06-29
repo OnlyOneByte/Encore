@@ -27,9 +27,9 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M0-C2** ★ unify the process — `server.ts` imports the adapter's `getHandler().fetch`,
   intercepts `/ws` (native pub/sub) + `/health`, falls through to SvelteKit. **Verified:** one
   Bun process served `/` (SSR), `/health`, and a WS round-trip on one port.
-- [ ] **M0-C3** Drizzle schema + `bun:sqlite` (WAL pragma) for Room/Singer/Media/QueueEntry/
-  PlaybackState/Job + first migration + boot-hydrate stub. **Done-when:** `bun test` migrates a
-  temp db and round-trips one row of each table.
+- [x] **M0-C3** Drizzle schema + `bun:sqlite` (WAL) for all 6 entities + migration
+  `0000_chubby_maestro` + programmatic `runMigrations`/`hydrate` boot helpers. **Verified:**
+  `bun test` migrates a `:memory:` db and round-trips every table (2 pass, 9 asserts).
 - [ ] **M0-C4** ★ shared-contract unit tests: `applyOp`/`inverseOp` (incl. idempotent unknown-id),
   `rotate`/`assignSeqs` (round-robin fairness + tie-break), `ulid` (sortable, unique).
   **Done-when:** `bun test packages/shared` green, fairness assertion non-vacuous.

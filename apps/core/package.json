@@ -13,11 +13,13 @@
     "typecheck": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
-    "@encore/shared": "workspace:*"
+    "@encore/shared": "workspace:*",
+    "drizzle-orm": "^0.45.2"
   },
   "devDependencies": {
     "@sveltejs/kit": "^2.63.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "drizzle-kit": "^0.31.10",
     "svelte": "^5.56.1",
     "svelte-adapter-bun": "^1.0.1",
     "svelte-check": "^4.6.0",
