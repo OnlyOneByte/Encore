@@ -73,8 +73,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   ULID, instant local `applyOp`, `pending` map (op+inverse), reconcile-on-`causedBy` (zero
   duplicate, adopt server seq), rollback-on-`op:reject` via inverse, **rebase pending on resync**.
   Framework-agnostic (subscribe hook) for DOM-free tests. **Verified:** 6 tests cover all five paths.
-- [ ] **M1-C7** dev harness page: two iframes (sim two phones) + raw queue JSON, to eyeball sync.
-  **Done-when:** add in pane A appears in pane B over WS; eyes-on.
+- [x] **M1-C7** dev harness (`/harness` two-iframe + `/harness/phone`) — **integration moment**:
+  wired state+hub into live `Bun.serve` WS (hello→`syncEvent`, queue:command→`handleQueueCommand`),
+  seeded demo media catalog. **Verified:** real two-client WS test (Maya add → Sam sees it) +
+  **eyes-on both panes show `#0 demo-takeonme (maya)` rev=1** (docs/mocks/m1c7-sync-eyeson.png).
+  **M1 milestone COMPLETE — the realtime spine is live end-to-end.**
 
 ---
 
