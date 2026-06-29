@@ -55,7 +55,8 @@
 
 			store = new QueueStore({
 				singerId: me.id,
-				sendCommand: (cmd) => ws.send({ type: 'queue:command', command: cmd })
+				sendCommand: (cmd) => ws.send({ type: 'queue:command', command: cmd }),
+				onReject: (reason) => showError(`Couldn't do that: ${reason}`)
 			});
 			store.subscribe((e) => (entries = e));
 
@@ -160,7 +161,10 @@
 			if (ctrl.signal.aborted) return;
 			results = (await res.json()).results ?? [];
 		} catch (e) {
-			if ((e as Error).name !== 'AbortError') results = [];
+			if ((e as Error).name !== 'AbortError') {
+				results = [];
+				showError('Search failed — check your connection');
+			}
 		} finally {
 			if (inflight === ctrl) searching = false;
 		}
@@ -168,6 +172,15 @@
 	function setSource(s: 'youtube' | 'local') {
 		searchSource = s;
 		if (query.trim()) runSearch(query.trim());
+	}
+
+	// transient error toast
+	let errorMsg = $state('');
+	let errorTimer: ReturnType<typeof setTimeout> | undefined;
+	function showError(msg: string) {
+		errorMsg = msg;
+		clearTimeout(errorTimer);
+		errorTimer = setTimeout(() => (errorMsg = ''), 4000);
 	}
 
 	// zero-keystroke shortcuts (shown when the search box is empty)
@@ -296,6 +309,10 @@
 	</div>
 {/if}
 
+{#if errorMsg}
+	<div class="error-toast">{errorMsg}</div>
+{/if}
+
 <style>
 	.tab {
 		flex: 1; text-align: center; padding: 8px; border-radius: 12px; font-size: 0.85rem;
@@ -311,5 +328,10 @@
 	.undo-toast button {
 		border: 0; background: var(--grad); color: #fff; font-weight: 700;
 		border-radius: 8px; padding: 6px 12px; cursor: pointer;
+	}
+	.error-toast {
+		position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 30;
+		background: #2a1b22; color: #ffb1b1; border: 1px solid #5a2b39;
+		padding: 11px 16px; border-radius: 12px; font-size: 0.88rem; max-width: 90vw;
 	}
 </style>

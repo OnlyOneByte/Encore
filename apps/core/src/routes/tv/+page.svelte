@@ -62,6 +62,12 @@
 		ws?.send(JSON.stringify({ type: 'tv:telemetry', positionSec, durationSec, status, bufferedNextPct }));
 	}
 
+	function onVisibleError() {
+		// dead/unplayable media — treat like ended so the room advances rather than hanging on black
+		sendTelemetry('ended');
+		onVisibleEnded();
+	}
+
 	function onVisibleEnded() {
 		const next = ctl.onEnded(upNext);
 		tvState = next;
@@ -132,6 +138,7 @@
 		active={visible === 'A'}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
+		onerror={onVisibleError}
 		onposition={(s, d) => sendTelemetry('playing', s, d, 100)}
 	/>
 	<TvPlayer
@@ -140,6 +147,7 @@
 		active={visible === 'B'}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
+		onerror={onVisibleError}
 		onposition={(s, d) => sendTelemetry('playing', s, d, 100)}
 	/>
 

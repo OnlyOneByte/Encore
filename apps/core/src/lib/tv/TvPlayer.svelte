@@ -8,9 +8,10 @@
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
 		onready?: () => void;
 		onended?: () => void;
+		onerror?: () => void; // dead/unplayable media — caller should skip
 		onposition?: (sec: number, dur: number) => void;
 	}
-	let { media, visible, active, onready, onended, onposition }: Props = $props();
+	let { media, visible, active, onready, onended, onerror, onposition }: Props = $props();
 
 	let video: HTMLVideoElement | undefined = $state();
 
@@ -42,6 +43,7 @@
 				preload="auto"
 				oncanplaythrough={() => onready?.()}
 				onended={() => onended?.()}
+				onerror={() => active && visible && onerror?.()}
 				ontimeupdate={() => video && onposition?.(video.currentTime, video.duration)}
 			></video>
 		{:else}

@@ -29,6 +29,8 @@ export interface QueueStoreDeps {
 	/** Stable id for "me" (singer) — stamped onto optimistic adds. */
 	singerId: string;
 	mintId?: () => string; // injectable for deterministic tests
+	/** Optional: surface a rejected op to the UI (e.g. a toast). */
+	onReject?: (reason: string) => void;
 }
 
 export class QueueStore {
@@ -147,5 +149,6 @@ export class QueueStore {
 			this.#entries = applyOp(this.#entries, pending.inverse);
 			this.#emit();
 		}
+		this.#deps.onReject?.(e.reason); // surface to the UI (toast)
 	}
 }

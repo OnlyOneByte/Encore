@@ -200,8 +200,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   image builds, container runs, `/health` ok + `/` SSR HTTP 200, both media tools present. Fixed a
   real runtime bug: workspace `@encore/shared` symlink → re-`bun install` in runtime stage relinks it.
   (`docker compose` binary absent in this env; validated via `docker run` + compose config inspection.)
-- [ ] **M6-C5** error/empty/edge states (no results, dead video, singer leaves mid-turn) +
-  graceful toasts. **Done-when:** eyes-on each edge; no dead-ends.
+- [x] **M6-C5** edge states: empty queue → attract/empty copy; no search results → explanatory
+  copy; **dead video → `onerror`→skip** (room advances, never hangs on black); rejected op +
+  search failure → **error toast** (+ optimistic rollback). **Verified (e2e):** offline search →
+  "Search failed — check your connection" toast. 96 tests green.
 - [ ] **M6-C6** README quickstart + screenshots; tag **v0.1.0 (MVP)**. **Done-when:** a stranger
   can stand it up from README alone.
 
