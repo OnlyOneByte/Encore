@@ -103,6 +103,17 @@
 	}
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
+	// my own picks in fair order — move ops target an index within THIS list
+	const myPicks = $derived(queued.filter((e) => e.singerId === me?.id));
+	function myIdx(id: string): number {
+		return myPicks.findIndex((e) => e.id === id);
+	}
+	function moveMine(id: string, delta: number) {
+		const i = myIdx(id);
+		if (i < 0) return;
+		store?.moveEntry(id, i + delta);
+		if (navigator.vibrate) navigator.vibrate(8);
+	}
 </script>
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
@@ -144,7 +155,12 @@
 				pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
 				subtitle={i === 0 ? 'up next' : ''}
 				removable={e.singerId === me?.id && i !== 0}
+				reorderable={e.singerId === me?.id && myPicks.length > 1}
+				canUp={myIdx(e.id) > 0}
+				canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
 				onremove={() => removeWithUndo(e)}
+				onup={() => moveMine(e.id, -1)}
+				ondown={() => moveMine(e.id, 1)}
 			/>
 		{/each}
 	{/if}

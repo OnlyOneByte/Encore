@@ -47,7 +47,16 @@ export class AuthoritativeState {
 	 * (with server-assigned seqs) + the new rev.
 	 */
 	applyQueueOp(op: QueueOp): { rev: number; canonicalOps: QueueOp[]; entries: QueueEntry[] } {
-		const applied = applyOp(this.#entries, op);
+		let applied: QueueEntry[];
+		if (op.op === 'move') {
+			// Reorder WITHIN the moving entry's singer group. assignSeqs derives rotationSeq from
+			// per-singer addedAt order, so we permute addedAt among that singer's picks (same
+			// timestamp set → the singer's round-robin slot is stable; only which song sits where
+			// changes). op.toSeq is the target index among that singer's own picks.
+			applied = this.#reorderWithinSinger(op.id, op.toSeq);
+		} else {
+			applied = applyOp(this.#entries, op);
+		}
 		// server owns rotationSeq: re-assign fair order across the whole queue after every mutation
 		this.#entries = assignSeqs(applied);
 		this.#rev++;
@@ -56,6 +65,24 @@ export class AuthoritativeState {
 		// broadcast the op plus the authoritative seqs by re-emitting moved entries. Simplest correct
 		// form: echo the op, and let clients adopt seqs from the entries snapshot in the patch.
 		return { rev: this.#rev, canonicalOps: [op], entries: this.entries };
+	}
+
+	/**
+	 * Reorder one entry within its own singer's pick list to target index `toIdx`, by reassigning
+	 * the singer's existing addedAt timestamps in the new order. Returns a new entries array.
+	 */
+	#reorderWithinSinger(id: string, toIdx: number): QueueEntry[] {
+		const moving = this.#entries.find((e) => e.id === id);
+		if (!moving) return this.#entries.slice();
+		const mine = this.#entries
+			.filter((e) => e.singerId === moving.singerId)
+			.sort((a, b) => a.addedAt - b.addedAt);
+		const stamps = mine.map((e) => e.addedAt); // the stable timestamp slots for this singer
+		const from = mine.findIndex((e) => e.id === id);
+		const clamped = Math.max(0, Math.min(toIdx, mine.length - 1));
+		mine.splice(clamped, 0, mine.splice(from, 1)[0]!); // reorder the list
+		const reStamp = new Map(mine.map((e, i) => [e.id, stamps[i]!])); // assign stamps by new position
+		return this.#entries.map((e) => (reStamp.has(e.id) ? { ...e, addedAt: reStamp.get(e.id)! } : e));
 	}
 
 	setPlayback(patch: Partial<PlaybackState>): { rev: number; playback: PlaybackState } {

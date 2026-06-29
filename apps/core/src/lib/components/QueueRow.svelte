@@ -10,11 +10,17 @@
 		subtitle?: string; // e.g. "now playing", "after Liam"
 		pending?: boolean; // optimistic, not yet confirmed
 		removable?: boolean; // show the remove affordance (mine, not currently playing)
+		reorderable?: boolean; // show move up/down (mine, more than one of my picks)
+		canUp?: boolean;
+		canDown?: boolean;
 		onremove?: () => void;
+		onup?: () => void;
+		ondown?: () => void;
 	}
 	let {
 		seq, title, singerName, singerColor, mine = false, up = false,
-		subtitle = '', pending = false, removable = false, onremove
+		subtitle = '', pending = false, removable = false,
+		reorderable = false, canUp = false, canDown = false, onremove, onup, ondown
 	}: Props = $props();
 </script>
 
@@ -27,10 +33,18 @@
 			{singerName}{#if subtitle} · {subtitle}{/if}{#if pending} · <span class="adding">adding…</span>{/if}
 		</div>
 	</div>
-	{#if removable && !pending}
-		<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}>✕</button>
-	{:else if !pending}
-		<div class="grip">⋮⋮</div>
+	{#if !pending}
+		<div class="actions">
+			{#if reorderable}
+				<button class="act" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}>↑</button>
+				<button class="act" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}>↓</button>
+			{/if}
+			{#if removable}
+				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}>✕</button>
+			{:else if !reorderable}
+				<div class="grip">⋮⋮</div>
+			{/if}
+		</div>
 	{/if}
 </div>
 
@@ -53,10 +67,12 @@
 	.who i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 	.adding { color: var(--warn); }
 	.grip { margin-left: auto; color: #4a4a66; font-size: 1.1rem; cursor: grab; }
-	.remove {
-		margin-left: auto; flex: 0 0 auto; width: 30px; height: 30px; border-radius: 8px;
-		border: 1px solid var(--line); background: var(--card2); color: var(--ink-dim);
-		font-size: 0.85rem; cursor: pointer;
+	.actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+	.act, .remove {
+		width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+		background: var(--card2); color: var(--ink-dim); font-size: 0.85rem; cursor: pointer;
 	}
+	.act:disabled { opacity: 0.35; cursor: default; }
+	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }
 	.remove:active { transform: scale(0.9); color: var(--accent2); }
 </style>

@@ -117,8 +117,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M3-C4** remove (✕ on mine, not up-next) → `store.removeEntry` (optimistic) + 5s undo toast
   that re-adds. **Verified (e2e):** 2 rows → remove btn only on row 2 → removed (2→1) → toast shown →
   **undo re-adds (1→2)**. (Swipe gesture deferred to touch-polish; button is the reliable affordance.)
-- [ ] **M3-C5** drag-reorder *your own* entries (move op; server re-resolves seq). **Done-when:**
-  e2e: reorder persists, other phones see canonical order.
+- [x] **M3-C5** reorder *your own* entries via ↑/↓ (move op → server `#reorderWithinSinger` permutes
+  addedAt among that singer's picks; `assignSeqs` re-derives, other singers' slots untouched).
+  **Verified:** 4 unit tests (within-singer swap, others undisturbed, clamp, unknown no-op) + e2e
+  (Dancing Queen idx 2→1, canonical order persists). (Tap ↑/↓ = reliable a11y affordance; drag deferred.)
 - [ ] **M3-C6** now-playing control strip → `player:command` (play/pause/skip/restart/seek).
   **Done-when:** commands reach server (stubbed playback), strip reflects `playback:state`.
 - [ ] **M3-C7** 60fps motion pass: transform/opacity-only animations, spring reorder, finger-
