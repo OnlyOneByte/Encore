@@ -10,5 +10,7 @@ export const load: PageServerLoad = async ({ url }) => {
 		width: 320,
 		color: { dark: '#0b0b12', light: '#ffffff' }
 	});
-	return { joinUrl, qrDataUrl };
+	// interstitial reveal duration (ms); 0 = pure gapless hard-cut. Configurable via env.
+	const interstitialMs = Math.max(0, Number(process.env.INTERSTITIAL_MS ?? 2500));
+	return { joinUrl, qrDataUrl, interstitialMs };
 };

@@ -42,6 +42,15 @@
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
 		current = cur;
 		upNext = next;
+		// held-slot: if the server handed us a current whose media isn't ready yet (a cooking
+		// make-karaoke file), show WAITING rather than a black player. (Server normally skips these
+		// via nextPlayable, so this is a belt-and-suspenders guard for the M7 stems path.)
+		const m = mediaOf(cur);
+		if (cur && m && m.playMode === 'file' && m.stemStatus !== 'ready' && m.stemStatus !== 'none') {
+			ctl.enterWaiting();
+			tvState = ctl.state;
+			return;
+		}
 		ctl.onNowPlaying(cur, next);
 		syncSlots();
 	}
@@ -57,10 +66,16 @@
 		sendTelemetry('ended');
 		if (next === 'interstitial') {
 			clearTimeout(interstitialTimer);
-			interstitialTimer = setTimeout(() => {
-				ctl.onInterstitialDone();
+			const ms = data.interstitialMs ?? 2500;
+			if (ms === 0) {
+				ctl.onInterstitialDone(); // pure gapless hard-cut
 				tvState = ctl.state;
-			}, 2500);
+			} else {
+				interstitialTimer = setTimeout(() => {
+					ctl.onInterstitialDone();
+					tvState = ctl.state;
+				}, ms);
+			}
 		}
 		syncSlots();
 	}

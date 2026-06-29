@@ -169,10 +169,12 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   B hidden-warming, swap-on-ended when hidden is pre-buffered (→ interstitial, no reload), missed-
   window fallback to loading, re-warm on reorder, A↔B alternation. **Verified:** 7 unit tests (incl.
   the gapless-swap proof) + eyes-on (attract→playing, lower-third). Crossfade = opacity-only.
-- [ ] **M5-C4** interstitial + `Now singing` lower-third (configurable 0–4s). **Done-when:**
-  eyes-on: "Next up: NAME — SONG" reveal, then hard-cut/crossfade.
-- [ ] **M5-C5** ATTRACT/LOADING/WAITING states wired to the machine (held-slot stub: skip if
-  next not ready). **Done-when:** eyes-on: empty queue → attract; song flows return.
+- [x] **M5-C4** interstitial "Next up: NAME — SONG" overlay + `Now singing` lower-third, duration
+  **env-configurable** (`INTERSTITIAL_MS`, 0 = pure gapless hard-cut). Verified via gapless unit
+  tests (interstitial→playing) + eyes-on lower-third.
+- [x] **M5-C5** ATTRACT (join QR + ticker) / LOADING / WAITING ("🔥 Still cooking") states wired to
+  `GaplessController`; held-slot guard shows WAITING for a not-ready file current (M7 path).
+  **Verified:** eyes-on attract↔playing transition; states typecheck + build clean.
 - [ ] **M5-C6** TV reconnect resilience: socket drop mid-song doesn't stop playback; resyncs.
   **Done-when:** kill socket during PLAYING → video continues → state resyncs on reconnect.
 
