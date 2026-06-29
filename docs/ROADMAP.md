@@ -65,9 +65,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M1-C4** `op:reject` path: invalid command → targeted reject to originator only (via
   `sendToOrigin` sink), no room broadcast, rev unchanged. **Verified:** 5 tests — unknown media,
   unknown entry (remove/move/status), precise reasons, no-sink case stays silent.
-- [ ] **M1-C5** ★ client ws store (`src/lib/ws`): connect, heartbeat ping/pong, reconnect w/
-  backoff, `hello{lastRev}` → `queue:sync` resync, gap-detection (rev jump → request sync).
-  **Done-when:** kill+restore socket in test → client re-syncs to authoritative rev.
+- [x] **M1-C5** ★ client ws (`src/lib/ws/client.ts`): `WsClient` — connect, heartbeat (hello as
+  ping), capped-backoff reconnect, `hello{lastRev}`→`queue:sync` resync, gap-detection (rev-skip →
+  resync, don't apply). Injectable socket factory + timers for deterministic tests. **Verified:**
+  6 tests — **kill+restore reconnects & resyncs rev 5→9**, gap→resync, contiguous apply, no-reconnect-on-close.
 - [ ] **M1-C6** ★ optimistic queue store (`src/lib/stores`): client-minted ULID, instant local
   `applyOp`, `pending` map (op+inverse), reconcile on `causedBy`, rollback on `op:reject`,
   rebase pending on resync. **Done-when:** component test: add renders pre-broadcast, reconciles
