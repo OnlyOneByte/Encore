@@ -184,8 +184,9 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 
 ## M6 — MVP hardening & ship  → *ships: `docker compose up`, a real party* ★
 
-- [ ] **M6-C1** thumbnail proxy + on-disk cache + long cache headers. **Done-when:** repeat thumb
-  served from disk; eyes-on grid.
+- [x] **M6-C1** thumbnail proxy `/api/thumb?u=` → `serveThumb` (disk cache under `.thumbs`,
+  fetch-once then HIT from disk, `cache-control: immutable 30d`, x-cache HIT/MISS, url-hash keys
+  prevent traversal). **Verified:** 5 tests (stable safe keys, ext preserve, content-type, path).
 - [ ] **M6-C2** WS resilience hardening: backoff caps, dedupe by `clientOpId`, ack-timeout resend.
   **Done-when:** flaky-network sim (drop 20%) keeps two phones converged.
 - [ ] **M6-C3** ★ Playwright e2e: join → search → queue → rotate → play → gapless next, two
