@@ -62,8 +62,9 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   `state.applyQueueOp` → broadcasts `queue:patch{rev,ops,causedBy}` + `queue:sync{rev,entries}`
   (clients adopt server seqs). Decoupled from `Bun.serve` via injected `publish` sink (unit-
   testable, no socket). **Verified:** 3 tests — patch envelope + rev + causedBy, rev advances, state applied.
-- [ ] **M1-C4** `op:reject` path: invalid command → targeted reject to originator only.
-  **Done-when:** unit test: bad mediaId → `op:reject{clientOpId,reason}`, no broadcast.
+- [x] **M1-C4** `op:reject` path: invalid command → targeted reject to originator only (via
+  `sendToOrigin` sink), no room broadcast, rev unchanged. **Verified:** 5 tests — unknown media,
+  unknown entry (remove/move/status), precise reasons, no-sink case stays silent.
 - [ ] **M1-C5** ★ client ws store (`src/lib/ws`): connect, heartbeat ping/pong, reconnect w/
   backoff, `hello{lastRev}` → `queue:sync` resync, gap-detection (rev jump → request sync).
   **Done-when:** kill+restore socket in test → client re-syncs to authoritative rev.
