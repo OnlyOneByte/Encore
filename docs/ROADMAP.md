@@ -58,9 +58,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   preload target), `isEntryReady` (iframe always / file when stems ready). **Verified:** 6 tests —
   3-singer interleave, next-gap join, **held-slot skip+restore**, ready-gating. (Held-slot seam
   de-risks M5/M7 early.)
-- [ ] **M1-C3** ★ WS hub: handle `queue:command` → validate → apply via shared `applyOp` →
-  `server.publish` a `queue:patch{rev,ops,causedBy}`. **Done-when:** unit test drives a command,
-  asserts the broadcast envelope + new rev.
+- [x] **M1-C3** ★ WS hub (`src/server/realtime/hub.ts`): `handleQueueCommand` validates →
+  `state.applyQueueOp` → broadcasts `queue:patch{rev,ops,causedBy}` + `queue:sync{rev,entries}`
+  (clients adopt server seqs). Decoupled from `Bun.serve` via injected `publish` sink (unit-
+  testable, no socket). **Verified:** 3 tests — patch envelope + rev + causedBy, rev advances, state applied.
 - [ ] **M1-C4** `op:reject` path: invalid command → targeted reject to originator only.
   **Done-when:** unit test: bad mediaId → `op:reject{clientOpId,reason}`, no broadcast.
 - [ ] **M1-C5** ★ client ws store (`src/lib/ws`): connect, heartbeat ping/pong, reconnect w/
