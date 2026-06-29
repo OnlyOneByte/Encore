@@ -14,7 +14,7 @@ import {
 	type Media
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
-import { handlePlayerCommand } from './src/server/realtime/player';
+import { handlePlayerCommand, handleTelemetry } from './src/server/realtime/player';
 import { getApp, setPublish } from './src/server/app';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -115,7 +115,12 @@ const server = Bun.serve<{ role: string }>({
 				case 'player:command':
 					handlePlayerCommand(evt.command, deps);
 					break;
-				// tv:telemetry lands in M5
+				case 'tv:telemetry':
+					handleTelemetry(
+						{ positionSec: evt.positionSec, durationSec: evt.durationSec, status: evt.status, bufferedNextPct: evt.bufferedNextPct, ended: evt.status === 'ended' },
+						deps
+					);
+					break;
 			}
 		},
 		close() {}

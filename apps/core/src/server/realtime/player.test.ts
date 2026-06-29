@@ -22,7 +22,9 @@ test('play with nothing loaded starts the first playable entry', () => {
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(state.playback.isPlaying).toBe(true);
-	expect(published.at(-1)!.type).toBe('playback:state');
+	// play broadcasts playback:state (then nowplaying:changed follows it)
+	expect(published.some((e) => e.type === 'playback:state')).toBe(true);
+	expect(published.at(-1)!.type).toBe('nowplaying:changed');
 });
 
 test('pause toggles isPlaying false', () => {

@@ -157,9 +157,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 
 ## M5 — Playback & gapless TV  → *ships: songs actually play, with zero dead air* ★★
 
-- [ ] **M5-C1** ★ player state machine (`src/server/playback`): authoritative; advances on
-  `tv:telemetry {ended}`, emits `nowplaying:changed{current,upNext}`. **Done-when:** unit test:
-  ended telemetry advances rotation, picks next by seq.
+- [x] **M5-C1** ★ player state machine: `handleTelemetry` advances on `tv:telemetry` ended
+  (mark done → `nextPlayable` held-slot-aware → status playing → broadcast), `emitNowPlaying`
+  publishes `nowplaying:changed{current, upNext}` (upNext = `upNextAfter`, drives TV preload),
+  position-only telemetry tracks without churn. **Verified:** 5 tests — ended-advances-by-seq,
+  last→attract, upNext carried, position-only, **held-slot skip**. Wired into server WS.
 - [ ] **M5-C2** ★ TV player abstraction over `playMode`: `iframe` (YouTube IFrame API) + `file`
   (`<video>`). **Done-when:** eyes-on: a YouTube song and a local file both play on `/tv`.
 - [ ] **M5-C3** ★★ two-player gapless preload (`src/lib/tv`): A visible / B hidden-warming,
