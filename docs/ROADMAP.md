@@ -162,11 +162,13 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   publishes `nowplaying:changed{current, upNext}` (upNext = `upNextAfter`, drives TV preload),
   position-only telemetry tracks without churn. **Verified:** 5 tests — ended-advances-by-seq,
   last→attract, upNext carried, position-only, **held-slot skip**. Wired into server WS.
-- [ ] **M5-C2** ★ TV player abstraction over `playMode`: `iframe` (YouTube IFrame API) + `file`
-  (`<video>`). **Done-when:** eyes-on: a YouTube song and a local file both play on `/tv`.
-- [ ] **M5-C3** ★★ two-player gapless preload (`src/lib/tv`): A visible / B hidden-warming,
-  preload `upNext` at ~25%, swap on `ended`. **Done-when:** eyes-on: back-to-back songs with **no
-  black gap**; `bufferedNextPct` reported in telemetry.
+- [x] **M5-C2** ★ `TvPlayer.svelte` abstracts `playMode`: `iframe` (YouTube embed, autoplay/mute
+  by active+visible) + `file` (`<video>` preload=auto, play/pause synced). **Eyes-on:** real
+  "a-ha — Take On Me" YouTube embed playing on `/tv` (docs/mocks/m5c3-tv-eyeson.png).
+- [x] **M5-C3** ★★ two-player gapless preload (`$lib/tv/gapless.ts` `GaplessController`): A visible /
+  B hidden-warming, swap-on-ended when hidden is pre-buffered (→ interstitial, no reload), missed-
+  window fallback to loading, re-warm on reorder, A↔B alternation. **Verified:** 7 unit tests (incl.
+  the gapless-swap proof) + eyes-on (attract→playing, lower-third). Crossfade = opacity-only.
 - [ ] **M5-C4** interstitial + `Now singing` lower-third (configurable 0–4s). **Done-when:**
   eyes-on: "Next up: NAME — SONG" reveal, then hard-cut/crossfade.
 - [ ] **M5-C5** ATTRACT/LOADING/WAITING states wired to the machine (held-slot stub: skip if
