@@ -103,9 +103,9 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 
 ## M3 — Phone remote (the star)  → *ships: the mock, made real & live*
 
-- [ ] **M3-C1** ★ port components from mock: `SongCard`, `QueueRow`, `NowPlaying`,
-  `ProcessingCard` (static props first). **Done-when:** Storybook/route renders each, matches
-  mock, eyes-on.
+- [x] **M3-C1** ★ ported `SongCard`, `QueueRow` (mine/up/pending states), `ProcessingCard` (live
+  bar + stage chips), `NowPlaying` (greyed key-shift) to `$lib/components` + `/components` gallery.
+  **Eyes-on confirmed** 390x900 — all four match the mock (docs/mocks/m3c1-components-eyeson.png). svelte-check 0/0.
 - [ ] **M3-C2** ★ phone `+page.svelte`: wire queue/rotation screen to the optimistic store
   (live `queue:patch`). **Done-when:** eyes-on: queued songs render in rotation order, "you're
   3rd · after Maya" computed from shared rotation.
