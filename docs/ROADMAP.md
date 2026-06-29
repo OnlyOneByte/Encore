@@ -49,9 +49,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 ## M1 — The realtime spine  → *ships: two browsers, one synced queue (no media yet)*
 *The engine every incumbent gets wrong. Build it before any feature.*
 
-- [ ] **M1-C1** ★ in-memory authoritative state module (`src/server/state`): queue + playback in
-  RAM, monotonic `rev`, write-behind to SQLite. **Done-when:** unit test: mutate → rev bumps →
-  async persist → reload-from-db equals memory.
+- [x] **M1-C1** ★ in-memory authoritative state (`src/server/state`): `AuthoritativeState` holds
+  queue+playback in RAM, monotonic `rev`, server-owned `assignSeqs` on every mutation, debounced
+  write-behind via `sqlitePersistence`, `hydrate()` on boot, defensive-copy getters. **Verified:**
+  5 tests — rev bumps, fair re-seq, no external mutation, **reload-from-db == memory**, debounce coalesce.
 - [ ] **M1-C2** ★ rotation server module (`src/server/rotation`): wraps shared `assignSeqs`,
   assigns server-owned `rotationSeq` on every queue mutation. **Done-when:** unit test: 3 singers
   interleave fairly; new joiner slots into next gap.
