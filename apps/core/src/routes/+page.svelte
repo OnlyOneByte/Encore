@@ -85,6 +85,23 @@
 		if (navigator.vibrate) navigator.vibrate(8); // haptic tick
 	}
 
+	// remove + undo toast
+	let undo = $state<{ mediaId: string; title: string } | null>(null);
+	let undoTimer: ReturnType<typeof setTimeout> | undefined;
+	function removeWithUndo(entry: QueueEntry) {
+		store?.removeEntry(entry.id);
+		if (navigator.vibrate) navigator.vibrate(8);
+		undo = { mediaId: entry.mediaId, title: mediaTitle(entry.mediaId) };
+		clearTimeout(undoTimer);
+		undoTimer = setTimeout(() => (undo = null), 5000);
+	}
+	function doUndo() {
+		if (!undo) return;
+		store?.addSong(undo.mediaId);
+		undo = null;
+		clearTimeout(undoTimer);
+	}
+
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
 </script>
 
@@ -126,7 +143,29 @@
 				up={i === 0}
 				pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
 				subtitle={i === 0 ? 'up next' : ''}
+				removable={e.singerId === me?.id && i !== 0}
+				onremove={() => removeWithUndo(e)}
 			/>
 		{/each}
 	{/if}
 </main>
+
+{#if undo}
+	<div class="undo-toast">
+		<span>Removed “{undo.title}”</span>
+		<button onclick={doUndo}>Undo</button>
+	</div>
+{/if}
+
+<style>
+	.undo-toast {
+		position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+		display: flex; align-items: center; gap: 14px; z-index: 30;
+		background: var(--card2); border: 1px solid var(--line); border-radius: 14px;
+		padding: 12px 16px; box-shadow: var(--shadow); font-size: 0.9rem; max-width: 90vw;
+	}
+	.undo-toast button {
+		border: 0; background: var(--grad); color: #fff; font-weight: 700;
+		border-radius: 8px; padding: 6px 12px; cursor: pointer;
+	}
+</style>

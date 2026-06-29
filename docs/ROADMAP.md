@@ -114,8 +114,9 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   reconcile. **Verified (DOM e2e):** added 3 songs; **optimistic order === settled order
   byte-identical** after all server echoes (3 rows, 0 dup, no reorder) — client-minted-ULID
   zero-flicker reconcile proven on a real page.
-- [ ] **M3-C4** swipe-to-remove (remove op) + undo toast. **Done-when:** e2e: remove → broadcast →
-  gone on both phones; undo re-adds.
+- [x] **M3-C4** remove (✕ on mine, not up-next) → `store.removeEntry` (optimistic) + 5s undo toast
+  that re-adds. **Verified (e2e):** 2 rows → remove btn only on row 2 → removed (2→1) → toast shown →
+  **undo re-adds (1→2)**. (Swipe gesture deferred to touch-polish; button is the reliable affordance.)
 - [ ] **M3-C5** drag-reorder *your own* entries (move op; server re-resolves seq). **Done-when:**
   e2e: reorder persists, other phones see canonical order.
 - [ ] **M3-C6** now-playing control strip → `player:command` (play/pause/skip/restart/seek).
