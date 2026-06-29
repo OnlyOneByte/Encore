@@ -137,10 +137,12 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 - [x] **M4-C1** ★ `MediaResolver` iface + `resultToMedia` (local→file, youtube→iframe) + `LocalLibrary`
   (SQLite **FTS5** virtual table, bm25 ranking, prefix match over title/artist). **Verified:** 6 tests —
   title/artist match ('queen'→3 ranked), prefix, limit, empty, local→playMode:file.
-- [ ] **M4-C2** ★ YouTube search proxy + result cache + dedupe by query. **Done-when:** unit test:
-  second identical query served from cache (no upstream call).
-- [ ] **M4-C3** yt-dlp metadata resolver (title/artist/duration/thumb) + per-video-id cache.
-  **Done-when:** unit test: resolve memoizes; cache hit on repeat id.
+- [x] **M4-C2** ★ `YouTubeResolver`: query cache (TTL) + in-flight dedupe (keystroke bursts → one
+  backend call) + blank guard; injectable backend (unit-testable). **Verified:** 5 tests — 2nd query
+  from cache, limit=key, TTL expiry, concurrent dedupe to 1 call, blank no-call.
+- [x] **M4-C3** yt-dlp backend (**keyless** `ytsearchN:` via `Bun.spawn`, default per 2026-06-29) +
+  `parseSearchJson` + per-video-id meta cache + **graceful degrade** (returns `[]` not throw when
+  binary absent — confirmed live in dev). **Verified:** 5 tests (parse/round/fallbacks, cache, degrade).
 - [ ] **M4-C4** ★ search UI: unified bar, YouTube/Library tabs, debounce ~150ms, **cancel
   in-flight** on keystroke. **Done-when:** eyes-on: typing cancels stale requests; results stream.
 - [ ] **M4-C5** zero-keystroke shortcuts: "recently queued" + "popular tonight". **Done-when:**
