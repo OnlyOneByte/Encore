@@ -121,8 +121,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   addedAt among that singer's picks; `assignSeqs` re-derives, other singers' slots untouched).
   **Verified:** 4 unit tests (within-singer swap, others undisturbed, clamp, unknown no-op) + e2e
   (Dancing Queen idx 2→1, canonical order persists). (Tap ↑/↓ = reliable a11y affordance; drag deferred.)
-- [ ] **M3-C6** now-playing control strip → `player:command` (play/pause/skip/restart/seek).
-  **Done-when:** commands reach server (stubbed playback), strip reflects `playback:state`.
+- [x] **M3-C6** now-playing strip → `player:command`. Server `handlePlayerCommand` (play starts
+  first playable, pause/seek/restart/skip mutate `PlaybackState` → broadcast `playback:state`).
+  Strip shows on current entry, reflects state. **Verified:** 5 unit + e2e (strip 0→1 on play,
+  'Take On Me' + ⏸, tap → pause → ▶). (No UI Start button yet — M5/TV owns starting playback.)
 - [ ] **M3-C7** 60fps motion pass: transform/opacity-only animations, spring reorder, finger-
   tracking bottom sheet. **Done-when:** no layout-thrash in devtools; eyes-on smoothness.
 

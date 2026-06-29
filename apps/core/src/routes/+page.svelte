@@ -1,17 +1,19 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
+	import type { ServerEvent, QueueEntry, Media, PublicSinger, PlaybackState, PlayerCommand } from '@encore/shared';
 	import { QueueStore } from '$lib/stores/queue';
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import SongCard from '$lib/components/SongCard.svelte';
+	import NowPlaying from '$lib/components/NowPlaying.svelte';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
+	let playback = $state<PlaybackState>({ currentEntryId: null, positionSec: 0, isPlaying: false });
 
 	let store: QueueStore;
 	let ws: WsClient;
@@ -68,6 +70,9 @@
 					if (e.type === 'singer:joined') {
 						singers = new Map(singers).set(e.singer.id, e.singer);
 					}
+					if (e.type === 'playback:state') {
+						playback = e.state;
+					}
 					store.onServerEvent(e);
 				}
 			});
@@ -114,6 +119,12 @@
 		store?.moveEntry(id, i + delta);
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
+
+	function sendPlayer(command: PlayerCommand) {
+		ws?.send({ type: 'player:command', command });
+	}
+	// the entry that's currently playing (for the now-playing strip)
+	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
 </script>
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
@@ -165,6 +176,17 @@
 		{/each}
 	{/if}
 </main>
+
+{#if nowEntry}
+	<NowPlaying
+		title={mediaTitle(nowEntry.mediaId)}
+		sub={`${singerOf(nowEntry.singerId)?.displayName ?? 'Someone'} is singing`}
+		isPlaying={playback.isPlaying}
+		onplaypause={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
+		onprev={() => sendPlayer({ cmd: 'restart' })}
+		onnext={() => sendPlayer({ cmd: 'skip' })}
+	/>
+{/if}
 
 {#if undo}
 	<div class="undo-toast">

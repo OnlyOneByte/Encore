@@ -14,6 +14,7 @@ import {
 	type Media
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
+import { handlePlayerCommand } from './src/server/realtime/player';
 import { getApp, setPublish } from './src/server/app';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -100,7 +101,10 @@ const server = Bun.serve<{ role: string }>({
 				case 'queue:command':
 					handleQueueCommand(evt.command, deps, sendToOrigin);
 					break;
-				// player:command + tv:telemetry land in M5
+				case 'player:command':
+					handlePlayerCommand(evt.command, deps);
+					break;
+				// tv:telemetry lands in M5
 			}
 		},
 		close() {}
