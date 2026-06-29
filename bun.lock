@@ -1,0 +1,25 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "encore",
+    },
+    "apps/core": {
+      "name": "@encore/core",
+      "version": "0.0.0",
+      "dependencies": {
+        "@encore/shared": "workspace:*",
+      },
+    },
+    "packages/shared": {
+      "name": "@encore/shared",
+      "version": "0.0.0",
+    },
+  },
+  "packages": {
+    "@encore/core": ["@encore/core@workspace:apps/core"],
+
+    "@encore/shared": ["@encore/shared@workspace:packages/shared"],
+  }
+}

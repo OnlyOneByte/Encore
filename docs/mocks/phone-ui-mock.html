@@ -1,0 +1,277 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Karaoke — Phone Remote (mock)</title>
+<style>
+  /* ── Design tokens: clean, dark, premium, mobile-first ───────────────── */
+  :root{
+    --bg:#0b0b12; --bg2:#12121d; --card:#1a1a28; --card2:#212133;
+    --ink:#f3f3fb; --ink-dim:#9a9ab5; --line:#2a2a3e;
+    --accent:#7c5cff; --accent2:#ff5cae; --ok:#33d6a6; --warn:#ffb84d;
+    --radius:18px; --radius-sm:12px;
+    --grad:linear-gradient(135deg,var(--accent),var(--accent2));
+    --shadow:0 8px 30px rgba(0,0,0,.45);
+    font-size:16px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%}
+  body{
+    background:radial-gradient(120% 80% at 50% -10%,#1b1430 0%,var(--bg) 55%);
+    color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Inter,system-ui,sans-serif;
+    display:flex;justify-content:center;
+  }
+  /* phone frame so it reads as a mobile mock on desktop */
+  .phone{
+    width:100%;max-width:420px;min-height:100vh;position:relative;
+    background:var(--bg);display:flex;flex-direction:column;
+    box-shadow:var(--shadow);overflow:hidden;
+  }
+
+  /* ── Header / identity ───────────────────────────────────────────────── */
+  header{
+    padding:18px 18px 12px;display:flex;align-items:center;gap:12px;
+    position:sticky;top:0;z-index:5;
+    background:linear-gradient(var(--bg),rgba(11,11,18,.85) 70%,transparent);
+    backdrop-filter:blur(8px);
+  }
+  .logo{font-weight:800;font-size:1.25rem;letter-spacing:.5px}
+  .logo .em{background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .me{margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim)}
+  .dot{width:22px;height:22px;border-radius:50%;background:#33d6a6;box-shadow:0 0 0 3px rgba(51,214,166,.18)}
+
+  /* ── Search ──────────────────────────────────────────────────────────── */
+  .search{padding:4px 18px 6px}
+  .search .box{
+    display:flex;align-items:center;gap:10px;background:var(--card);
+    border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;
+  }
+  .search input{
+    border:0;background:transparent;color:var(--ink);font-size:1rem;width:100%;outline:none;
+  }
+  .search input::placeholder{color:var(--ink-dim)}
+  .tabs{display:flex;gap:8px;margin:12px 0 4px}
+  .tab{
+    flex:1;text-align:center;padding:8px;border-radius:12px;font-size:.85rem;font-weight:600;
+    background:var(--card);color:var(--ink-dim);border:1px solid var(--line);cursor:pointer;
+  }
+  .tab.active{background:var(--grad);color:#fff;border-color:transparent}
+
+  /* ── Section scaffolding ─────────────────────────────────────────────── */
+  main{flex:1;overflow-y:auto;padding:6px 18px 160px}
+  .sec-title{font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:18px 4px 10px}
+
+  /* ── Result cards ────────────────────────────────────────────────────── */
+  .result{
+    display:flex;align-items:center;gap:12px;background:var(--card);
+    border:1px solid var(--line);border-radius:var(--radius-sm);padding:10px;margin-bottom:8px;
+    transition:transform .12s ease, background .12s ease;cursor:pointer;
+  }
+  .result:active{transform:scale(.98);background:var(--card2)}
+  .thumb{width:64px;height:44px;border-radius:8px;flex:0 0 auto;
+    background:linear-gradient(135deg,#2c2c44,#1c1c2c);position:relative;overflow:hidden}
+  .thumb::after{content:"▶";position:absolute;inset:0;display:grid;place-items:center;color:#fff8;font-size:.8rem}
+  .meta{min-width:0}
+  .meta .t{font-weight:600;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .meta .s{font-size:.8rem;color:var(--ink-dim)}
+  .add{
+    margin-left:auto;flex:0 0 auto;border:0;border-radius:10px;padding:9px 12px;font-weight:700;
+    font-size:.85rem;background:var(--grad);color:#fff;cursor:pointer;
+  }
+  .add:active{transform:scale(.94)}
+
+  /* ── Queue / rotation ────────────────────────────────────────────────── */
+  .qrow{
+    display:flex;align-items:center;gap:12px;background:var(--card);
+    border:1px solid var(--line);border-radius:var(--radius-sm);padding:11px 12px;margin-bottom:8px;
+    animation:pop .22s cubic-bezier(.2,.9,.3,1.3);
+  }
+  @keyframes pop{from{opacity:0;transform:translateY(-6px) scale(.97)}to{opacity:1;transform:none}}
+  .qrow.mine{border-color:#3a3155;background:linear-gradient(var(--card),#1d1830)}
+  .seq{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:.8rem;font-weight:700;
+    background:var(--card2);color:var(--ink-dim);flex:0 0 auto}
+  .qrow.up .seq{background:var(--grad);color:#fff}
+  .who{display:flex;align-items:center;gap:7px;font-size:.78rem;color:var(--ink-dim);margin-top:2px}
+  .who i{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .pending{opacity:.55}
+  .pending .right{font-size:.72rem;color:var(--warn)}
+  .grip{margin-left:auto;color:#4a4a66;font-size:1.1rem;cursor:grab}
+
+  /* processing card with live progress (the "watching not waiting" feel) */
+  .proc{background:linear-gradient(var(--card),#201a2e);border-color:#3a2f55}
+  .bar{height:6px;border-radius:6px;background:#2a2440;overflow:hidden;margin-top:9px}
+  .bar > i{display:block;height:100%;width:68%;background:var(--grad);
+    border-radius:6px;animation:shimmer 1.6s linear infinite;background-size:200% 100%}
+  @keyframes shimmer{from{background-position:200% 0}to{background-position:-200% 0}}
+  .stage{display:flex;justify-content:space-between;font-size:.74rem;color:var(--warn);margin-top:7px}
+  .chips{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+  .chip{font-size:.66rem;padding:3px 8px;border-radius:20px;background:#241f38;color:var(--ink-dim)}
+  .chip.done{background:rgba(51,214,166,.16);color:var(--ok)}
+  .chip.now{background:rgba(255,184,77,.16);color:var(--warn)}
+
+  /* ── Now-playing strip (bottom, always docked) ───────────────────────── */
+  .now{
+    position:fixed;left:0;right:0;bottom:0;max-width:420px;margin:0 auto;z-index:10;
+    background:linear-gradient(transparent,var(--bg2) 22%);padding:14px 14px 18px;
+  }
+  .now .inner{
+    background:var(--card2);border:1px solid var(--line);border-radius:18px;padding:12px 14px;
+    box-shadow:var(--shadow);
+  }
+  .now .line{display:flex;align-items:center;gap:12px}
+  .now .t{font-weight:700;font-size:.95rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .now .s{font-size:.78rem;color:var(--ink-dim)}
+  .ctrls{display:flex;align-items:center;gap:10px;margin-left:auto}
+  .ic{width:40px;height:40px;border-radius:50%;display:grid;place-items:center;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);font-size:1rem;cursor:pointer}
+  .ic.play{background:var(--grad);border-color:transparent;width:46px;height:46px}
+  .ic:active{transform:scale(.92)}
+  .key{display:flex;gap:6px;margin-top:10px;align-items:center}
+  .key .lab{font-size:.7rem;color:#5b5b78;letter-spacing:.1em;text-transform:uppercase}
+  .key button{flex:1;border:1px dashed #3a3a55;background:transparent;color:#6b6b8c;border-radius:10px;padding:6px;font-size:.8rem}
+  .seek{height:4px;background:#2a2a3e;border-radius:4px;margin:11px 0 2px}
+  .seek > i{display:block;height:100%;width:34%;background:var(--grad);border-radius:4px}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:210px;background:#2a1b22;color:#ffb1b1;
+    border:1px solid #5a2b39;padding:9px 14px;border-radius:12px;font-size:.82rem;opacity:0;transition:.2s;z-index:20}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="phone">
+  <header>
+    <div class="logo">🎤 <span class="em">Encore</span></div>
+    <div class="me"><span>Maya</span><span class="dot" style="background:#ff5cae;box-shadow:0 0 0 3px rgba(255,92,174,.18)"></span></div>
+  </header>
+
+  <div class="search">
+    <div class="box">
+      <span style="color:var(--ink-dim)">🔎</span>
+      <input id="q" placeholder="Search a song or artist…" />
+    </div>
+    <div class="tabs">
+      <div class="tab active">YouTube</div>
+      <div class="tab">Library</div>
+    </div>
+  </div>
+
+  <main>
+    <!-- search results -->
+    <div class="sec-title">Results</div>
+    <div id="results">
+      <div class="result" onclick="addSong(this,'Mr. Brightside','The Killers','#7c5cff')">
+        <div class="thumb"></div>
+        <div class="meta"><div class="t">Mr. Brightside</div><div class="s">The Killers · 3:43</div></div>
+        <button class="add">＋ Turn</button>
+      </div>
+      <div class="result" onclick="addSong(this,'Dancing Queen','ABBA','#33d6a6')">
+        <div class="thumb"></div>
+        <div class="meta"><div class="t">Dancing Queen</div><div class="s">ABBA · 3:51</div></div>
+        <button class="add">＋ Turn</button>
+      </div>
+      <div class="result" onclick="addSong(this,'Bohemian Rhapsody','Queen','#ffb84d',true)">
+        <div class="thumb"></div>
+        <div class="meta"><div class="t">Bohemian Rhapsody</div><div class="s">Queen · make-karaoke ✨</div></div>
+        <button class="add">＋ Turn</button>
+      </div>
+    </div>
+
+    <!-- queue / rotation -->
+    <div class="sec-title">Up next · round-robin rotation</div>
+    <div id="queue">
+      <div class="qrow up">
+        <div class="seq">1</div>
+        <div class="meta"><div class="t">Take On Me</div>
+          <div class="who"><i style="background:#33d6a6"></i> Sam · now playing</div></div>
+        <div class="grip">⋮⋮</div>
+      </div>
+
+      <!-- processing card: the live "make karaoke" progress -->
+      <div class="qrow proc mine">
+        <div class="seq">2</div>
+        <div class="meta" style="flex:1">
+          <div class="t">Bohemian Rhapsody <span style="color:var(--warn)">✨</span></div>
+          <div class="who"><i style="background:#ff5cae"></i> You · being prepared</div>
+          <div class="bar"><i></i></div>
+          <div class="stage"><span>Separating vocals…</span><span>68%</span></div>
+          <div class="chips">
+            <span class="chip done">✓ Queued</span>
+            <span class="chip done">✓ Downloaded</span>
+            <span class="chip now">● Separating</span>
+            <span class="chip">Ready</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="qrow mine">
+        <div class="seq">3</div>
+        <div class="meta"><div class="t">Dancing Queen</div>
+          <div class="who"><i style="background:#ff5cae"></i> You · after Liam</div></div>
+        <div class="grip">⋮⋮</div>
+      </div>
+
+      <div class="qrow">
+        <div class="seq">4</div>
+        <div class="meta"><div class="t">Sweet Caroline</div>
+          <div class="who"><i style="background:#5cb8ff"></i> Liam</div></div>
+        <div class="grip">⋮⋮</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- now-playing control strip -->
+  <div class="now">
+    <div class="inner">
+      <div class="line">
+        <div style="min-width:0">
+          <div class="t">Take On Me</div>
+          <div class="s">a-ha · Sam is singing</div>
+        </div>
+        <div class="ctrls">
+          <div class="ic">⏮</div>
+          <div class="ic play">⏸</div>
+          <div class="ic">⏭</div>
+        </div>
+      </div>
+      <div class="seek"><i></i></div>
+      <div class="key">
+        <span class="lab">Key</span>
+        <button>− semitone</button>
+        <button>＋ semitone</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+</div>
+
+<script>
+  // ── Optimistic add: the row appears THIS FRAME, before any server round-trip ──
+  let seq = 5;
+  function addSong(card, title, artist, color, processing){
+    const q = document.getElementById('queue');
+    const row = document.createElement('div');
+    row.className = 'qrow mine pending';
+    row.innerHTML = `
+      <div class="seq">${seq++}</div>
+      <div class="meta"><div class="t">${title}</div>
+        <div class="who"><i style="background:${color}"></i> You · <span class="right">adding…</span></div></div>
+      <div class="grip">⋮⋮</div>`;
+    q.appendChild(row);
+    row.scrollIntoView({behavior:'smooth', block:'nearest'});
+    if (navigator.vibrate) navigator.vibrate(8);   // haptic tick
+
+    // simulate server broadcast confirming (clears 'pending', id matched by client ULID)
+    setTimeout(()=>{
+      row.classList.remove('pending');
+      const w = row.querySelector('.who');
+      w.innerHTML = `<i style="background:${color}"></i> You${processing?' · being prepared ✨':' · in rotation'}`;
+    }, 650);
+  }
+
+  // demo: typing shows the "instant local search" idea (no real backend here)
+  document.getElementById('q').addEventListener('input', e=>{ /* debounce+cancel in real app */ });
+</script>
+</body>
+</html>

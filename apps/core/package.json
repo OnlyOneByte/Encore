@@ -1,0 +1,17 @@
+{
+  "name": "@encore/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun run --watch server.ts",
+    "dev:vite": "vite dev",
+    "build": "vite build",
+    "start": "bun run server.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@encore/shared": "workspace:*"
+  },
+  "comment": "SvelteKit + svelte-adapter-bun + drizzle-orm get added during the step-one adapter smoke test (see README). Kept minimal now so the scaffold installs clean."
+}

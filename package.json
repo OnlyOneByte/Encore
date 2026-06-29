@@ -1,0 +1,19 @@
+{
+  "name": "encore",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Self-hosted karaoke — mobile-first, wicked fast. Cleaner than any incumbent.",
+  "workspaces": [
+    "packages/*",
+    "apps/core"
+  ],
+  "scripts": {
+    "dev": "bun --filter '@encore/core' dev",
+    "build": "bun --filter '@encore/core' build",
+    "test": "bun test",
+    "typecheck": "bun --filter '*' typecheck"
+  },
+  "engines": {
+    "bun": ">=1.3.0"
+  }
+}

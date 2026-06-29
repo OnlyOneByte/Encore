@@ -1,0 +1,28 @@
+# deps
+node_modules/
+.bun/
+
+# build output
+.svelte-kit/
+build/
+dist/
+
+# data + media (runtime volumes — never commit)
+data/
+media/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# env
+.env
+.env.local
+
+# python worker
+__pycache__/
+*.pyc
+.venv/
+
+# os / editor
+.DS_Store
+*.log

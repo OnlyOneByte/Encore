@@ -1,0 +1,29 @@
+# Encore — one container for the MVP. The worker is gated behind the `stems` profile,
+# so `docker compose up` runs ONLY core until you opt into stem-separation.
+#   MVP:        docker compose up
+#   With stems: docker compose --profile stems up
+services:
+  core:
+    build: ./apps/core
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - MEDIA_STORE=local
+    volumes:
+      - ./data:/app/data # sqlite (WAL)
+      - ./media:/app/media # library + cache + (later) stems
+    restart: unless-stopped
+
+  worker:
+    build: ./apps/worker
+    profiles: ["stems"] # not started in the default MVP up
+    environment:
+      - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
+      - ENCORE_WORKER_CONCURRENCY=1
+    volumes:
+      - ./media:/app/media # shares the local MediaStore volume (single-box mode)
+    depends_on:
+      - core
+    restart: unless-stopped
+    # deploy.resources.reservations.devices for GPU added when stems land
