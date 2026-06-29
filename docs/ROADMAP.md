@@ -95,8 +95,9 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   no signup wall, disabled-until-named button. **Verified:** eyes-on 390x844 (docs/mocks/m2c3-join-eyeson.png)
   + live flow drive: fill→pick→Start → lands on `/` with `encore_singer` session cookie set.
   (Also fixed 2 pre-existing strict-type nits surfaced by check: WsClient `ResolvedOptions`, state.test copy.)
-- [ ] **M2-C4** TV `/tv` attract screen: big join QR + "up next" ticker + ambient motion.
-  **Done-when:** eyes-on; QR resolves to `/join`.
+- [x] **M2-C4** TV `/tv` attract: server-rendered join QR (qrcode lib, origin/join), "Scan to
+  join" hero, live WS connection dot, "Up next" ticker (live from queue:sync), breathing QR motion.
+  **Eyes-on confirmed** 1280x720 (docs/mocks/m2c4-tv-eyeson.png). **M2 milestone COMPLETE.**
 
 ---
 
