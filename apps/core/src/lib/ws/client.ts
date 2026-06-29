@@ -29,8 +29,11 @@ export interface WsClientOptions {
 
 const defaultConnect = (url: string): MinimalSocket => new WebSocket(url) as unknown as MinimalSocket;
 
+type ResolvedOptions = Required<Omit<WsClientOptions, 'onResyncNeeded'>> &
+	Pick<WsClientOptions, 'onResyncNeeded'>;
+
 export class WsClient {
-	#opt: Required<Omit<WsClientOptions, 'onResyncNeeded'>> & Pick<WsClientOptions, 'onResyncNeeded'>;
+	#opt: ResolvedOptions;
 	#sock: MinimalSocket | null = null;
 	#hbTimer: ReturnType<typeof setTimeout> | null = null;
 	#reconnectTimer: ReturnType<typeof setTimeout> | null = null;
@@ -47,7 +50,7 @@ export class WsClient {
 			clearTimeoutFn: clearTimeout,
 			onResyncNeeded: undefined,
 			...opt
-		} as typeof this.#opt;
+		} as ResolvedOptions;
 	}
 
 	open(): void {

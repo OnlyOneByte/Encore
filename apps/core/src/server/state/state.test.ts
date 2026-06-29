@@ -41,8 +41,9 @@ test('server re-assigns fair rotationSeq on every mutation (round-robin)', () =>
 test('entries getter returns a defensive copy (caller cannot mutate authoritative state)', () => {
 	const s = new AuthoritativeState();
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
-	s.entries[0]!.status = 'done';
-	expect(s.entries[0]!.status).toBe('queued'); // unchanged
+	const leaked = s.entries; // a defensive copy
+	leaked[0]!.status = 'done'; // mutate the copy
+	expect(s.entries[0]!.status).toBe('queued'); // authoritative state unchanged
 });
 
 test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
