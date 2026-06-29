@@ -1,0 +1,11 @@
+**/node_modules
+**/.svelte-kit
+**/build
+**/dist
+data
+media
+*.sqlite*
+.git
+docs/mocks/*.png
+**/__pycache__
+.venv

@@ -195,8 +195,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   search returns results, both phones see identical round-robin order (cross-client sync), TV
   now-singing lower-third on play, skip advances to a different singer's song (Maya→Sam "Don't
   Stop Believin'", docs/mocks/m6c3-party-eyeson.png).
-- [ ] **M6-C4** ★ `apps/core/Dockerfile` (`FROM oven/bun`, bundle yt-dlp + ffmpeg) + `compose up`
-  one-container boot. **Done-when:** clean `docker compose up` → working app on a fresh checkout.
+- [x] **M6-C4** ★ `apps/core/Dockerfile` (multi-stage `FROM oven/bun:1.3`, build SvelteKit + bundle
+  **yt-dlp 2026.06.09 + ffmpeg 7.1.5**) + `.dockerignore` + compose (root context). **Verified live:**
+  image builds, container runs, `/health` ok + `/` SSR HTTP 200, both media tools present. Fixed a
+  real runtime bug: workspace `@encore/shared` symlink → re-`bun install` in runtime stage relinks it.
+  (`docker compose` binary absent in this env; validated via `docker run` + compose config inspection.)
 - [ ] **M6-C5** error/empty/edge states (no results, dead video, singer leaves mid-turn) +
   graceful toasts. **Done-when:** eyes-on each edge; no dead-ends.
 - [ ] **M6-C6** README quickstart + screenshots; tag **v0.1.0 (MVP)**. **Done-when:** a stranger

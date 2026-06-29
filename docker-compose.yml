@@ -4,7 +4,9 @@
 #   With stems: docker compose --profile stems up
 services:
   core:
-    build: ./apps/core
+    build:
+      context: . # repo root — the Dockerfile copies packages/shared + apps/core
+      dockerfile: apps/core/Dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -16,7 +18,9 @@ services:
     restart: unless-stopped
 
   worker:
-    build: ./apps/worker
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
     profiles: ["stems"] # not started in the default MVP up
     environment:
       - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
