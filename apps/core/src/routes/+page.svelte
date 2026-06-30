@@ -5,8 +5,10 @@
 	import { QueueStore } from '$lib/stores/queue';
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
+	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongCard from '$lib/components/SongCard.svelte';
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
+	import type { MediaStatus } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
@@ -14,6 +16,8 @@
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
 	let playback = $state<PlaybackState>({ currentEntryId: null, positionSec: 0, isPlaying: false });
+	// live make-karaoke progress per mediaId (M7-C7) — driven by media:status broadcasts.
+	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 
 	let store: QueueStore;
 	let ws: WsClient;
@@ -83,6 +87,19 @@
 					if (e.type === 'playback:state') {
 						playback = e.state;
 					}
+					if (e.type === 'media:status') {
+						// live make-karaoke progress → drives the ProcessingCard (M7-C7)
+						const next = new Map(mediaStatus);
+						next.set(e.mediaId, { status: e.status, pct: e.pct, etaSec: e.etaSec });
+						mediaStatus = next;
+						// reflect the cooking flag on the catalog media too so SongCard sparkles
+						const m = mediaCatalog.get(e.mediaId);
+						if (m) {
+							const nm = new Map(mediaCatalog);
+							nm.set(e.mediaId, { ...m, playMode: 'file', stemStatus: e.status === 'ready' ? 'ready' : 'queued' });
+							mediaCatalog = nm;
+						}
+					}
 					store.onServerEvent(e);
 				}
 			});
@@ -100,6 +117,35 @@
 		store?.addSong(mediaId);
 		if (navigator.vibrate) navigator.vibrate(8); // haptic tick
 		setTimeout(loadShortcuts, 300); // refresh popular/recent after the add lands
+	}
+
+	/** Request stem-separation ("make karaoke") for a media — flips it to a cooking file server-side;
+	 *  the live media:status broadcasts then drive the ProcessingCard (M7-C7). */
+	async function makeKaraoke(mediaId: string) {
+		if (navigator.vibrate) navigator.vibrate(12);
+		// optimistic: show the bar immediately at "queued" while the request lands
+		const next = new Map(mediaStatus);
+		next.set(mediaId, { status: 'queued', pct: 0 });
+		mediaStatus = next;
+		try {
+			const res = await fetch('/api/make-karaoke', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ mediaId })
+			});
+			if (!res.ok) {
+				mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
+				showError((await res.json().catch(() => ({}))).error ?? 'Could not start make-karaoke');
+			}
+		} catch {
+			showError('Could not start make-karaoke — check your connection');
+		}
+	}
+
+	/** Live processing state for an entry's media, or null if it isn't cooking. */
+	function cooking(mediaId: string): { status: MediaStatus; pct: number; etaSec?: number } | null {
+		const s = mediaStatus.get(mediaId);
+		return s && s.status !== 'ready' && s.status !== 'failed' ? s : null;
 	}
 
 	// remove + undo toast
@@ -250,6 +296,7 @@
 				sub={`${m.artist ?? (m.source === 'youtube' ? 'YouTube' : 'Library')} · tap to queue`}
 				processing={m.playMode === 'file' && m.stemStatus !== 'ready'}
 				onadd={() => addSong(m.id)}
+				onmake={cooking(m.id) || m.stemStatus === 'ready' ? undefined : () => makeKaraoke(m.id)}
 			/>
 		{/each}
 	{:else}
@@ -277,23 +324,36 @@
 	{:else}
 		{#each queued as e, i (e.id)}
 			{@const s = singerOf(e.singerId)}
-			<QueueRow
-				seq={i + 1}
-				title={mediaTitle(e.mediaId)}
-				singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
-				singerColor={s?.color ?? '#7c5cff'}
-				mine={e.singerId === me?.id}
-				up={i === 0}
-				pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
-				subtitle={i === 0 ? 'up next' : ''}
-				removable={e.singerId === me?.id && i !== 0}
-				reorderable={e.singerId === me?.id && myPicks.length > 1}
-				canUp={myIdx(e.id) > 0}
-				canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
-				onremove={() => removeWithUndo(e)}
-				onup={() => moveMine(e.id, -1)}
-				ondown={() => moveMine(e.id, 1)}
-			/>
+			{@const proc = cooking(e.mediaId)}
+			{#if proc}
+				<!-- M7-C7: a make-karaoke song still cooking → live progress card (held slot) -->
+				<ProcessingCard
+					seq={i + 1}
+					title={mediaTitle(e.mediaId)}
+					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
+					singerColor={s?.color ?? '#7c5cff'}
+					status={proc.status}
+					pct={proc.pct}
+				/>
+			{:else}
+				<QueueRow
+					seq={i + 1}
+					title={mediaTitle(e.mediaId)}
+					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
+					singerColor={s?.color ?? '#7c5cff'}
+					mine={e.singerId === me?.id}
+					up={i === 0}
+					pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
+					subtitle={i === 0 ? 'up next' : ''}
+					removable={e.singerId === me?.id && i !== 0}
+					reorderable={e.singerId === me?.id && myPicks.length > 1}
+					canUp={myIdx(e.id) > 0}
+					canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+					onremove={() => removeWithUndo(e)}
+					onup={() => moveMine(e.id, -1)}
+					ondown={() => moveMine(e.id, 1)}
+				/>
+			{/if}
 		{/each}
 	{/if}
 </main>
