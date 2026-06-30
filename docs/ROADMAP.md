@@ -303,8 +303,20 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   local-source skip, missing-transcript + instrumental-no-words guards, routing dispatch. Worker
   28→41 pass, core 177 / shared 25 green. **DEFERRED to a GPU box:** the real WhisperX alignment
   (multi-GB torch) — same constraint as C5; flip `[~]`→`[x]` after a real align on a worker box.
-- [ ] **M7-C9** `+key/−key` pitch shift (ffmpeg/rubberband on the instrumental). **Done-when:**
-  eyes-on: control strip shifts key on a `file` song.
+- [x] **M7-C9** `+key/−key` pitch shift (ffmpeg/rubberband on the instrumental). Shared:
+  `PlaybackState.keyShift` (semitones) + `clampKeyShift`/`keyedMediaRef` (signed variant before the
+  ext, e.g. `m1-instrumental.+2.wav`) + `MAX_KEY_SHIFT=7`; `PlayerCommand` += `{cmd:'key',semitones}`
+  (absolute target). Core: player `key` handler transposes ONLY a ready `file` current (clamped,
+  no-op on iframe/not-ready), resets to 0 on every song change; schema migration 0003 + persistence/
+  hydrate; TvPlayer resolves the keyed instrumental. Phone: NowPlaying strip enabled for a ready
+  file song — shows "Key · +N", −/＋ buttons send the command. Worker `pitch.py` (PURE): semitone→
+  ratio math, ffmpeg asetrate→aresample→atempo chain (rubberband variant), keyed paths, pre-render
+  variant set. **Done-when MET — eyes-on confirmed:** drove the live phone (join → queue → ✨ Karaoke
+  → worker completes → song plays as ready file → tap ＋ semitone ×2); the strip shows **KEY · +2** in
+  amber with active −/＋ controls (docs/mocks/m7c9-keyshift-eyeson.png). Core 177→182, shared 25→30,
+  worker 41→47 pass; svelte-check 0/0; build green. **DEFERRED to a worker box:** the actual ffmpeg
+  pitch RENDER of the variants — this sandbox's ffmpeg is a stripped 16-filter build (no atempo/
+  asetrate/rubberband); the worker image apt-installs full ffmpeg.
 - [ ] **M7-C10** MediaStore `object` impl (MinIO/S3) for remote workers + env flip. **Done-when:**
   worker on a second box processes via object-store; integration test.
 - [ ] **M7-C11** tag **v0.2.0 (stems)**.

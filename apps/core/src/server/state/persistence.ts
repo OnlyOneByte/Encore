@@ -31,14 +31,16 @@ export function sqlitePersistence(db: DB): StatePersistence {
 						id: 'singleton',
 						currentEntryId: playback.currentEntryId,
 						positionSec: playback.positionSec,
-						isPlaying: playback.isPlaying
+						isPlaying: playback.isPlaying,
+						keyShift: playback.keyShift
 					})
 					.onConflictDoUpdate({
 						target: playbackState.id,
 						set: {
 							currentEntryId: playback.currentEntryId,
 							positionSec: playback.positionSec,
-							isPlaying: playback.isPlaying
+							isPlaying: playback.isPlaying,
+							keyShift: playback.keyShift
 						}
 					})
 					.run();
