@@ -281,8 +281,15 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   **LIVE integration**: real core, HTTP join, WS queue, `/api/make-karaoke`, real worker drove the
   job to ready → the held song played at its fair slot (current=the cooked song, upNext intact).
   Core 167→177 pass, prod build green, svelte-check 0/0.
-- [ ] **M7-C7** ★ live progress UI: `media:status` → `ProcessingCard` bar (`Separating… 68%`) +
-  stage chips. **Done-when:** eyes-on: phone shows live stages end-to-end.
+- [x] **M7-C7** ★ live progress UI: `media:status` → `ProcessingCard` bar (`Separating… 68%`) +
+  stage chips. Phone page tracks a `mediaStatus` map from `media:status` broadcasts; a cooking
+  queued entry renders `ProcessingCard` (bar + stage chips) instead of `QueueRow`; `SongCard` gains
+  an optional `✨ Karaoke` button → `POST /api/make-karaoke` (optimistic "queued" bar while the
+  request lands). **Done-when met — eyes-on confirmed:** drove the live phone in a real browser
+  (join → queue Bohemian Rhapsody → ✨ Karaoke → worker emits separating 68%); the ProcessingCard
+  rendered with the gradient bar at 68%, "Separating vocals…" label, and ✓Queued/✓Downloaded/
+  ●Separating/Ready chips (docs/mocks/m7c7-processing-eyeson.png). Core 177 pass, build green,
+  svelte-check 0/0.
 - [ ] **M7-C8** WhisperX align → word-timed lyrics artifact. **Done-when:** lyrics JSON with word
   timestamps stored; unit test on shape.
 - [ ] **M7-C9** `+key/−key` pitch shift (ffmpeg/rubberband on the instrumental). **Done-when:**

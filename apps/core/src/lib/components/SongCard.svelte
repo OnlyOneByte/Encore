@@ -5,8 +5,10 @@
 		sub: string;
 		processing?: boolean;
 		onadd?: () => void;
+		// M7-C7: optional "make karaoke" (stem-separation) request for this song.
+		onmake?: () => void;
 	}
-	let { title, sub, processing = false, onadd }: Props = $props();
+	let { title, sub, processing = false, onadd, onmake }: Props = $props();
 </script>
 
 <div class="result card" onclick={() => onadd?.()} role="button" tabindex="0"
@@ -16,6 +18,10 @@
 		<div class="t">{title}{#if processing}<span class="sparkle"> ✨</span>{/if}</div>
 		<div class="s">{sub}</div>
 	</div>
+	{#if onmake}
+		<button class="make" title="Make karaoke (strip vocals)"
+			onclick={(e) => { e.stopPropagation(); onmake?.(); }}>✨ Karaoke</button>
+	{/if}
 	<button class="add" onclick={(e) => { e.stopPropagation(); onadd?.(); }}>＋ Turn</button>
 </div>
 
@@ -44,4 +50,11 @@
 		font-weight: 700; font-size: 0.85rem; background: var(--grad); color: #fff; cursor: pointer;
 	}
 	.add:active { transform: scale(0.94); }
+	.make {
+		flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; padding: 9px 10px;
+		font-weight: 700; font-size: 0.8rem; background: var(--card2); color: var(--warn); cursor: pointer;
+	}
+	.make:active { transform: scale(0.94); }
+	/* when there's no make button, the add button still pushes to the right */
+	.make + .add { margin-left: 8px; }
 </style>
