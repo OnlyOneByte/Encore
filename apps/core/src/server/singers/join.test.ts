@@ -8,16 +8,21 @@ import { SINGER_COLORS, type ServerEvent } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
 import { createPopularityTracker } from '../media/popularity';
+import { JobRepository } from '../jobs/repository';
+import { JobReaper } from '../jobs/reaper';
 import type { EncoreApp } from '../app';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 	const { db } = openDb(':memory:');
 	runMigrations(db, './drizzle');
 	const published: ServerEvent[] = [];
+	const jobs = new JobRepository(db);
 	const app: EncoreApp = {
 		db,
 		state: null as never,
 		singers: new SingerRepository(db),
+		jobs,
+		reaper: new JobReaper(jobs),
 		mediaById: new Map(),
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(async () => []),

@@ -56,11 +56,12 @@ export class JobRepository {
 			stage: null,
 			progressPct: 0,
 			etaSec: null,
+			error: null,
 			leaseExpiresAt: null,
 			createdAt: now,
 			updatedAt: now
 		};
-		this.#db.insert(jobs).values({ ...job, error: null }).run();
+		this.#db.insert(jobs).values(job).run();
 		return job;
 	}
 
@@ -112,9 +113,13 @@ export class JobRepository {
 		return this.transition(id, 'assigned', { workerId, leaseExpiresAt }, now);
 	}
 
-	/** Worker accepted (`job:accept`): begin processing. */
-	accept(id: string, now: number): Job {
-		return this.transition(id, 'running', {}, now);
+	/**
+	 * Worker accepted (`job:accept`): begin processing. Stamps a fresh PROGRESS lease — the ack lease
+	 * from `assign` no longer applies, so a worker that accepts near the ack deadline isn't instantly
+	 * reaped as a dead running job. Pass the deadline (lease policy lives in the pure leases.ts).
+	 */
+	accept(id: string, leaseExpiresAt: number | null, now: number): Job {
+		return this.transition(id, 'running', { leaseExpiresAt }, now);
 	}
 
 	/** Worker progress (`job:progress`): self-loop in `running`, refresh stage/pct/lease. */
@@ -127,9 +132,15 @@ export class JobRepository {
 		return this.transition(id, 'ready', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
 	}
 
-	/** Terminal failure (retries exhausted or non-retryable). */
-	fail(id: string, error: string, now: number): Job {
-		return this.transition(id, 'failed', { error, leaseExpiresAt: null, workerId: null }, now);
+	/**
+	 * Terminal failure (retries exhausted or non-retryable). `attempts` is optional: the reaper
+	 * passes the final exhausting count so the ledger records the attempt that died; a direct
+	 * non-retryable fail omits it and leaves the count as-is.
+	 */
+	fail(id: string, error: string, now: number, attempts?: number): Job {
+		const patch: JobPatch = { error, leaseExpiresAt: null, workerId: null };
+		if (attempts !== undefined) patch.attempts = attempts;
+		return this.transition(id, 'failed', patch, now);
 	}
 
 	/** Song removed before finish (`job:cancel`): terminal `canceled`, frees the dedup slot. */
@@ -146,10 +157,8 @@ export class JobRepository {
 		return this.transition(id, 'queued', { workerId: null, leaseExpiresAt: null, attempts }, now);
 	}
 
-	/** Map a DB row to the shared Job (drops the internal `error` column, which isn't on the type). */
+	/** Map a DB row to the shared Job (the row shape mirrors Job 1:1 — see schema.ts / shared types). */
 	#toJob(row: typeof jobs.$inferSelect | undefined): Job | null {
-		if (!row) return null;
-		const { error: _error, ...job } = row;
-		return job;
+		return row ?? null;
 	}
 }
