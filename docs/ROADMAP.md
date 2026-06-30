@@ -264,10 +264,13 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   failure path now honors `ProcessError.retryable`. **Verified (no-ML):** 14 pytest drive the full
   download→separate→publish flow with a fake runner (canned CLI output, files faked) — youtube +
   local-source paths, progress ramping, missing-output guard, retryable vs non-retryable failures;
-  worker suite 14→28, core 167 / shared 25 green. **DEFERRED to a GPU/worker box:** the real-ML
-  done-when ("a real song yields an instrumental on the volume") — needs the worker image (multi-GB
-  torch) + actual demucs/yt-dlp, which this aarch64 sandbox can't build/run. Code + tests are ready;
-  flip `[~]`→`[x]` after a real `docker compose --profile stems` run produces a real instrumental.
+  worker suite 14→28, core 167 / shared 25 green. **REAL-ML VERIFIED (2026-06-30, aarch64/CPU):**
+  built the worker image (torch 2.3.1 + torchaudio 2.3.1 + demucs 4.0.1) and ran the REAL
+  `DemucsProcessor` on a 12s clip — htdemucs wrote both `vocals.wav` and the instrumental
+  (`clip-instrumental.wav`), and the instrumental is acoustically distinct from the source
+  (diff-signal RMS 85.6 vs src 1448 → genuine separation, not a passthrough). The build surfaced +
+  fixed a real reproducibility bug: an unpinned `torchaudio` resolved to 2.11 (ABI-incompatible with
+  torch 2.3.1, `undefined symbol aoti_torch_abi_version`) → pinned `torchaudio==2.3.1`. Done-when met.
 - [x] **M7-C6** ★ `playMode` flip iframe→file on `ready`; rotation **held-slot** real impl
   (keep seq, slot back when ready). `make-karaoke.ts`: `requestMakeKaraoke` flips a media to a
   cooking `file` (so rotation's `isEntryReady` auto-holds its slot) + enqueues a stems job at
@@ -301,8 +304,18 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   flat words, every word word/start/end, line-bound derivation, NaN/inf + garbage rejection,
   validity) + the download→align→write flow with a fake runner (artifact written + re-parsed),
   local-source skip, missing-transcript + instrumental-no-words guards, routing dispatch. Worker
-  28→41 pass, core 177 / shared 25 green. **DEFERRED to a GPU box:** the real WhisperX alignment
-  (multi-GB torch) — same constraint as C5; flip `[~]`→`[x]` after a real align on a worker box.
+  28→41 pass, core 177 / shared 25 green. **REAL-ML BLOCKED ON A COUPLED TORCH BUMP (investigated
+  2026-06-30):** walking the real worker image forward fixed three genuine bugs en route — float16
+  compute crashes on CPU (added `--device`/`--compute_type int8` to `align_argv` + a GPU-override
+  seam; +1 test), numpy 2.0 removed `np.NaN` (pinned `numpy<2`), faster-whisper API drift. But the
+  hard blocker is a VERSION-SET CONFLICT, not a pin: whisperx 3.1.1's `load_model` passes the
+  faster-whisper **0.10.x** `TranscriptionOptions` field set, yet 0.10.x has **no cp312 wheel**
+  (sdist build fails on py3.12) and faster-whisper **≥1.0 adds required fields 3.1.1 never passes**
+  (`TypeError` at model load); meanwhile **modern whisperx 3.8.x requires torch≥2.4** while
+  **demucs 4.0.1 holds torch at 2.3.1**. So C8 needs a deliberate `torch≥2.4 + demucs + whisperx`
+  bump *together* (a version-set task best done on the GPU/worker box), NOT another blind pin. The
+  CPU-compute fix + the route/normalize code are ready; requirements left at the buildable floor
+  (`whisperx==3.1.1` + `faster-whisper==1.0.3` + `numpy<2`) so the image still builds and C5 runs.
 - [x] **M7-C9** `+key/−key` pitch shift (ffmpeg/rubberband on the instrumental). Shared:
   `PlaybackState.keyShift` (semitones) + `clampKeyShift`/`keyedMediaRef` (signed variant before the
   ext, e.g. `m1-instrumental.+2.wav`) + `MAX_KEY_SHIFT=7`; `PlayerCommand` += `{cmd:'key',semitones}`
@@ -314,9 +327,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   variant set. **Done-when MET — eyes-on confirmed:** drove the live phone (join → queue → ✨ Karaoke
   → worker completes → song plays as ready file → tap ＋ semitone ×2); the strip shows **KEY · +2** in
   amber with active −/＋ controls (docs/mocks/m7c9-keyshift-eyeson.png). Core 177→182, shared 25→30,
-  worker 41→47 pass; svelte-check 0/0; build green. **DEFERRED to a worker box:** the actual ffmpeg
-  pitch RENDER of the variants — this sandbox's ffmpeg is a stripped 16-filter build (no atempo/
-  asetrate/rubberband); the worker image apt-installs full ffmpeg.
+  worker 41→47 pass; svelte-check 0/0; build green. **RENDER REAL-VERIFIED (2026-06-30):** ran the
+  REAL `pitch.shift_argv()` chain through full ffmpeg (in the worker base image, apt ffmpeg) on a
+  440Hz tone → **659.3Hz** output (exactly 440×2^(7/12), a perfect fifth) with duration preserved
+  2.00→1.99s — pitch shifted, tempo intact. (Host ffmpeg is the stripped 16-filter build; the
+  container's apt ffmpeg has atempo/asetrate.) Done-when fully closed.
 - [x] **M7-C10** MediaStore `object` impl (MinIO/S3) for remote workers + env flip. Shared
   `MediaStoreConfig` union (local | object{bucket,endpoint,region,prefix}) now types `worker:welcome`.
   Core `media/store.ts`: PURE `resolveMediaStoreConfig` (env→config, object-without-bucket falls back
@@ -330,8 +345,10 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   the second-box round trip — a remote worker publishes stems to a shared (fake-S3) bucket, the core
   reads them back via the SAME prefixed key + presigns the TV URL; plus a LIVE env-flip boot probe
   (MEDIA_STORE=object → kind:object with the resolved config; default → local, url→/media). Core
-  182→196, shared 30, worker 47→53 pass; svelte-check 0/0. (Real AWS/MinIO creds — the presign live
-  path — are a worker-box concern, like C5/C8/C9; the store selection + both round-trips are proven.)
+  182→196, shared 30, worker 47→53 pass; svelte-check 0/0. **PRESIGN REAL-VERIFIED (2026-06-30):**
+  ran the REAL `ObjectMediaStore`+`bunS3Client` against a live MinIO (S3 API) — put/get/exists
+  round-trip + a genuine SigV4 presigned URL that **fetched back over HTTP 200 with matching bytes**
+  (the exact path a credential-less probe couldn't reach). Done-when fully closed.
 - [ ] **M7-C11** tag **v0.2.0 (stems)**.
 
 ---

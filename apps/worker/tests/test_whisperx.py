@@ -22,6 +22,12 @@ def test_align_argv_shape():
     assert "--model" in argv and "base" in argv
     assert "--output_format" in argv and "json" in argv
     assert "--language" in argv and "en" in argv  # pinned language
+    # CPU-safe compute defaults (float16 default would crash on a CPU backend)
+    assert "--device" in argv and "cpu" in argv
+    assert "--compute_type" in argv and "int8" in argv
+    # GPU override path
+    gpu = whisperx.align_argv("/w/s.wav", "/w/out", device="cuda", compute_type="float16")
+    assert "cuda" in gpu and "float16" in gpu
     # no --language when not provided
     assert "--language" not in whisperx.align_argv("/w/s.wav", "/w/out")
 
