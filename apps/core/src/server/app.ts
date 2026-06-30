@@ -14,7 +14,9 @@ import { ytDlpSearch } from './media/ytdlp';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
 import { JobRepository } from './jobs/repository';
 import { JobReaper } from './jobs/reaper';
-import type { ServerEvent, Media } from '@encore/shared';
+import { WorkerRegistry } from './jobs/registry';
+import { WorkerHub } from './jobs/worker-hub';
+import type { ServerEvent, Media, WorkerCommand } from '@encore/shared';
 
 export interface EncoreApp {
 	db: DB;
@@ -22,11 +24,15 @@ export interface EncoreApp {
 	singers: SingerRepository;
 	jobs: JobRepository;
 	reaper: JobReaper;
+	workers: WorkerRegistry;
+	workerHub: WorkerHub;
 	mediaById: Map<string, Media>;
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
 	popularity: PopularityTracker;
 	publish: (e: ServerEvent) => void; // room broadcast; replaced by server.ts at boot
+	/** Send a WorkerCommand to ONE worker session; replaced by server.ts with the real socket map. */
+	toWorker: (workerId: string, cmd: WorkerCommand) => void;
 	now: () => number;
 }
 
@@ -50,26 +56,46 @@ export function getApp(): EncoreApp {
 	state.hydrate(entries, playback);
 
 	const jobs = new JobRepository(db);
-	const reaper = new JobReaper(jobs);
-	// Boot recovery (§3): a core restart drops every worker WS session, so any job still marked
-	// assigned/running is orphaned — reset it to queued for redispatch. One-shot, before the tick
-	// loop (server.ts starts the loop). No-op on a fresh/in-memory DB.
-	reaper.recoverOnBoot();
+	const workers = new WorkerRegistry();
+	const mediaById = new Map<string, Media>();
 
-	g[APP_KEY] = {
+	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
+	// server.ts can replace the real socket map at boot without rebuilding the hub.
+	const app: EncoreApp = {
 		db,
 		state,
 		singers: new SingerRepository(db),
 		jobs,
-		reaper,
-		mediaById: new Map(),
+		reaper: null as never, // set just below (needs onReaped → workerHub.dispatch)
+		workers,
+		workerHub: null as never, // set just below (needs app.toWorker/publish indirection)
+		mediaById,
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(ytDlpSearch),
 		popularity: createPopularityTracker(),
-		// no-op until server.ts wires Bun.serve's publish; routes still work (state mutates)
+		// no-op sinks until server.ts wires Bun.serve; routes/state still work without them
 		publish: () => {},
+		toWorker: () => {},
 		now: () => Date.now()
 	};
+
+	app.workerHub = new WorkerHub({
+		jobs,
+		registry: workers,
+		mediaById,
+		toWorker: (workerId, cmd) => app.toWorker(workerId, cmd),
+		broadcast: (e) => app.publish(e),
+		now: () => app.now()
+	});
+
+	// When the reaper requeues/fails a job (lease expiry), capacity may have changed → redispatch.
+	app.reaper = new JobReaper(jobs, { onReaped: () => app.workerHub.dispatch() });
+	// Boot recovery (§3): a core restart drops every worker WS session, so any job still marked
+	// assigned/running is orphaned — reset it to queued for redispatch. One-shot, before the tick
+	// loop (server.ts starts the loop). No-op on a fresh/in-memory DB.
+	app.reaper.recoverOnBoot();
+
+	g[APP_KEY] = app;
 	return g[APP_KEY]!;
 }
 

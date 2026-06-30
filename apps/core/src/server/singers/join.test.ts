@@ -10,6 +10,8 @@ import { YouTubeResolver } from '../media/youtube';
 import { createPopularityTracker } from '../media/popularity';
 import { JobRepository } from '../jobs/repository';
 import { JobReaper } from '../jobs/reaper';
+import { WorkerRegistry } from '../jobs/registry';
+import { WorkerHub } from '../jobs/worker-hub';
 import type { EncoreApp } from '../app';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
@@ -17,17 +19,22 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 	runMigrations(db, './drizzle');
 	const published: ServerEvent[] = [];
 	const jobs = new JobRepository(db);
+	const workers = new WorkerRegistry();
+	const mediaById = new Map();
 	const app: EncoreApp = {
 		db,
 		state: null as never,
 		singers: new SingerRepository(db),
 		jobs,
 		reaper: new JobReaper(jobs),
-		mediaById: new Map(),
+		workers,
+		workerHub: new WorkerHub({ jobs, registry: workers, mediaById, toWorker: () => {}, broadcast: () => {}, now: () => 1_700_000_000_000 }),
+		mediaById,
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(async () => []),
 		popularity: createPopularityTracker(),
 		publish: (e) => published.push(e),
+		toWorker: () => {},
 		now: () => 1_700_000_000_000
 	};
 	return { app, published };

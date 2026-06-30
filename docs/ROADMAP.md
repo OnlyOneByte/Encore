@@ -229,9 +229,19 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   **Verified:** 14 unit tests (ack-timeout no-burn, progress-lease requeue, heartbeat refreshes
   lease, exhaustion→failed, boot recovery preserves attempts, onReaped fires only on change) +
   boot smoke (/health ok, reaper started, no crash). Core 132→145 pass, build green, svelte-check 0/0.
-- [ ] **M7-C3** ★ dial-home worker protocol on core: `worker:hello/heartbeat`, dispatch by
-  priority(=rotationSeq), `job:assign/accept/progress/complete/failed`. **Done-when:** unit test
-  with a fake worker socket drives a job to `ready`.
+- [x] **M7-C3** ★ dial-home worker protocol on core: shared wire types (`WorkerMessage`/
+  `WorkerCommand`/`JobArtifacts`); in-memory `WorkerRegistry` (never persisted, §10 — hello/
+  heartbeat/slot accounting/reconnect-replace); pure `dispatch.ts` (`planAssignments` — need-order
+  priority=rotationSeq ASC + createdAt tiebreak, least-loaded eligible worker, capability match,
+  capacity-per-pass); I/O `WorkerHub` (`worker-hub.ts`) routing `worker:hello`→welcome+dispatch,
+  `job:accept/reject/progress/complete/failed` through the ledger + leases, rebroadcasting
+  `media:status` for the live phone bar; flips media `stemStatus→ready` on complete. Wired into
+  `app.ts` (hub + registry on EncoreApp; reaper `onReaped`→redispatch) and `server.ts` (role=worker
+  WS family → `workerHub.handle`, socket map for `toWorker`, disconnect deregisters → reaper
+  reclaims via lease). **Verified:** 28 unit tests (registry 6, dispatch 8, worker-hub 8 incl. full
+  hello→accept→progress→**complete→ready**, reject/retry/terminal-fail, need-ordered dispatch,
+  stale-worker guards) + **live WS smoke** (real worker socket drove a job to ready, media flipped).
+  Core 145→167 pass, prod build green, svelte-check 0/0.
 - [ ] **M7-C4** ★ worker container: Python `dial_home` full + `Bun.spawn`-free pull/push via
   MediaStore; `apps/worker/Dockerfile` (torch+ffmpeg). **Done-when:** `--profile stems` worker
   registers with core.
