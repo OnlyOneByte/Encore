@@ -26,8 +26,9 @@ test('full lifecycle: queued → assigned → running → ready', () => {
 	expect(assigned.workerId).toBe('worker-A');
 	expect(assigned.leaseExpiresAt).toBe(T0 + 10_000);
 
-	const running = repo.accept(job.id, T0 + 2);
+	const running = repo.accept(job.id, T0 + 30_000, T0 + 2);
 	expect(running.status).toBe('running');
+	expect(running.leaseExpiresAt).toBe(T0 + 30_000); // ack lease replaced by fresh progress lease
 
 	const progressed = repo.progress(job.id, { stage: 'separating', progressPct: 68, etaSec: 12 }, T0 + 3);
 	expect(progressed.status).toBe('running'); // self-loop
@@ -51,7 +52,7 @@ test('idempotent re-add: queueing the same (mediaId,jobType) reuses the live job
 
 	// reuse holds through the running state too (not just queued)
 	repo.assign(first.id, 'w', null, T0 + 1);
-	repo.accept(first.id, T0 + 2);
+	repo.accept(first.id, null, T0 + 2);
 	const third = repo.enqueue('media-1', 'stems', 0, T0 + 200);
 	expect(third.id).toBe(first.id);
 	expect(third.status).toBe('running');
@@ -76,7 +77,7 @@ test('a terminal (canceled/failed) job frees the slot → re-add creates a NEW j
 
 	// the same holds after a hard failure
 	repo.assign(reborn.id, 'w', null, T0 + 3);
-	repo.accept(reborn.id, T0 + 4);
+	repo.accept(reborn.id, null, T0 + 4);
 	repo.fail(reborn.id, 'demucs OOM', T0 + 5);
 	expect(repo.findLive('media-1', 'stems')).toBeNull();
 	const third = repo.enqueue('media-1', 'stems', 0, T0 + 6);
@@ -105,7 +106,7 @@ test('requeue clears ownership/lease; attempts is caller-controlled', () => {
 	const { repo } = makeRepo();
 	const job = repo.enqueue('media-1', 'stems', 0, T0);
 	repo.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
-	repo.accept(job.id, T0 + 2);
+	repo.accept(job.id, T0 + 30_000, T0 + 2);
 
 	// progress-lease expiry → requeue with attempts++ (caller's policy)
 	const requeued = repo.requeue(job.id, 1, T0 + 3);
@@ -121,7 +122,7 @@ test('illegal transitions throw (state machine is enforced through the repo)', (
 	expect(() => repo.complete(job.id, T0 + 1)).toThrow('no edge queued → ready'); // can't skip to ready
 	expect(() => repo.transition(job.id, 'running', {}, T0 + 1)).toThrow('no edge queued → running');
 	repo.cancel(job.id, T0 + 2);
-	expect(() => repo.accept(job.id, T0 + 3)).toThrow('canceled is terminal');
+	expect(() => repo.accept(job.id, null, T0 + 3)).toThrow('canceled is terminal');
 });
 
 test('unknown job id throws', () => {

@@ -219,8 +219,16 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   **Verified:** 15 unit tests — full lifecycle, idempotent re-add (reuses the live job), per-key
   dedup, slot-freed-on-terminal re-add, **DB index rejects a race-inserted dup**, requeue clears
   owner/lease, illegal-transition + unknown-id throws. Core suite 117→132 pass, svelte-check 0/0.
-- [ ] **M7-C2** ★ leases + reaper (ack 10s / progress 30s), boot resets assigned/running→queued.
-  **Done-when:** unit test: stalled job requeues; boot recovery clears in-flight.
+- [x] **M7-C2** ★ leases + reaper (ack 10s / progress 30s), boot resets assigned/running→queued.
+  Pure lease policy (`leases.ts`: `ackDeadline`/`progressDeadline`, `sweep` → requeue/fail actions,
+  `inflightToRecover`) split from the I/O `JobReaper` (`reaper.ts`: `tick`/`recoverOnBoot`/`start`/
+  `stop` over the repo). Ack-timeout requeues with **no attempt burned**; progress-lease expiry does
+  `attempts++` → requeue, or **fail** when exhausted (records the dying attempt + error). `accept`
+  now stamps a fresh progress lease (caught: a near-ack-deadline accept would've been instantly
+  reaped). Wired: `getApp()` runs `recoverOnBoot()` one-shot; `server.ts` calls `reaper.start()`.
+  **Verified:** 14 unit tests (ack-timeout no-burn, progress-lease requeue, heartbeat refreshes
+  lease, exhaustion→failed, boot recovery preserves attempts, onReaped fires only on change) +
+  boot smoke (/health ok, reaper started, no crash). Core 132→145 pass, build green, svelte-check 0/0.
 - [ ] **M7-C3** ★ dial-home worker protocol on core: `worker:hello/heartbeat`, dispatch by
   priority(=rotationSeq), `job:assign/accept/progress/complete/failed`. **Done-when:** unit test
   with a fake worker socket drives a job to `ready`.

@@ -25,6 +25,11 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 const app = getApp();
 const state = app.state;
 
+// Start the job reaper's periodic tick (~3s): enforces ack/progress leases, requeueing or failing
+// jobs whose owning worker went silent (M7-C2). Boot recovery already ran in getApp(). Dispatch
+// (M7-C3) will subscribe to the reaper's onReaped to redispatch requeued jobs.
+app.reaper.start();
+
 // bounded idempotency ledger of applied clientOpIds (M6-C2): dedupes resent commands across
 // reconnects so a retry never double-applies. In-memory (process-lifetime), insertion-ordered.
 const seenOps = new Set<string>();

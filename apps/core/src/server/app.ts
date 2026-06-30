@@ -12,12 +12,16 @@ import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
+import { JobRepository } from './jobs/repository';
+import { JobReaper } from './jobs/reaper';
 import type { ServerEvent, Media } from '@encore/shared';
 
 export interface EncoreApp {
 	db: DB;
 	state: AuthoritativeState;
 	singers: SingerRepository;
+	jobs: JobRepository;
+	reaper: JobReaper;
 	mediaById: Map<string, Media>;
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
@@ -45,10 +49,19 @@ export function getApp(): EncoreApp {
 	const { entries, playback } = hydrate(db);
 	state.hydrate(entries, playback);
 
+	const jobs = new JobRepository(db);
+	const reaper = new JobReaper(jobs);
+	// Boot recovery (§3): a core restart drops every worker WS session, so any job still marked
+	// assigned/running is orphaned — reset it to queued for redispatch. One-shot, before the tick
+	// loop (server.ts starts the loop). No-op on a fresh/in-memory DB.
+	reaper.recoverOnBoot();
+
 	g[APP_KEY] = {
 		db,
 		state,
 		singers: new SingerRepository(db),
+		jobs,
+		reaper,
 		mediaById: new Map(),
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(ytDlpSearch),

@@ -65,6 +65,7 @@ export interface Job {
   stage: string | null;
   progressPct: number;
   etaSec: number | null;
+  error: string | null; // last failure message; shown on the phone with the fallback offer (§8)
   leaseExpiresAt: number | null; // epoch ms; ack-lease or progress-lease deadline (M7-C2)
   createdAt: number;
   updatedAt: number;
