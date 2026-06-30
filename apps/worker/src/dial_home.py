@@ -3,9 +3,11 @@
 The worker connects TO the core (never the reverse), so it scales to N and runs on any
 box / GPU across NAT. See docs/job-lifecycle-and-worker-protocol.md §5.
 
-This stub establishes the connection + hello/heartbeat shape. Real stem/align handlers
-(stems.py, align.py) and the lease/accept/progress/complete protocol land when the smart
-feature is built (container 2 only — not part of the MVP).
+This stub establishes the connection + hello/heartbeat shape. The CORE side of the protocol
+(registry, dispatch, job:assign/accept/progress/complete/failed, leases) is implemented as of
+M7-C3 (src/server/jobs/worker-hub.ts). The worker side below is still a stub: real stem/align
+handlers (stems.py, align.py) and the accept→progress→complete loop land in M7-C4/C5
+(container 2 only — not part of the MVP).
 """
 import asyncio
 import json

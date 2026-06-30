@@ -1,7 +1,7 @@
 // WebSocket event vocabulary — the wire contract between core, phones, TV, and workers.
 // See docs/MASTER-DESIGN.md §3 and docs/job-lifecycle-and-worker-protocol.md §5.
 
-import type { Media, QueueEntry, Singer, PlaybackState } from './types';
+import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
 
 export const ROOM_TOPIC = 'room:main'; // single room for MVP; Bun.serve pub/sub topic
@@ -41,6 +41,32 @@ export type ClientEvent =
   | { type: 'player:command'; command: PlayerCommand }
   | { type: 'tv:telemetry'; positionSec: number; durationSec: number; status: string; bufferedNextPct: number }
   | { type: 'hello'; lastRev: number };
+
+// ── dial-home worker protocol ─────────────────────────────────────────────────
+// Workers connect TO the core over WS (NAT-friendly, scale-out). All messages are JSON
+// { type, ...payload }. See docs/job-lifecycle-and-worker-protocol.md §5.
+
+// worker -> core
+export type WorkerMessage =
+  | { type: 'worker:hello'; workerId: string; authToken?: string; capabilities: JobType[]; concurrency: number; version: string }
+  | { type: 'worker:heartbeat'; workerId: string; slotsFree: number; runningJobIds: string[] }
+  | { type: 'job:accept'; workerId: string; jobId: string }
+  | { type: 'job:reject'; workerId: string; jobId: string; reason: string }
+  | { type: 'job:progress'; workerId: string; jobId: string; stage: MediaStatus; pct: number; etaSec?: number }
+  | { type: 'job:complete'; workerId: string; jobId: string; mediaUri: string; artifacts?: JobArtifacts }
+  | { type: 'job:failed'; workerId: string; jobId: string; error: string; retryable: boolean };
+
+// core -> worker
+export type WorkerCommand =
+  | { type: 'worker:welcome'; heartbeatIntervalSec: number; ackTimeoutSec: number; mediaStore: { kind: 'local' | 'object'; [k: string]: unknown } }
+  | { type: 'job:assign'; jobId: string; mediaId: string; jobType: JobType; sourceUri: string; params: { model?: string; targetKey?: string } }
+  | { type: 'job:cancel'; jobId: string; reason: string }
+  | { type: 'ping' };
+
+export interface JobArtifacts {
+  stems?: { instrumental?: string; vocals?: string };
+  lyrics?: { uri: string };
+}
 
 // re-export the op layer so consumers import everything from one place
 export * from './ops';

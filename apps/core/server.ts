@@ -11,7 +11,9 @@ import {
 	ROOM_TOPIC,
 	type ClientEvent,
 	type ServerEvent,
-	type Media
+	type Media,
+	type WorkerMessage,
+	type WorkerCommand
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry } from './src/server/realtime/player';
@@ -25,9 +27,19 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 const app = getApp();
 const state = app.state;
 
+// Live worker WS sockets, keyed by workerId (the dial-home registry's transport half — the
+// registry itself holds liveness/slots; this maps an id to the socket to push WorkerCommands to).
+// In-memory, process-lifetime, never persisted (§10).
+type WorkerSocket = import('bun').ServerWebSocket<{ role: string; workerId?: string }>;
+const workerSockets = new Map<string, WorkerSocket>();
+// server.ts owns the transport: the WorkerHub calls app.toWorker(id, cmd) → look up the socket.
+app.toWorker = (workerId: string, cmd: WorkerCommand) => {
+	workerSockets.get(workerId)?.send(JSON.stringify(cmd));
+};
+
 // Start the job reaper's periodic tick (~3s): enforces ack/progress leases, requeueing or failing
-// jobs whose owning worker went silent (M7-C2). Boot recovery already ran in getApp(). Dispatch
-// (M7-C3) will subscribe to the reaper's onReaped to redispatch requeued jobs.
+// jobs whose owning worker went silent (M7-C2). On any requeue/fail it redispatches (onReaped,
+// wired in app.ts). Boot recovery already ran in getApp().
 app.reaper.start();
 
 // bounded idempotency ledger of applied clientOpIds (M6-C2): dedupes resent commands across
@@ -65,7 +77,7 @@ try {
 	console.warn('[core] build/handler.js not found — run `bun run build`. Serving WS + /health + /harness only.');
 }
 
-const server = Bun.serve<{ role: string }>({
+const server = Bun.serve<{ role: string; workerId?: string }>({
 	port: PORT,
 	hostname: HOST,
 	idleTimeout: 30,
@@ -93,12 +105,31 @@ const server = Bun.serve<{ role: string }>({
 
 	websocket: {
 		open(ws) {
+			// Workers are NOT room subscribers — they speak the dial-home protocol, not queue events.
+			if (ws.data.role === 'worker') return;
 			ws.subscribe(ROOM_TOPIC);
 			// route the shared app's broadcasts through Bun's native pub/sub (e.g. singer:joined
 			// from the /api/join route reaches every socket).
 			setPublish((e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)));
 		},
 		message(ws, raw) {
+			// Dial-home worker protocol (§5) — a separate message family on role=worker sockets.
+			if (ws.data.role === 'worker') {
+				let msg: WorkerMessage;
+				try {
+					msg = JSON.parse(String(raw));
+				} catch {
+					return;
+				}
+				// remember this socket's workerId so disconnect can deregister + free its slots
+				if ('workerId' in msg && msg.workerId) {
+					ws.data.workerId = msg.workerId;
+					workerSockets.set(msg.workerId, ws);
+				}
+				app.workerHub.handle(msg);
+				return;
+			}
+
 			let evt: ClientEvent;
 			try {
 				evt = JSON.parse(String(raw));
@@ -146,7 +177,14 @@ const server = Bun.serve<{ role: string }>({
 					break;
 			}
 		},
-		close() {}
+		close(ws) {
+			// Worker disconnect: drop it from the registry + socket map. Its in-flight jobs keep their
+			// lease and are reclaimed by the reaper on expiry (§9) — same path as a worker that died.
+			if (ws.data.role === 'worker' && ws.data.workerId) {
+				app.workers.remove(ws.data.workerId);
+				workerSockets.delete(ws.data.workerId);
+			}
+		}
 	}
 });
 
