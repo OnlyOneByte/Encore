@@ -17,6 +17,8 @@ import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
 import { reconcileOnReady } from './realtime/player';
+import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
+import { ObjectMediaStore, bunS3Client } from './media/object-store';
 import type { ServerEvent, Media, WorkerCommand } from '@encore/shared';
 
 export interface EncoreApp {
@@ -31,10 +33,22 @@ export interface EncoreApp {
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
 	popularity: PopularityTracker;
+	mediaStore: MediaStore; // local volume (default) or object-store (S3/MinIO) — MASTER-DESIGN §2
+	mediaStoreConfig: MediaStoreConfig; // the resolved config sent to remote workers in worker:welcome
 	publish: (e: ServerEvent) => void; // room broadcast; replaced by server.ts at boot
 	/** Send a WorkerCommand to ONE worker session; replaced by server.ts with the real socket map. */
 	toWorker: (workerId: string, cmd: WorkerCommand) => void;
 	now: () => number;
+}
+
+/** Build the MediaStore (+ its wire config) from env. Object-store is lazy: the S3 client is only
+ *  constructed when MEDIA_STORE=object resolves to a usable bucket; otherwise the local default. */
+function buildMediaStore(): { store: MediaStore; config: MediaStoreConfig } {
+	const config = resolveMediaStoreConfig(process.env);
+	if (config.kind === 'object') {
+		return { store: new ObjectMediaStore(bunS3Client(config), config), config };
+	}
+	return { store: new LocalMediaStore(), config };
 }
 
 // CRITICAL: the SvelteKit prod handler is a SEPARATE bundle from server.ts, so a module-level
@@ -59,6 +73,7 @@ export function getApp(): EncoreApp {
 	const jobs = new JobRepository(db);
 	const workers = new WorkerRegistry();
 	const mediaById = new Map<string, Media>();
+	const { store: mediaStore, config: mediaStoreConfig } = buildMediaStore();
 
 	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
 	// server.ts can replace the real socket map at boot without rebuilding the hub.
@@ -74,6 +89,8 @@ export function getApp(): EncoreApp {
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(ytDlpSearch),
 		popularity: createPopularityTracker(),
+		mediaStore,
+		mediaStoreConfig,
 		// no-op sinks until server.ts wires Bun.serve; routes/state still work without them
 		publish: () => {},
 		toWorker: () => {},
@@ -86,6 +103,8 @@ export function getApp(): EncoreApp {
 		mediaById,
 		toWorker: (workerId, cmd) => app.toWorker(workerId, cmd),
 		broadcast: (e) => app.publish(e),
+		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
+		mediaStore: mediaStoreConfig,
 		// When a cooked song flips to ready, reconcile playback (start if the room idled / preload) —
 		// the held entry slots back at its fair position (M7-C6).
 		onMediaReady: () =>

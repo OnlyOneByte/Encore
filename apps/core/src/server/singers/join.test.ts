@@ -12,6 +12,7 @@ import { JobRepository } from '../jobs/repository';
 import { JobReaper } from '../jobs/reaper';
 import { WorkerRegistry } from '../jobs/registry';
 import { WorkerHub } from '../jobs/worker-hub';
+import { LocalMediaStore } from '../media/store';
 import type { EncoreApp } from '../app';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
@@ -33,6 +34,8 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(async () => []),
 		popularity: createPopularityTracker(),
+		mediaStore: new LocalMediaStore(),
+		mediaStoreConfig: { kind: 'local' },
 		publish: (e) => published.push(e),
 		toWorker: () => {},
 		now: () => 1_700_000_000_000
