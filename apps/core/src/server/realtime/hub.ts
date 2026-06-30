@@ -69,15 +69,21 @@ export function handleQueueCommand(
 
 	if (cmd.op.op === 'add') deps.recordAdd?.(cmd.op.entry.mediaId); // popularity shortcut tracking
 	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(cmd.op);
+	// ONE broadcast (Finding #3): the patch carries the authoritative (pruned, reseq'd) entries +
+	// any referenced media inline, so clients adopt server rotationSeq without a second full
+	// queue:sync per mutation. The op is still included for clients that apply diffs.
 	const patch: Extract<ServerEvent, { type: 'queue:patch' }> = {
 		type: 'queue:patch',
-		patch: { rev, ops: canonicalOps, causedBy: cmd.clientOpId }
+		patch: { rev, ops: canonicalOps, causedBy: cmd.clientOpId, entries, media: mediaFor(entries, deps) }
 	};
-	// Broadcast the patch. We attach the authoritative entries snapshot via queue:sync semantics
-	// so clients can adopt server-assigned rotationSeq without guessing (small payload at party scale).
 	deps.publish(patch);
-	deps.publish(syncEvent(deps.state, deps));
 	return patch;
+}
+
+/** Media records referenced by the given entries (so observers can render titles for others' adds). */
+function mediaFor(entries: QueueEntry[], deps: HubDeps): Media[] {
+	const ids = new Set(entries.map((e) => e.mediaId));
+	return [...deps.mediaById.values()].filter((m) => ids.has(m.id));
 }
 
 /** Full-state response for a (re)connecting client — the resync path. Includes singer + media

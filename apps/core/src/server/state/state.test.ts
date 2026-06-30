@@ -76,3 +76,33 @@ test('debounced flush coalesces a burst into persisted state', async () => {
 	const { entries } = hydrate(db);
 	expect(entries).toHaveLength(5);
 });
+
+test('setPosition does NOT bump rev (Finding #1 — no resync storm from ontimeupdate)', () => {
+	const s = new AuthoritativeState();
+	s.applyQueueOp({ op: 'add', entry: entry('a', 1) }); // rev -> 1
+	const revBefore = s.rev;
+	s.setPosition(12.7);
+	s.setPosition(13.9);
+	s.setPosition(42);
+	expect(s.rev).toBe(revBefore); // unchanged across many position updates
+	expect(s.playback.positionSec).toBe(42); // floored, tracked
+});
+
+test('setPosition floors + clamps negative', () => {
+	const s = new AuthoritativeState();
+	s.setPosition(-5);
+	expect(s.playback.positionSec).toBe(0);
+	s.setPosition(7.99);
+	expect(s.playback.positionSec).toBe(7);
+});
+
+test('applyQueueOp prunes terminal entries from the authoritative queue (Finding #3a)', () => {
+	const s = new AuthoritativeState();
+	const a: QueueEntry = { id: 'a', mediaId: 'm-a', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 };
+	const b: QueueEntry = { id: 'b', mediaId: 'm-b', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 2 };
+	s.applyQueueOp({ op: 'add', entry: a });
+	s.applyQueueOp({ op: 'add', entry: b });
+	s.applyQueueOp({ op: 'status', id: 'a', status: 'done' });
+	expect(s.entries.find((e) => e.id === 'a')).toBeUndefined(); // pruned, not lingering
+	expect(s.entries.map((e) => e.id)).toEqual(['b']);
+});

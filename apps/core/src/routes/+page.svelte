@@ -70,6 +70,13 @@
 						// after a (re)sync, replay any still-pending optimistic ops (server dedupes)
 						queueMicrotask(() => store.resendPending());
 					}
+					if (e.type === 'queue:patch' && e.patch.media) {
+						// merge media referenced by the patch (e.g. a song another singer just added)
+						// so its title renders without waiting for a full sync
+						const next = new Map(mediaCatalog);
+						for (const m of e.patch.media) next.set(m.id, m);
+						mediaCatalog = next;
+					}
 					if (e.type === 'singer:joined') {
 						singers = new Map(singers).set(e.singer.id, e.singer);
 					}

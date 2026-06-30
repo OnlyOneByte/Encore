@@ -9,6 +9,7 @@
 
 import {
 	applyOp,
+	applyAndReseq,
 	inverseOp,
 	ulid,
 	type QueueOp,
@@ -39,6 +40,7 @@ export class QueueStore {
 	#pending = new Map<string, PendingOp>();
 	#deps: QueueStoreDeps;
 	#subs = new Set<(entries: QueueEntry[]) => void>();
+	#lastAddedAt = 0; // monotonic clock for addedAt tiebreaker (Finding #4)
 
 	constructor(deps: QueueStoreDeps) {
 		this.#deps = deps;
@@ -73,8 +75,8 @@ export class QueueStore {
 			mediaId,
 			singerId: this.#deps.singerId,
 			status: 'queued',
-			rotationSeq: Number.MAX_SAFE_INTEGER, // optimistic: drop at the end until server assigns
-			addedAt: Date.now()
+			rotationSeq: Number.MAX_SAFE_INTEGER, // placeholder; applyAndReseq assigns the real seq
+			addedAt: this.#nextAddedAt() // monotonic — never collides under fast taps (Finding #4)
 		};
 		this.#optimistic({ op: 'add', entry });
 		return id;
@@ -86,11 +88,24 @@ export class QueueStore {
 		this.#optimistic({ op: 'move', id, toSeq });
 	}
 
+	/**
+	 * Monotonic add timestamp. addedAt is the round-robin tiebreaker (rotate sorts each singer's
+	 * picks by it), so two adds in the same millisecond MUST get distinct, increasing values or the
+	 * order is nondeterministic and reorder-by-addedAt-permute breaks. The server trusts the
+	 * client's addedAt verbatim, so making it monotonic here keeps client/server prediction aligned.
+	 */
+	#nextAddedAt(): number {
+		this.#lastAddedAt = Math.max(Date.now(), this.#lastAddedAt + 1);
+		return this.#lastAddedAt;
+	}
+
 	#optimistic(op: QueueOp): void {
 		const inverse = inverseOp(this.#entries, op);
 		const clientOpId = (this.#deps.mintId ?? ulid)();
 		this.#pending.set(clientOpId, { op, inverse, baseRev: this.#rev });
-		this.#entries = applyOp(this.#entries, op); // render THIS FRAME
+		// Run the SAME reducer the server runs (applyAndReseq) so the optimistic row lands at its
+		// real round-robin position THIS FRAME — no jump-to-bottom-then-resort flicker (Finding #2).
+		this.#entries = applyAndReseq(this.#entries, op);
 		this.#emit();
 		this.#deps.sendCommand({ clientOpId, baseRev: this.#rev, op });
 	}
@@ -125,17 +140,27 @@ export class QueueStore {
 		this.#rev = e.patch.rev;
 		// originator: clear the matching pending op (it's now confirmed by the server)
 		if (e.patch.causedBy) this.#pending.delete(e.patch.causedBy);
-		// observers (and originator for non-add fields): apply the canonical ops
-		for (const op of e.patch.ops) this.#entries = applyOp(this.#entries, op);
+		if (e.patch.entries) {
+			// Authoritative snapshot present (normal mutation): adopt it as truth, then re-apply any
+			// STILL-pending local ops on top so in-flight changes survive. This is what makes the
+			// originator's optimistic row snap to the server's canonical rotationSeq with zero flicker
+			// (Finding #2/#3) and drops terminal entries the server pruned.
+			let base = e.patch.entries.map((x) => ({ ...x }));
+			for (const { op } of this.#pending.values()) base = applyAndReseq(base, op);
+			this.#entries = base;
+		} else {
+			// Pure re-ack (dedup path) carries no entries and no ops — nothing to apply.
+			for (const op of e.patch.ops) this.#entries = applyAndReseq(this.#entries, op);
+		}
 		this.#emit();
 	}
 
 	#onSync(e: Extract<ServerEvent, { type: 'queue:sync' }>): void {
 		this.#rev = e.rev;
-		// REBASE: authoritative truth, then re-apply still-pending local ops on top so the user's
-		// in-flight changes don't visually vanish during a resync.
+		// REBASE: authoritative truth, then re-apply still-pending local ops on top (via the shared
+		// reducer so seqs match the server) so the user's in-flight changes don't vanish on resync.
 		let base = e.entries.map((x) => ({ ...x }));
-		for (const { op } of this.#pending.values()) base = applyOp(base, op);
+		for (const { op } of this.#pending.values()) base = applyAndReseq(base, op);
 		this.#entries = base;
 		this.#emit();
 	}

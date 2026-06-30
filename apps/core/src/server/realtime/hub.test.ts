@@ -38,12 +38,13 @@ test('valid add broadcasts queue:patch with new rev + causedBy', () => {
 	expect(patch!.patch.causedBy).toBe(cmd.clientOpId);
 	expect(patch!.patch.ops).toEqual([cmd.op]);
 
-	// hub emits queue:patch then queue:sync (so clients adopt server seqs)
+	// hub emits exactly ONE message: a queue:patch carrying the authoritative entries inline
+	// (Finding #3 — no redundant second queue:sync per mutation)
+	expect(published).toHaveLength(1);
 	expect(published[0]!.type).toBe('queue:patch');
-	expect(published[1]!.type).toBe('queue:sync');
-	const sync = published[1] as Extract<ServerEvent, { type: 'queue:sync' }>;
-	expect(sync.rev).toBe(1);
-	expect(sync.entries.map((e) => e.id)).toEqual(['q1']);
+	const p = published[0] as Extract<ServerEvent, { type: 'queue:patch' }>;
+	expect(p.patch.rev).toBe(1);
+	expect(p.patch.entries!.map((e) => e.id)).toEqual(['q1']);
 });
 
 test('rev advances across successive commands', () => {

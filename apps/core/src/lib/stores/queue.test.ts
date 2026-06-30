@@ -108,3 +108,40 @@ test('subscribe fires on mutation', () => {
 	store.addSong('m1');
 	expect(seen).toEqual([0, 1]); // initial emit, then after add
 });
+
+test('optimistic add for a 2nd singer lands at its FAIR round-robin slot, not the bottom (Finding #2)', () => {
+	const { store } = makeStore(); // singerId 'me'
+	// seed someone else's two queued songs via a server patch (authoritative entries inline)
+	store.onServerEvent({
+		type: 'queue:patch',
+		patch: {
+			rev: 2,
+			ops: [],
+			entries: [
+				{ id: 'maya1', mediaId: 'm1', singerId: 'maya', status: 'queued', rotationSeq: 0, addedAt: 1 },
+				{ id: 'maya2', mediaId: 'm2', singerId: 'maya', status: 'queued', rotationSeq: 1, addedAt: 2 }
+			]
+		}
+	});
+	// I add my first pick — round-robin must interleave it to slot 1 immediately (no jump-to-bottom)
+	const myId = store.addSong('m3');
+	const order = store.entries.map((e) => e.id);
+	expect(order).toEqual(['maya1', myId, 'maya2']); // fair interleave, predicted client-side
+});
+
+test('queue:patch with authoritative entries snaps to server order (no flicker), pruning terminal', () => {
+	const { store } = makeStore();
+	store.onServerEvent({
+		type: 'queue:patch',
+		patch: {
+			rev: 5,
+			ops: [],
+			entries: [
+				{ id: 'x', mediaId: 'm1', singerId: 'a', status: 'queued', rotationSeq: 0, addedAt: 1 },
+				{ id: 'y', mediaId: 'm2', singerId: 'b', status: 'queued', rotationSeq: 1, addedAt: 2 }
+			]
+		}
+	});
+	expect(store.entries.map((e) => e.id)).toEqual(['x', 'y']);
+	expect(store.rev).toBe(5);
+});

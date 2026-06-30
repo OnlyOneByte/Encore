@@ -25,7 +25,8 @@ test('ended telemetry marks current done and advances to next by seq', () => {
 
 	handleTelemetry({ positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
-	expect(state.entries.find((e) => e.id === 'q1')!.status).toBe('done');
+	// q1 is marked done -> pruned from the queue (terminal entries don't linger, Finding #3a)
+	expect(state.entries.find((e) => e.id === 'q1')).toBeUndefined();
 	expect(state.entries.find((e) => e.id === 'q2')!.status).toBe('playing');
 });
 

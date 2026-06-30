@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { rotate, assignSeqs } from './rotation';
+import { rotate, assignSeqs, applyAndReseq, isTerminal } from './rotation';
 import type { QueueEntry } from './types';
 
 // addedAt encodes queue order; singerId drives the round-robin grouping.
@@ -73,4 +73,46 @@ test('rotate does not mutate input', () => {
 	const snap = JSON.stringify(input);
 	rotate(input);
 	expect(JSON.stringify(input)).toBe(snap);
+});
+
+// ── applyAndReseq: the shared client+server mutation (Findings #2, #3a) ──────────
+test('applyAndReseq on add reseqs to fair round-robin (NOT append) — the no-flicker guarantee', () => {
+	// Maya has 2 queued; Sam adds his first. Fair order interleaves Sam's pick to slot 1,
+	// NOT the bottom. This is exactly what the client must predict so the row doesn't jump.
+	const base = assignSeqs([e('maya1', 'maya', 1), e('maya2', 'maya', 2)]);
+	const out = applyAndReseq(base, {
+		op: 'add',
+		entry: { id: 'sam1', mediaId: 'm-sam1', singerId: 'sam', status: 'queued', rotationSeq: Number.MAX_SAFE_INTEGER, addedAt: 3 }
+	});
+	expect(out.map((x) => x.id)).toEqual(['maya1', 'sam1', 'maya2']);
+	expect(out.map((x) => x.rotationSeq)).toEqual([0, 1, 2]); // contiguous, server-owned
+});
+
+test('applyAndReseq drops terminal entries (Finding #3a — no unbounded growth)', () => {
+	const base = assignSeqs([e('a', 'a', 1), e('b', 'b', 2)]);
+	// mark a done; it should be pruned, not linger
+	const out = applyAndReseq(base, { op: 'status', id: 'a', status: 'done' });
+	expect(out.find((x) => x.id === 'a')).toBeUndefined();
+	expect(out.map((x) => x.id)).toEqual(['b']);
+	expect(out[0]!.rotationSeq).toBe(0); // reseq'd after prune
+});
+
+test('applyAndReseq move permutes addedAt within singer + survives reseq', () => {
+	// a:[a1,a2,a3], move a3 to index 0 within a's picks -> a3,a1,a2
+	const base = assignSeqs([e('a1', 'a', 1), e('a2', 'a', 2), e('a3', 'a', 3)]);
+	const out = applyAndReseq(base, { op: 'move', id: 'a3', toSeq: 0 });
+	expect(out.map((x) => x.id)).toEqual(['a3', 'a1', 'a2']);
+});
+
+test('CLIENT==SERVER: applyAndReseq is deterministic for identical input (the contract)', () => {
+	const base = assignSeqs([e('a1', 'a', 1), e('b1', 'b', 2)]);
+	const op = { op: 'add' as const, entry: { id: 'a2', mediaId: 'm-a2', singerId: 'a', status: 'queued' as const, rotationSeq: 9e15, addedAt: 3 } };
+	expect(applyAndReseq(base, op)).toEqual(applyAndReseq(base, op)); // pure + deterministic
+});
+
+test('isTerminal classifies done/skipped vs live', () => {
+	expect(isTerminal(e('x', 'a', 1))).toBe(false); // queued
+	expect(isTerminal({ ...e('x', 'a', 1), status: 'playing' })).toBe(false);
+	expect(isTerminal({ ...e('x', 'a', 1), status: 'done' })).toBe(true);
+	expect(isTerminal({ ...e('x', 'a', 1), status: 'skipped' })).toBe(true);
 });

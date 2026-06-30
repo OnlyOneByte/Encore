@@ -4,7 +4,7 @@
 // prediction cannot diverge from what the server commits.
 // See docs/reconciliation-contract.md.
 
-import type { QueueEntry, EntryStatus } from './types';
+import type { QueueEntry, EntryStatus, Media } from './types';
 
 export type QueueOp =
   | { op: 'add'; entry: QueueEntry } // entry.id is the client-minted ULID
@@ -22,6 +22,12 @@ export interface ServerPatch {
   rev: number; // new authoritative rev AFTER applying ops
   ops: QueueOp[]; // canonical ops (server may rewrite, e.g. assign rotationSeq)
   causedBy?: string; // echoes clientOpId so the originator can clear 'pending'
+  // The authoritative (pruned, reseq'd) queue AFTER the op. Carried inline so clients adopt
+  // server rotationSeq + terminal-pruning in ONE message — no second queue:sync per mutation.
+  // Omitted on a pure re-ack (dedup), where there was no state change.
+  entries?: QueueEntry[];
+  // Any media referenced by `entries` that the client may not have yet (e.g. someone else's add).
+  media?: Media[];
 }
 
 /**

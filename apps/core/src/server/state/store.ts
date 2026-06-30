@@ -2,7 +2,7 @@
 // a queue:patch broadcast is computed from RAM (sub-ms). Writes update memory, bump `rev`, and
 // schedule a write-behind flush to SQLite. Hydrated once on boot. See MASTER-DESIGN §7 (Tier 1 #2).
 
-import { applyOp, assignSeqs, type QueueOp, type QueueEntry, type PlaybackState } from '@encore/shared';
+import { applyAndReseq, assignSeqs, isTerminal, type QueueOp, type QueueEntry, type PlaybackState } from '@encore/shared';
 
 export interface StatePersistence {
 	/** Write-behind sink. Called (debounced) after mutations; must be side-effect-only. */
@@ -37,52 +37,22 @@ export class AuthoritativeState {
 
 	/** Seed from durable storage on boot (does NOT bump rev or schedule a flush). */
 	hydrate(entries: QueueEntry[], playback: PlaybackState | null): void {
-		this.#entries = assignSeqs(entries); // normalize fairness order on load
+		// drop terminal (done/skipped) rows and normalize fairness order on load
+		this.#entries = assignSeqs(entries.filter((e) => !isTerminal(e)));
 		if (playback) this.#playback = { ...playback };
 	}
 
 	/**
-	 * Apply a queue op authoritatively. Re-derives rotationSeq for the whole queue (round-robin
-	 * is server-owned), bumps rev, schedules write-behind. Returns the canonical ops to broadcast
-	 * (with server-assigned seqs) + the new rev.
+	 * Apply a queue op authoritatively via the SHARED `applyAndReseq` (the same function the client
+	 * optimistic store runs), which handles move-as-addedAt-permute, prunes terminal entries, and
+	 * re-derives fair round-robin rotationSeq. Bumps rev, schedules write-behind. Returns the
+	 * canonical op + the authoritative (pruned, reseq'd) entries snapshot for the broadcast.
 	 */
 	applyQueueOp(op: QueueOp): { rev: number; canonicalOps: QueueOp[]; entries: QueueEntry[] } {
-		let applied: QueueEntry[];
-		if (op.op === 'move') {
-			// Reorder WITHIN the moving entry's singer group. assignSeqs derives rotationSeq from
-			// per-singer addedAt order, so we permute addedAt among that singer's picks (same
-			// timestamp set → the singer's round-robin slot is stable; only which song sits where
-			// changes). op.toSeq is the target index among that singer's own picks.
-			applied = this.#reorderWithinSinger(op.id, op.toSeq);
-		} else {
-			applied = applyOp(this.#entries, op);
-		}
-		// server owns rotationSeq: re-assign fair order across the whole queue after every mutation
-		this.#entries = assignSeqs(applied);
+		this.#entries = applyAndReseq(this.#entries, op);
 		this.#rev++;
 		this.#scheduleFlush();
-		// canonical ops: emit a full reconciled set as one add/whole-queue is overkill; for MVP we
-		// broadcast the op plus the authoritative seqs by re-emitting moved entries. Simplest correct
-		// form: echo the op, and let clients adopt seqs from the entries snapshot in the patch.
 		return { rev: this.#rev, canonicalOps: [op], entries: this.entries };
-	}
-
-	/**
-	 * Reorder one entry within its own singer's pick list to target index `toIdx`, by reassigning
-	 * the singer's existing addedAt timestamps in the new order. Returns a new entries array.
-	 */
-	#reorderWithinSinger(id: string, toIdx: number): QueueEntry[] {
-		const moving = this.#entries.find((e) => e.id === id);
-		if (!moving) return this.#entries.slice();
-		const mine = this.#entries
-			.filter((e) => e.singerId === moving.singerId)
-			.sort((a, b) => a.addedAt - b.addedAt);
-		const stamps = mine.map((e) => e.addedAt); // the stable timestamp slots for this singer
-		const from = mine.findIndex((e) => e.id === id);
-		const clamped = Math.max(0, Math.min(toIdx, mine.length - 1));
-		mine.splice(clamped, 0, mine.splice(from, 1)[0]!); // reorder the list
-		const reStamp = new Map(mine.map((e, i) => [e.id, stamps[i]!])); // assign stamps by new position
-		return this.#entries.map((e) => (reStamp.has(e.id) ? { ...e, addedAt: reStamp.get(e.id)! } : e));
 	}
 
 	setPlayback(patch: Partial<PlaybackState>): { rev: number; playback: PlaybackState } {
@@ -90,6 +60,17 @@ export class AuthoritativeState {
 		this.#rev++;
 		this.#scheduleFlush();
 		return { rev: this.#rev, playback: this.playback };
+	}
+
+	/**
+	 * Update ONLY the playback position WITHOUT bumping rev (Finding #1). TV `ontimeupdate` fires
+	 * ~4×/sec; routing it through setPlayback would advance rev with no broadcast, freezing every
+	 * client's localRev and triggering a full resync on the next real patch (gap detector fires).
+	 * Position is ephemeral telemetry, not authoritative queue state — never gates reconciliation.
+	 */
+	setPosition(positionSec: number): void {
+		this.#playback = { ...this.#playback, positionSec: Math.max(0, Math.floor(positionSec)) };
+		this.#scheduleFlush(); // still persisted (write-behind) so a resumed session is roughly correct
 	}
 
 	#scheduleFlush(): void {

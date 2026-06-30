@@ -79,6 +79,7 @@ export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
 		emitNowPlaying(deps);
 		return;
 	}
-	// position-only update: keep authoritative position roughly in sync, no rev churn on broadcast
-	state.setPlayback({ positionSec: Math.max(0, Math.floor(t.positionSec)) });
+	// position-only update: ephemeral telemetry — setPosition does NOT bump rev (Finding #1), so the
+	// ~4Hz ontimeupdate stream can't desync clients' localRev and trigger a spurious resync storm.
+	state.setPosition(t.positionSec);
 }
