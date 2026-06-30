@@ -20,15 +20,21 @@ DEFAULT_MODEL = "base"  # WhisperX ASR model; bump to small/medium on a GPU box
 
 # ── pure helpers (no IO) ─────────────────────────────────────────────────────────
 def align_argv(audio_path: str, out_dir: str, model: str = DEFAULT_MODEL, lang: str | None = None,
-               whisperx_bin: str = "whisperx") -> list[str]:
+               whisperx_bin: str = "whisperx", device: str = "cpu", compute_type: str = "int8") -> list[str]:
     """whisperx argv: transcribe + word-align to JSON. `--output_format json` emits one .json next
-    to the audio under out_dir; --language pins it (skips autodetect) when the caller knows it."""
+    to the audio under out_dir; --language pins it (skips autodetect) when the caller knows it.
+
+    CRITICAL: whisperx/faster-whisper DEFAULT to compute_type=float16, which CPU backends CANNOT run
+    (ValueError: Requested float16 compute type ... not supported). A CPU worker MUST pass int8 (the
+    standard CPU choice); a GPU worker overrides device=cuda + compute_type=float16."""
     argv = [
         whisperx_bin,
         audio_path,
         "--model", model,
         "--output_format", "json",
         "--output_dir", out_dir,
+        "--device", device,
+        "--compute_type", compute_type,
         "--print_progress", "True",
     ]
     if lang:
@@ -121,11 +127,15 @@ class WhisperXProcessor:
     MediaStore. Same async-generator interface as the other processors — dial_home.py is unchanged."""
 
     def __init__(self, *, model: str = DEFAULT_MODEL, runner: Runner = subprocess_runner,
-                 ytdlp_bin: str = "yt-dlp", whisperx_bin: str = "whisperx") -> None:
+                 ytdlp_bin: str = "yt-dlp", whisperx_bin: str = "whisperx",
+                 device: str = "cpu", compute_type: str = "int8") -> None:
         self._model = model
         self._runner = runner
         self._ytdlp_bin = ytdlp_bin
         self._whisperx_bin = whisperx_bin
+        # CPU default (int8); a GPU worker passes device='cuda', compute_type='float16'.
+        self._device = device
+        self._compute_type = compute_type
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
         work = os.path.join(job.media_dir, "lyrics", "_work", job.media_id)
@@ -141,7 +151,7 @@ class WhisperXProcessor:
 
         # ── stage 2: transcribe + word-align (WhisperX) ───────────────────────────
         lang = job.params.get("language") if isinstance(job.params, dict) else None
-        argv = align_argv(audio, work, self._model, lang, self._whisperx_bin)
+        argv = align_argv(audio, work, self._model, lang, self._whisperx_bin, self._device, self._compute_type)
         async for ev in self._run_stage("aligning", argv, _parse_whisperx_progress):
             yield ev
 
