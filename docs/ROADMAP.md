@@ -290,8 +290,19 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   rendered with the gradient bar at 68%, "Separating vocals…" label, and ✓Queued/✓Downloaded/
   ●Separating/Ready chips (docs/mocks/m7c7-processing-eyeson.png). Core 177 pass, build green,
   svelte-check 0/0.
-- [ ] **M7-C8** WhisperX align → word-timed lyrics artifact. **Done-when:** lyrics JSON with word
-  timestamps stored; unit test on shape.
+- [~] **M7-C8** WhisperX align → word-timed lyrics artifact. `whisperx.py`: PURE
+  `normalize_lyrics` (raw WhisperX segments → `{language, lines:[{start,end,text,words:[{word,
+  start,end}]}], words:[flat]}` — drops un-timed/blank words, derives line bounds from words,
+  rejects NaN/inf, skips untimed garbage lines), `is_valid_lyrics`, argv/path helpers — split from
+  the I/O `WhisperXProcessor` (download→align→normalize→write via the shared injectable runner).
+  `RoutingProcessor` dispatches by job type (stems→Demucs, align→WhisperX, score→Demucs); worker
+  builds it from its advertised CAPABILITIES (lazy imports keep torch off unless needed). requirements
+  pins whisperx==3.1.1. **Verified (no-ML):** 13 pytest — the done-when shape transform (lines +
+  flat words, every word word/start/end, line-bound derivation, NaN/inf + garbage rejection,
+  validity) + the download→align→write flow with a fake runner (artifact written + re-parsed),
+  local-source skip, missing-transcript + instrumental-no-words guards, routing dispatch. Worker
+  28→41 pass, core 177 / shared 25 green. **DEFERRED to a GPU box:** the real WhisperX alignment
+  (multi-GB torch) — same constraint as C5; flip `[~]`→`[x]` after a real align on a worker box.
 - [ ] **M7-C9** `+key/−key` pitch shift (ffmpeg/rubberband on the instrumental). **Done-when:**
   eyes-on: control strip shifts key on a `file` song.
 - [ ] **M7-C10** MediaStore `object` impl (MinIO/S3) for remote workers + env flip. **Done-when:**
