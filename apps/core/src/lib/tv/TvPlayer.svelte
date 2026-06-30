@@ -1,17 +1,18 @@
 <script lang="ts">
 	// One media surface (slot A or B). Renders YouTube iframe OR <video> per playMode.
 	// Reports ready/ended up so the GaplessController can orchestrate the swap.
-	import type { Media } from '@encore/shared';
+	import { keyedMediaRef, type Media } from '@encore/shared';
 	interface Props {
 		media: Media | null;
 		visible: boolean;
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
+		keyShift?: number; // ± semitones for a file song (M7-C9) — selects the keyed instrumental
 		onready?: () => void;
 		onended?: () => void;
 		onerror?: () => void; // dead/unplayable media — caller should skip
 		onposition?: (sec: number, dur: number) => void;
 	}
-	let { media, visible, active, onready, onended, onerror, onposition }: Props = $props();
+	let { media, visible, active, keyShift = 0, onready, onended, onerror, onposition }: Props = $props();
 
 	let video: HTMLVideoElement | undefined = $state();
 
@@ -23,7 +24,8 @@
 	});
 
 	function fileSrc(m: Media): string {
-		return `/media/${m.sourceRef}`;
+		// resolve the keyed instrumental variant for the active slot (0 → the original file)
+		return `/media/${keyedMediaRef(m.sourceRef, active ? keyShift : 0)}`;
 	}
 	function ytEmbed(m: Media): string {
 		// muted preload when hidden; autoplay+unmuted when active+visible

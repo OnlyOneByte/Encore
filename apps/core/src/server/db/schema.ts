@@ -58,7 +58,8 @@ export const playbackState = sqliteTable('playback_state', {
 	id: text('id').primaryKey().default('singleton'),
 	currentEntryId: text('current_entry_id'),
 	positionSec: integer('position_sec').notNull().default(0),
-	isPlaying: integer('is_playing', { mode: 'boolean' }).notNull().default(false)
+	isPlaying: integer('is_playing', { mode: 'boolean' }).notNull().default(false),
+	keyShift: integer('key_shift').notNull().default(0) // semitones (M7-C9)
 });
 
 export const jobs = sqliteTable(

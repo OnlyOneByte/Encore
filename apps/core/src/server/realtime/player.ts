@@ -2,9 +2,9 @@
 // MVP scope (M3-C6): play/pause/seek/restart adjust the PlaybackState; skip/next advances the
 // current entry. The full gapless player state machine (advance-on-ended, upNext preload) is M5.
 
-import type { PlayerCommand, ServerEvent, QueueEntry } from '@encore/shared';
+import { clampKeyShift, type PlayerCommand, type ServerEvent, type QueueEntry } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
-import { nextPlayable, upNextAfter } from '../rotation/index';
+import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
 import type { HubDeps } from './hub';
 
 /** Emit nowplaying:changed with the current entry + the soonest-ready upNext (drives TV preload). */
@@ -42,7 +42,8 @@ function advance(deps: HubDeps): QueueEntry | null {
 	if (cur) state.applyQueueOp({ op: 'status', id: cur, status: 'done' });
 	const { next } = nextPlayable(state.entries, deps.mediaById);
 	if (next) state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
-	state.setPlayback({ currentEntryId: next?.id ?? null, positionSec: 0, isPlaying: !!next });
+	// keyShift resets to 0 on every song change — a new song starts in its original key.
+	state.setPlayback({ currentEntryId: next?.id ?? null, positionSec: 0, isPlaying: !!next, keyShift: 0 });
 	return next ?? null;
 }
 
@@ -55,7 +56,7 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 				const { next } = nextPlayable(state.entries, deps.mediaById);
 				if (next) {
 					state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
-					state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true });
+					state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true, keyShift: 0 });
 					break;
 				}
 			}
@@ -74,6 +75,16 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 		case 'skip':
 			advance(deps);
 			break;
+		case 'key': {
+			// ± key only applies to a make-karaoke (file) song whose stems are ready — a YouTube
+			// iframe can't be re-pitched. Clamp the absolute target to ±MAX_KEY_SHIFT. No-op otherwise.
+			const cur = state.entries.find((e) => e.id === state.playback.currentEntryId);
+			const media = cur && deps.mediaById.get(cur.mediaId);
+			if (cur && media && media.playMode === 'file' && isEntryReady(cur, deps.mediaById)) {
+				state.setPlayback({ keyShift: clampKeyShift(cmd.semitones) });
+			}
+			break;
+		}
 	}
 	deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 	emitNowPlaying(deps);

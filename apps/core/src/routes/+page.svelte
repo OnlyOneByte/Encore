@@ -15,7 +15,7 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
-	let playback = $state<PlaybackState>({ currentEntryId: null, positionSec: 0, isPlaying: false });
+	let playback = $state<PlaybackState>({ currentEntryId: null, positionSec: 0, isPlaying: false, keyShift: 0 });
 	// live make-karaoke progress per mediaId (M7-C7) — driven by media:status broadcasts.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 
@@ -183,6 +183,9 @@
 	}
 	// the entry that's currently playing (for the now-playing strip)
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
+	// key-shift is available only on a make-karaoke (file) song whose stems are ready (M7-C9)
+	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
+	const keyShiftEnabled = $derived(!!nowMedia && nowMedia.playMode === 'file' && nowMedia.stemStatus === 'ready');
 
 	// ── search (debounced + cancel-in-flight) ────────────────────────────────
 	let query = $state('');
@@ -363,9 +366,12 @@
 		title={mediaTitle(nowEntry.mediaId)}
 		sub={`${singerOf(nowEntry.singerId)?.displayName ?? 'Someone'} is singing`}
 		isPlaying={playback.isPlaying}
+		keyShiftEnabled={keyShiftEnabled}
+		keyShift={playback.keyShift}
 		onplaypause={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
 		onprev={() => sendPlayer({ cmd: 'restart' })}
 		onnext={() => sendPlayer({ cmd: 'skip' })}
+		onkey={(semitones) => sendPlayer({ cmd: 'key', semitones })}
 	/>
 {/if}
 

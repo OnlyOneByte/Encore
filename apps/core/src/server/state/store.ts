@@ -13,7 +13,7 @@ const NOOP_PERSIST: StatePersistence = { persist() {} };
 
 export class AuthoritativeState {
 	#entries: QueueEntry[] = [];
-	#playback: PlaybackState = { currentEntryId: null, positionSec: 0, isPlaying: false };
+	#playback: PlaybackState = { currentEntryId: null, positionSec: 0, isPlaying: false, keyShift: 0 };
 	#rev = 0;
 	#persistence: StatePersistence;
 	#flushTimer: ReturnType<typeof setTimeout> | null = null;

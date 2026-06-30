@@ -40,6 +40,31 @@ export interface PlaybackState {
   currentEntryId: string | null;
   positionSec: number;
   isPlaying: boolean;
+  keyShift: number; // semitones the current song is transposed (+sharp / -flat), 0 = original (M7-C9)
+}
+
+// How far the singer can transpose, in semitones (a perfect fifth either way — covers most voices).
+export const MAX_KEY_SHIFT = 7;
+
+/** Clamp a requested key shift to the supported ±MAX_KEY_SHIFT range (integer semitones). */
+export function clampKeyShift(semitones: number): number {
+  if (!Number.isFinite(semitones)) return 0;
+  return Math.max(-MAX_KEY_SHIFT, Math.min(MAX_KEY_SHIFT, Math.trunc(semitones)));
+}
+
+/**
+ * The MediaStore key for a file media at a given key shift. 0 → the original instrumental;
+ * ±N → the pre-rendered pitch-shifted variant (e.g. `stems/m1-instrumental.+2.wav`). The worker
+ * renders these (M7-C9); the TV resolves `/media/${keyedMediaRef(sourceRef, n)}`. A non-`.wav`/.mp4
+ * ref (e.g. a youtube iframe ref) is returned unchanged — keying only applies to file media.
+ */
+export function keyedMediaRef(sourceRef: string, keyShift: number): string {
+  const k = clampKeyShift(keyShift);
+  if (k === 0) return sourceRef;
+  const dot = sourceRef.lastIndexOf('.');
+  if (dot <= 0) return sourceRef; // no extension → not a keyable file ref
+  const sign = k > 0 ? `+${k}` : `${k}`;
+  return `${sourceRef.slice(0, dot)}.${sign}${sourceRef.slice(dot)}`;
 }
 
 export type JobType = 'stems' | 'align' | 'score';

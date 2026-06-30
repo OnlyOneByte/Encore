@@ -34,7 +34,10 @@ export type PlayerCommand =
   | { cmd: 'pause' }
   | { cmd: 'skip' }
   | { cmd: 'restart' }
-  | { cmd: 'seek'; positionSec: number };
+  | { cmd: 'seek'; positionSec: number }
+  // ± key on a make-karaoke (file) song. `semitones` is the ABSOLUTE target (not a delta), clamped
+  // server-side to ±MAX_KEY_SHIFT; the server picks the matching pre-rendered instrumental (M7-C9).
+  | { cmd: 'key'; semitones: number };
 
 export type ClientEvent =
   | { type: 'queue:command'; command: ClientCommand }
