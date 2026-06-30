@@ -9,7 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import protocol  # noqa: E402
-from src.dial_home import WorkerClient  # noqa: E402
+from src.dial_home import WorkerClient, _build_processor, _is_retryable  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent, StubProcessor  # noqa: E402
 
 
@@ -161,3 +161,26 @@ async def test_welcome_is_a_noop(tmp_path):
     client = make_client(sock, tmp_path)
     await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 30, "ackTimeoutSec": 10, "mediaStore": {"kind": "local"}})
     assert sock.sent == []
+
+
+def test_build_processor_selects_by_env(monkeypatch):
+    from src.processor import StubProcessor as Stub
+    from src.demucs import DemucsProcessor
+
+    monkeypatch.setenv("ENCORE_PROCESSOR", "stub")
+    assert isinstance(_build_processor(), Stub)
+    monkeypatch.setenv("ENCORE_PROCESSOR", "demucs")
+    assert isinstance(_build_processor(), DemucsProcessor)
+    monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
+    assert isinstance(_build_processor(), DemucsProcessor)  # default is the real pipeline
+
+
+def test_is_retryable_prefers_structured_flag():
+    from src.demucs import ProcessError
+
+    # structured .retryable wins over the string heuristic
+    assert _is_retryable(ProcessError(["demucs"], 1, "CUDA out of memory")) is True
+    assert _is_retryable(ProcessError(["yt-dlp"], 1, "ERROR: Video unavailable")) is False
+    # plain exceptions fall back to the substring heuristic
+    assert _is_retryable(RuntimeError("source not found")) is False
+    assert _is_retryable(RuntimeError("temporary blip")) is True

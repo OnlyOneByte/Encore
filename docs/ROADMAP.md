@@ -255,8 +255,19 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   `python -m src.dial_home` dialed a real `bun` core — registry went 0→1 worker, seeded job drove
   queued→ready (pct 100), media flipped stemStatus→ready, instrumental written to the volume.
   Core 167 / shared 25 / worker 14 all green; svelte-check 0/0.
-- [ ] **M7-C5** ★ Demucs `htdemucs` stems pipeline → instrumental written to MediaStore.
-  **Done-when:** a real song yields an instrumental track on the volume.
+- [~] **M7-C5** ★ Demucs `htdemucs` stems pipeline → instrumental written to MediaStore.
+  `demucs.py`: PURE helpers (yt-dlp/demucs argv builders, `--two-stems=vocals` → `no_vocals.wav`
+  path resolver, yt-dlp + tqdm progress parsers, permanent-vs-transient `classify_retryable` +
+  structured `ProcessError`) split from the I/O `DemucsProcessor` (download→separate→publish via an
+  INJECTABLE async runner; emits downloading→separating progress; local sources skip download).
+  Wired into `dial_home.py` as the env-selectable default (`ENCORE_PROCESSOR=demucs|stub`); the
+  failure path now honors `ProcessError.retryable`. **Verified (no-ML):** 14 pytest drive the full
+  download→separate→publish flow with a fake runner (canned CLI output, files faked) — youtube +
+  local-source paths, progress ramping, missing-output guard, retryable vs non-retryable failures;
+  worker suite 14→28, core 167 / shared 25 green. **DEFERRED to a GPU/worker box:** the real-ML
+  done-when ("a real song yields an instrumental on the volume") — needs the worker image (multi-GB
+  torch) + actual demucs/yt-dlp, which this aarch64 sandbox can't build/run. Code + tests are ready;
+  flip `[~]`→`[x]` after a real `docker compose --profile stems` run produces a real instrumental.
 - [ ] **M7-C6** ★ `playMode` flip iframe→file on `ready`; rotation **held-slot** real impl
   (keep seq, slot back when ready). **Done-when:** queue a make-karaoke song; it cooks, then
   plays gaplessly at its fair position.

@@ -119,17 +119,32 @@ class WorkerClient:
 
 
 def _is_retryable(exc: Exception) -> bool:
+    # Prefer a structured flag if the processor raised one (e.g. demucs.ProcessError classifies the
+    # CLI's stderr); otherwise fall back to a substring heuristic on the message.
+    structured = getattr(exc, "retryable", None)
+    if isinstance(structured, bool):
+        return structured
     # Source-gone / unsupported-format style failures are permanent; everything else may be transient.
     permanent = ("not found", "404", "unsupported", "corrupt")
     msg = str(exc).lower()
     return not any(p in msg for p in permanent)
 
 
+def _build_processor() -> Processor:
+    """Select the processor by env. Default is the real DemucsProcessor (M7-C5); set
+    ENCORE_PROCESSOR=stub for a no-ML smoke run (the path test / a torch-less box)."""
+    if os.environ.get("ENCORE_PROCESSOR", "demucs").lower() == "stub":
+        return StubProcessor()
+    from .demucs import DemucsProcessor  # lazy: keeps torch off the import path until selected
+
+    return DemucsProcessor(model=os.environ.get("ENCORE_DEMUCS_MODEL", "htdemucs"))
+
+
 async def _run_forever() -> None:
     """Production entry: connect, (re)announce, pump messages, reconnect with backoff on drop."""
     import websockets  # container-2 dependency; imported lazily so tests don't need it
 
-    processor: Processor = StubProcessor()  # M7-C5 replaces with DemucsProcessor
+    processor: Processor = _build_processor()
     while True:
         try:
             async with websockets.connect(CORE_URL) as ws:
