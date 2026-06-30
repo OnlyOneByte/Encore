@@ -242,9 +242,19 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   hello→accept→progress→**complete→ready**, reject/retry/terminal-fail, need-ordered dispatch,
   stale-worker guards) + **live WS smoke** (real worker socket drove a job to ready, media flipped).
   Core 145→167 pass, prod build green, svelte-check 0/0.
-- [ ] **M7-C4** ★ worker container: Python `dial_home` full + `Bun.spawn`-free pull/push via
-  MediaStore; `apps/worker/Dockerfile` (torch+ffmpeg). **Done-when:** `--profile stems` worker
-  registers with core.
+- [x] **M7-C4** ★ worker container: full dial-home loop. Pure `protocol.py` (message builders,
+  `WorkerState` capacity/capability gating, per-job-type stage plans) + pluggable `processor.py`
+  (`Processor` seam; `StubProcessor` walks the stage plan + writes a placeholder instrumental —
+  real Demucs swaps in at M7-C5 behind the same async-generator interface) + I/O `dial_home.py`
+  (`WorkerClient`: hello→welcome→assign→accept→progress*→complete, capacity-reject, cancel,
+  failure-with-retryable-flag, reconnect+backoff; processing runs as a concurrent task so ping/
+  cancel stay responsive). `apps/worker/Dockerfile` (python:3.12-slim + ffmpeg + pinned torch/
+  demucs, non-root uid 10001, writable model cache) + `requirements.txt`. **Verified:** 14 pytest
+  (protocol 5, dial-home 9 incl. full assign→complete + artifact written, capability/slot reject,
+  retryable vs permanent failure, ping→heartbeat, cancel) + **LIVE end-to-end**: the REAL
+  `python -m src.dial_home` dialed a real `bun` core — registry went 0→1 worker, seeded job drove
+  queued→ready (pct 100), media flipped stemStatus→ready, instrumental written to the volume.
+  Core 167 / shared 25 / worker 14 all green; svelte-check 0/0.
 - [ ] **M7-C5** ★ Demucs `htdemucs` stems pipeline → instrumental written to MediaStore.
   **Done-when:** a real song yields an instrumental track on the volume.
 - [ ] **M7-C6** ★ `playMode` flip iframe→file on `ready`; rotation **held-slot** real impl
