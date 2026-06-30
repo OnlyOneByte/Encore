@@ -46,14 +46,34 @@ test('hello → welcome handshake + dispatch of a waiting job', () => {
 
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
 
-	const welcome = cmdsOfType(sent, 'worker:welcome')[0];
+	const welcome = cmdsOfType(sent, 'worker:welcome')[0] as Extract<WorkerCommand, { type: 'worker:welcome' }>;
 	expect(welcome).toMatchObject({ type: 'worker:welcome', ackTimeoutSec: 10, heartbeatIntervalSec: 30 });
+	expect(welcome.mediaStore).toEqual({ kind: 'local' }); // default single-box store
 	const assign = cmdsOfType(sent, 'job:assign')[0] as Extract<WorkerCommand, { type: 'job:assign' }>;
 	expect(assign).toBeTruthy();
 	expect(assign.mediaId).toBe('m1');
 	expect(assign.jobType).toBe('stems');
 	expect(assign.sourceUri).toContain('youtube.com/watch?v=vid-m1');
 	expect(assign.params.model).toBe('htdemucs');
+});
+
+test('M7-C10: welcome carries the object-store config so a remote worker pulls/pushes via S3', () => {
+	const { db } = openDb(':memory:');
+	runMigrations(db, './drizzle');
+	const jobs = new JobRepository(db);
+	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
+	const hub = new WorkerHub({
+		jobs,
+		registry: new WorkerRegistry(),
+		mediaById: new Map<string, Media>(),
+		toWorker: (workerId, cmd) => sent.push({ workerId, cmd }),
+		broadcast: () => {},
+		mediaStore: { kind: 'object', bucket: 'encore-media', endpoint: 'https://minio.lan:9000', prefix: 'encore/' },
+		now: () => T0
+	});
+	hub.handle({ type: 'worker:hello', workerId: 'remote-w', capabilities: ['stems'], concurrency: 1, version: '1' });
+	const welcome = cmdsOfType(sent, 'worker:welcome')[0] as Extract<WorkerCommand, { type: 'worker:welcome' }>;
+	expect(welcome.mediaStore).toEqual({ kind: 'object', bucket: 'encore-media', endpoint: 'https://minio.lan:9000', prefix: 'encore/' });
 });
 
 test('FULL LIFECYCLE: hello → assign → accept → progress → complete drives the job to ready', () => {

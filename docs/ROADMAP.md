@@ -317,8 +317,21 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   worker 41→47 pass; svelte-check 0/0; build green. **DEFERRED to a worker box:** the actual ffmpeg
   pitch RENDER of the variants — this sandbox's ffmpeg is a stripped 16-filter build (no atempo/
   asetrate/rubberband); the worker image apt-installs full ffmpeg.
-- [ ] **M7-C10** MediaStore `object` impl (MinIO/S3) for remote workers + env flip. **Done-when:**
-  worker on a second box processes via object-store; integration test.
+- [x] **M7-C10** MediaStore `object` impl (MinIO/S3) for remote workers + env flip. Shared
+  `MediaStoreConfig` union (local | object{bucket,endpoint,region,prefix}) now types `worker:welcome`.
+  Core `media/store.ts`: PURE `resolveMediaStoreConfig` (env→config, object-without-bucket falls back
+  to local so the party always runs) + `normalizePrefix`/`objectKey`/`mediaProxyUrl` helpers +
+  `MediaStore` iface + `LocalMediaStore` (wraps safeMediaPath/Bun.file). `media/object-store.ts`:
+  `ObjectMediaStore` on Bun's native S3 (Bun.S3Client — no aws-sdk/minio dep; MinIO via custom
+  endpoint) behind an injectable `S3Like` seam; `url()` presigns a direct URL by default (bytes skip
+  the core) or proxies same-origin for a private bucket. Env-flip in app.ts (lazy S3 client); the
+  `/media` route now streams through the store; worker `mediastore.py` (PURE) parses the welcome
+  config + builds a local-no-op/object-upload publisher. **Done-when MET:** integration test drives
+  the second-box round trip — a remote worker publishes stems to a shared (fake-S3) bucket, the core
+  reads them back via the SAME prefixed key + presigns the TV URL; plus a LIVE env-flip boot probe
+  (MEDIA_STORE=object → kind:object with the resolved config; default → local, url→/media). Core
+  182→196, shared 30, worker 47→53 pass; svelte-check 0/0. (Real AWS/MinIO creds — the presign live
+  path — are a worker-box concern, like C5/C8/C9; the store selection + both round-trips are proven.)
 - [ ] **M7-C11** tag **v0.2.0 (stems)**.
 
 ---

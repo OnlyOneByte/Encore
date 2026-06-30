@@ -59,9 +59,15 @@ export type WorkerMessage =
   | { type: 'job:complete'; workerId: string; jobId: string; mediaUri: string; artifacts?: JobArtifacts }
   | { type: 'job:failed'; workerId: string; jobId: string; error: string; retryable: boolean };
 
+// Where workers pull source / push stems. local = a shared volume (single-box); object = S3/MinIO
+// for workers on other boxes (MASTER-DESIGN §2). Sent verbatim in worker:welcome (M7-C10).
+export type MediaStoreConfig =
+  | { kind: 'local' }
+  | { kind: 'object'; bucket: string; endpoint?: string; region?: string; prefix?: string };
+
 // core -> worker
 export type WorkerCommand =
-  | { type: 'worker:welcome'; heartbeatIntervalSec: number; ackTimeoutSec: number; mediaStore: { kind: 'local' | 'object'; [k: string]: unknown } }
+  | { type: 'worker:welcome'; heartbeatIntervalSec: number; ackTimeoutSec: number; mediaStore: MediaStoreConfig }
   | { type: 'job:assign'; jobId: string; mediaId: string; jobType: JobType; sourceUri: string; params: { model?: string; targetKey?: string } }
   | { type: 'job:cancel'; jobId: string; reason: string }
   | { type: 'ping' };

@@ -20,6 +20,7 @@ import os
 from typing import Any
 
 from . import protocol
+from .mediastore import MediaStoreConfig, parse_media_store
 from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubProcessor
 
 CORE_URL = os.environ.get("ENCORE_CORE_WS", "ws://localhost:3000/ws?role=worker")
@@ -43,6 +44,8 @@ class WorkerClient:
         self._processor = processor
         self._media_dir = media_dir
         self._version = version
+        # MediaStore config arrives in worker:welcome (M7-C10); local until then.
+        self.media_store = MediaStoreConfig(kind="local")
         self.state = protocol.WorkerState(
             worker_id=worker_id,
             capabilities=list(capabilities or CAPABILITIES),
@@ -60,7 +63,9 @@ class WorkerClient:
         """Dispatch one inbound core->worker command."""
         t = msg.get("type")
         if t == protocol.WELCOME:
-            return  # config handshake; nothing required from the worker
+            # config handshake: record where to read source / write stems (local volume vs S3/MinIO)
+            self.media_store = parse_media_store(msg)
+            return
         if t == protocol.PING:
             return await self.send_heartbeat()
         if t == protocol.ASSIGN:

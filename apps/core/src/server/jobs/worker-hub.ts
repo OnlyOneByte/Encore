@@ -13,7 +13,8 @@ import type {
 	MediaStatus,
 	Media,
 	Job,
-	JobStatus
+	JobStatus,
+	MediaStoreConfig
 } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
@@ -36,7 +37,7 @@ export interface WorkerHubDeps {
 	onMediaReady?: (mediaId: string) => void;
 	now: () => number;
 	config?: LeaseConfig;
-	mediaStore?: { kind: 'local' | 'object'; [k: string]: unknown };
+	mediaStore?: MediaStoreConfig;
 }
 
 /** Map a worker stage / job status to the phone-facing media:status (§5: stage maps 1:1). */

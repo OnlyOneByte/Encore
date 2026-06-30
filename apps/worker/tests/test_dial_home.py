@@ -157,10 +157,18 @@ async def test_cancel_frees_the_slot(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_welcome_is_a_noop(tmp_path):
+async def test_welcome_records_media_store_config_and_sends_nothing(tmp_path):
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 30, "ackTimeoutSec": 10, "mediaStore": {"kind": "local"}})
+    assert sock.sent == []  # welcome requires no reply
+    assert client.media_store.kind == "local"
+
+    # an object-store welcome is recorded so the worker pushes stems to S3 (M7-C10)
+    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 30, "ackTimeoutSec": 10,
+                         "mediaStore": {"kind": "object", "bucket": "encore-media", "prefix": "encore/"}})
+    assert client.media_store.kind == "object"
+    assert client.media_store.bucket == "encore-media"
     assert sock.sent == []
 
 
