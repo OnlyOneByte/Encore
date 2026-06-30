@@ -16,6 +16,7 @@ import { JobRepository } from './jobs/repository';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
+import { reconcileOnReady } from './realtime/player';
 import type { ServerEvent, Media, WorkerCommand } from '@encore/shared';
 
 export interface EncoreApp {
@@ -85,6 +86,10 @@ export function getApp(): EncoreApp {
 		mediaById,
 		toWorker: (workerId, cmd) => app.toWorker(workerId, cmd),
 		broadcast: (e) => app.publish(e),
+		// When a cooked song flips to ready, reconcile playback (start if the room idled / preload) —
+		// the held entry slots back at its fair position (M7-C6).
+		onMediaReady: () =>
+			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById }),
 		now: () => app.now()
 	});
 

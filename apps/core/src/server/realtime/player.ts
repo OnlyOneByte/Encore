@@ -14,6 +14,27 @@ export function emitNowPlaying(deps: HubDeps): void {
 	deps.publish({ type: 'nowplaying:changed', current: cur, upNext });
 }
 
+/**
+ * React to a make-karaoke song becoming ready (M7-C6 held-slot completion). Two cases:
+ *  • The room IDLED while it cooked (nothing playing) and this freshly-ready entry is now the
+ *    soonest playable → start it (it slots back at its preserved fair position).
+ *  • Something is already playing → just re-broadcast nowplaying so the TV preloads the now-ready
+ *    song as upNext. Either way playback:state/nowplaying are re-emitted so clients converge.
+ * No-op if the ready media has no queued entry (cooked ahead of being queued).
+ */
+export function reconcileOnReady(deps: HubDeps): void {
+	const { state } = deps;
+	if (!state.playback.currentEntryId) {
+		const { next } = nextPlayable(state.entries, deps.mediaById);
+		if (next) {
+			state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
+			state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true });
+			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
+		}
+	}
+	emitNowPlaying(deps);
+}
+
 /** Advance to the next playable entry (held-slot aware). Returns the new current (or null). */
 function advance(deps: HubDeps): QueueEntry | null {
 	const { state } = deps;

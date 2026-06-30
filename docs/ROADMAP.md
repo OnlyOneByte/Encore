@@ -268,9 +268,19 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   done-when ("a real song yields an instrumental on the volume") — needs the worker image (multi-GB
   torch) + actual demucs/yt-dlp, which this aarch64 sandbox can't build/run. Code + tests are ready;
   flip `[~]`→`[x]` after a real `docker compose --profile stems` run produces a real instrumental.
-- [ ] **M7-C6** ★ `playMode` flip iframe→file on `ready`; rotation **held-slot** real impl
-  (keep seq, slot back when ready). **Done-when:** queue a make-karaoke song; it cooks, then
-  plays gaplessly at its fair position.
+- [x] **M7-C6** ★ `playMode` flip iframe→file on `ready`; rotation **held-slot** real impl
+  (keep seq, slot back when ready). `make-karaoke.ts`: `requestMakeKaraoke` flips a media to a
+  cooking `file` (so rotation's `isEntryReady` auto-holds its slot) + enqueues a stems job at
+  need-priority (`soonestSeqFor`), idempotent + refuses the currently-playing song; `markMediaReady`
+  flips to the instrumental (`playMode:file`, `sourceRef:stems/<id>-instrumental.wav`, stems ready).
+  worker-hub `#onComplete` now calls `markMediaReady` + fires `onMediaReady`; player
+  `reconcileOnReady` starts the freshly-ready song if the room idled while cooking (else re-emits
+  nowplaying so the TV preloads it) — the held entry plays at its preserved seq. New
+  `POST /api/make-karaoke` (joined-singer gated). **Verified:** 17 unit tests (make-karaoke 7 incl.
+  the cook→held→ready→plays-at-slot round trip, reconcileOnReady 2, worker-hub flip+onMediaReady) +
+  **LIVE integration**: real core, HTTP join, WS queue, `/api/make-karaoke`, real worker drove the
+  job to ready → the held song played at its fair slot (current=the cooked song, upNext intact).
+  Core 167→177 pass, prod build green, svelte-check 0/0.
 - [ ] **M7-C7** ★ live progress UI: `media:status` → `ProcessingCard` bar (`Separating… 68%`) +
   stage chips. **Done-when:** eyes-on: phone shows live stages end-to-end.
 - [ ] **M7-C8** WhisperX align → word-timed lyrics artifact. **Done-when:** lyrics JSON with word

@@ -24,15 +24,17 @@ function harness() {
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const broadcasts: ServerEvent[] = [];
 	let clock = T0;
+	const readied: string[] = [];
 	const hub = new WorkerHub({
 		jobs,
 		registry,
 		mediaById,
 		toWorker: (workerId, cmd) => sent.push({ workerId, cmd }),
 		broadcast: (e) => broadcasts.push(e),
+		onMediaReady: (mediaId) => readied.push(mediaId),
 		now: () => clock
 	});
-	return { hub, jobs, registry, mediaById, sent, broadcasts, setClock: (t: number) => (clock = t) };
+	return { hub, jobs, registry, mediaById, sent, broadcasts, readied, setClock: (t: number) => (clock = t) };
 }
 
 const cmdsOfType = (sent: { cmd: WorkerCommand }[], type: WorkerCommand['type']) =>
@@ -76,10 +78,25 @@ test('FULL LIFECYCLE: hello → assign → accept → progress → complete driv
 	const done = jobs.byId(job.id)!;
 	expect(done.status).toBe('ready'); // ← drove to ready
 	expect(done.progressPct).toBe(100);
-	expect(mediaById.get('m1')!.stemStatus).toBe('ready'); // media flipped → rotation unblocks it
+	// M7-C6: media flips to the playable instrumental (playMode→file, sourceRef→stems key)
+	const m = mediaById.get('m1')!;
+	expect(m.stemStatus).toBe('ready');
+	expect(m.playMode).toBe('file');
+	expect(m.sourceRef).toBe('stems/m1-instrumental.wav');
 	const ready = broadcasts.at(-1) as Extract<ServerEvent, { type: 'media:status' }>;
 	expect(ready).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'ready' });
 	expect(registry.get('w1')!.slotsFree).toBe(1); // slot released on complete → free for new work
+});
+
+test('M7-C6: complete fires onMediaReady so the core reconciles playback', () => {
+	const { hub, jobs, mediaById, readied } = harness();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	expect(readied).toEqual([]); // not until complete
+	hub.handle({ type: 'job:complete', workerId: 'w1', jobId: job.id, mediaUri: 'x' });
+	expect(readied).toEqual(['m1']); // fired exactly once, after the media flip
+	expect(mediaById.get('m1')!.stemStatus).toBe('ready');
 });
 
 test('idempotency: accept/progress/complete from the WRONG worker or wrong state are ignored', () => {
