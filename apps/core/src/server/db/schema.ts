@@ -3,6 +3,7 @@
 // Mirrors the domain types in @encore/shared. See docs/MASTER-DESIGN.md §5.
 
 import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sql } from 'drizzle-orm';
 
 export const rooms = sqliteTable('rooms', {
 	id: text('id').primaryKey(),
@@ -60,23 +61,36 @@ export const playbackState = sqliteTable('playback_state', {
 	isPlaying: integer('is_playing', { mode: 'boolean' }).notNull().default(false)
 });
 
-export const jobs = sqliteTable('jobs', {
-	id: text('id').primaryKey(),
-	mediaId: text('media_id').notNull(),
-	jobType: text('job_type', { enum: ['stems', 'align', 'score'] }).notNull(),
-	status: text('status', {
-		enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']
+export const jobs = sqliteTable(
+	'jobs',
+	{
+		id: text('id').primaryKey(),
+		mediaId: text('media_id').notNull(),
+		jobType: text('job_type', { enum: ['stems', 'align', 'score'] }).notNull(),
+		status: text('status', {
+			enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']
+		})
+			.notNull()
+			.default('queued'),
+		priority: integer('priority').notNull().default(0),
+		attempts: integer('attempts').notNull().default(0),
+		maxAttempts: integer('max_attempts').notNull().default(3),
+		workerId: text('worker_id'),
+		stage: text('stage'),
+		progressPct: integer('progress_pct').notNull().default(0),
+		etaSec: integer('eta_sec'),
+		error: text('error'), // last failure message; surfaced to the singer's phone on terminal failure (§10)
+		leaseExpiresAt: integer('lease_expires_at'),
+		createdAt: integer('created_at').notNull(),
+		updatedAt: integer('updated_at').notNull()
+	},
+	// Dedup (job-lifecycle §6/§10): at most ONE live job per (mediaId, jobType). The index is
+	// PARTIAL — terminal jobs (failed/canceled) are excluded so a song can be re-processed after a
+	// failure or cancel. Two people queueing the same song → one compute; the DB enforces it even
+	// if a dispatch race slips past the application-level check.
+	(t) => ({
+		liveJobIdx: uniqueIndex('jobs_live_media_type_idx')
+			.on(t.mediaId, t.jobType)
+			.where(sql`${t.status} NOT IN ('failed', 'canceled')`)
 	})
-		.notNull()
-		.default('queued'),
-	priority: integer('priority').notNull().default(0),
-	attempts: integer('attempts').notNull().default(0),
-	maxAttempts: integer('max_attempts').notNull().default(3),
-	workerId: text('worker_id'),
-	stage: text('stage'),
-	progressPct: integer('progress_pct').notNull().default(0),
-	etaSec: integer('eta_sec'),
-	leaseExpiresAt: integer('lease_expires_at'),
-	createdAt: integer('created_at').notNull(),
-	updatedAt: integer('updated_at').notNull()
-});
+);

@@ -45,6 +45,14 @@ export interface PlaybackState {
 export type JobType = 'stems' | 'align' | 'score';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
+// Terminal states never leave; the dedup index ignores them so a song can be re-processed after
+// a failure/cancel. See docs/job-lifecycle-and-worker-protocol.md §2.
+export const TERMINAL_JOB_STATUSES = ['ready', 'failed', 'canceled'] as const;
+
+export function isTerminalJob(status: JobStatus): boolean {
+  return (TERMINAL_JOB_STATUSES as readonly JobStatus[]).includes(status);
+}
+
 export interface Job {
   id: string;
   mediaId: string;
@@ -52,8 +60,12 @@ export interface Job {
   status: JobStatus;
   priority: number; // mirror of soonest rotationSeq; lower = sooner
   attempts: number;
+  maxAttempts: number;
   workerId: string | null;
   stage: string | null;
   progressPct: number;
   etaSec: number | null;
+  leaseExpiresAt: number | null; // epoch ms; ack-lease or progress-lease deadline (M7-C2)
+  createdAt: number;
+  updatedAt: number;
 }
