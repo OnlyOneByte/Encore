@@ -8,6 +8,13 @@
       "when": 1782761129031,
       "tag": "0000_chubby_maestro",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1782833768338,
+      "tag": "0001_milky_vector",
+      "breakpoints": true
     }
   ]
 }

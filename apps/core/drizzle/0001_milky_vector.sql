@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `singers_session_token_idx` ON `singers` (`session_token`);

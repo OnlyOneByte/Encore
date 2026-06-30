@@ -9,8 +9,11 @@ dist/
 vite.config.ts.timestamp-*
 
 # data + media (runtime volumes — never commit)
-data/
-media/
+# ANCHORED to repo root (leading /) so these only match the runtime volume dirs, NOT source
+# directories like apps/core/src/server/media/ or apps/core/src/routes/media/. An un-anchored
+# `media/` previously matched those and silently excluded the entire M4 search subsystem from git.
+/data/
+/media/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm

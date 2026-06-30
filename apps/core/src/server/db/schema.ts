@@ -2,7 +2,7 @@
 // authoritative state (M1-C1); this is hydrated on boot and persisted asynchronously.
 // Mirrors the domain types in @encore/shared. See docs/MASTER-DESIGN.md §5.
 
-import { sqliteTable, text, integer } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
 
 export const rooms = sqliteTable('rooms', {
 	id: text('id').primaryKey(),
@@ -10,13 +10,20 @@ export const rooms = sqliteTable('rooms', {
 	createdAt: integer('created_at').notNull()
 });
 
-export const singers = sqliteTable('singers', {
-	id: text('id').primaryKey(),
-	displayName: text('display_name').notNull(),
-	color: text('color').notNull(),
-	sessionToken: text('session_token').notNull(),
-	joinedAt: integer('joined_at').notNull()
-});
+export const singers = sqliteTable(
+	'singers',
+	{
+		id: text('id').primaryKey(),
+		displayName: text('display_name').notNull(),
+		color: text('color').notNull(),
+		sessionToken: text('session_token').notNull(),
+		joinedAt: integer('joined_at').notNull()
+	},
+	// Finding #3: session_token is the auth lookup key (bySessionToken on every authed request).
+	// UNIQUE index = O(log n) lookup instead of a table scan AND prevents a (vanishingly unlikely
+	// but catastrophic) token collision from mapping two singers to one session.
+	(t) => ({ sessionTokenIdx: uniqueIndex('singers_session_token_idx').on(t.sessionToken) })
+);
 
 export const media = sqliteTable('media', {
 	id: text('id').primaryKey(),

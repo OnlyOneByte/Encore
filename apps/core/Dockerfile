@@ -19,9 +19,12 @@ FROM oven/bun:1.3-debian AS runtime
 WORKDIR /app/apps/core
 
 # system media tools: ffmpeg + yt-dlp (keyless YouTube). yt-dlp via the static binary.
+# Pinned (Finding #4): a bare :latest auto-deploys whatever upstream publishes — non-reproducible
+# and a supply-chain risk. Bump YT_DLP_VERSION deliberately.
+ARG YT_DLP_VERSION=2025.06.09
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates curl python3 \
-	&& curl -fsSL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
+	&& curl -fsSL "https://github.com/yt-dlp/yt-dlp/releases/download/${YT_DLP_VERSION}/yt-dlp" -o /usr/local/bin/yt-dlp \
 	&& chmod a+rx /usr/local/bin/yt-dlp \
 	&& apt-get purge -y curl && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
 
@@ -46,6 +49,11 @@ ENV PORT=3000 \
 	MEDIA_STORE=local
 VOLUME ["/app/data", "/app/media"]
 EXPOSE 3000
+
+# Run as the non-root `bun` user shipped by the base image (Finding #4): the app never needs root,
+# so don't give it root. Own the writable volumes + app tree to `bun` so SQLite/media writes work.
+RUN mkdir -p /app/data /app/media && chown -R bun:bun /app
+USER bun
 
 # server.ts owns Bun.serve (SvelteKit handler + WS hub) — the single process.
 CMD ["bun", "run", "server.ts"]

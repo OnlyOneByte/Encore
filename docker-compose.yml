@@ -2,8 +2,18 @@
 # so `docker compose up` runs ONLY core until you opt into stem-separation.
 #   MVP:        docker compose up
 #   With stems: docker compose --profile stems up
+# Container hardening (Finding #4): no-new-privileges + cap_drop ALL on every service. The app
+# is a plain HTTP/WS server that needs no Linux capabilities; dropping them shrinks the blast
+# radius of any RCE. Runs as non-root `bun` (see Dockerfile USER).
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
 services:
   core:
+    <<: *hardening
     build:
       context: . # repo root — the Dockerfile copies packages/shared + apps/core
       dockerfile: apps/core/Dockerfile
@@ -18,6 +28,7 @@ services:
     restart: unless-stopped
 
   worker:
+    <<: *hardening
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
