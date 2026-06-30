@@ -1,6 +1,6 @@
 // M5-C1 done-when: ended telemetry advances rotation, picks next by seq; nowplaying carries upNext.
 import { test, expect } from 'bun:test';
-import { handlePlayerCommand, handleTelemetry, emitNowPlaying } from './player';
+import { handlePlayerCommand, handleTelemetry, emitNowPlaying, reconcileOnReady } from './player';
 import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
 import { type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
@@ -69,4 +69,37 @@ test('held-slot: ended skips a not-ready file entry, plays the ready one', () =>
 	handleTelemetry({ positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
 	// q2 not ready -> held -> advance picks q3
 	expect(state.playback.currentEntryId).toBe('q3');
+});
+
+test('reconcileOnReady: room idled while cooking → the freshly-ready song starts playing', () => {
+	const { state, deps, published } = harness();
+	// the only queued song is a cooking file — nothing plays yet (room idle)
+	deps.mediaById.set('m1', { ...media('m1'), playMode: 'file', stemStatus: 'queued' });
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	expect(state.playback.currentEntryId).toBeNull();
+
+	// stems finish → media ready → reconcile starts it
+	deps.mediaById.set('m1', { ...media('m1'), playMode: 'file', stemStatus: 'ready' });
+	reconcileOnReady(deps);
+	expect(state.playback.currentEntryId).toBe('q1');
+	expect(state.playback.isPlaying).toBe(true);
+	expect(published.some((e) => e.type === 'playback:state')).toBe(true);
+	expect(published.at(-1)!.type).toBe('nowplaying:changed');
+});
+
+test('reconcileOnReady: something already playing → only re-emits nowplaying (no preemption)', () => {
+	const { state, deps, published } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') }); // ready iframe
+	deps.mediaById.set('m2', { ...media('m2'), playMode: 'file', stemStatus: 'queued' });
+	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') }); // cooking
+	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
+	const before = state.playback.currentEntryId;
+	published.length = 0;
+
+	deps.mediaById.set('m2', { ...media('m2'), playMode: 'file', stemStatus: 'ready' });
+	reconcileOnReady(deps);
+	expect(state.playback.currentEntryId).toBe(before); // q1 NOT preempted
+	// no new playback:state (we didn't change playback), just a nowplaying refresh so TV preloads m2
+	expect(published.every((e) => e.type !== 'playback:state')).toBe(true);
+	expect(published.some((e) => e.type === 'nowplaying:changed')).toBe(true);
 });

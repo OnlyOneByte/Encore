@@ -18,6 +18,7 @@ import type {
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
 import { planAssignments } from './dispatch';
+import { markMediaReady } from './make-karaoke';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
@@ -30,6 +31,9 @@ export interface WorkerHubDeps {
 	mediaById: Map<string, Media>;
 	toWorker: ToWorker; // send a WorkerCommand to ONE worker session
 	broadcast: Broadcast; // media:status to the whole room
+	/** Fired AFTER a media flips to ready (stems done): lets the core reconcile playback so a held
+	 *  song plays at its fair slot if the room idled while it cooked (M7-C6). Optional. */
+	onMediaReady?: (mediaId: string) => void;
 	now: () => number;
 	config?: LeaseConfig;
 	mediaStore?: { kind: 'local' | 'object'; [k: string]: unknown };
@@ -122,17 +126,18 @@ export class WorkerHub {
 		this.#emitStatus(updated, msg.stage);
 	}
 
-	/** running → ready (terminal): flip media to file/playable, free the slot, broadcast ready. */
+	/** running → ready (terminal): flip media to the playable instrumental, free the slot, broadcast
+	 *  ready, then let the core reconcile playback (a held song slots back at its fair position). */
 	#onComplete(msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
-		// flip the media so the held-slot entry becomes playable (M7-C6 wires playMode→file fully;
-		// here we mark stems ready so rotation's isEntryReady unblocks it).
-		const media = this.#d.mediaById.get(job.mediaId);
-		if (media) media.stemStatus = 'ready';
+		// Flip the media to ready: playMode→file, sourceRef→the instrumental key, stemStatus→ready.
+		// rotation's isEntryReady now returns true, so the held entry becomes playable at its slot.
+		markMediaReady(job.mediaId, this.#d.mediaById);
 		this.#d.registry.releaseSlot(msg.workerId);
 		this.#emitStatus(updated);
+		this.#d.onMediaReady?.(job.mediaId); // core reconciles playback (start if idle / preload)
 		this.dispatch();
 	}
 
