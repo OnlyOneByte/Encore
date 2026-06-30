@@ -15,6 +15,13 @@
       "when": 1782833768338,
       "tag": "0001_milky_vector",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1782836033315,
+      "tag": "0002_fresh_nomad",
+      "breakpoints": true
     }
   ]
 }

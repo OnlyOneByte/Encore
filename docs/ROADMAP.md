@@ -211,9 +211,14 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 
 ## M7 — Smart feature: make-karaoke (container 2)  → *ships: drop a song → stems* ★
 
-- [ ] **M7-C1** ★ job ledger (`src/server/jobs`): Drizzle `jobs` table, dedup `(mediaId,jobType)`,
-  state machine queued→assigned→running→ready/failed/canceled. **Done-when:** unit test: full
-  lifecycle + dedup + idempotent re-add.
+- [x] **M7-C1** ★ job ledger (`src/server/jobs`): pure state machine (`transitions.ts`,
+  queued→assigned→running→ready/failed/canceled, terminal-escape + skip rejected) split from the
+  I/O `JobRepository` (`repository.ts`); migration `0002` adds the `error` column + a **partial
+  unique index** `jobs_live_media_type_idx` on `(media_id, job_type) WHERE status NOT IN
+  ('failed','canceled')` so the DB itself enforces dedup (terminal jobs free the slot → re-process).
+  **Verified:** 15 unit tests — full lifecycle, idempotent re-add (reuses the live job), per-key
+  dedup, slot-freed-on-terminal re-add, **DB index rejects a race-inserted dup**, requeue clears
+  owner/lease, illegal-transition + unknown-id throws. Core suite 117→132 pass, svelte-check 0/0.
 - [ ] **M7-C2** ★ leases + reaper (ack 10s / progress 30s), boot resets assigned/running→queued.
   **Done-when:** unit test: stalled job requeues; boot recovery clears in-flight.
 - [ ] **M7-C3** ★ dial-home worker protocol on core: `worker:hello/heartbeat`, dispatch by
