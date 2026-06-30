@@ -9,6 +9,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import protocol  # noqa: E402
+from src import dial_home as dh  # noqa: E402
 from src.dial_home import WorkerClient, _build_processor, _is_retryable  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent, StubProcessor  # noqa: E402
 
@@ -163,16 +164,45 @@ async def test_welcome_is_a_noop(tmp_path):
     assert sock.sent == []
 
 
-def test_build_processor_selects_by_env(monkeypatch):
+def test_build_processor_stub_override(monkeypatch):
     from src.processor import StubProcessor as Stub
-    from src.demucs import DemucsProcessor
 
     monkeypatch.setenv("ENCORE_PROCESSOR", "stub")
     assert isinstance(_build_processor(), Stub)
-    monkeypatch.setenv("ENCORE_PROCESSOR", "demucs")
-    assert isinstance(_build_processor(), DemucsProcessor)
+
+
+def test_build_processor_routes_by_capability(monkeypatch):
+    # default CAPABILITIES = ["stems"] → a RoutingProcessor that maps stems→Demucs
+    from src.processor import RoutingProcessor
+    from src.demucs import DemucsProcessor
+    from src.whisperx import WhisperXProcessor
+
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
-    assert isinstance(_build_processor(), DemucsProcessor)  # default is the real pipeline
+    p = _build_processor()
+    assert isinstance(p, RoutingProcessor)
+    by_type = p._by_type  # introspect the routing table
+    assert isinstance(by_type["stems"], DemucsProcessor)
+    assert isinstance(by_type["score"], DemucsProcessor)  # score reuses stems separation
+    assert "align" not in by_type  # not advertised by default
+
+    # a worker advertising align gets a WhisperXProcessor for it
+    monkeypatch.setattr(dh, "CAPABILITIES", ["stems", "align"])
+    p2 = _build_processor()
+    assert isinstance(p2._by_type["align"], WhisperXProcessor)
+
+
+@pytest.mark.asyncio
+async def test_routing_processor_dispatches_by_job_type(tmp_path):
+    # RoutingProcessor.process picks the sub-processor by job.job_type; unknown → raises
+    from src.processor import RoutingProcessor, JobSpec, StubProcessor
+
+    routed = RoutingProcessor({"stems": StubProcessor()})
+    stems_job = JobSpec(job_id="j", media_id="m", job_type="stems", source_uri="x", params={}, media_dir=str(tmp_path))
+    events = [ev async for ev in routed.process(stems_job)]
+    assert events  # stub ran
+    with pytest.raises(RuntimeError, match="no processor for job type"):
+        bad = JobSpec(job_id="j", media_id="m", job_type="align", source_uri="x", params={}, media_dir=str(tmp_path))
+        [ev async for ev in routed.process(bad)]
 
 
 def test_is_retryable_prefers_structured_flag():

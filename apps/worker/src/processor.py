@@ -74,3 +74,18 @@ class StubProcessor:
 def instrumental_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's instrumental stem (single-box local volume)."""
     return os.path.join(media_dir, "stems", f"{media_id}-instrumental.wav")
+
+
+class RoutingProcessor:
+    """Dispatch a job to the right sub-processor by job_type (e.g. stems→Demucs, align→WhisperX).
+    A worker advertising multiple capabilities runs one RoutingProcessor; unknown types raise (the
+    dial-home loop reports a failure). Keeps dial_home.py agnostic to which pipeline runs."""
+
+    def __init__(self, by_type: dict[str, Processor]) -> None:
+        self._by_type = by_type
+
+    def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
+        proc = self._by_type.get(job.job_type)
+        if proc is None:
+            raise RuntimeError(f"no processor for job type: {job.job_type}")
+        return proc.process(job)

@@ -4,5 +4,5 @@
 websockets==15.0.1
 torch==2.3.1
 demucs==4.0.1
-# WhisperX (word-aligned lyrics) lands in M7-C8; pinned here so the image is ready.
-# whisperx==3.1.1
+# WhisperX (word-aligned lyrics, M7-C8). Pulls faster-whisper + the alignment models on first run.
+whisperx==3.1.1

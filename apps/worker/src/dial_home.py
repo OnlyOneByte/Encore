@@ -131,13 +131,27 @@ def _is_retryable(exc: Exception) -> bool:
 
 
 def _build_processor() -> Processor:
-    """Select the processor by env. Default is the real DemucsProcessor (M7-C5); set
-    ENCORE_PROCESSOR=stub for a no-ML smoke run (the path test / a torch-less box)."""
-    if os.environ.get("ENCORE_PROCESSOR", "demucs").lower() == "stub":
+    """Build the processor from this worker's CAPABILITIES. ENCORE_PROCESSOR=stub forces the no-ML
+    StubProcessor (path test / torch-less box). Otherwise a RoutingProcessor dispatches by job type:
+    stems→DemucsProcessor (M7-C5), align→WhisperXProcessor (M7-C8). Imports are lazy so torch only
+    loads for the capabilities this worker actually advertises."""
+    if os.environ.get("ENCORE_PROCESSOR", "real").lower() == "stub":
         return StubProcessor()
-    from .demucs import DemucsProcessor  # lazy: keeps torch off the import path until selected
 
-    return DemucsProcessor(model=os.environ.get("ENCORE_DEMUCS_MODEL", "htdemucs"))
+    from .processor import RoutingProcessor
+
+    by_type: dict[str, Processor] = {}
+    if "stems" in CAPABILITIES or "score" in CAPABILITIES:
+        from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
+
+        demucs = DemucsProcessor(model=os.environ.get("ENCORE_DEMUCS_MODEL", "htdemucs"))
+        by_type["stems"] = demucs
+        by_type["score"] = demucs  # scoring (M8) reuses the stems separation
+    if "align" in CAPABILITIES:
+        from .whisperx import WhisperXProcessor
+
+        by_type["align"] = WhisperXProcessor(model=os.environ.get("ENCORE_WHISPERX_MODEL", "base"))
+    return RoutingProcessor(by_type)
 
 
 async def _run_forever() -> None:
