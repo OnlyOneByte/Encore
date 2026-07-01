@@ -344,7 +344,11 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   ran the REAL `ObjectMediaStore`+`bunS3Client` against a live MinIO (S3 API) — put/get/exists
   round-trip + a genuine SigV4 presigned URL that **fetched back over HTTP 200 with matching bytes**
   (the exact path a credential-less probe couldn't reach). Done-when fully closed.
-- [ ] **M7-C11** tag **v0.2.0 (stems)**.
+- [x] **M7-C11** tag **v0.2.0 (stems)**. Every stems/lyrics sub-task (C1–C10) real-ML verified
+  against actual binaries before the tag — Demucs `htdemucs` two-stem (torch 2.8, diff-RMS 125.9),
+  WhisperX wav2vec2 forced-alignment on LRCLIB text (9 monotonic word timings), ffmpeg ±key pitch
+  (440→659 Hz), and a live MinIO SigV4 presign (HTTP 200, matching bytes). Annotated tag authored
+  `OnlyOneByte`, mirroring v0.1.0. **M7 milestone COMPLETE — make-karaoke/stems SHIPPED (v0.2.0).**
 
 ---
 
