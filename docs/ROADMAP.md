@@ -265,12 +265,12 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   download→separate→publish flow with a fake runner (canned CLI output, files faked) — youtube +
   local-source paths, progress ramping, missing-output guard, retryable vs non-retryable failures;
   worker suite 14→28, core 167 / shared 25 green. **REAL-ML VERIFIED (2026-06-30, aarch64/CPU):**
-  built the worker image (torch 2.3.1 + torchaudio 2.3.1 + demucs 4.0.1) and ran the REAL
-  `DemucsProcessor` on a 12s clip — htdemucs wrote both `vocals.wav` and the instrumental
-  (`clip-instrumental.wav`), and the instrumental is acoustically distinct from the source
+  built the worker image and ran the REAL `DemucsProcessor` on a 12s clip — htdemucs wrote both
+  `vocals.wav` and the instrumental (`clip-instrumental.wav`), acoustically distinct from the source
   (diff-signal RMS 85.6 vs src 1448 → genuine separation, not a passthrough). The build surfaced +
-  fixed a real reproducibility bug: an unpinned `torchaudio` resolved to 2.11 (ABI-incompatible with
-  torch 2.3.1, `undefined symbol aoti_torch_abi_version`) → pinned `torchaudio==2.3.1`. Done-when met.
+  fixed a real reproducibility bug: an unpinned `torchaudio` resolves to an ABI-incompatible wheel
+  (`undefined symbol aoti_torch_abi_version`) → torchaudio pinned to torch's exact minor. Re-verified
+  on the C8 coupled bump: htdemucs still separates on **torch 2.8** (diff-RMS 125.9). Done-when met.
 - [x] **M7-C6** ★ `playMode` flip iframe→file on `ready`; rotation **held-slot** real impl
   (keep seq, slot back when ready). `make-karaoke.ts`: `requestMakeKaraoke` flips a media to a
   cooking `file` (so rotation's `isEntryReady` auto-holds its slot) + enqueues a stems job at
@@ -293,29 +293,24 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   rendered with the gradient bar at 68%, "Separating vocals…" label, and ✓Queued/✓Downloaded/
   ●Separating/Ready chips (docs/mocks/m7c7-processing-eyeson.png). Core 177 pass, build green,
   svelte-check 0/0.
-- [~] **M7-C8** WhisperX align → word-timed lyrics artifact. `whisperx.py`: PURE
-  `normalize_lyrics` (raw WhisperX segments → `{language, lines:[{start,end,text,words:[{word,
-  start,end}]}], words:[flat]}` — drops un-timed/blank words, derives line bounds from words,
-  rejects NaN/inf, skips untimed garbage lines), `is_valid_lyrics`, argv/path helpers — split from
-  the I/O `WhisperXProcessor` (download→align→normalize→write via the shared injectable runner).
-  `RoutingProcessor` dispatches by job type (stems→Demucs, align→WhisperX, score→Demucs); worker
-  builds it from its advertised CAPABILITIES (lazy imports keep torch off unless needed). requirements
-  pins whisperx==3.1.1. **Verified (no-ML):** 13 pytest — the done-when shape transform (lines +
-  flat words, every word word/start/end, line-bound derivation, NaN/inf + garbage rejection,
-  validity) + the download→align→write flow with a fake runner (artifact written + re-parsed),
-  local-source skip, missing-transcript + instrumental-no-words guards, routing dispatch. Worker
-  28→41 pass, core 177 / shared 25 green. **REAL-ML BLOCKED ON A COUPLED TORCH BUMP (investigated
-  2026-06-30):** walking the real worker image forward fixed three genuine bugs en route — float16
-  compute crashes on CPU (added `--device`/`--compute_type int8` to `align_argv` + a GPU-override
-  seam; +1 test), numpy 2.0 removed `np.NaN` (pinned `numpy<2`), faster-whisper API drift. But the
-  hard blocker is a VERSION-SET CONFLICT, not a pin: whisperx 3.1.1's `load_model` passes the
-  faster-whisper **0.10.x** `TranscriptionOptions` field set, yet 0.10.x has **no cp312 wheel**
-  (sdist build fails on py3.12) and faster-whisper **≥1.0 adds required fields 3.1.1 never passes**
-  (`TypeError` at model load); meanwhile **modern whisperx 3.8.x requires torch≥2.4** while
-  **demucs 4.0.1 holds torch at 2.3.1**. So C8 needs a deliberate `torch≥2.4 + demucs + whisperx`
-  bump *together* (a version-set task best done on the GPU/worker box), NOT another blind pin. The
-  CPU-compute fix + the route/normalize code are ready; requirements left at the buildable floor
-  (`whisperx==3.1.1` + `faster-whisper==1.0.3` + `numpy<2`) so the image still builds and C5 runs.
+- [x] **M7-C8** ★ HYBRID word-timed lyrics: LRCLIB known text + WhisperX **forced-alignment**
+  (not ASR-transcribe — feeding WhisperX correct human-authored lyrics + audio and using its
+  wav2vec2 `align()` to place WORD timings is far more robust than transcribing sung vocals).
+  `lyrics_source.py`: LRCLIB client (free no-auth synced-lyrics DB) behind an INJECTABLE fetcher +
+  PURE LRC parser (multi-timestamp, fraction forms, `[offset:]`, metadata skip) + segment builders
+  + line-synced artifact shape (15 tests). `whisperx.py` rewritten to the hybrid: fetch source →
+  LRCLIB → `Aligner` seam (`WhisperxForcedAligner` = real `load_align_model`+`align`, injectable
+  fake in tests) → word-timed artifact, with **graceful fallback to LRCLIB line-sync** if the
+  aligner is unavailable/errors (feature always ships lyrics). Coupled version-set bumped together
+  (Stage 1): `torch 2.8 + torchaudio 2.8 + torchvision 0.23 + demucs 4.0.1 + whisperx 3.8.6`
+  (numpy 2.5, faster-whisper 1.2) — the only combo that installs on py3.12/aarch64; the old 3.1.1
+  pin was a dead end (its faster-whisper 0.10.x has no cp312 wheel; ≥1.0 breaks its
+  TranscriptionOptions API). **Verified:** worker 41→70 pytest (LRCLIB parse/segment/client 15 +
+  hybrid flow with fake LRCLIB+fake aligner: download→align→word-timed, aligner-failure→line-sync
+  fallback, instrumental/no-lyrics/missing-params guards) + **REAL-ML (2026-07-01, aarch64/CPU):**
+  the real `WhisperxForcedAligner` ran `whisperx.align` on wav2vec2 (360MB model) through the real
+  `WhisperXProcessor` against known text + a speech clip → **9 monotonic word timings on the exact
+  provided text** (`the`[0.32] `quick`[0.41] `brown`[0.66] `fox`[1.09] …). Core 196 / shared 30 green.
 - [x] **M7-C9** `+key/−key` pitch shift (ffmpeg/rubberband on the instrumental). Shared:
   `PlaybackState.keyShift` (semitones) + `clampKeyShift`/`keyedMediaRef` (signed variant before the
   ext, e.g. `m1-instrumental.+2.wav`) + `MAX_KEY_SHIFT=7`; `PlayerCommand` += `{cmd:'key',semitones}`

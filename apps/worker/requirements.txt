@@ -1,24 +1,19 @@
 # Encore worker (container 2) — pinned deps for reproducible builds (no bare latest; Finding #4).
-# Torch + Demucs are multi-GB ML; quarantined in this container, never in the MVP image.
+# Torch + Demucs + WhisperX are multi-GB ML; quarantined in this container, never in the MVP image.
 # CPU wheels by default; a GPU image overrides the torch index at build time.
+#
+# COUPLED VERSION-SET (M7-C8, resolved 2026-07-01): demucs (stems) and whisperx (forced-align lyrics)
+# share one torch. whisperx 3.8.6 pins torch~=2.8 / torchaudio~=2.8 / torchvision~=0.23 / numpy>=2.1
+# / faster-whisper>=1.2 / pyannote-audio>=4; demucs 4.0.1 is torch>=2.0 so it rides torch 2.8 fine.
+# torchaudio/torchvision MUST match torch's minor exactly (an unpinned torchaudio drifts to a newer
+# wheel with an incompatible C++ ABI → ImportError undefined symbol). pip's resolver produced this
+# exact conflict-free set on py3.12/aarch64 — do NOT single-pin any one of these without re-resolving.
 websockets==15.0.1
-torch==2.3.1
-# torchaudio MUST match torch's minor exactly — an unpinned torchaudio resolves to the latest wheel
-# (e.g. 2.11) whose C++ ABI is incompatible with torch 2.3.1 (ImportError: undefined symbol
-# aoti_torch_abi_version). demucs + whisperx both load torchaudio, so this breaks the whole worker.
-torchaudio==2.3.1
+torch==2.8.0
+torchaudio==2.8.0
+torchvision==0.23.0
 demucs==4.0.1
-# WhisperX (word-aligned lyrics, M7-C8). Image BUILDS + imports clean with this pin set, so the
-# worker is deployable and Demucs htdemucs (M7-C5) runs end-to-end. The WhisperX *alignment run* is
-# the one open item, blocked on a COUPLED torch version-set (see ROADMAP M7-C8): whisperx 3.1.1's
-# load_model passes the faster-whisper 0.10.x TranscriptionOptions field set, but 0.10.x has NO
-# cp312 wheel (sdist build fails on py3.12) and faster-whisper >=1.0 ADDED required fields 3.1.1
-# never passes (TypeError at load); meanwhile the modern whisperx (3.8.x) REQUIRES torch>=2.4 while
-# demucs 4.0.1 holds torch at 2.3.1. Resolving C8 = a deliberate torch>=2.4 + demucs + whisperx bump
-# together (a version-set task for a GPU/worker box), NOT another blind pin.
-whisperx==3.1.1
-# faster-whisper 1.0.3 + numpy<2 keep the IMAGE BUILDABLE and whisperx IMPORTABLE on py3.12 (numpy 2
-# removed np.NaN that whisperx-era pyannote uses; an unpinned faster-whisper 1.2.x errors similarly).
-# These are the build-floor pins; they do NOT make the align run succeed — that needs the torch bump.
-faster-whisper==1.0.3
-numpy<2
+# WhisperX (M7-C8) — forced-alignment mode: we feed it KNOWN lyrics text (from LRCLIB) + audio and
+# use its wav2vec2 align() to produce WORD timings, rather than trusting ASR to transcribe sung
+# vocals. 3.8.6 is the modern line that installs on py3.12 and matches faster-whisper 1.2's API.
+whisperx==3.8.6
