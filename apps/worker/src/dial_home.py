@@ -155,12 +155,9 @@ def _build_processor() -> Processor:
     if "align" in CAPABILITIES:
         from .whisperx import WhisperXProcessor
 
-        by_type["align"] = WhisperXProcessor(
-            model=os.environ.get("ENCORE_WHISPERX_MODEL", "base"),
-            # CPU-safe defaults (int8); a GPU worker sets ENCORE_WHISPERX_DEVICE=cuda + COMPUTE=float16.
-            device=os.environ.get("ENCORE_WHISPERX_DEVICE", "cpu"),
-            compute_type=os.environ.get("ENCORE_WHISPERX_COMPUTE", "int8"),
-        )
+        # Hybrid forced-alignment (M7-C8): LRCLIB known text + WhisperX wav2vec2 align().
+        # device cpu by default; a GPU worker sets ENCORE_WHISPERX_DEVICE=cuda.
+        by_type["align"] = WhisperXProcessor(device=os.environ.get("ENCORE_WHISPERX_DEVICE", "cpu"))
     return RoutingProcessor(by_type)
 
 

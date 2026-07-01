@@ -1,51 +1,35 @@
-"""Word-aligned lyrics pipeline (M7-C8): yt-dlp (fetch) → WhisperX (transcribe + word-align) →
-normalized lyrics JSON written to the MediaStore (consumed by the M8 bouncing-ball TV overlay).
+"""Word-aligned lyrics pipeline (M7-C8, HYBRID): yt-dlp (fetch) → LRCLIB (known lyrics text) →
+WhisperX FORCED-ALIGNMENT (word timings on the correct text) → normalized lyrics JSON written to
+the MediaStore (consumed by the M8 bouncing-ball TV overlay).
 
-The PURE half (argv, raw-WhisperX→normalized-lyrics transform, validation, lyrics path) has no
-subprocess / torch and is fully shape-tested. The I/O half (WhisperXProcessor) reuses demucs.py's
-injectable Runner / ProcessError, so the download→align→write flow tests with a fake runner — the
-real WhisperX (multi-GB torch) only runs on a worker box / GPU. Mirrors demucs.py / ytdlp.ts.
+Why hybrid: WhisperX transcribing sung vocals from scratch is the unreliable ASR path. Instead we
+pull HUMAN-authored lyrics from LRCLIB (Stage 2) and use WhisperX's wav2vec2 `align()` to place
+WORD timestamps on that KNOWN text — far more robust. If the aligner is unavailable (no model /
+aarch64 torchcodec gap / a raised error) we FALL BACK to LRCLIB's line-level sync, so the feature
+still ships lyrics.
+
+The PURE half (segment build, align-output→normalized transform, validity) has no torch and is
+fully unit-tested via an INJECTABLE Aligner seam + a fake fetcher; the real WhisperX + LRCLIB fetch
+run only on a worker box. Mirrors demucs.py / lyrics_source.py.
 """
 from __future__ import annotations
 
 import json
 import os
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable, Protocol
 
 from .demucs import Runner, download_argv, is_local_source, parse_ytdlp_progress, subprocess_runner
+from .lyrics_source import (
+    LrclibClient,
+    entries_to_segments,
+    is_line_synced,
+    line_synced_lyrics,
+    parse_lrc,
+    plain_lyrics_to_segments,
+)
 from .processor import CompleteResult, JobSpec, ProgressEvent
 
-DEFAULT_MODEL = "base"  # WhisperX ASR model; bump to small/medium on a GPU box
-
-
-# ── pure helpers (no IO) ─────────────────────────────────────────────────────────
-def align_argv(audio_path: str, out_dir: str, model: str = DEFAULT_MODEL, lang: str | None = None,
-               whisperx_bin: str = "whisperx", device: str = "cpu", compute_type: str = "int8") -> list[str]:
-    """whisperx argv: transcribe + word-align to JSON. `--output_format json` emits one .json next
-    to the audio under out_dir; --language pins it (skips autodetect) when the caller knows it.
-
-    CRITICAL: whisperx/faster-whisper DEFAULT to compute_type=float16, which CPU backends CANNOT run
-    (ValueError: Requested float16 compute type ... not supported). A CPU worker MUST pass int8 (the
-    standard CPU choice); a GPU worker overrides device=cuda + compute_type=float16."""
-    argv = [
-        whisperx_bin,
-        audio_path,
-        "--model", model,
-        "--output_format", "json",
-        "--output_dir", out_dir,
-        "--device", device,
-        "--compute_type", compute_type,
-        "--print_progress", "True",
-    ]
-    if lang:
-        argv += ["--language", lang]
-    return argv
-
-
-def whisperx_json_path(out_dir: str, audio_path: str) -> str:
-    """WhisperX writes <out_dir>/<audio-basename-without-ext>.json."""
-    base = os.path.splitext(os.path.basename(audio_path))[0]
-    return os.path.join(out_dir, f"{base}.json")
+DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2
 
 
 def lyrics_key(media_id: str) -> str:
@@ -64,15 +48,16 @@ def _round_ms(x: Any) -> float | None:
     return round(v, 3)
 
 
+# ── pure: WhisperX align output → normalized artifact ────────────────────────────────
 def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
-    """Transform raw WhisperX output into the normalized lyrics artifact the TV overlay consumes.
+    """Transform WhisperX (transcribe OR align) output into the artifact the TV overlay consumes.
 
-    Raw WhisperX shape: { language, segments: [{ start, end, text, words: [{word,start,end,score}] }] }.
-    Normalized shape:   { language, lines: [{ start, end, text, words: [{word,start,end}] }],
-                          words: [flattened {word,start,end}] }.
-    Defensive: drops words missing usable start/end (WhisperX leaves timings null for some tokens),
-    derives a line's [start,end] from its words when the segment-level ones are absent, and skips
-    empty lines — the model's output is UNTRUSTED, so we never assume a field is present/valid.
+    Input shape:  { language?, segments: [{ start, end, text, words: [{word,start,end,score}] }] }.
+    Output shape: { language, lines: [{ start, end, text, words: [{word,start,end}] }],
+                    words: [flattened {word,start,end}] }.
+    Defensive: drops words missing usable start/end (whisperx align leaves some tokens un-timed),
+    derives a line's [start,end] from its words when segment bounds are absent, and drops a segment
+    that has neither timed words nor line bounds — model output is UNTRUSTED.
     """
     language = raw.get("language") if isinstance(raw.get("language"), str) else None
     lines: list[dict[str, Any]] = []
@@ -96,15 +81,13 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         text = seg.get("text")
         line_text = text.strip() if isinstance(text, str) else " ".join(w["word"] for w in words)
         if not line_text:
-            continue  # nothing to show
+            continue
         l_start = _round_ms(seg.get("start"))
         l_end = _round_ms(seg.get("end"))
         if l_start is None and words:
             l_start = words[0]["start"]
         if l_end is None and words:
             l_end = words[-1]["end"]
-        # A line needs SOME timing to be useful to the overlay: timed words (bouncing ball) or
-        # line-level bounds (whole-line highlight). No words + no bounds = untimed garbage → drop.
         if not words and (l_start is None or l_end is None):
             continue
         lines.append({"start": l_start, "end": l_end, "text": line_text, "words": words})
@@ -113,33 +96,108 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
 
 
 def is_valid_lyrics(doc: dict[str, Any]) -> bool:
-    """A usable lyrics artifact has at least one line with at least one timed word."""
+    """A WORD-timed artifact: ≥1 line with ≥1 timed word (the forced-alignment success bar)."""
     lines = doc.get("lines")
     if not isinstance(lines, list) or not lines:
         return False
     return any(isinstance(l, dict) and l.get("words") for l in lines)
 
 
-# ── the processor ──────────────────────────────────────────────────────────────────
-class WhisperXProcessor:
-    """Production processor for `align` jobs (M7-C8). Fetch the source (yt-dlp, unless local), run
-    WhisperX transcribe+align, normalize the raw JSON into the lyrics artifact, and write it to the
-    MediaStore. Same async-generator interface as the other processors — dial_home.py is unchanged."""
+def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str, Any]]:
+    """Turn an LrclibResult into the [{start,end,text}] transcript the aligner consumes: prefer the
+    line-timed syncedLyrics (LRC), else evenly distribute plainLyrics across the track. Empty if the
+    track is instrumental / has no usable lyrics."""
+    if res is None or getattr(res, "instrumental", False):
+        return []
+    if getattr(res, "has_synced", False):
+        return entries_to_segments(parse_lrc(res.synced_lyrics), total_duration)
+    if getattr(res, "has_plain", False):
+        return plain_lyrics_to_segments(res.plain_lyrics, total_duration)
+    return []
 
-    def __init__(self, *, model: str = DEFAULT_MODEL, runner: Runner = subprocess_runner,
-                 ytdlp_bin: str = "yt-dlp", whisperx_bin: str = "whisperx",
-                 device: str = "cpu", compute_type: str = "int8") -> None:
-        self._model = model
+
+# ── the aligner seam (injectable so the flow tests with NO torch) ─────────────────────
+class Aligner(Protocol):
+    """Force-align KNOWN text to audio. Given [{start,end,text}] segments + an audio path, return a
+    WhisperX-shaped {language?, segments:[{start,end,text,words:[{word,start,end}]}]} with word
+    timings. The real impl (WhisperxForcedAligner) wraps whisperx.load_align_model + whisperx.align;
+    tests pass a fake. Raising signals the caller to fall back to line-sync."""
+
+    def align(self, segments: list[dict[str, Any]], audio_path: str, language: str) -> dict[str, Any]: ...
+
+
+class WhisperxForcedAligner:
+    """Real forced aligner: loads the wav2vec2 align model for `language` and runs whisperx.align on
+    the provided (known-text) segments. Lazy-imports whisperx so torch never loads unless used."""
+
+    def __init__(self, device: str = "cpu") -> None:
+        self._device = device
+        self._cache: dict[str, tuple[Any, Any]] = {}
+
+    def _model(self, language: str) -> tuple[Any, Any]:
+        if language not in self._cache:
+            import whisperx  # lazy: multi-GB torch
+
+            self._cache[language] = whisperx.load_align_model(language_code=language, device=self._device)
+        return self._cache[language]
+
+    def align(self, segments: list[dict[str, Any]], audio_path: str, language: str) -> dict[str, Any]:
+        import whisperx
+
+        model, meta = self._model(language)
+        audio = whisperx.load_audio(audio_path)
+        # return_char_alignments=False → word-level only (what the overlay needs)
+        out = whisperx.align(segments, model, meta, audio, self._device, return_char_alignments=False)
+        out.setdefault("language", language)
+        return out
+
+
+# ── the processor ──────────────────────────────────────────────────────────────────
+LyricsClientFactory = Callable[[], LrclibClient]
+
+
+class WhisperXProcessor:
+    """Production processor for `align` jobs (M7-C8 hybrid). Fetch source → LRCLIB known lyrics →
+    WhisperX forced-alignment (word timings) → publish; falls back to LRCLIB line-sync if the
+    aligner is unavailable. Same async-generator interface as the other processors — dial_home.py
+    is unchanged. All external deps (yt-dlp runner, LRCLIB client, aligner) are injectable for tests."""
+
+    def __init__(
+        self,
+        *,
+        runner: Runner = subprocess_runner,
+        ytdlp_bin: str = "yt-dlp",
+        device: str = "cpu",
+        lyrics_client: LrclibClient | None = None,
+        aligner: Aligner | None = None,
+        model: str = DEFAULT_MODEL,
+    ) -> None:
         self._runner = runner
         self._ytdlp_bin = ytdlp_bin
-        self._whisperx_bin = whisperx_bin
-        # CPU default (int8); a GPU worker passes device='cuda', compute_type='float16'.
         self._device = device
-        self._compute_type = compute_type
+        self._model = model
+        self._lyrics_client = lyrics_client  # None → constructed lazily (real LRCLIB)
+        self._aligner = aligner  # None → constructed lazily (real WhisperX)
+
+    def _client(self) -> LrclibClient:
+        if self._lyrics_client is None:
+            self._lyrics_client = LrclibClient()
+        return self._lyrics_client
+
+    def _get_aligner(self) -> Aligner:
+        if self._aligner is None:
+            self._aligner = WhisperxForcedAligner(device=self._device)
+        return self._aligner
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
         work = os.path.join(job.media_dir, "lyrics", "_work", job.media_id)
         os.makedirs(work, exist_ok=True)
+        params = job.params if isinstance(job.params, dict) else {}
+        artist = str(params.get("artist") or "").strip()
+        track = str(params.get("track") or "").strip()
+        language = str(params.get("language") or "en").strip() or "en"
+        duration = params.get("durationSec")
+        duration = float(duration) if isinstance(duration, (int, float)) else None
 
         # ── stage 1: obtain the source audio ──────────────────────────────────────
         if is_local_source(job.source_uri):
@@ -149,22 +207,30 @@ class WhisperXProcessor:
             async for ev in self._run_stage("downloading", download_argv(job.source_uri, audio, self._ytdlp_bin), parse_ytdlp_progress):
                 yield ev
 
-        # ── stage 2: transcribe + word-align (WhisperX) ───────────────────────────
-        lang = job.params.get("language") if isinstance(job.params, dict) else None
-        argv = align_argv(audio, work, self._model, lang, self._whisperx_bin, self._device, self._compute_type)
-        async for ev in self._run_stage("aligning", argv, _parse_whisperx_progress):
-            yield ev
+        # ── stage 2: fetch KNOWN lyrics from LRCLIB ───────────────────────────────
+        if not artist or not track:
+            raise RuntimeError("align job needs params.artist + params.track to look up lyrics")
+        res = self._client().get(artist, track, duration=duration)
+        segments = lrclib_to_segments(res, duration)
+        if not segments:
+            raise RuntimeError(f"no lyrics found for {artist} — {track} (instrumental or not in LRCLIB)")
 
-        # ── stage 3: normalize + publish the lyrics JSON ──────────────────────────
-        produced = whisperx_json_path(work, audio)
-        if not os.path.exists(produced):
-            raise RuntimeError(f"whisperx produced no transcript at {produced}")
-        with open(produced, encoding="utf-8") as f:
-            raw = json.load(f)
-        doc = normalize_lyrics(raw)
-        if not is_valid_lyrics(doc):
-            raise RuntimeError("whisperx produced no word-timed lyrics (empty/instrumental track?)")
+        # ── stage 3: force-align the known text (word timings), else line-sync ────
+        yield ProgressEvent(stage="aligning", pct=0)
+        doc: dict[str, Any]
+        try:
+            aligned = self._get_aligner().align(segments, audio, language)
+            doc = normalize_lyrics(aligned)
+            if not is_valid_lyrics(doc):
+                raise RuntimeError("aligner returned no word-timed lyrics")
+        except Exception as exc:  # noqa: BLE001 — any aligner failure degrades to line-sync, never a 500
+            # FALLBACK: ship LRCLIB's line-level sync (whole-line highlight) so lyrics still work.
+            doc = line_synced_lyrics(segments, language=language)
+            if not is_line_synced(doc):
+                raise RuntimeError(f"alignment failed and no line-sync fallback available: {exc}") from exc
+        yield ProgressEvent(stage="aligning", pct=100)
 
+        # ── stage 4: publish the lyrics JSON ──────────────────────────────────────
         final = os.path.join(job.media_dir, lyrics_key(job.media_id))
         os.makedirs(os.path.dirname(final), exist_ok=True)
         with open(final, "w", encoding="utf-8") as f:
@@ -181,11 +247,3 @@ class WhisperXProcessor:
                 yield ProgressEvent(stage=stage, pct=pct)
         if last < 100:
             yield ProgressEvent(stage=stage, pct=100)
-
-
-def _parse_whisperx_progress(line: str) -> int | None:
-    """WhisperX with --print_progress emits 'Progress: 42.0%...' lines; reuse the tqdm-ish parse."""
-    import re
-
-    m = re.search(r"([\d.]+)%", line)
-    return int(float(m.group(1))) if m else None

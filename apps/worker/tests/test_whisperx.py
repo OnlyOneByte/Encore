@@ -15,26 +15,26 @@ from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
 # ── pure helpers ──────────────────────────────────────────────────────────────────
-def test_align_argv_shape():
-    argv = whisperx.align_argv("/w/source.wav", "/w/out", model="base", lang="en", whisperx_bin="whisperx")
-    assert argv[0] == "whisperx"
-    assert argv[1] == "/w/source.wav"
-    assert "--model" in argv and "base" in argv
-    assert "--output_format" in argv and "json" in argv
-    assert "--language" in argv and "en" in argv  # pinned language
-    # CPU-safe compute defaults (float16 default would crash on a CPU backend)
-    assert "--device" in argv and "cpu" in argv
-    assert "--compute_type" in argv and "int8" in argv
-    # GPU override path
-    gpu = whisperx.align_argv("/w/s.wav", "/w/out", device="cuda", compute_type="float16")
-    assert "cuda" in gpu and "float16" in gpu
-    # no --language when not provided
-    assert "--language" not in whisperx.align_argv("/w/s.wav", "/w/out")
+from src.lyrics_source import LrclibResult  # noqa: E402
 
 
-def test_whisperx_json_path_and_lyrics_key():
-    assert whisperx.whisperx_json_path("/w/out", "/w/foo/source.wav") == "/w/out/source.json"
+def test_lyrics_key():
     assert whisperx.lyrics_key("m1") == "lyrics/m1.json"
+
+
+def test_lrclib_to_segments_prefers_synced_then_plain_then_empty():
+    synced = LrclibResult(id=1, instrumental=False, synced_lyrics="[00:01.00]a\n[00:03.00]b", plain_lyrics="a\nb")
+    segs = whisperx.lrclib_to_segments(synced, total_duration=5.0)
+    assert [s["text"] for s in segs] == ["a", "b"]
+    assert segs[0] == {"start": 1.0, "end": 3.0, "text": "a"}  # line end = next line start
+
+    plain = LrclibResult(id=2, instrumental=False, synced_lyrics=None, plain_lyrics="one\ntwo")
+    psegs = whisperx.lrclib_to_segments(plain, total_duration=4.0)
+    assert [s["text"] for s in psegs] == ["one", "two"]  # evenly distributed
+
+    # instrumental / None / no-lyrics → empty
+    assert whisperx.lrclib_to_segments(LrclibResult(3, True, None, None), 5.0) == []
+    assert whisperx.lrclib_to_segments(None, 5.0) == []
 
 
 RAW = {
@@ -126,58 +126,85 @@ def test_is_valid_lyrics():
     assert whisperx.is_valid_lyrics({}) is False
 
 
-# ── I/O processor flow with a fake runner ───────────────────────────────────────────
-def fake_runner(*, transcript=RAW, progress=("Progress: 50.0%", "Progress: 100.0%"), fail=False):
+# ── I/O forced-alignment flow: fake LRCLIB client + fake aligner (NO network, NO torch) ─────
+from src.lyrics_source import LrclibClient  # noqa: E402
+
+
+def fake_ytdlp_runner(*, progress=("[download]  50.0% of 1MiB", "[download] 100% of 1MiB")):
+    """yt-dlp stand-in: writes the extracted wav so the download stage 'produces' its output."""
     async def run(argv):
-        binary = argv[0]
-        if binary == "yt-dlp":
-            out = argv[argv.index("-o") + 1]
-            os.makedirs(os.path.dirname(out), exist_ok=True)
-            Path(out).write_bytes(b"FAKE_SOURCE")
-        elif binary == "whisperx":
-            out_dir = argv[argv.index("--output_dir") + 1]
-            audio = argv[1]
-            os.makedirs(out_dir, exist_ok=True)
-            if transcript is not None:
-                Path(whisperx.whisperx_json_path(out_dir, audio)).write_text(json.dumps(transcript))
+        out = argv[argv.index("-o") + 1]
+        os.makedirs(os.path.dirname(out), exist_ok=True)
+        Path(out).write_bytes(b"FAKE_SOURCE_WAV")
         for line in progress:
             yield line
-        if fail:
-            from src.demucs import ProcessError
-            raise ProcessError(argv, 1, "boom")
 
     return run
 
 
-def spec(tmp_path, source_uri="https://yt/x", media_id="m1"):
-    return JobSpec(job_id="j1", media_id=media_id, job_type="align", source_uri=source_uri, params={}, media_dir=str(tmp_path))
+def fake_client(*, synced="[00:01.00]Is this the real life\n[00:03.00]Is this just fantasy", instrumental=False, found=True):
+    """LrclibClient with an injected fetcher returning canned JSON (or a 404 when found=False)."""
+    def fetch(url, headers):
+        if not found:
+            return 404, ""
+        body = {"id": 1, "instrumental": instrumental, "syncedLyrics": None if instrumental else synced, "plainLyrics": None if instrumental else "Is this the real life\nIs this just fantasy"}
+        return 200, json.dumps(body)
+
+    return LrclibClient(fetcher=fetch)
+
+
+class FakeAligner:
+    """Force-aligner stand-in: turns known-text segments into per-word timings by evenly spacing
+    words across each segment's [start,end] — the shape whisperx.align returns, minus the ML."""
+
+    def __init__(self, fail=False):
+        self.fail = fail
+        self.calls = []
+
+    def align(self, segments, audio_path, language):
+        self.calls.append((len(segments), audio_path, language))
+        if self.fail:
+            raise RuntimeError("aligner unavailable (simulated)")
+        out_segs = []
+        for s in segments:
+            toks = s["text"].split()
+            span = (s["end"] - s["start"]) / max(1, len(toks))
+            words = [{"word": t, "start": round(s["start"] + i * span, 3), "end": round(s["start"] + (i + 1) * span, 3)} for i, t in enumerate(toks)]
+            out_segs.append({"start": s["start"], "end": s["end"], "text": s["text"], "words": words})
+        return {"language": language, "segments": out_segs}
+
+
+def spec(tmp_path, source_uri="https://yt/x", media_id="m1", **params):
+    p = {"artist": "Queen", "track": "Bohemian Rhapsody", "language": "en", "durationSec": 6.0}
+    p.update(params)
+    return JobSpec(job_id="j1", media_id=media_id, job_type="align", source_uri=source_uri, params=p, media_dir=str(tmp_path))
 
 
 async def drain(proc, job):
-    out = []
-    async for ev in proc.process(job):
-        out.append(ev)
-    return out
+    return [ev async for ev in proc.process(job)]
 
 
 @pytest.mark.asyncio
-async def test_align_flow_downloads_aligns_and_writes_lyrics(tmp_path):
-    proc = whisperx.WhisperXProcessor(runner=fake_runner())
+async def test_hybrid_flow_download_lrclib_forcealign_writes_word_timed_lyrics(tmp_path):
+    aligner = FakeAligner()
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=aligner)
     events = await drain(proc, spec(tmp_path))
 
     stages = [(e.stage, e.pct) for e in events if isinstance(e, ProgressEvent)]
-    assert ("downloading", 0) in stages
-    assert ("aligning", 50) in stages and ("aligning", 100) in stages
+    assert ("downloading", 0) in stages and ("aligning", 100) in stages
+    # the aligner was fed the KNOWN LRCLIB text (2 lines), not asked to transcribe
+    assert aligner.calls and aligner.calls[0][0] == 2 and aligner.calls[0][2] == "en"
 
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
     uri = completes[0].media_uri
     assert uri.endswith("lyrics/m1.json")
-    assert completes[0].artifacts["lyrics"]["uri"] == uri
-    # the written artifact is the normalized, word-timed shape
     doc = json.loads(Path(uri).read_text())
-    assert doc["language"] == "en"
-    assert len(doc["words"]) == 9
+    # WORD-timed on the correct text (the whole hybrid point)
+    assert whisperx.is_valid_lyrics(doc)
+    assert [l["text"] for l in doc["lines"]] == ["Is this the real life", "Is this just fantasy"]
+    # line "Is this the real life" (5 words) spans [1.0,3.0] → span 0.4 → first word [1.0,1.4]
+    assert doc["words"][0] == {"word": "Is", "start": 1.0, "end": 1.4}
     assert all({"word", "start", "end"} == set(w) for w in doc["words"])
 
 
@@ -186,22 +213,42 @@ async def test_local_source_skips_download(tmp_path):
     local = tmp_path / "lib" / "song.wav"
     local.parent.mkdir(parents=True)
     local.write_bytes(b"x")
-    proc = whisperx.WhisperXProcessor(runner=fake_runner())
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner())
     stages = {e.stage for e in await drain(proc, spec(tmp_path, source_uri=str(local))) if isinstance(e, ProgressEvent)}
-    assert "downloading" not in stages
+    assert "downloading" not in stages  # local file → no fetch
     assert "aligning" in stages
 
 
 @pytest.mark.asyncio
-async def test_missing_transcript_raises(tmp_path):
-    proc = whisperx.WhisperXProcessor(runner=fake_runner(transcript=None))
-    with pytest.raises(RuntimeError, match="no transcript"):
+async def test_aligner_failure_falls_back_to_line_sync(tmp_path):
+    # the aligner blows up → we DON'T fail; ship LRCLIB's line-level sync (whole-line highlight)
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner(fail=True))
+    events = await drain(proc, spec(tmp_path))
+    doc = json.loads(Path([e for e in events if isinstance(e, CompleteResult)][0].media_uri).read_text())
+    # line-synced fallback: lines with bounds + text, but NO word timings
+    assert [l["text"] for l in doc["lines"]] == ["Is this the real life", "Is this just fantasy"]
+    assert doc["lines"][0]["start"] == 1.0
+    assert all(l["words"] == [] for l in doc["lines"])
+    assert whisperx.is_valid_lyrics(doc) is False  # no word timings — but still shipped line-sync
+
+
+@pytest.mark.asyncio
+async def test_no_lyrics_found_raises(tmp_path):
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(found=False), aligner=FakeAligner())
+    with pytest.raises(RuntimeError, match="no lyrics found"):
         await drain(proc, spec(tmp_path))
 
 
 @pytest.mark.asyncio
-async def test_instrumental_track_with_no_words_raises(tmp_path):
-    # WhisperX ran but found no timed words (e.g. an instrumental) → not a usable lyrics artifact
-    proc = whisperx.WhisperXProcessor(runner=fake_runner(transcript={"segments": []}))
-    with pytest.raises(RuntimeError, match="no word-timed lyrics"):
+async def test_instrumental_track_raises(tmp_path):
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(instrumental=True), aligner=FakeAligner())
+    with pytest.raises(RuntimeError, match="no lyrics found"):
         await drain(proc, spec(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_missing_artist_track_params_raises(tmp_path):
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner())
+    job = JobSpec(job_id="j", media_id="m1", job_type="align", source_uri="/tmp/a.wav", params={}, media_dir=str(tmp_path))
+    with pytest.raises(RuntimeError, match="artist"):
+        await drain(proc, job)
