@@ -293,6 +293,7 @@ something can only be flagged for a human (audio, real ML, network-dependent).
 | `docs/job-lifecycle-and-worker-protocol.md` | Job ledger + dial-home worker protocol |
 | `docs/performance-and-feel.md` | What makes it feel instant |
 | `docs/ROADMAP.md` | Commit-level plan M0→M9 **+ the live backlog queue** |
+| `docs/media-storage-spec.md` | **B-7** storage classes, sidecar metadata, tagging, retention |
 | `docs/vocal-guide-spec.md` | Specced, deferred feature |
 | `docs/mocks/` | Phone/TV mocks + the eyes-on screenshot per milestone |
 | `README.md` | User-facing quickstart |

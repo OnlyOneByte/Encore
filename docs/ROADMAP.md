@@ -555,12 +555,69 @@ corp box (offline lyrics need the transcribe fallback or a deploy box); there is
   on the TV so `keyShift` re-pitches the instrumental live (tempo preserved), and wire `keyShift`
   into `TvPlayer`. **Done-when:** ±1 semitone audibly shifts pitch without changing tempo.
   **Verify:** AUTO — pure cents→ratio + framing math unit tests; EYES-ON/AUDIO — the audible shift.
-- [ ] **B-3 · Offline lyrics (WhisperX transcribe fallback)** — when LRCLIB has no text, transcribe
-  the vocals stem directly (whisperx transcribe→align) so word-timed lyrics work without the LRCLIB
-  DB; give the worker the `align` capability and enqueue an align job alongside stems. **Done-when:**
-  a cooked song shows word-timed lyrics on the TV with LRCLIB unreachable. **Verify:** AUTO — pure
-  transcribe-glue + normalize with a fake aligner; REAL-ML — actual transcription (needs the worker
-  + model download; flag for human).
+**Working order (set by the owner 2026-09-02):** **B-7** (media storage + library metadata) →
+**B-3** (tiered lyrics source chain) → **B-4** → **M9-C1** → **M9-C3** → **B-2** last. B-7 goes first
+because its metadata normalizer and provenance convention are what B-3 depends on; B-2 is last
+because its only real acceptance test is audible and needs the owner in the room.
+
+- [ ] **B-7 · Media storage layout + library metadata** — full spec:
+  `docs/media-storage-spec.md`. Storage is currently accumulated convention, not design, and three
+  things follow from that: (a) the raw downloaded original is retained **by accident** in
+  `media/stems/_work/<mediaId>/source.wav`, a scratch path nothing ever cleans up — **432 MB of the
+  volume's 1.2 GB across ~8 songs** — while being the one asset that cannot be regenerated if a video
+  goes away; (b) nothing can be browsed, because `media.artist` holds the **YouTube uploader**
+  (`7clouds`, `Musictainment TV 🇺🇸`) with the real artist buried in the title, and there is no album,
+  year, genre or tag anywhere; (c) nothing is evictable (~150 MB/song, no cap) and the volume is not
+  self-describing — losing the SQLite file loses every title and artifact link even though the bytes
+  survive. Splits storage by **replaceability** into `state` / `audio` (unrecoverable) / `derived`
+  (regenerable) / `meta`, each its own env-configurable path defaulting under `MEDIA_DIR` so existing
+  installs need no changes, mounted as overridable compose volumes. Sidecar `meta/<id>.json` becomes
+  authoritative with the DB as a rebuildable index, every derived field carries
+  provenance + confidence (the same convention B-3 needs), and the untouched `raw` uploader/title is
+  never discarded so a better normalizer can re-derive canonical fields without re-downloading.
+  Browse comes from a `media_tags(media_id, kind, value)` table, not a column per taxonomy.
+  **Done-when:** raw audio lives in `audio/` as a first-class asset with `work/` cleaned on job end;
+  a `meta/`-only rescan rebuilds the library index from scratch; the phone can browse by artist and
+  genre. **Verify:** AUTO — the pure normalizer against the live library's five rows as fixtures,
+  migration idempotency, rescan round-trip, browse queries; EYES-ON — the browse UI.
+- [ ] **B-3 · Tiered lyrics source chain** (rewritten 2026-09-02; was "offline lyrics / WhisperX
+  transcribe fallback") — the original framing assumed LRCLIB reachability was the blocker. It is not
+  the only one, and it is not the first one. Four gaps, in dependency order:
+  1. **Nothing enqueues an align job.** `make-karaoke.ts:93` is the *only* `enqueue` call in the
+     server and it is hardcoded `'stems'`, while `JobType` is `'stems' | 'align' | 'score'`. So
+     lyrics (M8-C2) and live scoring (M8-C3) are both unreachable **regardless of LRCLIB** — two
+     milestones marked shipped that cannot fire. The align/pitch processors exist and are tested;
+     they are simply never asked to run.
+  2. **`job:assign` cannot carry what align needs.** The contract is `params: { model?, targetKey? }`
+     and worker-hub sends only `{ model }`, but `WhisperXProcessor` hard-raises without
+     `params.artist` + `params.track` and also wants `language` + `durationSec`.
+  3. **Metadata, not the lyrics DB, is the real coverage blocker.** An LRCLIB lookup would ask for
+     *"7clouds — Britney Spears - Baby One More Time (Lyrics)"* and get nothing: **4 of 5 songs in the
+     live library miss on metadata alone even with LRCLIB perfectly reachable.** Fixed by B-7's
+     normalizer, which is why B-7 goes first.
+  4. **The live worker advertises only `stems`** (`ENCORE_WORKER_CAPABILITIES=stems`), so a correct
+     align job would sit queued forever.
+  **The design shift:** separate *text acquisition* from *timing*. Because WhisperX supplies the
+  timing, only accurate **text** is needed — pre-timed `.lrc` is a nice-to-have, not a requirement —
+  which makes plain-text sources first-class. A tiered `LyricsSource` chain (normalized-metadata
+  LRCLIB → YouTube captions → human paste-in → ASR on the vocals stem) returns text plus
+  provenance/confidence, and one timing layer force-aligns whatever arrived. `whisperx.py` currently
+  conflates the two, which is why "no LRCLIB" means "no lyrics" instead of "no *authoritative*
+  lyrics". Provenance also answers the presentation question for free: the TV can be honest about
+  auto-transcribed words precisely because the artifact records where the text came from.
+  **Environment facts (measured from inside the worker container, 2026-09-02):** `lrclib.net`
+  resolves to `chalupa-dns-sinkhole.corp.amazon.com` and fails `SSL: CERTIFICATE_VERIFY_FAILED` — dead
+  here, deploy-box only. But **`huggingface.co` returns HTTP 200**, so WhisperX models *can* be
+  downloaded and the ASR tier is verifiable end-to-end on this box with real ML — this **falsifies the
+  old note** that real-ML lyrics verification had to be flagged for a human. Two of the library's
+  videos were probed for captions: one has none at all, the other only auto-generated (ASR) ones, so
+  captions are a middle tier, not an authoritative one. Musixmatch has the best catalog but its terms
+  generally forbid storing lyrics, which is at odds with a self-hosted cache; Genius-class sites give
+  good text but only via scraping.
+  **Done-when:** a cooked song shows word-timed lyrics on the TV with LRCLIB unreachable, and the
+  overlay distinguishes authoritative text from auto-transcribed. **Verify:** AUTO — tier selection +
+  fallback order with fake sources, the existing injectable `Aligner` seam, enqueue/params derivation;
+  REAL-ML — actual transcription, now runnable here.
 - [ ] **B-4 · Hot-titles persistence** — the popularity tracker is in-memory (survives refresh, not
   restart). Persist counts to the DB so "🔥 Popular tonight" survives a restart. **Verify:** AUTO — unit.
 - [ ] **M9-C1 · accounts** (claim an ephemeral singer; join flow never regresses) — later.
