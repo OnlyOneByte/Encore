@@ -7,13 +7,14 @@
 		visible: boolean;
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
 		playing?: boolean; // playback:state.isPlaying — pause/resume from the phone (M3-C6)
+		seekSec?: number; // playback:state.positionSec — jump the video when the phone seeks (M3-C6)
 		keyShift?: number; // ± semitones for a file song (M7-C9) — selects the keyed instrumental
 		onready?: () => void;
 		onended?: () => void;
 		onerror?: () => void; // dead/unplayable media — caller should skip
 		onposition?: (sec: number, dur: number) => void;
 	}
-	let { media, visible, active, playing = true, keyShift = 0, onready, onended, onerror, onposition }: Props = $props();
+	let { media, visible, active, playing = true, seekSec, keyShift = 0, onready, onended, onerror, onposition }: Props = $props();
 
 	let video: HTMLVideoElement | undefined = $state();
 
@@ -22,6 +23,14 @@
 		if (!video || !media || media.playMode !== 'file') return;
 		if (active && visible && playing) video.play().catch(() => {});
 		else video.pause();
+	});
+
+	// seek the <video> when the phone scrubs. Only a real JUMP (>1.5s from where we are) seeks —
+	// so the ~4Hz position telemetry and pause/resume (which carry the current position) don't
+	// fight the playhead. Guarded to the active file slot.
+	$effect(() => {
+		if (!video || !media || media.playMode !== 'file' || seekSec === undefined) return;
+		if (active && Math.abs(video.currentTime - seekSec) > 1.5) video.currentTime = seekSec;
 	});
 
 	function fileSrc(m: Media): string {
