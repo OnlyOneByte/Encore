@@ -3,9 +3,9 @@
 // separated stems instead of re-cooking, and the saved-karaoke library (M9-C2) can list every song
 // whose instrumental is on disk. The runtime `mediaById` Map stays the hot read path; this is the
 // write-behind + boot-hydrate store.
-import { eq, and, desc } from 'drizzle-orm';
+import { eq, and, desc, asc, sql, isNotNull } from 'drizzle-orm';
 import type { DB } from '../db/index';
-import { media } from '../db/schema';
+import { media, mediaTags } from '../db/schema';
 import type { Media } from '@encore/shared';
 
 type MediaRow = typeof media.$inferInsert;
@@ -25,7 +25,8 @@ const toRow = (m: Media): MediaRow => ({
 	playMode: m.playMode,
 	instrumentalRef: m.instrumentalRef ?? null,
 	lyricsRef: m.lyricsRef ?? null,
-	pitchRef: m.pitchRef ?? null
+	pitchRef: m.pitchRef ?? null,
+	artistCanonical: m.artistCanonical ?? null
 });
 
 const fromRow = (r: typeof media.$inferSelect): Media => ({
@@ -40,7 +41,8 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	playMode: r.playMode,
 	instrumentalRef: r.instrumentalRef ?? undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
-	pitchRef: r.pitchRef ?? undefined
+	pitchRef: r.pitchRef ?? undefined,
+	artistCanonical: r.artistCanonical ?? undefined
 });
 
 export class MediaRepository {
@@ -87,6 +89,91 @@ export class MediaRepository {
 			.orderBy(desc(media.id))
 			.all()
 			.map(fromRow);
+	}
+
+	// ── browse (B-7-C4) ───────────────────────────────────────────────────────────────
+	//
+	// Only READY songs are browsable. The catalog holds every search result ever materialised (271 rows
+	// on the live box for 7 cooked songs), so browsing the whole table would drown the library in
+	// things you cannot actually sing yet.
+
+	/** Mirror the canonical metadata for one media into the index (from its authoritative sidecar). */
+	setCanonical(mediaId: string, c: { artist: string | null; album: string | null; year: number | null }): void {
+		this.#db
+			.update(media)
+			.set({ artistCanonical: c.artist, album: c.album, year: c.year })
+			.where(eq(media.id, mediaId))
+			.run();
+	}
+
+	/** Replace all tags of one kind for a media (genre/tag/mood). Idempotent. */
+	setTags(mediaId: string, kind: 'genre' | 'tag' | 'mood', values: string[]): void {
+		this.#db.delete(mediaTags).where(and(eq(mediaTags.mediaId, mediaId), eq(mediaTags.kind, kind))).run();
+		const clean = [...new Set(values.map((v) => v.trim().toLowerCase()).filter(Boolean))];
+		if (clean.length === 0) return;
+		this.#db
+			.insert(mediaTags)
+			.values(clean.map((value) => ({ mediaId, kind, value })))
+			.onConflictDoNothing()
+			.run();
+	}
+
+	/** Every tag of one kind for a media. */
+	tagsOf(mediaId: string, kind: 'genre' | 'tag' | 'mood' = 'genre'): string[] {
+		return this.#db
+			.select({ value: mediaTags.value })
+			.from(mediaTags)
+			.where(and(eq(mediaTags.mediaId, mediaId), eq(mediaTags.kind, kind)))
+			.all()
+			.map((r) => r.value);
+	}
+
+	/** Browse facet: ready songs grouped by canonical artist, most songs first. NULL artists (a
+	 *  low-confidence parse) are excluded — an "Unknown" bucket of 40 songs is not a useful heading. */
+	artistFacets(): Array<{ artist: string; count: number }> {
+		return this.#db
+			.select({ artist: media.artistCanonical, count: sql<number>`count(*)`.as('count') })
+			.from(media)
+			.where(and(eq(media.stemStatus, 'ready'), eq(media.playMode, 'file'), isNotNull(media.artistCanonical)))
+			.groupBy(media.artistCanonical)
+			.orderBy(desc(sql`count(*)`), asc(media.artistCanonical))
+			.all()
+			.filter((r): r is { artist: string; count: number } => !!r.artist);
+	}
+
+	/** Browse facet: ready songs grouped by genre. */
+	genreFacets(): Array<{ genre: string; count: number }> {
+		return this.#db
+			.select({ genre: mediaTags.value, count: sql<number>`count(*)`.as('count') })
+			.from(mediaTags)
+			.innerJoin(media, eq(media.id, mediaTags.mediaId))
+			.where(and(eq(mediaTags.kind, 'genre'), eq(media.stemStatus, 'ready'), eq(media.playMode, 'file')))
+			.groupBy(mediaTags.value)
+			.orderBy(desc(sql`count(*)`), asc(mediaTags.value))
+			.all();
+	}
+
+	/** Ready songs by canonical artist (exact match on the canonical value the facet returned). */
+	byArtist(artist: string): Media[] {
+		return this.#db
+			.select()
+			.from(media)
+			.where(and(eq(media.stemStatus, 'ready'), eq(media.playMode, 'file'), eq(media.artistCanonical, artist)))
+			.orderBy(desc(media.id))
+			.all()
+			.map(fromRow);
+	}
+
+	/** Ready songs carrying a genre. */
+	byGenre(genre: string): Media[] {
+		return this.#db
+			.select()
+			.from(media)
+			.innerJoin(mediaTags, eq(mediaTags.mediaId, media.id))
+			.where(and(eq(media.stemStatus, 'ready'), eq(media.playMode, 'file'), eq(mediaTags.kind, 'genre'), eq(mediaTags.value, genre.trim().toLowerCase())))
+			.orderBy(desc(media.id))
+			.all()
+			.map((r) => fromRow(r.media));
 	}
 }
 

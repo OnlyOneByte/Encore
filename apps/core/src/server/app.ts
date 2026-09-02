@@ -14,7 +14,7 @@ import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
 import { MediaRepository, hydrateMediaCatalog } from './media/repository';
 import { migrateStorageLayout } from './media/migrate-layout';
-import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars } from './media/sidecar';
+import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, readAllSidecars } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
@@ -127,11 +127,21 @@ export function getApp(): EncoreApp {
 	// sidecar present on disk but missing from the index is restored below. Together those give the
 	// volume the property that matters: it describes itself, so losing the SQLite file costs an
 	// index rebuild rather than every title and artifact link.
-	const mediaRepo = new MediaRepository(db, (m) => {
+	// eslint-disable-next-line prefer-const -- the persist callback closes over this, and only ever runs
+	// after an await, so the binding is initialised by the time it is read.
+	let mediaRepo: MediaRepository;
+	mediaRepo = new MediaRepository(db, (m) => {
 		void (async () => {
 			try {
 				const prev = await readSidecar(m.id);
-				await writeSidecar(sidecarFromMedia(m, Date.now(), prev));
+				const next = sidecarFromMedia(m, Date.now(), prev);
+				await writeSidecar(next);
+				// B-7-C4: mirror the sidecar's canonical metadata into the INDEX so browse can group by
+				// it. `browseArtist` returns null for a low-confidence parse, so an uncertain guess is
+				// stored as NULL rather than becoming a library heading that is simply wrong.
+				mediaRepo.setCanonical(m.id, { artist: browseArtist(next), album: next.canonical.album, year: next.canonical.year });
+				mediaRepo.setTags(m.id, 'genre', next.canonical.genre);
+				if (next.library.tags.length) mediaRepo.setTags(m.id, 'tag', next.library.tags);
 			} catch {
 				/* the sidecar is the durable record, not the live one — never fail a flip over it */
 			}
@@ -156,6 +166,17 @@ export function getApp(): EncoreApp {
 			// portable-volume property would only apply to songs added AFTER B-7-C3.
 			const written = await backfillSidecars(mediaRepo.all(), Date.now());
 			if (written > 0) console.log(`[core] backfilled ${written} sidecars into meta/`);
+
+			// B-7-C4: mirror canonical artist/album/year + genres from every sidecar into the browse
+			// index. Needed as its own pass because backfilling a sidecar does not go through upsert,
+			// so without it browse would only see songs touched since the process started.
+			let indexed = 0;
+			for (const s of await readAllSidecars()) {
+				mediaRepo.setCanonical(s.id, { artist: browseArtist(s), album: s.canonical.album, year: s.canonical.year });
+				if (s.canonical.genre.length) mediaRepo.setTags(s.id, 'genre', s.canonical.genre);
+				indexed++;
+			}
+			if (indexed > 0) console.log(`[core] browse index synced from ${indexed} sidecars`);
 		})
 		.catch(() => {
 			/* best effort — the DB index is still authoritative enough to run a party */

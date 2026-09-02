@@ -298,9 +298,28 @@
 
 	// the saved-karaoke library (B-1) + whatever is cooking, for a client that just loaded
 	let library = $state<Media[]>([]);
+	// B-7-C4 browse: facets describe the WHOLE ready library (never the current filter), so picking an
+	// artist cannot collapse the rail to that one artist and strand you with no way back.
+	let facets = $state<{ artists: { artist: string; count: number }[]; genres: { genre: string; count: number }[] }>({ artists: [], genres: [] });
+	let browseFilter = $state<{ artist?: string; genre?: string } | null>(null);
+
+	function setBrowse(kind: 'artist' | 'genre' | null, value: string) {
+		// tapping the active chip again clears it — a filter you cannot undo is a trap
+		const same = kind === 'artist' ? browseFilter?.artist === value : kind === 'genre' ? browseFilter?.genre === value : false;
+		browseFilter = kind === null || same ? null : kind === 'artist' ? { artist: value } : { genre: value };
+		if (navigator.vibrate) navigator.vibrate(8);
+		loadLibrary();
+	}
+
 	async function loadLibrary() {
 		try {
-			const j = await (await fetch('/api/library')).json();
+			const qs = browseFilter?.artist
+				? `?artist=${encodeURIComponent(browseFilter.artist)}`
+				: browseFilter?.genre
+					? `?genre=${encodeURIComponent(browseFilter.genre)}`
+					: '';
+			const j = await (await fetch(`/api/library${qs}`)).json();
+			if (j.facets) facets = j.facets;
 			library = j.library ?? [];
 			mergeMedia(library);
 			const cooking: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.cooking ?? [];
@@ -402,10 +421,45 @@
 
 	{#if showReady}
 		{@const readyList = searchActive ? readyResults : library}
+		<!-- B-7-C4 browse: facet rails over the karaoke library. Only shown when NOT searching — a
+		     query is already a filter, and stacking two filters is how you end up with zero results and
+		     no idea which one caused it. Hidden entirely below two facets, because "browse by artist"
+		     across one artist is just a list. -->
+		{#if !searchActive && (facets.artists.length > 1 || facets.genres.length > 1)}
+			{#if facets.artists.length > 1}
+				<div class="facets" role="group" aria-label="Browse by artist">
+					<span class="facet-label">Artist</span>
+					{#each facets.artists as f (f.artist)}
+						<button class="chip" class:active={browseFilter?.artist === f.artist} onclick={() => setBrowse('artist', f.artist)}>
+							{f.artist}&nbsp;<span class="facet-count">{f.count}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+			{#if facets.genres.length > 1}
+				<div class="facets" role="group" aria-label="Browse by genre">
+					<span class="facet-label">Genre</span>
+					{#each facets.genres as f (f.genre)}
+						<button class="chip ok" class:active={browseFilter?.genre === f.genre} onclick={() => setBrowse('genre', f.genre)}>
+							{f.genre}&nbsp;<span class="facet-count">{f.count}</span>
+						</button>
+					{/each}
+				</div>
+			{/if}
+			{#if browseFilter}
+				<div class="facets">
+					<button class="chip" onclick={() => setBrowse(null, '')}>✕ Clear filter</button>
+				</div>
+			{/if}
+		{/if}
 		{#if readyList.length}
-			<div class="grouphead ok">Ready to sing · no wait</div>
+			<div class="grouphead ok">
+				{browseFilter && !searchActive
+					? `${browseFilter.artist ?? browseFilter.genre} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
+					: 'Ready to sing · no wait'}
+			</div>
 			{#each readyList as m (m.id)}
-				<SongRow title={m.title} artist={m.artist} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+				<SongRow title={m.title} artist={m.artistCanonical ?? m.artist} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 			{/each}
 		{/if}
 	{/if}
@@ -595,6 +649,19 @@
 	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; }
 	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; outline: none; }
 	.chips { display: flex; gap: 7px; margin-bottom: 14px; }
+	/* browse facet rails (B-7-C4): horizontally scrollable so a 20-artist library cannot push the
+	   song list off the screen on a phone. */
+	.facets {
+		display: flex; align-items: center; gap: 7px; margin-bottom: 8px;
+		overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+	}
+	.facets::-webkit-scrollbar { display: none; }
+	.facets .chip { flex: none; }
+	.facet-label {
+		flex: none; font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
+		color: var(--ink-dim); padding-right: 2px;
+	}
+	.facet-count { opacity: .55; font-variant-numeric: tabular-nums; }
 	.chip {
 		padding: 7px 13px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; cursor: pointer;
 		background: var(--card); border: 1px solid var(--line); color: var(--ink-dim);

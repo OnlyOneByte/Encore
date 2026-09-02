@@ -15,9 +15,16 @@ import { readinessOf } from '$server/media/readiness';
 import { mediaStatusFor } from '$server/jobs/media-status';
 import type { MediaStatus } from '@encore/shared';
 
-export const GET: RequestHandler = async () => {
+export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();
-	const library = app.media.listReady();
+
+	// B-7-C4 browse: an optional facet filter. Only READY songs are browsable — the catalog holds
+	// every search result ever materialised (271 rows for 7 cooked songs on the live box), so browsing
+	// the whole table would bury the library in things you cannot sing yet.
+	const artist = url.searchParams.get('artist')?.trim();
+	const genre = url.searchParams.get('genre')?.trim();
+	const library = artist ? app.media.byArtist(artist) : genre ? app.media.byGenre(genre) : app.media.listReady();
+
 	// The hub validates adds against the runtime catalog, so anything we offer for one-tap re-queue
 	// must be resolvable there. Boot hydration already covers this; re-seeding keeps the endpoint
 	// honest if a row was written by another path.
@@ -36,5 +43,12 @@ export const GET: RequestHandler = async () => {
 			};
 		});
 
-	return json({ library, cooking });
+	return json({
+		library,
+		cooking,
+		// Browse facets always describe the WHOLE ready library, never the current filter — otherwise
+		// picking an artist would collapse the facet list to that one artist and strand you there.
+		facets: { artists: app.media.artistFacets(), genres: app.media.genreFacets() },
+		filter: artist ? { artist } : genre ? { genre } : null
+	});
 };
