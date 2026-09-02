@@ -511,6 +511,45 @@ corp box (offline lyrics need the transcribe fallback or a deploy box); there is
   origin-survives-the-cook), typecheck + build clean. EYES-ON — searched a previously-cooked song and
   confirmed it returns once as ready with zero raw rows sharing its origin; drove join → all three
   groups → drag up → drag down → keyboard toggles, and screenshotted collapsed + expanded.
+- [x] **B-6 · TV room-state clarity (lobby + persistent join QR)** — *done, verified by driving the
+  real server through all three states.* The TV used to collapse every non-playing situation into ONE
+  attract screen (`isAttract = tvState === 'attract' || !current`), so "nobody is here" and "four
+  people are here waiting for a first pick" looked identical and the screen could not say what it was
+  waiting for. Four pieces:
+  1. **Presence on the wire (C1).** The WS upgrade now resolves *which singer* a socket belongs to
+     from the session cookie (`readSessionToken` on the handshake request) — previously every socket
+     was anonymous, so presence was impossible. A ref-counted `PresenceTracker` (multiple tabs per
+     singer; a singer goes absent only on their LAST socket close, or a reconnect would flicker them
+     out of the roster) drives a new `singer:presence{online}` broadcast on the 0→1 and 1→0
+     transitions, and `queue:sync` carries an `online` snapshot so a client joining mid-party gets the
+     roster immediately instead of on the next change. Presence is the roster source, NOT the singer
+     table: that table is append-only and file-backed (H-5), so it accumulates everyone who ever
+     joined and would show a night's worth of ghosts.
+  2. **The three-way screen (C2).** Pure `tvScreen()` derives `attract | lobby | waiting | playing`
+     with `playing` > `waiting` > `lobby` > `attract` precedence, so the M7-C6 cooking hold still wins
+     over the lobby. `lobbyRoster()` caps chips (8) and reports the overflow so a 20-person party
+     cannot push the strip over the screen, and skips a present id with no name yet rather than
+     rendering a nameless "Someone" chip.
+  3. **Lobby, layout option B (C2).** Chosen over the alternative: the QR keeps the stage, "Waiting
+     for someone to pick a song…" sits under it, and the roster runs along the bottom as a strip with
+     each singer's identity color. With a rehydrated queue and nobody reconnected the sub-line says
+     "Scan to join" rather than the untrue "0 in the room".
+  4. **Persistent corner join card (C3).** One `JoinBadge` serves both placements (`hero`/`corner`).
+     The corner card is pinned **bottom-right on purpose and must stay there**: the "Now singing"
+     lower-third owns bottom-left and the M8-C3 `ScoreBadge` owns top-right, so bottom-right is the
+     only free corner — a top-right QR sits under the score mid-song. It carries the URL as text and
+     a live "N singers in" line, so a latecomer glancing at the TV can join without stopping the music.
+  **One crash the real-server drive caught that no unit test would have:** an `add` command whose
+  `singerId` was missing sailed through `validateCommand` into the persistence write, where
+  `queue_entries.singer_id` is `NOT NULL` — the `SQLiteError` threw out of `state.apply()` and **killed
+  the whole server process**. Any client could end the party with one malformed message. Now rejected
+  like any other bad op, with two regression tests.
+  **Verified:** AUTO — 19 new tests (presence ref-counting + sync-snapshot, screen precedence incl.
+  cooking-beats-lobby and rehydrated-queue, roster cap/overflow/nameless-skip, the singerId crash),
+  268 core tests green, typecheck + build clean. EYES-ON — drove the live server: empty room → attract,
+  two phones join → lobby names both, one closes → their chip goes within ~2s, queue a song → playing
+  with the corner card and no collision. `docs/mocks/b6-tv-lobby-eyeson.png`,
+  `docs/mocks/b6-tv-cornerqr-eyeson.png`.
 - [ ] **B-2 · WebAudio pitch-shift (semitones offline)** — ±key currently no-ops on the TV (needs
   pre-rendered keyed variants, which aren't produced). Add a client-side phase-vocoder AudioWorklet
   on the TV so `keyShift` re-pitches the instrumental live (tempo preserved), and wire `keyShift`

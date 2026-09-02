@@ -5,6 +5,9 @@
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
+	import TvLobby from '$lib/tv/TvLobby.svelte';
+	import JoinBadge from '$lib/tv/JoinBadge.svelte';
+	import { tvScreen, lobbyRoster } from '$lib/tv/screen';
 
 	let { data } = $props();
 
@@ -12,6 +15,9 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
+	// B-6-C1: singer ids with a live socket right now. Drives the lobby roster and the join card's
+	// count — NOT `singers`, which is every singer who ever joined (append-only + file-backed).
+	let online = $state<string[]>([]);
 
 	let current = $state<QueueEntry | null>(null);
 	let upNext = $state<QueueEntry | null>(null);
@@ -124,7 +130,11 @@
 				entries = e.entries;
 				if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 				if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
+				// only adopt presence when the server actually sent it — an omitted `online` means
+				// "no info", not "nobody here", and must not blank a roster we already have.
+				if (e.online) online = e.online;
 			}
+			if (e.type === 'singer:presence') online = e.online;
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
 			if (e.type === 'score:update') score = e;
 			// pause/resume from the phone (playback:state.isPlaying) → drives the player slots
@@ -156,11 +166,17 @@
 		};
 	});
 
-	const isAttract = $derived(tvState === 'attract' || !current);
-	// lyrics overlay is live only while a song is actually playing (not attract/interstitial/waiting)
-	const lyricsActive = $derived(!isAttract && tvState !== 'interstitial' && tvState !== 'waiting');
+	// B-6-C2: which surface the TV shows. Replaces the old `isAttract` (which collapsed "nobody here"
+	// and "people here, nothing queued" into one screen).
+	const screen = $derived(
+		tvScreen({ playerState: tvState, current, entries, onlineCount: online.length })
+	);
+	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
+	const roster = $derived(lobbyRoster(online, singers));
+	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
+	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
 	// show the live score badge whenever we have a score for the currently-playing entry
-	const showScore = $derived(!isAttract && !!score && score.entryId === current?.id);
+	const showScore = $derived(screen === 'playing' && !!score && score.entryId === current?.id);
 </script>
 
 <div class="tv">
@@ -196,12 +212,12 @@
 		visible={lyricsActive}
 	/>
 
-	{#if isAttract}
-		<!-- attract: join QR + up-next ticker -->
+	{#if screen === 'attract'}
+		<!-- attract: nobody here yet — the QR is the only thing to do, so it owns the screen -->
 		<div class="attract">
 			<div class="brand">🎤 <span class="grad">Encore</span></div>
 			<div class="join">
-				<div class="qr-wrap"><img src={data.qrDataUrl} alt="Scan to join" width="320" height="320" /></div>
+				<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size={320} />
 				<div class="join-copy">
 					<h1>Scan to join the party</h1>
 					<p class="url">{data.joinUrl}</p>
@@ -209,6 +225,15 @@
 				</div>
 			</div>
 		</div>
+	{:else if screen === 'lobby'}
+		<!-- B-6-C2: people ARE here, nothing queued — name them and say what we're waiting for -->
+		<div class="brand brand-float">🎤 <span class="grad">Encore</span></div>
+		<TvLobby
+			qrDataUrl={data.qrDataUrl}
+			joinUrl={data.joinUrl}
+			roster={roster.shown}
+			overflow={roster.overflow}
+		/>
 	{:else}
 		<!-- now-playing lower-third -->
 		<div class="lower-third">
@@ -216,6 +241,13 @@
 			<span class="ls-name">{singerName(current?.singerId)}</span>
 			<span class="ls-song">{mediaOf(current)?.title ?? ''}</span>
 		</div>
+		<!-- B-6-C3: the join QR stays reachable mid-song, bottom-right (the only free corner) -->
+		<JoinBadge
+			qrDataUrl={data.qrDataUrl}
+			joinUrl={data.joinUrl}
+			placement="corner"
+			onlineCount={online.length}
+		/>
 	{/if}
 
 	{#if tvState === 'interstitial' && upNext}
@@ -248,11 +280,10 @@
 		background: radial-gradient(80% 60% at 50% 30%, #1b1430 0%, var(--bg) 70%);
 	}
 	.brand { position: absolute; top: 40px; left: 48px; font-weight: 800; font-size: 2rem; }
+	/* the lobby paints its own full-bleed backdrop, so the brand needs to float above it */
+	.brand-float { z-index: 6; }
 	.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 	.join { display: flex; align-items: center; gap: 56px; }
-	.qr-wrap { padding: 20px; background: #fff; border-radius: 28px; box-shadow: var(--shadow); animation: breathe 4s ease-in-out infinite; }
-	.qr-wrap img { display: block; border-radius: 8px; }
-	@keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.03); } }
 	.join-copy h1 { font-size: 3rem; margin: 0 0 12px; max-width: 9ch; line-height: 1.05; }
 	.url { font-size: 1.4rem; color: var(--accent2); margin: 0 0 16px; }
 	.hint { font-size: 1.2rem; color: var(--ink-dim); margin: 0; }

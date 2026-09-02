@@ -6,6 +6,25 @@
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
+	import TvLobby from '$lib/tv/TvLobby.svelte';
+	import JoinBadge from '$lib/tv/JoinBadge.svelte';
+
+	// A tiny inline QR stand-in for the gallery — the real one is generated server-side per room.
+	const demoQr =
+		'data:image/svg+xml;utf8,' +
+		encodeURIComponent(
+			`<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" shape-rendering="crispEdges">` +
+				`<rect width="64" height="64" fill="#fff"/>` +
+				[...Array(64)]
+					.map((_, i) => {
+						const x = i % 8;
+						const y = Math.floor(i / 8);
+						// deterministic checker-ish blocks so it reads as a QR without pretending to scan
+						return (x * 7 + y * 13) % 3 === 0 ? `<rect x="${x * 8}" y="${y * 8}" width="8" height="8" fill="#0b0b12"/>` : '';
+					})
+					.join('') +
+				`</svg>`
+		);
 	import type { LyricsDoc } from '$lib/tv/lyrics';
 	import { onMount } from 'svelte';
 
@@ -79,6 +98,27 @@
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
 		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible />
 		<ScoreBadge score={demoScore} hits={demoScore} total={100} />
+	</div>
+
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">TV room states (B-6) · lobby + corner join card</h2>
+	<!-- The three TV surfaces, scaled down. The point of the pair is that "nobody here" and "people
+	     here, nothing queued" are now DIFFERENT screens — they used to be the same one. -->
+	<div style="position:relative;height:300px;border-radius:16px;overflow:hidden;background:var(--bg);">
+		<TvLobby
+			qrDataUrl={demoQr}
+			joinUrl="encore.local/join"
+			roster={[
+				{ id: 'a', displayName: 'Angelo', color: '#7c5cff' },
+				{ id: 'm', displayName: 'Maya', color: '#ff5cae' },
+				{ id: 'd', displayName: 'Devon', color: '#33d6a6' }
+			]}
+			overflow={2}
+		/>
+	</div>
+	<div style="position:relative;height:300px;margin-top:10px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+		<span style="position:absolute;inset:0;display:grid;place-items:center;font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.22);">music video</span>
+		<ScoreBadge score={demoScore} hits={demoScore} total={100} />
+		<JoinBadge qrDataUrl={demoQr} joinUrl="encore.local/join" placement="corner" onlineCount={4} />
 	</div>
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">Phone score pill (M8-C3)</h2>

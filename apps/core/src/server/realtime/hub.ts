@@ -23,6 +23,8 @@ export interface HubDeps {
 	mediaById: Map<string, Media>;
 	/** Optional: list known singers (sans token) for the sync directory. */
 	listSingers?: () => PublicSinger[];
+	/** Optional: presence snapshot (singer ids with a live socket) for the sync directory (B-6-C1). */
+	listOnline?: () => string[];
 	/** Optional: record a queue-add for popularity shortcuts. */
 	recordAdd?: (mediaId: string) => void;
 	/** Optional: idempotency ledger — returns true if this clientOpId was already applied. */
@@ -35,6 +37,11 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 	switch (op.op) {
 		case 'add':
 			if (!op.entry?.id) return 'missing entry id';
+			// singerId is NOT NULL in queue_entries, and the persistence write happens inside the
+			// state mutation — so an add without one used to throw a SQLiteError out of store.apply()
+			// and take the WHOLE SERVER PROCESS DOWN, mid-party, on one malformed client message.
+			// Found by driving the real server (B-6 verification). Reject it like any other bad op.
+			if (!op.entry.singerId) return 'missing singerId';
 			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
 			return null;
 		case 'remove':
@@ -90,13 +97,14 @@ function mediaFor(entries: QueueEntry[], deps: HubDeps): Media[] {
  *  directories (when the hub has them) so clients can render names/titles per entry. */
 export function syncEvent(
 	state: AuthoritativeState,
-	deps?: Pick<HubDeps, 'mediaById' | 'listSingers'>
+	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline'>
 ): Extract<ServerEvent, { type: 'queue:sync' }> {
 	return {
 		type: 'queue:sync',
 		rev: state.rev,
 		entries: state.entries as QueueEntry[],
 		singers: deps?.listSingers?.(),
-		media: deps ? [...deps.mediaById.values()] : undefined
+		media: deps ? [...deps.mediaById.values()] : undefined,
+		online: deps?.listOnline?.()
 	};
 }

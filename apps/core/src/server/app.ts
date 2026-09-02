@@ -5,6 +5,7 @@
 
 import { AuthoritativeState } from './state/store';
 import { SingerRepository } from './singers/repository';
+import { PresenceTracker } from './realtime/presence';
 import { openDb, defaultDbPath, type DB } from './db/index';
 import { runMigrations, hydrate } from './db/migrate';
 import { sqlitePersistence } from './state/persistence';
@@ -27,6 +28,8 @@ export interface EncoreApp {
 	db: DB;
 	state: AuthoritativeState;
 	singers: SingerRepository;
+	/** Who holds a live socket right now (B-6-C1). Populated by server.ts's WS open/close. */
+	presence: PresenceTracker;
 	jobs: JobRepository;
 	reaper: JobReaper;
 	workers: WorkerRegistry;
@@ -94,6 +97,7 @@ export function getApp(): EncoreApp {
 		db,
 		state,
 		singers: new SingerRepository(db),
+		presence: new PresenceTracker(),
 		jobs,
 		reaper: null as never, // set just below (needs onReaped → workerHub.dispatch)
 		workers,
@@ -131,7 +135,7 @@ export function getApp(): EncoreApp {
 		// instrumental key) + ready status — otherwise the TV's cached media stays 'queued' and sits
 		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
 		onMediaReady: () => {
-			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic() }));
+			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online() }));
 			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById });
 		},
 		now: () => app.now()
