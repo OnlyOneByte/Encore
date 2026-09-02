@@ -34,8 +34,9 @@ def test_demucs_argv_and_output_path():
     assert argv[:3] == ["demucs", "-n", "htdemucs"]
     assert "--two-stems" in argv and "vocals" in argv
     assert "/w/in.wav" == argv[-1]
-    # the instrumental path matches the flattened --filename template
+    # both stem paths match the flattened --filename template
     assert demucs.demucs_no_vocals_path("/w/sep", "htdemucs") == "/w/sep/htdemucs/no_vocals.wav"
+    assert demucs.demucs_vocals_path("/w/sep", "htdemucs") == "/w/sep/htdemucs/vocals.wav"
 
 
 def test_parse_ytdlp_progress():
@@ -66,10 +67,12 @@ def test_process_error_carries_retryable():
 
 
 # ── DemucsProcessor flow with a fake runner ─────────────────────────────────────────
-def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, exit_text: str = ""):
+def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, exit_text: str = "",
+                write_vocals: bool = True):
     """Build a runner that emits canned lines keyed by the binary name (argv[0]), optionally raising
     a ProcessError for one binary. It also CREATES the files the real CLIs would, so the processor's
-    existence checks + move succeed."""
+    existence checks + move succeed. `--two-stems=vocals` writes BOTH stems; `write_vocals=False`
+    simulates a run that produced the instrumental but not the vocals (best-effort path)."""
 
     async def run(argv):
         binary = argv[0]
@@ -84,6 +87,8 @@ def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, e
             inst = demucs.demucs_no_vocals_path(out_dir, model)
             os.makedirs(os.path.dirname(inst), exist_ok=True)
             Path(inst).write_bytes(b"FAKE_INSTRUMENTAL")
+            if write_vocals:
+                Path(demucs.demucs_vocals_path(out_dir, model)).write_bytes(b"FAKE_VOCALS")
         for line in scripted.get(binary, []):
             yield line
         if fail_on == binary:
@@ -123,6 +128,27 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     assert final.endswith("m1-instrumental.wav")
     assert Path(final).exists()
     assert completes[0].artifacts["stems"]["instrumental"] == final
+    # M8-C0: the isolated vocals stem is ALSO published (was previously discarded)
+    vocals = completes[0].artifacts["stems"]["vocals"]
+    assert vocals.endswith("m1-vocals.wav")
+    assert Path(vocals).exists()
+
+
+@pytest.mark.asyncio
+async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
+    # demucs wrote the instrumental but not vocals.wav → the job still completes with the
+    # instrumental; the vocals key is simply absent (never fails the load-bearing output).
+    runner = fake_runner({
+        "yt-dlp": ["[download] 100% of 4MiB"],
+        "demucs": ["100%|██| 2/2"],
+    }, write_vocals=False)
+    proc = demucs.DemucsProcessor(runner=runner)
+    events = await drain(proc, spec(tmp_path))
+    completes = [e for e in events if isinstance(e, CompleteResult)]
+    assert len(completes) == 1
+    stems = completes[0].artifacts["stems"]
+    assert stems["instrumental"].endswith("m1-instrumental.wav")
+    assert "vocals" not in stems
 
 
 @pytest.mark.asyncio

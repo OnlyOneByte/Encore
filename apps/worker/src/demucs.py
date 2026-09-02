@@ -7,6 +7,8 @@ the real binaries (multi-GB torch) only run on a worker box / GPU. Mirrors ytdlp
 parseSearchJson split from the Bun.spawn backend.
 
 Demucs `--two-stems=vocals` emits two files; the INSTRUMENTAL (backing track) is `no_vocals.wav`.
+Both are published (M8-C0): the instrumental is the karaoke output; the isolated `vocals.wav` feeds
+pitch extraction (M8-C1) and the vocal-guide mix (docs/vocal-guide-spec.md).
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ import shutil
 from collections import deque
 from typing import AsyncIterator, Awaitable, Callable
 
-from .processor import CompleteResult, JobSpec, ProgressEvent, instrumental_path
+from .processor import CompleteResult, JobSpec, ProgressEvent, instrumental_path, vocals_path
 
 DEFAULT_MODEL = "htdemucs"
 
@@ -58,6 +60,12 @@ def demucs_argv(input_path: str, out_dir: str, model: str = DEFAULT_MODEL, demuc
 def demucs_no_vocals_path(out_dir: str, model: str = DEFAULT_MODEL) -> str:
     """Where demucs writes the instrumental given the flattened `--filename {stem}.{ext}` template."""
     return os.path.join(out_dir, model, "no_vocals.wav")
+
+
+def demucs_vocals_path(out_dir: str, model: str = DEFAULT_MODEL) -> str:
+    """Where demucs writes the ISOLATED VOCALS given the flattened `--filename {stem}.{ext}` template.
+    `--two-stems=vocals` always emits BOTH no_vocals.wav and vocals.wav (M8-C0 publishes the latter)."""
+    return os.path.join(out_dir, model, "vocals.wav")
 
 
 _YTDLP_PCT = re.compile(r"\[download\]\s+([\d.]+)%")
@@ -186,14 +194,26 @@ class DemucsProcessor:
         async for ev in self._run_stage("separating", demucs_argv(input_path, sep_out, self._model, self._demucs_bin), parse_demucs_progress):
             yield ev
 
-        # ── stage 3: publish the instrumental to the MediaStore ───────────────────
+        # ── stage 3: publish the stems to the MediaStore ──────────────────────────
         produced = demucs_no_vocals_path(sep_out, self._model)
         if not os.path.exists(produced):
             raise RuntimeError(f"demucs produced no instrumental at {produced}")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
         self._move(produced, final)
-        yield CompleteResult(media_uri=final, artifacts={"stems": {"instrumental": final}})
+
+        stems: dict[str, str] = {"instrumental": final}
+        # Also publish the ISOLATED VOCALS stem (M8-C0) — `--two-stems=vocals` already produced it;
+        # we used to discard it. It unblocks pitch extraction (M8-C1) and the vocal-guide mix. This
+        # is BEST-EFFORT: a missing vocals file must not fail an otherwise-good instrumental (the
+        # instrumental is the load-bearing karaoke output; the vocals stem is an enhancement).
+        vocals_src = demucs_vocals_path(sep_out, self._model)
+        if os.path.exists(vocals_src):
+            vocals_final = vocals_path(job.media_dir, job.media_id)
+            self._move(vocals_src, vocals_final)
+            stems["vocals"] = vocals_final
+
+        yield CompleteResult(media_uri=final, artifacts={"stems": stems})
 
     async def _run_stage(
         self, stage: str, argv: list[str], parse: Callable[[str], int | None]

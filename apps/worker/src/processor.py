@@ -76,6 +76,13 @@ def instrumental_path(media_dir: str, media_id: str) -> str:
     return os.path.join(media_dir, "stems", f"{media_id}-instrumental.wav")
 
 
+def vocals_path(media_dir: str, media_id: str) -> str:
+    """Deterministic MediaStore key for a media's ISOLATED VOCALS stem (M8-C0). Feeds pitch
+    extraction (M8-C1) and the vocal-guide mix (docs/vocal-guide-spec.md). Parallels the core's
+    make-karaoke `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
+    return os.path.join(media_dir, "stems", f"{media_id}-vocals.wav")
+
+
 class RoutingProcessor:
     """Dispatch a job to the right sub-processor by job_type (e.g. stems→Demucs, align→WhisperX).
     A worker advertising multiple capabilities runs one RoutingProcessor; unknown types raise (the
