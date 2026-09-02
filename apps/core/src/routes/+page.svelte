@@ -9,7 +9,7 @@
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
-	import { displayReadiness, canCook, type Readiness } from '$lib/readiness';
+	import { displayReadiness, canCook, readyEmptyState, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
@@ -223,6 +223,13 @@
 			return;
 		}
 		debounceTimer = setTimeout(() => runSearch(q), 150); // debounce ~150ms
+	}
+
+	/** Drop the search and go back to the full library. Same teardown as clearing the box by hand. */
+	function clearSearch() {
+		query = '';
+		onQueryInput();
+		if (navigator.vibrate) navigator.vibrate(8);
 	}
 	async function runSearch(q: string) {
 		inflight?.abort(); // cancel the previous in-flight request
@@ -479,9 +486,18 @@
 	{/if}
 
 	{#if filter !== 'all' && ((filter === 'ready' && !(searchActive ? readyResults : library).length) || (filter === 'cooking' && !cookingRows.length))}
-		<p class="empty">
-			{filter === 'ready' ? 'No karaoke-ready songs yet — tap ✨ Karaoke on a search result to make one.' : 'Nothing cooking right now.'}
-		</p>
+		{#if filter === 'ready'}
+			{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
+			<p class="empty">{empty.message}</p>
+			{#if empty.showAllCount !== null}
+				<!-- the way back: the library is one tap away, not gone -->
+				<div style="display:flex;justify-content:center;padding:0 0 8px;">
+					<button class="chip ok" onclick={clearSearch}>🎤 Show all {empty.showAllCount}</button>
+				</div>
+			{/if}
+		{:else}
+			<p class="empty">Nothing cooking right now.</p>
+		{/if}
 	{/if}
 </main>
 
