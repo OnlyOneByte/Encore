@@ -8,6 +8,7 @@ import { SINGER_COLORS, type ServerEvent } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
 import { createPopularityTracker } from '../media/popularity';
+import { MediaRepository } from '../media/repository';
 import { JobRepository } from '../jobs/repository';
 import { JobReaper } from '../jobs/reaper';
 import { WorkerRegistry } from '../jobs/registry';
@@ -31,6 +32,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		workers,
 		workerHub: new WorkerHub({ jobs, registry: workers, mediaById, toWorker: () => {}, broadcast: () => {}, now: () => 1_700_000_000_000 }),
 		mediaById,
+		media: new MediaRepository(db),
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(async () => []),
 		popularity: createPopularityTracker(),

@@ -2,14 +2,17 @@
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
 	interface Props {
-		seq: number;
+		// Queue-slot number + the singer who asked for it. Both absent when the card renders OUTSIDE
+		// the rotation list — a song cooking for someone else's turn still needs somewhere to show its
+		// progress (B-1), and there is no slot or singer to attribute it to there.
+		seq?: number;
 		title: string;
-		singerName: string;
-		singerColor: string;
+		singerName?: string;
+		singerColor?: string;
 		status: MediaStatus; // queued|downloading|separating|aligning|ready|failed
 		pct: number;
 	}
-	let { seq, title, singerName, singerColor, status, pct }: Props = $props();
+	let { seq, title, singerName, singerColor = '#7c5cff', status, pct }: Props = $props();
 
 	const STAGES: { key: MediaStatus; label: string }[] = [
 		{ key: 'queued', label: 'Queued' },
@@ -34,10 +37,12 @@
 </script>
 
 <div class="qrow proc card">
-	<div class="seq">{seq}</div>
+	<div class="seq">{seq ?? '✨'}</div>
 	<div class="meta">
 		<div class="t">{title} <span class="sparkle">✨</span></div>
-		<div class="who"><i style="background:{singerColor}"></i> {singerName} · being prepared</div>
+		<div class="who">
+			{#if singerName}<i style="background:{singerColor}"></i> {singerName} · being prepared{:else}being prepared{/if}
+		</div>
 		<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
 		<div class="stage"><span>{stageLabel}</span><span>{pct}%</span></div>
 		<div class="chips">

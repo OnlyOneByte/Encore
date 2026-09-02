@@ -24,7 +24,7 @@ ticker) → now-playing (video + `Now singing: NAME` lower-third + lyric slot) �
 **The core loop:** *phone queues → server decides rotation → TV plays → server broadcasts
 state → every phone mirrors it.*
 
-Mock: `/local/home/angryang/.meshclaw/workspace/karaoke-design/phone-ui-mock.html`
+Mock: `/local/home/angryang/.kiro/crew/workspace/karaoke-design/phone-ui-mock.html`
 
 ---
 
@@ -105,7 +105,7 @@ worker ──WS───────>  server   (dial-home: hello/heartbeat/prog
 | `tv:telemetry` | tv→core | `{positionSec, status, bufferedNextPct}` |
 | `op:reject` | core→one | `{clientOpId, reason}` — optimistic rollback trigger |
 
-Reconciliation/diff contract: `/local/home/angryang/.meshclaw/workspace/karaoke-design/reconciliation-contract.md`
+Reconciliation/diff contract: `/local/home/angryang/.kiro/crew/workspace/karaoke-design/reconciliation-contract.md`
 
 ---
 
@@ -152,7 +152,7 @@ any make-karaoke song go **download → worker → `<video>` (`playMode: file`)*
 that gets stem-separated just flips `iframe → file`. No rewrite.
 
 Job lifecycle + dial-home worker protocol:
-`/local/home/angryang/.meshclaw/workspace/karaoke-design/job-lifecycle-and-worker-protocol.md`
+`/local/home/angryang/.kiro/crew/workspace/karaoke-design/job-lifecycle-and-worker-protocol.md`
 
 ---
 
@@ -171,7 +171,7 @@ resilience (heartbeat + reconnect + resync), SvelteKit+PWA, 60fps transform/opac
 haptics, almost no spinners.
 
 TV gapless state machine:
-`/local/home/angryang/.meshclaw/workspace/karaoke-design/tv-preload-state-machine.md`
+`/local/home/angryang/.kiro/crew/workspace/karaoke-design/tv-preload-state-machine.md`
 
 ---
 

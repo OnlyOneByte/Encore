@@ -6,7 +6,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
-import { requestMakeKaraoke } from '$server/jobs/make-karaoke';
+import { cookState, requestMakeKaraoke } from '$server/jobs/make-karaoke';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
@@ -17,8 +17,23 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
 	if (!mediaId) return json({ error: 'mediaId required' }, { status: 400 });
 
+	// B-1: with a durable catalog, "already cooked" is the common happy path (a song separated on a
+	// previous night), not an error — answer 200 so the phone shows "ready" instead of a red toast.
+	const state = cookState(mediaId, { mediaById: app.mediaById, state: app.state });
+	if (state === 'ready') {
+		app.publish({ type: 'media:status', mediaId, status: 'ready', pct: 100 });
+		return json({ alreadyReady: true, job: null });
+	}
+	if (state === 'unknown') return json({ error: 'unknown media' }, { status: 409 });
+	if (state === 'playing') return json({ error: 'that song is playing right now' }, { status: 409 });
+
 	const job = requestMakeKaraoke(mediaId, { jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now });
-	if (!job) return json({ error: 'unknown media or media is currently playing' }, { status: 409 });
+	if (!job) return json({ error: 'could not start make-karaoke' }, { status: 409 });
+
+	// The media just flipped to a cooking file — persist it so a restart mid-cook still knows this
+	// song is a file whose stems are pending (the reaper requeues the job; the catalog agrees).
+	const m = app.mediaById.get(mediaId);
+	if (m) app.media.upsert(m);
 
 	// kick the dispatcher in case a worker is already connected + idle, and show the live bar now
 	app.workerHub.dispatch();

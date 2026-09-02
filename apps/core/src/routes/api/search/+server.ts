@@ -30,6 +30,9 @@ export const GET: RequestHandler = async ({ url }) => {
 		if (existing) return existing;
 		const media = resultToMedia(ulid(), r);
 		app.mediaById.set(media.id, media);
+		// B-1: persist on materialize so the id stays valid across a restart — a queue entry (or a
+		// cooked stem) referencing this media must still resolve to a title after the server bounces.
+		app.media.upsert(media);
 		return media;
 	});
 

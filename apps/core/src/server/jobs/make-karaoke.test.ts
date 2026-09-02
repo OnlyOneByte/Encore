@@ -2,7 +2,7 @@
 // a stems job at need-priority, dedups repeats, and refuses to disrupt the live song. markMediaReady
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
-import { requestMakeKaraoke, markMediaReady, setMediaLyrics, setMediaPitch, instrumentalKey, soonestSeqFor, type MakeKaraokeDeps } from './make-karaoke';
+import { requestMakeKaraoke, markMediaReady, setMediaLyrics, setMediaPitch, instrumentalKey, soonestSeqFor, isCooked, cookState, type MakeKaraokeDeps } from './make-karaoke';
 import { JobRepository } from './repository';
 import { AuthoritativeState } from '../state/store';
 import { nextPlayable, isEntryReady } from '../rotation/index';
@@ -119,4 +119,82 @@ test('ROUND TRIP: cook → held while another plays → ready → plays at its p
 	// stems finish → media ready → q-a is playable again AT its fair position (seq 0, before q-b)
 	markMediaReady('m1', d.mediaById);
 	expect(nextPlayable(d.state.entries, d.mediaById).next?.id).toBe('q-a');
+});
+
+// ── B-1: dedupe to already-separated stems (the durable catalog's payoff) ────────────────────
+
+test('isCooked is true only for a stems-ready FILE media', () => {
+	expect(isCooked(media('m1', { playMode: 'file', stemStatus: 'ready' }))).toBe(true);
+	expect(isCooked(media('m1', { playMode: 'file', stemStatus: 'queued' }))).toBe(false);
+	expect(isCooked(media('m1', { playMode: 'iframe', stemStatus: 'ready' }))).toBe(false);
+	expect(isCooked(media('m1'))).toBe(false);
+});
+
+test('cookState distinguishes unknown / playing / ready / cooking / cookable', () => {
+	const d = deps();
+	expect(cookState('ghost', d)).toBe('unknown');
+
+	d.mediaById.set('plain', media('plain'));
+	expect(cookState('plain', d)).toBe('cookable');
+
+	d.mediaById.set('done', media('done', { playMode: 'file', stemStatus: 'ready' }));
+	expect(cookState('done', d)).toBe('ready');
+
+	d.mediaById.set('wip', media('wip', { playMode: 'file', stemStatus: 'queued' }));
+	expect(cookState('wip', d)).toBe('cooking');
+
+	// the live song outranks everything else — never yank the running video
+	d.state.applyQueueOp({ op: 'add', entry: entry('q1', 'plain') });
+	d.state.setPlayback({ currentEntryId: 'q1', isPlaying: true });
+	expect(cookState('plain', d)).toBe('playing');
+});
+
+test('an already-cooked song is NEVER re-cooked (no second job, no wasted separation)', () => {
+	const d = deps();
+	// exactly the shape hydrated from disk on boot: file + ready + the instrumental key
+	d.mediaById.set('m1', media('m1', { playMode: 'file', stemStatus: 'ready', sourceRef: instrumentalKey('m1') }));
+
+	expect(requestMakeKaraoke('m1', d)).toBeNull();
+	expect(d.jobs.listByStatus('queued')).toHaveLength(0);
+	// and the media is left exactly as it was — still pointing at its existing instrumental
+	const m = d.mediaById.get('m1')!;
+	expect(m.stemStatus).toBe('ready');
+	expect(m.sourceRef).toBe(instrumentalKey('m1'));
+	// a ready file entry is immediately playable, so re-queueing it skips the worker entirely
+	expect(isEntryReady(entry('q', 'm1'), d.mediaById)).toBe(true);
+});
+
+test('RESTART ROUND TRIP: cook, "restart" with the catalog rehydrated, re-request → zero jobs', () => {
+	const d = deps();
+	d.mediaById.set('m1', media('m1'));
+	expect(requestMakeKaraoke('m1', d)).not.toBeNull(); // night one: cooked
+	markMediaReady('m1', d.mediaById);
+
+	// night two: fresh job repo + a catalog hydrated from the durable row (same media object shape)
+	const d2 = deps();
+	d2.mediaById.set('m1', { ...d.mediaById.get('m1')! });
+	expect(requestMakeKaraoke('m1', d2)).toBeNull();
+	expect(d2.jobs.listByStatus('queued')).toHaveLength(0);
+});
+
+test('a reused ALREADY-READY job reconciles the media instead of deadlocking rotation', () => {
+	// Regression: the dedup index counts `ready` as live, so enqueue can return a finished job. If the
+	// media were left cooking against it, no worker would ever run and the entry would be held out of
+	// rotation forever — the song silently never plays. Found by the B-1 restart harness.
+	const d = deps();
+	d.mediaById.set('m1', media('m1'));
+	const first = requestMakeKaraoke('m1', d)!;
+	d.jobs.assign(first.id, 'w1', T0 + 1000, T0);
+	d.jobs.accept(first.id, T0 + 2000, T0);
+	d.jobs.complete(first.id, T0);
+	expect(d.jobs.byId(first.id)!.status).toBe('ready');
+
+	// the media's ready flags are lost (a stub overwrote the runtime entry) → request again
+	d.mediaById.set('m1', media('m1'));
+	const second = requestMakeKaraoke('m1', d)!;
+	expect(second.id).toBe(first.id); // deduped to the finished job
+	const m = d.mediaById.get('m1')!;
+	expect(m.stemStatus).toBe('ready'); // NOT left 'queued'
+	expect(m.sourceRef).toBe(instrumentalKey('m1'));
+	expect(isEntryReady(entry('q', 'm1'), d.mediaById)).toBe(true); // playable, not held forever
 });
