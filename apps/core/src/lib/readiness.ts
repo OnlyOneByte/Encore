@@ -28,3 +28,47 @@ export function displayReadiness(m: Media, live?: { status: MediaStatus }): Read
 export function canCook(r: Readiness): boolean {
 	return r === 'raw';
 }
+
+/**
+ * What the Ready filter should say when it has nothing to show.
+ *
+ * The bug this fixes: the Ready group is query-scoped while a search is active (`readyResults`), but
+ * the library is not — so searching for a song your library does not contain emptied the group and
+ * the phone announced "No karaoke-ready songs yet". That is a statement about the whole library, and
+ * it was FALSE: the songs were still there, one tap away behind a non-empty search box. Right after
+ * tapping "✨ Karaoke" is exactly when a singer has a query in the box, so this read as the app
+ * having thrown their downloads away.
+ *
+ * Pure so the wording and the offer-to-clear are unit-testable without a browser.
+ */
+export interface ReadyEmptyState {
+	message: string;
+	/** When set, the UI offers a one-tap way back to the full library (clears the search). */
+	showAllCount: number | null;
+}
+
+export function readyEmptyState(opts: { searchActive: boolean; libraryCount: number; query?: string }): ReadyEmptyState {
+	const { searchActive, libraryCount } = opts;
+	// A genuinely empty library — the original copy is correct here, and only here.
+	if (libraryCount === 0) {
+		return {
+			message: 'No karaoke-ready songs yet — tap ✨ Karaoke on a search result to make one.',
+			showAllCount: null
+		};
+	}
+	// The library HAS songs; they just don't match what is being searched. Say so, and name the way back.
+	if (searchActive) {
+		const q = (opts.query ?? '').trim();
+		const noun = libraryCount === 1 ? 'karaoke song' : 'karaoke songs';
+		return {
+			message: q
+				? `None of your ${libraryCount} ${noun} match “${q}”.`
+				: `None of your ${libraryCount} ${noun} match this search.`,
+			showAllCount: libraryCount
+		};
+	}
+	// Not searching and the library is non-empty → the group should have rendered rows, so this is
+	// unreachable in practice. Return something honest rather than the false "none yet".
+	return { message: `Your ${libraryCount} karaoke songs are ready to sing.`, showAllCount: null };
+}
+
