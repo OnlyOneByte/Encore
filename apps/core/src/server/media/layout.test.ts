@@ -41,8 +41,10 @@ describe('keys', () => {
 	it('every artifact class has a stable relative key', () => {
 		expect(audioKey('m1')).toBe('audio/m1.wav');
 		expect(audioKey('m1', 'm4a')).toBe('audio/m1.m4a');
-		expect(instrumentalKey('m1')).toBe('derived/stems/m1-instrumental.wav');
-		expect(vocalsKey('m1')).toBe('derived/stems/m1-vocals.wav');
+		expect(instrumentalKey('m1')).toBe('derived/stems/m1-instrumental.m4a');
+		expect(vocalsKey('m1')).toBe('derived/stems/m1-vocals.m4a');
+		// a pre-policy song keeps its own extension — the ref is stored per media, not re-derived
+		expect(instrumentalKey('m1', 'wav')).toBe('derived/stems/m1-instrumental.wav');
 		expect(pitchKey('m1')).toBe('derived/pitch/m1-pitch.json');
 		expect(lyricsKey('m1')).toBe('derived/lyrics/m1.json');
 		expect(metaKey('m1')).toBe('meta/m1.json');
@@ -50,7 +52,7 @@ describe('keys', () => {
 
 	it('classifies a ref by its first segment', () => {
 		expect(classOf('audio/m1.wav')).toBe('audio');
-		expect(classOf('derived/stems/m1-instrumental.wav')).toBe('derived');
+		expect(classOf('derived/stems/m1-instrumental.m4a')).toBe('derived');
 		expect(classOf('meta/m1.json')).toBe('meta');
 		expect(classOf('library/song.mp4')).toBe('root'); // legacy/library files
 	});
@@ -85,6 +87,8 @@ describe('toRelativeKey — the absolute-path bug', () => {
 
 describe('safeMediaPath is class-aware and still traversal-proof', () => {
 	it('resolves a derived ref under the derived root', () => {
+		expect(safeMediaPath('derived/stems/m1-instrumental.m4a')).toBe(join(root, 'derived', 'stems', 'm1-instrumental.m4a'));
+		// a legacy .wav ref from before the audio policy must still resolve
 		expect(safeMediaPath('derived/stems/m1-instrumental.wav')).toBe(join(root, 'derived', 'stems', 'm1-instrumental.wav'));
 	});
 
@@ -153,6 +157,7 @@ describe('migration off the pre-B-7 layout', () => {
 		});
 		expect(rewrites.get('m1')).toMatchObject({
 			audioRef: 'audio/m1.wav',
+			// a migrated legacy stem keeps its .wav name — the migration moves bytes, it does not transcode
 			instrumentalRef: 'derived/stems/m1-instrumental.wav',
 			pitchRef: 'derived/pitch/m1-pitch.json',
 			lyricsRef: 'derived/lyrics/m1.json'

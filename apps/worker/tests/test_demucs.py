@@ -77,10 +77,17 @@ def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, e
     async def run(argv):
         binary = argv[0]
         if binary == "yt-dlp":
-            # mimic yt-dlp writing the extracted wav (-o target is the arg after "-o")
-            out = argv[argv.index("-o") + 1]
+            # mimic yt-dlp writing the NATIVE audio stream. The -o target is a %(ext)s template
+            # (B-7: we no longer transcode to wav), so pick a concrete extension the way yt-dlp would.
+            out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
             os.makedirs(os.path.dirname(out), exist_ok=True)
-            Path(out).write_bytes(b"FAKE_SOURCE_WAV")
+            Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
+        elif binary == "ffmpeg":
+            # mimic ffmpeg writing its output (last argv element) — the decode-to-wav and the
+            # stem AAC encodes both go through here.
+            out = argv[-1]
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            Path(out).write_bytes(b"FAKE_ENCODED")
         elif binary == "demucs":
             out_dir = argv[argv.index("-o") + 1]
             model = argv[argv.index("-n") + 1]
@@ -125,12 +132,12 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
     final = completes[0].media_uri
-    assert final.endswith("m1-instrumental.wav")
+    assert final.endswith("m1-instrumental.m4a")
     assert Path(final).exists()
     assert completes[0].artifacts["stems"]["instrumental"] == final
     # M8-C0: the isolated vocals stem is ALSO published (was previously discarded)
     vocals = completes[0].artifacts["stems"]["vocals"]
-    assert vocals.endswith("m1-vocals.wav")
+    assert vocals.endswith("m1-vocals.m4a")
     assert Path(vocals).exists()
 
 
@@ -147,7 +154,7 @@ async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_pa
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
     stems = completes[0].artifacts["stems"]
-    assert stems["instrumental"].endswith("m1-instrumental.wav")
+    assert stems["instrumental"].endswith("m1-instrumental.m4a")
     assert "vocals" not in stems
 
 
@@ -198,3 +205,44 @@ async def test_missing_instrumental_output_raises(tmp_path):
     proc = demucs.DemucsProcessor(runner=empty_runner)
     with pytest.raises(RuntimeError, match="no instrumental"):
         await drain(proc, spec(tmp_path))
+
+
+# ── B-7 audio format policy ────────────────────────────────────────────────────────
+# Measured on a real 5:20 song: YouTube's best audio is ~5 MB (Opus 135k / AAC 129k), which the old
+# `-x --audio-format wav` inflated to 58.7 MB -- 12x the bytes for zero fidelity, since you cannot
+# restore what YouTube already discarded. These tests pin the policy so it cannot silently regress.
+
+def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
+    argv = demucs.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
+    assert "-f" in argv and "bestaudio" in argv
+    # the regression that cost ~12x: no extract-audio transcode, and no wav anywhere
+    assert "--audio-format" not in argv
+    assert "wav" not in " ".join(argv)
+    # the extension must stay a template -- YouTube decides whether it is m4a or webm
+    assert "%(ext)s" in " ".join(argv)
+
+
+def test_decode_normalizes_to_stereo_44k_wav_for_demucs():
+    argv = demucs.decode_argv("/m/audio/id1.webm", "/w/input.wav")
+    joined = " ".join(argv)
+    assert "-ac 2" in joined and "-ar 44100" in joined
+    assert "pcm_s16le" in joined  # a WORKING format, written into scratch
+
+
+def test_stems_are_encoded_to_stereo_aac_not_moved_as_wav():
+    argv = demucs.encode_stem_argv("/w/no_vocals.wav", "/m/derived/stems/id1-instrumental.m4a")
+    joined = " ".join(argv)
+    assert "-c:a aac" in joined      # AAC, not Opus: the instrumental must play in Safari
+    assert "-b:a 192k" in joined     # headroom over a ~130k lossy source
+    assert "-ac 2" in joined         # stereo is the ceiling; YouTube serves stereo
+    assert "+faststart" in joined    # browser can start playing before the full download
+
+
+def test_find_downloaded_ignores_partial_downloads():
+    import tempfile, os as _os
+    with tempfile.TemporaryDirectory() as d:
+        assert demucs.find_downloaded(d, "id1") is None
+        open(_os.path.join(d, "id1.webm.part"), "w").close()
+        assert demucs.find_downloaded(d, "id1") is None  # an interrupted download is not a result
+        open(_os.path.join(d, "id1.webm"), "w").close()
+        assert demucs.find_downloaded(d, "id1").endswith("id1.webm")

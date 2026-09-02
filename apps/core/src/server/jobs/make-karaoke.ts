@@ -108,11 +108,14 @@ export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job 
  * second, uncooked row for it. Returns true if the media existed and was flipped.
  * (worker-hub calls this.)
  */
-export function markMediaReady(mediaId: string, mediaById: Map<string, Media>): boolean {
+export function markMediaReady(mediaId: string, mediaById: Map<string, Media>, reportedUri?: string): boolean {
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
 	media.playMode = 'file';
-	media.instrumentalRef = instrumentalKey(mediaId);
+	// Prefer what the worker ACTUALLY wrote over re-deriving the key. The two must agree, but the
+	// worker owns the container format (B-7 moved stems from .wav to .m4a), and trusting its report
+	// means a future format change cannot desync the ref from the file and 404 the TV.
+	media.instrumentalRef = toRelativeKey(reportedUri) ?? instrumentalKey(mediaId);
 	media.stemStatus = 'ready';
 	return true;
 }
