@@ -8,17 +8,37 @@ export type StemStatus = 'none' | 'queued' | 'ready';
 export interface Media {
   id: string;
   source: MediaSource;
-  sourceRef: string; // youtube id, or local file key
+  /**
+   * The song's ORIGIN identity: youtube video id, or local file key. IMMUTABLE for the life of the
+   * media — it is what search dedupes on (`source` + `sourceRef`), so overwriting it forks one song
+   * into two rows: the cooked one in the library and a fresh uncooked one on the next search.
+   * The separated instrumental lives in `instrumentalRef`, never here.
+   */
+  sourceRef: string;
   title: string;
   artist?: string;
   durationSec: number;
   thumbnail?: string;
   stemStatus: StemStatus;
   playMode: PlayMode; // the abstraction flag that carries the whole future (iframe -> file)
+  /** MediaStore key of the separated instrumental (set when a stems job completes). This is what
+   *  the TV file player loads; `sourceRef` stays the origin so the worker can still fetch the
+   *  source and search can still recognise the song. */
+  instrumentalRef?: string;
   lyricsRef?: string; // MediaStore key of the word-timed lyrics JSON (M7-C8 artifact) — drives the
   // TV karaoke overlay (M8-C2). Absent until an align job completes; the overlay no-ops without it.
   pitchRef?: string; // MediaStore key of the reference pitch-track JSON (M8-C3 artifact) — the
   // melody the server scores the live mic against. Absent until a score job completes.
+}
+
+/**
+ * The MediaStore key (file media) or embed id (iframe media) the player should load. A cooked song
+ * plays its instrumental; everything else plays its origin. Keeping this in one pure helper is what
+ * lets `sourceRef` stay immutable — the player asks for "what to play" instead of assuming the
+ * origin field was rewritten under it.
+ */
+export function playbackRef(m: Pick<Media, 'sourceRef' | 'playMode' | 'instrumentalRef'>): string {
+  return m.playMode === 'file' && m.instrumentalRef ? m.instrumentalRef : m.sourceRef;
 }
 
 export interface Singer {

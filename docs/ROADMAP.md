@@ -471,6 +471,46 @@ corp box (offline lyrics need the transcribe fallback or a deploy box); there is
   process, confirmed the library lists it with its instrumental key + lyrics + pitch intact, that a
   re-request answers `alreadyReady` with no new job, that the hub accepts a re-queue, and
   screenshotted both new phone sections.
+- [x] **B-5 · One search on the readiness axis + pull-up queue sheet** — *done, verified in a real
+  browser.* Three pieces, in dependency order:
+  1. **`sourceRef` is now immutable origin identity.** `markMediaReady` used to overwrite it with the
+     stem key, so a cooked song could never be matched against its own search result again — every
+     search for it minted a fresh UNCOOKED duplicate and the library version was unreachable
+     (reproduced live: cooked `demo-takeonme` kept `stems/…wav` while a new ULID row appeared with
+     `djV11Xbc914`). The stem key moved to `Media.instrumentalRef`, players ask the new pure
+     `playbackRef(media)` helper for "what to load", and migration `0005` adds the column and
+     backfills rows cooked under the old scheme. Same fix repairs a latent second bug: `sourceUri`
+     would have handed a worker `youtube.com/watch?v=stems/…wav` for any job after the first.
+  2. **One unified search.** The `?source=youtube|local` switch is gone from the UI: `/api/search`
+     queries every resolver, materializes + persists each hit, and returns three groups — `ready`
+     (stems on disk) / `cooking` (stems in flight) / `results` (plays with vocals) — deduped so a
+     song appears EXACTLY ONCE. A dead source (yt-dlp missing, no network) no longer fails the whole
+     search, and a known-cooked song is still offered when the resolver returns nothing. Phone gets
+     readiness filter chips with live counts, one `SongRow` shape for all three states, and honest
+     sub-lines: a raw row says *"sings with the original vocals"*, so the ✨ Karaoke button's value is
+     self-evident. Cooking rows keep `＋ Turn` — rotation already holds a cooking song's slot
+     (M7-C6), so cooking is not a blocked state. `/api/library` also returns what is cooking with
+     live pct, so reloading mid-cook no longer loses the progress bar.
+  3. **Pull-up queue sheet.** The rotation moved out of the main scroll into a bottom sheet, so
+     browsing and queue-checking stop fighting over one scroll. The peek carries the question people
+     actually ask — *"You're #2 · after Maya"* — which used to sit in a card that scrolled off the
+     top. Pointer-drag to pull (verified with real mouse events: sheet top 588→317 up, back down on
+     pull-down), and never drag-only — tap, Enter, ArrowUp/Down and Escape all work. Peek height is
+     MEASURED and published to `:root` as `--peek-h`, because a hardcoded guess left the body
+     bleeding out below the peek.
+  **Three bugs found by driving the real UI, none of which unit tests could catch:** (a) the same
+  song rendered in Ready *and* Popular *and* Recently-queued at once — the shortcut lists now
+  subtract whatever the readiness groups already showed; (b) `WsClient` passed bare `setTimeout` as an
+  option and called it as `this.#opt.setTimeoutFn(...)`, throwing `Illegal invocation` in a browser,
+  so the WS **heartbeat never armed and capped-backoff auto-reconnect (M5-C6) never scheduled** —
+  silently dead in production while tests passed on injected fake timers; (c) the peek-height bleed
+  above. `SongCard` was deleted (superseded by `SongRow`); the `/components` gallery now shows all
+  three readiness states.
+  **Verified:** AUTO — 249 core + 35 shared tests green (+12 new: readiness partition incl. the
+  appears-exactly-once invariant, client/server classification agreement, `playbackRef`,
+  origin-survives-the-cook), typecheck + build clean. EYES-ON — searched a previously-cooked song and
+  confirmed it returns once as ready with zero raw rows sharing its origin; drove join → all three
+  groups → drag up → drag down → keyboard toggles, and screenshotted collapsed + expanded.
 - [ ] **B-2 · WebAudio pitch-shift (semitones offline)** — ±key currently no-ops on the TV (needs
   pre-rendered keyed variants, which aren't produced). Add a client-side phase-vocoder AudioWorklet
   on the TV so `keyShift` re-pitches the instrumental live (tempo preserved), and wire `keyShift`

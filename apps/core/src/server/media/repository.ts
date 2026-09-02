@@ -23,6 +23,7 @@ const toRow = (m: Media): MediaRow => ({
 	thumbnail: m.thumbnail ?? null,
 	stemStatus: m.stemStatus,
 	playMode: m.playMode,
+	instrumentalRef: m.instrumentalRef ?? null,
 	lyricsRef: m.lyricsRef ?? null,
 	pitchRef: m.pitchRef ?? null
 });
@@ -37,6 +38,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	thumbnail: r.thumbnail ?? undefined,
 	stemStatus: r.stemStatus,
 	playMode: r.playMode,
+	instrumentalRef: r.instrumentalRef ?? undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
 	pitchRef: r.pitchRef ?? undefined
 });

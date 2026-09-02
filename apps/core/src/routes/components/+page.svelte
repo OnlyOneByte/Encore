@@ -1,6 +1,6 @@
 <script lang="ts">
 	// M3-C1 component preview (dev-only gallery). Not a product surface.
-	import SongCard from '$lib/components/SongCard.svelte';
+	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
@@ -57,9 +57,12 @@
 </script>
 
 <main style="padding:14px 16px 200px;">
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);">SongCard</h2>
-	<SongCard title="Mr. Brightside" sub="The Killers · 3:43" />
-	<SongCard title="Bohemian Rhapsody" sub="Queen · make-karaoke ✨" processing />
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);">SongRow · the readiness axis</h2>
+	<!-- One row shape, three states. The sub-line's job is to answer "what do I get if I tap this?" -->
+	<SongRow title="Take On Me" artist="a-ha" readiness="ready" />
+	<SongRow title="Take On Me" artist="a-ha" readiness="ready" inQueue />
+	<SongRow title="Bohemian Rhapsody" artist="Queen" readiness="cooking" pct={68} etaSec={70} />
+	<SongRow title="Mr. Brightside" artist="The Killers" readiness="raw" onmake={() => {}} />
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">QueueRow</h2>
 	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor="#33d6a6" up subtitle="now playing" />

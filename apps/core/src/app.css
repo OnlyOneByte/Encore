@@ -28,6 +28,10 @@
 
 	/* layout */
 	--max-w: 480px;
+	/* Height of the collapsed queue sheet's peek. A fallback only — QueueSheet overwrites this with the
+	   peek's MEASURED height on mount. Owned here because everything docked to the bottom (the sheet
+	   itself, the mic bar, the toasts) must agree on it or they overlap. */
+	--peek-h: 132px;
 
 	color-scheme: dark;
 }

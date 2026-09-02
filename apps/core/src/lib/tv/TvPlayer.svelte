@@ -1,7 +1,7 @@
 <script lang="ts">
 	// One media surface (slot A or B). Renders YouTube iframe OR <video> per playMode.
 	// Reports ready/ended up so the GaplessController can orchestrate the swap.
-	import { keyedMediaRef, type Media } from '@encore/shared';
+	import { keyedMediaRef, playbackRef, type Media } from '@encore/shared';
 	interface Props {
 		media: Media | null;
 		visible: boolean;
@@ -34,8 +34,10 @@
 	});
 
 	function fileSrc(m: Media): string {
-		// resolve the keyed instrumental variant for the active slot (0 → the original file)
-		return `/media/${keyedMediaRef(m.sourceRef, active ? keyShift : 0)}`;
+		// resolve the keyed instrumental variant for the active slot (0 → the original file).
+		// playbackRef picks the separated instrumental for a cooked song, or the origin file key for
+		// a plain local file — sourceRef alone is the ORIGIN and is no longer the thing to play.
+		return `/media/${keyedMediaRef(playbackRef(m), active ? keyShift : 0)}`;
 	}
 	function ytEmbed(m: Media): string {
 		// muted preload when hidden; autoplay+unmuted when active+visible

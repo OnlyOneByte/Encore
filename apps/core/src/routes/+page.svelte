@@ -6,9 +6,10 @@
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
-	import SongCard from '$lib/components/SongCard.svelte';
-	import NowPlaying from '$lib/components/NowPlaying.svelte';
+	import SongRow from '$lib/components/SongRow.svelte';
+	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
+	import { displayReadiness, canCook, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
@@ -17,8 +18,10 @@
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
 	let playback = $state<PlaybackState>({ currentEntryId: null, positionSec: 0, isPlaying: false, keyShift: 0 });
-	// live make-karaoke progress per mediaId (M7-C7) — driven by media:status broadcasts.
+	// live make-karaoke progress per mediaId (M7-C7) — driven by media:status broadcasts AND seeded
+	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
+	let sheetOpen = $state(false);
 
 	let store: QueueStore;
 	let ws: WsClient;
@@ -29,11 +32,11 @@
 	);
 	const myPositionLabel = $derived.by(() => {
 		if (!myNextEntry) return '';
-		const queued = entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
-		const idx = queued.findIndex((e) => e.id === myNextEntry.id);
+		const q = entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
+		const idx = q.findIndex((e) => e.id === myNextEntry.id);
 		if (idx < 0) return '';
 		if (idx === 0) return "You're up next! 🎤";
-		const before = queued[idx - 1];
+		const before = q[idx - 1];
 		const beforeName = before ? singers.get(before.singerId)?.displayName ?? 'someone' : 'someone';
 		return `You're #${idx + 1} · after ${beforeName}`;
 	});
@@ -42,23 +45,22 @@
 		const m = mediaCatalog.get(id);
 		return m ? `${m.title}${m.artist ? ' — ' + m.artist : ''}` : id;
 	}
+	function singerOf(id: string): PublicSinger | undefined {
+		return singers.get(id);
+	}
 	/** Merge media into the client catalog. The catalog is otherwise fed ONLY by queue:sync/patch, so
 	 *  a song that came from search or the library — and is not (yet) in anyone's queue — has no
-	 *  resolvable title: the cooking card would render a raw ULID. */
+	 *  resolvable title: a cooking card would render a raw ULID. */
 	function mergeMedia(list: Media[]) {
 		if (!list.length) return;
 		const next = new Map(mediaCatalog);
 		for (const m of list) next.set(m.id, m);
 		mediaCatalog = next;
 	}
-	function singerOf(id: string): PublicSinger | undefined {
-		return singers.get(id);
-	}
 
 	onMount(() => {
 		let disposed = false;
 		(async () => {
-			// who am I? (redirect to join if not)
 			const res = await fetch('/api/me');
 			if (!res.ok) {
 				await goto('/join');
@@ -81,38 +83,24 @@
 					if (e.type === 'queue:sync') {
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
-						// after a (re)sync, replay any still-pending optimistic ops (server dedupes)
 						queueMicrotask(() => store.resendPending());
 					}
-					if (e.type === 'queue:patch' && e.patch.media) {
-						// merge media referenced by the patch (e.g. a song another singer just added)
-						// so its title renders without waiting for a full sync
-						const next = new Map(mediaCatalog);
-						for (const m of e.patch.media) next.set(m.id, m);
-						mediaCatalog = next;
-					}
-					if (e.type === 'singer:joined') {
-						singers = new Map(singers).set(e.singer.id, e.singer);
-					}
-					if (e.type === 'playback:state') {
-						playback = e.state;
-					}
-					if (e.type === 'score:update') {
-						myScore = e;
-					}
+					if (e.type === 'queue:patch' && e.patch.media) mergeMedia(e.patch.media);
+					if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
+					if (e.type === 'playback:state') playback = e.state;
+					if (e.type === 'score:update') myScore = e;
 					if (e.type === 'media:status') {
-						// live make-karaoke progress → drives the ProcessingCard (M7-C7)
 						const next = new Map(mediaStatus);
 						next.set(e.mediaId, { status: e.status, pct: e.pct, etaSec: e.etaSec });
 						mediaStatus = next;
-						// reflect the cooking flag on the catalog media too so SongCard sparkles
+						// reflect the flip on the catalog copy so readiness agrees without a full sync
 						const m = mediaCatalog.get(e.mediaId);
 						if (m) {
 							const nm = new Map(mediaCatalog);
 							nm.set(e.mediaId, { ...m, playMode: 'file', stemStatus: e.status === 'ready' ? 'ready' : 'queued' });
 							mediaCatalog = nm;
 						}
-						// B-1: a song that just finished cooking belongs in the saved library now
+						// a song that just finished cooking belongs in the saved library now
 						if (e.status === 'ready') loadLibrary();
 					}
 					store.onServerEvent(e);
@@ -135,36 +123,139 @@
 		setTimeout(loadShortcuts, 300); // refresh popular/recent after the add lands
 	}
 
-	/** Request stem-separation ("make karaoke") for a media — flips it to a cooking file server-side;
-	 *  the live media:status broadcasts then drive the ProcessingCard (M7-C7). */
+	/** Request stem-separation ("make karaoke") — flips the song to a cooking file server-side; the
+	 *  live media:status broadcasts then drive the row's progress bar. */
 	async function makeKaraoke(mediaId: string) {
 		if (navigator.vibrate) navigator.vibrate(12);
-		// optimistic: show the bar immediately at "queued" while the request lands
-		const next = new Map(mediaStatus);
-		next.set(mediaId, { status: 'queued', pct: 0 });
-		mediaStatus = next;
+		// optimistic: the row reads as cooking immediately, before the request lands
+		mediaStatus = new Map(mediaStatus).set(mediaId, { status: 'queued', pct: 0 });
 		try {
 			const res = await fetch('/api/make-karaoke', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ mediaId })
 			});
+			const body = await res.json().catch(() => ({}));
 			if (!res.ok) {
 				mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
-				showError((await res.json().catch(() => ({}))).error ?? 'Could not start make-karaoke');
+				showError(body.error ?? 'Could not start make-karaoke');
 				return;
 			}
-			// B-1: the stems were already on disk (cooked on an earlier night) — nothing to wait for
-			if ((await res.json().catch(() => ({}))).alreadyReady) loadLibrary();
+			// the stems were already on disk (cooked on an earlier night) — nothing to wait for
+			if (body.alreadyReady) loadLibrary();
 		} catch {
+			mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
 			showError('Could not start make-karaoke — check your connection');
 		}
 	}
 
-	/** Live processing state for an entry's media, or null if it isn't cooking. */
-	function cooking(mediaId: string): { status: MediaStatus; pct: number; etaSec?: number } | null {
-		const s = mediaStatus.get(mediaId);
-		return s && s.status !== 'ready' && s.status !== 'failed' ? s : null;
+	// ── readiness ────────────────────────────────────────────────────────────
+	// One axis, three states: ready (stems on disk, sing now), cooking (stems in flight, still
+	// queueable because rotation holds its slot), raw (plays with the original vocals).
+	type Filter = 'all' | 'ready' | 'cooking';
+	let filter = $state<Filter>('all');
+
+	function liveOf(id: string) {
+		return mediaStatus.get(id);
+	}
+	function readinessFor(m: Media): Readiness {
+		return displayReadiness(m, liveOf(m.id));
+	}
+	/** Is this song already in MY part of the rotation? Turns ＋ Turn into a ✓ Queued confirmation. */
+	function inMyQueue(mediaId: string): boolean {
+		return queued.some((e) => e.mediaId === mediaId && e.singerId === me?.id);
+	}
+
+	/**
+	 * Every song cooking right now, from any origin — the live status map plus anything the catalog
+	 * says is cooking. Deliberately NOT filtered by the search query: this is the one place a cooking
+	 * song is guaranteed to be visible, and a song you kicked off then searched away from must not
+	 * disappear while it works.
+	 */
+	const cookingRows = $derived.by(() => {
+		const ids = new Set<string>();
+		for (const [id, s] of mediaStatus) if (s.status !== 'ready' && s.status !== 'failed') ids.add(id);
+		for (const [id, m] of mediaCatalog) if (readinessFor(m) === 'cooking') ids.add(id);
+		return [...ids]
+			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
+			.filter((r) => r.media)
+			.map((r) => ({ id: r.id, media: r.media!, pct: r.live?.pct ?? 0, etaSec: r.live?.etaSec }));
+	});
+
+	const showReady = $derived(filter === 'all' || filter === 'ready');
+	const showCooking = $derived(filter === 'all' || filter === 'cooking');
+	const showRaw = $derived(filter === 'all');
+
+	/**
+	 * The songs the readiness groups above already account for. The whole point of the readiness axis
+	 * is that a song appears EXACTLY ONCE, so the zero-query shortcut lists (popular / recently
+	 * queued) must subtract it — otherwise a cooked song shows up three times on one screen, once per
+	 * list, which is precisely the confusion the source tabs used to cause.
+	 */
+	const accountedFor = $derived.by(() => {
+		const ids = new Set<string>();
+		if (showReady) for (const m of searchActive ? readyResults : library) ids.add(m.id);
+		if (showCooking) for (const c of cookingRows) ids.add(c.id);
+		return ids;
+	});
+	function unaccounted(list: Media[]): Media[] {
+		return list.filter((m) => !accountedFor.has(m.id));
+	}
+
+	// ── search (debounced + cancel-in-flight) ────────────────────────────────
+	let query = $state('');
+	let readyResults = $state<Media[]>([]);
+	let rawResults = $state<Media[]>([]);
+	let searching = $state(false);
+	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
+	let inflight: AbortController | undefined;
+	const searchActive = $derived(query.trim().length > 0);
+
+	function onQueryInput() {
+		clearTimeout(debounceTimer);
+		const q = query.trim();
+		if (!q) {
+			readyResults = [];
+			rawResults = [];
+			searching = false;
+			inflight?.abort();
+			loadShortcuts();
+			return;
+		}
+		debounceTimer = setTimeout(() => runSearch(q), 150); // debounce ~150ms
+	}
+	async function runSearch(q: string) {
+		inflight?.abort(); // cancel the previous in-flight request
+		const ctrl = new AbortController();
+		inflight = ctrl;
+		searching = true;
+		try {
+			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+			if (ctrl.signal.aborted) return;
+			const j = await res.json();
+			readyResults = j.ready ?? [];
+			rawResults = j.results ?? [];
+			// server also returns the query-matching cooking group; it is folded into cookingRows via
+			// the catalog, so merging is all that's needed here
+			mergeMedia([...readyResults, ...rawResults, ...(j.cooking ?? [])]);
+		} catch (e) {
+			if ((e as Error).name !== 'AbortError') {
+				readyResults = [];
+				rawResults = [];
+				showError('Search failed — check your connection');
+			}
+		} finally {
+			if (inflight === ctrl) searching = false;
+		}
+	}
+
+	// transient error toast
+	let errorMsg = $state('');
+	let errorTimer: ReturnType<typeof setTimeout> | undefined;
+	function showError(msg: string) {
+		errorMsg = msg;
+		clearTimeout(errorTimer);
+		errorTimer = setTimeout(() => (errorMsg = ''), 4000);
 	}
 
 	// remove + undo toast
@@ -184,18 +275,44 @@
 		clearTimeout(undoTimer);
 	}
 
+	// zero-keystroke shortcuts (shown when the search box is empty)
+	let recent = $state<Media[]>([]);
+	let popular = $state<Media[]>([]);
+	async function loadShortcuts() {
+		try {
+			const j = await (await fetch('/api/search?q=')).json();
+			recent = j.recent ?? [];
+			popular = j.popular ?? [];
+			mergeMedia([...recent, ...popular]);
+		} catch {
+			/* ignore */
+		}
+	}
+
+	// the saved-karaoke library (B-1) + whatever is cooking, for a client that just loaded
+	let library = $state<Media[]>([]);
+	async function loadLibrary() {
+		try {
+			const j = await (await fetch('/api/library')).json();
+			library = j.library ?? [];
+			mergeMedia(library);
+			const cooking: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.cooking ?? [];
+			if (cooking.length) {
+				mergeMedia(cooking.map((c) => c.media));
+				const next = new Map(mediaStatus);
+				// a live broadcast is fresher than this snapshot — never overwrite one
+				for (const c of cooking) if (!next.has(c.media.id)) next.set(c.media.id, { status: c.status, pct: c.pct, etaSec: c.etaSec });
+				mediaStatus = next;
+			}
+		} catch {
+			/* ignore — the library is an accelerator, never a blocker */
+		}
+	}
+
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
-	// B-1: songs cooking right now that have NO row in the rotation list above — a song someone
-	// requested before queueing it, or one queued by a singer whose entry isn't rendered here. The
-	// ProcessingCard used to be reachable only from inside the rotation loop, so these cooked
-	// invisibly with no status bar anywhere.
-	const cookingElsewhere = $derived(
-		[...mediaStatus.entries()]
-			.filter(([id, s]) => s.status !== 'ready' && s.status !== 'failed' && !queued.some((e) => e.mediaId === id))
-			.map(([id, s]) => ({ id, ...s }))
-	);
-	// my own picks in fair order — move ops target an index within THIS list
 	const myPicks = $derived(queued.filter((e) => e.singerId === me?.id));
+	// the Ready chip's count reflects what that chip would actually show for the current query
+	const libraryCount = $derived(searchActive ? readyResults.length : library.length);
 	function myIdx(id: string): number {
 		return myPicks.findIndex((e) => e.id === id);
 	}
@@ -205,36 +322,35 @@
 		store?.moveEntry(id, i + delta);
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
+	/** Live processing state for an entry's media, or null if it isn't cooking. */
+	function cooking(mediaId: string): { status: MediaStatus; pct: number; etaSec?: number } | null {
+		const s = mediaStatus.get(mediaId);
+		return s && s.status !== 'ready' && s.status !== 'failed' ? s : null;
+	}
 
 	function sendPlayer(command: PlayerCommand) {
 		ws?.send({ type: 'player:command', command });
 	}
-	// the entry that's currently playing (for the now-playing strip)
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
-	// key-shift is available only on a make-karaoke (file) song whose stems are ready (M7-C9)
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
+	// key-shift is available only on a make-karaoke (file) song whose stems are ready (M7-C9)
 	const keyShiftEnabled = $derived(!!nowMedia && nowMedia.playMode === 'file' && nowMedia.stemStatus === 'ready');
+	const keyLabel = $derived(playback.keyShift === 0 ? 'Key' : `Key · ${playback.keyShift > 0 ? '+' : '−'}${Math.abs(playback.keyShift)}`);
 
 	// ── M8-C3: live mic pitch → score ─────────────────────────────────────────
-	// It's my turn to sing when the playing entry is mine. The phone doesn't play the audio (the TV
-	// does), so estimate the playback position by interpolating from the last playback:state.
 	const isMyTurn = $derived(!!me && !!nowEntry && nowEntry.singerId === me.id && playback.isPlaying);
-	// This song was scored only if its media carries a reference pitch track (M8-C3 Stage 1).
 	const scoringAvailable = $derived(!!nowMedia && !!nowMedia.pitchRef);
 	let micEnabled = $state(false); // user must opt in (getUserMedia needs a gesture + permission)
 	let micError = $state('');
-	// M8-C3: my live score, from score:update (shown while it's my turn); cleared when it isn't
 	let myScore = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	const showMyScore = $derived(isMyTurn && !!myScore && myScore.entryId === nowEntry?.id && myScore.singerId === me?.id);
 	let posAnchor = { pos: 0, wall: 0 };
 	$effect(() => {
-		// re-anchor whenever playback changes (song start, seek, play/pause)
 		posAnchor = { pos: playback.positionSec, wall: performance.now() };
 	});
 	function livePositionSec(): number {
 		return playback.isPlaying ? posAnchor.pos + (performance.now() - posAnchor.wall) / 1000 : posAnchor.pos;
 	}
-	// Start capturing only while it's my turn AND I've enabled the mic; stop otherwise / on unmount.
 	$effect(() => {
 		if (!(isMyTurn && micEnabled)) return;
 		const mic = new MicPitch((s) => {
@@ -246,86 +362,6 @@
 		});
 		return () => mic.stop();
 	});
-
-	// ── search (debounced + cancel-in-flight) ────────────────────────────────
-	let query = $state('');
-	let searchSource = $state<'youtube' | 'local'>('youtube');
-	let results = $state<Media[]>([]);
-	let searching = $state(false);
-	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
-	let inflight: AbortController | undefined;
-
-	function onQueryInput() {
-		clearTimeout(debounceTimer);
-		const q = query.trim();
-		if (!q) {
-			results = [];
-			searching = false;
-			inflight?.abort();
-			loadShortcuts(); // box cleared → refresh recent/popular
-			return;
-		}
-		debounceTimer = setTimeout(() => runSearch(q), 150); // debounce ~150ms
-	}
-	async function runSearch(q: string) {
-		inflight?.abort(); // cancel the previous in-flight request
-		const ctrl = new AbortController();
-		inflight = ctrl;
-		searching = true;
-		try {
-			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&source=${searchSource}`, { signal: ctrl.signal });
-			if (ctrl.signal.aborted) return;
-			results = (await res.json()).results ?? [];
-			mergeMedia(results); // titles must resolve for a result that gets cooked before it's queued
-		} catch (e) {
-			if ((e as Error).name !== 'AbortError') {
-				results = [];
-				showError('Search failed — check your connection');
-			}
-		} finally {
-			if (inflight === ctrl) searching = false;
-		}
-	}
-	function setSource(s: 'youtube' | 'local') {
-		searchSource = s;
-		if (query.trim()) runSearch(query.trim());
-	}
-
-	// transient error toast
-	let errorMsg = $state('');
-	let errorTimer: ReturnType<typeof setTimeout> | undefined;
-	function showError(msg: string) {
-		errorMsg = msg;
-		clearTimeout(errorTimer);
-		errorTimer = setTimeout(() => (errorMsg = ''), 4000);
-	}
-
-	// zero-keystroke shortcuts (shown when the search box is empty)
-	let recent = $state<Media[]>([]);
-	let popular = $state<Media[]>([]);
-	async function loadShortcuts() {
-		try {
-			const res = await fetch('/api/search?q=');
-			const j = await res.json();
-			recent = j.recent ?? [];
-			popular = j.popular ?? [];
-			mergeMedia([...recent, ...popular]);
-		} catch {
-			/* ignore */
-		}
-	}
-
-	// B-1: the saved-karaoke library — songs whose stems are already separated on disk. Tapping one
-	// re-queues it with NO worker round-trip (the 1–2 min cook already happened, possibly nights ago).
-	let library = $state<Media[]>([]);
-	async function loadLibrary() {
-		try {
-			library = (await (await fetch('/api/library')).json()).library ?? [];
-			mergeMedia(library);
-		} catch {
-			/* ignore — the library is an accelerator, never a blocker */
-		}
-	}
 </script>
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
@@ -338,102 +374,150 @@
 	{/if}
 </header>
 
-<main style="flex:1;padding:6px 18px 120px;">
-	{#if myPositionLabel}
-		<div class="card" style="padding:12px 14px;margin-bottom:14px;background:linear-gradient(var(--card),#1d1830);border-color:#3a3155;">
-			<strong>{myPositionLabel}</strong>
-		</div>
-	{/if}
-
-	<!-- search -->
-	<div class="card" style="display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:10px;">
+<main>
+	<!-- search: ONE box across every source. There is no source switch, because a singer picks by
+	     readiness ("can I sing this now?"), never by which index the song came from. -->
+	<div class="card searchbox">
 		<span style="color:var(--ink-dim)">🔎</span>
-		<input
-			bind:value={query}
-			oninput={onQueryInput}
-			placeholder="Search a song or artist…"
-			style="border:0;background:transparent;color:var(--ink);font-size:1rem;width:100%;outline:none;"
-		/>
+		<input bind:value={query} oninput={onQueryInput} placeholder="Search a song or artist…" />
 		{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
 	</div>
-	<div style="display:flex;gap:8px;margin-bottom:12px;">
-		<button class="tab" class:active={searchSource === 'youtube'} onclick={() => setSource('youtube')}>YouTube</button>
-		<button class="tab" class:active={searchSource === 'local'} onclick={() => setSource('local')}>Library</button>
+
+	<div class="chips" role="group" aria-label="Filter by readiness">
+		<button class="chip" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
+		<button class="chip ok" class:active={filter === 'ready'} onclick={() => (filter = 'ready')}>
+			🎤 Ready{#if libraryCount}&nbsp;{libraryCount}{/if}
+		</button>
+		<button class="chip warn" class:active={filter === 'cooking'} onclick={() => (filter = 'cooking')}>
+			✨ Cooking{#if cookingRows.length}&nbsp;{cookingRows.length}{/if}
+		</button>
 	</div>
 
-	{#if query.trim()}
-		{#if searching && results.length === 0}
-			<!-- loading: skeleton rows hint at the incoming result shape while the search is in flight -->
-			<div aria-busy="true" aria-label="Searching…">
-				{#each [0, 1, 2] as i (i)}
-					<div class="skel-row">
-						<div class="skel-thumb"></div>
-						<div class="skel-text"><div class="skel-line"></div><div class="skel-line short"></div></div>
-					</div>
-				{/each}
-			</div>
+	{#if showReady}
+		{@const readyList = searchActive ? readyResults : library}
+		{#if readyList.length}
+			<div class="grouphead ok">Ready to sing · no wait</div>
+			{#each readyList as m (m.id)}
+				<SongRow title={m.title} artist={m.artist} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+			{/each}
 		{/if}
-		{#if results.length === 0 && !searching}
-			<p style="color:var(--ink-dim);padding:0 4px;font-size:.9rem;">
-				No results{searchSource === 'youtube' ? ' (YouTube search needs yt-dlp installed on the server)' : ' in your library'}.
-			</p>
-		{/if}
-		{#each results as m (m.id)}
-			<SongCard
-				title={m.title}
-				sub={`${m.artist ?? (m.source === 'youtube' ? 'YouTube' : 'Library')} · tap to queue`}
-				processing={m.playMode === 'file' && m.stemStatus !== 'ready'}
-				onadd={() => addSong(m.id)}
-				onmake={cooking(m.id) || m.stemStatus === 'ready' ? undefined : () => makeKaraoke(m.id)}
+	{/if}
+
+	{#if showCooking && cookingRows.length}
+		<!-- Queue it anyway: rotation HOLDS a cooking song's slot (M7-C6), so it keeps its fair
+		     position and plays when the stems land. Cooking is not a blocked state. -->
+		<div class="grouphead warn">Cooking · queue it anyway</div>
+		{#each cookingRows as c (c.id)}
+			<SongRow
+				title={c.media.title}
+				artist={c.media.artist}
+				readiness="cooking"
+				pct={c.pct}
+				etaSec={c.etaSec}
+				inQueue={inMyQueue(c.id)}
+				onadd={() => addSong(c.id)}
 			/>
 		{/each}
-	{:else}
-		<!-- zero-keystroke shortcuts -->
-		{#if library.length}
-			<!-- B-1: already-separated songs. No cook, no wait — tap and it's instantly playable. -->
-			<div style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:4px 4px 8px;">🎤 Karaoke library</div>
-			{#each library as m (m.id)}
-				<SongCard
-					title={m.title}
-					sub={`${m.artist ? m.artist + ' · ' : ''}stems ready · tap to queue`}
-					onadd={() => addSong(m.id)}
-				/>
-			{/each}
-		{/if}
-		{#if popular.length}
-			<div style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:14px 4px 8px;">🔥 Popular tonight</div>
-			{#each popular as m (m.id)}
-				<SongCard title={m.title} sub={`${m.artist ?? ''} · tap to queue`} onadd={() => addSong(m.id)} />
-			{/each}
-		{/if}
-		{#if recent.length}
-			<div style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:14px 4px 8px;">🕑 Recently queued</div>
-			{#each recent as m (m.id)}
-				<SongCard title={m.title} sub={`${m.artist ?? ''} · tap to queue`} onadd={() => addSong(m.id)} />
-			{/each}
-		{/if}
-		{#if !popular.length && !recent.length && !library.length}
-			<p style="color:var(--ink-dim);padding:0 4px;font-size:.9rem;">Search for a song above, or be the first to queue one ✨</p>
+	{/if}
+
+	{#if showRaw}
+		{#if searchActive}
+			{#if searching && rawResults.length === 0 && readyResults.length === 0}
+				<div aria-busy="true" aria-label="Searching…">
+					{#each [0, 1, 2] as i (i)}
+						<div class="skel-row">
+							<div class="skel-thumb"></div>
+							<div class="skel-text"><div class="skel-line"></div><div class="skel-line short"></div></div>
+						</div>
+					{/each}
+				</div>
+			{/if}
+			{@const rawRows = unaccounted(rawResults)}
+			{#if rawRows.length}
+				<div class="grouphead">Needs karaoke · has vocals</div>
+				{#each rawRows as m (m.id)}
+					{@const r = readinessFor(m)}
+					<SongRow
+						title={m.title}
+						artist={m.artist}
+						readiness={r}
+						pct={liveOf(m.id)?.pct ?? 0}
+						inQueue={inMyQueue(m.id)}
+						onadd={() => addSong(m.id)}
+						onmake={canCook(r) ? () => makeKaraoke(m.id) : undefined}
+					/>
+				{/each}
+			{/if}
+			{#if !searching && rawResults.length === 0 && readyResults.length === 0}
+				<p class="empty">No results. YouTube search needs yt-dlp installed on the server.</p>
+			{/if}
+		{:else}
+			{@const popularRows = unaccounted(popular)}
+			{@const recentRows = unaccounted(recent)}
+			{#if popularRows.length}
+				<div class="grouphead">🔥 Popular tonight</div>
+				{#each popularRows as m (m.id)}
+					{@const r = readinessFor(m)}
+					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
+						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
+						onmake={canCook(r) ? () => makeKaraoke(m.id) : undefined} />
+				{/each}
+			{/if}
+			{#if recentRows.length}
+				<div class="grouphead">🕑 Recently queued</div>
+				{#each recentRows as m (m.id)}
+					{@const r = readinessFor(m)}
+					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
+						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
+						onmake={canCook(r) ? () => makeKaraoke(m.id) : undefined} />
+				{/each}
+			{/if}
+			{#if !popularRows.length && !recentRows.length && !library.length}
+				<p class="empty">Search for a song above, or be the first to queue one ✨</p>
+			{/if}
 		{/if}
 	{/if}
 
-	{#if cookingElsewhere.length}
-		<!-- B-1: cooking songs with no rotation row of their own still get a visible status bar -->
-		<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:18px 4px 10px;">✨ Cooking now</div>
-		{#each cookingElsewhere as c (c.id)}
-			<ProcessingCard title={mediaTitle(c.id)} status={c.status} pct={c.pct} />
-		{/each}
+	{#if filter !== 'all' && ((filter === 'ready' && !(searchActive ? readyResults : library).length) || (filter === 'cooking' && !cookingRows.length))}
+		<p class="empty">
+			{filter === 'ready' ? 'No karaoke-ready songs yet — tap ✨ Karaoke on a search result to make one.' : 'Nothing cooking right now.'}
+		</p>
 	{/if}
+</main>
 
-	<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:18px 4px 10px;">Up next · rotation</div>
+<!-- The rotation lives in a pull-up sheet: at a party you are either browsing or checking the queue,
+     so the two should not fight over one scroll. The peek carries "when am I up?" — the question
+     that used to sit in a card above the search box and scroll out of sight. -->
+<QueueSheet
+	open={sheetOpen}
+	title={nowEntry ? mediaTitle(nowEntry.mediaId) : 'Nothing playing'}
+	sub={nowEntry ? `${singerOf(nowEntry.singerId)?.displayName ?? 'Someone'} is singing` : 'Queue a song to start the party'}
+	position={myPositionLabel}
+	queueCount={queued.length}
+	ontoggle={(v) => (sheetOpen = v)}
+>
+	{#snippet controls()}
+		<button class="ic no-drag" aria-label="restart" onclick={() => sendPlayer({ cmd: 'restart' })}>⏮</button>
+		<button class="ic play no-drag" aria-label="play/pause" onclick={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}>
+			{playback.isPlaying ? '⏸' : '▶'}
+		</button>
+		<button class="ic no-drag" aria-label="skip" onclick={() => sendPlayer({ cmd: 'skip' })}>⏭</button>
+	{/snippet}
+
+	<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
+		<span class="lab">{keyLabel}</span>
+		<button disabled={!keyShiftEnabled || playback.keyShift <= -7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}>− semitone</button>
+		<button disabled={!keyShiftEnabled || playback.keyShift >= 7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}>＋ semitone</button>
+	</div>
+
+	<div class="grouphead">Up next · rotation</div>
 	{#if queued.length === 0}
-		<p style="color:var(--ink-dim);padding:0 4px;">Queue's empty — add a song to start the party ✨</p>
+		<p class="empty">Queue's empty — add a song to start the party ✨</p>
 	{:else}
 		{#each queued as e, i (e.id)}
 			{@const s = singerOf(e.singerId)}
 			{@const proc = cooking(e.mediaId)}
 			{#if proc}
-				<!-- M7-C7: a make-karaoke song still cooking → live progress card (held slot) -->
 				<ProcessingCard
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
@@ -463,24 +547,9 @@
 			{/if}
 		{/each}
 	{/if}
-</main>
-
-{#if nowEntry}
-	<NowPlaying
-		title={mediaTitle(nowEntry.mediaId)}
-		sub={`${singerOf(nowEntry.singerId)?.displayName ?? 'Someone'} is singing`}
-		isPlaying={playback.isPlaying}
-		keyShiftEnabled={keyShiftEnabled}
-		keyShift={playback.keyShift}
-		onplaypause={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
-		onprev={() => sendPlayer({ cmd: 'restart' })}
-		onnext={() => sendPlayer({ cmd: 'skip' })}
-		onkey={(semitones) => sendPlayer({ cmd: 'key', semitones })}
-	/>
-{/if}
+</QueueSheet>
 
 {#if isMyTurn && scoringAvailable}
-	<!-- M8-C3: mic opt-in for live scoring on your turn (score readout added in the score:update UI) -->
 	<div class="mic-bar">
 		{#if !micEnabled}
 			<button class="mic-btn" onclick={() => { micError = ''; micEnabled = true; }}>🎤 Sing — enable mic</button>
@@ -505,53 +574,85 @@
 {/if}
 
 <style>
+	/* the sheet's peek is docked, so the page must be able to scroll clear of it */
+	main { flex: 1; padding: 6px 18px calc(var(--peek-h) + 28px); }
+	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; }
+	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; outline: none; }
+	.chips { display: flex; gap: 7px; margin-bottom: 14px; }
+	.chip {
+		padding: 7px 13px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+		background: var(--card); border: 1px solid var(--line); color: var(--ink-dim);
+	}
+	.chip.ok { color: var(--ok); }
+	.chip.warn { color: var(--warn); }
+	.chip.active { background: var(--grad); border-color: transparent; color: #fff; }
+	.chip:active { transform: scale(0.95); }
+	.grouphead {
+		font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase;
+		color: var(--ink-dim); font-weight: 700; margin: 16px 4px 8px;
+	}
+	.grouphead:first-of-type { margin-top: 4px; }
+	.grouphead.ok { color: var(--ok); }
+	.grouphead.warn { color: var(--warn); }
+	.empty { color: var(--ink-dim); padding: 0 4px; font-size: 0.9rem; }
+
+	/* playback controls, rendered into the sheet's peek */
+	.ic { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
+	.ic.play { background: var(--grad); border-color: transparent; width: 44px; height: 44px; }
+	.ic:active { transform: scale(0.92); }
+
+	.key { display: flex; gap: 6px; margin: 6px 0 2px; align-items: center; }
+	.key.disabled { opacity: 0.5; }
+	.key .lab { font-size: 0.7rem; color: #5b5b78; letter-spacing: 0.1em; text-transform: uppercase; }
+	.key.shifted .lab { color: var(--warn); }
+	.key button { flex: 1; border: 1px dashed #3a3a55; background: transparent; color: #6b6b8c; border-radius: 10px; padding: 6px; font-size: 0.8rem; cursor: pointer; }
+	.key:not(.disabled) button:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
+	.key:not(.disabled) button:not(:disabled):active { transform: scale(0.95); }
+	.key button:disabled { cursor: default; }
+
+	/* everything docked sits ABOVE the collapsed sheet — see --peek-h in app.css */
 	.mic-bar {
-		position: fixed; left: 12px; right: 12px; bottom: 92px; z-index: 20; display: flex;
-		align-items: center; gap: 10px; justify-content: center;
+		position: fixed; left: 12px; right: 12px; bottom: calc(var(--peek-h) + 62px); z-index: 20;
+		display: flex; align-items: center; gap: 10px; justify-content: center;
 	}
 	.mic-btn {
 		border: 0; border-radius: 999px; padding: 12px 22px; font-size: 1rem; font-weight: 800;
-		background: var(--grad); color: #fff; box-shadow: var(--shadow, 0 8px 24px rgba(0,0,0,.3)); cursor: pointer;
+		background: var(--grad); color: #fff; box-shadow: var(--shadow); cursor: pointer;
 	}
-	.mic-live { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent2, #7cf); }
+	.mic-live { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent2); }
 	.mic-score {
 		display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: #fff;
-		background: var(--card, #17172a); border: 1px solid var(--accent2, #7cf); border-radius: 999px;
-		padding: 10px 18px; box-shadow: var(--shadow, 0 8px 24px rgba(0,0,0,.3));
+		background: var(--card); border: 1px solid var(--accent2); border-radius: 999px;
+		padding: 10px 18px; box-shadow: var(--shadow);
 	}
-	.mic-score strong { font-size: 1.25rem; color: var(--accent2, #7cf); font-variant-numeric: tabular-nums; }
-	.mic-live .dot {
+	.mic-score strong { font-size: 1.25rem; color: var(--accent2); font-variant-numeric: tabular-nums; }
+	.mic-live .dot, .mic-score .dot {
 		width: 10px; height: 10px; border-radius: 50%; background: #ff5cae;
 		animation: micpulse 1s ease-in-out infinite;
 	}
 	@keyframes micpulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(1.4); } }
-	.mic-err { font-size: .8rem; color: var(--danger, #ff6b6b); }
+	.mic-err { font-size: .8rem; color: #ff6b6b; }
 	.search-spinner {
 		width: 15px; height: 15px; flex: none; border-radius: 50%;
-		border: 2px solid var(--line, #2a2a3e); border-top-color: var(--accent2, #7cf);
+		border: 2px solid var(--line); border-top-color: var(--accent2);
 		animation: spin 0.7s linear infinite;
 	}
 	@keyframes spin { to { transform: rotate(360deg); } }
 	.skel-row {
 		display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 8px;
-		border-radius: 14px; background: var(--card, #17172a); border: 1px solid var(--line, #2a2a3e);
+		border-radius: 14px; background: var(--card); border: 1px solid var(--line);
 	}
 	.skel-thumb { width: 44px; height: 44px; flex: none; border-radius: 10px; }
 	.skel-text { flex: 1; display: flex; flex-direction: column; gap: 8px; }
 	.skel-line { height: 12px; border-radius: 6px; }
 	.skel-line.short { width: 55%; }
 	.skel-thumb, .skel-line {
-		background: linear-gradient(90deg, var(--card2, #1d1d2e) 25%, var(--line, #2a2a3e) 37%, var(--card2, #1d1d2e) 63%);
+		background: linear-gradient(90deg, var(--card2) 25%, var(--line) 37%, var(--card2) 63%);
 		background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite;
 	}
 	@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
-	.tab {
-		flex: 1; text-align: center; padding: 8px; border-radius: 12px; font-size: 0.85rem;
-		font-weight: 600; background: var(--card); color: var(--ink-dim); border: 1px solid var(--line); cursor: pointer;
-	}
-	.tab.active { background: var(--grad); color: #fff; border-color: transparent; }
 	.undo-toast {
-		position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%);
+		position: fixed; left: 50%; bottom: calc(var(--peek-h) + 14px); transform: translateX(-50%);
 		display: flex; align-items: center; gap: 14px; z-index: 30;
 		background: var(--card2); border: 1px solid var(--line); border-radius: 14px;
 		padding: 12px 16px; box-shadow: var(--shadow); font-size: 0.9rem; max-width: 90vw;
@@ -561,7 +662,7 @@
 		border-radius: 8px; padding: 6px 12px; cursor: pointer;
 	}
 	.error-toast {
-		position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 30;
+		position: fixed; left: 50%; bottom: calc(var(--peek-h) + 14px); transform: translateX(-50%); z-index: 30;
 		background: #2a1b22; color: #ffb1b1; border: 1px solid #5a2b39;
 		padding: 11px 16px; border-radius: 12px; font-size: 0.88rem; max-width: 90vw;
 	}

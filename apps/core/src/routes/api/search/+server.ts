@@ -1,29 +1,53 @@
-// GET /api/search?q=...&source=youtube|local — proxied search across the resolvers.
-// Persists each returned result as a Media row (so it can be queued by id) and registers it in
-// the app's mediaById catalog (which the WS hub validates adds against).
+// GET /api/search?q=... — ONE search across every source, partitioned by readiness.
+//
+// The old shape was a source switch (?source=youtube|local): the caller picked an index and got a
+// flat list. But a singer does not care where a song came from, only whether they can sing it right
+// now with no vocals. So this searches every resolver, materializes + persists each hit, and returns
+// three groups — ready (stems on disk), cooking (stems in flight), raw (plays with vocals) — with
+// each song appearing exactly once. `source` is still honoured as an optional narrowing filter.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
-import { resultToMedia } from '$server/media/resolver';
+import { resultToMedia, type MediaResolver, type SearchResult } from '$server/media/resolver';
+import { partitionSearch } from '$server/media/readiness';
 import { ulid, type Media } from '@encore/shared';
+
+const PER_SOURCE_LIMIT = 12;
+
+/** One resolver's results, or none — a dead source (yt-dlp missing, no network) must not fail the
+ *  whole search, because the local library and the already-cooked catalog are still useful. */
+async function safeSearch(resolver: MediaResolver | undefined, q: string): Promise<SearchResult[]> {
+	if (!resolver) return [];
+	try {
+		return await resolver.search(q, PER_SOURCE_LIMIT);
+	} catch {
+		return [];
+	}
+}
 
 export const GET: RequestHandler = async ({ url }) => {
 	const q = (url.searchParams.get('q') ?? '').trim();
-	const source = url.searchParams.get('source') === 'local' ? 'local' : 'youtube';
+	const only = url.searchParams.get('source'); // optional narrowing: 'youtube' | 'local'
 	const app = getApp();
 
-	// zero-keystroke shortcuts: empty query returns recent + popular from this session
+	// zero-keystroke shortcuts: empty query returns recent + popular from this session. The readiness
+	// groups still come back (empty) so the client can render one shape in both states.
 	if (!q) {
 		const byId = (id: string) => app.mediaById.get(id);
 		const recent = app.popularity.recent(6).map(byId).filter(Boolean);
 		const popular = app.popularity.popular(6).map(byId).filter(Boolean);
-		return json({ results: [], recent, popular });
+		return json({ ready: [], cooking: [], results: [], recent, popular });
 	}
-	const resolver = source === 'local' ? app.localLibrary : app.youtube;
-	const found = resolver ? await resolver.search(q, 12) : [];
 
-	// materialize each result into a queue-able Media (dedupe by source+ref so ids are stable)
-	const results: Media[] = found.map((r) => {
+	const [yt, local] = await Promise.all([
+		only === 'local' ? [] : safeSearch(app.youtube, q),
+		only === 'youtube' ? [] : safeSearch(app.localLibrary, q)
+	]);
+
+	// Materialize every hit into a queue-able Media. Recognising a song we have SEEN BEFORE (by its
+	// origin identity) is what keeps a cooked song from reappearing as a second, raw row — see
+	// Media.sourceRef, which is immutable for exactly this reason.
+	const materialized: Media[] = [...local, ...yt].map((r) => {
 		const existing = [...app.mediaById.values()].find(
 			(m) => m.source === r.source && m.sourceRef === r.sourceRef
 		);
@@ -36,5 +60,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		return media;
 	});
 
-	return json({ results });
+	const { ready, cooking, raw } = partitionSearch(q, [...app.mediaById.values()], materialized);
+	// `results` keeps its name for the raw group: it is what still needs work to become karaoke.
+	return json({ ready, cooking, results: raw });
 };
