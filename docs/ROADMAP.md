@@ -354,13 +354,20 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
 
 ## M8 — Scoring  → *ships: SingStar-style scoring*
 
+- [x] **M8-C0** worker publishes the isolated **vocals stem** (`artifacts.stems.vocals`). Shared
+  prerequisite of pitch extraction (C1) and the vocal-guide mix (`docs/vocal-guide-spec.md`).
+  **Done-when:** unit — `CompleteResult` carries a `vocals` key at the deterministic path. — *DONE:
+  `demucs.py` now moves `vocals.wav` to `stems/<mediaId>-vocals.wav` and includes it in the artifact
+  (was separated by `--two-stems=vocals` then discarded). BEST-EFFORT: a missing vocals file never
+  fails the load-bearing instrumental. Added `processor.vocals_path` + `demucs.demucs_vocals_path`;
+  13 demucs tests (happy-path publishes both stems + best-effort vocals-absent). Core-side
+  `Media.vocalsRef` wiring is M8-C5 (vocal guide).*
 - [x] **M8-C1** pitch extraction from the isolated vocal stem (per-frame f0). **Done-when:** unit
   test: known tone → expected pitch track. — *DONE: `apps/worker/src/pitch_track.py`, a pure-numpy
   autocorrelation f0 tracker (framed ACF + parabolic-interp lag refine + RMS/periodicity voicing
   gates, Hz↔MIDI, stdlib `wave` reader — no torch/scipy). Verified in-sandbox: synthesized A440→440,
   A2/A3/E4/C5 within a quarter-tone, 220↔440 jump tracked, silence→unvoiced, WAV round-trip (12
-  tests). NB: consumes the isolated vocal stem, which requires the worker to PUBLISH `vocals.wav`
-  (today it's separated then discarded — see `docs/vocal-guide-spec.md` M8-C0).*
+  tests). Consumes the isolated vocal stem now published by M8-C0.*
 - [ ] **M8-C2** aligned lyrics overlay on TV (bouncing-ball from WhisperX timings). **Done-when:**
   eyes-on: words highlight in time.
 - [ ] **M8-C3** live mic pitch compare → `score:update` WS event (computed server-side).
