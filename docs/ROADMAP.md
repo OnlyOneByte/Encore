@@ -255,7 +255,7 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   `python -m src.dial_home` dialed a real `bun` core — registry went 0→1 worker, seeded job drove
   queued→ready (pct 100), media flipped stemStatus→ready, instrumental written to the volume.
   Core 167 / shared 25 / worker 14 all green; svelte-check 0/0.
-- [~] **M7-C5** ★ Demucs `htdemucs` stems pipeline → instrumental written to MediaStore.
+- [x] **M7-C5** ★ Demucs `htdemucs` stems pipeline → instrumental written to MediaStore.
   `demucs.py`: PURE helpers (yt-dlp/demucs argv builders, `--two-stems=vocals` → `no_vocals.wav`
   path resolver, yt-dlp + tqdm progress parsers, permanent-vs-transient `classify_retryable` +
   structured `ProcessError`) split from the I/O `DemucsProcessor` (download→separate→publish via an
@@ -399,6 +399,74 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   karaoke instantly (skips the worker). 
 - [ ] **M9-C3** multi-room (the deferred scale knob): room codes, per-room topics. **Done-when:**
   two independent rooms run on one core. Tag **v1.0.0**.
+
+---
+
+## Post-v0.2.0 hardening — shipped 2026-09-02 (from live-testing the tunnelled demo)
+
+Bugs found by driving the real app (worker + TV + phone over a Midway tunnel) and fixed +
+verified. Not milestone features — recorded so the roadmap reflects reality.
+
+- [x] **H-1** auto-start playback when a song is queued into an idle room — the TV was stuck on
+  the attract screen (a plain add never triggered play). `server.ts` calls `reconcileOnReady` after
+  a queue add when idle. +`autostart.test.ts` (2). — *`0668f86`*
+- [x] **H-2** phone pause/resume actually pauses the TV — the TV ignored `playback:state.isPlaying`;
+  `TvPlayer` now honors a `playing` prop. Verified: pause froze `currentTime`, play resumed. — *`0668f86`*
+- [x] **H-3** TV shows the real singer name (not "Someone") — TV now handles `singer:joined`. — *`0668f86`*
+- [x] **H-4** phone search shows a spinner + skeleton rows while a query is in flight. — *`0668f86`*
+- [x] **H-5** persistence by default — file-backed SQLite unless `ENCORE_EPHEMERAL=1`, so singers +
+  queue + playback survive restarts/refresh. Verified: session cookie + queue survive a restart. — *`0668f86`*
+- [x] **H-6** closed the cook→play gap — on a song flipping ready, broadcast a fresh `queue:sync`
+  so clients get the ready media's new instrumental `sourceRef`/status immediately (TV no longer
+  sits on WAITING); TV also applies `media:status` live. Verified: cook→play is prompt. — *`9fb2b58`*
+- [x] **H-7** seek/scrollbar works — TV seeks the `<video>` on a `playback:state.positionSec` jump.
+  Verified: seek→90 moved the video to ~92s. — *`9fb2b58`*
+
+---
+
+## Backlog — auto-cook queue (prioritized)
+
+The remaining features + gaps, ordered for an autonomous build loop. Each carries a **done-when**
+and a **verify** method tagged **AUTO** (a machine gate the loop runs) or **EYES-ON/REAL-ML/NET**
+(the loop implements + unit-covers, then flags for the human — cannot self-verify here).
+
+**Auto-verification gates (run every item):** `bun test` (from `apps/core`) + `pytest` (from
+`apps/worker`) + `bun run typecheck` + `bun run build`. Note: run core tests from `apps/core` (the
+monorepo root has a drizzle subpath-resolution quirk).
+
+**Environment ceilings the loop must respect (flag, don't fight):** LRCLIB is DNS-sinkholed on this
+corp box (offline lyrics need the transcribe fallback or a deploy box); there is no microphone
+(live scoring uses a synthesized pitch stream); Demucs/WhisperX run in the `encore-worker` container
+(~1–2 min/song on CPU); YouTube autoplay-with-audio needs a user gesture in-browser.
+
+- [ ] **B-1 · Saved-karaoke library + cooked-media persistence** (M9-C2 core). Persist `media`
+  rows on search-materialize and on the make-karaoke ready flip; hydrate media on boot so
+  `requestMakeKaraoke` dedupes to already-separated stems (no re-cook) and titles survive a restart.
+  `/api/library` (ready file-media) + a phone "🎤 Karaoke library" section for one-tap re-queue
+  (skips the worker). Also surface **cooking / queued-for-cooking** songs with their status bar
+  (the ProcessingCard currently has nowhere to render for a song not in your own queue view).
+  *Started:* `apps/core/src/server/media/repository.ts` (unwired WIP). **Done-when:** after a
+  restart a previously-cooked song lists + re-queues instantly; a cooking song shows its status.
+  **Verify:** AUTO — MediaRepository upsert/list/hydrate + dedup-to-ready unit tests; EYES-ON — the
+  library list + re-queue on the phone.
+- [ ] **M8-C4 · score reveal + session leaderboard** → tag **v0.3.0**. End-of-song score reveal +
+  a session leaderboard that persists for the session. **Verify:** AUTO — pure leaderboard
+  aggregation from `score:update` unit tests; EYES-ON — the reveal + leaderboard on the TV/phone.
+- [ ] **B-2 · WebAudio pitch-shift (semitones offline)** — ±key currently no-ops on the TV (needs
+  pre-rendered keyed variants, which aren't produced). Add a client-side phase-vocoder AudioWorklet
+  on the TV so `keyShift` re-pitches the instrumental live (tempo preserved), and wire `keyShift`
+  into `TvPlayer`. **Done-when:** ±1 semitone audibly shifts pitch without changing tempo.
+  **Verify:** AUTO — pure cents→ratio + framing math unit tests; EYES-ON/AUDIO — the audible shift.
+- [ ] **B-3 · Offline lyrics (WhisperX transcribe fallback)** — when LRCLIB has no text, transcribe
+  the vocals stem directly (whisperx transcribe→align) so word-timed lyrics work without the LRCLIB
+  DB; give the worker the `align` capability and enqueue an align job alongside stems. **Done-when:**
+  a cooked song shows word-timed lyrics on the TV with LRCLIB unreachable. **Verify:** AUTO — pure
+  transcribe-glue + normalize with a fake aligner; REAL-ML — actual transcription (needs the worker
+  + model download; flag for human).
+- [ ] **B-4 · Hot-titles persistence** — the popularity tracker is in-memory (survives refresh, not
+  restart). Persist counts to the DB so "🔥 Popular tonight" survives a restart. **Verify:** AUTO — unit.
+- [ ] **M9-C1 · accounts** (claim an ephemeral singer; join flow never regresses) — later.
+- [ ] **M9-C3 · multi-room** (room codes, per-room topics; two rooms on one core) → tag **v1.0.0** — later.
 
 ---
 
