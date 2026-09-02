@@ -11,6 +11,7 @@ import { sqlitePersistence } from './state/persistence';
 import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
+import { MediaRepository, hydrateMediaCatalog } from './media/repository';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
 import { JobRepository } from './jobs/repository';
 import { JobReaper } from './jobs/reaper';
@@ -31,6 +32,8 @@ export interface EncoreApp {
 	workers: WorkerRegistry;
 	workerHub: WorkerHub;
 	mediaById: Map<string, Media>;
+	/** Durable media catalog (B-1): write-behind store behind `mediaById` + the saved-karaoke library. */
+	media: MediaRepository;
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
 	popularity: PopularityTracker;
@@ -79,6 +82,12 @@ export function getApp(): EncoreApp {
 	const mediaById = new Map<string, Media>();
 	const { store: mediaStore, config: mediaStoreConfig } = buildMediaStore();
 
+	// B-1: hydrate the runtime catalog from the durable store BEFORE anything reads it. Without this
+	// a restart forgot every song title (a hydrated queue entry rendered as a raw id) and re-cooked
+	// songs whose stems were already sitting on disk.
+	const mediaRepo = new MediaRepository(db);
+	hydrateMediaCatalog(mediaRepo.all(), mediaById);
+
 	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
 	// server.ts can replace the real socket map at boot without rebuilding the hub.
 	const app: EncoreApp = {
@@ -90,6 +99,7 @@ export function getApp(): EncoreApp {
 		workers,
 		workerHub: null as never, // set just below (needs app.toWorker/publish indirection)
 		mediaById,
+		media: mediaRepo,
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(ytDlpSearch),
 		popularity: createPopularityTracker(),
@@ -109,6 +119,12 @@ export function getApp(): EncoreApp {
 		broadcast: (e) => app.publish(e),
 		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
 		mediaStore: mediaStoreConfig,
+		// B-1: a cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
+		// so the next boot lists it in the karaoke library instead of re-cooking it.
+		persistMedia: (mediaId) => {
+			const m = mediaById.get(mediaId);
+			if (m) mediaRepo.upsert(m);
+		},
 		// When a cooked song flips to ready, reconcile playback (start if the room idled / preload) —
 		// the held entry slots back at its fair position (M7-C6). Broadcast a fresh queue:sync FIRST
 		// so every client updates its media catalog with the now-ready song's new sourceRef (the

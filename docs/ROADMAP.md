@@ -386,8 +386,18 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   logic unit-tested (scorer 6, engine 5, detector 5); eyes-on via the `/components` gallery showing
   the score move 14→45→55 across the pink→blue bands on both surfaces. Real-mic capture is
   device-verified (sandbox has no microphone).*
-- [ ] **M8-C4** end-of-song score reveal + session leaderboard. **Done-when:** eyes-on reveal;
-  leaderboard persists for the session. Tag **v0.3.0 (scoring)**.
+- [~] **M8-C4** end-of-song score reveal + session leaderboard. **DEFERRED** (2026-09-02, owner
+  decision): live scoring already lands on both surfaces (C3), so the reveal + leaderboard is
+  presentation polish rather than a missing capability. Moved to *Deferred — future* below; **M8 is
+  closed** at C0–C3. The **v0.3.0 (scoring)** tag moves with it.
+
+---
+
+## M8 status
+
+M8 is **CLOSED** with C0–C3 shipped: vocals stem published, reference pitch extracted, word-timed
+lyrics overlay on the TV, and live mic→server scoring on both surfaces. C4 (reveal + leaderboard) is
+deferred as future work — see *Deferred — future*.
 
 ---
 
@@ -439,19 +449,28 @@ corp box (offline lyrics need the transcribe fallback or a deploy box); there is
 (live scoring uses a synthesized pitch stream); Demucs/WhisperX run in the `encore-worker` container
 (~1–2 min/song on CPU); YouTube autoplay-with-audio needs a user gesture in-browser.
 
-- [ ] **B-1 · Saved-karaoke library + cooked-media persistence** (M9-C2 core). Persist `media`
-  rows on search-materialize and on the make-karaoke ready flip; hydrate media on boot so
-  `requestMakeKaraoke` dedupes to already-separated stems (no re-cook) and titles survive a restart.
-  `/api/library` (ready file-media) + a phone "🎤 Karaoke library" section for one-tap re-queue
-  (skips the worker). Also surface **cooking / queued-for-cooking** songs with their status bar
-  (the ProcessingCard currently has nowhere to render for a song not in your own queue view).
-  *Started:* `apps/core/src/server/media/repository.ts` (unwired WIP). **Done-when:** after a
-  restart a previously-cooked song lists + re-queues instantly; a cooking song shows its status.
-  **Verify:** AUTO — MediaRepository upsert/list/hydrate + dedup-to-ready unit tests; EYES-ON — the
-  library list + re-queue on the phone.
-- [ ] **M8-C4 · score reveal + session leaderboard** → tag **v0.3.0**. End-of-song score reveal +
-  a session leaderboard that persists for the session. **Verify:** AUTO — pure leaderboard
-  aggregation from `score:update` unit tests; EYES-ON — the reveal + leaderboard on the TV/phone.
+- [x] **B-1 · Saved-karaoke library + cooked-media persistence** (M9-C2 core) — *done, verified
+  end-to-end against a real server restart.* `media` rows are upserted on search-materialize, on the
+  make-karaoke request (cooking state), and on the ready flip (via a `persistMedia` seam on the
+  worker hub); `getApp()` hydrates the runtime catalog from disk before anything reads it, so titles
+  survive a restart and `requestMakeKaraoke` refuses to re-cook stems that already exist
+  (`isCooked` / `cookState`). New `GET /api/library` + a phone "🎤 Karaoke library" section for
+  one-tap re-queue that skips the worker, and a "✨ Cooking now" section that renders the
+  ProcessingCard for a cooking song with no rotation row of its own (`ProcessingCard`'s `seq` and
+  singer props are now optional). Migration `0004` adds `lyrics_ref` + `pitch_ref` so a library song
+  keeps its lyrics overlay and scoring reference. **Two bugs the restart harness caught that unit
+  tests could not:** (1) `server.ts` seeded its demo catalog unconditionally, overwriting a hydrated
+  cooked song with a pristine iframe stub — it now seeds only what is missing; (2) the job dedup
+  index counts `ready` as live, so `enqueue` can return a finished job — the media is now reconciled
+  to it instead of being left `queued` against work that will never run (which held the entry out of
+  rotation forever). Also fixed: search/library/shortcut results are merged into the client media
+  catalog, or a cooking card rendered a raw ULID instead of the song title.
+  **Verified:** AUTO — 14 new unit tests (repository round-trip + hydrate-no-clobber + boot round
+  trip; `isCooked`/`cookState`; no-re-cook; ready-job reconcile), 237 core tests green, typecheck +
+  build clean. EYES-ON — cooked a song through the real dial-home worker protocol, restarted the
+  process, confirmed the library lists it with its instrumental key + lyrics + pitch intact, that a
+  re-request answers `alreadyReady` with no new job, that the hub accepts a re-queue, and
+  screenshotted both new phone sections.
 - [ ] **B-2 · WebAudio pitch-shift (semitones offline)** — ±key currently no-ops on the TV (needs
   pre-rendered keyed variants, which aren't produced). Add a client-side phase-vocoder AudioWorklet
   on the TV so `keyShift` re-pitches the instrumental live (tempo preserved), and wire `keyShift`
@@ -467,6 +486,18 @@ corp box (offline lyrics need the transcribe fallback or a deploy box); there is
   restart). Persist counts to the DB so "🔥 Popular tonight" survives a restart. **Verify:** AUTO — unit.
 - [ ] **M9-C1 · accounts** (claim an ephemeral singer; join flow never regresses) — later.
 - [ ] **M9-C3 · multi-room** (room codes, per-room topics; two rooms on one core) → tag **v1.0.0** — later.
+
+---
+
+## Deferred — future (not in the auto-cook queue)
+
+Deliberately parked. The loop must NOT pick these up; they come back only if the owner says so.
+
+- **M8-C4 · end-of-song score reveal + session leaderboard** — deferred 2026-09-02 to close M8.
+  Live scoring already works on both surfaces (M8-C3), so this is presentation polish on top of a
+  capability that exists, not a gap. If revived: pure leaderboard aggregation from `score:update`
+  (AUTO-testable) + an end-of-song reveal on the TV and phone, and it carries the **v0.3.0
+  (scoring)** tag with it.
 
 ---
 

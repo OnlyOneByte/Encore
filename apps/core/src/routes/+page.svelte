@@ -42,6 +42,15 @@
 		const m = mediaCatalog.get(id);
 		return m ? `${m.title}${m.artist ? ' — ' + m.artist : ''}` : id;
 	}
+	/** Merge media into the client catalog. The catalog is otherwise fed ONLY by queue:sync/patch, so
+	 *  a song that came from search or the library — and is not (yet) in anyone's queue — has no
+	 *  resolvable title: the cooking card would render a raw ULID. */
+	function mergeMedia(list: Media[]) {
+		if (!list.length) return;
+		const next = new Map(mediaCatalog);
+		for (const m of list) next.set(m.id, m);
+		mediaCatalog = next;
+	}
 	function singerOf(id: string): PublicSinger | undefined {
 		return singers.get(id);
 	}
@@ -103,6 +112,8 @@
 							nm.set(e.mediaId, { ...m, playMode: 'file', stemStatus: e.status === 'ready' ? 'ready' : 'queued' });
 							mediaCatalog = nm;
 						}
+						// B-1: a song that just finished cooking belongs in the saved library now
+						if (e.status === 'ready') loadLibrary();
 					}
 					store.onServerEvent(e);
 				}
@@ -110,6 +121,7 @@
 			ws.open();
 			connected = true;
 			loadShortcuts();
+			loadLibrary();
 		})();
 		return () => {
 			disposed = true;
@@ -140,7 +152,10 @@
 			if (!res.ok) {
 				mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
 				showError((await res.json().catch(() => ({}))).error ?? 'Could not start make-karaoke');
+				return;
 			}
+			// B-1: the stems were already on disk (cooked on an earlier night) — nothing to wait for
+			if ((await res.json().catch(() => ({}))).alreadyReady) loadLibrary();
 		} catch {
 			showError('Could not start make-karaoke — check your connection');
 		}
@@ -170,6 +185,15 @@
 	}
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
+	// B-1: songs cooking right now that have NO row in the rotation list above — a song someone
+	// requested before queueing it, or one queued by a singer whose entry isn't rendered here. The
+	// ProcessingCard used to be reachable only from inside the rotation loop, so these cooked
+	// invisibly with no status bar anywhere.
+	const cookingElsewhere = $derived(
+		[...mediaStatus.entries()]
+			.filter(([id, s]) => s.status !== 'ready' && s.status !== 'failed' && !queued.some((e) => e.mediaId === id))
+			.map(([id, s]) => ({ id, ...s }))
+	);
 	// my own picks in fair order — move ops target an index within THIS list
 	const myPicks = $derived(queued.filter((e) => e.singerId === me?.id));
 	function myIdx(id: string): number {
@@ -252,6 +276,7 @@
 			const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&source=${searchSource}`, { signal: ctrl.signal });
 			if (ctrl.signal.aborted) return;
 			results = (await res.json()).results ?? [];
+			mergeMedia(results); // titles must resolve for a result that gets cooked before it's queued
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
 				results = [];
@@ -284,8 +309,21 @@
 			const j = await res.json();
 			recent = j.recent ?? [];
 			popular = j.popular ?? [];
+			mergeMedia([...recent, ...popular]);
 		} catch {
 			/* ignore */
+		}
+	}
+
+	// B-1: the saved-karaoke library — songs whose stems are already separated on disk. Tapping one
+	// re-queues it with NO worker round-trip (the 1–2 min cook already happened, possibly nights ago).
+	let library = $state<Media[]>([]);
+	async function loadLibrary() {
+		try {
+			library = (await (await fetch('/api/library')).json()).library ?? [];
+			mergeMedia(library);
+		} catch {
+			/* ignore — the library is an accelerator, never a blocker */
 		}
 	}
 </script>
@@ -351,8 +389,19 @@
 		{/each}
 	{:else}
 		<!-- zero-keystroke shortcuts -->
+		{#if library.length}
+			<!-- B-1: already-separated songs. No cook, no wait — tap and it's instantly playable. -->
+			<div style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:4px 4px 8px;">🎤 Karaoke library</div>
+			{#each library as m (m.id)}
+				<SongCard
+					title={m.title}
+					sub={`${m.artist ? m.artist + ' · ' : ''}stems ready · tap to queue`}
+					onadd={() => addSong(m.id)}
+				/>
+			{/each}
+		{/if}
 		{#if popular.length}
-			<div style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:4px 4px 8px;">🔥 Popular tonight</div>
+			<div style="font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:14px 4px 8px;">🔥 Popular tonight</div>
 			{#each popular as m (m.id)}
 				<SongCard title={m.title} sub={`${m.artist ?? ''} · tap to queue`} onadd={() => addSong(m.id)} />
 			{/each}
@@ -363,9 +412,17 @@
 				<SongCard title={m.title} sub={`${m.artist ?? ''} · tap to queue`} onadd={() => addSong(m.id)} />
 			{/each}
 		{/if}
-		{#if !popular.length && !recent.length}
+		{#if !popular.length && !recent.length && !library.length}
 			<p style="color:var(--ink-dim);padding:0 4px;font-size:.9rem;">Search for a song above, or be the first to queue one ✨</p>
 		{/if}
+	{/if}
+
+	{#if cookingElsewhere.length}
+		<!-- B-1: cooking songs with no rotation row of their own still get a visible status bar -->
+		<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:18px 4px 10px;">✨ Cooking now</div>
+		{#each cookingElsewhere as c (c.id)}
+			<ProcessingCard title={mediaTitle(c.id)} status={c.status} pct={c.pct} />
+		{/each}
 	{/if}
 
 	<div style="font-size:.78rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin:18px 4px 10px;">Up next · rotation</div>

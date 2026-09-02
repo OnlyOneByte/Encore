@@ -37,7 +37,12 @@ export const media = sqliteTable('media', {
 	stemStatus: text('stem_status', { enum: ['none', 'queued', 'ready'] })
 		.notNull()
 		.default('none'),
-	playMode: text('play_mode', { enum: ['iframe', 'file'] }).notNull().default('iframe')
+	playMode: text('play_mode', { enum: ['iframe', 'file'] }).notNull().default('iframe'),
+	// Worker artifact keys (B-1). A cooked song is only fully restored if its derived artifacts come
+	// back with it: without these, a library song would replay with stems but silently lose its
+	// word-timed lyrics overlay (M8-C2) and its scoring reference track (M8-C3) after a restart.
+	lyricsRef: text('lyrics_ref'),
+	pitchRef: text('pitch_ref')
 });
 
 export const queueEntries = sqliteTable('queue_entries', {

@@ -50,13 +50,17 @@ const seenOps = new Set<string>();
 
 // MVP/harness media catalog. Real media is resolved via /api/search (M4) + persisted on demand.
 // Seed a few youtube demos so the dev harness can add songs that validate even without yt-dlp.
+// IMPORTANT (B-1): seed only what is MISSING. getApp() has already hydrated the durable catalog, so
+// an unconditional set would overwrite a demo song that was cooked on a previous night with this
+// pristine iframe stub — the DB would still say "stems ready" while the runtime said "plain iframe",
+// which re-cooks the song and plays the vocal YouTube embed instead of the instrumental.
 const mediaById = app.mediaById;
 for (const m of [
 	{ id: 'demo-takeonme', source: 'youtube', sourceRef: 'djV11Xbc914', title: 'Take On Me', artist: 'a-ha', durationSec: 225, stemStatus: 'none', playMode: 'iframe' },
 	{ id: 'demo-mrbrightside', source: 'youtube', sourceRef: 'gGdGFtwCNBE', title: 'Mr. Brightside', artist: 'The Killers', durationSec: 223, stemStatus: 'none', playMode: 'iframe' },
 	{ id: 'demo-dancingqueen', source: 'youtube', sourceRef: 'xFrGuyw1V8s', title: 'Dancing Queen', artist: 'ABBA', durationSec: 231, stemStatus: 'none', playMode: 'iframe' }
 ] as Media[]) {
-	mediaById.set(m.id, m);
+	if (!mediaById.has(m.id)) mediaById.set(m.id, m);
 }
 
 // M8-C3 live-scoring engine. Loads a song's reference pitch track from the MediaStore (cached) and

@@ -38,24 +38,65 @@ export function soonestSeqFor(mediaId: string, entries: QueueEntry[]): number {
 }
 
 /**
+ * Whether a media already has separated stems on disk — the B-1 dedupe predicate. A media in this
+ * state needs NO worker job: re-queueing it plays the existing instrumental immediately.
+ */
+export function isCooked(media: Media): boolean {
+	return media.playMode === 'file' && media.stemStatus === 'ready';
+}
+
+/**
+ * Why a make-karaoke request can (or can't) proceed. The route uses this to answer honestly:
+ * an already-cooked song is a SUCCESS ("nothing to do, it's ready") not an error, which matters
+ * once the catalog is durable — after B-1, every song cooked on a previous night lands here.
+ */
+export type CookState =
+	| 'unknown' // not in the catalog
+	| 'playing' // the live song; cooking it would yank the video out from under the room
+	| 'ready' // stems already separated (persisted from an earlier session) — no re-cook
+	| 'cooking' // a live job is already working on it; a repeat request dedupes to that job
+	| 'cookable'; // a plain iframe song — go
+
+export function cookState(mediaId: string, deps: Pick<MakeKaraokeDeps, 'mediaById' | 'state'>): CookState {
+	const media = deps.mediaById.get(mediaId);
+	if (!media) return 'unknown';
+	const current = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId);
+	if (current && current.mediaId === mediaId) return 'playing';
+	if (isCooked(media)) return 'ready';
+	if (media.playMode === 'file' && media.stemStatus === 'queued') return 'cooking';
+	return 'cookable';
+}
+
+/**
  * Request stem-separation for a media. Idempotent: a repeat request (or two singers queueing the
- * same song) dedupes to the SAME job (repository.enqueue reuses the live one). Returns the job, or
- * null if the media is unknown OR is the one currently playing (don't yank an active video out from
- * under the room — request make-karaoke for a song before it plays).
+ * same song) dedupes to the SAME job (repository.enqueue reuses the live one), and a song whose
+ * stems are ALREADY on disk (B-1: persisted across restarts) is never re-cooked. Returns the job,
+ * or null if there is no work to do — unknown media, the currently-playing song, or already cooked.
+ * Callers that need to tell those cases apart should ask `cookState` first.
  */
 export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job | null {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return null;
 
-	const current = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId);
-	if (current && current.mediaId === mediaId) return null; // would disrupt the live song
+	const state = cookState(mediaId, deps);
+	if (state === 'playing') return null; // would disrupt the live song
+	// B-1: stems are already separated (this session or a previous one) — burning 1–2 min of GPU to
+	// recompute an identical instrumental is the exact waste the durable catalog exists to prevent.
+	if (state === 'ready') return null;
 
 	// Flip to cooking: a file whose stems aren't ready → rotation holds its slot until ready.
 	media.playMode = 'file';
 	media.stemStatus = 'queued';
 
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
-	return deps.jobs.enqueue(mediaId, 'stems', priority, deps.now());
+	const job = deps.jobs.enqueue(mediaId, 'stems', priority, deps.now());
+	// The dedup index treats a `ready` job as live, so enqueue can hand back a COMPLETED job (the
+	// stems exist, but this media object lost its ready flags — e.g. a runtime catalog entry that
+	// was rebuilt from a stub). Leaving the media `queued` against a job that will never run again
+	// deadlocks rotation: the entry is held forever and the song silently never plays. Reconcile the
+	// media to the job instead.
+	if (job.status === 'ready') markMediaReady(mediaId, deps.mediaById);
+	return job;
 }
 
 /**

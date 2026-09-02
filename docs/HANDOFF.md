@@ -149,7 +149,7 @@ When serving HTTP for eyes-on verification, **bind to 127.0.0.1 only** (standing
 (`_is_git_publish` in `security.py`, with an anti-evasion regex). A **human must run:**
 
 ```bash
-cd /local/home/angryang/.meshclaw/workspace/Encore
+cd /local/home/angryang/.kiro/crew/workspace/Encore
 git push origin main
 git push origin v0.1.0     # tag is not on the remote yet
 ```

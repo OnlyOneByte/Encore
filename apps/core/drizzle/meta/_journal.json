@@ -29,6 +29,13 @@
       "when": 1782844964774,
       "tag": "0003_typical_starfox",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788383680225,
+      "tag": "0004_robust_shaman",
+      "breakpoints": true
     }
   ]
 }

@@ -35,6 +35,9 @@ export interface WorkerHubDeps {
 	/** Fired AFTER a media flips to ready (stems done): lets the core reconcile playback so a held
 	 *  song plays at its fair slot if the room idled while it cooked (M7-C6). Optional. */
 	onMediaReady?: (mediaId: string) => void;
+	/** Persist a media after its artifacts change (B-1 durable catalog). Optional so the hub still
+	 *  unit-tests with no DB; app.ts wires it to MediaRepository.upsert. */
+	persistMedia?: (mediaId: string) => void;
 	now: () => number;
 	config?: LeaseConfig;
 	mediaStore?: MediaStoreConfig;
@@ -141,6 +144,9 @@ export class WorkerHub {
 		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById);
 		// Attach the reference pitch track if a score job carried it (M8-C3 mic scoring). Additive.
 		setMediaPitch(job.mediaId, msg.artifacts?.pitch?.uri, this.#d.mediaById);
+		// B-1: persist the cooked media NOW (stems key + lyrics + pitch), so a restart finds the
+		// separated song in the library instead of re-cooking it from scratch.
+		this.#d.persistMedia?.(job.mediaId);
 		this.#d.registry.releaseSlot(msg.workerId);
 		this.#emitStatus(updated);
 		this.#d.onMediaReady?.(job.mediaId); // core reconciles playback (start if idle / preload)
