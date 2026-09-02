@@ -71,3 +71,15 @@ export function markMediaReady(mediaId: string, mediaById: Map<string, Media>): 
 	media.stemStatus = 'ready';
 	return true;
 }
+
+/**
+ * Attach the word-timed lyrics artifact (M7-C8 align output) to a media so the TV karaoke overlay
+ * can fetch and highlight it (M8-C2). Additive and independent of the stems flip — an align job may
+ * complete alongside or after stems. Returns true if the media existed and a non-empty uri was set.
+ */
+export function setMediaLyrics(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media || !uri) return false;
+	media.lyricsRef = uri;
+	return true;
+}

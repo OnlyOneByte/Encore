@@ -368,8 +368,14 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   gates, Hz↔MIDI, stdlib `wave` reader — no torch/scipy). Verified in-sandbox: synthesized A440→440,
   A2/A3/E4/C5 within a quarter-tone, 220↔440 jump tracked, silence→unvoiced, WAV round-trip (12
   tests). Consumes the isolated vocal stem now published by M8-C0.*
-- [ ] **M8-C2** aligned lyrics overlay on TV (bouncing-ball from WhisperX timings). **Done-when:**
-  eyes-on: words highlight in time.
+- [x] **M8-C2** aligned lyrics overlay on TV (bouncing-ball from WhisperX timings). **Done-when:**
+  eyes-on: words highlight in time. — *DONE: `LyricsOverlay.svelte` on `/tv` fetches the word-timed
+  artifact (M7-C8) via the current media's new `Media.lyricsRef` (worker-hub `#onComplete` now
+  threads `artifacts.lyrics.uri` through `setMediaLyrics`), rAF-interpolates the player position for
+  a smooth 60fps karaoke sweep, and highlights each word (sung/active-wipe/upcoming) with a bouncing
+  ball over the active word; line-sync fallback lights the whole line when a line has no word
+  timings. Pure timing logic (`lib/tv/lyrics.ts`: parse + `activeLineIndex`/`activeWordIndex`/
+  `wordFill`) unit-tested (7 tests); eyes-on confirmed via the `/components` gallery demo.*
 - [ ] **M8-C3** live mic pitch compare → `score:update` WS event (computed server-side).
   **Done-when:** eyes-on: score moves with sung pitch; TV overlay + phone reflect it.
 - [ ] **M8-C4** end-of-song score reveal + session leaderboard. **Done-when:** eyes-on reveal;
