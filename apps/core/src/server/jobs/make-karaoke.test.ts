@@ -8,7 +8,7 @@ import { AuthoritativeState } from '../state/store';
 import { nextPlayable, isEntryReady } from '../rotation/index';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
-import type { Media, QueueEntry } from '@encore/shared';
+import { playbackRef, type Media, type QueueEntry } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 const media = (id: string, over: Partial<Media> = {}): Media => ({
@@ -71,16 +71,33 @@ test('priority = soonest rotationSeq among queued entries needing the media', ()
 	expect(soonestSeqFor('absent', entries)).toBe(Number.MAX_SAFE_INTEGER);
 });
 
-test('markMediaReady points the media at the instrumental + flips to ready', () => {
+test('markMediaReady records the instrumental key and LEAVES sourceRef alone', () => {
 	const d = deps();
 	d.mediaById.set('m1', media('m1', { playMode: 'file', stemStatus: 'queued' }));
 	expect(markMediaReady('m1', d.mediaById)).toBe(true);
 	const m = d.mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
 	expect(m.playMode).toBe('file');
-	expect(m.sourceRef).toBe(instrumentalKey('m1'));
-	expect(m.sourceRef).toBe('stems/m1-instrumental.wav');
+	expect(m.instrumentalRef).toBe(instrumentalKey('m1'));
+	expect(m.instrumentalRef).toBe('stems/m1-instrumental.wav');
+	// REGRESSION: overwriting sourceRef forked the song into two rows — the cooked one in the
+	// library and a fresh uncooked one on the next search, because search dedupes on it.
+	expect(m.sourceRef).toBe('vid-m1');
 	expect(markMediaReady('ghost', d.mediaById)).toBe(false);
+});
+
+test('a cooked song stays recognisable by its ORIGIN identity (search dedupe key)', () => {
+	const d = deps();
+	d.mediaById.set('m1', media('m1', { sourceRef: 'djV11Xbc914' }));
+	requestMakeKaraoke('m1', d);
+	markMediaReady('m1', d.mediaById);
+	const m = d.mediaById.get('m1')!;
+	// the exact lookup /api/search does when deciding "have I seen this result before?"
+	const matches = [...d.mediaById.values()].filter((x) => x.source === 'youtube' && x.sourceRef === 'djV11Xbc914');
+	expect(matches).toHaveLength(1);
+	expect(matches[0]!.id).toBe('m1');
+	expect(matches[0]!.stemStatus).toBe('ready'); // and it is recognised as ALREADY COOKED
+	expect(playbackRef(m)).toBe('stems/m1-instrumental.wav'); // while still playing the instrumental
 });
 
 test('setMediaLyrics attaches the align artifact uri (M8-C2), and no-ops without one', () => {
@@ -152,14 +169,14 @@ test('cookState distinguishes unknown / playing / ready / cooking / cookable', (
 test('an already-cooked song is NEVER re-cooked (no second job, no wasted separation)', () => {
 	const d = deps();
 	// exactly the shape hydrated from disk on boot: file + ready + the instrumental key
-	d.mediaById.set('m1', media('m1', { playMode: 'file', stemStatus: 'ready', sourceRef: instrumentalKey('m1') }));
+	d.mediaById.set('m1', media('m1', { playMode: 'file', stemStatus: 'ready', instrumentalRef: instrumentalKey('m1') }));
 
 	expect(requestMakeKaraoke('m1', d)).toBeNull();
 	expect(d.jobs.listByStatus('queued')).toHaveLength(0);
 	// and the media is left exactly as it was — still pointing at its existing instrumental
 	const m = d.mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
-	expect(m.sourceRef).toBe(instrumentalKey('m1'));
+	expect(m.instrumentalRef).toBe(instrumentalKey('m1'));
 	// a ready file entry is immediately playable, so re-queueing it skips the worker entirely
 	expect(isEntryReady(entry('q', 'm1'), d.mediaById)).toBe(true);
 });
@@ -195,6 +212,6 @@ test('a reused ALREADY-READY job reconciles the media instead of deadlocking rot
 	expect(second.id).toBe(first.id); // deduped to the finished job
 	const m = d.mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready'); // NOT left 'queued'
-	expect(m.sourceRef).toBe(instrumentalKey('m1'));
+	expect(m.instrumentalRef).toBe(instrumentalKey('m1'));
 	expect(isEntryReady(entry('q', 'm1'), d.mediaById)).toBe(true); // playable, not held forever
 });

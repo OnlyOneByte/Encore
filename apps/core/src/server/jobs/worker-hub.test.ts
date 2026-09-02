@@ -98,11 +98,13 @@ test('FULL LIFECYCLE: hello → assign → accept → progress → complete driv
 	const done = jobs.byId(job.id)!;
 	expect(done.status).toBe('ready'); // ← drove to ready
 	expect(done.progressPct).toBe(100);
-	// M7-C6: media flips to the playable instrumental (playMode→file, sourceRef→stems key)
+	// M7-C6: media flips to the playable instrumental (playMode→file, instrumentalRef→stems key).
+	// sourceRef stays the ORIGIN so search still recognises the song as already cooked.
 	const m = mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
 	expect(m.playMode).toBe('file');
-	expect(m.sourceRef).toBe('stems/m1-instrumental.wav');
+	expect(m.instrumentalRef).toBe('stems/m1-instrumental.wav');
+	expect(m.sourceRef).toBe('vid-m1'); // origin preserved — search still recognises this song
 	const ready = broadcasts.at(-1) as Extract<ServerEvent, { type: 'media:status' }>;
 	expect(ready).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'ready' });
 	expect(registry.get('w1')!.slotsFree).toBe(1); // slot released on complete → free for new work

@@ -1,0 +1,89 @@
+<script lang="ts">
+	// A search row. ONE row shape for all three readiness states, because they are one kind of thing
+	// (a song) at three points on one axis — not three kinds of thing. The state decides the badge
+	// line and which actions appear; the layout never changes, so a row that finishes cooking morphs
+	// in place instead of jumping between lists.
+	import type { Readiness } from '$lib/readiness';
+
+	interface Props {
+		title: string;
+		artist?: string;
+		readiness: Readiness;
+		pct?: number; // cooking progress, 0..100
+		etaSec?: number;
+		/** Already in the rotation — the add action becomes a confirmation instead of a repeat. */
+		inQueue?: boolean;
+		onadd?: () => void;
+		/** Request stem separation. Absent when it makes no sense (already ready / already cooking). */
+		onmake?: () => void;
+	}
+	let { title, artist, readiness, pct = 0, etaSec, inQueue = false, onadd, onmake }: Props = $props();
+
+	// The sub-line's job is to answer "what do I get if I tap this?" — the raw case has to say
+	// "with vocals" out loud, or a singer queues a plain YouTube video and cannot tell why the
+	// original singer is still audible.
+	const sub = $derived.by(() => {
+		if (readiness === 'ready') return `🎤 instrumental ready${artist ? ' · ' + artist : ''}`;
+		if (readiness === 'cooking') {
+			const eta = etaSec && etaSec > 0 ? ` · ~${Math.max(1, Math.round(etaSec / 60))} min` : '';
+			return `Separating vocals… ${pct}%${eta}`;
+		}
+		return artist ? `${artist} · sings with the original vocals` : 'sings with the original vocals';
+	});
+</script>
+
+<div class="row card" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}
+	onclick={() => onadd?.()} role="button" tabindex="0"
+	onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && onadd?.()}>
+	<div class="thumb"></div>
+	<div class="meta">
+		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"> ✨</span>{/if}</div>
+		<div class="s" class:ok={readiness === 'ready'} class:warn={readiness === 'cooking'}>{sub}</div>
+		{#if readiness === 'cooking'}
+			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
+			<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
+		{/if}
+	</div>
+	{#if onmake}
+		<button class="make" title="Make karaoke (strip the vocals)"
+			onclick={(e) => { e.stopPropagation(); onmake?.(); }}>✨ Karaoke</button>
+	{/if}
+	<button class="add" class:queued={inQueue} aria-label={inQueue ? 'already in the queue' : 'add a turn'}
+		onclick={(e) => { e.stopPropagation(); onadd?.(); }}>{inQueue ? '✓ Queued' : '＋ Turn'}</button>
+</div>
+
+<style>
+	.row {
+		display: flex; align-items: center; gap: 11px; padding: 10px; margin-bottom: 8px;
+		cursor: pointer; transition: transform 0.12s ease, background 0.12s ease;
+	}
+	.row:active { transform: scale(0.98); background: var(--card2); }
+	/* readiness is legible at a glance from the border alone, before any text is read */
+	.row.ready { border-color: var(--ok); }
+	.row.cooking { background: linear-gradient(var(--card), #201a2e); border-color: #3a2f55; }
+	.thumb {
+		width: 56px; height: 40px; border-radius: 8px; flex: 0 0 auto;
+		background: linear-gradient(135deg, #2c2c44, #1c1c2c); position: relative;
+	}
+	.thumb::after { content: '▶'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff8; font-size: 0.8rem; }
+	.meta { min-width: 0; flex: 1; }
+	.t { font-weight: 600; font-size: 0.93rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.sparkle { color: var(--warn); }
+	.s { font-size: 0.76rem; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.s.ok { color: var(--ok); }
+	.s.warn { color: var(--warn); }
+	.bar { height: 4px; border-radius: 4px; background: #2a2440; overflow: hidden; margin-top: 6px; }
+	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 4px; transform-origin: left center; transition: transform 0.4s ease; }
+	.add {
+		flex: 0 0 auto; border: 0; border-radius: 10px; padding: 9px 12px; font-weight: 700;
+		font-size: 0.82rem; background: var(--grad); color: #fff; cursor: pointer;
+	}
+	.add:active { transform: scale(0.94); }
+	.add.queued { background: var(--card2); border: 1px solid var(--ok); color: var(--ok); }
+	.make {
+		flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; padding: 9px 9px;
+		font-weight: 700; font-size: 0.76rem; background: var(--card2); color: var(--warn); cursor: pointer;
+	}
+	.make:active { transform: scale(0.94); }
+	.make + .add { margin-left: 8px; }
+</style>

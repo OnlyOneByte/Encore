@@ -13,7 +13,6 @@ import type {
 	MediaStatus,
 	Media,
 	Job,
-	JobStatus,
 	MediaStoreConfig
 } from '@encore/shared';
 import type { JobRepository } from './repository';
@@ -21,6 +20,7 @@ import { WorkerRegistry } from './registry';
 import { planAssignments } from './dispatch';
 import { markMediaReady, setMediaLyrics, setMediaPitch } from './make-karaoke';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
+import { mediaStatusFor } from './media-status';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
 export type Broadcast = (event: ServerEvent) => void;
@@ -41,20 +41,6 @@ export interface WorkerHubDeps {
 	now: () => number;
 	config?: LeaseConfig;
 	mediaStore?: MediaStoreConfig;
-}
-
-/** Map a worker stage / job status to the phone-facing media:status (§5: stage maps 1:1). */
-function mediaStatusFor(job: Job, stage?: MediaStatus): MediaStatus {
-	if (stage) return stage;
-	const map: Record<JobStatus, MediaStatus> = {
-		queued: 'queued',
-		assigned: 'queued',
-		running: 'separating', // generic "working"; refined by the worker's reported stage
-		ready: 'ready',
-		failed: 'failed',
-		canceled: 'failed'
-	};
-	return map[job.status];
 }
 
 export class WorkerHub {

@@ -14,7 +14,8 @@ This is the canonical index. Deep specs live in sibling files and are linked inl
 ## 1. Product — two surfaces, one loop
 
 **📱 Phone (the remote — the star).** Join via QR (name + color, no signup wall) → unified
-search (`YouTube` / `Library` tabs) → one-tap "Add to my turn" → the queue/rotation screen
+search (one box, every source, grouped by **readiness**: ready / cooking / needs-karaoke) → one-tap
+"Add to my turn" → the rotation, in a pull-up sheet docked under now-playing
 (who's up, your songs, drag-reorder your own) → now-playing control strip.
 
 **📺 TV / Stage (a dumb renderer that obeys the server).** Idle/attract (big join QR + up-next

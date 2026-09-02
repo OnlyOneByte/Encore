@@ -20,9 +20,10 @@ export interface MakeKaraokeDeps {
 const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
 
 /**
- * The deterministic /media key (Media.sourceRef) for a media's instrumental stem. MUST match the
- * worker's output location (apps/worker/src/processor.py instrumental_path → <media_dir>/stems/
- * <mediaId>-instrumental.wav), since the TV's file player resolves `/media/${sourceRef}`.
+ * The deterministic MediaStore key for a media's instrumental stem (stored on Media.instrumentalRef).
+ * MUST match the worker's output location (apps/worker/src/processor.py instrumental_path →
+ * <media_dir>/stems/<mediaId>-instrumental.wav), since the TV's file player resolves
+ * `/media/${playbackRef(media)}`.
  */
 export function instrumentalKey(mediaId: string): string {
 	return `stems/${mediaId}-instrumental.wav`;
@@ -100,15 +101,18 @@ export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job 
 }
 
 /**
- * Flip a media to READY after its stems job completes: point it at the instrumental file and mark
- * stems ready, so rotation's isEntryReady unblocks the held entry and the TV file player serves the
- * backing track. Returns true if the media existed and was flipped. (worker-hub calls this.)
+ * Flip a media to READY after its stems job completes: record the instrumental key and mark stems
+ * ready, so rotation's isEntryReady unblocks the held entry and the TV file player serves the
+ * backing track. `sourceRef` is deliberately LEFT ALONE — it is the song's origin identity, and
+ * overwriting it (as this used to) made the next search fail to recognise the song and mint a
+ * second, uncooked row for it. Returns true if the media existed and was flipped.
+ * (worker-hub calls this.)
  */
 export function markMediaReady(mediaId: string, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
 	media.playMode = 'file';
-	media.sourceRef = instrumentalKey(mediaId);
+	media.instrumentalRef = instrumentalKey(mediaId);
 	media.stemStatus = 'ready';
 	return true;
 }

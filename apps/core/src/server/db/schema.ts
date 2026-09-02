@@ -38,6 +38,9 @@ export const media = sqliteTable('media', {
 		.notNull()
 		.default('none'),
 	playMode: text('play_mode', { enum: ['iframe', 'file'] }).notNull().default('iframe'),
+	// The separated instrumental's MediaStore key. Kept SEPARATE from source_ref so source_ref stays
+	// the song's immutable origin identity (what search dedupes on) — see Media.sourceRef.
+	instrumentalRef: text('instrumental_ref'),
 	// Worker artifact keys (B-1). A cooked song is only fully restored if its derived artifacts come
 	// back with it: without these, a library song would replay with stems but silently lose its
 	// word-timed lyrics overlay (M8-C2) and its scoring reference track (M8-C3) after a restart.
