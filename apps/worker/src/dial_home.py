@@ -14,6 +14,7 @@ Run:  python -m src.dial_home   (or as a module inside the container)
 """
 from __future__ import annotations
 
+import shutil
 import asyncio
 import json
 import os
@@ -111,6 +112,16 @@ class WorkerClient:
             await self._send(protocol.failed(self.state.worker_id, job.job_id, str(exc), retryable=_is_retryable(exc)))
         finally:
             self.state.finish(job.job_id)
+            # B-7: the worker OWNS its scratch, so the worker cleans it. work/<jobId> holds the
+            # decoded source plus both separated WAV stems — hundreds of MB per job, and nothing reads
+            # them once the encoded artifacts are published. Leaving them is how 432 MB accumulated
+            # under the old layout.
+            #
+            # This cannot be done from the core: in a two-container deployment the core runs as a
+            # DIFFERENT uid, and these dirs are created by the worker at its own umask, so a
+            # core-side rmtree gets EACCES. Cleanup has to live with whoever created the files.
+            # ignore_errors: tidying must never turn a completed job into a failed one.
+            shutil.rmtree(os.path.join(job.media_dir, "work", job.job_id), ignore_errors=True)
 
     def _on_cancel(self, msg: dict[str, Any]) -> None:
         # cooperative cancel: drop the slot now; the core already moved the job to canceled.

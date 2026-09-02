@@ -80,7 +80,7 @@ async def test_full_assign_to_complete_flow(tmp_path):
     # the placeholder instrumental was actually written to the media dir
     out = completes[0]["mediaUri"]
     assert Path(out).exists()
-    assert "m1-instrumental.wav" in out
+    assert "m1-instrumental.m4a" in out
     # slot is released after completion
     assert client.state.slots_free == 1
 
@@ -228,3 +228,47 @@ def test_is_retryable_prefers_structured_flag():
     # plain exceptions fall back to the substring heuristic
     assert _is_retryable(RuntimeError("source not found")) is False
     assert _is_retryable(RuntimeError("temporary blip")) is True
+
+
+@pytest.mark.asyncio
+async def test_worker_cleans_its_own_scratch_after_a_job(tmp_path):
+    """B-7: work/<jobId> holds the decoded source + both WAV stems -- hundreds of MB that nothing
+    reads once the encoded artifacts are published. The WORKER must clean it, not the core: in a
+    two-container deployment the core runs as a different uid and gets EACCES on these dirs."""
+    work = tmp_path / "work" / "j1"
+    work.mkdir(parents=True)
+    (work / "input.wav").write_bytes(b"BIG")
+
+    sent = []
+
+    class DoneProcessor:
+        async def process(self, job):
+            yield CompleteResult(media_uri="/x.m4a", artifacts={"stems": {"instrumental": "/x.m4a"}})
+
+    async def send(m):
+        sent.append(m)
+
+    client = WorkerClient(send, DoneProcessor())
+    await client._run_job(JobSpec(job_id="j1", media_id="m1", job_type="stems",
+                                  source_uri="https://y/x", params={}, media_dir=str(tmp_path)))
+    assert not work.exists(), "job scratch must be removed once the job is terminal"
+
+
+@pytest.mark.asyncio
+async def test_scratch_is_cleaned_even_when_the_job_FAILS(tmp_path):
+    work = tmp_path / "work" / "j2"
+    work.mkdir(parents=True)
+    (work / "input.wav").write_bytes(b"BIG")
+
+    class BoomProcessor:
+        async def process(self, job):
+            raise RuntimeError("demucs exploded")
+            yield  # pragma: no cover
+
+    async def send(_m):
+        return None
+
+    client = WorkerClient(send, BoomProcessor())
+    await client._run_job(JobSpec(job_id="j2", media_id="m1", job_type="stems",
+                                  source_uri="https://y/x", params={}, media_dir=str(tmp_path)))
+    assert not work.exists()

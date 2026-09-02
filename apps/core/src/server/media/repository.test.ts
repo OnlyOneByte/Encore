@@ -45,7 +45,7 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 	expect(got.thumbnail).toBe('https://i.ytimg.com/vi/x/hq.jpg');
 	expect(got.stemStatus).toBe('ready');
 	expect(got.playMode).toBe('file');
-	expect(got.instrumentalRef).toBe('derived/stems/m1-instrumental.wav');
+	expect(got.instrumentalRef).toBe('derived/stems/m1-instrumental.m4a');
 	expect(got.sourceRef).toBe('vid-m1'); // ORIGIN identity survives the cook (search dedupe key)
 	// the derived artifacts must survive too, or a library song replays with no lyrics + no scoring
 	expect(got.lyricsRef).toBe('lyrics/m1-aligned.json');
@@ -74,7 +74,7 @@ test('upsert is idempotent on id and updates in place (the cook flip overwrites 
 	expect(r.all()).toHaveLength(1);
 	const got = r.byId('m1')!;
 	expect(got.stemStatus).toBe('ready');
-	expect(got.instrumentalRef).toBe('derived/stems/m1-instrumental.wav');
+	expect(got.instrumentalRef).toBe('derived/stems/m1-instrumental.m4a');
 	expect(got.sourceRef).toBe('vid-m1'); // the cook did not fork the song's identity
 	expect(got.lyricsRef).toBe('lyrics/m1.json');
 });
@@ -136,6 +136,6 @@ test('BOOT ROUND TRIP: a song cooked last night is in the catalog + library afte
 	expect(mediaById.get('m1')!.title).toBe('Take On Me'); // titles survive (no raw-id rendering)
 	expect(after.listReady().map((m) => m.id)).toEqual(['m1']); // one-tap re-queue is offered
 	expect(mediaById.get('m1')!.pitchRef).toBe('pitch/m1.json'); // scoring still works
-	expect(mediaById.get('m1')!.instrumentalRef).toBe('derived/stems/m1-instrumental.wav');
+	expect(mediaById.get('m1')!.instrumentalRef).toBe('derived/stems/m1-instrumental.m4a');
 	expect(mediaById.get('m1')!.sourceRef).toBe('vid-m1'); // and it is still dedupe-able by origin
 });

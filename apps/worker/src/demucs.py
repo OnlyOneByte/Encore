@@ -31,17 +31,77 @@ def is_local_source(source_uri: str) -> bool:
     return not source_uri.startswith(("http://", "https://"))
 
 
-def download_argv(source_uri: str, out_path: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
-    """yt-dlp argv: extract best audio to a wav at out_path (no playlist, quiet but progress on)."""
+def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
+    """yt-dlp argv: fetch the best audio-only stream in its NATIVE container -- no transcode.
+
+    B-7 audio policy. This used to pass `-x --audio-format wav`, which inflated a ~5 MB lossy YouTube
+    stream (Opus 135k / AAC 129k -- measured) into ~59 MB of WAV. That is a ~12x cost for ZERO fidelity
+    gain: you cannot restore information YouTube already discarded, so the WAV was a lossless copy of
+    lossy audio. Keeping the native stream is both smaller and higher fidelity than any re-encode.
+
+    `out_template` must carry `%(ext)s` -- the extension is whatever YouTube served (m4a or webm), so
+    the caller discovers the real filename with `find_downloaded` rather than assuming one.
+    """
     return [
         ytdlp_bin,
         "--no-playlist",
         "--newline",  # emit progress as discrete lines (not \r) so the parser sees each update
-        "-x",
-        "--audio-format", "wav",
-        "-o", out_path,
+        "-f", "bestaudio",  # audio-only, native container, no postprocessing
+        "-o", out_template,
         source_uri,
     ]
+
+
+def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
+    """ffmpeg argv: decode any container to the 44.1kHz stereo WAV that Demucs wants.
+
+    WAV is a WORKING format, never a stored one (B-7): this lands in `work/<jobId>/` and dies with the
+    scratch dir. Forcing stereo/44.1k also normalizes the input so separation behaves identically
+    whether the source arrived as Opus-in-webm or AAC-in-m4a.
+    """
+    return [
+        ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
+        "-i", input_path,
+        "-ac", "2", "-ar", "44100",
+        "-c:a", "pcm_s16le",
+        out_wav,
+    ]
+
+
+# Stereo AAC at this bitrate is the storage format for both stems (B-7 audio policy). Rationale:
+# the SOURCE is ~129-135 kbps lossy, so 192k leaves headroom for the unavoidable second generation
+# while still cutting a 54 MB WAV stem to roughly 7 MB. Stereo is the ceiling that matters -- YouTube
+# serves stereo, so a surround receiver upmixes from stereo no matter what we store, and anything
+# beyond stereo would be invented data. AAC over Opus deliberately: the instrumental has to play in a
+# browser <video>, and AAC-in-m4a is the safer bet on Safari.
+STEM_BITRATE = "192k"
+
+
+def encode_stem_argv(input_wav: str, out_path: str, bitrate: str = STEM_BITRATE, ffmpeg_bin: str = "ffmpeg") -> list[str]:
+    """ffmpeg argv: encode a separated WAV stem to stereo AAC in an m4a container."""
+    return [
+        ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
+        "-i", input_wav,
+        "-c:a", "aac", "-b:a", bitrate, "-ac", "2",
+        "-movflags", "+faststart",  # moov atom first so a browser can start playing before full download
+        out_path,
+    ]
+
+
+def find_downloaded(directory: str, media_id: str) -> str | None:
+    """The file yt-dlp actually produced for this media id, whatever extension it chose.
+
+    Returns None if nothing landed. Ignores yt-dlp's `.part` fragments so an interrupted download is
+    never mistaken for a finished one.
+    """
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return None
+    for name in names:
+        if name.startswith(f"{media_id}.") and not name.endswith((".part", ".ytdl", ".temp")):
+            return os.path.join(directory, name)
+    return None
 
 
 def demucs_argv(input_path: str, out_dir: str, model: str = DEFAULT_MODEL, demucs_bin: str = "demucs") -> list[str]:
@@ -169,12 +229,16 @@ class DemucsProcessor:
         runner: Runner = subprocess_runner,
         ytdlp_bin: str = "yt-dlp",
         demucs_bin: str = "demucs",
+        ffmpeg_bin: str = "ffmpeg",
+        bitrate: str = STEM_BITRATE,
         mover: Callable[[str, str], None] = shutil.move,
     ) -> None:
         self._model = model
         self._runner = runner
         self._ytdlp_bin = ytdlp_bin
         self._demucs_bin = demucs_bin
+        self._ffmpeg_bin = ffmpeg_bin
+        self._bitrate = bitrate
         self._move = mover
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
@@ -182,47 +246,67 @@ class DemucsProcessor:
         os.makedirs(work, exist_ok=True)
 
         # ── stage 1: obtain the source audio ──────────────────────────────────────
-        # B-7: the download lands in the `audio/` storage class, NOT in scratch. Raw audio is the one
-        # asset that cannot be regenerated (it needs network, and disappears with the upload), so it
-        # is kept deliberately instead of being written to a temp dir that is cleaned up. It is also
-        # reused: an existing file means a later align/score job for this song skips the download
-        # entirely rather than re-fetching the same bytes.
+        # B-7: the download lands in the `audio/` storage class in its NATIVE container, NOT as WAV in
+        # scratch. Raw audio is the one asset that cannot be regenerated (it needs network, and
+        # disappears with the upload), so it is kept deliberately -- and kept small, since transcoding
+        # lossy YouTube audio to WAV costs ~12x the bytes for zero fidelity. It is also reused: an
+        # existing file means a later align/score job skips the download entirely.
         if is_local_source(job.source_uri):
             input_path = job.source_uri if os.path.isabs(job.source_uri) else os.path.join(job.media_dir, job.source_uri)
         else:
-            input_path = source_audio_path(job.media_dir, job.media_id)
-            os.makedirs(os.path.dirname(input_path), exist_ok=True)
-            if not os.path.exists(input_path):
-                async for ev in self._run_stage("downloading", download_argv(job.source_uri, input_path, self._ytdlp_bin), parse_ytdlp_progress):
+            audio_dir = os.path.dirname(source_audio_path(job.media_dir, job.media_id))
+            os.makedirs(audio_dir, exist_ok=True)
+            input_path = find_downloaded(audio_dir, job.media_id)
+            if input_path is None:
+                template = os.path.join(audio_dir, f"{job.media_id}.%(ext)s")
+                async for ev in self._run_stage("downloading", download_argv(job.source_uri, template, self._ytdlp_bin), parse_ytdlp_progress):
                     yield ev
+                input_path = find_downloaded(audio_dir, job.media_id)
+                if input_path is None:
+                    raise RuntimeError(f"download produced no audio for {job.media_id}")
             else:
                 yield ProgressEvent(stage="downloading", pct=100)  # already on disk
 
+        # ── stage 1b: decode to the WAV Demucs wants (TRANSIENT — dies with the scratch dir) ──
+        sep_input = os.path.join(work, "input.wav")
+        await self._run_quiet(decode_argv(input_path, sep_input, self._ffmpeg_bin))
+
         # ── stage 2: separate vocals (Demucs htdemucs) ────────────────────────────
         sep_out = os.path.join(work, "separated")
-        async for ev in self._run_stage("separating", demucs_argv(input_path, sep_out, self._model, self._demucs_bin), parse_demucs_progress):
+        async for ev in self._run_stage("separating", demucs_argv(sep_input, sep_out, self._model, self._demucs_bin), parse_demucs_progress):
             yield ev
 
-        # ── stage 3: publish the stems to the MediaStore ──────────────────────────
+        # ── stage 3: encode + publish the stems to the MediaStore ──────────────────
+        # Encoded to stereo AAC rather than moved as WAV: ~54 MB -> ~7 MB per stem, and the
+        # instrumental still plays natively in a browser <video>.
         produced = demucs_no_vocals_path(sep_out, self._model)
         if not os.path.exists(produced):
             raise RuntimeError(f"demucs produced no instrumental at {produced}")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
-        self._move(produced, final)
+        await self._run_quiet(encode_stem_argv(produced, final, self._bitrate, self._ffmpeg_bin))
 
         stems: dict[str, str] = {"instrumental": final}
         # Also publish the ISOLATED VOCALS stem (M8-C0) — `--two-stems=vocals` already produced it;
-        # we used to discard it. It unblocks pitch extraction (M8-C1) and the vocal-guide mix. This
-        # is BEST-EFFORT: a missing vocals file must not fail an otherwise-good instrumental (the
+        # we used to discard it. It unblocks pitch extraction (M8-C1) and the vocal-guide mix, both of
+        # which are planned, so it is RETAINED (compressed, stereo) rather than dropped. BEST-EFFORT:
+        # a missing or unencodable vocals file must not fail an otherwise-good instrumental (the
         # instrumental is the load-bearing karaoke output; the vocals stem is an enhancement).
         vocals_src = demucs_vocals_path(sep_out, self._model)
         if os.path.exists(vocals_src):
             vocals_final = vocals_path(job.media_dir, job.media_id)
-            self._move(vocals_src, vocals_final)
-            stems["vocals"] = vocals_final
+            try:
+                await self._run_quiet(encode_stem_argv(vocals_src, vocals_final, self._bitrate, self._ffmpeg_bin))
+                stems["vocals"] = vocals_final
+            except Exception:  # noqa: BLE001 — an enhancement must never fail the job
+                pass
 
         yield CompleteResult(media_uri=final, artifacts={"stems": stems})
+
+    async def _run_quiet(self, argv: list[str]) -> None:
+        """Run a CLI that emits no useful progress (ffmpeg at loglevel=error), draining its output."""
+        async for _ in self._runner(argv):
+            pass
 
     async def _run_stage(
         self, stage: str, argv: list[str], parse: Callable[[str], int | None]

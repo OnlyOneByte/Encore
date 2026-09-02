@@ -19,6 +19,7 @@ import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
 import { planAssignments } from './dispatch';
 import { markMediaReady, setMediaLyrics, setMediaPitch } from './make-karaoke';
+import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 import { mediaStatusFor } from './media-status';
 
@@ -122,9 +123,10 @@ export class WorkerHub {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
-		// Flip the media to ready: playMode→file, sourceRef→the instrumental key, stemStatus→ready.
-		// rotation's isEntryReady now returns true, so the held entry becomes playable at its slot.
-		markMediaReady(job.mediaId, this.#d.mediaById);
+		// Flip the media to ready: playMode→file, instrumentalRef→what the worker actually wrote,
+		// stemStatus→ready. rotation's isEntryReady now returns true, so the held entry becomes
+		// playable at its slot.
+		markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental);
 		// Attach word-timed lyrics if the job carried an align artifact (M8-C2 TV overlay). Additive:
 		// a stems-only complete leaves lyrics absent; an align complete populates lyricsRef.
 		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById);
@@ -134,6 +136,10 @@ export class WorkerHub {
 		// separated song in the library instead of re-cooking it from scratch.
 		this.#d.persistMedia?.(job.mediaId);
 		this.#d.registry.releaseSlot(msg.workerId);
+		// B-7: job scratch is transient by contract — the intermediate WAVs in work/<jobId> are large
+		// (a decoded source plus both separated stems) and nothing reads them after this point. Leaving
+		// them is how 432MB accumulated under the old layout.
+		cleanJobWork(msg.jobId);
 		this.#emitStatus(updated);
 		this.#d.onMediaReady?.(job.mediaId); // core reconciles playback (start if idle / preload)
 		this.dispatch();
@@ -150,6 +156,7 @@ export class WorkerHub {
 			this.dispatch();
 		} else {
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
+			cleanJobWork(msg.jobId); // terminal: nothing will resume from this scratch
 			this.#emitStatus(updated);
 		}
 	}

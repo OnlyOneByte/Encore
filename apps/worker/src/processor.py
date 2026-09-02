@@ -15,6 +15,10 @@ from typing import AsyncIterator, Protocol
 
 from . import protocol
 
+# Stored stem container (B-7 audio policy): stereo AAC in m4a. Browser-native for the TV player, and
+# ~7 MB where the WAV was ~54 MB. MUST match the core's paths.ts STEM_EXT.
+STEM_EXT = "m4a"
+
 
 @dataclass
 class ProgressEvent:
@@ -78,7 +82,7 @@ def instrumental_path(media_dir: str, media_id: str) -> str:
     paths.ts instrumentalKey() byte-for-byte -- the TV resolves /media/<ref>, so a mismatch 404s on a
     file that exists.
     """
-    return os.path.join(media_dir, "derived", "stems", f"{media_id}-instrumental.wav")
+    return os.path.join(media_dir, "derived", "stems", f"{media_id}-instrumental.{STEM_EXT}")
 
 
 def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
@@ -97,7 +101,7 @@ def vocals_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's ISOLATED VOCALS stem (M8-C0). Feeds pitch
     extraction (M8-C1) and the vocal-guide mix (docs/vocal-guide-spec.md). Parallels the core's
     make-karaoke `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
-    return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.wav")
+    return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{STEM_EXT}")
 
 
 def pitch_track_path(media_dir: str, media_id: str) -> str:
