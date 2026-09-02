@@ -16,7 +16,14 @@ export interface Media {
    */
   sourceRef: string;
   title: string;
+  /** The UPLOADER as the source reported it (a YouTube channel, often not the artist at all). */
   artist?: string;
+  /**
+   * The canonical artist, normalized from the title (B-7-C1) and only set when the parse was
+   * CONFIDENT — a low-confidence guess stays undefined rather than being displayed as fact. Prefer
+   * this over `artist` for display and grouping; `artist` remains the raw provenance.
+   */
+  artistCanonical?: string;
   durationSec: number;
   thumbnail?: string;
   stemStatus: StemStatus;

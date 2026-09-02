@@ -43,6 +43,13 @@
       "when": 1788385156029,
       "tag": "0005_abnormal_sunset_bain",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788392522842,
+      "tag": "0006_woozy_bug",
+      "breakpoints": true
     }
   ]
 }

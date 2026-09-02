@@ -2,7 +2,7 @@
 // authoritative state (M1-C1); this is hydrated on boot and persisted asynchronously.
 // Mirrors the domain types in @encore/shared. See docs/MASTER-DESIGN.md §5.
 
-import { sqliteTable, text, integer, uniqueIndex } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 export const rooms = sqliteTable('rooms', {
@@ -45,8 +45,37 @@ export const media = sqliteTable('media', {
 	// back with it: without these, a library song would replay with stems but silently lose its
 	// word-timed lyrics overlay (M8-C2) and its scoring reference track (M8-C3) after a restart.
 	lyricsRef: text('lyrics_ref'),
-	pitchRef: text('pitch_ref')
+	pitchRef: text('pitch_ref'),
+	// Canonical metadata for BROWSE (B-7-C4). Derived by the track-title normalizer and mirrored here
+	// from the authoritative sidecar, because grouping the library by `artist` is useless — that column
+	// holds the YouTube uploader ("7clouds"), not the artist. Nullable: a low-confidence parse stores
+	// NULL rather than a guess, so a heading is never a lie.
+	artistCanonical: text('artist_canonical'),
+	album: text('album'),
+	year: integer('year')
 });
+
+/**
+ * Multi-valued library metadata (B-7-C4): genre, free tags, mood. ONE table rather than a column per
+ * taxonomy, so every browse query has the same shape (`WHERE kind = ? AND value = ?`) and adding
+ * "decade" later needs no migration. The authoritative copy lives in the sidecar; this is the index.
+ */
+export const mediaTags = sqliteTable(
+	'media_tags',
+	{
+		mediaId: text('media_id').notNull(),
+		kind: text('kind', { enum: ['genre', 'tag', 'mood'] }).notNull(),
+		value: text('value').notNull()
+	},
+	(t) => ({
+		// browse: every song of a genre
+		byKindValue: index('media_tags_kind_value_idx').on(t.kind, t.value),
+		// render: every tag of one song
+		byMedia: index('media_tags_media_idx').on(t.mediaId),
+		// a song cannot carry the same tag twice
+		uniq: uniqueIndex('media_tags_unique_idx').on(t.mediaId, t.kind, t.value)
+	})
+);
 
 export const queueEntries = sqliteTable('queue_entries', {
 	id: text('id').primaryKey(), // client-minted ULID
