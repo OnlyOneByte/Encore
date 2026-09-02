@@ -45,15 +45,24 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 
 export class MediaRepository {
 	#db: DB;
-	constructor(db: DB) {
+	/** Optional sidecar sink (B-7-C3). Injected so the repository stays unit-testable without I/O. */
+	#onPersist?: (m: Media) => void;
+
+	constructor(db: DB, onPersist?: (m: Media) => void) {
 		this.#db = db;
+		this.#onPersist = onPersist;
 	}
 
 	/** Insert or update a media record (idempotent on id). Called on search-materialize and on every
-	 *  artifact flip (stems ready / lyrics / pitch), so the catalog is durable. */
+	 *  artifact flip (stems ready / lyrics / pitch), so the catalog is durable.
+	 *
+	 *  B-7-C3: the DB is the INDEX; `meta/<id>.json` is the authoritative record, so every write here
+	 *  also refreshes the sidecar. Fire-and-forget: a sidecar write must never delay or fail the
+	 *  in-memory flip that the room is waiting on. */
 	upsert(m: Media): void {
 		const row = toRow(m);
 		this.#db.insert(media).values(row).onConflictDoUpdate({ target: media.id, set: row }).run();
+		this.#onPersist?.(m);
 	}
 
 	/** One media by id, or undefined. */

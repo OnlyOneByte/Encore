@@ -14,6 +14,7 @@ import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
 import { MediaRepository, hydrateMediaCatalog } from './media/repository';
 import { migrateStorageLayout } from './media/migrate-layout';
+import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
@@ -122,8 +123,43 @@ export function getApp(): EncoreApp {
 	// B-1: hydrate the runtime catalog from the durable store BEFORE anything reads it. Without this
 	// a restart forgot every song title (a hydrated queue entry rendered as a raw id) and re-cooked
 	// songs whose stems were already sitting on disk.
-	const mediaRepo = new MediaRepository(db);
+	// B-7-C3: the DB is an INDEX over the sidecars, so every persist refreshes meta/<id>.json, and a
+	// sidecar present on disk but missing from the index is restored below. Together those give the
+	// volume the property that matters: it describes itself, so losing the SQLite file costs an
+	// index rebuild rather than every title and artifact link.
+	const mediaRepo = new MediaRepository(db, (m) => {
+		void (async () => {
+			try {
+				const prev = await readSidecar(m.id);
+				await writeSidecar(sidecarFromMedia(m, Date.now(), prev));
+			} catch {
+				/* the sidecar is the durable record, not the live one — never fail a flip over it */
+			}
+		})();
+	});
 	hydrateMediaCatalog(mediaRepo.all(), mediaById);
+
+	// Restore anything the sidecars know about that the index does not. This is what makes the media
+	// volume portable: drop it on a new box (or delete the SQLite file) and the library comes back.
+	// Async and non-blocking — boot must not wait on a directory scan, and a party server that will
+	// not start because a rescan is slow is the worse failure.
+	void rebuildIndexFromMeta({
+		hasMedia: (id) => mediaById.has(id),
+		upsert: (m) => {
+			mediaById.set(m.id, m);
+			mediaRepo.upsert(m);
+		}
+	})
+		.then(async (restored) => {
+			if (restored > 0) console.log(`[core] restored ${restored} media from sidecars in meta/`);
+			// And the other direction: describe every song the index already knows. Without this the
+			// portable-volume property would only apply to songs added AFTER B-7-C3.
+			const written = await backfillSidecars(mediaRepo.all(), Date.now());
+			if (written > 0) console.log(`[core] backfilled ${written} sidecars into meta/`);
+		})
+		.catch(() => {
+			/* best effort — the DB index is still authoritative enough to run a party */
+		});
 
 	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
 	// server.ts can replace the real socket map at boot without rebuilding the hub.
