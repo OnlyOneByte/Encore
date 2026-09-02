@@ -316,7 +316,7 @@
 			placeholder="Search a song or artist…"
 			style="border:0;background:transparent;color:var(--ink);font-size:1rem;width:100%;outline:none;"
 		/>
-		{#if searching}<span style="font-size:.75rem;color:var(--ink-dim)">…</span>{/if}
+		{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
 	</div>
 	<div style="display:flex;gap:8px;margin-bottom:12px;">
 		<button class="tab" class:active={searchSource === 'youtube'} onclick={() => setSource('youtube')}>YouTube</button>
@@ -324,6 +324,17 @@
 	</div>
 
 	{#if query.trim()}
+		{#if searching && results.length === 0}
+			<!-- loading: skeleton rows hint at the incoming result shape while the search is in flight -->
+			<div aria-busy="true" aria-label="Searching…">
+				{#each [0, 1, 2] as i (i)}
+					<div class="skel-row">
+						<div class="skel-thumb"></div>
+						<div class="skel-text"><div class="skel-line"></div><div class="skel-line short"></div></div>
+					</div>
+				{/each}
+			</div>
+		{/if}
 		{#if results.length === 0 && !searching}
 			<p style="color:var(--ink-dim);padding:0 4px;font-size:.9rem;">
 				No results{searchSource === 'youtube' ? ' (YouTube search needs yt-dlp installed on the server)' : ' in your library'}.
@@ -458,6 +469,25 @@
 	}
 	@keyframes micpulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(1.4); } }
 	.mic-err { font-size: .8rem; color: var(--danger, #ff6b6b); }
+	.search-spinner {
+		width: 15px; height: 15px; flex: none; border-radius: 50%;
+		border: 2px solid var(--line, #2a2a3e); border-top-color: var(--accent2, #7cf);
+		animation: spin 0.7s linear infinite;
+	}
+	@keyframes spin { to { transform: rotate(360deg); } }
+	.skel-row {
+		display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 8px;
+		border-radius: 14px; background: var(--card, #17172a); border: 1px solid var(--line, #2a2a3e);
+	}
+	.skel-thumb { width: 44px; height: 44px; flex: none; border-radius: 10px; }
+	.skel-text { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+	.skel-line { height: 12px; border-radius: 6px; }
+	.skel-line.short { width: 55%; }
+	.skel-thumb, .skel-line {
+		background: linear-gradient(90deg, var(--card2, #1d1d2e) 25%, var(--line, #2a2a3e) 37%, var(--card2, #1d1d2e) 63%);
+		background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite;
+	}
+	@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
 	.tab {
 		flex: 1; text-align: center; padding: 8px; border-radius: 12px; font-size: 0.85rem;
 		font-weight: 600; background: var(--card); color: var(--ink-dim); border: 1px solid var(--line); cursor: pointer;

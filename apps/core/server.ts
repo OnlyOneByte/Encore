@@ -16,7 +16,7 @@ import {
 	type WorkerCommand
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
-import { handlePlayerCommand, handleTelemetry } from './src/server/realtime/player';
+import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './src/server/realtime/player';
 import { ScoreEngine, type PitchDocLoader } from './src/server/realtime/scoring';
 import { parseRefPitchDoc } from './src/server/scoring/scorer';
 import { upNextAfter } from './src/server/rotation/index';
@@ -180,6 +180,12 @@ const server = Bun.serve<{ role: string; workerId?: string }>({
 				}
 				case 'queue:command':
 					handleQueueCommand(evt.command, deps, sendToOrigin);
+					// Auto-start playback when the room is IDLE and a song was just queued. Without this
+					// a plain (non-make-karaoke) add never triggers play — the TV sits on the attract
+					// screen forever and the phone shows no play control (there's no "current" entry to
+					// hang one on). reconcileOnReady starts the soonest-playable entry when nothing is
+					// current, and no-ops once something is already playing.
+					if (!state.playback.currentEntryId) reconcileOnReady(deps);
 					break;
 				case 'player:command':
 					handlePlayerCommand(evt.command, deps);

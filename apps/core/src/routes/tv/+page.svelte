@@ -22,6 +22,8 @@
 	let positionSec = $state(0);
 	// M8-C3: live score for the current song, from score:update broadcasts (null until first sample)
 	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
+	// playback isPlaying (pause/resume from the phone) — wired into both player slots
+	let isPlaying = $state(true);
 	// which media each slot shows (from the controller's assignment)
 	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
 
@@ -123,6 +125,11 @@
 			}
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
 			if (e.type === 'score:update') score = e;
+			// pause/resume from the phone (playback:state.isPlaying) → drives the player slots
+			if (e.type === 'playback:state') isPlaying = e.state.isPlaying;
+			// learn singers who join AFTER our initial sync, so the lower-third shows their real name
+			// (not the "Someone" fallback) — mirrors the phone. Without this, late joiners read as Someone.
+			if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
 		};
 	}
 
@@ -148,6 +155,7 @@
 		media={slotMedia.A}
 		visible={visible === 'A' && !isAttract}
 		active={visible === 'A'}
+		playing={isPlaying}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
@@ -157,6 +165,7 @@
 		media={slotMedia.B}
 		visible={visible === 'B' && !isAttract}
 		active={visible === 'B'}
+		playing={isPlaying}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}

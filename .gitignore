@@ -14,6 +14,8 @@ vite.config.ts.timestamp-*
 # `media/` previously matched those and silently excluded the entire M4 search subsystem from git.
 /data/
 /media/
+/apps/core/data/
+/apps/core/media/
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
