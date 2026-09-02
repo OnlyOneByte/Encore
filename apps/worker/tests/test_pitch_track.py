@@ -144,3 +144,21 @@ def test_read_wav_mono_downmixes_stereo(tmp_path):
     data, sr = pt.read_wav_mono(str(wav_path))
     assert data.ndim == 1 and data.size == mono.size  # channels averaged to mono
     assert abs(pt.median_voiced_f0(pt.extract_pitch_track(data, sr)) - freq) < 2.0
+
+
+def test_pitch_track_to_artifact_regular_grid():
+    # a real extraction serialized to the compact regular-grid artifact the core scorer consumes
+    track = pt.extract_pitch_track(_sine(440.0, 0.3), SR)
+    doc = pt.pitch_track_to_artifact(track)
+    assert doc["hopSec"] == round(pt.HOP_MS / 1000.0, 4)  # implicit time grid: frame i @ i*hopSec
+    assert doc["frameCount"] == len(track)
+    # parallel arrays, one entry per frame, aligned
+    assert len(doc["f0Hz"]) == len(doc["midi"]) == len(doc["voiced"]) == len(track)
+    assert all(isinstance(v, bool) for v in doc["voiced"])
+    # a 440 Hz tone → at least one voiced frame near 440
+    assert any(v and abs(f0 - 440.0) < 10.0 for v, f0 in zip(doc["voiced"], doc["f0Hz"]))
+
+
+def test_pitch_track_to_artifact_empty():
+    doc = pt.pitch_track_to_artifact([])
+    assert doc["frameCount"] == 0 and doc["f0Hz"] == [] and doc["voiced"] == []

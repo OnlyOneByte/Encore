@@ -5,6 +5,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
+	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import type { LyricsDoc } from '$lib/tv/lyrics';
 	import { onMount } from 'svelte';
 
@@ -40,11 +41,14 @@
 		words: []
 	};
 	let demoPos = $state(0);
+	let demoScore = $state(0); // sweeps 0→100 so the badge moves through all bands (M8-C3 eyes-on)
 	onMount(() => {
 		const t0 = performance.now();
 		let raf = 0;
 		const loop = () => {
-			demoPos = ((performance.now() - t0) / 1000) % 6; // loop 0→6s
+			const elapsed = (performance.now() - t0) / 1000;
+			demoPos = elapsed % 6; // loop 0→6s
+			demoScore = Math.round(((elapsed % 10) / 10) * 100); // 0→100 over 10s
 			raf = requestAnimationFrame(loop);
 		};
 		raf = requestAnimationFrame(loop);
@@ -71,5 +75,14 @@
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (M8-C2 · TV)</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
 		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible />
+		<ScoreBadge score={demoScore} hits={demoScore} total={100} />
+	</div>
+
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">Phone score pill (M8-C3)</h2>
+	<div style="display:flex;justify-content:center;padding:16px;background:var(--bg);border-radius:16px;">
+		<span style="display:inline-flex;align-items:center;gap:8px;font-weight:700;color:#fff;background:var(--card);border:1px solid var(--accent2);border-radius:999px;padding:10px 18px;">
+			<span style="width:10px;height:10px;border-radius:50%;background:#ff5cae;"></span>
+			Score <strong style="font-size:1.25rem;color:var(--accent2);font-variant-numeric:tabular-nums;">{demoScore}</strong> · {demoScore}/100 on pitch
+		</span>
 	</div>
 </main>

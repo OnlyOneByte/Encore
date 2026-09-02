@@ -17,6 +17,8 @@ export interface Media {
   playMode: PlayMode; // the abstraction flag that carries the whole future (iframe -> file)
   lyricsRef?: string; // MediaStore key of the word-timed lyrics JSON (M7-C8 artifact) — drives the
   // TV karaoke overlay (M8-C2). Absent until an align job completes; the overlay no-ops without it.
+  pitchRef?: string; // MediaStore key of the reference pitch-track JSON (M8-C3 artifact) — the
+  // melody the server scores the live mic against. Absent until a score job completes.
 }
 
 export interface Singer {

@@ -2,7 +2,7 @@
 // a stems job at need-priority, dedups repeats, and refuses to disrupt the live song. markMediaReady
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
-import { requestMakeKaraoke, markMediaReady, setMediaLyrics, instrumentalKey, soonestSeqFor, type MakeKaraokeDeps } from './make-karaoke';
+import { requestMakeKaraoke, markMediaReady, setMediaLyrics, setMediaPitch, instrumentalKey, soonestSeqFor, type MakeKaraokeDeps } from './make-karaoke';
 import { JobRepository } from './repository';
 import { AuthoritativeState } from '../state/store';
 import { nextPlayable, isEntryReady } from '../rotation/index';
@@ -91,6 +91,15 @@ test('setMediaLyrics attaches the align artifact uri (M8-C2), and no-ops without
 	// undefined uri (stems-only complete) and unknown media both no-op
 	expect(setMediaLyrics('m1', undefined, d.mediaById)).toBe(false);
 	expect(setMediaLyrics('ghost', 'x.json', d.mediaById)).toBe(false);
+});
+
+test('setMediaPitch attaches the reference pitch-track uri (M8-C3), and no-ops without one', () => {
+	const d = deps();
+	d.mediaById.set('m1', media('m1'));
+	expect(setMediaPitch('m1', 'pitch/m1-pitch.json', d.mediaById)).toBe(true);
+	expect(d.mediaById.get('m1')!.pitchRef).toBe('pitch/m1-pitch.json');
+	expect(setMediaPitch('m1', undefined, d.mediaById)).toBe(false);
+	expect(setMediaPitch('ghost', 'x.json', d.mediaById)).toBe(false);
 });
 
 test('ROUND TRIP: cook → held while another plays → ready → plays at its preserved slot', () => {

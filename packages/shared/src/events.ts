@@ -25,6 +25,9 @@ export type ServerEvent =
   | { type: 'playback:state'; state: PlaybackState; rev: number }
   | { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
   | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number }
+  // Live SingStar-style score for the current song (M8-C3), recomputed as mic pitch arrives.
+  // `score` is a 0..100 rolling accuracy; hits/total are the scored (voiced-reference) frames.
+  | { type: 'score:update'; entryId: string; singerId: string; score: number; hits: number; total: number }
   | { type: 'singer:joined'; singer: Singer }
   | { type: 'op:reject'; clientOpId: string; reason: string };
 
@@ -43,6 +46,9 @@ export type ClientEvent =
   | { type: 'queue:command'; command: ClientCommand }
   | { type: 'player:command'; command: PlayerCommand }
   | { type: 'tv:telemetry'; positionSec: number; durationSec: number; status: string; bufferedNextPct: number }
+  // Phone → core: one live mic pitch sample (M8-C3). f0Hz=0 means the phone detected no pitch
+  // (silence). The core scores it against the current song's reference pitch track at positionSec.
+  | { type: 'mic:pitch'; positionSec: number; f0Hz: number; confidence?: number }
   | { type: 'hello'; lastRev: number };
 
 // ── dial-home worker protocol ─────────────────────────────────────────────────
@@ -75,6 +81,7 @@ export type WorkerCommand =
 export interface JobArtifacts {
   stems?: { instrumental?: string; vocals?: string };
   lyrics?: { uri: string };
+  pitch?: { uri: string }; // reference pitch-track JSON (M8-C3) — drives server-side mic scoring
 }
 
 // re-export the op layer so consumers import everything from one place
