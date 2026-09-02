@@ -376,8 +376,16 @@ Milestones map to `docs/MASTER-DESIGN.md` §8. Scaffold (M0-C0) is already commi
   ball over the active word; line-sync fallback lights the whole line when a line has no word
   timings. Pure timing logic (`lib/tv/lyrics.ts`: parse + `activeLineIndex`/`activeWordIndex`/
   `wordFill`) unit-tested (7 tests); eyes-on confirmed via the `/components` gallery demo.*
-- [ ] **M8-C3** live mic pitch compare → `score:update` WS event (computed server-side).
-  **Done-when:** eyes-on: score moves with sung pitch; TV overlay + phone reflect it.
+- [x] **M8-C3** live mic pitch compare → `score:update` WS event (computed server-side).
+  **Done-when:** eyes-on: score moves with sung pitch; TV overlay + phone reflect it. — *DONE:
+  full pipeline. Worker `score` job publishes a reference pitch-track artifact (`Media.pitchRef`);
+  phone detects mic f0 client-side (`lib/mic/pitch-detect.ts` normalized-ACF + McLeod peak-pick,
+  octave-robust) and streams `mic:pitch`; the core `ScoreEngine` (`realtime/scoring.ts` +
+  `scoring/scorer.ts`: octave-agnostic cents → closeness-weighted 0–100 rolling accuracy, rests not
+  penalized) broadcasts `score:update`; TV `ScoreBadge` + phone score pill reflect it live. Pure
+  logic unit-tested (scorer 6, engine 5, detector 5); eyes-on via the `/components` gallery showing
+  the score move 14→45→55 across the pink→blue bands on both surfaces. Real-mic capture is
+  device-verified (sandbox has no microphone).*
 - [ ] **M8-C4** end-of-song score reveal + session leaderboard. **Done-when:** eyes-on reveal;
   leaderboard persists for the session. Tag **v0.3.0 (scoring)**.
 

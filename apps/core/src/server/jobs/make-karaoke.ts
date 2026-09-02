@@ -83,3 +83,15 @@ export function setMediaLyrics(mediaId: string, uri: string | undefined, mediaBy
 	media.lyricsRef = uri;
 	return true;
 }
+
+/**
+ * Attach the reference pitch-track artifact (M8-C1/C3) to a media so the server can score the live
+ * mic against it (M8-C3). Additive and independent of the stems flip — a `score` job publishes it.
+ * Returns true if the media existed and a non-empty uri was set.
+ */
+export function setMediaPitch(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media || !uri) return false;
+	media.pitchRef = uri;
+	return true;
+}

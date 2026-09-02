@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import wave
 from dataclasses import dataclass
+from typing import Any
 
 import numpy as np
 
@@ -177,6 +178,22 @@ def median_voiced_f0(track: list[PitchFrame]) -> float:
     (e.g. for a sustained-note test or a per-word pitch)."""
     voiced = [f.f0_hz for f in track if f.voiced]
     return float(np.median(voiced)) if voiced else 0.0
+
+
+def pitch_track_to_artifact(track: list[PitchFrame], *, hop_ms: float = HOP_MS) -> dict[str, Any]:
+    """Serialize a pitch track into the REGULAR-GRID JSON artifact the core scorer consumes (M8-C3).
+
+    The grid is implicit: frame i covers time i × hopSec, so the core maps a mic sample at
+    positionSec to reference index round(positionSec / hopSec) in O(1). Parallel arrays (not a list
+    of objects) keep the payload compact for a whole song. Unvoiced frames carry f0/midi = 0 and
+    voiced=False so the scorer can skip scoring silence/rests."""
+    return {
+        "hopSec": round(hop_ms / 1000.0, 4),
+        "frameCount": len(track),
+        "f0Hz": [round(f.f0_hz, 2) for f in track],
+        "midi": [round(f.midi, 3) for f in track],
+        "voiced": [bool(f.voiced) for f in track],
+    }
 
 
 # ── WAV reader (stdlib only — no soundfile) ─────────────────────────────────────────

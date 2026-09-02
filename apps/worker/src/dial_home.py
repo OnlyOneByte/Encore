@@ -151,7 +151,10 @@ def _build_processor() -> Processor:
 
         demucs = DemucsProcessor(model=os.environ.get("ENCORE_DEMUCS_MODEL", "htdemucs"))
         by_type["stems"] = demucs
-        by_type["score"] = demucs  # scoring (M8) reuses the stems separation
+        if "score" in CAPABILITIES:
+            from .score import PitchTrackProcessor  # separate → extract reference pitch track (M8-C3)
+
+            by_type["score"] = PitchTrackProcessor(separator=demucs)
     if "align" in CAPABILITIES:
         from .whisperx import WhisperXProcessor
 

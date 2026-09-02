@@ -184,14 +184,20 @@ def test_build_processor_routes_by_capability(monkeypatch):
     from src.processor import RoutingProcessor
     from src.demucs import DemucsProcessor
     from src.whisperx import WhisperXProcessor
+    from src.score import PitchTrackProcessor
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
     p = _build_processor()
     assert isinstance(p, RoutingProcessor)
     by_type = p._by_type  # introspect the routing table
     assert isinstance(by_type["stems"], DemucsProcessor)
-    assert isinstance(by_type["score"], DemucsProcessor)  # score reuses stems separation
+    assert "score" not in by_type  # score is capability-gated (M8-C3), not advertised by default
     assert "align" not in by_type  # not advertised by default
+
+    # a worker advertising score gets a PitchTrackProcessor (separate → extract reference pitch)
+    monkeypatch.setattr(dh, "CAPABILITIES", ["stems", "score"])
+    ps = _build_processor()
+    assert isinstance(ps._by_type["score"], PitchTrackProcessor)
 
     # a worker advertising align gets a WhisperXProcessor for it
     monkeypatch.setattr(dh, "CAPABILITIES", ["stems", "align"])

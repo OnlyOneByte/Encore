@@ -8,6 +8,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongCard from '$lib/components/SongCard.svelte';
 	import NowPlaying from '$lib/components/NowPlaying.svelte';
+	import { MicPitch } from '$lib/mic/mic-capture';
 	import type { MediaStatus } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
@@ -86,6 +87,9 @@
 					}
 					if (e.type === 'playback:state') {
 						playback = e.state;
+					}
+					if (e.type === 'score:update') {
+						myScore = e;
 					}
 					if (e.type === 'media:status') {
 						// live make-karaoke progress → drives the ProcessingCard (M7-C7)
@@ -186,6 +190,38 @@
 	// key-shift is available only on a make-karaoke (file) song whose stems are ready (M7-C9)
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
 	const keyShiftEnabled = $derived(!!nowMedia && nowMedia.playMode === 'file' && nowMedia.stemStatus === 'ready');
+
+	// ── M8-C3: live mic pitch → score ─────────────────────────────────────────
+	// It's my turn to sing when the playing entry is mine. The phone doesn't play the audio (the TV
+	// does), so estimate the playback position by interpolating from the last playback:state.
+	const isMyTurn = $derived(!!me && !!nowEntry && nowEntry.singerId === me.id && playback.isPlaying);
+	// This song was scored only if its media carries a reference pitch track (M8-C3 Stage 1).
+	const scoringAvailable = $derived(!!nowMedia && !!nowMedia.pitchRef);
+	let micEnabled = $state(false); // user must opt in (getUserMedia needs a gesture + permission)
+	let micError = $state('');
+	// M8-C3: my live score, from score:update (shown while it's my turn); cleared when it isn't
+	let myScore = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
+	const showMyScore = $derived(isMyTurn && !!myScore && myScore.entryId === nowEntry?.id && myScore.singerId === me?.id);
+	let posAnchor = { pos: 0, wall: 0 };
+	$effect(() => {
+		// re-anchor whenever playback changes (song start, seek, play/pause)
+		posAnchor = { pos: playback.positionSec, wall: performance.now() };
+	});
+	function livePositionSec(): number {
+		return playback.isPlaying ? posAnchor.pos + (performance.now() - posAnchor.wall) / 1000 : posAnchor.pos;
+	}
+	// Start capturing only while it's my turn AND I've enabled the mic; stop otherwise / on unmount.
+	$effect(() => {
+		if (!(isMyTurn && micEnabled)) return;
+		const mic = new MicPitch((s) => {
+			ws?.send({ type: 'mic:pitch', positionSec: livePositionSec(), f0Hz: s.f0Hz, confidence: s.clarity });
+		});
+		mic.start().catch(() => {
+			micError = 'Microphone unavailable — check permissions';
+			micEnabled = false;
+		});
+		return () => mic.stop();
+	});
 
 	// ── search (debounced + cancel-in-flight) ────────────────────────────────
 	let query = $state('');
@@ -375,6 +411,20 @@
 	/>
 {/if}
 
+{#if isMyTurn && scoringAvailable}
+	<!-- M8-C3: mic opt-in for live scoring on your turn (score readout added in the score:update UI) -->
+	<div class="mic-bar">
+		{#if !micEnabled}
+			<button class="mic-btn" onclick={() => { micError = ''; micEnabled = true; }}>🎤 Sing — enable mic</button>
+		{:else if showMyScore && myScore}
+			<span class="mic-score"><span class="dot"></span> Score <strong>{myScore.score}</strong> · {myScore.hits}/{myScore.total} on pitch</span>
+		{:else}
+			<span class="mic-live"><span class="dot"></span> Listening… sing along!</span>
+		{/if}
+		{#if micError}<span class="mic-err">{micError}</span>{/if}
+	</div>
+{/if}
+
 {#if undo}
 	<div class="undo-toast">
 		<span>Removed “{undo.title}”</span>
@@ -387,6 +437,27 @@
 {/if}
 
 <style>
+	.mic-bar {
+		position: fixed; left: 12px; right: 12px; bottom: 92px; z-index: 20; display: flex;
+		align-items: center; gap: 10px; justify-content: center;
+	}
+	.mic-btn {
+		border: 0; border-radius: 999px; padding: 12px 22px; font-size: 1rem; font-weight: 800;
+		background: var(--grad); color: #fff; box-shadow: var(--shadow, 0 8px 24px rgba(0,0,0,.3)); cursor: pointer;
+	}
+	.mic-live { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent2, #7cf); }
+	.mic-score {
+		display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: #fff;
+		background: var(--card, #17172a); border: 1px solid var(--accent2, #7cf); border-radius: 999px;
+		padding: 10px 18px; box-shadow: var(--shadow, 0 8px 24px rgba(0,0,0,.3));
+	}
+	.mic-score strong { font-size: 1.25rem; color: var(--accent2, #7cf); font-variant-numeric: tabular-nums; }
+	.mic-live .dot {
+		width: 10px; height: 10px; border-radius: 50%; background: #ff5cae;
+		animation: micpulse 1s ease-in-out infinite;
+	}
+	@keyframes micpulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(1.4); } }
+	.mic-err { font-size: .8rem; color: var(--danger, #ff6b6b); }
 	.tab {
 		flex: 1; text-align: center; padding: 8px; border-radius: 12px; font-size: 0.85rem;
 		font-weight: 600; background: var(--card); color: var(--ink-dim); border: 1px solid var(--line); cursor: pointer;

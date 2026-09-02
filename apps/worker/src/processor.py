@@ -83,6 +83,12 @@ def vocals_path(media_dir: str, media_id: str) -> str:
     return os.path.join(media_dir, "stems", f"{media_id}-vocals.wav")
 
 
+def pitch_track_path(media_dir: str, media_id: str) -> str:
+    """Deterministic MediaStore key for a media's reference pitch-track artifact (M8-C3). The core
+    fetches it via /media to score the live mic against. JSON, keyed parallel to the stems."""
+    return os.path.join(media_dir, "pitch", f"{media_id}-pitch.json")
+
+
 class RoutingProcessor:
     """Dispatch a job to the right sub-processor by job_type (e.g. stems→Demucs, align→WhisperX).
     A worker advertising multiple capabilities runs one RoutingProcessor; unknown types raise (the

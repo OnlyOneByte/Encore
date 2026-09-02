@@ -4,6 +4,7 @@
 	import { GaplessController } from '$lib/tv/gapless';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
+	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 
 	let { data } = $props();
 
@@ -19,6 +20,8 @@
 	let visible = $state<'A' | 'B'>('A');
 	// live playback position (seconds) from the active player's telemetry — drives the lyrics overlay
 	let positionSec = $state(0);
+	// M8-C3: live score for the current song, from score:update broadcasts (null until first sample)
+	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	// which media each slot shows (from the controller's assignment)
 	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
 
@@ -46,6 +49,7 @@
 	}
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
+		if (score && score.entryId !== cur?.id) score = null; // new song → drop the previous score
 		current = cur;
 		upNext = next;
 		// held-slot: if the server handed us a current whose media isn't ready yet (a cooking
@@ -118,6 +122,7 @@
 				if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
 			}
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
+			if (e.type === 'score:update') score = e;
 		};
 	}
 
@@ -133,6 +138,8 @@
 	const isAttract = $derived(tvState === 'attract' || !current);
 	// lyrics overlay is live only while a song is actually playing (not attract/interstitial/waiting)
 	const lyricsActive = $derived(!isAttract && tvState !== 'interstitial' && tvState !== 'waiting');
+	// show the live score badge whenever we have a score for the currently-playing entry
+	const showScore = $derived(!isAttract && !!score && score.entryId === current?.id);
 </script>
 
 <div class="tv">
@@ -198,6 +205,11 @@
 		<div class="interstitial">
 			<div class="up-song">🔥 Still cooking… hang tight</div>
 		</div>
+	{/if}
+
+	{#if showScore && score}
+		<!-- M8-C3: live score badge (top-right), color + label by accuracy band -->
+		<ScoreBadge score={score.score} hits={score.hits} total={score.total} />
 	{/if}
 
 	<div class="status" class:on={connected}></div>
