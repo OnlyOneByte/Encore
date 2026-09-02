@@ -19,7 +19,8 @@ from src.lyrics_source import LrclibResult  # noqa: E402
 
 
 def test_lyrics_key():
-    assert whisperx.lyrics_key("m1") == "lyrics/m1.json"
+    # B-7: lyrics live under the `derived/` storage class (regenerable from `audio/`).
+    assert whisperx.lyrics_key("m1") == "derived/lyrics/m1.json"
 
 
 def test_lrclib_to_segments_prefers_synced_then_plain_then_empty():

@@ -19,7 +19,7 @@ import shutil
 from collections import deque
 from typing import AsyncIterator, Awaitable, Callable
 
-from .processor import CompleteResult, JobSpec, ProgressEvent, instrumental_path, vocals_path
+from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, instrumental_path, vocals_path
 
 DEFAULT_MODEL = "htdemucs"
 
@@ -178,16 +178,25 @@ class DemucsProcessor:
         self._move = mover
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
-        work = os.path.join(job.media_dir, "stems", "_work", job.media_id)
+        work = os.path.join(job.media_dir, "work", job.job_id)
         os.makedirs(work, exist_ok=True)
 
         # ── stage 1: obtain the source audio ──────────────────────────────────────
+        # B-7: the download lands in the `audio/` storage class, NOT in scratch. Raw audio is the one
+        # asset that cannot be regenerated (it needs network, and disappears with the upload), so it
+        # is kept deliberately instead of being written to a temp dir that is cleaned up. It is also
+        # reused: an existing file means a later align/score job for this song skips the download
+        # entirely rather than re-fetching the same bytes.
         if is_local_source(job.source_uri):
             input_path = job.source_uri if os.path.isabs(job.source_uri) else os.path.join(job.media_dir, job.source_uri)
         else:
-            input_path = os.path.join(work, "source.wav")
-            async for ev in self._run_stage("downloading", download_argv(job.source_uri, input_path, self._ytdlp_bin), parse_ytdlp_progress):
-                yield ev
+            input_path = source_audio_path(job.media_dir, job.media_id)
+            os.makedirs(os.path.dirname(input_path), exist_ok=True)
+            if not os.path.exists(input_path):
+                async for ev in self._run_stage("downloading", download_argv(job.source_uri, input_path, self._ytdlp_bin), parse_ytdlp_progress):
+                    yield ev
+            else:
+                yield ProgressEvent(stage="downloading", pct=100)  # already on disk
 
         # ── stage 2: separate vocals (Demucs htdemucs) ────────────────────────────
         sep_out = os.path.join(work, "separated")

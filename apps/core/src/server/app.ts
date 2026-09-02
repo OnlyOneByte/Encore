@@ -13,6 +13,9 @@ import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
 import { MediaRepository, hydrateMediaCatalog } from './media/repository';
+import { migrateStorageLayout } from './media/migrate-layout';
+import { media as mediaTable } from './db/schema';
+import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
 import { JobRepository } from './jobs/repository';
 import { JobReaper } from './jobs/reaper';
@@ -75,6 +78,37 @@ export function getApp(): EncoreApp {
 	const dbPath = process.env.ENCORE_EPHEMERAL === '1' ? ':memory:' : defaultDbPath();
 	const { db } = openDb(dbPath);
 	runMigrations(db, './drizzle');
+
+	// B-7-C2: bring the media volume onto the storage classes BEFORE anything reads the catalog.
+	// Idempotent — a no-op on a fresh or already-migrated volume — so it stays wired in permanently.
+	// The raw original is PROMOTED out of the old scratch dir rather than deleted with it; DB refs are
+	// rewritten in the same pass so instrumentalRef/pitchRef/lyricsRef keep pointing at real files.
+	//
+	// WRAPPED, and deliberately so: storage housekeeping must NEVER stop the party server from
+	// booting. The first real run of this crashed startup on an EACCES, because the old scratch dir
+	// was owned by the worker container's uid. A karaoke box that will not start because it could not
+	// tidy a directory is a far worse failure than a volume that stays on the old layout.
+	try {
+		const layout = migrateStorageLayout((mediaId, fields) => {
+			const sets: Partial<Record<'instrumentalRef' | 'pitchRef' | 'lyricsRef', string>> = {};
+			if (fields.instrumentalRef) sets.instrumentalRef = fields.instrumentalRef;
+			if (fields.pitchRef) sets.pitchRef = fields.pitchRef;
+			if (fields.lyricsRef) sets.lyricsRef = fields.lyricsRef;
+			if (Object.keys(sets).length) db.update(mediaTable).set(sets).where(eq(mediaTable.id, mediaId)).run();
+		});
+		if (!layout.alreadyMigrated && (layout.moved > 0 || layout.failed > 0)) {
+			console.log(
+				`[core] storage layout: ${layout.moved} files (${(layout.bytesMoved / 1e6).toFixed(1)} MB) moved, ` +
+					`${layout.refsRewritten} media refs rewritten, ${layout.pruned} legacy dirs pruned` +
+					(layout.copiedInPlace ? `, ${layout.copiedInPlace} copied (source not removable)` : '') +
+					(layout.skipped ? `, ${layout.skipped} skipped` : '') +
+					(layout.failed ? `, ${layout.failed} FAILED` : '')
+			);
+			for (const f of layout.failures.slice(0, 5)) console.warn(`[core] storage layout could not move ${f.from}: ${f.reason}`);
+		}
+	} catch (err) {
+		console.warn(`[core] storage layout migration skipped: ${(err as Error).message} — running on the existing layout`);
+	}
 
 	const state = new AuthoritativeState(sqlitePersistence(db));
 	const { entries, playback } = hydrate(db);

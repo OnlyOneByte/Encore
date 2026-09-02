@@ -8,6 +8,7 @@
 import type { Job, Media, QueueEntry } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
+import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
 
 export interface MakeKaraokeDeps {
 	jobs: JobRepository;
@@ -22,12 +23,11 @@ const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
 /**
  * The deterministic MediaStore key for a media's instrumental stem (stored on Media.instrumentalRef).
  * MUST match the worker's output location (apps/worker/src/processor.py instrumental_path →
- * <media_dir>/stems/<mediaId>-instrumental.wav), since the TV's file player resolves
- * `/media/${playbackRef(media)}`.
+ * <media_dir>/derived/stems/<mediaId>-instrumental.wav), since the TV's file player resolves
+ * `/media/${playbackRef(media)}`. Defined once in ../media/paths.ts (B-7-C2) and re-exported here so
+ * existing callers keep working; do NOT hand-write this string anywhere.
  */
-export function instrumentalKey(mediaId: string): string {
-	return `stems/${mediaId}-instrumental.wav`;
-}
+export const instrumentalKey = layoutInstrumentalKey;
 
 /** The soonest (lowest) rotationSeq among queued entries that point at this media; ∞ if none. */
 export function soonestSeqFor(mediaId: string, entries: QueueEntry[]): number {
@@ -120,23 +120,29 @@ export function markMediaReady(mediaId: string, mediaById: Map<string, Media>): 
 /**
  * Attach the word-timed lyrics artifact (M7-C8 align output) to a media so the TV karaoke overlay
  * can fetch and highlight it (M8-C2). Additive and independent of the stems flip — an align job may
- * complete alongside or after stems. Returns true if the media existed and a non-empty uri was set.
+ * complete alongside or after stems. Returns true if the media existed and a usable ref was set.
+ *
+ * B-7-C2: the uri is NORMALIZED to a relative key. Workers report absolute filesystem paths, and
+ * `safeMediaPath` rejects any ref starting with "/" — so storing the raw uri meant the overlay could
+ * never fetch an artifact that existed on disk. `setMediaPitch` starved mic scoring the same way.
  */
 export function setMediaLyrics(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);
-	if (!media || !uri) return false;
-	media.lyricsRef = uri;
+	const ref = toRelativeKey(uri);
+	if (!media || !ref) return false;
+	media.lyricsRef = ref;
 	return true;
 }
 
 /**
  * Attach the reference pitch-track artifact (M8-C1/C3) to a media so the server can score the live
  * mic against it (M8-C3). Additive and independent of the stems flip — a `score` job publishes it.
- * Returns true if the media existed and a non-empty uri was set.
+ * Returns true if the media existed and a usable ref was set. (Normalized — see setMediaLyrics.)
  */
 export function setMediaPitch(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);
-	if (!media || !uri) return false;
-	media.pitchRef = uri;
+	const ref = toRelativeKey(uri);
+	if (!media || !ref) return false;
+	media.pitchRef = ref;
 	return true;
 }

@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 // M6-C1: thumb cache-key logic + extension/content-type mapping + safety.
 import { test, expect } from 'bun:test';
 import { thumbKey, thumbPath, contentTypeFor, isAllowedThumbUrl, serveThumb } from './thumbs';
@@ -19,8 +20,8 @@ test('same url -> same key; different url -> different key', () => {
 	expect(thumbKey('http://x/a.jpg')).not.toBe(thumbKey('http://x/b.jpg'));
 });
 
-test('thumbPath lands under the media .thumbs dir', () => {
-	expect(thumbPath('http://x/a.jpg')).toContain('.thumbs');
+test('thumbPath lands under the DERIVED thumb cache (B-7: regenerable, first to evict)', () => {
+	expect(thumbPath('http://x/a.jpg')).toContain(join('derived', 'thumbs'));
 });
 
 test('contentTypeFor maps extensions', () => {
