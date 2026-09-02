@@ -20,8 +20,10 @@ export type PublicSinger = Omit<Singer, 'sessionToken'>;
 // ── core -> all clients (broadcasts) ───────────────────────────────────────
 export type ServerEvent =
   | { type: 'queue:patch'; patch: ServerPatch }
-  // singers/media are optional directories so clients can render names/titles per entry
-  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[] }
+  // singers/media are optional directories so clients can render names/titles per entry.
+  // `online` is the presence snapshot (singer ids with a live socket) — a client that connects
+  // mid-party needs the roster immediately, not on the next presence change (B-6-C1).
+  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[]; online?: string[] }
   | { type: 'playback:state'; state: PlaybackState; rev: number }
   | { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
   | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number }
@@ -29,6 +31,10 @@ export type ServerEvent =
   // `score` is a 0..100 rolling accuracy; hits/total are the scored (voiced-reference) frames.
   | { type: 'score:update'; entryId: string; singerId: string; score: number; hits: number; total: number }
   | { type: 'singer:joined'; singer: Singer }
+  // Who is in the room RIGHT NOW (B-6-C1) — the full set of singer ids holding a live socket,
+  // broadcast whenever it changes. Full-set (not a delta) on purpose: it is a handful of ids, and
+  // an idempotent snapshot cannot drift the way an add/remove stream can after a dropped frame.
+  | { type: 'singer:presence'; online: string[] }
   | { type: 'op:reject'; clientOpId: string; reason: string };
 
 // ── phone/TV -> core ────────────────────────────────────────────────────────
