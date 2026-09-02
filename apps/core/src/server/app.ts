@@ -62,7 +62,10 @@ export function getApp(): EncoreApp {
 	const g = globalThis as GlobalWithApp;
 	if (g[APP_KEY]) return g[APP_KEY];
 
-	const dbPath = process.env.DATA_DIR ? defaultDbPath() : ':memory:';
+	// Persist to a file-backed SQLite DB by default (singers, queue, playback survive restarts —
+	// a party server that forgot everyone on restart is a bug, not a feature). DATA_DIR overrides
+	// the location (defaults to ./data). Set ENCORE_EPHEMERAL=1 for a throwaway in-memory DB.
+	const dbPath = process.env.ENCORE_EPHEMERAL === '1' ? ':memory:' : defaultDbPath();
 	const { db } = openDb(dbPath);
 	runMigrations(db, './drizzle');
 

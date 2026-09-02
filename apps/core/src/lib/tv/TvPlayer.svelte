@@ -6,20 +6,21 @@
 		media: Media | null;
 		visible: boolean;
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
+		playing?: boolean; // playback:state.isPlaying — pause/resume from the phone (M3-C6)
 		keyShift?: number; // ± semitones for a file song (M7-C9) — selects the keyed instrumental
 		onready?: () => void;
 		onended?: () => void;
 		onerror?: () => void; // dead/unplayable media — caller should skip
 		onposition?: (sec: number, dur: number) => void;
 	}
-	let { media, visible, active, keyShift = 0, onready, onended, onerror, onposition }: Props = $props();
+	let { media, visible, active, playing = true, keyShift = 0, onready, onended, onerror, onposition }: Props = $props();
 
 	let video: HTMLVideoElement | undefined = $state();
 
-	// keep <video> play/pause in sync with active state
+	// keep <video> play/pause in sync with slot state AND the paused/playing command from the phone
 	$effect(() => {
 		if (!video || !media || media.playMode !== 'file') return;
-		if (active && visible) video.play().catch(() => {});
+		if (active && visible && playing) video.play().catch(() => {});
 		else video.pause();
 	});
 
