@@ -2,10 +2,12 @@
 // media cache dir, and serves subsequent hits from disk with long immutable cache headers.
 // Pure cache-key + path logic is separated for unit testing.
 
+import { derivedDir } from './paths';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
-const THUMB_DIR = () => join(process.env.MEDIA_DIR ?? './media', '.thumbs');
+// B-7: the thumb cache is DERIVED — regenerable, and therefore the first thing safe to evict.
+const THUMB_DIR = () => join(derivedDir(), 'thumbs');
 
 // SSRF guard (Finding #1): the proxy must only fetch the hosts yt-dlp actually returns for
 // thumbnails. Without an allowlist, ?u=http://169.254.169.254/... turns this into a

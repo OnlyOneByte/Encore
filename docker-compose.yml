@@ -22,9 +22,17 @@ services:
     environment:
       - PORT=3000
       - MEDIA_STORE=local
+      # B-7 storage classes, split by REPLACEABILITY (docs/media-storage-spec.md §3). Each defaults
+      # under MEDIA_DIR, so these lines are documentation as much as configuration — point any one at
+      # its own volume to separate the disks (audio on the big one, derived on the fast one).
+      - MEDIA_DIR=/app/media
+      - ENCORE_AUDIO_DIR=/app/media/audio # raw originals — NOT regenerable; this is what to back up
+      - ENCORE_DERIVED_DIR=/app/media/derived # stems/pitch/lyrics/thumbs — safe to delete, recomputable
+      - ENCORE_META_DIR=/app/media/meta # sidecar records — the authoritative library
     volumes:
-      - ./data:/app/data # sqlite (WAL)
-      - ./media:/app/media # library + cache + (later) stems
+      # Host paths are overridable from a .env so the volumes can move without editing this file.
+      - ${ENCORE_DATA_VOLUME:-./data}:/app/data # sqlite (WAL)
+      - ${ENCORE_MEDIA_VOLUME:-./media}:/app/media # audio + derived + meta + job scratch
     restart: unless-stopped
 
   worker:
@@ -36,8 +44,13 @@ services:
     environment:
       - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
       - ENCORE_WORKER_CONCURRENCY=1
+      # `align` gives the worker the word-timed-lyrics pipeline as well as stems (B-3).
+      - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-stems}
     volumes:
-      - ./media:/app/media # shares the local MediaStore volume (single-box mode)
+      # Shares the local MediaStore volume (single-box mode). The worker writes raw audio into
+      # audio/ and stems into derived/ using the SAME keys the core resolves — see
+      # apps/worker/src/processor.py, which must stay byte-for-byte in step with core paths.ts.
+      - ${ENCORE_MEDIA_VOLUME:-./media}:/app/media
     depends_on:
       - core
     restart: unless-stopped

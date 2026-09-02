@@ -27,14 +27,14 @@ from .lyrics_source import (
     parse_lrc,
     plain_lyrics_to_segments,
 )
-from .processor import CompleteResult, JobSpec, ProgressEvent
+from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path
 
 DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2
 
 
 def lyrics_key(media_id: str) -> str:
     """Deterministic MediaStore key (Media-relative) for a media's aligned-lyrics artifact."""
-    return f"lyrics/{media_id}.json"
+    return f"derived/lyrics/{media_id}.json"
 
 
 def _round_ms(x: Any) -> float | None:
@@ -190,7 +190,7 @@ class WhisperXProcessor:
         return self._aligner
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
-        work = os.path.join(job.media_dir, "lyrics", "_work", job.media_id)
+        work = os.path.join(job.media_dir, "work", job.job_id)
         os.makedirs(work, exist_ok=True)
         params = job.params if isinstance(job.params, dict) else {}
         artist = str(params.get("artist") or "").strip()
@@ -200,12 +200,18 @@ class WhisperXProcessor:
         duration = float(duration) if isinstance(duration, (int, float)) else None
 
         # ── stage 1: obtain the source audio ──────────────────────────────────────
+        # B-7: reuse the retained raw original if a stems job already fetched it. An align job for a
+        # cooked song therefore costs no network at all, instead of re-downloading bytes we kept.
         if is_local_source(job.source_uri):
             audio = job.source_uri if os.path.isabs(job.source_uri) else os.path.join(job.media_dir, job.source_uri)
         else:
-            audio = os.path.join(work, "source.wav")
-            async for ev in self._run_stage("downloading", download_argv(job.source_uri, audio, self._ytdlp_bin), parse_ytdlp_progress):
-                yield ev
+            audio = source_audio_path(job.media_dir, job.media_id)
+            os.makedirs(os.path.dirname(audio), exist_ok=True)
+            if not os.path.exists(audio):
+                async for ev in self._run_stage("downloading", download_argv(job.source_uri, audio, self._ytdlp_bin), parse_ytdlp_progress):
+                    yield ev
+            else:
+                yield ProgressEvent(stage="downloading", pct=100)
 
         # ── stage 2: fetch KNOWN lyrics from LRCLIB ───────────────────────────────
         if not artist or not track:

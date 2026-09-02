@@ -72,21 +72,38 @@ class StubProcessor:
 
 
 def instrumental_path(media_dir: str, media_id: str) -> str:
-    """Deterministic MediaStore key for a media's instrumental stem (single-box local volume)."""
-    return os.path.join(media_dir, "stems", f"{media_id}-instrumental.wav")
+    """Deterministic MediaStore key for a media's instrumental stem.
+
+    B-7: lives under the `derived/` storage class (regenerable from `audio/`). MUST match the core's
+    paths.ts instrumentalKey() byte-for-byte -- the TV resolves /media/<ref>, so a mismatch 404s on a
+    file that exists.
+    """
+    return os.path.join(media_dir, "derived", "stems", f"{media_id}-instrumental.wav")
+
+
+def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
+    """Deterministic key for a media's RAW ORIGINAL audio (B-7 `audio/` storage class).
+
+    This is the only class that cannot be regenerated: re-acquiring it needs network, and it is gone
+    permanently once the upload disappears. It used to be written to `stems/_work/<id>/source.wav` --
+    a scratch path -- which meant it was simultaneously our most expensive asset and the one treated
+    as garbage (432MB of it accumulated on the live box because nothing cleaned scratch either).
+    Mirrors the core's paths.ts audioKey().
+    """
+    return os.path.join(media_dir, "audio", f"{media_id}.{ext.lstrip('.')}")
 
 
 def vocals_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's ISOLATED VOCALS stem (M8-C0). Feeds pitch
     extraction (M8-C1) and the vocal-guide mix (docs/vocal-guide-spec.md). Parallels the core's
     make-karaoke `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
-    return os.path.join(media_dir, "stems", f"{media_id}-vocals.wav")
+    return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.wav")
 
 
 def pitch_track_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's reference pitch-track artifact (M8-C3). The core
     fetches it via /media to score the live mic against. JSON, keyed parallel to the stems."""
-    return os.path.join(media_dir, "pitch", f"{media_id}-pitch.json")
+    return os.path.join(media_dir, "derived", "pitch", f"{media_id}-pitch.json")
 
 
 class RoutingProcessor:
