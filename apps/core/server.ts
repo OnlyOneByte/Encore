@@ -21,6 +21,7 @@ import { ScoreEngine, type PitchDocLoader } from './src/server/realtime/scoring'
 import { parseRefPitchDoc } from './src/server/scoring/scorer';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
+import { readSessionToken } from './src/server/singers/repository';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -32,7 +33,10 @@ const state = app.state;
 // Live worker WS sockets, keyed by workerId (the dial-home registry's transport half — the
 // registry itself holds liveness/slots; this maps an id to the socket to push WorkerCommands to).
 // In-memory, process-lifetime, never persisted (§10).
-type WorkerSocket = import('bun').ServerWebSocket<{ role: string; workerId?: string }>;
+// Per-socket data. `singerId` is resolved at upgrade from the session cookie (B-6-C1) and is
+// absent for the TV and for a phone that has not joined yet.
+type SocketData = { role: string; workerId?: string; singerId?: string };
+type WorkerSocket = import('bun').ServerWebSocket<SocketData>;
 const workerSockets = new Map<string, WorkerSocket>();
 // server.ts owns the transport: the WorkerHub calls app.toWorker(id, cmd) → look up the socket.
 app.toWorker = (workerId: string, cmd: WorkerCommand) => {
@@ -96,7 +100,12 @@ try {
 	console.warn('[core] build/handler.js not found — run `bun run build`. Serving WS + /health + /harness only.');
 }
 
-const server = Bun.serve<{ role: string; workerId?: string }>({
+// Broadcast the current presence roster (B-6-C1). Called on the 0→1 and 1→0 transitions only.
+function publishPresence(): void {
+	server.publish(ROOM_TOPIC, JSON.stringify({ type: 'singer:presence', online: app.presence.online() } satisfies ServerEvent));
+}
+
+const server = Bun.serve<SocketData>({
 	port: PORT,
 	hostname: HOST,
 	idleTimeout: 30,
@@ -106,7 +115,12 @@ const server = Bun.serve<{ role: string; workerId?: string }>({
 
 		if (url.pathname === '/ws') {
 			const role = url.searchParams.get('role') ?? 'phone';
-			if (server.upgrade(req, { data: { role } })) return undefined as unknown as Response;
+			// B-6-C1: resolve WHICH singer this socket belongs to, at upgrade, from the session cookie
+			// the browser sends on the WS handshake (same-origin, so it is there). Without this the
+			// socket is anonymous and presence is impossible. A TV or a not-yet-joined phone simply
+			// has no singerId and is tracked as a spectator.
+			const singerId = app.singers.bySessionToken(readSessionToken(req.headers.get('cookie')))?.id;
+			if (server.upgrade(req, { data: { role, singerId } })) return undefined as unknown as Response;
 			return new Response('ws upgrade failed', { status: 400 });
 		}
 		if (url.pathname === '/health') {
@@ -130,6 +144,9 @@ const server = Bun.serve<{ role: string; workerId?: string }>({
 			// route the shared app's broadcasts through Bun's native pub/sub (e.g. singer:joined
 			// from the /api/join route reaches every socket).
 			setPublish((e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)));
+			// B-6-C1: this singer is now in the room. Announce only on the 0→1 transition so a second
+			// tab doesn't spam the room with an unchanged roster.
+			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) publishPresence();
 		},
 		message(ws, raw) {
 			// Dial-home worker protocol (§5) — a separate message family on role=worker sockets.
@@ -160,6 +177,7 @@ const server = Bun.serve<{ role: string; workerId?: string }>({
 				publish: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)),
 				mediaById,
 				listSingers: () => app.singers.listPublic(),
+				listOnline: () => app.presence.online(),
 				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
 				seenOp: (id) => {
 					if (seenOps.has(id)) return true;
@@ -214,7 +232,10 @@ const server = Bun.serve<{ role: string; workerId?: string }>({
 			if (ws.data.role === 'worker' && ws.data.workerId) {
 				app.workers.remove(ws.data.workerId);
 				workerSockets.delete(ws.data.workerId);
+				return;
 			}
+			// B-6-C1: their last socket closing takes them out of the roster (1→0 only).
+			if (ws.data.singerId && app.presence.disconnect(ws.data.singerId)) publishPresence();
 		}
 	}
 });

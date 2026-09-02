@@ -71,3 +71,33 @@ test('reject is targeted: with no sendToOrigin sink, nothing is broadcast either
 	expect(result).toBeNull();
 	expect(published).toHaveLength(0);
 });
+
+// Regression (found by driving the real server during B-6 verification): an add whose singerId is
+// missing used to reach the persistence layer, where singer_id is NOT NULL — the SQLiteError threw
+// out of state.apply() and KILLED THE SERVER PROCESS. One malformed client message ended the party.
+test('add with a missing singerId is rejected, not crashed on', () => {
+	const { published, toOrigin, state, deps } = harness();
+	const c = cmd({
+		op: 'add',
+		// exactly what a client with a bad "who am I" lookup sends
+		entry: { id: 'q1', mediaId: 'm1', singerId: undefined as unknown as string, status: 'queued', rotationSeq: -1, addedAt: 1 }
+	});
+
+	expect(() => handleQueueCommand(c, deps, (e) => toOrigin.push(e))).not.toThrow();
+	const rej = toOrigin[0] as Extract<ServerEvent, { type: 'op:reject' }>;
+	expect(rej.type).toBe('op:reject');
+	expect(rej.reason).toContain('singerId');
+	expect(published).toHaveLength(0);
+	expect(state.rev).toBe(0); // no state change, so nothing to persist
+	expect(state.entries).toHaveLength(0);
+});
+
+test('add with an empty-string singerId is rejected too', () => {
+	const { toOrigin, deps } = harness();
+	const reason = validateCommand(
+		cmd({ op: 'add', entry: { id: 'q2', mediaId: 'm1', singerId: '', status: 'queued', rotationSeq: -1, addedAt: 1 } }),
+		deps
+	);
+	expect(reason).toContain('singerId');
+	expect(toOrigin).toHaveLength(0);
+});
