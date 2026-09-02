@@ -24,6 +24,8 @@
 	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	// playback isPlaying (pause/resume from the phone) — wired into both player slots
 	let isPlaying = $state(true);
+	// seek target (positionSec from playback:state) — the player jumps the video on a real change
+	let seekSec = $state(0);
 	// which media each slot shows (from the controller's assignment)
 	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
 
@@ -126,7 +128,19 @@
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
 			if (e.type === 'score:update') score = e;
 			// pause/resume from the phone (playback:state.isPlaying) → drives the player slots
-			if (e.type === 'playback:state') isPlaying = e.state.isPlaying;
+			if (e.type === 'playback:state') { isPlaying = e.state.isPlaying; seekSec = e.state.positionSec; }
+			// live media catalog updates (cooking progress + ready flip) so the TV leaves WAITING
+			// promptly and resolves the ready song's instrumental (also mitigates the cook→play gap)
+			if (e.type === 'media:status') {
+				const m = mediaCatalog.get(e.mediaId);
+				if (m) {
+					mediaCatalog = new Map(mediaCatalog).set(e.mediaId, {
+						...m,
+						playMode: 'file',
+						stemStatus: e.status === 'ready' ? 'ready' : e.status === 'failed' ? m.stemStatus : 'queued'
+					});
+				}
+			}
 			// learn singers who join AFTER our initial sync, so the lower-third shows their real name
 			// (not the "Someone" fallback) — mirrors the phone. Without this, late joiners read as Someone.
 			if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
@@ -156,6 +170,7 @@
 		visible={visible === 'A' && !isAttract}
 		active={visible === 'A'}
 		playing={isPlaying}
+		seekSec={seekSec}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
@@ -166,6 +181,7 @@
 		visible={visible === 'B' && !isAttract}
 		active={visible === 'B'}
 		playing={isPlaying}
+		seekSec={seekSec}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}

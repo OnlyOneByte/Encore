@@ -17,6 +17,7 @@ import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
 import { reconcileOnReady } from './realtime/player';
+import { syncEvent } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
 import { ObjectMediaStore, bunS3Client } from './media/object-store';
 import type { ServerEvent, Media, WorkerCommand } from '@encore/shared';
@@ -109,9 +110,14 @@ export function getApp(): EncoreApp {
 		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
 		mediaStore: mediaStoreConfig,
 		// When a cooked song flips to ready, reconcile playback (start if the room idled / preload) —
-		// the held entry slots back at its fair position (M7-C6).
-		onMediaReady: () =>
-			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById }),
+		// the held entry slots back at its fair position (M7-C6). Broadcast a fresh queue:sync FIRST
+		// so every client updates its media catalog with the now-ready song's new sourceRef (the
+		// instrumental key) + ready status — otherwise the TV's cached media stays 'queued' and sits
+		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
+		onMediaReady: () => {
+			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic() }));
+			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById });
+		},
 		now: () => app.now()
 	});
 
