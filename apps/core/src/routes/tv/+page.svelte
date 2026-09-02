@@ -3,6 +3,7 @@
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
+	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 
 	let { data } = $props();
 
@@ -16,6 +17,8 @@
 	const ctl = new GaplessController();
 	let tvState = $state(ctl.state);
 	let visible = $state<'A' | 'B'>('A');
+	// live playback position (seconds) from the active player's telemetry — drives the lyrics overlay
+	let positionSec = $state(0);
 	// which media each slot shows (from the controller's assignment)
 	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
 
@@ -128,6 +131,8 @@
 	});
 
 	const isAttract = $derived(tvState === 'attract' || !current);
+	// lyrics overlay is live only while a song is actually playing (not attract/interstitial/waiting)
+	const lyricsActive = $derived(!isAttract && tvState !== 'interstitial' && tvState !== 'waiting');
 </script>
 
 <div class="tv">
@@ -139,7 +144,7 @@
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
-		onposition={(s, d) => sendTelemetry('playing', s, d, 100)}
+		onposition={(s, d) => { positionSec = s; sendTelemetry('playing', s, d, 100); }}
 	/>
 	<TvPlayer
 		media={slotMedia.B}
@@ -148,7 +153,15 @@
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
-		onposition={(s, d) => sendTelemetry('playing', s, d, 100)}
+		onposition={(s, d) => { positionSec = s; sendTelemetry('playing', s, d, 100); }}
+	/>
+
+	<!-- M8-C2: word-timed karaoke lyrics over the active player -->
+	<LyricsOverlay
+		lyricsRef={mediaOf(current)?.lyricsRef}
+		{positionSec}
+		playing={lyricsActive}
+		visible={lyricsActive}
 	/>
 
 	{#if isAttract}

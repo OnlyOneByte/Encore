@@ -19,7 +19,7 @@ import type {
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
 import { planAssignments } from './dispatch';
-import { markMediaReady } from './make-karaoke';
+import { markMediaReady, setMediaLyrics } from './make-karaoke';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
@@ -136,6 +136,9 @@ export class WorkerHub {
 		// Flip the media to ready: playMode→file, sourceRef→the instrumental key, stemStatus→ready.
 		// rotation's isEntryReady now returns true, so the held entry becomes playable at its slot.
 		markMediaReady(job.mediaId, this.#d.mediaById);
+		// Attach word-timed lyrics if the job carried an align artifact (M8-C2 TV overlay). Additive:
+		// a stems-only complete leaves lyrics absent; an align complete populates lyricsRef.
+		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById);
 		this.#d.registry.releaseSlot(msg.workerId);
 		this.#emitStatus(updated);
 		this.#d.onMediaReady?.(job.mediaId); // core reconciles playback (start if idle / preload)

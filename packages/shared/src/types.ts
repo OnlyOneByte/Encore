@@ -15,6 +15,8 @@ export interface Media {
   thumbnail?: string;
   stemStatus: StemStatus;
   playMode: PlayMode; // the abstraction flag that carries the whole future (iframe -> file)
+  lyricsRef?: string; // MediaStore key of the word-timed lyrics JSON (M7-C8 artifact) — drives the
+  // TV karaoke overlay (M8-C2). Absent until an align job completes; the overlay no-ops without it.
 }
 
 export interface Singer {
