@@ -136,7 +136,61 @@ serves **four** architecture families. MDX and VR-arch are entirely unrepresente
 Separately, a **karaoke** (lead-vs-backing) split is a pipeline stage Encore does not have at all —
 commercial karaoke keeps the backing vocals and removes only the lead.
 
-_Results pending — this section is filled in by the run in progress._
+24s clip, 32 threads, fp32, each model's own defaults. Reference: htdemucs 0.29, htdemucs_ft 0.55,
+`mel instrumental_becruily` 1.28, `bs_roformer 1297` 13.29.
+
+| model | family | stage | sep time | **rt** | verdict |
+|---|---|---|---|---|---|
+| `UVR_MDXNET_KARA_2.onnx` | MDX / ONNX | karaoke (lead vs backing) | 13s | **0.54** | **live tier** — matches htdemucs_ft |
+| `5_HP-Karaoke-UVR.pth` | VR-arch | karaoke (lead vs backing) | 19s | **0.79** | **live tier** |
+| `mel_band_roformer_karaoke_becruily.ckpt` | MDXC | karaoke (lead vs backing) | 182s | 7.58 | upgrade tier |
+| `MDX23C-8KFFT-InstVoc_HQ.ckpt` | MDXC | instrumental | 413s | **17.21** | **disqualified** |
+
+**Two findings, both surprising.**
+
+**MDX23C is the most expensive thing measured here — worse than BS-RoFormer.** It was the leading
+"zero-integration drop-in" candidate (already a first-class MDXC path in `audio-separator`, ~10.17 dB
+published vocals SDR) and desk research estimated it in the 1–4 rt range. It measured **17.21**, off by
+roughly 5x, and 1.3x more expensive than the BS-RoFormer we already consider too slow for live use. It
+is not a live option and it is not even a good upgrade option, since `mel instrumental_becruily` is
+13x cheaper at comparable published quality. Dropped from consideration — and a reminder that a
+published SDR plus a param count predicts cost badly enough to be useless.
+
+**The lead-vs-backing karaoke split is LIVE-TIER, at 0.54.** This is the most valuable result in this
+file. The feature Encore lacks — keeping backing vocals while removing only the lead, which is what
+commercial karaoke tracks do and what gives a singer a melodic anchor — is available *below realtime*
+on the existing CPU box, on par with `htdemucs_ft` (0.55). It does not need a GPU, does not need to be
+an upgrade-tier background job, and comes from two architecture families the whitelist currently
+ignores entirely. The RoFormer karaoke variant (7.58) exists as a later quality ceiling if the cheap
+models disappoint.
+
+⚠️ Quality unmeasured for all four. rt says only what a cook costs, not whether the lead is cleanly
+removed or the backing survives intact — that needs a listening test.
+
+## 6. Weight provenance (checked 2026-09-03)
+
+Cost is not the only gate. **Code licences are uniformly clean; weight licences are not.**
+
+| artifact | licence |
+|---|---|
+| `nomadkaraoke/python-audio-separator` (code) | MIT |
+| `Anjok07/ultimatevocalremovergui` (code) | MIT |
+| `ZFTurbo/Music-Source-Separation-Training` (code) | MIT |
+| htdemucs / htdemucs_ft weights | MIT (Meta, `dl.fbaipublicfiles.com`) |
+| `TRvlvr/model_repo` — the mirror `audio-separator` actually downloads community weights from | **NO LICENSE FILE** |
+| `becruily/mel-band-roformer-instrumental` (HF) | **no licence declared** — no tag, no `cardData.license` |
+| `GaboxR67/MelBandRoformers` (HF) | **no licence declared** |
+| `pcunwa/Mel-Band-Roformer-Inst` (HF) | **no licence declared** |
+
+So the fast mel-band checkpoints — the whole 10.4x win in §4 — are **not** non-commercially licensed
+as first assumed; they carry **no licence grant at all**, distributed via a mirror that also has none.
+Default copyright applies, which is a weaker position than an explicit non-commercial licence: there
+is no stated permission to rely on. Practically the entire UVR ecosystem operates this way, and for a
+self-hosted personal instance the risk posture is one the owner can simply accept. But it cannot be
+described as licensed, and baking these in as whitelisted defaults in a public repo would assert a
+right nobody granted. **Recommended posture:** keep clean-provenance models (htdemucs, MIT) as the
+shipped defaults, and treat unlicensed community checkpoints as opt-in the operator enables
+knowingly — the whitelist already has the shape for this.
 
 ---
 
