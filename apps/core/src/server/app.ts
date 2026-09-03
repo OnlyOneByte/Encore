@@ -14,6 +14,16 @@ import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
 import { MediaRepository, hydrateMediaCatalog } from './media/repository';
 import { migrateStorageLayout } from './media/migrate-layout';
+import {
+	retentionCapBytes,
+	planRecompress,
+	recompressLegacyStems,
+	ffmpegTranscoder,
+	planEviction,
+	evictDerived,
+	derivedBytesOf,
+	transcodeDiagnostics
+} from './media/retention';
 import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, readAllSidecars } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -177,9 +187,69 @@ export function getApp(): EncoreApp {
 				indexed++;
 			}
 			if (indexed > 0) console.log(`[core] browse index synced from ${indexed} sidecars`);
+
+			// ── B-7-C5 retention ────────────────────────────────────────────────────────────
+			// 1. Recompress legacy stems in place. Songs cooked before the audio policy carry WAV
+			//    stems ~8x larger than a cook produces today; the bytes are already here, so this needs
+			//    no download and no Demucs run, and the song never leaves the library. Eviction would
+			//    have been the wrong tool: it would drop those songs until re-cooked.
+			const targets = planRecompress(mediaRepo.all());
+			if (targets.length > 0) {
+				const rc = await recompressLegacyStems(targets, ffmpegTranscoder());
+				// Always report: a pass that converted NOTHING and failed everything must not look
+				// identical to a pass that had nothing to do.
+				console.log(
+					`[core] recompress: ${rc.converted}/${targets.length} legacy stems converted, ` +
+						`${(rc.bytesBefore / 1e6).toFixed(1)} MB → ${(rc.bytesAfter / 1e6).toFixed(1)} MB ` +
+						`(reclaimed ${((rc.bytesBefore - rc.bytesAfter) / 1e6).toFixed(1)} MB)` +
+						(rc.skipped ? `, ${rc.skipped} skipped` : '') +
+						(rc.failed ? `, ${rc.failed} FAILED — ${transcodeDiagnostics.lastError || 'ffmpeg unavailable'}` : '')
+				);
+				// Point each media at its new artifact. Goes through upsert, so the sidecar follows.
+				for (const [mediaId, ref] of rc.newRefs) {
+					const live = mediaById.get(mediaId);
+					if (live && live.instrumentalRef !== ref) {
+						live.instrumentalRef = ref;
+						mediaRepo.upsert(live);
+					}
+				}
+			}
+
+			// 2. Evict derived artifacts if over the soft cap. Unset by default — a party box must not
+			//    silently delete. `audio/` and `meta/` are never candidates.
+			const cap = retentionCapBytes();
+			if (cap !== null) {
+				const ready = mediaRepo.listReady();
+				const candidates = ready.map((m) => ({ mediaId: m.id, derivedBytes: derivedBytesOf(m), lastUsedAt: 0 }));
+				// recency comes from the sidecar; addedAt stands in until play tracking is wired
+				for (const c of candidates) {
+					const side = await readSidecar(c.mediaId);
+					c.lastUsedAt = side?.library.lastPlayedAt ?? side?.library.addedAt ?? 0;
+				}
+				const doomed = planEviction(candidates, cap);
+				let freed = 0;
+				for (const id of doomed) {
+					const live = mediaById.get(id);
+					if (!live) continue;
+					freed += evictDerived(live).bytes;
+					// back to un-cooked: rotation stops treating it as playable, a re-request re-cooks it
+					live.instrumentalRef = undefined;
+					live.lyricsRef = undefined;
+					live.pitchRef = undefined;
+					live.stemStatus = 'none';
+					live.playMode = 'iframe';
+					mediaRepo.upsert(live);
+				}
+				if (doomed.length > 0) {
+					console.log(`[core] retention: evicted derived artifacts for ${doomed.length} songs, freed ${(freed / 1e6).toFixed(1)} MB (cap ${(cap / 1e9).toFixed(1)} GB)`);
+				}
+			}
 		})
-		.catch(() => {
-			/* best effort — the DB index is still authoritative enough to run a party */
+		.catch((err) => {
+			// Best effort — the DB index is still enough to run a party. But SAY SO: a silent catch here
+			// hid a whole retention pass that never ran, and "nothing happened" is indistinguishable
+			// from "nothing needed to happen" without this line.
+			console.warn(`[core] library maintenance pass failed: ${(err as Error)?.message ?? err}`);
 		});
 
 	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
