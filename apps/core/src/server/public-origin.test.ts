@@ -5,7 +5,7 @@
 // `https://192.168.1.20:3000` on the deployment the README documents, and the QR encoded a URL no phone
 // on the LAN could open. Invisible in normal testing because the usual path is an https tunnel.
 import { test, expect } from 'bun:test';
-import { publicOrigin } from './public-origin';
+import { publicOrigin, publicOriginIsHttps } from './public-origin';
 
 const req = (headers: Record<string, string> = {}) => new Request('https://ignored.example/tv', { headers });
 const url = new URL('https://ignored.example/tv');
@@ -96,4 +96,45 @@ test('unset falls back to the request, so existing deployments are unchanged', (
 	expect(withOrigin(undefined, () => publicOrigin(req({ host: '192.168.1.20:3000' }), url))).toBe(
 		'http://192.168.1.20:3000'
 	);
+});
+
+// ── publicOriginIsHttps: the session cookie's Secure attribute ───────────────────
+// REGRESSION this locks out: /api/join used `url.protocol === 'https:'`, and adapter-node reports
+// https for every request unless PROTOCOL_HEADER is set. The session cookie was therefore marked
+// Secure on a plain-HTTP LAN party, so the phone's browser discarded it — /join returned 200 and
+// /api/me then returned 401 with no cookie to read. Invisible on the host box, because browsers accept
+// Secure over http://localhost (a trustworthy origin), so it only ever broke actual phones.
+
+test('a plain-HTTP LAN request is NOT https, so the cookie is not marked Secure', () => {
+	expect(publicOriginIsHttps(req({ host: '10.69.1.169:3000' }), url)).toBe(false);
+});
+
+test('a request through an https proxy IS https, so the cookie stays Secure on a tunnel', () => {
+	expect(publicOriginIsHttps(req({ host: 'party.example', 'x-forwarded-proto': 'https' }), url)).toBe(true);
+});
+
+test('an explicit https origin marks the cookie Secure', () => {
+	expect(withOrigin('https://party.example', () => publicOriginIsHttps(req({ host: 'h' }), url))).toBe(true);
+});
+
+test('an explicit http origin does NOT, even when a proxy claims https', () => {
+	// The override is authoritative for the QR, so it must be authoritative for the cookie too —
+	// otherwise the two disagree about the scheme and the cookie is dropped.
+	const secure = withOrigin('http://10.69.1.169:3000', () =>
+		publicOriginIsHttps(req({ host: 'h', 'x-forwarded-proto': 'https' }), url)
+	);
+	expect(secure).toBe(false);
+});
+
+test('the cookie flag and the QR can never disagree about the scheme', () => {
+	// One derivation, two callers: assert they agree rather than trusting that they do.
+	const cases: Record<string, string>[] = [
+		{ host: '10.69.1.169:3000' },
+		{ host: 'h', 'x-forwarded-proto': 'https' },
+		{ host: 'h', 'x-forwarded-proto': 'http' }
+	];
+	for (const headers of cases) {
+		const r = req(headers);
+		expect(publicOriginIsHttps(r, url)).toBe(publicOrigin(r, url).startsWith('https:'));
+	}
 });
