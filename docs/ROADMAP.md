@@ -127,6 +127,39 @@ and the sourcing question is the **owner's call, not the loop's**. Do not pick t
 
 ---
 
+## Ratified: metadata, acquisition, and processed-only playback (decided 2026-09-03)
+
+Shipped as three stages against `docs/SPEC-musicbrainz-fetcher.md` (ephemeral — delete it when stage 5
+closes). The decisions, so they are not re-litigated:
+
+| # | Decision | Ratified |
+|---|---|---|
+| — | **MusicBrainz is an annotator, not a catalog.** Search stays yt-dlp; identification runs after the download and only enriches a media that already exists. | yes |
+| — | **Nothing plays unprocessed.** No embed path, no raw-source path, no per-source exception for local files. `playMode` is gone. | yes |
+| — | **One row per song is NOT a requirement.** With best-effort identification, grouping two uploads is probabilistic, and merging on a weak signal collapses two different songs. No Song table, no `songKey`. | yes |
+| D4 | **Refuse rather than guess.** A weak match keeps the normalizer's values and records nothing. | yes |
+| D7 | Columns-only migration; no sidecar re-shape (`playMode` was derived on read, never stored). | yes |
+| D9 | Confidence from duration: ±2s → `high`, ±5s → `medium`, else nothing. ±2s because that is LRCLIB's own matching tolerance. | yes |
+
+**Withdrawn, with the cost named.** The Song/Version split, the versions popup, a per-song default
+rendition, and lyrics text shared across renditions were all specced and then cut. The one that actually
+costs something: **source-fidelity upgrades are no longer expressible.** A better source is a different
+`sourceRef` and therefore a different row, with no link to the old one, so "re-acquire from a better
+source, then re-cook" cannot be modelled. `sourceFidelity` is still worth recording as provenance, but
+it is not a rung of the upgrade ladder.
+
+**Album and year are deliberately not taken from MusicBrainz.** Measured live they resolved "Take On Me"
+to a 1991 hits compilation and "Bohemian Rhapsody" to an undated bootleg — a search hit's release list is
+partial and the recording is chosen by duration, so a live cut that matches the file's length brings its
+own release with it. A trustworthy album needs a second release-group lookup; until then D4 applies.
+
+**Known gap, not a bug to rediscover.** Media materialised *before* canonicals were parsed at
+materialize time never got them, and search reuses an existing row rather than re-materialising it — so
+those songs are never annotated without a backfill pass. Nothing surfaces this; it just looks like
+annotation ignoring old songs.
+
+---
+
 ## Open queue
 
 - [ ] **B-8 · Swap the separator to `python-audio-separator`** — the fit is clean because

@@ -178,6 +178,43 @@ Readiness therefore has three honest states: `ready` (cooked), `cooking` (a job 
 holding its slot), and `unacquired` (nothing to play yet). The third used to mean "playable as-is,
 with the original vocals", which is why it was renamed rather than reworded.
 
+### Metadata provenance
+
+A YouTube title is not metadata. `Media.artist` holds whatever the source reported — often a channel
+name like "Music of All Times" — so two derived fields carry what the song actually is:
+`artistCanonical` and `titleCanonical`. They exist because the LRCLIB query matches on
+`artist_name` + `track_name`, and library browse groups by artist.
+
+They are filled in two tiers, and `Media.annotation` records which:
+
+| Source | Means | Set when |
+|---|---|---|
+| `normalizer` | a title parse and nothing more | search materialises a result, gated on `confidence !== 'low'` |
+| `musicbrainz` | a citation, with an `mbid` | a `fetch` job identified the download |
+
+**Refusing is the design.** A wrong artist is worse than a missing one: it silently poisons the lyrics
+query that consumes it, and afterwards it is indistinguishable from a correct one. So a lookup with no
+confident artist/title does not happen, a MusicBrainz match must AGREE on both names after
+normalisation rather than merely score well, and duration decides confidence (±2s → `high`, ±5s →
+`medium`, beyond → nothing written). ±2s is not arbitrary: it is the tolerance LRCLIB itself matches
+on, so a `high` annotation is by construction good enough for the lookup that consumes it.
+
+**Never regresses.** Once a media holds a `high` citation, a later `medium` cannot overwrite it — a
+re-fetch or a backfill would otherwise turn a known-good artist back into a guess. A `normalizer` value
+is always overwritable, because a citation beats a parse even at medium confidence.
+
+That rule needs memory, so the citation persists in all three layers: DB columns (the runtime catalog
+hydrates from the index synchronously at boot, before the async sidecar pass), the sidecar's
+`canonical.mbid` + `provenance.artist` (authoritative), and only ever as a complete source+confidence
+pair. A sidecar write also refuses to downgrade a citation back to a re-parse of the raw title — the
+same regression, reintroduced through persistence.
+
+Album and year are deliberately **not** taken from MusicBrainz. Measured against the real service they
+resolved "Take On Me" to a 1991 hits compilation and "Bohemian Rhapsody" to an undated bootleg, because
+a search hit's release list is partial and the recording is chosen by duration, so a live cut matching
+the file's length brings its own release with it. A trustworthy album needs a second release-group
+lookup.
+
 ### Storage classes
 
 Split by **replaceability**, which makes backup and eviction policy obvious:
@@ -269,6 +306,20 @@ without touching dispatch; `local` carries no capability because there is nothin
 
 The registry in `packages/shared/src/fetchers.ts` whitelists what is possible so a stored setting can be
 validated and a picker rendered from one source; the *choice* is a setting, not a per-request argument.
+
+A `fetch` finishes by **identifying** what it downloaded (see §6 Metadata provenance). Annotation is a
+step rather than its own job because it needs exactly what a download produces and nothing a separate
+job would add: the real title and the exact duration. It is best-effort by construction — a declined
+match, an unreachable service, or `ENCORE_ANNOTATE=0` all leave the normalizer's values in place and
+never fail the cook. A karaoke night must not stop because a metadata service is down.
+
+MusicBrainz calls pass through one **process-global, serialised** gate. The documented limit is one
+request per second per source IP, and the penalty is total rather than partial: exceeding it declines
+*every* request with 503 until the rate drops. A per-client interval check is therefore not enough —
+two clients in one process, or two concurrent fetch jobs racing an unlocked timestamp check, produce
+exactly the burst that gets an IP refused. The gate serialises, retries a 503 with bounded exponential
+backoff, and runs off the event loop so a paced wait cannot stall another job's progress reporting and
+expire its lease.
 
 ### Separator engines, models, and backends
 
