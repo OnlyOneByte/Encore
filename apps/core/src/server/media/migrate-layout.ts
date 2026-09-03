@@ -1,17 +1,17 @@
 // One-shot storage-layout migration to the storage classes.
 //
-// Runs at boot, before anything reads the catalog. IDEMPOTENT: a fresh volume and an
-// already-migrated volume are both no-ops, so it is safe to leave wired in forever.
+// Runs at boot, before anything reads the catalog. IDEMPOTENT: a fresh and an already-migrated volume
+// are both no-ops, so it is safe to leave wired in forever.
 //
 // What it fixes on a real volume (measured on the live box, 2026-09-02):
 //   - `stems/_work/<id>/source.wav` — 432MB of RAW ORIGINAL AUDIO retained by accident in a scratch
-//     directory nothing ever cleaned. It is the one asset that cannot be regenerated, so it is
-//     PROMOTED to `audio/<id>.wav` rather than deleted with the rest of the scratch.
-//   - `stems/*`, `pitch/*`, `lyrics/*`, `.thumbs/*` → under `derived/`, which is the class that is
-//     safe to evict because it can always be recomputed from `audio/`.
-//   - DB refs rewritten in the same pass, so `instrumentalRef`/`pitchRef`/`lyricsRef` keep pointing
-//     at real files. A half-migrated convention is exactly the byte-for-byte mismatch that makes the
-//     TV 404 on a file that exists.
+//     dir nothing cleaned. It is the one asset that cannot be regenerated, so it is PROMOTED to
+//     `audio/<id>.wav` rather than deleted with the rest of the scratch.
+//   - `stems/*`, `pitch/*`, `lyrics/*`, `.thumbs/*` → under `derived/` (the evictable class,
+//     recomputable from `audio/`).
+//   - DB refs rewritten in the same pass so `instrumentalRef`/`pitchRef`/`lyricsRef` keep pointing at
+//     real files. A half-migrated convention is the byte-for-byte mismatch that makes the TV 404 on a
+//     file that exists.
 //
 // Moves use rename() and fall back to copy+unlink across devices (a class pointed at another volume).
 
@@ -46,12 +46,11 @@ export interface MigrationResult {
  * Move one file, creating the parent.
  *
  * Rename first (instant, atomic, same-device). On ANY rename failure fall back to copy + best-effort
- * unlink, because the interesting failures are not just cross-device: a bind-mounted volume that a
- * CONTAINER wrote is owned by the container's uid, and renaming a file OUT of a directory needs write
- * permission on that directory, which we may not have. In that case copying still succeeds (the file
- * itself is readable) and preserves the asset — which is the whole point for `audio/` — even if the
- * old scratch copy cannot be removed. Preferring a partial success over an exception is deliberate:
- * losing the only unrecoverable class to a permission bit would be the worse outcome.
+ * unlink — the interesting failure is not just cross-device: a bind-mounted volume a CONTAINER wrote is
+ * owned by the container's uid, and renaming a file OUT of a dir needs write permission on that dir,
+ * which we may not have. Copying still succeeds (the file is readable) and preserves the asset — the
+ * whole point for `audio/`. Preferring partial success over an exception is deliberate: losing the only
+ * unrecoverable class to a permission bit is the worse outcome.
  *
  * @returns 'renamed' | 'copied' (source could not be removed) — throws only if the copy also failed.
  */
@@ -226,20 +225,18 @@ export function applyMigration(
 /**
  * Ensure every class dir exists (cheap, idempotent) so the first write never races a missing dir.
  *
- * SHARED-WRITE MODE. The core and the worker are separate containers running as DIFFERENT uids on the
- * same mounted volume (compose mounts `${ENCORE_MEDIA_VOLUME}:/app/media` into both). Whichever
- * process creates a directory owns it, and a 0755 dir created by the core is unwritable by the
- * worker — which is exactly how the layout migration first broke every cook: the worker got
- * `Permission denied: /app/media/work/<jobId>` on dirs the core had just made. The old layout only
- * worked because its dirs had been chmod'd by hand while debugging.
+ * SHARED-WRITE MODE. Core and worker are separate containers running as DIFFERENT uids on the same
+ * mounted volume (compose mounts `${ENCORE_MEDIA_VOLUME}:/app/media` into both). Whichever process
+ * creates a dir owns it, and a 0755 dir created by the core is unwritable by the worker — exactly how
+ * the layout migration first broke every cook (worker got `Permission denied: /app/media/work/<jobId>`
+ * on dirs the core had just made). The old layout only worked because its dirs were chmod'd by hand.
  *
- * The dirs the WORKER writes into are therefore created world-writable. `mkdirSync`'s mode argument is
- * masked by the process umask, so the chmod is explicit and separate. `meta/` is core-only and stays
- * restrictive — it is the authoritative library record, not a drop box.
+ * So worker-written dirs are created world-writable. `mkdirSync`'s mode is masked by umask, hence the
+ * explicit separate chmod. `meta/` is core-only and stays restrictive — the authoritative record, not
+ * a drop box.
  *
- * The tighter alternative is to build both images with a shared group and setgid dirs; that is worth
- * doing if Encore ever runs somewhere less trusted than a living room, and is noted in
- * docs/ARCHITECTURE.md.
+ * Rejected alternative: build both images with a shared group + setgid dirs — worth doing if Encore
+ * ever runs somewhere less trusted than a living room (noted in docs/ARCHITECTURE.md).
  */
 export function ensureLayout(): void {
 	// worker-written: raw downloads, stems, pitch tracks, lyrics, job scratch

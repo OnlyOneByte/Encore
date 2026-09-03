@@ -119,7 +119,7 @@
 
 	function addSong(mediaId: string) {
 		store?.addSong(mediaId);
-		if (navigator.vibrate) navigator.vibrate(8); // haptic tick
+		if (navigator.vibrate) navigator.vibrate(8);
 		setTimeout(loadShortcuts, 300); // refresh popular/recent after the add lands
 	}
 
@@ -222,7 +222,7 @@
 			loadShortcuts();
 			return;
 		}
-		debounceTimer = setTimeout(() => runSearch(q), 150); // debounce ~150ms
+		debounceTimer = setTimeout(() => runSearch(q), 150);
 	}
 
 	/** Drop the search and go back to the full library. Same teardown as clearing the box by hand. */
@@ -232,7 +232,7 @@
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 	async function runSearch(q: string) {
-		inflight?.abort(); // cancel the previous in-flight request
+		inflight?.abort();
 		const ctrl = new AbortController();
 		inflight = ctrl;
 		searching = true;
@@ -416,8 +416,8 @@
 </header>
 
 <main>
-	<!-- search: ONE box across every source. There is no source switch, because a singer picks by
-	     readiness ("can I sing this now?"), never by which index the song came from. -->
+	<!-- ONE box across every source: a singer picks by readiness ("can I sing this now?"), never by
+	     which index the song came from — so there is no source switch. -->
 	<div class="card searchbox">
 		<span style="color:var(--ink-dim)">🔎</span>
 		<input bind:value={query} oninput={onQueryInput} placeholder="Search a song or artist…" />
@@ -436,10 +436,9 @@
 
 	{#if showReady}
 		{@const readyList = searchActive ? readyResults : library}
-		<!-- Browse: facet rails over the karaoke library. Only shown when NOT searching — a
-		     query is already a filter, and stacking two filters is how you end up with zero results and
-		     no idea which one caused it. Hidden entirely below two facets, because "browse by artist"
-		     across one artist is just a list. -->
+		<!-- Facet rails over the karaoke library, shown only when NOT searching: a query is already a
+		     filter, and stacking two leaves you with zero results and no idea which caused it. Hidden
+		     below two facets, since "browse by artist" across one artist is just a list. -->
 		{#if !searchActive && (facets.artists.length > 1 || facets.genres.length > 1)}
 			{#if facets.artists.length > 1}
 				<div class="facets" role="group" aria-label="Browse by artist">
@@ -672,13 +671,11 @@
 	main { flex: 1; padding: 6px 18px calc(var(--peek-h) + 28px); }
 
 	/*
-	 * Wide viewports spend the extra room on MORE SONGS, not on longer rows: a search result stretched
-	 * to 1080px is mostly the gap between the title and its button. Only song rows flow into columns —
-	 * the search box, the filter chips, the facet rails and the group headings each label everything
-	 * below them, so a heading confined to one column would read as applying to half the list.
-	 *
-	 * The rule is inverted deliberately: everything spans by default and rows opt in. New blocks added
-	 * to this list then span (always safe) rather than silently landing in a column beside a song.
+	 * Wide viewports spend the extra room on MORE SONGS, not longer rows. Only song rows flow into
+	 * columns — the search box, chips, facet rails and group headings each label everything below
+	 * them, so a heading confined to one column would read as applying to half the list. The rule is
+	 * inverted deliberately: everything spans by default and rows opt in, so a new block added here
+	 * spans (always safe) rather than silently landing in a column beside a song.
 	 */
 	@media (min-width: 768px) {
 		main {

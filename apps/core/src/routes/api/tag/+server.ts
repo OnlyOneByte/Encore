@@ -1,11 +1,10 @@
 // POST /api/tag — set the genres (or free tags) on a library song.
 //
-// Writes the SIDECAR first, because that is the authoritative record (docs/ARCHITECTURE.md),
-// then mirrors into the browse index. Order matters: if the process died between the two, a restart
-// re-syncs the index from the sidecars, whereas the reverse order would silently lose the edit.
+// Writes the SIDECAR first (the authoritative record, docs/ARCHITECTURE.md), then mirrors into the
+// browse index. Order matters: a crash between the two lets a restart re-sync the index from the
+// sidecars, whereas the reverse order would silently lose the edit.
 //
-// Requires a joined singer — same bar as queueing. Curating someone else's party library from an
-// un-joined browser is not a thing we want to allow, and the cookie is already there for free.
+// Requires a joined singer — same bar as queueing; the cookie is already there for free.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
@@ -51,7 +50,6 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	}
 	await writeSidecar(sidecar);
 
-	// Then the index.
 	app.media.setTags(mediaId, kind, values);
 	app.media.setCanonical(mediaId, { artist: browseArtist(sidecar), title: lookupTitle(sidecar), album: sidecar.canonical.album, year: sidecar.canonical.year });
 

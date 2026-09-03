@@ -1,5 +1,5 @@
 <script lang="ts">
-	// Docked now-playing control strip. Ported from docs/mocks. Key-shift greyed until stems (M7).
+	// Docked now-playing control strip. Ported from docs/mocks. Key-shift greyed until stems ready.
 	interface Props {
 		title: string;
 		sub: string;
@@ -19,7 +19,6 @@
 		onplaypause, onprev, onnext, onkey
 	}: Props = $props();
 
-	// label like "Key · +2" / "Key · −3" / "Key" at 0
 	const keyLabel = $derived(keyShift === 0 ? 'Key' : `Key · ${keyShift > 0 ? '+' : '−'}${Math.abs(keyShift)}`);
 	const canDown = $derived(keyShiftEnabled && keyShift > -maxKeyShift);
 	const canUp = $derived(keyShiftEnabled && keyShift < maxKeyShift);

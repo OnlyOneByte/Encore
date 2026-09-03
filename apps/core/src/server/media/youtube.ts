@@ -1,6 +1,6 @@
-// YouTube resolver — keyless search via yt-dlp (no API key; matches the self-host ethos).
-// MASTER-DESIGN decision (2026-06-29 default): keyless yt-dlp search with graceful degradation
-// when the binary is absent (dev). Results cached + deduped by query so re-typing a song is free.
+// YouTube resolver — keyless search via yt-dlp (no API key; matches the self-host ethos), with
+// graceful degradation when the binary is absent (dev). MASTER-DESIGN default 2026-06-29. Results
+// cached + deduped by query so re-typing a song is free.
 //
 // The actual yt-dlp invocation is injected (`runSearch`) so this unit-tests without the binary.
 
@@ -32,7 +32,7 @@ export class YouTubeResolver implements MediaResolver {
 		if (!key.replace(/#\d+$/, '')) return [];
 
 		const hit = this.#cache.get(key);
-		if (hit && this.#now() - hit.at < this.#ttlMs) return hit.results; // cache hit — free
+		if (hit && this.#now() - hit.at < this.#ttlMs) return hit.results;
 
 		// dedupe concurrent identical queries (a single keystroke burst) into one backend call
 		const existing = this.#inflight.get(key);

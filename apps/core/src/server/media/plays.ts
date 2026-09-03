@@ -1,19 +1,16 @@
 // Play tracking (retention follow-up) — record WHEN a song was last actually sung.
 //
-// Why this exists: retention's eviction plan needs a recency signal to decide what to drop first.
-// `library.lastPlayedAt` already existed in the sidecar shape but nothing ever incremented it, so
-// eviction fell back to `addedAt` — oldest-added-first, not least-recently-used. A song added months
-// ago and sung every week would have been evicted before one added yesterday and never played, which
-// is precisely backwards.
+// Why: retention's eviction plan needs a recency signal. `library.lastPlayedAt` existed in the sidecar
+// but nothing incremented it, so eviction fell back to `addedAt` (oldest-added-first) — a song added
+// months ago and sung weekly would be evicted before one added yesterday and never played, backwards.
 //
-// Design: the tracker DEDUPES on entry id, not media id.
-//
-//   - `emitNowPlaying` is the single choke point every playback transition funnels through, which
-//     makes it the right hook — but it is also re-emitted without a change (a cook finishing
-//     re-broadcasts nowplaying so the TV preloads the now-ready song). Counting on every emit would
-//     inflate a song's play count every time an unrelated song finished cooking.
-//   - Deduping on ENTRY id rather than media id is deliberate: the same song queued twice in one
-//     night is two entries and genuinely two plays, while one entry re-emitted five times is one.
+// Design — DEDUPE on ENTRY id, not media id:
+//   - `emitNowPlaying` is the single choke point every playback transition funnels through (the right
+//     hook), but it is also re-emitted without a change (a finished cook re-broadcasts nowplaying so
+//     the TV preloads the now-ready song). Counting every emit would inflate play count whenever an
+//     unrelated song finished cooking.
+//   - Entry id, not media id: the same song queued twice in one night is two entries and genuinely two
+//     plays, while one entry re-emitted five times is one.
 //
 // Pure tracker, injectable sink — testable without a filesystem.
 

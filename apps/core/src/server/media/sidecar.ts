@@ -1,20 +1,16 @@
 // Sidecar records — the AUTHORITATIVE per-song library entry.
 //
 // `meta/<mediaId>.json` is the truth; the SQLite `media` table is a rebuildable INDEX over it
-// (docs/ARCHITECTURE.md). Three things follow from that, and they are the reason for the
-// inversion rather than incidental benefits:
-//
-//   1. The volume becomes SELF-DESCRIBING. Today, losing the SQLite file loses every title, artist and
-//      artifact link while all ~1.4 GB of bytes survive uselessly on disk. With sidecars, a rescan
-//      rebuilds the catalog from the volume alone — move it to a new box and it still knows itself.
-//   2. Genre and tags become HAND-EDITABLE. A self-hosted library gets curated with a text editor;
-//      that is impossible if the only copy lives in a DB row.
+// (docs/ARCHITECTURE.md). Why the inversion, not incidental benefits:
+//   1. SELF-DESCRIBING volume: losing the SQLite file today loses every title/artist/artifact link
+//      while ~1.4 GB of bytes survive uselessly; sidecars let a rescan rebuild the catalog from the
+//      volume alone, so it still knows itself on a new box.
+//   2. Genre/tags become HAND-EDITABLE — impossible if the only copy lives in a DB row.
 //   3. The DB stops being a single point of permanent loss.
+// Cost is one small JSON write per change, nothing beside a 5 MB audio file.
 //
-// Cost is one small JSON write per change, which is nothing beside a 5 MB audio file.
-//
-// The pure half (build a sidecar from a Media, project one back) is separated from the I/O half so it
-// unit-tests without a filesystem — the same split as ytdlp.ts parseSearchJson.
+// Pure half (build a sidecar, project one back) is split from the I/O half to unit-test without a
+// filesystem — same split as ytdlp.ts parseSearchJson.
 
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -24,9 +20,8 @@ import { metaDir } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 
 /** Bump when the on-disk shape changes incompatibly. Readers tolerate older schemas. */
-// 2: `artifacts.lyricsCandidates` added. `artifacts.lyrics` keeps its meaning — the CHOSEN
-// ref — so a schema-1 record still reads correctly; it simply has no provenance, which we report as
-// unknown rather than inventing.
+// 2: `artifacts.lyricsCandidates` added. `artifacts.lyrics` keeps its meaning (the CHOSEN ref), so a
+// schema-1 record still reads correctly — it just has no provenance, reported as unknown not invented.
 export const SIDECAR_SCHEMA = 2;
 
 /** How a derived field was obtained. Mirrors the lyrics chain's provenance idea on purpose. */
@@ -63,10 +58,8 @@ export interface MediaSidecar {
 		/** The CHOSEN lyrics ref (whichever candidate pickBestLyrics selected). */
 		lyrics: string | null;
 		/**
-		 * Every lyrics artifact this song has, one per text source. Authoritative here rather
-		 * than in the DB, per the rule that the sidecar is the record and the index is rebuildable —
-		 * and this is what makes re-alignment possible later without re-fetching audio. Absent on
-		 * schema-1 records.
+		 * Every lyrics artifact this song has, one per text source. Authoritative here (not the DB),
+		 * which is what makes re-alignment possible later without re-fetching audio. Absent on schema-1.
 		 */
 		lyricsCandidates?: LyricsCandidate[];
 	};
@@ -77,9 +70,8 @@ export interface MediaSidecar {
 		lastPlayedAt: number | null;
 	};
 	/**
-	 * The UNTOUCHED source metadata. Never discarded: keeping the raw uploader and title means a
-	 * better normalizer (or a MusicBrainz lookup) can re-derive canonical fields later without
-	 * re-downloading a single byte.
+	 * The UNTOUCHED source metadata. Never discarded: keeping the raw uploader and title lets a better
+	 * normalizer (or a MusicBrainz lookup) re-derive canonical fields later without re-downloading.
 	 */
 	raw: {
 		uploader: string | null;
@@ -129,9 +121,8 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			vocals: prev?.artifacts.vocals ?? null,
 			pitch: m.pitchRef ?? prev?.artifacts.pitch ?? null,
 			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null,
-			// Keep whatever the runtime knows, else whatever a prior write knew — an index-only hydrate
-			// (no sidecar read) leaves lyricsCandidates undefined, and losing the set on that write would
-			// silently destroy the upgrade path the lyrics-candidates set exists for.
+			// Runtime first, else a prior write: an index-only hydrate leaves lyricsCandidates undefined,
+			// and losing the set here would silently destroy the upgrade path the set exists for.
 			lyricsCandidates: m.lyricsCandidates ?? prev?.artifacts.lyricsCandidates
 		},
 		library: {
@@ -172,8 +163,8 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		lyricsCandidates: s.artifacts.lyricsCandidates,
 		pitchRef: s.artifacts.pitch ?? undefined,
 		// Carry the confidence-gated canonicals so a RESTORED media is immediately complete. The boot
-		// sync pass mirrors these into the index too, but an align job dispatched before that pass ran
-		// would otherwise look up the raw title and miss.
+		// sync pass mirrors these into the index too, but an align job dispatched before it ran would
+		// otherwise look up the raw title and miss.
 		artistCanonical: browseArtist(s) ?? undefined,
 		titleCanonical: lookupTitle(s) ?? undefined
 	};
@@ -282,11 +273,9 @@ export async function rebuildIndexFromMeta(deps: {
 /**
  * The other direction: write a sidecar for every indexed media that does not have one yet.
  *
- * Needed because sidecars only start being written when a media is next upserted, so without this the
- * self-describing-volume property would apply ONLY to songs added after the sidecar became
- * authoritative — every song already in the catalog would still be lost with the SQLite file,
- * which is exactly the failure this is meant to
- * remove. One-shot, idempotent, and cheap (a few KB per song).
+ * Sidecars only start being written when a media is next upserted, so without this the
+ * self-describing-volume property would apply ONLY to songs added after sidecars became authoritative
+ * — every pre-existing song would still be lost with the SQLite file. One-shot, idempotent, cheap.
  *
  * @returns how many sidecars were created.
  */

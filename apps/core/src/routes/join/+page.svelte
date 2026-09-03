@@ -85,9 +85,8 @@
 
 <style>
 	/*
-	 * Join stays narrow while the shell widens. The form is four short controls, so stretching the name
-	 * field and the colour swatches across a desktop column would make them harder to use, not easier —
-	 * the extra room becomes margin and the form centres in it instead.
+	 * Join stays narrow while the shell widens: it is four short controls, so stretching the name
+	 * field and colour swatches across a desktop column would make them harder to use, not easier.
 	 */
 	/* Declared here rather than inline: an inline style outranks every stylesheet rule, so a `flex:1`
 	   attribute would make the desktop override below silently do nothing. */

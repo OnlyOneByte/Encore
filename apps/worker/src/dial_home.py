@@ -3,14 +3,10 @@
 The worker connects TO the core (never the reverse), so it scales to N and runs on any box / GPU
 across NAT. It announces capacity (`worker:hello`), receives `job:assign`, accepts (or rejects on
 no-capacity / unsupported type), streams `job:progress` per stage, and finishes with `job:complete`
-(or `job:failed`). Crash recovery is the core's job (leases + reaper) — a dropped WS just
-means the worker reconnects and re-announces.
+(or `job:failed`). Crash recovery is the core's job (leases + reaper) — a dropped WS just means the
+worker reconnects and re-announces.
 
-The actual stem separation is behind the Processor seam (processor.py); StubProcessor and the real
-Demucs pipeline are interchangeable there with NO change to this loop. See
-docs/ARCHITECTURE.md, §9.
-
-Run:  python -m src.dial_home   (or as a module inside the container)
+The stem separation is behind the Processor seam (processor.py). See docs/ARCHITECTURE.md, §9.
 """
 from __future__ import annotations
 
@@ -41,7 +37,7 @@ RECONNECT_BACKOFF_SEC = 3.0
 class WorkerClient:
     """Drives one worker session against a connected socket. Decoupled from the `websockets`
     library: it takes an async `send(dict)` and is fed inbound messages via `handle(msg)`, so the
-    full assign->complete flow unit-tests with an in-memory fake socket (no network)."""
+    full flow unit-tests with an in-memory fake socket."""
 
     def __init__(self, send, processor: Processor, *, worker_id: str = WORKER_ID,
                  capabilities: list[str] | None = None, concurrency: int = CONCURRENCY,
@@ -96,7 +92,7 @@ class WorkerClient:
             params=msg.get("params", {}),
             media_dir=self._media_dir,
         )
-        # run the (possibly long) processing concurrently so the loop keeps reading ping/cancel
+        # run processing concurrently so the loop keeps reading ping/cancel
         task = asyncio.ensure_future(self._run_job(job))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
@@ -113,25 +109,19 @@ class WorkerClient:
                 raise RuntimeError("processor produced no result")
             await self._send(protocol.complete(self.state.worker_id, job.job_id, result.media_uri, result.artifacts))
         except Exception as exc:  # noqa: BLE001 — report ANY failure to the core, which decides retry
-            # retryable=True for transient errors; a corrupt/unsupported source is non-retryable.
             retryable = _is_retryable(exc)
-            # LOG it too. Reporting only over the wire made a retry loop invisible from both ends: a
-            # job that failed at 99% every attempt looked identical to one still cooking, because the
-            # worker printed nothing and the core just requeued.
+            # LOG it too: reporting only over the wire made a retry loop invisible from both ends — a
+            # job failing at 99% every attempt looked identical to one still cooking.
             print(f"[worker] job {job.job_id} ({job.job_type}) FAILED "
                   f"retryable={retryable}: {exc!r}", flush=True)
             await self._send(protocol.failed(self.state.worker_id, job.job_id, str(exc), retryable=retryable))
         finally:
             self.state.finish(job.job_id)
-            # The worker OWNS its scratch, so the worker cleans it. work/<jobId> holds the
-            # decoded source plus both separated WAV stems — hundreds of MB per job, and nothing reads
-            # them once the encoded artifacts are published. Leaving them is how 432 MB accumulated
-            # under the old layout.
-            #
-            # This cannot be done from the core: in a two-container deployment the core runs as a
-            # DIFFERENT uid, and these dirs are created by the worker at its own umask, so a
-            # core-side rmtree gets EACCES. Cleanup has to live with whoever created the files.
-            # ignore_errors: tidying must never turn a completed job into a failed one.
+            # The worker OWNS its scratch, so the worker cleans it: work/<jobId> holds the decoded
+            # source + both WAV stems (hundreds of MB per job), and leaving them is how 432 MB
+            # accumulated. This cannot be done from the core — in a two-container deployment the core
+            # runs as a DIFFERENT uid and a core-side rmtree gets EACCES on dirs the worker created at
+            # its own umask. ignore_errors: tidying must never turn a completed job into a failed one.
             shutil.rmtree(os.path.join(job.media_dir, "work", job.job_id), ignore_errors=True)
 
     def _on_cancel(self, msg: dict[str, Any]) -> None:
@@ -151,7 +141,6 @@ def _is_retryable(exc: Exception) -> bool:
     structured = getattr(exc, "retryable", None)
     if isinstance(structured, bool):
         return structured
-    # Source-gone / unsupported-format style failures are permanent; everything else may be transient.
     permanent = ("not found", "404", "unsupported", "corrupt")
     msg = str(exc).lower()
     return not any(p in msg for p in permanent)
@@ -189,12 +178,11 @@ def oversubscription_warnings(cfg: WorkerConfig, cores: int | None) -> list[str]
 
 def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     """Build the processor from this worker's capabilities. ENCORE_PROCESSOR=stub forces the no-ML
-    StubProcessor (path test / torch-less box). Otherwise a RoutingProcessor dispatches by job type:
-    stems→DemucsProcessor, align→WhisperXProcessor. Imports are lazy so torch only
-    loads for the capabilities this worker actually advertises.
+    StubProcessor. Otherwise a RoutingProcessor dispatches by job type: stems→DemucsProcessor,
+    align→WhisperXProcessor. Imports are lazy so torch only loads for advertised capabilities.
 
-    Config is read ON CALL, not captured at import: a module-level default would silently ignore any
-    environment set after import, which is both surprising and untestable.
+    Config is read ON CALL, not captured at import: a module-level default would silently ignore an
+    environment set after import, and be untestable.
     """
     cfg = cfg or WorkerConfig.from_env()
     if cfg.processor == "stub":
@@ -203,15 +191,14 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     from .processor import RoutingProcessor
 
     # Cap intra-op threads BEFORE any model loads. Matters when demucs_jobs > 1: N jobs each
-    # defaulting to all cores oversubscribes the box and they fight instead of scaling.
+    # defaulting to all cores oversubscribe the box and fight instead of scaling.
     #
-    # The os.environ half is the part that actually bites for stems: demucs runs as a separate CLI
-    # SUBPROCESS (see demucs.py subprocess_runner), so torch.set_num_threads() in THIS process cannot
-    # reach it — the knob read as a no-op for the very case its docstring described. The child
-    # inherits os.environ, so OMP/MKL are how a thread cap crosses the process boundary. Measured on a
-    # 10-core box: `-j 1` already ran ~3.9 cores wide via torch threading, so `-j 4` uncapped just
-    # oversubscribes (86s vs 99s); the cap is what lets jobs scale instead of fight.
-    # torch.set_num_threads() is still called for the IN-PROCESS consumers (pitch/score extraction).
+    # demucs runs as a separate CLI SUBPROCESS (see demucs.py subprocess_runner), so
+    # torch.set_num_threads() in THIS process cannot reach it — the child inherits os.environ, so
+    # OMP/MKL are how the cap crosses the process boundary. Measured on a 10-core box: `-j 1` already
+    # ran ~3.9 cores wide, so `-j 4` uncapped just oversubscribes (86s vs 99s); the cap is what lets
+    # jobs scale instead of fight. torch.set_num_threads() still applies to the IN-PROCESS consumers
+    # (pitch/score extraction).
     if cfg.torch_threads is not None:
         os.environ["OMP_NUM_THREADS"] = str(cfg.torch_threads)
         os.environ["MKL_NUM_THREADS"] = str(cfg.torch_threads)

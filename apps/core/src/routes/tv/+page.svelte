@@ -39,7 +39,6 @@
 	let isPlaying = $state(true);
 	// seek target (positionSec from playback:state) — the player jumps the video on a real change
 	let seekSec = $state(0);
-	// which media each slot shows (from the controller's assignment)
 	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
 
 	let ws: WebSocket | undefined;
@@ -69,9 +68,9 @@
 		if (score && score.entryId !== cur?.id) score = null; // new song → drop the previous score
 		current = cur;
 		upNext = next;
-		// held-slot: if the server handed us a current whose media isn't ready yet (a cooking
-		// make-karaoke file), show WAITING rather than a black player. (Server normally skips these
-		// via nextPlayable, so this is a belt-and-suspenders guard for the M7 stems path.)
+		// held-slot: if the server handed us a current whose media isn't ready (a cooking make-karaoke
+		// file), show WAITING rather than a black player. Server normally skips these via nextPlayable,
+		// so this is a belt-and-suspenders guard for the M7 stems path.
 		const m = mediaOf(cur);
 		if (cur && m && m.playMode === 'file' && m.stemStatus !== 'ready' && m.stemStatus !== 'none') {
 			ctl.enterWaiting();
@@ -125,7 +124,7 @@
 		ws.onclose = () => {
 			connected = false;
 			// IMPORTANT: the video/iframe keeps playing through a socket drop — playback never stops.
-			// We just re-establish the control channel with capped backoff and resync.
+			// We only re-establish the control channel with capped backoff and resync.
 			if (disposed) return;
 			const delay = Math.min(500 * 2 ** reconnectAttempt, 5000);
 			reconnectAttempt++;
@@ -160,8 +159,8 @@
 					});
 				}
 			}
-			// learn singers who join AFTER our initial sync, so the lower-third shows their real name
-			// (not the "Someone" fallback) — mirrors the phone. Without this, late joiners read as Someone.
+			// learn singers who join AFTER our initial sync, or the lower-third shows "Someone" for
+			// late joiners instead of their real name (mirrors the phone).
 			if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
 		};
 	}

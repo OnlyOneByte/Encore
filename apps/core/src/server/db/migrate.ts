@@ -34,9 +34,8 @@ export function runMigrations(db: DB, migrationsFolder = findMigrationsDir()): v
 }
 
 /**
- * Boot-hydrate: read durable state back into memory on startup. The state module will consume this to
- * seed the authoritative in-memory queue + playback. Returns the rows; the state module owns
- * the in-memory representation.
+ * Boot-hydrate: read durable queue + playback rows back on startup for the state module to seed
+ * the authoritative in-memory representation.
  */
 export function hydrate(db: DB): {
 	entries: (typeof queueEntries.$inferSelect)[];

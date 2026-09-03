@@ -1,21 +1,15 @@
 """Worker configuration — one place that reads the environment.
 
-WHY THIS EXISTS. Before this, env reads were sprinkled across module top-levels (`CAPABILITIES` at
-import time in dial_home, `ENCORE_DEMUCS_MODEL` inside `_build_processor`) and the performance-relevant
-settings were not configurable at all: `demucs_argv` passed no `-j`, `--overlap`, `--segment`,
-`--shifts` or `-d`, the stem bitrate and FLAC level were constructor defaults, and torch threading was
-untouched. Every existing env var described PLACEMENT (where the core is, who I am, what I can do) --
-none described SPEED.
-
-That matters because the dial-home architecture is explicitly heterogeneous: a GPU box and a CPU box
-connect to the same core and should be tuned differently. Per-worker env is exactly the right shape
-for that, but only if the knobs exist.
+The dial-home architecture is explicitly heterogeneous: a GPU box and a CPU box connect to the same
+core and should be tuned differently. Per-worker env is the right shape for that, so every
+performance knob (`-j`, `--overlap`, `--segment`, `--shifts`, `-d`, stem bitrate, FLAC level, torch
+threads) is configurable here, not just the placement settings.
 
 Design rules:
   - PURE `from_env(env)` -- takes the environment as an argument, so it is testable without mutating
     the process.
-  - Bad input NEVER crashes the worker and never silently becomes zero. A malformed number falls back
-    to the default and is reported in `warnings`, because a worker that quietly runs with
+  - Bad input NEVER crashes the worker and never silently becomes zero. A malformed number falls
+    back to the default and is reported in `warnings`, because a worker quietly running with
     `concurrency=0` accepts no jobs and looks like a network problem.
   - Anything left unset is OMITTED from the CLI rather than passed as a guessed value, so upstream
     defaults (demucs' own overlap, its cuda-if-available device pick) keep applying.
@@ -181,8 +175,6 @@ class WorkerConfig:
 
         concurrency = _int(e, "ENCORE_WORKER_CONCURRENCY", 1, w)
         demucs_jobs = _int(e, "ENCORE_DEMUCS_JOBS", auto_demucs_jobs(), w)
-        # Unset => derive a cap from how many separations can contend, rather than leaving every one of
-        # them defaulting to all cores. An explicit value always wins, including a deliberate over-commit.
         torch_threads = _opt_int(e, "ENCORE_TORCH_THREADS", w)
         if torch_threads is None:
             torch_threads = auto_torch_threads(concurrency, demucs_jobs)

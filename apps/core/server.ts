@@ -1,11 +1,7 @@
 // Encore core — the one Bun process. HTTP (SvelteKit) + native WebSocket pub/sub hub.
-// Locked in docs/ARCHITECTURE.md: Bun.serve owns BOTH the SvelteKit request handler
-// AND the realtime hub, so there is no network hop between layers and the in-memory
-// authoritative state lives in this one process.
-//
-// Production entry (replaces the adapter's build/index.js):
-//   build:  bun run build
-//   start:  bun run server.ts
+// Locked in docs/ARCHITECTURE.md: Bun.serve owns BOTH the SvelteKit request handler AND the
+// realtime hub, so there is no network hop between layers and the authoritative in-memory state
+// lives in this one process. Prod entry (replaces the adapter's build/index.js): bun run server.ts
 
 import {
 	ROOM_TOPIC,
@@ -33,11 +29,9 @@ const HOST = process.env.HOST ?? '0.0.0.0';
 const app = getApp();
 const state = app.state;
 
-// Live worker WS sockets, keyed by workerId (the dial-home registry's transport half — the
-// registry itself holds liveness/slots; this maps an id to the socket to push WorkerCommands to).
-// In-memory, process-lifetime, never persisted (§10).
-// Per-socket data. `singerId` is resolved at upgrade from the session cookie and is
-// absent for the TV and for a phone that has not joined yet.
+// Live worker WS sockets keyed by workerId — the dial-home registry's transport half (the registry
+// itself holds liveness/slots). In-memory, process-lifetime, never persisted (§10).
+// `singerId` is resolved at upgrade from the session cookie; absent for the TV and a not-yet-joined phone.
 type SocketData = { role: string; workerId?: string; singerId?: string };
 type WorkerSocket = import('bun').ServerWebSocket<SocketData>;
 const workerSockets = new Map<string, WorkerSocket>();
@@ -163,8 +157,7 @@ const server = Bun.serve<SocketData>({
 			// route the shared app's broadcasts through Bun's native pub/sub (e.g. singer:joined
 			// from the /api/join route reaches every socket).
 			setPublish((e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)));
-			// This singer is now in the room. Announce only on the 0→1 transition so a second
-			// tab doesn't spam the room with an unchanged roster.
+			// Announce only on the 0→1 transition so a second tab doesn't spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) publishPresence();
 		},
 		message(ws, raw) {
@@ -203,7 +196,7 @@ const server = Bun.serve<SocketData>({
 				seenOp: (id) => {
 					if (seenOps.has(id)) return true;
 					seenOps.add(id);
-					if (seenOps.size > 4096) seenOps.delete(seenOps.values().next().value!); // bounded
+					if (seenOps.size > 4096) seenOps.delete(seenOps.values().next().value!);
 					return false;
 				}
 			};
@@ -211,9 +204,8 @@ const server = Bun.serve<SocketData>({
 
 			switch (evt.type) {
 				case 'hello': {
-					// resync handshake: reply with authoritative full state to this client only —
-					// queue + current playback + nowplaying, so a reconnecting TV/phone resumes
-					// exactly where the room is.
+					// resync: reply with authoritative full state to this client only (queue + playback +
+					// nowplaying), so a reconnecting TV/phone resumes exactly where the room is.
 					ws.send(JSON.stringify(syncEvent(state, deps)));
 					ws.send(JSON.stringify({ type: 'playback:state', state: state.playback, rev: state.rev }));
 					const cur = state.entries.find((e) => e.id === state.playback.currentEntryId) ?? null;

@@ -83,10 +83,9 @@ export function entryPlayable(
 	media: Media | undefined,
 	live?: { status: MediaStatus }
 ): boolean {
-	// A live status decides in BOTH directions, exactly like displayReadiness: `ready` means the cook
-	// just landed and the catalog copy hasn't caught up (the phone must not keep skipping a song that
-	// is now playable), and anything mid-flight means it is still cooking. `failed` is the exception —
-	// it says nothing about playability, so the catalog answers.
+	// A live status decides in both directions: `ready` means the cook just landed and the catalog
+	// copy hasn't caught up; anything else mid-flight means still cooking. `failed` says nothing about
+	// playability, so the catalog answers.
 	if (live && live.status === 'ready') return true;
 	if (live && live.status !== 'failed') return false; // queued/downloading/separating/aligning
 	if (!media) return false;

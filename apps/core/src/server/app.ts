@@ -310,9 +310,9 @@ export function getApp(): EncoreApp {
 		plays: null as never,
 		jobs,
 		settings,
-		reaper: null as never, // set just below (needs onReaped → workerHub.dispatch)
+		reaper: null as never, // set below (needs onReaped → workerHub.dispatch)
 		workers,
-		workerHub: null as never, // set just below (needs app.toWorker/publish indirection)
+		workerHub: null as never, // set below (needs app.toWorker/publish indirection)
 		mediaById,
 		media: mediaRepo,
 		localLibrary: new LocalLibrary(),

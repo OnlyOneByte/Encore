@@ -1,11 +1,9 @@
-// GET /api/library — the durable catalog's two interesting states, for a client that has just
-// loaded and has received no broadcasts yet:
-//
-//   library — songs whose stems are already separated on disk. Re-queueing one skips the worker
-//             entirely (no 1–2 min cook), which is the whole point of persisting the catalog.
-//   cooking — songs being separated RIGHT NOW, with their live progress. Without this, reloading
-//             the phone mid-cook lost the progress bar until the next broadcast happened to fire.
-//
+// GET /api/library — the durable catalog's two interesting states for a just-loaded client that
+// has received no broadcasts yet:
+//   library — stems already on disk. Re-queueing skips the worker (no 1–2 min cook), the whole
+//             point of persisting the catalog.
+//   cooking — songs separating RIGHT NOW, with live progress. Without this, reloading the phone
+//             mid-cook lost the progress bar until the next broadcast fired.
 // Read-only and unauthenticated, like /api/search — queueing still requires a joined singer.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';

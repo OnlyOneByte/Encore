@@ -1,8 +1,7 @@
 // PUT /api/settings/room — update THIS room's own policy (pacing, quality ceiling).
 //
-// Split from the global endpoint because the two scopes answer different questions: global is "what
-// can this deployment do", room is "how does this party want to run". Keeping them separate means a
-// room write can never accidentally change deployment-wide separator policy.
+// Split from the global endpoint so a room write can never accidentally change deployment-wide
+// separator policy: global answers "what can this deployment do", room "how does this party run".
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';

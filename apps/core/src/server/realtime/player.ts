@@ -1,6 +1,5 @@
 // Player command handling — mutate authoritative playback state and broadcast playback:state.
-// MVP scope: play/pause/seek/restart adjust the PlaybackState; skip/next advances the
-// current entry. The full gapless player state machine (advance-on-ended, upNext preload) is M5.
+// play/pause/seek/restart adjust the PlaybackState; skip/next advances the current entry.
 
 import { clampKeyShift, type PlayerCommand, type ServerEvent, type QueueEntry } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
@@ -78,7 +77,6 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 	const { state } = deps;
 	switch (cmd.cmd) {
 		case 'play': {
-			// if nothing is loaded yet, start the first playable entry
 			if (!state.playback.currentEntryId) {
 				const { next } = nextPlayable(state.entries, deps.mediaById);
 				if (next) {

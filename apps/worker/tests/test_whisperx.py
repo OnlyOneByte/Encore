@@ -1,6 +1,6 @@
-"""WhisperX align pipeline — PURE shape transform (raw WhisperX → normalized word-timed lyrics,
-the done-when "lyrics JSON with word timestamps; unit test on shape") + the I/O processor
-flow driven by a fake runner (canned transcript, no torch). Real ML alignment defers to a GPU box."""
+"""WhisperX align pipeline — PURE shape transform (raw WhisperX → normalized word-timed lyrics) +
+the I/O processor flow driven by a fake runner (canned transcript, no torch). Real ML alignment
+defers to a GPU box."""
 import asyncio
 import json
 import os
@@ -16,12 +16,10 @@ from src import whisperx  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
-# ── pure helpers ──────────────────────────────────────────────────────────────────
 from src.lyrics_source import LrclibResult  # noqa: E402
 
 
 def test_lyrics_key():
-    # lyrics live under the `derived/` storage class (regenerable from `audio/`).
     assert whisperx.lyrics_key("m1") == "derived/lyrics/m1.json"
 
 

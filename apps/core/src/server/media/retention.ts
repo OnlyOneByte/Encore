@@ -1,11 +1,10 @@
 // Retention — keep the volume bounded without ever losing something unrecoverable.
 //
-// Two distinct jobs, deliberately separated because they have different costs:
-//
+// Two jobs, separated because they have different costs:
 //   1. RECOMPRESS legacy formats. Songs cooked before the current audio policy have WAV stems, ~8x
-//      larger than the AAC a cook produces today. These can be transcoded IN PLACE — the bytes are
-//      already on disk, so it needs no download and no Demucs run, and the song never leaves the
-//      library. This is the right tool for reclaiming pre-policy space; eviction is not.
+//      larger than today's AAC. Transcoded IN PLACE (bytes already on disk, no download, no Demucs
+//      run, song never leaves the library) — the right tool for reclaiming pre-policy space, not
+//      eviction.
 //   2. EVICT derived artifacts when over a soft cap. Derived data is regenerable from `audio/`, so
 //      dropping it costs a re-cook (1-2 min) and nothing permanent. `audio/` and `meta/` are NEVER
 //      touched: audio cannot be re-acquired once an upload disappears, and meta IS the library.
@@ -31,11 +30,10 @@ export function retentionCapBytes(env: Record<string, string | undefined> = proc
 /**
  * A stem ref worth transcoding: an UNCOMPRESSED (WAV) artifact from before the audio policy.
  *
- * Deliberately NOT "anything that is not the current format". When the instrumental target became
- * FLAC, that looser rule would have flagged every existing `.m4a` instrumental for "upgrade" — and
- * transcoding AAC to FLAC is actively harmful: it cannot recover what the lossy encode discarded, so
- * it produces a ~4x larger file containing exactly the same audio. A genuine codec upgrade requires
- * re-cooking from the retained raw audio, which is a different (and available) operation.
+ * Deliberately NOT "anything not the current format": when the instrumental target became FLAC that
+ * looser rule would flag every existing `.m4a` for "upgrade", and AAC→FLAC is actively harmful — it
+ * cannot recover what the lossy encode discarded, only produce a ~4x larger file of the same audio. A
+ * genuine codec upgrade means re-cooking from the retained raw audio, a different operation.
  */
 export function isLegacyStemRef(ref: string | undefined | null): boolean {
 	if (!ref) return false;
@@ -143,9 +141,9 @@ export interface EvictionCandidate {
  * Which songs to strip back to un-cooked, least-recently-used first, until the derived total fits the
  * cap. PURE.
  *
- * Note on the recency signal: play tracking is not wired yet (`library.lastPlayedAt` in the sidecar is
- * never incremented), so callers currently pass `addedAt`. That makes this oldest-added-first rather
- * than truly least-recently-played — a defensible policy, but worth upgrading once plays are counted.
+ * Recency signal caveat: play tracking is not wired yet (`library.lastPlayedAt` is never incremented),
+ * so callers pass `addedAt` — making this oldest-added-first, not truly least-recently-played. Worth
+ * upgrading once plays are counted.
  */
 export function planEviction(candidates: EvictionCandidate[], capBytes: number | null): string[] {
 	if (capBytes === null) return [];
@@ -212,14 +210,13 @@ export function derivedBytesOf(m: Media): number {
  * ffmpeg-backed transcoder: stereo AAC at the same bitrate the worker uses, so a recompressed legacy
  * stem is indistinguishable from a freshly cooked one.
  *
- * `-movflags +faststart` (moov atom first, so a browser can start playing before the full download) is
- * attempted but NOT required: the host ffmpeg build can be more limited than the worker container's,
- * and one was — it rejected the flag outright with "Unrecognized option 'movflags'", failing all 12
- * conversions. A box with a lean ffmpeg should still reclaim its disk, so a rejected flag degrades to
- * a plain encode instead of abandoning the file.
+ * `-movflags +faststart` (moov atom first, so a browser can play before full download) is attempted
+ * but NOT required: the host ffmpeg can be leaner than the worker container's, and one was — it
+ * rejected the flag with "Unrecognized option 'movflags'", failing all 12 conversions. So a rejected
+ * flag degrades to a plain encode rather than abandoning the file.
  *
- * Returns false (rather than throwing) when ffmpeg is absent or genuinely fails, so the caller keeps
- * the larger-but-playable original.
+ * Returns false (not throws) when ffmpeg is absent or genuinely fails, so the caller keeps the
+ * larger-but-playable original.
  */
 export function ffmpegTranscoder(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg'): Transcoder {
 	const base = ['-hide_banner', '-loglevel', 'error', '-y'];

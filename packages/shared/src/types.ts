@@ -27,11 +27,11 @@ export interface Media {
    */
   artistCanonical?: string;
   /**
-   * The canonical TITLE, from the same normalizer and with the same confidence rule as
-   * `artistCanonical`. `title` stays the RAW title because that is what search matches and
-   * what a singer recognises in a result list — but a lyrics lookup needs the song's actual name, so
-   * "Britney Spears - Baby One More Time (Lyrics)" has to resolve to "Baby One More Time" or LRCLIB
-   * misses on track_name even when the artist is right. Undefined when the parse wasn't confident.
+   * The canonical TITLE, from the same normalizer and confidence rule as `artistCanonical`. `title`
+   * stays the RAW title because that is what search matches and what a singer recognises in a result
+   * list — but a lyrics lookup needs the song's actual name, so "Britney Spears - Baby One More Time
+   * (Lyrics)" must resolve to "Baby One More Time" or LRCLIB misses on track_name. Undefined when the
+   * parse wasn't confident.
    */
   titleCanonical?: string;
   durationSec: number;
@@ -55,12 +55,10 @@ export interface Media {
   /**
    * Every lyrics artifact this song has, one per text source. `lyricsRef` points at whichever
    * `pickBestLyrics` selected; the rest are kept so a better source arriving later can be re-aligned
-   * from the retained audio without re-downloading or re-separating anything — and so a coarser late
-   * arrival can never displace existing word timings.
+   * from retained audio — and so a coarser late arrival can never displace existing word timings.
    *
-   * The candidate matching `lyricsRef` is also where the TV reads PROVENANCE from, which is how the
-   * overlay can be honest about auto-transcribed words. Derive it with `chosenCandidate(media)` rather
-   * than duplicating the fields here.
+   * The candidate matching `lyricsRef` is where the TV reads PROVENANCE from. Derive it with
+   * `chosenCandidate(media)` rather than duplicating the fields here.
    */
   lyricsCandidates?: LyricsCandidate[];
   pitchRef?: string; // MediaStore key of the reference pitch-track JSON artifact — the
@@ -157,11 +155,9 @@ export interface Job {
 }
 
 /**
- * The lyrics candidate a media is currently showing — i.e. the one `lyricsRef` points at.
- *
- * This is where the TV reads provenance from, so it can label auto-transcribed words instead of
- * presenting a guess as the song's real lyrics. Returns null when the artifact predates candidate
- * tracking: the honest answer is "provenance unknown", not a fabricated one.
+ * The lyrics candidate a media is currently showing — the one `lyricsRef` points at, and where the
+ * TV reads provenance from. Returns null when the artifact predates candidate tracking: the honest
+ * answer is "provenance unknown", not a fabricated one.
  *
  * Kept beside Media (like `playbackRef`) rather than in lyrics.ts so that module stays dependency-free.
  */

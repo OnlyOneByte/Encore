@@ -119,7 +119,6 @@ test('ObjectMediaStore put/exists/get round-trips through the (prefixed) S3 key'
 	const s3 = fakeS3();
 	const store = new ObjectMediaStore(s3, { prefix: 'encore/' });
 	await store.put('stems/m1.wav', new TextEncoder().encode('STEM'));
-	// stored under the prefixed key
 	expect([...s3.store.keys()]).toEqual(['encore/stems/m1.wav']);
 	expect(await store.exists('stems/m1.wav')).toBe(true);
 	expect(await store.exists('stems/missing.wav')).toBe(false);

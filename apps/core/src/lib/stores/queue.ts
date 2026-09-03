@@ -138,7 +138,7 @@ export class QueueStore {
 
 	#onPatch(e: Extract<ServerEvent, { type: 'queue:patch' }>): void {
 		this.#rev = e.patch.rev;
-		// originator: clear the matching pending op (it's now confirmed by the server)
+		// originator: the echoed op is now server-confirmed, so drop it from pending
 		if (e.patch.causedBy) this.#pending.delete(e.patch.causedBy);
 		if (e.patch.entries) {
 			// Authoritative snapshot present (normal mutation): adopt it as truth, then re-apply any
@@ -169,7 +169,7 @@ export class QueueStore {
 		const pending = this.#pending.get(e.clientOpId);
 		if (!pending) return;
 		this.#pending.delete(e.clientOpId);
-		// ROLLBACK: apply the recorded inverse op to undo the optimistic change
+		// ROLLBACK via the recorded inverse
 		if (pending.inverse) {
 			this.#entries = applyOp(this.#entries, pending.inverse);
 			this.#emit();

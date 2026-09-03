@@ -1,15 +1,12 @@
 <script lang="ts">
-	// Settings, as a page.
+	// Settings, as a page. Two sections because settings have two scopes: GLOBAL belongs to the
+	// deployment and its worker fleet (an engine exists here only if a worker advertises it), ROOM to
+	// this party. Labelling them is the point — "affects every room" is the difference between a safe
+	// tweak and a surprise, and that distinction vanishes if both share one flat list.
 	//
-	// Two sections because settings have two scopes. GLOBAL belongs to the deployment and its worker
-	// fleet — an engine only exists here if a worker advertises the capability. ROOM belongs to this
-	// party. Labelling them is the point: "affects every room" is the difference between a safe tweak
-	// and a surprise, and that distinction vanishes if both sets of controls share one flat list.
-	//
-	// There is no socket on this page, so a change made from a second phone will not appear here until
-	// a reload. That is cosmetic rather than dangerous: every write is a per-field patch that the
-	// server re-normalizes over CURRENT values, so a stale page can only change the field it sends —
-	// it cannot clobber a newer choice in a field it never touched.
+	// No socket on this page, so a change from a second phone shows only after a reload. Cosmetic, not
+	// dangerous: every write is a per-field patch the server re-normalizes over CURRENT values, so a
+	// stale page can only change the field it sends, never clobber a newer choice it never touched.
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
 	import {
@@ -26,10 +23,9 @@
 	}
 	let { data }: Props = $props();
 
-	// Local state rather than a plain derived, because a write is applied optimistically before the
-	// server answers. The effect re-adopts `data` so a re-run of the load (a client-side navigation
-	// back here, or invalidation) shows the fresh server values instead of the snapshot taken at
-	// mount — the staleness this page exists to avoid.
+	// Local state, not a plain derived, because a write is applied optimistically before the server
+	// answers. The effect re-adopts `data` so a load re-run (client-side nav back here, or
+	// invalidation) shows fresh server values, not the mount-time snapshot.
 	let settings = $state<EffectiveSettings>(untrack(() => data.settings));
 	$effect(() => {
 		settings = data.settings;
@@ -225,11 +221,10 @@
 
 <style>
 	/*
-	 * The app shell caps every phone surface at --max-w (480px) and centres it. Settings is the one
-	 * surface you sit down with rather than thumb through mid-song, so it opts out of that cap once
-	 * there is real width to use. The controls themselves stay on a readable measure — a select
-	 * stretched across a 2560px monitor is worse than the narrow column, not better — so the extra
-	 * space goes to showing both scopes at once instead of inflating every widget.
+	 * The app shell caps every phone surface at --max-w (480px). Settings is the one surface you sit
+	 * down with rather than thumb through mid-song, so it opts out once there is real width. The
+	 * controls stay on a readable measure — a select stretched across a 2560px monitor is worse, not
+	 * better — so the extra space shows both scopes at once instead of inflating every widget.
 	 */
 	:global(.app-shell:has(.settings-page)) {
 		max-width: none;
@@ -272,9 +267,8 @@
 	}
 
 	/*
-	 * Wide enough for two readable columns: the scopes sit side by side instead of one scroll, and the
-	 * rule that separated them stacked becomes the gap between them. Below this the single column is
-	 * the phone layout unchanged.
+	 * Wide enough for two readable columns: the scopes sit side by side, and the rule that separated
+	 * them stacked becomes the gap between them. Below this, the single column is the phone layout.
 	 */
 	@media (min-width: 860px) {
 		main {

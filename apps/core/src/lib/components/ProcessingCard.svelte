@@ -11,11 +11,10 @@
 		singerColor?: string;
 		status: MediaStatus; // queued|downloading|separating|aligning|ready|failed
 		pct: number;
-		// A cooking song is still a QUEUE ENTRY, so it gets the same controls a ready row does.
-		// Removing matters because a cook takes 1-2 min and the singer who mis-tapped would otherwise
-		// be stuck watching a progress bar for a song they don't want; reordering matters because
-		// deciding what to sing next is exactly what you do WHILE something cooks. All absent when the
-		// card renders outside the rotation (no slot there to act on).
+		// A cooking song is still a QUEUE ENTRY, so it gets the same controls a ready row does: remove
+		// (a 1-2 min cook is a long time to be stuck on a mis-tap) and reorder (deciding what's next is
+		// exactly what you do while something cooks). All absent when the card renders outside the
+		// rotation (no slot there to act on).
 		onremove?: () => void;
 		reorderable?: boolean;
 		canUp?: boolean;

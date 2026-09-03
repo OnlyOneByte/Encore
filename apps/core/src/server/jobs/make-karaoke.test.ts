@@ -25,7 +25,7 @@ function deps(): MakeKaraokeDeps & { mediaById: Map<string, Media> } {
 
 test('request flips media to cooking file + enqueues a stems job', () => {
 	const d = deps();
-	d.mediaById.set('m1', media('m1')); // starts as a ready iframe
+	d.mediaById.set('m1', media('m1'));
 	const job = requestMakeKaraoke('m1', d);
 	expect(job).not.toBeNull();
 	expect(job!.jobType).toBe('stems');
