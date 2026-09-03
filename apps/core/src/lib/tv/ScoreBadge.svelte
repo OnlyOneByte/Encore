@@ -1,7 +1,6 @@
 <script lang="ts">
-	// live score badge (TV). Given the running score + hit counts from a score:update, shows a
-	// big number, a color-coded band label, and the on-pitch tally. Extracted from the TV page so the
-	// exact rendered component is previewable in the /components gallery.
+	// Live score badge (TV), driven by score:update. Extracted from the TV page so the exact rendered
+	// component is previewable in the /components gallery.
 	interface Props {
 		score: number; // 0..100 rolling accuracy
 		hits: number;

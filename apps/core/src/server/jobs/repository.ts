@@ -10,10 +10,10 @@ import { jobs } from '../db/schema';
 import { ulid, type Job, type JobStatus, type JobType } from '@encore/shared';
 import { assertTransition } from './transitions';
 
-// Dedup slot occupancy: a (mediaId, jobType) is "taken" by any job that is NOT failed/canceled —
-// the SAME set the partial unique index `jobs_live_media_type_idx` enforces (schema.ts). A `ready`
-// job still occupies the slot (stems already exist → reuse the result, skip the worker), only a
-// failed/canceled job frees it so the song can be re-processed.
+// Dedup slot occupancy: a (mediaId, jobType) is "taken" by any job NOT failed/canceled — the same
+// set the partial unique index `jobs_live_media_type_idx` enforces (schema.ts). A `ready` job still
+// occupies the slot (reuse the result, skip the worker); only a failed/canceled job frees it so the
+// song can be re-processed.
 const SLOT_FREEING_STATUSES: JobStatus[] = ['failed', 'canceled'];
 
 /** Optional fields a transition can patch alongside the status change. */

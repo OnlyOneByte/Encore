@@ -171,19 +171,15 @@ function splitSides(s: string): [string, string] | null {
 /**
  * Best-effort canonical artist/title from a YouTube title + uploader.
  *
- * Rule order (first match wins):
- *  1. **uploader-confirmed** — the uploader matches one side; that side is the artist. `high`.
- *  2. **collab-marker-flip** — a collaboration marker ("x", "ft", "&") sits on the RIGHT side only,
- *     so the sides are reversed ("Song - Artist x Artist"). This is a real pattern in the live
- *     library and the reason a naive left-is-artist split gets that row backwards. `medium`.
- *  3. **title-split** — plain "Artist - Title". `medium`.
- *  4. **uploader-fallback** — no separator, uploader is not an aggregator → assume it is the artist.
- *     `low`, because it is a guess.
- *  5. **unparsed** — no separator and an aggregator uploader → artist null rather than a known-wrong
- *     value. A null artist is honest; "7clouds" as an artist is the bug this function exists to fix.
+ * Rule order (first match wins); each rule is documented on TrackParseRule. Two are non-obvious:
+ *  - **collab-marker-flip** — a marker ("x", "ft", "&") on the RIGHT side only means the sides are
+ *    reversed ("Song - Artist x Artist"); a real live-library pattern that a naive left-is-artist
+ *    split gets backwards.
+ *  - **unparsed** — no separator + aggregator uploader → artist null, not a known-wrong value.
+ *    "7clouds" as an artist is the bug this function exists to fix.
  *
  * Callers should gate BROWSE grouping on `confidence !== 'low'` — a low-confidence artist is fine to
- * try against a lyrics API (a miss costs nothing) but not fine to render as a library heading.
+ * try against a lyrics API (a miss costs nothing) but not to render as a library heading.
  */
 export function parseTrackTitle(rawTitle: string, uploader?: string | null): ParsedTrack {
 	const cleaned = cleanTitleNoise(rawTitle ?? '');

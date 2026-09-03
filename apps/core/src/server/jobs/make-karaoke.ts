@@ -1,9 +1,8 @@
 // Make-karaoke request orchestrator — the entry point for "strip the vocals from this song."
-// Flips the media into a COOKING file (playMode:file + stemStatus:queued) so the rotation engine
-// automatically HOLDS its slot (rotation/isEntryReady returns false for a file whose stems aren't
-// ready), then enqueues a stems job at the priority of the soonest queue entry that needs it.
-// The phone "make karaoke" button calls this; the worker pipeline does the
-// work; worker-hub flips the media to ready on completion. See MASTER-DESIGN §4, §6.
+// Flips the media into a COOKING file (playMode:file + stemStatus:queued) so rotation HOLDS its slot
+// (isEntryReady returns false until stems are ready), then enqueues a stems job at the priority of
+// the soonest queue entry that needs it. worker-hub flips the media to ready on completion.
+// See MASTER-DESIGN §4, §6.
 
 import type { Job, Media, QueueEntry, LyricsCandidate } from '@encore/shared';
 import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade } from '@encore/shared';
@@ -24,9 +23,8 @@ const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
 /**
  * The deterministic MediaStore key for a media's instrumental stem (stored on Media.instrumentalRef).
  * MUST match the worker's output location (apps/worker/src/processor.py instrumental_path →
- * <media_dir>/derived/stems/<mediaId>-instrumental.wav), since the TV's file player resolves
- * `/media/${playbackRef(media)}`. Defined once in ../media/paths.ts and re-exported here so
- * existing callers keep working; do NOT hand-write this string anywhere.
+ * <media_dir>/derived/stems/<mediaId>-instrumental.wav), since the TV file player resolves
+ * `/media/${playbackRef(media)}`. Defined once in ../media/paths.ts; do NOT hand-write this string.
  */
 export const instrumentalKey = layoutInstrumentalKey;
 
@@ -48,9 +46,9 @@ export function isCooked(media: Media): boolean {
 }
 
 /**
- * Why a make-karaoke request can (or can't) proceed. The route uses this to answer honestly:
- * an already-cooked song is a SUCCESS ("nothing to do, it's ready") not an error, which matters
- * once the catalog is durable — with the durable catalog, every song cooked on a previous night lands here.
+ * Why a make-karaoke request can (or can't) proceed. Lets the route answer honestly: an
+ * already-cooked song is a SUCCESS ("nothing to do, it's ready"), not an error — which matters once
+ * the catalog is durable, since every song cooked on a previous night lands here.
  */
 export type CookState =
 	| 'unknown' // not in the catalog
@@ -71,10 +69,9 @@ export function cookState(mediaId: string, deps: Pick<MakeKaraokeDeps, 'mediaByI
 
 /**
  * Request stem-separation for a media. Idempotent: a repeat request (or two singers queueing the
- * same song) dedupes to the SAME job (repository.enqueue reuses the live one), and a song whose
- * stems are ALREADY on disk (persisted across restarts) is never re-cooked. Returns the job,
- * or null if there is no work to do — unknown media, the currently-playing song, or already cooked.
- * Callers that need to tell those cases apart should ask `cookState` first.
+ * same song) dedupes to the SAME job, and a song whose stems are ALREADY on disk (persisted across
+ * restarts) is never re-cooked. Returns the job, or null when there is no work — unknown media, the
+ * currently-playing song, or already cooked. Callers that need to tell those apart ask `cookState`.
  */
 export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job | null {
 	const media = deps.mediaById.get(mediaId);
@@ -103,11 +100,10 @@ export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job 
 
 /**
  * Flip a media to READY after its stems job completes: record the instrumental key and mark stems
- * ready, so rotation's isEntryReady unblocks the held entry and the TV file player serves the
- * backing track. `sourceRef` is deliberately LEFT ALONE — it is the song's origin identity, and
- * overwriting it (as this used to) made the next search fail to recognise the song and mint a
- * second, uncooked row for it. Returns true if the media existed and was flipped.
- * (worker-hub calls this.)
+ * ready, so rotation's isEntryReady unblocks the held entry and the TV file player serves the backing
+ * track. `sourceRef` is deliberately LEFT ALONE — it is the song's origin identity, and overwriting
+ * it (as this used to) made the next search fail to recognise the song and mint a second, uncooked
+ * row. Returns true if the media existed and was flipped. (worker-hub calls this.)
  */
 export function markMediaReady(
 	mediaId: string,
@@ -136,12 +132,12 @@ export function markMediaReady(
 }
 
 /**
- * Attach the word-timed lyrics artifact (align output) to a media so the TV karaoke overlay
- * can fetch and highlight it. Additive and independent of the stems flip — an align job may
- * complete alongside or after stems. Returns true if the media existed and a usable ref was set.
+ * Attach the word-timed lyrics artifact (align output) to a media so the TV karaoke overlay can
+ * fetch and highlight it. Additive and independent of the stems flip. Returns true if a usable ref
+ * was set.
  *
- * The uri is NORMALIZED to a relative key. Workers report absolute filesystem paths, and
- * `safeMediaPath` rejects any ref starting with "/" — so storing the raw uri meant the overlay could
+ * The uri is NORMALIZED to a relative key: workers report absolute filesystem paths, and
+ * `safeMediaPath` rejects any ref starting with "/", so storing the raw uri meant the overlay could
  * never fetch an artifact that existed on disk. `setMediaPitch` starved mic scoring the same way.
  */
 export function setMediaLyrics(
@@ -153,9 +149,9 @@ export function setMediaLyrics(
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
 
-	// An align job now reports EVERY artifact it produced, one per text source. Merge them into
-	// the stored set and let pickBestLyrics choose — never "last write wins", which is what would let a
-	// later line-level source silently replace existing word timings.
+	// An align job reports EVERY artifact it produced, one per text source. Merge into the stored set
+	// and let pickBestLyrics choose — never "last write wins", which would let a later line-level
+	// source silently replace existing word timings.
 	if (candidates?.length) {
 		let merged = media.lyricsCandidates ?? [];
 		for (const c of candidates) {

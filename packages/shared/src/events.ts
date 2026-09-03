@@ -37,8 +37,7 @@ export type ServerEvent =
   // broadcast whenever it changes. Full-set (not a delta) on purpose: it is a handful of ids, and
   // an idempotent snapshot cannot drift the way an add/remove stream can after a dropped frame.
   | { type: 'singer:presence'; online: string[] }
-  // Room-level separator settings changed. Full snapshot, not a delta — a handful of fields,
-  // and an idempotent snapshot cannot drift after a dropped frame (same reasoning as presence).
+  // Room-level separator settings changed. Full snapshot, not a delta (same reasoning as presence).
   | { type: 'settings:changed'; settings: EffectiveSettings }
   | { type: 'op:reject'; clientOpId: string; reason: string };
 
@@ -83,17 +82,17 @@ export type MediaStoreConfig =
   | { kind: 'object'; bucket: string; endpoint?: string; region?: string; prefix?: string };
 
 /**
- * Per-job inputs the core derives and the worker consumes. One flat optional bag rather
- * than a union per JobType, because a worker reads only the keys its processor needs and an unknown
- * key must never break an older worker.
+ * Per-job inputs the core derives and the worker consumes. One flat optional bag rather than a union
+ * per JobType, because a worker reads only the keys its processor needs and an unknown key must never
+ * break an older worker.
  *
- * `artist`/`track` are the CONFIDENCE-GATED canonicals, not the raw uploader and raw title: an align
- * job that looked up "7clouds — Britney Spears - Baby One More Time (Lyrics)" misses on metadata
- * alone. Before this existed the contract was `{ model?, targetKey? }` and worker-hub sent only
- * `{ model }`, so `WhisperXProcessor` hard-raised on every align job it was ever given.
+ * `artist`/`track` are the CONFIDENCE-GATED canonicals, not the raw uploader and title: an align job
+ * that looked up "7clouds — Britney Spears - Baby One More Time (Lyrics)" misses on metadata alone.
+ * Before this existed the contract was `{ model?, targetKey? }` and worker-hub sent only `{ model }`,
+ * so `WhisperXProcessor` hard-raised on every align job.
  *
- * `language` is deliberately ABSENT for now: nothing populates it (the sidecar field is unset), and
- * sending a guessed 'en' is worse than letting the worker default and the ASR pass detect it.
+ * `language` is deliberately ABSENT: nothing populates it, and sending a guessed 'en' is worse than
+ * letting the worker default and the ASR pass detect it.
  */
 export interface JobParams {
   model?: string; // separation model/checkpoint token (stems) — resolved by the worker engine
@@ -125,7 +124,6 @@ export interface JobArtifacts {
   pitch?: { uri: string }; // reference pitch-track JSON — drives server-side mic scoring
 }
 
-// re-export the op layer so consumers import everything from one place
 export * from './ops';
 export * from './types';
 export type { Media };

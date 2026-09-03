@@ -1,10 +1,8 @@
 """Job processor seam — the pluggable unit that turns a source into stems/lyrics.
 
-The STUB processor walks the job's stage plan (protocol.stages_for), yields a
-progress event per stage, and writes a placeholder artifact to the MediaStore path. Swapping in
-the real Demucs `htdemucs` pipeline behind the SAME interface (an async generator of ProgressEvent
-ending with a CompleteResult), so the dial-home loop never changes. Mirrors the TS "pure logic
-split from I/O so it unit-tests without the binary" convention (ytdlp.ts parseSearchJson).
+The STUB processor walks the job's stage plan, yields a progress event per stage, and writes a
+placeholder artifact. The real Demucs pipeline swaps in behind the SAME interface (an async
+generator of ProgressEvent ending with a CompleteResult), so the dial-home loop never changes.
 """
 from __future__ import annotations
 
@@ -15,16 +13,12 @@ from typing import AsyncIterator, Protocol
 
 from . import protocol
 
-# Stored stem formats. The two stems get DIFFERENT treatment because they
-# have different jobs:
-#
-#   instrumental -> FLAC (lossless). This is the file that comes out of the speakers at volume, and it
-#     is the one place a second lossy generation is audible: ffmpeg's native AAC encoder smears
-#     high-frequency transients, which is exactly what a crash cymbal is. Lossless removes that
-#     generation entirely. ~22 MB for a 3:27 track vs ~5 MB, which is affordable now.
-#   vocals -> AAC (lossy). Nothing plays it aloud; it feeds pitch extraction and the future vocal
+# Stored stem formats — the two stems get DIFFERENT treatment:
+#   instrumental -> FLAC (lossless). It comes out of the speakers at volume, and it is the one place
+#     a second lossy generation is audible: AAC smears high-frequency transients (a crash cymbal).
+#     ~22 MB for a 3:27 track vs ~5 MB, affordable now.
+#   vocals -> AAC (lossy). Nothing plays it aloud; it feeds pitch extraction + the future vocal
 #     guide, so transparency is not the bar.
-#
 # MUST match the core's paths.ts INSTRUMENTAL_EXT / VOCALS_EXT.
 INSTRUMENTAL_EXT = "flac"
 VOCALS_EXT = "m4a"
@@ -72,7 +66,6 @@ class StubProcessor:
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
         stages = protocol.stages_for(job.job_type)
         for i, stage in enumerate(stages):
-            # ramp pct across stages: e.g. 2 stages -> 50, 100
             pct = round((i + 1) / len(stages) * 100)
             if self._delay:
                 await asyncio.sleep(self._delay)
@@ -121,9 +114,8 @@ def pitch_track_path(media_dir: str, media_id: str) -> str:
 
 
 class RoutingProcessor:
-    """Dispatch a job to the right sub-processor by job_type (e.g. stems→Demucs, align→WhisperX).
-    A worker advertising multiple capabilities runs one RoutingProcessor; unknown types raise (the
-    dial-home loop reports a failure). Keeps dial_home.py agnostic to which pipeline runs."""
+    """Dispatch a job to the right sub-processor by job_type (stems→Demucs, align→WhisperX).
+    Unknown types raise (the dial-home loop reports a failure)."""
 
     def __init__(self, by_type: dict[str, Processor]) -> None:
         self._by_type = by_type
@@ -137,10 +129,9 @@ class RoutingProcessor:
 
 class EngineRouter:
     """Route a SEPARATION job (stems / stems-upgrade) to the engine named by params.engine:
-    'demucs' → DemucsProcessor, 'roformer' → RoformerProcessor. Defaults to 'demucs' when the param
-    is absent, so a job from an older core (which sent no engine) still separates. An engine this
-    worker was not built with raises — but that should never happen, because the CORE only routes a
-    roformer cook to a worker advertising the `stems:roformer` capability."""
+    'demucs' → DemucsProcessor, 'roformer' → RoformerProcessor. Defaults to 'demucs' when absent, so
+    a job from an older core (no engine) still separates. An engine this worker was not built with
+    raises — but the CORE only routes a roformer cook to a worker advertising `stems:roformer`."""
 
     def __init__(self, by_engine: dict[str, "Processor"], default: str = "demucs") -> None:
         self._by_engine = by_engine

@@ -1,12 +1,11 @@
 // Local media file serving — resolves a media ref to an absolute path inside the storage class that
 // ref belongs to, with a hard path-traversal guard. The guard is the single source of truth, imported
-// by both the /media route and its regression test (same discipline as the resume.pdf PUBLIC_SECTIONS
-// allowlist — never let "what's safe to serve" drift between the route and the test).
+// by both the /media route and its regression test so "what's safe to serve" cannot drift between them.
 //
-// A ref's FIRST SEGMENT now selects its storage root ("audio/…", "derived/…", "meta/…"), so
-// the classes can live on separate volumes while refs stay portable relative strings. The containment
-// check is per-root — it is NOT enough to check against the media root once, because a class dir may
-// be pointed outside it.
+// A ref's FIRST SEGMENT selects its storage root ("audio/…", "derived/…", "meta/…"), so classes can
+// live on separate volumes while refs stay portable relative strings. The containment check is
+// per-root: checking against the media root once is NOT enough, since a class dir may be pointed
+// outside it.
 
 import { resolve, join, sep } from 'node:path';
 import { mediaRoot, resolveBase, metaDir, derivedDir } from './paths';
@@ -38,9 +37,8 @@ export function safeMediaPath(ref: string): string | null {
 	// must be base itself's child: prefix check with a trailing separator so /media-evil can't pass
 	if (candidate !== base && !candidate.startsWith(base + sep)) return null;
 
-	// Never serve caches or the authoritative sidecar records through the public media route.
-	// `meta/` is excluded because it is the library's source of truth, not media to stream — and it
-	// carries the raw uploader metadata we deliberately retain.
+	// Never serve caches or the authoritative sidecar records through the public media route. `meta/`
+	// is the library's source of truth, not media to stream — and carries retained raw uploader metadata.
 	if (candidate === metaDir() || candidate.startsWith(metaDir() + sep)) return null;
 	const legacyThumbs = join(mediaRoot(), '.thumbs');
 	if (candidate === legacyThumbs || candidate.startsWith(legacyThumbs + sep)) return null;

@@ -7,20 +7,18 @@
 //   LRCLIB plain / captions     good            none — needs forced alignment
 //   ASR on the vocals stem      dubious         line-level (segment bounds only)
 //
-// MEASURED: whisper's transcribe() returns NO word timings — those come solely from the
-// separate align() pass. So the aligner is the one source of word timings for every tier, and it is
-// not text-source-specific: it upgrades any text, looked-up or transcribed, from line to word.
+// MEASURED: whisper's transcribe() returns NO word timings — those come solely from the separate
+// align() pass, so the aligner is the one source of word timings and upgrades any text (looked-up
+// or transcribed) from line to word.
 //
 // The ideal artifact is authoritative text FORCE-ALIGNED to the audio, which needs both halves — so
-// the sources are not alternatives to each other and "pick the first that hits" throws away most of
-// the value. Keeping every candidate buys an upgrade path with no recompute: ASR lands first, and if
-// LRCLIB later becomes reachable (or a human pastes text in) we re-align from the RETAINED audio —
-// no re-download, no re-separation.
+// "pick the first source that hits" throws away most of the value. Keeping every candidate buys an
+// upgrade path with no recompute: ASR lands first, and if LRCLIB later becomes reachable (or a human
+// pastes text in) we re-align from the RETAINED audio — no re-download, no re-separation.
 //
-// Lives in @encore/shared because all three tiers of the system touch it: the Python worker emits
-// candidates (mirroring this shape in JSON), the core stores them and picks `chosen`, and the TV
-// reads the provenance to be honest about auto-transcribed words. Same precedent as rotation.ts —
-// one pure algorithm both sides agree on.
+// In @encore/shared because all three tiers touch it: the worker emits candidates (mirroring this
+// shape in JSON), the core stores them and picks `chosen`, the TV reads provenance to be honest
+// about auto-transcribed words.
 
 /** Where a candidate's TEXT came from. Timing provenance is tracked separately (`timing`). */
 export type LyricsTextSource = 'lrclib' | 'captions' | 'asr' | 'manual';
@@ -93,11 +91,7 @@ export function lyricsRank(c: LyricsCandidate): number {
  * The candidate the TV should show, or null when nothing is showable.
  *
  * Returning null is a real outcome, not a failure to handle: with no usable timing the honest screen
- * says so rather than rendering a blank overlay or a wall of unsynced text.
- *
- * Ties break on: better timing confidence, then higher ASR agreement, then NEWER — a re-run that
- * produced an equally-ranked artifact is presumed to be an improvement (a better model, corrected
- * text), and preferring the older one would make re-alignment pointless.
+ * says so rather than rendering a blank overlay or a wall of unsynced text. Ties break via `breaksTie`.
  */
 export function pickBestLyrics(candidates: readonly LyricsCandidate[]): LyricsCandidate | null {
   let best: LyricsCandidate | null = null;
@@ -115,7 +109,9 @@ export function pickBestLyrics(candidates: readonly LyricsCandidate[]): LyricsCa
 
 const CONF_ORDER: Record<LyricsConfidence, number> = { low: 0, medium: 1, high: 2 };
 
-/** Is `c` preferable to `incumbent` at EQUAL rank? Confidence, then agreement, then recency. */
+/** Is `c` preferable to `incumbent` at EQUAL rank? Confidence, then agreement, then recency —
+ *  a re-run at equal rank is presumed an improvement (better model, corrected text), so preferring
+ *  the older one would make re-alignment pointless. */
 function breaksTie(c: LyricsCandidate, incumbent: LyricsCandidate): boolean {
   const conf = CONF_ORDER[c.timingConfidence ?? 'medium'] - CONF_ORDER[incumbent.timingConfidence ?? 'medium'];
   if (conf !== 0) return conf > 0;
@@ -128,10 +124,10 @@ function breaksTie(c: LyricsCandidate, incumbent: LyricsCandidate): boolean {
  * Merge a new candidate into a stored set, keyed by `ref` (re-running a job overwrites its own
  * artifact rather than stacking duplicates).
  *
- * This is the NEVER-REGRESS guarantee, and it is a property of keeping everything rather than of any
- * check here: adding a candidate can only improve or preserve what `pickBestLyrics` returns, because
- * nothing is ever removed. A line-level source arriving later therefore cannot displace existing
- * word timings — which is exactly what a naive "latest wins" write would have done.
+ * NEVER-REGRESS: a property of keeping everything, not of any check here. Adding a candidate can only
+ * improve or preserve what `pickBestLyrics` returns, because nothing is ever removed — so a
+ * line-level source arriving late cannot displace existing word timings, which a naive "latest wins"
+ * write would have done.
  */
 export function mergeLyricsCandidate(
   existing: readonly LyricsCandidate[],
@@ -144,10 +140,10 @@ export function mergeLyricsCandidate(
 
 // ── ASR agreement: catching a confidently WRONG lookup ────────────────────────────
 //
-// LRCLIB's dangerous failure is not a miss, it is a confident MISMATCH: fuzzy metadata returns
-// another song's lyrics and nothing downstream would notice. Comparing authoritative text against an
-// ASR transcript of what is actually being sung is the only signal we have that they are the same
-// song — which is a large part of why ASR runs on every cook rather than only as a fallback.
+// LRCLIB's dangerous failure is not a miss but a confident MISMATCH: fuzzy metadata returns another
+// song's lyrics and nothing downstream would notice. Comparing authoritative text against an ASR
+// transcript of what is actually being sung is our only same-song signal — a large part of why ASR
+// runs on every cook, not only as a fallback.
 
 /** Words, lowercased, punctuation stripped. Deliberately crude — this compares CONTENT, not form. */
 export function lyricsTokens(text: string): string[] {
@@ -168,13 +164,12 @@ export const SUSPECT_AGREEMENT = 0.25;
 /**
  * 0..1 similarity between two lyrics texts, or `null` when not comparable.
  *
- * Jaccard over token SETS, so it is order-insensitive on purpose: a repeated chorus, a missing verse,
- * or a differently-ordered bridge should not read as disagreement, whereas a different song shares
- * few words no matter the order.
+ * Jaccard over token SETS, so order-insensitive on purpose: a repeated chorus, missing verse, or
+ * reordered bridge should not read as disagreement, whereas a different song shares few words at all.
  *
  * Returns null — not 0 — when either side is too short (`MIN_TOKENS_TO_COMPARE`). An instrumental
- * track transcribes to almost nothing, and scoring that as total disagreement would condemn a
- * perfectly correct lookup. "I cannot tell" and "these differ" must not be the same answer.
+ * transcribes to almost nothing, and scoring that as total disagreement would condemn a correct
+ * lookup. "I cannot tell" and "these differ" must not be the same answer.
  */
 export function agreementScore(a: string, b: string): number | null {
   const setA = new Set(lyricsTokens(a));

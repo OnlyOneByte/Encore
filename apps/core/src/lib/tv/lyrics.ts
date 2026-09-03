@@ -127,18 +127,12 @@ function lineFromWords(words: LyricWord[]): LyricLine {
  *
  * ONLY fires on a line that is actually too long (`splitAboveChars`, defaulting to `maxChars`).
  *
- * WHY THE GUARD. A pause is evidence of a line break only when there is a reason to look for
- * one. Applied to every line, it splits on any held note or breath — so a short, already-correct line
- * became two rows that each flash past, and `coalesceOrphans` existed largely to undo the damage. The
- * blob case this whole mechanism was built for is now handled UPSTREAM, in the worker, where whisper's
- * ~30s VAD segments are re-lineated on text boundaries before the aligner ever sees them (see
- * lyrics_presplit.py) — and that is the better place for it, because the provenance needed to know a
- * line came from ASR rather than a human lives there.
- *
- * So this stays as the safety net it should always have been: it catches artifacts written before that
- * change (which are still over-long, hence still split) and any line that slips through, and it leaves
- * a line that already fits a row alone. Keeping it here also keeps the original property — it fixes
- * existing artifacts with no re-cook.
+ * WHY THE GUARD. A pause is evidence of a line break only when there is a reason to look for one.
+ * Applied to every line it splits on any held note or breath, turning a short correct line into two
+ * flashing rows (`coalesceOrphans` existed largely to undo that). The blob case is now handled
+ * UPSTREAM in the worker (lyrics_presplit.py), so this stays the safety net it should always have
+ * been: it catches artifacts written before that change and any over-long line that slips through,
+ * and leaves a line that already fits a row alone — still fixing existing artifacts with no re-cook.
  *
  * REFUSES to split when the timed words don't cover the line's own text (`COVERAGE_MIN`).
  * `normalize_lyrics` drops words the aligner left un-timed, so a poorly-aligned line can have words[]
@@ -196,10 +190,10 @@ function coalesceOrphans(input: LyricLine[]): LyricLine[] {
 		const prev = out[out.length - 1];
 		const next = lines[i + 1];
 		/*
-		 * The word's own SUNG duration, not the time until the next line starts. Measuring to the next
-		 * line counted trailing silence, so a word followed by a long pause scored as a long-lived line
-		 * and survived — but silence does not make a lone word read any better. Duration also gets the
-		 * genuine case right: a note HELD for two seconds is a real lyric line and keeps its row.
+		 * Measure the word's own SUNG duration, not the time until the next line starts — trailing
+		 * silence would let a word followed by a long pause survive as a "long-lived" line, and silence
+		 * does not make a lone word read better. Duration also keeps a genuinely held note (2s) as its
+		 * own line.
 		 */
 		// Read timings off the WORDS, not the line bounds: LyricLine.start/end are nullable (a parsed
 		// line need not carry them) whereas a word is only kept when both are finite.
@@ -247,9 +241,9 @@ export function activeLineIndex(lines: LyricLine[], pos: number): number {
 		const b = lineBounds(lines[i]);
 		if (!b) continue;
 		const [start, end] = b;
-		if (pos >= start && pos < end) return i; // currently singing this line
-		if (pos >= end) active = i; // passed it — remember as the most-recent
-		else break; // pos < start of a future line → stop; `active` holds the last sung line
+		if (pos >= start && pos < end) return i;
+		if (pos >= end) active = i;
+		else break;
 	}
 	return active;
 }

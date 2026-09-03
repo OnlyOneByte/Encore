@@ -45,7 +45,7 @@ export function detectF0(samples: Float32Array | number[], sampleRate: number, o
 		buf[i] = v;
 		energy += v * v;
 	}
-	if (energy <= 1e-9) return { f0Hz: 0, clarity: 0 }; // silence
+	if (energy <= 1e-9) return { f0Hz: 0, clarity: 0 };
 
 	// Prefix sums of squares → O(1) window energy for the per-lag normalization.
 	const pfx = new Float64Array(n + 1);
@@ -55,7 +55,7 @@ export function detectF0(samples: Float32Array | number[], sampleRate: number, o
 	const maxLag = Math.min(n - 1, Math.floor(sampleRate / fmin));
 	if (maxLag <= minLag) return { f0Hz: 0, clarity: 0 };
 
-	const norm = new Float64Array(maxLag + 2); // normalized correlation per lag
+	const norm = new Float64Array(maxLag + 2);
 	let bestNorm = 0;
 	for (let lag = minLag; lag <= maxLag; lag++) {
 		let corr = 0;
@@ -76,7 +76,7 @@ export function detectF0(samples: Float32Array | number[], sampleRate: number, o
 	let bestLag = -1;
 	for (let lag = minLag + 1; lag < maxLag; lag++) {
 		if (norm[lag] >= threshold && norm[lag] >= norm[lag - 1] && norm[lag] >= norm[lag + 1]) {
-			bestLag = lag; // first (lowest-lag) strong local maximum = the fundamental
+			bestLag = lag;
 			break;
 		}
 	}

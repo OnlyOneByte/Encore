@@ -13,7 +13,6 @@
 export function safeNextPath(next: string | null | undefined, fallback = '/'): string {
 	if (!next) return fallback;
 	if (!next.startsWith('/')) return fallback;
-	// Rejects '//host' and '/\host' — both escape the origin.
 	if (next.startsWith('//') || next.startsWith('/\\')) return fallback;
 	return next;
 }

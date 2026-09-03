@@ -1,6 +1,6 @@
 """Demucs pipeline — pure helpers (argv/parse/paths/retryability) + the DemucsProcessor flow driven
-by a FAKE runner (canned CLI output), so the full download→separate→publish path tests with no
-torch, no yt-dlp, no network. The real-ML run ("real song → real instrumental") defers to a GPU box."""
+by a FAKE runner (canned CLI output), so the full path tests with no torch, no yt-dlp, no network.
+The real-ML run defers to a GPU box."""
 import os
 import sys
 from pathlib import Path
@@ -77,14 +77,11 @@ def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, e
     async def run(argv):
         binary = argv[0]
         if binary == "yt-dlp":
-            # mimic yt-dlp writing the NATIVE audio stream. The -o target is a %(ext)s template
-            # (we no longer transcode to wav), so pick a concrete extension the way yt-dlp would.
+            # the -o target is a %(ext)s template (no wav transcode), so pick a concrete extension
             out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
             os.makedirs(os.path.dirname(out), exist_ok=True)
             Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
         elif binary == "ffmpeg":
-            # mimic ffmpeg writing its output (last argv element) — the decode-to-wav and the
-            # stem AAC encodes both go through here.
             out = argv[-1]
             os.makedirs(os.path.dirname(out), exist_ok=True)
             Path(out).write_bytes(b"FAKE_ENCODED")
@@ -125,10 +122,8 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     events = await drain(proc, spec(tmp_path))
 
     stages = [(e.stage, e.pct) for e in events if isinstance(e, ProgressEvent)]
-    # both stages appear, ramped, and end at 100
     assert ("downloading", 0) in stages and ("downloading", 10) in stages and ("downloading", 100) in stages
     assert ("separating", 50) in stages and ("separating", 100) in stages
-    # exactly one CompleteResult, pointing at the published instrumental which now exists
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
     final = completes[0].media_uri

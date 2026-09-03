@@ -76,7 +76,7 @@ export async function ytDlpSearch(query: string, limit: number): Promise<SearchR
 		const text = await new Response(proc.stdout).text();
 		await proc.exited;
 		const results = parseSearchJson(text);
-		results.forEach(cacheMeta); // warm the per-id cache
+		results.forEach(cacheMeta);
 		return results;
 	} catch {
 		return [];

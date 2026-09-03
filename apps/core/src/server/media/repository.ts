@@ -1,8 +1,8 @@
-// Media repository — the durable catalog. Search results and cooked (make-karaoke) songs are
-// upserted here so the media catalog survives a restart, `requestMakeKaraoke` dedupes to already-
-// separated stems instead of re-cooking, and the saved-karaoke library can list every song
-// whose instrumental is on disk. The runtime `mediaById` Map stays the hot read path; this is the
-// write-behind + boot-hydrate store.
+// Media repository — the durable catalog. Search results and cooked (make-karaoke) songs are upserted
+// here so the catalog survives a restart, `requestMakeKaraoke` dedupes to already-separated stems
+// instead of re-cooking, and the saved-karaoke library can list every song whose instrumental is on
+// disk. The runtime `mediaById` Map stays the hot read path; this is the write-behind + boot-hydrate
+// store.
 import { eq, and, desc, asc, sql, isNotNull } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
@@ -10,9 +10,8 @@ import type { Media, LyricsCandidate } from '@encore/shared';
 
 type MediaRow = typeof media.$inferInsert;
 
-// Drizzle round-trip both ways. The DB is nullable-column shaped; the domain type is
-// optional-property shaped, so null ⇄ undefined is translated here rather than leaking either
-// convention across the seam.
+// Drizzle round-trip both ways. The DB is nullable-column shaped, the domain type optional-property
+// shaped, so null ⇄ undefined is translated here rather than leaking either convention across the seam.
 const toRow = (m: Media): MediaRow => ({
 	id: m.id,
 	source: m.source,
@@ -74,9 +73,9 @@ export class MediaRepository {
 	/** Insert or update a media record (idempotent on id). Called on search-materialize and on every
 	 *  artifact flip (stems ready / lyrics / pitch), so the catalog is durable.
 	 *
-	 *  The DB is the INDEX; `meta/<id>.json` is the authoritative record, so every write here
-	 *  also refreshes the sidecar. Fire-and-forget: a sidecar write must never delay or fail the
-	 *  in-memory flip that the room is waiting on. */
+	 *  The DB is the INDEX; `meta/<id>.json` is authoritative, so every write also refreshes the
+	 *  sidecar. Fire-and-forget: a sidecar write must never delay or fail the in-memory flip the room
+	 *  is waiting on. */
 	upsert(m: Media): void {
 		const row = toRow(m);
 		this.#db.insert(media).values(row).onConflictDoUpdate({ target: media.id, set: row }).run();

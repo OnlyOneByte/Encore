@@ -42,7 +42,7 @@ test('entries getter returns a defensive copy (caller cannot mutate authoritativ
 	const s = new AuthoritativeState();
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
 	const leaked = s.entries; // a defensive copy
-	leaked[0]!.status = 'done'; // mutate the copy
+	leaked[0]!.status = 'done';
 	expect(s.entries[0]!.status).toBe('queued'); // authoritative state unchanged
 });
 

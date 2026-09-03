@@ -12,14 +12,12 @@ import { applyOp, type QueueOp } from './ops';
  * Does NOT mutate; returns a new array. Caller assigns rotationSeq from the index.
  */
 export function rotate(entries: QueueEntry[]): QueueEntry[] {
-  // group by singer, preserve each singer's internal add-order
   const bySinger = new Map<string, QueueEntry[]>();
   for (const e of [...entries].sort((a, b) => a.addedAt - b.addedAt)) {
     const arr = bySinger.get(e.singerId) ?? [];
     arr.push(e);
     bySinger.set(e.singerId, arr);
   }
-  // singers ordered by when each first appears (their earliest addedAt)
   // every key was created by pushing an entry, so [0] always exists
   const singers = [...bySinger.keys()].sort(
     (a, b) => bySinger.get(a)![0]!.addedAt - bySinger.get(b)![0]!.addedAt,
@@ -58,10 +56,10 @@ export function isTerminal(e: QueueEntry): boolean {
  * authoritative server so the client predicts the EXACT order the server will commit — no
  * post-broadcast re-sort/flicker. Pure: returns a new array, never mutates.
  *
- * `move` is special: rotationSeq is server-owned and derived from per-singer addedAt order, so a
- * raw move-op (which only rewrites rotationSeq) wouldn't survive reseq. Instead we permute the
- * moving singer's addedAt stamps to the target index within their OWN picks (stable timestamp set
- * → the singer's round-robin slot is unchanged; only which song sits where moves).
+ * `move` is special: rotationSeq is server-owned and derived from per-singer addedAt order, so a raw
+ * move-op (which only rewrites rotationSeq) wouldn't survive reseq. Instead we permute the moving
+ * singer's addedAt stamps to the target index within their OWN picks — the timestamp set is stable,
+ * so their round-robin slot is unchanged; only which song sits where moves.
  */
 export function applyAndReseq(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
   const applied = op.op === 'move' ? reorderWithinSinger(entries, op.id, op.toSeq) : applyOp(entries, op);

@@ -2,11 +2,9 @@
 // PUT  /api/settings        — update GLOBAL (deployment separator + cook policy).
 // PUT  /api/settings/room   — update THIS ROOM (pacing, downward-only quality ceiling).
 //
-// Both scopes are authoritative server state, so a write broadcasts `settings:changed` with the
-// combined payload — a client never has to merge two events to know the effective state.
-//
-// A joined singer may write either scope (same bar as queueing; the cookie is already there). The
-// shared normalizers are the gate: a partial or spoofed body degrades to valid values per-field
+// A write broadcasts `settings:changed` with the combined payload, so a client never merges two
+// events to know the effective state. A joined singer may write either scope (same bar as queueing);
+// the shared normalizers are the gate, degrading a partial or spoofed body to valid per-field values
 // rather than persisting garbage or naming an engine no worker can run.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';

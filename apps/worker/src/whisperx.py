@@ -1,16 +1,13 @@
 """Word-aligned lyrics pipeline (HYBRID): yt-dlp (fetch) → LRCLIB (known lyrics text) →
-WhisperX FORCED-ALIGNMENT (word timings on the correct text) → normalized lyrics JSON written to
-the MediaStore (consumed by the bouncing-ball TV overlay).
+WhisperX FORCED-ALIGNMENT (word timings on the correct text) → normalized lyrics JSON.
 
-Why hybrid: WhisperX transcribing sung vocals from scratch is the unreliable ASR path. Instead we
-pull HUMAN-authored lyrics from LRCLIB (Stage 2) and use WhisperX's wav2vec2 `align()` to place
-WORD timestamps on that KNOWN text — far more robust. If the aligner is unavailable (no model /
-aarch64 torchcodec gap / a raised error) we FALL BACK to LRCLIB's line-level sync, so the feature
-still ships lyrics.
+Why hybrid: transcribing sung vocals from scratch is the unreliable ASR path. Instead we pull
+HUMAN-authored lyrics from LRCLIB and use wav2vec2 `align()` to place WORD timestamps on that KNOWN
+text. If the aligner is unavailable (no model / aarch64 torchcodec gap / a raised error) we FALL
+BACK to LRCLIB's line-level sync, so lyrics still ship.
 
-The PURE half (segment build, align-output→normalized transform, validity) has no torch and is
-fully unit-tested via an INJECTABLE Aligner seam + a fake fetcher; the real WhisperX + LRCLIB fetch
-run only on a worker box. Mirrors demucs.py / lyrics_source.py.
+The PURE half is unit-tested via an INJECTABLE Aligner seam + a fake fetcher; the real WhisperX +
+LRCLIB fetch run only on a worker box.
 """
 from __future__ import annotations
 
@@ -54,17 +51,15 @@ DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignmen
 # under the core's progressLeaseMs (30 s, leases.ts) or the reaper requeues a healthy job.
 LEASE_KEEPALIVE_SEC = 10.0
 
-# ONE in-process lock guarding every real ML call (transcribe + align).
+# ONE in-process RLock guarding every real ML call (transcribe + align). A single WhisperXProcessor
+# serves every align job and caches ONE whisper model and ONE align model; with
+# ENCORE_WORKER_CONCURRENCY>1 two align jobs run at once on threads sharing that model, and
+# faster-whisper / whisperx models are not thread-safe. The lazy loaders also had a check-then-set
+# race that could load the model twice and double the memory.
 #
-# Necessary because of the thread offload above: a single WhisperXProcessor serves every align job, and
-# it caches ONE whisper model and ONE align model. With ENCORE_WORKER_CONCURRENCY>1 two align jobs run
-# at once, so before the offload the blocked event loop serialized them by accident — now they are real
-# threads sharing one model. faster-whisper / whisperx models are not thread-safe, and the lazy loaders
-# also had a check-then-set race that could load the model twice and double the memory.
-#
-# Shared between transcribe and align rather than one lock each, deliberately: both are CPU-bound on the
-# same cores, so serialising them costs no throughput and avoids two ML passes oversubscribing the box.
-# RLock because the public methods call the lazy loader while already holding it.
+# Shared between transcribe and align rather than one lock each, deliberately: both are CPU-bound on
+# the same cores, so serialising them costs no throughput and avoids two ML passes oversubscribing
+# the box. RLock because the public methods call the lazy loader while already holding it.
 _ML_LOCK = threading.RLock()
 
 
@@ -84,16 +79,14 @@ def _round_ms(x: Any) -> float | None:
     return round(v, 3)
 
 
-# ── pure: WhisperX align output → normalized artifact ────────────────────────────────
 def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
     """Transform WhisperX (transcribe OR align) output into the artifact the TV overlay consumes.
 
-    Input shape:  { language?, segments: [{ start, end, text, words: [{word,start,end,score}] }] }.
-    Output shape: { language, lines: [{ start, end, text, words: [{word,start,end}] }],
-                    words: [flattened {word,start,end}] }.
-    Defensive: drops words missing usable start/end (whisperx align leaves some tokens un-timed),
-    derives a line's [start,end] from its words when segment bounds are absent, and drops a segment
-    that has neither timed words nor line bounds — model output is UNTRUSTED.
+    Input:  { language?, segments: [{ start, end, text, words: [{word,start,end,score}] }] }.
+    Output: { language, lines: [{ start, end, text, words: [{word,start,end}] }], words: [flat] }.
+    Defensive because model output is UNTRUSTED: drops words missing usable start/end (whisperx align
+    leaves some tokens un-timed), derives a line's [start,end] from its words when segment bounds are
+    absent, and drops a segment with neither timed words nor line bounds.
     """
     language = raw.get("language") if isinstance(raw.get("language"), str) else None
     lines: list[dict[str, Any]] = []
@@ -152,16 +145,15 @@ def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str,
     return []
 
 
-# ── the transcriber seam ─────────────────────────────────────────────────────
 class Transcriber(Protocol):
-    """ASR: invent the text from audio. Mirrors `Aligner` — same shape out, injectable, raising means
-    "this tier missed" rather than "the job failed".
+    """ASR: invent the text from audio. Injectable; raising means "this tier missed", not "the job
+    failed".
 
     Distinct from the aligner on purpose. Alignment places timings on text we already trust; ASR
-    GUESSES the words, so its output is never authoritative no matter how confident the model sounds.
-    It earns its place anyway because it is the only tier that needs nothing external, it yields
-    WORD timings directly, and comparing its transcript against an authoritative lookup is the only
-    signal that catches a confidently wrong LRCLIB match (see agreementScore in shared/lyrics.ts).
+    GUESSES the words, so its output is never authoritative however confident the model sounds. It
+    earns its place because it needs nothing external and comparing its transcript against an
+    authoritative lookup is the only signal that catches a confidently wrong LRCLIB match (see
+    agreementScore in shared/lyrics.ts).
     """
 
     def transcribe(self, audio_path: str, language: str | None = None) -> dict[str, Any]: ...
@@ -170,9 +162,9 @@ class Transcriber(Protocol):
 class WhisperxTranscriber:
     """Real ASR via faster-whisper through whisperx.load_model().transcribe().
 
-    Runs on the VOCALS STEM, not the mix — see AsrSource. `language=None` lets whisper DETECT the
-    language, which is worth more than the caller's guess: nothing populates the sidecar's language
-    field today, so the alternative is a hardcoded 'en'.
+    Runs on the VOCALS STEM, not the mix (see AsrSource). `language=None` lets whisper DETECT the
+    language: nothing populates the sidecar's language field today, so the alternative is a
+    hardcoded 'en'.
     """
 
     def __init__(self, device: str = "cpu", model: str = DEFAULT_MODEL, compute_type: str | None = None) -> None:
@@ -203,7 +195,6 @@ class WhisperxTranscriber:
         return out
 
 
-# ── the aligner seam (injectable so the flow tests with NO torch) ─────────────────────
 class Aligner(Protocol):
     """Force-align KNOWN text to audio. Given [{start,end,text}] segments + an audio path, return a
     WhisperX-shaped {language?, segments:[{start,end,text,words:[{word,start,end}]}]} with word
@@ -241,7 +232,6 @@ class WhisperxForcedAligner:
         return out
 
 
-# ── the processor ──────────────────────────────────────────────────────────────────
 LyricsClientFactory = Callable[[], LrclibClient]
 
 
@@ -282,8 +272,7 @@ class WhisperXProcessor:
         return self._lyrics_client
 
     def _get_sources(self) -> list[LyricsSource]:
-        """The acquisition chain. LRCLIB first (authoritative + often line-timed); the ASR tier joins
-        plus ASR and captions. Order is informational only — `acquire` runs them ALL and
+        """The acquisition chain. Order is informational only — `acquire` runs them ALL and
         `pickBestLyrics` (TS) decides what the TV shows."""
         if self._sources is None:
             self._sources = [
@@ -313,8 +302,8 @@ class WhisperXProcessor:
         duration = float(duration) if isinstance(duration, (int, float)) else None
 
         # ── stage 1: obtain the source audio ──────────────────────────────────────
-        # Reuse the retained raw original if a stems job already fetched it. An align job for a
-        # cooked song therefore costs no network at all, instead of re-downloading bytes we kept.
+        # Reuse the retained raw original if a stems job already fetched it — an align job for a
+        # cooked song then costs no network.
         if is_local_source(job.source_uri):
             audio = job.source_uri if os.path.isabs(job.source_uri) else os.path.join(job.media_dir, job.source_uri)
         else:
@@ -327,9 +316,9 @@ class WhisperXProcessor:
                 yield ProgressEvent(stage="downloading", pct=100)
 
         # ── stage 2: ACQUIRE text from every source ──────────────────────
-        # Independently, not first-hit: authoritative text and ASR are complements (the ideal artifact
-        # is authoritative text force-aligned), and a dead LRCLIB must degrade the RESULT, not fail the
-        # job. Missing params are no longer fatal — the LRCLIB source simply declines.
+        # Independently, not first-hit: authoritative text and ASR are complements (the ideal
+        # artifact is authoritative text force-aligned), and a dead LRCLIB must degrade the RESULT,
+        # not fail the job. Missing params are not fatal — the LRCLIB source simply declines.
         req = LyricsRequest(
             media_id=job.media_id,
             artist=artist or None,
@@ -338,7 +327,6 @@ class WhisperXProcessor:
             audio_path=audio,
             vocals_path=self._vocals_path(job),
         )
-        # Run acquisition in a THREAD and keep emitting progress while it works (see _run_blocking).
         texts: list[LyricsText] = []
         async for kind, val in self._run_blocking(lambda: acquire(self._get_sources(), req), "aligning", 0):
             if kind == "progress":
@@ -351,25 +339,22 @@ class WhisperXProcessor:
                 "(instrumental, or every tier missed)"
             )
 
-        # Re-lineate the AUTO-TRANSCRIBED texts only. A whisper segment is a VAD chunk of up
-        # to ~30s — several lyric lines as one blob — whereas every authoritative tier already arrives
-        # line-broken by a human, so the gate is `is_authoritative_text` and not a blanket pass. Done
-        # HERE, before timing, so the aligner gets a per-LINE search window instead of one 30s window
-        # spanning four lines; see lyrics_presplit for the division of labour with upstream.
+        # Re-lineate the AUTO-TRANSCRIBED texts only (a whisper segment is a ~30s VAD blob of several
+        # lyric lines; authoritative tiers already arrive line-broken). See lyrics_presplit.
         #
-        # Before agreement scoring on purpose: scoring compares token SETS (splitting cannot change
-        # them) but the demotion below sets text_confidence='low' on a suspect lookup, which would
-        # flip it to non-authoritative and hand human-authored lines to a splitter that can only
-        # damage them. A wrong-song lookup is still wrong in tidy human lines.
+        # Done BEFORE agreement scoring on purpose: the demotion below sets text_confidence='low' on a
+        # suspect lookup, which would flip it non-authoritative and hand human-authored lines to a
+        # splitter that can only damage them. (Scoring itself compares token SETS, which splitting
+        # cannot change.)
         texts = presplit_texts(texts)
 
         # ── stage 3: TIMING — force-align each text; degrade to its own line sync ─
         yield ProgressEvent(stage="aligning", pct=0)
-        # Score every authoritative text against the ASR transcript BEFORE timing anything: a lookup that
-        # disagrees with what is actually sung is probably a different song, and it must not be presented
-        # as the authoritative words. Demoting its confidence to `low` makes isAuthoritativeText() false
-        # in shared/lyrics.ts, which drops it below ASR in the ranking AND makes the TV label it — no
-        # separate "suspect" concept needed anywhere downstream.
+        # Score every authoritative text against the ASR transcript BEFORE timing: a lookup that
+        # disagrees with what is sung is probably a different song and must not be presented as
+        # authoritative. Demoting confidence to `low` makes isAuthoritativeText() false in
+        # shared/lyrics.ts, dropping it below ASR and making the TV label it — no separate "suspect"
+        # concept needed downstream.
         agreements = score_against_asr(texts)
         for text in texts:
             score = agreements.get(text.text_source)
@@ -416,11 +401,10 @@ class WhisperXProcessor:
         yield ProgressEvent(stage="aligning", pct=100)
 
         # ── stage 4: publish ──────────────────────────────────────────────────────
-        # `uri` is the FIRST candidate, not the best one. Ranking lives in exactly one place —
-        # pickBestLyrics in packages/shared/src/lyrics.ts — and the core re-picks from `candidates` on
-        # every write and every restore. A second ranking here was a copy of that tier logic
-        # with nothing pinning the two together, so it could drift silently; `uri` only still exists so
-        # a CompleteResult has a media_uri and a pre-C5 core would get something valid.
+        # `uri` is the FIRST candidate, not the best. Ranking lives in exactly one place —
+        # pickBestLyrics in packages/shared/src/lyrics.ts — and the core re-picks from `candidates`
+        # on every write and restore. A second ranking here would drift silently; `uri` exists only
+        # so a CompleteResult has a media_uri and a pre-C5 core gets something valid.
         best = candidates[0]
         yield CompleteResult(
             media_uri=os.path.join(job.media_dir, best["ref"]),

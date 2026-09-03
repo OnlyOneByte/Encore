@@ -34,13 +34,11 @@ export interface SearchPartition {
 /**
  * Merge the durable catalog with fresh resolver results into one deduped, readiness-partitioned set.
  *
- * Catalog entries are considered FIRST so a song we already cooked is never missed just because the
- * resolver ranked it low, titled it differently, or is unreachable (yt-dlp down / no network). Then
- * resolver results fill in everything new. Dedupe is by media id, which is exact: the route
- * materializes a result onto the EXISTING catalog media when it recognises the song by origin
- * identity (`source` + `sourceRef`), so the same song cannot appear in two groups.
- *
- * Raw results keep the resolver's relevance order, with catalog-only raw songs after them.
+ * Catalog entries come FIRST so a song we already cooked is never missed because the resolver ranked
+ * it low, titled it differently, or is unreachable (yt-dlp down). Resolver results fill in the rest.
+ * Dedupe is by media id, which is exact: the route materializes a result onto the EXISTING catalog
+ * media when it recognises the song by origin identity (`source` + `sourceRef`), so one song can't
+ * appear in two groups. Raw results keep the resolver's relevance order, catalog-only raw songs after.
  */
 export function partitionSearch(query: string, catalog: Media[], results: Media[]): SearchPartition {
 	const byId = new Map<string, Media>();

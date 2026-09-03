@@ -1,10 +1,10 @@
 // GET /api/search?q=... — ONE search across every source, partitioned by readiness.
 //
-// The old shape was a source switch (?source=youtube|local): the caller picked an index and got a
-// flat list. But a singer does not care where a song came from, only whether they can sing it right
-// now with no vocals. So this searches every resolver, materializes + persists each hit, and returns
-// three groups — ready (stems on disk), cooking (stems in flight), raw (plays with vocals) — with
-// each song appearing exactly once. `source` is still honoured as an optional narrowing filter.
+// Rejected the old source switch (?source=youtube|local, caller picks an index): a singer picks by
+// whether they can sing a song now with no vocals, not by where it came from. So this searches every
+// resolver, materializes + persists each hit, and returns three groups — ready (stems on disk),
+// cooking (stems in flight), raw (plays with vocals) — each song appearing exactly once. `source`
+// survives as an optional narrowing filter.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
@@ -30,8 +30,8 @@ export const GET: RequestHandler = async ({ url }) => {
 	const only = url.searchParams.get('source'); // optional narrowing: 'youtube' | 'local'
 	const app = getApp();
 
-	// zero-keystroke shortcuts: empty query returns recent + popular from this session. The readiness
-	// groups still come back (empty) so the client can render one shape in both states.
+	// Empty query returns recent + popular from this session. The readiness groups still come back
+	// (empty) so the client renders one shape in both states.
 	if (!q) {
 		const byId = (id: string) => app.mediaById.get(id);
 		const recent = app.popularity.recent(6).map(byId).filter(Boolean);

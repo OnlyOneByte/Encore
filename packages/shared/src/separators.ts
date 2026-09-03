@@ -1,8 +1,7 @@
-// @encore/shared — the pluggable stem-separator registry. SINGLE SOURCE OF TRUTH for both
-// the SERVER (which validates an engine+model pairing before it enqueues a cook) and the PHONE UI
-// (which renders the engine dropdown → model dropdown). The worker has its own SeparatorEngine
-// registry that actually RUNS each engine; this module is only the contract — the ids, the
-// whitelist, and the rules — so the three sides cannot drift.
+// @encore/shared — the pluggable stem-separator registry. SINGLE SOURCE OF TRUTH for both the
+// SERVER (validates an engine+model pairing before enqueueing a cook) and the PHONE UI (renders the
+// engine → model dropdowns). The worker has its own registry that actually RUNS each engine; this
+// module is only the contract — ids, whitelist, rules — so the three sides cannot drift.
 //
 // TWO AXES, kept deliberately separate (this is the whole design):
 //   • ENGINE  — a distinct inference implementation. Adding one is real code AND a worker
@@ -10,16 +9,16 @@
 //   • MODEL   — a checkpoint WITHIN an engine, addressed by a stable token here and resolved to a
 //               concrete checkpoint by the worker engine. Adding one is a whitelist edit, no code.
 //
-// Whitelisted on purpose (Angelo, 2026-09-03): the phone can only pick a model from this fixed set,
-// so a phone tap can never trigger an arbitrary multi-hundred-MB checkpoint download onto the shared
-// box. Widening to arbitrary Hugging Face ids is a deliberate future toggle, not the default.
+// Whitelisted on purpose (Angelo, 2026-09-03): the phone can only pick from this fixed set, so a tap
+// can never trigger an arbitrary multi-hundred-MB checkpoint download onto the shared box. Widening
+// to arbitrary Hugging Face ids is a deliberate future toggle, not the default.
 
 export type SeparatorEngineId = 'demucs' | 'roformer' | 'ensemble';
 
 export interface SeparatorModel {
-	/** Stable token stored in JobParams.model and in room settings. NEVER a raw checkpoint filename —
-	 *  the worker engine maps this token to a concrete checkpoint, so the checkpoint can be re-hosted
-	 *  or renamed upstream without touching stored jobs or settings. */
+	/** Stable token stored in JobParams.model and room settings. NEVER a raw checkpoint filename — the
+	 *  worker maps this token to a concrete checkpoint, so upstream can re-host or rename it without
+	 *  touching stored jobs or settings. */
 	id: string;
 	/** Human label for the phone dropdown. */
 	label: string;
@@ -30,14 +29,14 @@ export interface SeparatorModel {
 export interface SeparatorEngine {
 	id: SeparatorEngineId;
 	label: string;
-	/** The worker CAPABILITY a worker must advertise to run this engine. Dispatch routes a stems job
-	 *  to a worker via capabilities.includes(capability). A `demucs`-only worker never receives a
-	 *  `roformer` cook, so engines can live on different boxes or (later) different images. */
+	/** The worker CAPABILITY a worker must advertise to run this engine; dispatch routes a stems job
+	 *  via capabilities.includes(capability). A `demucs`-only worker never receives a `roformer` cook,
+	 *  so engines can live on different boxes or images. */
 	capability: string;
 	/** Whitelisted, ordered best-effort by quality. First entry is the engine's default model. */
 	models: SeparatorModel[];
-	/** Upgrade-tier engines are heavy/slow and MUST NOT be selectable as the live default — they are
-	 *  only valid as the target of a `stems-upgrade`. `ensemble` runs N models, so it is upgrade-only. */
+	/** Upgrade-tier engines are heavy/slow and MUST NOT be selectable as the live default — valid only
+	 *  as the target of a `stems-upgrade`. `ensemble` runs N models, so it is upgrade-only. */
 	liveSelectable: boolean;
 	/** Rough guidance for the UI, not a hard gate. */
 	speed: 'fast' | 'medium' | 'slow';
@@ -106,11 +105,11 @@ export function isLiveSelectable(engineId: string, modelId: string): boolean {
 
 /**
  * Relative separation quality, low to high — the declared upgrade ladder. Mirrors the worker's
- * QUALITY_RANK. Keyed on engine+model because the checkpoint matters as much as the engine: an
- * htdemucs_ft cook beats a plain htdemucs one on the same engine.
+ * QUALITY_RANK. Keyed on engine+model because the checkpoint matters as much as the engine (an
+ * htdemucs_ft cook beats plain htdemucs on the same engine).
  *
- * An unranked pairing scores 0 and therefore can never win a comparison, which is what keeps an
- * unknown or de-whitelisted model from displacing a known-good artifact.
+ * An unranked pairing scores 0 and can never win a comparison, which keeps an unknown or
+ * de-whitelisted model from displacing a known-good artifact.
  */
 const QUALITY_RANK: Record<string, number> = {
 	'demucs:htdemucs': 10,
@@ -147,9 +146,9 @@ export function isQualityUpgrade(
 // Two layers, split by WHO A SETTING BELONGS TO:
 //
 //   GLOBAL — a property of this deployment and its worker fleet. An engine is only usable if some
-//     connected worker advertises its capability, which is a fact about the server's hardware, not
-//     about a party. Two rooms on one core cannot meaningfully disagree about whether a RoFormer
-//     worker exists, so duplicating these per room would be modelling a distinction that isn't real.
+//     connected worker advertises its capability — a hardware fact, not a party's. Two rooms on one
+//     core cannot meaningfully disagree about whether a RoFormer worker exists, so per-room copies
+//     would model a distinction that isn't real.
 //
 //   ROOM — a property of one party. Pacing and per-room policy: two rooms genuinely can want
 //     different interstitial timing, and a busy room may want to cap cook quality to keep its queue
@@ -215,10 +214,9 @@ export interface RoomSettings {
 	interstitialMs: number;
 	/**
 	 * Optional per-room ceiling on cook quality, as a `qualityRank`. A busy room can cap cooks to keep
-	 * its queue moving while the deployment default stays high. `null` means "no ceiling — use the
-	 * global default". A ceiling can only ever LOWER quality, never raise it above the global choice:
-	 * the global setting is bounded by what the worker fleet can actually run, so a room must not be
-	 * able to request an engine no worker advertises.
+	 * its queue moving while the deployment default stays high. `null` = no ceiling, use the global
+	 * default. A ceiling can only ever LOWER quality: the global setting is already bounded by what the
+	 * worker fleet can run, so a room must not be able to request an engine no worker advertises.
 	 */
 	maxQualityRank: number | null;
 }
@@ -253,12 +251,9 @@ export const DEFAULT_EFFECTIVE_SETTINGS: EffectiveSettings = {
 };
 
 /**
- * The engine+model a cook in this room should actually use.
- *
- * The global default wins unless the room set a lower ceiling, in which case the best
- * live-selectable pairing at or under that ceiling is chosen. A room can only ever cap quality
- * DOWNWARD: raising it could name an engine no connected worker advertises, and the job would sit
- * queued forever.
+ * The engine+model a cook in this room should actually use. The global default wins unless the room
+ * set a lower ceiling, in which case the best live-selectable pairing at or under that ceiling is
+ * chosen. The cap is downward-only (see `RoomSettings.maxQualityRank`).
  */
 export function resolveCookSeparator(settings: EffectiveSettings): { engine: SeparatorEngineId; model: string } {
 	const { defaultEngine, defaultModel } = settings.global;

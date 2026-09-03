@@ -94,18 +94,17 @@ export function audioKey(mediaId: string, ext = 'wav'): string {
 	return `audio/${mediaId}.${ext.replace(/^\./, '')}`;
 }
 /**
- * Stored stem formats (audio policy, revised). The two stems get DIFFERENT treatment because they
- * have different jobs, and MUST match the worker's processor.py INSTRUMENTAL_EXT / VOCALS_EXT.
+ * Stored stem formats (audio policy, revised). The two stems get DIFFERENT treatment and MUST match
+ * the worker's processor.py INSTRUMENTAL_EXT / VOCALS_EXT.
  *
- * - **instrumental → FLAC (lossless).** This is the file that comes out of the speakers at volume, and
- *   it is the one place a second lossy generation is audible: ffmpeg's native AAC encoder (the only
- *   AAC encoder in the image — no libfdk_aac) smears high-frequency transients, which is precisely
- *   what a crash cymbal is. Lossless removes that generation entirely.
+ * - **instrumental → FLAC (lossless).** This plays out of the speakers at volume, the one place a
+ *   second lossy generation is audible: the image's only AAC encoder (ffmpeg native — no libfdk_aac)
+ *   smears high-frequency transients, exactly what a crash cymbal is. Lossless removes that generation.
  * - **vocals → AAC (lossy).** Nothing plays it aloud; it feeds pitch extraction and the future vocal
  *   guide, so transparency is not the bar.
  *
- * Songs cooked under an earlier policy keep their own refs and still play — the ref is stored
- * per-media, so these helpers only name NEW output.
+ * Songs cooked under an earlier policy keep their own (per-media) refs and still play — these helpers
+ * only name NEW output.
  */
 export const INSTRUMENTAL_EXT = 'flac';
 export const VOCALS_EXT = 'm4a';
@@ -147,12 +146,11 @@ export const LEGACY = {
 /**
  * Normalize whatever a worker reported into a relative ref.
  *
- * Workers report ABSOLUTE filesystem paths in `job:complete` artifacts (they write into a mounted
- * volume and hand back `os.path.join(media_dir, key)`). Storing that absolute path is a real bug we
- * shipped: `safeMediaPath` rejects any ref starting with "/", so an absolute `lyricsRef` or
- * `pitchRef` could never be served — the artifact existed on disk and the overlay silently got
- * nothing. Strip any known class root back to a relative key; return null if it is outside all of
- * them (a worker writing somewhere we do not serve is a config error, not something to store).
+ * Workers report ABSOLUTE paths in `job:complete` artifacts (they write into a mounted volume and hand
+ * back `os.path.join(media_dir, key)`). Storing that absolute path is a bug we shipped: `safeMediaPath`
+ * rejects any ref starting with "/", so an absolute `lyricsRef`/`pitchRef` could never be served — the
+ * artifact existed on disk and the overlay silently got nothing. Strip any known class root back to a
+ * relative key; return null if it is outside all of them (a config error, not something to store).
  */
 export function toRelativeKey(uri: string | undefined | null): string | null {
 	if (!uri) return null;

@@ -68,7 +68,7 @@ export async function serveThumb(url: string): Promise<Response> {
 		const res = await fetch(url, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 		if (!res.ok) return new Response('upstream error', { status: 502 });
 		const bytes = await res.arrayBuffer();
-		await Bun.write(path, bytes); // populate the on-disk cache
+		await Bun.write(path, bytes);
 		return new Response(bytes, {
 			headers: { 'content-type': res.headers.get('content-type') ?? contentTypeFor(path), 'cache-control': IMMUTABLE, 'x-cache': 'MISS' }
 		});

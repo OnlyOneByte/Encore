@@ -1,12 +1,11 @@
 /// <reference types="@sveltejs/kit" />
-// App-shell precache service worker. SvelteKit exposes the exact build asset list via
-// $service-worker, so warm loads serve instantly and the shell works offline.
-// Network-first for navigations (fresh UI when online), cache-first for hashed build assets.
+// App-shell precache SW: cache-first for hashed build assets, network-first for navigations
+// (fresh UI online, cached shell offline). SvelteKit's $service-worker gives the exact asset list.
 
 import { build, files, version } from '$service-worker';
 
 const CACHE = `encore-cache-${version}`;
-const PRECACHE = [...build, ...files]; // hashed JS/CSS + static/ assets
+const PRECACHE = [...build, ...files];
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -34,11 +33,9 @@ self.addEventListener('fetch', (event) => {
 
 	const isPrecached = PRECACHE.includes(url.pathname);
 	if (isPrecached) {
-		// cache-first for immutable hashed assets
 		event.respondWith(caches.match(request).then((hit) => hit ?? fetch(request)));
 		return;
 	}
-	// network-first for navigations/pages; fall back to cached shell offline
 	event.respondWith(
 		fetch(request)
 			.then((res) => {

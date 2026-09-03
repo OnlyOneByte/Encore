@@ -1,10 +1,10 @@
-// Settings has its own route rather than an overlay. What these controls change — which separator
-// every future cook uses, how long the TV holds the next-up card — outlives the moment, so it should
-// be somewhere you can navigate to, deep-link, and reload, instead of a layer that evaporates.
+// Settings is a route, not an overlay: what it changes (which separator every future cook uses, how
+// long the TV holds the next-up card) outlives the moment, so it should be navigable, deep-linkable,
+// and reloadable rather than a layer that evaporates.
 //
 // Loading server-side is the point of being a page: first paint shows the persisted values. Fetching
-// after mount would render defaults for a frame, and on this screen a wrong default does not read as
-// "still loading", it reads as "my choice was lost".
+// after mount would show defaults for a frame, and here a wrong default reads as "my choice was
+// lost", not "still loading".
 import { redirect } from '@sveltejs/kit';
 import type { PageServerLoad } from './$types';
 import { getApp } from '$server/app';

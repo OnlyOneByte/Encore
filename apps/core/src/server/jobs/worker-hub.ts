@@ -129,10 +129,10 @@ export class WorkerHub {
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#d.getSettings?.();
-		// Flip the media to ready: playMode→file, instrumentalRef→what the worker actually wrote,
-		// stemStatus→ready. rotation's isEntryReady now returns true, so the held entry becomes
-		// playable at its slot. Separation jobs also report WHICH engine+model produced the artifact,
-		// so an upgrade can be refused when it would not actually improve on what is published.
+		// Flip the media to ready (playMode→file, instrumentalRef→what the worker wrote, stemStatus→
+		// ready) so rotation's isEntryReady returns true and the held entry becomes playable.
+		// Separation jobs report WHICH engine+model produced the artifact, so an upgrade can be refused
+		// when it would not actually improve on what is published.
 		const separator = separatorFor(job.jobType, settings);
 		markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
 		// Attach word-timed lyrics if the job carried an align artifact (the TV overlay). Additive:
@@ -140,18 +140,18 @@ export class WorkerHub {
 		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);
 		// Attach the reference pitch track if a score job carried it (mic scoring). Additive.
 		setMediaPitch(job.mediaId, msg.artifacts?.pitch?.uri, this.#d.mediaById);
-		// Persist the cooked media NOW (stems key + lyrics + pitch), so a restart finds the
-		// separated song in the library instead of re-cooking it from scratch.
+		// Persist the cooked media NOW (stems key + lyrics + pitch) so a restart finds the separated
+		// song in the library instead of re-cooking it.
 		this.#d.persistMedia?.(job.mediaId);
 		this.#d.registry.releaseSlot(msg.workerId);
 		// Job scratch is transient by contract — the intermediate WAVs in work/<jobId> are large
 		// (a decoded source plus both separated stems) and nothing reads them after this point. Leaving
 		// them is how 432MB accumulated under the old layout.
 		cleanJobWork(msg.jobId);
-		// Enqueue whatever this job unblocks (stems → align + score, and optionally a quality upgrade).
-		// AFTER cleanJobWork on purpose — the follow-up gets its own scratch dir, and dedup on
-		// (mediaId, jobType) means a re-cooked song cannot stack duplicate align jobs. It inherits the
-		// completed job's priority so it stays as urgent as the song that needed it.
+		// Enqueue whatever this job unblocks (stems → align + score, and optionally a quality upgrade),
+		// AFTER cleanJobWork so the follow-up gets its own scratch dir. Dedup on (mediaId, jobType) means
+		// a re-cooked song cannot stack duplicate align jobs; it inherits the completed job's priority so
+		// it stays as urgent as the song that needed it.
 		for (const next of followUps(job.jobType, settings)) {
 			this.#d.jobs.enqueue(job.mediaId, next, job.priority, this.#d.now());
 		}

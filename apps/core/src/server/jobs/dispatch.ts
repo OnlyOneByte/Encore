@@ -10,19 +10,11 @@ import type { WorkerSession } from './registry';
 /**
  * The jobs a just-COMPLETED job should enqueue next — the cook pipeline. PURE.
  *
- * `stems` → `align` because lyrics run on every cook (owner's call), and chaining rather than
- * enqueueing both up front is deliberate: the ASR tier transcribes the VOCALS STEM, which does not
- * exist until stems finishes. Enqueueing both at once would have the align job race the very
- * separation that produces its input, and on a fixed core count the two would contend for the same
- * cores instead of running one after the other.
- *
- * Chaining costs nothing user-visible: the song is not singable until stems completes either, because
- * the instrumental IS the stems output.
- *
- * `score` rides along for the same reason: live scoring was unreachable through the identical
- * bug (nothing enqueued it), and its processor extracts the reference pitch track from the same vocals
- * stem align needs. Both are strictly after stems, neither chains further, so the pipeline stays a
- * depth-1 fan-out rather than a graph.
+ * `stems` chains to `align` + `score` rather than enqueueing all three up front because both read the
+ * VOCALS STEM, which does not exist until stems finishes — enqueueing at once would race the
+ * separation that produces their input and contend for the same cores. Both are strictly after stems
+ * and neither chains further, so the pipeline stays a depth-1 fan-out. (Chaining costs nothing
+ * user-visible: the song isn't singable until stems completes either.)
  */
 export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[] {
 	if (jobType !== 'stems') return [];
@@ -42,19 +34,16 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
 /**
  * The inputs a job of this type needs, derived from its media. PURE — no DB, no clock.
  *
- * An align job needs the CANONICAL artist/title, and only when the normalizer was confident: a
- * lookup on a guessed title returns nothing or, worse, another song's words. Absent keys are how the
- * worker learns "no authoritative lookup is possible here" and goes straight to transcription, so
- * omitting is meaningfully different from sending the raw uploader string.
- *
- * `durationSec` is always safe to send — it narrows an LRCLIB match and bounds the line-sync
- * fallback's synthetic timings.
+ * An align job gets the CANONICAL artist/title only when the normalizer was confident: a lookup on a
+ * guessed title returns nothing or another song's words, so omitting keys is how the worker learns
+ * "no authoritative lookup is possible" and transcribes instead — meaningfully different from sending
+ * the raw uploader string. `durationSec` is always safe: it narrows an LRCLIB match and bounds the
+ * line-sync fallback's synthetic timings.
  */
 export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
-	// A stems cook carries the room's chosen engine+model; the upgrade carries the room's
-	// upgrade engine+model. Both fall back to the shared defaults when no settings are provided (a
-	// hub built without a settings getter — e.g. a unit test), so the worker still gets a valid
-	// pairing rather than an empty one.
+	// stems carries the room's engine+model, the upgrade its upgrade engine+model. Both fall back to
+	// shared defaults when no settings are provided (e.g. a unit test), so the worker still gets a
+	// valid pairing.
 	if (jobType === 'stems') {
 		return { engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
 	}
@@ -101,14 +90,11 @@ export interface Assignment {
 }
 
 /**
- * The worker CAPABILITY a job requires. For a separation job it is engine-derived — a
- * roformer cook needs `stems:roformer`, so it must NOT be handed to a demucs-only worker — and the
- * engine comes from the room settings the same way assignParams derives its params. Everything else
- * requires a capability named after its job type. PURE.
- *
- * `settings` is optional: with none (a hub/test without settings) a separation job falls back to the
- * default engine's capability, which for demucs is plain `'stems'` — so existing single-capability
- * workers keep matching exactly as before.
+ * The worker CAPABILITY a job requires. For a separation job it is engine-derived — a roformer cook
+ * needs `stems:roformer` and must NOT go to a demucs-only worker; everything else requires a
+ * capability named after its job type. PURE. With no `settings` a separation job falls back to the
+ * default engine's capability (plain `'stems'` for demucs), so existing single-capability workers
+ * keep matching.
  */
 export function requiredCapability(jobType: JobType, settings?: GlobalSettings): string {
 	if (jobType === 'stems') return getEngine(settings?.defaultEngine ?? DEFAULT_ENGINE)?.capability ?? 'stems';
@@ -129,16 +115,15 @@ function eligible(worker: WorkerSession, job: Job, capabilityFor: CapabilityFor 
 }
 
 /**
- * Plan assignments for the current queued jobs against available worker capacity. PURE and
- * greedy: repeatedly take the highest-priority queued job, give it to the least-loaded eligible
- * worker (most slotsFree), decrement that worker's slots locally, repeat until no job can be
- * placed. Workers' real slot counts are mutated by the caller as it sends assignments.
+ * Plan assignments for the current queued jobs against available worker capacity. PURE and greedy:
+ * take the highest-priority queued job, give it to the least-loaded eligible worker (most slotsFree),
+ * decrement that worker's slots locally, repeat until no job can be placed.
  *
  *   next_job = queued.order_by(priority ASC, createdAt ASC).first
  *   worker   = eligible.order_by(slotsFree DESC).first
  *
- * A job with no eligible worker is simply left queued (it dispatches when a worker frees up / a
- * matching worker connects). Returns the assignments in the order they should be sent.
+ * A job with no eligible worker is left queued (it dispatches when a worker frees up / a matching
+ * worker connects). Returns the assignments in send order.
  */
 export function planAssignments(
 	queued: Job[],

@@ -27,8 +27,8 @@ better than the char-count fallback the TV overlay already had.
 Upstream is still worth having for the parts it does well and that we would otherwise have to own:
 hard length bounding with an iteration cap, stack-matched (and nested) parenthesis isolation, and
 punctuation / Unicode-space cleanup. So we find the phrase boundaries and hand it LINES instead of a
-blob. Upstream only ever splits, never joins, so feeding it pre-broken lines is safe: it then
-intervenes only on the pieces still too long, where a midpoint comma is a reasonable answer.
+blob. Upstream only ever splits, never joins, so feeding it pre-broken lines is safe: it intervenes
+only on the pieces still too long, where a midpoint comma is a reasonable answer.
 
 HOW WELL THIS WORKS, on the 171 over-long lines in this repo's own ASR artifacts: the semantic pass
 alone brings 47% fully under the row budget with no bisection at all, and improves 71%. The rest are

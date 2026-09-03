@@ -1,7 +1,6 @@
-// POST /api/make-karaoke — { mediaId } -> request stem-separation for a song.
-// Requires a joined singer (no anonymous compute). Flips the media to a cooking `file` so the
-// rotation engine holds its slot, enqueues the stems job (dedup: two requests → one job), and
-// broadcasts an initial media:status so every phone shows the ProcessingCard right away.
+// POST /api/make-karaoke — { mediaId } -> request stem-separation for a song. Requires a joined
+// singer (no anonymous compute). Flips the media to a cooking `file` so rotation holds its slot,
+// enqueues the stems job (dedup: two requests → one job), and broadcasts an initial media:status.
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
