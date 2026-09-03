@@ -6,5 +6,6 @@ export * from './rotation';
 export * from './lyrics';
 export * from './events';
 export * from './separators';
+export * from './fetchers';
 export * from './ulid';
 export * from './colors';

@@ -19,6 +19,8 @@ from collections import deque
 from typing import AsyncIterator, Awaitable, Callable
 
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, instrumental_path, vocals_path
+from .fetch import job_fetcher, local_source_path
+from .vocabulary import Fetcher
 from .stream_quality import FORMAT_SELECTOR
 
 DEFAULT_MODEL = "htdemucs"
@@ -43,11 +45,6 @@ def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
     return requested
 
 # ── pure helpers (no IO) ─────────────────────────────────────────────────────────
-
-
-def is_local_source(source_uri: str) -> bool:
-    """A local-library source is a file key/path; a YouTube source is an http(s) URL to download."""
-    return not source_uri.startswith(("http://", "https://"))
 
 
 def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
@@ -343,8 +340,8 @@ class DemucsProcessor:
         # audio is the one asset that cannot be regenerated (needs network, disappears with the
         # upload), and transcoding lossy YouTube audio to WAV costs ~12x the bytes for zero fidelity.
         # Reused: an existing file means a later align/score job skips the download.
-        if is_local_source(job.source_uri):
-            input_path = job.source_uri if os.path.isabs(job.source_uri) else os.path.join(job.media_dir, job.source_uri)
+        if job_fetcher(job) is Fetcher.LOCAL:
+            input_path = local_source_path(job)
         else:
             audio_dir = os.path.dirname(source_audio_path(job.media_dir, job.media_id))
             os.makedirs(audio_dir, exist_ok=True)

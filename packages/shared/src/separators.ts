@@ -13,6 +13,8 @@
 // can never trigger an arbitrary multi-hundred-MB checkpoint download onto the shared box. Widening
 // to arbitrary Hugging Face ids is a deliberate future toggle, not the default.
 
+import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
+
 export type SeparatorEngineId = 'demucs' | 'roformer' | 'ensemble';
 
 export interface SeparatorModel {
@@ -168,9 +170,16 @@ export interface GlobalSettings {
 	/** Engine+model the upgrade targets. May be an upgrade-only engine (e.g. ensemble). */
 	upgradeEngine: SeparatorEngineId;
 	upgradeModel: string;
+	/**
+	 * Which downloader acquires source audio. GLOBAL rather than per-room because it is a property of
+	 * the box's binaries and credentials — a room cannot choose a fetcher its workers cannot run.
+	 * `local` is never valid here: that is a property of an individual media, not a default.
+	 */
+	defaultFetcher: FetcherId;
 }
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
+	defaultFetcher: DEFAULT_FETCHER,
 	defaultEngine: DEFAULT_ENGINE,
 	defaultModel: DEFAULT_MODEL,
 	enqueueUpgrade: false,
@@ -197,9 +206,16 @@ export function normalizeGlobalSettings(
 		input && isValidSeparator(input.upgradeEngine ?? '', input.upgradeModel ?? '')
 			? { upgradeEngine: input.upgradeEngine!, upgradeModel: input.upgradeModel! }
 			: { upgradeEngine: d.upgradeEngine, upgradeModel: d.upgradeModel };
+	// A de-whitelisted or `local` fetcher degrades to the default rather than being stored: `local`
+	// describes one media's bytes, so accepting it here would mean "download nothing, ever".
+	const fetcher =
+		input?.defaultFetcher && isValidFetcher(input.defaultFetcher) && input.defaultFetcher !== 'local'
+			? input.defaultFetcher
+			: d.defaultFetcher;
 	return {
 		...live,
 		...upgrade,
+		defaultFetcher: fetcher,
 		enqueueUpgrade: typeof input?.enqueueUpgrade === 'boolean' ? input.enqueueUpgrade : d.enqueueUpgrade,
 	};
 }

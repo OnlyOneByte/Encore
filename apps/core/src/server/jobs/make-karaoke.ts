@@ -4,8 +4,8 @@
 // the soonest queue entry that needs it. worker-hub flips the media to ready on completion.
 // See MASTER-DESIGN §4, §6.
 
-import type { Job, Media, QueueEntry, LyricsCandidate } from '@encore/shared';
-import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade, isPlayable } from '@encore/shared';
+import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '@encore/shared';
+import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade, isPlayable, needsFetch } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
@@ -15,6 +15,8 @@ export interface MakeKaraokeDeps {
 	mediaById: Map<string, Media>;
 	state: AuthoritativeState;
 	now: () => number;
+	/** Optional so existing callers and tests keep working; absent means shared defaults. */
+	getSettings?: () => GlobalSettings;
 }
 
 // A media never queued yet still gets cooked, just at the back of the priority order.
@@ -87,7 +89,11 @@ export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job 
 	media.stemStatus = 'queued';
 
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
-	const job = deps.jobs.enqueue(mediaId, 'stems', priority, deps.now());
+	// Start at ACQUISITION when the bytes are not here yet; `fetch` chains to `stems` (see followUps).
+	// A local file skips straight to separation — there is nothing to download, and enqueueing a fetch
+	// for it would need a worker capability no fetcher advertises.
+	const first: JobType = needsFetch(media.source, deps.getSettings?.()?.defaultFetcher) ? 'fetch' : 'stems';
+	const job = deps.jobs.enqueue(mediaId, first, priority, deps.now());
 	// The dedup index treats a `ready` job as live, so enqueue can hand back a COMPLETED job (the
 	// stems exist, but this media object lost its ready flags — e.g. a runtime catalog entry that
 	// was rebuilt from a stub). Leaving the media `queued` against a job that will never run again

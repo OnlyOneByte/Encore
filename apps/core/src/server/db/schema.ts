@@ -139,7 +139,7 @@ export const jobs = sqliteTable(
 	{
 		id: text('id').primaryKey(),
 		mediaId: text('media_id').notNull(),
-		jobType: text('job_type', { enum: ['stems', 'align', 'score', 'stems-upgrade'] }).notNull(),
+		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'score', 'stems-upgrade'] }).notNull(),
 		status: text('status', {
 			enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']
 		})

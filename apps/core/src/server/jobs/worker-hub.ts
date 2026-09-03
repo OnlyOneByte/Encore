@@ -17,6 +17,7 @@ import type {
 	MediaStoreConfig,
 	GlobalSettings
 } from '@encore/shared';
+import { sourceUriFor } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
 import { planAssignments, assignParams, followUps, requiredCapability, separatorFor } from './dispatch';
@@ -207,7 +208,7 @@ export class WorkerHub {
 				jobId: job.id,
 				mediaId: job.mediaId,
 				jobType: job.jobType,
-				sourceUri: media ? sourceUri(media) : '',
+				sourceUri: media ? sourceUriFor(media, this.#d.getSettings?.()?.defaultFetcher) : '',
 				params: assignParams(job.jobType, media, this.#d.getSettings?.())
 			});
 		}
@@ -225,6 +226,3 @@ export class WorkerHub {
 }
 
 /** The URI a worker uses to pull the source (youtube → watch URL; local → file key). */
-function sourceUri(media: Media): string {
-	return media.source === 'youtube' ? `https://www.youtube.com/watch?v=${media.sourceRef}` : media.sourceRef;
-}
