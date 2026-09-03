@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import threading
 import time
 from typing import Any, AsyncIterator, Callable, Protocol
 
@@ -32,6 +33,7 @@ from .lyrics_source import (
 )
 from .lyrics_chain import (
     SOURCE_ASR,
+    SUSPECT_AGREEMENT,
     TIMING_LINE,
     TIMING_WORD,
     AsrSource,
@@ -41,6 +43,7 @@ from .lyrics_chain import (
     LyricsText,
     acquire,
     candidate_key,
+    score_against_asr,
 )
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
 
@@ -49,6 +52,19 @@ DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignmen
 # How often to emit a keepalive ProgressEvent while a blocking ML call runs. MUST stay comfortably
 # under the core's progressLeaseMs (30 s, leases.ts) or the reaper requeues a healthy job.
 LEASE_KEEPALIVE_SEC = 10.0
+
+# ONE in-process lock guarding every real ML call (transcribe + align).
+#
+# Necessary because of the thread offload above: a single WhisperXProcessor serves every align job, and
+# it caches ONE whisper model and ONE align model. With ENCORE_WORKER_CONCURRENCY>1 two align jobs run
+# at once, so before the offload the blocked event loop serialized them by accident — now they are real
+# threads sharing one model. faster-whisper / whisperx models are not thread-safe, and the lazy loaders
+# also had a check-then-set race that could load the model twice and double the memory.
+#
+# Shared between transcribe and align rather than one lock each, deliberately: both are CPU-bound on the
+# same cores, so serialising them costs no throughput and avoids two ML passes oversubscribing the box.
+# RLock because the public methods call the lazy loader while already holding it.
+_ML_LOCK = threading.RLock()
 
 
 def lyrics_key(media_id: str) -> str:
@@ -166,19 +182,21 @@ class WhisperxTranscriber:
         self._model: Any = None
 
     def _load(self) -> Any:
-        if self._model is None:
-            import whisperx  # lazy: multi-GB torch stays off the import path until this tier runs
+        with _ML_LOCK:
+            if self._model is None:
+                import whisperx  # lazy: multi-GB torch stays off the import path until this tier runs
 
-            self._model = whisperx.load_model(
-                self._model_name, self._device, compute_type=self._compute_type
-            )
-        return self._model
+                self._model = whisperx.load_model(
+                    self._model_name, self._device, compute_type=self._compute_type
+                )
+            return self._model
 
     def transcribe(self, audio_path: str, language: str | None = None) -> dict[str, Any]:
         import whisperx
 
         audio = whisperx.load_audio(audio_path)
-        out = self._load().transcribe(audio, language=language)
+        with _ML_LOCK:  # one model, possibly two concurrent align jobs — see _ML_LOCK
+            out = self._load().transcribe(audio, language=language)
         if language and not out.get("language"):
             out["language"] = language
         return out
@@ -203,19 +221,21 @@ class WhisperxForcedAligner:
         self._cache: dict[str, tuple[Any, Any]] = {}
 
     def _model(self, language: str) -> tuple[Any, Any]:
-        if language not in self._cache:
-            import whisperx  # lazy: multi-GB torch
+        with _ML_LOCK:
+            if language not in self._cache:
+                import whisperx  # lazy: multi-GB torch
 
-            self._cache[language] = whisperx.load_align_model(language_code=language, device=self._device)
-        return self._cache[language]
+                self._cache[language] = whisperx.load_align_model(language_code=language, device=self._device)
+            return self._cache[language]
 
     def align(self, segments: list[dict[str, Any]], audio_path: str, language: str) -> dict[str, Any]:
         import whisperx
 
-        model, meta = self._model(language)
         audio = whisperx.load_audio(audio_path)
-        # return_char_alignments=False → word-level only (what the overlay needs)
-        out = whisperx.align(segments, model, meta, audio, self._device, return_char_alignments=False)
+        with _ML_LOCK:  # shared model across concurrent align jobs — see _ML_LOCK
+            model, meta = self._model(language)
+            # return_char_alignments=False → word-level only (what the overlay needs)
+            out = whisperx.align(segments, model, meta, audio, self._device, return_char_alignments=False)
         out.setdefault("language", language)
         return out
 
@@ -332,6 +352,22 @@ class WhisperXProcessor:
 
         # ── stage 3: TIMING — force-align each text; degrade to its own line sync ─
         yield ProgressEvent(stage="aligning", pct=0)
+        # Score every authoritative text against the ASR transcript BEFORE timing anything: a lookup that
+        # disagrees with what is actually sung is probably a different song, and it must not be presented
+        # as the authoritative words. Demoting its confidence to `low` makes isAuthoritativeText() false
+        # in shared/lyrics.ts, which drops it below ASR in the ranking AND makes the TV label it — no
+        # separate "suspect" concept needed anywhere downstream.
+        agreements = score_against_asr(texts)
+        for text in texts:
+            score = agreements.get(text.text_source)
+            if score is not None and score < SUSPECT_AGREEMENT:
+                print(
+                    f"[worker] lyrics from {text.text_source} disagree with the vocals "
+                    f"(agreement {score:.2f} < {SUSPECT_AGREEMENT}) — probably the WRONG SONG; "
+                    "demoting it to unverified",
+                    flush=True,
+                )
+                text.text_confidence = "low"
         candidates: list[dict[str, Any]] = []
         for text in texts:
             built = None
@@ -345,7 +381,7 @@ class WhisperXProcessor:
             if built is None:
                 continue
             doc, timing, timing_confidence = built
-            ref = candidate_key(job.media_id, text.text_source)
+            ref = candidate_key(job.media_id, text.text_source, timing)
             final = os.path.join(job.media_dir, ref)
             os.makedirs(os.path.dirname(final), exist_ok=True)
             with open(final, "w", encoding="utf-8") as f:
@@ -359,6 +395,7 @@ class WhisperXProcessor:
                     "timingConfidence": timing_confidence,
                     "language": doc.get("language") or text.language or language,
                     "createdAt": int(time.time() * 1000),
+                    **({"agreement": agreements[text.text_source]} if text.text_source in agreements else {}),
                 }
             )
         if not candidates:
@@ -366,11 +403,12 @@ class WhisperXProcessor:
         yield ProgressEvent(stage="aligning", pct=100)
 
         # ── stage 4: publish ──────────────────────────────────────────────────────
-        # `uri` stays for back-compat with the single-ref core path (setMediaLyrics); `candidates`
-        # carries the whole set. The AUTHORITY on which one to show is pickBestLyrics in
-        # packages/shared/src/lyrics.ts — B-3-C5 threads the set into storage and picks `chosen`
-        # there. The local order below only decides the back-compat pointer.
-        best = _preferred(candidates)
+        # `uri` is the FIRST candidate, not the best one. Ranking lives in exactly one place —
+        # pickBestLyrics in packages/shared/src/lyrics.ts — and the core re-picks from `candidates` on
+        # every write and every restore (B-3-C5). A second ranking here was a copy of that tier logic
+        # with nothing pinning the two together, so it could drift silently; `uri` only still exists so
+        # a CompleteResult has a media_uri and a pre-C5 core would get something valid.
+        best = candidates[0]
         yield CompleteResult(
             media_uri=os.path.join(job.media_dir, best["ref"]),
             artifacts={
@@ -446,21 +484,3 @@ class WhisperXProcessor:
                 yield ProgressEvent(stage=stage, pct=pct)
         if last < 100:
             yield ProgressEvent(stage=stage, pct=100)
-
-
-def _preferred(candidates: list[dict[str, Any]]) -> dict[str, Any]:
-    """The candidate this job points `artifacts.lyrics.uri` at, for the single-ref core path.
-
-    A deliberately small mirror of `lyricsRank` in packages/shared/src/lyrics.ts — that module is the
-    AUTHORITY (B-3-C5 stores the whole set and picks `chosen` with it). Kept here only so a worker
-    that completes before the core-side set support exists still hands back its best artifact rather
-    than an arbitrary one. Same ordering rule: authoritative text outranks ASR at equal timing, and
-    authoritative+line outranks asr+word, because wrong words cannot be sung.
-    """
-    def rank(c: dict[str, Any]) -> tuple[int, int]:
-        authoritative = c.get("textSource") != SOURCE_ASR and c.get("textConfidence") != "low"
-        word = c.get("timing") == TIMING_WORD
-        tier = (4 if word else 3) if authoritative else (2 if word else 1)
-        return (tier, int(c.get("createdAt") or 0))
-
-    return max(candidates, key=rank)

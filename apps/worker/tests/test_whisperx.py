@@ -201,7 +201,7 @@ async def test_hybrid_flow_download_lrclib_forcealign_writes_word_timed_lyrics(t
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
     uri = completes[0].media_uri
-    assert uri.endswith("lyrics/m1-lrclib.json")  # per-source key, so candidates coexist
+    assert uri.endswith("lyrics/m1-lrclib-word.json")  # per (source, timing) key — candidates coexist
     doc = json.loads(Path(uri).read_text())
     # WORD-timed on the correct text (the whole hybrid point)
     assert whisperx.is_valid_lyrics(doc)
@@ -369,21 +369,28 @@ async def test_multiple_sources_each_get_their_own_artifact_file(tmp_path):
     events = await drain(proc, spec(tmp_path))
     cands = [e for e in events if isinstance(e, CompleteResult)][0].artifacts["lyrics"]["candidates"]
     refs = {c["textSource"]: c["ref"] for c in cands}
-    assert refs[SOURCE_LRCLIB] == candidate_key("m1", SOURCE_LRCLIB)
-    assert refs[SOURCE_ASR] == candidate_key("m1", SOURCE_ASR)
+    timings = {c["textSource"]: c["timing"] for c in cands}
+    assert refs[SOURCE_LRCLIB] == candidate_key("m1", SOURCE_LRCLIB, timings[SOURCE_LRCLIB])
+    assert refs[SOURCE_ASR] == candidate_key("m1", SOURCE_ASR, timings[SOURCE_ASR])
     assert refs[SOURCE_LRCLIB] != refs[SOURCE_ASR]  # no overwrite — the upgrade path depends on this
     for c in cands:
         assert (tmp_path / c["ref"]).exists()
 
 
 @pytest.mark.asyncio
-async def test_uri_points_at_the_authoritative_candidate_not_the_asr_one(tmp_path):
-    """Back-compat pointer: authoritative+aligned outranks asr+word (wrong words cannot be sung)."""
+async def test_the_worker_does_NOT_rank_candidates_the_core_does(tmp_path):
+    """Ranking lives in exactly one place: pickBestLyrics in packages/shared/src/lyrics.ts. The worker
+    reports every artifact it made and `uri` is merely the first, so there is no second copy of the tier
+    logic here to drift out of step with the TS one."""
     lrc = FakeSource(SOURCE_LRCLIB, _text(SOURCE_LRCLIB, TIMING_LINE))
     asr = FakeSource(SOURCE_ASR, _text(SOURCE_ASR, TIMING_WORD, conf="low"))
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[asr, lrc])
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
-    assert done.media_uri.endswith(candidate_key("m1", SOURCE_LRCLIB))
+    cands = done.artifacts["lyrics"]["candidates"]
+    # uri is the FIRST produced candidate (asr here, since it was listed first) — not a ranked winner
+    assert done.media_uri.endswith(cands[0]["ref"])
+    # and BOTH are reported, which is what lets the core choose
+    assert {c["textSource"] for c in cands} == {SOURCE_LRCLIB, SOURCE_ASR}
 
 
 @pytest.mark.asyncio
@@ -519,8 +526,8 @@ async def test_both_tiers_produce_candidates_when_lrclib_also_answers(tmp_path):
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     cands = done.artifacts["lyrics"]["candidates"]
     assert {c["textSource"] for c in cands} == {"lrclib", "asr"}
-    # the back-compat pointer prefers the AUTHORITATIVE one, not the ASR guess
-    assert done.media_uri.endswith("m1-lrclib.json")
+    # uri is simply the first produced artifact; the core ranks (see the test above)
+    assert done.media_uri.endswith(cands[0]["ref"])
 
 
 def test_asr_KEEPS_word_timings_if_a_transcriber_ever_supplies_them():
@@ -614,3 +621,98 @@ async def test_a_raising_aligner_still_propagates_through_the_thread_wrapper(tmp
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=Broken())
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     assert done.artifacts["lyrics"]["candidates"][0]["timing"] == TIMING_LINE
+
+
+def test_concurrent_ML_calls_are_serialized_on_the_shared_model():
+    """One WhisperXProcessor serves every align job and caches ONE model, so with concurrency>1 two
+    threads would otherwise enter transcribe()/align() on it at once. faster-whisper is not
+    thread-safe; before the thread offload the blocked event loop hid this."""
+    import threading
+
+    overlaps = []
+    inside = []
+
+    def body():
+        with whisperx._ML_LOCK:
+            inside.append(1)
+            overlaps.append(len(inside))
+            time.sleep(0.05)
+            inside.pop()
+
+    threads = [threading.Thread(target=body) for _ in range(4)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert max(overlaps) == 1, f"ML section was entered concurrently ({max(overlaps)} at once)"
+
+
+def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader():
+    """transcribe() takes the lock and then calls _load(), which takes it again — a plain Lock would
+    deadlock the worker on the first real transcription."""
+    with whisperx._ML_LOCK:
+        with whisperx._ML_LOCK:
+            pass  # a non-reentrant lock never reaches here
+
+
+# ── the wrong-song guard (was built in C2 but never wired) ─────────────────────
+from src.lyrics_chain import agreement_score, score_against_asr, SUSPECT_AGREEMENT  # noqa: E402
+
+_SUNG = "we could be heroes just for one day standing by the wall guns above our heads and we kissed"
+
+
+def _texts(lrclib_text, asr_text):
+    def mk(source, body, conf):
+        return LyricsText(text_source=source, timing=TIMING_LINE, text_confidence=conf,
+                          segments=[{"start": 0.0, "end": 4.0, "text": body}])
+    return [mk(SOURCE_LRCLIB, lrclib_text, "high"), mk(SOURCE_ASR, asr_text, "low")]
+
+
+def test_agreement_score_matches_the_TS_semantics():
+    near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
+    assert agreement_score(_SUNG, near) > 0.7
+    other = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
+    assert agreement_score(_SUNG, other) < SUSPECT_AGREEMENT
+    # too short to judge → None, NOT 0: an instrumental must not condemn a correct lookup
+    assert agreement_score("la la la", _SUNG) is None
+
+
+def test_score_against_asr_reports_per_source_and_skips_asr_itself():
+    got = score_against_asr(_texts(_SUNG, _SUNG))
+    assert set(got) == {SOURCE_LRCLIB} and got[SOURCE_LRCLIB] == 1.0
+
+
+def test_no_asr_text_means_no_scores_rather_than_a_zero():
+    only = [LyricsText(text_source=SOURCE_LRCLIB, timing=TIMING_LINE, text_confidence="high",
+                       segments=[{"start": 0, "end": 1, "text": _SUNG}])]
+    assert score_against_asr(only) == {}
+
+
+@pytest.mark.asyncio
+async def test_A_WRONG_SONG_LOOKUP_IS_DEMOTED_not_shown_as_authoritative(tmp_path):
+    """LRCLIB's dangerous failure is a confident MISMATCH. When the looked-up text does not match what
+    is actually sung, it must lose its authority — which both re-ranks it below ASR and makes the TV
+    label it, with no separate 'suspect' concept anywhere downstream."""
+    wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
+    lrc = FakeSource(SOURCE_LRCLIB, LyricsText(text_source=SOURCE_LRCLIB, timing=TIMING_LINE,
+                     text_confidence="high", segments=[{"start": 0.0, "end": 4.0, "text": wrong}]))
+    asr = FakeSource(SOURCE_ASR, LyricsText(text_source=SOURCE_ASR, timing=TIMING_LINE,
+                     text_confidence="low", segments=[{"start": 0.0, "end": 4.0, "text": _SUNG}]))
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    bysrc = {c["textSource"]: c for c in done.artifacts["lyrics"]["candidates"]}
+    assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "low"       # demoted: no longer authoritative
+    assert bysrc[SOURCE_LRCLIB]["agreement"] < SUSPECT_AGREEMENT  # and the evidence is recorded
+
+
+@pytest.mark.asyncio
+async def test_an_AGREEING_lookup_keeps_its_authority_and_records_the_score(tmp_path):
+    lrc = FakeSource(SOURCE_LRCLIB, LyricsText(text_source=SOURCE_LRCLIB, timing=TIMING_LINE,
+                     text_confidence="high", segments=[{"start": 0.0, "end": 4.0, "text": _SUNG}]))
+    asr = FakeSource(SOURCE_ASR, LyricsText(text_source=SOURCE_ASR, timing=TIMING_LINE,
+                     text_confidence="low", segments=[{"start": 0.0, "end": 4.0, "text": _SUNG}]))
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    bysrc = {c["textSource"]: c for c in done.artifacts["lyrics"]["candidates"]}
+    assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "high"
+    assert bysrc[SOURCE_LRCLIB]["agreement"] == 1.0
