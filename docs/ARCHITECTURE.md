@@ -143,9 +143,10 @@ ATTRACT → LOADING → PLAYING ── ended ──► INTERSTITIAL → SWAP →
                          └─ next not ready ─► WAITING ─► next ready/rotation advances
 ```
 
-File media uses `<video preload="auto">`; YouTube uses a second cued iframe. If up-next changes, B
-rewarm starts for the new entry. Skip is a synthetic `ended`. `INTERSTITIAL_MS=0` gives a pure
-hard-cut; default is the short singer-reveal moment.
+Every surface is a `<video preload="auto">` loading a separated instrumental. There is no second
+player: nothing plays unprocessed, so there is nothing to embed. If up-next changes, B rewarm starts
+for the new entry. Skip is a synthetic `ended`. `INTERSTITIAL_MS=0` gives a pure hard-cut; default is
+the short singer-reveal moment.
 
 Implementation: `src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/player.ts`.
 
@@ -156,6 +157,26 @@ Implementation: `src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/pla
 `sourceRef` is **immutable origin identity**. Cooked playback lives in `Media.instrumentalRef`, and
 players call `playbackRef(media)`. Never overwrite `sourceRef` with an artifact path: doing that made
 a result unmatchable against its own future searches and minted duplicate uncooked rows.
+
+### Playability
+
+**Nothing plays unprocessed.** A song is playable when it has a separated instrumental, and not
+before — no YouTube embed, no singing over the original vocals, and a local library file is a cook
+candidate like any other source rather than a special case.
+
+`playbackRef` returns `''` for anything uncooked and `isPlayable` is defined in terms of it, so "what
+do I load" and "is there anything to load" cannot disagree. Both require a `ready` status **and** an
+`instrumentalRef`: the two are written by separate steps, and a status running ahead of its artifact
+would hand the player an empty source. `listReady` mirrors the same rule, so a browse row can never
+resolve to a file that is not on disk.
+
+This replaced a `playMode: 'iframe' | 'file'` column that encoded two questions at once — is this ref
+a playable file, and has it been cooked — leaving two sources of truth for playability. `stemStatus` +
+`instrumentalRef` already answered the second; the first stopped existing when the embed path did.
+
+Readiness therefore has three honest states: `ready` (cooked), `cooking` (a job in flight, rotation
+holding its slot), and `unacquired` (nothing to play yet). The third used to mean "playable as-is,
+with the original vocals", which is why it was renamed rather than reworded.
 
 ### Storage classes
 
@@ -213,12 +234,41 @@ queued → assigned → running → ready
 - Progress lease: running job must report at least every ~30s.
 - Reaper requeues expired jobs; boot resets orphaned `assigned`/`running` to `queued`.
 - Priority is the earliest `rotationSeq` needing that media, not FIFO.
+- Acquisition is its own job. A cook starts at `fetch`, which chains to `stems` through
+  `followUps()`, so a separation is never dispatched before its input exists. A local media skips
+  acquisition: its bytes are already on the volume.
 - A completed `stems` job enqueues `align` + `score` through `followUps()` — both need the vocals
   stem, so starting them before separation would race and contend.
 - Core flips media refs/status only after the worker completes and artifacts exist.
 
+A worker accepts a job when it advertises a capability that serves the job's **action**, matched on the
+action prefix rather than as a literal string. Both axes namespace their capabilities — `stems:roformer`
+for an engine, `fetch:ytdlp` for a downloader — so a literal comparison rejected work the worker could
+genuinely run. That bug made every acquisition bounce with "unsupported job type: fetch" while the core
+kept the job `assigned` and the song sat at 0%, which reads like a hung download rather than a refused
+assignment.
+
 The worker's stems path is orchestration, not numeric computation: it builds argv, spawns tools, and
 parses progress. This is why separator engines can change behind the existing `Processor` protocol.
+
+### Where audio comes from: the fetcher axis
+
+A job **declares** how to obtain its source audio; nothing infers it. `JobParams.fetcher` is `ytdlp`
+(download it) or `local` (it is already a path under the media volume), and the worker parses that at
+its boundary, so an unknown fetcher raises before a byte moves.
+
+This replaced shape inference. The core used to emit either a watch URL or a bare file key, and the
+worker recovered the intent by testing for an `http(s)` prefix — in three places. A ref matching neither
+assumption, such as `spotify:track:…`, was silently classified as a local file and died stages later
+inside ffmpeg with "No such file", naming the symptom and hiding the cause. `local` is therefore a
+first-class fetcher rather than an absence: "already here" is exactly the case the old test got wrong.
+
+`fetch` routes on `fetch:<fetcher>` rather than on `stems`, so a box that can pull audio and a box that
+can separate it need not be the same machine. That is what makes a credentialed fetcher droppable later
+without touching dispatch; `local` carries no capability because there is nothing to route.
+
+The registry in `packages/shared/src/fetchers.ts` whitelists what is possible so a stored setting can be
+validated and a picker rendered from one source; the *choice* is a setting, not a per-request argument.
 
 ### Separator engines, models, and backends
 
@@ -256,12 +306,16 @@ Settings live in two layers, split by **who a setting belongs to**:
 
 | Scope | Belongs to | Examples |
 |---|---|---|
-| **global** | the deployment and its worker fleet | default separator engine + model, upgrade policy |
+| **global** | the deployment and its worker fleet | default separator engine + model, upgrade policy, the source **fetcher** |
 | **room** | one party | interstitial pacing, a downward-only cook-quality ceiling |
 
 Separator policy is global rather than per-room because an engine is only usable if some connected
 worker advertises its capability — a fact about the server's hardware, not about a party. Two rooms
-on one core cannot meaningfully disagree about whether a RoFormer worker exists.
+on one core cannot meaningfully disagree about whether a RoFormer worker exists. The fetcher is global
+for the same reason plus one more: it depends on the box's binaries and credentials, so a room cannot
+choose a downloader its workers cannot run. `local` is never a legal default — it describes one media's
+bytes, so storing it would mean "never download anything" — and the normalizer degrades it on **read**
+as well as write, which is also what a de-whitelisted value needs.
 
 The room layer is keyed by room id, so multi-room is a row per room rather than a migration. A room
 may only cap cook quality **downward** (`maxQualityRank`): the global choice is already bounded by
