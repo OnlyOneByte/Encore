@@ -104,6 +104,45 @@ export function isLiveSelectable(engineId: string, modelId: string): boolean {
 	return !!engine && engine.liveSelectable && engine.models.some((m) => m.id === modelId);
 }
 
+/**
+ * Relative separation quality, low to high — the declared upgrade ladder. Mirrors the worker's
+ * QUALITY_RANK. Keyed on engine+model because the checkpoint matters as much as the engine: an
+ * htdemucs_ft cook beats a plain htdemucs one on the same engine.
+ *
+ * An unranked pairing scores 0 and therefore can never win a comparison, which is what keeps an
+ * unknown or de-whitelisted model from displacing a known-good artifact.
+ */
+const QUALITY_RANK: Record<string, number> = {
+	'demucs:htdemucs': 10,
+	'demucs:htdemucs_6s': 15,
+	'demucs:htdemucs_ft': 20,
+	'roformer:mel-roformer-inst-v2': 30,
+	'roformer:bs-roformer-1297': 35,
+	'ensemble:instrumental_full': 40,
+	'ensemble:instrumental_clean': 45
+};
+
+export function qualityRank(engineId: string, modelId: string): number {
+	return QUALITY_RANK[`${engineId}:${modelId}`] ?? 0;
+}
+
+/**
+ * Whether `candidate` is strictly better than `current` — the guard the upgrade path uses before it
+ * swaps a published instrumental.
+ *
+ * A missing `current` counts as an upgrade (nothing to regress). Equal or lower rank does NOT, so a
+ * re-cook at the same quality is a no-op and a worse engine can never replace a better artifact.
+ */
+export function isQualityUpgrade(
+	current: { engine: string; model: string } | null | undefined,
+	candidate: { engine: string; model: string }
+): boolean {
+	const cand = qualityRank(candidate.engine, candidate.model);
+	if (cand === 0) return false;
+	if (!current) return true;
+	return cand > qualityRank(current.engine, current.model);
+}
+
 // ── room settings ───────────────────────────────────────────────────────────
 // ROOM-level, not per-phone: the separator choice governs cooks that EVERYONE in the room shares, so
 // it is authoritative server state broadcast to all clients (like presence), not a phone-local

@@ -4,7 +4,7 @@
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
 import type { Job, JobParams, JobType, Media, RoomSettings } from '@encore/shared';
-import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_ROOM_SETTINGS, getEngine } from '@encore/shared';
+import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_ROOM_SETTINGS, getEngine, isQualityUpgrade } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 /**
@@ -24,8 +24,19 @@ import type { WorkerSession } from './registry';
  * stem align needs. Both are strictly after stems, neither chains further, so the pipeline stays a
  * depth-1 fan-out rather than a graph.
  */
-export function followUps(jobType: JobType): JobType[] {
-	return jobType === 'stems' ? ['align', 'score'] : [];
+export function followUps(jobType: JobType, settings?: RoomSettings): JobType[] {
+	if (jobType !== 'stems') return [];
+	const next: JobType[] = ['align', 'score'];
+	// A completed cook optionally chains a re-separation at higher quality. It runs from the RETAINED
+	// raw audio, so it costs CPU but no re-download, and `markMediaReady` refuses to publish its
+	// result unless it actually outranks what is already there.
+	if (settings?.enqueueUpgrade && isQualityUpgrade(
+		{ engine: settings.defaultEngine, model: settings.defaultModel },
+		{ engine: settings.upgradeEngine, model: settings.upgradeModel }
+	)) {
+		next.push('stems-upgrade');
+	}
+	return next;
 }
 
 /**
@@ -61,6 +72,27 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 		params.durationSec = media.durationSec;
 	}
 	return params;
+}
+
+/**
+ * The engine+model a completed separation job used, so `markMediaReady` can compare quality before
+ * swapping a published instrumental. Non-separation jobs have no separator and return undefined,
+ * which keeps their completion path unconditional.
+ */
+export function separatorFor(
+	jobType: JobType,
+	settings?: RoomSettings
+): { engine: string; model: string } | undefined {
+	if (jobType === 'stems') {
+		return { engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
+	}
+	if (jobType === 'stems-upgrade') {
+		return {
+			engine: settings?.upgradeEngine ?? DEFAULT_ROOM_SETTINGS.upgradeEngine,
+			model: settings?.upgradeModel ?? DEFAULT_ROOM_SETTINGS.upgradeModel
+		};
+	}
+	return undefined;
 }
 
 export interface Assignment {
