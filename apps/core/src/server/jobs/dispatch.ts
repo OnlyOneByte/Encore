@@ -19,7 +19,7 @@ import type { WorkerSession } from './registry';
  * Chaining costs nothing user-visible: the song is not singable until stems completes either, because
  * the instrumental IS the stems output.
  *
- * `score` rides along for the same reason: M8-C3 live scoring was unreachable through the identical
+ * `score` rides along for the same reason: live scoring was unreachable through the identical
  * bug (nothing enqueued it), and its processor extracts the reference pitch track from the same vocals
  * stem align needs. Both are strictly after stems, neither chains further, so the pipeline stays a
  * depth-1 fan-out rather than a graph.
@@ -29,7 +29,7 @@ export function followUps(jobType: JobType): JobType[] {
 }
 
 /**
- * The inputs a job of this type needs, derived from its media. PURE — no DB, no clock (B-3-C1).
+ * The inputs a job of this type needs, derived from its media. PURE — no DB, no clock.
  *
  * An align job needs the CANONICAL artist/title, and only when the normalizer was confident: a
  * lookup on a guessed title returns nothing or, worse, another song's words. Absent keys are how the
@@ -40,7 +40,7 @@ export function followUps(jobType: JobType): JobType[] {
  * fallback's synthetic timings.
  */
 export function assignParams(jobType: JobType, media: Media | undefined, settings?: RoomSettings): JobParams {
-	// B-8: a stems cook carries the room's chosen engine+model; the upgrade carries the room's
+	// A stems cook carries the room's chosen engine+model; the upgrade carries the room's
 	// upgrade engine+model. Both fall back to the shared defaults when no settings are provided (a
 	// hub built without a settings getter — e.g. a unit test), so the worker still gets a valid
 	// pairing rather than an empty one.
@@ -69,7 +69,7 @@ export interface Assignment {
 }
 
 /**
- * The worker CAPABILITY a job requires (B-8). For a separation job it is engine-derived — a
+ * The worker CAPABILITY a job requires. For a separation job it is engine-derived — a
  * roformer cook needs `stems:roformer`, so it must NOT be handed to a demucs-only worker — and the
  * engine comes from the room settings the same way assignParams derives its params. Everything else
  * requires a capability named after its job type. PURE.

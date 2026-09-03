@@ -1,4 +1,4 @@
-"""BS-RoFormer separation engine (B-8). Same Processor interface as DemucsProcessor, selected when a
+"""BS-RoFormer separation engine. Same Processor interface as DemucsProcessor, selected when a
 stems job carries params.engine == 'roformer'. Uses the bs-roformer-infer package (inference-only,
 MIT), which owns checkpoint download + sha256 verification and a repointable model registry.
 
@@ -160,7 +160,7 @@ class RoformerProcessor:
 			pass  # bs-roformer-infer's tqdm output is not a stable pct source; coarse 0→100 for now
 		yield ProgressEvent(stage="separating", pct=100)
 
-		# ── stage 3: encode + publish (FLAC instrumental, AAC vocals — B-7 policy) ──
+		# ── stage 3: encode + publish (FLAC instrumental, AAC vocals) ──
 		produced = find_roformer_instrumental(store)
 		if produced is None:
 			raise RuntimeError(f"roformer produced no instrumental in {store}")

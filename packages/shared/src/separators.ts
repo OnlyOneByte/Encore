@@ -1,4 +1,4 @@
-// @encore/shared — the pluggable stem-separator registry (B-8). SINGLE SOURCE OF TRUTH for both
+// @encore/shared — the pluggable stem-separator registry. SINGLE SOURCE OF TRUTH for both
 // the SERVER (which validates an engine+model pairing before it enqueues a cook) and the PHONE UI
 // (which renders the engine dropdown → model dropdown). The worker has its own SeparatorEngine
 // registry that actually RUNS each engine; this module is only the contract — the ids, the
@@ -104,7 +104,7 @@ export function isLiveSelectable(engineId: string, modelId: string): boolean {
 	return !!engine && engine.liveSelectable && engine.models.some((m) => m.id === modelId);
 }
 
-// ── room settings (B-8) ───────────────────────────────────────────────────────────
+// ── room settings ───────────────────────────────────────────────────────────
 // ROOM-level, not per-phone: the separator choice governs cooks that EVERYONE in the room shares, so
 // it is authoritative server state broadcast to all clients (like presence), not a phone-local
 // preference two devices could disagree about.

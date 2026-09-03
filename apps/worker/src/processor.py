@@ -1,7 +1,7 @@
 """Job processor seam — the pluggable unit that turns a source into stems/lyrics.
 
-M7-C4 ships the STUB processor: it walks the job's stage plan (protocol.stages_for), yields a
-progress event per stage, and writes a placeholder artifact to the MediaStore path. M7-C5 swaps in
+The STUB processor walks the job's stage plan (protocol.stages_for), yields a
+progress event per stage, and writes a placeholder artifact to the MediaStore path. Swapping in
 the real Demucs `htdemucs` pipeline behind the SAME interface (an async generator of ProgressEvent
 ending with a CompleteResult), so the dial-home loop never changes. Mirrors the TS "pure logic
 split from I/O so it unit-tests without the binary" convention (ytdlp.ts parseSearchJson).
@@ -15,7 +15,7 @@ from typing import AsyncIterator, Protocol
 
 from . import protocol
 
-# Stored stem formats (B-7 audio policy, revised). The two stems get DIFFERENT treatment because they
+# Stored stem formats. The two stems get DIFFERENT treatment because they
 # have different jobs:
 #
 #   instrumental -> FLAC (lossless). This is the file that comes out of the speakers at volume, and it
@@ -81,14 +81,14 @@ class StubProcessor:
         out_path = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(out_path), exist_ok=True)
         with open(out_path, "wb") as f:
-            f.write(b"ENCORE_STUB_INSTRUMENTAL\n")  # placeholder; M7-C5 writes the real track
+            f.write(b"ENCORE_STUB_INSTRUMENTAL\n")  # placeholder; the real processor writes the track
         yield CompleteResult(media_uri=out_path, artifacts={"stems": {"instrumental": out_path}})
 
 
 def instrumental_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's instrumental stem.
 
-    B-7: lives under the `derived/` storage class (regenerable from `audio/`). MUST match the core's
+    Lives under the `derived/` storage class (regenerable from `audio/`). MUST match the core's
     paths.ts instrumentalKey() byte-for-byte -- the TV resolves /media/<ref>, so a mismatch 404s on a
     file that exists.
     """
@@ -96,7 +96,7 @@ def instrumental_path(media_dir: str, media_id: str) -> str:
 
 
 def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
-    """Deterministic key for a media's RAW ORIGINAL audio (B-7 `audio/` storage class).
+    """Deterministic key for a media's RAW ORIGINAL audio in the `audio/` storage class.
 
     This is the only class that cannot be regenerated: re-acquiring it needs network, and it is gone
     permanently once the upload disappears. It used to be written to `stems/_work/<id>/source.wav` --
@@ -108,14 +108,14 @@ def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
 
 
 def vocals_path(media_dir: str, media_id: str) -> str:
-    """Deterministic MediaStore key for a media's ISOLATED VOCALS stem (M8-C0). Feeds pitch
-    extraction (M8-C1) and the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md). Parallels the core's
+    """Deterministic MediaStore key for a media's ISOLATED VOCALS stem. Feeds pitch
+    extraction and the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md). Parallels the core's
     make-karaoke `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
     return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{VOCALS_EXT}")
 
 
 def pitch_track_path(media_dir: str, media_id: str) -> str:
-    """Deterministic MediaStore key for a media's reference pitch-track artifact (M8-C3). The core
+    """Deterministic MediaStore key for a media's reference pitch-track artifact. The core
     fetches it via /media to score the live mic against. JSON, keyed parallel to the stems."""
     return os.path.join(media_dir, "derived", "pitch", f"{media_id}-pitch.json")
 
@@ -136,7 +136,7 @@ class RoutingProcessor:
 
 
 class EngineRouter:
-    """Route a SEPARATION job (stems / stems-upgrade) to the engine named by params.engine (B-8):
+    """Route a SEPARATION job (stems / stems-upgrade) to the engine named by params.engine:
     'demucs' → DemucsProcessor, 'roformer' → RoformerProcessor. Defaults to 'demucs' when the param
     is absent, so a job from an older core (which sent no engine) still separates. An engine this
     worker was not built with raises — but that should never happen, because the CORE only routes a

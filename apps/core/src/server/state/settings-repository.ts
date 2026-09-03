@@ -1,4 +1,4 @@
-// Room-level separator settings (B-8). Read whole / written whole against the `room_settings`
+// Room-level separator settings. Read whole / written whole against the `room_settings`
 // singleton row. The shared `RoomSettings` type is the contract; `normalizeRoomSettings` gates every
 // write so an untrusted client payload degrades to defaults per-field rather than persisting garbage.
 

@@ -1,12 +1,12 @@
 // Worker registry — IN-MEMORY ONLY, rebuilt from dial-home reconnects, never persisted (§10).
 // A worker exists here only while it has a live WS session; on disconnect it's dropped and its
-// in-flight jobs are reclaimed by the reaper (M7-C2) via lease expiry. Tracks free slots so the
+// in-flight jobs are reclaimed by the reaper via lease expiry. Tracks free slots so the
 // dispatcher can pick the least-loaded eligible worker (§4).
 
 
 export interface WorkerSession {
 	workerId: string;
-	capabilities: string[]; // capability tokens (superset of JobType, e.g. 'stems:roformer') — B-8
+	capabilities: string[]; // capability tokens (superset of JobType, e.g. 'stems:roformer')
 	concurrency: number; // max simultaneous jobs this worker accepts
 	version: string;
 	slotsFree: number; // concurrency minus jobs currently assigned/running to it

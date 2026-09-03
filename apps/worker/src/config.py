@@ -123,7 +123,7 @@ class WorkerConfig:
     whisperx_device: str = "cpu"
 
     # ── lyrics ────────────────────────────────────────────────────────────────────
-    #: LRCLIB base URL. Configurable (B-3-C1) because reachability is a property of the BOX, not the
+    #: LRCLIB base URL. Configurable because reachability is a property of the BOX, not the
     #: project: lrclib.net is blocked on the owner's laptop but fine elsewhere. Point this at a proxy,
     #: or at a self-hosted LRCLIB built from their published DB dump — which suits a party box better
     #: than a live API call over party wifi anyway. Empty/unset keeps the public default.

@@ -1,4 +1,4 @@
-"""Lyrics ACQUISITION, separated from TIMING (B-3-C3).
+"""Lyrics ACQUISITION, separated from TIMING.
 
 whisperx.py used to conflate the two: stage 2 was hardwired to `LrclibClient.get()` and raised when
 it returned nothing, so "LRCLIB unreachable" meant "no lyrics" instead of "no AUTHORITATIVE lyrics".
@@ -42,7 +42,7 @@ class LyricsRequest:
     """Everything a source might need to find text for one song."""
 
     media_id: str
-    #: Confidence-gated canonicals from the core (B-3-C1). None when the parse was not confident —
+    #: Confidence-gated canonicals from the core. None when the parse was not confident —
     #: a source that needs them must decline rather than look up a guess.
     artist: str | None = None
     track: str | None = None
