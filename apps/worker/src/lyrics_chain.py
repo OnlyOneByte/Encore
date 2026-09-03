@@ -120,6 +120,58 @@ class LrclibSource:
         )
 
 
+class AsrSource:
+    """Transcribe what is ACTUALLY SUNG. The floor tier: needs nothing external and always applies.
+
+    Reads the isolated VOCALS STEM, never the mix — drums and guitar over a voice transcribe badly,
+    and the stem is already retained (~6 MB/song) for pitch extraction. That makes this tier depend on
+    a completed stems job, which is exactly why an align job is CHAINED after stems rather than
+    enqueued alongside it (see followUps in the core's dispatch.ts). If the stem is missing this tier
+    declines rather than falling back to the mix: quietly producing worse words would be
+    indistinguishable from producing good ones, and the whole point of provenance is that the
+    difference is visible.
+
+    Text confidence is always `low` — this is a guess at sung words, and `isAuthoritativeText` in
+    shared/lyrics.ts uses exactly that to keep it below any real lookup and to make the TV label it.
+
+    MEASURED, not assumed (2026-09-02, real stem, `base` on CPU): whisper's `transcribe()` returns
+    segment bounds and NO word timings, so this tier reports `line`. Word timings come from the SAME
+    forced aligner an LRCLIB lookup goes through — the aligner is not text-source-specific, it upgrades
+    any text from line to word. An earlier draft of this design claimed ASR yielded word timings for
+    free; it does not, and the tier is still worth having for the text and the agreement signal.
+    """
+
+    name = SOURCE_ASR
+
+    def __init__(self, transcriber: Any, normalize: Any) -> None:
+        self._transcriber = transcriber
+        self._normalize = normalize  # whisperx.normalize_lyrics, injected to avoid an import cycle
+
+    def fetch(self, req: LyricsRequest) -> LyricsText | None:
+        if not req.vocals_path:
+            return None  # stems not cooked yet — a later align run picks this up
+        try:
+            raw = self._transcriber.transcribe(req.vocals_path, None)
+        except Exception:  # noqa: BLE001 — no model / no network for the weights: a miss, not a failure
+            return None
+        doc = self._normalize(raw)
+        lines = doc.get("lines") or []
+        if not lines:
+            return None
+        # normalize_lyrics already produced the artifact shape; hand back its lines as segments so the
+        # timing layer sees word timings that are ALREADY there and keeps them.
+        return LyricsText(
+            text_source=SOURCE_ASR,
+            segments=[
+                {"start": l.get("start"), "end": l.get("end"), "text": l.get("text"), "words": l.get("words") or []}
+                for l in lines
+            ],
+            timing=TIMING_WORD if any(l.get("words") for l in lines) else TIMING_LINE,
+            text_confidence="low",
+            language=doc.get("language"),
+        )
+
+
 def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]:
     """Run EVERY source and return everything that yielded usable text.
 

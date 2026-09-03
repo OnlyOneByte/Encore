@@ -410,3 +410,143 @@ async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynce
                                       sources=[FakeSource(SOURCE_LRCLIB, untimed)])
     with pytest.raises(RuntimeError, match="nothing could be timed"):
         await drain(proc, spec(tmp_path))
+
+
+# ── B-3-C4: the ASR tier ───────────────────────────────────────────────────────
+from src.lyrics_chain import AsrSource  # noqa: E402
+
+
+class FakeTranscriber:
+    def __init__(self, out=None, boom=False):
+        self._out = out
+        self._boom = boom
+        self.calls: list[tuple[str, str | None]] = []
+
+    def transcribe(self, audio_path, language=None):
+        self.calls.append((audio_path, language))
+        if self._boom:
+            raise RuntimeError("no model / weights unavailable")
+        return self._out
+
+
+# REAL whisper `transcribe()` output shape: segments with start/end/text and NO words. Word timings
+# come from the separate align() pass, never from transcription — measured 2026-09-02 on a real stem.
+ASR_RAW = {
+    "language": "en",
+    "segments": [
+        {"start": 0.0, "end": 4.0, "text": "oh baby baby how was i supposed to know"},
+        {"start": 4.0, "end": 8.0, "text": "that something wasn't right here"},
+    ],
+}
+
+
+def test_asr_source_reads_the_VOCALS_stem_and_lets_whisper_detect_language():
+    t = FakeTranscriber(ASR_RAW)
+    got = AsrSource(t, whisperx.normalize_lyrics).fetch(
+        LyricsRequest(media_id="m1", audio_path="/mix.wav", vocals_path="/vocals.m4a")
+    )
+    assert t.calls == [("/vocals.m4a", None)]  # the STEM, not the mix; language auto-detected
+    assert got is not None and got.text_source == "asr"
+    # LINE, not word: transcription gives segment bounds only. The timing layer force-aligns this text
+    # to get word timings, exactly as it does for an LRCLIB lookup.
+    assert got.timing == TIMING_LINE
+    assert got.text_confidence == "low"  # never authoritative — the TV must label it
+    assert got.language == "en"
+
+
+def test_asr_source_declines_when_the_vocals_stem_is_not_cooked_yet():
+    """It does NOT fall back to the mixed audio: quietly producing worse words would be
+    indistinguishable from producing good ones."""
+    t = FakeTranscriber(ASR_RAW)
+    assert AsrSource(t, whisperx.normalize_lyrics).fetch(
+        LyricsRequest(media_id="m1", audio_path="/mix.wav", vocals_path=None)
+    ) is None
+    assert t.calls == []  # never even attempted
+
+
+def test_asr_source_declines_when_the_model_is_unavailable():
+    got = AsrSource(FakeTranscriber(boom=True), whisperx.normalize_lyrics).fetch(
+        LyricsRequest(media_id="m1", vocals_path="/vocals.m4a")
+    )
+    assert got is None  # a miss, not a job failure
+
+
+def test_asr_source_declines_on_an_empty_transcript_an_instrumental():
+    got = AsrSource(FakeTranscriber({"language": "en", "segments": []}), whisperx.normalize_lyrics).fetch(
+        LyricsRequest(media_id="m1", vocals_path="/vocals.m4a")
+    )
+    assert got is None
+
+
+@pytest.mark.asyncio
+async def test_DONE_WHEN_lrclib_dead_asr_still_yields_word_timed_lyrics(tmp_path):
+    """B-3's done-when, at the unit level: with LRCLIB declining, a cooked song still gets WORD-timed
+    lyrics on the TV — and they are marked low-confidence so the overlay can be honest."""
+    vocals = tmp_path / "derived" / "stems"
+    vocals.mkdir(parents=True)
+    (vocals / "m1-vocals.m4a").write_bytes(b"fake stem")
+
+    class DeadLrclib:
+        def get(self, *a, **k):
+            raise RuntimeError("DNS sinkhole")
+
+    proc = whisperx.WhisperXProcessor(
+        runner=fake_ytdlp_runner(),
+        lyrics_client=DeadLrclib(),
+        aligner=FakeAligner(),
+        transcriber=FakeTranscriber(ASR_RAW),
+    )
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    cands = done.artifacts["lyrics"]["candidates"]
+    assert [c["textSource"] for c in cands] == ["asr"]
+    # word timings come from force-aligning the ASR TEXT, not from transcription itself
+    assert cands[0]["timing"] == TIMING_WORD and cands[0]["textConfidence"] == "low"
+
+
+@pytest.mark.asyncio
+async def test_both_tiers_produce_candidates_when_lrclib_also_answers(tmp_path):
+    vocals = tmp_path / "derived" / "stems"
+    vocals.mkdir(parents=True)
+    (vocals / "m1-vocals.m4a").write_bytes(b"fake stem")
+    proc = whisperx.WhisperXProcessor(
+        runner=fake_ytdlp_runner(),
+        lyrics_client=fake_client(),
+        aligner=FakeAligner(),
+        transcriber=FakeTranscriber(ASR_RAW),
+    )
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    cands = done.artifacts["lyrics"]["candidates"]
+    assert {c["textSource"] for c in cands} == {"lrclib", "asr"}
+    # the back-compat pointer prefers the AUTHORITATIVE one, not the ASR guess
+    assert done.media_uri.endswith("m1-lrclib.json")
+
+
+def test_asr_KEEPS_word_timings_if_a_transcriber_ever_supplies_them():
+    """Defensive: real whisper transcribe() has no words, but a different backend might. Then the
+    timing layer should keep them rather than re-aligning."""
+    raw = {"language": "en", "segments": [
+        {"start": 0.0, "end": 1.0, "text": "hello there",
+         "words": [{"word": "hello", "start": 0.0, "end": 0.5}, {"word": "there", "start": 0.5, "end": 1.0}]}]}
+    got = AsrSource(FakeTranscriber(raw), whisperx.normalize_lyrics).fetch(
+        LyricsRequest(media_id="m1", vocals_path="/v.m4a"))
+    assert got is not None and got.timing == TIMING_WORD
+
+
+@pytest.mark.asyncio
+async def test_asr_text_is_FORCE_ALIGNED_to_get_word_timings(tmp_path):
+    """The whole reason the aligner is not ASR-specific: it upgrades ANY text — looked-up or
+    transcribed — from line to word timings."""
+    vocals = tmp_path / "derived" / "stems"
+    vocals.mkdir(parents=True)
+    (vocals / "m1-vocals.m4a").write_bytes(b"stem")
+    aligner = FakeAligner()
+
+    class DeadLrclib:
+        def get(self, *a, **k):
+            raise RuntimeError("dead")
+
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=DeadLrclib(),
+                                      aligner=aligner, transcriber=FakeTranscriber(ASR_RAW))
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    assert aligner.calls, "the ASR text must be handed to the aligner"
+    assert done.artifacts["lyrics"]["candidates"][0]["timing"] == TIMING_WORD

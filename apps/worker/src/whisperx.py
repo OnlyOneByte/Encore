@@ -33,6 +33,7 @@ from .lyrics_chain import (
     SOURCE_ASR,
     TIMING_LINE,
     TIMING_WORD,
+    AsrSource,
     LrclibSource,
     LyricsRequest,
     LyricsSource,
@@ -129,6 +130,55 @@ def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str,
     return []
 
 
+# ── the transcriber seam (B-3-C4) ─────────────────────────────────────────────────────
+class Transcriber(Protocol):
+    """ASR: invent the text from audio. Mirrors `Aligner` — same shape out, injectable, raising means
+    "this tier missed" rather than "the job failed".
+
+    Distinct from the aligner on purpose. Alignment places timings on text we already trust; ASR
+    GUESSES the words, so its output is never authoritative no matter how confident the model sounds.
+    It earns its place anyway because it is the only tier that needs nothing external, it yields
+    WORD timings directly, and comparing its transcript against an authoritative lookup is the only
+    signal that catches a confidently wrong LRCLIB match (see agreementScore in shared/lyrics.ts).
+    """
+
+    def transcribe(self, audio_path: str, language: str | None = None) -> dict[str, Any]: ...
+
+
+class WhisperxTranscriber:
+    """Real ASR via faster-whisper through whisperx.load_model().transcribe().
+
+    Runs on the VOCALS STEM, not the mix — see AsrSource. `language=None` lets whisper DETECT the
+    language, which is worth more than the caller's guess: nothing populates the sidecar's language
+    field today, so the alternative is a hardcoded 'en'.
+    """
+
+    def __init__(self, device: str = "cpu", model: str = DEFAULT_MODEL, compute_type: str | None = None) -> None:
+        self._device = device
+        self._model_name = model
+        # int8 on CPU: float16 is a GPU format and faster-whisper refuses it on CPU.
+        self._compute_type = compute_type or ("float16" if device.startswith("cuda") else "int8")
+        self._model: Any = None
+
+    def _load(self) -> Any:
+        if self._model is None:
+            import whisperx  # lazy: multi-GB torch stays off the import path until this tier runs
+
+            self._model = whisperx.load_model(
+                self._model_name, self._device, compute_type=self._compute_type
+            )
+        return self._model
+
+    def transcribe(self, audio_path: str, language: str | None = None) -> dict[str, Any]:
+        import whisperx
+
+        audio = whisperx.load_audio(audio_path)
+        out = self._load().transcribe(audio, language=language)
+        if language and not out.get("language"):
+            out["language"] = language
+        return out
+
+
 # ── the aligner seam (injectable so the flow tests with NO torch) ─────────────────────
 class Aligner(Protocol):
     """Force-align KNOWN text to audio. Given [{start,end,text}] segments + an audio path, return a
@@ -183,6 +233,7 @@ class WhisperXProcessor:
         device: str = "cpu",
         lyrics_client: LrclibClient | None = None,
         aligner: Aligner | None = None,
+        transcriber: Transcriber | None = None,
         model: str = DEFAULT_MODEL,
         lrclib_base: str = LRCLIB_BASE,
         sources: list[LyricsSource] | None = None,
@@ -194,6 +245,7 @@ class WhisperXProcessor:
         self._lrclib_base = lrclib_base
         self._lyrics_client = lyrics_client  # None → constructed lazily (real LRCLIB)
         self._aligner = aligner  # None → constructed lazily (real WhisperX)
+        self._transcriber = transcriber  # None → constructed lazily (real faster-whisper)
         # None → the default chain, built lazily (B-3-C3). Injecting FAKE sources is how the whole
         # acquisition+timing flow tests with no network and no ML.
         self._sources = sources
@@ -208,8 +260,16 @@ class WhisperXProcessor:
         in B-3-C4, and captions in B-3-C7. Order is informational only — `acquire` runs them ALL and
         `pickBestLyrics` (TS) decides what the TV shows."""
         if self._sources is None:
-            self._sources = [LrclibSource(self._client(), lrclib_to_segments)]
+            self._sources = [
+                LrclibSource(self._client(), lrclib_to_segments),
+                AsrSource(self._get_transcriber(), normalize_lyrics),
+            ]
         return self._sources
+
+    def _get_transcriber(self) -> Transcriber:
+        if self._transcriber is None:
+            self._transcriber = WhisperxTranscriber(device=self._device, model=self._model)
+        return self._transcriber
 
     def _get_aligner(self) -> Aligner:
         if self._aligner is None:
