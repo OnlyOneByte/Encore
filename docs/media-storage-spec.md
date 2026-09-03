@@ -237,8 +237,14 @@ image; on a lean host the work belongs to the worker.
 - `ENCORE_MEDIA_MAX_GB` (default unset = unlimited) — a party box must not silently delete.
 - Over the cap, evict **derived-only**, least-recently-used first, never touching `audio` or `meta`.
   A song stays in the library and re-cooks on demand; that is a delay, not a loss.
-- Recency currently falls back to `addedAt`, because play tracking is not wired
-  (`library.lastPlayedAt` is never incremented) — so it is oldest-added-first today. Worth upgrading.
+- Recency is a **true LRU signal**: `library.playCount` / `library.lastPlayedAt` are updated when the
+  current entry actually changes, so a song added months ago and sung last night outranks one added
+  yesterday and never played. `addedAt` remains the fallback for a song that has never been sung.
+  The hook is `emitNowPlaying` — the one choke point every playback transition funnels through — and
+  the tracker dedupes on ENTRY id, because that emit is also re-broadcast *without* a change when a
+  cook finishes (so the TV preloads the ready song). Deduping on entry rather than media is
+  deliberate: the same song queued twice is two real plays, one entry re-emitted five times is one.
+  Plays are written to the sidecar only — no migration, and nothing else needs the number.
 - `work/` is deleted on job completion by the WORKER (not the core — see §5).
 - Raw `audio` is never auto-deleted. Note that pre-policy `audio/` is still WAV (~494 MB here);
   re-encoding it would reclaim ~8x but costs a second lossy generation on the only unrecoverable
