@@ -223,8 +223,16 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
 
     by_type: dict[str, Processor] = {}
     if "stems" in cfg.capabilities or "score" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
+        from .backends import resolve_backend
         from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
         from .processor import EngineRouter
+        from .vocabulary import Backend, Engine
+
+        # Resolve HOW separation executes here before building anything. An explicitly configured
+        # backend that is unavailable raises, so a misconfigured deployment fails at startup instead
+        # of cooking on CPU at a fraction of the expected speed.
+        choice = resolve_backend(cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.demucs_device)
+        print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
 
         demucs = DemucsProcessor(
             model=cfg.demucs_model,
@@ -233,7 +241,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             ffmpeg_bin=cfg.ffmpeg_bin,
             bitrate=cfg.stem_bitrate,
             flac_level=cfg.flac_level,
-            device=cfg.demucs_device,
+            device=choice.device,
             jobs=cfg.demucs_jobs,
             overlap=cfg.demucs_overlap,
             segment=cfg.demucs_segment,
@@ -245,7 +253,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         if "stems:roformer" in cfg.capabilities:
             from .roformer import RoformerProcessor
 
-            by_engine["roformer"] = RoformerProcessor(device=cfg.demucs_device, flac_level=cfg.flac_level)
+            by_engine["roformer"] = RoformerProcessor(device=choice.device, flac_level=cfg.flac_level)
 
         router = EngineRouter(by_engine)
         by_type["stems"] = router
