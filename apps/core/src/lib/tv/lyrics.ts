@@ -80,12 +80,38 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 // exists, with no re-cook and no second ML pass. The artifact keeps whisper's raw segmentation, which
 // is honest provenance; how it reads on a TV is a presentation concern.
 
+/**
+ * How far AHEAD of the audio the highlight runs, in seconds.
+ *
+ * WhisperX word timings are true onsets/offsets — `align()` is wav2vec2 CTC forced alignment, so
+ * `start` is where the word begins, not its middle, and the vocals stem shares the mix's timeline.
+ * The overlay still reads as "behind" without a lead, for two reasons that both want this knob:
+ *
+ *   1. A singer must SEE the word before singing it. Lighting it exactly at its onset is already late;
+ *      commercial karaoke leads the vocal by a few hundred ms for the same reason.
+ *   2. CTC onsets on sustained sung vowels tend to land slightly late, since the model anchors on the
+ *      clearest part of the phoneme rather than its attack.
+ *
+ * Applied at DISPLAY time, not baked into the artifact: the artifact should stay a faithful record of
+ * where the words actually are, and this is a presentation preference that can be retuned per room
+ * without recomputing anything.
+ */
+export const LYRICS_LEAD_SEC = 0.3;
+
 /** A gap at least this long between two words reads as a line break. */
 export const LINE_GAP_SEC = 0.45;
 /** Even with no pause, break a run longer than this so a line never wraps to three rows. */
 export const LINE_MAX_CHARS = 42;
 /** Only resegment when the timed words actually cover the line's text (see below). */
 const COVERAGE_MIN = 0.8;
+/**
+ * A single-word line sung for less than this gets folded into an adjacent line.
+ *
+ * Splitting purely on pauses produces these: a held note or a breath after one word ("Yeah", "Oh")
+ * becomes its own line, which flashes past too fast to read and steals a whole row of the reel from
+ * the words actually being sung. The word is not wrong, it just does not deserve a line.
+ */
+export const ORPHAN_MAX_SEC = 1.0;
 
 function lineFromWords(words: LyricWord[]): LyricLine {
 	return {
@@ -128,8 +154,59 @@ export function resegmentLine(
 		cur.push(w);
 	}
 	if (cur.length) out.push(lineFromWords(cur));
-	return out.length ? out : [line];
+	return out.length ? coalesceOrphans(out) : [line];
 }
+
+/**
+ * Fold away single-word lines that own the screen for under `ORPHAN_MAX_SEC`, merging each into
+ * whichever neighbour it is CLOSER TO IN TIME (previous wins a tie).
+ *
+ * Nearest-in-time rather than always-previous, because both directions occur and the gaps say which:
+ *   • "...I don't belong | here"      → "here" is the tail of the phrase before it, so it merges BACK
+ *   • "I | want a perfect body."      → "I" is the head of the phrase after it, so it merges FORWARD
+ * Always appending to the previous line would produce "I want to have control. I", which is worse than
+ * the row it was trying to remove. The pause lengths already encode which phrase the word belongs to.
+ *
+ * A merge can push a line past `LINE_MAX_CHARS`, and that is the right trade: one extra short word on
+ * an existing line reads far better than a row that flashes "Yeah" for 800ms.
+ */
+function coalesceOrphans(input: LyricLine[]): LyricLine[] {
+	if (input.length < 2) return input;
+	const lines = [...input]; // local copy: the forward-merge rewrites the next entry as it goes
+	const out: LyricLine[] = [];
+	for (let i = 0; i < lines.length; i++) {
+		const l = lines[i]!;
+		const prev = out[out.length - 1];
+		const next = lines[i + 1];
+		/*
+		 * The word's own SUNG duration, not the time until the next line starts. Measuring to the next
+		 * line counted trailing silence, so a word followed by a long pause scored as a long-lived line
+		 * and survived — but silence does not make a lone word read any better. Duration also gets the
+		 * genuine case right: a note HELD for two seconds is a real lyric line and keeps its row.
+		 */
+		// Read timings off the WORDS, not the line bounds: LyricLine.start/end are nullable (a parsed
+		// line need not carry them) whereas a word is only kept when both are finite.
+		const first = l.words[0];
+		const sung = first ? first.end - first.start : Infinity;
+		if (l.words.length !== 1 || sung >= ORPHAN_MAX_SEC || (!prev && !next) || !first) {
+			out.push(l);
+			continue;
+		}
+		const prevEnd = prev?.words[prev.words.length - 1]?.end ?? prev?.end ?? null;
+		const nextStart = next?.words[0]?.start ?? next?.start ?? null;
+		const gapBefore = prevEnd === null ? Infinity : first.start - prevEnd;
+		const gapAfter = nextStart === null ? Infinity : nextStart - first.end;
+		if (gapBefore <= gapAfter) {
+			out.push(lineFromWords([...out.pop()!.words, ...l.words])); // merge BACK
+		} else {
+			// merge FORWARD: carry the word into the next line as we reach it
+			lines[i + 1] = lineFromWords([...l.words, ...next!.words]);
+		}
+	}
+	return out;
+}
+
+
 
 /** [start,end] of a line — its own bounds, else derived from its first/last word. null if unknown. */
 export function lineBounds(line: LyricLine): [number, number] | null {

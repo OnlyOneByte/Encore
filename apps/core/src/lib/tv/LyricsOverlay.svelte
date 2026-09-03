@@ -9,6 +9,7 @@
 		activeWordIndex,
 		lyricsNotice,
 		isAutoTranscribed,
+		LYRICS_LEAD_SEC,
 		type LyricsDoc,
 		type LyricsProvenance
 	} from './lyrics';
@@ -25,6 +26,8 @@
 		 * which is rendered exactly like verified text: we will not assert either way.
 		 */
 		provenance?: LyricsProvenance | null;
+		/** Seconds to run the highlight AHEAD of the audio — see LYRICS_LEAD_SEC for why. */
+		leadSec?: number;
 	}
 	let {
 		lyricsRef,
@@ -32,7 +35,8 @@
 		positionSec,
 		playing = true,
 		visible = true,
-		provenance = null
+		provenance = null,
+		leadSec = LYRICS_LEAD_SEC
 	}: Props = $props();
 
 	let fetched = $state<LyricsDoc | null>(null);
@@ -87,38 +91,72 @@
 		return () => cancelAnimationFrame(raf);
 	});
 
-	const lineIdx = $derived(doc ? activeLineIndex(doc.lines, displayPos) : -1);
+	// The position the HIGHLIGHT uses: the real playback position plus the lead. displayPos itself stays
+	// honest so anything else reading it is unaffected.
+	const cuePos = $derived(displayPos + leadSec);
+	const lineIdx = $derived(doc ? activeLineIndex(doc.lines, cuePos) : -1);
 	const curLine = $derived(doc && lineIdx >= 0 ? doc.lines[lineIdx] : null);
 	const nextLine = $derived(
 		doc && lineIdx >= 0 && lineIdx + 1 < doc.lines.length ? doc.lines[lineIdx + 1] : null
 	);
-	const ballWord = $derived(curLine ? activeWordIndex(curLine, displayPos) : -1);
+	const ballWord = $derived(curLine ? activeWordIndex(curLine, cuePos) : -1);
 	const show = $derived(visible && !!curLine);
 	const notice = $derived(lyricsNotice(provenance));
+	// Reel scrolling: measure where the current row sits and centre it. Measured (not row*height) so a
+	// wrapped line cannot drift the whole column out of alignment.
+	let viewportEl = $state<HTMLElement | null>(null);
+	let reelEl = $state<HTMLElement | null>(null);
+	let reelOffset = $state(0);
+	function measureReel() {
+		const row = reelEl?.querySelector<HTMLElement>('.row.current');
+		if (!row || !viewportEl) return;
+		reelOffset = -(row.offsetTop + row.offsetHeight / 2 - viewportEl.clientHeight / 2);
+	}
+	$effect(() => {
+		void lineIdx; // re-measure on every line change
+		measureReel();
+	});
+	// Re-measure on any SIZE change too, not just a line change. A row's height is not constant: the
+	// current row renders inline-block word spans while the others render plain text, so the column's
+	// geometry shifts the moment a line becomes current — which silently drifted the reel out of centre
+	// (caught by measuring: ~11px per change, accumulating over a song). Also covers window resize and
+	// late font loading.
+	$effect(() => {
+		if (!reelEl) return;
+		const ro = new ResizeObserver(() => measureReel());
+		ro.observe(reelEl);
+		return () => ro.disconnect();
+	});
 	const unverified = $derived(isAutoTranscribed(provenance));
 </script>
 
-{#if show && curLine}
+{#if show && doc && curLine}
 	<div class="lyrics" class:unverified role="presentation">
-		<div class="line current">
-			{#if curLine.words.length}
-				{#each curLine.words as w, i (i)}
-					<span
-						class="word"
-						class:done={displayPos >= w.end}
-						class:active={i === ballWord}
-					>
-						{#if i === ballWord}<span class="ball" aria-hidden="true">●</span>{/if}{w.word}
-					</span>{' '}
+		<!--
+			A SCROLLING REEL, not a two-slot swap. Previously the current line was replaced in place and
+			the "next" line jumped up into it, which read as a hard cut on every line change. Here every
+			line is a persistent keyed node in one column and only the column's transform changes, so the
+			browser animates the scroll for free and the singer keeps the line they just sang in view.
+			The offset is MEASURED from the DOM rather than computed as rows x height, because a long
+			lyric can still wrap to two rows and fixed-height maths would drift out of alignment.
+		-->
+		<div class="viewport" bind:this={viewportEl}>
+			<div class="reel" bind:this={reelEl} style="transform: translateY({reelOffset}px)">
+				{#each doc.lines as l, i (i)}
+					<div class="row" class:current={i === lineIdx} class:past={i < lineIdx}>
+						{#if i === lineIdx && l.words.length}
+							{#each l.words as w, wi (wi)}
+								<span class="word" class:done={cuePos >= w.end} class:active={wi === ballWord}>
+									{#if wi === ballWord}<span class="ball" aria-hidden="true">●</span>{/if}{w.word}
+								</span>{' '}
+							{/each}
+						{:else}
+							{l.text}
+						{/if}
+					</div>
 				{/each}
-			{:else}
-				<!-- line-sync fallback (no per-word timings): light the whole line while it's active -->
-				<span class="word done">{curLine.text}</span>
-			{/if}
+			</div>
 		</div>
-		{#if nextLine}
-			<div class="line next">{nextLine.text}</div>
-		{/if}
 		{#if notice}
 			<!-- Small and permanent rather than a one-off toast: a singer who glances up mid-song still
 			     needs to know these words are a guess. -->
@@ -149,7 +187,7 @@
 	/* Unverified text is set in italic — a persistent, glanceable signal that costs no space and does
 	   not compete with the sweep. Deliberately NOT dimmed: these are still the words to sing from, so
 	   making them harder to read would punish the singer for a provenance problem. */
-	.lyrics.unverified .line.current { font-style: italic; }
+	.lyrics.unverified .row.current { font-style: italic; }
 	/*
 	 * Pinned to the BOTTOM EDGE and sized in rem.
 	 *
@@ -171,25 +209,61 @@
 		color: rgba(255, 255, 255, 0.72);
 		font-style: normal;
 	}
-	.line {
+	/*
+	 * Uniform row size, differentiated by COLOUR not scale. Growing the current line would reflow the
+	 * column mid-animation and fight the transform; keeping every row the same height makes the scroll
+	 * exact, and pink/white against grey is already a stronger cue than size.
+	 */
+	.viewport {
+		font-size: 3.1rem;
+		font-weight: 800;
+		width: 100%;
 		/*
-		 * Loose leading is LOAD-BEARING, not decoration: the bouncing ball is absolutely positioned
-		 * above its word, so at tight leading it landed on top of the previous WRAPPED line ("this" in
-		 * "Is this the"). Long lyric lines wrap often, so the clearance has to come from the line box
-		 * itself — a gap between the current/next blocks does nothing for a wrap inside one line.
-		 * Verified by measuring ball vs word rects, not by eye.
+		 * FIVE rows: two sung lines above, the current one, two upcoming below — enough context to see
+		 * the shape of the verse coming instead of one line at a time. Rows are 1.9em (line-height), so
+		 * 5 x 1.9 = 9.5em.
+		 *
+		 * The mask fades the OUTER rows rather than clipping them, which is what makes the reel read as
+		 * a continuous scroll: a line dims away as it leaves instead of vanishing at a hard edge.
+		 */
+		height: 9.5em;
+		overflow: hidden;
+		mask-image: linear-gradient(
+			to bottom,
+			transparent 0%,
+			rgba(0, 0, 0, 0.35) 13%,
+			#000 32%,
+			#000 68%,
+			rgba(0, 0, 0, 0.35) 87%,
+			transparent 100%
+		);
+		-webkit-mask-image: linear-gradient(
+			to bottom,
+			transparent 0%,
+			rgba(0, 0, 0, 0.35) 13%,
+			#000 32%,
+			#000 68%,
+			rgba(0, 0, 0, 0.35) 87%,
+			transparent 100%
+		);
+	}
+	.reel {
+		/* the whole animation: one transform, GPU-composited, never touching layout */
+		transition: transform 0.42s cubic-bezier(0.22, 0.9, 0.24, 1);
+		will-change: transform;
+	}
+	.row {
+		/*
+		 * Loose leading is LOAD-BEARING: the ball is absolutely positioned above its word, so at tight
+		 * leading it landed on the previous wrapped line ("this" in "Is this the").
 		 */
 		line-height: 1.9;
-		max-width: 90%;
+		max-width: 100%;
+		color: rgba(255, 255, 255, 0.34); /* upcoming lines */
+		transition: color 0.3s ease;
 	}
-	.current {
-		font-size: 3.6rem;
-		font-weight: 800;
-	}
-	.next {
-		font-size: 1.9rem;
-		font-weight: 700;
-		color: rgba(255, 255, 255, 0.42);
+	.row.past {
+		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
 	}
 	.word {
 		position: relative;
