@@ -129,7 +129,7 @@ export class WorkerHub {
 		markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental);
 		// Attach word-timed lyrics if the job carried an align artifact (M8-C2 TV overlay). Additive:
 		// a stems-only complete leaves lyrics absent; an align complete populates lyricsRef.
-		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById);
+		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);
 		// Attach the reference pitch track if a score job carried it (M8-C3 mic scoring). Additive.
 		setMediaPitch(job.mediaId, msg.artifacts?.pitch?.uri, this.#d.mediaById);
 		// B-1: persist the cooked media NOW (stems key + lyrics + pitch), so a restart finds the

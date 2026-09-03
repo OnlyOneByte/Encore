@@ -6,7 +6,7 @@
 import { eq, and, desc, asc, sql, isNotNull } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
-import type { Media } from '@encore/shared';
+import type { Media, LyricsCandidate } from '@encore/shared';
 
 type MediaRow = typeof media.$inferInsert;
 
@@ -25,10 +25,23 @@ const toRow = (m: Media): MediaRow => ({
 	playMode: m.playMode,
 	instrumentalRef: m.instrumentalRef ?? null,
 	lyricsRef: m.lyricsRef ?? null,
+	// JSON blob, not a table: nothing queries inside the set (B-3-C5).
+	lyricsCandidates: m.lyricsCandidates?.length ? JSON.stringify(m.lyricsCandidates) : null,
 	pitchRef: m.pitchRef ?? null,
 	artistCanonical: m.artistCanonical ?? null,
 	titleCanonical: m.titleCanonical ?? null
 });
+
+/** Parse the stored candidate JSON, tolerating null/garbage — a corrupt blob must not brick a hydrate. */
+function parseCandidates(raw: string | null): LyricsCandidate[] | undefined {
+	if (!raw) return undefined;
+	try {
+		const parsed = JSON.parse(raw);
+		return Array.isArray(parsed) && parsed.length ? (parsed as LyricsCandidate[]) : undefined;
+	} catch {
+		return undefined;
+	}
+}
 
 const fromRow = (r: typeof media.$inferSelect): Media => ({
 	id: r.id,
@@ -42,6 +55,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	playMode: r.playMode,
 	instrumentalRef: r.instrumentalRef ?? undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
+	lyricsCandidates: parseCandidates(r.lyricsCandidates),
 	pitchRef: r.pitchRef ?? undefined,
 	artistCanonical: r.artistCanonical ?? undefined,
 	titleCanonical: r.titleCanonical ?? undefined

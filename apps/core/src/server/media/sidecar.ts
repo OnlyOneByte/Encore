@@ -18,12 +18,16 @@
 
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Media } from '@encore/shared';
+import type { Media, LyricsCandidate } from '@encore/shared';
+import { pickBestLyrics } from '@encore/shared';
 import { metaDir } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 
 /** Bump when the on-disk shape changes incompatibly. Readers tolerate older schemas. */
-export const SIDECAR_SCHEMA = 1;
+// 2 (B-3-C5): `artifacts.lyricsCandidates` added. `artifacts.lyrics` keeps its meaning — the CHOSEN
+// ref — so a schema-1 record still reads correctly; it simply has no provenance, which we report as
+// unknown rather than inventing.
+export const SIDECAR_SCHEMA = 2;
 
 /** How a derived field was obtained. Mirrors the lyrics chain's provenance idea (B-3) on purpose. */
 export interface FieldProvenance {
@@ -56,7 +60,15 @@ export interface MediaSidecar {
 		instrumental: string | null;
 		vocals: string | null;
 		pitch: string | null;
+		/** The CHOSEN lyrics ref (whichever candidate pickBestLyrics selected). */
 		lyrics: string | null;
+		/**
+		 * Every lyrics artifact this song has, one per text source (B-3-C5). Authoritative here rather
+		 * than in the DB, per B-7's rule that the sidecar is the record and the index is rebuildable —
+		 * and this is what makes re-alignment possible later without re-fetching audio. Absent on
+		 * schema-1 records.
+		 */
+		lyricsCandidates?: LyricsCandidate[];
 	};
 	library: {
 		tags: string[];
@@ -116,7 +128,11 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			instrumental: m.instrumentalRef ?? prev?.artifacts.instrumental ?? null,
 			vocals: prev?.artifacts.vocals ?? null,
 			pitch: m.pitchRef ?? prev?.artifacts.pitch ?? null,
-			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null
+			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null,
+			// Keep whatever the runtime knows, else whatever a prior write knew — an index-only hydrate
+			// (no sidecar read) leaves lyricsCandidates undefined, and losing the set on that write would
+			// silently destroy the upgrade path B-3-C5 exists for.
+			lyricsCandidates: m.lyricsCandidates ?? prev?.artifacts.lyricsCandidates
 		},
 		library: {
 			tags: prev?.library.tags ?? [],
@@ -152,7 +168,8 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		stemStatus: cooked ? 'ready' : 'none',
 		playMode: cooked ? 'file' : 'iframe',
 		instrumentalRef: s.artifacts.instrumental ?? undefined,
-		lyricsRef: s.artifacts.lyrics ?? undefined,
+		lyricsRef: chosenLyricsRef(s),
+		lyricsCandidates: s.artifacts.lyricsCandidates,
 		pitchRef: s.artifacts.pitch ?? undefined,
 		// Carry the confidence-gated canonicals so a RESTORED media is immediately complete. The boot
 		// sync pass mirrors these into the index too, but an align job dispatched before that pass ran
@@ -160,6 +177,19 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		artistCanonical: browseArtist(s) ?? undefined,
 		titleCanonical: lookupTitle(s) ?? undefined
 	};
+}
+
+/**
+ * Which lyrics artifact a restored song should show (B-3-C5).
+ *
+ * RE-PICKS from the candidate set rather than trusting the stored `lyrics` pointer, so a ranking change
+ * (or a candidate written by an older worker that mis-chose) is corrected on the next restore instead
+ * of being frozen into the record. Falls back to the stored pointer for schema-1 records, which have no
+ * candidates — those still work, they just carry no provenance.
+ */
+export function chosenLyricsRef(s: MediaSidecar): string | undefined {
+	const best = pickBestLyrics(s.artifacts.lyricsCandidates ?? []);
+	return best?.ref ?? s.artifacts.lyrics ?? undefined;
 }
 
 /** The browse-safe canonical artist: null when we only guessed (see track-title.ts). */

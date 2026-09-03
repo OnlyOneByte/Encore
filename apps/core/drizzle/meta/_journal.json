@@ -57,6 +57,13 @@
       "when": 1788399012407,
       "tag": "0007_daffy_black_panther",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788400962516,
+      "tag": "0008_mean_outlaw_kid",
+      "breakpoints": true
     }
   ]
 }

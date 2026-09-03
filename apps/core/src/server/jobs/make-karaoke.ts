@@ -5,7 +5,8 @@
 // The phone "make karaoke" button (M7-C7) calls this; the worker pipeline (M7-C3/C4/C5) does the
 // work; worker-hub flips the media to ready on completion. See MASTER-DESIGN §4, §6.
 
-import type { Job, Media, QueueEntry } from '@encore/shared';
+import type { Job, Media, QueueEntry, LyricsCandidate } from '@encore/shared';
+import { mergeLyricsCandidate, pickBestLyrics } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
@@ -129,10 +130,38 @@ export function markMediaReady(mediaId: string, mediaById: Map<string, Media>, r
  * `safeMediaPath` rejects any ref starting with "/" — so storing the raw uri meant the overlay could
  * never fetch an artifact that existed on disk. `setMediaPitch` starved mic scoring the same way.
  */
-export function setMediaLyrics(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
+export function setMediaLyrics(
+	mediaId: string,
+	uri: string | undefined,
+	mediaById: Map<string, Media>,
+	candidates?: LyricsCandidate[]
+): boolean {
 	const media = mediaById.get(mediaId);
+	if (!media) return false;
+
+	// B-3-C5: an align job now reports EVERY artifact it produced, one per text source. Merge them into
+	// the stored set and let pickBestLyrics choose — never "last write wins", which is what would let a
+	// later line-level source silently replace existing word timings.
+	if (candidates?.length) {
+		let merged = media.lyricsCandidates ?? [];
+		for (const c of candidates) {
+			const ref = toRelativeKey(c.ref);
+			if (!ref) continue; // workers report absolute paths; safeMediaPath rejects those (B-7-C2)
+			merged = mergeLyricsCandidate(merged, { ...c, ref });
+		}
+		media.lyricsCandidates = merged;
+		const best = pickBestLyrics(merged);
+		// Only move the pointer if something is actually showable; a set of unusable candidates must not
+		// clear a working lyricsRef.
+		if (best) {
+			media.lyricsRef = best.ref;
+			return true;
+		}
+	}
+
+	// No candidates (an older worker, or a job that only reported `uri`) → the pre-B-3 single-ref path.
 	const ref = toRelativeKey(uri);
-	if (!media || !ref) return false;
+	if (!ref) return false;
 	media.lyricsRef = ref;
 	return true;
 }

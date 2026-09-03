@@ -45,6 +45,11 @@ export const media = sqliteTable('media', {
 	// back with it: without these, a library song would replay with stems but silently lose its
 	// word-timed lyrics overlay (M8-C2) and its scoring reference track (M8-C3) after a restart.
 	lyricsRef: text('lyrics_ref'),
+	// The lyrics candidate SET as JSON (B-3-C5). The sidecar is authoritative; this is the index copy so
+	// a hydrate that has not read meta/ yet still knows each artifact's provenance — without it the TV
+	// would show auto-transcribed words unlabelled until the async sidecar pass caught up. Nothing
+	// queries inside it, so one JSON column beats a candidates table.
+	lyricsCandidates: text('lyrics_candidates'),
 	pitchRef: text('pitch_ref'),
 	// Canonical metadata for BROWSE (B-7-C4). Derived by the track-title normalizer and mirrored here
 	// from the authoritative sidecar, because grouping the library by `artist` is useless — that column

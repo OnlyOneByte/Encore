@@ -695,9 +695,18 @@ because its only real acceptance test is audible and needs the owner in the room
         profile the ranking assumes. Cost: ~31 s of ASR + one align pass on top of ~87 s of Demucs.
         Environment wrinkle: `torchcodec` logs `libavutil.{56,57}.dylib` dlopen failures and falls back
         cleanly — noisy, not fatal. 8 tests. Also corrected the tier table above from measurement.
-  - [ ] **B-3-C5 · multi-candidate storage + `chosen` threading.** Sidecar `artifacts.lyrics` set
-        (a `schema` bump, with a read path for old single-ref records), `setMediaLyrics` → set
-        semantics, `Media` carries the chosen ref + provenance. **AUTO**
+  - [x] **B-3-C5 · multi-candidate storage + `chosen` threading.** DONE. `Media.lyricsCandidates` +
+        `chosenCandidate(media)` (provenance is DERIVED from the candidate whose ref matches
+        `lyricsRef` — no redundant fields to drift). `setMediaLyrics` now merges a reported set and
+        re-picks with `pickBestLyrics`, normalising the absolute paths workers report, and refuses to
+        clear a working `lyricsRef` when nothing in a new set is showable. Sidecar
+        `artifacts.lyricsCandidates` at **schema 2** (schema-1 records still resolve via the stored
+        pointer, reporting provenance as UNKNOWN rather than inventing one); `chosenLyricsRef()`
+        RE-PICKS on restore so a ranking change corrects itself instead of freezing into the record.
+        Index copy as one JSON column (migration `0008`) since nothing queries inside the set, with a
+        tolerant parse so a corrupt blob cannot brick a hydrate. 9 tests, incl. the regression guard
+        (a late line-level source cannot displace stored word timings) and the index-only-rewrite case
+        that would otherwise silently destroy the set. **AUTO**
   - [ ] **B-3-C6 · TV honesty + the line-sync floor.** Overlay distinguishes authoritative from
         auto-transcribed and renders line-level as a stanza scroll. **AUTO** + **EYES-ON** via `/components`.
   - [ ] **B-3-C7 · captions tier + re-align-on-better-text** (the upgrade path C5 makes possible).
