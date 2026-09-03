@@ -8,7 +8,7 @@ fails loudly, fails silently, or keeps working:
   - every rejection must be reported in `warnings`, because config that is silently ignored is worse
     than config that is refused.
 """
-from src.config import WorkerConfig
+from src.config import WorkerConfig, auto_demucs_jobs
 from src import demucs
 
 
@@ -17,7 +17,7 @@ def test_defaults_are_the_shipped_behaviour():
     assert c.capabilities == ("stems",)
     assert c.concurrency == 1
     assert c.demucs_model == "htdemucs"
-    assert c.demucs_jobs == 1
+    assert c.demucs_jobs == auto_demucs_jobs()  # scales with the box, not a hardcoded guess
     assert c.stem_bitrate == "192k"
     # unset = let the tool decide; we do not invent a value
     assert c.demucs_device is None
@@ -49,10 +49,20 @@ def test_every_perf_knob_is_settable():
     assert c.warnings == ()
 
 
+def test_auto_jobs_scales_with_cores_and_never_ooms_a_small_box():
+    # Each job holds its own model copy, so the default must not assume a big machine.
+    assert auto_demucs_jobs(1) == 1
+    assert auto_demucs_jobs(4) == 1
+    assert auto_demucs_jobs(8) == 1
+    assert auto_demucs_jobs(16) == 2
+    assert auto_demucs_jobs(32) == 4
+    assert auto_demucs_jobs(128) == 4, "capped: measured gains are flat past 4"
+
+
 def test_garbage_falls_back_and_is_REPORTED_never_silently_zero():
     c = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "banana", "ENCORE_DEMUCS_JOBS": "0"})
     assert c.concurrency == 1, "a worker that accepts no jobs looks like a network fault"
-    assert c.demucs_jobs == 1
+    assert c.demucs_jobs == auto_demucs_jobs()
     assert len(c.warnings) == 2
     assert any("banana" in w for w in c.warnings)
 
@@ -66,7 +76,7 @@ def test_out_of_range_values_are_ignored_not_clamped_silently():
 def test_shifts_may_be_zero_but_jobs_may_not():
     # shifts=0 is meaningful (no shift averaging); jobs=0 would mean "no work".
     assert WorkerConfig.from_env({"ENCORE_DEMUCS_SHIFTS": "0"}).demucs_shifts == 0
-    assert WorkerConfig.from_env({"ENCORE_DEMUCS_JOBS": "0"}).demucs_jobs == 1
+    assert WorkerConfig.from_env({"ENCORE_DEMUCS_JOBS": "0"}).demucs_jobs == auto_demucs_jobs()
 
 
 def test_empty_capabilities_does_not_produce_a_useless_worker():
