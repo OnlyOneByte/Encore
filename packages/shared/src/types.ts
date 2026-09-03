@@ -120,7 +120,7 @@ export function keyedMediaRef(sourceRef: string, keyShift: number): string {
   return `${sourceRef.slice(0, dot)}.${sign}${sourceRef.slice(dot)}`;
 }
 
-export type JobType = 'stems' | 'align' | 'score';
+export type JobType = 'stems' | 'align' | 'score' | 'stems-upgrade';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
 // Terminal states never leave; the dedup index ignores them so a song can be re-processed after
