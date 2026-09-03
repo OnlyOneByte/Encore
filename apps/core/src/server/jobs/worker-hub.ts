@@ -13,7 +13,8 @@ import type {
 	MediaStatus,
 	Media,
 	Job,
-	MediaStoreConfig
+	MediaStoreConfig,
+	RoomSettings
 } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
@@ -39,6 +40,9 @@ export interface WorkerHubDeps {
 	/** Persist a media after its artifacts change (B-1 durable catalog). Optional so the hub still
 	 *  unit-tests with no DB; app.ts wires it to MediaRepository.upsert. */
 	persistMedia?: (mediaId: string) => void;
+	/** Room-level separator settings (B-8): supplies the engine+model a stems/upgrade job carries.
+	 *  Optional so the hub still unit-tests without settings (assignParams falls back to defaults). */
+	getSettings?: () => RoomSettings;
 	now: () => number;
 	config?: LeaseConfig;
 	mediaStore?: MediaStoreConfig;
@@ -196,7 +200,7 @@ export class WorkerHub {
 				mediaId: job.mediaId,
 				jobType: job.jobType,
 				sourceUri: media ? sourceUri(media) : '',
-				params: assignParams(job.jobType, media)
+				params: assignParams(job.jobType, media, this.#d.getSettings?.())
 			});
 		}
 	}
