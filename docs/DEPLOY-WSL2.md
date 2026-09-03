@@ -121,59 +121,26 @@ but let the containers own the writes.
 
 ---
 
-## 4. Required repo changes
+## 4. Configure
 
-Three edits are needed; the compose file even carries a placeholder comment for the GPU one
-(`# deploy.resources.reservations.devices for GPU added when stems land`). Apply these to
-`docker-compose.yml`:
+No edits to `docker-compose.yml` are needed. The GPU deployment is a compose **override**:
+[`docs/deploy/docker-compose.cuda.yml`](deploy/docker-compose.cuda.yml). It supplies the CUDA wheel
+index as a build arg, the NVIDIA device reservation, and the device env — layered onto the base file
+rather than forking it, so later changes to core, the hardening anchor or the volume wiring still
+reach this deployment. See [`docs/deploy/README.md`](deploy/README.md) for the pattern.
 
-```diff
---- docker-compose.yml
-+++ docker-compose.yml
-@@ worker:
-     build:
-       context: .
-       dockerfile: apps/worker/Dockerfile
-+      args:
-+        # CPU wheels stay the default so the dev box is unaffected; a GPU host flips this in .env.
-+        TORCH_INDEX_URL: ${ENCORE_TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}
-     profiles: ["stems"]
-@@
-     restart: unless-stopped
--    # deploy.resources.reservations.devices for GPU added when stems land
-+    deploy:
-+      resources:
-+        reservations:
-+          devices:
-+            - driver: nvidia
-+              count: 1
-+              capabilities: [gpu]
+Every command below uses one prefix; export it once per shell:
+
+```bash
+cd /srv/Encore
+export EC="docker compose -f docker-compose.yml -f docs/deploy/docker-compose.cuda.yml"
 ```
 
-`deploy.resources.reservations.devices` is honoured by `docker compose up` (unlike most other `deploy`
-keys, which are Swarm-only). The newer `gpus: all` shorthand also works on current Compose.
-
-Then a `.env` beside `docker-compose.yml`:
+The only thing you must set yourself is **where state lives**, because that is a property of the host's
+disks rather than its GPU. A `.env` beside the root compose file:
 
 ```dotenv
-# ── GPU worker ────────────────────────────────────────────────────────────────
-# cu128 carries the exact versions requirements.txt already pins: torch 2.8.0,
-# torchaudio 2.8.0, torchvision 0.23.0. No requirements.txt edit is needed.
-ENCORE_TORCH_INDEX_URL=https://download.pytorch.org/whl/cu128
-
-# EXPLICIT, not auto. backends.py refuses a device it cannot reach, so naming cuda here turns a
-# driver or passthrough mistake into a loud startup failure instead of a silent 20x-slower CPU cook.
-ENCORE_DEMUCS_DEVICE=cuda
-ENCORE_WHISPERX_DEVICE=cuda
-
-# Word-timed lyrics and live scoring as well as stems. `fetch:ytdlp` lets this worker acquire audio —
-# without a fetch-capable worker every new song sits at 0% forever.
-ENCORE_WORKER_CAPABILITIES=stems,align,score,fetch:ytdlp
-
-# One song at a time to start. On a GPU this contends for VRAM, not CPU cores — see §5.
-ENCORE_WORKER_CONCURRENCY=1
-
-# ── storage: ext4 inside the distro, never /mnt/c ─────────────────────────────
+# ext4 inside the distro. NEVER /mnt/c — see §3.
 ENCORE_DATA_VOLUME=/srv/encore/data
 ENCORE_MEDIA_VOLUME=/srv/encore/media
 ```
@@ -188,18 +155,24 @@ on purpose: Docker initialises it from the image's own `$XDG_CACHE_HOME`, so it 
 worker's ownership, whereas a fresh bind directory would be created root-owned and the unprivileged
 worker (uid 10001) could not write to it. Converting it to a bind mount breaks the worker.
 
+Confirm the merge resolved the way you expect before building anything:
+
+```bash
+$EC --profile stems config | less    # look for TORCH_INDEX_URL, ENCORE_DEMUCS_DEVICE, driver: nvidia
+```
+
 ---
 
 ## 5. Bring it up
 
 ```bash
-cd /srv/Encore
-docker compose --profile stems build          # the CUDA torch wheels are multi-GB; expect a long first build
-docker compose --profile stems up -d
-docker compose logs -f worker
+$EC --profile stems build          # the CUDA torch wheels are multi-GB; expect a long first build
+$EC --profile stems up -d
+$EC logs -f worker
 ```
 
-**Two knobs change meaning on a GPU** and are worth understanding before you tune anything:
+**Two knobs change meaning on a GPU** and are worth understanding before you tune anything. Both are
+set (or deliberately left unset) in the override file, with the reasoning inline there:
 
 - `ENCORE_DEMUCS_JOBS` and `ENCORE_TORCH_THREADS` are derived from CPU core count
   (`auto_demucs_jobs`, `auto_torch_threads`). On the GPU path they are largely irrelevant, and the
@@ -218,7 +191,7 @@ Work down this list; each one isolates a different failure.
 
 ```bash
 # 1. torch actually sees the GPU inside the worker container
-docker compose exec worker python -c \
+$EC exec worker python -c \
   "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"
 # expect: 2.8.0+cu128 True NVIDIA GeForce RTX 3080
 ```
@@ -283,7 +256,7 @@ but only once Docker is running, and under WSL that needs a nudge at logon.
 Simplest: enable "Start Docker Desktop when you log in", plus a Task Scheduler task at logon running
 
 ```
-wsl -d Ubuntu --cd /srv/Encore -- docker compose --profile stems up -d
+wsl -d Ubuntu --cd /srv/Encore -- docker compose -f docker-compose.yml -f docs/deploy/docker-compose.cuda.yml --profile stems up -d
 ```
 
 Then stop Windows from sleeping mid-song:
@@ -297,11 +270,12 @@ powercfg /change hibernate-timeout-ac 0
 
 ## 9. Rollback
 
-The GPU path is opt-in through two env vars, so reverting is a config change plus a rebuild:
+The GPU path lives entirely in the override file, so reverting is dropping one `-f` flag and
+rebuilding against the CPU wheels:
 
 ```bash
-# in .env: drop ENCORE_TORCH_INDEX_URL and ENCORE_DEMUCS_DEVICE (or set the device to cpu)
-docker compose --profile stems build worker && docker compose --profile stems up -d worker
+docker compose --profile stems build worker
+docker compose --profile stems up -d worker
 ```
 
 Data and media are untouched by this — they live in the volumes from §4, not in the image.

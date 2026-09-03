@@ -261,9 +261,13 @@ annotation ignoring old songs.
         thin `ENCORE_DEMUCS_DEVICE` passthrough. **AUTO** — selection logic + explicit-override paths.
         For the Arc box this is now a one-line index swap, not IPEX: `torch 2.8.0+xpu` plus matching
         `torchaudio 2.8.0` / `torchvision 0.23.0` are all published on
-        `download.pytorch.org/whl/xpu` for cp312/linux_x86_64 — the exact versions already pinned. The
-        `IPEX_VERSION` build arg in `Dockerfile.intel`, which had to be matched against both the host
-        driver and torch, can go; the host still needs the Intel compute runtime and `/dev/dri`.
+        `download.pytorch.org/whl/xpu` for cp312/linux_x86_64 — the exact versions already pinned. So
+        the `IPEX_VERSION` build arg can go, and `docs/deploy/docker-compose.intel.yml` uses the
+        ordinary Dockerfile; `docs/deploy/Dockerfile.intel` is parked as an IPEX fallback only. The host
+        still needs the Intel compute runtime and `/dev/dri`. **Superseded as the live target:** the
+        deploy box is now Windows + WSL2 + RTX 3080, where the equivalent is
+        `docs/deploy/docker-compose.cuda.yml` and `backends.py` already probes `cuda` first, so no
+        selection code changes at all. See `docs/DEPLOY-WSL2.md`.
 
 - [ ] **B-9 · Source-audio and image hygiene** — two small independent fixes:
   - [ ] **B-9-C1 · bake `yt-dlp` into the worker image.** It is currently pip-installed at runtime,
