@@ -20,8 +20,8 @@ import type {
 import { sourceUriFor } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
-import { planAssignments, assignParams, followUps, requiredCapability, separatorFor } from './dispatch';
-import { markMediaReady, setMediaLyrics, setMediaPitch } from './make-karaoke';
+import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental } from './dispatch';
+import { markMediaReady, setMediaLyrics, setMediaPitch, applyAnnotation } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 import { mediaStatusFor } from './media-status';
@@ -135,7 +135,16 @@ export class WorkerHub {
 		// Separation jobs report WHICH engine+model produced the artifact, so an upgrade can be refused
 		// when it would not actually improve on what is published.
 		const separator = separatorFor(job.jobType, settings);
-		markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
+		// ONLY separation publishes an instrumental. A `fetch` has produced nothing singable, and
+		// markMediaReady derives the key when the worker reports none — so calling it here marked the
+		// media ready with a key for a file that does not exist.
+		if (publishesInstrumental(job.jobType)) {
+			markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
+		}
+		// A fetch may have identified the song. Applied under a never-regress rule so a later `medium`
+		// cannot downgrade an existing `high` citation. Declined annotation leaves the normalizer's
+		// values untouched, which is the honest outcome rather than a guess written as fact.
+		applyAnnotation(job.mediaId, this.#d.mediaById, msg.artifacts?.annotation);
 		// Attach word-timed lyrics if the job carried an align artifact (the TV overlay). Additive:
 		// a stems-only complete leaves lyrics absent; an align complete populates lyricsRef.
 		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);

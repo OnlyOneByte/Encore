@@ -61,3 +61,19 @@ test('a fetch job carries no separator params — it produces nothing singable',
 	expect(p.engine).toBeUndefined();
 	expect(p.model).toBeUndefined();
 });
+
+test('a fetch carries the LOOKUP KEYS too — annotation runs as its final step', () => {
+	// The worker cannot search MusicBrainz without them, and an absent key is the signal to decline
+	// rather than search on a guess. Same confidence gate as an align job's LRCLIB lookup.
+	const p = assignParams('fetch', media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me' }), settings());
+	expect(p.artist).toBe('a-ha');
+	expect(p.track).toBe('Take On Me');
+	expect(p.durationSec).toBe(225);
+});
+
+test('an unconfident parse sends NO lookup keys, so the worker declines instead of guessing', () => {
+	const p = assignParams('fetch', media(), settings()); // no canonicals set
+	expect(p.artist).toBeUndefined();
+	expect(p.track).toBeUndefined();
+	expect(p.fetcher).toBe('ytdlp'); // the fetcher is still declared — that is not a lookup key
+});

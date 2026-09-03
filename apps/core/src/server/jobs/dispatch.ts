@@ -49,7 +49,10 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 	// boundary instead of testing the URI for an `http` prefix, which is what used to misclassify any
 	// scheme that was neither a watch URL nor a bare file key.
 	const fetcher = media ? fetcherFor(media.source, settings?.defaultFetcher) : DEFAULT_FETCHER;
-	if (jobType === 'fetch') return { fetcher };
+	// A fetch carries the lookup keys too: annotation runs as its final step, and it needs the same
+	// confidence-gated canonicals an align job gets. Omitting them is how the worker learns "no
+	// authoritative identification is possible" and declines rather than searching on a guess.
+	if (jobType === 'fetch') return { fetcher, ...lookupKeys(media) };
 	// stems carries the room's engine+model, the upgrade its upgrade engine+model. Both fall back to
 	// shared defaults when no settings are provided (e.g. a unit test), so the worker still gets a
 	// valid pairing.
@@ -64,13 +67,38 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 		};
 	}
 	if (jobType !== 'align') return { fetcher };
-	const params: JobParams = { fetcher };
-	if (media?.artistCanonical) params.artist = media.artistCanonical;
-	if (media?.titleCanonical) params.track = media.titleCanonical;
+	return { fetcher, ...lookupKeys(media) };
+}
+
+/**
+ * The confidence-gated lookup keys a metadata call needs: canonical artist/title only when the parse
+ * was confident, plus duration whenever it is real.
+ *
+ * Shared by `align` (LRCLIB) and `fetch` (MusicBrainz) because both face the same trap — a lookup on a
+ * guessed title returns nothing, or another song's data, and the second is worse. An absent key is the
+ * signal to decline; a raw uploader string would look like an answer.
+ */
+function lookupKeys(media: Media | undefined): Partial<JobParams> {
+	const out: Partial<JobParams> = {};
+	if (media?.artistCanonical) out.artist = media.artistCanonical;
+	if (media?.titleCanonical) out.track = media.titleCanonical;
 	if (media && Number.isFinite(media.durationSec) && media.durationSec > 0) {
-		params.durationSec = media.durationSec;
+		out.durationSec = media.durationSec;
 	}
-	return params;
+	return out;
+}
+
+/**
+ * Does a completed job of this type publish a playable instrumental?
+ *
+ * Only separation does. This is a guard, not a formality: `markMediaReady` derives the instrumental
+ * key when the worker does not report one, so calling it for a `fetch` completion marked the media
+ * `ready` with a key for a file that does not exist yet — the TV would then load a 404 for any song
+ * whose separation had not landed. It was invisible end to end because `stems` follows a `fetch`
+ * within seconds, so the bogus state was overwritten before anyone tried to sing.
+ */
+export function publishesInstrumental(jobType: JobType): boolean {
+	return jobType === 'stems' || jobType === 'stems-upgrade';
 }
 
 /**

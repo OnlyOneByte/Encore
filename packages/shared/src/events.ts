@@ -120,6 +120,19 @@ export type WorkerCommand =
 export interface JobArtifacts {
   stems?: { instrumental?: string; vocals?: string };
   /**
+   * What a `fetch` job identified this song AS, when MusicBrainz agreed. Absent when annotation was
+   * declined — which is the normal outcome for anything the normalizer could not name confidently, a
+   * weak duration match, or an unreachable service. The core applies it under a never-regress rule so
+   * a later `medium` cannot overwrite an earlier `high`.
+   */
+  annotation?: {
+    source: string;
+    mbid: string;
+    artist: string;
+    title: string;
+    confidence: string;
+  };
+  /**
    * `uri` is the single best artifact (the original single-artifact shape, still what
    * `setMediaLyrics` reads).
    * `candidates` is the full set an align job produced — one entry per TEXT SOURCE, each its own file.

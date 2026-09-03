@@ -130,3 +130,73 @@ async def test_a_download_that_lands_nothing_FAILS_rather_than_reporting_success
     proc = fetch_mod.FetchProcessor(runner=fake_runner(["[download] 100%"]))
     with pytest.raises(RuntimeError, match="produced no audio"):
         await drain(proc, spec(tmp_path, fetcher="ytdlp"))
+
+
+class FakeAnnotator:
+    """Stands in for MusicBrainzClient: returns whatever recordings the test wants."""
+
+    def __init__(self, recordings=None, boom=False):
+        self._recs = recordings or []
+        self._boom = boom
+
+    def search(self, artist, track, limit=10):
+        if self._boom:
+            raise RuntimeError("musicbrainz is down")
+        from src.annotate import parse_recordings
+
+        return parse_recordings({"recordings": self._recs})
+
+
+MB_HIT = [{
+    "id": "mb-take-on-me", "score": 100, "title": "Take On Me", "length": 225000,
+    "artist-credit": [{"name": "a\u2010ha"}], "releases": [{"title": "Hunting High and Low", "date": "1985-06-01"}],
+}]
+
+
+@pytest.mark.asyncio
+async def test_a_fetch_reports_the_identification_it_made(tmp_path):
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(
+        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")),
+        annotator=FakeAnnotator(MB_HIT),
+    )
+    events = await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0))
+    done = [e for e in events if isinstance(e, CompleteResult)][0]
+    note = done.artifacts["annotation"]
+    assert note["source"] == "musicbrainz"
+    assert note["mbid"] == "mb-take-on-me"
+    assert note["confidence"] == "high"
+    # the unicode-hyphen artist came back normalised for MATCHING but is reported as MusicBrainz spells it
+    assert note["artist"] == "a\u2010ha"
+
+
+@pytest.mark.asyncio
+async def test_no_lookup_keys_means_no_annotation_attempted(tmp_path):
+    # An unconfident parse sends no artist/track, which is the signal to decline rather than guess.
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(
+        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(MB_HIT)
+    )
+    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp")) if isinstance(e, CompleteResult)][0]
+    assert "annotation" not in done.artifacts
+
+
+@pytest.mark.asyncio
+async def test_a_DEAD_metadata_service_still_completes_the_fetch(tmp_path):
+    # The whole point of annotation being a step rather than a job: a karaoke night must not stop
+    # because MusicBrainz is unreachable. The audio is what matters and it is already on disk.
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(
+        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(boom=True)
+    )
+    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
+    assert done.media_uri == audio
+    assert "annotation" not in done.artifacts
+
+
+@pytest.mark.asyncio
+async def test_annotation_can_be_switched_off_entirely(tmp_path):
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=None)
+    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
+    assert "annotation" not in done.artifacts
