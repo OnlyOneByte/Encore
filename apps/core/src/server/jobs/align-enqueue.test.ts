@@ -39,7 +39,8 @@ test('stems carries the room engine+model; upgrade carries the upgrade engine+mo
 		defaultModel: 'htdemucs_ft',
 		enqueueUpgrade: true,
 		upgradeEngine: 'roformer' as const,
-		upgradeModel: 'bs-roformer-1297'
+		upgradeModel: 'bs-roformer-1297',
+		defaultFetcher: 'ytdlp' as const
 	};
 	const stems = assignParams('stems', media(), settings);
 	expect(stems.engine).toBe('demucs');
@@ -84,6 +85,8 @@ test('a confident artist with an unconfident title still omits only the title', 
 });
 
 test('unknown media and a zero duration do not produce junk params', () => {
-	expect(assignParams('align', undefined)).toEqual({});
+	// The fetcher is a DECLARATION the worker needs, not junk — it is what replaced inferring
+	// acquisition from the URI's shape. Only the LOOKUP keys must stay absent when unconfident.
+	expect(assignParams('align', undefined)).toEqual({ fetcher: 'ytdlp' });
 	expect(assignParams('align', media({ durationSec: 0 })).durationSec).toBeUndefined();
 });

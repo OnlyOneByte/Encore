@@ -21,6 +21,9 @@ const toRow = (m: Media): MediaRow => ({
 	durationSec: Math.round(m.durationSec),
 	thumbnail: m.thumbnail ?? null,
 	stemStatus: m.stemStatus,
+	mbid: m.mbid ?? null,
+	annotationSource: m.annotation?.source ?? null,
+	annotationConfidence: m.annotation?.confidence ?? null,
 	instrumentalRef: m.instrumentalRef ?? null,
 	lyricsRef: m.lyricsRef ?? null,
 	// JSON blob, not a table: nothing queries inside the set.
@@ -50,6 +53,16 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	durationSec: r.durationSec,
 	thumbnail: r.thumbnail ?? undefined,
 	stemStatus: r.stemStatus,
+	mbid: r.mbid ?? undefined,
+	// Only a COMPLETE pair is restored: a source without a confidence (or vice versa) is not provenance,
+	// and half-reading it would let the never-regress check compare against nothing.
+	annotation:
+		r.annotationSource && r.annotationConfidence
+			? {
+					source: r.annotationSource as NonNullable<Media['annotation']>['source'],
+					confidence: r.annotationConfidence as NonNullable<Media['annotation']>['confidence']
+				}
+			: undefined,
 	instrumentalRef: r.instrumentalRef ?? undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
 	lyricsCandidates: parseCandidates(r.lyricsCandidates),

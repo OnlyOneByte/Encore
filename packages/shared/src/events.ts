@@ -95,6 +95,12 @@ export type MediaStoreConfig =
  * letting the worker default and the ASR pass detect it.
  */
 export interface JobParams {
+  /**
+   * How the worker should obtain `sourceUri` — DECLARED, never inferred from the URI's shape.
+   * `ytdlp` means download it; `local` means it is already a path under the media volume. Set on every
+   * job that touches source audio, so a worker never has to guess (see packages/shared/src/fetchers.ts).
+   */
+  fetcher?: string;
   model?: string; // separation model/checkpoint token (stems) — resolved by the worker engine
   engine?: string; // separation engine id (stems): 'demucs' | 'roformer' | 'ensemble'
   targetKey?: string; // requested key shift, if a job ever pre-renders one
@@ -113,6 +119,19 @@ export type WorkerCommand =
 
 export interface JobArtifacts {
   stems?: { instrumental?: string; vocals?: string };
+  /**
+   * What a `fetch` job identified this song AS, when MusicBrainz agreed. Absent when annotation was
+   * declined — which is the normal outcome for anything the normalizer could not name confidently, a
+   * weak duration match, or an unreachable service. The core applies it under a never-regress rule so
+   * a later `medium` cannot overwrite an earlier `high`.
+   */
+  annotation?: {
+    source: string;
+    mbid: string;
+    artist: string;
+    title: string;
+    confidence: string;
+  };
   /**
    * `uri` is the single best artifact (the original single-artifact shape, still what
    * `setMediaLyrics` reads).

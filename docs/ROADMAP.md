@@ -127,23 +127,163 @@ and the sourcing question is the **owner's call, not the loop's**. Do not pick t
 
 ---
 
+## Ratified: metadata, acquisition, and processed-only playback (decided 2026-09-03)
+
+**Shipped and verified.** The working spec (`docs/SPEC-musicbrainz-fetcher.md`) was ephemeral and has
+been deleted; the durable explanation lives in [`ARCHITECTURE.md`](ARCHITECTURE.md) §6–§7. The decisions,
+so they are not re-litigated:
+
+| # | Decision | Ratified |
+|---|---|---|
+| — | **MusicBrainz is an annotator, not a catalog.** Search stays yt-dlp; identification runs after the download and only enriches a media that already exists. | yes |
+| — | **Nothing plays unprocessed.** No embed path, no raw-source path, no per-source exception for local files. `playMode` is gone. | yes |
+| — | **One row per song is NOT a requirement.** With best-effort identification, grouping two uploads is probabilistic, and merging on a weak signal collapses two different songs. No Song table, no `songKey`. | yes |
+| D4 | **Refuse rather than guess.** A weak match keeps the normalizer's values and records nothing. | yes |
+| D7 | Columns-only migration; no sidecar re-shape (`playMode` was derived on read, never stored). | yes |
+| D9 | Confidence from duration: ±2s → `high`, ±5s → `medium`, else nothing. ±2s because that is LRCLIB's own matching tolerance. | yes |
+
+**Withdrawn, with the cost named.** The Song/Version split, the versions popup, a per-song default
+rendition, and lyrics text shared across renditions were all specced and then cut. The one that actually
+costs something: **source-fidelity upgrades are no longer expressible.** A better source is a different
+`sourceRef` and therefore a different row, with no link to the old one, so "re-acquire from a better
+source, then re-cook" cannot be modelled. `sourceFidelity` is still worth recording as provenance, but
+it is not a rung of the upgrade ladder.
+
+**Album and year are deliberately not taken from MusicBrainz.** Measured live they resolved "Take On Me"
+to a 1991 hits compilation and "Bohemian Rhapsody" to an undated bootleg — a search hit's release list is
+partial and the recording is chosen by duration, so a live cut that matches the file's length brings its
+own release with it. A trustworthy album needs a second release-group lookup; until then D4 applies.
+
+**Known gap, not a bug to rediscover.** Media materialised *before* canonicals were parsed at
+materialize time never got them, and search reuses an existing row rather than re-materialising it — so
+those songs are never annotated without a backfill pass. Nothing surfaces this; it just looks like
+annotation ignoring old songs.
+
+**What the verification pass was worth.** Driving the real server found four bugs no test had caught,
+which is the argument for the "green suite is the floor, not the bar" rule in
+[`HANDOFF.md`](HANDOFF.md) §8:
+
+- A `fetch` completion marked the media `ready` with a derived instrumental key for a file that did not
+  exist. Invisible because `stems` follows within seconds and overwrote it.
+- `mbid`/`annotation` were runtime-only, so a restart forgot that an artist had been *cited* — defeating
+  the never-regress rule one commit after it was added.
+- The TV's join QR encoded **https** on a plain-HTTP LAN, because adapter-node reports https whenever
+  `PROTOCOL_HEADER` is unset. Unopenable by any phone; hidden by always testing through an https tunnel.
+- Two ways one malformed WebSocket frame killed the whole process — an unvalidated command envelope, and
+  a telemetry frame that poisoned playback state into something unpersistable (`Math.floor(undefined)`
+  is NaN, which SQLite stores as NULL against a NOT NULL column) and then threw out of the write-behind
+  flush timer, detached from the frame that caused it.
+
+---
+
 ## Open queue
 
 - [ ] **B-8 · Swap the separator to `python-audio-separator`** — the fit is clean because
   `demucs.py` is pure argv-plus-subprocess with **zero numeric imports**: the dial-home loop, job
-  ledger and progress reporting do not move. Sub-commits:
-  - [ ] **B-8-C1 · A/B spike, no production code.** Same source audio, `htdemucs` vs the default
-        RoFormer, both stems kept. *Done-when:* both files exist and the owner has heard them.
-        **EYES-ON/AUDIO** — this is the whole point; the loop cannot self-verify a cymbal.
+  ledger and progress reporting do not move.
+
+  ### Decision re-opened and resolved, 2026-09-03: `audio-separator`, not `bs-roformer-infer`
+
+  The shipped `roformer` engine (`apps/worker/src/roformer.py`) shells `bs-roformer-infer`, chosen
+  over `python-audio-separator` for its `load/infer/release` session lifecycle, its sha256-verified
+  repointable checkpoint registry, and a device contract that raises instead of silently downgrading
+  to CPU. Those virtues are real. Measurement against the installed package retires the choice anyway:
+
+  - **The session lifecycle — the headline reason — is not being used.** `BSRoformerSession` does not
+    exist in 0.1.5, so `roformer.py` shells the CLI, which reloads the checkpoint per cook exactly
+    like the library it was chosen over. Measured reload cost is 1.3–8.0s against a cook of minutes:
+    immaterial either way.
+  - **It cannot reach the fast models.** `bs_roformer.utils.get_model_from_config` implements only
+    `model_type == 'bs_roformer'`; the package ships no mel-band module and its registry holds exactly
+    ten models, none mel-band. The four fastest checkpoints measured are all mel-band.
+  - **Its registry has no `ep_317_sdr_12.9755`** — the 2-stem checkpoint that was benchmarked and
+    quality-approved. Token `bs-roformer-1297` resolves to `BS-Rofo-SW-Fixed.ckpt` ("BS Roformer SW
+    by jarredou", category multi-stem): a different model, running in production under a label
+    claiming otherwise. `audio-separator` serves the approved checkpoint directly.
+  - **Token `mel-roformer-inst-v2` mapped to a slug absent from the registry** — a phone option no
+    worker could ever satisfy. Removed from both whitelists. The test that should have caught it
+    asserted only that the slug *started with* `"roformer-model-"`; it now asserts registry
+    membership against a checked-in slug set.
+  - **Neither tuning knob is reachable.** Its CLI exposes no overlap and no precision flag, and
+    `inference.py` contains no autocast. Overlap is reachable only by hand-writing a config YAML and
+    passing `--config_path`. `audio-separator` has `--mdxc_overlap` and `--mdxc_batch_size` as
+    first-class flags.
+
+  **Measured on the reference box** (32-core Graviton 3, CPU; realtime factor = wall-clock seconds per
+  second of song, at each checkpoint's own defaults):
+
+  | checkpoint | params | dim/depth | window | overlap | fp32 s/win | bf16 s/win | **rt** |
+  |---|---|---|---|---|---|---|---|
+  | htdemucs *(live default)* | 83M | conv | — | — | — | — | **0.29** |
+  | htdemucs_ft | 83M×4 | conv | — | — | — | — | 0.55 |
+  | mel instrumental_becruily | 228M | 384/6 | 8.0s | 2 | **5.14** | 7.09 | **1.28** |
+  | mel kim_ft_unwa | 228M | 384/6 | 11.0s | 8 | 15.49 | 7.23 | 11.27 → 1.31 @ ov2+bf16 |
+  | mel instrumental_gabox | 228M | 384/6 | 11.0s | 2 | 15.26 | 8.48 | 2.77 → 1.54 bf16 |
+  | mel instrumental_bleedless_v3 | 228M | 384/6 | 11.0s | 2 | 15.99 | 10.16 | 2.91 → 1.85 bf16 |
+  | mel ep_3005 *(classic)* | 252M | 384/12 | 8.0s | 4 | 7.92 | 14.52 | 3.96 → 1.98 fp32 ov2 |
+  | bs_roformer 1297 *(current roformer default)* | 160M | 512/12 | 8.0s | 4 | 26.59 | 16.55 | **13.29** |
+
+  A RoFormer-family instrumental cook goes from **43.8 min to 3.7 min on existing hardware** — 10.4×,
+  no GPU involved. Three results that must survive into the implementation:
+
+  1. **Wall-clock is linear in overlap.** 4→2 measured 1.83× on a 24s clip (253s→138s), per-window
+     cost unchanged. It is a redundancy multiplier, not an execution detail.
+  2. **Precision reverses per checkpoint.** bf16 is 1.6× faster on bs_roformer-1297 but 1.4–1.8×
+     *slower* on the 8s-window mel models. fp16 on CPU is 6.5× slower than fp32 (179s vs 27.7s per
+     window — no fp16 CPU kernels); fp16 is a GPU-only lever. There is no global dtype switch.
+  3. **Parameter count is anti-correlated with cost.** A 228M mel-band model beats the 160M
+     bs_roformer by 5.2× per window; `depth` and `dim` dominate. Never infer cost from file size.
+
+  Also measured and *not* worth pursuing: `batch_size` 1→4 gave 1.02× (cores already saturated at
+  batch 1); thread scaling 8→32 gave only 1.34× for 4× the cores, so this workload does not reward a
+  bigger CPU; attention already runs on `scaled_dot_product_attention`; `torch.compile` fails to build
+  in the worker image. Hardware ceilings are modest — the Arc A380 is 4.19 TFLOPS fp32 / 8.40 fp16
+  against this box's ~2.2, and its 186 GB/s is *below* Graviton 3's ~300 GB/s — so **no engine here
+  becomes live-tier by moving hardware**; RoFormer stays an upgrade tier and the goal is an upgrade
+  that lands within a song or two.
+
+  **What must carry over from `bs-roformer-infer`** — these were good reasons, and dropping the
+  package must not drop them: pin the checkpoint set rather than accepting arbitrary ids; verify
+  downloads by digest; and make an explicitly-requested-but-unavailable device raise at startup
+  instead of cooking 50× slower on CPU (`backends.py` already implements that contract).
+
+  **Done in this pass:** measured costs baked into `packages/shared/src/separators.ts`
+  (`SeparatorCost` + `estimateCookSeconds`, so the UI can say "about four minutes" instead of
+  "slow"), the unrunnable mel token removed from both whitelists, and the slug test strengthened.
+
+  Sub-commits:
+  - [x] **B-8-C1 · A/B spike, no production code.** Same source audio, `htdemucs` vs RoFormer.
+        *Result:* htdemucs 50s, htdemucs_ft 95s, BS-RoFormer 2629s on a 2:51 song; owner heard both
+        and ruled "RoFormer sounds better, htdemucs significantly faster → keep both, make it
+        selectable". **EYES-ON/AUDIO** — done.
+  - [ ] **B-8-C1b · listening test for the fast mel-band instrumental checkpoints.** Speed is
+        measured; **quality is not**. `bs_roformer-1297` is the only candidate with a published SDR
+        (12.9755) and the only one the owner has heard. Cook the same source with
+        `instrumental_becruily`, `instrumental_gabox` and `kim_ft_unwa` and compare by ear before any
+        of them is whitelisted. Checkpoints are cached in
+        `.kiro/autopilot/encore-b8-b9-b3c7/model-cache`, so this costs no re-download and ~15 min.
+        *Done-when:* the owner has ranked them. **EYES-ON/AUDIO** — a test cannot hear vocal bleed.
   - [ ] **B-8-C2 · `SeparatorProcessor` behind the existing `Processor` protocol**, selected by
-        `ENCORE_SEPARATOR` (`demucs` default, so the swap is opt-in and reversible).
+        `ENCORE_SEPARATOR` (`demucs` default, so the swap is opt-in and reversible). Must pass the
+        per-checkpoint `overlap` and precision through as real flags, and keep the pinned-checkpoint
+        and raise-on-unavailable-device contracts above.
         *Done-when:* a cook completes through the new processor and the TV plays its instrumental.
         **AUTO** — argv/params construction, model selection, progress parsing, missing-model error.
   - [ ] **B-8-C3 · re-benchmark and re-tune the parallelism knobs** for whichever engine wins;
         supersede or delete the `htdemucs` numbers in `config.py` rather than leaving them to rot.
-        *Done-when:* the committed defaults match a measurement taken on the engine in use.
+        Note `batch_size` and extra threads measured as near-worthless here — do not re-derive them
+        from theory. *Done-when:* the committed defaults match a measurement taken on the engine in use.
   - [ ] **B-8-C4 · device/acceleration config** mapped onto the library's backends, replacing the
         thin `ENCORE_DEMUCS_DEVICE` passthrough. **AUTO** — selection logic + explicit-override paths.
+        For the Arc box this is now a one-line index swap, not IPEX: `torch 2.8.0+xpu` plus matching
+        `torchaudio 2.8.0` / `torchvision 0.23.0` are all published on
+        `download.pytorch.org/whl/xpu` for cp312/linux_x86_64 — the exact versions already pinned. So
+        the `IPEX_VERSION` build arg can go, and `docs/deploy/docker-compose.intel.yml` uses the
+        ordinary Dockerfile; `docs/deploy/Dockerfile.intel` is parked as an IPEX fallback only. The host
+        still needs the Intel compute runtime and `/dev/dri`. **Superseded as the live target:** the
+        deploy box is now Windows + WSL2 + RTX 3080, where the equivalent is
+        `docs/deploy/docker-compose.cuda.yml` and `backends.py` already probes `cuda` first, so no
+        selection code changes at all. See `docs/DEPLOY-WSL2.md`.
 
 - [ ] **B-9 · Source-audio and image hygiene** — two small independent fixes:
   - [ ] **B-9-C1 · bake `yt-dlp` into the worker image.** It is currently pip-installed at runtime,

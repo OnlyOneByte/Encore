@@ -1,12 +1,17 @@
-// TV attract screen load: build the join QR (data URL) from the request origin so phones on the
-// LAN can scan it. Generated server-side once per load.
+// TV attract screen load: build the join QR (data URL) from the request so phones on the LAN can scan
+// it. Generated server-side once per load.
+//
+// NOT from `url.origin`: adapter-node reports https for every request unless PROTOCOL_HEADER is set, so
+// that produced an https QR on a plain-HTTP LAN deployment — unopenable by any phone. See
+// $server/public-origin.
 import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import { getApp } from '$server/app';
+import { publicOrigin } from '$server/public-origin';
 import type { TvProgressStyle } from '@encore/shared';
 
-export const load: PageServerLoad = async ({ url }) => {
-	const joinUrl = `${url.origin}/join`;
+export const load: PageServerLoad = async ({ url, request }) => {
+	const joinUrl = `${publicOrigin(request, url)}/join`;
 	const qrDataUrl = await QRCode.toDataURL(joinUrl, {
 		margin: 1,
 		width: 320,

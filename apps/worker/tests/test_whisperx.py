@@ -215,8 +215,8 @@ async def test_local_source_skips_download(tmp_path):
     local.parent.mkdir(parents=True)
     local.write_bytes(b"x")
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner())
-    stages = {e.stage for e in await drain(proc, spec(tmp_path, source_uri=str(local))) if isinstance(e, ProgressEvent)}
-    assert "downloading" not in stages  # local file → no fetch
+    stages = {e.stage for e in await drain(proc, spec(tmp_path, source_uri=str(local), fetcher="local")) if isinstance(e, ProgressEvent)}
+    assert "downloading" not in stages  # DECLARED local → no fetch, regardless of the uri shape
     assert "aligning" in stages
 
 

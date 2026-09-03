@@ -33,6 +33,18 @@ export interface Media {
    * parse wasn't confident.
    */
   titleCanonical?: string;
+  /**
+   * MusicBrainz recording id, when a `fetch` job's annotation agreed on artist AND title and the
+   * duration corroborated it. Absent when annotation was declined — which is the normal outcome for a
+   * song the normalizer could not name, a weak duration match, or an unreachable service.
+   */
+  mbid?: string;
+  /**
+   * How `artistCanonical`/`titleCanonical` came to be trusted. `musicbrainz` means a citation with an
+   * MBID; `normalizer` means a title parse and nothing more. Kept because the two are not equal
+   * evidence and the difference decides whether a later annotation may overwrite them.
+   */
+  annotation?: { source: 'musicbrainz' | 'normalizer'; confidence: 'high' | 'medium' };
   durationSec: number;
   thumbnail?: string;
   stemStatus: StemStatus;
@@ -137,7 +149,7 @@ export function keyedMediaRef(sourceRef: string, keyShift: number): string {
   return `${sourceRef.slice(0, dot)}.${sign}${sourceRef.slice(dot)}`;
 }
 
-export type JobType = 'stems' | 'align' | 'score' | 'stems-upgrade';
+export type JobType = 'fetch' | 'stems' | 'align' | 'score' | 'stems-upgrade';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
 // Terminal states never leave; the dedup index ignores them so a song can be re-processed after

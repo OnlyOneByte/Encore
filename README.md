@@ -36,6 +36,9 @@ docker compose up                    # build + run core on http://localhost:3000
 docker compose --profile stems up    # + the Python Demucs/WhisperX worker (make-karaoke)
 ```
 
+Deploying on Windows with an NVIDIA GPU? See [`docs/DEPLOY-WSL2.md`](docs/DEPLOY-WSL2.md) — WSL2
+networking is the part that bites (phones cannot reach a NAT'd WSL service by default).
+
 **Local dev (Bun ≥ 1.3) — from the repo root:**
 ```bash
 bun install                  # installs workspaces (uses public npm via repo .npmrc)
@@ -146,8 +149,14 @@ docs/              ← design docs + ROADMAP + UI mocks/screenshots
 `Bun.S3Client` reads directly. A missing bucket falls back to `local` rather than failing to boot.
 
 **Worker** (container 2) — `ENCORE_CORE_WS`, `ENCORE_WORKER_CONCURRENCY` (`1`),
-`ENCORE_WORKER_CAPABILITIES` (`stems`; add `align` for word-timed lyrics), `ENCORE_WORKER_ID`,
-`ENCORE_DEMUCS_MODEL`, `ENCORE_WHISPERX_DEVICE`.
+`ENCORE_WORKER_CAPABILITIES` (`stems`; add `fetch:ytdlp` to let it acquire audio, `align` for
+word-timed lyrics, `stems:roformer` for the RoFormer engine), `ENCORE_WORKER_ID`,
+`ENCORE_DEMUCS_MODEL`, `ENCORE_WHISPERX_DEVICE`, `ENCORE_ANNOTATE` (`1`; set `0` to skip the
+MusicBrainz lookup on a box with no outbound network).
+
+> A worker must advertise `fetch:<downloader>` to acquire source audio — acquisition routes on its own
+> capability so a box that downloads and a box that separates need not be the same machine. Advertising
+> only `stems` leaves every new song stuck at 0%: the core enqueues a `fetch` nothing can run.
 
 ## Status & roadmap
 

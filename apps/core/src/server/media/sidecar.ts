@@ -40,6 +40,8 @@ export interface MediaSidecar {
 		fetchedAt: number;
 	};
 	canonical: {
+		/** MusicBrainz recording id, when an annotation cited this song. Null when only parsed. */
+		mbid?: string | null;
 		artist: string | null;
 		title: string;
 		album: string | null;
@@ -90,7 +92,14 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 	const prev = previous ?? null;
 
 	// A manually-set field always wins over a re-parse. This is the whole point of provenance.
-	const keepManual = (field: 'artist' | 'title') => prev?.provenance?.[field]?.by === 'manual';
+	// A hand correction and a MusicBrainz citation are both stronger evidence than re-parsing the raw
+	// title, so neither may be clobbered by a later write. Without this, every sidecar write would
+	// silently downgrade a cited artist back to a title parse — the exact regression applyAnnotation
+	// refuses at runtime, reintroduced through persistence.
+	const CITED = ['manual', 'musicbrainz'];
+	const keepCited = (field: 'artist' | 'title') => CITED.includes(prev?.provenance?.[field]?.by ?? '');
+	// Runtime annotation wins over a stored one: it is the fresher citation.
+	const cited = m.annotation?.source === 'musicbrainz' ? m.annotation : undefined;
 
 	return {
 		id: m.id,
@@ -101,8 +110,9 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			fetchedAt: prev?.origin.fetchedAt ?? now
 		},
 		canonical: {
-			artist: keepManual('artist') ? prev!.canonical.artist : parsed.artist,
-			title: keepManual('title') ? prev!.canonical.title : parsed.title,
+			mbid: m.mbid ?? prev?.canonical.mbid ?? null,
+			artist: cited ? (m.artistCanonical ?? parsed.artist) : keepCited('artist') ? prev!.canonical.artist : parsed.artist,
+			title: cited ? (m.titleCanonical ?? parsed.title) : keepCited('title') ? prev!.canonical.title : parsed.title,
 			album: prev?.canonical.album ?? null,
 			year: prev?.canonical.year ?? null,
 			genre: prev?.canonical.genre ?? [],
@@ -111,8 +121,12 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 		},
 		provenance: {
 			...(prev?.provenance ?? {}),
-			...(keepManual('artist') ? {} : { artist: { by: parsed.by, confidence: parsed.confidence } }),
-			...(keepManual('title') ? {} : { title: { by: parsed.by, confidence: parsed.confidence } })
+			...(cited
+				? { artist: { by: 'musicbrainz' as const, confidence: cited.confidence }, title: { by: 'musicbrainz' as const, confidence: cited.confidence } }
+				: {
+						...(keepCited('artist') ? {} : { artist: { by: parsed.by, confidence: parsed.confidence } }),
+						...(keepCited('title') ? {} : { title: { by: parsed.by, confidence: parsed.confidence } })
+					})
 		},
 		artifacts: {
 			// audio has no field on Media (the worker owns it); preserve whatever a prior write knew.
@@ -157,6 +171,16 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		durationSec: s.canonical.durationSec,
 		thumbnail: s.raw.thumbnail ?? undefined,
 		stemStatus: cooked ? 'ready' : 'none',
+		mbid: s.canonical.mbid ?? undefined,
+		// Provenance is per-field in the sidecar; Media carries one summary. Artist is the field that
+		// matters (it is what browse groups by and what the never-regress rule protects), so it decides.
+		annotation:
+			s.provenance.artist && (s.provenance.artist.by === 'musicbrainz' || s.provenance.artist.confidence !== 'low')
+				? {
+						source: s.provenance.artist.by === 'musicbrainz' ? 'musicbrainz' : 'normalizer',
+						confidence: s.provenance.artist.confidence === 'low' ? 'medium' : s.provenance.artist.confidence
+					}
+				: undefined,
 		instrumentalRef: s.artifacts.instrumental ?? undefined,
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,

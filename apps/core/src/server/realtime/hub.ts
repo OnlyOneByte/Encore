@@ -38,6 +38,14 @@ export interface HubDeps {
 
 /** Validate a command against current state. Returns an error string, or null if valid. */
 export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | null {
+	// The ENVELOPE first. `validateCommand` used to assume a well-formed command and destructure
+	// straight into `cmd.op`, while the caller read `cmd.clientOpId` even earlier — so a frame like
+	// `{"type":"queue:command"}` with no `command` field at all made `cmd` undefined and took the WHOLE
+	// SERVER PROCESS DOWN on the first property read. Same class as the missing-singerId crash below,
+	// one layer further out: the op was validated, the thing containing it was not.
+	if (!cmd || typeof cmd !== 'object') return 'malformed command';
+	if (!cmd.clientOpId) return 'missing clientOpId';
+	if (!cmd.op || typeof cmd.op !== 'object' || typeof cmd.op.op !== 'string') return 'malformed op';
 	const { op } = cmd;
 	switch (op.op) {
 		case 'add':
@@ -54,6 +62,10 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 		case 'status':
 			if (!deps.state.entries.some((e) => e.id === op.id)) return `unknown entry: ${op.id}`;
 			return null;
+		default:
+			// An unknown op is a client from the future, or a probe. Reject rather than fall out of the
+			// switch returning undefined, which reads as "valid" to the caller.
+			return `unknown op: ${String((op as { op?: unknown }).op)}`;
 	}
 }
 
@@ -66,16 +78,20 @@ export function handleQueueCommand(
 	deps: HubDeps,
 	sendToOrigin?: SendToOrigin
 ): Extract<ServerEvent, { type: 'queue:patch' }> | null {
+	// Validate BEFORE touching any property of `cmd`: the idempotency check below reads
+	// `cmd.clientOpId`, which is itself a crash when the frame carried no command at all.
+	const err = validateCommand(cmd, deps);
+	if (err) {
+		// Only answerable if we know which op to reject. A frame with no clientOpId is dropped silently —
+		// there is nothing to correlate a rejection to, and the sender is not a client we can help.
+		if (cmd?.clientOpId) sendToOrigin?.({ type: 'op:reject', clientOpId: cmd.clientOpId, reason: err });
+		return null;
+	}
+
 	// idempotency: a resent command (e.g. after reconnect) must not double-apply. Re-ack with the
 	// current rev so the originator clears its pending op, but don't mutate state again.
 	if (deps.seenOp?.(cmd.clientOpId)) {
 		deps.publish({ type: 'queue:patch', patch: { rev: deps.state.rev, ops: [], causedBy: cmd.clientOpId } });
-		return null;
-	}
-
-	const err = validateCommand(cmd, deps);
-	if (err) {
-		sendToOrigin?.({ type: 'op:reject', clientOpId: cmd.clientOpId, reason: err });
 		return null;
 	}
 

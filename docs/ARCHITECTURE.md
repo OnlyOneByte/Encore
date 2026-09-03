@@ -143,9 +143,10 @@ ATTRACT → LOADING → PLAYING ── ended ──► INTERSTITIAL → SWAP →
                          └─ next not ready ─► WAITING ─► next ready/rotation advances
 ```
 
-File media uses `<video preload="auto">`; YouTube uses a second cued iframe. If up-next changes, B
-rewarm starts for the new entry. Skip is a synthetic `ended`. `INTERSTITIAL_MS=0` gives a pure
-hard-cut; default is the short singer-reveal moment.
+Every surface is a `<video preload="auto">` loading a separated instrumental. There is no second
+player: nothing plays unprocessed, so there is nothing to embed. If up-next changes, B rewarm starts
+for the new entry. Skip is a synthetic `ended`. `INTERSTITIAL_MS=0` gives a pure hard-cut; default is
+the short singer-reveal moment.
 
 Implementation: `src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/player.ts`.
 
@@ -156,6 +157,63 @@ Implementation: `src/lib/tv/gapless.ts`, `TvPlayer.svelte`, server `realtime/pla
 `sourceRef` is **immutable origin identity**. Cooked playback lives in `Media.instrumentalRef`, and
 players call `playbackRef(media)`. Never overwrite `sourceRef` with an artifact path: doing that made
 a result unmatchable against its own future searches and minted duplicate uncooked rows.
+
+### Playability
+
+**Nothing plays unprocessed.** A song is playable when it has a separated instrumental, and not
+before — no YouTube embed, no singing over the original vocals, and a local library file is a cook
+candidate like any other source rather than a special case.
+
+`playbackRef` returns `''` for anything uncooked and `isPlayable` is defined in terms of it, so "what
+do I load" and "is there anything to load" cannot disagree. Both require a `ready` status **and** an
+`instrumentalRef`: the two are written by separate steps, and a status running ahead of its artifact
+would hand the player an empty source. `listReady` mirrors the same rule, so a browse row can never
+resolve to a file that is not on disk.
+
+This replaced a `playMode: 'iframe' | 'file'` column that encoded two questions at once — is this ref
+a playable file, and has it been cooked — leaving two sources of truth for playability. `stemStatus` +
+`instrumentalRef` already answered the second; the first stopped existing when the embed path did.
+
+Readiness therefore has three honest states: `ready` (cooked), `cooking` (a job in flight, rotation
+holding its slot), and `unacquired` (nothing to play yet). The third used to mean "playable as-is,
+with the original vocals", which is why it was renamed rather than reworded.
+
+### Metadata provenance
+
+A YouTube title is not metadata. `Media.artist` holds whatever the source reported — often a channel
+name like "Music of All Times" — so two derived fields carry what the song actually is:
+`artistCanonical` and `titleCanonical`. They exist because the LRCLIB query matches on
+`artist_name` + `track_name`, and library browse groups by artist.
+
+They are filled in two tiers, and `Media.annotation` records which:
+
+| Source | Means | Set when |
+|---|---|---|
+| `normalizer` | a title parse and nothing more | search materialises a result, gated on `confidence !== 'low'` |
+| `musicbrainz` | a citation, with an `mbid` | a `fetch` job identified the download |
+
+**Refusing is the design.** A wrong artist is worse than a missing one: it silently poisons the lyrics
+query that consumes it, and afterwards it is indistinguishable from a correct one. So a lookup with no
+confident artist/title does not happen, a MusicBrainz match must AGREE on both names after
+normalisation rather than merely score well, and duration decides confidence (±2s → `high`, ±5s →
+`medium`, beyond → nothing written). ±2s is not arbitrary: it is the tolerance LRCLIB itself matches
+on, so a `high` annotation is by construction good enough for the lookup that consumes it.
+
+**Never regresses.** Once a media holds a `high` citation, a later `medium` cannot overwrite it — a
+re-fetch or a backfill would otherwise turn a known-good artist back into a guess. A `normalizer` value
+is always overwritable, because a citation beats a parse even at medium confidence.
+
+That rule needs memory, so the citation persists in all three layers: DB columns (the runtime catalog
+hydrates from the index synchronously at boot, before the async sidecar pass), the sidecar's
+`canonical.mbid` + `provenance.artist` (authoritative), and only ever as a complete source+confidence
+pair. A sidecar write also refuses to downgrade a citation back to a re-parse of the raw title — the
+same regression, reintroduced through persistence.
+
+Album and year are deliberately **not** taken from MusicBrainz. Measured against the real service they
+resolved "Take On Me" to a 1991 hits compilation and "Bohemian Rhapsody" to an undated bootleg, because
+a search hit's release list is partial and the recording is chosen by duration, so a live cut matching
+the file's length brings its own release with it. A trustworthy album needs a second release-group
+lookup.
 
 ### Storage classes
 
@@ -213,12 +271,55 @@ queued → assigned → running → ready
 - Progress lease: running job must report at least every ~30s.
 - Reaper requeues expired jobs; boot resets orphaned `assigned`/`running` to `queued`.
 - Priority is the earliest `rotationSeq` needing that media, not FIFO.
+- Acquisition is its own job. A cook starts at `fetch`, which chains to `stems` through
+  `followUps()`, so a separation is never dispatched before its input exists. A local media skips
+  acquisition: its bytes are already on the volume.
 - A completed `stems` job enqueues `align` + `score` through `followUps()` — both need the vocals
   stem, so starting them before separation would race and contend.
 - Core flips media refs/status only after the worker completes and artifacts exist.
 
+A worker accepts a job when it advertises a capability that serves the job's **action**, matched on the
+action prefix rather than as a literal string. Both axes namespace their capabilities — `stems:roformer`
+for an engine, `fetch:ytdlp` for a downloader — so a literal comparison rejected work the worker could
+genuinely run. That bug made every acquisition bounce with "unsupported job type: fetch" while the core
+kept the job `assigned` and the song sat at 0%, which reads like a hung download rather than a refused
+assignment.
+
 The worker's stems path is orchestration, not numeric computation: it builds argv, spawns tools, and
 parses progress. This is why separator engines can change behind the existing `Processor` protocol.
+
+### Where audio comes from: the fetcher axis
+
+A job **declares** how to obtain its source audio; nothing infers it. `JobParams.fetcher` is `ytdlp`
+(download it) or `local` (it is already a path under the media volume), and the worker parses that at
+its boundary, so an unknown fetcher raises before a byte moves.
+
+This replaced shape inference. The core used to emit either a watch URL or a bare file key, and the
+worker recovered the intent by testing for an `http(s)` prefix — in three places. A ref matching neither
+assumption, such as `spotify:track:…`, was silently classified as a local file and died stages later
+inside ffmpeg with "No such file", naming the symptom and hiding the cause. `local` is therefore a
+first-class fetcher rather than an absence: "already here" is exactly the case the old test got wrong.
+
+`fetch` routes on `fetch:<fetcher>` rather than on `stems`, so a box that can pull audio and a box that
+can separate it need not be the same machine. That is what makes a credentialed fetcher droppable later
+without touching dispatch; `local` carries no capability because there is nothing to route.
+
+The registry in `packages/shared/src/fetchers.ts` whitelists what is possible so a stored setting can be
+validated and a picker rendered from one source; the *choice* is a setting, not a per-request argument.
+
+A `fetch` finishes by **identifying** what it downloaded (see §6 Metadata provenance). Annotation is a
+step rather than its own job because it needs exactly what a download produces and nothing a separate
+job would add: the real title and the exact duration. It is best-effort by construction — a declined
+match, an unreachable service, or `ENCORE_ANNOTATE=0` all leave the normalizer's values in place and
+never fail the cook. A karaoke night must not stop because a metadata service is down.
+
+MusicBrainz calls pass through one **process-global, serialised** gate. The documented limit is one
+request per second per source IP, and the penalty is total rather than partial: exceeding it declines
+*every* request with 503 until the rate drops. A per-client interval check is therefore not enough —
+two clients in one process, or two concurrent fetch jobs racing an unlocked timestamp check, produce
+exactly the burst that gets an IP refused. The gate serialises, retries a 503 with bounded exponential
+backoff, and runs off the event loop so a paced wait cannot stall another job's progress reporting and
+expire its lease.
 
 ### Separator engines, models, and backends
 
@@ -244,11 +345,14 @@ option and falls back to torch/CPU, which works everywhere. An **explicitly conf
 device that is unavailable **raises at worker startup** rather than silently downgrading — a
 misconfigured accelerator should be loud, not merely slow.
 
-Intel Arc is a torch **device** (`xpu`), not a separate backend: IPEX registers it with torch, so the
-pipeline is unchanged and only the dependency and device differ. `apps/worker/Dockerfile.intel` is
-that image variant. OpenVINO is registered as a known backend but reports unavailable — Intel
-publishes IR weights with STFT/iSTFT stripped for a C++ pipeline, so supporting it is a port rather
-than a dependency.
+Intel Arc is a torch **device** (`xpu`), not a separate backend: the pipeline is unchanged and only the
+dependency and device differ. `docs/deploy/docker-compose.intel.yml` is that deployment, and it needs
+no custom image — PyTorch ships native `torch.xpu` upstream and the `xpu` wheel index carries the exact
+versions already pinned, so the ordinary Dockerfile plus an index swap is enough.
+`docs/deploy/Dockerfile.intel` is kept beside it purely as an IPEX fallback, since IPEX was originally
+what registered the device with torch. OpenVINO is registered as a known backend but reports
+unavailable — Intel publishes IR weights with STFT/iSTFT stripped for a C++ pipeline, so supporting it
+is a port rather than a dependency.
 
 ### Settings scopes
 
@@ -256,12 +360,16 @@ Settings live in two layers, split by **who a setting belongs to**:
 
 | Scope | Belongs to | Examples |
 |---|---|---|
-| **global** | the deployment and its worker fleet | default separator engine + model, upgrade policy |
+| **global** | the deployment and its worker fleet | default separator engine + model, upgrade policy, the source **fetcher** |
 | **room** | one party | interstitial pacing, a downward-only cook-quality ceiling |
 
 Separator policy is global rather than per-room because an engine is only usable if some connected
 worker advertises its capability — a fact about the server's hardware, not about a party. Two rooms
-on one core cannot meaningfully disagree about whether a RoFormer worker exists.
+on one core cannot meaningfully disagree about whether a RoFormer worker exists. The fetcher is global
+for the same reason plus one more: it depends on the box's binaries and credentials, so a room cannot
+choose a downloader its workers cannot run. `local` is never a legal default — it describes one media's
+bytes, so storing it would mean "never download anything" — and the normalizer degrades it on **read**
+as well as write, which is also what a de-whitelisted value needs.
 
 The room layer is keyed by room id, so multi-room is a row per room rather than a migration. A room
 may only cap cook quality **downward** (`maxQualityRank`): the global choice is already bounded by

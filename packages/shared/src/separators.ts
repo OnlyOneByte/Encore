@@ -13,7 +13,57 @@
 // can never trigger an arbitrary multi-hundred-MB checkpoint download onto the shared box. Widening
 // to arbitrary Hugging Face ids is a deliberate future toggle, not the default.
 
+import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
+
 export type SeparatorEngineId = 'demucs' | 'roformer' | 'ensemble';
+
+/**
+ * What a checkpoint COSTS to run, measured rather than guessed.
+ *
+ * Every field here was benchmarked on the reference box (32-core Graviton 3, CPU, aarch64) on
+ * 2026-09-03 — see `REFERENCE_BOX`. Three results drove the shape of this type:
+ *
+ *   • Wall-clock is LINEAR in `overlap`. Dropping a model from 4 to 2 took a 24s clip from 253s to
+ *     138s (1.83×) with the per-window cost unchanged, because overlap is purely how many times each
+ *     second of audio is recomputed and blended.
+ *   • `cpuPrecision` REVERSES per checkpoint. bf16 was 1.6× faster than fp32 on bs-roformer-1297
+ *     (26.59s → 16.55s per window) but 1.4–1.8× SLOWER on the 8s-window mel-band models. So there is
+ *     no global "use bf16" switch to set; it is a per-checkpoint measurement or it is wrong.
+ *   • Parameter count does not predict cost. A 228M-param mel-band model ran 5.2× faster per window
+ *     than the 160M-param bs-roformer-1297, because `depth` and `dim` dominate. Nothing here may be
+ *     inferred from checkpoint size.
+ */
+export interface SeparatorCost {
+	/**
+	 * MEASURED seconds of wall-clock per second of song, on the reference box, at this model's
+	 * `overlap` and `cpuPrecision`. htdemucs is 0.29 (a 2:51 song in 50s); bs-roformer-1297 is 8.28.
+	 *
+	 * A RATIO for UI estimation ("this will take about four minutes"), never a gate. Scale it for
+	 * other hardware via `estimateCookSeconds`'s `hardwareFactor` — do not treat it as absolute.
+	 */
+	rtFactor: number;
+	/**
+	 * Number of overlapping prediction windows, as an INTEGER COUNT (MDXC/RoFormer semantics).
+	 *
+	 * Absent on demucs models on purpose: demucs's overlap is a 0–1 FRACTION (0.25). Unifying two
+	 * different meanings under one field name is how a `4` eventually gets passed where `0.25`
+	 * belongs, so the field is simply not present where that meaning does not hold.
+	 *
+	 * Hardware-independent — it is a redundancy multiplier, not an execution detail — which is why it
+	 * lives with the model here rather than with the worker's hardware backend.
+	 */
+	overlap?: number;
+	/**
+	 * Precision the worker should run this checkpoint at ON A CPU BOX. Named for the CPU deliberately:
+	 * it is a (checkpoint × hardware) fact, not a property of the checkpoint alone. A GPU backend
+	 * overrides it — fp16 is the lever on Arc XMX and Apple MPS, while on CPU fp16 measured 6.5×
+	 * SLOWER than fp32 (179s vs 27.7s per window) because there are no fp16 CPU kernels.
+	 */
+	cpuPrecision: 'fp32' | 'bf16';
+	/** Whether the numbers above were benchmarked on the reference box or reasoned about. An
+	 *  `estimated` cost is honest guidance for the UI but must never be cited as evidence. */
+	provenance: 'measured' | 'estimated';
+}
 
 export interface SeparatorModel {
 	/** Stable token stored in JobParams.model and room settings. NEVER a raw checkpoint filename — the
@@ -24,6 +74,8 @@ export interface SeparatorModel {
 	label: string;
 	/** One-line "why pick this" shown under the label. */
 	note: string;
+	/** Measured cost of running this checkpoint. See `SeparatorCost`. */
+	cost: SeparatorCost;
 }
 
 export interface SeparatorEngine {
@@ -43,7 +95,14 @@ export interface SeparatorEngine {
 }
 
 // ── the registry ────────────────────────────────────────────────────────────────
-// Measured on a 2:51 CPU cook (32-core box): htdemucs 50s, htdemucs_ft 95s, BS-RoFormer ~2629s.
+/**
+ * The box every `SeparatorCost.rtFactor` below was measured on, recorded so a future reader can tell
+ * whether a number still applies to the hardware in front of them. Encore's three known targets sit
+ * within a small factor of each other, which is exactly why the ratio is worth writing down: the
+ * deploy box's Arc A380 is ~2× this at fp32 and ~4× at fp16, and an M1 Pro's GPU is ~2.5×/~5×.
+ * Neither is the 10–40× a CUDA card would give, so no engine here becomes "fast" by moving hardware.
+ */
+export const REFERENCE_BOX = '32-core Graviton 3 (Neoverse V1, aarch64), CPU only, 2026-09-03';
 
 export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 	{
@@ -53,9 +112,27 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 		liveSelectable: true,
 		speed: 'fast',
 		models: [
-			{ id: 'htdemucs', label: 'HT-Demucs', note: 'Fastest. The default — singable in seconds.' },
-			{ id: 'htdemucs_ft', label: 'HT-Demucs FT', note: 'Fine-tuned 4-model bag. ~2× slower, cleaner.' },
-			{ id: 'htdemucs_6s', label: 'HT-Demucs 6-stem', note: 'Adds piano/guitar stems.' },
+			{
+				id: 'htdemucs',
+				label: 'HT-Demucs',
+				note: 'Fastest. The default — singable in seconds.',
+				// 50s for a 171.5s song, measured end to end.
+				cost: { rtFactor: 0.29, cpuPrecision: 'fp32', provenance: 'measured' },
+			},
+			{
+				id: 'htdemucs_ft',
+				label: 'HT-Demucs FT',
+				note: 'Fine-tuned 4-model bag. ~2× slower, cleaner.',
+				// 95s for the same 171.5s song, measured end to end.
+				cost: { rtFactor: 0.55, cpuPrecision: 'fp32', provenance: 'measured' },
+			},
+			{
+				id: 'htdemucs_6s',
+				label: 'HT-Demucs 6-stem',
+				note: 'Adds piano/guitar stems.',
+				// NOT benchmarked: one pass like htdemucs but resolving six sources instead of four.
+				cost: { rtFactor: 0.4, cpuPrecision: 'fp32', provenance: 'estimated' },
+			},
 		],
 	},
 	{
@@ -65,8 +142,22 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 		liveSelectable: true, // allowed live, but very slow on CPU — the UI warns
 		speed: 'slow',
 		models: [
-			{ id: 'bs-roformer-1297', label: 'BS-RoFormer 1297', note: 'Highest separation quality. Slow on CPU.' },
-			{ id: 'mel-roformer-inst-v2', label: 'MelBand RoFormer Inst v2', note: 'Instrumental-tuned.' },
+			{
+				id: 'bs-roformer-1297',
+				label: 'BS-RoFormer',
+				note: 'Highest separation quality. Minutes, not seconds — best as an upgrade.',
+				/**
+				 * 16.55s per 8s window at bf16 (fp32 was 26.59s), × overlap 4 ⇒ 8.28. bf16 rather than
+				 * fp32 because it measured 1.6× faster here and truncates only the mantissa — bf16 keeps
+				 * fp32's exponent range, so it is a near-lossless win rather than a quality tradeoff.
+				 *
+				 * `overlap` stays at this checkpoint's own default of 4. Halving it to 2 is a further
+				 * measured 1.83× (rtFactor would fall to 4.14) but overlap-add is what suppresses audible
+				 * seams at window boundaries, so that one is a quality decision awaiting a listening test,
+				 * not a free win like the dtype.
+				 */
+				cost: { rtFactor: 8.28, overlap: 4, cpuPrecision: 'bf16', provenance: 'measured' },
+			},
 		],
 	},
 	{
@@ -76,8 +167,20 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 		liveSelectable: false, // UPGRADE-ONLY: runs several models, far too slow for the live path
 		speed: 'slow',
 		models: [
-			{ id: 'instrumental_clean', label: 'Instrumental (clean)', note: 'Two-model ensemble, minimal vocal bleed.' },
-			{ id: 'instrumental_full', label: 'Instrumental (full)', note: 'Maximum instrument preservation.' },
+			{
+				id: 'instrumental_clean',
+				label: 'Instrumental (clean)',
+				note: 'Two-model ensemble, minimal vocal bleed.',
+				// NOT benchmarked, and no ensemble worker exists yet: two roformer-class passes plus a
+				// blend, so at least twice a single roformer cook.
+				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' },
+			},
+			{
+				id: 'instrumental_full',
+				label: 'Instrumental (full)',
+				note: 'Maximum instrument preservation.',
+				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' },
+			},
 		],
 	},
 ] as const;
@@ -110,12 +213,18 @@ export function isLiveSelectable(engineId: string, modelId: string): boolean {
  *
  * An unranked pairing scores 0 and can never win a comparison, which keeps an unknown or
  * de-whitelisted model from displacing a known-good artifact.
+ *
+ * The former `roformer:mel-roformer-inst-v2` rung (rank 30) is gone: its worker-side token resolved
+ * to a registry slug that does not exist, and the engine backing `roformer` today implements only the
+ * BS-RoFormer architecture, so no mel-band checkpoint could ever have run. It was an option the phone
+ * offered and no worker could satisfy. A de-whitelisted model stored in settings falls back per-field
+ * through `normalizeGlobalSettings`, so removing it degrades an affected room to the default rather
+ * than breaking it.
  */
 const QUALITY_RANK: Record<string, number> = {
 	'demucs:htdemucs': 10,
 	'demucs:htdemucs_6s': 15,
 	'demucs:htdemucs_ft': 20,
-	'roformer:mel-roformer-inst-v2': 30,
 	'roformer:bs-roformer-1297': 35,
 	'ensemble:instrumental_full': 40,
 	'ensemble:instrumental_clean': 45
@@ -123,6 +232,31 @@ const QUALITY_RANK: Record<string, number> = {
 
 export function qualityRank(engineId: string, modelId: string): number {
 	return QUALITY_RANK[`${engineId}:${modelId}`] ?? 0;
+}
+
+/** The measured cost record for a pairing, or undefined if the pairing is not whitelisted. */
+export function separatorCost(engineId: string, modelId: string): SeparatorCost | undefined {
+	return getEngine(engineId)?.models.find((m) => m.id === modelId)?.cost;
+}
+
+/**
+ * How long a cook of `songSeconds` is expected to take, in seconds — what the UI needs to say "about
+ * four minutes" instead of a bare "slow".
+ *
+ * `hardwareFactor` scales the reference-box measurement for a different worker: >1 for a slower box,
+ * <1 for a faster one (the Arc A380 deploy box is roughly 0.5 at fp32 and 0.25 at fp16 — see
+ * `REFERENCE_BOX`). Returns null for an unranked pairing rather than guessing, so a caller renders
+ * "unknown" instead of a fabricated number.
+ */
+export function estimateCookSeconds(
+	engineId: string,
+	modelId: string,
+	songSeconds: number,
+	hardwareFactor = 1
+): number | null {
+	const cost = separatorCost(engineId, modelId);
+	if (!cost || !Number.isFinite(songSeconds) || songSeconds <= 0) return null;
+	return Math.round(songSeconds * cost.rtFactor * hardwareFactor);
 }
 
 /**
@@ -168,9 +302,16 @@ export interface GlobalSettings {
 	/** Engine+model the upgrade targets. May be an upgrade-only engine (e.g. ensemble). */
 	upgradeEngine: SeparatorEngineId;
 	upgradeModel: string;
+	/**
+	 * Which downloader acquires source audio. GLOBAL rather than per-room because it is a property of
+	 * the box's binaries and credentials — a room cannot choose a fetcher its workers cannot run.
+	 * `local` is never valid here: that is a property of an individual media, not a default.
+	 */
+	defaultFetcher: FetcherId;
 }
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
+	defaultFetcher: DEFAULT_FETCHER,
 	defaultEngine: DEFAULT_ENGINE,
 	defaultModel: DEFAULT_MODEL,
 	enqueueUpgrade: false,
@@ -197,9 +338,16 @@ export function normalizeGlobalSettings(
 		input && isValidSeparator(input.upgradeEngine ?? '', input.upgradeModel ?? '')
 			? { upgradeEngine: input.upgradeEngine!, upgradeModel: input.upgradeModel! }
 			: { upgradeEngine: d.upgradeEngine, upgradeModel: d.upgradeModel };
+	// A de-whitelisted or `local` fetcher degrades to the default rather than being stored: `local`
+	// describes one media's bytes, so accepting it here would mean "download nothing, ever".
+	const fetcher =
+		input?.defaultFetcher && isValidFetcher(input.defaultFetcher) && input.defaultFetcher !== 'local'
+			? input.defaultFetcher
+			: d.defaultFetcher;
 	return {
 		...live,
 		...upgrade,
+		defaultFetcher: fetcher,
 		enqueueUpgrade: typeof input?.enqueueUpgrade === 'boolean' ? input.enqueueUpgrade : d.enqueueUpgrade,
 	};
 }

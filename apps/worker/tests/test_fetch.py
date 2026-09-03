@@ -1,0 +1,202 @@
+"""The `fetch` action: acquisition as its own job.
+
+WHY THESE TESTS. Two behaviours matter and neither is exercised by the separation tests. First, that a
+DECLARED fetcher decides how audio is obtained -- the URI's shape must no longer decide anything, which
+is the defect this module replaced. Second, that a fetch reuses audio already retained on the volume,
+because that reuse is what makes acquisition worth splitting out instead of repeating inside every
+consumer.
+
+No network and no yt-dlp: the runner is injected, exactly as it is for the separation processors.
+"""
+from __future__ import annotations
+
+import os
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src import fetch as fetch_mod  # noqa: E402
+from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
+from src.vocabulary import Fetcher  # noqa: E402
+
+
+def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):
+    return JobSpec(
+        job_id="j1", media_id=media_id, job_type="fetch",
+        source_uri=source_uri, params=params, media_dir=str(tmp_path),
+    )
+
+
+def fake_runner(lines, *, writes: tuple[str, str] | None = None):
+    """A runner that emits progress lines and optionally lands a file, standing in for yt-dlp."""
+
+    async def run(argv):
+        if writes:
+            path, body = writes
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w") as fh:
+                fh.write(body)
+        for ln in lines:
+            yield ln
+
+    return run
+
+
+async def drain(proc, job):
+    return [ev async for ev in proc.process(job)]
+
+
+def test_fetcher_is_declared_never_inferred_from_the_uri():
+    # A non-http scheme is NOT local just because it lacks an http prefix -- the old shape test made
+    # exactly this mistake and failed later inside ffmpeg instead of here.
+    odd = spec("/m", source_uri="spotify:track:4cOdK2wGLETKBW3PvgPWqT", fetcher="ytdlp")
+    assert fetch_mod.job_fetcher(odd) is Fetcher.YTDLP
+    assert fetch_mod.job_fetcher(spec("/m", fetcher="local")) is Fetcher.LOCAL
+    assert fetch_mod.job_fetcher(spec("/m")) is Fetcher.YTDLP  # absent => default, so an older core works
+
+
+def test_an_unknown_fetcher_fails_before_any_work():
+    with pytest.raises(ValueError, match="unknown fetcher"):
+        fetch_mod.job_fetcher(spec("/m", fetcher="librespot"))
+
+
+def test_local_paths_resolve_against_the_media_volume(tmp_path):
+    rel = spec(tmp_path, source_uri="library/song.wav", fetcher="local")
+    assert fetch_mod.local_source_path(rel) == os.path.join(str(tmp_path), "library/song.wav")
+    # an absolute path is honoured as-is, so a library mounted outside MEDIA_DIR still works
+    absolute = spec(tmp_path, source_uri="/mnt/music/song.wav", fetcher="local")
+    assert fetch_mod.local_source_path(absolute) == "/mnt/music/song.wav"
+
+
+@pytest.mark.asyncio
+async def test_fetch_downloads_and_reports_the_retained_original(tmp_path):
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(runner=fake_runner(["[download]  50.0% of 3MiB"], writes=(audio, "AUDIO")))
+    events = await drain(proc, spec(tmp_path, fetcher="ytdlp"))
+
+    stages = {e.stage for e in events if isinstance(e, ProgressEvent)}
+    assert stages == {"downloading"}, "a fetch separates nothing -- downloading is its only stage"
+    done = [e for e in events if isinstance(e, CompleteResult)]
+    assert len(done) == 1
+    assert done[0].media_uri == audio
+    assert done[0].artifacts["source"]["audio"] == audio
+
+
+@pytest.mark.asyncio
+async def test_fetch_reuses_audio_already_on_the_volume_and_never_re_downloads(tmp_path):
+    # The raw original is the one asset that cannot be regenerated, so a second fetch for the same
+    # media must cost no network at all.
+    audio = tmp_path / "audio" / "m1.wav"
+    audio.parent.mkdir(parents=True)
+    audio.write_text("ALREADY HERE")
+
+    calls: list[list[str]] = []
+
+    async def runner(argv):
+        calls.append(argv)
+        yield ""
+
+    proc = fetch_mod.FetchProcessor(runner=runner)
+    events = await drain(proc, spec(tmp_path, fetcher="ytdlp"))
+
+    assert calls == [], "audio was already retained -- yt-dlp must not run"
+    assert any(isinstance(e, ProgressEvent) and e.pct == 100 for e in events)
+    assert audio.read_text() == "ALREADY HERE", "the retained original must not be overwritten"
+
+
+@pytest.mark.asyncio
+async def test_a_local_job_never_downloads(tmp_path):
+    local = tmp_path / "library" / "song.wav"
+    local.parent.mkdir(parents=True)
+    local.write_text("LOCAL")
+
+    async def runner(argv):  # pragma: no cover - must never run
+        raise AssertionError("a local job must not invoke a downloader")
+        yield ""
+
+    proc = fetch_mod.FetchProcessor(runner=runner)
+    events = await drain(proc, spec(tmp_path, source_uri=str(local), fetcher="local"))
+    done = [e for e in events if isinstance(e, CompleteResult)]
+    assert done[0].media_uri == str(local)
+
+
+@pytest.mark.asyncio
+async def test_a_download_that_lands_nothing_FAILS_rather_than_reporting_success(tmp_path):
+    # Reporting success for a file that is not there would have the core chain a separation against
+    # missing input, which surfaces as a confusing decode error one stage later.
+    proc = fetch_mod.FetchProcessor(runner=fake_runner(["[download] 100%"]))
+    with pytest.raises(RuntimeError, match="produced no audio"):
+        await drain(proc, spec(tmp_path, fetcher="ytdlp"))
+
+
+class FakeAnnotator:
+    """Stands in for MusicBrainzClient: returns whatever recordings the test wants."""
+
+    def __init__(self, recordings=None, boom=False):
+        self._recs = recordings or []
+        self._boom = boom
+
+    def search(self, artist, track, limit=10):
+        if self._boom:
+            raise RuntimeError("musicbrainz is down")
+        from src.annotate import parse_recordings
+
+        return parse_recordings({"recordings": self._recs})
+
+
+MB_HIT = [{
+    "id": "mb-take-on-me", "score": 100, "title": "Take On Me", "length": 225000,
+    "artist-credit": [{"name": "a\u2010ha"}], "releases": [{"title": "Hunting High and Low", "date": "1985-06-01"}],
+}]
+
+
+@pytest.mark.asyncio
+async def test_a_fetch_reports_the_identification_it_made(tmp_path):
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(
+        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")),
+        annotator=FakeAnnotator(MB_HIT),
+    )
+    events = await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0))
+    done = [e for e in events if isinstance(e, CompleteResult)][0]
+    note = done.artifacts["annotation"]
+    assert note["source"] == "musicbrainz"
+    assert note["mbid"] == "mb-take-on-me"
+    assert note["confidence"] == "high"
+    # the unicode-hyphen artist came back normalised for MATCHING but is reported as MusicBrainz spells it
+    assert note["artist"] == "a\u2010ha"
+
+
+@pytest.mark.asyncio
+async def test_no_lookup_keys_means_no_annotation_attempted(tmp_path):
+    # An unconfident parse sends no artist/track, which is the signal to decline rather than guess.
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(
+        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(MB_HIT)
+    )
+    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp")) if isinstance(e, CompleteResult)][0]
+    assert "annotation" not in done.artifacts
+
+
+@pytest.mark.asyncio
+async def test_a_DEAD_metadata_service_still_completes_the_fetch(tmp_path):
+    # The whole point of annotation being a step rather than a job: a karaoke night must not stop
+    # because MusicBrainz is unreachable. The audio is what matters and it is already on disk.
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(
+        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(boom=True)
+    )
+    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
+    assert done.media_uri == audio
+    assert "annotation" not in done.artifacts
+
+
+@pytest.mark.asyncio
+async def test_annotation_can_be_switched_off_entirely(tmp_path):
+    audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    proc = fetch_mod.FetchProcessor(runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=None)
+    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
+    assert "annotation" not in done.artifacts

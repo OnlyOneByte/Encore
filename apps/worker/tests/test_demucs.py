@@ -14,11 +14,25 @@ from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
 # ── pure helpers ──────────────────────────────────────────────────────────────────
-def test_is_local_source():
-    assert demucs.is_local_source("library/song.mp4") is True
-    assert demucs.is_local_source("/abs/path.wav") is True
-    assert demucs.is_local_source("https://www.youtube.com/watch?v=abc") is False
-    assert demucs.is_local_source("http://x/y") is False
+def test_acquisition_is_DECLARED_not_inferred_from_the_uri_shape():
+    """The bug this replaces: acquisition was guessed from an http(s) prefix, so any other scheme was
+    silently treated as a local path and failed later inside ffmpeg. A declared value fails at the
+    boundary instead, and the URI's shape no longer decides anything."""
+    from src.fetch import job_fetcher
+    from src.vocabulary import Fetcher
+
+    def spec(params):
+        return JobSpec(job_id="j", media_id="m", job_type="stems",
+                                source_uri="spotify:track:4cOdK2wGLETKBW3PvgPWqT", params=params, media_dir="/m")
+
+    # a non-http scheme is NOT local just because it lacks an http prefix
+    assert job_fetcher(spec({"fetcher": "ytdlp"})) is Fetcher.YTDLP
+    assert job_fetcher(spec({"fetcher": "local"})) is Fetcher.LOCAL
+    # absent means the default, so an older core keeps working
+    assert job_fetcher(spec({})) is Fetcher.YTDLP
+    # and an unknown fetcher is refused before any byte moves
+    with pytest.raises(ValueError, match="unknown fetcher"):
+        job_fetcher(spec({"fetcher": "librespot-typo"}))
 
 
 def test_download_argv_shape():
@@ -101,8 +115,8 @@ def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, e
     return run
 
 
-def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1"):
-    return JobSpec(job_id="j1", media_id=media_id, job_type="stems", source_uri=source_uri, params={}, media_dir=str(tmp_path))
+def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):
+    return JobSpec(job_id="j1", media_id=media_id, job_type="stems", source_uri=source_uri, params=params, media_dir=str(tmp_path))
 
 
 async def drain(processor, job):
@@ -155,13 +169,14 @@ async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_pa
 
 @pytest.mark.asyncio
 async def test_local_source_skips_download_stage(tmp_path):
-    # a pre-existing local file: no yt-dlp stage should run
+    # A pre-existing local file: no yt-dlp stage should run. The job DECLARES fetcher=local — the path
+    # no longer being an http URL is not what makes it local, which is the whole point of the change.
     local = tmp_path / "library" / "song.wav"
     local.parent.mkdir(parents=True)
     local.write_bytes(b"LOCAL")
     runner = fake_runner({"demucs": ["100%|██| 2/2"]})
     proc = demucs.DemucsProcessor(runner=runner)
-    events = await drain(proc, spec(tmp_path, source_uri=str(local)))
+    events = await drain(proc, spec(tmp_path, source_uri=str(local), fetcher="local"))
     stages = {e.stage for e in events if isinstance(e, ProgressEvent)}
     assert "downloading" not in stages  # local source → no download
     assert "separating" in stages
