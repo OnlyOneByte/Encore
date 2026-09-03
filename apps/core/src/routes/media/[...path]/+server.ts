@@ -12,6 +12,9 @@ const CONTENT_TYPES: Record<string, string> = {
 	mp3: 'audio/mpeg',
 	ogg: 'audio/ogg',
 	wav: 'audio/wav',
+	flac: 'audio/flac', // lossless instrumental (B-7 audio policy) — without this the browser gets
+	// application/octet-stream and refuses to play it
+	opus: 'audio/ogg',
 	json: 'application/json' // aligned-lyrics artifacts (M7-C8)
 };
 

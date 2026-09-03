@@ -62,7 +62,10 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
     return [
         ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
         "-i", input_path,
-        "-ac", "2", "-ar", "44100",
+        "-ac", "2",
+        # NO -ar: keep the SOURCE sample rate. YouTube serves 48 kHz Opus, so forcing 44100 here was a
+        # resampling stage that cost quality and bought nothing — every output format we use (FLAC,
+        # AAC, Opus) handles 48 kHz natively.
         "-c:a", "pcm_s16le",
         out_wav,
     ]
@@ -77,8 +80,23 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
 STEM_BITRATE = "192k"
 
 
+def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
+    """ffmpeg argv: encode a separated stem to LOSSLESS FLAC, 16-bit stereo at the source rate.
+
+    Used for the INSTRUMENTAL only. 16-bit is transparent here: the signal originated as a lossy
+    48 kHz stream, so extra bit depth would only store quantisation noise. compression_level 8 is the
+    size/CPU sweet spot and is decode-cheap, which matters for a browser starting playback.
+    """
+    return [
+        ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
+        "-i", input_wav,
+        "-c:a", "flac", "-compression_level", "8", "-sample_fmt", "s16", "-ac", "2",
+        out_path,
+    ]
+
+
 def encode_stem_argv(input_wav: str, out_path: str, bitrate: str = STEM_BITRATE, ffmpeg_bin: str = "ffmpeg") -> list[str]:
-    """ffmpeg argv: encode a separated WAV stem to stereo AAC in an m4a container."""
+    """ffmpeg argv: encode a separated WAV stem to stereo AAC in an m4a container (VOCALS stem)."""
     return [
         ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
         "-i", input_wav,
@@ -277,14 +295,15 @@ class DemucsProcessor:
             yield ev
 
         # ── stage 3: encode + publish the stems to the MediaStore ──────────────────
-        # Encoded to stereo AAC rather than moved as WAV: ~54 MB -> ~7 MB per stem, and the
-        # instrumental still plays natively in a browser <video>.
+        # The instrumental goes to LOSSLESS FLAC: it is the file that plays at volume, and a second
+        # lossy generation is audible on high-frequency transients (crash cymbals especially). The
+        # vocals stem stays lossy below — nothing plays it aloud.
         produced = demucs_no_vocals_path(sep_out, self._model)
         if not os.path.exists(produced):
             raise RuntimeError(f"demucs produced no instrumental at {produced}")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
-        await self._run_quiet(encode_stem_argv(produced, final, self._bitrate, self._ffmpeg_bin))
+        await self._run_quiet(encode_flac_argv(produced, final, self._ffmpeg_bin))
 
         stems: dict[str, str] = {"instrumental": final}
         # Also publish the ISOLATED VOCALS stem (M8-C0) — `--two-stems=vocals` already produced it;

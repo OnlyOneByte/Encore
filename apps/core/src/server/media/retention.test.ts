@@ -61,10 +61,18 @@ describe('retentionCapBytes', () => {
 });
 
 describe('legacy-format detection', () => {
-	it('flags anything that is not the current container', () => {
+	it('flags UNCOMPRESSED artifacts only', () => {
 		expect(isLegacyStemRef('derived/stems/a-instrumental.wav')).toBe(true);
-		expect(isLegacyStemRef('derived/stems/a-instrumental.m4a')).toBe(false);
 		expect(isLegacyStemRef(undefined)).toBe(false);
+	});
+
+	it('does NOT flag a lossy stem for "upgrade" to lossless — that would be actively harmful', () => {
+		// When the instrumental target became FLAC, a rule of "anything not the current format" would
+		// have transcoded every .m4a to FLAC. That cannot recover what AAC discarded: it produces a ~4x
+		// larger file containing identical audio. A real codec upgrade means re-cooking from raw audio.
+		expect(isLegacyStemRef('derived/stems/a-instrumental.m4a')).toBe(false);
+		expect(isLegacyStemRef('derived/stems/a-instrumental.flac')).toBe(false);
+		expect(planRecompress([media('a', { instrumentalRef: 'derived/stems/a-instrumental.m4a' })])).toEqual([]);
 	});
 
 	it('plans both stems of a legacy cook, since they were produced together', () => {
@@ -72,7 +80,7 @@ describe('legacy-format detection', () => {
 		expect(targets).toHaveLength(2); // only 'a'; 'b' is already current
 		expect(targets.map((t) => t.kind).sort()).toEqual(['instrumental', 'vocals']);
 		expect(targets.find((t) => t.kind === 'vocals')!.from).toBe('derived/stems/a-vocals.wav');
-		expect(targets.find((t) => t.kind === 'instrumental')!.to).toBe('derived/stems/a-instrumental.m4a');
+		expect(targets.find((t) => t.kind === 'instrumental')!.to).toBe('derived/stems/a-instrumental.flac');
 	});
 });
 
@@ -91,8 +99,8 @@ describe('recompressLegacyStems', () => {
 		expect(res.converted).toBe(2);
 		expect(res.bytesBefore).toBe(2000);
 		expect(res.bytesAfter).toBe(200);
-		expect(res.newRefs.get('a')).toBe('derived/stems/a-instrumental.m4a');
-		expect(existsSync(join(root, 'derived/stems/a-instrumental.m4a'))).toBe(true);
+		expect(res.newRefs.get('a')).toBe('derived/stems/a-instrumental.flac');
+		expect(existsSync(join(root, 'derived/stems/a-instrumental.flac'))).toBe(true);
 		expect(existsSync(join(root, 'derived/stems/a-instrumental.wav'))).toBe(false); // reclaimed
 	});
 
@@ -113,7 +121,7 @@ describe('recompressLegacyStems', () => {
 			writeFileSync(to, Buffer.alloc(0));
 			return true;
 		});
-		expect(existsSync(join(root, 'derived/stems/a-instrumental.m4a'))).toBe(false);
+		expect(existsSync(join(root, 'derived/stems/a-instrumental.flac'))).toBe(false);
 		expect(existsSync(join(root, 'derived/stems/a-instrumental.wav'))).toBe(true);
 	});
 
@@ -123,7 +131,7 @@ describe('recompressLegacyStems', () => {
 		await recompressLegacyStems(targets, fakeTranscode());
 		const again = await recompressLegacyStems(targets, fakeTranscode());
 		expect(again.converted).toBe(0);
-		expect(again.newRefs.get('a')).toBe('derived/stems/a-instrumental.m4a');
+		expect(again.newRefs.get('a')).toBe('derived/stems/a-instrumental.flac');
 	});
 });
 
@@ -163,7 +171,7 @@ describe('evictDerived', () => {
 		const { removed, bytes } = evictDerived(m);
 		expect(bytes).toBe(1000);
 		expect(removed.length).toBe(3);
-		expect(existsSync(join(root, 'derived/stems/a-instrumental.m4a'))).toBe(false);
+		expect(existsSync(join(root, 'derived/stems/a-instrumental.flac'))).toBe(false);
 	});
 
 	it('NEVER touches audio/ or meta/ — those are the unrecoverable classes', () => {
@@ -176,7 +184,7 @@ describe('evictDerived', () => {
 		evictDerived(media('a'));
 		expect(existsSync(join(root, 'audio/a.webm'))).toBe(true); // cannot be re-acquired
 		expect(existsSync(join(root, 'meta/a.json'))).toBe(true); // IS the library
-		expect(existsSync(join(root, 'derived/stems/a-instrumental.m4a'))).toBe(false);
+		expect(existsSync(join(root, 'derived/stems/a-instrumental.flac'))).toBe(false);
 	});
 
 	it('is safe on a song with no artifacts on disk', () => {

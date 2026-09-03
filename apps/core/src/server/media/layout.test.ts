@@ -41,7 +41,8 @@ describe('keys', () => {
 	it('every artifact class has a stable relative key', () => {
 		expect(audioKey('m1')).toBe('audio/m1.wav');
 		expect(audioKey('m1', 'm4a')).toBe('audio/m1.m4a');
-		expect(instrumentalKey('m1')).toBe('derived/stems/m1-instrumental.m4a');
+		// the two stems get different formats: lossless where it is heard, lossy where it is not
+		expect(instrumentalKey('m1')).toBe('derived/stems/m1-instrumental.flac');
 		expect(vocalsKey('m1')).toBe('derived/stems/m1-vocals.m4a');
 		// a pre-policy song keeps its own extension — the ref is stored per media, not re-derived
 		expect(instrumentalKey('m1', 'wav')).toBe('derived/stems/m1-instrumental.wav');

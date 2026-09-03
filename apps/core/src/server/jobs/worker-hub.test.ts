@@ -103,7 +103,7 @@ test('FULL LIFECYCLE: hello → assign → accept → progress → complete driv
 	const m = mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
 	expect(m.playMode).toBe('file');
-	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.m4a');
+	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
 	expect(m.sourceRef).toBe('vid-m1'); // origin preserved — search still recognises this song
 	const ready = broadcasts.at(-1) as Extract<ServerEvent, { type: 'media:status' }>;
 	expect(ready).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'ready' });

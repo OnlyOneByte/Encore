@@ -15,9 +15,19 @@ from typing import AsyncIterator, Protocol
 
 from . import protocol
 
-# Stored stem container (B-7 audio policy): stereo AAC in m4a. Browser-native for the TV player, and
-# ~7 MB where the WAV was ~54 MB. MUST match the core's paths.ts STEM_EXT.
-STEM_EXT = "m4a"
+# Stored stem formats (B-7 audio policy, revised). The two stems get DIFFERENT treatment because they
+# have different jobs:
+#
+#   instrumental -> FLAC (lossless). This is the file that comes out of the speakers at volume, and it
+#     is the one place a second lossy generation is audible: ffmpeg's native AAC encoder smears
+#     high-frequency transients, which is exactly what a crash cymbal is. Lossless removes that
+#     generation entirely. ~22 MB for a 3:27 track vs ~5 MB, which is affordable now.
+#   vocals -> AAC (lossy). Nothing plays it aloud; it feeds pitch extraction and the future vocal
+#     guide, so transparency is not the bar.
+#
+# MUST match the core's paths.ts INSTRUMENTAL_EXT / VOCALS_EXT.
+INSTRUMENTAL_EXT = "flac"
+VOCALS_EXT = "m4a"
 
 
 @dataclass
@@ -82,7 +92,7 @@ def instrumental_path(media_dir: str, media_id: str) -> str:
     paths.ts instrumentalKey() byte-for-byte -- the TV resolves /media/<ref>, so a mismatch 404s on a
     file that exists.
     """
-    return os.path.join(media_dir, "derived", "stems", f"{media_id}-instrumental.{STEM_EXT}")
+    return os.path.join(media_dir, "derived", "stems", f"{media_id}-instrumental.{INSTRUMENTAL_EXT}")
 
 
 def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
@@ -101,7 +111,7 @@ def vocals_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's ISOLATED VOCALS stem (M8-C0). Feeds pitch
     extraction (M8-C1) and the vocal-guide mix (docs/vocal-guide-spec.md). Parallels the core's
     make-karaoke `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
-    return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{STEM_EXT}")
+    return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{VOCALS_EXT}")
 
 
 def pitch_track_path(media_dir: str, media_id: str) -> str:
