@@ -1,8 +1,9 @@
-// Lyrics backfill (B-3-C7) — give ALREADY-COOKED songs lyrics.
+// Lyrics backfill — give ALREADY-COOKED songs lyrics.
 //
 // WHY THIS EXISTS. `followUps` only fires when a stems job COMPLETES, so lyrics exist exclusively for
-// songs cooked after B-3-C1 landed. Measured on the owner's live library: 13 cooked songs, 3 with
-// lyrics — 10 that could never get them, because re-cooking is the only path and nobody is going to
+// songs cooked after the align-enqueue fix landed. Measured on the owner's live library: 13 cooked
+// songs, 3 with lyrics — 10 that could never get them, because re-cooking is the only path and
+// nobody is going to
 // re-cook a working song. The whole multi-candidate design was justified by an "upgrade path"; without
 // this, that path had no entry point.
 //

@@ -1,4 +1,4 @@
-// B-3-C5: an align job reports EVERY artifact it produced; the core stores the set and re-picks the
+// An align job reports EVERY artifact it produced; the core stores the set and re-picks the
 // chosen one. The property that matters is that storage can never regress — a coarser source arriving
 // later must not displace existing word timings, which a "last write wins" ref would have done.
 import { test, expect } from 'bun:test';
@@ -70,7 +70,7 @@ test('a set with nothing showable does not clear a working lyricsRef', () => {
 	expect(m.lyricsRef).toBe('derived/lyrics/m1-good.json');
 });
 
-test('an older worker sending only `uri` still works (pre-B-3 path)', () => {
+test('an older worker sending only `uri` still works (legacy uri-only path)', () => {
 	const m = media();
 	const by = withMedia(m);
 	expect(setMediaLyrics('m1', '/srv/encore/media/derived/lyrics/m1.json', by)).toBe(true);

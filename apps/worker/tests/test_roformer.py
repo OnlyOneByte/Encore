@@ -1,4 +1,4 @@
-"""B-8 Stage 3: roformer engine pure helpers + engine routing. The real BSRoformerSession cook is
+"""Roformer engine pure helpers + engine routing. The real BSRoformerSession cook is
 REAL-ML/NET and unverified in this environment (see roformer.py's module warning), so these cover the
 argv-free logic: model-token→slug resolution, output-stem discovery, and the EngineRouter dispatch.
 """

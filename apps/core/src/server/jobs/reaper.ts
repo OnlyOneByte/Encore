@@ -1,12 +1,12 @@
 // Job reaper — the single periodic tick (~3s) that enforces leases, plus the one-shot boot
 // recovery. I/O orchestrator over the pure `sweep`/`inflightToRecover` policy (leases.ts) and the
-// `JobRepository`. A requeue here makes the job eligible for redispatch (M7-C3). See
+// `JobRepository`. A requeue here makes the job eligible for redispatch. See
 // docs/ARCHITECTURE.md.
 
 import type { JobRepository } from './repository';
 import { sweep, inflightToRecover, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 
-/** Called after the reaper requeues/fails jobs so the dispatcher (M7-C3) can react. */
+/** Called after the reaper requeues/fails jobs so the dispatcher can react. */
 export type OnReaped = () => void;
 
 export interface ReaperOptions {

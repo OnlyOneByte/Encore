@@ -1,4 +1,4 @@
-// B-7-C5 — retention. The invariant that matters: nothing UNRECOVERABLE is ever deleted. `audio/` and
+// Retention. The invariant that matters: nothing UNRECOVERABLE is ever deleted. `audio/` and
 // `meta/` are untouchable; only `derived/` (regenerable from audio, at the cost of a re-cook) is fair
 // game, and pre-policy WAVs are recompressed in place rather than evicted so the song stays singable.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';

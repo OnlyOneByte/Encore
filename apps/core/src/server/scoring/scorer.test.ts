@@ -1,4 +1,4 @@
-// M8-C3: pure scoring logic — octave-agnostic cents, reference-frame lookup, per-sample scoring,
+// Pure scoring logic — octave-agnostic cents, reference-frame lookup, per-sample scoring,
 // the running-score accumulator, and defensive artifact parsing.
 import { test, expect } from 'bun:test';
 import {

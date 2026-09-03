@@ -1,4 +1,4 @@
-// B-3-C2: the candidate model + presentation ranking. The whole point of storing MANY lyrics sets
+// The candidate model + presentation ranking. The whole point of storing MANY lyrics sets
 // per song is that text quality and timing fidelity are independent, so these pin the ranking that
 // resolves them — especially the two non-obvious calls the owner made:
 //   • authoritative+line OUTRANKS asr+word (correct words beat a bouncing ball over invented ones)

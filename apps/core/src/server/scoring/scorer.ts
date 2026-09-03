@@ -1,9 +1,9 @@
-// Pure SingStar-style scoring logic (M8-C3). No sockets, no I/O — the mic-vs-reference comparison
+// Pure SingStar-style scoring logic. No sockets, no I/O — the mic-vs-reference comparison
 // and the running-score accumulator, so scoring unit-tests deterministically (the pure-logic/I/O
 // split the codebase uses everywhere). The I/O half (loading the reference doc, wiring sockets,
 // broadcasting) lives in realtime/scoring.ts.
 
-// The reference pitch-track artifact the worker publishes (M8-C3 Stage 1): a regular time grid,
+// The reference pitch-track artifact the worker publishes (Stage 1): a regular time grid,
 // frame i covering time i × hopSec. Parallel arrays keep it compact for a whole song.
 export interface RefPitchDoc {
 	hopSec: number;

@@ -1,4 +1,4 @@
-// M6-C2: a resent command (same clientOpId) must NOT double-apply; re-ack only.
+// A resent command (same clientOpId) must NOT double-apply; re-ack only.
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from './hub';
 import { AuthoritativeState } from '../state/store';

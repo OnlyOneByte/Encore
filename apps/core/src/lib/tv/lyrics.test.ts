@@ -1,4 +1,4 @@
-// M8-C2: pure karaoke-timing logic — parse untrusted artifacts + resolve the active line/word and
+// pure karaoke-timing logic — parse untrusted artifacts + resolve the active line/word and
 // per-word fill at a playback position. This is the testable core behind the eyes-on TV overlay.
 import { test, expect } from 'bun:test';
 import {
@@ -10,7 +10,7 @@ import {
 	type LyricsDoc
 } from './lyrics';
 
-// mirrors the worker's normalize_lyrics output (M7-C8)
+// mirrors the worker's normalize_lyrics output
 const raw = {
 	language: 'en',
 	lines: [
@@ -101,7 +101,7 @@ test('wordFill: 0 before, linear during, 1 after; zero-length snaps to 1', () =>
 	expect(wordFill({ word: 'z', start: 1, end: 1 }, 1)).toBe(1); // degenerate
 });
 
-// ── B-3-C6: honesty about auto-transcribed words ──────────────────────────────
+// ── honesty about auto-transcribed words ──────────────────────────────
 // Force-aligned ASR renders a PERFECT bouncing ball over words that may be wrong — the most
 // misleading state the overlay can be in. The notice exists because the result looks finished.
 import { lyricsNotice, isAutoTranscribed, type LyricsProvenance } from './lyrics';
@@ -156,7 +156,7 @@ import {
 /**
  * `resegmentLine` with the length guard turned OFF (`splitAboveChars: 0`).
  *
- * Production only resegments a line that already exceeds a row (B-3-C8 — blobs are now re-lineated in
+ * Production only resegments a line that already exceeds a row (blobs are now re-lineated in
  * the worker, so this is a safety net for over-long lines, not a pass over every line). These tests are
  * about WHERE it breaks once it has decided to break, which is orthogonal to that decision, so they use
  * short synthetic lines and opt out of the guard rather than padding every fixture past 42 chars.
@@ -239,7 +239,7 @@ test('parseLyricsDoc applies resegmentation, so existing artifacts benefit with 
 	expect(doc!.words).toHaveLength(12); // the flat word list is unaffected
 });
 
-test('the length guard: a line that already FITS a row is never resegmented (B-3-C8)', () => {
+test('the length guard: a line that already FITS a row is never resegmented', () => {
 	// A pause inside a short line is a breath or a held note, not a line break. Whisper blobs are
 	// re-lineated in the WORKER now (lyrics_presplit.py), where the provenance to know the text came
 	// from ASR actually lives — so this function is a safety net for over-long lines, not a pass over

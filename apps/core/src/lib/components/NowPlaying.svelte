@@ -6,7 +6,7 @@
 		isPlaying?: boolean;
 		progress?: number; // 0..1
 		keyShiftEnabled?: boolean;
-		keyShift?: number; // current transpose in semitones (M7-C9)
+		keyShift?: number; // current transpose in semitones
 		maxKeyShift?: number;
 		onplaypause?: () => void;
 		onprev?: () => void;

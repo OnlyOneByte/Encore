@@ -1,4 +1,4 @@
-// M8-C3: client-side f0 detector — a synthesized tone must read back at the right pitch, and
+// client-side f0 detector — a synthesized tone must read back at the right pitch, and
 // silence/noise must report no pitch. This is the testable core behind the (browser-only) mic capture.
 import { test, expect } from 'bun:test';
 import { detectF0 } from './pitch-detect';

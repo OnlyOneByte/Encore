@@ -1,4 +1,4 @@
-// M7-C9: shared key-shift helpers — clamp + the keyed MediaStore ref the TV resolves.
+// Shared key-shift helpers — clamp + the keyed MediaStore ref the TV resolves.
 import { test, expect } from 'bun:test';
 import { clampKeyShift, keyedMediaRef, MAX_KEY_SHIFT } from './types';
 

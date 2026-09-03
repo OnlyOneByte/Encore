@@ -1,4 +1,4 @@
-// POST /api/tag — set the genres (or free tags) on a library song (B-7-C4).
+// POST /api/tag — set the genres (or free tags) on a library song.
 //
 // Writes the SIDECAR first, because that is the authoritative record (docs/ARCHITECTURE.md),
 // then mirrors into the browse index. Order matters: if the process died between the two, a restart

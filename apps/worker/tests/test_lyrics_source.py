@@ -1,4 +1,4 @@
-"""LRCLIB lyrics source (M7-C8 Stage 2) — pure LRC parse/segment/shape + the injectable-fetcher
+"""LRCLIB lyrics source (known-text stage) — pure LRC parse/segment/shape + the injectable-fetcher
 client. No network (this box DNS-sinkholes lrclib.net; the real fetch is deferred to the deploy box)."""
 import sys
 from pathlib import Path

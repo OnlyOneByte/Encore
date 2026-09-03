@@ -16,7 +16,7 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
-	// B-6-C1: singer ids with a live socket right now. Drives the lobby roster and the join card's
+	// Singer ids with a live socket right now. Drives the lobby roster and the join card's
 	// count — NOT `singers`, which is every singer who ever joined (append-only + file-backed).
 	let online = $state<string[]>([]);
 	// Seeded from the room's stored pacing and kept live by settings:changed. The effect re-adopts
@@ -33,7 +33,7 @@
 	let visible = $state<'A' | 'B'>('A');
 	// live playback position (seconds) from the active player's telemetry — drives the lyrics overlay
 	let positionSec = $state(0);
-	// M8-C3: live score for the current song, from score:update broadcasts (null until first sample)
+	// live score for the current song, from score:update broadcasts (null until first sample)
 	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	// playback isPlaying (pause/resume from the phone) — wired into both player slots
 	let isPlaying = $state(true);
@@ -175,7 +175,7 @@
 		};
 	});
 
-	// B-6-C2: which surface the TV shows. Replaces the old `isAttract` (which collapsed "nobody here"
+	// Which surface the TV shows. Replaces the old `isAttract` (which collapsed "nobody here"
 	// and "people here, nothing queued" into one screen).
 	const screen = $derived(
 		tvScreen({ playerState: tvState, current, entries, onlineCount: online.length })
@@ -184,7 +184,7 @@
 	const roster = $derived(lobbyRoster(online, singers));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
-	// B-3-C6: which candidate the current lyricsRef came from, so the overlay can label a guess.
+	// Which candidate the current lyricsRef came from, so the overlay can label a guess.
 	// Null for a pre-candidate artifact — unknown provenance, asserted as neither verified nor not.
 	const lyricsProvenance = $derived.by(() => {
 		const m = mediaOf(current);
@@ -219,7 +219,7 @@
 		onposition={(s, d) => { positionSec = s; sendTelemetry('playing', s, d, 100); }}
 	/>
 
-	<!-- M8-C2: word-timed karaoke lyrics over the active player -->
+	<!-- Word-timed karaoke lyrics over the active player -->
 	<LyricsOverlay
 		lyricsRef={mediaOf(current)?.lyricsRef}
 		provenance={lyricsProvenance}
@@ -242,7 +242,7 @@
 			</div>
 		</div>
 	{:else if screen === 'lobby'}
-		<!-- B-6-C2: people ARE here, nothing queued — name them and say what we're waiting for -->
+		<!-- People ARE here, nothing queued — name them and say what we're waiting for -->
 		<div class="brand brand-float">🎤 <span class="grad">Encore</span></div>
 		<TvLobby
 			qrDataUrl={data.qrDataUrl}
@@ -257,7 +257,7 @@
 			<span class="ls-name">{singerName(current?.singerId)}</span>
 			<span class="ls-song">{mediaOf(current)?.title ?? ''}</span>
 		</div>
-		<!-- B-6-C3: the join QR stays reachable mid-song, bottom-right (the only free corner) -->
+		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
 		<JoinBadge
 			qrDataUrl={data.qrDataUrl}
 			joinUrl={data.joinUrl}
@@ -281,7 +281,7 @@
 	{/if}
 
 	{#if showScore && score}
-		<!-- M8-C3: live score badge (top-right), color + label by accuracy band -->
+		<!-- Live score badge (top-right), color + label by accuracy band -->
 		<ScoreBadge score={score.score} hits={score.hits} total={score.total} />
 	{/if}
 

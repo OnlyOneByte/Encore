@@ -1,4 +1,4 @@
-// M5-C3 ★★ done-when (logic): the two-player swap is gapless when the hidden slot is pre-warmed.
+// done-when (logic): the two-player swap is gapless when the hidden slot is pre-warmed.
 import { test, expect } from 'bun:test';
 import { GaplessController } from './gapless';
 import type { QueueEntry } from '@encore/shared';

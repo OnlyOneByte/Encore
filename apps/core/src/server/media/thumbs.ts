@@ -6,7 +6,7 @@ import { derivedDir } from './paths';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
 
-// B-7: the thumb cache is DERIVED — regenerable, and therefore the first thing safe to evict.
+// The thumb cache is DERIVED — regenerable, and therefore the first thing safe to evict.
 const THUMB_DIR = () => join(derivedDir(), 'thumbs');
 
 // SSRF guard (Finding #1): the proxy must only fetch the hosts yt-dlp actually returns for

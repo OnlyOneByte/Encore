@@ -1,4 +1,4 @@
-// M1-C4 done-when: bad command -> op:reject{clientOpId,reason} to ORIGINATOR ONLY, no broadcast.
+// Bad command -> op:reject{clientOpId,reason} to ORIGINATOR ONLY, no broadcast.
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, validateCommand, type HubDeps } from './hub';
 import { AuthoritativeState } from '../state/store';
@@ -72,7 +72,7 @@ test('reject is targeted: with no sendToOrigin sink, nothing is broadcast either
 	expect(published).toHaveLength(0);
 });
 
-// Regression (found by driving the real server during B-6 verification): an add whose singerId is
+// Regression (found by driving the real server): an add whose singerId is
 // missing used to reach the persistence layer, where singer_id is NOT NULL — the SQLiteError threw
 // out of state.apply() and KILLED THE SERVER PROCESS. One malformed client message ended the party.
 test('add with a missing singerId is rejected, not crashed on', () => {

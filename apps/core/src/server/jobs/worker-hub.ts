@@ -1,5 +1,5 @@
 // Worker hub — the I/O brain of the dial-home protocol (§5). Bridges the in-memory WorkerRegistry,
-// the pure dispatcher (dispatch.ts), the durable JobRepository (M7-C1), and lease policy (M7-C2).
+// the pure dispatcher (dispatch.ts), the durable JobRepository, and lease policy.
 // Decoupled from Bun.serve like realtime/hub.ts: it takes a `toWorker` sink (send a WorkerCommand
 // to one worker) + a `broadcast` sink (media:status to phones/TV), so it unit-tests with no socket.
 //
@@ -36,12 +36,12 @@ export interface WorkerHubDeps {
 	toWorker: ToWorker; // send a WorkerCommand to ONE worker session
 	broadcast: Broadcast; // media:status to the whole room
 	/** Fired AFTER a media flips to ready (stems done): lets the core reconcile playback so a held
-	 *  song plays at its fair slot if the room idled while it cooked (M7-C6). Optional. */
+	 *  song plays at its fair slot if the room idled while it cooked. Optional. */
 	onMediaReady?: (mediaId: string) => void;
-	/** Persist a media after its artifacts change (B-1 durable catalog). Optional so the hub still
+	/** Persist a media after its artifacts change (durable catalog). Optional so the hub still
 	 *  unit-tests with no DB; app.ts wires it to MediaRepository.upsert. */
 	persistMedia?: (mediaId: string) => void;
-	/** Room-level separator settings (B-8): supplies the engine+model a stems/upgrade job carries.
+	/** Room-level separator settings: supplies the engine+model a stems/upgrade job carries.
 	 *  Optional so the hub still unit-tests without settings (assignParams falls back to defaults). */
 	getSettings?: () => GlobalSettings;
 	now: () => number;
@@ -194,7 +194,7 @@ export class WorkerHub {
 		const workers = this.#d.registry.list();
 		const now = this.#d.now();
 
-		// B-8: a job's required capability is engine-derived (a roformer cook needs stems:roformer),
+		// A job's required capability is engine-derived (a roformer cook needs stems:roformer),
 		// so route by the SETTINGS-resolved capability, not the bare job type.
 		const settings = this.#d.getSettings?.();
 		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);

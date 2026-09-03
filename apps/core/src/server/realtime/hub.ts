@@ -24,9 +24,9 @@ export interface HubDeps {
 	mediaById: Map<string, Media>;
 	/** Optional: list known singers (sans token) for the sync directory. */
 	listSingers?: () => PublicSinger[];
-	/** Optional: presence snapshot (singer ids with a live socket) for the sync directory (B-6-C1). */
+	/** Optional: presence snapshot (singer ids with a live socket) for the sync directory. */
 	listOnline?: () => string[];
-	/** Optional: room-level separator settings snapshot for the sync directory (B-8). */
+	/** Optional: room-level separator settings snapshot for the sync directory. */
 	getSettings?: () => EffectiveSettings;
 	/** Optional: notified when the current entry CHANGES, for play tracking (retention's LRU signal). */
 	onNowPlaying?: (entry: { id: string; mediaId: string } | null) => void;
@@ -45,7 +45,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// singerId is NOT NULL in queue_entries, and the persistence write happens inside the
 			// state mutation — so an add without one used to throw a SQLiteError out of store.apply()
 			// and take the WHOLE SERVER PROCESS DOWN, mid-party, on one malformed client message.
-			// Found by driving the real server (B-6 verification). Reject it like any other bad op.
+			// Found by driving the real server. Reject it like any other bad op.
 			if (!op.entry.singerId) return 'missing singerId';
 			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
 			return null;

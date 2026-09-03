@@ -1,4 +1,4 @@
-// Track-title normalization (B-7-C1) — turn a YouTube title + uploader into a canonical
+// Track-title normalization — turn a YouTube title + uploader into a canonical
 // artist/title guess, with provenance.
 //
 // WHY THIS EXISTS. `Media.artist` is populated from the YouTube UPLOADER, which for the lyric-video
@@ -11,8 +11,8 @@
 //   uploader "Daft Punk"           title "Daft Punk - One More Time (Official Video)"
 //
 // Two features depend on fixing this, which is why it is one function and not two:
-//   1. Browse-by-artist (B-7) — grouping by "7clouds" is useless.
-//   2. Lyrics lookup (B-3) — LRCLIB is asked for artist+track, so 4 of those 5 rows miss on
+//   1. Browse-by-artist — grouping by "7clouds" is useless.
+//   2. Lyrics lookup — LRCLIB is asked for artist+track, so 4 of those 5 rows miss on
 //      metadata alone even with LRCLIB perfectly reachable.
 //
 // PURE: no network, no I/O, no clock. The five rows above are the first five test cases.

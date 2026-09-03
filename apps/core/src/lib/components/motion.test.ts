@@ -1,4 +1,4 @@
-// M3-C7 guard: animations/transitions must be GPU-composited (transform/opacity/background/
+// guard: animations/transitions must be GPU-composited (transform/opacity/background/
 // color/box-shadow only) — NEVER layout-triggering props (width/height/top/left/margin), which
 // cause jank. Source-scan the component + route CSS. See docs/ARCHITECTURE.md.
 import { test, expect } from 'bun:test';

@@ -1,6 +1,6 @@
-// Media repository — the durable catalog (B-1). Search results and cooked (make-karaoke) songs are
+// Media repository — the durable catalog. Search results and cooked (make-karaoke) songs are
 // upserted here so the media catalog survives a restart, `requestMakeKaraoke` dedupes to already-
-// separated stems instead of re-cooking, and the saved-karaoke library (M9-C2) can list every song
+// separated stems instead of re-cooking, and the saved-karaoke library can list every song
 // whose instrumental is on disk. The runtime `mediaById` Map stays the hot read path; this is the
 // write-behind + boot-hydrate store.
 import { eq, and, desc, asc, sql, isNotNull } from 'drizzle-orm';
@@ -25,7 +25,7 @@ const toRow = (m: Media): MediaRow => ({
 	playMode: m.playMode,
 	instrumentalRef: m.instrumentalRef ?? null,
 	lyricsRef: m.lyricsRef ?? null,
-	// JSON blob, not a table: nothing queries inside the set (B-3-C5).
+	// JSON blob, not a table: nothing queries inside the set.
 	lyricsCandidates: m.lyricsCandidates?.length ? JSON.stringify(m.lyricsCandidates) : null,
 	pitchRef: m.pitchRef ?? null,
 	artistCanonical: m.artistCanonical ?? null,
@@ -63,7 +63,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 
 export class MediaRepository {
 	#db: DB;
-	/** Optional sidecar sink (B-7-C3). Injected so the repository stays unit-testable without I/O. */
+	/** Optional sidecar sink. Injected so the repository stays unit-testable without I/O. */
 	#onPersist?: (m: Media) => void;
 
 	constructor(db: DB, onPersist?: (m: Media) => void) {
@@ -74,7 +74,7 @@ export class MediaRepository {
 	/** Insert or update a media record (idempotent on id). Called on search-materialize and on every
 	 *  artifact flip (stems ready / lyrics / pitch), so the catalog is durable.
 	 *
-	 *  B-7-C3: the DB is the INDEX; `meta/<id>.json` is the authoritative record, so every write here
+	 *  The DB is the INDEX; `meta/<id>.json` is the authoritative record, so every write here
 	 *  also refreshes the sidecar. Fire-and-forget: a sidecar write must never delay or fail the
 	 *  in-memory flip that the room is waiting on. */
 	upsert(m: Media): void {
@@ -95,7 +95,7 @@ export class MediaRepository {
 	}
 
 	/** The saved-karaoke library: songs whose stems are separated and ready (playMode file, stems
-	 *  ready) — re-queueing one skips the worker entirely (B-1 / M9-C2). Ordered newest-first by id
+	 *  ready) — re-queueing one skips the worker entirely. Ordered newest-first by id
 	 *  (ULIDs are monotonic, so this is catalog-discovery order, not cook order). */
 	listReady(): Media[] {
 		return this.#db
@@ -107,14 +107,14 @@ export class MediaRepository {
 			.map(fromRow);
 	}
 
-	// ── browse (B-7-C4) ───────────────────────────────────────────────────────────────
+	// ── browse ───────────────────────────────────────────────────────────────
 	//
 	// Only READY songs are browsable. The catalog holds every search result ever materialised (271 rows
 	// on the live box for 7 cooked songs), so browsing the whole table would drown the library in
 	// things you cannot actually sing yet.
 
 	/** Mirror the canonical metadata for one media into the index (from its authoritative sidecar).
-	 *  `title` is optional so a caller that only knows the artist (B-7-C4 shape) still compiles; when
+	 *  `title` is optional so a caller that only knows the artist (the browse shape) still compiles; when
 	 *  omitted the stored title_canonical is left ALONE rather than nulled, since a partial mirror must
 	 *  not erase a good value. */
 	setCanonical(mediaId: string, c: { artist: string | null; title?: string | null; album: string | null; year: number | null }): void {

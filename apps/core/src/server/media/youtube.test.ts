@@ -1,4 +1,4 @@
-// M4-C2 done-when: second identical query served from cache (no upstream call).
+// Done-when: second identical query served from cache (no upstream call).
 import { test, expect } from 'bun:test';
 import { YouTubeResolver } from './youtube';
 import type { SearchResult } from './resolver';

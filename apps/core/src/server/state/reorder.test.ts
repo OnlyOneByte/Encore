@@ -1,4 +1,4 @@
-// M3-C5 done-when: reorder MY entries; server re-resolves seq; other clients see canonical order.
+// Reorder MY entries; server re-resolves seq; other clients see canonical order.
 import { test, expect } from 'bun:test';
 import { AuthoritativeState } from './store';
 import { ulid, type QueueEntry } from '@encore/shared';

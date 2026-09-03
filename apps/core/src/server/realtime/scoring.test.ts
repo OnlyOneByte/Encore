@@ -1,4 +1,4 @@
-// M8-C3: the ScoreEngine turns mic:pitch into score:update — resolving the current song, its
+// The ScoreEngine turns mic:pitch into score:update — resolving the current song, its
 // reference doc (injected loader), a per-entry accumulator, and the broadcast. Driven with a fake
 // loader + publish sink (no MediaStore, no sockets).
 import { test, expect } from 'bun:test';

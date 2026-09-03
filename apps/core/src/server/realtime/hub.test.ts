@@ -1,4 +1,4 @@
-// M1-C3 done-when: drive a command -> assert broadcast envelope + new rev.
+// Drive a command -> assert broadcast envelope + new rev.
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from './hub';
 import { AuthoritativeState } from '../state/store';

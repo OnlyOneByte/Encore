@@ -1,4 +1,4 @@
-"""score job (M8-C3): PitchTrackProcessor wraps the separator, then extracts a reference pitch track
+"""score job: PitchTrackProcessor wraps the separator, then extracts a reference pitch track
 from the isolated vocals and publishes it as a `pitch` artifact. Driven by a FAKE separator + canned
 frames (no torch, no real audio) — the real-ML run defers to a GPU box."""
 import json

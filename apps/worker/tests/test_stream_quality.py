@@ -1,4 +1,4 @@
-"""B-9-C2: pin the source-audio stream-quality policy.
+"""Pin the source-audio stream-quality policy.
 
 WHY THIS EXISTS. `-f bestaudio` takes whatever yt-dlp ranks first, and yt-dlp's default ranking is
 driven by bitrate, so on an OLD upload it can hand back legacy AAC when the same video also carries a
@@ -44,7 +44,7 @@ def test_selector_prefers_opus_then_m4a_then_falls_back_to_bestaudio():
 
 def test_selector_never_requests_video_or_a_transcode():
     assert "bestvideo" not in FORMAT_SELECTOR
-    # B-7 policy still holds: native container, no extract-audio, no wav.
+    # the format policy still holds: native container, no extract-audio, no wav.
     argv = demucs.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
     assert "--audio-format" not in argv
     assert "wav" not in " ".join(argv)

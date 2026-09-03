@@ -1,4 +1,4 @@
-// M4-C1 done-when: FTS returns ranked local matches.
+// Done-when: FTS returns ranked local matches.
 import { test, expect } from 'bun:test';
 import { LocalLibrary } from './local';
 import { resultToMedia } from './resolver';

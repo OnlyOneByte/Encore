@@ -1,4 +1,4 @@
-// Browser mic capture → f0 samples (M8-C3). Opens the microphone, runs an AnalyserNode, and on a
+// Browser mic capture → f0 samples. Opens the microphone, runs an AnalyserNode, and on a
 // throttled interval reads the time-domain block and detects pitch (pitch-detect.ts). Browser-only:
 // the pure DSP is tested separately; this thin Web Audio wrapper is exercised eyes-on. All Web Audio
 // access is guarded so importing the module never throws server-side (SvelteKit SSR).

@@ -1,4 +1,4 @@
-// Storage layout — the SINGLE authority for where media lives (B-7-C2).
+// Storage layout — the SINGLE authority for where media lives.
 //
 // Storage is split by REPLACEABILITY, not by file type, because that is what decides backup policy,
 // eviction policy, and what an operator may safely delete (docs/ARCHITECTURE.md):
@@ -94,7 +94,7 @@ export function audioKey(mediaId: string, ext = 'wav'): string {
 	return `audio/${mediaId}.${ext.replace(/^\./, '')}`;
 }
 /**
- * Stored stem formats (B-7 audio policy, revised). The two stems get DIFFERENT treatment because they
+ * Stored stem formats (audio policy, revised). The two stems get DIFFERENT treatment because they
  * have different jobs, and MUST match the worker's processor.py INSTRUMENTAL_EXT / VOCALS_EXT.
  *
  * - **instrumental → FLAC (lossless).** This is the file that comes out of the speakers at volume, and
@@ -132,7 +132,7 @@ export function metaKey(mediaId: string): string {
 	return `meta/${mediaId}.json`;
 }
 
-// ── legacy layout (pre-B-7), kept ONLY so the migration can find things ──────────────
+// ── legacy layout, kept ONLY so the migration can find things ──────────────
 export const LEGACY = {
 	instrumental: (id: string) => `stems/${id}-instrumental.wav`,
 	vocals: (id: string) => `stems/${id}-vocals.wav`,

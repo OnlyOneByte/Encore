@@ -1,4 +1,4 @@
-// B-7-C3 — sidecar records. `meta/<id>.json` is authoritative; the DB is a rebuildable index.
+// Sidecar records. `meta/<id>.json` is authoritative; the DB is a rebuildable index.
 // The headline property under test: delete the index and the library comes back from the volume alone.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, rmSync, existsSync, readFileSync } from 'node:fs';
@@ -20,7 +20,7 @@ import {
 
 const NOW = 1_788_400_000_000;
 
-// A real-shaped row: the uploader in `artist`, the artist buried in `title` (the B-7-C1 problem).
+// A real-shaped row: the uploader in `artist`, the artist buried in `title` (the title-normalizer problem).
 const media = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
 	source: 'youtube',
@@ -103,7 +103,7 @@ describe('sidecarFromMedia', () => {
 	it('keeps the ORIGIN sourceRef even if the live media somehow drifted', () => {
 		const first = sidecarFromMedia(media(), NOW);
 		const again = sidecarFromMedia(media({ sourceRef: 'derived/stems/oops.m4a' }), NOW, first);
-		expect(again.origin.sourceRef).toBe('djV11Xbc914'); // immutable identity (the B-5 lesson)
+		expect(again.origin.sourceRef).toBe('djV11Xbc914'); // immutable identity — never the cooked stem key
 	});
 });
 
@@ -194,8 +194,8 @@ describe('sidecar I/O and index rebuild', () => {
 	});
 
 	it('backfill describes songs that predate sidecars, and never clobbers a curated one', async () => {
-		// Without the backfill, only songs added after B-7-C3 would survive losing the SQLite file —
-		// every song already in the catalog would still be permanently lost with it.
+		// Without the backfill, only songs added after the sidecar became authoritative would survive
+		// losing the SQLite file — every song already in the catalog would still be permanently lost.
 		const curated = sidecarFromMedia(media({ id: 'curated' }), NOW);
 		curated.canonical.genre = ['soul'];
 		curated.provenance.artist = { by: 'manual', confidence: 'high' };

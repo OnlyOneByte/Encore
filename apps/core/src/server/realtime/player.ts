@@ -1,5 +1,5 @@
 // Player command handling — mutate authoritative playback state and broadcast playback:state.
-// MVP scope (M3-C6): play/pause/seek/restart adjust the PlaybackState; skip/next advances the
+// MVP scope: play/pause/seek/restart adjust the PlaybackState; skip/next advances the
 // current entry. The full gapless player state machine (advance-on-ended, upNext preload) is M5.
 
 import { clampKeyShift, type PlayerCommand, type ServerEvent, type QueueEntry } from '@encore/shared';
@@ -36,7 +36,7 @@ export function emitNowPlaying(deps: HubDeps): void {
 }
 
 /**
- * React to a make-karaoke song becoming ready (M7-C6 held-slot completion). Two cases:
+ * React to a make-karaoke song becoming ready (held-slot completion). Two cases:
  *  • The room IDLED while it cooked (nothing playing) and this freshly-ready entry is now the
  *    soonest playable → start it (it slots back at its preserved fair position).
  *  • Something is already playing → just re-broadcast nowplaying so the TV preloads the now-ready

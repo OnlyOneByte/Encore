@@ -1,6 +1,6 @@
-// Pure karaoke-timing logic for the TV lyrics overlay (M8-C2). No DOM, no Svelte — so the
+// Pure karaoke-timing logic for the TV lyrics overlay. No DOM, no Svelte — so the
 // word-highlight math is unit-testable independently of rendering. Consumes the word-timed artifact
-// the worker publishes (M7-C8 `normalize_lyrics`): { language, lines:[{start,end,text,words:[…]}], words:[…] }.
+// the worker publishes (`normalize_lyrics`): { language, lines:[{start,end,text,words:[…]}], words:[…] }.
 // All times are SECONDS (the worker rounds to ms). Model output is UNTRUSTED, so every accessor is
 // defensive: missing/NaN bounds never throw, they just read as "not yet sung".
 
@@ -127,7 +127,7 @@ function lineFromWords(words: LyricWord[]): LyricLine {
  *
  * ONLY fires on a line that is actually too long (`splitAboveChars`, defaulting to `maxChars`).
  *
- * WHY THE GUARD (B-3-C8). A pause is evidence of a line break only when there is a reason to look for
+ * WHY THE GUARD. A pause is evidence of a line break only when there is a reason to look for
  * one. Applied to every line, it splits on any held note or breath — so a short, already-correct line
  * became two rows that each flash past, and `coalesceOrphans` existed largely to undo the damage. The
  * blob case this whole mechanism was built for is now handled UPSTREAM, in the worker, where whisper's
@@ -275,7 +275,7 @@ export function activeWordIndex(line: LyricLine, pos: number): number {
 	return -1;
 }
 
-// ── honesty about where the words came from (B-3-C6) ──────────────────────────
+// ── honesty about where the words came from ──────────────────────────
 import { isAuthoritativeText, type LyricsCandidate } from '@encore/shared';
 
 /** The provenance slice the overlay needs — a Pick of the stored candidate. */

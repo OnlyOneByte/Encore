@@ -18,7 +18,7 @@ import type { MediaStatus } from '@encore/shared';
 export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();
 
-	// B-7-C4 browse: an optional facet filter. Only READY songs are browsable — the catalog holds
+	// Browse: an optional facet filter. Only READY songs are browsable — the catalog holds
 	// every search result ever materialised (271 rows for 7 cooked songs on the live box), so browsing
 	// the whole table would bury the library in things you cannot sing yet.
 	const artist = url.searchParams.get('artist')?.trim();

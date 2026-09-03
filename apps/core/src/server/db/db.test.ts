@@ -1,4 +1,4 @@
-// M0-C3 done-when: migrate a temp db and round-trip one row of each table.
+// Migrate a temp db and round-trip one row of each table.
 import { test, expect } from 'bun:test';
 import { openDb } from './index';
 import { runMigrations, hydrate } from './migrate';
@@ -33,7 +33,7 @@ test('migrations create all tables and every entity round-trips', () => {
 	expect(db.select().from(media).all()[0]!.playMode).toBe('iframe');
 	expect(db.select().from(jobs).all()[0]!.jobType).toBe('stems');
 
-	// boot-hydrate returns the durable queue + playback for M1-C1 to seed memory
+	// boot-hydrate returns the durable queue + playback to seed memory
 	const { entries, playback } = hydrate(db);
 	expect(entries).toHaveLength(1);
 	expect(entries[0]!.id).toBe('q1');

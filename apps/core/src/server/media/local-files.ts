@@ -3,7 +3,7 @@
 // by both the /media route and its regression test (same discipline as the resume.pdf PUBLIC_SECTIONS
 // allowlist — never let "what's safe to serve" drift between the route and the test).
 //
-// B-7-C2: a ref's FIRST SEGMENT now selects its storage root ("audio/…", "derived/…", "meta/…"), so
+// A ref's FIRST SEGMENT now selects its storage root ("audio/…", "derived/…", "meta/…"), so
 // the classes can live on separate volumes while refs stay portable relative strings. The containment
 // check is per-root — it is NOT enough to check against the media root once, because a class dir may
 // be pointed outside it.

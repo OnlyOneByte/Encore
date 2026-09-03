@@ -1,4 +1,4 @@
-// One-shot storage-layout migration to the B-7 classes (B-7-C2).
+// One-shot storage-layout migration to the storage classes.
 //
 // Runs at boot, before anything reads the catalog. IDEMPOTENT: a fresh volume and an
 // already-migrated volume are both no-ops, so it is safe to leave wired in forever.
@@ -158,7 +158,7 @@ export function planMigration(root = mediaRoot()): MigrationPlan {
 	return { moves, prunes, refRewrites };
 }
 
-/** Does this volume still carry the pre-B-7 layout? */
+/** Does this volume still carry the legacy layout? */
 export function needsMigration(root = mediaRoot()): boolean {
 	const plan = planMigration(root);
 	return plan.moves.length > 0 || plan.prunes.length > 0;
@@ -229,7 +229,7 @@ export function applyMigration(
  * SHARED-WRITE MODE. The core and the worker are separate containers running as DIFFERENT uids on the
  * same mounted volume (compose mounts `${ENCORE_MEDIA_VOLUME}:/app/media` into both). Whichever
  * process creates a directory owns it, and a 0755 dir created by the core is unwritable by the
- * worker — which is exactly how B-7 first broke every cook: the worker got
+ * worker — which is exactly how the layout migration first broke every cook: the worker got
  * `Permission denied: /app/media/work/<jobId>` on dirs the core had just made. The old layout only
  * worked because its dirs had been chmod'd by hand while debugging.
  *

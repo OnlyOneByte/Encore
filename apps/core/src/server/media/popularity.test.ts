@@ -1,4 +1,4 @@
-// M4-C5 done-when: shortcuts populated from session history (recent + popular).
+// Done-when: shortcuts populated from session history (recent + popular).
 import { test, expect } from 'bun:test';
 import { createPopularityTracker } from './popularity';
 

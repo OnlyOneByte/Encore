@@ -1,5 +1,5 @@
 <script lang="ts">
-	// M8-C3 live score badge (TV). Given the running score + hit counts from a score:update, shows a
+	// live score badge (TV). Given the running score + hit counts from a score:update, shows a
 	// big number, a color-coded band label, and the on-pitch tally. Extracted from the TV page so the
 	// exact rendered component is previewable in the /components gallery.
 	interface Props {

@@ -1,4 +1,4 @@
-// POST /api/make-karaoke — { mediaId } -> request stem-separation for a song (M7-C6).
+// POST /api/make-karaoke — { mediaId } -> request stem-separation for a song.
 // Requires a joined singer (no anonymous compute). Flips the media to a cooking `file` so the
 // rotation engine holds its slot, enqueues the stems job (dedup: two requests → one job), and
 // broadcasts an initial media:status so every phone shows the ProcessingCard right away.
@@ -17,7 +17,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	const mediaId = typeof body.mediaId === 'string' ? body.mediaId : '';
 	if (!mediaId) return json({ error: 'mediaId required' }, { status: 400 });
 
-	// B-1: with a durable catalog, "already cooked" is the common happy path (a song separated on a
+	// With a durable catalog, "already cooked" is the common happy path (a song separated on a
 	// previous night), not an error — answer 200 so the phone shows "ready" instead of a red toast.
 	const state = cookState(mediaId, { mediaById: app.mediaById, state: app.state });
 	if (state === 'ready') {

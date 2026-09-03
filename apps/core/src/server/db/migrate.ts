@@ -1,5 +1,5 @@
 // Apply migrations programmatically at boot (no separate migrate step in the container).
-// Also exposes hydrate(): the boot-time read that seeds in-memory authoritative state (M1-C1).
+// Also exposes hydrate(): the boot-time read that seeds in-memory authoritative state.
 
 import { migrate } from 'drizzle-orm/bun-sqlite/migrator';
 import { existsSync } from 'node:fs';
@@ -34,7 +34,7 @@ export function runMigrations(db: DB, migrationsFolder = findMigrationsDir()): v
 }
 
 /**
- * Boot-hydrate: read durable state back into memory on startup. M1-C1 will consume this to
+ * Boot-hydrate: read durable state back into memory on startup. The state module will consume this to
  * seed the authoritative in-memory queue + playback. Returns the rows; the state module owns
  * the in-memory representation.
  */

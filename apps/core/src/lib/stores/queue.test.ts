@@ -1,4 +1,4 @@
-// M1-C6 done-when: add renders pre-broadcast, reconciles with zero reorder; reject rolls back.
+// done-when: add renders pre-broadcast, reconciles with zero reorder; reject rolls back.
 import { test, expect } from 'bun:test';
 import { QueueStore } from './queue';
 import type { ClientCommand, ServerEvent, QueueEntry } from '@encore/shared';
