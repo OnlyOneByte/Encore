@@ -3,6 +3,7 @@
 export * from './types';
 export * from './ops';
 export * from './rotation';
+export * from './lyrics';
 export * from './events';
 export * from './ulid';
 export * from './colors';

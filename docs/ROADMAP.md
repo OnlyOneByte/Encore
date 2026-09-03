@@ -657,8 +657,12 @@ because its only real acceptance test is audible and needs the owner in the room
         a queued align job a capable worker ACCEPTS instead of rejecting. **AUTO** — params derivation
         incl. the null-`artistCanonical` case, enqueue dedup. Shared-contract change: stage
         `packages/shared` in the SAME commit (Gotcha #10).
-  - [ ] **B-3-C2 · candidate model + `pickBestLyrics` (pure).** Candidate shape, the ranking above,
-        the never-regress rule, and ASR↔authoritative agreement scoring. **AUTO** — no network, no ML.
+  - [x] **B-3-C2 · candidate model + `pickBestLyrics` (pure).** DONE. `packages/shared/src/lyrics.ts`:
+        `LyricsCandidate` (textSource × timing × confidences + agreement), the 4-tier rank with
+        authoritative+line **above** asr+word, `pickBestLyrics` (null = honest "no lyrics"),
+        `mergeLyricsCandidate` (never-regress by keeping everything, keyed on ref), and
+        `agreementScore` (Jaccard over token sets; returns null not 0 when too short, so an
+        instrumental can't fail a correct lookup) + `isLikelyWrongSong`. 19 tests. **AUTO**.
   - [ ] **B-3-C3 · split acquisition from timing in `whisperx.py`.** The producer emits *candidates*
         instead of one doc; the injectable `Aligner` seam (already clean, already degrades to
         line-sync) is untouched. **AUTO** with fake sources.
