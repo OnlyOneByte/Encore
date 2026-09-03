@@ -5,6 +5,8 @@
 	import { GaplessController } from '$lib/tv/gapless';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
+	import TvProgress from '$lib/tv/TvProgress.svelte';
+	import type { TvProgressStyle } from '@encore/shared';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
@@ -33,6 +35,13 @@
 	let visible = $state<'A' | 'B'>('A');
 	// live playback position (seconds) from the active player's telemetry — drives the lyrics overlay
 	let positionSec = $state(0);
+	// The player already reports duration alongside position; it used to be forwarded to telemetry and
+	// dropped. Progress needs both.
+	let durationSec = $state(0);
+	let tvProgressStyle = $state<TvProgressStyle>(untrack(() => data.tvProgressStyle) ?? 'card');
+	$effect(() => {
+		tvProgressStyle = data.tvProgressStyle ?? 'card';
+	});
 	// live score for the current song, from score:update broadcasts (null until first sample)
 	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	// playback isPlaying (pause/resume from the phone) — wired into both player slots
@@ -142,7 +151,10 @@
 			}
 			if (e.type === 'singer:presence') online = e.online;
 			// Room pacing is live: a slider move on a phone applies without reloading the TV.
-			if (e.type === 'settings:changed') interstitialMs = e.settings.room.interstitialMs;
+			if (e.type === 'settings:changed') {
+				interstitialMs = e.settings.room.interstitialMs;
+				tvProgressStyle = e.settings.room.tvProgressStyle;
+			}
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
 			if (e.type === 'score:update') score = e;
 			// pause/resume from the phone (playback:state.isPlaying) → drives the player slots
@@ -203,7 +215,7 @@
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
-		onposition={(s, d) => { positionSec = s; sendTelemetry('playing', s, d, 100); }}
+		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
 	/>
 	<TvPlayer
 		media={slotMedia.B}
@@ -214,7 +226,7 @@
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
-		onposition={(s, d) => { positionSec = s; sendTelemetry('playing', s, d, 100); }}
+		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
 	/>
 
 	<!-- Word-timed karaoke lyrics over the active player -->
@@ -254,7 +266,13 @@
 			<span class="ls-label">Now singing</span>
 			<span class="ls-name">{singerName(current?.singerId)}</span>
 			<span class="ls-song">{mediaOf(current)?.title ?? ''}</span>
+			{#if tvProgressStyle === 'card'}
+				<TvProgress style="card" elapsedSec={positionSec} {durationSec} />
+			{/if}
 		</div>
+		{#if tvProgressStyle !== 'card'}
+			<TvProgress style={tvProgressStyle} elapsedSec={positionSec} {durationSec} />
+		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
 		<JoinBadge
 			qrDataUrl={data.qrDataUrl}
