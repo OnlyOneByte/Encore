@@ -2,15 +2,12 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger, PlaybackState, PlayerCommand } from '@encore/shared';
-	import type { EffectiveSettings } from '@encore/shared';
-	import { DEFAULT_EFFECTIVE_SETTINGS } from '@encore/shared';
 	import { QueueStore } from '$lib/stores/queue';
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
-	import SettingsSheet from '$lib/components/SettingsSheet.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
@@ -25,34 +22,6 @@
 	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 	let sheetOpen = $state(false);
-	let settingsOpen = $state(false);
-	// Both scopes, hydrated from queue:sync and corrected by settings:changed. Defaults until the
-	// server speaks, so the sheet renders something coherent on a cold open.
-	let settings = $state<EffectiveSettings>(DEFAULT_EFFECTIVE_SETTINGS);
-
-	/**
-	 * Apply a settings patch optimistically, then reconcile on the authoritative response — same
-	 * contract as the queue. The server normalizes (an invalid pairing falls back), so its answer is
-	 * truth and a rejected value visibly snaps back rather than silently appearing to have stuck.
-	 */
-	async function patchSettings(scope: 'global' | 'room', patch: Record<string, unknown>) {
-		const before = settings;
-		settings =
-			scope === 'global'
-				? { ...settings, global: { ...settings.global, ...patch } }
-				: { ...settings, room: { ...settings.room, ...patch } };
-		try {
-			const res = await fetch(scope === 'global' ? '/api/settings' : '/api/settings/room', {
-				method: 'PUT',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify(patch)
-			});
-			if (!res.ok) throw new Error(String(res.status));
-			settings = await res.json();
-		} catch {
-			settings = before; // roll back a failed write instead of showing a value the server rejected
-		}
-	}
 
 	let store: QueueStore;
 	let ws: WsClient;
@@ -114,10 +83,8 @@
 					if (e.type === 'queue:sync') {
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
-						if (e.settings) settings = e.settings;
 						queueMicrotask(() => store.resendPending());
 					}
-					if (e.type === 'settings:changed') settings = e.settings;
 					if (e.type === 'queue:patch' && e.patch.media) mergeMedia(e.patch.media);
 					if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
 					if (e.type === 'playback:state') playback = e.state;
@@ -438,12 +405,12 @@
 		<div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim);">
 			<span>{me.displayName}</span>
 			<span style="width:22px;height:22px;border-radius:50%;background:{me.color};box-shadow:0 0 0 3px {me.color}30;"></span>
-			<button
-				onclick={() => (settingsOpen = true)}
+			<a
+				href="/settings"
 				aria-label="Settings"
 				title="Settings"
-				style="background:none;border:0;padding:4px 2px 4px 6px;font-size:1.05rem;line-height:1;color:var(--ink-dim);cursor:pointer;"
-			>⚙️</button>
+				style="padding:4px 2px 4px 6px;font-size:1.05rem;line-height:1;color:var(--ink-dim);text-decoration:none;"
+			>⚙️</a>
 		</div>
 	{/if}
 </header>
@@ -606,14 +573,6 @@
 <!-- The rotation lives in a pull-up sheet: at a party you are either browsing or checking the queue,
      so the two should not fight over one scroll. The peek carries "when am I up?" — the question
      that used to sit in a card above the search box and scroll out of sight. -->
-<SettingsSheet
-	open={settingsOpen}
-	{settings}
-	onglobal={(patch) => patchSettings('global', patch)}
-	onroom={(patch) => patchSettings('room', patch)}
-	onclose={() => (settingsOpen = false)}
-/>
-
 <QueueSheet
 	open={sheetOpen}
 	title={nowEntry ? mediaTitle(nowEntry.mediaId) : 'Nothing playing'}

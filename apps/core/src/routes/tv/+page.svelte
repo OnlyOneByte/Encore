@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
 	import { chosenCandidate } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
@@ -19,7 +19,12 @@
 	// B-6-C1: singer ids with a live socket right now. Drives the lobby roster and the join card's
 	// count — NOT `singers`, which is every singer who ever joined (append-only + file-backed).
 	let online = $state<string[]>([]);
-	let interstitialMs = $state(data.interstitialMs ?? 2500);
+	// Seeded from the room's stored pacing and kept live by settings:changed. The effect re-adopts
+	// `data` so a load re-run is not pinned to the value captured at mount.
+	let interstitialMs = $state(untrack(() => data.interstitialMs) ?? 2500);
+	$effect(() => {
+		interstitialMs = data.interstitialMs ?? 2500;
+	});
 
 	let current = $state<QueueEntry | null>(null);
 	let upNext = $state<QueueEntry | null>(null);
