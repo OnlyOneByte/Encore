@@ -286,7 +286,7 @@
 	 * white = done.
 	 */
 	.word.active {
-		color: var(--accent2, #ff5cae);
+		color: var(--accent2);
 	}
 	.ball {
 		position: absolute;

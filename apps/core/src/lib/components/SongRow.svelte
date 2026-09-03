@@ -68,7 +68,7 @@
 	.row.cooking { background: linear-gradient(var(--card), var(--card-tint)); border-color: var(--line-tint); }
 	.thumb {
 		width: 56px; height: 40px; border-radius: 8px; flex: 0 0 auto;
-		background: linear-gradient(135deg, var(--track-bg), #1c1c2c); position: relative;
+		background: linear-gradient(135deg, var(--track-bg), var(--card)); position: relative;
 	}
 	.thumb::after { content: '▶'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff8; font-size: 0.8rem; }
 	.meta { min-width: 0; flex: 1; }

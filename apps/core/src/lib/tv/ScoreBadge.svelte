@@ -9,10 +9,10 @@
 	let { score, hits, total }: Props = $props();
 
 	const band = $derived.by(() => {
-		if (score >= 90) return { label: 'PERFECT', color: '#ffd23f' };
-		if (score >= 75) return { label: 'GREAT', color: '#33d6a6' };
-		if (score >= 50) return { label: 'GOOD', color: '#5cb8ff' };
-		return { label: 'KEEP GOING', color: '#ff5cae' };
+		if (score >= 90) return { label: 'PERFECT', color: 'var(--score-perfect)' };
+		if (score >= 75) return { label: 'GREAT', color: 'var(--score-great)' };
+		if (score >= 50) return { label: 'GOOD', color: 'var(--score-good)' };
+		return { label: 'KEEP GOING', color: 'var(--score-low)' };
 	});
 </script>
 

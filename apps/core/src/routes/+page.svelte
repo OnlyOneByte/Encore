@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SINGER_COLORS } from '@encore/shared';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger, PlaybackState, PlayerCommand } from '@encore/shared';
@@ -631,7 +632,7 @@
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
-					singerColor={s?.color ?? '#7c5cff'}
+					singerColor={s?.color ?? SINGER_COLORS[0]}
 					status={proc.status}
 					pct={proc.pct}
 					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
@@ -649,7 +650,7 @@
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
-					singerColor={s?.color ?? '#7c5cff'}
+					singerColor={s?.color ?? SINGER_COLORS[0]}
 					mine={e.singerId === me?.id}
 					up={e.id === nextPlayableId}
 					pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
@@ -786,7 +787,7 @@
 	}
 	.mic-score strong { font-size: 1.25rem; color: var(--accent2); font-variant-numeric: tabular-nums; }
 	.mic-live .dot, .mic-score .dot {
-		width: 10px; height: 10px; border-radius: 50%; background: #ff5cae;
+		width: 10px; height: 10px; border-radius: 50%; background: var(--accent2);
 		animation: micpulse 1s ease-in-out infinite;
 	}
 	@keyframes micpulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(1.4); } }
