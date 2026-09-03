@@ -7,7 +7,7 @@ import { rooms, singers, media, queueEntries, playbackState, jobs } from './sche
 test('migrations create all tables and every entity round-trips', () => {
 	// in-memory bun:sqlite — no disk, fully isolated per test run
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 
 	const now = 1_700_000_000_000;
 
@@ -42,7 +42,7 @@ test('migrations create all tables and every entity round-trips', () => {
 
 test('media defaults: stemStatus none, playMode iframe', () => {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	db.insert(media).values({ id: 'm2', source: 'local', sourceRef: 'f.mp4', title: 'X', durationSec: 100 }).run();
 	const row = db.select().from(media).all()[0]!;
 	expect(row.stemStatus).toBe('none');

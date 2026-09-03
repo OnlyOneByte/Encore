@@ -6,7 +6,7 @@ import { runMigrations } from '../db/migrate';
 
 function repo() {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	return new SingerRepository(db);
 }
 

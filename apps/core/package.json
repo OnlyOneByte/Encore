@@ -7,7 +7,7 @@
     "dev": "bun --bun vite dev",
     "build": "bun --bun vite build",
     "preview": "bun --bun vite preview",
-    "start": "bun run ./build/index.js",
+    "start": "bun run ./server.ts",
     "prepare": "bun --bun svelte-kit sync || echo ''",
     "check": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json",
     "typecheck": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json"

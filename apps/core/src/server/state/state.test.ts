@@ -48,7 +48,7 @@ test('entries getter returns a defensive copy (caller cannot mutate authoritativ
 
 test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	const s = new AuthoritativeState(sqlitePersistence(db), 10_000); // long delay; we force flush
 
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
@@ -69,7 +69,7 @@ test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 
 test('debounced flush coalesces a burst into persisted state', async () => {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	const s = new AuthoritativeState(sqlitePersistence(db), 20);
 	for (let i = 1; i <= 5; i++) s.applyQueueOp({ op: 'add', entry: entry('a', i) });
 	await new Promise((r) => setTimeout(r, 60)); // let the debounce fire

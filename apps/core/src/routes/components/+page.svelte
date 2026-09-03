@@ -92,6 +92,19 @@
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor="#ff5cae" status="separating" pct={68} />
 
+	<!-- A cooking song is still a queue entry, so it carries the SAME controls as a ready row. Paired
+	     with the QueueRow below deliberately: the two ↑↓✕ groups must line up, so a song finishing its
+	     cook doesn't visually reshuffle its own buttons. -->
+	<ProcessingCard
+		seq={3} title="Toto - Africa (Lyrics)" singerName="You" singerColor="#ff5cae"
+		status="separating" pct={16}
+		reorderable canUp canDown onremove={() => {}} onup={() => {}} ondown={() => {}}
+	/>
+	<QueueRow
+		seq={4} title="Gwen Stefani - Rich Girl" singerName="You" singerColor="#ff5cae" mine
+		subtitle="up next" removable reorderable canUp canDown
+	/>
+
 	<NowPlaying title="Take On Me" sub="a-ha · Sam is singing" />
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (M8-C2 · TV)</h2>

@@ -9,7 +9,7 @@
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
-	import { displayReadiness, canCook, readyEmptyState, type Readiness } from '$lib/readiness';
+	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
@@ -353,6 +353,15 @@
 		const s = mediaStatus.get(mediaId);
 		return s && s.status !== 'ready' && s.status !== 'failed' ? s : null;
 	}
+	// The entry that will ACTUALLY play next (skipping any still cooking), matching the server's
+	// nextPlayable(). Pure + unit-tested in $lib/readiness.
+	const nextPlayableId = $derived(
+		nextPlayableEntryId(
+			queued,
+			(id) => mediaCatalog.get(id),
+			(id) => mediaStatus.get(id)
+		)
+	);
 
 	function sendPlayer(command: PlayerCommand) {
 		ws?.send({ type: 'player:command', command });
@@ -595,18 +604,27 @@
 					singerColor={s?.color ?? '#7c5cff'}
 					status={proc.status}
 					pct={proc.pct}
+					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
+					reorderable={e.singerId === me?.id && myPicks.length > 1}
+					canUp={myIdx(e.id) > 0}
+					canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+					onup={() => moveMine(e.id, -1)}
+					ondown={() => moveMine(e.id, 1)}
 				/>
 			{:else}
+				<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
+				     safe to remove. The old `i !== 0` guard meant to protect the current song but
+				     actually froze whatever sat at position 0 — i.e. the next-up song. -->
 				<QueueRow
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
 					singerColor={s?.color ?? '#7c5cff'}
 					mine={e.singerId === me?.id}
-					up={i === 0}
+					up={e.id === nextPlayableId}
 					pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
-					subtitle={i === 0 ? 'up next' : ''}
-					removable={e.singerId === me?.id && i !== 0}
+					subtitle={e.id === nextPlayableId ? 'up next' : ''}
+					removable={e.singerId === me?.id}
 					reorderable={e.singerId === me?.id && myPicks.length > 1}
 					canUp={myIdx(e.id) > 0}
 					canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}

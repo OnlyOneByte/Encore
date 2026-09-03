@@ -11,8 +11,22 @@
 		singerColor?: string;
 		status: MediaStatus; // queued|downloading|separating|aligning|ready|failed
 		pct: number;
+		// A cooking song is still a QUEUE ENTRY, so it gets the same controls a ready row does.
+		// Removing matters because a cook takes 1-2 min and the singer who mis-tapped would otherwise
+		// be stuck watching a progress bar for a song they don't want; reordering matters because
+		// deciding what to sing next is exactly what you do WHILE something cooks. All absent when the
+		// card renders outside the rotation (no slot there to act on).
+		onremove?: () => void;
+		reorderable?: boolean;
+		canUp?: boolean;
+		canDown?: boolean;
+		onup?: () => void;
+		ondown?: () => void;
 	}
-	let { seq, title, singerName, singerColor = '#7c5cff', status, pct }: Props = $props();
+	let {
+		seq, title, singerName, singerColor = '#7c5cff', status, pct,
+		onremove, reorderable = false, canUp = false, canDown = false, onup, ondown
+	}: Props = $props();
 
 	const STAGES: { key: MediaStatus; label: string }[] = [
 		{ key: 'queued', label: 'Queued' },
@@ -53,6 +67,17 @@
 			{/each}
 		</div>
 	</div>
+	{#if onremove || reorderable}
+		<div class="actions">
+			{#if reorderable}
+				<button class="act" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}>↑</button>
+				<button class="act" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}>↓</button>
+			{/if}
+			{#if onremove}
+				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}>✕</button>
+			{/if}
+		</div>
+	{/if}
 </div>
 
 <style>
@@ -68,6 +93,17 @@
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
 	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 6px; transform-origin: left center; transition: transform 0.4s ease; }
 	.stage { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--warn); margin-top: 7px; }
+	/* Identical to QueueRow's: same 30px targets, same horizontal row, same press feedback — so the
+	   controls don't visually reshuffle when a song finishes cooking and its card becomes a row. The
+	   card is taller than a row, so they sit on the title line rather than centred. */
+	.actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+	.act, .remove {
+		width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+		background: var(--card2); color: var(--ink-dim); font-size: 0.85rem; cursor: pointer;
+	}
+	.act:disabled { opacity: 0.35; cursor: default; }
+	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }
+	.remove:active { transform: scale(0.9); color: var(--accent2); }
 	.chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
 	.chip { font-size: 0.66rem; padding: 3px 8px; border-radius: 20px; background: #241f38; color: var(--ink-dim); }
 	.chip.done { background: rgba(51, 214, 166, 0.16); color: var(--ok); }

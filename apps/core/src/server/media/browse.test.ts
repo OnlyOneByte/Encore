@@ -27,7 +27,7 @@ let repo: MediaRepository;
 
 beforeEach(() => {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	repo = new MediaRepository(db);
 });
 

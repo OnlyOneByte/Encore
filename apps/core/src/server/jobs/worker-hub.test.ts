@@ -17,7 +17,7 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 
 function harness() {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	const jobs = new JobRepository(db);
 	const registry = new WorkerRegistry();
 	const mediaById = new Map<string, Media>([['m1', media('m1')], ['m2', media('m2')]]);
@@ -59,7 +59,7 @@ test('hello → welcome handshake + dispatch of a waiting job', () => {
 
 test('M7-C10: welcome carries the object-store config so a remote worker pulls/pushes via S3', () => {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	const jobs = new JobRepository(db);
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const hub = new WorkerHub({

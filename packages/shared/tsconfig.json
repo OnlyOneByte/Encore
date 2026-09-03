@@ -1,0 +1,11 @@
+{
+  // Inherits the repo-wide strictness (see ../../tsconfig.json) and narrows the scope to this
+  // package's own sources + tests. Without this file the package's `typecheck` script had no
+  // config to read, so `bun run typecheck` at the root died with "tsc: command not found"
+  // before it ever got far enough to complain about the missing tsconfig.
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["bun-types"]
+  },
+  "include": ["src"]
+}

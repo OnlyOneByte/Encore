@@ -8,7 +8,7 @@ import { jobs } from '../db/schema';
 
 function makeRepo() {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	return { repo: new JobRepository(db), db };
 }
 

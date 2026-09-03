@@ -111,8 +111,12 @@
 			</div>
 			{#if controls}<div class="ctrls">{@render controls()}</div>{/if}
 		</div>
+		<!-- The chevron already says which way this moves, and the grip already reads as draggable, so
+		     spelling out "pull up"/"pull down to close" was redundant. The COUNT is kept: that is
+		     information you cannot get from the affordance. The instruction survives for screen
+		     readers in the button's aria-label above. -->
 		<div class="hint">
-			{open ? 'Pull down to close' : queueCount > 0 ? `Pull up · ${queueCount} in the rotation` : 'Pull up · rotation'}
+			{#if !open && queueCount > 0}{queueCount} in the rotation{/if}
 			<span class="chev" class:up={!open}>⌃</span>
 		</div>
 	</div>
