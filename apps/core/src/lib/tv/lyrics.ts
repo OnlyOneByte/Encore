@@ -125,6 +125,21 @@ function lineFromWords(words: LyricWord[]): LyricLine {
 /**
  * Split one line into lyric-sized lines at pauses, and at `LINE_MAX_CHARS` when a run has no pause.
  *
+ * ONLY fires on a line that is actually too long (`splitAboveChars`, defaulting to `maxChars`).
+ *
+ * WHY THE GUARD (B-3-C8). A pause is evidence of a line break only when there is a reason to look for
+ * one. Applied to every line, it splits on any held note or breath — so a short, already-correct line
+ * became two rows that each flash past, and `coalesceOrphans` existed largely to undo the damage. The
+ * blob case this whole mechanism was built for is now handled UPSTREAM, in the worker, where whisper's
+ * ~30s VAD segments are re-lineated on text boundaries before the aligner ever sees them (see
+ * lyrics_presplit.py) — and that is the better place for it, because the provenance needed to know a
+ * line came from ASR rather than a human lives there.
+ *
+ * So this stays as the safety net it should always have been: it catches artifacts written before that
+ * change (which are still over-long, hence still split) and any line that slips through, and it leaves
+ * a line that already fits a row alone. Keeping it here also keeps the original property — it fixes
+ * existing artifacts with no re-cook.
+ *
  * REFUSES to split when the timed words don't cover the line's own text (`COVERAGE_MIN`).
  * `normalize_lyrics` drops words the aligner left un-timed, so a poorly-aligned line can have words[]
  * much shorter than text — rebuilding the line from words there would silently DELETE lyrics from the
@@ -133,8 +148,10 @@ function lineFromWords(words: LyricWord[]): LyricLine {
 export function resegmentLine(
 	line: LyricLine,
 	gapSec: number = LINE_GAP_SEC,
-	maxChars: number = LINE_MAX_CHARS
+	maxChars: number = LINE_MAX_CHARS,
+	splitAboveChars: number = maxChars
 ): LyricLine[] {
+	if (line.text.trim().length <= splitAboveChars) return [line];
 	if (line.words.length < 2) return [line];
 	const joined = line.words.map((w) => w.word).join(' ');
 	if (joined.length < line.text.trim().length * COVERAGE_MIN) return [line];

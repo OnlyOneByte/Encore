@@ -45,6 +45,7 @@ from .lyrics_chain import (
     candidate_key,
     score_against_asr,
 )
+from .lyrics_presplit import presplit_texts
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
 
 DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2
@@ -349,6 +350,18 @@ class WhisperXProcessor:
                 f"no lyrics text from any source for {artist or '?'} — {track or '?'} "
                 "(instrumental, or every tier missed)"
             )
+
+        # Re-lineate the AUTO-TRANSCRIBED texts only. A whisper segment is a VAD chunk of up
+        # to ~30s — several lyric lines as one blob — whereas every authoritative tier already arrives
+        # line-broken by a human, so the gate is `is_authoritative_text` and not a blanket pass. Done
+        # HERE, before timing, so the aligner gets a per-LINE search window instead of one 30s window
+        # spanning four lines; see lyrics_presplit for the division of labour with upstream.
+        #
+        # Before agreement scoring on purpose: scoring compares token SETS (splitting cannot change
+        # them) but the demotion below sets text_confidence='low' on a suspect lookup, which would
+        # flip it to non-authoritative and hand human-authored lines to a splitter that can only
+        # damage them. A wrong-song lookup is still wrong in tidy human lines.
+        texts = presplit_texts(texts)
 
         # ── stage 3: TIMING — force-align each text; degrade to its own line sync ─
         yield ProgressEvent(stage="aligning", pct=0)

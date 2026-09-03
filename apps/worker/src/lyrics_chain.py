@@ -37,6 +37,19 @@ TIMING_LINE = "line"
 TIMING_NONE = "none"
 
 
+def is_authoritative_text(text_source: str, text_confidence: str) -> bool:
+    """Is this text trustworthy enough to be the song's real words? Mirror of `isAuthoritativeText`
+    in packages/shared/src/lyrics.ts — that module is the authority; keep the two in step.
+
+    Mirrored rather than re-derived because it is now load-bearing on BOTH sides of the seam: the TV
+    uses it to decide whether to caption the overlay "auto-transcribed", and the worker uses the same
+    predicate to decide whether text arrived as human-authored LINES or as an ASR blob that needs
+    re-lineating (see lyrics_presplit.py). One definition, two consumers — a second, drifting notion of
+    "authoritative" would silently split the wrong tier.
+    """
+    return text_source != SOURCE_ASR and text_confidence != "low"
+
+
 @dataclass
 class LyricsRequest:
     """Everything a source might need to find text for one song."""

@@ -59,12 +59,13 @@ acceptance test is audible and needs the owner in the room.
 
 ## Adopted: reuse from the nomadkaraoke tools (decided 2026-09-03)
 
-Three upstream projects were surveyed. **All three are MIT licensed**, so direct dependency,
+Four upstream projects were surveyed. **All four are MIT licensed**, so direct dependency,
 vendoring, and copying with attribution are all open to us — no licence blocker anywhere.
 
 | Project | Verdict | Why |
 |---|---|---|
 | [`python-audio-separator`](https://github.com/nomadkaraoke/python-audio-separator) | **Adopt as a dependency** | The separation engine under `karaoke-gen`, on PyPI. Wraps the UVR model family (MDX-Net, VR Arch, Demucs, MDXC/RoFormer). → **B-8** |
+| [`karaoke-lyrics-processor`](https://github.com/nomadkaraoke/karaoke-lyrics-processor) | **Adopt for half the job** | Length-bounds and cleans lyric lines. We keep its bounding/parens/punctuation and supply the boundary split it gets wrong. → **B-3-C8** (done) |
 | [`flacfetch`](https://github.com/nomadkaraoke/flacfetch) | **Borrow one idea** | Its provider+ranking pattern already landed independently as `lyrics_chain.acquire()` + `pickBestLyrics`. Its stream-quality heuristic has not. → **B-9** |
 | [`karaoke-gen`](https://github.com/nomadkaraoke/karaoke-gen) | **Ideas only, no dependency** | Mostly scope we do not want (4K render, CDG packaging, YouTube/Dropbox upload). Its **human review stage** is the keeper. → **Deferred** |
 
@@ -78,6 +79,42 @@ vendoring, and copying with attribution are all open to us — no licence blocke
 
 It also ships platform acceleration we would otherwise have to write: CUDA, Apple Silicon MPS/CoreML
 with per-model-type device mapping, DirectML, and an automatic CPU fallback for long inputs.
+
+**Why `karaoke-lyrics-processor` is only half adopted (B-3-C8).** It is a length-BOUNDER, not a
+phrase-finder: `find_best_split_point` bisects an over-long span, preferring a comma near the MIDPOINT,
+then `" and "`, then the middle word. **MEASURED 2026-09-03** on a synthetic one-line blob at
+`max_line_length=36`, that glues the next line's leading conjunction onto the previous line's tail
+(`"until the morning came around, and"`) in 3 of 9 lines, and it never breaks on a sentence boundary at
+all (`"never made a sound. So tell me"`). Where a span has no comma near its midpoint it degrades to
+plain word-boundary bisection — no better than the char-count fallback the TV overlay already had.
+
+So we find the phrase boundaries and hand it **lines instead of a blob**; it only ever splits, never
+joins, so it then intervenes solely on pieces still too long. It keeps the parts worth having:
+bounded-iteration length capping, stack-matched nested-parenthesis isolation, punctuation and
+Unicode-space cleanup.
+
+**Validated against this repo's own artifacts, not just synthetic text** — and the first cut was wrong.
+Of the 171 over-long lines in `media/derived/lyrics/*-asr*.json`, a first version splitting only on
+sentence ends and `", <conjunction>"` left **91% untouched**. Whisper is *not* unpunctuated (83% of
+those lines carry `.,!?`) but its full stop lands at the END of a segment with nothing after it to split
+off. Adding a greedy re-pack at **bare commas** (whisper puts them at breath boundaries) and a
+**capitalised line-opener** rule (it marks phrase starts with case even when it omits punctuation) took
+the share fully resolved with no bisection from **3% → 47%**, and improved **8% → 71%**. Openers are a
+CLOSED set of function words and imperatives, because "any capital" breaks `"the rains down in | Africa"`
+and `"my fancy house in | London town"`. The remainder is genuinely structureless: vocalisations
+("Na na na …", 182 chars) and whisper's repetition failure mode (one 636-char line repeating a phrase
+eleven times), where bisection is the only honest answer and is adequate.
+
+Gated on `is_authoritative_text`, so **only auto-transcribed text is touched** — every authoritative
+tier already arrives line-broken by a human (`parse_lrc` yields one entry per stamp;
+`plain_lyrics_to_segments` keeps the lyrics site's own lines), and a splitter can only damage those.
+
+**Installed `--no-deps`.** MEASURED: a plain install resolves to **30 packages, 29 unused** — its
+declared `textract-py3` drags SpeechRecognition, pdfminer.six, python-pptx, oletools + pcodedmp (a VBA
+macro deobfuscator), cryptography, easygui (Tkinter), xlrd<2; `python-docx` is declared but never
+imported in upstream's source and solely drags lxml. All of it serves `.doc`/`.rtf` ingestion and a
+clipboard copy — features we never call, since our text arrives in memory. pip *did* resolve the full
+tree cleanly against the torch/whisperx set, so this is unused weight, not a version conflict.
 
 **Known cost, recorded honestly.** B-8 likely **supersedes `a76ab4a`** (the adaptive `-j` default,
 measured 1.72× on 32 cores). Those numbers are `htdemucs`-specific and stop applying if the engine

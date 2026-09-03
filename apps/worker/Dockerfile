@@ -20,6 +20,13 @@ COPY apps/worker/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir --extra-index-url "${TORCH_INDEX_URL}" -r requirements.txt \
 	&& yt-dlp --version
 
+# karaoke-lyrics-processor, deliberately --no-deps and therefore in its own layer (see the long note
+# in requirements.txt): its declared deps are 30 packages serving .doc ingestion + a clipboard copy,
+# neither of which this worker calls. The three it genuinely imports are pinned in requirements.txt;
+# `textract` is stubbed at import time in src/lyrics_presplit. If this layer is ever dropped, lyrics
+# still work — the boundary pre-split runs standalone and the TV's LINE_MAX_CHARS still bounds a row.
+RUN pip install --no-cache-dir --no-deps karaoke-lyrics-processor==0.6.0
+
 # worker sources (the dial-home client + processor + pure protocol)
 COPY apps/worker/src ./src
 
