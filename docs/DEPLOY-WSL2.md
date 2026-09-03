@@ -51,6 +51,53 @@ hostAddressLoopback=true
 Then `wsl --shutdown` and restart. Mirrored mode needs **Windows 11 22H2 or newer with WSL 2.0+**
 (`wsl --version` to check).
 
+### Mirrored mode needs the Hyper-V firewall opened too — this is the step that bites
+
+The Windows Firewall rule below is **not sufficient on its own** in mirrored mode. Inbound LAN traffic
+to a WSL-bound service is governed by the separate **Hyper-V firewall**, which defaults to blocking it.
+Symptom: everything looks correct — the service is listening, the address is right — and phones still
+cannot connect. It is a known rough edge ([microsoft/WSL#10535](https://github.com/microsoft/WSL/issues/10535)).
+
+From an **Administrator** PowerShell, open just the one port:
+
+```powershell
+New-NetFirewallHyperVRule -Name "Encore3000" -DisplayName "Encore 3000" `
+  -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' `
+  -Protocol TCP -LocalPorts 3000
+```
+
+That GUID is WSL's own VM creator ID. The blunter alternative, if you would rather not manage it
+per-port, allows all inbound to WSL:
+
+```powershell
+Set-NetFirewallHyperVVMSetting -Name '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -DefaultInboundAction Allow
+```
+
+### Finding the address in mirrored mode
+
+Mirrored mode also makes the address harder to read, not easier: WSL now shows the host's interfaces
+*plus* a synthetic `loopback0`, so `hostname -I` returns a list and it is not obvious which entry a
+phone should use. Ask the routing table which source address actually reaches the outside world:
+
+```bash
+ip route get 1.1.1.1 | grep -oP 'src \K\S+'
+```
+
+and cross-check from Windows, which is authoritative:
+
+```powershell
+(Get-NetIPConfiguration | Where-Object { $_.IPv4DefaultGateway }).IPv4Address.IPAddress
+```
+
+**Those two agreeing IS the check that mirrored mode took effect.** If WSL reports a `172.x` while
+Windows reports your `192.168.x`, you are still on NAT: `.wslconfig` was not picked up (wrong path — it
+must be `%USERPROFILE%\.wslconfig` — or no `wsl --shutdown` afterwards), and the portproxy fallback
+below applies instead.
+
+> `networkingMode=bridged` is a **different** mode, not a synonym. It needs `vmSwitch=` naming an
+> *external* Hyper-V vSwitch and takes its own DHCP lease; without that switch it has no usable
+> address at all. Use `mirrored`.
+
 **If mirrored mode is unavailable** (Windows 10, or an older WSL), fall back to a port proxy from an
 Administrator PowerShell — replacing the WSL IP each boot, because NAT reassigns it:
 
@@ -210,20 +257,31 @@ $EC exec worker python -c \
 
 3. **Core is reachable from Windows:** open `http://localhost:3000/tv` in a Windows browser.
 
-4. **Core is reachable from the LAN** — the step that catches the NAT problem. From your phone,
-   browse to `http://<windows-lan-ip>:3000/tv`. Get the address with `ipconfig` in PowerShell (the
-   Wi-Fi/Ethernet adapter, **not** a `vEthernet (WSL)` address).
+4. **Core is bound to all interfaces, not just loopback.** Inside WSL:
 
-5. **Open the TV at the LAN address, not localhost.** The QR takes its authority from the request's
+   ```bash
+   ss -tlnp | grep 3000     # want 0.0.0.0:3000 or *:3000
+   ```
+
+   A `127.0.0.1:3000` bind is reachable from Windows and *never* from the LAN — the same symptom as a
+   firewall block, from a completely different cause. Encore defaults `HOST=0.0.0.0`, so this should
+   already pass; check it before blaming the network.
+
+5. **Core is reachable from the LAN** — the step that catches both the NAT problem and the Hyper-V
+   firewall. From your phone, browse to `http://<windows-lan-ip>:3000/tv`. Get the address with the
+   two cross-checked commands in §1, not by eyeballing `ipconfig` — in mirrored mode there are several
+   plausible-looking addresses and only one of them works.
+
+6. **Open the TV at the LAN address, not localhost.** The QR takes its authority from the request's
    `Host` header, so the TV must be loaded as `http://<windows-lan-ip>:3000/tv` for the QR to encode
    something a phone can use. This is the single easiest mistake to make. Neither mirrored networking
    nor the portproxy fallback rewrites `Host`, so in both modes the QR simply mirrors what you typed.
 
-6. **End to end:** scan the QR, join with a name and colour, search a song, tap Karaoke, and watch
+7. **End to end:** scan the QR, join with a name and colour, search a song, tap Karaoke, and watch
    `nvidia-smi` during the cook. If VRAM usage and GPU utilisation stay flat, the cook is running on
    CPU regardless of what anything claims.
 
-7. **Re-measure.** Run the committed benchmark scripts on this box and add a CUDA column to
+8. **Re-measure.** Run the committed benchmark scripts on this box and add a CUDA column to
    `docs/benchmarks/SUMMARY.md`:
    `docs/benchmarks/scripts/checkpoint_cost.py` and `docs/benchmarks/scripts/family_bench.sh`. Every
    realtime factor recorded so far is from a 32-core Graviton 3 CPU box, and the ranking may reorder
