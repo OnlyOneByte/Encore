@@ -23,6 +23,8 @@ from __future__ import annotations
 import os
 from typing import AsyncIterator
 
+from .fetch import job_fetcher, local_source_path
+from .vocabulary import Fetcher
 from .processor import (
 	CompleteResult,
 	JobSpec,
@@ -38,12 +40,73 @@ from .processor import (
 
 #: Our stable whitelist tokens (packages/shared/src/separators.ts) → bs-roformer-infer registry
 #: slugs. Kept here, not in the shared TS, because the slug is a WORKER-side resolution detail the
-#: core never needs to know — the core only validates the token. See the module warning about slug
-#: verification.
+#: core never needs to know — the core only validates the token.
+#:
+#: ⚠️ KNOWN MISMATCH, verified against the installed package on 2026-09-03. The token
+#: `bs-roformer-1297` resolves to `BS-Rofo-SW-Fixed.ckpt` (registry entry "BS Roformer SW by
+#: jarredou", category multi-stem) — which is NOT `model_bs_roformer_ep_317_sdr_12.9755.ckpt`, the
+#: 2-stem checkpoint that was actually benchmarked and quality-approved. bs-roformer-infer 0.1.5's
+#: registry holds exactly ten models (see ROFORMER_REGISTRY_SLUGS) and the ep_317 checkpoint is not
+#: among them, so this token cannot currently be pointed at the approved model through this package.
+#: Deliberately NOT silently repointed to some other slug: swapping the cooked model without a
+#: listening test is the failure this comment exists to prevent. Tracked with the engine-package
+#: decision in docs/ROADMAP.md (B-8).
+#:
+#: The former `mel-roformer-inst-v2` token is GONE. It mapped to
+#: `roformer-model-bs-roformer-fno-instrumental-by-pcunwa`, which is absent from the registry, and
+#: mel-band is unreachable regardless: bs_roformer's `get_model_from_config` implements only
+#: `model_type == 'bs_roformer'`, and the package ships no mel_band module. It was an option the phone
+#: offered that no worker could ever have satisfied.
 ROFORMER_MODELS = {
 	"bs-roformer-1297": "roformer-model-bs-roformer-sw-by-jarredou",
-	"mel-roformer-inst-v2": "roformer-model-bs-roformer-fno-instrumental-by-pcunwa",
 }
+
+#: Every slug bs-roformer-infer 0.1.5 can actually resolve, read out of its own
+#: `bs_roformer/data/bs_models.json`. Checked in so `ROFORMER_MODELS` is verifiable by a unit test
+#: rather than by a string-shape assertion — the previous test asserted only that a slug *started
+#: with* "roformer-model-", which is exactly why a nonexistent slug shipped.
+ROFORMER_REGISTRY_SLUGS = frozenset(
+	{
+		"roformer-model-bs-roformer-chorus-male-female-by-sucial",
+		"roformer-model-bs-roformer-de-reverb",
+		"roformer-model-bs-roformer-instrumental-resurrection-by-unwa",
+		"roformer-model-bs-roformer-male-female-by-aufr33",
+		"roformer-model-bs-roformer-sw-by-jarredou",
+		"roformer-model-bs-roformer-vocals-by-gabox",
+		"roformer-model-bs-roformer-vocals-resurrection-by-unwa",
+		"roformer-model-bs-roformer-vocals-revive-by-unwa",
+		"roformer-model-bs-roformer-vocals-revive-v2-by-unwa",
+		"roformer-model-bs-roformer-vocals-revive-v3e-by-unwa",
+	}
+)
+
+#: Measured execution settings per whitelist token — the worker-side mirror of
+#: `SeparatorCost` in packages/shared/src/separators.ts. Benchmarked on the reference box
+#: (32-core Graviton 3, CPU) on 2026-09-03: 26.59s per 8s window at fp32, 16.55s at bf16.
+#:
+#: `precision` is per-token and NOT globally derivable: bf16 is 1.6× faster than fp32 on this
+#: checkpoint, but measured 1.4–1.8× SLOWER on the mel-band models with an 8s window, and fp16 on CPU
+#: is 6.5× slower than fp32 (no fp16 CPU kernels). A GPU backend overrides `precision` — fp16 is the
+#: lever on Arc XMX and Apple MPS.
+#:
+#: ⚠️ NEITHER VALUE IS APPLIED TODAY. bs-roformer-infer 0.1.5's CLI takes only
+#: model_type/config_path/model_path/model/models_dir/input_folder/store_dir/device/device_ids: there
+#: is no overlap flag and no precision flag, and its `inference.py` contains no autocast at all.
+#: `overlap` is reachable only indirectly, by writing a modified config YAML and passing
+#: `--config_path` (its inference loop reads `config.inference.num_overlap`); `precision` is not
+#: reachable without patching the package. Recorded here as the measured intent so the numbers are not
+#: lost, and as concrete evidence for the engine-package decision.
+ROFORMER_COST = {
+	"bs-roformer-1297": {"overlap": 4, "precision": "bf16", "rt_factor": 8.28},
+}
+
+
+def roformer_cost(token: str) -> dict | None:
+	"""Measured execution settings for a whitelist token, or None when the token is unknown. Returns
+	None rather than a default because a fabricated cost would be indistinguishable from a measured
+	one at the call site."""
+	return ROFORMER_COST.get(token)
+
 
 DEFAULT_ROFORMER_MODEL = "bs-roformer-1297"
 
@@ -130,8 +193,8 @@ class RoformerProcessor:
 		os.makedirs(in_dir, exist_ok=True)
 
 		# ── stage 1: obtain + decode the source (identical to the demucs path) ──
-		if d.is_local_source(job.source_uri):
-			input_path = os.path.join(job.media_dir, job.source_uri)
+		if job_fetcher(job) is Fetcher.LOCAL:
+			input_path = local_source_path(job)
 			yield ProgressEvent(stage="downloading", pct=100)
 		else:
 			audio_dir = os.path.dirname(source_audio_path(job.media_dir, job.media_id))

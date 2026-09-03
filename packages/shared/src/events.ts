@@ -95,6 +95,12 @@ export type MediaStoreConfig =
  * letting the worker default and the ASR pass detect it.
  */
 export interface JobParams {
+  /**
+   * How the worker should obtain `sourceUri` — DECLARED, never inferred from the URI's shape.
+   * `ytdlp` means download it; `local` means it is already a path under the media volume. Set on every
+   * job that touches source audio, so a worker never has to guess (see packages/shared/src/fetchers.ts).
+   */
+  fetcher?: string;
   model?: string; // separation model/checkpoint token (stems) — resolved by the worker engine
   engine?: string; // separation engine id (stems): 'demucs' | 'roformer' | 'ensemble'
   targetKey?: string; // requested key shift, if a job ever pre-renders one

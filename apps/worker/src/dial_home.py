@@ -210,6 +210,12 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             print(f"[worker] could not set torch threads: {exc}", flush=True)
 
     by_type: dict[str, Processor] = {}
+    if any(c.startswith("fetch:") for c in cfg.capabilities):
+        from .fetch import FetchProcessor
+
+        # Acquisition needs no ML, so it is built whenever a fetch capability is advertised — including
+        # on a box that cannot separate at all. That asymmetry is the point of routing fetch separately.
+        by_type["fetch"] = FetchProcessor(ytdlp_bin=cfg.ytdlp_bin)
     if "stems" in cfg.capabilities or "score" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
         from .backends import resolve_backend
         from .demucs import DemucsProcessor  # lazy: torch off the import path until selected

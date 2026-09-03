@@ -198,6 +198,16 @@ def test_build_processor_routes_by_capability(monkeypatch):
     assert "roformer" not in by_type["stems"]._by_engine  # not built without the stems:roformer cap
     assert "score" not in by_type  # score is capability-gated, not advertised by default
     assert "align" not in by_type  # not advertised by default
+    assert "fetch" not in by_type  # acquisition is capability-gated: no fetch:* advertised here
+
+    # A fetch-ONLY worker is legitimate: it downloads and cannot separate. That asymmetry is why
+    # acquisition routes on its own capability instead of riding along with stems.
+    from src.config import WorkerConfig
+    from src.fetch import FetchProcessor
+
+    pf = _build_processor(WorkerConfig(capabilities=("fetch:ytdlp",)))
+    assert isinstance(pf._by_type["fetch"], FetchProcessor)
+    assert "stems" not in pf._by_type
 
     # Capabilities come from the CONFIG seam, not a mutable module global — pass one explicitly.
     from src.config import WorkerConfig

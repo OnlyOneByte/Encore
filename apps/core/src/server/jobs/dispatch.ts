@@ -4,7 +4,7 @@
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
 import type { Job, JobParams, JobType, Media, GlobalSettings } from '@encore/shared';
-import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_GLOBAL_SETTINGS, getEngine, isQualityUpgrade } from '@encore/shared';
+import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_GLOBAL_SETTINGS, DEFAULT_FETCHER, getEngine, getFetcher, fetcherFor, isQualityUpgrade } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 /**
@@ -17,6 +17,10 @@ import type { WorkerSession } from './registry';
  * user-visible: the song isn't singable until stems completes either.)
  */
 export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[] {
+	// Acquisition chains to separation: the song is not singable until it is separated, and separation
+	// needs bytes on disk. Kept as a chain rather than enqueued together so `stems` cannot be dispatched
+	// before its input exists — the same reason align/score chain after stems.
+	if (jobType === 'fetch') return ['stems'];
 	if (jobType !== 'stems') return [];
 	const next: JobType[] = ['align', 'score'];
 	// A completed cook optionally chains a re-separation at higher quality. It runs from the RETAINED
@@ -41,20 +45,26 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
  * line-sync fallback's synthetic timings.
  */
 export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
+	// Every job that touches source audio declares HOW to obtain it. The worker parses this at its
+	// boundary instead of testing the URI for an `http` prefix, which is what used to misclassify any
+	// scheme that was neither a watch URL nor a bare file key.
+	const fetcher = media ? fetcherFor(media.source, settings?.defaultFetcher) : DEFAULT_FETCHER;
+	if (jobType === 'fetch') return { fetcher };
 	// stems carries the room's engine+model, the upgrade its upgrade engine+model. Both fall back to
 	// shared defaults when no settings are provided (e.g. a unit test), so the worker still gets a
 	// valid pairing.
 	if (jobType === 'stems') {
-		return { engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
+		return { fetcher, engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
 	}
 	if (jobType === 'stems-upgrade') {
 		return {
+			fetcher,
 			engine: settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine,
 			model: settings?.upgradeModel ?? DEFAULT_GLOBAL_SETTINGS.upgradeModel
 		};
 	}
-	if (jobType !== 'align') return {};
-	const params: JobParams = {};
+	if (jobType !== 'align') return { fetcher };
+	const params: JobParams = { fetcher };
 	if (media?.artistCanonical) params.artist = media.artistCanonical;
 	if (media?.titleCanonical) params.track = media.titleCanonical;
 	if (media && Number.isFinite(media.durationSec) && media.durationSec > 0) {
@@ -97,6 +107,11 @@ export interface Assignment {
  * keep matching.
  */
 export function requiredCapability(jobType: JobType, settings?: GlobalSettings): string {
+	// A fetch routes by its DOWNLOADER's capability, so a box that can pull audio and a box that can
+	// separate it need not be the same machine.
+	if (jobType === 'fetch') {
+		return getFetcher(settings?.defaultFetcher ?? DEFAULT_FETCHER)?.capability ?? `fetch:${DEFAULT_FETCHER}`;
+	}
 	if (jobType === 'stems') return getEngine(settings?.defaultEngine ?? DEFAULT_ENGINE)?.capability ?? 'stems';
 	if (jobType === 'stems-upgrade') {
 		return getEngine(settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine)?.capability ?? 'stems';
