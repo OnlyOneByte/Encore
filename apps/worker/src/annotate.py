@@ -40,13 +40,27 @@ from typing import Any, Callable
 
 MB_BASE = "https://musicbrainz.org/ws/2"
 
-#: MusicBrainz asks every client to identify itself with contact information, and throttles or blocks
-#: anonymous traffic. Same convention as the LRCLIB client.
-USER_AGENT = "Encore/0.2 (+https://github.com/OnlyOneByte/Encore)"
+#: MusicBrainz asks every client to identify itself in the documented form
+#: `Application name/<version> ( contact-url )`, and classifies a missing or generic header as
+#: "anonymous". That matters more than politeness: `Python-urllib` -- the header stdlib urllib sends by
+#: DEFAULT -- is named on their anonymous list and throttled far harder than an identified client. Every
+#: request must therefore set this explicitly.
+USER_AGENT = "Encore/0.2 ( https://github.com/OnlyOneByte/Encore )"
 
-#: Their documented limit is one request per second, averaged. Annotation is one call per download, so
-#: this is never a hot path -- but a bulk backfill of an existing library must be paced.
+#: Their documented limit is one request per second PER SOURCE IP, averaged.
+#:
+#: Overshooting is not a partial penalty. Quoting the docs: "if your requests are coming in at 4
+#: requests per second, we don't honour 25% of them and decline the other 75% - we decline 100% of
+#: them, until the rate drops to 1 per second or lower." So a burst does not cost one lookup, it costs
+#: every lookup until the box goes quiet -- which is why pacing is global and serialised rather than
+#: best-effort per client.
 MIN_INTERVAL_SEC = 1.0
+
+#: A 503 is how MusicBrainz says "you are over the limit" (also "we are busy"). Retrying with backoff
+#: recovers the annotation instead of silently losing it for that song; bounded so a genuinely blocked
+#: box degrades to declining rather than hammering the service it is already annoying.
+MAX_ATTEMPTS = 3
+BACKOFF_BASE_SEC = 1.0
 
 #: D9. A recording whose length is within this many seconds is a `high` match; within the wider bound
 #: it is `medium`; beyond it, nothing is written.
@@ -280,6 +294,102 @@ def pick_best(
     )
 
 
+# ── the rate gate: process-global, serialised ─────────────────────────────────────
+class RateLimiter:
+    """One gate every MusicBrainz call passes through, one at a time.
+
+    WHY GLOBAL AND SERIALISED, rather than a per-client interval check:
+
+      * The limit is per SOURCE IP, so it is a property of the process, not of a client object. Two
+        client instances pacing themselves independently still send two requests in the same second.
+      * `ENCORE_WORKER_CONCURRENCY` > 1 means two fetch jobs can reach this concurrently. An unlocked
+        "has enough time passed?" check lets both read the same timestamp, both decide yes, and both
+        fire -- which is precisely the burst that gets an IP blocked outright.
+      * The penalty for overshooting is total (see MIN_INTERVAL_SEC), so the safe default is to queue
+        rather than to risk it. At one request per second and one call per download, the cost of
+        serialising is invisible.
+
+    The lock is held across the REQUEST as well as the wait. That is deliberate: two requests in flight
+    simultaneously is the thing being prevented, so releasing before the call would defeat the point.
+
+    Counters exist because a paced call is indistinguishable from a slow one from the outside, and the
+    operator needs to be able to tell "MusicBrainz is throttling us" from "the network is slow".
+    """
+
+    def __init__(
+        self,
+        min_interval: float = MIN_INTERVAL_SEC,
+        *,
+        now: Callable[[], float] | None = None,
+        sleep: Callable[[float], None] | None = None,
+    ) -> None:
+        import threading
+        import time as _time
+
+        self._min_interval = min_interval
+        self._lock = threading.Lock()
+        self._now = now or _time.monotonic
+        self._sleep = sleep or _time.sleep
+        # None, not 0.0: "never called" must be distinguishable from "called at t=0", and 0.0 is falsy.
+        # With a real monotonic clock t=0 is merely unlikely rather than impossible, so a truthiness
+        # check here would work by luck and skip the very first pacing interval.
+        self._last_call: float | None = None
+        self.calls = 0
+        self.retries = 0
+        self.throttled = 0
+        self.waited_sec = 0.0
+
+    def _pace(self) -> None:
+        if self._last_call is not None:
+            elapsed = self._now() - self._last_call
+            if elapsed < self._min_interval:
+                wait = self._min_interval - elapsed
+                self.waited_sec += wait
+                self._sleep(wait)
+        self._last_call = self._now()
+
+    def run(self, call: Callable[[], "tuple[int, str]"]) -> "tuple[int, str]":
+        """Execute one paced request under the gate, retrying a 503 with backoff.
+
+        Retries happen INSIDE the lock so a throttled box does not have every other queued caller pile
+        on top of the request that is already being refused.
+        """
+        with self._lock:
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                self._pace()
+                self.calls += 1
+                status, body = call()
+                if status != 503:
+                    return status, body
+                # 503 = over the limit, or the service is busy. Same remedy either way: wait longer.
+                self.throttled += 1
+                if attempt == MAX_ATTEMPTS:
+                    return status, body
+                self.retries += 1
+                backoff = BACKOFF_BASE_SEC * (2 ** (attempt - 1))
+                self.waited_sec += backoff
+                self._sleep(backoff)
+            return status, body  # unreachable, kept for the type checker's benefit
+
+    def stats(self) -> dict[str, Any]:
+        return {
+            "calls": self.calls,
+            "retries": self.retries,
+            "throttled": self.throttled,
+            "waited_sec": round(self.waited_sec, 2),
+        }
+
+
+#: The process-wide gate. Every client shares it by default, which is the whole point -- a per-instance
+#: limiter would let two clients in one process burst past a per-IP limit.
+_LIMITER = RateLimiter()
+
+
+def limiter() -> RateLimiter:
+    """The shared gate, for a worker that wants to log how much it has been throttled."""
+    return _LIMITER
+
+
 # ── I/O: the client (injectable fetcher; the real network only runs on a worker) ───
 Fetcher = Callable[[str, dict[str, str]], "tuple[int, str]"]
 
@@ -287,8 +397,9 @@ Fetcher = Callable[[str, dict[str, str]], "tuple[int, str]"]
 class MusicBrainzClient:
     """Thin recording-search client. Declines (None) on a miss; raises only on a real transport fault.
 
-    Paced to one request per second because that is MusicBrainz's documented limit and anonymous
-    traffic above it gets throttled. The clock is injectable so tests do not sleep.
+    Every request goes through the process-global RateLimiter, so concurrent fetch jobs queue behind
+    each other rather than racing to be blocked. The limiter is injectable purely so tests are
+    hermetic -- production always shares one.
     """
 
     def __init__(
@@ -296,33 +407,22 @@ class MusicBrainzClient:
         fetcher: Fetcher | None = None,
         base_url: str = MB_BASE,
         *,
-        now: Callable[[], float] | None = None,
-        sleep: Callable[[float], None] | None = None,
+        rate_limiter: RateLimiter | None = None,
     ) -> None:
         self._fetch = fetcher or _urllib_fetch
         self._base = base_url
-        import time as _time
-
-        self._now = now or _time.monotonic
-        self._sleep = sleep or _time.sleep
-        # None, not 0.0: "never called" must be distinguishable from "called at t=0", and 0.0 is falsy.
-        # With a real monotonic clock t=0 is merely unlikely rather than impossible, so a truthiness
-        # check here would work by luck and skip the very first pacing interval.
-        self._last_call: float | None = None
-
-    def _pace(self) -> None:
-        if self._last_call is not None:
-            elapsed = self._now() - self._last_call
-            if elapsed < MIN_INTERVAL_SEC:
-                self._sleep(MIN_INTERVAL_SEC - elapsed)
-        self._last_call = self._now()
+        self._limiter = rate_limiter or _LIMITER
 
     def search(self, artist: str, track: str, limit: int = 10) -> list[Recording]:
-        self._pace()
         url = search_url(self._base, artist, track, limit)
-        status, body = self._fetch(url, {"User-Agent": USER_AGENT, "Accept": "application/json"})
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        status, body = self._limiter.run(lambda: self._fetch(url, headers))
         if status == 404:
             return []
+        if status == 503:
+            # Exhausted the retries: the IP is being refused. Declining (via annotate) is right --
+            # hammering an endpoint that is already saying no makes the block last longer.
+            raise AnnotationFetchError(f"musicbrainz throttled us (503) after {MAX_ATTEMPTS} attempts")
         if status != 200:
             raise AnnotationFetchError(f"musicbrainz returned {status} for {artist} - {track}")
         try:

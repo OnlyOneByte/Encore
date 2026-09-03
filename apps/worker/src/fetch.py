@@ -122,20 +122,32 @@ class FetchProcessor:
             raise RuntimeError(f"fetch produced no audio for {job.media_id}")
 
         artifacts: dict = {"source": {"audio": path}}
-        note = self._annotate(job)
+        note = await self._annotate(job)
         if note is not None:
             artifacts["annotation"] = note
         yield CompleteResult(media_uri=path, artifacts=artifacts)
 
-    def _annotate(self, job: JobSpec) -> dict | None:
-        """Identify the song, or return None. Swallows everything: a cook must not fail over metadata."""
+    async def _annotate(self, job: JobSpec) -> dict | None:
+        """Identify the song, or return None. Swallows everything: a cook must not fail over metadata.
+
+        Run OFF the event loop. The MusicBrainz gate serialises calls and sleeps to hold one request per
+        second, and a blocking sleep here would stall the whole worker — with concurrency > 1 that means
+        the OTHER job's progress events stop arriving and the core's progress lease starts expiring.
+        Waiting on metadata must not look like a hung separation.
+        """
         if self._annotator is None:
             return None
+        import asyncio
+
         from .annotate import annotate
 
         params = job.params or {}
+
+        def _call():
+            return annotate(self._annotator, params.get("artist"), params.get("track"), params.get("durationSec"))
+
         try:
-            got = annotate(self._annotator, params.get("artist"), params.get("track"), params.get("durationSec"))
+            got = await asyncio.to_thread(_call)
         except Exception:  # noqa: BLE001 - annotation is an enrichment; never a job failure
             return None
         return got.as_artifact() if got is not None else None

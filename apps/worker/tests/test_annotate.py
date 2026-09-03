@@ -57,7 +57,12 @@ def client(body=REAL_BODY, status=200, calls=None):
             calls.append((url, headers))
         return status, __import__("json").dumps(body)
 
-    return ann.MusicBrainzClient(fetcher=fetch, now=lambda: 0.0, sleep=lambda _s: None)
+    # Its own limiter, never the process-global one: a shared gate would make tests order-dependent
+    # and make every one of them sleep for real.
+    return ann.MusicBrainzClient(
+        fetcher=fetch,
+        rate_limiter=ann.RateLimiter(now=lambda: 0.0, sleep=lambda _s: None),
+    )
 
 
 # ── normalisation ────────────────────────────────────────────────────────────────
@@ -185,13 +190,102 @@ def test_the_client_identifies_itself_as_musicbrainz_requires():
 def test_requests_are_paced_to_one_per_second():
     slept: list[float] = []
     t = {"now": 0.0}
-    c = ann.MusicBrainzClient(
-        fetcher=lambda u, h: (200, "{}"), now=lambda: t["now"], sleep=lambda s: slept.append(s)
-    )
+    lim = ann.RateLimiter(now=lambda: t["now"], sleep=lambda s: slept.append(s))
+    c = ann.MusicBrainzClient(fetcher=lambda u, h: (200, "{}"), rate_limiter=lim)
     c.search("a", "b")  # first call never waits
     assert slept == []
     c.search("a", "b")  # immediately again → must wait out the interval
     assert slept and slept[0] == pytest.approx(ann.MIN_INTERVAL_SEC)
+
+
+def test_TWO_CLIENTS_in_one_process_share_the_gate():
+    # The limit is per source IP, so it is a property of the PROCESS. Two clients pacing themselves
+    # independently would still send two requests in the same second and get the IP refused outright.
+    slept: list[float] = []
+    lim = ann.RateLimiter(now=lambda: 0.0, sleep=lambda s: slept.append(s))
+    a = ann.MusicBrainzClient(fetcher=lambda u, h: (200, "{}"), rate_limiter=lim)
+    b = ann.MusicBrainzClient(fetcher=lambda u, h: (200, "{}"), rate_limiter=lim)
+    a.search("x", "y")
+    b.search("x", "y")  # a DIFFERENT client — must still wait its turn
+    assert slept and slept[0] == pytest.approx(ann.MIN_INTERVAL_SEC)
+
+
+def test_calls_are_serialised_so_two_threads_cannot_burst():
+    # An unlocked "has enough time passed?" check lets two threads read the same timestamp, both decide
+    # yes, and both fire — the exact burst that gets an IP blocked. The gate must serialise instead.
+    import threading
+
+    in_flight = {"now": 0, "max": 0}
+    lock = threading.Lock()
+
+    def fetch(url, headers):
+        with lock:
+            in_flight["now"] += 1
+            in_flight["max"] = max(in_flight["max"], in_flight["now"])
+        import time
+        time.sleep(0.02)  # hold the "request" open long enough for an overlap to be observable
+        with lock:
+            in_flight["now"] -= 1
+        return 200, "{}"
+
+    lim = ann.RateLimiter(min_interval=0.0)  # isolate SERIALISATION from pacing
+    clients = [ann.MusicBrainzClient(fetcher=fetch, rate_limiter=lim) for _ in range(4)]
+    threads = [threading.Thread(target=c.search, args=("a", "b")) for c in clients]
+    for t_ in threads:
+        t_.start()
+    for t_ in threads:
+        t_.join()
+    assert in_flight["max"] == 1, "two MusicBrainz requests were in flight at once"
+
+
+def test_a_503_is_retried_with_backoff_then_gives_up():
+    # 503 means "over the limit". Retrying recovers the annotation instead of losing it for that song;
+    # bounded so a genuinely blocked box stops hammering a service already refusing it.
+    slept: list[float] = []
+    attempts = {"n": 0}
+
+    def always_throttled(url, headers):
+        attempts["n"] += 1
+        return 503, ""
+
+    # min_interval=0 isolates BACKOFF from pacing: otherwise the 1s inter-request waits are
+    # indistinguishable from the 1s first backoff and the assertion says nothing.
+    lim = ann.RateLimiter(min_interval=0.0, now=lambda: 0.0, sleep=lambda s: slept.append(s))
+    c = ann.MusicBrainzClient(fetcher=always_throttled, rate_limiter=lim)
+    with pytest.raises(ann.AnnotationFetchError, match="throttled"):
+        c.search("a", "b")
+    assert attempts["n"] == ann.MAX_ATTEMPTS
+    assert lim.throttled == ann.MAX_ATTEMPTS
+    assert lim.retries == ann.MAX_ATTEMPTS - 1
+    # exponential, not a fixed pause
+    assert slept == [ann.BACKOFF_BASE_SEC, ann.BACKOFF_BASE_SEC * 2]
+
+
+def test_a_503_that_clears_is_recovered_rather_than_lost():
+    seq = [503, 200]
+
+    def flaky(url, headers):
+        return seq.pop(0), '{"recordings": []}'
+
+    lim = ann.RateLimiter(now=lambda: 0.0, sleep=lambda _s: None)
+    c = ann.MusicBrainzClient(fetcher=flaky, rate_limiter=lim)
+    assert c.search("a", "b") == []  # succeeded on the retry
+    assert lim.retries == 1
+
+
+def test_the_gate_counts_what_it_did_so_throttling_is_distinguishable_from_slowness():
+    lim = ann.RateLimiter(now=lambda: 0.0, sleep=lambda _s: None)
+    ann.MusicBrainzClient(fetcher=lambda u, h: (200, "{}"), rate_limiter=lim).search("a", "b")
+    st = lim.stats()
+    assert st["calls"] == 1 and st["throttled"] == 0 and st["retries"] == 0
+    assert set(st) == {"calls", "retries", "throttled", "waited_sec"}
+
+
+def test_the_user_agent_is_not_the_anonymous_python_urllib_default():
+    # MusicBrainz names `Python-urllib` on its "anonymous" list and throttles it far harder. urllib sends
+    # that header unless it is overridden, so this is a real trap rather than a style point.
+    assert "urllib" not in ann.USER_AGENT
+    assert "Encore/" in ann.USER_AGENT and "github.com" in ann.USER_AGENT
 
 
 def test_a_404_is_an_empty_result_but_a_500_is_a_transport_fault():
