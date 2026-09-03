@@ -66,9 +66,10 @@ def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp")
     The selector is `stream_quality.FORMAT_SELECTOR`, not a bare `bestaudio`. yt-dlp's own
     ranking is bitrate-led, so an old upload carrying BOTH a modern Opus stream and a legacy AAC one
     can return the AAC purely because its nominal bitrate is higher. Everything downstream inherits
-    that choice -- separator, FLAC instrumental, ASR lyrics -- and no later encode can undo it. The
-    selector keeps a bare `bestaudio` as its final branch, so it only reorders preferences and never
-    makes a video undownloadable.
+    that choice -- separator, FLAC instrumental, ASR lyrics -- and no later encode can undo it. Its
+    final branch is a bare `best` rather than a bare `bestaudio`, because every `bestaudio` branch
+    requires an audio-only stream to exist and a muxed-only video would otherwise fail at download;
+    with `best` the selector only reorders preferences and never makes a video undownloadable.
     """
     return [
         ytdlp_bin,

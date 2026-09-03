@@ -22,12 +22,22 @@ from typing import Any, Iterable
 #: yt-dlp format selector: ordered alternatives, FIRST match wins.
 #:
 #: Preference is expressed by POSITION rather than by bitrate, which is the whole point -- a bitrate
-#: comparison is what picks legacy AAC over modern Opus. The final bare `bestaudio` is a required
-#: safety net: a video with neither codec must still download rather than failing the cook, so this
-#: can only ever REORDER what yt-dlp would have taken, never reduce what is downloadable.
+#: comparison is what picks legacy AAC over modern Opus.
 #:
-#: Still audio-only and still native-container: no `bestvideo`, no `-x`, no `--audio-format`.
-FORMAT_SELECTOR = "bestaudio[acodec=opus]/bestaudio[acodec^=mp4a]/bestaudio[ext=m4a]/bestaudio"
+#: The final branch is a bare `best`, NOT a bare `bestaudio`. Every `bestaudio*` branch requires an
+#: audio-only (adaptive/DASH) stream to exist, and there are real videos where none does -- when
+#: YouTube refuses the player API, the only surviving format can be the legacy MUXED `18`
+#: (360p mp4, AAC 128k). Against such a video every `bestaudio` branch misses and the cook dies at
+#: download with "Requested format is not available", which is strictly WORSE than yt-dlp's own
+#: default (it would have fallen back to `best`). `best` restores the guarantee this selector is
+#: supposed to make: it can only ever REORDER what yt-dlp would have taken, never reduce what is
+#: downloadable. Extracting audio from a muxed stream costs nothing extra -- the decode stage already
+#: runs ffmpeg over whatever arrived, and it simply picks the audio stream.
+#:
+#: Still never a TRANSCODE and still native-container: no `bestvideo`, no `-x`, no `--audio-format`.
+#: `best` may carry a video track, which the decode stage discards; that is not the same as asking
+#: yt-dlp to re-encode, which is the regression these constraints exist to prevent.
+FORMAT_SELECTOR = "bestaudio[acodec=opus]/bestaudio[acodec^=mp4a]/bestaudio[ext=m4a]/bestaudio/best"
 
 #: Substrings that mark an upload as coming from the artist or label rather than a re-uploader.
 #: YouTube's auto-generated artist channels are literally suffixed "- Topic"; VEVO is a label network;
