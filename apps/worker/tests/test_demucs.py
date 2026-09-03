@@ -267,3 +267,26 @@ def test_find_downloaded_ignores_partial_downloads():
         assert demucs.find_downloaded(d, "id1") is None  # an interrupted download is not a result
         open(_os.path.join(d, "id1.webm"), "w").close()
         assert demucs.find_downloaded(d, "id1").endswith("id1.webm")
+
+
+# ── B-8: per-job demucs model selection ──────────────────────────────────────────
+def test_resolve_demucs_model_defaults_when_unset():
+    assert demucs.resolve_demucs_model({}) == demucs.DEFAULT_MODEL
+    assert demucs.resolve_demucs_model({"model": None}) == demucs.DEFAULT_MODEL
+    assert demucs.resolve_demucs_model({"model": ""}) == demucs.DEFAULT_MODEL
+
+
+def test_resolve_demucs_model_accepts_whitelisted_variants():
+    assert demucs.resolve_demucs_model({"model": "htdemucs_ft"}) == "htdemucs_ft"
+    assert demucs.resolve_demucs_model({"model": "htdemucs_6s"}) == "htdemucs_6s"
+
+
+def test_resolve_demucs_model_rejects_unknown_rather_than_silently_falling_back():
+    # A silent fallback would ship a DIFFERENT instrumental than the room asked for — worse than a
+    # loud failure the ledger can surface. Every roformer/ensemble model id is unknown to demucs.
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="unknown demucs model"):
+        demucs.resolve_demucs_model({"model": "bs-roformer-1297"})
+    with _pytest.raises(ValueError, match="unknown demucs model"):
+        demucs.resolve_demucs_model({"model": "../etc/passwd"})

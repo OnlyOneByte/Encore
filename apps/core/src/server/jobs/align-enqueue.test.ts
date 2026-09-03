@@ -33,6 +33,28 @@ test('stems still gets its separation model', () => {
 	expect(assignParams('stems', media()).model).toBe('htdemucs');
 });
 
+test('B-8: stems carries the room engine+model; upgrade carries the upgrade engine+model', () => {
+	const settings = {
+		defaultEngine: 'demucs' as const,
+		defaultModel: 'htdemucs_ft',
+		enqueueUpgrade: true,
+		upgradeEngine: 'roformer' as const,
+		upgradeModel: 'bs-roformer-1297'
+	};
+	const stems = assignParams('stems', media(), settings);
+	expect(stems.engine).toBe('demucs');
+	expect(stems.model).toBe('htdemucs_ft');
+	const upgrade = assignParams('stems-upgrade', media(), settings);
+	expect(upgrade.engine).toBe('roformer');
+	expect(upgrade.model).toBe('bs-roformer-1297');
+});
+
+test('B-8: with no settings, stems falls back to the shared default pairing', () => {
+	const p = assignParams('stems', media());
+	expect(p.engine).toBe('demucs');
+	expect(p.model).toBe('htdemucs');
+});
+
 test('THE BUG: align now carries canonical artist + track, not the uploader and raw title', () => {
 	const p = assignParams('align', media({ artistCanonical: 'Britney Spears', titleCanonical: 'Baby One More Time' }));
 	expect(p.artist).toBe('Britney Spears');

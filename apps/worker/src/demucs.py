@@ -24,6 +24,25 @@ from .stream_quality import FORMAT_SELECTOR
 
 DEFAULT_MODEL = "htdemucs"
 
+# The demucs-family checkpoints this engine will run (B-8). Mirrors the `demucs` engine's model
+# whitelist in packages/shared/src/separators.ts — defence in depth: the core already validates the
+# engine+model pairing before enqueueing, but a worker must never shell `demucs -n <arbitrary>` from
+# a job param, so an unknown model is rejected here too rather than silently falling back.
+DEMUCS_MODELS = ("htdemucs", "htdemucs_ft", "htdemucs_6s")
+
+
+def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
+    """Pick the demucs checkpoint for a job: the whitelisted `params['model']`, else the worker
+    default. An explicit-but-unknown model raises (the job fails non-retryable) instead of quietly
+    separating with the wrong model — a silent substitution would ship a different instrumental than
+    the room asked for."""
+    requested = params.get("model")
+    if requested is None or requested == "":
+        return default
+    if requested not in DEMUCS_MODELS:
+        raise ValueError(f"unknown demucs model {requested!r}; expected one of {DEMUCS_MODELS}")
+    return requested
+
 # ── pure helpers (no IO) ─────────────────────────────────────────────────────────
 
 
@@ -317,6 +336,12 @@ class DemucsProcessor:
         work = os.path.join(job.media_dir, "work", job.job_id)
         os.makedirs(work, exist_ok=True)
 
+        # B-8: the checkpoint is per-JOB (the room's chosen model rides in job.params.model), not a
+        # fixed worker constant. `resolve_demucs_model` validates it against the whitelist and falls
+        # back to this worker's default when the job left it unset. `self._model` is now only the
+        # fallback, so a raise here means the room asked for a model this build does not carry.
+        model = resolve_demucs_model(job.params, self._model)
+
         # ── stage 1: obtain the source audio ──────────────────────────────────────
         # B-7: the download lands in the `audio/` storage class in its NATIVE container, NOT as WAV in
         # scratch. Raw audio is the one asset that cannot be regenerated (it needs network, and
@@ -348,7 +373,7 @@ class DemucsProcessor:
         demucs_cmd = demucs_argv(
             sep_input,
             sep_out,
-            self._model,
+            model,
             self._demucs_bin,
             device=self._device,
             jobs=self._jobs,
@@ -363,7 +388,7 @@ class DemucsProcessor:
         # The instrumental goes to LOSSLESS FLAC: it is the file that plays at volume, and a second
         # lossy generation is audible on high-frequency transients (crash cymbals especially). The
         # vocals stem stays lossy below — nothing plays it aloud.
-        produced = demucs_no_vocals_path(sep_out, self._model)
+        produced = demucs_no_vocals_path(sep_out, model)
         if not os.path.exists(produced):
             raise RuntimeError(f"demucs produced no instrumental at {produced}")
         final = instrumental_path(job.media_dir, job.media_id)
@@ -376,7 +401,7 @@ class DemucsProcessor:
         # which are planned, so it is RETAINED (compressed, stereo) rather than dropped. BEST-EFFORT:
         # a missing or unencodable vocals file must not fail an otherwise-good instrumental (the
         # instrumental is the load-bearing karaoke output; the vocals stem is an enhancement).
-        vocals_src = demucs_vocals_path(sep_out, self._model)
+        vocals_src = demucs_vocals_path(sep_out, model)
         if os.path.exists(vocals_src):
             vocals_final = vocals_path(job.media_dir, job.media_id)
             try:

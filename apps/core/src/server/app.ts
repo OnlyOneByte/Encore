@@ -344,6 +344,8 @@ export function getApp(): EncoreApp {
 		broadcast: (e) => app.publish(e),
 		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
 		mediaStore: mediaStoreConfig,
+		// B-8: a stems/upgrade job carries the room's chosen engine+model, read live at assign time.
+		getSettings: () => app.settings.get(),
 		// B-1: a cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
 		// so the next boot lists it in the karaoke library instead of re-cooking it.
 		persistMedia: (mediaId) => {

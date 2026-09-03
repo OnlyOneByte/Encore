@@ -3,7 +3,8 @@
 // rotationSeq of the soonest queue entry that needs this media; lower = sooner). The I/O wrapper
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
-import type { Job, JobParams, JobType, Media } from '@encore/shared';
+import type { Job, JobParams, JobType, Media, RoomSettings } from '@encore/shared';
+import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_ROOM_SETTINGS } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 /**
@@ -38,8 +39,20 @@ export function followUps(jobType: JobType): JobType[] {
  * `durationSec` is always safe to send — it narrows an LRCLIB match and bounds the line-sync
  * fallback's synthetic timings.
  */
-export function assignParams(jobType: JobType, media: Media | undefined): JobParams {
-	if (jobType === 'stems') return { model: 'htdemucs' };
+export function assignParams(jobType: JobType, media: Media | undefined, settings?: RoomSettings): JobParams {
+	// B-8: a stems cook carries the room's chosen engine+model; the upgrade carries the room's
+	// upgrade engine+model. Both fall back to the shared defaults when no settings are provided (a
+	// hub built without a settings getter — e.g. a unit test), so the worker still gets a valid
+	// pairing rather than an empty one.
+	if (jobType === 'stems') {
+		return { engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
+	}
+	if (jobType === 'stems-upgrade') {
+		return {
+			engine: settings?.upgradeEngine ?? DEFAULT_ROOM_SETTINGS.upgradeEngine,
+			model: settings?.upgradeModel ?? DEFAULT_ROOM_SETTINGS.upgradeModel
+		};
+	}
 	if (jobType !== 'align') return {};
 	const params: JobParams = {};
 	if (media?.artistCanonical) params.artist = media.artistCanonical;
