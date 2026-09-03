@@ -345,7 +345,7 @@ export function getApp(): EncoreApp {
 		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
 		mediaStore: mediaStoreConfig,
 		// B-8: a stems/upgrade job carries the room's chosen engine+model, read live at assign time.
-		getSettings: () => app.settings.get(),
+		getSettings: () => app.settings.getGlobal(),
 		// B-1: a cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
 		// so the next boot lists it in the karaoke library instead of re-cooking it.
 		persistMedia: (mediaId) => {
@@ -358,7 +358,7 @@ export function getApp(): EncoreApp {
 		// instrumental key) + ready status — otherwise the TV's cached media stays 'queued' and sits
 		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
 		onMediaReady: () => {
-			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online(), getSettings: () => app.settings.get() }));
+			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online(), getSettings: () => app.settings.getEffective() }));
 			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById, onNowPlaying: (e) => app.plays.onNowPlaying(e) });
 		},
 		now: () => app.now()

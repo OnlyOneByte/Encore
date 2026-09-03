@@ -1,9 +1,9 @@
 import { test, expect } from 'bun:test';
 import { followUps, separatorFor } from './dispatch';
 import { markMediaReady } from './make-karaoke';
-import { isQualityUpgrade, qualityRank, type Media, type RoomSettings } from '@encore/shared';
+import { isQualityUpgrade, qualityRank, type Media, type GlobalSettings } from '@encore/shared';
 
-const settings = (o: Partial<RoomSettings> = {}): RoomSettings => ({
+const settings = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({
 	defaultEngine: 'demucs',
 	defaultModel: 'htdemucs',
 	enqueueUpgrade: false,

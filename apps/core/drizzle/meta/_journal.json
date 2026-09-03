@@ -71,6 +71,13 @@
       "when": 1788663822000,
       "tag": "0009_separator_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "6",
+      "when": 1788667600000,
+      "tag": "0010_settings_scopes",
+      "breakpoints": true
     }
   ]
 }

@@ -10,7 +10,7 @@ import type {
 	QueueEntry,
 	Media,
 	PublicSinger,
-	RoomSettings
+	EffectiveSettings
 } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
 
@@ -27,7 +27,7 @@ export interface HubDeps {
 	/** Optional: presence snapshot (singer ids with a live socket) for the sync directory (B-6-C1). */
 	listOnline?: () => string[];
 	/** Optional: room-level separator settings snapshot for the sync directory (B-8). */
-	getSettings?: () => RoomSettings;
+	getSettings?: () => EffectiveSettings;
 	/** Optional: notified when the current entry CHANGES, for play tracking (retention's LRU signal). */
 	onNowPlaying?: (entry: { id: string; mediaId: string } | null) => void;
 	/** Optional: record a queue-add for popularity shortcuts. */

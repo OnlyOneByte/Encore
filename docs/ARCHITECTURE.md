@@ -250,6 +250,28 @@ that image variant. OpenVINO is registered as a known backend but reports unavai
 publishes IR weights with STFT/iSTFT stripped for a C++ pipeline, so supporting it is a port rather
 than a dependency.
 
+### Settings scopes
+
+Settings live in two layers, split by **who a setting belongs to**:
+
+| Scope | Belongs to | Examples |
+|---|---|---|
+| **global** | the deployment and its worker fleet | default separator engine + model, upgrade policy |
+| **room** | one party | interstitial pacing, a downward-only cook-quality ceiling |
+
+Separator policy is global rather than per-room because an engine is only usable if some connected
+worker advertises its capability — a fact about the server's hardware, not about a party. Two rooms
+on one core cannot meaningfully disagree about whether a RoFormer worker exists.
+
+The room layer is keyed by room id, so multi-room is a row per room rather than a migration. A room
+may only cap cook quality **downward** (`maxQualityRank`): the global choice is already bounded by
+what the fleet can run, so letting a room raise it would name an engine no worker advertises and the
+job would sit queued forever. `resolveCookSeparator` applies that rule.
+
+Both layers are authoritative server state. A write to either broadcasts `settings:changed` carrying
+the combined payload, and `queue:sync` includes both for mid-party joiners — a client never merges
+two events to learn the effective state.
+
 ### Quality ladder and upgrades
 
 Engine+model pairs carry a declared quality rank, mirrored in the shared contract and the worker. A
