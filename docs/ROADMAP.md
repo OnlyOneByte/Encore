@@ -663,9 +663,18 @@ because its only real acceptance test is audible and needs the owner in the room
         `mergeLyricsCandidate` (never-regress by keeping everything, keyed on ref), and
         `agreementScore` (Jaccard over token sets; returns null not 0 when too short, so an
         instrumental can't fail a correct lookup) + `isLikelyWrongSong`. 19 tests. **AUTO**.
-  - [ ] **B-3-C3 · split acquisition from timing in `whisperx.py`.** The producer emits *candidates*
-        instead of one doc; the injectable `Aligner` seam (already clean, already degrades to
-        line-sync) is untouched. **AUTO** with fake sources.
+  - [x] **B-3-C3 · split acquisition from timing in `whisperx.py`.** DONE. New `lyrics_chain.py` owns
+        acquisition: `LyricsSource` protocol, `LyricsRequest`/`LyricsText`, `LrclibSource` (declines on
+        missing metadata / 404 / instrumental / dead network — never raises), `acquire()` running
+        EVERY source rather than first-hit, and `candidate_key()` giving one artifact file per text
+        source so candidates coexist. `WhisperXProcessor` takes an injectable `sources` list, emits
+        `artifacts.lyrics.candidates` (+ `uri` for back-compat), and `_time_one` applies timing per
+        text: keep existing word timings → else force-align → else the source's own LINE sync → else
+        DROP (an unsynced wall of text is below the floor). Missing `artist`/`track` no longer raises;
+        plainLyrics are reported `timing: none`, NOT line-timed, since even spacing is not sync. New
+        module rather than extending lyrics_source.py: the adapter needs `lrclib_to_segments`, which
+        would close an import cycle. 11 new tests + 4 rewritten (one encoded the old conflation).
+        **AUTO** with fake sources.
   - [ ] **B-3-C4 · ASR tier (real ML).** A `Transcriber` seam mirroring `Aligner`, run on the VOCALS
         stem (a full mix transcribes badly). **REAL-ML**, runnable here. Measure the added cook cost —
         ASR on every song is a second pass alongside Demucs on the same cores.

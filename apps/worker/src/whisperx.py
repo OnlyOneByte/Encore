@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from typing import Any, AsyncIterator, Callable, Protocol
 
 from .demucs import Runner, download_argv, is_local_source, parse_ytdlp_progress, subprocess_runner
@@ -28,7 +29,18 @@ from .lyrics_source import (
     parse_lrc,
     plain_lyrics_to_segments,
 )
-from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path
+from .lyrics_chain import (
+    SOURCE_ASR,
+    TIMING_LINE,
+    TIMING_WORD,
+    LrclibSource,
+    LyricsRequest,
+    LyricsSource,
+    LyricsText,
+    acquire,
+    candidate_key,
+)
+from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
 
 DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2
 
@@ -173,6 +185,7 @@ class WhisperXProcessor:
         aligner: Aligner | None = None,
         model: str = DEFAULT_MODEL,
         lrclib_base: str = LRCLIB_BASE,
+        sources: list[LyricsSource] | None = None,
     ) -> None:
         self._runner = runner
         self._ytdlp_bin = ytdlp_bin
@@ -181,11 +194,22 @@ class WhisperXProcessor:
         self._lrclib_base = lrclib_base
         self._lyrics_client = lyrics_client  # None → constructed lazily (real LRCLIB)
         self._aligner = aligner  # None → constructed lazily (real WhisperX)
+        # None → the default chain, built lazily (B-3-C3). Injecting FAKE sources is how the whole
+        # acquisition+timing flow tests with no network and no ML.
+        self._sources = sources
 
     def _client(self) -> LrclibClient:
         if self._lyrics_client is None:
             self._lyrics_client = LrclibClient(base_url=self._lrclib_base)
         return self._lyrics_client
+
+    def _get_sources(self) -> list[LyricsSource]:
+        """The acquisition chain. LRCLIB first (authoritative + often line-timed); the ASR tier joins
+        in B-3-C4, and captions in B-3-C7. Order is informational only — `acquire` runs them ALL and
+        `pickBestLyrics` (TS) decides what the TV shows."""
+        if self._sources is None:
+            self._sources = [LrclibSource(self._client(), lrclib_to_segments)]
+        return self._sources
 
     def _get_aligner(self) -> Aligner:
         if self._aligner is None:
@@ -216,35 +240,99 @@ class WhisperXProcessor:
             else:
                 yield ProgressEvent(stage="downloading", pct=100)
 
-        # ── stage 2: fetch KNOWN lyrics from LRCLIB ───────────────────────────────
-        if not artist or not track:
-            raise RuntimeError("align job needs params.artist + params.track to look up lyrics")
-        res = self._client().get(artist, track, duration=duration)
-        segments = lrclib_to_segments(res, duration)
-        if not segments:
-            raise RuntimeError(f"no lyrics found for {artist} — {track} (instrumental or not in LRCLIB)")
+        # ── stage 2: ACQUIRE text from every source (B-3-C3) ──────────────────────
+        # Independently, not first-hit: authoritative text and ASR are complements (the ideal artifact
+        # is authoritative text force-aligned), and a dead LRCLIB must degrade the RESULT, not fail the
+        # job. Missing params are no longer fatal — the LRCLIB source simply declines.
+        req = LyricsRequest(
+            media_id=job.media_id,
+            artist=artist or None,
+            track=track or None,
+            duration=duration,
+            audio_path=audio,
+            vocals_path=self._vocals_path(job),
+        )
+        texts = acquire(self._get_sources(), req)
+        if not texts:
+            raise RuntimeError(
+                f"no lyrics text from any source for {artist or '?'} — {track or '?'} "
+                "(instrumental, or every tier missed)"
+            )
 
-        # ── stage 3: force-align the known text (word timings), else line-sync ────
+        # ── stage 3: TIMING — force-align each text; degrade to its own line sync ─
         yield ProgressEvent(stage="aligning", pct=0)
-        doc: dict[str, Any]
+        candidates: list[dict[str, Any]] = []
+        for text in texts:
+            built = self._time_one(text, audio, language)
+            if built is None:
+                continue
+            doc, timing, timing_confidence = built
+            ref = candidate_key(job.media_id, text.text_source)
+            final = os.path.join(job.media_dir, ref)
+            os.makedirs(os.path.dirname(final), exist_ok=True)
+            with open(final, "w", encoding="utf-8") as f:
+                json.dump(doc, f, ensure_ascii=False)
+            candidates.append(
+                {
+                    "ref": ref,
+                    "textSource": text.text_source,
+                    "timing": timing,
+                    "textConfidence": text.text_confidence,
+                    "timingConfidence": timing_confidence,
+                    "language": doc.get("language") or text.language or language,
+                    "createdAt": int(time.time() * 1000),
+                }
+            )
+        if not candidates:
+            raise RuntimeError("text was acquired but nothing could be timed (no word or line sync)")
+        yield ProgressEvent(stage="aligning", pct=100)
+
+        # ── stage 4: publish ──────────────────────────────────────────────────────
+        # `uri` stays for back-compat with the single-ref core path (setMediaLyrics); `candidates`
+        # carries the whole set. The AUTHORITY on which one to show is pickBestLyrics in
+        # packages/shared/src/lyrics.ts — B-3-C5 threads the set into storage and picks `chosen`
+        # there. The local order below only decides the back-compat pointer.
+        best = _preferred(candidates)
+        yield CompleteResult(
+            media_uri=os.path.join(job.media_dir, best["ref"]),
+            artifacts={
+                "lyrics": {
+                    "uri": os.path.join(job.media_dir, best["ref"]),
+                    "candidates": candidates,
+                }
+            },
+        )
+
+    def _vocals_path(self, job: JobSpec) -> str | None:
+        """The isolated vocals stem for this media, if a stems job already wrote one (ASR wants it)."""
+        p = vocals_path(job.media_dir, job.media_id)
+        return p if os.path.exists(p) else None
+
+    def _time_one(
+        self, text: LyricsText, audio: str, language: str
+    ) -> tuple[dict[str, Any], str, str] | None:
+        """Turn one acquired text into (doc, timing, timingConfidence), or None if unusable.
+
+        Order: a source that ALREADY has word timings (ASR) keeps them; otherwise force-align, and on
+        any aligner failure fall back to the source's own line timings. A source with neither is
+        dropped rather than shipped as an unsynced wall of text — the floor is line-level sync.
+        """
+        lang = text.language or language
+        if text.timing == TIMING_WORD:
+            doc = normalize_lyrics({"language": lang, "segments": text.segments})
+            if is_valid_lyrics(doc):
+                return doc, TIMING_WORD, "medium"
         try:
-            aligned = self._get_aligner().align(segments, audio, language)
+            aligned = self._get_aligner().align(text.segments, audio, lang)
             doc = normalize_lyrics(aligned)
             if not is_valid_lyrics(doc):
                 raise RuntimeError("aligner returned no word-timed lyrics")
-        except Exception as exc:  # noqa: BLE001 — any aligner failure degrades to line-sync, never a 500
-            # FALLBACK: ship LRCLIB's line-level sync (whole-line highlight) so lyrics still work.
-            doc = line_synced_lyrics(segments, language=language)
-            if not is_line_synced(doc):
-                raise RuntimeError(f"alignment failed and no line-sync fallback available: {exc}") from exc
-        yield ProgressEvent(stage="aligning", pct=100)
-
-        # ── stage 4: publish the lyrics JSON ──────────────────────────────────────
-        final = os.path.join(job.media_dir, lyrics_key(job.media_id))
-        os.makedirs(os.path.dirname(final), exist_ok=True)
-        with open(final, "w", encoding="utf-8") as f:
-            json.dump(doc, f, ensure_ascii=False)
-        yield CompleteResult(media_uri=final, artifacts={"lyrics": {"uri": final}})
+            return doc, TIMING_WORD, "high"
+        except Exception:  # noqa: BLE001 — degrade, never fail the whole job
+            if text.timing != TIMING_LINE:
+                return None  # nothing real to sync against
+            doc = line_synced_lyrics(text.segments, language=lang)
+            return (doc, TIMING_LINE, "high") if is_line_synced(doc) else None
 
     async def _run_stage(self, stage: str, argv: list[str], parse) -> AsyncIterator[ProgressEvent]:
         yield ProgressEvent(stage=stage, pct=0)
@@ -256,3 +344,21 @@ class WhisperXProcessor:
                 yield ProgressEvent(stage=stage, pct=pct)
         if last < 100:
             yield ProgressEvent(stage=stage, pct=100)
+
+
+def _preferred(candidates: list[dict[str, Any]]) -> dict[str, Any]:
+    """The candidate this job points `artifacts.lyrics.uri` at, for the single-ref core path.
+
+    A deliberately small mirror of `lyricsRank` in packages/shared/src/lyrics.ts — that module is the
+    AUTHORITY (B-3-C5 stores the whole set and picks `chosen` with it). Kept here only so a worker
+    that completes before the core-side set support exists still hands back its best artifact rather
+    than an arbitrary one. Same ordering rule: authoritative text outranks ASR at equal timing, and
+    authoritative+line outranks asr+word, because wrong words cannot be sung.
+    """
+    def rank(c: dict[str, Any]) -> tuple[int, int]:
+        authoritative = c.get("textSource") != SOURCE_ASR and c.get("textConfidence") != "low"
+        word = c.get("timing") == TIMING_WORD
+        tier = (4 if word else 3) if authoritative else (2 if word else 1)
+        return (tier, int(c.get("createdAt") or 0))
+
+    return max(candidates, key=rank)
