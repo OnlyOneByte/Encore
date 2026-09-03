@@ -4,6 +4,7 @@
 import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
 import type { LyricsCandidate } from './lyrics';
+import type { RoomSettings } from './separators';
 
 export const ROOM_TOPIC = 'room:main'; // single room for MVP; Bun.serve pub/sub topic
 
@@ -24,7 +25,7 @@ export type ServerEvent =
   // singers/media are optional directories so clients can render names/titles per entry.
   // `online` is the presence snapshot (singer ids with a live socket) — a client that connects
   // mid-party needs the roster immediately, not on the next presence change (B-6-C1).
-  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[]; online?: string[] }
+  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[]; online?: string[]; settings?: RoomSettings }
   | { type: 'playback:state'; state: PlaybackState; rev: number }
   | { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
   | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number }
@@ -36,6 +37,9 @@ export type ServerEvent =
   // broadcast whenever it changes. Full-set (not a delta) on purpose: it is a handful of ids, and
   // an idempotent snapshot cannot drift the way an add/remove stream can after a dropped frame.
   | { type: 'singer:presence'; online: string[] }
+  // Room-level separator settings changed (B-8). Full snapshot, not a delta — a handful of fields,
+  // and an idempotent snapshot cannot drift after a dropped frame (same reasoning as presence).
+  | { type: 'settings:changed'; settings: RoomSettings }
   | { type: 'op:reject'; clientOpId: string; reason: string };
 
 // ── phone/TV -> core ────────────────────────────────────────────────────────
@@ -92,7 +96,8 @@ export type MediaStoreConfig =
  * sending a guessed 'en' is worse than letting the worker default and B-3-C4's ASR detect it.
  */
 export interface JobParams {
-  model?: string; // separation model (stems) — e.g. htdemucs
+  model?: string; // separation model/checkpoint token (stems) — resolved by the worker engine (B-8)
+  engine?: string; // separation engine id (stems): 'demucs' | 'roformer' | 'ensemble' (B-8)
   targetKey?: string; // requested key shift, if a job ever pre-renders one
   artist?: string; // canonical artist for a lyrics lookup; absent when the parse wasn't confident
   track?: string; // canonical title for a lyrics lookup; absent when the parse wasn't confident

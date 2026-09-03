@@ -10,6 +10,7 @@ import { YouTubeResolver } from '../media/youtube';
 import { createPopularityTracker } from '../media/popularity';
 import { MediaRepository } from '../media/repository';
 import { JobRepository } from '../jobs/repository';
+import { SettingsRepository } from '../state/settings-repository';
 import { JobReaper } from '../jobs/reaper';
 import { WorkerRegistry } from '../jobs/registry';
 import { WorkerHub } from '../jobs/worker-hub';
@@ -32,6 +33,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		presence: new PresenceTracker(),
 		plays: new PlayTracker(() => {}),
 		jobs,
+		settings: new SettingsRepository(db),
 		reaper: new JobReaper(jobs),
 		workers,
 		workerHub: new WorkerHub({ jobs, registry: workers, mediaById, toWorker: () => {}, broadcast: () => {}, now: () => 1_700_000_000_000 }),

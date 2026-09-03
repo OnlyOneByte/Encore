@@ -10,6 +10,7 @@ import { PlayTracker, bumpPlay } from './media/plays';
 import { openDb, defaultDbPath, type DB } from './db/index';
 import { runMigrations, hydrate } from './db/migrate';
 import { sqlitePersistence } from './state/persistence';
+import { SettingsRepository } from './state/settings-repository';
 import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
@@ -52,6 +53,8 @@ export interface EncoreApp {
 	 */
 	plays: PlayTracker;
 	jobs: JobRepository;
+	/** Room-level separator settings (B-8): the engine/model a cook uses + the upgrade policy. */
+	settings: SettingsRepository;
 	reaper: JobReaper;
 	workers: WorkerRegistry;
 	workerHub: WorkerHub;
@@ -133,6 +136,7 @@ export function getApp(): EncoreApp {
 	state.hydrate(entries, playback);
 
 	const jobs = new JobRepository(db);
+	const settings = new SettingsRepository(db);
 	const workers = new WorkerRegistry();
 	const mediaById = new Map<string, Media>();
 	const { store: mediaStore, config: mediaStoreConfig } = buildMediaStore();
@@ -299,6 +303,7 @@ export function getApp(): EncoreApp {
 		// Set just below — the sink needs `app` to reach the media catalog.
 		plays: null as never,
 		jobs,
+		settings,
 		reaper: null as never, // set just below (needs onReaped → workerHub.dispatch)
 		workers,
 		workerHub: null as never, // set just below (needs app.toWorker/publish indirection)
@@ -351,7 +356,7 @@ export function getApp(): EncoreApp {
 		// instrumental key) + ready status — otherwise the TV's cached media stays 'queued' and sits
 		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
 		onMediaReady: () => {
-			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online() }));
+			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online(), getSettings: () => app.settings.get() }));
 			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById, onNowPlaying: (e) => app.plays.onNowPlaying(e) });
 		},
 		now: () => app.now()
