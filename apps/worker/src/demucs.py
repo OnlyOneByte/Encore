@@ -8,7 +8,7 @@ parseSearchJson split from the Bun.spawn backend.
 
 Demucs `--two-stems=vocals` emits two files; the INSTRUMENTAL (backing track) is `no_vocals.wav`.
 Both are published (M8-C0): the instrumental is the karaoke output; the isolated `vocals.wav` feeds
-pitch extraction (M8-C1) and the vocal-guide mix (docs/vocal-guide-spec.md).
+pitch extraction (M8-C1) and the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md).
 """
 from __future__ import annotations
 

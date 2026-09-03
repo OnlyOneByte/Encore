@@ -1,7 +1,7 @@
 // Sidecar records — the AUTHORITATIVE per-song library entry (B-7-C3).
 //
 // `meta/<mediaId>.json` is the truth; the SQLite `media` table is a rebuildable INDEX over it
-// (docs/media-storage-spec.md §4). Three things follow from that, and they are the reason for the
+// (docs/ARCHITECTURE.md). Three things follow from that, and they are the reason for the
 // inversion rather than incidental benefits:
 //
 //   1. The volume becomes SELF-DESCRIBING. Today, losing the SQLite file loses every title, artist and

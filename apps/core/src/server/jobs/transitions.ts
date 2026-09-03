@@ -1,6 +1,6 @@
 // Pure job state-machine — no DB, no clock, no IO (unit-testable in isolation; the I/O wrapper is
 // repository.ts, mirroring the store.ts ↔ applyAndReseq split). This is the single authority on
-// which job status changes are legal. See docs/job-lifecycle-and-worker-protocol.md §2.
+// which job status changes are legal. See docs/ARCHITECTURE.md.
 //
 //        queued ──dispatch──► assigned ──accept──► running ──complete──► ready   (terminal ✅)
 //          ▲ ▲                   │                  │ │ ▲                 │

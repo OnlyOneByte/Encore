@@ -239,7 +239,7 @@ export function applyMigration(
  *
  * The tighter alternative is to build both images with a shared group and setgid dirs; that is worth
  * doing if Encore ever runs somewhere less trusted than a living room, and is noted in
- * docs/media-storage-spec.md.
+ * docs/ARCHITECTURE.md.
  */
 export function ensureLayout(): void {
 	// worker-written: raw downloads, stems, pitch tracks, lyrics, job scratch

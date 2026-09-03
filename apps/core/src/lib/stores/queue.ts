@@ -1,5 +1,5 @@
 // Optimistic queue store — the client half of the reconciliation contract.
-// (docs/reconciliation-contract.md §3-7). The whole optimistic engine is:
+// (docs/ARCHITECTURE.md). The whole optimistic engine is:
 //   client-minted ULID  +  a `pending` map (op + inverse)  +  server `rev`.
 // No CRDT, no OT. Mutations render locally THIS FRAME, then reconcile on the server broadcast;
 // rejects roll back via the recorded inverse; resync rebases still-pending ops onto truth.

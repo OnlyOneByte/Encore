@@ -1,7 +1,7 @@
 // Client-minted ULID — lexicographically sortable, time-prefixed, collision-resistant.
 // Generating ids on the CLIENT is what makes optimistic add reconcile with zero flicker:
 // the optimistic row already carries its final id, so the server's echo matches by id.
-// See docs/reconciliation-contract.md §1.
+// See docs/ARCHITECTURE.md.
 //
 // NOTE: uses Math.random for the entropy section. Fine for queue-entry ids (not security
 // tokens). Session tokens are minted server-side with crypto — do not use this for those.

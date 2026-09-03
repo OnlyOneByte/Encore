@@ -1,6 +1,6 @@
 // Drizzle schema — the write-behind durability layer. The hot path reads from in-memory
 // authoritative state (M1-C1); this is hydrated on boot and persisted asynchronously.
-// Mirrors the domain types in @encore/shared. See docs/MASTER-DESIGN.md §5.
+// Mirrors the domain types in @encore/shared. See docs/ARCHITECTURE.md.
 
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';

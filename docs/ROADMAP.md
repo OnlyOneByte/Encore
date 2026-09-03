@@ -27,11 +27,12 @@ long-lived `encore-worker-live` container.
 
 **Verification gates — run all four on every item.**
 ```bash
-cd apps/core      && bun test          # 425 tests — MUST run from apps/core (drizzle resolves ./drizzle from cwd)
-cd packages/shared && bun test         # 54
-cd apps/worker    && python3 -m pytest # 142
-cd apps/core      && bun run typecheck && bun run build
+bun test                              # 479 (425 core + 54 shared) — runs from the REPO ROOT
+cd apps/worker && python3 -m pytest   # 142
+bun run typecheck && bun run build    # both workspaces
 ```
+`runMigrations()` locates `apps/core/drizzle` by walking up from `import.meta.dir`, so `bun test`
+works from anywhere. If you see a doc claiming it must run from `apps/core`, that note is stale.
 
 **A green suite is the floor, not the bar.** Every real defect in this project so far was invisible
 to a passing suite and only surfaced by driving the app. Anything with a rendered surface needs
@@ -202,5 +203,5 @@ Parked deliberately. These return only if the owner says so.
 - **Verify tags:** **AUTO** = a machine gate the loop runs itself. **EYES-ON / AUDIO / REAL-ML / NET**
   = the loop implements and unit-covers, then flags for the human.
 - Shared-contract changes stage `packages/shared` in the **same** commit.
-- Design docs: [`MASTER-DESIGN.md`](MASTER-DESIGN.md) · agent onboarding and gotchas:
-  [`HANDOFF.md`](HANDOFF.md) · storage: [`media-storage-spec.md`](media-storage-spec.md).
+- Canonical system design: [`ARCHITECTURE.md`](ARCHITECTURE.md). Agent onboarding and gotchas:
+  [`HANDOFF.md`](HANDOFF.md). Historical source specs: [`archive/reference/`](archive/reference/).

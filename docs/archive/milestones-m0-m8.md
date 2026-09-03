@@ -349,7 +349,7 @@
 ## M8 — Scoring  → *ships: SingStar-style scoring*
 
 - [x] **M8-C0** worker publishes the isolated **vocals stem** (`artifacts.stems.vocals`). Shared
-  prerequisite of pitch extraction (C1) and the vocal-guide mix (`docs/vocal-guide-spec.md`).
+  prerequisite of pitch extraction (C1) and the vocal-guide mix ([`reference/vocal-guide-spec.md`](reference/vocal-guide-spec.md)).
   **Done-when:** unit — `CompleteResult` carries a `vocals` key at the deterministic path. — *DONE:
   `demucs.py` now moves `vocals.wav` to `stems/<mediaId>-vocals.wav` and includes it in the artifact
   (was separated by `--two-stems=vocals` then discarded). BEST-EFFORT: a missing vocals file never
