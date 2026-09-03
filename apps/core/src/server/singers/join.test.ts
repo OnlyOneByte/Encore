@@ -15,6 +15,7 @@ import { WorkerRegistry } from '../jobs/registry';
 import { WorkerHub } from '../jobs/worker-hub';
 import { LocalMediaStore } from '../media/store';
 import { PresenceTracker } from '../realtime/presence';
+import { PlayTracker } from '../media/plays';
 import type { EncoreApp } from '../app';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
@@ -29,6 +30,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		state: null as never,
 		singers: new SingerRepository(db),
 		presence: new PresenceTracker(),
+		plays: new PlayTracker(() => {}),
 		jobs,
 		reaper: new JobReaper(jobs),
 		workers,

@@ -6,6 +6,7 @@
 import { AuthoritativeState } from './state/store';
 import { SingerRepository } from './singers/repository';
 import { PresenceTracker } from './realtime/presence';
+import { PlayTracker, bumpPlay } from './media/plays';
 import { openDb, defaultDbPath, type DB } from './db/index';
 import { runMigrations, hydrate } from './db/migrate';
 import { sqlitePersistence } from './state/persistence';
@@ -44,6 +45,11 @@ export interface EncoreApp {
 	singers: SingerRepository;
 	/** Who holds a live socket right now (B-6-C1). Populated by server.ts's WS open/close. */
 	presence: PresenceTracker;
+	/**
+	 * Records a play when the current entry changes — the recency signal retention's LRU eviction
+	 * needs. Pass `app.plays.onNowPlaying` as HubDeps.onNowPlaying wherever deps are built.
+	 */
+	plays: PlayTracker;
 	jobs: JobRepository;
 	reaper: JobReaper;
 	workers: WorkerRegistry;
@@ -259,6 +265,8 @@ export function getApp(): EncoreApp {
 		state,
 		singers: new SingerRepository(db),
 		presence: new PresenceTracker(),
+		// Set just below — the sink needs `app` to reach the media catalog.
+		plays: null as never,
 		jobs,
 		reaper: null as never, // set just below (needs onReaped → workerHub.dispatch)
 		workers,
@@ -275,6 +283,22 @@ export function getApp(): EncoreApp {
 		toWorker: () => {},
 		now: () => Date.now()
 	};
+
+	// A play updates the SIDECAR only: it is the authoritative library record, retention reads recency
+	// straight from it, and nothing else needs the number — so this costs one small JSON write per song
+	// and no migration. Fire-and-forget: bookkeeping must never delay the song starting.
+	app.plays = new PlayTracker((mediaId) => {
+		void (async () => {
+			try {
+				const side = await readSidecar(mediaId);
+				if (!side) return; // not in the library (a plain search result) — nothing to record against
+				side.library = { ...side.library, ...bumpPlay(side.library, app.now()) };
+				await writeSidecar(side);
+			} catch {
+				/* a lost play count is not worth a failed playback */
+			}
+		})();
+	});
 
 	app.workerHub = new WorkerHub({
 		jobs,
@@ -297,7 +321,7 @@ export function getApp(): EncoreApp {
 		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
 		onMediaReady: () => {
 			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online() }));
-			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById });
+			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById, onNowPlaying: (e) => app.plays.onNowPlaying(e) });
 		},
 		now: () => app.now()
 	});

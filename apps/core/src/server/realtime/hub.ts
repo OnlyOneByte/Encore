@@ -25,6 +25,8 @@ export interface HubDeps {
 	listSingers?: () => PublicSinger[];
 	/** Optional: presence snapshot (singer ids with a live socket) for the sync directory (B-6-C1). */
 	listOnline?: () => string[];
+	/** Optional: notified when the current entry CHANGES, for play tracking (retention's LRU signal). */
+	onNowPlaying?: (entry: { id: string; mediaId: string } | null) => void;
 	/** Optional: record a queue-add for popularity shortcuts. */
 	recordAdd?: (mediaId: string) => void;
 	/** Optional: idempotency ledger — returns true if this clientOpId was already applied. */

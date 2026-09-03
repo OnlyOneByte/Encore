@@ -11,6 +11,10 @@ import type { HubDeps } from './hub';
 export function emitNowPlaying(deps: HubDeps): void {
 	const cur = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId) ?? null;
 	const upNext = upNextAfter(cur?.id ?? null, deps.state.entries, deps.mediaById);
+	// Play tracking hooks in HERE because every playback transition funnels through this one emit.
+	// The tracker itself dedupes, since this is also re-emitted without a change (a cook finishing
+	// re-broadcasts nowplaying so the TV preloads the newly-ready song).
+	deps.onNowPlaying?.(cur ? { id: cur.id, mediaId: cur.mediaId } : null);
 	deps.publish({ type: 'nowplaying:changed', current: cur, upNext });
 }
 
