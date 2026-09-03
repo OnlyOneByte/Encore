@@ -45,7 +45,10 @@ export class SettingsRepository {
 	}
 
 	setGlobal(input: Partial<GlobalSettings> | null | undefined): GlobalSettings {
-		const next = normalizeGlobalSettings({ ...this.getGlobal(), ...(input ?? {}) });
+		const current = this.getGlobal();
+		// Fall back to CURRENT values, not hardcoded defaults: rejecting one invalid field must not
+		// discard an unrelated choice the user already made.
+		const next = normalizeGlobalSettings({ ...current, ...(input ?? {}) }, current);
 		this.db
 			.insert(globalSettings)
 			.values({ id: SINGLETON, ...next })
@@ -72,6 +75,11 @@ export class SettingsRepository {
 			.onConflictDoUpdate({ target: roomSettings.roomId, set: next })
 			.run();
 		return next;
+	}
+
+	/** Whether this room has ever written settings — lets boot seed a default without stomping a choice. */
+	hasRoom(roomId: string = DEFAULT_ROOM_ID): boolean {
+		return this.db.select().from(roomSettings).where(eq(roomSettings.roomId, roomId)).all().length > 0;
 	}
 
 	/** Both layers — what `queue:sync` carries and what a client renders. */

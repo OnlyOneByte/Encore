@@ -180,9 +180,16 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 };
 
 /** Coerce a partial/untrusted object to valid GlobalSettings, falling back per-field. Used by the
- *  write API so a bad client payload degrades to defaults rather than persisting garbage. */
-export function normalizeGlobalSettings(input: Partial<GlobalSettings> | null | undefined): GlobalSettings {
-	const d = DEFAULT_GLOBAL_SETTINGS;
+ *  write API so a bad client payload degrades to defaults rather than persisting garbage.
+ *
+ *  `base` is what an invalid field falls back TO. Callers patching existing settings pass the current
+ *  values, so rejecting one bad field cannot silently wipe an unrelated valid choice — sending an
+ *  upgrade-only engine as the live default must not also reset a previously-chosen model. */
+export function normalizeGlobalSettings(
+	input: Partial<GlobalSettings> | null | undefined,
+	base: GlobalSettings = DEFAULT_GLOBAL_SETTINGS
+): GlobalSettings {
+	const d = base;
 	const live =
 		input && isLiveSelectable(input.defaultEngine ?? '', input.defaultModel ?? '')
 			? { defaultEngine: input.defaultEngine!, defaultModel: input.defaultModel! }

@@ -19,6 +19,7 @@
 	// B-6-C1: singer ids with a live socket right now. Drives the lobby roster and the join card's
 	// count — NOT `singers`, which is every singer who ever joined (append-only + file-backed).
 	let online = $state<string[]>([]);
+	let interstitialMs = $state(data.interstitialMs ?? 2500);
 
 	let current = $state<QueueEntry | null>(null);
 	let upNext = $state<QueueEntry | null>(null);
@@ -93,7 +94,7 @@
 		sendTelemetry('ended');
 		if (next === 'interstitial') {
 			clearTimeout(interstitialTimer);
-			const ms = data.interstitialMs ?? 2500;
+			const ms = interstitialMs;
 			if (ms === 0) {
 				ctl.onInterstitialDone(); // pure gapless hard-cut
 				tvState = ctl.state;
@@ -136,6 +137,8 @@
 				if (e.online) online = e.online;
 			}
 			if (e.type === 'singer:presence') online = e.online;
+			// Room pacing is live: a slider move on a phone applies without reloading the TV.
+			if (e.type === 'settings:changed') interstitialMs = e.settings.room.interstitialMs;
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
 			if (e.type === 'score:update') score = e;
 			// pause/resume from the phone (playback:state.isPlaying) → drives the player slots

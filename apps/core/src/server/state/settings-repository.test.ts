@@ -77,3 +77,15 @@ describe('SettingsRepository — room scope', () => {
 		expect(eff.room.maxQualityRank).toBe(20);
 	});
 });
+
+describe('SettingsRepository — invalid writes preserve prior choices', () => {
+	it('THE BUG: rejecting an invalid engine must not wipe a previously-saved model', () => {
+		const repo = freshRepo();
+		repo.setGlobal({ defaultModel: 'htdemucs_ft' });
+		// ensemble is upgrade-only, so this live pairing is invalid and must be refused...
+		const after = repo.setGlobal({ defaultEngine: 'ensemble', defaultModel: 'instrumental_clean' });
+		expect(after.defaultEngine).toBe('demucs');
+		// ...but the model chosen earlier must survive rather than resetting to the hardcoded default
+		expect(after.defaultModel).toBe('htdemucs_ft');
+	});
+});
