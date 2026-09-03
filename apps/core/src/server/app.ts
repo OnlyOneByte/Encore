@@ -137,6 +137,12 @@ export function getApp(): EncoreApp {
 
 	const jobs = new JobRepository(db);
 	const settings = new SettingsRepository(db);
+	// Seed this room's pacing from INTERSTITIAL_MS on first boot only. Without this, adding the room
+	// scope would silently reset an install that had configured the env var, and writing it every boot
+	// would instead stomp whatever someone chose on the phone.
+	if (process.env.INTERSTITIAL_MS !== undefined && !settings.hasRoom()) {
+		settings.setRoom({ interstitialMs: Math.max(0, Number(process.env.INTERSTITIAL_MS)) });
+	}
 	const workers = new WorkerRegistry();
 	const mediaById = new Map<string, Media>();
 	const { store: mediaStore, config: mediaStoreConfig } = buildMediaStore();
