@@ -43,9 +43,26 @@ services:
     profiles: ["stems"] # not started in the default MVP up
     environment:
       - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
-      - ENCORE_WORKER_CONCURRENCY=1
+      # How many songs this worker cooks AT ONCE. Separate from demucs' own internal parallelism
+      # below: concurrency drains a party's queue faster, jobs makes one song finish sooner.
+      - ENCORE_WORKER_CONCURRENCY=${ENCORE_WORKER_CONCURRENCY:-1}
       # `align` gives the worker the word-timed-lyrics pipeline as well as stems (B-3).
       - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-stems}
+      # ── separation performance ───────────────────────────────────────────────────────
+      # Every knob below is OPTIONAL: unset means demucs' own default still applies, so a fleet can
+      # be tuned per box (a GPU machine and a CPU machine want different numbers) without a rebuild.
+      # The worker prints its effective config on startup — check that line first when a box is slow.
+      - ENCORE_DEMUCS_MODEL=${ENCORE_DEMUCS_MODEL:-htdemucs}   # htdemucs_ft = better, ~4x slower
+      - ENCORE_DEMUCS_DEVICE=${ENCORE_DEMUCS_DEVICE:-}         # unset = cuda if available, else cpu
+      - ENCORE_DEMUCS_JOBS=${ENCORE_DEMUCS_JOBS:-}             # parallel chunk jobs; memory for speed
+      - ENCORE_DEMUCS_OVERLAP=${ENCORE_DEMUCS_OVERLAP:-}       # default 0.25; lower = faster
+      - ENCORE_DEMUCS_SEGMENT=${ENCORE_DEMUCS_SEGMENT:-}       # smaller = lower peak memory
+      - ENCORE_DEMUCS_SHIFTS=${ENCORE_DEMUCS_SHIFTS:-}         # >1 averages predictions: better, slower
+      - ENCORE_TORCH_THREADS=${ENCORE_TORCH_THREADS:-}         # cap intra-op threads when JOBS > 1
+      - ENCORE_WHISPERX_DEVICE=${ENCORE_WHISPERX_DEVICE:-cpu}
+      # ── encoding ─────────────────────────────────────────────────────────────────────
+      - ENCORE_STEM_BITRATE=${ENCORE_STEM_BITRATE:-192k}       # the lossy VOCALS stem only
+      - ENCORE_FLAC_LEVEL=${ENCORE_FLAC_LEVEL:-8}              # instrumental is lossless
     volumes:
       # Shares the local MediaStore volume (single-box mode). The worker writes raw audio into
       # audio/ and stems into derived/ using the SAME keys the core resolves — see

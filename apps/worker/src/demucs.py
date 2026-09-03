@@ -80,7 +80,7 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
 STEM_BITRATE = "192k"
 
 
-def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
+def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", level: int = 8) -> list[str]:
     """ffmpeg argv: encode a separated stem to LOSSLESS FLAC, 16-bit stereo at the source rate.
 
     Used for the INSTRUMENTAL only. 16-bit is transparent here: the signal originated as a lossy
@@ -90,7 +90,7 @@ def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg") 
     return [
         ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
         "-i", input_wav,
-        "-c:a", "flac", "-compression_level", "8", "-sample_fmt", "s16", "-ac", "2",
+        "-c:a", "flac", "-compression_level", str(level), "-sample_fmt", "s16", "-ac", "2",
         out_path,
     ]
 
@@ -122,17 +122,50 @@ def find_downloaded(directory: str, media_id: str) -> str | None:
     return None
 
 
-def demucs_argv(input_path: str, out_dir: str, model: str = DEFAULT_MODEL, demucs_bin: str = "demucs") -> list[str]:
+def demucs_argv(
+    input_path: str,
+    out_dir: str,
+    model: str = DEFAULT_MODEL,
+    demucs_bin: str = "demucs",
+    *,
+    device: str | None = None,
+    jobs: int = 1,
+    overlap: float | None = None,
+    segment: int | None = None,
+    shifts: int | None = None,
+) -> list[str]:
     """demucs argv: two-stem (vocals / no_vocals) separation. `--filename {stem}.{ext}` flattens the
-    output to <out_dir>/<model>/<stem>.wav so the result path is deterministic regardless of input."""
-    return [
+    output to <out_dir>/<model>/<stem>.wav so the result path is deterministic regardless of input.
+
+    Every performance flag is OPTIONAL and omitted when unset, so demucs' own defaults keep applying --
+    including its cuda-if-available device pick, which is why forcing a device is opt-in rather than
+    the default. These are the knobs that decide how long a cook takes:
+
+      - `jobs`    parallel chunk jobs; each holds its own model copy, trading memory for wall time.
+      - `overlap` demucs defaults to 0.25; lower is faster with a small quality cost at chunk seams.
+      - `segment` chunk length; smaller cuts peak memory on a small box.
+      - `shifts`  averages N shifted predictions: better, and proportionally slower.
+      - `device`  force "cpu" / "cuda" / "cuda:1" instead of auto-detection.
+    """
+    argv = [
         demucs_bin,
         "-n", model,
         "--two-stems", "vocals",
         "-o", out_dir,
         "--filename", "{stem}.{ext}",
-        input_path,
     ]
+    if device:
+        argv += ["-d", device]
+    if jobs and jobs > 1:
+        argv += ["-j", str(jobs)]
+    if overlap is not None:
+        argv += ["--overlap", str(overlap)]
+    if segment is not None:
+        argv += ["--segment", str(segment)]
+    if shifts is not None:
+        argv += ["--shifts", str(shifts)]
+    argv.append(input_path)
+    return argv
 
 
 def demucs_no_vocals_path(out_dir: str, model: str = DEFAULT_MODEL) -> str:
@@ -249,6 +282,12 @@ class DemucsProcessor:
         demucs_bin: str = "demucs",
         ffmpeg_bin: str = "ffmpeg",
         bitrate: str = STEM_BITRATE,
+        flac_level: int = 8,
+        device: str | None = None,
+        jobs: int = 1,
+        overlap: float | None = None,
+        segment: int | None = None,
+        shifts: int | None = None,
         mover: Callable[[str, str], None] = shutil.move,
     ) -> None:
         self._model = model
@@ -257,6 +296,13 @@ class DemucsProcessor:
         self._demucs_bin = demucs_bin
         self._ffmpeg_bin = ffmpeg_bin
         self._bitrate = bitrate
+        self._flac_level = flac_level
+        # Separation performance knobs — see demucs_argv. All optional; unset means demucs' default.
+        self._device = device
+        self._jobs = jobs
+        self._overlap = overlap
+        self._segment = segment
+        self._shifts = shifts
         self._move = mover
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
@@ -291,7 +337,18 @@ class DemucsProcessor:
 
         # ── stage 2: separate vocals (Demucs htdemucs) ────────────────────────────
         sep_out = os.path.join(work, "separated")
-        async for ev in self._run_stage("separating", demucs_argv(sep_input, sep_out, self._model, self._demucs_bin), parse_demucs_progress):
+        demucs_cmd = demucs_argv(
+            sep_input,
+            sep_out,
+            self._model,
+            self._demucs_bin,
+            device=self._device,
+            jobs=self._jobs,
+            overlap=self._overlap,
+            segment=self._segment,
+            shifts=self._shifts,
+        )
+        async for ev in self._run_stage("separating", demucs_cmd, parse_demucs_progress):
             yield ev
 
         # ── stage 3: encode + publish the stems to the MediaStore ──────────────────
@@ -303,7 +360,7 @@ class DemucsProcessor:
             raise RuntimeError(f"demucs produced no instrumental at {produced}")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
-        await self._run_quiet(encode_flac_argv(produced, final, self._ffmpeg_bin))
+        await self._run_quiet(encode_flac_argv(produced, final, self._ffmpeg_bin, self._flac_level))
 
         stems: dict[str, str] = {"instrumental": final}
         # Also publish the ISOLATED VOCALS stem (M8-C0) — `--two-stems=vocals` already produced it;

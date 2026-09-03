@@ -22,14 +22,19 @@ from typing import Any
 
 from . import protocol
 from .mediastore import MediaStoreConfig, parse_media_store
+from .config import WorkerConfig
 from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubProcessor
 
-CORE_URL = os.environ.get("ENCORE_CORE_WS", "ws://localhost:3000/ws?role=worker")
-WORKER_ID = os.environ.get("ENCORE_WORKER_ID", "worker-1")
-CONCURRENCY = int(os.environ.get("ENCORE_WORKER_CONCURRENCY", "1"))
-CAPABILITIES = [c.strip() for c in os.environ.get("ENCORE_WORKER_CAPABILITIES", "stems").split(",") if c.strip()]
-MEDIA_DIR = os.environ.get("MEDIA_DIR", "/app/media")
-VERSION = os.environ.get("ENCORE_WORKER_VERSION", "0.2.0")
+# All environment reading lives in config.py, so there is ONE place to look for "what is this worker
+# actually configured to do" — and so the perf knobs are testable without mutating os.environ.
+CONFIG = WorkerConfig.from_env()
+
+CORE_URL = CONFIG.core_ws
+WORKER_ID = CONFIG.worker_id or "worker-1"
+CONCURRENCY = CONFIG.concurrency
+CAPABILITIES = list(CONFIG.capabilities)
+MEDIA_DIR = CONFIG.media_dir
+VERSION = CONFIG.version
 RECONNECT_BACKOFF_SEC = 3.0
 
 
@@ -146,32 +151,59 @@ def _is_retryable(exc: Exception) -> bool:
     return not any(p in msg for p in permanent)
 
 
-def _build_processor() -> Processor:
-    """Build the processor from this worker's CAPABILITIES. ENCORE_PROCESSOR=stub forces the no-ML
+def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
+    """Build the processor from this worker's capabilities. ENCORE_PROCESSOR=stub forces the no-ML
     StubProcessor (path test / torch-less box). Otherwise a RoutingProcessor dispatches by job type:
     stems→DemucsProcessor (M7-C5), align→WhisperXProcessor (M7-C8). Imports are lazy so torch only
-    loads for the capabilities this worker actually advertises."""
-    if os.environ.get("ENCORE_PROCESSOR", "real").lower() == "stub":
+    loads for the capabilities this worker actually advertises.
+
+    Config is read ON CALL, not captured at import: a module-level default would silently ignore any
+    environment set after import, which is both surprising and untestable.
+    """
+    cfg = cfg or WorkerConfig.from_env()
+    if cfg.processor == "stub":
         return StubProcessor()
 
     from .processor import RoutingProcessor
 
+    # Cap torch's intra-op threads BEFORE any model loads. Matters when demucs_jobs > 1: N jobs each
+    # defaulting to all cores oversubscribes the box and they fight instead of scaling.
+    if cfg.torch_threads is not None:
+        try:
+            import torch
+
+            torch.set_num_threads(cfg.torch_threads)
+        except Exception as exc:  # noqa: BLE001 — a tuning hint must never stop the worker
+            print(f"[worker] could not set torch threads: {exc}", flush=True)
+
     by_type: dict[str, Processor] = {}
-    if "stems" in CAPABILITIES or "score" in CAPABILITIES:
+    if "stems" in cfg.capabilities or "score" in cfg.capabilities:
         from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
 
-        demucs = DemucsProcessor(model=os.environ.get("ENCORE_DEMUCS_MODEL", "htdemucs"))
+        demucs = DemucsProcessor(
+            model=cfg.demucs_model,
+            ytdlp_bin=cfg.ytdlp_bin,
+            demucs_bin=cfg.demucs_bin,
+            ffmpeg_bin=cfg.ffmpeg_bin,
+            bitrate=cfg.stem_bitrate,
+            flac_level=cfg.flac_level,
+            device=cfg.demucs_device,
+            jobs=cfg.demucs_jobs,
+            overlap=cfg.demucs_overlap,
+            segment=cfg.demucs_segment,
+            shifts=cfg.demucs_shifts,
+        )
         by_type["stems"] = demucs
-        if "score" in CAPABILITIES:
+        if "score" in cfg.capabilities:
             from .score import PitchTrackProcessor  # separate → extract reference pitch track (M8-C3)
 
             by_type["score"] = PitchTrackProcessor(separator=demucs)
-    if "align" in CAPABILITIES:
+    if "align" in cfg.capabilities:
         from .whisperx import WhisperXProcessor
 
         # Hybrid forced-alignment (M7-C8): LRCLIB known text + WhisperX wav2vec2 align().
         # device cpu by default; a GPU worker sets ENCORE_WHISPERX_DEVICE=cuda.
-        by_type["align"] = WhisperXProcessor(device=os.environ.get("ENCORE_WHISPERX_DEVICE", "cpu"))
+        by_type["align"] = WhisperXProcessor(device=cfg.whisperx_device, ytdlp_bin=cfg.ytdlp_bin)
     return RoutingProcessor(by_type)
 
 
@@ -179,7 +211,13 @@ async def _run_forever() -> None:
     """Production entry: connect, (re)announce, pump messages, reconnect with backoff on drop."""
     import websockets  # container-2 dependency; imported lazily so tests don't need it
 
-    processor: Processor = _build_processor()
+    # Say what this worker is actually configured to do. On a heterogeneous fleet (one GPU box, one
+    # CPU box) "why is this one slow" is answered by this line, not by guessing at the compose file.
+    print(f"[worker] config: {CONFIG.describe()}", flush=True)
+    for warning in CONFIG.warnings:
+        print(f"[worker] config warning: {warning}", flush=True)
+
+    processor: Processor = _build_processor(CONFIG)
     while True:
         try:
             async with websockets.connect(CORE_URL) as ws:

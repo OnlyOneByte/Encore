@@ -194,14 +194,13 @@ def test_build_processor_routes_by_capability(monkeypatch):
     assert "score" not in by_type  # score is capability-gated (M8-C3), not advertised by default
     assert "align" not in by_type  # not advertised by default
 
-    # a worker advertising score gets a PitchTrackProcessor (separate → extract reference pitch)
-    monkeypatch.setattr(dh, "CAPABILITIES", ["stems", "score"])
-    ps = _build_processor()
+    # Capabilities come from the CONFIG seam, not a mutable module global — pass one explicitly.
+    from src.config import WorkerConfig
+
+    ps = _build_processor(WorkerConfig(capabilities=("stems", "score")))
     assert isinstance(ps._by_type["score"], PitchTrackProcessor)
 
-    # a worker advertising align gets a WhisperXProcessor for it
-    monkeypatch.setattr(dh, "CAPABILITIES", ["stems", "align"])
-    p2 = _build_processor()
+    p2 = _build_processor(WorkerConfig(capabilities=("stems", "align")))
     assert isinstance(p2._by_type["align"], WhisperXProcessor)
 
 
