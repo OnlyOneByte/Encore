@@ -127,6 +127,9 @@ export const globalSettings = sqliteTable('global_settings', {
 // A setting belongs here only when two rooms on one core could genuinely want different values.
 export const roomSettings = sqliteTable('room_settings', {
 	roomId: text('room_id').primaryKey(),
+	tvProgressStyle: text('tv_progress_style', { enum: ['card', 'corner', 'edge'] })
+		.notNull()
+		.default('card'),
 	interstitialMs: integer('interstitial_ms').notNull().default(2500),
 	maxQualityRank: integer('max_quality_rank')
 });

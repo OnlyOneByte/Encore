@@ -3,6 +3,7 @@
 import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import { getApp } from '$server/app';
+import type { TvProgressStyle } from '@encore/shared';
 
 export const load: PageServerLoad = async ({ url }) => {
 	const joinUrl = `${url.origin}/join`;
@@ -17,11 +18,14 @@ export const load: PageServerLoad = async ({ url }) => {
 	// settings:changed live, so a change mid-party does not need a reload.
 	const envDefault = Math.max(0, Number(process.env.INTERSTITIAL_MS ?? 2500));
 	let interstitialMs = envDefault;
+	let tvProgressStyle: TvProgressStyle = 'card';
 	try {
-		interstitialMs = getApp().settings.getRoom().interstitialMs;
+		const room = getApp().settings.getRoom();
+		interstitialMs = room.interstitialMs;
+		tvProgressStyle = room.tvProgressStyle;
 	} catch {
 		// The app singleton is absent when this route is prerendered or unit-loaded; the env default is
 		// the correct answer there rather than a failed load.
 	}
-	return { joinUrl, qrDataUrl, interstitialMs };
+	return { joinUrl, qrDataUrl, interstitialMs, tvProgressStyle };
 };

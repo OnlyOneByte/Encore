@@ -62,13 +62,15 @@ export class SettingsRepository {
 		const row = this.db.select().from(roomSettings).where(eq(roomSettings.roomId, roomId)).all()[0];
 		if (!row) return { ...DEFAULT_ROOM_SETTINGS };
 		return normalizeRoomSettings({
+			tvProgressStyle: row.tvProgressStyle,
 			interstitialMs: row.interstitialMs,
 			maxQualityRank: row.maxQualityRank
 		});
 	}
 
 	setRoom(input: Partial<RoomSettings> | null | undefined, roomId: string = DEFAULT_ROOM_ID): RoomSettings {
-		const next = normalizeRoomSettings({ ...this.getRoom(roomId), ...(input ?? {}) });
+		const current = this.getRoom(roomId);
+		const next = normalizeRoomSettings({ ...current, ...(input ?? {}) }, current);
 		this.db
 			.insert(roomSettings)
 			.values({ roomId, ...next })

@@ -208,7 +208,28 @@ export function normalizeGlobalSettings(
 // One party's own policy. Kept deliberately small: a setting belongs here only when two rooms on one
 // core could genuinely want different values.
 
+/**
+ * How the TV shows song progress. Room-scoped because it is a staging choice for one party's screen,
+ * not a property of the deployment.
+ *
+ * A registry rather than a bare union so the phone can render the picker from one source and a new
+ * style cannot be added without a label.
+ */
+export const TV_PROGRESS_STYLES = [
+	{ id: 'card', label: 'In now singing card', note: 'Bar and countdown inside the now-singing card.' },
+	{ id: 'corner', label: 'Minimal corner', note: 'Thin bar along the top with a time remaining pill.' },
+	{ id: 'edge', label: 'Along bottom edge', note: 'Full-width bar on the bottom edge. No numbers.' }
+] as const;
+
+export type TvProgressStyle = (typeof TV_PROGRESS_STYLES)[number]['id'];
+
+export function isTvProgressStyle(v: unknown): v is TvProgressStyle {
+	return typeof v === 'string' && TV_PROGRESS_STYLES.some((s) => s.id === v);
+}
+
 export interface RoomSettings {
+	/** Which progress treatment the TV renders. */
+	tvProgressStyle: TvProgressStyle;
 	/** TV "Next up" reveal duration. 0 = pure gapless hard-cut. Per-room because pacing is a property
 	 *  of the party, not the deployment. */
 	interstitialMs: number;
@@ -222,13 +243,19 @@ export interface RoomSettings {
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+	tvProgressStyle: 'card',
 	interstitialMs: 2500,
 	maxQualityRank: null
 };
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
-export function normalizeRoomSettings(input: Partial<RoomSettings> | null | undefined): RoomSettings {
-	const d = DEFAULT_ROOM_SETTINGS;
+export function normalizeRoomSettings(
+	input: Partial<RoomSettings> | null | undefined,
+	base: RoomSettings = DEFAULT_ROOM_SETTINGS
+): RoomSettings {
+	// Falls back to the CURRENT room values, not hardcoded defaults: rejecting one invalid field must
+	// not discard an unrelated choice the room already made.
+	const d = base;
 	const ms = input?.interstitialMs;
 	// Clamped rather than rejected: a nonsensical value should still yield a usable room, and an
 	// unbounded interstitial would strand the TV between songs.
@@ -236,7 +263,9 @@ export function normalizeRoomSettings(input: Partial<RoomSettings> | null | unde
 		typeof ms === 'number' && Number.isFinite(ms) ? Math.min(15_000, Math.max(0, Math.round(ms))) : d.interstitialMs;
 	const cap = input?.maxQualityRank;
 	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
-	return { interstitialMs, maxQualityRank };
+	const style = input?.tvProgressStyle;
+	const tvProgressStyle = isTvProgressStyle(style) ? style : d.tvProgressStyle;
+	return { tvProgressStyle, interstitialMs, maxQualityRank };
 }
 
 /** Both layers as one payload — what a client renders and what `queue:sync` carries. */

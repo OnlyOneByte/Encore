@@ -89,3 +89,28 @@ describe('SettingsRepository — invalid writes preserve prior choices', () => {
 		expect(after.defaultModel).toBe('htdemucs_ft');
 	});
 });
+
+describe('SettingsRepository room scope: tv progress style', () => {
+	it('defaults to the in-card treatment and round-trips a choice', () => {
+		const repo = freshRepo();
+		expect(repo.getRoom().tvProgressStyle).toBe('card');
+		expect(repo.setRoom({ tvProgressStyle: 'edge' }).tvProgressStyle).toBe('edge');
+		expect(repo.getRoom().tvProgressStyle).toBe('edge');
+	});
+
+	it('falls back to the CURRENT style, not the default, when a write is invalid', () => {
+		// The bug this pins: setRoom normalized against hardcoded defaults, so one bad field discarded an
+		// unrelated choice the room had already made. Same defect previously fixed on the global scope.
+		const repo = freshRepo();
+		repo.setRoom({ tvProgressStyle: 'corner', interstitialMs: 7000 });
+		const after = repo.setRoom({ tvProgressStyle: 'nonsense' as never });
+		expect(after.tvProgressStyle).toBe('corner');
+		expect(after.interstitialMs).toBe(7000);
+	});
+
+	it('an invalid interstitial keeps the room value rather than resetting to 2500', () => {
+		const repo = freshRepo();
+		repo.setRoom({ interstitialMs: 7000 });
+		expect(repo.setRoom({ interstitialMs: NaN }).interstitialMs).toBe(7000);
+	});
+});
