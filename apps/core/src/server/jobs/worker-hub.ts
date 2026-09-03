@@ -17,7 +17,7 @@ import type {
 } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
-import { planAssignments } from './dispatch';
+import { planAssignments, assignParams, followUps } from './dispatch';
 import { markMediaReady, setMediaLyrics, setMediaPitch } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
@@ -140,9 +140,16 @@ export class WorkerHub {
 		// (a decoded source plus both separated stems) and nothing reads them after this point. Leaving
 		// them is how 432MB accumulated under the old layout.
 		cleanJobWork(msg.jobId);
+		// B-3-C1: enqueue whatever this job unblocks (stems → align, so lyrics run on every cook).
+		// AFTER cleanJobWork on purpose — the follow-up gets its own scratch dir, and dedup on
+		// (mediaId, jobType) means a re-cooked song cannot stack duplicate align jobs. It inherits the
+		// completed job's priority so it stays as urgent as the song that needed it.
+		for (const next of followUps(job.jobType)) {
+			this.#d.jobs.enqueue(job.mediaId, next, job.priority, this.#d.now());
+		}
 		this.#emitStatus(updated);
 		this.#d.onMediaReady?.(job.mediaId); // core reconciles playback (start if idle / preload)
-		this.dispatch();
+		this.dispatch(); // picks up the follow-up too
 	}
 
 	/** running → requeue (retryable, attempts left) or failed (terminal). Frees the slot either way. */
@@ -182,7 +189,7 @@ export class WorkerHub {
 				mediaId: job.mediaId,
 				jobType: job.jobType,
 				sourceUri: media ? sourceUri(media) : '',
-				params: { model: job.jobType === 'stems' ? 'htdemucs' : undefined }
+				params: assignParams(job.jobType, media)
 			});
 		}
 	}

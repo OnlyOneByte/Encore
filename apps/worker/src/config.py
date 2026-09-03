@@ -103,6 +103,13 @@ class WorkerConfig:
     flac_level: int = 8
     whisperx_device: str = "cpu"
 
+    # ── lyrics ────────────────────────────────────────────────────────────────────
+    #: LRCLIB base URL. Configurable (B-3-C1) because reachability is a property of the BOX, not the
+    #: project: lrclib.net is blocked on the owner's laptop but fine elsewhere. Point this at a proxy,
+    #: or at a self-hosted LRCLIB built from their published DB dump — which suits a party box better
+    #: than a live API call over party wifi anyway. Empty/unset keeps the public default.
+    lrclib_base: str = "https://lrclib.net"
+
     # ── binaries ──────────────────────────────────────────────────────────────────
     ytdlp_bin: str = "yt-dlp"
     demucs_bin: str = "demucs"
@@ -139,6 +146,7 @@ class WorkerConfig:
             stem_bitrate=e.get("ENCORE_STEM_BITRATE", "192k").strip() or "192k",
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
             whisperx_device=e.get("ENCORE_WHISPERX_DEVICE", "cpu"),
+            lrclib_base=(e.get("ENCORE_LRCLIB_BASE", "").strip().rstrip("/") or "https://lrclib.net"),
             ytdlp_bin=e.get("ENCORE_YTDLP_BIN", "yt-dlp"),
             demucs_bin=e.get("ENCORE_DEMUCS_BIN", "demucs"),
             ffmpeg_bin=e.get("ENCORE_FFMPEG_BIN", "ffmpeg"),

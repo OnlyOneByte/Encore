@@ -50,6 +50,13 @@
       "when": 1788392522842,
       "tag": "0006_woozy_bug",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788399012407,
+      "tag": "0007_daffy_black_panther",
+      "breakpoints": true
     }
   ]
 }

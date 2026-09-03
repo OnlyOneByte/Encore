@@ -248,7 +248,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
 
         # Hybrid forced-alignment (M7-C8): LRCLIB known text + WhisperX wav2vec2 align().
         # device cpu by default; a GPU worker sets ENCORE_WHISPERX_DEVICE=cuda.
-        by_type["align"] = WhisperXProcessor(device=cfg.whisperx_device, ytdlp_bin=cfg.ytdlp_bin)
+        by_type["align"] = WhisperXProcessor(device=cfg.whisperx_device, ytdlp_bin=cfg.ytdlp_bin, lrclib_base=cfg.lrclib_base)
     return RoutingProcessor(by_type)
 
 
