@@ -9,11 +9,10 @@
 -- SO: once this is deployed to a real box, STOP editing this file. Every schema change after that is a
 -- new numbered migration, forever.
 --
--- Equivalence was verified, not assumed: a database built from the old fourteen-migration chain and one
--- built from this file were introspected and compared across all 9 tables on columns, types, defaults,
--- NOT NULL, primary keys and indexes -- identical. The only difference in the raw CREATE text was
--- column ORDER (an ALTER appends; a CREATE follows schema.ts declaration order), which SQLite does not
--- treat as semantic and no query in this codebase depends on.
+-- Equivalence with the old chain was verified when it was collapsed: databases built from each were
+-- introspected and compared across all tables on columns, types, defaults, NOT NULL, primary keys and
+-- indexes -- identical. The only difference in raw CREATE text was column ORDER (an ALTER appends; a
+-- CREATE follows schema.ts declaration order), which SQLite does not treat as semantic.
 
 CREATE TABLE `global_settings` (
 	`id` text PRIMARY KEY DEFAULT 'singleton' NOT NULL,
@@ -59,6 +58,9 @@ CREATE TABLE `media` (
 	`pitch_ref` text,
 	`artist_canonical` text,
 	`title_canonical` text,
+	`mbid` text,
+	`annotation_source` text,
+	`annotation_confidence` text,
 	`album` text,
 	`year` integer
 );

@@ -139,3 +139,29 @@ test('BOOT ROUND TRIP: a song cooked last night is in the catalog + library afte
 	expect(mediaById.get('m1')!.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
 	expect(mediaById.get('m1')!.sourceRef).toBe('vid-m1'); // and it is still dedupe-able by origin
 });
+
+test('a MusicBrainz citation survives the DATABASE round trip', () => {
+	// The DB is the index the runtime catalog hydrates from at boot (synchronously, before the async
+	// sidecar pass), so a missing column here means the annotation is absent for the whole process
+	// lifetime even though the sidecar has it.
+	const r = repo();
+	r.upsert(
+		media('m1', {
+			mbid: 'mb-42',
+			artistCanonical: 'Tears for Fears',
+			annotation: { source: 'musicbrainz', confidence: 'high' }
+		})
+	);
+	const got = r.byId('m1')!;
+	expect(got.mbid).toBe('mb-42');
+	expect(got.annotation).toEqual({ source: 'musicbrainz', confidence: 'high' });
+});
+
+test('a half-written provenance pair is not restored as provenance', () => {
+	// source without confidence is not evidence; reading it would let the never-regress check compare
+	// against a partially-formed value.
+	const r = repo();
+	r.upsert(media('m2', { mbid: 'mb-9' }));
+	expect(r.byId('m2')!.annotation).toBeUndefined();
+	expect(r.byId('m2')!.mbid).toBe('mb-9');
+});
