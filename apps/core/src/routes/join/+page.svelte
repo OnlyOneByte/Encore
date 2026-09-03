@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { SINGER_COLORS } from '@encore/shared';
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
+	import { safeNextPath } from '$lib/next-path';
 
 	let name = $state('');
 	let color = $state<string>(SINGER_COLORS[0]);
@@ -24,8 +26,9 @@
 				submitting = false;
 				return;
 			}
-			// session cookie is set; head to the phone remote
-			await goto('/');
+			// session cookie is set; head where the join was for — the remote unless something sent us
+			// here to reach a specific screen (the settings route redirects unjoined visitors).
+			await goto(safeNextPath(page.url.searchParams.get('next')));
 		} catch {
 			error = 'Network error — try again';
 			submitting = false;
