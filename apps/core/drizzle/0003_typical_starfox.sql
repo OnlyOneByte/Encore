@@ -1,1 +1,0 @@
-ALTER TABLE `playback_state` ADD `key_shift` integer DEFAULT 0 NOT NULL;
