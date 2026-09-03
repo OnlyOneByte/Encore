@@ -11,9 +11,10 @@
 
 ## 0. TL;DR for the next agent
 
-- **Everything through M8 is done**, plus backlog **B-1, B-5, B-6, B-7**. MVP (`v0.1.0`),
-  make-karaoke/stems (`v0.2.0`), scoring (M8-C0–C3), media storage classes + browse + retention (B-7).
-- **401 tests pass from the repo root** (366 core + 35 shared), **96 worker tests** pass under
+- **Everything through M8 is done**, plus backlog **B-1, B-5, B-6, B-7**, and **B-3** (tiered lyrics
+  source chain) except its captions tier. MVP (`v0.1.0`), make-karaoke/stems (`v0.2.0`), scoring
+  (M8-C0–C3), media storage classes + browse + retention (B-7).
+- **479 tests pass** (425 core + 54 shared), **142 worker tests** pass under
   pytest. `bun run typecheck`, `bun run check`, `bun run build`: 0 errors. Gotchas #1 and #9 are
   **fixed** — no more cwd dance.
 - **Real Demucs verified on this box** (macOS/arm64, CPU, no Docker): a 4:01 song → a 6.0 MB
@@ -77,10 +78,10 @@ Encore/
 
 ```bash
 # --- tests + gates (all runnable from the REPO ROOT now, see Gotcha #1) ---
-bun test                            # → 401 pass / 0 fail (366 core + 35 shared)
+bun test                            # → 479 pass / 0 fail (425 core + 54 shared)
 bun run typecheck                   # both workspaces → 0 errors
 bun run check                       # svelte-check → 0 errors
-cd apps/worker && pytest            # → 96 pass (needs `pip install pytest pytest-asyncio`;
+cd apps/worker && pytest            # → 142 pass (needs `pip install pytest pytest-asyncio`;
                                     #    pytest.ini sets asyncio_mode=auto, so without
                                     #    pytest-asyncio 27 "fail" spuriously)
 
@@ -266,29 +267,16 @@ pinned base image and yt-dlp version.
 
 ## 7. Where to start next: the backlog
 
-M9 is the only open milestone, but the prioritized queue in `docs/ROADMAP.md` ("Backlog — auto-cook
-queue") is the real order of work. Done: **B-1** (saved-karaoke library), **B-5** (unified readiness
-search + pull-up queue sheet), **B-6** (TV room states + presence). Remaining:
+M9 is the only open milestone, but **[`ROADMAP.md`](ROADMAP.md) is the single source of truth for
+what to build next** — it opens with the auto-pilot contract (run commands, verification gates,
+environment ceilings, working order) and then lists only open work.
 
-- **B-2 ★ START HERE — WebAudio pitch-shift.** ±key currently no-ops on the TV. Add a client-side
-  phase-vocoder AudioWorklet so `keyShift` re-pitches the instrumental live, tempo preserved.
-  *Done-when:* ±1 semitone audibly shifts pitch without changing tempo. AUTO for the cents→ratio and
-  framing math; **EYES-ON/AUDIO** for the shift itself.
-- **B-3 · Offline lyrics (WhisperX transcribe fallback).** LRCLIB is DNS-sinkholed on this box, so
-  lyrics genuinely **cannot** display here today: transcribe the vocals stem directly instead of
-  aligning known text. Needs the worker to advertise `align` and an align job enqueued alongside stems.
-- **B-4 · Hot-titles persistence.** The popularity tracker is in-memory; persist counts so
-  "🔥 Popular tonight" survives a restart. AUTO.
-- **M9-C1 · accounts** (claim an ephemeral singer; join flow must not regress) — later.
-- **M9-C3 · multi-room** (room codes, per-room topics) → tag **v1.0.0** — later.
+Do not restate the queue here. This section used to duplicate it and drifted: it still recommended
+"B-2 START HERE" and described B-3 as an unbuilt WhisperX fallback long after B-3 shipped. One list,
+one place.
 
-**Deferred, do NOT pick up:** M8-C4 (score reveal + session leaderboard). Parked deliberately;
-revive only if the owner says so.
-
-**Environment ceilings — flag these, don't fight them:** LRCLIB unreachable; no microphone (scoring
-is exercised with a synthesized pitch stream); Demucs/WhisperX take ~1–2 min/song on CPU; YouTube
-autoplay-with-audio needs a real user gesture, and YouTube embeds are refused in headless Chromium
-on this box (that's the environment, not a bug).
+Shipped history lives in [`archive/`](archive/) — read it for *why* something is built the way it is,
+never for what to do next.
 
 ---
 
@@ -332,7 +320,8 @@ something can only be flagged for a human (audio, real ML, network-dependent).
 | `docs/tv-preload-state-machine.md` | Gapless TV two-player state machine |
 | `docs/job-lifecycle-and-worker-protocol.md` | Job ledger + dial-home worker protocol |
 | `docs/performance-and-feel.md` | What makes it feel instant |
-| `docs/ROADMAP.md` | Commit-level plan M0→M9 **+ the live backlog queue** |
+| `docs/ROADMAP.md` | **Open work only + the auto-pilot contract — start here** |
+| `docs/archive/` | Shipped milestones + shipped backlog. Rationale, not instructions |
 | `docs/media-storage-spec.md` | **B-7** storage classes, sidecar metadata, tagging, retention |
 | `docs/vocal-guide-spec.md` | Specced, deferred feature |
 | `docs/mocks/` | Phone/TV mocks + the eyes-on screenshot per milestone |
