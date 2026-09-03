@@ -3,6 +3,7 @@
 
 import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
+import type { LyricsCandidate } from './lyrics';
 
 export const ROOM_TOPIC = 'room:main'; // single room for MVP; Bun.serve pub/sub topic
 
@@ -108,7 +109,13 @@ export type WorkerCommand =
 
 export interface JobArtifacts {
   stems?: { instrumental?: string; vocals?: string };
-  lyrics?: { uri: string };
+  /**
+   * `uri` is the single best artifact (the pre-B-3 shape, still what `setMediaLyrics` reads).
+   * `candidates` is the full set an align job produced — one entry per TEXT SOURCE, each its own file
+   * (B-3-C3). The core ranks them with `pickBestLyrics`; the worker's `uri` is only a convenience
+   * pointer so a completed job is useful before B-3-C5 stores the set.
+   */
+  lyrics?: { uri: string; candidates?: LyricsCandidate[] };
   pitch?: { uri: string }; // reference pitch-track JSON (M8-C3) — drives server-side mic scoring
 }
 

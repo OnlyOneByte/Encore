@@ -199,7 +199,7 @@ async def test_hybrid_flow_download_lrclib_forcealign_writes_word_timed_lyrics(t
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
     uri = completes[0].media_uri
-    assert uri.endswith("lyrics/m1.json")
+    assert uri.endswith("lyrics/m1-lrclib.json")  # per-source key, so candidates coexist
     doc = json.loads(Path(uri).read_text())
     # WORD-timed on the correct text (the whole hybrid point)
     assert whisperx.is_valid_lyrics(doc)
@@ -236,20 +236,177 @@ async def test_aligner_failure_falls_back_to_line_sync(tmp_path):
 @pytest.mark.asyncio
 async def test_no_lyrics_found_raises(tmp_path):
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(found=False), aligner=FakeAligner())
-    with pytest.raises(RuntimeError, match="no lyrics found"):
+    with pytest.raises(RuntimeError, match="no lyrics text from any source"):
         await drain(proc, spec(tmp_path))
 
 
 @pytest.mark.asyncio
 async def test_instrumental_track_raises(tmp_path):
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(instrumental=True), aligner=FakeAligner())
-    with pytest.raises(RuntimeError, match="no lyrics found"):
+    with pytest.raises(RuntimeError, match="no lyrics text from any source"):
         await drain(proc, spec(tmp_path))
 
 
 @pytest.mark.asyncio
-async def test_missing_artist_track_params_raises(tmp_path):
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner())
+async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(tmp_path):
+    """B-3-C3: acquisition and timing are separate concerns now. Without confident metadata the LRCLIB
+    source DECLINES (it never asks for a guessed title); the job then fails only because nothing else
+    supplied text. It is no longer an assertion about params, which is what let "no LRCLIB" mean "no
+    lyrics" — see the next test for the whole point of the split."""
+    client = fake_client()
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=client, aligner=FakeAligner())
     job = JobSpec(job_id="j", media_id="m1", job_type="align", source_uri="/tmp/a.wav", params={}, media_dir=str(tmp_path))
-    with pytest.raises(RuntimeError, match="artist"):
+    with pytest.raises(RuntimeError, match="no lyrics text from any source"):
         await drain(proc, job)
+
+
+# ── B-3-C3: acquisition is SEPARATE from timing ────────────────────────────────
+# The bug this closes: stage 2 was hardwired to LrclibClient.get() and raised when it returned
+# nothing, so an unreachable LRCLIB meant "no lyrics" rather than "no AUTHORITATIVE lyrics".
+from src.lyrics_chain import (  # noqa: E402
+    SOURCE_ASR,
+    SOURCE_LRCLIB,
+    TIMING_LINE,
+    TIMING_NONE,
+    TIMING_WORD,
+    LrclibSource,
+    LyricsRequest,
+    LyricsText,
+    acquire,
+    candidate_key,
+)
+
+
+class FakeSource:
+    """A source that returns canned text (or declines, or explodes)."""
+
+    def __init__(self, name, text=None, boom=False):
+        self.name = name
+        self._text = text
+        self._boom = boom
+        self.calls = 0
+
+    def fetch(self, req):
+        self.calls += 1
+        if self._boom:
+            raise RuntimeError("source is broken")
+        return self._text
+
+
+def _text(source, timing, lines=("line one here", "line two here"), conf="high"):
+    segs = [{"start": i * 2.0, "end": i * 2.0 + 1.5, "text": t} for i, t in enumerate(lines)]
+    if timing == TIMING_WORD:
+        for s in segs:
+            s["words"] = [{"word": w, "start": s["start"], "end": s["end"]} for w in s["text"].split()]
+    return LyricsText(text_source=source, segments=segs, timing=timing, text_confidence=conf)
+
+
+def test_acquire_runs_every_source_not_just_the_first():
+    a = FakeSource("a", _text(SOURCE_LRCLIB, TIMING_LINE))
+    b = FakeSource("b", _text(SOURCE_ASR, TIMING_WORD))
+    got = acquire([a, b], LyricsRequest(media_id="m1"))
+    assert len(got) == 2 and a.calls == 1 and b.calls == 1  # complements, not alternatives
+
+
+def test_acquire_skips_a_source_that_raises_without_losing_the_others():
+    got = acquire([FakeSource("boom", boom=True), FakeSource("ok", _text(SOURCE_ASR, TIMING_WORD))],
+                  LyricsRequest(media_id="m1"))
+    assert len(got) == 1 and got[0].text_source == SOURCE_ASR
+
+
+def test_acquire_drops_empty_text():
+    empty = LyricsText(text_source=SOURCE_LRCLIB, segments=[{"text": "   "}], timing=TIMING_NONE)
+    assert acquire([FakeSource("e", empty)], LyricsRequest(media_id="m1")) == []
+
+
+def test_lrclib_source_declines_without_confident_metadata_and_never_queries():
+    client = fake_client()
+    src = LrclibSource(client, whisperx.lrclib_to_segments)
+    assert src.fetch(LyricsRequest(media_id="m1", artist=None, track="x")) is None
+    assert src.fetch(LyricsRequest(media_id="m1", artist="x", track=None)) is None
+
+
+def test_lrclib_source_declines_when_the_network_is_dead_rather_than_raising():
+    class Dead:
+        def get(self, *a, **k):
+            raise RuntimeError("DNS sinkhole / CERTIFICATE_VERIFY_FAILED")
+
+    src = LrclibSource(Dead(), whisperx.lrclib_to_segments)
+    assert src.fetch(LyricsRequest(media_id="m1", artist="a", track="b")) is None
+
+
+def test_plain_lyrics_are_NOT_reported_as_line_timed():
+    """plainLyrics get evenly-spaced synthetic bounds. That is not sync and must not be presented as
+    the line-level floor — otherwise the TV would scroll confidently at the wrong times."""
+    src = LrclibSource(fake_client(synced=False), whisperx.lrclib_to_segments)
+    got = src.fetch(LyricsRequest(media_id="m1", artist="a", track="b", duration=100.0))
+    assert got is not None and got.timing == TIMING_NONE
+
+
+@pytest.mark.asyncio
+async def test_THE_POINT_a_dead_lrclib_still_produces_lyrics_from_another_source(tmp_path):
+    """With LRCLIB declining and only an ASR-shaped source available, the job SUCCEEDS with word
+    timings. Under the old hardwired stage 2 this raised."""
+    dead = FakeSource(SOURCE_LRCLIB, None)
+    asr = FakeSource(SOURCE_ASR, _text(SOURCE_ASR, TIMING_WORD, conf="low"))
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[dead, asr])
+    events = await drain(proc, spec(tmp_path))
+    done = [e for e in events if isinstance(e, CompleteResult)][0]
+    cands = done.artifacts["lyrics"]["candidates"]
+    assert [c["textSource"] for c in cands] == [SOURCE_ASR]
+    assert cands[0]["timing"] == TIMING_WORD
+    assert cands[0]["textConfidence"] == "low"  # honest: the TV must label this
+    assert Path(done.media_uri).exists()
+
+
+@pytest.mark.asyncio
+async def test_multiple_sources_each_get_their_own_artifact_file(tmp_path):
+    lrc = FakeSource(SOURCE_LRCLIB, _text(SOURCE_LRCLIB, TIMING_LINE))
+    asr = FakeSource(SOURCE_ASR, _text(SOURCE_ASR, TIMING_WORD, conf="low"))
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
+    events = await drain(proc, spec(tmp_path))
+    cands = [e for e in events if isinstance(e, CompleteResult)][0].artifacts["lyrics"]["candidates"]
+    refs = {c["textSource"]: c["ref"] for c in cands}
+    assert refs[SOURCE_LRCLIB] == candidate_key("m1", SOURCE_LRCLIB)
+    assert refs[SOURCE_ASR] == candidate_key("m1", SOURCE_ASR)
+    assert refs[SOURCE_LRCLIB] != refs[SOURCE_ASR]  # no overwrite — the upgrade path depends on this
+    for c in cands:
+        assert (tmp_path / c["ref"]).exists()
+
+
+@pytest.mark.asyncio
+async def test_uri_points_at_the_authoritative_candidate_not_the_asr_one(tmp_path):
+    """Back-compat pointer: authoritative+aligned outranks asr+word (wrong words cannot be sung)."""
+    lrc = FakeSource(SOURCE_LRCLIB, _text(SOURCE_LRCLIB, TIMING_LINE))
+    asr = FakeSource(SOURCE_ASR, _text(SOURCE_ASR, TIMING_WORD, conf="low"))
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[asr, lrc])
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    assert done.media_uri.endswith(candidate_key("m1", SOURCE_LRCLIB))
+
+
+@pytest.mark.asyncio
+async def test_aligner_failure_degrades_that_candidate_to_LINE_sync(tmp_path):
+    class Broken:
+        def align(self, *a, **k):
+            raise RuntimeError("no wav2vec2 model")
+
+    lrc = FakeSource(SOURCE_LRCLIB, _text(SOURCE_LRCLIB, TIMING_LINE))
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=Broken(), sources=[lrc])
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    cands = done.artifacts["lyrics"]["candidates"]
+    assert cands[0]["timing"] == TIMING_LINE  # the floor, not a failure
+
+
+@pytest.mark.asyncio
+async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynced(tmp_path):
+    """No word timings and no line timings = nothing to sync against. Shipping it would put a static
+    wall of text on the TV, which is below the owner's floor."""
+    class Broken:
+        def align(self, *a, **k):
+            raise RuntimeError("no model")
+
+    untimed = LyricsText(text_source=SOURCE_LRCLIB, segments=[{"text": "some words"}], timing=TIMING_NONE)
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=Broken(),
+                                      sources=[FakeSource(SOURCE_LRCLIB, untimed)])
+    with pytest.raises(RuntimeError, match="nothing could be timed"):
+        await drain(proc, spec(tmp_path))
