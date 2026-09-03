@@ -165,9 +165,15 @@ def oversubscription_warnings(cfg: WorkerConfig, cores: int | None) -> list[str]
     environment, and from_env is deliberately pure over env alone.
 
     Worth warning about because the two knobs MULTIPLY: `concurrency=4, jobs=4` is 16 concurrent
-    demucs chunk workers, each holding its own model copy. Uncapped they also each default to all
-    cores, so the box thrashes and every song gets slower — the opposite of what raising them looks
-    like it should do. Never fatal: a GPU box or a deliberate over-commit is the operator's call.
+    demucs chunk workers, each holding its own model copy, so the box thrashes and every song gets
+    slower — the opposite of what raising them looks like it should do. Never fatal: a GPU box or a
+    deliberate over-commit is the operator's call.
+
+    Only MEMORY-and-scheduling contention is reported here. There is deliberately no "you forgot to
+    cap threads" warning any more: `from_env` derives `torch_threads` from concurrency x jobs whenever
+    it is unset, so the condition that warning described cannot arise, and a warning naming a fix that
+    has already been applied is worse than none. What remains is the case config cannot fix for you —
+    asking for more parallel separations than the host has cores.
     """
     out: list[str] = []
     if not cores:
@@ -177,11 +183,6 @@ def oversubscription_warnings(cfg: WorkerConfig, cores: int | None) -> list[str]
         out.append(
             f"concurrency={cfg.concurrency} x demucs_jobs={cfg.demucs_jobs} = {parallel} parallel "
             f"separations on {cores} cores; songs will contend"
-        )
-    if parallel > 1 and cfg.torch_threads is None:
-        out.append(
-            f"{parallel} parallel separations with no ENCORE_TORCH_THREADS cap — each defaults to all "
-            f"cores and they will fight; try ENCORE_TORCH_THREADS={max(1, cores // parallel)}"
         )
     return out
 

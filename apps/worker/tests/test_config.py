@@ -8,7 +8,7 @@ fails loudly, fails silently, or keeps working:
   - every rejection must be reported in `warnings`, because config that is silently ignored is worse
     than config that is refused.
 """
-from src.config import WorkerConfig, auto_demucs_jobs
+from src.config import WorkerConfig, auto_demucs_jobs, auto_torch_threads
 from src import demucs
 
 
@@ -24,7 +24,10 @@ def test_defaults_are_the_shipped_behaviour():
     assert c.demucs_overlap is None
     assert c.demucs_segment is None
     assert c.demucs_shifts is None
-    assert c.torch_threads is None
+    # torch_threads is the ONE exception to "unset = let the tool decide": leaving it alone means every
+    # one of `concurrency x demucs_jobs` separations defaults to all cores and they fight. Derived from
+    # the box rather than hardcoded, so this asserts the derivation and not one machine's answer.
+    assert c.torch_threads == auto_torch_threads(c.concurrency, c.demucs_jobs)
     assert c.warnings == ()
 
 
@@ -57,6 +60,31 @@ def test_auto_jobs_scales_with_cores_and_never_ooms_a_small_box():
     assert auto_demucs_jobs(16) == 2
     assert auto_demucs_jobs(32) == 4
     assert auto_demucs_jobs(128) == 4, "capped: measured gains are flat past 4"
+
+
+def test_auto_torch_threads_divides_the_box_among_contending_separations():
+    # 32 cores, 2 concurrent songs x 4 chunk jobs = 8 processes -> 4 threads each, i.e. one per core.
+    assert auto_torch_threads(2, 4, 32) == 4
+    assert auto_torch_threads(1, 4, 32) == 8
+    assert auto_torch_threads(4, 4, 16) == 1
+    # Never zero: a thread cap of 0 would be a worker that separates nothing.
+    assert auto_torch_threads(8, 8, 4) == 1
+
+
+def test_auto_torch_threads_declines_when_nothing_can_contend():
+    # os.cpu_count() reports LOGICAL cpus while torch's own default is physical-core aware, so pinning
+    # to it with no contention could only make a single separation slower on an SMT box.
+    assert auto_torch_threads(1, 1, 32) is None
+    assert auto_torch_threads(0, 0, 32) is None, "clamped to 1x1, still nothing to divide"
+
+
+def test_threads_default_is_derived_but_an_explicit_value_always_wins():
+    derived = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "2", "ENCORE_DEMUCS_JOBS": "4"})
+    assert derived.torch_threads == auto_torch_threads(2, 4)
+    explicit = WorkerConfig.from_env(
+        {"ENCORE_WORKER_CONCURRENCY": "2", "ENCORE_DEMUCS_JOBS": "4", "ENCORE_TORCH_THREADS": "16"}
+    )
+    assert explicit.torch_threads == 16, "a deliberate over-commit is the operator's call"
 
 
 def test_garbage_falls_back_and_is_REPORTED_never_silently_zero():
