@@ -1,4 +1,4 @@
-// Play tracking (B-7-C5 follow-up) — record WHEN a song was last actually sung.
+// Play tracking (retention follow-up) — record WHEN a song was last actually sung.
 //
 // Why this exists: retention's eviction plan needs a recency signal to decide what to drop first.
 // `library.lastPlayedAt` already existed in the sidecar shape but nothing ever incremented it, so

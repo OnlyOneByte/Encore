@@ -1,4 +1,4 @@
-// Sidecar records — the AUTHORITATIVE per-song library entry (B-7-C3).
+// Sidecar records — the AUTHORITATIVE per-song library entry.
 //
 // `meta/<mediaId>.json` is the truth; the SQLite `media` table is a rebuildable INDEX over it
 // (docs/ARCHITECTURE.md). Three things follow from that, and they are the reason for the
@@ -24,12 +24,12 @@ import { metaDir } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 
 /** Bump when the on-disk shape changes incompatibly. Readers tolerate older schemas. */
-// 2 (B-3-C5): `artifacts.lyricsCandidates` added. `artifacts.lyrics` keeps its meaning — the CHOSEN
+// 2: `artifacts.lyricsCandidates` added. `artifacts.lyrics` keeps its meaning — the CHOSEN
 // ref — so a schema-1 record still reads correctly; it simply has no provenance, which we report as
 // unknown rather than inventing.
 export const SIDECAR_SCHEMA = 2;
 
-/** How a derived field was obtained. Mirrors the lyrics chain's provenance idea (B-3) on purpose. */
+/** How a derived field was obtained. Mirrors the lyrics chain's provenance idea on purpose. */
 export interface FieldProvenance {
 	by: TrackParseRule | 'manual' | 'musicbrainz' | 'lrclib' | 'youtube';
 	confidence: 'high' | 'medium' | 'low';
@@ -63,8 +63,8 @@ export interface MediaSidecar {
 		/** The CHOSEN lyrics ref (whichever candidate pickBestLyrics selected). */
 		lyrics: string | null;
 		/**
-		 * Every lyrics artifact this song has, one per text source (B-3-C5). Authoritative here rather
-		 * than in the DB, per B-7's rule that the sidecar is the record and the index is rebuildable —
+		 * Every lyrics artifact this song has, one per text source. Authoritative here rather
+		 * than in the DB, per the rule that the sidecar is the record and the index is rebuildable —
 		 * and this is what makes re-alignment possible later without re-fetching audio. Absent on
 		 * schema-1 records.
 		 */
@@ -89,7 +89,7 @@ export interface MediaSidecar {
 }
 
 /**
- * Build a sidecar from a runtime Media, deriving canonical artist/title with the B-7-C1 normalizer.
+ * Build a sidecar from a runtime Media, deriving canonical artist/title with the track-title normalizer.
  * PURE. `previous` (an existing sidecar) is merged so hand-edited fields and play counts SURVIVE a
  * rewrite — the DB has no idea a human set a genre, so a naive rebuild would erase curation.
  */
@@ -131,7 +131,7 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null,
 			// Keep whatever the runtime knows, else whatever a prior write knew — an index-only hydrate
 			// (no sidecar read) leaves lyricsCandidates undefined, and losing the set on that write would
-			// silently destroy the upgrade path B-3-C5 exists for.
+			// silently destroy the upgrade path the lyrics-candidates set exists for.
 			lyricsCandidates: m.lyricsCandidates ?? prev?.artifacts.lyricsCandidates
 		},
 		library: {
@@ -180,7 +180,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 }
 
 /**
- * Which lyrics artifact a restored song should show (B-3-C5).
+ * Which lyrics artifact a restored song should show.
  *
  * RE-PICKS from the candidate set rather than trusting the stored `lyrics` pointer, so a ranking change
  * (or a candidate written by an older worker that mis-chose) is corrected on the next restore instead
@@ -200,7 +200,7 @@ export function browseArtist(s: MediaSidecar): string | null {
 }
 
 /**
- * The lookup-safe canonical title: null when we only guessed (B-3-C1). Same confidence gate as
+ * The lookup-safe canonical title: null when we only guessed. Same confidence gate as
  * `browseArtist`, for the same reason — a lyrics lookup on a guessed title returns either nothing or,
  * worse, ANOTHER SONG'S words, and confidently wrong lyrics are the one outcome worse than none.
  * Callers fall back to the raw title, which is a miss but never a lie.
@@ -283,8 +283,9 @@ export async function rebuildIndexFromMeta(deps: {
  * The other direction: write a sidecar for every indexed media that does not have one yet.
  *
  * Needed because sidecars only start being written when a media is next upserted, so without this the
- * self-describing-volume property would apply ONLY to songs added after B-7-C3 — every song already in
- * the catalog would still be lost with the SQLite file, which is exactly the failure this is meant to
+ * self-describing-volume property would apply ONLY to songs added after the sidecar became
+ * authoritative — every song already in the catalog would still be lost with the SQLite file,
+ * which is exactly the failure this is meant to
  * remove. One-shot, idempotent, and cheap (a few KB per song).
  *
  * @returns how many sidecars were created.

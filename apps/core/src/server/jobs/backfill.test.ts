@@ -1,4 +1,4 @@
-// B-3-C7: the upgrade path's entry point. Measured on the live library before this existed: 13 cooked
+// The upgrade path's entry point. Measured on the live library before this existed: 13 cooked
 // songs, 3 with lyrics — 10 that could never get them, because only a stems COMPLETION enqueues align
 // and nobody re-cooks a working song.
 import { test, expect } from 'bun:test';

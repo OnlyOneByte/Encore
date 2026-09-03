@@ -1,4 +1,4 @@
-// M1-C5 done-when: kill+restore socket -> client re-syncs to authoritative rev.
+// done-when: kill+restore socket -> client re-syncs to authoritative rev.
 import { test, expect } from 'bun:test';
 import { WsClient, type MinimalSocket } from './client';
 import type { ServerEvent, ClientEvent } from '@encore/shared';

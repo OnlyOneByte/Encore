@@ -1,5 +1,5 @@
 // Drizzle schema — the write-behind durability layer. The hot path reads from in-memory
-// authoritative state (M1-C1); this is hydrated on boot and persisted asynchronously.
+// authoritative state; this is hydrated on boot and persisted asynchronously.
 // Mirrors the domain types in @encore/shared. See docs/ARCHITECTURE.md.
 
 import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
@@ -41,22 +41,22 @@ export const media = sqliteTable('media', {
 	// The separated instrumental's MediaStore key. Kept SEPARATE from source_ref so source_ref stays
 	// the song's immutable origin identity (what search dedupes on) — see Media.sourceRef.
 	instrumentalRef: text('instrumental_ref'),
-	// Worker artifact keys (B-1). A cooked song is only fully restored if its derived artifacts come
+	// Worker artifact keys. A cooked song is only fully restored if its derived artifacts come
 	// back with it: without these, a library song would replay with stems but silently lose its
-	// word-timed lyrics overlay (M8-C2) and its scoring reference track (M8-C3) after a restart.
+	// word-timed lyrics overlay and its scoring reference track after a restart.
 	lyricsRef: text('lyrics_ref'),
-	// The lyrics candidate SET as JSON (B-3-C5). The sidecar is authoritative; this is the index copy so
+	// The lyrics candidate SET as JSON. The sidecar is authoritative; this is the index copy so
 	// a hydrate that has not read meta/ yet still knows each artifact's provenance — without it the TV
 	// would show auto-transcribed words unlabelled until the async sidecar pass caught up. Nothing
 	// queries inside it, so one JSON column beats a candidates table.
 	lyricsCandidates: text('lyrics_candidates'),
 	pitchRef: text('pitch_ref'),
-	// Canonical metadata for BROWSE (B-7-C4). Derived by the track-title normalizer and mirrored here
+	// Canonical metadata for BROWSE. Derived by the track-title normalizer and mirrored here
 	// from the authoritative sidecar, because grouping the library by `artist` is useless — that column
 	// holds the YouTube uploader ("7clouds"), not the artist. Nullable: a low-confidence parse stores
 	// NULL rather than a guess, so a heading is never a lie.
 	artistCanonical: text('artist_canonical'),
-	// The canonical TITLE (B-3-C1). B-7-C4 mirrored the canonical artist but not the title, so the only
+	// The canonical TITLE. The canonical artist was mirrored earlier but not the title, so the only
 	// title reachable at runtime stayed the raw one ("Britney Spears - Baby One More Time (Lyrics)").
 	// Browse didn't care, but a lyrics lookup does: LRCLIB matches on track_name, so sending the raw
 	// title misses even when the artist is right. Nullable on the same principle as artist_canonical —
@@ -67,7 +67,7 @@ export const media = sqliteTable('media', {
 });
 
 /**
- * Multi-valued library metadata (B-7-C4): genre, free tags, mood. ONE table rather than a column per
+ * Multi-valued library metadata: genre, free tags, mood. ONE table rather than a column per
  * taxonomy, so every browse query has the same shape (`WHERE kind = ? AND value = ?`) and adding
  * "decade" later needs no migration. The authoritative copy lives in the sidecar; this is the index.
  */
@@ -107,10 +107,10 @@ export const playbackState = sqliteTable('playback_state', {
 	currentEntryId: text('current_entry_id'),
 	positionSec: integer('position_sec').notNull().default(0),
 	isPlaying: integer('is_playing', { mode: 'boolean' }).notNull().default(false),
-	keyShift: integer('key_shift').notNull().default(0) // semitones (M7-C9)
+	keyShift: integer('key_shift').notNull().default(0) // semitones
 });
 
-// Room-level separator settings (B-8). Single-row ('singleton') like playback_state: these govern
+// Room-level separator settings. Single-row ('singleton') like playback_state: these govern
 // cooks EVERYONE shares, so they are authoritative room state, not a per-phone preference. Read
 // whole / written whole; the shared @encore/shared RoomSettings type is the source of truth for the
 // field set, and normalizeRoomSettings() gates writes so a bad payload can never persist.

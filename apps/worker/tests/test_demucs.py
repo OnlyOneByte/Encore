@@ -78,7 +78,7 @@ def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, e
         binary = argv[0]
         if binary == "yt-dlp":
             # mimic yt-dlp writing the NATIVE audio stream. The -o target is a %(ext)s template
-            # (B-7: we no longer transcode to wav), so pick a concrete extension the way yt-dlp would.
+            # (we no longer transcode to wav), so pick a concrete extension the way yt-dlp would.
             out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
             os.makedirs(os.path.dirname(out), exist_ok=True)
             Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
@@ -135,7 +135,7 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     assert final.endswith("m1-instrumental.flac")
     assert Path(final).exists()
     assert completes[0].artifacts["stems"]["instrumental"] == final
-    # M8-C0: the isolated vocals stem is ALSO published (was previously discarded)
+    # the isolated vocals stem is ALSO published (was previously discarded)
     vocals = completes[0].artifacts["stems"]["vocals"]
     assert vocals.endswith("m1-vocals.m4a")
     assert Path(vocals).exists()
@@ -207,7 +207,7 @@ async def test_missing_instrumental_output_raises(tmp_path):
         await drain(proc, spec(tmp_path))
 
 
-# ── B-7 audio format policy ────────────────────────────────────────────────────────
+# ── audio format policy ────────────────────────────────────────────────────────
 # Measured on a real 5:20 song: YouTube's best audio is ~5 MB (Opus 135k / AAC 129k), which the old
 # `-x --audio-format wav` inflated to 58.7 MB -- 12x the bytes for zero fidelity, since you cannot
 # restore what YouTube already discarded. These tests pin the policy so it cannot silently regress.
@@ -271,7 +271,7 @@ def test_find_downloaded_ignores_partial_downloads():
         assert demucs.find_downloaded(d, "id1").endswith("id1.webm")
 
 
-# ── B-8: per-job demucs model selection ──────────────────────────────────────────
+# ── per-job demucs model selection ──────────────────────────────────────────
 def test_resolve_demucs_model_defaults_when_unset():
     assert demucs.resolve_demucs_model({}) == demucs.DEFAULT_MODEL
     assert demucs.resolve_demucs_model({"model": None}) == demucs.DEFAULT_MODEL

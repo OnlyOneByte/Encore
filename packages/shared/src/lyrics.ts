@@ -1,4 +1,4 @@
-// Lyrics candidates — the model and the presentation ranking (B-3-C2). PURE: no I/O, no ML.
+// Lyrics candidates — the model and the presentation ranking. PURE: no I/O, no ML.
 //
 // WHY A SET AND NOT ONE DOC. Text quality and timing fidelity are INDEPENDENT axes:
 //
@@ -7,7 +7,7 @@
 //   LRCLIB plain / captions     good            none — needs forced alignment
 //   ASR on the vocals stem      dubious         line-level (segment bounds only)
 //
-// MEASURED (B-3-C4): whisper's transcribe() returns NO word timings — those come solely from the
+// MEASURED: whisper's transcribe() returns NO word timings — those come solely from the
 // separate align() pass. So the aligner is the one source of word timings for every tier, and it is
 // not text-source-specific: it upgrades any text, looked-up or transcribed, from line to word.
 //

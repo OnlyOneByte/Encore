@@ -1,4 +1,4 @@
-// M8-C3 scoring engine (I/O half). Turns incoming mic:pitch samples into score:update broadcasts:
+// Scoring engine (I/O half). Turns incoming mic:pitch samples into score:update broadcasts:
 // resolves the current song, loads its reference pitch track (cached), feeds a per-entry
 // SessionScorer, and publishes the running score. The reference-doc loader is INJECTED so this
 // unit-tests with a fake loader + publish sink (no MediaStore, no sockets).

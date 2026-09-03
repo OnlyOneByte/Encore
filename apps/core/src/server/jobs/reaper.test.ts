@@ -1,4 +1,4 @@
-// M7-C2 done-when: a stalled job requeues; boot recovery clears in-flight. Drives the real
+// Done-when: a stalled job requeues; boot recovery clears in-flight. Drives the real
 // JobRepository (in-memory sqlite) through the reaper with an injected clock — no wall-clock waits.
 import { test, expect } from 'bun:test';
 import { JobReaper } from './reaper';

@@ -45,7 +45,7 @@ export interface EncoreApp {
 	db: DB;
 	state: AuthoritativeState;
 	singers: SingerRepository;
-	/** Who holds a live socket right now (B-6-C1). Populated by server.ts's WS open/close. */
+	/** Who holds a live socket right now. Populated by server.ts's WS open/close. */
 	presence: PresenceTracker;
 	/**
 	 * Records a play when the current entry changes — the recency signal retention's LRU eviction
@@ -53,13 +53,13 @@ export interface EncoreApp {
 	 */
 	plays: PlayTracker;
 	jobs: JobRepository;
-	/** Room-level separator settings (B-8): the engine/model a cook uses + the upgrade policy. */
+	/** Room-level separator settings: the engine/model a cook uses + the upgrade policy. */
 	settings: SettingsRepository;
 	reaper: JobReaper;
 	workers: WorkerRegistry;
 	workerHub: WorkerHub;
 	mediaById: Map<string, Media>;
-	/** Durable media catalog (B-1): write-behind store behind `mediaById` + the saved-karaoke library. */
+	/** Durable media catalog: write-behind store behind `mediaById` + the saved-karaoke library. */
 	media: MediaRepository;
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
@@ -100,7 +100,7 @@ export function getApp(): EncoreApp {
 	const { db } = openDb(dbPath);
 	runMigrations(db);
 
-	// B-7-C2: bring the media volume onto the storage classes BEFORE anything reads the catalog.
+	// Bring the media volume onto the storage classes BEFORE anything reads the catalog.
 	// Idempotent — a no-op on a fresh or already-migrated volume — so it stays wired in permanently.
 	// The raw original is PROMOTED out of the old scratch dir rather than deleted with it; DB refs are
 	// rewritten in the same pass so instrumentalRef/pitchRef/lyricsRef keep pointing at real files.
@@ -147,10 +147,10 @@ export function getApp(): EncoreApp {
 	const mediaById = new Map<string, Media>();
 	const { store: mediaStore, config: mediaStoreConfig } = buildMediaStore();
 
-	// B-1: hydrate the runtime catalog from the durable store BEFORE anything reads it. Without this
+	// Hydrate the runtime catalog from the durable store BEFORE anything reads it. Without this
 	// a restart forgot every song title (a hydrated queue entry rendered as a raw id) and re-cooked
 	// songs whose stems were already sitting on disk.
-	// B-7-C3: the DB is an INDEX over the sidecars, so every persist refreshes meta/<id>.json, and a
+	// The DB is an INDEX over the sidecars, so every persist refreshes meta/<id>.json, and a
 	// sidecar present on disk but missing from the index is restored below. Together those give the
 	// volume the property that matters: it describes itself, so losing the SQLite file costs an
 	// index rebuild rather than every title and artifact link.
@@ -163,7 +163,7 @@ export function getApp(): EncoreApp {
 				const prev = await readSidecar(m.id);
 				const next = sidecarFromMedia(m, Date.now(), prev);
 				await writeSidecar(next);
-				// B-7-C4: mirror the sidecar's canonical metadata into the INDEX so browse can group by
+				// Mirror the sidecar's canonical metadata into the INDEX so browse can group by
 				// it. `browseArtist` returns null for a low-confidence parse, so an uncertain guess is
 				// stored as NULL rather than becoming a library heading that is simply wrong.
 				mediaRepo.setCanonical(m.id, { artist: browseArtist(next), title: lookupTitle(next), album: next.canonical.album, year: next.canonical.year });
@@ -190,18 +190,18 @@ export function getApp(): EncoreApp {
 		.then(async (restored) => {
 			if (restored > 0) console.log(`[core] restored ${restored} media from sidecars in meta/`);
 			// And the other direction: describe every song the index already knows. Without this the
-			// portable-volume property would only apply to songs added AFTER B-7-C3.
+			// portable-volume property would only apply to songs added AFTER the self-describing sidecars landed.
 			const written = await backfillSidecars(mediaRepo.all(), Date.now());
 			if (written > 0) console.log(`[core] backfilled ${written} sidecars into meta/`);
 
-			// B-7-C4: mirror canonical artist/album/year + genres from every sidecar into the browse
+			// Mirror canonical artist/album/year + genres from every sidecar into the browse
 			// index. Needed as its own pass because backfilling a sidecar does not go through upsert,
 			// so without it browse would only see songs touched since the process started.
 			let indexed = 0;
 			for (const s of await readAllSidecars()) {
 				mediaRepo.setCanonical(s.id, { artist: browseArtist(s), title: lookupTitle(s), album: s.canonical.album, year: s.canonical.year });
 				if (s.canonical.genre.length) mediaRepo.setTags(s.id, 'genre', s.canonical.genre);
-				// ...and into the RUNTIME map, not just the index (B-3-C1). hydrateMediaCatalog above ran
+				// ...and into the RUNTIME map, not just the index. hydrateMediaCatalog above ran
 				// synchronously at boot while this pass is async, so mirroring only to the DB left every
 				// in-memory Media without its canonicals for the whole process lifetime — invisible to
 				// browse (which queries the index) but not to anything reading mediaById. It surfaced as an
@@ -218,8 +218,8 @@ export function getApp(): EncoreApp {
 			}
 			if (indexed > 0) console.log(`[core] browse index synced from ${indexed} sidecars`);
 
-			// ── B-3-C7 lyrics backfill ──────────────────────────────────────────────────────
-			// Songs cooked before B-3-C1 have no align job and no way to get one, so the library's
+			// ── lyrics backfill ──────────────────────────────────────────────────────
+			// Songs cooked before the align pipeline existed have no align job and no way to get one, so the library's
 			// existing catalog would never gain lyrics. Enqueued at the LOWEST priority so a singer's
 			// live cook always jumps the whole backfill queue, and dedup on (mediaId, jobType) makes a
 			// restart idempotent. Set ENCORE_LYRICS_BACKFILL=0 to skip (e.g. mid-party on a slow box).
@@ -235,7 +235,7 @@ export function getApp(): EncoreApp {
 				}
 			}
 
-			// ── B-7-C5 retention ────────────────────────────────────────────────────────────
+			// ── retention ────────────────────────────────────────────────────────────
 			// 1. Recompress legacy stems in place. Songs cooked before the audio policy carry WAV
 			//    stems ~8x larger than a cook produces today; the bytes are already here, so this needs
 			//    no download and no Demucs run, and the song never leaves the library. Eviction would
@@ -350,16 +350,16 @@ export function getApp(): EncoreApp {
 		broadcast: (e) => app.publish(e),
 		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
 		mediaStore: mediaStoreConfig,
-		// B-8: a stems/upgrade job carries the room's chosen engine+model, read live at assign time.
+		// A stems/upgrade job carries the room's chosen engine+model, read live at assign time.
 		getSettings: () => app.settings.getGlobal(),
-		// B-1: a cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
+		// A cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
 		// so the next boot lists it in the karaoke library instead of re-cooking it.
 		persistMedia: (mediaId) => {
 			const m = mediaById.get(mediaId);
 			if (m) mediaRepo.upsert(m);
 		},
 		// When a cooked song flips to ready, reconcile playback (start if the room idled / preload) —
-		// the held entry slots back at its fair position (M7-C6). Broadcast a fresh queue:sync FIRST
+		// the held entry slots back at its fair position. Broadcast a fresh queue:sync FIRST
 		// so every client updates its media catalog with the now-ready song's new sourceRef (the
 		// instrumental key) + ready status — otherwise the TV's cached media stays 'queued' and sits
 		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.

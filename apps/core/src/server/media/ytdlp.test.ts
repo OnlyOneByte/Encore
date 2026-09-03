@@ -1,4 +1,4 @@
-// M4-C3 done-when: resolve memoizes; cache hit on repeat id. Plus parser + graceful degrade.
+// Done-when: resolve memoizes; cache hit on repeat id. Plus parser + graceful degrade.
 import { test, expect } from 'bun:test';
 import { parseSearchJson, cacheMeta, getCachedMeta, ytDlpSearch } from './ytdlp';
 

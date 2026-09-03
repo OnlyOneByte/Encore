@@ -1,4 +1,4 @@
-// M1-C1 done-when: mutate -> rev bumps -> async persist -> reload-from-db equals memory.
+// Mutate -> rev bumps -> async persist -> reload-from-db equals memory.
 import { test, expect } from 'bun:test';
 import { AuthoritativeState } from './store';
 import { sqlitePersistence } from './persistence';

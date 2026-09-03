@@ -1,4 +1,4 @@
-// M7-C6: make-karaoke request flips media to cooking-file (rotation auto-holds the slot), enqueues
+// Make-karaoke request flips media to cooking-file (rotation auto-holds the slot), enqueues
 // a stems job at need-priority, dedups repeats, and refuses to disrupt the live song. markMediaReady
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
@@ -100,7 +100,7 @@ test('a cooked song stays recognisable by its ORIGIN identity (search dedupe key
 	expect(playbackRef(m)).toBe('derived/stems/m1-instrumental.flac'); // while still playing the instrumental
 });
 
-test('setMediaLyrics attaches the align artifact uri (M8-C2), and no-ops without one', () => {
+test('setMediaLyrics attaches the align artifact uri, and no-ops without one', () => {
 	const d = deps();
 	d.mediaById.set('m1', media('m1'));
 	expect(setMediaLyrics('m1', 'lyrics/m1-aligned.json', d.mediaById)).toBe(true);
@@ -110,7 +110,7 @@ test('setMediaLyrics attaches the align artifact uri (M8-C2), and no-ops without
 	expect(setMediaLyrics('ghost', 'x.json', d.mediaById)).toBe(false);
 });
 
-test('setMediaPitch attaches the reference pitch-track uri (M8-C3), and no-ops without one', () => {
+test('setMediaPitch attaches the reference pitch-track uri, and no-ops without one', () => {
 	const d = deps();
 	d.mediaById.set('m1', media('m1'));
 	expect(setMediaPitch('m1', 'pitch/m1-pitch.json', d.mediaById)).toBe(true);
@@ -138,7 +138,7 @@ test('ROUND TRIP: cook → held while another plays → ready → plays at its p
 	expect(nextPlayable(d.state.entries, d.mediaById).next?.id).toBe('q-a');
 });
 
-// ── B-1: dedupe to already-separated stems (the durable catalog's payoff) ────────────────────
+// ── dedupe to already-separated stems (the durable catalog's payoff) ────────────────────
 
 test('isCooked is true only for a stems-ready FILE media', () => {
 	expect(isCooked(media('m1', { playMode: 'file', stemStatus: 'ready' }))).toBe(true);
@@ -197,7 +197,7 @@ test('RESTART ROUND TRIP: cook, "restart" with the catalog rehydrated, re-reques
 test('a reused ALREADY-READY job reconciles the media instead of deadlocking rotation', () => {
 	// Regression: the dedup index counts `ready` as live, so enqueue can return a finished job. If the
 	// media were left cooking against it, no worker would ever run and the entry would be held out of
-	// rotation forever — the song silently never plays. Found by the B-1 restart harness.
+	// rotation forever — the song silently never plays. Found by the durable-catalog restart harness.
 	const d = deps();
 	d.mediaById.set('m1', media('m1'));
 	const first = requestMakeKaraoke('m1', d)!;

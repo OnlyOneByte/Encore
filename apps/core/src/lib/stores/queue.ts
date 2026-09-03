@@ -112,7 +112,7 @@ export class QueueStore {
 
 	/**
 	 * Resend every still-pending command (call on WS reconnect). Safe because the server dedupes
-	 * by clientOpId (M6-C2): an already-applied op is re-acked, not double-applied.
+	 * by clientOpId: an already-applied op is re-acked, not double-applied.
 	 */
 	resendPending(): void {
 		for (const [clientOpId, p] of this.#pending) {

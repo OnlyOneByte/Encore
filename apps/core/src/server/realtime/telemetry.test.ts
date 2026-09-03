@@ -1,4 +1,4 @@
-// M5-C1 done-when: ended telemetry advances rotation, picks next by seq; nowplaying carries upNext.
+// Ended telemetry advances rotation, picks next by seq; nowplaying carries upNext.
 import { test, expect } from 'bun:test';
 import { handlePlayerCommand, handleTelemetry, emitNowPlaying, reconcileOnReady } from './player';
 import { AuthoritativeState } from '../state/store';

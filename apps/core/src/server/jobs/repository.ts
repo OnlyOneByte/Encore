@@ -85,7 +85,7 @@ export class JobRepository {
 		return this.#toJob(row);
 	}
 
-	/** All jobs in any of the given statuses — feeds dispatch (queued) and the reaper (M7-C2). */
+	/** All jobs in any of the given statuses — feeds dispatch (queued) and the reaper. */
 	listByStatus(...statuses: JobStatus[]): Job[] {
 		if (statuses.length === 0) return [];
 		return this.#db.select().from(jobs).where(inArray(jobs.status, statuses)).all().map((r) => this.#toJob(r)!);
@@ -108,7 +108,7 @@ export class JobRepository {
 
 	// — semantic lifecycle helpers (thin wrappers over transition, named for the wire protocol §5) —
 
-	/** Dispatch: offer the job to a worker; the caller sets the ack-lease deadline (M7-C2). */
+	/** Dispatch: offer the job to a worker; the caller sets the ack-lease deadline. */
 	assign(id: string, workerId: string, leaseExpiresAt: number | null, now: number): Job {
 		return this.transition(id, 'assigned', { workerId, leaseExpiresAt }, now);
 	}
@@ -151,7 +151,7 @@ export class JobRepository {
 	/**
 	 * Return a non-terminal job to the queue (worker reject, lease expiry, or boot recovery). The
 	 * caller decides whether to increment `attempts` — an ack-timeout doesn't (work never started),
-	 * a progress-lease expiry does (M7-C2). Clears the owner + lease.
+	 * a progress-lease expiry does. Clears the owner + lease.
 	 */
 	requeue(id: string, attempts: number, now: number): Job {
 		return this.transition(id, 'queued', { workerId: null, leaseExpiresAt: null, attempts }, now);

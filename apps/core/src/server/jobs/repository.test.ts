@@ -1,4 +1,4 @@
-// M7-C1 done-when: full lifecycle (queued→assigned→running→ready) + dedup on (mediaId,jobType) +
+// Done-when: full lifecycle (queued→assigned→running→ready) + dedup on (mediaId,jobType) +
 // idempotent re-add. Plus the failure/cancel/requeue edges and the DB-level dedup guarantee.
 import { test, expect } from 'bun:test';
 import { JobRepository } from './repository';

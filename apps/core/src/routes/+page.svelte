@@ -18,7 +18,7 @@
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
 	let playback = $state<PlaybackState>({ currentEntryId: null, positionSec: 0, isPlaying: false, keyShift: 0 });
-	// live make-karaoke progress per mediaId (M7-C7) — driven by media:status broadcasts AND seeded
+	// live make-karaoke progress per mediaId — driven by media:status broadcasts AND seeded
 	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 	let sheetOpen = $state(false);
@@ -296,9 +296,9 @@
 		}
 	}
 
-	// the saved-karaoke library (B-1) + whatever is cooking, for a client that just loaded
+	// the saved-karaoke library + whatever is cooking, for a client that just loaded
 	let library = $state<Media[]>([]);
-	// B-7-C4 browse: facets describe the WHOLE ready library (never the current filter), so picking an
+	// Browse: facets describe the WHOLE ready library (never the current filter), so picking an
 	// artist cannot collapse the rail to that one artist and strand you with no way back.
 	let facets = $state<{ artists: { artist: string; count: number }[]; genres: { genre: string; count: number }[] }>({ artists: [], genres: [] });
 	let browseFilter = $state<{ artist?: string; genre?: string } | null>(null);
@@ -368,11 +368,11 @@
 	}
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
-	// key-shift is available only on a make-karaoke (file) song whose stems are ready (M7-C9)
+	// key-shift is available only on a make-karaoke (file) song whose stems are ready
 	const keyShiftEnabled = $derived(!!nowMedia && nowMedia.playMode === 'file' && nowMedia.stemStatus === 'ready');
 	const keyLabel = $derived(playback.keyShift === 0 ? 'Key' : `Key · ${playback.keyShift > 0 ? '+' : '−'}${Math.abs(playback.keyShift)}`);
 
-	// ── M8-C3: live mic pitch → score ─────────────────────────────────────────
+	// ── live mic pitch → score ─────────────────────────────────────────
 	const isMyTurn = $derived(!!me && !!nowEntry && nowEntry.singerId === me.id && playback.isPlaying);
 	const scoringAvailable = $derived(!!nowMedia && !!nowMedia.pitchRef);
 	let micEnabled = $state(false); // user must opt in (getUserMedia needs a gesture + permission)
@@ -436,7 +436,7 @@
 
 	{#if showReady}
 		{@const readyList = searchActive ? readyResults : library}
-		<!-- B-7-C4 browse: facet rails over the karaoke library. Only shown when NOT searching — a
+		<!-- Browse: facet rails over the karaoke library. Only shown when NOT searching — a
 		     query is already a filter, and stacking two filters is how you end up with zero results and
 		     no idea which one caused it. Hidden entirely below two facets, because "browse by artist"
 		     across one artist is just a list. -->
@@ -480,7 +480,7 @@
 	{/if}
 
 	{#if showCooking && cookingRows.length}
-		<!-- Queue it anyway: rotation HOLDS a cooking song's slot (M7-C6), so it keeps its fair
+		<!-- Queue it anyway: rotation HOLDS a cooking song's slot, so it keeps its fair
 		     position and plays when the stems land. Cooking is not a blocked state. -->
 		<div class="grouphead warn">Cooking · queue it anyway</div>
 		{#each cookingRows as c (c.id)}
@@ -700,7 +700,7 @@
 	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; }
 	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; outline: none; }
 	.chips { display: flex; gap: 7px; margin-bottom: 14px; }
-	/* browse facet rails (B-7-C4): horizontally scrollable so a 20-artist library cannot push the
+	/* browse facet rails: horizontally scrollable so a 20-artist library cannot push the
 	   song list off the screen on a phone. */
 	.facets {
 		display: flex; align-items: center; gap: 7px; margin-bottom: 8px;

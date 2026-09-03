@@ -1,4 +1,4 @@
-// B-7-C4 — browse by artist/genre. The catalog holds every search result ever materialised (271 rows
+// Browse by artist/genre. The catalog holds every search result ever materialised (271 rows
 // for 7 cooked songs on the live box), so the invariant under test is that browse only ever shows
 // songs you can actually SING, and that an uncertain artist never becomes a heading.
 import { beforeEach, describe, expect, it } from 'bun:test';

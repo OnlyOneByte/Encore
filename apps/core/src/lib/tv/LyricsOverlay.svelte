@@ -1,5 +1,5 @@
 <script lang="ts">
-	// M8-C2 — aligned lyrics overlay for the TV. Fetches the word-timed artifact (M7-C8) referenced
+	// aligned lyrics overlay for the TV. Fetches the word-timed artifact referenced
 	// by the current media and highlights each word in time as a classic karaoke sweep with a
 	// bouncing ball over the word being sung. The authoritative position arrives from the player
 	// (~4Hz via ontimeupdate); we interpolate it with requestAnimationFrame for a smooth 60fps sweep.
@@ -21,7 +21,7 @@
 		playing?: boolean; // interpolate forward only while actually playing
 		visible?: boolean; // hide during attract/interstitial
 		/**
-		 * Where this text came from (B-3-C6) — `chosenCandidate(media)` on the TV route. Drives the
+		 * Where this text came from — `chosenCandidate(media)` on the TV route. Drives the
 		 * auto-transcribed caption. Absent/null means provenance is UNKNOWN (a pre-candidate artifact),
 		 * which is rendered exactly like verified text: we will not assert either way.
 		 */

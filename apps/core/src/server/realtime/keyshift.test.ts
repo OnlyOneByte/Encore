@@ -1,4 +1,4 @@
-// M7-C9: the `key` player command transposes a make-karaoke (file) song, clamped to ±MAX_KEY_SHIFT,
+// The `key` player command transposes a make-karaoke (file) song, clamped to ±MAX_KEY_SHIFT,
 // and resets to 0 on every song change. No-op on a YouTube iframe or a not-yet-ready file.
 import { test, expect } from 'bun:test';
 import { handlePlayerCommand } from './player';

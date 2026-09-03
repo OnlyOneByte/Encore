@@ -50,7 +50,7 @@ export class WsClient {
 			// `this.#opt.setTimeoutFn(...)`, a bare reference gets `this === #opt`, and the browser's
 			// setTimeout throws "Illegal invocation" for any `this` that is not the window. That threw
 			// inside onopen, so in a real browser the heartbeat never armed AND capped-backoff
-			// auto-reconnect (M5-C6) never scheduled — both silently dead, while tests passed because
+			// auto-reconnect never scheduled — both silently dead, while tests passed because
 			// they inject their own fake timer functions.
 			setTimeoutFn: ((fn: () => void, ms?: number) => setTimeout(fn, ms)) as typeof setTimeout,
 			clearTimeoutFn: ((id: ReturnType<typeof setTimeout>) => clearTimeout(id)) as typeof clearTimeout,

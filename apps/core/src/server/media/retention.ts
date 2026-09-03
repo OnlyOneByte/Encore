@@ -1,8 +1,8 @@
-// Retention (B-7-C5) — keep the volume bounded without ever losing something unrecoverable.
+// Retention — keep the volume bounded without ever losing something unrecoverable.
 //
 // Two distinct jobs, deliberately separated because they have different costs:
 //
-//   1. RECOMPRESS legacy formats. Songs cooked before the B-7-C6 audio policy have WAV stems, ~8x
+//   1. RECOMPRESS legacy formats. Songs cooked before the current audio policy have WAV stems, ~8x
 //      larger than the AAC a cook produces today. These can be transcoded IN PLACE — the bytes are
 //      already on disk, so it needs no download and no Demucs run, and the song never leaves the
 //      library. This is the right tool for reclaiming pre-policy space; eviction is not.

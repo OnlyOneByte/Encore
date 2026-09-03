@@ -1,4 +1,4 @@
-// M2-C1 done-when: create singer -> token set -> resolve from cookie.
+// Create singer -> token set -> resolve from cookie.
 import { test, expect } from 'bun:test';
 import { SingerRepository, sessionCookie, readSessionToken, mintSessionToken, SESSION_COOKIE } from './repository';
 import { openDb } from '../db/index';

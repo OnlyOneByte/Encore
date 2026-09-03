@@ -1,12 +1,12 @@
 <!--
-	TvLobby — "people are here, nobody has picked a song yet" (B-6-C2).
+	TvLobby — "people are here, nobody has picked a song yet".
 
 	Layout option B (chosen 2026-09-02): the QR keeps the stage, the waiting line sits under it, and
 	the roster runs along the bottom as a strip. Reads as "the night hasn't started yet" while still
 	naming everyone who is in, so the screen answers both questions a glancing guest has: *can I
 	join?* and *who's here?*
 
-	The roster is PRESENCE-derived (B-6-C1), never the full singer table — that table is append-only
+	The roster is PRESENCE-derived, never the full singer table — that table is append-only
 	and file-backed, so it would accumulate everyone who ever joined across nights.
 -->
 <script lang="ts">

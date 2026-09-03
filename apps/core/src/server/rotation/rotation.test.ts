@@ -1,4 +1,4 @@
-// M1-C2 done-when: 3 singers interleave fairly; new joiner slots into next gap.
+// 3 singers interleave fairly; new joiner slots into next gap.
 // Plus the held-slot rule (not-ready media is skipped but keeps its position).
 import { test, expect } from 'bun:test';
 import { reseq, nextPlayable, upNextAfter, isEntryReady } from './index';

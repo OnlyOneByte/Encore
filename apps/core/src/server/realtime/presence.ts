@@ -1,4 +1,4 @@
-// Singer presence — who is actually in the room RIGHT NOW (B-6-C1).
+// Singer presence — who is actually in the room RIGHT NOW.
 //
 // Why this exists: the singer table is append-only and file-backed (H-5), so "everyone who ever
 // joined" grows without bound across nights. The TV lobby roster and the join card's "N singing

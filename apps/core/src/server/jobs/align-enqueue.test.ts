@@ -1,4 +1,4 @@
-// B-3-C1: lyrics were unreachable for two reasons at once — nothing ever enqueued an `align` job,
+// Lyrics were unreachable for two reasons at once — nothing ever enqueued an `align` job,
 // and `job:assign` could not carry what align needs. These pin both, plus the confidence rule that
 // decides whether a lyrics lookup is even attempted.
 import { test, expect } from 'bun:test';
@@ -19,7 +19,7 @@ const media = (over: Partial<Media> = {}): Media => ({
 
 // ── the cook pipeline ─────────────────────────────────────────────────────────
 test('a completed stems job enqueues align AND score (both were unreachable)', () => {
-	// score was blocked by the identical bug: nothing ever enqueued it, so M8-C3 could not fire.
+	// score was blocked by the identical bug: nothing ever enqueued it, so live scoring could not fire.
 	expect(followUps('stems')).toEqual(['align', 'score']);
 });
 
@@ -33,7 +33,7 @@ test('stems still gets its separation model', () => {
 	expect(assignParams('stems', media()).model).toBe('htdemucs');
 });
 
-test('B-8: stems carries the room engine+model; upgrade carries the upgrade engine+model', () => {
+test('stems carries the room engine+model; upgrade carries the upgrade engine+model', () => {
 	const settings = {
 		defaultEngine: 'demucs' as const,
 		defaultModel: 'htdemucs_ft',
@@ -49,7 +49,7 @@ test('B-8: stems carries the room engine+model; upgrade carries the upgrade engi
 	expect(upgrade.model).toBe('bs-roformer-1297');
 });
 
-test('B-8: with no settings, stems falls back to the shared default pairing', () => {
+test('with no settings, stems falls back to the shared default pairing', () => {
 	const p = assignParams('stems', media());
 	expect(p.engine).toBe('demucs');
 	expect(p.model).toBe('htdemucs');

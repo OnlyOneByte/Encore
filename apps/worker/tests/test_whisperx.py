@@ -1,5 +1,5 @@
 """WhisperX align pipeline — PURE shape transform (raw WhisperX → normalized word-timed lyrics,
-the M7-C8 done-when "lyrics JSON with word timestamps; unit test on shape") + the I/O processor
+the done-when "lyrics JSON with word timestamps; unit test on shape") + the I/O processor
 flow driven by a fake runner (canned transcript, no torch). Real ML alignment defers to a GPU box."""
 import asyncio
 import json
@@ -21,7 +21,7 @@ from src.lyrics_source import LrclibResult  # noqa: E402
 
 
 def test_lyrics_key():
-    # B-7: lyrics live under the `derived/` storage class (regenerable from `audio/`).
+    # lyrics live under the `derived/` storage class (regenerable from `audio/`).
     assert whisperx.lyrics_key("m1") == "derived/lyrics/m1.json"
 
 
@@ -251,7 +251,7 @@ async def test_instrumental_track_raises(tmp_path):
 
 @pytest.mark.asyncio
 async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(tmp_path):
-    """B-3-C3: acquisition and timing are separate concerns now. Without confident metadata the LRCLIB
+    """Acquisition and timing are separate concerns now. Without confident metadata the LRCLIB
     source DECLINES (it never asks for a guessed title); the job then fails only because nothing else
     supplied text. It is no longer an assertion about params, which is what let "no LRCLIB" mean "no
     lyrics" — see the next test for the whole point of the split."""
@@ -262,7 +262,7 @@ async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(
         await drain(proc, job)
 
 
-# ── B-3-C3: acquisition is SEPARATE from timing ────────────────────────────────
+# ── acquisition is SEPARATE from timing ────────────────────────────────
 # The bug this closes: stage 2 was hardwired to LrclibClient.get() and raised when it returned
 # nothing, so an unreachable LRCLIB meant "no lyrics" rather than "no AUTHORITATIVE lyrics".
 from src.lyrics_chain import (  # noqa: E402
@@ -421,7 +421,7 @@ async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynce
         await drain(proc, spec(tmp_path))
 
 
-# ── B-3-C4: the ASR tier ───────────────────────────────────────────────────────
+# ── the ASR tier ───────────────────────────────────────────────────────
 from src.lyrics_chain import AsrSource  # noqa: E402
 
 
@@ -489,7 +489,7 @@ def test_asr_source_declines_on_an_empty_transcript_an_instrumental():
 
 @pytest.mark.asyncio
 async def test_DONE_WHEN_lrclib_dead_asr_still_yields_word_timed_lyrics(tmp_path):
-    """B-3's done-when, at the unit level: with LRCLIB declining, a cooked song still gets WORD-timed
+    """The done-when, at the unit level: with LRCLIB declining, a cooked song still gets WORD-timed
     lyrics on the TV — and they are marked low-confidence so the overlay can be honest."""
     vocals = tmp_path / "derived" / "stems"
     vocals.mkdir(parents=True)

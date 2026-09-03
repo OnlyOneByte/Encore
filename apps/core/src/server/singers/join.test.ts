@@ -1,4 +1,4 @@
-// M2-C2 done-when: join -> singer:joined broadcast -> singer appears (validated via doJoin).
+// join -> singer:joined broadcast -> singer appears (validated via doJoin).
 import { test, expect } from 'bun:test';
 import { doJoin } from './join';
 import { SingerRepository } from './repository';

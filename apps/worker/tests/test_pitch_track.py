@@ -1,6 +1,6 @@
-"""Pitch extraction (M8-C1) — pure autocorrelation f0 tracker. Verified in-sandbox against
+"""Pitch extraction — pure autocorrelation f0 tracker. Verified in-sandbox against
 SYNTHESIZED known tones (numpy only, no torch): a sine at a known frequency must come back as that
-frequency; silence must come back unvoiced. This is the M8-C1 done-when: known tone → expected
+frequency; silence must come back unvoiced. This is the done-when: known tone → expected
 pitch track."""
 import sys
 from pathlib import Path

@@ -1,5 +1,5 @@
-// B-7-C2 — the storage layout: class-aware key resolution, the absolute-path normalizer, and the
-// one-shot migration off the pre-B-7 layout. Uses a real temp filesystem, because the whole point of
+// The storage layout: class-aware key resolution, the absolute-path normalizer, and the
+// one-shot migration off the legacy layout. Uses a real temp filesystem, because the whole point of
 // the migration is that it moves actual bytes.
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, chmodSync, statSync } from 'node:fs';
@@ -117,7 +117,7 @@ describe('safeMediaPath is class-aware and still traversal-proof', () => {
 	});
 });
 
-describe('migration off the pre-B-7 layout', () => {
+describe('migration off the legacy layout', () => {
 	function seedLegacy() {
 		mkdirSync(join(root, 'stems', '_work', 'm1'), { recursive: true });
 		writeFileSync(join(root, 'stems', '_work', 'm1', 'source.wav'), 'RAW-AUDIO-M1');
@@ -240,7 +240,7 @@ describe('migration off the pre-B-7 layout', () => {
 
 	it('worker-written dirs are SHARED-WRITE, meta is not', () => {
 		// The core and the worker are different uids on one mounted volume. A 0755 dir created by the
-		// core is unwritable by the worker -- which is how B-7 first broke every cook with
+		// core is unwritable by the worker -- which is how the layout migration first broke every cook with
 		// "Permission denied: /app/media/work/<jobId>". meta/ is core-only and stays restrictive.
 		ensureLayout();
 		const mode = (p: string) => statSync(p).mode & 0o777;

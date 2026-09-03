@@ -6,9 +6,9 @@
 		media: Media | null;
 		visible: boolean;
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
-		playing?: boolean; // playback:state.isPlaying — pause/resume from the phone (M3-C6)
-		seekSec?: number; // playback:state.positionSec — jump the video when the phone seeks (M3-C6)
-		keyShift?: number; // ± semitones for a file song (M7-C9) — selects the keyed instrumental
+		playing?: boolean; // playback:state.isPlaying — pause/resume from the phone
+		seekSec?: number; // playback:state.positionSec — jump the video when the phone seeks
+		keyShift?: number; // ± semitones for a file song — selects the keyed instrumental
 		onready?: () => void;
 		onended?: () => void;
 		onerror?: () => void; // dead/unplayable media — caller should skip

@@ -1,5 +1,5 @@
 import { instrumentalKey } from './paths';
-// B-1: the durable media catalog. Search results and cooked songs are persisted so the catalog
+// The durable media catalog. Search results and cooked songs are persisted so the catalog
 // survives a restart — which is what lets the saved-karaoke library exist and what stops
 // requestMakeKaraoke from re-cooking an instrumental that's already on disk.
 import { test, expect } from 'bun:test';

@@ -1,4 +1,4 @@
-// M7-C3 done-when: a fake worker socket drives a job to `ready`. Also covers welcome handshake,
+// Done-when: a fake worker socket drives a job to `ready`. Also covers welcome handshake,
 // dispatch-on-hello, progress→media:status rebroadcast, reject/requeue, retryable vs terminal
 // failure, and need-ordered dispatch across workers. No real socket — sinks capture the effects.
 import { test, expect } from 'bun:test';
@@ -57,7 +57,7 @@ test('hello → welcome handshake + dispatch of a waiting job', () => {
 	expect(assign.params.model).toBe('htdemucs');
 });
 
-test('M7-C10: welcome carries the object-store config so a remote worker pulls/pushes via S3', () => {
+test('welcome carries the object-store config so a remote worker pulls/pushes via S3', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
 	const jobs = new JobRepository(db);
@@ -98,7 +98,7 @@ test('FULL LIFECYCLE: hello → assign → accept → progress → complete driv
 	const done = jobs.byId(job.id)!;
 	expect(done.status).toBe('ready'); // ← drove to ready
 	expect(done.progressPct).toBe(100);
-	// M7-C6: media flips to the playable instrumental (playMode→file, instrumentalRef→stems key).
+	// Media flips to the playable instrumental (playMode→file, instrumentalRef→stems key).
 	// sourceRef stays the ORIGIN so search still recognises the song as already cooked.
 	const m = mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
@@ -110,7 +110,7 @@ test('FULL LIFECYCLE: hello → assign → accept → progress → complete driv
 	expect(registry.get('w1')!.slotsFree).toBe(1); // slot released on complete → free for new work
 });
 
-test('M7-C6: complete fires onMediaReady so the core reconciles playback', () => {
+test('complete fires onMediaReady so the core reconciles playback', () => {
 	const { hub, jobs, mediaById, readied } = harness();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });

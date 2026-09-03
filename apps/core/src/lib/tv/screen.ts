@@ -1,4 +1,4 @@
-// Which of the TV's idle screens to show (B-6-C2).
+// Which of the TV's idle screens to show.
 //
 // Before this, `/tv` collapsed every non-playing situation into ONE attract screen: an empty room
 // and a room with four people waiting for a first pick looked identical, so the TV could not tell
@@ -13,7 +13,7 @@ import type { QueueEntry, Media } from '@encore/shared';
  * What the TV should be showing.
  * - `attract`  — nobody is here. The QR is the only thing to do, so it owns the screen.
  * - `lobby`    — people ARE here but nothing is queued: name them and say what we're waiting for.
- * - `waiting`  — something is queued but its stems are still cooking (M7-C6 held slot).
+ * - `waiting`  — something is queued but its stems are still cooking (held slot).
  * - `playing`  — a song is up; the video owns the screen and the QR retreats to a corner.
  */
 export type TvScreen = 'attract' | 'lobby' | 'waiting' | 'playing';
@@ -25,7 +25,7 @@ export interface TvScreenInput {
 	current: QueueEntry | null;
 	/** Every queue entry the TV knows about (used to tell "empty" from "queued but not playable"). */
 	entries: QueueEntry[];
-	/** How many singers hold a live socket right now (presence, B-6-C1). */
+	/** How many singers hold a live socket right now (presence). */
 	onlineCount: number;
 }
 

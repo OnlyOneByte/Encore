@@ -1,4 +1,4 @@
-// M3-C6: player:command mutates playback state + broadcasts playback:state.
+// player:command mutates playback state + broadcasts playback:state.
 import { test, expect } from 'bun:test';
 import { handlePlayerCommand } from './player';
 import { AuthoritativeState } from '../state/store';

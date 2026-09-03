@@ -36,7 +36,7 @@ const state = app.state;
 // Live worker WS sockets, keyed by workerId (the dial-home registry's transport half — the
 // registry itself holds liveness/slots; this maps an id to the socket to push WorkerCommands to).
 // In-memory, process-lifetime, never persisted (§10).
-// Per-socket data. `singerId` is resolved at upgrade from the session cookie (B-6-C1) and is
+// Per-socket data. `singerId` is resolved at upgrade from the session cookie and is
 // absent for the TV and for a phone that has not joined yet.
 type SocketData = { role: string; workerId?: string; singerId?: string };
 type WorkerSocket = import('bun').ServerWebSocket<SocketData>;
@@ -47,17 +47,17 @@ app.toWorker = (workerId: string, cmd: WorkerCommand) => {
 };
 
 // Start the job reaper's periodic tick (~3s): enforces ack/progress leases, requeueing or failing
-// jobs whose owning worker went silent (M7-C2). On any requeue/fail it redispatches (onReaped,
+// jobs whose owning worker went silent. On any requeue/fail it redispatches (onReaped,
 // wired in app.ts). Boot recovery already ran in getApp().
 app.reaper.start();
 
-// bounded idempotency ledger of applied clientOpIds (M6-C2): dedupes resent commands across
+// bounded idempotency ledger of applied clientOpIds: dedupes resent commands across
 // reconnects so a retry never double-applies. In-memory (process-lifetime), insertion-ordered.
 const seenOps = new Set<string>();
 
 // MVP/harness media catalog. Real media is resolved via /api/search (M4) + persisted on demand.
 // Seed a few youtube demos so the dev harness can add songs that validate even without yt-dlp.
-// IMPORTANT (B-1): seed only what is MISSING. getApp() has already hydrated the durable catalog, so
+// IMPORTANT: seed only what is MISSING. getApp() has already hydrated the durable catalog, so
 // an unconditional set would overwrite a demo song that was cooked on a previous night with this
 // pristine iframe stub — the DB would still say "stems ready" while the runtime said "plain iframe",
 // which re-cooks the song and plays the vocal YouTube embed instead of the instrumental.
@@ -70,7 +70,7 @@ for (const m of [
 	if (!mediaById.has(m.id)) mediaById.set(m.id, m);
 }
 
-// M8-C3 live-scoring engine. Loads a song's reference pitch track from the MediaStore (cached) and
+// Live-scoring engine. Loads a song's reference pitch track from the MediaStore (cached) and
 // scores incoming mic:pitch samples against it, broadcasting score:update.
 const scoreEngine = new ScoreEngine();
 const loadPitchDoc: PitchDocLoader = async (ref) => {
@@ -119,7 +119,7 @@ try {
 	console.warn('[core] build/handler.js not found — run `bun run build`. Serving WS + /health + /harness only.');
 }
 
-// Broadcast the current presence roster (B-6-C1). Called on the 0→1 and 1→0 transitions only.
+// Broadcast the current presence roster. Called on the 0→1 and 1→0 transitions only.
 function publishPresence(): void {
 	server.publish(ROOM_TOPIC, JSON.stringify({ type: 'singer:presence', online: app.presence.online() } satisfies ServerEvent));
 }
@@ -134,7 +134,7 @@ const server = Bun.serve<SocketData>({
 
 		if (url.pathname === '/ws') {
 			const role = url.searchParams.get('role') ?? 'phone';
-			// B-6-C1: resolve WHICH singer this socket belongs to, at upgrade, from the session cookie
+			// Resolve WHICH singer this socket belongs to, at upgrade, from the session cookie
 			// the browser sends on the WS handshake (same-origin, so it is there). Without this the
 			// socket is anonymous and presence is impossible. A TV or a not-yet-joined phone simply
 			// has no singerId and is tracked as a spectator.
@@ -145,7 +145,7 @@ const server = Bun.serve<SocketData>({
 		if (url.pathname === '/health') {
 			return Response.json({ ok: true, runtime: `bun ${Bun.version}`, room: ROOM_TOPIC, rev: state.rev });
 		}
-		// M1-C7 dev harness — two iframes + live queue JSON to eyeball cross-client sync.
+		// Dev harness — two iframes + live queue JSON to eyeball cross-client sync.
 		if (url.pathname === '/harness') return new Response(harnessHtml(), { headers: { 'content-type': 'text/html' } });
 		if (url.pathname === '/harness/phone') return new Response(phoneHtml(), { headers: { 'content-type': 'text/html' } });
 
@@ -163,7 +163,7 @@ const server = Bun.serve<SocketData>({
 			// route the shared app's broadcasts through Bun's native pub/sub (e.g. singer:joined
 			// from the /api/join route reaches every socket).
 			setPublish((e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)));
-			// B-6-C1: this singer is now in the room. Announce only on the 0→1 transition so a second
+			// This singer is now in the room. Announce only on the 0→1 transition so a second
 			// tab doesn't spam the room with an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) publishPresence();
 		},
@@ -213,7 +213,7 @@ const server = Bun.serve<SocketData>({
 				case 'hello': {
 					// resync handshake: reply with authoritative full state to this client only —
 					// queue + current playback + nowplaying, so a reconnecting TV/phone resumes
-					// exactly where the room is (M5-C6).
+					// exactly where the room is.
 					ws.send(JSON.stringify(syncEvent(state, deps)));
 					ws.send(JSON.stringify({ type: 'playback:state', state: state.playback, rev: state.rev }));
 					const cur = state.entries.find((e) => e.id === state.playback.currentEntryId) ?? null;
@@ -255,7 +255,7 @@ const server = Bun.serve<SocketData>({
 				workerSockets.delete(ws.data.workerId);
 				return;
 			}
-			// B-6-C1: their last socket closing takes them out of the roster (1→0 only).
+			// Their last socket closing takes them out of the roster (1→0 only).
 			if (ws.data.singerId && app.presence.disconnect(ws.data.singerId)) publishPresence();
 		}
 	}

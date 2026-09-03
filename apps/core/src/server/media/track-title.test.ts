@@ -1,4 +1,4 @@
-// B-7-C1 — the metadata normalizer. The FIRST FIVE tests are the five rows that were actually in the
+// The metadata normalizer. The FIRST FIVE tests are the five rows that were actually in the
 // live library on 2026-09-02, because they are what made this necessary: `media.artist` held the
 // YouTube uploader, so four of the five would have been grouped under a lyric-video channel and would
 // have missed an LRCLIB lookup entirely.

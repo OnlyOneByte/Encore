@@ -1,5 +1,5 @@
 <script lang="ts">
-	// M3-C1 component preview (dev-only gallery). Not a product surface.
+	// Component preview (dev-only gallery). Not a product surface.
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
@@ -28,7 +28,7 @@
 	import type { LyricsDoc } from '$lib/tv/lyrics';
 	import { onMount } from 'svelte';
 
-	// M8-C2 demo: a word-timed fixture + an auto-advancing position so the karaoke sweep is visible
+	// Demo: a word-timed fixture + an auto-advancing position so the karaoke sweep is visible
 	// here in the dev gallery (the real /tv route feeds position from player telemetry).
 	const demoLyrics: LyricsDoc = {
 	  "language": "en",
@@ -221,7 +221,7 @@
 		words: []
 	};
 	let demoPos = $state(0);
-	let demoScore = $state(0); // sweeps 0→100 so the badge moves through all bands (M8-C3 eyes-on)
+	let demoScore = $state(0); // sweeps 0→100 so the badge moves through all bands (eyes-on)
 	onMount(() => {
 		const t0 = performance.now();
 		let raf = 0;
@@ -268,16 +268,16 @@
 
 	<NowPlaying title="Take On Me" sub="a-ha · Sam is singing" />
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (M8-C2 · TV) · VERIFIED text</h2>
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
 		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible
 			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
 		<ScoreBadge score={demoScore} hits={demoScore} total={100} />
 	</div>
 
-	<!-- B-3-C6: the same doc, same perfect sweep, but the words are a GUESS. The pair is the point —
+	<!-- The same doc, same perfect sweep, but the words are a GUESS. The pair is the point —
 	     without the caption these two are visually indistinguishable, which is exactly the problem. -->
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · AUTO-TRANSCRIBED (B-3-C6)</h2>
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · AUTO-TRANSCRIBED</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
 		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible
 			provenance={{ textSource: 'asr', textConfidence: 'low', timing: 'word' }} />
@@ -290,7 +290,7 @@
 			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'line' }} />
 	</div>
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">TV room states (B-6) · lobby + corner join card</h2>
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">TV room states · lobby + corner join card</h2>
 	<!-- The three TV surfaces, scaled down. The point of the pair is that "nobody here" and "people
 	     here, nothing queued" are now DIFFERENT screens — they used to be the same one. -->
 	<div style="position:relative;height:300px;border-radius:16px;overflow:hidden;background:var(--bg);">
@@ -311,7 +311,7 @@
 		<JoinBadge qrDataUrl={demoQr} joinUrl="encore.local/join" placement="corner" onlineCount={4} />
 	</div>
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">Phone score pill (M8-C3)</h2>
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">Phone score pill</h2>
 	<div style="display:flex;justify-content:center;padding:16px;background:var(--bg);border-radius:16px;">
 		<span style="display:inline-flex;align-items:center;gap:8px;font-weight:700;color:#fff;background:var(--card);border:1px solid var(--accent2);border-radius:999px;padding:10px 18px;">
 			<span style="width:10px;height:10px;border-radius:50%;background:#ff5cae;"></span>

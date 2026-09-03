@@ -4,7 +4,7 @@
 	interface Props {
 		// Queue-slot number + the singer who asked for it. Both absent when the card renders OUTSIDE
 		// the rotation list — a song cooking for someone else's turn still needs somewhere to show its
-		// progress (B-1), and there is no slot or singer to attribute it to there.
+		// progress, and there is no slot or singer to attribute it to there.
 		seq?: number;
 		title: string;
 		singerName?: string;

@@ -1,4 +1,4 @@
-// M7-C10: MediaStore — pure config resolver + helpers + LocalMediaStore round-trip + the
+// MediaStore — pure config resolver + helpers + LocalMediaStore round-trip + the
 // ObjectMediaStore (S3/MinIO) driven by an in-memory fake S3 client (no network).
 import { test, expect, beforeEach } from 'bun:test';
 import { mkdtemp, rm } from 'node:fs/promises';

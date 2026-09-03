@@ -164,7 +164,7 @@ async def test_welcome_records_media_store_config_and_sends_nothing(tmp_path):
     assert sock.sent == []  # welcome requires no reply
     assert client.media_store.kind == "local"
 
-    # an object-store welcome is recorded so the worker pushes stems to S3 (M7-C10)
+    # an object-store welcome is recorded so the worker pushes stems to S3
     await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 30, "ackTimeoutSec": 10,
                          "mediaStore": {"kind": "object", "bucket": "encore-media", "prefix": "encore/"}})
     assert client.media_store.kind == "object"
@@ -190,13 +190,13 @@ def test_build_processor_routes_by_capability(monkeypatch):
     p = _build_processor()
     assert isinstance(p, RoutingProcessor)
     by_type = p._by_type  # introspect the routing table
-    # B-8: stems now routes through an EngineRouter (engine chosen per-job); demucs is its default.
+    # stems now routes through an EngineRouter (engine chosen per-job); demucs is its default.
     from src.processor import EngineRouter
 
     assert isinstance(by_type["stems"], EngineRouter)
     assert isinstance(by_type["stems"]._by_engine["demucs"], DemucsProcessor)
     assert "roformer" not in by_type["stems"]._by_engine  # not built without the stems:roformer cap
-    assert "score" not in by_type  # score is capability-gated (M8-C3), not advertised by default
+    assert "score" not in by_type  # score is capability-gated, not advertised by default
     assert "align" not in by_type  # not advertised by default
 
     # Capabilities come from the CONFIG seam, not a mutable module global — pass one explicitly.
@@ -236,7 +236,7 @@ def test_is_retryable_prefers_structured_flag():
 
 @pytest.mark.asyncio
 async def test_worker_cleans_its_own_scratch_after_a_job(tmp_path):
-    """B-7: work/<jobId> holds the decoded source + both WAV stems -- hundreds of MB that nothing
+    """work/<jobId> holds the decoded source + both WAV stems -- hundreds of MB that nothing
     reads once the encoded artifacts are published. The WORKER must clean it, not the core: in a
     two-container deployment the core runs as a different uid and gets EACCES on these dirs."""
     work = tmp_path / "work" / "j1"

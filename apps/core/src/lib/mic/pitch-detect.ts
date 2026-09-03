@@ -1,4 +1,4 @@
-// Client-side fundamental-frequency (f0) detection (M8-C3). Pure — takes a block of time-domain
+// Client-side fundamental-frequency (f0) detection. Pure — takes a block of time-domain
 // samples (from an AnalyserNode's getFloatTimeDomainData) and returns the detected pitch, so the
 // DSP unit-tests against a synthesized tone with no Web Audio (mirrors the worker's pitch_track.py
 // autocorrelation approach, in TypeScript). The Web Audio plumbing lives in mic-capture.ts.

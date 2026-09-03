@@ -3,7 +3,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { defineConfig } from 'vite';
 
 // Encore core — SvelteKit on Bun. The community `svelte-adapter-bun` is the one non-first-party
-// seam (docs/ARCHITECTURE.md); M0-C1 smoke-tests that a prod build serves under Bun on
+// seam (docs/ARCHITECTURE.md); smoke-tests that a prod build serves under Bun on
 // aarch64. Fallback if rough: swap to @sveltejs/adapter-node (still run by the Bun runtime).
 export default defineConfig({
 	// bun:sqlite is a Bun built-in — keep it external so the adapter bundler doesn't try to resolve it

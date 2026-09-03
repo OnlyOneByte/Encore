@@ -1,12 +1,12 @@
 <!--
-	JoinBadge — the join QR, in one of two placements (B-6-C3).
+	JoinBadge — the join QR, in one of two placements.
 
 	`hero` is the lobby/attract treatment: a big scannable QR that owns the middle of the screen.
 	`corner` is the during-playback treatment: a compact card pinned bottom-right, so a latecomer
 	who walks in mid-song can still get in without asking anyone to stop the music.
 
 	Bottom-right is deliberate and load-bearing: the "Now singing" lower-third owns bottom-LEFT and
-	the M8-C3 ScoreBadge owns top-right, so bottom-right is the only free corner. Do not move it to
+	the ScoreBadge owns top-right, so bottom-right is the only free corner. Do not move it to
 	the top-right — it will sit under the score.
 -->
 <script lang="ts">
