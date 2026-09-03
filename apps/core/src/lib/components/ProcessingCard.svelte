@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SINGER_COLORS } from '@encore/shared';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
 	interface Props {
@@ -23,7 +24,7 @@
 		ondown?: () => void;
 	}
 	let {
-		seq, title, singerName, singerColor = '#7c5cff', status, pct,
+		seq, title, singerName, singerColor = SINGER_COLORS[0], status, pct,
 		onremove, reorderable = false, canUp = false, canDown = false, onup, ondown
 	}: Props = $props();
 

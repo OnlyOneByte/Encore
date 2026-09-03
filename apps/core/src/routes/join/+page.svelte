@@ -121,7 +121,7 @@
 		display: grid; place-items: center;
 	}
 	.swatch.sel { border-color: var(--ink); }
-	.tick { color: #0b0b12; font-size: 1.3rem; font-weight: 900; text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5); }
+	.tick { color: var(--bg); font-size: 1.3rem; font-weight: 900; text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5); }
 	.err { color: var(--danger); font-size: 0.9rem; }
 
 	/*
