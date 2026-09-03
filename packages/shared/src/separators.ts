@@ -143,12 +143,23 @@ export function isQualityUpgrade(
 	return cand > qualityRank(current.engine, current.model);
 }
 
-// ── room settings ───────────────────────────────────────────────────────────
-// ROOM-level, not per-phone: the separator choice governs cooks that EVERYONE in the room shares, so
-// it is authoritative server state broadcast to all clients (like presence), not a phone-local
-// preference two devices could disagree about.
+// ── settings scopes ─────────────────────────────────────────────────────────
+// Two layers, split by WHO A SETTING BELONGS TO:
+//
+//   GLOBAL — a property of this deployment and its worker fleet. An engine is only usable if some
+//     connected worker advertises its capability, which is a fact about the server's hardware, not
+//     about a party. Two rooms on one core cannot meaningfully disagree about whether a RoFormer
+//     worker exists, so duplicating these per room would be modelling a distinction that isn't real.
+//
+//   ROOM — a property of one party. Pacing and per-room policy: two rooms genuinely can want
+//     different interstitial timing, and a busy room may want to cap cook quality to keep its queue
+//     moving while the deployment default stays high.
+//
+// Both are authoritative SERVER state broadcast to clients (like presence), never phone-local
+// preferences two devices could disagree about.
 
-export interface RoomSettings {
+/** Deployment-wide separator and cook policy. Owned by the operator. */
+export interface GlobalSettings {
 	/** Engine+model every new cook uses. Must be a `liveSelectable` pairing. */
 	defaultEngine: SeparatorEngineId;
 	defaultModel: string;
@@ -160,18 +171,18 @@ export interface RoomSettings {
 	upgradeModel: string;
 }
 
-export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 	defaultEngine: DEFAULT_ENGINE,
 	defaultModel: DEFAULT_MODEL,
 	enqueueUpgrade: false,
 	upgradeEngine: 'roformer',
-	upgradeModel: 'bs-roformer-1297',
+	upgradeModel: 'bs-roformer-1297'
 };
 
-/** Coerce a partial/untrusted settings object to a valid RoomSettings, falling back per-field. Used
- *  by the write API so a bad client payload degrades to defaults rather than persisting garbage. */
-export function normalizeRoomSettings(input: Partial<RoomSettings> | null | undefined): RoomSettings {
-	const d = DEFAULT_ROOM_SETTINGS;
+/** Coerce a partial/untrusted object to valid GlobalSettings, falling back per-field. Used by the
+ *  write API so a bad client payload degrades to defaults rather than persisting garbage. */
+export function normalizeGlobalSettings(input: Partial<GlobalSettings> | null | undefined): GlobalSettings {
+	const d = DEFAULT_GLOBAL_SETTINGS;
 	const live =
 		input && isLiveSelectable(input.defaultEngine ?? '', input.defaultModel ?? '')
 			? { defaultEngine: input.defaultEngine!, defaultModel: input.defaultModel! }
@@ -185,4 +196,77 @@ export function normalizeRoomSettings(input: Partial<RoomSettings> | null | unde
 		...upgrade,
 		enqueueUpgrade: typeof input?.enqueueUpgrade === 'boolean' ? input.enqueueUpgrade : d.enqueueUpgrade,
 	};
+}
+
+// ── room layer ──────────────────────────────────────────────────────────────
+// One party's own policy. Kept deliberately small: a setting belongs here only when two rooms on one
+// core could genuinely want different values.
+
+export interface RoomSettings {
+	/** TV "Next up" reveal duration. 0 = pure gapless hard-cut. Per-room because pacing is a property
+	 *  of the party, not the deployment. */
+	interstitialMs: number;
+	/**
+	 * Optional per-room ceiling on cook quality, as a `qualityRank`. A busy room can cap cooks to keep
+	 * its queue moving while the deployment default stays high. `null` means "no ceiling — use the
+	 * global default". A ceiling can only ever LOWER quality, never raise it above the global choice:
+	 * the global setting is bounded by what the worker fleet can actually run, so a room must not be
+	 * able to request an engine no worker advertises.
+	 */
+	maxQualityRank: number | null;
+}
+
+export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+	interstitialMs: 2500,
+	maxQualityRank: null
+};
+
+/** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
+export function normalizeRoomSettings(input: Partial<RoomSettings> | null | undefined): RoomSettings {
+	const d = DEFAULT_ROOM_SETTINGS;
+	const ms = input?.interstitialMs;
+	// Clamped rather than rejected: a nonsensical value should still yield a usable room, and an
+	// unbounded interstitial would strand the TV between songs.
+	const interstitialMs =
+		typeof ms === 'number' && Number.isFinite(ms) ? Math.min(15_000, Math.max(0, Math.round(ms))) : d.interstitialMs;
+	const cap = input?.maxQualityRank;
+	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
+	return { interstitialMs, maxQualityRank };
+}
+
+/** Both layers as one payload — what a client renders and what `queue:sync` carries. */
+export interface EffectiveSettings {
+	global: GlobalSettings;
+	room: RoomSettings;
+}
+
+export const DEFAULT_EFFECTIVE_SETTINGS: EffectiveSettings = {
+	global: DEFAULT_GLOBAL_SETTINGS,
+	room: DEFAULT_ROOM_SETTINGS
+};
+
+/**
+ * The engine+model a cook in this room should actually use.
+ *
+ * The global default wins unless the room set a lower ceiling, in which case the best
+ * live-selectable pairing at or under that ceiling is chosen. A room can only ever cap quality
+ * DOWNWARD: raising it could name an engine no connected worker advertises, and the job would sit
+ * queued forever.
+ */
+export function resolveCookSeparator(settings: EffectiveSettings): { engine: SeparatorEngineId; model: string } {
+	const { defaultEngine, defaultModel } = settings.global;
+	const cap = settings.room.maxQualityRank;
+	if (cap === null || qualityRank(defaultEngine, defaultModel) <= cap) {
+		return { engine: defaultEngine, model: defaultModel };
+	}
+	let best: { engine: SeparatorEngineId; model: string; rank: number } | null = null;
+	for (const engine of SEPARATOR_ENGINES) {
+		if (!engine.liveSelectable) continue;
+		for (const model of engine.models) {
+			const rank = qualityRank(engine.id, model.id);
+			if (rank === 0 || rank > cap) continue;
+			if (!best || rank > best.rank) best = { engine: engine.id, model: model.id, rank };
+		}
+	}
+	return best ? { engine: best.engine, model: best.model } : { engine: DEFAULT_ENGINE, model: DEFAULT_MODEL };
 }

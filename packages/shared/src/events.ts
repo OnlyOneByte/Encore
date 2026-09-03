@@ -4,7 +4,7 @@
 import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
 import type { LyricsCandidate } from './lyrics';
-import type { RoomSettings } from './separators';
+import type { EffectiveSettings } from './separators';
 
 export const ROOM_TOPIC = 'room:main'; // single room for MVP; Bun.serve pub/sub topic
 
@@ -25,7 +25,7 @@ export type ServerEvent =
   // singers/media are optional directories so clients can render names/titles per entry.
   // `online` is the presence snapshot (singer ids with a live socket) — a client that connects
   // mid-party needs the roster immediately, not on the next presence change (B-6-C1).
-  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[]; online?: string[]; settings?: RoomSettings }
+  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[]; online?: string[]; settings?: EffectiveSettings }
   | { type: 'playback:state'; state: PlaybackState; rev: number }
   | { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
   | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number }
@@ -39,7 +39,7 @@ export type ServerEvent =
   | { type: 'singer:presence'; online: string[] }
   // Room-level separator settings changed (B-8). Full snapshot, not a delta — a handful of fields,
   // and an idempotent snapshot cannot drift after a dropped frame (same reasoning as presence).
-  | { type: 'settings:changed'; settings: RoomSettings }
+  | { type: 'settings:changed'; settings: EffectiveSettings }
   | { type: 'op:reject'; clientOpId: string; reason: string };
 
 // ── phone/TV -> core ────────────────────────────────────────────────────────

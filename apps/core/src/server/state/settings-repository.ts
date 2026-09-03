@@ -1,44 +1,81 @@
-// Room-level separator settings. Read whole / written whole against the `room_settings`
-// singleton row. The shared `RoomSettings` type is the contract; `normalizeRoomSettings` gates every
-// write so an untrusted client payload degrades to defaults per-field rather than persisting garbage.
+// Settings persistence across two scopes.
+//
+// GLOBAL is a singleton: separator and cook policy belong to the deployment and its worker fleet.
+// ROOM is keyed by room id: pacing and a downward-only quality ceiling belong to one party, so
+// multi-room needs a row per room rather than a schema change.
+//
+// Both are read whole / written whole, and every write passes through the shared normalizers so an
+// untrusted payload degrades to valid values per-field instead of persisting garbage. Reads
+// re-normalize too: a checkpoint can be de-whitelisted between releases, and a stale stored pairing
+// must degrade rather than be served.
 
 import { eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
-import { roomSettings } from '../db/schema';
+import { globalSettings, roomSettings } from '../db/schema';
 import {
+	type GlobalSettings,
 	type RoomSettings,
+	type EffectiveSettings,
+	DEFAULT_GLOBAL_SETTINGS,
 	DEFAULT_ROOM_SETTINGS,
+	normalizeGlobalSettings,
 	normalizeRoomSettings
 } from '@encore/shared';
 
 const SINGLETON = 'singleton';
 
+/** The single room's id until multi-room lands; every room-scoped call takes an explicit id so
+ *  adding rooms is a caller change, not a rewrite. */
+export const DEFAULT_ROOM_ID = 'main';
+
 export class SettingsRepository {
 	constructor(private readonly db: DB) {}
 
-	/** Current settings, or the defaults when the row has never been written. */
-	get(): RoomSettings {
-		const row = this.db.select().from(roomSettings).where(eq(roomSettings.id, SINGLETON)).all()[0];
-		if (!row) return { ...DEFAULT_ROOM_SETTINGS };
-		// Run stored values back through normalize: a checkpoint can be de-whitelisted between
-		// releases, and a stale stored pairing must degrade to a valid one rather than being served.
-		return normalizeRoomSettings({
-			defaultEngine: row.defaultEngine as RoomSettings['defaultEngine'],
+	// ── global ────────────────────────────────────────────────────────────────
+	getGlobal(): GlobalSettings {
+		const row = this.db.select().from(globalSettings).where(eq(globalSettings.id, SINGLETON)).all()[0];
+		if (!row) return { ...DEFAULT_GLOBAL_SETTINGS };
+		return normalizeGlobalSettings({
+			defaultEngine: row.defaultEngine as GlobalSettings['defaultEngine'],
 			defaultModel: row.defaultModel,
 			enqueueUpgrade: row.enqueueUpgrade,
-			upgradeEngine: row.upgradeEngine as RoomSettings['upgradeEngine'],
+			upgradeEngine: row.upgradeEngine as GlobalSettings['upgradeEngine'],
 			upgradeModel: row.upgradeModel
 		});
 	}
 
-	/** Validate + persist a (possibly partial) update, returning the resulting authoritative settings. */
-	set(input: Partial<RoomSettings> | null | undefined): RoomSettings {
-		const next = normalizeRoomSettings({ ...this.get(), ...(input ?? {}) });
+	setGlobal(input: Partial<GlobalSettings> | null | undefined): GlobalSettings {
+		const next = normalizeGlobalSettings({ ...this.getGlobal(), ...(input ?? {}) });
 		this.db
-			.insert(roomSettings)
+			.insert(globalSettings)
 			.values({ id: SINGLETON, ...next })
-			.onConflictDoUpdate({ target: roomSettings.id, set: next })
+			.onConflictDoUpdate({ target: globalSettings.id, set: next })
 			.run();
 		return next;
+	}
+
+	// ── room ──────────────────────────────────────────────────────────────────
+	getRoom(roomId: string = DEFAULT_ROOM_ID): RoomSettings {
+		const row = this.db.select().from(roomSettings).where(eq(roomSettings.roomId, roomId)).all()[0];
+		if (!row) return { ...DEFAULT_ROOM_SETTINGS };
+		return normalizeRoomSettings({
+			interstitialMs: row.interstitialMs,
+			maxQualityRank: row.maxQualityRank
+		});
+	}
+
+	setRoom(input: Partial<RoomSettings> | null | undefined, roomId: string = DEFAULT_ROOM_ID): RoomSettings {
+		const next = normalizeRoomSettings({ ...this.getRoom(roomId), ...(input ?? {}) });
+		this.db
+			.insert(roomSettings)
+			.values({ roomId, ...next })
+			.onConflictDoUpdate({ target: roomSettings.roomId, set: next })
+			.run();
+		return next;
+	}
+
+	/** Both layers — what `queue:sync` carries and what a client renders. */
+	getEffective(roomId: string = DEFAULT_ROOM_ID): EffectiveSettings {
+		return { global: this.getGlobal(), room: this.getRoom(roomId) };
 	}
 }

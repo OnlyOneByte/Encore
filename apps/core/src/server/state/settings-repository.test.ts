@@ -4,7 +4,7 @@ import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { runMigrations } from '../db/migrate';
 import * as schema from '../db/schema';
 import { SettingsRepository } from './settings-repository';
-import { DEFAULT_ROOM_SETTINGS } from '@encore/shared';
+import { DEFAULT_GLOBAL_SETTINGS, DEFAULT_ROOM_SETTINGS } from '@encore/shared';
 
 function freshRepo() {
 	const sqlite = new Database(':memory:');
@@ -15,31 +15,65 @@ function freshRepo() {
 
 describe('SettingsRepository', () => {
 	it('returns defaults before anything is written', () => {
-		expect(freshRepo().get()).toEqual(DEFAULT_ROOM_SETTINGS);
+		expect(freshRepo().getGlobal()).toEqual(DEFAULT_GLOBAL_SETTINGS);
 	});
 
 	it('persists a valid update and reads it back', () => {
 		const repo = freshRepo();
-		const saved = repo.set({ defaultModel: 'htdemucs_ft', enqueueUpgrade: true });
+		const saved = repo.setGlobal({ defaultModel: 'htdemucs_ft', enqueueUpgrade: true });
 		expect(saved.defaultModel).toBe('htdemucs_ft');
 		expect(saved.enqueueUpgrade).toBe(true);
 		// a second instance on the same db sees the persisted row (proves it hit SQLite, not memory)
-		expect(repo.get().defaultModel).toBe('htdemucs_ft');
+		expect(repo.getGlobal().defaultModel).toBe('htdemucs_ft');
 	});
 
 	it('a partial patch preserves the untouched fields', () => {
 		const repo = freshRepo();
-		repo.set({ defaultModel: 'htdemucs_ft' });
-		const after = repo.set({ enqueueUpgrade: true });
+		repo.setGlobal({ defaultModel: 'htdemucs_ft' });
+		const after = repo.setGlobal({ enqueueUpgrade: true });
 		expect(after.defaultModel).toBe('htdemucs_ft'); // not reset by the second patch
 		expect(after.enqueueUpgrade).toBe(true);
 	});
 
 	it('an invalid live pairing is rejected on write (falls back, never persists garbage)', () => {
 		const repo = freshRepo();
-		const saved = repo.set({ defaultEngine: 'ensemble', defaultModel: 'instrumental_clean' });
+		const saved = repo.setGlobal({ defaultEngine: 'ensemble', defaultModel: 'instrumental_clean' });
 		// ensemble is upgrade-only, not a valid LIVE default → falls back
-		expect(saved.defaultEngine).toBe(DEFAULT_ROOM_SETTINGS.defaultEngine);
-		expect(saved.defaultModel).toBe(DEFAULT_ROOM_SETTINGS.defaultModel);
+		expect(saved.defaultEngine).toBe(DEFAULT_GLOBAL_SETTINGS.defaultEngine);
+		expect(saved.defaultModel).toBe(DEFAULT_GLOBAL_SETTINGS.defaultModel);
+	});
+});
+
+describe('SettingsRepository — room scope', () => {
+	it('returns room defaults before anything is written', () => {
+		expect(freshRepo().getRoom()).toEqual(DEFAULT_ROOM_SETTINGS);
+	});
+
+	it('persists room settings independently of global', () => {
+		const repo = freshRepo();
+		repo.setGlobal({ defaultModel: 'htdemucs_ft' });
+		repo.setRoom({ interstitialMs: 0 });
+		// each scope keeps its own values; a room write must not disturb deployment policy
+		expect(repo.getRoom().interstitialMs).toBe(0);
+		expect(repo.getGlobal().defaultModel).toBe('htdemucs_ft');
+	});
+
+	it('keys rooms separately, so two rooms do not share policy', () => {
+		const repo = freshRepo();
+		repo.setRoom({ interstitialMs: 1000 }, 'room-a');
+		repo.setRoom({ interstitialMs: 4000 }, 'room-b');
+		expect(repo.getRoom('room-a').interstitialMs).toBe(1000);
+		expect(repo.getRoom('room-b').interstitialMs).toBe(4000);
+		// an untouched room still gets defaults rather than another room's values
+		expect(repo.getRoom('room-c')).toEqual(DEFAULT_ROOM_SETTINGS);
+	});
+
+	it('getEffective returns both layers', () => {
+		const repo = freshRepo();
+		repo.setGlobal({ enqueueUpgrade: true });
+		repo.setRoom({ maxQualityRank: 20 });
+		const eff = repo.getEffective();
+		expect(eff.global.enqueueUpgrade).toBe(true);
+		expect(eff.room.maxQualityRank).toBe(20);
 	});
 });

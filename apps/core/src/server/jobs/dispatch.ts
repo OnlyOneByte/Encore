@@ -3,8 +3,8 @@
 // rotationSeq of the soonest queue entry that needs this media; lower = sooner). The I/O wrapper
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
-import type { Job, JobParams, JobType, Media, RoomSettings } from '@encore/shared';
-import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_ROOM_SETTINGS, getEngine, isQualityUpgrade } from '@encore/shared';
+import type { Job, JobParams, JobType, Media, GlobalSettings } from '@encore/shared';
+import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_GLOBAL_SETTINGS, getEngine, isQualityUpgrade } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 /**
@@ -24,7 +24,7 @@ import type { WorkerSession } from './registry';
  * stem align needs. Both are strictly after stems, neither chains further, so the pipeline stays a
  * depth-1 fan-out rather than a graph.
  */
-export function followUps(jobType: JobType, settings?: RoomSettings): JobType[] {
+export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[] {
 	if (jobType !== 'stems') return [];
 	const next: JobType[] = ['align', 'score'];
 	// A completed cook optionally chains a re-separation at higher quality. It runs from the RETAINED
@@ -50,7 +50,7 @@ export function followUps(jobType: JobType, settings?: RoomSettings): JobType[] 
  * `durationSec` is always safe to send — it narrows an LRCLIB match and bounds the line-sync
  * fallback's synthetic timings.
  */
-export function assignParams(jobType: JobType, media: Media | undefined, settings?: RoomSettings): JobParams {
+export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
 	// A stems cook carries the room's chosen engine+model; the upgrade carries the room's
 	// upgrade engine+model. Both fall back to the shared defaults when no settings are provided (a
 	// hub built without a settings getter — e.g. a unit test), so the worker still gets a valid
@@ -60,8 +60,8 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 	}
 	if (jobType === 'stems-upgrade') {
 		return {
-			engine: settings?.upgradeEngine ?? DEFAULT_ROOM_SETTINGS.upgradeEngine,
-			model: settings?.upgradeModel ?? DEFAULT_ROOM_SETTINGS.upgradeModel
+			engine: settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine,
+			model: settings?.upgradeModel ?? DEFAULT_GLOBAL_SETTINGS.upgradeModel
 		};
 	}
 	if (jobType !== 'align') return {};
@@ -81,15 +81,15 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
  */
 export function separatorFor(
 	jobType: JobType,
-	settings?: RoomSettings
+	settings?: GlobalSettings
 ): { engine: string; model: string } | undefined {
 	if (jobType === 'stems') {
 		return { engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
 	}
 	if (jobType === 'stems-upgrade') {
 		return {
-			engine: settings?.upgradeEngine ?? DEFAULT_ROOM_SETTINGS.upgradeEngine,
-			model: settings?.upgradeModel ?? DEFAULT_ROOM_SETTINGS.upgradeModel
+			engine: settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine,
+			model: settings?.upgradeModel ?? DEFAULT_GLOBAL_SETTINGS.upgradeModel
 		};
 	}
 	return undefined;
@@ -110,10 +110,10 @@ export interface Assignment {
  * default engine's capability, which for demucs is plain `'stems'` — so existing single-capability
  * workers keep matching exactly as before.
  */
-export function requiredCapability(jobType: JobType, settings?: RoomSettings): string {
+export function requiredCapability(jobType: JobType, settings?: GlobalSettings): string {
 	if (jobType === 'stems') return getEngine(settings?.defaultEngine ?? DEFAULT_ENGINE)?.capability ?? 'stems';
 	if (jobType === 'stems-upgrade') {
-		return getEngine(settings?.upgradeEngine ?? DEFAULT_ROOM_SETTINGS.upgradeEngine)?.capability ?? 'stems';
+		return getEngine(settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine)?.capability ?? 'stems';
 	}
 	return jobType;
 }

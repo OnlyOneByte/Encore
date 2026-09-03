@@ -15,7 +15,7 @@ import type {
 	Job,
 	JobType,
 	MediaStoreConfig,
-	RoomSettings
+	GlobalSettings
 } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
@@ -43,7 +43,7 @@ export interface WorkerHubDeps {
 	persistMedia?: (mediaId: string) => void;
 	/** Room-level separator settings (B-8): supplies the engine+model a stems/upgrade job carries.
 	 *  Optional so the hub still unit-tests without settings (assignParams falls back to defaults). */
-	getSettings?: () => RoomSettings;
+	getSettings?: () => GlobalSettings;
 	now: () => number;
 	config?: LeaseConfig;
 	mediaStore?: MediaStoreConfig;
