@@ -190,6 +190,12 @@ disks rather than its GPU. A `.env` beside the root compose file:
 # ext4 inside the distro. NEVER /mnt/c — see §3.
 ENCORE_DATA_VOLUME=/srv/encore/data
 ENCORE_MEDIA_VOLUME=/srv/encore/media
+
+# The address the join QR advertises. Set this on WSL2 even though it looks redundant: the port proxy
+# forwards traffic arriving FROM the network, not the host's own loopback path, so this machine
+# typically cannot open http://<its-own-LAN-IP>:3000 — only localhost:3000. Without the override, a TV
+# opened on localhost puts `localhost` in the QR and every phone that scans it connects to itself.
+ENCORE_PUBLIC_ORIGIN=http://10.69.1.169:3000
 ```
 
 ```bash
@@ -272,10 +278,18 @@ $EC exec worker python -c \
    two cross-checked commands in §1, not by eyeballing `ipconfig` — in mirrored mode there are several
    plausible-looking addresses and only one of them works.
 
-6. **Open the TV at the LAN address, not localhost.** The QR takes its authority from the request's
-   `Host` header, so the TV must be loaded as `http://<windows-lan-ip>:3000/tv` for the QR to encode
-   something a phone can use. This is the single easiest mistake to make. Neither mirrored networking
-   nor the portproxy fallback rewrites `Host`, so in both modes the QR simply mirrors what you typed.
+6. **The QR must encode the LAN address, not `localhost`.** Two ways to get there, and on WSL2 you
+   almost certainly need the second:
+
+   - Load the TV as `http://<windows-lan-ip>:3000/tv`, so the request's `Host` header carries the right
+     authority. Works only when the server box can reach its own LAN address.
+   - **Set `ENCORE_PUBLIC_ORIGIN`** (§4). Then the QR is correct no matter which URL the TV was opened
+     with, `localhost` included. This is the normal WSL2 + portproxy case: the proxy forwards traffic
+     arriving *from the network*, not the host's own loopback path, so the server machine typically
+     cannot open its own LAN address at all — and it is usually the machine attached to the TV.
+
+   Check it by eye rather than inferring it: the join card on `/tv` prints the URL beneath the QR. If
+   that text reads `localhost:3000`, no phone can use it.
 
 7. **End to end:** scan the QR, join with a name and colour, search a song, tap Karaoke, and watch
    `nvidia-smi` during the cook. If VRAM usage and GPU utilisation stay flat, the cook is running on
