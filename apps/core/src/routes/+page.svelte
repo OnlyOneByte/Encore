@@ -670,6 +670,33 @@
 <style>
 	/* the sheet's peek is docked, so the page must be able to scroll clear of it */
 	main { flex: 1; padding: 6px 18px calc(var(--peek-h) + 28px); }
+
+	/*
+	 * Wide viewports spend the extra room on MORE SONGS, not on longer rows: a search result stretched
+	 * to 1080px is mostly the gap between the title and its button. Only song rows flow into columns —
+	 * the search box, the filter chips, the facet rails and the group headings each label everything
+	 * below them, so a heading confined to one column would read as applying to half the list.
+	 *
+	 * The rule is inverted deliberately: everything spans by default and rows opt in. New blocks added
+	 * to this list then span (always safe) rather than silently landing in a column beside a song.
+	 */
+	@media (min-width: 768px) {
+		main {
+			display: grid;
+			/* 440px is measured off the row's own contents, not picked for looks: a row spends roughly 220px
+			   on the thumbnail, readiness badge, action button and gaps, so a narrower column truncates
+			   every title to "Quee..." and two unreadable columns are worse than one readable one. */
+			grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
+			gap: 0 14px;
+			align-content: start;
+		}
+		main > :global(*) {
+			grid-column: 1 / -1;
+		}
+		main > :global(.row) {
+			grid-column: auto;
+		}
+	}
 	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; }
 	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; outline: none; }
 	.chips { display: flex; gap: 7px; margin-bottom: 14px; }
@@ -719,7 +746,10 @@
 
 	/* everything docked sits ABOVE the collapsed sheet — see --peek-h in app.css */
 	.mic-bar {
-		position: fixed; left: 12px; right: 12px; bottom: calc(var(--peek-h) + 62px); z-index: 20;
+		/* Tracks --max-w like the sheet and now-playing: docked controls that outrun the content column
+		   read as belonging to the window rather than to the remote. */
+		position: fixed; left: 0; right: 0; bottom: calc(var(--peek-h) + 62px); z-index: 20;
+		max-width: var(--max-w); margin: 0 auto; padding: 0 12px;
 		display: flex; align-items: center; gap: 10px; justify-content: center;
 	}
 	.mic-btn {
