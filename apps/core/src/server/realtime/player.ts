@@ -74,6 +74,10 @@ function advance(deps: HubDeps): QueueEntry | null {
 }
 
 export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
+	// A frame like `{"type":"player:command"}` carries no `command`, so this used to crash on the first
+	// property read and exit the process. One malformed message must never end a party — same invariant
+	// as the queue path, which had the same hole.
+	if (!cmd || typeof cmd !== 'object' || typeof cmd.cmd !== 'string') return;
 	const { state } = deps;
 	switch (cmd.cmd) {
 		case 'play': {
@@ -130,6 +134,9 @@ export interface TvTelemetry {
  * Otherwise just track position (so reconnecting clients see roughly where we are).
  */
 export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
+	// Same envelope hazard as the command paths: a `tv:telemetry` frame with no payload must be dropped,
+	// not dereferenced.
+	if (!t || typeof t !== 'object') return;
 	const { state } = deps;
 	if (t.ended) {
 		advance(deps);
