@@ -145,7 +145,25 @@ test('coarse LINE timing alone is not labelled (visible on its own)', () => {
 });
 
 // ── pause-based line splitting (whisper segments are not lyric lines) ──────────
-import { resegmentLine, parseLyricsDoc as parseDoc, LINE_GAP_SEC, LINE_MAX_CHARS } from './lyrics';
+import {
+	resegmentLine,
+	parseLyricsDoc as parseDoc,
+	LINE_GAP_SEC,
+	LINE_MAX_CHARS,
+	type LyricLine
+} from './lyrics';
+
+/**
+ * `resegmentLine` with the length guard turned OFF (`splitAboveChars: 0`).
+ *
+ * Production only resegments a line that already exceeds a row (B-3-C8 — blobs are now re-lineated in
+ * the worker, so this is a safety net for over-long lines, not a pass over every line). These tests are
+ * about WHERE it breaks once it has decided to break, which is orthogonal to that decision, so they use
+ * short synthetic lines and opt out of the guard rather than padding every fixture past 42 chars.
+ * `test('the length guard…')` below covers the decision itself.
+ */
+const resegmentAnyLength = (line: LyricLine, gapSec: number = LINE_GAP_SEC) =>
+	resegmentLine(line, gapSec, LINE_MAX_CHARS, 0);
 
 /** words with an explicit gap before each one (seconds) */
 function wordsWithGaps(spec: Array<[string, number]>) {
@@ -175,7 +193,7 @@ test('THE BUG: one whisper segment of four lyric lines splits at its pauses', ()
 
 test('each split line gets bounds from its OWN words', () => {
 	const words = wordsWithGaps([['a', 0], ['b', 0.05], ['c', 1.0], ['d', 0.05]]);
-	const out = resegmentLine({ start: 0, end: 99, text: 'a b c d', words });
+	const out = resegmentAnyLength({ start: 0, end: 99, text: 'a b c d', words });
 	expect(out).toHaveLength(2);
 	expect(out[0]!.start).toBe(words[0]!.start);
 	expect(out[0]!.end).toBe(words[1]!.end);
@@ -208,10 +226,29 @@ test('a line with no words (line-sync floor) is untouched', () => {
 });
 
 test('parseLyricsDoc applies resegmentation, so existing artifacts benefit with no re-cook', () => {
-	const words = wordsWithGaps([['a', 0], ['b', 0.02], ['c', 1.2], ['d', 0.02]]);
-	const doc = parseDoc({ language: 'en', lines: [{ start: 0, end: 9, text: 'a b c d', words }] });
+	// Over-long ON PURPOSE (64 chars): production only resegments a line that exceeds a row, so a
+	// fixture short enough to fit would no longer exercise the wiring this test exists to check.
+	const words = wordsWithGaps([
+		['walking', 0], ['down', 0.02], ['the', 0.02], ['harbour', 0.02], ['road', 0.02], ['alone', 0.02],
+		['watching', 1.2], ['all', 0.02], ['the', 0.02], ['lights', 0.02], ['go', 0.02], ['out', 0.02]
+	]);
+	const text = words.map((w) => w.word).join(' ');
+	const doc = parseDoc({ language: 'en', lines: [{ start: 0, end: 9, text, words }] });
+	expect(text.length).toBeGreaterThan(LINE_MAX_CHARS);
 	expect(doc!.lines).toHaveLength(2);
-	expect(doc!.words).toHaveLength(4); // the flat word list is unaffected
+	expect(doc!.words).toHaveLength(12); // the flat word list is unaffected
+});
+
+test('the length guard: a line that already FITS a row is never resegmented (B-3-C8)', () => {
+	// A pause inside a short line is a breath or a held note, not a line break. Whisper blobs are
+	// re-lineated in the WORKER now (lyrics_presplit.py), where the provenance to know the text came
+	// from ASR actually lives — so this function is a safety net for over-long lines, not a pass over
+	// every line. Splitting here was what produced rows that flash past mid-phrase.
+	const words = wordsWithGaps([['hold', 0], ['on', 0.02], ['tight', 2.0], ['now', 0.02]]);
+	const line = { start: 0, end: 9, text: 'hold on tight now', words };
+	expect(line.text.length).toBeLessThanOrEqual(LINE_MAX_CHARS);
+	expect(resegmentLine(line)).toEqual([line]); // left alone despite a 2s gap in the middle
+	expect(resegmentAnyLength(line)).toHaveLength(2); // …and the mechanism itself still works
 });
 
 test('the gap threshold is a tunable that behaves monotonically', () => {
@@ -223,8 +260,8 @@ test('the gap threshold is a tunable that behaves monotonically', () => {
 		['ee', 0.5], ['ff', 0.02]
 	]);
 	const line = { start: 0, end: 9, text: words.map((w) => w.word).join(' '), words };
-	expect(resegmentLine(line, 0.4)).toHaveLength(3); // every 0.5s gap counts
-	expect(resegmentLine(line, 2.0)).toHaveLength(1); // none do
+	expect(resegmentAnyLength(line, 0.4)).toHaveLength(3); // every 0.5s gap counts
+	expect(resegmentAnyLength(line, 2.0)).toHaveLength(1); // none do
 	expect(LINE_GAP_SEC).toBeGreaterThan(0);
 });
 
@@ -242,7 +279,7 @@ function lineOf(spec: Array<[string, number, number]>) {
 test('a trailing orphan merges BACK into the phrase it belongs to ("...belong | here")', () => {
 	// "don't belong" then a tiny gap, "here", then a LONG pause before the next phrase
 	const line = lineOf([["don't", 0, 0.4], ['belong', 0.45, 0.8], ['here', 1.4, 1.7], ['I', 4.0, 4.2], ['still', 4.25, 4.5], ['care', 4.55, 4.9]]);
-	const out = resegmentLine(line);
+	const out = resegmentAnyLength(line);
 	expect(out.map((l) => l.text)).toEqual(["don't belong here", 'I still care']);
 });
 
@@ -252,7 +289,7 @@ test('a leading orphan merges FORWARD ("I | want a perfect body")', () => {
 		['have', 0, 0.4], ['control', 0.45, 0.9],
 		['I', 3.0, 3.15], ['want', 3.2, 3.5], ['a', 3.55, 3.65], ['body', 3.7, 4.0]
 	]);
-	const out = resegmentLine(line);
+	const out = resegmentAnyLength(line);
 	expect(out.map((l) => l.text)).toEqual(['have control', 'I want a body']);
 	// NOT "have control I", which is what always-merge-backwards would have produced
 	expect(out[0]!.text).not.toContain('I');
@@ -261,14 +298,14 @@ test('a leading orphan merges FORWARD ("I | want a perfect body")', () => {
 test('a one-word line that holds the screen long enough KEEPS its own line', () => {
 	// a held note: "Yeah" alone for 2s is a real lyric line
 	const line = lineOf([['Yeah', 0, 1.9], ['So', 2.6, 2.9], ['special', 2.95, 3.3]]);
-	const out = resegmentLine(line);
+	const out = resegmentAnyLength(line);
 	expect(out.map((l) => l.text)).toEqual(['Yeah', 'So special']);
 	expect(ORPHAN_MAX_SEC).toBe(1.0);
 });
 
 test('a multi-word short line is never treated as an orphan', () => {
 	const line = lineOf([['oh', 0, 0.2], ['no', 0.22, 0.4], ['So', 1.5, 1.8], ['special', 1.85, 2.2]]);
-	const out = resegmentLine(line);
+	const out = resegmentAnyLength(line);
 	expect(out.map((l) => l.text)).toEqual(['oh no', 'So special']);
 });
 

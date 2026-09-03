@@ -38,3 +38,25 @@ whisperx==3.8.6
 # worker that advertises the `stems:roformer` capability loads it, so the default (demucs-only)
 # worker never pays its startup cost.
 bs-roformer-infer==0.1.5
+
+# ── lyrics line-splitting (B-3-C8) ────────────────────────────────────────────────────
+# `karaoke-lyrics-processor` supplies the LENGTH-BOUNDING half of re-lineating an ASR blob (hard char
+# budget with an iteration cap, nested-parenthesis isolation, punctuation cleanup); src/lyrics_presplit
+# supplies the boundary half, which upstream measurably gets wrong. It is installed --no-deps in the
+# Dockerfile, NOT listed here, because of what its own dependency list drags in:
+#
+#   MEASURED 2026-09-03 (`pip install --dry-run` against this venv): 30 packages, 29 of them unused.
+#   `textract-py3` roots almost all of it — SpeechRecognition, pdfminer.six, python-pptx, extract-msg
+#   → oletools + pcodedmp (a VBA macro deobfuscator), cryptography, easygui (Tkinter), xlrd pinned
+#   <2.0, ebcdic — and `python-docx`, which is DECLARED but never imported anywhere in upstream's
+#   source, solely drags lxml. All of it serves .doc/.docx/.rtf ingestion and a clipboard copy: two
+#   features we never call, since our text arrives in memory from an HTTP response or from whisper.
+#   pip did resolve the full tree cleanly against the torch/whisperx set above — this is unused weight
+#   and supply-chain surface, not a version conflict.
+#
+# These three ARE imported at upstream's module top level and each has zero transitive dependencies,
+# so they are cheaper to install for real than to stub. The one remaining top-level import, `textract`,
+# is stubbed in src/lyrics_presplit._load_klp.
+pyperclip==1.11.0
+docx2txt==0.9
+striprtf==0.0.33
