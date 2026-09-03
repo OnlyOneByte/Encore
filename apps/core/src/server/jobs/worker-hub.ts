@@ -164,6 +164,13 @@ export class WorkerHub {
 		} else {
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
 			cleanJobWork(msg.jobId); // terminal: nothing will resume from this scratch
+			// LOG a terminal failure. A dead `align` job is otherwise completely silent — the song still
+			// plays, it just never gets lyrics and nothing anywhere says why. The operator needs one line
+			// naming the media and the reason, since the jobs table is the only other record.
+			console.warn(
+				`[core] job ${msg.jobId} (${job.jobType}) FAILED permanently after ${attempts} attempt(s) ` +
+					`for media ${job.mediaId}: ${msg.error}`
+			);
 			this.#emitStatus(updated);
 		}
 	}

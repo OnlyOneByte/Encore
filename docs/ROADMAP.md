@@ -601,11 +601,11 @@ because its only real acceptance test is audible and needs the owner in the room
   INDEPENDENT AXES, and ASR runs on every song regardless.** The earlier framing collapsed them into
   one ordered chain that returns a single winner, which throws away most of the value:
 
-  | Source | Text | Timing it yields unaided |
-  |---|---|---|
-  | LRCLIB `syncedLyrics` (LRC) | authoritative | **line-level** — no ML, no audio at all |
-  | LRCLIB plain / YouTube captions | good | none — needs forced alignment |
-  | ASR on the vocals stem | **dubious** | line-level (segment bounds) |
+| Source                          | Text          | Timing it yields unaided                |
+| ---------------------------------| ---------------| -----------------------------------------|
+| LRCLIB `syncedLyrics` (LRC)     | authoritative | **line-level** — no ML, no audio at all |
+| LRCLIB plain / YouTube captions | good          | none — needs forced alignment           |
+| ASR on the vocals stem          | **dubious**   | line-level (segment bounds)             |
 
   **CORRECTED 2026-09-02 by measurement (B-3-C4).** The row above originally claimed ASR yields
   **word-level** timing "for free". It does not: whisper's `transcribe()` returns segment bounds and
@@ -720,7 +720,18 @@ because its only real acceptance test is audible and needs the owner in the room
         (verified / auto-transcribed / line-only), asserted by DOM geometry rather than eyeballed —
         `docs/mocks/b3c6-lyrics-provenance-eyeson.png`. Also corrected the stale ASR row in
         `shared/lyrics.ts`'s header comment (the C4 measurement).
-  - [ ] **B-3-C7 · captions tier + re-align-on-better-text** (the upgrade path C5 makes possible).
+  - [x] **B-3-C7 (part 1) · the lyrics BACKFILL — the upgrade path's entry point.** DONE. `followUps`
+        only fires on a stems COMPLETION, so lyrics existed exclusively for songs cooked after C1.
+        Measured on the live library: **13 cooked songs, 3 with lyrics — 10 that could never get them**,
+        since re-cooking was the only route and nobody re-cooks a working song. The whole multi-candidate
+        design was justified by an "upgrade path" that had no way in. `needsLyricsBackfill()` (pure, 8
+        tests) selects cooked songs lacking WORD timings and app.ts enqueues them at
+        `BACKFILL_PRIORITY` = MAX_SAFE_INTEGER, so a live singer's cook always jumps the entire queue;
+        dedup on `(mediaId, jobType)` makes restarts idempotent. `ENCORE_LYRICS_BACKFILL=0` skips it.
+        Skips songs already at word timings (an ML pass could not rank higher) and bare schema-1
+        `lyricsRef` records (may already be word-timed). **VERIFIED live:** boot queued exactly 10.
+  - [ ] **B-3-C7 (part 2) · captions tier**, and re-align when BETTER TEXT arrives (the backfill covers
+        "no lyrics yet"; this covers "LRCLIB became reachable / text was corrected").
   **Deferred by the owner:** the human paste-in tier (needs a core endpoint + phone UI + storage).
   **Prerequisite, not a commit:** `whisperx==3.8.6` in the worker venv and
   `ENCORE_WORKER_CAPABILITIES=stems,score,align` — C4 cannot be verified without it.

@@ -7,17 +7,6 @@ import type { Job, JobParams, JobType, Media } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 /**
- * The inputs a job of this type needs, derived from its media. PURE — no DB, no clock (B-3-C1).
- *
- * An align job needs the CANONICAL artist/title, and only when the normalizer was confident: a
- * lookup on a guessed title returns nothing or, worse, another song's words. Absent keys are how the
- * worker learns "no authoritative lookup is possible here" and goes straight to transcription, so
- * omitting is meaningfully different from sending the raw uploader string.
- *
- * `durationSec` is always safe to send — it narrows an LRCLIB match and bounds the line-sync
- * fallback's synthetic timings.
- */
-/**
  * The jobs a just-COMPLETED job should enqueue next — the cook pipeline. PURE.
  *
  * `stems` → `align` because lyrics run on every cook (owner's call), and chaining rather than
@@ -29,13 +18,26 @@ import type { WorkerSession } from './registry';
  * Chaining costs nothing user-visible: the song is not singable until stems completes either, because
  * the instrumental IS the stems output.
  *
- * `score` (M8-C3) is unreachable for exactly the same reason align was and belongs here too, but it
- * is out of B-3's scope — add it when that milestone is revisited.
+ * `score` rides along for the same reason: M8-C3 live scoring was unreachable through the identical
+ * bug (nothing enqueued it), and its processor extracts the reference pitch track from the same vocals
+ * stem align needs. Both are strictly after stems, neither chains further, so the pipeline stays a
+ * depth-1 fan-out rather than a graph.
  */
 export function followUps(jobType: JobType): JobType[] {
-	return jobType === 'stems' ? ['align'] : [];
+	return jobType === 'stems' ? ['align', 'score'] : [];
 }
 
+/**
+ * The inputs a job of this type needs, derived from its media. PURE — no DB, no clock (B-3-C1).
+ *
+ * An align job needs the CANONICAL artist/title, and only when the normalizer was confident: a
+ * lookup on a guessed title returns nothing or, worse, another song's words. Absent keys are how the
+ * worker learns "no authoritative lookup is possible here" and goes straight to transcription, so
+ * omitting is meaningfully different from sending the raw uploader string.
+ *
+ * `durationSec` is always safe to send — it narrows an LRCLIB match and bounds the line-sync
+ * fallback's synthetic timings.
+ */
 export function assignParams(jobType: JobType, media: Media | undefined): JobParams {
 	if (jobType === 'stems') return { model: 'htdemucs' };
 	if (jobType !== 'align') return {};

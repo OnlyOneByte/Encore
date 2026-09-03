@@ -18,8 +18,9 @@ const media = (over: Partial<Media> = {}): Media => ({
 });
 
 // ── the cook pipeline ─────────────────────────────────────────────────────────
-test('a completed stems job enqueues align (lyrics run on every cook)', () => {
-	expect(followUps('stems')).toEqual(['align']);
+test('a completed stems job enqueues align AND score (both were unreachable)', () => {
+	// score was blocked by the identical bug: nothing ever enqueued it, so M8-C3 could not fire.
+	expect(followUps('stems')).toEqual(['align', 'score']);
 });
 
 test('align does not chain further — no infinite pipeline', () => {

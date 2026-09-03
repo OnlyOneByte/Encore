@@ -21,6 +21,7 @@ authority on RANKING; this side only reports what it produced and how trustworth
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
@@ -190,11 +191,76 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
     return out
 
 
-def candidate_key(media_id: str, text_source: str) -> str:
-    """Per-source artifact key, so candidates coexist instead of overwriting one another.
+def candidate_key(media_id: str, text_source: str, timing: str = TIMING_WORD) -> str:
+    """Artifact key per (text source, TIMING TIER), so candidates coexist instead of overwriting.
 
     The single `derived/lyrics/<id>.json` key could hold exactly one answer, which is what forced the
-    old "pick one winner" design. One file per text source is what makes the upgrade path possible:
-    ASR lands first, LRCLIB is re-tried later, and neither clobbers the other.
+    old "pick one winner" design. One file per source is what makes the upgrade path possible: ASR
+    lands first, LRCLIB is re-tried later, neither clobbers the other.
+
+    The TIMING tier is in the key too, because source alone still allowed a regression WITHIN a source:
+    a re-run whose aligner failed would write line-level output over the same key and replace perfectly
+    good word timings — the never-regress guarantee held across sources but not within one. Separate
+    keys mean the word-level artifact survives on disk and in the candidate set, and `pickBestLyrics`
+    keeps choosing it.
     """
-    return f"derived/lyrics/{media_id}-{text_source}.json"
+    return f"derived/lyrics/{media_id}-{text_source}-{timing}.json"
+
+
+# ── ASR agreement: catching a confidently WRONG lookup ────────────────────────────
+#
+# Mirrors agreementScore / SUSPECT_AGREEMENT / MIN_TOKENS_TO_COMPARE in packages/shared/src/lyrics.ts.
+# Computed HERE, in the worker, because this is the only place both texts exist in memory at once — the
+# core holds refs, and reading two artifacts back off disk inside the realtime hub to compare them would
+# be I/O on the wrong side of the seam.
+#
+# This is what makes "ASR on every cook" pay for itself beyond being a fallback: LRCLIB's dangerous
+# failure is not a miss but a confident MISMATCH (fuzzy metadata returns another song's words), and
+# comparing the lookup against a transcript of what is actually being sung is the only signal we have.
+
+MIN_TOKENS_TO_COMPARE = 12
+SUSPECT_AGREEMENT = 0.25
+
+_TOKEN_STRIP = re.compile(r"\[[^\]]*\]")
+_TOKEN_KEEP = re.compile(r"[^\w\s']", re.UNICODE)
+
+
+def lyrics_tokens(text: str) -> list[str]:
+    """Words, lowercased, punctuation and [bracket] markers stripped. Compares CONTENT, not form."""
+    cleaned = _TOKEN_KEEP.sub(" ", _TOKEN_STRIP.sub(" ", text.lower()))
+    return [t for t in cleaned.split() if t]
+
+
+def agreement_score(a: str, b: str) -> float | None:
+    """0..1 Jaccard over token SETS, or None when not comparable.
+
+    Order-insensitive on purpose: a repeated chorus or a reordered bridge is not disagreement, whereas a
+    different song shares few words in any order. Returns None — not 0 — when either side is too short:
+    an instrumental transcribes to almost nothing, and scoring that as total disagreement would condemn
+    a perfectly correct lookup. "Cannot tell" and "these differ" must not be the same answer.
+    """
+    set_a, set_b = set(lyrics_tokens(a)), set(lyrics_tokens(b))
+    if len(set_a) < MIN_TOKENS_TO_COMPARE or len(set_b) < MIN_TOKENS_TO_COMPARE:
+        return None
+    shared = len(set_a & set_b)
+    union = len(set_a | set_b)
+    return None if union == 0 else shared / union
+
+
+def score_against_asr(texts: list[LyricsText]) -> dict[str, float]:
+    """Agreement of each AUTHORITATIVE text against the ASR transcript, keyed by text source.
+
+    Empty when there is no ASR text to compare against, or nothing comparable — an unknown must never
+    be reported as a detected mismatch.
+    """
+    asr = next((t for t in texts if t.text_source == SOURCE_ASR), None)
+    if asr is None:
+        return {}
+    out: dict[str, float] = {}
+    for t in texts:
+        if t.text_source == SOURCE_ASR:
+            continue
+        score = agreement_score(t.plain_text, asr.plain_text)
+        if score is not None:
+            out[t.text_source] = score
+    return out

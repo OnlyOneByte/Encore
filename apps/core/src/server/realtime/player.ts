@@ -67,8 +67,10 @@ function advance(deps: HubDeps): QueueEntry | null {
 	// keyShift resets to 0 on every song change — a new song starts in its original key.
 	state.setPlayback({ currentEntryId: next?.id ?? null, positionSec: 0, isPlaying: !!next, keyShift: 0 });
 	// The statuses above are a queue mutation; broadcast it here so BOTH callers (an explicit skip and
-	// a TV `ended`) converge clients immediately rather than at the next resync.
-	publishQueue(deps);
+	// a TV `ended`) converge clients immediately rather than at the next resync. Only when something
+	// ACTUALLY changed: a skip in an empty room mutates nothing, and publishing an unchanged snapshot
+	// just makes every client re-adopt state and re-apply its pending ops for no reason.
+	if (cur || next) publishQueue(deps);
 	return next ?? null;
 }
 
