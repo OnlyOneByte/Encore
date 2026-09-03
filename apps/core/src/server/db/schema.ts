@@ -61,6 +61,12 @@ export const media = sqliteTable('media', {
 	// title misses even when the artist is right. Nullable on the same principle as artist_canonical —
 	// a low-confidence parse stores NULL rather than a guess.
 	titleCanonical: text('title_canonical'),
+	// MusicBrainz recording id, and how the canonicals above came to be trusted. Persisted rather than
+	// left in memory because the never-regress rule reads it: without a stored confidence a restart
+	// forgets that an artist was CITED, and the next `medium` annotation would overwrite it freely.
+	mbid: text('mbid'),
+	annotationSource: text('annotation_source'),
+	annotationConfidence: text('annotation_confidence'),
 	album: text('album'),
 	year: integer('year')
 });

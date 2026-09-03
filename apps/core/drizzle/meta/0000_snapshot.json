@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "6abb2229-8ade-4fb0-8fe0-a8993ef782dd",
+  "id": "2bf7d367-73ea-4e50-8d6c-aac7e4a9e605",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "global_settings": {
@@ -297,6 +297,27 @@
         },
         "title_canonical": {
           "name": "title_canonical",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "mbid": {
+          "name": "mbid",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "annotation_source": {
+          "name": "annotation_source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "annotation_confidence": {
+          "name": "annotation_confidence",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
