@@ -55,6 +55,27 @@ body {
 	-webkit-font-smoothing: antialiased;
 }
 
+/*
+ * The phone column is the baseline, but a laptop should not render a 480px strip down the middle of a
+ * 27in display. --max-w grows in two steps so every surface widens together, and anything docked to
+ * the bottom (the queue sheet, now-playing, the mic bar) tracks the same token — they must agree with
+ * the content column or they float free of what they belong to.
+ *
+ * Width alone is not the feature. Each surface decides what to DO with the room: the remote flows its
+ * song rows into columns so more songs are visible, while join keeps its form narrow, because a name
+ * field stretched across a desktop is worse than the phone layout, not better.
+ */
+@media (min-width: 768px) {
+	:root {
+		--max-w: 760px;
+	}
+}
+@media (min-width: 1200px) {
+	:root {
+		--max-w: 1080px;
+	}
+}
+
 /* mobile-first app shell: centered column, safe-area aware (notches/home indicator) */
 .app-shell {
 	width: 100%;

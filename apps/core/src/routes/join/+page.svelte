@@ -43,7 +43,7 @@
 	<p style="color:var(--ink-dim);margin:6px 0 0;font-size:.9rem;">Pick a name and color to start singing.</p>
 </header>
 
-<main style="flex:1;padding:18px 20px;display:flex;flex-direction:column;gap:20px;">
+<main class="join-main" style="padding:18px 20px;display:flex;flex-direction:column;gap:20px;">
 	<label style="display:flex;flex-direction:column;gap:8px;">
 		<span style="font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);">Your name</span>
 		<input
@@ -74,11 +74,50 @@
 	{/if}
 
 	<button
-		class="btn-accent"
+		class="btn-accent submit"
 		disabled={!canJoin}
 		onclick={join}
-		style="margin-top:auto;padding:16px;font-size:1.1rem;border-radius:16px;opacity:{canJoin ? 1 : 0.5};"
+		style="padding:16px;font-size:1.1rem;border-radius:16px;opacity:{canJoin ? 1 : 0.5};"
 	>
 		{submitting ? 'Joining…' : 'Start singing →'}
 	</button>
 </main>
+
+<style>
+	/*
+	 * Join stays narrow while the shell widens. The form is four short controls, so stretching the name
+	 * field and the colour swatches across a desktop column would make them harder to use, not easier —
+	 * the extra room becomes margin and the form centres in it instead.
+	 */
+	/* Declared here rather than inline: an inline style outranks every stylesheet rule, so a `flex:1`
+	   attribute would make the desktop override below silently do nothing. */
+	.join-main {
+		flex: 1;
+	}
+	.submit {
+		/* On a phone the button sits at the bottom of the viewport, where a thumb already is. */
+		margin-top: auto;
+	}
+	@media (min-width: 768px) {
+		/*
+		 * Centre the wordmark and the form TOGETHER. Centring only the form leaves the header pinned to
+		 * the top of the window with a void between them, which reads as a layout accident rather than a
+		 * sign-in card. This needs the shell because the header is main's sibling, not its child.
+		 */
+		:global(.app-shell:has(.join-main)) {
+			justify-content: center;
+		}
+		.join-main {
+			max-width: 420px;
+			margin: 0 auto;
+			/* Without this the flex:1 inline style eats the shell's free space and defeats the centring. */
+			flex: 0 0 auto;
+			padding-bottom: 0;
+		}
+		.submit {
+			/* Pinned to the viewport bottom, the button is stranded far below the form on a tall desktop
+			   window, so it follows the fields it submits instead. */
+			margin-top: 8px;
+		}
+	}
+</style>
