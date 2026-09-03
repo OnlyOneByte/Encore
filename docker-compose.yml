@@ -22,6 +22,13 @@ services:
     environment:
       - PORT=3000
       - MEDIA_STORE=local
+      # The address the TV's join QR should advertise. Leave UNSET and it is derived from the request,
+      # which is correct for phones and for a tunnel. Set it when the machine showing /tv cannot reach
+      # its own public address — notably a Windows/WSL2 box, where the port proxy forwards traffic
+      # arriving from the network but not the host's own loopback, so the only URL that opens /tv there
+      # is localhost:3000 and the QR would tell every phone to connect to itself.
+      #   ENCORE_PUBLIC_ORIGIN=http://10.69.1.169:3000
+      - ENCORE_PUBLIC_ORIGIN=${ENCORE_PUBLIC_ORIGIN:-}
       # B-7 storage classes, split by REPLACEABILITY (docs/media-storage-spec.md §3). Each defaults
       # under MEDIA_DIR, so these lines are documentation as much as configuration — point any one at
       # its own volume to separate the disks (audio on the big one, derived on the fast one).

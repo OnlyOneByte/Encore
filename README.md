@@ -127,6 +127,7 @@ docs/              ← design docs + ROADMAP + UI mocks/screenshots
 |---|---|---|
 | `PORT` | `3000` | HTTP + WS port |
 | `HOST` | `0.0.0.0` | bind address (use `127.0.0.1` to keep it off the network) |
+| `ENCORE_PUBLIC_ORIGIN` | unset | address the TV's join QR advertises, e.g. `http://10.69.1.169:3000`. Unset = derive from the request. Set it when the machine showing `/tv` cannot reach its own public address (a WSL2 host, or a proxy that forwards no `X-Forwarded-*`) |
 | `DATA_DIR` | `./data` | SQLite (WAL) location — created if missing |
 | `MEDIA_DIR` | `./media` | root of the media volume — created if missing |
 | `MEDIA_STORE` | `local` | `local` volume or `object` (MinIO/S3, for remote workers) |

@@ -4,6 +4,7 @@ import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { doJoin } from '$server/singers/join';
 import { SESSION_COOKIE } from '$server/singers/repository';
+import { publicOriginIsHttps } from '$server/public-origin';
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	const body = await request.json().catch(() => ({}));
@@ -17,7 +18,11 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		path: '/',
 		httpOnly: true,
 		sameSite: 'lax',
-		secure: url.protocol === 'https:',
+		// NOT `url.protocol === 'https:'`: adapter-node reports https for every request unless
+		// PROTOCOL_HEADER is set, so that marked this cookie Secure on a plain-HTTP LAN party and the
+		// phone discarded it — /join succeeded and /api/me then 401'd with no cookie to read. See
+		// $server/public-origin.
+		secure: publicOriginIsHttps(request, url),
 		maxAge: 60 * 60 * 24 * 30
 	});
 	// don't leak the session token in the body
