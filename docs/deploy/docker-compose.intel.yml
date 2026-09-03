@@ -1,0 +1,57 @@
+# Intel Arc GPU worker — compose OVERRIDE for the repo-root docker-compose.yml.
+#
+#   docker compose -f docker-compose.yml -f docs/deploy/docker-compose.intel.yml \
+#     --profile stems up -d
+#
+# PARKED. The deploy target moved to NVIDIA (see docker-compose.cuda.yml). Kept because the Arc box
+# may come back, and because the selection logic in apps/worker/src/backends.py already models `xpu`
+# as a torch DEVICE rather than a separate backend — so this path needs no separator code, only wheels
+# and device passthrough.
+#
+# NOTE this uses the BASE Dockerfile, not Dockerfile.intel. Intel Arc originally needed
+# intel-extension-for-pytorch as an extra install whose version had to be matched to both the host
+# driver and the pinned torch; that is no longer true. PyTorch ships native torch.xpu upstream and the
+# xpu index carries the exact versions requirements.txt pins (torch 2.8.0, torchaudio 2.8.0,
+# torchvision 0.23.0), so the ordinary image plus an index swap is enough. Dockerfile.intel is kept
+# alongside this file purely as an IPEX fallback if some driver pairing turns out to need it.
+#
+# UNVERIFIED: no Arc hardware was ever available to run this. Every line below is reasoned from the
+# repo and Intel's documentation, not measured.
+
+services:
+  worker:
+    build:
+      args:
+        TORCH_INDEX_URL: https://download.pytorch.org/whl/xpu
+
+    environment:
+      # EXPLICIT on purpose. backends.py raises on a device it cannot reach, so a passthrough or
+      # driver mistake fails at startup rather than silently cooking on CPU — which on this workload
+      # is the difference between minutes and most of an hour.
+      #
+      # backends.py also imports intel_extension_for_pytorch BEFORE torch when it is present, because
+      # that import is what registers the xpu backend; without it a perfectly good Arc card reports as
+      # absent. With native torch.xpu that import is belt-and-braces rather than load-bearing.
+      - ENCORE_DEMUCS_DEVICE=xpu
+      - ENCORE_WORKER_CAPABILITIES=stems,align,score,fetch:ytdlp
+      - ENCORE_WORKER_CONCURRENCY=1
+
+    devices:
+      # What actually makes the GPU visible. Without it torch.xpu.is_available() is false and the
+      # explicit device above raises at startup — which is the intended, loud failure.
+      - /dev/dri:/dev/dri
+
+    # The render/video group IDs differ between distributions, so these are NUMERIC and host-specific:
+    # check `getent group render video` on the host and correct them. Names are not portable here, and
+    # the base file runs the worker as non-root uid 10001, which must be in the render group to open
+    # the device nodes.
+    group_add:
+      - "44"  # video  — verify on the host
+      - "993" # render — verify on the host; commonly 993 or 109
+
+    # Sizing note if this box returns: an A310 has 4 GB of VRAM and 124 GB/s, an A380 6 GB and
+    # 186 GB/s. The 11-second-window RoFormer checkpoints (485100 samples) are the ones that will
+    # strain 4 GB — expect to need a reduced segment size, and expect a CUDA-style OOM rather than a
+    # graceful downgrade. Both cards are also BELOW the aarch64 dev box on memory bandwidth (~300 GB/s),
+    # and this workload measured memory-bound, so do not assume a speedup: measure it.
+    #   docs/benchmarks/scripts/checkpoint_cost.py

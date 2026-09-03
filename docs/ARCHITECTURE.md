@@ -345,11 +345,14 @@ option and falls back to torch/CPU, which works everywhere. An **explicitly conf
 device that is unavailable **raises at worker startup** rather than silently downgrading — a
 misconfigured accelerator should be loud, not merely slow.
 
-Intel Arc is a torch **device** (`xpu`), not a separate backend: IPEX registers it with torch, so the
-pipeline is unchanged and only the dependency and device differ. `apps/worker/Dockerfile.intel` is
-that image variant. OpenVINO is registered as a known backend but reports unavailable — Intel
-publishes IR weights with STFT/iSTFT stripped for a C++ pipeline, so supporting it is a port rather
-than a dependency.
+Intel Arc is a torch **device** (`xpu`), not a separate backend: the pipeline is unchanged and only the
+dependency and device differ. `docs/deploy/docker-compose.intel.yml` is that deployment, and it needs
+no custom image — PyTorch ships native `torch.xpu` upstream and the `xpu` wheel index carries the exact
+versions already pinned, so the ordinary Dockerfile plus an index swap is enough.
+`docs/deploy/Dockerfile.intel` is kept beside it purely as an IPEX fallback, since IPEX was originally
+what registered the device with torch. OpenVINO is registered as a known backend but reports
+unavailable — Intel publishes IR weights with STFT/iSTFT stripped for a C++ pipeline, so supporting it
+is a port rather than a dependency.
 
 ### Settings scopes
 
