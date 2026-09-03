@@ -11,11 +11,13 @@
 	import { goto } from '$app/navigation';
 	import {
 		SEPARATOR_ENGINES,
+		TV_PROGRESS_STYLES,
 		qualityRank,
 		type EffectiveSettings,
 		type GlobalSettings,
 		type RoomSettings,
-		type SeparatorEngineId
+		type SeparatorEngineId,
+		type TvProgressStyle
 	} from '@encore/shared';
 
 	interface Props {
@@ -52,6 +54,10 @@
 
 	// An "upgrade" that is not actually better never runs, so say so rather than letting the toggle
 	// look active while nothing happens.
+	let tvProgressNote = $derived(
+		TV_PROGRESS_STYLES.find((s) => s.id === settings.room.tvProgressStyle)?.note ?? ''
+	);
+
 	let upgradeIsBetter = $derived(
 		qualityRank(settings.global.upgradeEngine, settings.global.upgradeModel) >
 			qualityRank(settings.global.defaultEngine, settings.global.defaultModel)
@@ -195,6 +201,18 @@
 	<section>
 		<h2>This room</h2>
 		<p class="scope-note">Only this party.</p>
+
+		<label class="field" for="tv-progress">TV song progress</label>
+		<select
+			id="tv-progress"
+			value={settings.room.tvProgressStyle}
+			onchange={(e) => onroom({ tvProgressStyle: e.currentTarget.value as TvProgressStyle })}
+		>
+			{#each TV_PROGRESS_STYLES as s (s.id)}
+				<option value={s.id}>{s.label}</option>
+			{/each}
+		</select>
+		{#if tvProgressNote}<p class="hint">{tvProgressNote}</p>{/if}
 
 		<label class="field" for="interstitial">
 			Next-up reveal · {(settings.room.interstitialMs / 1000).toFixed(1)}s

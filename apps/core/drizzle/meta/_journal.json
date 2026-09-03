@@ -85,6 +85,13 @@
       "when": 1788667604000,
       "tag": "0011_drop_play_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788667605000,
+      "tag": "0012_tv_progress_style",
+      "breakpoints": true
     }
   ]
 }

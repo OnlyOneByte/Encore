@@ -9,6 +9,7 @@ import {
 	DEFAULT_ENGINE,
 	DEFAULT_MODEL,
 	normalizeRoomSettings,
+	TV_PROGRESS_STYLES,
 	DEFAULT_ROOM_SETTINGS,
 	resolveCookSeparator
 } from './separators';
@@ -119,7 +120,7 @@ describe('room scope', () => {
 describe('resolveCookSeparator', () => {
 	const withCap = (cap: number | null, global = DEFAULT_GLOBAL_SETTINGS) => ({
 		global,
-		room: { interstitialMs: 2500, maxQualityRank: cap }
+		room: { tvProgressStyle: 'card' as const, interstitialMs: 2500, maxQualityRank: cap }
 	});
 
 	it('uses the global default when the room sets no ceiling', () => {
@@ -151,5 +152,18 @@ describe('resolveCookSeparator', () => {
 		const global = { ...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'roformer' as const, defaultModel: 'bs-roformer-1297' };
 		const picked = resolveCookSeparator(withCap(44, global)); // 44 sits just under ensemble's 45
 		expect(picked.engine).not.toBe('ensemble');
+	});
+});
+
+describe('tv progress styles', () => {
+	it('offers Off as the last choice, so the opt-out is not mistaken for a treatment', () => {
+		expect(TV_PROGRESS_STYLES.map((s) => s.id)).toEqual(['card', 'corner', 'edge', 'off']);
+		expect(TV_PROGRESS_STYLES.every((s) => s.label && s.note)).toBe(true);
+	});
+
+	it('normalizes a known style and keeps the current one when a write is junk', () => {
+		expect(normalizeRoomSettings({ tvProgressStyle: 'off' }).tvProgressStyle).toBe('off');
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvProgressStyle: 'edge' as const };
+		expect(normalizeRoomSettings({ tvProgressStyle: 'nope' as never }, room).tvProgressStyle).toBe('edge');
 	});
 });
