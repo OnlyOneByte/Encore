@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { SINGER_COLORS } from '@encore/shared';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger, PlaybackState, PlayerCommand } from '@encore/shared';
@@ -9,7 +10,7 @@
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
-	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, type Readiness } from '$lib/readiness';
+	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
 	import { isPlayable } from '@encore/shared';
 
@@ -36,7 +37,13 @@
 		const q = entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
 		const idx = q.findIndex((e) => e.id === myNextEntry.id);
 		if (idx < 0) return '';
-		if (idx === 0) return "You're up next! 🎤";
+		// Only claim "up next" when the song can actually play next. Ranking by raw rotationSeq said
+		// "You're up next!" for a still-cooking song that the TV skips straight past, contradicting the
+		// playable-aware badge in the queue list below.
+		if (idx === 0) {
+			const playable = entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId));
+			return playable ? "You're up next! 🎤" : "You're next once it's ready ✨";
+		}
 		const before = q[idx - 1];
 		const beforeName = before ? singers.get(before.singerId)?.displayName ?? 'someone' : 'someone';
 		return `You're #${idx + 1} · after ${beforeName}`;
@@ -436,7 +443,8 @@
 	     which index the song came from — so there is no source switch. -->
 	<div class="card searchbox">
 		<span style="color:var(--ink-dim)">🔎</span>
-		<input bind:value={query} oninput={onQueryInput} placeholder="Search a song or artist…" />
+		<input bind:value={query} oninput={onQueryInput} aria-label="Search a song or artist"
+			placeholder="Search a song or artist…" />
 		{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
 	</div>
 
@@ -624,7 +632,7 @@
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
-					singerColor={s?.color ?? '#7c5cff'}
+					singerColor={s?.color ?? SINGER_COLORS[0]}
 					status={proc.status}
 					pct={proc.pct}
 					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
@@ -642,7 +650,7 @@
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
-					singerColor={s?.color ?? '#7c5cff'}
+					singerColor={s?.color ?? SINGER_COLORS[0]}
 					mine={e.singerId === me?.id}
 					up={e.id === nextPlayableId}
 					pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
@@ -674,14 +682,14 @@
 {/if}
 
 {#if undo}
-	<div class="undo-toast">
+	<div class="undo-toast" role="status">
 		<span>Removed “{undo.title}”</span>
 		<button onclick={doUndo}>Undo</button>
 	</div>
 {/if}
 
 {#if errorMsg}
-	<div class="error-toast">{errorMsg}</div>
+	<div class="error-toast" role="alert">{errorMsg}</div>
 {/if}
 
 <style>
@@ -746,15 +754,15 @@
 	.empty { color: var(--ink-dim); padding: 0 4px; font-size: 0.9rem; }
 
 	/* playback controls, rendered into the sheet's peek */
-	.ic { width: 38px; height: 38px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
+	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
 	.ic.play { background: var(--grad); border-color: transparent; width: 44px; height: 44px; }
 	.ic:active { transform: scale(0.92); }
 
 	.key { display: flex; gap: 6px; margin: 6px 0 2px; align-items: center; }
 	.key.disabled { opacity: 0.5; }
-	.key .lab { font-size: 0.7rem; color: #5b5b78; letter-spacing: 0.1em; text-transform: uppercase; }
+	.key .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
 	.key.shifted .lab { color: var(--warn); }
-	.key button { flex: 1; border: 1px dashed #3a3a55; background: transparent; color: #6b6b8c; border-radius: 10px; padding: 6px; font-size: 0.8rem; cursor: pointer; }
+	.key button { flex: 1; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: 10px; padding: 6px; font-size: 0.8rem; cursor: pointer; }
 	.key:not(.disabled) button:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
 	.key:not(.disabled) button:not(:disabled):active { transform: scale(0.95); }
 	.key button:disabled { cursor: default; }
@@ -779,11 +787,11 @@
 	}
 	.mic-score strong { font-size: 1.25rem; color: var(--accent2); font-variant-numeric: tabular-nums; }
 	.mic-live .dot, .mic-score .dot {
-		width: 10px; height: 10px; border-radius: 50%; background: #ff5cae;
+		width: 10px; height: 10px; border-radius: 50%; background: var(--accent2);
 		animation: micpulse 1s ease-in-out infinite;
 	}
 	@keyframes micpulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(1.4); } }
-	.mic-err { font-size: .8rem; color: #ff6b6b; }
+	.mic-err { font-size: .8rem; color: var(--danger); }
 	.search-spinner {
 		width: 15px; height: 15px; flex: none; border-radius: 50%;
 		border: 2px solid var(--line); border-top-color: var(--accent2);
@@ -814,8 +822,10 @@
 		border-radius: 8px; padding: 6px 12px; cursor: pointer;
 	}
 	.error-toast {
-		position: fixed; left: 50%; bottom: calc(var(--peek-h) + 14px); transform: translateX(-50%); z-index: 30;
-		background: #2a1b22; color: #ffb1b1; border: 1px solid #5a2b39;
+		/* Offset above the undo toast: both sat at the same bottom and z-index, so one drew over the
+		   other and a guest saw only whichever rendered last. */
+		position: fixed; left: 50%; bottom: calc(var(--peek-h) + 70px); transform: translateX(-50%); z-index: 30;
+		background: var(--danger-bg); color: var(--danger-ink); border: 1px solid var(--danger-line);
 		padding: 11px 16px; border-radius: 12px; font-size: 0.88rem; max-width: 90vw;
 	}
 </style>

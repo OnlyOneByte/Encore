@@ -4,6 +4,26 @@
 	import { page } from '$app/state';
 	import { safeNextPath } from '$lib/next-path';
 
+	/** Arrow keys move within the group, which is what a radiogroup is expected to do. */
+	function onSwatchKey(e: KeyboardEvent) {
+		const keys = ['ArrowRight', 'ArrowDown', 'ArrowLeft', 'ArrowUp'];
+		if (!keys.includes(e.key)) return;
+		e.preventDefault();
+		const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
+		const i = (SINGER_COLORS as readonly string[]).indexOf(color);
+		const next = (i + step + SINGER_COLORS.length) % SINGER_COLORS.length;
+		color = SINGER_COLORS[next]!;
+		(e.currentTarget as HTMLElement)
+			?.querySelector<HTMLElement>(`[data-swatch="${next}"]`)
+			?.focus();
+	}
+
+	/** A name, because "color #7c5cff" tells a screen-reader user nothing they can act on. */
+	function colorName(hex: string): string {
+		const names = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'];
+		return `${names[(SINGER_COLORS as readonly string[]).indexOf(hex)] ?? 'color'} swatch`;
+	}
+
 	let name = $state('');
 	let color = $state<string>(SINGER_COLORS[0]);
 	let submitting = $state(false);
@@ -58,19 +78,29 @@
 
 	<div style="display:flex;flex-direction:column;gap:10px;">
 		<span style="font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);">Your color</span>
-		<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;">
-			{#each SINGER_COLORS as c}
+		<div class="swatches" role="radiogroup" aria-label="Your color" tabindex="-1" onkeydown={onSwatchKey}>
+			{#each SINGER_COLORS as c, i}
 				<button
-					aria-label={`color ${c}`}
+					role="radio"
+					aria-checked={color === c}
+					aria-label={colorName(c)}
+					tabindex={color === c ? 0 : -1}
+					data-swatch={i}
 					onclick={() => (color = c)}
-					style="height:54px;border-radius:14px;border:3px solid {color === c ? 'var(--ink)' : 'transparent'};background:{c};cursor:pointer;transition:transform .12s;"
-				></button>
+					class="swatch"
+					class:sel={color === c}
+					style="background:{c};"
+				>
+					<!-- A tick, not just the ring: selection conveyed by colour alone is invisible to a
+					     colour-blind guest choosing between the two violets or the two pinks. -->
+					{#if color === c}<span class="tick" aria-hidden="true">✓</span>{/if}
+				</button>
 			{/each}
 		</div>
 	</div>
 
 	{#if error}
-		<div style="color:var(--accent2);font-size:.9rem;">{error}</div>
+		<div class="err" role="alert">{error}</div>
 	{/if}
 
 	<button
@@ -84,6 +114,16 @@
 </main>
 
 <style>
+	.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+	.swatch {
+		height: 54px; border-radius: var(--radius-sm); border: 3px solid transparent;
+		cursor: pointer; transition: transform 0.12s;
+		display: grid; place-items: center;
+	}
+	.swatch.sel { border-color: var(--ink); }
+	.tick { color: var(--bg); font-size: 1.3rem; font-weight: 900; text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5); }
+	.err { color: var(--danger); font-size: 0.9rem; }
+
 	/*
 	 * Join stays narrow while the shell widens: it is four short controls, so stretching the name
 	 * field and colour swatches across a desktop column would make them harder to use, not easier.
