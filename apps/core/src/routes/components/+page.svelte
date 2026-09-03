@@ -3,7 +3,6 @@
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
-	import NowPlaying from '$lib/components/NowPlaying.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
@@ -265,8 +264,6 @@
 		seq={4} title="Gwen Stefani - Rich Girl" singerName="You" singerColor="#ff5cae" mine
 		subtitle="up next" removable reorderable canUp canDown
 	/>
-
-	<NowPlaying title="Take On Me" sub="a-ha · Sam is singing" />
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
