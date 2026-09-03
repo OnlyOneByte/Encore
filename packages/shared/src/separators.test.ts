@@ -119,7 +119,7 @@ describe('room scope', () => {
 describe('resolveCookSeparator', () => {
 	const withCap = (cap: number | null, global = DEFAULT_GLOBAL_SETTINGS) => ({
 		global,
-		room: { interstitialMs: 2500, maxQualityRank: cap }
+		room: { tvProgressStyle: 'card' as const, interstitialMs: 2500, maxQualityRank: cap }
 	});
 
 	it('uses the global default when the room sets no ceiling', () => {
