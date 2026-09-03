@@ -54,7 +54,7 @@
 		animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3);
 	}
 	@keyframes pop { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
-	.mine { border-color: #3a3155; background: linear-gradient(var(--card), #1d1830); }
+	.mine { border-color: var(--line-tint); background: linear-gradient(var(--card), var(--card-tint)); }
 	.pending { opacity: 0.55; }
 	.seq {
 		width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
@@ -66,10 +66,11 @@
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
 	.who i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
 	.adding { color: var(--warn); }
-	.grip { margin-left: auto; color: #4a4a66; font-size: 1.1rem; cursor: grab; }
+	.grip { margin-left: auto; color: var(--line-strong); font-size: 1.1rem; cursor: grab; }
 	.actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 	.act, .remove {
-		width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--line);
+		/* 44px: these were 30px with 6px gaps, below the reliable-tap threshold. */
+		width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line);
 		background: var(--card2); color: var(--ink-dim); font-size: 0.85rem; cursor: pointer;
 	}
 	.act:disabled { opacity: 0.35; cursor: default; }

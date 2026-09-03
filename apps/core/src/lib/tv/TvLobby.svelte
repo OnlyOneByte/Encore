@@ -66,7 +66,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: radial-gradient(80% 60% at 50% 30%, #1b1430 0%, var(--bg) 70%);
+		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
 	.stack {
 		display: flex;

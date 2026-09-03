@@ -32,9 +32,12 @@
 	});
 </script>
 
-<div class="row card" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}
-	onclick={() => onadd?.()} role="button" tabindex="0"
-	onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && onadd?.()}>
+<!--
+	The row is a container, NOT a button. It used to be a role="button" div wrapping two real buttons,
+	which announced one control to a screen reader while offering three, and let a keyboard user add the
+	same song twice (Enter on the row, then Tab-Enter on the button). The two buttons carry the actions.
+-->
+<div class="row card" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}>
 	<div class="thumb"></div>
 	<div class="meta">
 		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"> ✨</span>{/if}</div>
@@ -46,10 +49,11 @@
 	</div>
 	{#if onmake}
 		<button class="make" title="Make karaoke (strip the vocals)"
-			onclick={(e) => { e.stopPropagation(); onmake?.(); }}>✨ Karaoke</button>
+			onclick={() => onmake?.()}>✨ Karaoke</button>
 	{/if}
 	<button class="add" class:queued={inQueue} aria-label={inQueue ? 'already in the queue' : 'add a turn'}
-		onclick={(e) => { e.stopPropagation(); onadd?.(); }}>{inQueue ? '✓ Queued' : '＋ Turn'}</button>
+		disabled={inQueue}
+		onclick={() => onadd?.()}>{inQueue ? '✓ Queued' : '＋ Turn'}</button>
 </div>
 
 <style>
@@ -58,12 +62,13 @@
 		cursor: pointer; transition: transform 0.12s ease, background 0.12s ease;
 	}
 	.row:active { transform: scale(0.98); background: var(--card2); }
+	.add:disabled { cursor: default; opacity: 0.7; }
 	/* readiness is legible at a glance from the border alone, before any text is read */
 	.row.ready { border-color: var(--ok); }
-	.row.cooking { background: linear-gradient(var(--card), #201a2e); border-color: #3a2f55; }
+	.row.cooking { background: linear-gradient(var(--card), var(--card-tint)); border-color: var(--line-tint); }
 	.thumb {
 		width: 56px; height: 40px; border-radius: 8px; flex: 0 0 auto;
-		background: linear-gradient(135deg, #2c2c44, #1c1c2c); position: relative;
+		background: linear-gradient(135deg, var(--track-bg), #1c1c2c); position: relative;
 	}
 	.thumb::after { content: '▶'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff8; font-size: 0.8rem; }
 	.meta { min-width: 0; flex: 1; }
@@ -72,15 +77,17 @@
 	.s { font-size: 0.76rem; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.s.ok { color: var(--ok); }
 	.s.warn { color: var(--warn); }
-	.bar { height: 4px; border-radius: 4px; background: #2a2440; overflow: hidden; margin-top: 6px; }
+	.bar { height: 4px; border-radius: 4px; background: var(--card-tint2); overflow: hidden; margin-top: 6px; }
 	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 4px; transform-origin: left center; transition: transform 0.4s ease; }
 	.add {
+		min-height: 44px;
 		flex: 0 0 auto; border: 0; border-radius: 10px; padding: 9px 12px; font-weight: 700;
 		font-size: 0.82rem; background: var(--grad); color: #fff; cursor: pointer;
 	}
 	.add:active { transform: scale(0.94); }
 	.add.queued { background: var(--card2); border: 1px solid var(--ok); color: var(--ok); }
 	.make {
+		min-height: 44px;
 		flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; padding: 9px 9px;
 		font-weight: 700; font-size: 0.76rem; background: var(--card2); color: var(--warn); cursor: pointer;
 	}

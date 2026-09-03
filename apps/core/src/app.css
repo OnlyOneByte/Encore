@@ -21,6 +21,26 @@
 	--warn: #ffb84d;
 	--grad: linear-gradient(135deg, var(--accent), var(--accent2));
 
+	/* Surfaces tinted toward the accent, for a row that is cooking or is yours. Tokens because the
+	   codebase kept re-inventing them as one-off hexes, which is what breaks a theme swap. */
+	--card-tint: #201a2e;
+	--card-tint2: #2a2440;
+	--line-tint: #3a2f55;
+	/* A line that must read as an edge rather than a hairline (grips, dashed affordances). */
+	--line-strong: #3a3a55;
+	/* The inner stop of the stage's radial background. */
+	--stage-glow: #1b1430;
+	/* An inert track behind a progress fill. */
+	--track-bg: #2c2c44;
+	/* Failure. NOT --accent2: pink is also a valid singer colour, so an error drawn in it reads as
+	   decoration rather than as something being wrong. */
+	--danger: #ff6b6b;
+	--danger-ink: #ffb1b1;
+	--danger-bg: #2a1b22;
+	--danger-line: #5a2b39;
+	/* Focus. One token so every surface rings identically, and bright enough to see on the dark theme. */
+	--focus: #9d7cff;
+
 	/* shape + depth */
 	--radius: 18px;
 	--radius-sm: 12px;
@@ -39,6 +59,19 @@
 * {
 	box-sizing: border-box;
 	-webkit-tap-highlight-color: transparent;
+}
+
+/*
+ * Global focus ring. Every interactive element gets one, because -webkit-tap-highlight-color is
+ * suppressed above and most controls here are custom-styled, so without this a keyboard or switch user
+ * can operate the whole app while never seeing where they are.
+ *
+ * :focus-visible rather than :focus so a mouse or touch press does not leave a ring behind.
+ */
+:where(a, button, input, select, textarea, summary, [tabindex]):focus-visible {
+	outline: 2px solid var(--focus);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
 }
 
 html,
