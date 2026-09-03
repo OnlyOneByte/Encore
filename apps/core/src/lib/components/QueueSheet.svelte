@@ -10,6 +10,7 @@
 	// whole peek is a button, Escape closes, and the backdrop is clickable. A drag-only sheet is
 	// unreachable by keyboard and screen reader.
 	import type { Snippet } from 'svelte';
+	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
 
 	interface Props {
 		open: boolean;
@@ -20,11 +21,19 @@
 		/** Peek line 3 — "You're #3 · after Maya". The reason the sheet earns its space. */
 		position?: string;
 		queueCount?: number;
+		/** Seconds into the current song, and its length. Both omitted (or a 0 length) hides the row. */
+		elapsedSec?: number;
+		durationSec?: number;
 		children: Snippet; // the expanded body: the rotation list
 		controls?: Snippet; // playback controls, rendered in the peek
 		ontoggle?: (open: boolean) => void;
 	}
-	let { open, title, sub, position, queueCount = 0, children, controls, ontoggle }: Props = $props();
+	let {
+		open, title, sub, position, queueCount = 0, elapsedSec = 0, durationSec = 0,
+		children, controls, ontoggle
+	}: Props = $props();
+
+	const progress = $derived(progressFraction(elapsedSec, durationSec));
 
 	// Drag state. `dragDy` is the live finger offset while dragging; committing past the threshold
 	// toggles, otherwise the sheet springs back — a half-drag must not leave it in a third state.
@@ -111,6 +120,16 @@
 			</div>
 			{#if controls}<div class="ctrls">{@render controls()}</div>{/if}
 		</div>
+
+		{#if progress !== null}
+			<!-- Remaining rather than total length: the peek exists to answer "when am I up?", and a
+			     countdown answers it directly. -->
+			<div class="seekrow" aria-hidden="true">
+				<span class="time">{formatClock(elapsedSec)}</span>
+				<span class="track"><i style="transform:scaleX({progress})"></i></span>
+				<span class="time r">{formatRemaining(elapsedSec, durationSec)}</span>
+			</div>
+		{/if}
 		<!-- The chevron already says which way this moves, and the grip already reads as draggable, so
 		     spelling out "pull up"/"pull down to close" was redundant. The COUNT is kept: that is
 		     information you cannot get from the affordance. The instruction survives for screen
@@ -143,6 +162,19 @@
 	/* while a finger is down, follow it exactly — a transition here feels like lag */
 	.sheet.dragging { transition: none; }
 	.peek { padding: 8px 14px 10px; cursor: grab; touch-action: none; flex: 0 0 auto; }
+	.seekrow { display: flex; align-items: center; gap: 9px; margin: 10px 0 2px; }
+	.time { font-size: 0.68rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; min-width: 30px; }
+	.time.r { text-align: right; }
+	.track { flex: 1; height: 4px; background: var(--line); border-radius: 4px; overflow: hidden; }
+	/* scaleX, not width: animating width triggers layout every frame, which motion.test.ts forbids
+	   outright. The fill is full-width and scaled from its left edge instead, which composites. The
+	   transition exists because position arrives about once a second — without it the bar visibly
+	   steps; with it the steps read as continuous motion. */
+	.track > i {
+		display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 4px;
+		transform-origin: left center; transition: transform 1s linear;
+	}
+	@media (prefers-reduced-motion: reduce) { .track > i { transition: none; } }
 	.peek:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 18px; }
 	.grip { width: 40px; height: 4px; border-radius: 3px; background: #3a3a52; margin: 2px auto 10px; }
 	.line { display: flex; align-items: center; gap: 12px; }
