@@ -129,8 +129,9 @@ and the sourcing question is the **owner's call, not the loop's**. Do not pick t
 
 ## Ratified: metadata, acquisition, and processed-only playback (decided 2026-09-03)
 
-Shipped as three stages against `docs/SPEC-musicbrainz-fetcher.md` (ephemeral — delete it when stage 5
-closes). The decisions, so they are not re-litigated:
+**Shipped and verified.** The working spec (`docs/SPEC-musicbrainz-fetcher.md`) was ephemeral and has
+been deleted; the durable explanation lives in [`ARCHITECTURE.md`](ARCHITECTURE.md) §6–§7. The decisions,
+so they are not re-litigated:
 
 | # | Decision | Ratified |
 |---|---|---|
@@ -157,6 +158,21 @@ own release with it. A trustworthy album needs a second release-group lookup; un
 materialize time never got them, and search reuses an existing row rather than re-materialising it — so
 those songs are never annotated without a backfill pass. Nothing surfaces this; it just looks like
 annotation ignoring old songs.
+
+**What the verification pass was worth.** Driving the real server found four bugs no test had caught,
+which is the argument for the "green suite is the floor, not the bar" rule in
+[`HANDOFF.md`](HANDOFF.md) §8:
+
+- A `fetch` completion marked the media `ready` with a derived instrumental key for a file that did not
+  exist. Invisible because `stems` follows within seconds and overwrote it.
+- `mbid`/`annotation` were runtime-only, so a restart forgot that an artist had been *cited* — defeating
+  the never-regress rule one commit after it was added.
+- The TV's join QR encoded **https** on a plain-HTTP LAN, because adapter-node reports https whenever
+  `PROTOCOL_HEADER` is unset. Unopenable by any phone; hidden by always testing through an https tunnel.
+- Two ways one malformed WebSocket frame killed the whole process — an unvalidated command envelope, and
+  a telemetry frame that poisoned playback state into something unpersistable (`Math.floor(undefined)`
+  is NaN, which SQLite stores as NULL against a NOT NULL column) and then threw out of the write-behind
+  flush timer, detached from the frame that caused it.
 
 ---
 
