@@ -1,0 +1,15 @@
+-- Persist the chosen downloader.
+--
+-- `fetch` jobs already route on a fetcher capability and `GlobalSettings` already carries
+-- `defaultFetcher`, but there was nowhere to store it: `getGlobal` never selected the field, so every
+-- read fell back to the shared default and a written choice vanished. Harmless while yt-dlp is the only
+-- implemented fetcher, and a silent wrong answer the moment a second one lands.
+--
+-- Global rather than per-room deliberately: a fetcher is a property of the box's binaries and
+-- credentials, and a room cannot choose one its workers cannot run.
+--
+-- Defaults to 'ytdlp' so an existing deployment keeps its current behaviour with no row rewrite.
+-- `local` is never a legal value here (it describes one media's bytes, not a default);
+-- normalizeGlobalSettings degrades it to the default on both read and write, so this column needs no
+-- CHECK constraint to stay honest.
+ALTER TABLE `global_settings` ADD COLUMN `default_fetcher` text DEFAULT 'ytdlp' NOT NULL;

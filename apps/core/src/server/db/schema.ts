@@ -119,7 +119,11 @@ export const globalSettings = sqliteTable('global_settings', {
 	defaultModel: text('default_model').notNull().default('htdemucs'),
 	enqueueUpgrade: integer('enqueue_upgrade', { mode: 'boolean' }).notNull().default(false),
 	upgradeEngine: text('upgrade_engine').notNull().default('roformer'),
-	upgradeModel: text('upgrade_model').notNull().default('bs-roformer-1297')
+	upgradeModel: text('upgrade_model').notNull().default('bs-roformer-1297'),
+	// Which downloader acquires source audio. Global rather than per-room: a room cannot choose a
+	// fetcher its workers cannot run. `local` is never stored here — that describes one media's bytes,
+	// not a deployment default — and normalizeGlobalSettings refuses it on both read and write.
+	defaultFetcher: text('default_fetcher').notNull().default('ytdlp')
 });
 
 // One party's own policy, keyed by room so multi-room is a row per room rather than a migration.
