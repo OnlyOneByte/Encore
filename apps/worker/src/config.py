@@ -116,6 +116,10 @@ class WorkerConfig:
     demucs_shifts: int | None = None
     #: Cap torch's intra-op threads. Matters with demucs_jobs > 1, where N jobs x all-cores oversubscribe.
     torch_threads: int | None = None
+    #: Which backend executes a separator engine here: "torch", "mlx", or unset for auto-detect.
+    #: Distinct from demucs_device: the backend is the IMPLEMENTATION, the device is where torch runs.
+    #: An explicit backend that is unavailable fails at startup rather than silently cooking on CPU.
+    separator_backend: str | None = None
 
     # ── encoding ──────────────────────────────────────────────────────────────────
     stem_bitrate: str = "192k"  # the lossy VOCALS stem; the instrumental is lossless
@@ -123,7 +127,7 @@ class WorkerConfig:
     whisperx_device: str = "cpu"
 
     # ── lyrics ────────────────────────────────────────────────────────────────────
-    #: LRCLIB base URL. Configurable (B-3-C1) because reachability is a property of the BOX, not the
+    #: LRCLIB base URL. Configurable because reachability is a property of the BOX, not the
     #: project: lrclib.net is blocked on the owner's laptop but fine elsewhere. Point this at a proxy,
     #: or at a self-hosted LRCLIB built from their published DB dump — which suits a party box better
     #: than a live API call over party wifi anyway. Empty/unset keeps the public default.
@@ -162,6 +166,7 @@ class WorkerConfig:
             demucs_segment=_opt_int(e, "ENCORE_DEMUCS_SEGMENT", w),
             demucs_shifts=_opt_int(e, "ENCORE_DEMUCS_SHIFTS", w, minimum=0),
             torch_threads=_opt_int(e, "ENCORE_TORCH_THREADS", w),
+            separator_backend=(e.get("ENCORE_SEPARATOR_BACKEND", "").strip().lower() or None),
             stem_bitrate=e.get("ENCORE_STEM_BITRATE", "192k").strip() or "192k",
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
             whisperx_device=e.get("ENCORE_WHISPERX_DEVICE", "cpu"),
@@ -176,6 +181,7 @@ class WorkerConfig:
         """One line naming the settings that change throughput — what to check first when a box is slow."""
         bits = [
             f"model={self.demucs_model}",
+            f"backend={self.separator_backend or 'auto'}",
             f"device={self.demucs_device or 'auto'}",
             f"jobs={self.demucs_jobs}",
             f"concurrency={self.concurrency}",

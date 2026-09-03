@@ -42,6 +42,13 @@ export interface Media {
    *  the TV file player loads; `sourceRef` stays the origin so the worker can still fetch the
    *  source and search can still recognise the song. */
   instrumentalRef?: string;
+  /**
+   * Which separator produced the CURRENT `instrumentalRef`. The upgrade path compares a candidate's
+   * quality rank against this before swapping, so an upgrade can never replace a better instrumental
+   * with a worse one. Absent on media cooked before separator selection existed, which
+   * `isQualityUpgrade` treats as "anything ranked is an improvement".
+   */
+  separator?: { engine: string; model: string };
   lyricsRef?: string; // MediaStore key of the word-timed lyrics JSON (M7-C8 artifact) — drives the
   // TV karaoke overlay (M8-C2). Absent until an align job completes; the overlay no-ops without it.
   // As of B-3-C5 this is the CHOSEN candidate (see lyricsCandidates + pickBestLyrics).
@@ -120,7 +127,7 @@ export function keyedMediaRef(sourceRef: string, keyShift: number): string {
   return `${sourceRef.slice(0, dot)}.${sign}${sourceRef.slice(dot)}`;
 }
 
-export type JobType = 'stems' | 'align' | 'score';
+export type JobType = 'stems' | 'align' | 'score' | 'stems-upgrade';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
 // Terminal states never leave; the dedup index ignores them so a song can be re-processed after

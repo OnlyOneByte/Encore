@@ -1,9 +1,9 @@
-"""Reference-pitch-track pipeline for the `score` job (M8-C3).
+"""Reference-pitch-track pipeline for the `score` job.
 
 SingStar-style scoring needs a REFERENCE melody to compare the live mic against. That reference is
 the pitch of the original vocal: so a `score` job runs the same stems separation the karaoke path
 uses (reusing the tested DemucsProcessor pipeline verbatim) and then extracts a per-frame pitch
-track (M8-C1) from the isolated `vocals.wav`, publishing it as a regular-grid JSON artifact the core
+track from the isolated `vocals.wav`, publishing it as a regular-grid JSON artifact the core
 scorer aligns the mic to.
 
 Composition over duplication: PitchTrackProcessor WRAPS a separator, forwards its progress + stems,

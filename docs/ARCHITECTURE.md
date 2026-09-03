@@ -220,6 +220,67 @@ queued → assigned → running → ready
 The worker's stems path is orchestration, not numeric computation: it builds argv, spawns tools, and
 parses progress. This is why separator engines can change behind the existing `Processor` protocol.
 
+### Separator engines, models, and backends
+
+Separation is selected along three independent axes:
+
+| Axis | Chosen by | Meaning |
+|---|---|---|
+| **engine** | the room | which algorithm family — `demucs`, `roformer`, `ensemble` |
+| **model** | the room | which checkpoint within that engine, from a fixed whitelist |
+| **backend** | the worker | how that engine executes on this box — `torch`, `mlx`, `openvino` |
+
+Engine and model are audible choices and live in room settings, broadcast to every client. Backend is
+a property of the hardware a worker happens to run on and is never user-visible: the same `demucs`
+engine runs through PyTorch on a Linux box and through MLX on Apple Silicon, producing the same stems.
+
+A worker advertises a **capability token** per engine it can run, and dispatch routes a job by that
+token, so a heterogeneous fleet works without the core knowing anything about hardware. A
+demucs/torch worker advertises exactly `stems`, which keeps single-capability workers unchanged;
+other combinations extend the token (`stems:roformer`, `stems:mlx`).
+
+Backend selection is probed, never assumed. Auto-selection picks the fastest genuinely available
+option and falls back to torch/CPU, which works everywhere. An **explicitly configured** backend or
+device that is unavailable **raises at worker startup** rather than silently downgrading — a
+misconfigured accelerator should be loud, not merely slow.
+
+Intel Arc is a torch **device** (`xpu`), not a separate backend: IPEX registers it with torch, so the
+pipeline is unchanged and only the dependency and device differ. `apps/worker/Dockerfile.intel` is
+that image variant. OpenVINO is registered as a known backend but reports unavailable — Intel
+publishes IR weights with STFT/iSTFT stripped for a C++ pipeline, so supporting it is a port rather
+than a dependency.
+
+### Settings scopes
+
+Settings live in two layers, split by **who a setting belongs to**:
+
+| Scope | Belongs to | Examples |
+|---|---|---|
+| **global** | the deployment and its worker fleet | default separator engine + model, upgrade policy |
+| **room** | one party | interstitial pacing, a downward-only cook-quality ceiling |
+
+Separator policy is global rather than per-room because an engine is only usable if some connected
+worker advertises its capability — a fact about the server's hardware, not about a party. Two rooms
+on one core cannot meaningfully disagree about whether a RoFormer worker exists.
+
+The room layer is keyed by room id, so multi-room is a row per room rather than a migration. A room
+may only cap cook quality **downward** (`maxQualityRank`): the global choice is already bounded by
+what the fleet can run, so letting a room raise it would name an engine no worker advertises and the
+job would sit queued forever. `resolveCookSeparator` applies that rule.
+
+Both layers are authoritative server state. A write to either broadcasts `settings:changed` carrying
+the combined payload, and `queue:sync` includes both for mid-party joiners — a client never merges
+two events to learn the effective state.
+
+### Quality ladder and upgrades
+
+Engine+model pairs carry a declared quality rank, mirrored in the shared contract and the worker. A
+completed cook can chain a `stems-upgrade` that re-separates from the **retained raw audio** — no
+re-download — and the swap is refused unless the new artifact strictly outranks the published one.
+`Media.separator` records what produced the current instrumental so that comparison is possible. An
+unranked pair scores zero and can never win, so an unknown or de-whitelisted model cannot displace a
+known-good artifact.
+
 ## 8. Lyrics and scoring
 
 Lyrics separate **text acquisition** from **timing**:

@@ -3,7 +3,8 @@
 // rotationSeq of the soonest queue entry that needs this media; lower = sooner). The I/O wrapper
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
-import type { Job, JobParams, JobType, Media } from '@encore/shared';
+import type { Job, JobParams, JobType, Media, GlobalSettings } from '@encore/shared';
+import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_GLOBAL_SETTINGS, getEngine, isQualityUpgrade } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 /**
@@ -18,17 +19,28 @@ import type { WorkerSession } from './registry';
  * Chaining costs nothing user-visible: the song is not singable until stems completes either, because
  * the instrumental IS the stems output.
  *
- * `score` rides along for the same reason: M8-C3 live scoring was unreachable through the identical
+ * `score` rides along for the same reason: live scoring was unreachable through the identical
  * bug (nothing enqueued it), and its processor extracts the reference pitch track from the same vocals
  * stem align needs. Both are strictly after stems, neither chains further, so the pipeline stays a
  * depth-1 fan-out rather than a graph.
  */
-export function followUps(jobType: JobType): JobType[] {
-	return jobType === 'stems' ? ['align', 'score'] : [];
+export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[] {
+	if (jobType !== 'stems') return [];
+	const next: JobType[] = ['align', 'score'];
+	// A completed cook optionally chains a re-separation at higher quality. It runs from the RETAINED
+	// raw audio, so it costs CPU but no re-download, and `markMediaReady` refuses to publish its
+	// result unless it actually outranks what is already there.
+	if (settings?.enqueueUpgrade && isQualityUpgrade(
+		{ engine: settings.defaultEngine, model: settings.defaultModel },
+		{ engine: settings.upgradeEngine, model: settings.upgradeModel }
+	)) {
+		next.push('stems-upgrade');
+	}
+	return next;
 }
 
 /**
- * The inputs a job of this type needs, derived from its media. PURE — no DB, no clock (B-3-C1).
+ * The inputs a job of this type needs, derived from its media. PURE — no DB, no clock.
  *
  * An align job needs the CANONICAL artist/title, and only when the normalizer was confident: a
  * lookup on a guessed title returns nothing or, worse, another song's words. Absent keys are how the
@@ -38,8 +50,20 @@ export function followUps(jobType: JobType): JobType[] {
  * `durationSec` is always safe to send — it narrows an LRCLIB match and bounds the line-sync
  * fallback's synthetic timings.
  */
-export function assignParams(jobType: JobType, media: Media | undefined): JobParams {
-	if (jobType === 'stems') return { model: 'htdemucs' };
+export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
+	// A stems cook carries the room's chosen engine+model; the upgrade carries the room's
+	// upgrade engine+model. Both fall back to the shared defaults when no settings are provided (a
+	// hub built without a settings getter — e.g. a unit test), so the worker still gets a valid
+	// pairing rather than an empty one.
+	if (jobType === 'stems') {
+		return { engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
+	}
+	if (jobType === 'stems-upgrade') {
+		return {
+			engine: settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine,
+			model: settings?.upgradeModel ?? DEFAULT_GLOBAL_SETTINGS.upgradeModel
+		};
+	}
 	if (jobType !== 'align') return {};
 	const params: JobParams = {};
 	if (media?.artistCanonical) params.artist = media.artistCanonical;
@@ -50,14 +74,58 @@ export function assignParams(jobType: JobType, media: Media | undefined): JobPar
 	return params;
 }
 
+/**
+ * The engine+model a completed separation job used, so `markMediaReady` can compare quality before
+ * swapping a published instrumental. Non-separation jobs have no separator and return undefined,
+ * which keeps their completion path unconditional.
+ */
+export function separatorFor(
+	jobType: JobType,
+	settings?: GlobalSettings
+): { engine: string; model: string } | undefined {
+	if (jobType === 'stems') {
+		return { engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
+	}
+	if (jobType === 'stems-upgrade') {
+		return {
+			engine: settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine,
+			model: settings?.upgradeModel ?? DEFAULT_GLOBAL_SETTINGS.upgradeModel
+		};
+	}
+	return undefined;
+}
+
 export interface Assignment {
 	jobId: string;
 	workerId: string;
 }
 
-/** A worker can take a job iff it has a free slot and advertises the job's type. */
-function eligible(worker: WorkerSession, job: Job): boolean {
-	return worker.slotsFree > 0 && worker.capabilities.includes(job.jobType);
+/**
+ * The worker CAPABILITY a job requires. For a separation job it is engine-derived — a
+ * roformer cook needs `stems:roformer`, so it must NOT be handed to a demucs-only worker — and the
+ * engine comes from the room settings the same way assignParams derives its params. Everything else
+ * requires a capability named after its job type. PURE.
+ *
+ * `settings` is optional: with none (a hub/test without settings) a separation job falls back to the
+ * default engine's capability, which for demucs is plain `'stems'` — so existing single-capability
+ * workers keep matching exactly as before.
+ */
+export function requiredCapability(jobType: JobType, settings?: GlobalSettings): string {
+	if (jobType === 'stems') return getEngine(settings?.defaultEngine ?? DEFAULT_ENGINE)?.capability ?? 'stems';
+	if (jobType === 'stems-upgrade') {
+		return getEngine(settings?.upgradeEngine ?? DEFAULT_GLOBAL_SETTINGS.upgradeEngine)?.capability ?? 'stems';
+	}
+	return jobType;
+}
+
+/** Resolves the capability a job needs. Defaults to the job's own type so callers that don't care
+ *  about engine routing (older tests) behave exactly as before. */
+export type CapabilityFor = (job: Pick<Job, 'jobType'>) => string;
+const defaultCapabilityFor: CapabilityFor = (job) => job.jobType;
+
+/** A worker can take a job iff it has a free slot and advertises the job's REQUIRED capability. */
+function eligible(worker: WorkerSession, job: Job, capabilityFor: CapabilityFor = defaultCapabilityFor): boolean {
+	return worker.slotsFree > 0 && worker.capabilities.includes(capabilityFor(job));
 }
 
 /**
@@ -72,7 +140,11 @@ function eligible(worker: WorkerSession, job: Job): boolean {
  * A job with no eligible worker is simply left queued (it dispatches when a worker frees up / a
  * matching worker connects). Returns the assignments in the order they should be sent.
  */
-export function planAssignments(queued: Job[], workers: WorkerSession[]): Assignment[] {
+export function planAssignments(
+	queued: Job[],
+	workers: WorkerSession[],
+	capabilityFor: CapabilityFor = defaultCapabilityFor
+): Assignment[] {
 	// local slot view so we don't over-assign within a single planning pass
 	const slots = new Map(workers.map((w) => [w.workerId, w.slotsFree]));
 	const byId = new Map(workers.map((w) => [w.workerId, w]));
@@ -81,9 +153,10 @@ export function planAssignments(queued: Job[], workers: WorkerSession[]): Assign
 	const assignments: Assignment[] = [];
 
 	for (const job of jobs) {
+		const cap = capabilityFor(job);
 		let best: WorkerSession | null = null;
 		for (const w of workers) {
-			if (!w.capabilities.includes(job.jobType)) continue;
+			if (!w.capabilities.includes(cap)) continue;
 			if ((slots.get(w.workerId) ?? 0) <= 0) continue;
 			if (!best || slots.get(w.workerId)! > slots.get(best.workerId)!) best = w;
 		}
@@ -96,8 +169,13 @@ export function planAssignments(queued: Job[], workers: WorkerSession[]): Assign
 
 /** Whether ANY live worker could ever take this job (capability match, ignoring current load) —
  *  used to decide if a job should wait for capacity vs. is unservable by the current fleet. */
-export function hasCapableWorker(job: Job, workers: WorkerSession[]): boolean {
-	return workers.some((w) => w.capabilities.includes(job.jobType));
+export function hasCapableWorker(
+	job: Job,
+	workers: WorkerSession[],
+	capabilityFor: CapabilityFor = defaultCapabilityFor
+): boolean {
+	const cap = capabilityFor(job);
+	return workers.some((w) => w.capabilities.includes(cap));
 }
 
 export { eligible };

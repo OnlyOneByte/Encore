@@ -10,6 +10,7 @@ import { PlayTracker, bumpPlay } from './media/plays';
 import { openDb, defaultDbPath, type DB } from './db/index';
 import { runMigrations, hydrate } from './db/migrate';
 import { sqlitePersistence } from './state/persistence';
+import { SettingsRepository } from './state/settings-repository';
 import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
@@ -52,6 +53,8 @@ export interface EncoreApp {
 	 */
 	plays: PlayTracker;
 	jobs: JobRepository;
+	/** Room-level separator settings (B-8): the engine/model a cook uses + the upgrade policy. */
+	settings: SettingsRepository;
 	reaper: JobReaper;
 	workers: WorkerRegistry;
 	workerHub: WorkerHub;
@@ -133,6 +136,13 @@ export function getApp(): EncoreApp {
 	state.hydrate(entries, playback);
 
 	const jobs = new JobRepository(db);
+	const settings = new SettingsRepository(db);
+	// Seed this room's pacing from INTERSTITIAL_MS on first boot only. Without this, adding the room
+	// scope would silently reset an install that had configured the env var, and writing it every boot
+	// would instead stomp whatever someone chose on the phone.
+	if (process.env.INTERSTITIAL_MS !== undefined && !settings.hasRoom()) {
+		settings.setRoom({ interstitialMs: Math.max(0, Number(process.env.INTERSTITIAL_MS)) });
+	}
 	const workers = new WorkerRegistry();
 	const mediaById = new Map<string, Media>();
 	const { store: mediaStore, config: mediaStoreConfig } = buildMediaStore();
@@ -299,6 +309,7 @@ export function getApp(): EncoreApp {
 		// Set just below — the sink needs `app` to reach the media catalog.
 		plays: null as never,
 		jobs,
+		settings,
 		reaper: null as never, // set just below (needs onReaped → workerHub.dispatch)
 		workers,
 		workerHub: null as never, // set just below (needs app.toWorker/publish indirection)
@@ -339,6 +350,8 @@ export function getApp(): EncoreApp {
 		broadcast: (e) => app.publish(e),
 		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
 		mediaStore: mediaStoreConfig,
+		// B-8: a stems/upgrade job carries the room's chosen engine+model, read live at assign time.
+		getSettings: () => app.settings.getGlobal(),
 		// B-1: a cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
 		// so the next boot lists it in the karaoke library instead of re-cooking it.
 		persistMedia: (mediaId) => {
@@ -351,7 +364,7 @@ export function getApp(): EncoreApp {
 		// instrumental key) + ready status — otherwise the TV's cached media stays 'queued' and sits
 		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
 		onMediaReady: () => {
-			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online() }));
+			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online(), getSettings: () => app.settings.getEffective() }));
 			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById, onNowPlaying: (e) => app.plays.onNowPlaying(e) });
 		},
 		now: () => app.now()

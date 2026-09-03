@@ -110,12 +110,34 @@ export const playbackState = sqliteTable('playback_state', {
 	keyShift: integer('key_shift').notNull().default(0) // semitones (M7-C9)
 });
 
+// Room-level separator settings (B-8). Single-row ('singleton') like playback_state: these govern
+// cooks EVERYONE shares, so they are authoritative room state, not a per-phone preference. Read
+// whole / written whole; the shared @encore/shared RoomSettings type is the source of truth for the
+// field set, and normalizeRoomSettings() gates writes so a bad payload can never persist.
+export const globalSettings = sqliteTable('global_settings', {
+	id: text('id').primaryKey().default('singleton'),
+	defaultEngine: text('default_engine').notNull().default('demucs'),
+	defaultModel: text('default_model').notNull().default('htdemucs'),
+	enqueueUpgrade: integer('enqueue_upgrade', { mode: 'boolean' }).notNull().default(false),
+	upgradeEngine: text('upgrade_engine').notNull().default('roformer'),
+	upgradeModel: text('upgrade_model').notNull().default('bs-roformer-1297')
+});
+
+// One party's own policy, keyed by room so multi-room is a row per room rather than a migration.
+// `max_quality_rank` is a downward-only ceiling on cook quality; NULL defers to the global default.
+// A setting belongs here only when two rooms on one core could genuinely want different values.
+export const roomSettings = sqliteTable('room_settings', {
+	roomId: text('room_id').primaryKey(),
+	interstitialMs: integer('interstitial_ms').notNull().default(2500),
+	maxQualityRank: integer('max_quality_rank')
+});
+
 export const jobs = sqliteTable(
 	'jobs',
 	{
 		id: text('id').primaryKey(),
 		mediaId: text('media_id').notNull(),
-		jobType: text('job_type', { enum: ['stems', 'align', 'score'] }).notNull(),
+		jobType: text('job_type', { enum: ['stems', 'align', 'score', 'stems-upgrade'] }).notNull(),
 		status: text('status', {
 			enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']
 		})

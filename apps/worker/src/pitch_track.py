@@ -1,10 +1,10 @@
-"""Pitch extraction (M8-C1) — per-frame fundamental frequency (f0) from the isolated vocal stem.
+"""Pitch extraction — per-frame fundamental frequency (f0) from the isolated vocal stem.
 
 This is the first half of SingStar-style scoring: turn a mono audio signal into a time-stamped
-pitch track (Hz + MIDI + voiced flag), which M8-C3 compares against the singer's live mic pitch.
+pitch track (Hz + MIDI + voiced flag), which the scorer compares against the singer's live mic pitch.
 
 PURE + dependency-light: just numpy + the stdlib `wave` reader — NO torch, NO scipy, NO soundfile —
-so the whole tracker unit-tests in-sandbox against a synthesized tone (the M7 pitch.py convention:
+so the whole tracker unit-tests in-sandbox against a synthesized tone (the pitch.py convention:
 pure DSP split from the heavy binaries). It runs on the isolated `vocals.wav` Demucs already emits.
 
 Algorithm: framed **autocorrelation** f0 estimation. For each analysis frame we take the linear
@@ -181,7 +181,7 @@ def median_voiced_f0(track: list[PitchFrame]) -> float:
 
 
 def pitch_track_to_artifact(track: list[PitchFrame], *, hop_ms: float = HOP_MS) -> dict[str, Any]:
-    """Serialize a pitch track into the REGULAR-GRID JSON artifact the core scorer consumes (M8-C3).
+    """Serialize a pitch track into the REGULAR-GRID JSON artifact the core scorer consumes.
 
     The grid is implicit: frame i covers time i × hopSec, so the core maps a mic sample at
     positionSec to reference index round(positionSec / hopSec) in O(1). Parallel arrays (not a list

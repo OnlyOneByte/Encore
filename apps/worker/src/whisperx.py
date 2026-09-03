@@ -1,6 +1,6 @@
-"""Word-aligned lyrics pipeline (M7-C8, HYBRID): yt-dlp (fetch) → LRCLIB (known lyrics text) →
+"""Word-aligned lyrics pipeline (HYBRID): yt-dlp (fetch) → LRCLIB (known lyrics text) →
 WhisperX FORCED-ALIGNMENT (word timings on the correct text) → normalized lyrics JSON written to
-the MediaStore (consumed by the M8 bouncing-ball TV overlay).
+the MediaStore (consumed by the bouncing-ball TV overlay).
 
 Why hybrid: WhisperX transcribing sung vocals from scratch is the unreliable ASR path. Instead we
 pull HUMAN-authored lyrics from LRCLIB (Stage 2) and use WhisperX's wav2vec2 `align()` to place
@@ -151,7 +151,7 @@ def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str,
     return []
 
 
-# ── the transcriber seam (B-3-C4) ─────────────────────────────────────────────────────
+# ── the transcriber seam ─────────────────────────────────────────────────────
 class Transcriber(Protocol):
     """ASR: invent the text from audio. Mirrors `Aligner` — same shape out, injectable, raising means
     "this tier missed" rather than "the job failed".
@@ -245,7 +245,7 @@ LyricsClientFactory = Callable[[], LrclibClient]
 
 
 class WhisperXProcessor:
-    """Production processor for `align` jobs (M7-C8 hybrid). Fetch source → LRCLIB known lyrics →
+    """Production processor for `align` jobs. Fetch source → LRCLIB known lyrics →
     WhisperX forced-alignment (word timings) → publish; falls back to LRCLIB line-sync if the
     aligner is unavailable. Same async-generator interface as the other processors — dial_home.py
     is unchanged. All external deps (yt-dlp runner, LRCLIB client, aligner) are injectable for tests."""
@@ -271,7 +271,7 @@ class WhisperXProcessor:
         self._lyrics_client = lyrics_client  # None → constructed lazily (real LRCLIB)
         self._aligner = aligner  # None → constructed lazily (real WhisperX)
         self._transcriber = transcriber  # None → constructed lazily (real faster-whisper)
-        # None → the default chain, built lazily (B-3-C3). Injecting FAKE sources is how the whole
+        # None → the default chain, built lazily. Injecting FAKE sources is how the whole
         # acquisition+timing flow tests with no network and no ML.
         self._sources = sources
 
@@ -282,7 +282,7 @@ class WhisperXProcessor:
 
     def _get_sources(self) -> list[LyricsSource]:
         """The acquisition chain. LRCLIB first (authoritative + often line-timed); the ASR tier joins
-        in B-3-C4, and captions in B-3-C7. Order is informational only — `acquire` runs them ALL and
+        plus ASR and captions. Order is informational only — `acquire` runs them ALL and
         `pickBestLyrics` (TS) decides what the TV shows."""
         if self._sources is None:
             self._sources = [
@@ -312,7 +312,7 @@ class WhisperXProcessor:
         duration = float(duration) if isinstance(duration, (int, float)) else None
 
         # ── stage 1: obtain the source audio ──────────────────────────────────────
-        # B-7: reuse the retained raw original if a stems job already fetched it. An align job for a
+        # Reuse the retained raw original if a stems job already fetched it. An align job for a
         # cooked song therefore costs no network at all, instead of re-downloading bytes we kept.
         if is_local_source(job.source_uri):
             audio = job.source_uri if os.path.isabs(job.source_uri) else os.path.join(job.media_dir, job.source_uri)
@@ -325,7 +325,7 @@ class WhisperXProcessor:
             else:
                 yield ProgressEvent(stage="downloading", pct=100)
 
-        # ── stage 2: ACQUIRE text from every source (B-3-C3) ──────────────────────
+        # ── stage 2: ACQUIRE text from every source ──────────────────────
         # Independently, not first-hit: authoritative text and ASR are complements (the ideal artifact
         # is authoritative text force-aligned), and a dead LRCLIB must degrade the RESULT, not fail the
         # job. Missing params are no longer fatal — the LRCLIB source simply declines.
@@ -405,7 +405,7 @@ class WhisperXProcessor:
         # ── stage 4: publish ──────────────────────────────────────────────────────
         # `uri` is the FIRST candidate, not the best one. Ranking lives in exactly one place —
         # pickBestLyrics in packages/shared/src/lyrics.ts — and the core re-picks from `candidates` on
-        # every write and every restore (B-3-C5). A second ranking here was a copy of that tier logic
+        # every write and every restore. A second ranking here was a copy of that tier logic
         # with nothing pinning the two together, so it could drift silently; `uri` only still exists so
         # a CompleteResult has a media_uri and a pre-C5 core would get something valid.
         best = candidates[0]
@@ -423,7 +423,7 @@ class WhisperXProcessor:
         """Run a BLOCKING call in a thread, yielding ("progress", ev) keepalives until it finishes,
         then ("result", value) exactly once.
 
-        Both halves matter, and both were real failures observed on a live cook (B-3-C4 verification):
+        Both halves matter, and both were real failures observed on a live cook:
 
           1. torch/whisper calls are synchronous. Awaiting them inline froze the asyncio event loop for
              the whole ML pass, so the worker could not answer the websocket keepalive ping and the
