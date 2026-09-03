@@ -13,12 +13,13 @@ import type {
 	MediaStatus,
 	Media,
 	Job,
+	JobType,
 	MediaStoreConfig,
 	RoomSettings
 } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
-import { planAssignments, assignParams, followUps } from './dispatch';
+import { planAssignments, assignParams, followUps, requiredCapability } from './dispatch';
 import { markMediaReady, setMediaLyrics, setMediaPitch } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
@@ -190,7 +191,11 @@ export class WorkerHub {
 		const workers = this.#d.registry.list();
 		const now = this.#d.now();
 
-		for (const { jobId, workerId } of planAssignments(queued, workers)) {
+		// B-8: a job's required capability is engine-derived (a roformer cook needs stems:roformer),
+		// so route by the SETTINGS-resolved capability, not the bare job type.
+		const settings = this.#d.getSettings?.();
+		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);
+		for (const { jobId, workerId } of planAssignments(queued, workers, capabilityFor)) {
 			const job = this.#d.jobs.assign(jobId, workerId, ackDeadline(now, this.#config), now);
 			this.#d.registry.claimSlot(workerId);
 			const media = this.#d.mediaById.get(job.mediaId);

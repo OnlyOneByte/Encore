@@ -4,7 +4,7 @@
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
 import type { Job, JobParams, JobType, Media, RoomSettings } from '@encore/shared';
-import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_ROOM_SETTINGS } from '@encore/shared';
+import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_ROOM_SETTINGS, getEngine } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 /**
@@ -68,9 +68,32 @@ export interface Assignment {
 	workerId: string;
 }
 
-/** A worker can take a job iff it has a free slot and advertises the job's type. */
-function eligible(worker: WorkerSession, job: Job): boolean {
-	return worker.slotsFree > 0 && worker.capabilities.includes(job.jobType);
+/**
+ * The worker CAPABILITY a job requires (B-8). For a separation job it is engine-derived — a
+ * roformer cook needs `stems:roformer`, so it must NOT be handed to a demucs-only worker — and the
+ * engine comes from the room settings the same way assignParams derives its params. Everything else
+ * requires a capability named after its job type. PURE.
+ *
+ * `settings` is optional: with none (a hub/test without settings) a separation job falls back to the
+ * default engine's capability, which for demucs is plain `'stems'` — so existing single-capability
+ * workers keep matching exactly as before.
+ */
+export function requiredCapability(jobType: JobType, settings?: RoomSettings): string {
+	if (jobType === 'stems') return getEngine(settings?.defaultEngine ?? DEFAULT_ENGINE)?.capability ?? 'stems';
+	if (jobType === 'stems-upgrade') {
+		return getEngine(settings?.upgradeEngine ?? DEFAULT_ROOM_SETTINGS.upgradeEngine)?.capability ?? 'stems';
+	}
+	return jobType;
+}
+
+/** Resolves the capability a job needs. Defaults to the job's own type so callers that don't care
+ *  about engine routing (older tests) behave exactly as before. */
+export type CapabilityFor = (job: Pick<Job, 'jobType'>) => string;
+const defaultCapabilityFor: CapabilityFor = (job) => job.jobType;
+
+/** A worker can take a job iff it has a free slot and advertises the job's REQUIRED capability. */
+function eligible(worker: WorkerSession, job: Job, capabilityFor: CapabilityFor = defaultCapabilityFor): boolean {
+	return worker.slotsFree > 0 && worker.capabilities.includes(capabilityFor(job));
 }
 
 /**
@@ -85,7 +108,11 @@ function eligible(worker: WorkerSession, job: Job): boolean {
  * A job with no eligible worker is simply left queued (it dispatches when a worker frees up / a
  * matching worker connects). Returns the assignments in the order they should be sent.
  */
-export function planAssignments(queued: Job[], workers: WorkerSession[]): Assignment[] {
+export function planAssignments(
+	queued: Job[],
+	workers: WorkerSession[],
+	capabilityFor: CapabilityFor = defaultCapabilityFor
+): Assignment[] {
 	// local slot view so we don't over-assign within a single planning pass
 	const slots = new Map(workers.map((w) => [w.workerId, w.slotsFree]));
 	const byId = new Map(workers.map((w) => [w.workerId, w]));
@@ -94,9 +121,10 @@ export function planAssignments(queued: Job[], workers: WorkerSession[]): Assign
 	const assignments: Assignment[] = [];
 
 	for (const job of jobs) {
+		const cap = capabilityFor(job);
 		let best: WorkerSession | null = null;
 		for (const w of workers) {
-			if (!w.capabilities.includes(job.jobType)) continue;
+			if (!w.capabilities.includes(cap)) continue;
 			if ((slots.get(w.workerId) ?? 0) <= 0) continue;
 			if (!best || slots.get(w.workerId)! > slots.get(best.workerId)!) best = w;
 		}
@@ -109,8 +137,13 @@ export function planAssignments(queued: Job[], workers: WorkerSession[]): Assign
 
 /** Whether ANY live worker could ever take this job (capability match, ignoring current load) —
  *  used to decide if a job should wait for capacity vs. is unservable by the current fleet. */
-export function hasCapableWorker(job: Job, workers: WorkerSession[]): boolean {
-	return workers.some((w) => w.capabilities.includes(job.jobType));
+export function hasCapableWorker(
+	job: Job,
+	workers: WorkerSession[],
+	capabilityFor: CapabilityFor = defaultCapabilityFor
+): boolean {
+	const cap = capabilityFor(job);
+	return workers.some((w) => w.capabilities.includes(cap));
 }
 
 export { eligible };
