@@ -302,8 +302,28 @@ def test_no_torch_threads_leaves_the_environment_alone(monkeypatch):
     from src.config import WorkerConfig
 
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
-    _build_processor(WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": "none"}))
+    # jobs=1 with concurrency=1 means nothing can contend, which is the one case that keeps torch's own
+    # physical-core-aware default instead of a derived cap.
+    _build_processor(
+        WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": "none", "ENCORE_DEMUCS_JOBS": "1"})
+    )
     assert "OMP_NUM_THREADS" not in os.environ
+
+
+def test_threads_are_capped_automatically_once_separations_can_contend(monkeypatch):
+    import os
+
+    from src.config import WorkerConfig
+
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    # The knob no longer has to be set by hand: concurrency x jobs > 1 derives a cap, and the cap has
+    # to reach the demucs SUBPROCESS via the environment.
+    cfg = WorkerConfig.from_env(
+        {"ENCORE_WORKER_CAPABILITIES": "none", "ENCORE_WORKER_CONCURRENCY": "2", "ENCORE_DEMUCS_JOBS": "4"}
+    )
+    assert cfg.torch_threads is not None, "8 parallel separations must not each default to all cores"
+    _build_processor(cfg)
+    assert os.environ["OMP_NUM_THREADS"] == str(cfg.torch_threads)
 
 
 def test_oversubscription_warns_when_concurrency_times_jobs_exceeds_cores():
@@ -312,7 +332,9 @@ def test_oversubscription_warns_when_concurrency_times_jobs_exceeds_cores():
     cfg = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "4", "ENCORE_DEMUCS_JOBS": "4"})
     warns = dh.oversubscription_warnings(cfg, 10)
     assert any("16 parallel" in w for w in warns)
-    assert any("ENCORE_TORCH_THREADS=" in w for w in warns)  # names the fix, not just the problem
+    # No "you forgot ENCORE_TORCH_THREADS" advice any more: from_env already derived the cap, so
+    # repeating it as a warning would name a fix that is already in place.
+    assert not any("ENCORE_TORCH_THREADS" in w for w in warns)
 
 
 def test_oversubscription_silent_when_it_fits_and_threads_are_capped():

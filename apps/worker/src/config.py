@@ -73,6 +73,31 @@ def auto_demucs_jobs(cpu_count: int | None = None) -> int:
     return max(1, min(4, n // 8))
 
 
+def auto_torch_threads(concurrency: int, demucs_jobs: int, cpu_count: int | None = None) -> int | None:
+    """An intra-op thread cap derived from how many separations can actually run at once.
+
+    `concurrency` and `demucs_jobs` MULTIPLY into the number of demucs processes in flight, and each
+    one otherwise defaults to every core on the box. On a 32-core machine `concurrency=2, jobs=4` asks
+    for 8 x 32 = 256 threads across 32 cores, so they fight instead of scaling and raising either knob
+    makes every song SLOWER — the opposite of what it looks like it should do. Dividing the cores among
+    the processes restores roughly one thread per core.
+
+    Derived rather than a fixed number for the same reason as `auto_demucs_jobs`: a hardcoded 4 is
+    right on a 32-core box, over-subscribes an 8-core one, and leaves an x86_64 GPU host misconfigured.
+
+    Returns None when nothing can contend (a single separation), because a cap could then only make
+    things worse: torch's own default is physical-core aware, whereas `os.cpu_count()` reports LOGICAL
+    CPUs, so pinning to it on an SMT box would oversubscribe 2x. That caveat also softens the divided
+    value on an SMT host, where this lands nearer two threads per physical core than one — still far
+    better than uncapped, but not exact. Set ENCORE_TORCH_THREADS explicitly to measure a specific box.
+    """
+    parallel = max(1, concurrency) * max(1, demucs_jobs)
+    if parallel <= 1:
+        return None
+    n = cpu_count if cpu_count is not None else (os.cpu_count() or 1)
+    return max(1, n // parallel)
+
+
 def _opt_float(env: dict[str, str], key: str, warnings: list[str], *, lo: float, hi: float) -> float | None:
     raw = env.get(key, "").strip()
     if not raw:
@@ -115,6 +140,9 @@ class WorkerConfig:
     #: None => demucs' default. Higher averages more predictions: better and proportionally slower.
     demucs_shifts: int | None = None
     #: Cap torch's intra-op threads. Matters with demucs_jobs > 1, where N jobs x all-cores oversubscribe.
+    #: Defaults to `auto_torch_threads(concurrency, demucs_jobs)` — the cores divided among the
+    #: separations that can actually contend — and stays None when only one can run, so a box with no
+    #: contention keeps torch's own physical-core-aware default.
     torch_threads: int | None = None
     #: Which backend executes a separator engine here: "torch", "mlx", or unset for auto-detect.
     #: Distinct from demucs_device: the backend is the IMPLEMENTATION, the device is where torch runs.
@@ -151,21 +179,29 @@ class WorkerConfig:
             w.append("ENCORE_WORKER_CAPABILITIES was empty; using 'stems'")
             caps = ("stems",)
 
+        concurrency = _int(e, "ENCORE_WORKER_CONCURRENCY", 1, w)
+        demucs_jobs = _int(e, "ENCORE_DEMUCS_JOBS", auto_demucs_jobs(), w)
+        # Unset => derive a cap from how many separations can contend, rather than leaving every one of
+        # them defaulting to all cores. An explicit value always wins, including a deliberate over-commit.
+        torch_threads = _opt_int(e, "ENCORE_TORCH_THREADS", w)
+        if torch_threads is None:
+            torch_threads = auto_torch_threads(concurrency, demucs_jobs)
+
         return WorkerConfig(
             core_ws=e.get("ENCORE_CORE_WS", "ws://localhost:3000/ws?role=worker"),
             worker_id=e.get("ENCORE_WORKER_ID", ""),
             version=e.get("ENCORE_WORKER_VERSION", "0.1.0"),
             capabilities=caps,
-            concurrency=_int(e, "ENCORE_WORKER_CONCURRENCY", 1, w),
+            concurrency=concurrency,
             media_dir=e.get("MEDIA_DIR", "/app/media"),
             processor=e.get("ENCORE_PROCESSOR", "real").lower(),
             demucs_model=e.get("ENCORE_DEMUCS_MODEL", "htdemucs"),
             demucs_device=(e.get("ENCORE_DEMUCS_DEVICE", "").strip() or None),
-            demucs_jobs=_int(e, "ENCORE_DEMUCS_JOBS", auto_demucs_jobs(), w),
+            demucs_jobs=demucs_jobs,
             demucs_overlap=_opt_float(e, "ENCORE_DEMUCS_OVERLAP", w, lo=0.0, hi=0.99),
             demucs_segment=_opt_int(e, "ENCORE_DEMUCS_SEGMENT", w),
             demucs_shifts=_opt_int(e, "ENCORE_DEMUCS_SHIFTS", w, minimum=0),
-            torch_threads=_opt_int(e, "ENCORE_TORCH_THREADS", w),
+            torch_threads=torch_threads,
             separator_backend=(e.get("ENCORE_SEPARATOR_BACKEND", "").strip().lower() or None),
             stem_bitrate=e.get("ENCORE_STEM_BITRATE", "192k").strip() or "192k",
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
