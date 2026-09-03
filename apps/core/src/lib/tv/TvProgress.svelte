@@ -2,6 +2,7 @@
 	// Song progress for the stage, in the three placements a room can choose between.
 	//
 	// One component rather than three so the fill geometry and the reduced-motion rule are stated once.
+	// Every style is matched EXPLICITLY: a trailing else would render the edge bar for 'off'.
 	// The `card` variant renders inline and is placed INSIDE the now-singing card by the caller; the
 	// other two position themselves against the stage.
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
@@ -28,7 +29,7 @@
 		<div class="topbar"><i style="transform:scaleX({progress})"></i></div>
 		<!-- Top-LEFT because the score badge owns top-right, and the lower third owns the bottom. -->
 		<div class="pill"><span class="lab">left</span> {formatRemaining(elapsedSec, durationSec).slice(1)}</div>
-	{:else}
+	{:else if style === 'edge'}
 		<div class="edgebar"><i style="transform:scaleX({progress})"></i></div>
 	{/if}
 {/if}

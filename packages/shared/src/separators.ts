@@ -218,7 +218,8 @@ export function normalizeGlobalSettings(
 export const TV_PROGRESS_STYLES = [
 	{ id: 'card', label: 'In now singing card', note: 'Bar and countdown inside the now-singing card.' },
 	{ id: 'corner', label: 'Minimal corner', note: 'Thin bar along the top with a time remaining pill.' },
-	{ id: 'edge', label: 'Along bottom edge', note: 'Full-width bar on the bottom edge. No numbers.' }
+	{ id: 'edge', label: 'Along bottom edge', note: 'Full-width bar on the bottom edge. No numbers.' },
+	{ id: 'off', label: 'Off', note: 'No progress on the TV. The phone still shows it.' }
 ] as const;
 
 export type TvProgressStyle = (typeof TV_PROGRESS_STYLES)[number]['id'];
