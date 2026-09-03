@@ -1,4 +1,4 @@
-"""Source-audio stream quality policy (B-9-C2). PURE -- no network, no subprocess, no yt-dlp import.
+"""Source-audio stream quality policy. PURE -- no network, no subprocess, no yt-dlp import.
 
 WHY THIS EXISTS. This module decides which audio the whole cook pipeline consumes, and that decision
 is unrecoverable: the separator, the lossless FLAC instrumental, and the ASR lyrics tier all inherit
@@ -26,7 +26,7 @@ from typing import Any, Iterable
 #: safety net: a video with neither codec must still download rather than failing the cook, so this
 #: can only ever REORDER what yt-dlp would have taken, never reduce what is downloadable.
 #:
-#: Still audio-only and still native-container (B-7): no `bestvideo`, no `-x`, no `--audio-format`.
+#: Still audio-only and still native-container: no `bestvideo`, no `-x`, no `--audio-format`.
 FORMAT_SELECTOR = "bestaudio[acodec=opus]/bestaudio[acodec^=mp4a]/bestaudio[ext=m4a]/bestaudio"
 
 #: Substrings that mark an upload as coming from the artist or label rather than a re-uploader.
@@ -97,7 +97,7 @@ def rank_search_candidates(candidates: Iterable[dict[str, Any]]) -> list[dict[st
        carrying legacy AAC must NOT outrank a modern Opus stream, because officiality is a provenance
        signal while codec is an actual fidelity difference the singer can hear.
     2. **Officiality** -- breaks ties between comparable codecs, preferring the artist's own upload
-       over a lyrics-channel re-upload (which also tends to carry cleaner metadata for B-7's
+       over a lyrics-channel re-upload (which also tends to carry cleaner metadata for the
        normaliser and therefore better LRCLIB hit rates).
     3. **Bitrate** -- only meaningful WITHIN one codec, which is exactly where it is applied.
 

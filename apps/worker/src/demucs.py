@@ -7,8 +7,8 @@ the real binaries (multi-GB torch) only run on a worker box / GPU. Mirrors ytdlp
 parseSearchJson split from the Bun.spawn backend.
 
 Demucs `--two-stems=vocals` emits two files; the INSTRUMENTAL (backing track) is `no_vocals.wav`.
-Both are published (M8-C0): the instrumental is the karaoke output; the isolated `vocals.wav` feeds
-pitch extraction (M8-C1) and the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md).
+Both are published: the instrumental is the karaoke output; the isolated `vocals.wav` feeds
+pitch extraction and the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md).
 """
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ from .stream_quality import FORMAT_SELECTOR
 
 DEFAULT_MODEL = "htdemucs"
 
-# The demucs-family checkpoints this engine will run (B-8). Mirrors the `demucs` engine's model
+# The demucs-family checkpoints this engine will run. Mirrors the `demucs` engine's model
 # whitelist in packages/shared/src/separators.ts — defence in depth: the core already validates the
 # engine+model pairing before enqueueing, but a worker must never shell `demucs -n <arbitrary>` from
 # a job param, so an unknown model is rejected here too rather than silently falling back.
@@ -54,15 +54,16 @@ def is_local_source(source_uri: str) -> bool:
 def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
     """yt-dlp argv: fetch the best audio-only stream in its NATIVE container -- no transcode.
 
-    B-7 audio policy. This used to pass `-x --audio-format wav`, which inflated a ~5 MB lossy YouTube
-    stream (Opus 135k / AAC 129k -- measured) into ~59 MB of WAV. That is a ~12x cost for ZERO fidelity
-    gain: you cannot restore information YouTube already discarded, so the WAV was a lossless copy of
-    lossy audio. Keeping the native stream is both smaller and higher fidelity than any re-encode.
+    Keeps the native stream rather than transcoding. Passing `-x --audio-format wav` inflated a ~5 MB
+    lossy YouTube stream (Opus 135k / AAC 129k -- measured) into ~59 MB of WAV: a ~12x cost for ZERO
+    fidelity gain, since you cannot restore information YouTube already discarded, so the WAV was a
+    lossless copy of lossy audio. The native stream is both smaller and higher fidelity than any
+    re-encode.
 
     `out_template` must carry `%(ext)s` -- the extension is whatever YouTube served (m4a or webm), so
     the caller discovers the real filename with `find_downloaded` rather than assuming one.
 
-    B-9-C2: the selector is `stream_quality.FORMAT_SELECTOR`, not a bare `bestaudio`. yt-dlp's own
+    The selector is `stream_quality.FORMAT_SELECTOR`, not a bare `bestaudio`. yt-dlp's own
     ranking is bitrate-led, so an old upload carrying BOTH a modern Opus stream and a legacy AAC one
     can return the AAC purely because its nominal bitrate is higher. Everything downstream inherits
     that choice -- separator, FLAC instrumental, ASR lyrics -- and no later encode can undo it. The
@@ -73,7 +74,7 @@ def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp")
         ytdlp_bin,
         "--no-playlist",
         "--newline",  # emit progress as discrete lines (not \r) so the parser sees each update
-        "-f", FORMAT_SELECTOR,  # audio-only, native container, codec-ranked (B-9-C2)
+        "-f", FORMAT_SELECTOR,  # audio-only, native container, codec-ranked
         "-o", out_template,
         source_uri,
     ]
@@ -82,7 +83,7 @@ def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp")
 def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
     """ffmpeg argv: decode any container to the 44.1kHz stereo WAV that Demucs wants.
 
-    WAV is a WORKING format, never a stored one (B-7): this lands in `work/<jobId>/` and dies with the
+    WAV is a WORKING format, never a stored one: this lands in `work/<jobId>/` and dies with the
     scratch dir. Forcing stereo/44.1k also normalizes the input so separation behaves identically
     whether the source arrived as Opus-in-webm or AAC-in-m4a.
     """
@@ -98,7 +99,7 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
     ]
 
 
-# Stereo AAC at this bitrate is the storage format for both stems (B-7 audio policy). Rationale:
+# Stereo AAC at this bitrate is the storage format for both stems. Rationale:
 # the SOURCE is ~129-135 kbps lossy, so 192k leaves headroom for the unavoidable second generation
 # while still cutting a 54 MB WAV stem to roughly 7 MB. Stereo is the ceiling that matters -- YouTube
 # serves stereo, so a surround receiver upmixes from stereo no matter what we store, and anything
@@ -202,7 +203,7 @@ def demucs_no_vocals_path(out_dir: str, model: str = DEFAULT_MODEL) -> str:
 
 def demucs_vocals_path(out_dir: str, model: str = DEFAULT_MODEL) -> str:
     """Where demucs writes the ISOLATED VOCALS given the flattened `--filename {stem}.{ext}` template.
-    `--two-stems=vocals` always emits BOTH no_vocals.wav and vocals.wav (M8-C0 publishes the latter)."""
+    `--two-stems=vocals` always emits BOTH no_vocals.wav and vocals.wav; both are published."""
     return os.path.join(out_dir, model, "vocals.wav")
 
 
@@ -294,7 +295,7 @@ async def subprocess_runner(argv: list[str]) -> AsyncIterator[str]:
 
 # ── the processor ──────────────────────────────────────────────────────────────────
 class DemucsProcessor:
-    """Production processor (M7-C5). For a `stems` job: fetch the source audio (yt-dlp, unless the
+    """Production processor. For a `stems` job: fetch the source audio (yt-dlp, unless the
     source is already a local file), run Demucs htdemucs two-stem separation, and move the resulting
     `no_vocals.wav` to the deterministic MediaStore instrumental path. Emits per-stage progress
     (downloading → separating) for the live phone bar. Same async-generator interface as
@@ -336,14 +337,14 @@ class DemucsProcessor:
         work = os.path.join(job.media_dir, "work", job.job_id)
         os.makedirs(work, exist_ok=True)
 
-        # B-8: the checkpoint is per-JOB (the room's chosen model rides in job.params.model), not a
+        # The checkpoint is per-JOB (the room's chosen model rides in job.params.model), not a
         # fixed worker constant. `resolve_demucs_model` validates it against the whitelist and falls
         # back to this worker's default when the job left it unset. `self._model` is now only the
         # fallback, so a raise here means the room asked for a model this build does not carry.
         model = resolve_demucs_model(job.params, self._model)
 
         # ── stage 1: obtain the source audio ──────────────────────────────────────
-        # B-7: the download lands in the `audio/` storage class in its NATIVE container, NOT as WAV in
+        # The download lands in the `audio/` storage class in its NATIVE container, NOT as WAV in
         # scratch. Raw audio is the one asset that cannot be regenerated (it needs network, and
         # disappears with the upload), so it is kept deliberately -- and kept small, since transcoding
         # lossy YouTube audio to WAV costs ~12x the bytes for zero fidelity. It is also reused: an
@@ -396,8 +397,8 @@ class DemucsProcessor:
         await self._run_quiet(encode_flac_argv(produced, final, self._ffmpeg_bin, self._flac_level))
 
         stems: dict[str, str] = {"instrumental": final}
-        # Also publish the ISOLATED VOCALS stem (M8-C0) — `--two-stems=vocals` already produced it;
-        # we used to discard it. It unblocks pitch extraction (M8-C1) and the vocal-guide mix, both of
+        # Also publish the ISOLATED VOCALS stem — `--two-stems=vocals` already produced it.
+        # It unblocks pitch extraction and the vocal-guide mix, both of
         # which are planned, so it is RETAINED (compressed, stereo) rather than dropped. BEST-EFFORT:
         # a missing or unencodable vocals file must not fail an otherwise-good instrumental (the
         # instrumental is the load-bearing karaoke output; the vocals stem is an enhancement).

@@ -1,4 +1,4 @@
-"""LRCLIB lyrics source (M7-C8 hybrid). Fetch KNOWN, human-authored lyrics from LRCLIB (a free,
+"""LRCLIB lyrics source. Fetch KNOWN, human-authored lyrics from LRCLIB (a free,
 no-auth synced-lyrics DB built for self-hosted players) so WhisperX only has to ALIGN correct text
 to audio — never transcribe sung vocals from scratch (the unreliable ASR path). One fetch yields:
   • syncedLyrics (LRC)  → line-timed lyrics (ships as-is if the aligner is unavailable)
