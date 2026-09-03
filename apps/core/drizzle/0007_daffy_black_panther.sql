@@ -1,1 +1,0 @@
-ALTER TABLE `media` ADD `title_canonical` text;

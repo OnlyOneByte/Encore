@@ -1,9 +1,75 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "cd2c099c-87b8-465b-a98e-ae3ab347aad0",
+  "id": "6abb2229-8ade-4fb0-8fe0-a8993ef782dd",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
+    "global_settings": {
+      "name": "global_settings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'singleton'"
+        },
+        "default_engine": {
+          "name": "default_engine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'demucs'"
+        },
+        "default_model": {
+          "name": "default_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'htdemucs'"
+        },
+        "enqueue_upgrade": {
+          "name": "enqueue_upgrade",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "upgrade_engine": {
+          "name": "upgrade_engine",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'roformer'"
+        },
+        "upgrade_model": {
+          "name": "upgrade_model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'bs-roformer-1297'"
+        },
+        "default_fetcher": {
+          "name": "default_fetcher",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'ytdlp'"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "jobs": {
       "name": "jobs",
       "columns": {
@@ -89,6 +155,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "error": {
+          "name": "error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "lease_expires_at": {
           "name": "lease_expires_at",
           "type": "integer",
@@ -111,7 +184,17 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "jobs_live_media_type_idx": {
+          "name": "jobs_live_media_type_idx",
+          "columns": [
+            "media_id",
+            "job_type"
+          ],
+          "isUnique": true,
+          "where": "\"jobs\".\"status\" NOT IN ('failed', 'canceled')"
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -177,16 +260,120 @@
           "autoincrement": false,
           "default": "'none'"
         },
-        "play_mode": {
-          "name": "play_mode",
+        "instrumental_ref": {
+          "name": "instrumental_ref",
           "type": "text",
           "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'iframe'"
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lyrics_ref": {
+          "name": "lyrics_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lyrics_candidates": {
+          "name": "lyrics_candidates",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pitch_ref": {
+          "name": "pitch_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "artist_canonical": {
+          "name": "artist_canonical",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "title_canonical": {
+          "name": "title_canonical",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "album": {
+          "name": "album",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "year": {
+          "name": "year",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
         }
       },
       "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "media_tags": {
+      "name": "media_tags",
+      "columns": {
+        "media_id": {
+          "name": "media_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "media_tags_kind_value_idx": {
+          "name": "media_tags_kind_value_idx",
+          "columns": [
+            "kind",
+            "value"
+          ],
+          "isUnique": false
+        },
+        "media_tags_media_idx": {
+          "name": "media_tags_media_idx",
+          "columns": [
+            "media_id"
+          ],
+          "isUnique": false
+        },
+        "media_tags_unique_idx": {
+          "name": "media_tags_unique_idx",
+          "columns": [
+            "media_id",
+            "kind",
+            "value"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
@@ -225,6 +412,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": false
+        },
+        "key_shift": {
+          "name": "key_shift",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
         }
       },
       "indexes": {},
@@ -277,6 +472,46 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "room_settings": {
+      "name": "room_settings",
+      "columns": {
+        "room_id": {
+          "name": "room_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "tv_progress_style": {
+          "name": "tv_progress_style",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'card'"
+        },
+        "interstitial_ms": {
+          "name": "interstitial_ms",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 2500
+        },
+        "max_quality_rank": {
+          "name": "max_quality_rank",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },
@@ -356,7 +591,15 @@
           "autoincrement": false
         }
       },
-      "indexes": {},
+      "indexes": {
+        "singers_session_token_idx": {
+          "name": "singers_session_token_idx",
+          "columns": [
+            "session_token"
+          ],
+          "isUnique": true
+        }
+      },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
