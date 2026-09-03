@@ -386,6 +386,21 @@
 	function livePositionSec(): number {
 		return playback.isPlaying ? posAnchor.pos + (performance.now() - posAnchor.wall) / 1000 : posAnchor.pos;
 	}
+
+	// A reactive copy of the interpolated position, for the peek's progress row. Ticking once a second
+	// is enough because the bar's width transition covers the gap between ticks; a rAF loop would wake
+	// the phone ~60x more often for no visible gain. The timer only runs while playing, and re-arms on
+	// every playback:state so a seek or restart snaps instead of sliding from a stale anchor.
+	let displayPos = $state(0);
+	$effect(() => {
+		displayPos = playback.positionSec;
+		if (!playback.isPlaying) return;
+		const id = setInterval(() => (displayPos = livePositionSec()), 1000);
+		return () => clearInterval(id);
+	});
+	const nowDurationSec = $derived(
+		nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0
+	);
 	$effect(() => {
 		if (!(isMyTurn && micEnabled)) return;
 		const mic = new MicPitch((s) => {
@@ -578,6 +593,8 @@
 	sub={nowEntry ? `${singerOf(nowEntry.singerId)?.displayName ?? 'Someone'} is singing` : 'Queue a song to start the party'}
 	position={myPositionLabel}
 	queueCount={queued.length}
+	elapsedSec={displayPos}
+	durationSec={nowDurationSec}
 	ontoggle={(v) => (sheetOpen = v)}
 >
 	{#snippet controls()}
