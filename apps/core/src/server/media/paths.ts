@@ -94,18 +94,28 @@ export function audioKey(mediaId: string, ext = 'wav'): string {
 	return `audio/${mediaId}.${ext.replace(/^\./, '')}`;
 }
 /**
- * Stored stem container (B-7 audio policy): stereo AAC in m4a. MUST match the worker's
- * processor.py STEM_EXT. Chosen over Opus because the instrumental has to play in a browser
- * <video> and AAC-in-m4a is the safer bet on Safari; ~7 MB where the WAV was ~54 MB.
- * Songs cooked BEFORE this policy keep their `.wav` refs in the DB and still play — the ref is
- * stored per-media, so this helper only names NEW output.
+ * Stored stem formats (B-7 audio policy, revised). The two stems get DIFFERENT treatment because they
+ * have different jobs, and MUST match the worker's processor.py INSTRUMENTAL_EXT / VOCALS_EXT.
+ *
+ * - **instrumental → FLAC (lossless).** This is the file that comes out of the speakers at volume, and
+ *   it is the one place a second lossy generation is audible: ffmpeg's native AAC encoder (the only
+ *   AAC encoder in the image — no libfdk_aac) smears high-frequency transients, which is precisely
+ *   what a crash cymbal is. Lossless removes that generation entirely.
+ * - **vocals → AAC (lossy).** Nothing plays it aloud; it feeds pitch extraction and the future vocal
+ *   guide, so transparency is not the bar.
+ *
+ * Songs cooked under an earlier policy keep their own refs and still play — the ref is stored
+ * per-media, so these helpers only name NEW output.
  */
-export const STEM_EXT = 'm4a';
+export const INSTRUMENTAL_EXT = 'flac';
+export const VOCALS_EXT = 'm4a';
+/** @deprecated kept so older call sites resolve; prefer the per-stem constants. */
+export const STEM_EXT = VOCALS_EXT;
 
-export function instrumentalKey(mediaId: string, ext: string = STEM_EXT): string {
+export function instrumentalKey(mediaId: string, ext: string = INSTRUMENTAL_EXT): string {
 	return `derived/stems/${mediaId}-instrumental.${ext}`;
 }
-export function vocalsKey(mediaId: string, ext: string = STEM_EXT): string {
+export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT): string {
 	return `derived/stems/${mediaId}-vocals.${ext}`;
 }
 export function pitchKey(mediaId: string): string {

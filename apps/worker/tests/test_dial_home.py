@@ -80,7 +80,7 @@ async def test_full_assign_to_complete_flow(tmp_path):
     # the placeholder instrumental was actually written to the media dir
     out = completes[0]["mediaUri"]
     assert Path(out).exists()
-    assert "m1-instrumental.m4a" in out
+    assert "m1-instrumental.flac" in out
     # slot is released after completion
     assert client.state.slots_free == 1
 

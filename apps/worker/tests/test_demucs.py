@@ -132,7 +132,7 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
     final = completes[0].media_uri
-    assert final.endswith("m1-instrumental.m4a")
+    assert final.endswith("m1-instrumental.flac")
     assert Path(final).exists()
     assert completes[0].artifacts["stems"]["instrumental"] == final
     # M8-C0: the isolated vocals stem is ALSO published (was previously discarded)
@@ -154,7 +154,7 @@ async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_pa
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
     stems = completes[0].artifacts["stems"]
-    assert stems["instrumental"].endswith("m1-instrumental.m4a")
+    assert stems["instrumental"].endswith("m1-instrumental.flac")
     assert "vocals" not in stems
 
 
@@ -222,15 +222,31 @@ def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
     assert "%(ext)s" in " ".join(argv)
 
 
-def test_decode_normalizes_to_stereo_44k_wav_for_demucs():
+def test_decode_forces_stereo_but_NEVER_resamples():
+    # The resample was a real quality bug: YouTube serves 48 kHz Opus, so forcing 44100 here threw away
+    # information for nothing -- FLAC, AAC and Opus all handle 48 kHz natively.
     argv = demucs.decode_argv("/m/audio/id1.webm", "/w/input.wav")
     joined = " ".join(argv)
-    assert "-ac 2" in joined and "-ar 44100" in joined
+    assert "-ac 2" in joined
+    assert "-ar" not in argv, "must not force a sample rate -- keep the source's"
+    assert "44100" not in joined
     assert "pcm_s16le" in joined  # a WORKING format, written into scratch
 
 
+def test_instrumental_is_encoded_LOSSLESS_but_vocals_are_not():
+    # Different jobs, different bars: the instrumental plays at volume (a second lossy generation is
+    # audible on crash cymbals), the vocals stem only feeds analysis.
+    inst = " ".join(demucs.encode_flac_argv("/w/no_vocals.wav", "/m/derived/stems/id1-instrumental.flac"))
+    assert "-c:a flac" in inst
+    assert "-sample_fmt s16" in inst  # transparent for a lossy-sourced signal
+    assert "-b:a" not in inst  # lossless has no bitrate
+
+    vox = " ".join(demucs.encode_stem_argv("/w/vocals.wav", "/m/derived/stems/id1-vocals.m4a"))
+    assert "-c:a aac" in vox and "-b:a 192k" in vox
+
+
 def test_stems_are_encoded_to_stereo_aac_not_moved_as_wav():
-    argv = demucs.encode_stem_argv("/w/no_vocals.wav", "/m/derived/stems/id1-instrumental.m4a")
+    argv = demucs.encode_stem_argv("/w/no_vocals.wav", "/m/derived/stems/id1-instrumental.flac")
     joined = " ".join(argv)
     assert "-c:a aac" in joined      # AAC, not Opus: the instrumental must play in Safari
     assert "-b:a 192k" in joined     # headroom over a ~130k lossy source

@@ -28,10 +28,18 @@ export function retentionCapBytes(env: Record<string, string | undefined> = proc
 
 // ── legacy-format recompression ─────────────────────────────────────────────────────
 
-/** A stem ref that predates the current container policy, and is therefore worth transcoding. */
+/**
+ * A stem ref worth transcoding: an UNCOMPRESSED (WAV) artifact from before the audio policy.
+ *
+ * Deliberately NOT "anything that is not the current format". When the instrumental target became
+ * FLAC, that looser rule would have flagged every existing `.m4a` instrumental for "upgrade" — and
+ * transcoding AAC to FLAC is actively harmful: it cannot recover what the lossy encode discarded, so
+ * it produces a ~4x larger file containing exactly the same audio. A genuine codec upgrade requires
+ * re-cooking from the retained raw audio, which is a different (and available) operation.
+ */
 export function isLegacyStemRef(ref: string | undefined | null): boolean {
 	if (!ref) return false;
-	return !ref.endsWith(`.${STEM_EXT}`);
+	return ref.endsWith('.wav');
 }
 
 export interface RecompressTarget {

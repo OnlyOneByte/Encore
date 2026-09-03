@@ -195,9 +195,20 @@ The rules and why each is what it is:
 - **Demucs gets a transient decode.** `work/<jobId>/input.wav` at stereo/44.1k, deleted with the
   scratch. Normalizing here also makes separation behave identically for Opus-in-webm and AAC-in-m4a
   inputs.
-- **Stems are stereo AAC in m4a at 192 kbps.** AAC rather than Opus **specifically for Safari** — the
-  instrumental has to play in a browser `<video>`, and AAC-in-m4a is the safer bet there. 192k leaves
-  headroom over a ~130-150 kbps source for the unavoidable second generation.
+- **The two stems get DIFFERENT formats, because they have different jobs.**
+  - **instrumental → FLAC (lossless), 16-bit.** This is the file that comes out of the speakers at
+    volume, and it is the one place a second lossy generation is audible: the image has only ffmpeg's
+    native `aac` encoder (no `libfdk_aac`), which smears high-frequency transients — exactly what a
+    crash cymbal is. Reported by the owner on a 5.1.2 system and fixed by removing the generation
+    rather than tuning it. Measured: 14.35 MB for a 2:51 track (47% of uncompressed). Chrome reports
+    `canPlayType('audio/flac') === 'probably'` — a *stronger* answer than it gives AAC — and decodes
+    the served file; `/media` must send `audio/flac` or the browser gets octet-stream and refuses.
+  - **vocals → AAC 192k.** Nothing plays it aloud; it feeds pitch extraction and the vocal guide.
+- **Sample rate is NOT ours to choose.** `htdemucs.samplerate == 44100`, so the model resamples
+  whatever it is given and emits 44.1 kHz — a 48 kHz source cannot be preserved end to end without a
+  different separator. The decode step no longer passes `-ar 44100`, which removes a redundant
+  explicit conversion, but it does **not** change the output rate: that was a wrong diagnosis,
+  corrected after measuring the model.
 - **Stereo is the ceiling.** YouTube serves stereo, so a 5.1.2 receiver upmixes from stereo no matter
   what we store; anything beyond stereo would be invented data.
 - **The vocals stem is retained, compressed.** Pitch extraction and the planned vocal guide both need

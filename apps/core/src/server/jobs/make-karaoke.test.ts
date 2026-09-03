@@ -79,7 +79,7 @@ test('markMediaReady records the instrumental key and LEAVES sourceRef alone', (
 	expect(m.stemStatus).toBe('ready');
 	expect(m.playMode).toBe('file');
 	expect(m.instrumentalRef).toBe(instrumentalKey('m1'));
-	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.m4a');
+	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
 	// REGRESSION: overwriting sourceRef forked the song into two rows — the cooked one in the
 	// library and a fresh uncooked one on the next search, because search dedupes on it.
 	expect(m.sourceRef).toBe('vid-m1');
@@ -97,7 +97,7 @@ test('a cooked song stays recognisable by its ORIGIN identity (search dedupe key
 	expect(matches).toHaveLength(1);
 	expect(matches[0]!.id).toBe('m1');
 	expect(matches[0]!.stemStatus).toBe('ready'); // and it is recognised as ALREADY COOKED
-	expect(playbackRef(m)).toBe('derived/stems/m1-instrumental.m4a'); // while still playing the instrumental
+	expect(playbackRef(m)).toBe('derived/stems/m1-instrumental.flac'); // while still playing the instrumental
 });
 
 test('setMediaLyrics attaches the align artifact uri (M8-C2), and no-ops without one', () => {
