@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
-	import { chosenCandidate } from '@encore/shared';
+	import { chosenCandidate, isPlayable } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -68,11 +68,11 @@
 		if (score && score.entryId !== cur?.id) score = null; // new song → drop the previous score
 		current = cur;
 		upNext = next;
-		// held-slot: if the server handed us a current whose media isn't ready (a cooking make-karaoke
-		// file), show WAITING rather than a black player. Server normally skips these via nextPlayable,
-		// so this is a belt-and-suspenders guard for the M7 stems path.
+		// held-slot: if the server handed us a current whose media has no instrumental yet (a cooking
+		// make-karaoke song), show WAITING rather than a black player. Server normally skips these via
+		// nextPlayable, so this is a belt-and-suspenders guard.
 		const m = mediaOf(cur);
-		if (cur && m && m.playMode === 'file' && m.stemStatus !== 'ready' && m.stemStatus !== 'none') {
+		if (cur && m && !isPlayable(m)) {
 			ctl.enterWaiting();
 			tvState = ctl.state;
 			return;
@@ -154,7 +154,6 @@
 				if (m) {
 					mediaCatalog = new Map(mediaCatalog).set(e.mediaId, {
 						...m,
-						playMode: 'file',
 						stemStatus: e.status === 'ready' ? 'ready' : e.status === 'failed' ? m.stemStatus : 'queued'
 					});
 				}

@@ -1,5 +1,6 @@
 // Media resolver interface — the abstraction over search sources (local library, YouTube).
-// MASTER-DESIGN §4/§6: a song is resolved to a Media{playMode} record before it can be queued.
+// A search hit is resolved to a Media record before it can be queued; it becomes playable only
+// once a stems job has produced an instrumental.
 
 import type { Media } from '@encore/shared';
 
@@ -28,8 +29,6 @@ export function resultToMedia(id: string, r: SearchResult): Media {
 		artist: r.artist,
 		durationSec: r.durationSec,
 		thumbnail: r.thumbnail,
-		stemStatus: 'none',
-		// local files play directly; youtube plays via iframe in MVP (flips to file after stems, M7)
-		playMode: r.source === 'local' ? 'file' : 'iframe'
+		stemStatus: 'none'
 	};
 }

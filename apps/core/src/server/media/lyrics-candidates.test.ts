@@ -19,7 +19,7 @@ const media = (over: Partial<Media> = {}): Media => ({
 	artist: 'Vibe Music',
 	durationSec: 295,
 	stemStatus: 'ready',
-	playMode: 'file',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	...over
 });
 

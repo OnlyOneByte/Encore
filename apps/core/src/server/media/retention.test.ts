@@ -23,7 +23,6 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	title: 't-' + id,
 	durationSec: 200,
 	stemStatus: 'ready',
-	playMode: 'file',
 	instrumentalRef: `derived/stems/${id}-instrumental.m4a`,
 	...over
 });

@@ -284,7 +284,6 @@ export function getApp(): EncoreApp {
 					live.lyricsRef = undefined;
 					live.pitchRef = undefined;
 					live.stemStatus = 'none';
-					live.playMode = 'iframe';
 					mediaRepo.upsert(live);
 				}
 				if (doomed.length > 0) {

@@ -9,7 +9,7 @@ const e = (id: string, singerId: string, addedAt: number, mediaId = 'm-' + id): 
 });
 const m = (id: string, over: Partial<Media> = {}): Media => ({
 	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'none', playMode: 'iframe', ...over
+	stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', ...over
 });
 
 test('reseq: three singers interleave fairly', () => {
@@ -32,7 +32,7 @@ test('HELD SLOT: a not-ready (cooking) entry is skipped but keeps its position',
 	// a1 is a make-karaoke file still processing; b1 is a ready iframe.
 	const entries = [e('a1', 'a', 1), e('b1', 'b', 2)];
 	const media = new Map([
-		['m-a1', m('m-a1', { playMode: 'file', stemStatus: 'queued' })], // cooking
+		['m-a1', m('m-a1', { stemStatus: 'queued' })], // cooking
 		['m-b1', m('m-b1')] // ready
 	]);
 	const { next, held } = nextPlayable(entries, media);
@@ -42,19 +42,24 @@ test('HELD SLOT: a not-ready (cooking) entry is skipped but keeps its position',
 	expect(reseq(entries).find((x) => x.id === 'a1')!.rotationSeq).toBe(0);
 
 	// once a1's stems are ready, it becomes the next playable again at its held position
-	media.set('m-a1', m('m-a1', { playMode: 'file', stemStatus: 'ready' }));
+	media.set('m-a1', m('m-a1', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
 	expect(nextPlayable(entries, media).next?.id).toBe('a1');
 });
 
-test('isEntryReady: iframe always ready; file ready only when stems ready/none', () => {
+test('isEntryReady: ready ONLY with an instrumental — nothing plays unprocessed', () => {
 	const media = new Map([
-		['if', m('if', { playMode: 'iframe', stemStatus: 'queued' })],
-		['fq', m('fq', { playMode: 'file', stemStatus: 'queued' })],
-		['fr', m('fr', { playMode: 'file', stemStatus: 'ready' })]
+		['none', m('none', { stemStatus: 'none', instrumentalRef: undefined })],
+		['queued', m('queued', { stemStatus: 'queued', instrumentalRef: undefined })],
+		['skewed', m('skewed', { stemStatus: 'ready', instrumentalRef: undefined })],
+		['cooked', m('cooked', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })]
 	]);
-	expect(isEntryReady(e('x', 'a', 1, 'if'), media)).toBe(true);
-	expect(isEntryReady(e('x', 'a', 1, 'fq'), media)).toBe(false);
-	expect(isEntryReady(e('x', 'a', 1, 'fr'), media)).toBe(true);
+	// An unseparated song is a cook candidate, not something the room can sing — this is the change
+	// from the embed era, where a YouTube entry was always immediately playable.
+	expect(isEntryReady(e('x', 'a', 1, 'none'), media)).toBe(false);
+	expect(isEntryReady(e('x', 'a', 1, 'queued'), media)).toBe(false);
+	// status ahead of artifact: rotation must not hand the TV a ref that is not on disk
+	expect(isEntryReady(e('x', 'a', 1, 'skewed'), media)).toBe(false);
+	expect(isEntryReady(e('x', 'a', 1, 'cooked'), media)).toBe(true);
 });
 
 test('upNextAfter skips the current entry and returns the next ready one', () => {

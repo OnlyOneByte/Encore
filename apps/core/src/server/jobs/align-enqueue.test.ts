@@ -13,7 +13,7 @@ const media = (over: Partial<Media> = {}): Media => ({
 	artist: '7clouds', // the UPLOADER, not the artist
 	durationSec: 211,
 	stemStatus: 'ready',
-	playMode: 'file',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	...over
 });
 

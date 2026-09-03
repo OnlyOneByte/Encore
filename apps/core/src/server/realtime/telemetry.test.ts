@@ -5,7 +5,7 @@ import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
 import { type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'none', playMode: 'iframe' });
+const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 let _s = 0;
 const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({ id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: ++_s });
 
@@ -61,7 +61,7 @@ test('position-only telemetry updates position without advancing', () => {
 test('held-slot: ended skips a not-ready file entry, plays the ready one', () => {
 	const { state, deps } = harness();
 	// q1 ready iframe (playing), q2 is a cooking file, q3 ready
-	deps.mediaById.set('m2', { ...media('m2'), playMode: 'file', stemStatus: 'queued' });
+	deps.mediaById.set('m2', { ...media('m2'), stemStatus: 'queued' });
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	state.applyQueueOp({ op: 'add', entry: entry('q3', 'm3') });
@@ -74,12 +74,12 @@ test('held-slot: ended skips a not-ready file entry, plays the ready one', () =>
 test('reconcileOnReady: room idled while cooking → the freshly-ready song starts playing', () => {
 	const { state, deps, published } = harness();
 	// the only queued song is a cooking file — nothing plays yet (room idle)
-	deps.mediaById.set('m1', { ...media('m1'), playMode: 'file', stemStatus: 'queued' });
+	deps.mediaById.set('m1', { ...media('m1'), stemStatus: 'queued' });
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	expect(state.playback.currentEntryId).toBeNull();
 
 	// stems finish → media ready → reconcile starts it
-	deps.mediaById.set('m1', { ...media('m1'), playMode: 'file', stemStatus: 'ready' });
+	deps.mediaById.set('m1', { ...media('m1'), stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 	reconcileOnReady(deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(state.playback.isPlaying).toBe(true);
@@ -90,13 +90,13 @@ test('reconcileOnReady: room idled while cooking → the freshly-ready song star
 test('reconcileOnReady: something already playing → only re-emits nowplaying (no preemption)', () => {
 	const { state, deps, published } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') }); // ready iframe
-	deps.mediaById.set('m2', { ...media('m2'), playMode: 'file', stemStatus: 'queued' });
+	deps.mediaById.set('m2', { ...media('m2'), stemStatus: 'queued' });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') }); // cooking
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
 	const before = state.playback.currentEntryId;
 	published.length = 0;
 
-	deps.mediaById.set('m2', { ...media('m2'), playMode: 'file', stemStatus: 'ready' });
+	deps.mediaById.set('m2', { ...media('m2'), stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 	reconcileOnReady(deps);
 	expect(state.playback.currentEntryId).toBe(before); // q1 NOT preempted
 	// no new playback:state (we didn't change playback), just a nowplaying refresh so TV preloads m2

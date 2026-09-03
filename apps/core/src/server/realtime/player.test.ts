@@ -5,7 +5,7 @@ import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
 import { ulid, type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'none', playMode: 'iframe' });
+const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 let _seq = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({ id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_seq });
 

@@ -13,7 +13,7 @@ const media = (over: Partial<Media> = {}): Media => ({
 	title: `song ${n}`,
 	durationSec: 200,
 	stemStatus: 'ready',
-	playMode: 'file',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	...over
 });
 const cand = (timing: LyricsCandidate['timing'], source: LyricsCandidate['textSource'] = 'asr'): LyricsCandidate => ({
@@ -39,8 +39,8 @@ test('a song stuck at LINE timings IS re-aligned (line is the floor, word is the
 });
 
 test('an UNCOOKED song is skipped — ASR needs the vocals stem, which does not exist yet', () => {
-	expect(needsLyricsBackfill([media({ playMode: 'iframe', stemStatus: 'none' })])).toEqual([]);
-	expect(needsLyricsBackfill([media({ playMode: 'file', stemStatus: 'queued' })])).toEqual([]);
+	expect(needsLyricsBackfill([media({ stemStatus: 'none' })])).toEqual([]);
+	expect(needsLyricsBackfill([media({ stemStatus: 'queued' })])).toEqual([]);
 });
 
 test('a pre-candidate artifact (bare lyricsRef, schema-1) is left alone', () => {
@@ -61,7 +61,7 @@ test('the backfill never outranks a live cook', () => {
 test('mixed catalog: only the ones that need it, and it is idempotent', () => {
 	const needs = media();
 	const done = media({ lyricsCandidates: [cand('word')] });
-	const raw = media({ playMode: 'iframe', stemStatus: 'none' });
+	const raw = media({ stemStatus: 'none' });
 	const list = [needs, done, raw];
 	expect(needsLyricsBackfill(list)).toEqual([needs.id]);
 	expect(needsLyricsBackfill(list)).toEqual([needs.id]); // pure — same answer every boot

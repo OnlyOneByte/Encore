@@ -12,7 +12,7 @@ import type { WorkerCommand, ServerEvent, Media } from '@encore/shared';
 const T0 = 1_700_000_000_000;
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', playMode: 'iframe', ...over
+	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', ...over
 });
 
 function harness() {
@@ -98,11 +98,10 @@ test('FULL LIFECYCLE: hello → assign → accept → progress → complete driv
 	const done = jobs.byId(job.id)!;
 	expect(done.status).toBe('ready'); // ← drove to ready
 	expect(done.progressPct).toBe(100);
-	// Media flips to the playable instrumental (playMode→file, instrumentalRef→stems key).
+	// Media flips to the playable instrumental (instrumentalRef→stems key).
 	// sourceRef stays the ORIGIN so search still recognises the song as already cooked.
 	const m = mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
-	expect(m.playMode).toBe('file');
 	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
 	expect(m.sourceRef).toBe('vid-m1');
 	const ready = broadcasts.at(-1) as Extract<ServerEvent, { type: 'media:status' }>;

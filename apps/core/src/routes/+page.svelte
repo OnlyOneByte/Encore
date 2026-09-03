@@ -11,6 +11,7 @@
 	import { MicPitch } from '$lib/mic/mic-capture';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
+	import { isPlayable } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
@@ -97,7 +98,7 @@
 						const m = mediaCatalog.get(e.mediaId);
 						if (m) {
 							const nm = new Map(mediaCatalog);
-							nm.set(e.mediaId, { ...m, playMode: 'file', stemStatus: e.status === 'ready' ? 'ready' : 'queued' });
+							nm.set(e.mediaId, { ...m, stemStatus: e.status === 'ready' ? 'ready' : 'queued' });
 							mediaCatalog = nm;
 						}
 						// a song that just finished cooking belongs in the saved library now
@@ -368,8 +369,8 @@
 	}
 	const nowEntry = $derived(entries.find((e) => e.id === playback.currentEntryId));
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
-	// key-shift is available only on a make-karaoke (file) song whose stems are ready
-	const keyShiftEnabled = $derived(!!nowMedia && nowMedia.playMode === 'file' && nowMedia.stemStatus === 'ready');
+	// key-shift is available only once a song's stems are separated — there is nothing to re-pitch before
+	const keyShiftEnabled = $derived(!!nowMedia && isPlayable(nowMedia));
 	const keyLabel = $derived(playback.keyShift === 0 ? 'Key' : `Key · ${playback.keyShift > 0 ? '+' : '−'}${Math.abs(playback.keyShift)}`);
 
 	// ── live mic pitch → score ─────────────────────────────────────────
