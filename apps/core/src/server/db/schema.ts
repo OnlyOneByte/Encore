@@ -51,6 +51,12 @@ export const media = sqliteTable('media', {
 	// holds the YouTube uploader ("7clouds"), not the artist. Nullable: a low-confidence parse stores
 	// NULL rather than a guess, so a heading is never a lie.
 	artistCanonical: text('artist_canonical'),
+	// The canonical TITLE (B-3-C1). B-7-C4 mirrored the canonical artist but not the title, so the only
+	// title reachable at runtime stayed the raw one ("Britney Spears - Baby One More Time (Lyrics)").
+	// Browse didn't care, but a lyrics lookup does: LRCLIB matches on track_name, so sending the raw
+	// title misses even when the artist is right. Nullable on the same principle as artist_canonical —
+	// a low-confidence parse stores NULL rather than a guess.
+	titleCanonical: text('title_canonical'),
 	album: text('album'),
 	year: integer('year')
 });

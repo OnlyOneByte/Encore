@@ -24,6 +24,14 @@ export interface Media {
    * this over `artist` for display and grouping; `artist` remains the raw provenance.
    */
   artistCanonical?: string;
+  /**
+   * The canonical TITLE, from the same normalizer and with the same confidence rule as
+   * `artistCanonical` (B-3-C1). `title` stays the RAW title because that is what search matches and
+   * what a singer recognises in a result list — but a lyrics lookup needs the song's actual name, so
+   * "Britney Spears - Baby One More Time (Lyrics)" has to resolve to "Baby One More Time" or LRCLIB
+   * misses on track_name even when the artist is right. Undefined when the parse wasn't confident.
+   */
+  titleCanonical?: string;
   durationSec: number;
   thumbnail?: string;
   stemStatus: StemStatus;

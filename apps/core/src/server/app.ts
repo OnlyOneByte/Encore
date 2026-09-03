@@ -25,7 +25,7 @@ import {
 	derivedBytesOf,
 	transcodeDiagnostics
 } from './media/retention';
-import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, readAllSidecars } from './media/sidecar';
+import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, lookupTitle, readAllSidecars } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
@@ -155,7 +155,7 @@ export function getApp(): EncoreApp {
 				// B-7-C4: mirror the sidecar's canonical metadata into the INDEX so browse can group by
 				// it. `browseArtist` returns null for a low-confidence parse, so an uncertain guess is
 				// stored as NULL rather than becoming a library heading that is simply wrong.
-				mediaRepo.setCanonical(m.id, { artist: browseArtist(next), album: next.canonical.album, year: next.canonical.year });
+				mediaRepo.setCanonical(m.id, { artist: browseArtist(next), title: lookupTitle(next), album: next.canonical.album, year: next.canonical.year });
 				mediaRepo.setTags(m.id, 'genre', next.canonical.genre);
 				if (next.library.tags.length) mediaRepo.setTags(m.id, 'tag', next.library.tags);
 			} catch {
@@ -188,8 +188,21 @@ export function getApp(): EncoreApp {
 			// so without it browse would only see songs touched since the process started.
 			let indexed = 0;
 			for (const s of await readAllSidecars()) {
-				mediaRepo.setCanonical(s.id, { artist: browseArtist(s), album: s.canonical.album, year: s.canonical.year });
+				mediaRepo.setCanonical(s.id, { artist: browseArtist(s), title: lookupTitle(s), album: s.canonical.album, year: s.canonical.year });
 				if (s.canonical.genre.length) mediaRepo.setTags(s.id, 'genre', s.canonical.genre);
+				// ...and into the RUNTIME map, not just the index (B-3-C1). hydrateMediaCatalog above ran
+				// synchronously at boot while this pass is async, so mirroring only to the DB left every
+				// in-memory Media without its canonicals for the whole process lifetime — invisible to
+				// browse (which queries the index) but not to anything reading mediaById. It surfaced as an
+				// align job dispatched with `artist` but no `track`. Patch only these fields: a live entry
+				// may have flipped to cooking since hydrate, and a wholesale replace would undo that.
+				const live = mediaById.get(s.id);
+				if (live) {
+					const artist = browseArtist(s);
+					const title = lookupTitle(s);
+					if (artist) live.artistCanonical = artist;
+					if (title) live.titleCanonical = title;
+				}
 				indexed++;
 			}
 			if (indexed > 0) console.log(`[core] browse index synced from ${indexed} sidecars`);

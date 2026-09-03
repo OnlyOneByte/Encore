@@ -26,7 +26,8 @@ const toRow = (m: Media): MediaRow => ({
 	instrumentalRef: m.instrumentalRef ?? null,
 	lyricsRef: m.lyricsRef ?? null,
 	pitchRef: m.pitchRef ?? null,
-	artistCanonical: m.artistCanonical ?? null
+	artistCanonical: m.artistCanonical ?? null,
+	titleCanonical: m.titleCanonical ?? null
 });
 
 const fromRow = (r: typeof media.$inferSelect): Media => ({
@@ -42,7 +43,8 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	instrumentalRef: r.instrumentalRef ?? undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
 	pitchRef: r.pitchRef ?? undefined,
-	artistCanonical: r.artistCanonical ?? undefined
+	artistCanonical: r.artistCanonical ?? undefined,
+	titleCanonical: r.titleCanonical ?? undefined
 });
 
 export class MediaRepository {
@@ -97,11 +99,19 @@ export class MediaRepository {
 	// on the live box for 7 cooked songs), so browsing the whole table would drown the library in
 	// things you cannot actually sing yet.
 
-	/** Mirror the canonical metadata for one media into the index (from its authoritative sidecar). */
-	setCanonical(mediaId: string, c: { artist: string | null; album: string | null; year: number | null }): void {
+	/** Mirror the canonical metadata for one media into the index (from its authoritative sidecar).
+	 *  `title` is optional so a caller that only knows the artist (B-7-C4 shape) still compiles; when
+	 *  omitted the stored title_canonical is left ALONE rather than nulled, since a partial mirror must
+	 *  not erase a good value. */
+	setCanonical(mediaId: string, c: { artist: string | null; title?: string | null; album: string | null; year: number | null }): void {
 		this.#db
 			.update(media)
-			.set({ artistCanonical: c.artist, album: c.album, year: c.year })
+			.set({
+				artistCanonical: c.artist,
+				...(c.title === undefined ? {} : { titleCanonical: c.title }),
+				album: c.album,
+				year: c.year
+			})
 			.where(eq(media.id, mediaId))
 			.run();
 	}

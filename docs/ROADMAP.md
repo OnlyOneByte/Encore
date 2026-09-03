@@ -597,27 +597,83 @@ because its only real acceptance test is audible and needs the owner in the room
      normalizer, which is why B-7 goes first.
   4. **The live worker advertises only `stems`** (`ENCORE_WORKER_CAPABILITIES=stems`), so a correct
      align job would sit queued forever.
-  **The design shift:** separate *text acquisition* from *timing*. Because WhisperX supplies the
-  timing, only accurate **text** is needed — pre-timed `.lrc` is a nice-to-have, not a requirement —
-  which makes plain-text sources first-class. A tiered `LyricsSource` chain (normalized-metadata
-  LRCLIB → YouTube captions → human paste-in → ASR on the vocals stem) returns text plus
-  provenance/confidence, and one timing layer force-aligns whatever arrived. `whisperx.py` currently
-  conflates the two, which is why "no LRCLIB" means "no lyrics" instead of "no *authoritative*
-  lyrics". Provenance also answers the presentation question for free: the TV can be honest about
-  auto-transcribed words precisely because the artifact records where the text came from.
-  **Environment facts (measured from inside the worker container, 2026-09-02):** `lrclib.net`
-  resolves to `chalupa-dns-sinkhole.corp.amazon.com` and fails `SSL: CERTIFICATE_VERIFY_FAILED` — dead
-  here, deploy-box only. But **`huggingface.co` returns HTTP 200**, so WhisperX models *can* be
-  downloaded and the ASR tier is verifiable end-to-end on this box with real ML — this **falsifies the
-  old note** that real-ML lyrics verification had to be flagged for a human. Two of the library's
-  videos were probed for captions: one has none at all, the other only auto-generated (ASR) ones, so
-  captions are a middle tier, not an authoritative one. Musixmatch has the best catalog but its terms
-  generally forbid storing lyrics, which is at odds with a self-hosted cache; Genius-class sites give
-  good text but only via scraping.
-  **Done-when:** a cooked song shows word-timed lyrics on the TV with LRCLIB unreachable, and the
-  overlay distinguishes authoritative text from auto-transcribed. **Verify:** AUTO — tier selection +
-  fallback order with fake sources, the existing injectable `Aligner` seam, enqueue/params derivation;
-  REAL-ML — actual transcription, now runnable here.
+  **The design shift (revised 2026-09-02 with the owner): TEXT QUALITY and TIMING FIDELITY are
+  INDEPENDENT AXES, and ASR runs on every song regardless.** The earlier framing collapsed them into
+  one ordered chain that returns a single winner, which throws away most of the value:
+
+  | Source | Text | Timing it yields unaided |
+  |---|---|---|
+  | LRCLIB `syncedLyrics` (LRC) | authoritative | **line-level** — no ML, no audio at all |
+  | LRCLIB plain / YouTube captions | good | none — needs forced alignment |
+  | ASR on the vocals stem | **dubious** | **word-level** |
+
+  The ideal artifact is *authoritative text force-aligned to the audio* — it needs BOTH halves, so
+  they cannot be alternatives to each other. Two consequences the linear design missed:
+  - **Line-level sync is the FLOOR, word-level is the ideal** (owner's bar: never play with no sync
+    at all). Raw LRC clears the floor with zero ML and zero audio, so lyrics can be ready *before*
+    the instrumental — which removes the "first play has no lyrics" cost that chaining would incur.
+  - **ASR is the inverse of the intuition:** worst tier for words, but word-level timing for free.
+    So the honest-presentation requirement matters *most* exactly where the timing looks best.
+
+  **Why ASR always, not just as a fallback.** Beyond guaranteeing a floor, it is a VALIDATION
+  signal: LRCLIB's real failure mode is a confident WRONG match (fuzzy metadata returns another
+  song's lyrics, and nothing today would catch it). Comparing ASR of what is actually sung against
+  the authoritative text scores agreement — rough agreement raises confidence, wild divergence means
+  the lookup fetched the wrong song. It also supplies the `language` that `align()` needs and which
+  is currently a hardcoded `'en'` guess, plus vocal-presence detection (a true instrumental).
+
+  **Therefore: MULTIPLE lyrics+alignment sets per song, not one.** `artifacts.lyrics` becomes a set
+  of candidates — `{ ref, textSource: lrclib|captions|asr|manual, timing: word|line|none,
+  textConfidence, timingConfidence, language, createdAt }` — plus a `chosen` pointer the TV loads.
+  This buys an **upgrade path with no recompute**: ASR lands first; when LRCLIB becomes reachable (or
+  text is pasted in) re-align *from the retained audio* — no re-download, no re-separation. And it
+  can never regress: a new line-level source cannot overwrite existing word-level timings.
+  Presentation is then a pure `pickBestLyrics(candidates)`, ranked:
+  1. authoritative text + word timings, 2. **authoritative text + line timings**, 3. ASR text + word
+  timings (labeled auto-transcribed), 4. nothing — an honest "no lyrics" state, never a blank overlay.
+  **2 ranks above 3 deliberately:** wrong words are a failure (you cannot sing them), whereas correct
+  words with coarse highlighting is the accepted minimum.
+
+  **Environment facts.** `huggingface.co` returns HTTP 200, so WhisperX models download and the ASR
+  tier is verifiable end-to-end here with real ML — this **falsifies the old note** that real-ML
+  lyrics verification had to be flagged for a human. On `lrclib.net` the record was WRONG: an earlier
+  note claimed a corp DNS sinkhole + `CERTIFICATE_VERIFY_FAILED` as a property of the environment. Re-measured
+  2026-09-02 from the repo shell: `lrclib.net` fails DNS outright (`gaierror`) while `huggingface.co`
+  and `www.youtube.com` resolve fine from the *same* shell — so it is a block on **this laptop**, not
+  a fact about the project. `LrclibClient` already takes `base_url` (`lyrics_source.py:180`); wiring
+  it to `ENCORE_LRCLIB_BASE` allows a proxy or a **self-hosted LRCLIB from their published DB dump**,
+  which suits a party box better than a live API call over party wifi. Tests already inject a fake
+  fetcher, so C1–C3 are fully buildable here; only the live lookup waits on network. Captions were
+  probed on two library videos: one had none, the other only auto-generated — a middle tier, not an
+  authoritative one. Musixmatch has the best catalog but its terms generally forbid storing lyrics,
+  at odds with a self-hosted cache; Genius-class sites give good text but only via scraping.
+
+  **Done-when:** a cooked song shows word-timed lyrics on the TV with LRCLIB unreachable; a song with
+  authoritative text but no alignment still scroll-syncs by line; and the overlay distinguishes
+  authoritative text from auto-transcribed. **Sub-commits:**
+  - [ ] **B-3-C1 · enqueue `align` + carry its params + `ENCORE_LRCLIB_BASE`.** Widen `job:assign`
+        params past `{ model?, targetKey? }`; derive `artist` from `artistCanonical ?? artist`, plus
+        `track`/`language`/`durationSec`; enqueue align alongside stems. *Done-when:* a cook produces
+        a queued align job a capable worker ACCEPTS instead of rejecting. **AUTO** — params derivation
+        incl. the null-`artistCanonical` case, enqueue dedup. Shared-contract change: stage
+        `packages/shared` in the SAME commit (Gotcha #10).
+  - [ ] **B-3-C2 · candidate model + `pickBestLyrics` (pure).** Candidate shape, the ranking above,
+        the never-regress rule, and ASR↔authoritative agreement scoring. **AUTO** — no network, no ML.
+  - [ ] **B-3-C3 · split acquisition from timing in `whisperx.py`.** The producer emits *candidates*
+        instead of one doc; the injectable `Aligner` seam (already clean, already degrades to
+        line-sync) is untouched. **AUTO** with fake sources.
+  - [ ] **B-3-C4 · ASR tier (real ML).** A `Transcriber` seam mirroring `Aligner`, run on the VOCALS
+        stem (a full mix transcribes badly). **REAL-ML**, runnable here. Measure the added cook cost —
+        ASR on every song is a second pass alongside Demucs on the same cores.
+  - [ ] **B-3-C5 · multi-candidate storage + `chosen` threading.** Sidecar `artifacts.lyrics` set
+        (a `schema` bump, with a read path for old single-ref records), `setMediaLyrics` → set
+        semantics, `Media` carries the chosen ref + provenance. **AUTO**
+  - [ ] **B-3-C6 · TV honesty + the line-sync floor.** Overlay distinguishes authoritative from
+        auto-transcribed and renders line-level as a stanza scroll. **AUTO** + **EYES-ON** via `/components`.
+  - [ ] **B-3-C7 · captions tier + re-align-on-better-text** (the upgrade path C5 makes possible).
+  **Deferred by the owner:** the human paste-in tier (needs a core endpoint + phone UI + storage).
+  **Prerequisite, not a commit:** `whisperx==3.8.6` in the worker venv and
+  `ENCORE_WORKER_CAPABILITIES=stems,score,align` — C4 cannot be verified without it.
 - [ ] **B-4 · Hot-titles persistence** — the popularity tracker is in-memory (survives refresh, not
   restart). Persist counts to the DB so "🔥 Popular tonight" survives a restart. **Verify:** AUTO — unit.
 - [ ] **M9-C1 · accounts** (claim an ephemeral singer; join flow never regresses) — later.

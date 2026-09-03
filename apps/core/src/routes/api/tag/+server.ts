@@ -10,7 +10,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
-import { readSidecar, writeSidecar, browseArtist } from '$server/media/sidecar';
+import { readSidecar, writeSidecar, browseArtist, lookupTitle } from '$server/media/sidecar';
 
 /** Genres are lowercased and trimmed so "Pop", "pop " and "pop" are one bucket, not three. */
 function normalizeValues(input: unknown): string[] | null {
@@ -53,7 +53,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	// Then the index.
 	app.media.setTags(mediaId, kind, values);
-	app.media.setCanonical(mediaId, { artist: browseArtist(sidecar), album: sidecar.canonical.album, year: sidecar.canonical.year });
+	app.media.setCanonical(mediaId, { artist: browseArtist(sidecar), title: lookupTitle(sidecar), album: sidecar.canonical.album, year: sidecar.canonical.year });
 
 	return json({ ok: true, mediaId, kind, values });
 };

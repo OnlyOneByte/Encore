@@ -20,6 +20,7 @@ from typing import Any, AsyncIterator, Callable, Protocol
 
 from .demucs import Runner, download_argv, is_local_source, parse_ytdlp_progress, subprocess_runner
 from .lyrics_source import (
+    LRCLIB_BASE,
     LrclibClient,
     entries_to_segments,
     is_line_synced,
@@ -171,17 +172,19 @@ class WhisperXProcessor:
         lyrics_client: LrclibClient | None = None,
         aligner: Aligner | None = None,
         model: str = DEFAULT_MODEL,
+        lrclib_base: str = LRCLIB_BASE,
     ) -> None:
         self._runner = runner
         self._ytdlp_bin = ytdlp_bin
         self._device = device
         self._model = model
+        self._lrclib_base = lrclib_base
         self._lyrics_client = lyrics_client  # None → constructed lazily (real LRCLIB)
         self._aligner = aligner  # None → constructed lazily (real WhisperX)
 
     def _client(self) -> LrclibClient:
         if self._lyrics_client is None:
-            self._lyrics_client = LrclibClient()
+            self._lyrics_client = LrclibClient(base_url=self._lrclib_base)
         return self._lyrics_client
 
     def _get_aligner(self) -> Aligner:

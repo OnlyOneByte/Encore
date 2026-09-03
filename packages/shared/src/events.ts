@@ -77,10 +77,32 @@ export type MediaStoreConfig =
   | { kind: 'local' }
   | { kind: 'object'; bucket: string; endpoint?: string; region?: string; prefix?: string };
 
+/**
+ * Per-job inputs the core derives and the worker consumes (B-3-C1). One flat optional bag rather
+ * than a union per JobType, because a worker reads only the keys its processor needs and an unknown
+ * key must never break an older worker.
+ *
+ * `artist`/`track` are the CONFIDENCE-GATED canonicals, not the raw uploader and raw title: an align
+ * job that looked up "7clouds — Britney Spears - Baby One More Time (Lyrics)" misses on metadata
+ * alone. Before this existed the contract was `{ model?, targetKey? }` and worker-hub sent only
+ * `{ model }`, so `WhisperXProcessor` hard-raised on every align job it was ever given.
+ *
+ * `language` is deliberately ABSENT for now: nothing populates it (the sidecar field is unset), and
+ * sending a guessed 'en' is worse than letting the worker default and B-3-C4's ASR detect it.
+ */
+export interface JobParams {
+  model?: string; // separation model (stems) — e.g. htdemucs
+  targetKey?: string; // requested key shift, if a job ever pre-renders one
+  artist?: string; // canonical artist for a lyrics lookup; absent when the parse wasn't confident
+  track?: string; // canonical title for a lyrics lookup; absent when the parse wasn't confident
+  album?: string;
+  durationSec?: number; // narrows an LRCLIB match and bounds line-sync fallback timings
+}
+
 // core -> worker
 export type WorkerCommand =
   | { type: 'worker:welcome'; heartbeatIntervalSec: number; ackTimeoutSec: number; mediaStore: MediaStoreConfig }
-  | { type: 'job:assign'; jobId: string; mediaId: string; jobType: JobType; sourceUri: string; params: { model?: string; targetKey?: string } }
+  | { type: 'job:assign'; jobId: string; mediaId: string; jobType: JobType; sourceUri: string; params: JobParams }
   | { type: 'job:cancel'; jobId: string; reason: string }
   | { type: 'ping' };
 

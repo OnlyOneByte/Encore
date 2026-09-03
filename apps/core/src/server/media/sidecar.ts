@@ -153,7 +153,12 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		playMode: cooked ? 'file' : 'iframe',
 		instrumentalRef: s.artifacts.instrumental ?? undefined,
 		lyricsRef: s.artifacts.lyrics ?? undefined,
-		pitchRef: s.artifacts.pitch ?? undefined
+		pitchRef: s.artifacts.pitch ?? undefined,
+		// Carry the confidence-gated canonicals so a RESTORED media is immediately complete. The boot
+		// sync pass mirrors these into the index too, but an align job dispatched before that pass ran
+		// would otherwise look up the raw title and miss.
+		artistCanonical: browseArtist(s) ?? undefined,
+		titleCanonical: lookupTitle(s) ?? undefined
 	};
 }
 
@@ -162,6 +167,18 @@ export function browseArtist(s: MediaSidecar): string | null {
 	const p = s.provenance.artist;
 	if (!p || p.confidence === 'low') return null;
 	return s.canonical.artist;
+}
+
+/**
+ * The lookup-safe canonical title: null when we only guessed (B-3-C1). Same confidence gate as
+ * `browseArtist`, for the same reason — a lyrics lookup on a guessed title returns either nothing or,
+ * worse, ANOTHER SONG'S words, and confidently wrong lyrics are the one outcome worse than none.
+ * Callers fall back to the raw title, which is a miss but never a lie.
+ */
+export function lookupTitle(s: MediaSidecar): string | null {
+	const p = s.provenance.title;
+	if (!p || p.confidence === 'low') return null;
+	return s.canonical.title;
 }
 
 // ── I/O ─────────────────────────────────────────────────────────────────────────────

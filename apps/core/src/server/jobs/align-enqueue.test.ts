@@ -1,0 +1,66 @@
+// B-3-C1: lyrics were unreachable for two reasons at once — nothing ever enqueued an `align` job,
+// and `job:assign` could not carry what align needs. These pin both, plus the confidence rule that
+// decides whether a lyrics lookup is even attempted.
+import { test, expect } from 'bun:test';
+import { assignParams, followUps } from './dispatch';
+import type { Media } from '@encore/shared';
+
+const media = (over: Partial<Media> = {}): Media => ({
+	id: 'm1',
+	source: 'youtube',
+	sourceRef: 'vid',
+	title: 'Britney Spears - Baby One More Time (Lyrics)', // the RAW title, as search stores it
+	artist: '7clouds', // the UPLOADER, not the artist
+	durationSec: 211,
+	stemStatus: 'ready',
+	playMode: 'file',
+	...over
+});
+
+// ── the cook pipeline ─────────────────────────────────────────────────────────
+test('a completed stems job enqueues align (lyrics run on every cook)', () => {
+	expect(followUps('stems')).toEqual(['align']);
+});
+
+test('align does not chain further — no infinite pipeline', () => {
+	expect(followUps('align')).toEqual([]);
+	expect(followUps('score')).toEqual([]);
+});
+
+// ── params derivation ─────────────────────────────────────────────────────────
+test('stems still gets its separation model', () => {
+	expect(assignParams('stems', media()).model).toBe('htdemucs');
+});
+
+test('THE BUG: align now carries canonical artist + track, not the uploader and raw title', () => {
+	const p = assignParams('align', media({ artistCanonical: 'Britney Spears', titleCanonical: 'Baby One More Time' }));
+	expect(p.artist).toBe('Britney Spears');
+	expect(p.track).toBe('Baby One More Time');
+	// NOT the values that made 4 of 5 library songs miss on metadata alone
+	expect(p.artist).not.toBe('7clouds');
+	expect(p.track).not.toContain('(Lyrics)');
+});
+
+test('durationSec rides along to narrow the match', () => {
+	expect(assignParams('align', media({ artistCanonical: 'a', titleCanonical: 'b' })).durationSec).toBe(211);
+});
+
+test('a low-confidence parse OMITS the field rather than sending a guess', () => {
+	// artistCanonical/titleCanonical are undefined when the normalizer was not confident. Omitting is
+	// how the worker learns "no authoritative lookup is possible" and goes straight to transcription.
+	const p = assignParams('align', media());
+	expect(p.artist).toBeUndefined();
+	expect(p.track).toBeUndefined();
+	expect(p.durationSec).toBe(211); // duration is always safe to send
+});
+
+test('a confident artist with an unconfident title still omits only the title', () => {
+	const p = assignParams('align', media({ artistCanonical: 'Britney Spears' }));
+	expect(p.artist).toBe('Britney Spears');
+	expect(p.track).toBeUndefined();
+});
+
+test('unknown media and a zero duration do not produce junk params', () => {
+	expect(assignParams('align', undefined)).toEqual({});
+	expect(assignParams('align', media({ durationSec: 0 })).durationSec).toBeUndefined();
+});
