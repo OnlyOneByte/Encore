@@ -136,6 +136,43 @@ export function markMediaReady(
 }
 
 /**
+ * Apply a `fetch` job's MusicBrainz annotation, or refuse.
+ *
+ * NEVER REGRESSES. A `high` annotation carries an MBID and a duration that corroborated it; a `medium`
+ * is a plausible identification nothing confirmed. Once a media holds a `high` citation, a later
+ * `medium` must not overwrite it — a re-fetch, a re-cook, or a backfill would otherwise be able to
+ * downgrade a known-good artist into a guess, and the field that suffers is the one the LRCLIB query
+ * matches on.
+ *
+ * A normalizer-derived value is always overwritable: it is a title parse, not a citation.
+ *
+ * Writes the canonical fields as well as the MBID, because being able to cite the song is only useful
+ * if the names that come with it are the ones downstream reads.
+ */
+export function applyAnnotation(
+	mediaId: string,
+	mediaById: Map<string, Media>,
+	annotation?: { source?: string; mbid?: string; artist?: string; title?: string; confidence?: string }
+): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media || !annotation?.mbid || !annotation.artist || !annotation.title) return false;
+	const confidence = annotation.confidence === 'high' ? 'high' : 'medium';
+
+	// Refuse a downgrade of an existing citation. Same rank comparison in spirit as the separator
+	// upgrade gate: a candidate has to be at least as good as what is already published.
+	const current = media.annotation;
+	if (current?.source === 'musicbrainz' && current.confidence === 'high' && confidence !== 'high') {
+		return false;
+	}
+
+	media.mbid = annotation.mbid;
+	media.artistCanonical = annotation.artist;
+	media.titleCanonical = annotation.title;
+	media.annotation = { source: 'musicbrainz', confidence };
+	return true;
+}
+
+/**
  * Attach the word-timed lyrics artifact (align output) to a media so the TV karaoke overlay can
  * fetch and highlight it. Additive and independent of the stems flip. Returns true if a usable ref
  * was set.

@@ -79,15 +79,24 @@ class FetchProcessor:
     the retained original as its media_uri, which is NOT a playable artifact — nothing singable has been
     produced yet, and the core does not flip a media to ready off the back of a fetch.
 
+    ANNOTATION is the final step rather than its own job, because it needs exactly what a download
+    produces and nothing a separate job would add: the real title and the exact duration. It is
+    best-effort by construction -- a declined identification, or an unreachable MusicBrainz, leaves the
+    core's normalizer values in place and never fails the cook. A karaoke night must not stop because a
+    metadata service is down.
+
     Takes the same injectable runner the other processors take, so the whole flow tests with a fake
     subprocess and the real yt-dlp only runs on a worker box.
     """
 
-    def __init__(self, runner=None, ytdlp_bin: str = "yt-dlp") -> None:
+    def __init__(self, runner=None, ytdlp_bin: str = "yt-dlp", annotator=None) -> None:
         from .demucs import subprocess_runner
 
         self._runner = runner or subprocess_runner
         self._ytdlp_bin = ytdlp_bin
+        # None disables identification entirely (ENCORE_ANNOTATE=0) -- a legitimate choice for a box with
+        # no outbound network, not something to work around.
+        self._annotator = annotator
 
     async def _download(self, source_uri: str, out_path: str) -> AsyncIterator[ProgressEvent]:
         from .demucs import download_argv, parse_ytdlp_progress
@@ -111,4 +120,22 @@ class FetchProcessor:
                 path = item
         if path is None or not os.path.exists(path):
             raise RuntimeError(f"fetch produced no audio for {job.media_id}")
-        yield CompleteResult(media_uri=path, artifacts={"source": {"audio": path}})
+
+        artifacts: dict = {"source": {"audio": path}}
+        note = self._annotate(job)
+        if note is not None:
+            artifacts["annotation"] = note
+        yield CompleteResult(media_uri=path, artifacts=artifacts)
+
+    def _annotate(self, job: JobSpec) -> dict | None:
+        """Identify the song, or return None. Swallows everything: a cook must not fail over metadata."""
+        if self._annotator is None:
+            return None
+        from .annotate import annotate
+
+        params = job.params or {}
+        try:
+            got = annotate(self._annotator, params.get("artist"), params.get("track"), params.get("durationSec"))
+        except Exception:  # noqa: BLE001 - annotation is an enrichment; never a job failure
+            return None
+        return got.as_artifact() if got is not None else None

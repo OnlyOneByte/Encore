@@ -138,6 +138,10 @@ class WorkerConfig:
     #: separations that can actually contend — and stays None when only one can run, so a box with no
     #: contention keeps torch's own physical-core-aware default.
     torch_threads: int | None = None
+    #: Identify a download against MusicBrainz after fetching it. On by default because the payoff is a
+    #: correct artist/title for the LRCLIB lookup; set ENCORE_ANNOTATE=0 on a box with no outbound
+    #: network, where every call would decline anyway and only cost a timeout per cook.
+    annotate: bool = True
     #: Which backend executes a separator engine here: "torch", "mlx", or unset for auto-detect.
     #: Distinct from demucs_device: the backend is the IMPLEMENTATION, the device is where torch runs.
     #: An explicit backend that is unavailable fails at startup rather than silently cooking on CPU.
@@ -194,6 +198,7 @@ class WorkerConfig:
             demucs_segment=_opt_int(e, "ENCORE_DEMUCS_SEGMENT", w),
             demucs_shifts=_opt_int(e, "ENCORE_DEMUCS_SHIFTS", w, minimum=0),
             torch_threads=torch_threads,
+            annotate=e.get("ENCORE_ANNOTATE", "1").strip() not in ("0", "false", "no"),
             separator_backend=(e.get("ENCORE_SEPARATOR_BACKEND", "").strip().lower() or None),
             stem_bitrate=e.get("ENCORE_STEM_BITRATE", "192k").strip() or "192k",
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),

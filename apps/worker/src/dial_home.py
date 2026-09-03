@@ -215,7 +215,12 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
 
         # Acquisition needs no ML, so it is built whenever a fetch capability is advertised — including
         # on a box that cannot separate at all. That asymmetry is the point of routing fetch separately.
-        by_type["fetch"] = FetchProcessor(ytdlp_bin=cfg.ytdlp_bin)
+        annotator = None
+        if cfg.annotate:
+            from .annotate import MusicBrainzClient
+
+            annotator = MusicBrainzClient()
+        by_type["fetch"] = FetchProcessor(ytdlp_bin=cfg.ytdlp_bin, annotator=annotator)
     if "stems" in cfg.capabilities or "score" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
         from .backends import resolve_backend
         from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
