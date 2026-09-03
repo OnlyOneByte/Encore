@@ -605,15 +605,24 @@ because its only real acceptance test is audible and needs the owner in the room
   |---|---|---|
   | LRCLIB `syncedLyrics` (LRC) | authoritative | **line-level** — no ML, no audio at all |
   | LRCLIB plain / YouTube captions | good | none — needs forced alignment |
-  | ASR on the vocals stem | **dubious** | **word-level** |
+  | ASR on the vocals stem | **dubious** | line-level (segment bounds) |
+
+  **CORRECTED 2026-09-02 by measurement (B-3-C4).** The row above originally claimed ASR yields
+  **word-level** timing "for free". It does not: whisper's `transcribe()` returns segment bounds and
+  ZERO words — word timings in WhisperX come only from the separate `align()` pass. So the aligner is
+  the SINGLE source of word timings for every tier, and it is not text-source-specific: it upgrades
+  any text, looked-up or transcribed, from line to word. This makes the architecture simpler than the
+  original framing, not more complex — one timing layer, N text sources. The ASR tier is still worth
+  having for its text and for the agreement signal, just not as a shortcut to word timings.
 
   The ideal artifact is *authoritative text force-aligned to the audio* — it needs BOTH halves, so
   they cannot be alternatives to each other. Two consequences the linear design missed:
   - **Line-level sync is the FLOOR, word-level is the ideal** (owner's bar: never play with no sync
     at all). Raw LRC clears the floor with zero ML and zero audio, so lyrics can be ready *before*
     the instrumental — which removes the "first play has no lyrics" cost that chaining would incur.
-  - **ASR is the inverse of the intuition:** worst tier for words, but word-level timing for free.
-    So the honest-presentation requirement matters *most* exactly where the timing looks best.
+  - **ASR is the worst tier for words** while still producing a fully-synced, polished-looking
+    overlay once its text is force-aligned. So the honest-presentation requirement matters *most*
+    exactly where the result looks most finished.
 
   **Why ASR always, not just as a fallback.** Beyond guaranteeing a floor, it is a VALIDATION
   signal: LRCLIB's real failure mode is a confident WRONG match (fuzzy metadata returns another
@@ -675,9 +684,17 @@ because its only real acceptance test is audible and needs the owner in the room
         module rather than extending lyrics_source.py: the adapter needs `lrclib_to_segments`, which
         would close an import cycle. 11 new tests + 4 rewritten (one encoded the old conflation).
         **AUTO** with fake sources.
-  - [ ] **B-3-C4 · ASR tier (real ML).** A `Transcriber` seam mirroring `Aligner`, run on the VOCALS
-        stem (a full mix transcribes badly). **REAL-ML**, runnable here. Measure the added cook cost —
-        ASR on every song is a second pass alongside Demucs on the same cores.
+  - [x] **B-3-C4 · ASR tier (real ML).** DONE. `Transcriber` protocol + `WhisperxTranscriber`
+        (faster-whisper via `whisperx.load_model`, `int8` on CPU since float16 is GPU-only, language
+        AUTO-DETECTED rather than guessed) and `AsrSource`, which reads the VOCALS STEM and **declines
+        rather than falling back to the mix** — worse words that look identical to good ones is the one
+        outcome provenance cannot rescue. That stem dependency is why align is chained after stems.
+        **REAL-ML VERIFIED here:** `base` on CPU, a 3:31 vocals stem → **31.5 s**, language `en` (0.85),
+        9 segments of recognisable-but-garbled Britney ("Oh baby baby… I must confess, I still
+        believe" alongside "Boy, you rock me planter I've been a spitter") — precisely the dubious-text
+        profile the ranking assumes. Cost: ~31 s of ASR + one align pass on top of ~87 s of Demucs.
+        Environment wrinkle: `torchcodec` logs `libavutil.{56,57}.dylib` dlopen failures and falls back
+        cleanly — noisy, not fatal. 8 tests. Also corrected the tier table above from measurement.
   - [ ] **B-3-C5 · multi-candidate storage + `chosen` threading.** Sidecar `artifacts.lyrics` set
         (a `schema` bump, with a read path for old single-ref records), `setMediaLyrics` → set
         semantics, `Media` carries the chosen ref + provenance. **AUTO**
