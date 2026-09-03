@@ -85,3 +85,21 @@ export function publicOrigin(request: Request, url: URL): string {
 	const host = (headers.get('x-forwarded-host') ?? headers.get('host') ?? url.host).split(',')[0]!.trim();
 	return `${proto}://${host}`;
 }
+
+/**
+ * Whether the client reached us over https, decided the same way `publicOrigin` decides the scheme.
+ *
+ * Exists so the session cookie's `Secure` attribute cannot disagree with the join QR. Do NOT use
+ * `url.protocol` for this: adapter-node computes the protocol as
+ * `protocol_header && headers.get(protocol_header) || "https"`, so with no `PROTOCOL_HEADER` set it
+ * reports **https for every request** — which marks the session cookie `Secure` on a plain-HTTP LAN
+ * deployment, and the browser then silently discards it.
+ *
+ * That failure is invisible from both of the places you would look: the server's Set-Cookie header
+ * looks correct, and it works on the host box because browsers accept `Secure` over `http://localhost`
+ * (localhost is a trustworthy origin). It surfaces only as a phone that reaches /join, posts
+ * successfully, and then gets 401 from /api/me because it holds no cookie.
+ */
+export function publicOriginIsHttps(request: Request, url: URL): boolean {
+	return publicOrigin(request, url).startsWith('https:');
+}
