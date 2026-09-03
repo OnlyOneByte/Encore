@@ -1,9 +1,11 @@
 """WhisperX align pipeline — PURE shape transform (raw WhisperX → normalized word-timed lyrics,
 the M7-C8 done-when "lyrics JSON with word timestamps; unit test on shape") + the I/O processor
 flow driven by a fake runner (canned transcript, no torch). Real ML alignment defers to a GPU box."""
+import asyncio
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -550,3 +552,65 @@ async def test_asr_text_is_FORCE_ALIGNED_to_get_word_timings(tmp_path):
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     assert aligner.calls, "the ASR text must be handed to the aligner"
     assert done.artifacts["lyrics"]["candidates"][0]["timing"] == TIMING_WORD
+
+
+# ── the event loop must stay free during ML (found on a live cook) ─────────────
+@pytest.mark.asyncio
+async def test_blocking_ML_does_not_freeze_the_event_loop(tmp_path, monkeypatch):
+    """Observed live: sync torch calls inline froze the loop, so the worker missed the websocket
+    keepalive ping (disconnect) AND could not send job:progress, so the core's 30s progress lease
+    expired and the reaper requeued a healthy job (attempts=1). This proves other tasks still run."""
+    monkeypatch.setattr(whisperx, "LEASE_KEEPALIVE_SEC", 0.02)
+    ticks = 0
+
+    async def heartbeat():
+        nonlocal ticks
+        while True:
+            await asyncio.sleep(0.01)
+            ticks += 1
+
+    class SlowAligner:
+        def align(self, segments, audio_path, language):
+            time.sleep(0.2)  # a stand-in for a 60s wav2vec2 pass
+            return {"language": language, "segments": [
+                {"start": 0.0, "end": 1.0, "text": "x", "words": [{"word": "x", "start": 0.0, "end": 1.0}]}]}
+
+    beat = asyncio.ensure_future(heartbeat())
+    try:
+        proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(),
+                                         aligner=SlowAligner())
+        await drain(proc, spec(tmp_path))
+    finally:
+        beat.cancel()
+    assert ticks > 3, f"event loop was starved during the ML call (only {ticks} ticks)"
+
+
+@pytest.mark.asyncio
+async def test_keepalive_progress_is_emitted_while_ML_runs(tmp_path, monkeypatch):
+    """Each keepalive refreshes the core's progress lease, which is what stops the reaper from
+    requeueing a job that is running fine."""
+    monkeypatch.setattr(whisperx, "LEASE_KEEPALIVE_SEC", 0.02)
+
+    class SlowAligner:
+        def align(self, segments, audio_path, language):
+            time.sleep(0.25)
+            return {"language": language, "segments": [
+                {"start": 0.0, "end": 1.0, "text": "x", "words": [{"word": "x", "start": 0.0, "end": 1.0}]}]}
+
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(),
+                                      aligner=SlowAligner())
+    events = await drain(proc, spec(tmp_path))
+    aligning = [e for e in events if isinstance(e, ProgressEvent) and e.stage == "aligning"]
+    assert len(aligning) >= 3, f"expected repeated aligning keepalives, got {len(aligning)}"
+
+
+@pytest.mark.asyncio
+async def test_a_raising_aligner_still_propagates_through_the_thread_wrapper(tmp_path):
+    """_run_blocking must not swallow failures — the line-sync degrade depends on the raise."""
+    class Broken:
+        def align(self, *a, **k):
+            raise RuntimeError("no model")
+
+    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=Broken())
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    assert done.artifacts["lyrics"]["candidates"][0]["timing"] == TIMING_LINE

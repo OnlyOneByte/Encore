@@ -56,7 +56,79 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 		lines.push({ start: num(l.start), end: num(l.end), text, words });
 	}
 	if (lines.length === 0) return null;
-	return { language: typeof r.language === 'string' ? r.language : null, lines, words: flat };
+	const resegmented = lines.flatMap((l) => resegmentLine(l));
+	return {
+		language: typeof r.language === 'string' ? r.language : null,
+		lines: resegmented,
+		words: flat
+	};
+}
+
+// ── pause-based line splitting ────────────────────────────────────────────────
+//
+// WHY. Whisper `transcribe()` returns SEGMENTS, and a segment is a VAD/decoder chunk of up to ~30s —
+// not a lyric line. One real segment from Creep was:
+//
+//   "So fucking special I wish I was special But I'm a creep I'm a widow What the hell am I to hear
+//    I don't belong here"
+//
+// i.e. four lyric lines as one blob, which the overlay then wrapped at arbitrary points. Nobody can
+// sing from that. But the fix is already in the data: after forced alignment every word has timings,
+// so the PAUSES between words are exactly where the lyric lines break.
+//
+// Done in the display layer rather than in the worker on purpose: it fixes every artifact that already
+// exists, with no re-cook and no second ML pass. The artifact keeps whisper's raw segmentation, which
+// is honest provenance; how it reads on a TV is a presentation concern.
+
+/** A gap at least this long between two words reads as a line break. */
+export const LINE_GAP_SEC = 0.45;
+/** Even with no pause, break a run longer than this so a line never wraps to three rows. */
+export const LINE_MAX_CHARS = 42;
+/** Only resegment when the timed words actually cover the line's text (see below). */
+const COVERAGE_MIN = 0.8;
+
+function lineFromWords(words: LyricWord[]): LyricLine {
+	return {
+		start: words[0]!.start,
+		end: words[words.length - 1]!.end,
+		text: words.map((w) => w.word).join(' '),
+		words
+	};
+}
+
+/**
+ * Split one line into lyric-sized lines at pauses, and at `LINE_MAX_CHARS` when a run has no pause.
+ *
+ * REFUSES to split when the timed words don't cover the line's own text (`COVERAGE_MIN`).
+ * `normalize_lyrics` drops words the aligner left un-timed, so a poorly-aligned line can have words[]
+ * much shorter than text — rebuilding the line from words there would silently DELETE lyrics from the
+ * screen. Showing one badly-wrapped line beats showing a line with words missing.
+ */
+export function resegmentLine(
+	line: LyricLine,
+	gapSec: number = LINE_GAP_SEC,
+	maxChars: number = LINE_MAX_CHARS
+): LyricLine[] {
+	if (line.words.length < 2) return [line];
+	const joined = line.words.map((w) => w.word).join(' ');
+	if (joined.length < line.text.trim().length * COVERAGE_MIN) return [line];
+
+	const out: LyricLine[] = [];
+	let cur: LyricWord[] = [];
+	for (const w of line.words) {
+		const prev = cur[cur.length - 1];
+		if (prev) {
+			const gap = w.start - prev.end;
+			const chars = cur.reduce((n, x) => n + x.word.length + 1, 0) + w.word.length;
+			if (gap >= gapSec || chars > maxChars) {
+				out.push(lineFromWords(cur));
+				cur = [];
+			}
+		}
+		cur.push(w);
+	}
+	if (cur.length) out.push(lineFromWords(cur));
+	return out.length ? out : [line];
 }
 
 /** [start,end] of a line — its own bounds, else derived from its first/last word. null if unknown. */

@@ -143,3 +143,81 @@ test('UNKNOWN provenance says nothing — never claims verified OR guessed', () 
 test('coarse LINE timing alone is not labelled (visible on its own)', () => {
 	expect(lyricsNotice(prov({ timing: 'line' }))).toBeNull();
 });
+
+// ── pause-based line splitting (whisper segments are not lyric lines) ──────────
+import { resegmentLine, parseLyricsDoc as parseDoc, LINE_GAP_SEC, LINE_MAX_CHARS } from './lyrics';
+
+/** words with an explicit gap before each one (seconds) */
+function wordsWithGaps(spec: Array<[string, number]>) {
+	let t = 0;
+	return spec.map(([word, gapBefore]) => {
+		t += gapBefore;
+		const w = { word, start: t, end: t + 0.25 };
+		t += 0.25;
+		return w;
+	});
+}
+
+test('THE BUG: one whisper segment of four lyric lines splits at its pauses', () => {
+	// the real Creep segment, abbreviated: pauses between lyric lines, none inside them
+	const words = wordsWithGaps([
+		['So', 0], ['fucking', 0.05], ['special', 0.05],
+		['I', 0.9], ['wish', 0.05], ['I', 0.05], ['was', 0.05], ['special', 0.05],
+		['But', 0.9], ["I'm", 0.05], ['a', 0.05], ['creep', 0.05]
+	]);
+	const line = { start: 0, end: 99, text: words.map((w) => w.word).join(' '), words };
+	const out = resegmentLine(line);
+	expect(out).toHaveLength(3);
+	expect(out[0]!.text).toBe('So fucking special');
+	expect(out[1]!.text).toBe('I wish I was special');
+	expect(out[2]!.text).toBe("But I'm a creep");
+});
+
+test('each split line gets bounds from its OWN words', () => {
+	const words = wordsWithGaps([['a', 0], ['b', 0.05], ['c', 1.0], ['d', 0.05]]);
+	const out = resegmentLine({ start: 0, end: 99, text: 'a b c d', words });
+	expect(out).toHaveLength(2);
+	expect(out[0]!.start).toBe(words[0]!.start);
+	expect(out[0]!.end).toBe(words[1]!.end);
+	expect(out[1]!.start).toBe(words[2]!.start);
+});
+
+test('a long pause-free run is split on length so it never wraps to three rows', () => {
+	const words = wordsWithGaps(Array.from({ length: 20 }, (_, i) => [`word${i}`, 0.02] as [string, number]));
+	const out = resegmentLine({ start: 0, end: 99, text: words.map((w) => w.word).join(' '), words });
+	expect(out.length).toBeGreaterThan(1);
+	for (const l of out) expect(l.text.length).toBeLessThanOrEqual(LINE_MAX_CHARS + 12);
+});
+
+test('a normal short line is left alone', () => {
+	const words = wordsWithGaps([['hello', 0], ['world', 0.05]]);
+	const out = resegmentLine({ start: 0, end: 1, text: 'hello world', words });
+	expect(out).toHaveLength(1);
+});
+
+test('REFUSES to split when timed words do not cover the text (would delete lyrics)', () => {
+	// the aligner timed only 2 of ~10 words; rebuilding from words[] would drop the rest
+	const words = wordsWithGaps([['So', 0], ['special', 1.0]]);
+	const line = { start: 0, end: 9, text: 'So fucking special I wish I was special but', words };
+	expect(resegmentLine(line)).toEqual([line]);
+});
+
+test('a line with no words (line-sync floor) is untouched', () => {
+	const line = { start: 0, end: 4, text: 'whole line only', words: [] };
+	expect(resegmentLine(line)).toEqual([line]);
+});
+
+test('parseLyricsDoc applies resegmentation, so existing artifacts benefit with no re-cook', () => {
+	const words = wordsWithGaps([['a', 0], ['b', 0.02], ['c', 1.2], ['d', 0.02]]);
+	const doc = parseDoc({ language: 'en', lines: [{ start: 0, end: 9, text: 'a b c d', words }] });
+	expect(doc!.lines).toHaveLength(2);
+	expect(doc!.words).toHaveLength(4); // the flat word list is unaffected
+});
+
+test('the gap threshold is a tunable that behaves monotonically', () => {
+	const words = wordsWithGaps([['a', 0], ['b', 0.5], ['c', 0.5]]);
+	const line = { start: 0, end: 9, text: 'a b c', words };
+	expect(resegmentLine(line, 0.4)).toHaveLength(3); // every gap counts
+	expect(resegmentLine(line, 2.0)).toHaveLength(1); // none do
+	expect(LINE_GAP_SEC).toBeGreaterThan(0);
+});
