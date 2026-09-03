@@ -49,3 +49,27 @@ test('resultToMedia maps local -> playMode file', async () => {
 	expect(m.source).toBe('local');
 	expect(m.sourceRef).toBe('c.mp4');
 });
+
+// ── never advertise a track whose file is missing ─────────────────────────────
+// The dev seed listed four library demos with no files behind them. They were searchable and
+// cookable, and a cook failed 3x on `ffmpeg exited 254: No such file or directory`, then left the
+// song pinned in the phone's "cooking" list permanently.
+import { presentTracks, type LocalTrack } from './local';
+
+const track = (ref: string): LocalTrack => ({ sourceRef: ref, title: ref, durationSec: 1 });
+
+test('presentTracks drops tracks with no file on disk', () => {
+	const tracks = [track('library/a.mp4'), track('library/missing.mp4'), track('library/c.mp4')];
+	const kept = presentTracks(tracks, (ref) => ref !== 'library/missing.mp4');
+	expect(kept.map((t) => t.sourceRef)).toEqual(['library/a.mp4', 'library/c.mp4']);
+});
+
+test('presentTracks keeps everything when every file is present', () => {
+	const tracks = [track('library/a.mp4'), track('library/b.mp4')];
+	expect(presentTracks(tracks, () => true)).toHaveLength(2);
+});
+
+test('THE BUG: none present → index nothing rather than four unplayable songs', () => {
+	const tracks = [track('library/a.mp4'), track('library/b.mp4')];
+	expect(presentTracks(tracks, () => false)).toEqual([]);
+});

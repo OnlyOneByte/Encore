@@ -20,7 +20,7 @@ import type { EncoreApp } from '../app';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	const published: ServerEvent[] = [];
 	const jobs = new JobRepository(db);
 	const workers = new WorkerRegistry();

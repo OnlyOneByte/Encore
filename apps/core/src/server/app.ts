@@ -94,7 +94,7 @@ export function getApp(): EncoreApp {
 	// the location (defaults to ./data). Set ENCORE_EPHEMERAL=1 for a throwaway in-memory DB.
 	const dbPath = process.env.ENCORE_EPHEMERAL === '1' ? ':memory:' : defaultDbPath();
 	const { db } = openDb(dbPath);
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 
 	// B-7-C2: bring the media volume onto the storage classes BEFORE anything reads the catalog.
 	// Idempotent — a no-op on a fresh or already-migrated volume — so it stays wired in permanently.

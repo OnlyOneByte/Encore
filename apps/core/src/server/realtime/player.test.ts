@@ -64,3 +64,64 @@ test('restart resets position', () => {
 	expect(state.playback.positionSec).toBe(0);
 	expect(state.playback.isPlaying).toBe(true);
 });
+
+// ── a playback transition is also a QUEUE mutation, and must broadcast as one ──
+// Reported from a live session: "when I skip a song, it takes a bit for it to disappear from the
+// queued songs". advance() flips entries to done/playing, but this module only published
+// playback:state + nowplaying:changed — so clients kept the skipped song in their `queued` list
+// until an unrelated resync happened to arrive.
+function queuePatches(published: ServerEvent[]) {
+	return published.filter((e): e is Extract<ServerEvent, { type: 'queue:patch' }> => e.type === 'queue:patch');
+}
+
+test('THE BUG: skip broadcasts a queue:patch so the song leaves `queued` immediately', () => {
+	const { state, deps, published } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	published.length = 0;
+
+	handlePlayerCommand({ cmd: 'skip' }, deps);
+
+	const patches = queuePatches(published);
+	expect(patches.length).toBeGreaterThan(0);
+	const snapshot = patches.at(-1)!.patch.entries!;
+	// q1 was skipped: it is pruned or no longer queued, and q2 is now the playing one.
+	expect(snapshot.find((e) => e.id === 'q1')?.status ?? 'pruned').not.toBe('queued');
+	expect(snapshot.find((e) => e.id === 'q2')?.status).toBe('playing');
+});
+
+test('the skip patch carries the authoritative rev and the media inline', () => {
+	const { state, deps, published } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	published.length = 0;
+
+	handlePlayerCommand({ cmd: 'skip' }, deps);
+
+	const patch = queuePatches(published).at(-1)!;
+	expect(patch.patch.rev).toBe(state.rev);
+	// media rides along so an observer can still render the title of the newly-playing song
+	expect(patch.patch.media?.some((m) => m.id === 'm2')).toBe(true);
+	// no causedBy: this was not a client op, so no pending op should be cleared by it
+	expect(patch.patch.causedBy).toBeUndefined();
+});
+
+test('play-from-idle also broadcasts the queue (the entry left `queued`)', () => {
+	const { state, deps, published } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	published.length = 0;
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	expect(queuePatches(published).at(-1)!.patch.entries!.find((e) => e.id === 'q1')?.status).toBe('playing');
+});
+
+test('pause/seek do NOT emit a queue:patch (nothing about the queue changed)', () => {
+	const { state, deps, published } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	published.length = 0;
+	handlePlayerCommand({ cmd: 'pause' }, deps);
+	handlePlayerCommand({ cmd: 'seek', positionSec: 10 }, deps);
+	expect(queuePatches(published)).toHaveLength(0);
+});

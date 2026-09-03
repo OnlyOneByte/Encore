@@ -72,3 +72,39 @@ export function readyEmptyState(opts: { searchActive: boolean; libraryCount: num
 	return { message: `Your ${libraryCount} karaoke songs are ready to sing.`, showAllCount: null };
 }
 
+
+/**
+ * Will this entry's media actually play right now? Client mirror of the server's
+ * `rotation/isEntryReady` — the two MUST agree or the phone narrates a different rotation than the
+ * TV performs. A live `media:status` wins over the catalog copy, which is a beat stale right after
+ * a "✨ Karaoke" tap.
+ */
+export function entryPlayable(
+	media: Media | undefined,
+	live?: { status: MediaStatus }
+): boolean {
+	// A live status decides in BOTH directions, exactly like displayReadiness: `ready` means the cook
+	// just landed and the catalog copy hasn't caught up (the phone must not keep skipping a song that
+	// is now playable), and anything mid-flight means it is still cooking. `failed` is the exception —
+	// it says nothing about playability, so the catalog answers.
+	if (live && live.status === 'ready') return true;
+	if (live && live.status !== 'failed') return false; // queued/downloading/separating/aligning
+	if (!media) return false;
+	return media.playMode === 'iframe' || media.stemStatus === 'ready' || media.stemStatus === 'none';
+}
+
+/**
+ * Which queued entry will ACTUALLY play next — the first one that is playable.
+ *
+ * The server's `nextPlayable()` skips an entry whose stems are still cooking (it keeps its fair
+ * rotation slot but yields its turn), so treating "first in the list" as up-next lied whenever the
+ * first entry was cooking: the phone promised a song the TV was about to skip straight past.
+ * `entries` must already be in rotation order.
+ */
+export function nextPlayableEntryId<E extends { id: string; mediaId: string }>(
+	entries: E[],
+	mediaOf: (mediaId: string) => Media | undefined,
+	liveOf: (mediaId: string) => { status: MediaStatus } | undefined
+): string | null {
+	return entries.find((e) => entryPlayable(mediaOf(e.mediaId), liveOf(e.mediaId)))?.id ?? null;
+}

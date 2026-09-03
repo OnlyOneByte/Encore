@@ -22,6 +22,9 @@ import { parseRefPitchDoc } from './src/server/scoring/scorer';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
+import { presentTracks, type LocalTrack } from './src/server/media/local';
+import { safeMediaPath } from './src/server/media/local-files';
+import { existsSync } from 'node:fs';
 
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
@@ -83,12 +86,28 @@ const loadPitchDoc: PitchDocLoader = async (ref) => {
 // Seed the local library FTS index so the "Library" tab returns results in dev (and as a demo
 // of local search). A real deployment would scan MEDIA_DIR here. The demo tracks are also added
 // to mediaById so they're queue-able by id.
-app.localLibrary.index([
+// Only index what is REALLY THERE (checked against the same path resolution the /media route uses).
+// These four are aspirational placeholders — drop an actual file at MEDIA_DIR/library/<name>.mp4 and
+// it appears in the Library tab. Without the filter they were searchable, queueable songs that could
+// never play: cooking one burned three attempts on `ffmpeg exited 254: No such file or directory` and
+// then left the song stuck in the phone's "cooking" list for the rest of the night.
+const seededLibrary: LocalTrack[] = [
 	{ sourceRef: 'library/dont-stop-believin.mp4', title: "Don't Stop Believin'", artist: 'Journey', durationSec: 250 },
 	{ sourceRef: 'library/sweet-caroline.mp4', title: 'Sweet Caroline', artist: 'Neil Diamond', durationSec: 201 },
 	{ sourceRef: 'library/bohemian-rhapsody.mp4', title: 'Bohemian Rhapsody', artist: 'Queen', durationSec: 355 },
 	{ sourceRef: 'library/livin-on-a-prayer.mp4', title: "Livin' on a Prayer", artist: 'Bon Jovi', durationSec: 249 }
-]);
+];
+const presentLibrary = presentTracks(seededLibrary, (ref) => {
+	const abs = safeMediaPath(ref);
+	return !!abs && existsSync(abs);
+});
+app.localLibrary.index(presentLibrary);
+if (presentLibrary.length < seededLibrary.length) {
+	const missing = seededLibrary.length - presentLibrary.length;
+	console.log(
+		`[core] library: ${presentLibrary.length}/${seededLibrary.length} demo tracks indexed — skipped ${missing} with no file under ${process.env.MEDIA_DIR ?? './media'}/library/`
+	);
+}
 
 // SvelteKit handler from the Bun adapter's build output (guarded so WS still boots pre-build).
 type SvelteHandler = (req: Request, server: import('bun').Server) => Response | Promise<Response>;

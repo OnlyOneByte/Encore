@@ -114,7 +114,13 @@ class WorkerClient:
             await self._send(protocol.complete(self.state.worker_id, job.job_id, result.media_uri, result.artifacts))
         except Exception as exc:  # noqa: BLE001 — report ANY failure to the core, which decides retry
             # retryable=True for transient errors; a corrupt/unsupported source is non-retryable.
-            await self._send(protocol.failed(self.state.worker_id, job.job_id, str(exc), retryable=_is_retryable(exc)))
+            retryable = _is_retryable(exc)
+            # LOG it too. Reporting only over the wire made a retry loop invisible from both ends: a
+            # job that failed at 99% every attempt looked identical to one still cooking, because the
+            # worker printed nothing and the core just requeued. Same lesson as B-7-C5.
+            print(f"[worker] job {job.job_id} ({job.job_type}) FAILED "
+                  f"retryable={retryable}: {exc!r}", flush=True)
+            await self._send(protocol.failed(self.state.worker_id, job.job_id, str(exc), retryable=retryable))
         finally:
             self.state.finish(job.job_id)
             # B-7: the worker OWNS its scratch, so the worker cleans it. work/<jobId> holds the
@@ -151,6 +157,35 @@ def _is_retryable(exc: Exception) -> bool:
     return not any(p in msg for p in permanent)
 
 
+def oversubscription_warnings(cfg: WorkerConfig, cores: int | None) -> list[str]:
+    """Warn when concurrency x jobs asks for more parallel work than the box can run.
+
+    PURE (cores is passed in) so it unit-tests without touching the machine. This is its own check
+    rather than part of WorkerConfig.from_env because core count is a property of the HOST, not the
+    environment, and from_env is deliberately pure over env alone.
+
+    Worth warning about because the two knobs MULTIPLY: `concurrency=4, jobs=4` is 16 concurrent
+    demucs chunk workers, each holding its own model copy. Uncapped they also each default to all
+    cores, so the box thrashes and every song gets slower — the opposite of what raising them looks
+    like it should do. Never fatal: a GPU box or a deliberate over-commit is the operator's call.
+    """
+    out: list[str] = []
+    if not cores:
+        return out
+    parallel = max(1, cfg.concurrency) * max(1, cfg.demucs_jobs)
+    if parallel > cores:
+        out.append(
+            f"concurrency={cfg.concurrency} x demucs_jobs={cfg.demucs_jobs} = {parallel} parallel "
+            f"separations on {cores} cores; songs will contend"
+        )
+    if parallel > 1 and cfg.torch_threads is None:
+        out.append(
+            f"{parallel} parallel separations with no ENCORE_TORCH_THREADS cap — each defaults to all "
+            f"cores and they will fight; try ENCORE_TORCH_THREADS={max(1, cores // parallel)}"
+        )
+    return out
+
+
 def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     """Build the processor from this worker's capabilities. ENCORE_PROCESSOR=stub forces the no-ML
     StubProcessor (path test / torch-less box). Otherwise a RoutingProcessor dispatches by job type:
@@ -166,9 +201,19 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
 
     from .processor import RoutingProcessor
 
-    # Cap torch's intra-op threads BEFORE any model loads. Matters when demucs_jobs > 1: N jobs each
+    # Cap intra-op threads BEFORE any model loads. Matters when demucs_jobs > 1: N jobs each
     # defaulting to all cores oversubscribes the box and they fight instead of scaling.
+    #
+    # The os.environ half is the part that actually bites for stems: demucs runs as a separate CLI
+    # SUBPROCESS (see demucs.py subprocess_runner), so torch.set_num_threads() in THIS process cannot
+    # reach it — the knob read as a no-op for the very case its docstring described. The child
+    # inherits os.environ, so OMP/MKL are how a thread cap crosses the process boundary. Measured on a
+    # 10-core box: `-j 1` already ran ~3.9 cores wide via torch threading, so `-j 4` uncapped just
+    # oversubscribes (86s vs 99s); the cap is what lets jobs scale instead of fight.
+    # torch.set_num_threads() is still called for the IN-PROCESS consumers (pitch/score extraction).
     if cfg.torch_threads is not None:
+        os.environ["OMP_NUM_THREADS"] = str(cfg.torch_threads)
+        os.environ["MKL_NUM_THREADS"] = str(cfg.torch_threads)
         try:
             import torch
 
@@ -215,6 +260,8 @@ async def _run_forever() -> None:
     # CPU box) "why is this one slow" is answered by this line, not by guessing at the compose file.
     print(f"[worker] config: {CONFIG.describe()}", flush=True)
     for warning in CONFIG.warnings:
+        print(f"[worker] config warning: {warning}", flush=True)
+    for warning in oversubscription_warnings(CONFIG, os.cpu_count()):
         print(f"[worker] config warning: {warning}", flush=True)
 
     processor: Processor = _build_processor(CONFIG)

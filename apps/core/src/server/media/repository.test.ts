@@ -24,7 +24,7 @@ const cooked = (id: string, over: Partial<Media> = {}): Media =>
 
 function repo(): MediaRepository {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	return new MediaRepository(db);
 }
 
@@ -121,7 +121,7 @@ test('hydrateMediaCatalog never clobbers a live runtime object other code holds 
 
 test('BOOT ROUND TRIP: a song cooked last night is in the catalog + library after a restart', () => {
 	const { db } = openDb(':memory:'); // one DB, two "processes"
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 
 	// last night: searched (iframe), then cooked → both writes land
 	const before = new MediaRepository(db);

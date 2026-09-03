@@ -90,7 +90,7 @@ export function handleQueueCommand(
 }
 
 /** Media records referenced by the given entries (so observers can render titles for others' adds). */
-function mediaFor(entries: QueueEntry[], deps: HubDeps): Media[] {
+export function mediaFor(entries: QueueEntry[], deps: HubDeps): Media[] {
 	const ids = new Set(entries.map((e) => e.mediaId));
 	return [...deps.mediaById.values()].filter((m) => ids.has(m.id));
 }

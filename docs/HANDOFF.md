@@ -11,12 +11,18 @@
 
 ## 0. TL;DR for the next agent
 
-- **Everything through M8 is done.** MVP (`v0.1.0`), make-karaoke/stems (`v0.2.0`), scoring
-  (M8-C0–C3). Both tags are **local only**.
-- **273 core tests + 35 shared tests pass** — core tests **must** run from `apps/core/` (Gotcha #1).
-  `svelte-check`: 0 errors.
-- **Unpushed: 5 commits + both tags.** A human must push (§5).
+- **Everything through M8 is done**, plus backlog **B-1, B-5, B-6, B-7**. MVP (`v0.1.0`),
+  make-karaoke/stems (`v0.2.0`), scoring (M8-C0–C3), media storage classes + browse + retention (B-7).
+- **401 tests pass from the repo root** (366 core + 35 shared), **96 worker tests** pass under
+  pytest. `bun run typecheck`, `bun run check`, `bun run build`: 0 errors. Gotchas #1 and #9 are
+  **fixed** — no more cwd dance.
+- **Real Demucs verified on this box** (macOS/arm64, CPU, no Docker): a 4:01 song → a 6.0 MB
+  AAC 44.1k stereo instrumental in ~2 min, served 200. Needed `soundfile` — see Gotcha #13.
+- **`main` is in sync with `origin/main`** (`05d5fb0`); tags `v0.1.0`/`v0.2.0` are pushed. See §5 —
+  agents still cannot `git push`.
 - **Next work is the backlog, not a milestone.** Start at **B-2** (WebAudio pitch-shift) — see §7.
+- **A worker is a separate process.** Core alone leaves every make-karaoke request at `queued`
+  forever; there is no warning in the UI. See §3 for running it with or without Docker.
 - **The single most important lesson from the last three sessions:** every real defect found lately
   was invisible to a green test suite and only surfaced by driving the actual app. Budget for that
   (§8). Do not report a feature working on unit tests alone.
@@ -70,23 +76,39 @@ Encore/
 ## 3. How to run & test (read §4 first)
 
 ```bash
-# --- tests (MUST cd into apps/core, see Gotcha #1) ---
-cd apps/core && bun test            # → 273 pass / 0 fail
-bun run typecheck                   # svelte-check → 0 errors
-cd packages/shared && bun test      # → 35 pass
+# --- tests + gates (all runnable from the REPO ROOT now, see Gotcha #1) ---
+bun test                            # → 401 pass / 0 fail (366 core + 35 shared)
+bun run typecheck                   # both workspaces → 0 errors
+bun run check                       # svelte-check → 0 errors
+cd apps/worker && pytest            # → 96 pass (needs `pip install pytest pytest-asyncio`;
+                                    #    pytest.ini sets asyncio_mode=auto, so without
+                                    #    pytest-asyncio 27 "fail" spuriously)
 
-# --- the worker ---
-cd apps/worker && pytest
-
-# --- dev / prod ---
-cd apps/core
-bun run build && bun run start      # prod build + serve
+# --- dev / prod (root scripts proxy to @encore/core) ---
+bun run build && bun run start      # prod build + serve; `start` → server.ts
 bun run dev                         # vite HMR for UI ONLY — the WS hub lives in server.ts
 
 # --- container ---
 docker compose up                   # core only
 docker compose --profile stems up   # + the Python worker
 ```
+
+`data/` and `media/` are created on first boot (`openDb` mkdirs `DATA_DIR`), so a fresh clone needs
+no manual setup. `ENCORE_EPHEMERAL=1` swaps in an in-memory DB for a throwaway run.
+
+**Running the worker WITHOUT Docker** (verified on macOS/arm64, Python 3.10, CPU-only):
+```bash
+cd apps/worker && python3 -m venv .venv
+.venv/bin/pip install torch==2.8.0 torchaudio==2.8.0 demucs==4.0.1 yt-dlp   # ~2 min, multi-GB
+PATH="$PWD/.venv/bin:$PATH" ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' \
+  ENCORE_WORKER_CAPABILITIES='stems,score' MEDIA_DIR=../core/media \
+  .venv/bin/python -m src.dial_home
+```
+The worker shells out to `yt-dlp`/`ffmpeg`/`demucs` **by name via PATH**, so the `PATH` prefix is
+load-bearing. Launching **core** with that same venv `bin` on PATH also gives core its `yt-dlp`, so
+YouTube search starts returning results. `MEDIA_DIR` must be the SAME dir core uses.
+`ENCORE_PROCESSOR=stub` (needs only `pip install websockets`) exercises the full
+assign→progress→complete→ready path with **placeholder files that will not play** — plumbing only.
 
 **Serving for eyes-on verification (the established local loop):**
 ```bash
@@ -107,9 +129,10 @@ agent dies on its own sometimes; the server survives it, so just restart the tun
 
 ## 4. Gotchas (each one costs an hour)
 
-1. **Run `bun test` from `apps/core/`, not the repo root.** The DB tests resolve `./drizzle`
-   relative to cwd; from the root you get `Can't find meta/_journal.json` and ~11 spurious failures.
-   (Real fix if you care: resolve migrations via `import.meta.dir`.)
+1. ~~**Run `bun test` from `apps/core/`, not the repo root.**~~ **FIXED.** `runMigrations()` now
+   locates `apps/core/drizzle` by walking up from `import.meta.dir` (`db/migrate.ts`), so
+   `bun test` works from **anywhere** — 401 pass from the repo root. `ENCORE_MIGRATIONS_DIR`
+   overrides if the folder ever moves.
 2. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** Corp box: the *global* npmrc points at
    CodeArtifact and 401s for public packages. Don't delete it, don't `npm config set` globally.
 3. **`bun --bun` is mandatory** for SvelteKit/Vite. Use `bun run <script>`; never call `vite` raw.
@@ -125,8 +148,11 @@ agent dies on its own sometimes; the server survives it, so just restart the tun
    evasion — surface the blocker, don't route around it.
 8. **`bun:sqlite` UNRESOLVED_IMPORT during `bun run build` is harmless.** Bun resolves built-ins at
    runtime. Not a real warning to chase.
-9. **`bun run typecheck` from the repo ROOT exits 127** (tsc not on PATH for `@encore/shared`).
-   Environment, not code — run it inside `apps/core`.
+9. ~~**`bun run typecheck` from the repo ROOT exits 127.**~~ **FIXED.** It was code, not
+   environment: `@encore/shared` declared a `tsc --noEmit` script but had neither `typescript` nor a
+   `tsconfig.json`. Both added, so root `bun run typecheck` now checks **both** workspaces clean.
+   Turning it on surfaced 3 latent `noUncheckedIndexedAccess` errors in `rotation.ts` (fixed) — that
+   package's own sources had never actually been typechecked.
 10. **Stage files explicitly; never `git add .`** — `.kiro/` is local tooling and must stay
     untracked. And **check `git status` after committing**: a B-6 commit shipped without its
     `packages/shared` contract change and was not buildable in isolation, because the local
@@ -134,17 +160,31 @@ agent dies on its own sometimes; the server survives it, so just restart the tun
 11. **Node 20 for `playwright-cli`/playwright** — `export PATH="$HOME/.local/share/mise/installs/node/20.20.2/bin:$PATH"`.
 12. **Cap eyes-on screenshots at ≤2000px** (1280×720 viewport, `deviceScaleFactor: 1`). An oversized
     image hard-fails the agent turn and keeps re-firing from history.
+13. **`soundfile` is REQUIRED for stems, and its absence looks like a hang.** torchaudio 2.8 has no
+    audio-write backend, so demucs separates to **100%** and *then* dies with `Couldn't find
+    appropriate backend to handle uri .../vocals.wav`. It reaches you as a song frozen at
+    "separating 100%" that silently retries 3× (a full separation pass each). It's now pinned in
+    `requirements.txt`; before that it only arrived transitively via `whisperx`, so a stems-only
+    worker was broken while the full install worked.
+14. **A `failed` job leaves the media stuck showing `queued`/cooking forever.** Nothing surfaces the
+    error to the phone or TV, and terminal jobs are never retried, so the song just sits there. To
+    recover: delete the failed row from `jobs` and reset that media's `stem_status` to `none`
+    (dedup is on `(mediaId, jobType)`, so a re-tap alone won't re-enqueue). Worth a real fix.
+15. **Read the `jobs` table when a cook misbehaves** — its `error` column has the actual message,
+    which is often the ONLY place it exists. The worker now also prints failures (it used to report
+    them over the wire only, making retry loops invisible from both ends). Note the column is
+    `error`, not `last_error`.
+16. **Not every YouTube video downloads.** yt-dlp hits `This video is not available` + an
+    n-challenge-solving warning on some ids; the job fails at stage `downloading` after 3 attempts.
+    That's upstream/bot-checking, not an Encore bug — try another video before debugging.
 
 ---
 
 ## 5. Git state & the push blocker ⚠️
 
-- Branch `main` is **6 ahead** of `origin/main` (which is at `42276a8`).
-- Unpushed: `36957c3` (v0.1.0 review fixes), `eafb1cc` (B-1), `d2a64c1` (B-5), `9506018` (B-6),
-  `0af80b4` (B-6's omitted shared contract), `67be7f2` (library empty-state fix), and this doc refresh.
-- **Tags `v0.1.0` and `v0.2.0` are local-only.**
-- `9506018` and `0af80b4` are a broken-commit + its fixup. **Squash them before pushing** if clean
-  history matters; nothing is pushed, so it's free to do.
+- Branch `main` is **in sync** with `origin/main` at `05d5fb0` (B-7-C5, retention).
+- **Tags `v0.1.0` and `v0.2.0` are pushed.** The earlier backlog (B-1/B-5/B-6 + fixups) all landed
+  upstream; the squash note that used to live here is moot.
 
 **Agents cannot run `git push`** — the harness blocks it in any shell command (the failure
 misleadingly reads "User denied tool execution"; it is *not* a user cancellation). The only allowed

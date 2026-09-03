@@ -10,6 +10,8 @@
   "scripts": {
     "dev": "bun --filter '@encore/core' dev",
     "build": "bun --filter '@encore/core' build",
+    "start": "bun --filter '@encore/core' start",
+    "check": "bun --filter '@encore/core' check",
     "test": "bun test",
     "typecheck": "bun --filter '*' typecheck"
   },

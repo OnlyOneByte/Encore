@@ -271,3 +271,56 @@ async def test_scratch_is_cleaned_even_when_the_job_FAILS(tmp_path):
     await client._run_job(JobSpec(job_id="j2", media_id="m1", job_type="stems",
                                   source_uri="https://y/x", params={}, media_dir=str(tmp_path)))
     assert not work.exists()
+
+
+# ── performance knobs must actually cross the process boundary ─────────────────
+# capabilities="none" on purpose: it matches neither stems/score nor align, so _build_processor
+# exercises the config path WITHOUT importing demucs or whisperx.
+def test_torch_threads_exports_omp_for_the_demucs_SUBPROCESS(monkeypatch):
+    """demucs runs as a separate CLI, so torch.set_num_threads() in THIS process cannot reach it.
+    The cap has to ride os.environ, which the child inherits."""
+    import os
+
+    from src.config import WorkerConfig
+
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    monkeypatch.delenv("MKL_NUM_THREADS", raising=False)
+    cfg = WorkerConfig.from_env({"ENCORE_TORCH_THREADS": "3", "ENCORE_WORKER_CAPABILITIES": "none"})
+    _build_processor(cfg)
+    assert os.environ["OMP_NUM_THREADS"] == "3"
+    assert os.environ["MKL_NUM_THREADS"] == "3"
+
+
+def test_no_torch_threads_leaves_the_environment_alone(monkeypatch):
+    import os
+
+    from src.config import WorkerConfig
+
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    _build_processor(WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": "none"}))
+    assert "OMP_NUM_THREADS" not in os.environ
+
+
+def test_oversubscription_warns_when_concurrency_times_jobs_exceeds_cores():
+    from src.config import WorkerConfig
+
+    cfg = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "4", "ENCORE_DEMUCS_JOBS": "4"})
+    warns = dh.oversubscription_warnings(cfg, 10)
+    assert any("16 parallel" in w for w in warns)
+    assert any("ENCORE_TORCH_THREADS=" in w for w in warns)  # names the fix, not just the problem
+
+
+def test_oversubscription_silent_when_it_fits_and_threads_are_capped():
+    from src.config import WorkerConfig
+
+    cfg = WorkerConfig.from_env(
+        {"ENCORE_WORKER_CONCURRENCY": "2", "ENCORE_DEMUCS_JOBS": "4", "ENCORE_TORCH_THREADS": "1"}
+    )
+    assert dh.oversubscription_warnings(cfg, 10) == []
+
+
+def test_oversubscription_is_a_noop_when_cores_are_unknown():
+    from src.config import WorkerConfig
+
+    cfg = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "8", "ENCORE_DEMUCS_JOBS": "8"})
+    assert dh.oversubscription_warnings(cfg, None) == []

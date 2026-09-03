@@ -19,7 +19,7 @@ const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({ i
 
 function deps(): MakeKaraokeDeps & { mediaById: Map<string, Media> } {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	return { jobs: new JobRepository(db), mediaById: new Map(), state: new AuthoritativeState(), now: () => T0 };
 }
 

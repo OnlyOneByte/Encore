@@ -13,6 +13,13 @@ torch==2.8.0
 torchaudio==2.8.0
 torchvision==0.23.0
 demucs==4.0.1
+# EXPLICIT, not incidental: torchaudio 2.8 ships NO audio-write backend of its own, so demucs's
+# save_audio() raises "Couldn't find appropriate backend to handle uri .../vocals.wav" — AFTER
+# separating to 100%. soundfile arrives transitively via whisperx, so the full install hid this and
+# only a stems-only worker (capabilities=stems, no align) hit it. The failure is maximally
+# misleading: three attempts each burn a full separation pass, and with the job's error only sent
+# over the wire the song just sat at "separating 100%" forever. Pin it here so `stems` alone works.
+soundfile>=0.13
 # WhisperX (M7-C8) — forced-alignment mode: we feed it KNOWN lyrics text (from LRCLIB) + audio and
 # use its wav2vec2 align() to produce WORD timings, rather than trusting ASR to transcribe sung
 # vocals. 3.8.6 is the modern line that installs on py3.12 and matches faster-whisper 1.2's API.

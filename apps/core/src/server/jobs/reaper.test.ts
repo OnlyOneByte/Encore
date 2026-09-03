@@ -9,7 +9,7 @@ import { runMigrations } from '../db/migrate';
 
 function setup(now: () => number, onReaped?: () => void) {
 	const { db } = openDb(':memory:');
-	runMigrations(db, './drizzle');
+	runMigrations(db);
 	const jobs = new JobRepository(db);
 	const reaper = new JobReaper(jobs, { now, onReaped, tickMs: 1_000_000 }); // tick only when we call it
 	return { jobs, reaper };

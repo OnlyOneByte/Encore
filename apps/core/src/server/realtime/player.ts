@@ -5,7 +5,24 @@
 import { clampKeyShift, type PlayerCommand, type ServerEvent, type QueueEntry } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
-import type { HubDeps } from './hub';
+import { mediaFor, type HubDeps } from './hub';
+
+/**
+ * Broadcast the authoritative queue after a PLAYBACK transition changed entry statuses.
+ *
+ * Skip/advance/play all flip entries to `done`/`playing` — a real queue mutation — but this module
+ * used to publish only playback:state + nowplaying:changed. Clients therefore kept the skipped song
+ * in their `queued` list until something unrelated forced a resync, which is why a skip took a
+ * visible beat to disappear from the rotation. `ops: []` with the entries inline is the same shape
+ * handleQueueCommand sends; the client adopts the snapshot and re-applies its pending ops on top.
+ */
+function publishQueue(deps: HubDeps): void {
+	const entries = deps.state.entries as QueueEntry[];
+	deps.publish({
+		type: 'queue:patch',
+		patch: { rev: deps.state.rev, ops: [], entries, media: mediaFor(entries, deps) }
+	});
+}
 
 /** Emit nowplaying:changed with the current entry + the soonest-ready upNext (drives TV preload). */
 export function emitNowPlaying(deps: HubDeps): void {
@@ -33,6 +50,7 @@ export function reconcileOnReady(deps: HubDeps): void {
 		if (next) {
 			state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
 			state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true });
+			publishQueue(deps); // the entry left `queued` — tell clients now, not on the next resync
 			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		}
 	}
@@ -48,6 +66,9 @@ function advance(deps: HubDeps): QueueEntry | null {
 	if (next) state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
 	// keyShift resets to 0 on every song change — a new song starts in its original key.
 	state.setPlayback({ currentEntryId: next?.id ?? null, positionSec: 0, isPlaying: !!next, keyShift: 0 });
+	// The statuses above are a queue mutation; broadcast it here so BOTH callers (an explicit skip and
+	// a TV `ended`) converge clients immediately rather than at the next resync.
+	publishQueue(deps);
 	return next ?? null;
 }
 
@@ -61,6 +82,7 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 				if (next) {
 					state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
 					state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true, keyShift: 0 });
+					publishQueue(deps); // it just left `queued`
 					break;
 				}
 			}

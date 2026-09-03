@@ -20,8 +20,9 @@ export function rotate(entries: QueueEntry[]): QueueEntry[] {
     bySinger.set(e.singerId, arr);
   }
   // singers ordered by when each first appears (their earliest addedAt)
+  // every key was created by pushing an entry, so [0] always exists
   const singers = [...bySinger.keys()].sort(
-    (a, b) => bySinger.get(a)![0].addedAt - bySinger.get(b)![0].addedAt,
+    (a, b) => bySinger.get(a)![0]!.addedAt - bySinger.get(b)![0]!.addedAt,
   );
 
   const out: QueueEntry[] = [];
@@ -32,7 +33,7 @@ export function rotate(entries: QueueEntry[]): QueueEntry[] {
     for (const s of singers) {
       const picks = bySinger.get(s)!;
       if (round < picks.length) {
-        out.push(picks[round]);
+        out.push(picks[round]!); // bounds-checked by the line above
         added = true;
       }
     }

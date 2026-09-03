@@ -85,3 +85,52 @@ test('a blank query while searchActive still reads sensibly (no empty quotes)', 
 	expect(s.message).not.toContain('““');
 	expect(s.showAllCount).toBe(3);
 });
+
+// ── up-next must match what the server will actually play ─────────────────────
+// The phone used to label the FIRST queued row "up next". The server's nextPlayable() skips an entry
+// whose stems are still cooking, so whenever row 0 was cooking the phone promised a song the TV was
+// about to skip past. These pin the agreement.
+import { entryPlayable, nextPlayableEntryId } from './readiness';
+import { isEntryReady } from '../server/rotation/index';
+
+const entry = (id: string, mediaId: string) => ({ id, mediaId });
+
+test('entryPlayable agrees with the server isEntryReady for every media shape', () => {
+	for (const c of cases) {
+		const byId = new Map([[c.id, c]]);
+		expect(entryPlayable(c)).toBe(isEntryReady({ mediaId: c.id } as never, byId));
+	}
+});
+
+test('a live cooking status beats a catalog copy that still says ready', () => {
+	expect(entryPlayable(m({ playMode: 'file', stemStatus: 'ready' }), { status: 'separating' })).toBe(false);
+	expect(entryPlayable(m({ playMode: 'file', stemStatus: 'queued' }), { status: 'ready' })).toBe(true);
+});
+
+test('unknown media is not playable (matches the server returning false)', () => {
+	expect(entryPlayable(undefined)).toBe(false);
+});
+
+test('THE BUG: up-next skips a cooking first entry and names the first READY one', () => {
+	const cook = m({ id: 'cooking', playMode: 'file', stemStatus: 'queued' });
+	const ready = m({ id: 'ready', playMode: 'file', stemStatus: 'ready' });
+	const byId = new Map([[cook.id, cook], [ready.id, ready]]);
+	const queued = [entry('e1', 'cooking'), entry('e2', 'ready')];
+
+	const id = nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined);
+	expect(id).toBe('e2'); // NOT 'e1' — that one is still separating and yields its turn
+});
+
+test('up-next is the first entry when it is already playable', () => {
+	const ready = m({ id: 'ready', playMode: 'iframe' });
+	const byId = new Map([[ready.id, ready]]);
+	const queued = [entry('e1', 'ready'), entry('e2', 'ready')];
+	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBe('e1');
+});
+
+test('nothing playable → no up-next (the whole queue is cooking)', () => {
+	const cook = m({ id: 'cooking', playMode: 'file', stemStatus: 'queued' });
+	const byId = new Map([[cook.id, cook]]);
+	const queued = [entry('e1', 'cooking'), entry('e2', 'cooking')];
+	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBeNull();
+});
