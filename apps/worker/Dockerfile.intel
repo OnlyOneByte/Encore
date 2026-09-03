@@ -32,22 +32,6 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ffmpeg ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
-# deno + the yt-dlp solver config, identical to the default worker image: yt-dlp cannot resolve an
-# audio-only YouTube format without a JavaScript runtime AND the challenge-solver remote component.
-# Kept in both images deliberately — an Arc host still fetches its source audio the same way, and a
-# GPU that cooks nothing because the download failed is not an improvement.
-ARG DENO_VERSION=2.9.6
-RUN python3 -c "import io,os,stat,urllib.request,zipfile; \
-v=os.environ['DENO_VERSION']; arch=os.uname().machine; \
-url=f'https://github.com/denoland/deno/releases/download/v{v}/deno-{arch}-unknown-linux-gnu.zip'; \
-print('fetching', url, flush=True); \
-zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(url, timeout=300).read())).extract('deno', '/usr/local/bin'); \
-p='/usr/local/bin/deno'; os.chmod(p, os.stat(p).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)" \
-	&& deno --version \
-	&& deno --version | grep -q "deno ${DENO_VERSION}"
-
-COPY apps/worker/yt-dlp.conf /etc/yt-dlp.conf
-
 # Base worker dependencies. TORCH_INDEX_URL stays overridable so this can track whichever torch build
 # matches the installed IPEX.
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
@@ -64,6 +48,25 @@ RUN pip install --no-cache-dir --extra-index-url "${IPEX_INDEX_URL}" \
 	"intel-extension-for-pytorch==${IPEX_VERSION}" \
 	|| (echo "IPEX install failed — check that IPEX_VERSION matches the pinned torch and that the index is reachable" && exit 1)
 
+# deno + the yt-dlp solver config, identical to the default worker image: yt-dlp cannot resolve an
+# audio-only YouTube format without a JavaScript runtime AND the challenge-solver remote component.
+# Kept in both images deliberately — an Arc host still fetches its source audio the same way, and a
+# GPU that cooks nothing because the download failed is not an improvement.
+#
+# After the pip layers for the same reason as the default image: a layer invalidates everything below
+# it, so a ~40 MB deno bump must not sit above a multi-GB torch + IPEX install.
+ARG DENO_VERSION=2.9.6
+RUN python3 -c "import io,os,stat,urllib.request,zipfile; \
+v=os.environ['DENO_VERSION']; arch=os.uname().machine; \
+url=f'https://github.com/denoland/deno/releases/download/v{v}/deno-{arch}-unknown-linux-gnu.zip'; \
+print('fetching', url, flush=True); \
+zipfile.ZipFile(io.BytesIO(urllib.request.urlopen(url, timeout=300).read())).extract('deno', '/usr/local/bin'); \
+p='/usr/local/bin/deno'; os.chmod(p, os.stat(p).st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)" \
+	&& deno --version \
+	&& deno --version | grep -q "deno ${DENO_VERSION}"
+
+COPY apps/worker/yt-dlp.conf /etc/yt-dlp.conf
+
 COPY apps/worker/src ./src
 
 ENV PYTHONUNBUFFERED=1 \
@@ -76,9 +79,13 @@ VOLUME ["/app/media"]
 # Non-root, matching the default image. `video` and `render` group membership is what lets a non-root
 # user reach /dev/dri; the numeric gids differ across distros, so an operator may need to align them
 # with the host (`getent group render`) for passthrough to work.
+#
+# $XDG_CACHE_HOME is created here for the same reason as in the default image: it is the mount point
+# for the model cache, and a named volume covering a directory that does not exist is created
+# root-owned, which an unprivileged worker cannot write to.
 RUN useradd --create-home --uid 10001 worker \
-	&& mkdir -p /app/media \
-	&& chown -R worker:worker /app
+	&& mkdir -p /app/media /home/worker/.cache \
+	&& chown -R worker:worker /app /home/worker
 USER worker
 ENV HOME=/home/worker XDG_CACHE_HOME=/home/worker/.cache
 

@@ -68,7 +68,20 @@ services:
       # audio/ and stems into derived/ using the SAME keys the core resolves — see
       # apps/worker/src/processor.py, which must stay byte-for-byte in step with core paths.ts.
       - ${ENCORE_MEDIA_VOLUME:-./media}:/app/media
+      # Model + tool cache, kept OUT of the container's writable layer so it survives `docker rm`.
+      # Holds the demucs checkpoints, the RoFormer checkpoint (~700 MB, fetched on the first
+      # stems:roformer cook) and yt-dlp's JS challenge-solver script. Without this, replacing the
+      # container re-downloads all of it — the same trap that made a hand-installed yt-dlp vanish.
+      # A NAMED volume rather than a bind path on purpose: Docker initialises it from the image's
+      # own $XDG_CACHE_HOME, so it inherits the worker's ownership, whereas a fresh bind directory
+      # is created root-owned and the unprivileged worker cannot write to it.
+      - worker-cache:/home/worker/.cache
     depends_on:
       - core
     restart: unless-stopped
     # deploy.resources.reservations.devices for GPU added when stems land
+
+volumes:
+  # Declared for the `stems` profile only; the default MVP `up` never creates it because the worker
+  # service it belongs to is not started.
+  worker-cache:
