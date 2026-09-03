@@ -23,12 +23,14 @@ function deps(): MakeKaraokeDeps & { mediaById: Map<string, Media> } {
 	return { jobs: new JobRepository(db), mediaById: new Map(), state: new AuthoritativeState(), now: () => T0 };
 }
 
-test('request flips media to cooking file + enqueues a stems job', () => {
+test('request marks the media cooking and enqueues ACQUISITION first', () => {
+	// A YouTube song has no bytes here yet, so the chain starts at `fetch`; followUps chains stems
+	// after it. Enqueueing stems directly would dispatch a separation before its input existed.
 	const d = deps();
 	d.mediaById.set('m1', media('m1'));
 	const job = requestMakeKaraoke('m1', d);
 	expect(job).not.toBeNull();
-	expect(job!.jobType).toBe('stems');
+	expect(job!.jobType).toBe('fetch');
 	expect(job!.status).toBe('queued');
 	// media is now cooking → rotation will hold its slot
 	const m = d.mediaById.get('m1')!;

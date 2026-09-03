@@ -170,6 +170,23 @@ something can only be flagged for a human (audio, real ML, network).
 
 ## 6. Invariants you must not break
 
+**Nothing plays unprocessed.** A `Media` is one downloaded rendition, and it is playable only when it
+has a separated instrumental — `stemStatus === 'ready'` **and** an `instrumentalRef`, both, because the
+two are written by separate steps and a status running ahead of its artifact hands the player an empty
+source. There is no YouTube embed path and no raw-source path; a local library file is a cook candidate
+like any other source. `playbackRef` returns `''` for anything uncooked and `isPlayable` is defined in
+terms of it, so "what do I load" and "is there anything to load" cannot disagree. Readiness is
+`ready` / `cooking` / `unacquired`.
+
+**Acquisition is declared, never inferred.** A job carries `params.fetcher` (`ytdlp` or `local`) and the
+worker parses it at its boundary. Do not reintroduce a test on the URI's shape: an `http(s)` prefix check
+lived in three places and silently classified anything else as a local file, dying stages later inside
+ffmpeg with "No such file".
+
+**A citation never regresses.** Once a media holds a `high` MusicBrainz annotation, a later `medium`
+must not overwrite it — in memory, in the DB, or on a sidecar write that re-parses the raw title. All
+three paths have to hold or a restart quietly turns a cited artist back into a guess.
+
 **The reconciliation contract** (canonical explanation: [`ARCHITECTURE.md`](ARCHITECTURE.md)):
 
 > **`client.predict(op) === server.apply(op)` for EVERY mutation path**, including round-robin resequencing.

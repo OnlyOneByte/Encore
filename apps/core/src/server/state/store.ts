@@ -56,7 +56,14 @@ export class AuthoritativeState {
 	}
 
 	setPlayback(patch: Partial<PlaybackState>): { rev: number; playback: PlaybackState } {
-		this.#playback = { ...this.#playback, ...patch };
+		// Drop undefined keys instead of spreading them in. A partial carrying `positionSec: undefined`
+		// used to overwrite a good value with undefined, which the write-behind flush then persisted as
+		// NULL against a NOT NULL column — throwing a SQLiteError out of the flush timer and KILLING THE
+		// PROCESS, asynchronously, long after the request that caused it. Absent means "leave it alone".
+		const defined = Object.fromEntries(
+			Object.entries(patch).filter(([, v]) => v !== undefined)
+		) as Partial<PlaybackState>;
+		this.#playback = { ...this.#playback, ...defined };
 		this.#rev++;
 		this.#scheduleFlush();
 		return { rev: this.#rev, playback: this.playback };
@@ -69,6 +76,11 @@ export class AuthoritativeState {
 	 * Position is ephemeral telemetry, not authoritative queue state — never gates reconciliation.
 	 */
 	setPosition(positionSec: number): void {
+		// A non-finite position is IGNORED, not floored. `Math.floor(undefined)` is NaN, and SQLite
+		// stores NaN as NULL — so one telemetry frame with a missing positionSec violated
+		// `NOT NULL playback_state.position_sec` and took the process down from inside the flush timer.
+		// Telemetry is ephemeral: dropping a bad sample costs nothing, crashing the room costs the party.
+		if (!Number.isFinite(positionSec)) return;
 		this.#playback = { ...this.#playback, positionSec: Math.max(0, Math.floor(positionSec)) };
 		this.#scheduleFlush(); // still persisted (write-behind) so a resumed session is roughly correct
 	}

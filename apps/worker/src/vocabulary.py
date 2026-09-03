@@ -26,6 +26,7 @@ class _StrEnum(str, Enum):
 class Action(_StrEnum):
     """What a job asks the worker to do. Mirrors the core's JobType."""
 
+    FETCH = "fetch"
     STEMS = "stems"
     STEMS_UPGRADE = "stems-upgrade"
     ALIGN = "align"
@@ -43,6 +44,22 @@ class Stage(_StrEnum):
     DOWNLOADING = "downloading"
     SEPARATING = "separating"
     ALIGNING = "aligning"
+
+
+class Fetcher(_StrEnum):
+    """WHERE a job's source audio comes from, as DECLARED by the core.
+
+    This exists to replace inference. Acquisition used to be guessed from the URI's shape -- an
+    `http(s)` prefix meant download, anything else meant a local path -- which silently misclassified
+    any other scheme and failed several stages later at ffmpeg with "No such file". A declared value
+    parsed at the boundary fails immediately and names the cause.
+
+    LOCAL is not a downloader: it means the bytes are already under MEDIA_DIR and `source_uri` is a
+    path to read. Mirrors FetcherId in packages/shared/src/fetchers.ts.
+    """
+
+    YTDLP = "ytdlp"
+    LOCAL = "local"
 
 
 class Engine(_StrEnum):
@@ -71,6 +88,9 @@ class Backend(_StrEnum):
 
 #: Ordered stage plan per action. An action absent here falls back to download+separate.
 STAGE_PLANS: dict[Action, list[Stage]] = {
+    # Acquisition only -- no separation. Its own action so a box that can download and a box that can
+    # separate need not be the same machine.
+    Action.FETCH: [Stage.DOWNLOADING],
     Action.STEMS: [Stage.DOWNLOADING, Stage.SEPARATING],
     Action.STEMS_UPGRADE: [Stage.DOWNLOADING, Stage.SEPARATING],
     Action.ALIGN: [Stage.DOWNLOADING, Stage.ALIGNING],
@@ -84,7 +104,9 @@ QUALITY_RANK: dict[tuple[Engine, str], int] = {
     (Engine.DEMUCS, "htdemucs"): 10,
     (Engine.DEMUCS, "htdemucs_6s"): 15,
     (Engine.DEMUCS, "htdemucs_ft"): 20,
-    (Engine.ROFORMER, "mel-roformer-inst-v2"): 30,
+    # The `mel-roformer-inst-v2` rung (30) is gone: its slug is absent from bs-roformer-infer's
+    # registry and the package implements only the BS-RoFormer architecture, so no mel-band
+    # checkpoint could ever have run. See ROFORMER_MODELS in roformer.py.
     (Engine.ROFORMER, "bs-roformer-1297"): 35,
     (Engine.ENSEMBLE, "instrumental_full"): 40,
     (Engine.ENSEMBLE, "instrumental_clean"): 45,
@@ -97,6 +119,20 @@ def parse_action(value: str) -> Action:
         return Action(value)
     except ValueError:
         raise ValueError(f"unknown action {value!r}; expected one of {[a.value for a in Action]}") from None
+
+
+def parse_fetcher(value: str | None, default: Fetcher = Fetcher.YTDLP) -> Fetcher:
+    """Coerce a wire fetcher to a Fetcher. Absent means the default; unknown RAISES.
+
+    Raising is the point: a job carrying a fetcher this worker does not implement must fail before any
+    download or decode runs, rather than being treated as a local path and dying later.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        return Fetcher(value)
+    except ValueError:
+        raise ValueError(f"unknown fetcher {value!r}; expected one of {[f.value for f in Fetcher]}") from None
 
 
 def parse_engine(value: str | None, default: Engine = Engine.DEMUCS) -> Engine:

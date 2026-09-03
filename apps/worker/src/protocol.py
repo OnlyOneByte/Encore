@@ -97,9 +97,22 @@ class WorkerState:
     def slots_free(self) -> int:
         return max(0, self.concurrency - len(self.running))
 
+    def supports(self, job_type: str) -> bool:
+        """Does this worker advertise a capability that can serve this ACTION?
+
+        A capability is not always the bare job type. Both axes namespace theirs — a separator engine
+        advertises `stems:roformer`, a downloader advertises `fetch:ytdlp` — so matching the job type
+        as a literal string rejects a job this worker can genuinely run. That is what made every
+        `fetch` job fail with "unsupported job type: fetch" against a worker advertising `fetch:ytdlp`,
+        and it would equally reject a plain `stems` job on a roformer-only worker.
+
+        Matched on the action prefix so a new axis needs no change here.
+        """
+        return job_type in self.capabilities or any(c.startswith(f"{job_type}:") for c in self.capabilities)
+
     def can_accept(self, job_type: str) -> tuple[bool, str]:
         """(ok, reason) — reject if the worker lacks the capability or has no free slot."""
-        if job_type not in self.capabilities:
+        if not self.supports(job_type):
             return False, f"unsupported job type: {job_type}"
         if self.slots_free <= 0:
             return False, "no free slots"

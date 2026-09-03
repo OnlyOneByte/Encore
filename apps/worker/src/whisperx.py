@@ -18,7 +18,9 @@ import threading
 import time
 from typing import Any, AsyncIterator, Callable, Protocol
 
-from .demucs import Runner, download_argv, is_local_source, parse_ytdlp_progress, subprocess_runner
+from .demucs import Runner, download_argv, parse_ytdlp_progress, subprocess_runner
+from .fetch import job_fetcher, local_source_path
+from .vocabulary import Fetcher
 from .lyrics_source import (
     LRCLIB_BASE,
     LrclibClient,
@@ -304,8 +306,8 @@ class WhisperXProcessor:
         # ── stage 1: obtain the source audio ──────────────────────────────────────
         # Reuse the retained raw original if a stems job already fetched it — an align job for a
         # cooked song then costs no network.
-        if is_local_source(job.source_uri):
-            audio = job.source_uri if os.path.isabs(job.source_uri) else os.path.join(job.media_dir, job.source_uri)
+        if job_fetcher(job) is Fetcher.LOCAL:
+            audio = local_source_path(job)
         else:
             audio = source_audio_path(job.media_dir, job.media_id)
             os.makedirs(os.path.dirname(audio), exist_ok=True)

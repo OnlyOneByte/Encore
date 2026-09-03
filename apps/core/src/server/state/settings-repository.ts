@@ -40,7 +40,8 @@ export class SettingsRepository {
 			defaultModel: row.defaultModel,
 			enqueueUpgrade: row.enqueueUpgrade,
 			upgradeEngine: row.upgradeEngine as GlobalSettings['upgradeEngine'],
-			upgradeModel: row.upgradeModel
+			upgradeModel: row.upgradeModel,
+			defaultFetcher: row.defaultFetcher as GlobalSettings['defaultFetcher']
 		});
 	}
 

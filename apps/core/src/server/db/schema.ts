@@ -61,6 +61,12 @@ export const media = sqliteTable('media', {
 	// title misses even when the artist is right. Nullable on the same principle as artist_canonical —
 	// a low-confidence parse stores NULL rather than a guess.
 	titleCanonical: text('title_canonical'),
+	// MusicBrainz recording id, and how the canonicals above came to be trusted. Persisted rather than
+	// left in memory because the never-regress rule reads it: without a stored confidence a restart
+	// forgets that an artist was CITED, and the next `medium` annotation would overwrite it freely.
+	mbid: text('mbid'),
+	annotationSource: text('annotation_source'),
+	annotationConfidence: text('annotation_confidence'),
 	album: text('album'),
 	year: integer('year')
 });
@@ -119,7 +125,11 @@ export const globalSettings = sqliteTable('global_settings', {
 	defaultModel: text('default_model').notNull().default('htdemucs'),
 	enqueueUpgrade: integer('enqueue_upgrade', { mode: 'boolean' }).notNull().default(false),
 	upgradeEngine: text('upgrade_engine').notNull().default('roformer'),
-	upgradeModel: text('upgrade_model').notNull().default('bs-roformer-1297')
+	upgradeModel: text('upgrade_model').notNull().default('bs-roformer-1297'),
+	// Which downloader acquires source audio. Global rather than per-room: a room cannot choose a
+	// fetcher its workers cannot run. `local` is never stored here — that describes one media's bytes,
+	// not a deployment default — and normalizeGlobalSettings refuses it on both read and write.
+	defaultFetcher: text('default_fetcher').notNull().default('ytdlp')
 });
 
 // One party's own policy, keyed by room so multi-room is a row per room rather than a migration.
@@ -139,7 +149,7 @@ export const jobs = sqliteTable(
 	{
 		id: text('id').primaryKey(),
 		mediaId: text('media_id').notNull(),
-		jobType: text('job_type', { enum: ['stems', 'align', 'score', 'stems-upgrade'] }).notNull(),
+		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'score', 'stems-upgrade'] }).notNull(),
 		status: text('status', {
 			enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']
 		})

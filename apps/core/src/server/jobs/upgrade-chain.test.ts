@@ -9,6 +9,7 @@ const settings = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({
 	enqueueUpgrade: false,
 	upgradeEngine: 'roformer',
 	upgradeModel: 'bs-roformer-1297',
+	defaultFetcher: 'ytdlp' as const,
 	...o
 });
 

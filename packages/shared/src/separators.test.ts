@@ -11,7 +11,10 @@ import {
 	normalizeRoomSettings,
 	TV_PROGRESS_STYLES,
 	DEFAULT_ROOM_SETTINGS,
-	resolveCookSeparator
+	resolveCookSeparator,
+	separatorCost,
+	estimateCookSeconds,
+	qualityRank
 } from './separators';
 
 describe('separator registry', () => {
@@ -47,6 +50,73 @@ describe('separator registry', () => {
 		expect(ids).toContain('htdemucs');
 		expect(ids).toContain('htdemucs_ft');
 		expect(ids).toContain('htdemucs_6s');
+	});
+
+	it('does NOT offer a mel-band roformer model', () => {
+		// The engine backing `roformer` implements only the BS-RoFormer architecture, and the former
+		// mel-roformer-inst-v2 token mapped to a slug absent from its registry — a phone option no
+		// worker could satisfy. Guards against it being re-added without the engine to run it.
+		const ids = getEngine('roformer')!.models.map((m) => m.id);
+		expect(ids.filter((id) => id.includes('mel'))).toEqual([]);
+		expect(isValidSeparator('roformer', 'mel-roformer-inst-v2')).toBe(false);
+		expect(qualityRank('roformer', 'mel-roformer-inst-v2')).toBe(0); // unranked ⇒ never an upgrade
+	});
+});
+
+describe('measured cost', () => {
+	it('every whitelisted model carries a cost record', () => {
+		for (const engine of SEPARATOR_ENGINES) {
+			for (const model of engine.models) {
+				const cost = separatorCost(engine.id, model.id);
+				expect(cost).toBeTruthy();
+				expect(cost!.rtFactor).toBeGreaterThan(0);
+				expect(['fp32', 'bf16']).toContain(cost!.cpuPrecision);
+				expect(['measured', 'estimated']).toContain(cost!.provenance);
+			}
+		}
+	});
+
+	it('overlap is an integer window count where present, and absent on demucs', () => {
+		// demucs's overlap is a 0–1 FRACTION with different semantics, so the field is deliberately
+		// omitted there rather than carrying a value that means something else.
+		for (const model of getEngine('demucs')!.models) {
+			expect(model.cost.overlap).toBeUndefined();
+		}
+		for (const model of getEngine('roformer')!.models) {
+			expect(Number.isInteger(model.cost.overlap)).toBe(true);
+			expect(model.cost.overlap!).toBeGreaterThanOrEqual(1);
+		}
+	});
+
+	it('the engine speed label agrees with its models measured cost', () => {
+		// `speed` is a coarse UI hint and `rtFactor` is the measurement; this keeps them from drifting
+		// apart as checkpoints are tuned. Bands: fast < 1× realtime, medium < 4×, slow beyond.
+		for (const engine of SEPARATOR_ENGINES) {
+			const worst = Math.max(...engine.models.map((m) => m.cost.rtFactor));
+			const band = worst < 1 ? 'fast' : worst < 4 ? 'medium' : 'slow';
+			expect(engine.speed).toBe(band);
+		}
+	});
+
+	it('the live default is genuinely faster than realtime', () => {
+		// A live cook has to finish while the singer waits, so the default must be sub-realtime.
+		expect(separatorCost(DEFAULT_ENGINE, DEFAULT_MODEL)!.rtFactor).toBeLessThan(1);
+	});
+
+	it('estimateCookSeconds scales with song length and hardware', () => {
+		// htdemucs is 0.29: a 200s song is ~58s on the reference box.
+		expect(estimateCookSeconds('demucs', 'htdemucs', 200)).toBe(58);
+		// a box twice as fast halves it
+		expect(estimateCookSeconds('demucs', 'htdemucs', 200, 0.5)).toBe(29);
+		// roformer is the upgrade tier: minutes, not seconds
+		expect(estimateCookSeconds('roformer', 'bs-roformer-1297', 200)!).toBeGreaterThan(1000);
+	});
+
+	it('estimateCookSeconds returns null rather than guessing', () => {
+		expect(estimateCookSeconds('demucs', 'no-such-model', 200)).toBeNull();
+		expect(estimateCookSeconds('nope', 'htdemucs', 200)).toBeNull();
+		expect(estimateCookSeconds('demucs', 'htdemucs', 0)).toBeNull();
+		expect(estimateCookSeconds('demucs', 'htdemucs', Number.NaN)).toBeNull();
 	});
 });
 

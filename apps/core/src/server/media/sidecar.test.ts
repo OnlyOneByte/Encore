@@ -210,3 +210,45 @@ describe('sidecar I/O and index rebuild', () => {
 		expect(await backfillSidecars([media({ id: 'a' })], NOW)).toBe(0);
 	});
 });
+
+describe('annotation persistence', () => {
+	it('a MusicBrainz citation survives a sidecar round trip', () => {
+		// REGRESSION: mbid and annotation were runtime-only — no columns, not in the sidecar — so a
+		// restart forgot that an artist had been CITED, and the never-regress rule then had nothing to
+		// compare against: the next `medium` annotation would overwrite a `high` freely.
+		const cited = media({
+			mbid: 'mb-42',
+			artistCanonical: 'Tears for Fears',
+			titleCanonical: 'Everybody Wants to Rule the World',
+			annotation: { source: 'musicbrainz', confidence: 'high' }
+		});
+		const back = mediaFromSidecar(sidecarFromMedia(cited, NOW));
+		expect(back.mbid).toBe('mb-42');
+		expect(back.annotation).toEqual({ source: 'musicbrainz', confidence: 'high' });
+		expect(back.artistCanonical).toBe('Tears for Fears');
+	});
+
+	it('a later write does NOT downgrade a citation back to a title parse', () => {
+		// Every sidecar write re-parses the raw title. Without the cited guard that parse would
+		// overwrite the citation — reintroducing through persistence the exact regression
+		// applyAnnotation refuses at runtime.
+		const cited = media({
+			mbid: 'mb-42',
+			artistCanonical: 'Tears for Fears',
+			annotation: { source: 'musicbrainz', confidence: 'high' }
+		});
+		const first = sidecarFromMedia(cited, NOW);
+		// a second write from a media that has LOST its runtime annotation (e.g. rebuilt from an index)
+		const stripped = { ...cited, mbid: undefined, annotation: undefined };
+		const second = sidecarFromMedia(stripped, NOW, first);
+		expect(second.canonical.mbid).toBe('mb-42');
+		expect(second.provenance.artist?.by).toBe('musicbrainz');
+		expect(second.canonical.artist).toBe('Tears for Fears');
+	});
+
+	it('an unannotated song round-trips with normalizer provenance, not a citation', () => {
+		const back = mediaFromSidecar(sidecarFromMedia(media(), NOW));
+		expect(back.mbid).toBeUndefined();
+		expect(back.annotation?.source).not.toBe('musicbrainz');
+	});
+});
