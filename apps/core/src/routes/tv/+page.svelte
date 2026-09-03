@@ -38,6 +38,7 @@
 	// The player already reports duration alongside position; it used to be forwarded to telemetry and
 	// dropped. Progress needs both.
 	let durationSec = $state(0);
+	let skipNotice = $state('');
 	let tvProgressStyle = $state<TvProgressStyle>(untrack(() => data.tvProgressStyle) ?? 'card');
 	$effect(() => {
 		tvProgressStyle = data.tvProgressStyle ?? 'card';
@@ -95,7 +96,11 @@
 	}
 
 	function onVisibleError() {
-		// dead/unplayable media — treat like ended so the room advances rather than hanging on black
+		// dead/unplayable media — treat like ended so the room advances rather than hanging on black.
+		// Say so on screen first: advancing silently means several bad files in a row just flash black
+		// across the room with nothing explaining why.
+		skipNotice = 'Skipping — that track would not play';
+		setTimeout(() => (skipNotice = ''), 4000);
 		sendTelemetry('ended');
 		onVisibleEnded();
 	}
@@ -290,6 +295,10 @@
 		</div>
 	{/if}
 
+	{#if skipNotice}
+		<div class="interstitial"><div class="up-song">⚠️ {skipNotice}</div></div>
+	{/if}
+
 	{#if tvState === 'waiting'}
 		<div class="interstitial">
 			<div class="up-song">🔥 Still cooking… hang tight</div>
@@ -309,7 +318,7 @@
 	.attract {
 		position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
 		justify-content: center; gap: 48px; z-index: 5;
-		background: radial-gradient(80% 60% at 50% 30%, #1b1430 0%, var(--bg) 70%);
+		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
 	.brand { position: absolute; top: 40px; left: 48px; font-weight: 800; font-size: 2rem; }
 	/* the lobby paints its own full-bleed backdrop, so the brand needs to float above it */
@@ -320,12 +329,15 @@
 	.url { font-size: 1.4rem; color: var(--accent2); margin: 0 0 16px; }
 	.hint { font-size: 1.2rem; color: var(--ink-dim); margin: 0; }
 	.lower-third {
+		/* Capped: unbounded, a long title or singer name grew this card rightward into the join QR at
+		   bottom-right. 46vw leaves the QR its corner on every aspect ratio. */
 		position: absolute; left: 48px; bottom: 48px; z-index: 6; display: flex; flex-direction: column;
+		max-width: 46vw;
 		gap: 4px; padding: 16px 24px; border-radius: 16px;
 		background: linear-gradient(120deg, rgba(124, 92, 255, 0.85), rgba(255, 92, 174, 0.7)); backdrop-filter: blur(6px);
 	}
 	.ls-label { font-size: 0.8rem; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.85; }
-	.ls-name { font-size: 1.8rem; font-weight: 800; }
+	.ls-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.8rem; font-weight: 800; }
 	.ls-song { font-size: 1.2rem; opacity: 0.95; }
 	.interstitial {
 		position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center;
