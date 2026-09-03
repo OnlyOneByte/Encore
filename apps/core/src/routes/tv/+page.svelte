@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
+	import { chosenCandidate } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -175,6 +176,12 @@
 	const roster = $derived(lobbyRoster(online, singers));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
+	// B-3-C6: which candidate the current lyricsRef came from, so the overlay can label a guess.
+	// Null for a pre-candidate artifact — unknown provenance, asserted as neither verified nor not.
+	const lyricsProvenance = $derived.by(() => {
+		const m = mediaOf(current);
+		return m ? chosenCandidate(m) : null;
+	});
 	// show the live score badge whenever we have a score for the currently-playing entry
 	const showScore = $derived(screen === 'playing' && !!score && score.entryId === current?.id);
 </script>
@@ -207,6 +214,7 @@
 	<!-- M8-C2: word-timed karaoke lyrics over the active player -->
 	<LyricsOverlay
 		lyricsRef={mediaOf(current)?.lyricsRef}
+		provenance={lyricsProvenance}
 		{positionSec}
 		playing={lyricsActive}
 		visible={lyricsActive}

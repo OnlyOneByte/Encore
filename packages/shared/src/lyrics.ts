@@ -5,7 +5,11 @@
 //   source                      text            timing it yields unaided
 //   LRCLIB syncedLyrics (LRC)   authoritative   line-level (no ML, no audio at all)
 //   LRCLIB plain / captions     good            none — needs forced alignment
-//   ASR on the vocals stem      dubious         word-level
+//   ASR on the vocals stem      dubious         line-level (segment bounds only)
+//
+// MEASURED (B-3-C4): whisper's transcribe() returns NO word timings — those come solely from the
+// separate align() pass. So the aligner is the one source of word timings for every tier, and it is
+// not text-source-specific: it upgrades any text, looked-up or transcribed, from line to word.
 //
 // The ideal artifact is authoritative text FORCE-ALIGNED to the audio, which needs both halves — so
 // the sources are not alternatives to each other and "pick the first that hits" throws away most of
@@ -55,7 +59,7 @@ export interface LyricsCandidate {
  * confidence is `low`, which is how an auto-generated caption track gets correctly demoted to the
  * same standing as ASR despite arriving through the "captions" door.
  */
-export function isAuthoritativeText(c: LyricsCandidate): boolean {
+export function isAuthoritativeText(c: Pick<LyricsCandidate, 'textSource' | 'textConfidence'>): boolean {
   return c.textSource !== 'asr' && c.textConfidence !== 'low';
 }
 

@@ -59,6 +59,12 @@
 		],
 		words: []
 	};
+	// The line-sync floor: same lines, no per-word timings — what an un-alignable LRC renders as.
+	const demoLineOnly: LyricsDoc = {
+		language: 'en',
+		lines: demoLyrics.lines.map((l) => ({ ...l, words: [] })),
+		words: []
+	};
 	let demoPos = $state(0);
 	let demoScore = $state(0); // sweeps 0→100 so the badge moves through all bands (M8-C3 eyes-on)
 	onMount(() => {
@@ -107,10 +113,26 @@
 
 	<NowPlaying title="Take On Me" sub="a-ha · Sam is singing" />
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (M8-C2 · TV)</h2>
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (M8-C2 · TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
-		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible />
+		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible
+			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
 		<ScoreBadge score={demoScore} hits={demoScore} total={100} />
+	</div>
+
+	<!-- B-3-C6: the same doc, same perfect sweep, but the words are a GUESS. The pair is the point —
+	     without the caption these two are visually indistinguishable, which is exactly the problem. -->
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · AUTO-TRANSCRIBED (B-3-C6)</h2>
+	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible
+			provenance={{ textSource: 'asr', textConfidence: 'low', timing: 'word' }} />
+	</div>
+
+	<!-- The FLOOR: authoritative words, line-level timing only. Whole-line highlight, no ball. -->
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · LINE-SYNC floor (no word timings)</h2>
+	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+		<LyricsOverlay doc={demoLineOnly} positionSec={demoPos} playing visible
+			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'line' }} />
 	</div>
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">TV room states (B-6) · lobby + corner join card</h2>

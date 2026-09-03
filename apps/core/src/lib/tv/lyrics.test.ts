@@ -100,3 +100,46 @@ test('wordFill: 0 before, linear during, 1 after; zero-length snaps to 1', () =>
 	expect(wordFill(w, 0.7)).toBe(1);
 	expect(wordFill({ word: 'z', start: 1, end: 1 }, 1)).toBe(1); // degenerate
 });
+
+// ── B-3-C6: honesty about auto-transcribed words ──────────────────────────────
+// Force-aligned ASR renders a PERFECT bouncing ball over words that may be wrong — the most
+// misleading state the overlay can be in. The notice exists because the result looks finished.
+import { lyricsNotice, isAutoTranscribed, type LyricsProvenance } from './lyrics';
+
+const prov = (over: Partial<LyricsProvenance> = {}): LyricsProvenance => ({
+	textSource: 'lrclib',
+	textConfidence: 'high',
+	timing: 'word',
+	...over
+});
+
+test('authoritative text gets NO notice', () => {
+	expect(lyricsNotice(prov())).toBeNull();
+	expect(lyricsNotice(prov({ textSource: 'manual' }))).toBeNull();
+	expect(isAutoTranscribed(prov())).toBe(false);
+});
+
+test('ASR text is labelled, even with word timings that look perfect', () => {
+	const p = prov({ textSource: 'asr', textConfidence: 'low', timing: 'word' });
+	expect(lyricsNotice(p)).toContain('auto-transcribed');
+	expect(isAutoTranscribed(p)).toBe(true);
+});
+
+test('a LOW-confidence caption track is labelled too (ASR wearing a caption hat)', () => {
+	const p = prov({ textSource: 'captions', textConfidence: 'low' });
+	expect(isAutoTranscribed(p)).toBe(true);
+});
+
+test('a real human caption track is not labelled', () => {
+	expect(isAutoTranscribed(prov({ textSource: 'captions', textConfidence: 'high' }))).toBe(false);
+});
+
+test('UNKNOWN provenance says nothing — never claims verified OR guessed', () => {
+	expect(lyricsNotice(null)).toBeNull();
+	expect(lyricsNotice(undefined)).toBeNull();
+	expect(isAutoTranscribed(null)).toBe(false);
+});
+
+test('coarse LINE timing alone is not labelled (visible on its own)', () => {
+	expect(lyricsNotice(prov({ timing: 'line' }))).toBeNull();
+});
