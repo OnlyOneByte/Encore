@@ -6,7 +6,7 @@
 // work; worker-hub flips the media to ready on completion. See MASTER-DESIGN §4, §6.
 
 import type { Job, Media, QueueEntry, LyricsCandidate } from '@encore/shared';
-import { mergeLyricsCandidate, pickBestLyrics } from '@encore/shared';
+import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
@@ -109,15 +109,29 @@ export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job 
  * second, uncooked row for it. Returns true if the media existed and was flipped.
  * (worker-hub calls this.)
  */
-export function markMediaReady(mediaId: string, mediaById: Map<string, Media>, reportedUri?: string): boolean {
+export function markMediaReady(
+	mediaId: string,
+	mediaById: Map<string, Media>,
+	reportedUri?: string,
+	separator?: { engine: string; model: string }
+): boolean {
 	const media = mediaById.get(mediaId);
 	if (!media) return false;
+
+	// An UPGRADE must never publish a worse instrumental than the one already there. A plain cook
+	// (no separator reported, or nothing published yet) always applies; a ranked candidate applies
+	// only when it beats what is current.
+	if (separator && media.instrumentalRef && !isQualityUpgrade(media.separator, separator)) {
+		return false;
+	}
+
 	media.playMode = 'file';
 	// Prefer what the worker ACTUALLY wrote over re-deriving the key. The two must agree, but the
-	// worker owns the container format (B-7 moved stems from .wav to .m4a), and trusting its report
-	// means a future format change cannot desync the ref from the file and 404 the TV.
+	// worker owns the container format, and trusting its report means a future format change cannot
+	// desync the ref from the file and 404 the TV.
 	media.instrumentalRef = toRelativeKey(reportedUri) ?? instrumentalKey(mediaId);
 	media.stemStatus = 'ready';
+	if (separator) media.separator = separator;
 	return true;
 }
 

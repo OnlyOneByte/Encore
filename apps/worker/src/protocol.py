@@ -9,6 +9,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from .vocabulary import STAGE_PLANS as _STAGE_PLANS, Stage
+
 # ── message type strings (must match packages/shared/src/events.ts) ──────────────
 # worker -> core
 HELLO = "worker:hello"
@@ -25,16 +27,17 @@ CANCEL = "job:cancel"
 PING = "ping"
 
 # media:status stage vocabulary the core rebroadcasts to phones (events.ts MediaStatus).
-STAGE_DOWNLOADING = "downloading"
-STAGE_SEPARATING = "separating"
-STAGE_ALIGNING = "aligning"
+# Aliased to the Stage enum in vocabulary.py so there is one definition; these names stay for the
+# existing call sites and remain plain-string comparable.
+STAGE_DOWNLOADING = Stage.DOWNLOADING.value
+STAGE_SEPARATING = Stage.SEPARATING.value
+STAGE_ALIGNING = Stage.ALIGNING.value
 
 # The stage sequence a job of each type passes through (drives the live phone progress bar).
 # `stems` = download the source then separate vocals; `align` = download then word-align lyrics.
+# Derived from the enum plan so adding an action cannot leave this table stale.
 STAGE_PLANS: dict[str, list[str]] = {
-    "stems": [STAGE_DOWNLOADING, STAGE_SEPARATING],
-    "align": [STAGE_DOWNLOADING, STAGE_ALIGNING],
-    "score": [STAGE_DOWNLOADING, STAGE_SEPARATING],
+    action.value: [s.value for s in stages] for action, stages in _STAGE_PLANS.items()
 }
 
 

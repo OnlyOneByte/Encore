@@ -19,7 +19,7 @@ import type {
 } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
-import { planAssignments, assignParams, followUps, requiredCapability } from './dispatch';
+import { planAssignments, assignParams, followUps, requiredCapability, separatorFor } from './dispatch';
 import { markMediaReady, setMediaLyrics, setMediaPitch } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
@@ -128,28 +128,31 @@ export class WorkerHub {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
+		const settings = this.#d.getSettings?.();
 		// Flip the media to ready: playMode→file, instrumentalRef→what the worker actually wrote,
 		// stemStatus→ready. rotation's isEntryReady now returns true, so the held entry becomes
-		// playable at its slot.
-		markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental);
-		// Attach word-timed lyrics if the job carried an align artifact (M8-C2 TV overlay). Additive:
+		// playable at its slot. Separation jobs also report WHICH engine+model produced the artifact,
+		// so an upgrade can be refused when it would not actually improve on what is published.
+		const separator = separatorFor(job.jobType, settings);
+		markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
+		// Attach word-timed lyrics if the job carried an align artifact (the TV overlay). Additive:
 		// a stems-only complete leaves lyrics absent; an align complete populates lyricsRef.
 		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);
-		// Attach the reference pitch track if a score job carried it (M8-C3 mic scoring). Additive.
+		// Attach the reference pitch track if a score job carried it (mic scoring). Additive.
 		setMediaPitch(job.mediaId, msg.artifacts?.pitch?.uri, this.#d.mediaById);
-		// B-1: persist the cooked media NOW (stems key + lyrics + pitch), so a restart finds the
+		// Persist the cooked media NOW (stems key + lyrics + pitch), so a restart finds the
 		// separated song in the library instead of re-cooking it from scratch.
 		this.#d.persistMedia?.(job.mediaId);
 		this.#d.registry.releaseSlot(msg.workerId);
-		// B-7: job scratch is transient by contract — the intermediate WAVs in work/<jobId> are large
+		// Job scratch is transient by contract — the intermediate WAVs in work/<jobId> are large
 		// (a decoded source plus both separated stems) and nothing reads them after this point. Leaving
 		// them is how 432MB accumulated under the old layout.
 		cleanJobWork(msg.jobId);
-		// B-3-C1: enqueue whatever this job unblocks (stems → align, so lyrics run on every cook).
+		// Enqueue whatever this job unblocks (stems → align + score, and optionally a quality upgrade).
 		// AFTER cleanJobWork on purpose — the follow-up gets its own scratch dir, and dedup on
 		// (mediaId, jobType) means a re-cooked song cannot stack duplicate align jobs. It inherits the
 		// completed job's priority so it stays as urgent as the song that needed it.
-		for (const next of followUps(job.jobType)) {
+		for (const next of followUps(job.jobType, settings)) {
 			this.#d.jobs.enqueue(job.mediaId, next, job.priority, this.#d.now());
 		}
 		this.#emitStatus(updated);
