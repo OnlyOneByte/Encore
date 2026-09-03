@@ -13,9 +13,12 @@ RUN apt-get update \
 
 # Python deps first for layer caching. Torch CPU wheels from the official index (override with a
 # build-arg for CUDA). --no-cache-dir keeps the (already large) image from bloating further.
+# requirements.txt also pins yt-dlp (B-9-C1) so the source fetcher ships WITH the image: it used to be
+# hand-installed into a live container, which a `docker rm` silently undid.
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 COPY apps/worker/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir --extra-index-url "${TORCH_INDEX_URL}" -r requirements.txt
+RUN pip install --no-cache-dir --extra-index-url "${TORCH_INDEX_URL}" -r requirements.txt \
+	&& yt-dlp --version
 
 # worker sources (the dial-home client + processor + pure protocol)
 COPY apps/worker/src ./src

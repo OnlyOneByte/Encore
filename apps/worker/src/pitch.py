@@ -1,4 +1,4 @@
-"""Pitch-shift (±key) helper (M7-C9): render transposed variants of a make-karaoke instrumental so
+"""Pitch-shift (±key) helper: render transposed variants of a make-karaoke instrumental so
 a singer can move the song into their range. The PURE half (semitone→ratio math, ffmpeg argv, the
 keyed output path, the ±range) is unit-tested; the actual ffmpeg render only runs on a worker box
 with a full ffmpeg build (this sandbox's ffmpeg is a stripped 16-filter build with no atempo/

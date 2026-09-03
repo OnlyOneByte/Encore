@@ -9,6 +9,13 @@
 # wheel with an incompatible C++ ABI → ImportError undefined symbol). pip's resolver produced this
 # exact conflict-free set on py3.12/aarch64 — do NOT single-pin any one of these without re-resolving.
 websockets==15.0.1
+# yt-dlp is the SOURCE FETCHER, and it belongs in the image (B-9-C1). It used to be pip-installed into
+# a running container by hand, so `docker rm` silently removed it and every later download failed with
+# "yt-dlp: not found" — the worker shells out BY NAME via PATH, so a missing binary is not a config
+# error it can report, it is a broken cook. Pinned like everything else here (no bare latest): yt-dlp
+# ships breaking extractor changes often, so the version that was verified against real YouTube is the
+# version the image gets. Bump deliberately when extraction breaks upstream, not incidentally.
+yt-dlp==2026.8.19
 torch==2.8.0
 torchaudio==2.8.0
 torchvision==0.23.0
@@ -24,3 +31,10 @@ soundfile>=0.13
 # use its wav2vec2 align() to produce WORD timings, rather than trusting ASR to transcribe sung
 # vocals. 3.8.6 is the modern line that installs on py3.12 and matches faster-whisper 1.2's API.
 whisperx==3.8.6
+# BS-RoFormer separation engine (B-8), inference-only. Chosen over python-audio-separator for its
+# load/infer/release session lifecycle (load the ~700MB checkpoint ONCE per long-lived worker, not
+# per cook) and its repointable sha256-verified checkpoint registry. Resolves in 8 small pure-Python
+# deps on the pinned torch 2.8 stack — it rides the existing torch, adds no numpy rebuild. Only a
+# worker that advertises the `stems:roformer` capability loads it, so the default (demucs-only)
+# worker never pays its startup cost.
+bs-roformer-infer==0.1.5

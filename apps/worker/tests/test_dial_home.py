@@ -190,7 +190,12 @@ def test_build_processor_routes_by_capability(monkeypatch):
     p = _build_processor()
     assert isinstance(p, RoutingProcessor)
     by_type = p._by_type  # introspect the routing table
-    assert isinstance(by_type["stems"], DemucsProcessor)
+    # B-8: stems now routes through an EngineRouter (engine chosen per-job); demucs is its default.
+    from src.processor import EngineRouter
+
+    assert isinstance(by_type["stems"], EngineRouter)
+    assert isinstance(by_type["stems"]._by_engine["demucs"], DemucsProcessor)
+    assert "roformer" not in by_type["stems"]._by_engine  # not built without the stems:roformer cap
     assert "score" not in by_type  # score is capability-gated (M8-C3), not advertised by default
     assert "align" not in by_type  # not advertised by default
 

@@ -1,13 +1,13 @@
-"""Encore worker — dial-home WS client (M7-C4: full protocol loop).
+"""Encore worker — dial-home WS client: the full protocol loop.
 
 The worker connects TO the core (never the reverse), so it scales to N and runs on any box / GPU
 across NAT. It announces capacity (`worker:hello`), receives `job:assign`, accepts (or rejects on
 no-capacity / unsupported type), streams `job:progress` per stage, and finishes with `job:complete`
-(or `job:failed`). Crash recovery is the core's job (leases + reaper, M7-C2) — a dropped WS just
+(or `job:failed`). Crash recovery is the core's job (leases + reaper) — a dropped WS just
 means the worker reconnects and re-announces.
 
-The actual stem separation is behind the Processor seam (processor.py). M7-C4 ships StubProcessor;
-M7-C5 swaps in real Demucs `htdemucs` with NO change to this loop. See
+The actual stem separation is behind the Processor seam (processor.py); StubProcessor and the real
+Demucs pipeline are interchangeable there with NO change to this loop. See
 docs/ARCHITECTURE.md, §9.
 
 Run:  python -m src.dial_home   (or as a module inside the container)
@@ -50,7 +50,7 @@ class WorkerClient:
         self._processor = processor
         self._media_dir = media_dir
         self._version = version
-        # MediaStore config arrives in worker:welcome (M7-C10); local until then.
+        # MediaStore config arrives in worker:welcome; local until then.
         self.media_store = MediaStoreConfig(kind="local")
         self.state = protocol.WorkerState(
             worker_id=worker_id,
@@ -117,13 +117,13 @@ class WorkerClient:
             retryable = _is_retryable(exc)
             # LOG it too. Reporting only over the wire made a retry loop invisible from both ends: a
             # job that failed at 99% every attempt looked identical to one still cooking, because the
-            # worker printed nothing and the core just requeued. Same lesson as B-7-C5.
+            # worker printed nothing and the core just requeued.
             print(f"[worker] job {job.job_id} ({job.job_type}) FAILED "
                   f"retryable={retryable}: {exc!r}", flush=True)
             await self._send(protocol.failed(self.state.worker_id, job.job_id, str(exc), retryable=retryable))
         finally:
             self.state.finish(job.job_id)
-            # B-7: the worker OWNS its scratch, so the worker cleans it. work/<jobId> holds the
+            # The worker OWNS its scratch, so the worker cleans it. work/<jobId> holds the
             # decoded source plus both separated WAV stems — hundreds of MB per job, and nothing reads
             # them once the encoded artifacts are published. Leaving them is how 432 MB accumulated
             # under the old layout.
@@ -136,7 +136,7 @@ class WorkerClient:
 
     def _on_cancel(self, msg: dict[str, Any]) -> None:
         # cooperative cancel: drop the slot now; the core already moved the job to canceled.
-        # (Real Demucs subprocess termination wires in at M7-C5 where there's a process to kill.)
+        # (Real Demucs subprocess termination wires in where there is a process to kill.)
         self.state.finish(msg.get("jobId", ""))
 
     async def drain(self) -> None:
@@ -189,7 +189,7 @@ def oversubscription_warnings(cfg: WorkerConfig, cores: int | None) -> list[str]
 def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     """Build the processor from this worker's capabilities. ENCORE_PROCESSOR=stub forces the no-ML
     StubProcessor (path test / torch-less box). Otherwise a RoutingProcessor dispatches by job type:
-    stems→DemucsProcessor (M7-C5), align→WhisperXProcessor (M7-C8). Imports are lazy so torch only
+    stems→DemucsProcessor, align→WhisperXProcessor. Imports are lazy so torch only
     loads for the capabilities this worker actually advertises.
 
     Config is read ON CALL, not captured at import: a module-level default would silently ignore any
@@ -222,8 +222,17 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             print(f"[worker] could not set torch threads: {exc}", flush=True)
 
     by_type: dict[str, Processor] = {}
-    if "stems" in cfg.capabilities or "score" in cfg.capabilities:
+    if "stems" in cfg.capabilities or "score" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
+        from .backends import resolve_backend
         from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
+        from .processor import EngineRouter
+        from .vocabulary import Backend, Engine
+
+        # Resolve HOW separation executes here before building anything. An explicitly configured
+        # backend that is unavailable raises, so a misconfigured deployment fails at startup instead
+        # of cooking on CPU at a fraction of the expected speed.
+        choice = resolve_backend(cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.demucs_device)
+        print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
 
         demucs = DemucsProcessor(
             model=cfg.demucs_model,
@@ -232,21 +241,31 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             ffmpeg_bin=cfg.ffmpeg_bin,
             bitrate=cfg.stem_bitrate,
             flac_level=cfg.flac_level,
-            device=cfg.demucs_device,
+            device=choice.device,
             jobs=cfg.demucs_jobs,
             overlap=cfg.demucs_overlap,
             segment=cfg.demucs_segment,
             shifts=cfg.demucs_shifts,
         )
-        by_type["stems"] = demucs
+        by_engine: dict[str, Processor] = {"demucs": demucs}
+        # Only load the roformer engine (and its ~700MB checkpoint machinery) when this worker
+        # was given the stems:roformer capability — a demucs-only worker never imports bs_roformer.
+        if "stems:roformer" in cfg.capabilities:
+            from .roformer import RoformerProcessor
+
+            by_engine["roformer"] = RoformerProcessor(device=choice.device, flac_level=cfg.flac_level)
+
+        router = EngineRouter(by_engine)
+        by_type["stems"] = router
+        by_type["stems-upgrade"] = router  # an upgrade is a separation job like any other
         if "score" in cfg.capabilities:
-            from .score import PitchTrackProcessor  # separate → extract reference pitch track (M8-C3)
+            from .score import PitchTrackProcessor  # separate → extract reference pitch track
 
             by_type["score"] = PitchTrackProcessor(separator=demucs)
     if "align" in cfg.capabilities:
         from .whisperx import WhisperXProcessor
 
-        # Hybrid forced-alignment (M7-C8): LRCLIB known text + WhisperX wav2vec2 align().
+        # Hybrid forced-alignment: LRCLIB known text + WhisperX wav2vec2 align().
         # device cpu by default; a GPU worker sets ENCORE_WHISPERX_DEVICE=cuda.
         by_type["align"] = WhisperXProcessor(device=cfg.whisperx_device, ytdlp_bin=cfg.ytdlp_bin, lrclib_base=cfg.lrclib_base)
     return RoutingProcessor(by_type)

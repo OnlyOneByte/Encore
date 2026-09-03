@@ -1,4 +1,4 @@
-"""Worker-side MediaStore config (M7-C10): parse the `worker:welcome` mediaStore handshake and
+"""Worker-side MediaStore config: parse the `worker:welcome` mediaStore handshake and
 resolve WHERE this worker reads source / writes stems — a shared local volume (single-box) or an
 S3/MinIO bucket (scale-out, MASTER-DESIGN §2).
 

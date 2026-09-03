@@ -214,7 +214,12 @@ async def test_missing_instrumental_output_raises(tmp_path):
 
 def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
     argv = demucs.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
-    assert "-f" in argv and "bestaudio" in argv
+    # B-9-C2 replaced the bare `bestaudio` with a codec-ranked selector, so assert the POLICY (an
+    # audio-only selector whose final fallback is still bestaudio) rather than one literal token.
+    assert "-f" in argv
+    selector = argv[argv.index("-f") + 1]
+    assert selector.split("/")[-1] == "bestaudio", selector
+    assert "bestvideo" not in selector
     # the regression that cost ~12x: no extract-audio transcode, and no wav anywhere
     assert "--audio-format" not in argv
     assert "wav" not in " ".join(argv)
@@ -262,3 +267,26 @@ def test_find_downloaded_ignores_partial_downloads():
         assert demucs.find_downloaded(d, "id1") is None  # an interrupted download is not a result
         open(_os.path.join(d, "id1.webm"), "w").close()
         assert demucs.find_downloaded(d, "id1").endswith("id1.webm")
+
+
+# ── B-8: per-job demucs model selection ──────────────────────────────────────────
+def test_resolve_demucs_model_defaults_when_unset():
+    assert demucs.resolve_demucs_model({}) == demucs.DEFAULT_MODEL
+    assert demucs.resolve_demucs_model({"model": None}) == demucs.DEFAULT_MODEL
+    assert demucs.resolve_demucs_model({"model": ""}) == demucs.DEFAULT_MODEL
+
+
+def test_resolve_demucs_model_accepts_whitelisted_variants():
+    assert demucs.resolve_demucs_model({"model": "htdemucs_ft"}) == "htdemucs_ft"
+    assert demucs.resolve_demucs_model({"model": "htdemucs_6s"}) == "htdemucs_6s"
+
+
+def test_resolve_demucs_model_rejects_unknown_rather_than_silently_falling_back():
+    # A silent fallback would ship a DIFFERENT instrumental than the room asked for — worse than a
+    # loud failure the ledger can surface. Every roformer/ensemble model id is unknown to demucs.
+    import pytest as _pytest
+
+    with _pytest.raises(ValueError, match="unknown demucs model"):
+        demucs.resolve_demucs_model({"model": "bs-roformer-1297"})
+    with _pytest.raises(ValueError, match="unknown demucs model"):
+        demucs.resolve_demucs_model({"model": "../etc/passwd"})

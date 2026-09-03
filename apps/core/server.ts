@@ -197,6 +197,7 @@ const server = Bun.serve<SocketData>({
 				mediaById,
 				listSingers: () => app.singers.listPublic(),
 				listOnline: () => app.presence.online(),
+				getSettings: () => app.settings.getEffective(),
 				onNowPlaying: (e) => app.plays.onNowPlaying(e),
 				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
 				seenOp: (id) => {
