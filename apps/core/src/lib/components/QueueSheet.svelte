@@ -176,7 +176,7 @@
 	}
 	@media (prefers-reduced-motion: reduce) { .track > i { transition: none; } }
 	.peek:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 18px; }
-	.grip { width: 40px; height: 4px; border-radius: 3px; background: #3a3a52; margin: 2px auto 10px; }
+	.grip { width: 40px; height: 4px; border-radius: 3px; background: var(--line-strong); margin: 2px auto 10px; }
 	.line { display: flex; align-items: center; gap: 12px; }
 	.txt { min-width: 0; flex: 1; }
 	.t { font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -186,7 +186,7 @@
 	.hint {
 		display: flex; align-items: center; justify-content: center; gap: 6px;
 		font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
-		color: #5b5b78; margin-top: 9px;
+		color: var(--ink-dim); margin-top: 9px;
 	}
 	.chev { display: inline-block; transition: transform 0.28s ease; transform: rotate(180deg); }
 	.chev.up { transform: rotate(0deg); }
