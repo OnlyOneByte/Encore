@@ -242,7 +242,7 @@
 	<SongRow title="Take On Me" artist="a-ha" readiness="ready" />
 	<SongRow title="Take On Me" artist="a-ha" readiness="ready" inQueue />
 	<SongRow title="Bohemian Rhapsody" artist="Queen" readiness="cooking" pct={68} etaSec={70} />
-	<SongRow title="Mr. Brightside" artist="The Killers" readiness="raw" onmake={() => {}} />
+	<SongRow title="Mr. Brightside" artist="The Killers" readiness="unacquired" onmake={() => {}} />
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">QueueRow</h2>
 	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor="#33d6a6" up subtitle="now playing" />

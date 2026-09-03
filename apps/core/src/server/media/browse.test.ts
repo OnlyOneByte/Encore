@@ -16,12 +16,11 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	artist: 'some-uploader',
 	durationSec: 200,
 	stemStatus: 'none',
-	playMode: 'iframe',
 	...over
 });
 
 const cooked = (id: string, over: Partial<Media> = {}) =>
-	media(id, { playMode: 'file', stemStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
+	media(id, { stemStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
 
 let repo: MediaRepository;
 
@@ -129,6 +128,5 @@ describe('browse only shows singable songs', () => {
 		const [m] = repo.byArtist('Queen');
         expect(m.instrumentalRef).toBe(instrumentalKey('c3'));
 		expect(m.stemStatus).toBe('ready');
-		expect(m.playMode).toBe('file');
 	});
 });

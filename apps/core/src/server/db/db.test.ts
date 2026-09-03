@@ -16,7 +16,7 @@ test('migrations create all tables and every entity round-trips', () => {
 		.values({ id: 's1', displayName: 'Maya', color: '#ff5cae', sessionToken: 'tok', joinedAt: now })
 		.run();
 	db.insert(media)
-		.values({ id: 'm1', source: 'youtube', sourceRef: 'abc', title: 'Take On Me', durationSec: 225, stemStatus: 'none', playMode: 'iframe' })
+		.values({ id: 'm1', source: 'youtube', sourceRef: 'abc', title: 'Take On Me', durationSec: 225, stemStatus: 'none' })
 		.run();
 	db.insert(queueEntries)
 		.values({ id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: now })
@@ -30,7 +30,6 @@ test('migrations create all tables and every entity round-trips', () => {
 
 	expect(db.select().from(rooms).all()).toHaveLength(1);
 	expect(db.select().from(singers).all()[0]!.displayName).toBe('Maya');
-	expect(db.select().from(media).all()[0]!.playMode).toBe('iframe');
 	expect(db.select().from(jobs).all()[0]!.jobType).toBe('stems');
 
 	// boot-hydrate returns the durable queue + playback to seed memory
@@ -40,11 +39,10 @@ test('migrations create all tables and every entity round-trips', () => {
 	expect(playback?.currentEntryId).toBe('q1');
 });
 
-test('media defaults: stemStatus none, playMode iframe', () => {
+test('media defaults: stemStatus none', () => {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
 	db.insert(media).values({ id: 'm2', source: 'local', sourceRef: 'f.mp4', title: 'X', durationSec: 100 }).run();
 	const row = db.select().from(media).all()[0]!;
 	expect(row.stemStatus).toBe('none');
-	expect(row.playMode).toBe('iframe');
 });

@@ -1,7 +1,7 @@
 <script lang="ts">
-	// One media surface (slot A or B). Renders YouTube iframe OR <video> per playMode.
+	// One media surface (slot A or B). Renders the separated instrumental in a <video>.
 	// Reports ready/ended up so the GaplessController can orchestrate the swap.
-	import { keyedMediaRef, playbackRef, type Media } from '@encore/shared';
+	import { keyedMediaRef, playbackRef, isPlayable, type Media } from '@encore/shared';
 	interface Props {
 		media: Media | null;
 		visible: boolean;
@@ -20,54 +20,38 @@
 
 	// keep <video> play/pause in sync with slot state AND the paused/playing command from the phone
 	$effect(() => {
-		if (!video || !media || media.playMode !== 'file') return;
+		if (!video || !media || !isPlayable(media)) return;
 		if (active && visible && playing) video.play().catch(() => {});
 		else video.pause();
 	});
 
 	// seek the <video> when the phone scrubs. Only a real JUMP (>1.5s from where we are) seeks —
 	// so the ~4Hz position telemetry and pause/resume (which carry the current position) don't
-	// fight the playhead. Guarded to the active file slot.
+	// fight the playhead. Guarded to the active playable slot.
 	$effect(() => {
-		if (!video || !media || media.playMode !== 'file' || seekSec === undefined) return;
+		if (!video || !media || !isPlayable(media) || seekSec === undefined) return;
 		if (active && Math.abs(video.currentTime - seekSec) > 1.5) video.currentTime = seekSec;
 	});
 
 	function fileSrc(m: Media): string {
 		// resolve the keyed instrumental variant for the active slot (0 → the original file).
-		// playbackRef picks the separated instrumental for a cooked song, or the origin file key for
-		// a plain local file — sourceRef alone is the ORIGIN and is no longer the thing to play.
+		// playbackRef is the separated instrumental; sourceRef is the ORIGIN and is never played.
 		return `/media/${keyedMediaRef(playbackRef(m), active ? keyShift : 0)}`;
-	}
-	function ytEmbed(m: Media): string {
-		// muted preload when hidden; autoplay+unmuted when active+visible
-		const auto = active && visible ? 1 : 0;
-		const mute = active && visible ? 0 : 1;
-		return `https://www.youtube.com/embed/${m.sourceRef}?autoplay=${auto}&mute=${mute}&enablejsapi=1&controls=0`;
 	}
 </script>
 
 <div class="slot" class:visible style="z-index:{visible ? 2 : 1}">
-	{#if media}
-		{#if media.playMode === 'file'}
-			<!-- svelte-ignore a11y_media_has_caption -->
-			<video
-				bind:this={video}
-				src={fileSrc(media)}
-				preload="auto"
-				oncanplaythrough={() => onready?.()}
-				onended={() => onended?.()}
-				onerror={() => active && visible && onerror?.()}
-				ontimeupdate={() => video && onposition?.(video.currentTime, video.duration)}
-			></video>
-		{:else}
-			<iframe
-				title={media.title}
-				src={ytEmbed(media)}
-				allow="autoplay; encrypted-media"
-				onload={() => onready?.()}
-			></iframe>
-		{/if}
+	{#if media && isPlayable(media)}
+		<!-- svelte-ignore a11y_media_has_caption -->
+		<video
+			bind:this={video}
+			src={fileSrc(media)}
+			preload="auto"
+			oncanplaythrough={() => onready?.()}
+			onended={() => onended?.()}
+			onerror={() => active && visible && onerror?.()}
+			ontimeupdate={() => video && onposition?.(video.currentTime, video.duration)}
+		></video>
 	{/if}
 </div>
 
@@ -82,8 +66,7 @@
 	.slot.visible {
 		opacity: 1;
 	}
-	video,
-	iframe {
+	video {
 		width: 100%;
 		height: 100%;
 		border: 0;

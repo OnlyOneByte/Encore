@@ -31,7 +31,7 @@ export const BACKFILL_PRIORITY = Number.MAX_SAFE_INTEGER;
 export function needsLyricsBackfill(catalog: Iterable<Media>): string[] {
 	const out: string[] = [];
 	for (const m of catalog) {
-		if (m.playMode !== 'file' || m.stemStatus !== 'ready') continue;
+		if (m.stemStatus !== 'ready') continue;
 		const best = (m.lyricsCandidates ?? []).filter(hasUsableTiming);
 		if (best.some((c) => c.timing === 'word')) continue; // already at the ideal tier
 		// A pre-candidate artifact (schema-1) counts as unknown timing: it may well be word-timed, and

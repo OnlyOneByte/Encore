@@ -1,11 +1,11 @@
 // Make-karaoke request orchestrator — the entry point for "strip the vocals from this song."
-// Flips the media into a COOKING file (playMode:file + stemStatus:queued) so rotation HOLDS its slot
+// Marks the media as COOKING (stemStatus:queued) so rotation HOLDS its slot
 // (isEntryReady returns false until stems are ready), then enqueues a stems job at the priority of
 // the soonest queue entry that needs it. worker-hub flips the media to ready on completion.
 // See MASTER-DESIGN §4, §6.
 
 import type { Job, Media, QueueEntry, LyricsCandidate } from '@encore/shared';
-import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade } from '@encore/shared';
+import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade, isPlayable } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
@@ -42,7 +42,7 @@ export function soonestSeqFor(mediaId: string, entries: QueueEntry[]): number {
  * state needs NO worker job: re-queueing it plays the existing instrumental immediately.
  */
 export function isCooked(media: Media): boolean {
-	return media.playMode === 'file' && media.stemStatus === 'ready';
+	return isPlayable(media);
 }
 
 /**
@@ -55,7 +55,7 @@ export type CookState =
 	| 'playing' // the live song; cooking it would yank the video out from under the room
 	| 'ready' // stems already separated (persisted from an earlier session) — no re-cook
 	| 'cooking' // a live job is already working on it; a repeat request dedupes to that job
-	| 'cookable'; // a plain iframe song — go
+	| 'cookable'; // nothing separated yet — go
 
 export function cookState(mediaId: string, deps: Pick<MakeKaraokeDeps, 'mediaById' | 'state'>): CookState {
 	const media = deps.mediaById.get(mediaId);
@@ -63,7 +63,7 @@ export function cookState(mediaId: string, deps: Pick<MakeKaraokeDeps, 'mediaByI
 	const current = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId);
 	if (current && current.mediaId === mediaId) return 'playing';
 	if (isCooked(media)) return 'ready';
-	if (media.playMode === 'file' && media.stemStatus === 'queued') return 'cooking';
+	if (media.stemStatus === 'queued') return 'cooking';
 	return 'cookable';
 }
 
@@ -83,8 +83,7 @@ export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job 
 	// recompute an identical instrumental is the exact waste the durable catalog exists to prevent.
 	if (state === 'ready') return null;
 
-	// Flip to cooking: a file whose stems aren't ready → rotation holds its slot until ready.
-	media.playMode = 'file';
+	// Mark it cooking → rotation holds its slot until the instrumental exists.
 	media.stemStatus = 'queued';
 
 	const priority = soonestSeqFor(mediaId, deps.state.entries);
@@ -121,7 +120,6 @@ export function markMediaReady(
 		return false;
 	}
 
-	media.playMode = 'file';
 	// Prefer what the worker ACTUALLY wrote over re-deriving the key. The two must agree, but the
 	// worker owns the container format, and trusting its report means a future format change cannot
 	// desync the ref from the file and 404 the TV.

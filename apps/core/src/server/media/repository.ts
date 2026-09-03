@@ -21,7 +21,6 @@ const toRow = (m: Media): MediaRow => ({
 	durationSec: Math.round(m.durationSec),
 	thumbnail: m.thumbnail ?? null,
 	stemStatus: m.stemStatus,
-	playMode: m.playMode,
 	instrumentalRef: m.instrumentalRef ?? null,
 	lyricsRef: m.lyricsRef ?? null,
 	// JSON blob, not a table: nothing queries inside the set.
@@ -51,7 +50,6 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	durationSec: r.durationSec,
 	thumbnail: r.thumbnail ?? undefined,
 	stemStatus: r.stemStatus,
-	playMode: r.playMode,
 	instrumentalRef: r.instrumentalRef ?? undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
 	lyricsCandidates: parseCandidates(r.lyricsCandidates),
@@ -93,14 +91,14 @@ export class MediaRepository {
 		return this.#db.select().from(media).all().map(fromRow);
 	}
 
-	/** The saved-karaoke library: songs whose stems are separated and ready (playMode file, stems
+	/** The saved-karaoke library: songs whose stems are separated and ready (stems
 	 *  ready) — re-queueing one skips the worker entirely. Ordered newest-first by id
 	 *  (ULIDs are monotonic, so this is catalog-discovery order, not cook order). */
 	listReady(): Media[] {
 		return this.#db
 			.select()
 			.from(media)
-			.where(and(eq(media.stemStatus, 'ready'), eq(media.playMode, 'file')))
+			.where(and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef)))
 			.orderBy(desc(media.id))
 			.all()
 			.map(fromRow);
@@ -157,7 +155,7 @@ export class MediaRepository {
 		return this.#db
 			.select({ artist: media.artistCanonical, count: sql<number>`count(*)`.as('count') })
 			.from(media)
-			.where(and(eq(media.stemStatus, 'ready'), eq(media.playMode, 'file'), isNotNull(media.artistCanonical)))
+			.where(and(eq(media.stemStatus, 'ready'), isNotNull(media.artistCanonical)))
 			.groupBy(media.artistCanonical)
 			.orderBy(desc(sql`count(*)`), asc(media.artistCanonical))
 			.all()
@@ -170,7 +168,7 @@ export class MediaRepository {
 			.select({ genre: mediaTags.value, count: sql<number>`count(*)`.as('count') })
 			.from(mediaTags)
 			.innerJoin(media, eq(media.id, mediaTags.mediaId))
-			.where(and(eq(mediaTags.kind, 'genre'), eq(media.stemStatus, 'ready'), eq(media.playMode, 'file')))
+			.where(and(eq(mediaTags.kind, 'genre'), eq(media.stemStatus, 'ready')))
 			.groupBy(mediaTags.value)
 			.orderBy(desc(sql`count(*)`), asc(mediaTags.value))
 			.all();
@@ -181,7 +179,7 @@ export class MediaRepository {
 		return this.#db
 			.select()
 			.from(media)
-			.where(and(eq(media.stemStatus, 'ready'), eq(media.playMode, 'file'), eq(media.artistCanonical, artist)))
+			.where(and(eq(media.stemStatus, 'ready'), eq(media.artistCanonical, artist)))
 			.orderBy(desc(media.id))
 			.all()
 			.map(fromRow);
@@ -193,7 +191,7 @@ export class MediaRepository {
 			.select()
 			.from(media)
 			.innerJoin(mediaTags, eq(mediaTags.mediaId, media.id))
-			.where(and(eq(media.stemStatus, 'ready'), eq(media.playMode, 'file'), eq(mediaTags.kind, 'genre'), eq(mediaTags.value, genre.trim().toLowerCase())))
+			.where(and(eq(media.stemStatus, 'ready'), eq(mediaTags.kind, 'genre'), eq(mediaTags.value, genre.trim().toLowerCase())))
 			.orderBy(desc(media.id))
 			.all()
 			.map((r) => fromRow(r.media));

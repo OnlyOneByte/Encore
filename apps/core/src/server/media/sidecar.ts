@@ -157,7 +157,6 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		durationSec: s.canonical.durationSec,
 		thumbnail: s.raw.thumbnail ?? undefined,
 		stemStatus: cooked ? 'ready' : 'none',
-		playMode: cooked ? 'file' : 'iframe',
 		instrumentalRef: s.artifacts.instrumental ?? undefined,
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,

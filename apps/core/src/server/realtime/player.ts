@@ -102,11 +102,11 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 			advance(deps);
 			break;
 		case 'key': {
-			// ± key only applies to a make-karaoke (file) song whose stems are ready — a YouTube
-			// iframe can't be re-pitched. Clamp the absolute target to ±MAX_KEY_SHIFT. No-op otherwise.
+			// ± key only applies to a song whose stems are ready — there is nothing to re-pitch
+			// before separation. Clamp the absolute target to ±MAX_KEY_SHIFT. No-op otherwise.
 			const cur = state.entries.find((e) => e.id === state.playback.currentEntryId);
 			const media = cur && deps.mediaById.get(cur.mediaId);
-			if (cur && media && media.playMode === 'file' && isEntryReady(cur, deps.mediaById)) {
+			if (cur && media && isEntryReady(cur, deps.mediaById)) {
 				state.setPlayback({ keyShift: clampKeyShift(cmd.semitones) });
 			}
 			break;

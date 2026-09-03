@@ -37,7 +37,6 @@ export const media = sqliteTable('media', {
 	stemStatus: text('stem_status', { enum: ['none', 'queued', 'ready'] })
 		.notNull()
 		.default('none'),
-	playMode: text('play_mode', { enum: ['iframe', 'file'] }).notNull().default('iframe'),
 	// The separated instrumental's MediaStore key. Kept SEPARATE from source_ref so source_ref stays
 	// the song's immutable origin identity (what search dedupes on) — see Media.sourceRef.
 	instrumentalRef: text('instrumental_ref'),
@@ -128,6 +127,9 @@ export const globalSettings = sqliteTable('global_settings', {
 // A setting belongs here only when two rooms on one core could genuinely want different values.
 export const roomSettings = sqliteTable('room_settings', {
 	roomId: text('room_id').primaryKey(),
+	tvProgressStyle: text('tv_progress_style', { enum: ['card', 'corner', 'edge'] })
+		.notNull()
+		.default('card'),
 	interstitialMs: integer('interstitial_ms').notNull().default(2500),
 	maxQualityRank: integer('max_quality_rank')
 });

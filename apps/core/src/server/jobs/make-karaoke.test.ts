@@ -12,7 +12,7 @@ import { playbackRef, type Media, type QueueEntry } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 const media = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', playMode: 'iframe', ...over
+	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', ...over
 });
 let _s = 0;
 const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({ id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: ++_s });
@@ -30,9 +30,8 @@ test('request flips media to cooking file + enqueues a stems job', () => {
 	expect(job).not.toBeNull();
 	expect(job!.jobType).toBe('stems');
 	expect(job!.status).toBe('queued');
-	// media is now a cooking file → rotation will hold its slot
+	// media is now cooking → rotation will hold its slot
 	const m = d.mediaById.get('m1')!;
-	expect(m.playMode).toBe('file');
 	expect(m.stemStatus).toBe('queued');
 	expect(isEntryReady(entry('q', 'm1'), d.mediaById)).toBe(false);
 });
@@ -57,7 +56,7 @@ test('refuses to make-karaoke the currently-playing song (would yank the live vi
 	d.state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	d.state.setPlayback({ currentEntryId: 'q1', isPlaying: true });
 	expect(requestMakeKaraoke('m1', d)).toBeNull();
-	expect(d.mediaById.get('m1')!.playMode).toBe('iframe'); // unchanged
+	expect(d.mediaById.get('m1')!.stemStatus).toBe('none'); // unchanged
 });
 
 test('priority = soonest rotationSeq among queued entries needing the media', () => {
@@ -73,11 +72,10 @@ test('priority = soonest rotationSeq among queued entries needing the media', ()
 
 test('markMediaReady records the instrumental key and LEAVES sourceRef alone', () => {
 	const d = deps();
-	d.mediaById.set('m1', media('m1', { playMode: 'file', stemStatus: 'queued' }));
+	d.mediaById.set('m1', media('m1', { stemStatus: 'queued' }));
 	expect(markMediaReady('m1', d.mediaById)).toBe(true);
 	const m = d.mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
-	expect(m.playMode).toBe('file');
 	expect(m.instrumentalRef).toBe(instrumentalKey('m1'));
 	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
 	// REGRESSION: overwriting sourceRef forked the song into two rows — the cooked one in the
@@ -121,9 +119,9 @@ test('setMediaPitch attaches the reference pitch-track uri, and no-ops without o
 
 test('ROUND TRIP: cook → held while another plays → ready → plays at its preserved slot', () => {
 	const d = deps();
-	// two singers: a wants make-karaoke on m1 (queued first → seq 0), b has a ready iframe m2
+	// two singers: a wants make-karaoke on m1 (queued first → seq 0), b has an already-cooked m2
 	d.mediaById.set('m1', media('m1'));
-	d.mediaById.set('m2', media('m2'));
+	d.mediaById.set('m2', media('m2', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
 	d.state.applyQueueOp({ op: 'add', entry: entry('q-a', 'm1', 'a') });
 	d.state.applyQueueOp({ op: 'add', entry: entry('q-b', 'm2', 'b') });
 
@@ -140,10 +138,11 @@ test('ROUND TRIP: cook → held while another plays → ready → plays at its p
 
 // ── dedupe to already-separated stems (the durable catalog's payoff) ────────────────────
 
-test('isCooked is true only for a stems-ready FILE media', () => {
-	expect(isCooked(media('m1', { playMode: 'file', stemStatus: 'ready' }))).toBe(true);
-	expect(isCooked(media('m1', { playMode: 'file', stemStatus: 'queued' }))).toBe(false);
-	expect(isCooked(media('m1', { playMode: 'iframe', stemStatus: 'ready' }))).toBe(false);
+test('isCooked is true only when a ready status has an instrumental to show for it', () => {
+	expect(isCooked(media('m1', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }))).toBe(true);
+	expect(isCooked(media('m1', { stemStatus: 'queued' }))).toBe(false);
+	// status ran ahead of the artifact — playing this would hand the TV an empty source
+	expect(isCooked(media('m1', { stemStatus: 'ready' }))).toBe(false);
 	expect(isCooked(media('m1'))).toBe(false);
 });
 
@@ -154,10 +153,10 @@ test('cookState distinguishes unknown / playing / ready / cooking / cookable', (
 	d.mediaById.set('plain', media('plain'));
 	expect(cookState('plain', d)).toBe('cookable');
 
-	d.mediaById.set('done', media('done', { playMode: 'file', stemStatus: 'ready' }));
+	d.mediaById.set('done', media('done', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
 	expect(cookState('done', d)).toBe('ready');
 
-	d.mediaById.set('wip', media('wip', { playMode: 'file', stemStatus: 'queued' }));
+	d.mediaById.set('wip', media('wip', { stemStatus: 'queued' }));
 	expect(cookState('wip', d)).toBe('cooking');
 
 	// the live song outranks everything else — never yank the running video
@@ -169,7 +168,7 @@ test('cookState distinguishes unknown / playing / ready / cooking / cookable', (
 test('an already-cooked song is NEVER re-cooked (no second job, no wasted separation)', () => {
 	const d = deps();
 	// exactly the shape hydrated from disk on boot: file + ready + the instrumental key
-	d.mediaById.set('m1', media('m1', { playMode: 'file', stemStatus: 'ready', instrumentalRef: instrumentalKey('m1') }));
+	d.mediaById.set('m1', media('m1', { stemStatus: 'ready', instrumentalRef: instrumentalKey('m1') }));
 
 	expect(requestMakeKaraoke('m1', d)).toBeNull();
 	expect(d.jobs.listByStatus('queued')).toHaveLength(0);

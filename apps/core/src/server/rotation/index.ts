@@ -3,19 +3,20 @@
 // isn't ready yet — e.g. a make-karaoke song still being processed — without burning its fair
 // position). See docs/ARCHITECTURE.md.
 
-import { assignSeqs, type QueueEntry, type Media } from '@encore/shared';
+import { assignSeqs, isPlayable, type QueueEntry, type Media } from '@encore/shared';
 
 /** Re-derive fair round-robin order + contiguous rotationSeq. Server owns this value. */
 export function reseq(entries: QueueEntry[]): QueueEntry[] {
 	return assignSeqs(entries);
 }
 
-/** A queue entry is "ready to play" when its media needs no processing or is already done. */
+/** A queue entry is "ready to play" when its media has a separated instrumental on disk. */
 export function isEntryReady(entry: QueueEntry, mediaById: Map<string, Media>): boolean {
 	const m = mediaById.get(entry.mediaId);
 	if (!m) return false;
-	// iframe (YouTube) plays immediately; file plays once stems are ready (or never needed them)
-	return m.playMode === 'iframe' || m.stemStatus === 'ready' || m.stemStatus === 'none';
+	// Nothing plays unprocessed, so this is the whole rule: no instrumental, no playback. An entry
+	// that is not ready keeps its rotationSeq and slots back in at the same fair position later.
+	return isPlayable(m);
 }
 
 /**

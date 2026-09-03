@@ -60,7 +60,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		return media;
 	});
 
-	const { ready, cooking, raw } = partitionSearch(q, [...app.mediaById.values()], materialized);
-	// `results` keeps its name for the raw group: it is what still needs work to become karaoke.
-	return json({ ready, cooking, results: raw });
+	const { ready, cooking, unacquired } = partitionSearch(q, [...app.mediaById.values()], materialized);
+	// `results` keeps its name for the unacquired group: it is what still needs work to become karaoke.
+	return json({ ready, cooking, results: unacquired });
 };

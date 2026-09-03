@@ -1,14 +1,14 @@
 // Client-side mirror of the server's readiness axis (src/server/media/readiness.ts). Duplicated
 // rather than imported because @encore/shared is the client/server contract and this is a derived
 // view concern — but the classification MUST agree with the server's, so it is unit-tested here too.
-import type { Media, MediaStatus } from '@encore/shared';
+import { isPlayable, type Media, type MediaStatus } from '@encore/shared';
 
-export type Readiness = 'ready' | 'cooking' | 'raw';
+export type Readiness = 'ready' | 'cooking' | 'unacquired';
 
 export function readinessOf(m: Media): Readiness {
-	if (m.playMode === 'file' && m.stemStatus === 'ready') return 'ready';
-	if (m.playMode === 'file' && m.stemStatus === 'queued') return 'cooking';
-	return 'raw';
+	if (isPlayable(m)) return 'ready';
+	if (m.stemStatus === 'queued') return 'cooking';
+	return 'unacquired';
 }
 
 /**
@@ -26,7 +26,7 @@ export function displayReadiness(m: Media, live?: { status: MediaStatus }): Read
 
 /** Whether offering "make karaoke" makes sense: only for a song that is neither done nor in flight. */
 export function canCook(r: Readiness): boolean {
-	return r === 'raw';
+	return r === 'unacquired';
 }
 
 /**
@@ -89,7 +89,7 @@ export function entryPlayable(
 	if (live && live.status === 'ready') return true;
 	if (live && live.status !== 'failed') return false; // queued/downloading/separating/aligning
 	if (!media) return false;
-	return media.playMode === 'iframe' || media.stemStatus === 'ready' || media.stemStatus === 'none';
+	return isPlayable(media);
 }
 
 /**

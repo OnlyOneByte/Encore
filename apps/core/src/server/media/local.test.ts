@@ -2,6 +2,7 @@
 import { test, expect } from 'bun:test';
 import { LocalLibrary } from './local';
 import { resultToMedia } from './resolver';
+import { isPlayable } from '@encore/shared';
 
 function lib() {
 	const l = new LocalLibrary();
@@ -42,10 +43,11 @@ test('empty query returns nothing', async () => {
 	expect(await lib().search('   ', 10)).toEqual([]);
 });
 
-test('resultToMedia maps local -> playMode file', async () => {
+test('resultToMedia leaves a local file UNCOOKED, so it is not playable yet', async () => {
 	const r = (await lib().search('take', 1))[0]!;
 	const m = resultToMedia('id1', r);
-	expect(m.playMode).toBe('file');
+	expect(m.stemStatus).toBe('none');
+	expect(isPlayable(m)).toBe(false); // a local file still needs separating before anyone can sing it
 	expect(m.source).toBe('local');
 	expect(m.sourceRef).toBe('c.mp4');
 });

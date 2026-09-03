@@ -30,7 +30,6 @@ const media = (over: Partial<Media> = {}): Media => ({
 	durationSec: 210,
 	thumbnail: 'https://i.ytimg.com/vi/x/hq.jpg',
 	stemStatus: 'none',
-	playMode: 'iframe',
 	...over
 });
 
@@ -111,14 +110,13 @@ describe('mediaFromSidecar (the index projection)', () => {
 	it('round-trips a plain song', () => {
 		const m = media();
 		const back = mediaFromSidecar(sidecarFromMedia(m, NOW));
-		expect(back).toMatchObject({ id: 'm1', source: 'youtube', sourceRef: 'djV11Xbc914', durationSec: 210, stemStatus: 'none', playMode: 'iframe' });
+		expect(back).toMatchObject({ id: 'm1', source: 'youtube', sourceRef: 'djV11Xbc914', durationSec: 210, stemStatus: 'none' });
 	});
 
-	it('a cooked song comes back as READY and file-backed, so it is not re-cooked', () => {
+	it('a cooked song comes back as READY and playable, so it is not re-cooked', () => {
 		const s = sidecarFromMedia(media({ instrumentalRef: 'derived/stems/m1-instrumental.m4a' }), NOW);
 		const back = mediaFromSidecar(s);
 		expect(back.stemStatus).toBe('ready');
-		expect(back.playMode).toBe('file');
 		expect(back.instrumentalRef).toBe('derived/stems/m1-instrumental.m4a');
 	});
 
@@ -180,7 +178,7 @@ describe('sidecar I/O and index rebuild', () => {
 		expect(restored).toBe(2);
 		expect(index.get('a')!.stemStatus).toBe('ready'); // cooked song recognised as cooked
 		expect(index.get('a')!.instrumentalRef).toBe('derived/stems/a-instrumental.m4a');
-		expect(index.get('b')!.playMode).toBe('iframe');
+		expect(index.get('b')!.stemStatus).toBe('none');
 	});
 
 	it('leaves rows the index already has ALONE (a live object may be referenced elsewhere)', async () => {

@@ -13,16 +13,15 @@ const m = (over: Partial<Media> = {}): Media => ({
 	title: 'Take On Me',
 	durationSec: 200,
 	stemStatus: 'none',
-	playMode: 'iframe',
 	...over
 });
 
 const cases: Media[] = [
 	m(),
-	m({ playMode: 'file', stemStatus: 'ready' }),
-	m({ playMode: 'file', stemStatus: 'queued' }),
-	m({ source: 'local', playMode: 'file', stemStatus: 'none' }),
-	m({ playMode: 'iframe', stemStatus: 'ready' })
+	m({ stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }),
+	m({ stemStatus: 'queued' }),
+	m({ source: 'local', stemStatus: 'none' }),
+	m({ stemStatus: 'ready' }) // ready status, no artifact — must classify the same on both sides
 ];
 
 test('client and server classify readiness identically for every media shape', () => {
@@ -30,19 +29,19 @@ test('client and server classify readiness identically for every media shape', (
 });
 
 test('a live media:status wins over the catalog copy (the row responds to the tap at once)', () => {
-	const raw = m();
-	expect(displayReadiness(raw)).toBe('raw');
-	expect(displayReadiness(raw, { status: 'queued' })).toBe('cooking');
-	expect(displayReadiness(raw, { status: 'separating' })).toBe('cooking');
-	expect(displayReadiness(raw, { status: 'ready' })).toBe('ready');
+	const fresh = m();
+	expect(displayReadiness(fresh)).toBe('unacquired');
+	expect(displayReadiness(fresh, { status: 'queued' })).toBe('cooking');
+	expect(displayReadiness(fresh, { status: 'separating' })).toBe('cooking');
+	expect(displayReadiness(fresh, { status: 'ready' })).toBe('ready');
 });
 
-test('a failed cook falls back to the catalog, so the song is still queueable with vocals', () => {
-	expect(displayReadiness(m(), { status: 'failed' })).toBe('raw');
+test('a failed cook falls back to the catalog, so the song reads as still needing one', () => {
+	expect(displayReadiness(m(), { status: 'failed' })).toBe('unacquired');
 });
 
-test('only a raw song can be cooked', () => {
-	expect(canCook('raw')).toBe(true);
+test('only an unacquired song can be cooked', () => {
+	expect(canCook('unacquired')).toBe(true);
 	expect(canCook('ready')).toBe(false);
 	expect(canCook('cooking')).toBe(false);
 });
@@ -103,8 +102,8 @@ test('entryPlayable agrees with the server isEntryReady for every media shape', 
 });
 
 test('a live cooking status beats a catalog copy that still says ready', () => {
-	expect(entryPlayable(m({ playMode: 'file', stemStatus: 'ready' }), { status: 'separating' })).toBe(false);
-	expect(entryPlayable(m({ playMode: 'file', stemStatus: 'queued' }), { status: 'ready' })).toBe(true);
+	expect(entryPlayable(m({ stemStatus: 'ready' }), { status: 'separating' })).toBe(false);
+	expect(entryPlayable(m({ stemStatus: 'queued' }), { status: 'ready' })).toBe(true);
 });
 
 test('unknown media is not playable (matches the server returning false)', () => {
@@ -112,8 +111,8 @@ test('unknown media is not playable (matches the server returning false)', () =>
 });
 
 test('THE BUG: up-next skips a cooking first entry and names the first READY one', () => {
-	const cook = m({ id: 'cooking', playMode: 'file', stemStatus: 'queued' });
-	const ready = m({ id: 'ready', playMode: 'file', stemStatus: 'ready' });
+	const cook = m({ id: 'cooking', stemStatus: 'queued' });
+	const ready = m({ id: 'ready', stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 	const byId = new Map([[cook.id, cook], [ready.id, ready]]);
 	const queued = [entry('e1', 'cooking'), entry('e2', 'ready')];
 
@@ -122,14 +121,14 @@ test('THE BUG: up-next skips a cooking first entry and names the first READY one
 });
 
 test('up-next is the first entry when it is already playable', () => {
-	const ready = m({ id: 'ready', playMode: 'iframe' });
+	const ready = m({ id: 'ready', stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 	const byId = new Map([[ready.id, ready]]);
 	const queued = [entry('e1', 'ready'), entry('e2', 'ready')];
 	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBe('e1');
 });
 
 test('nothing playable → no up-next (the whole queue is cooking)', () => {
-	const cook = m({ id: 'cooking', playMode: 'file', stemStatus: 'queued' });
+	const cook = m({ id: 'cooking', stemStatus: 'queued' });
 	const byId = new Map([[cook.id, cook]]);
 	const queued = [entry('e1', 'cooking'), entry('e2', 'cooking')];
 	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBeNull();

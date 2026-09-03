@@ -15,12 +15,11 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	title: 'Song ' + id,
 	durationSec: 200,
 	stemStatus: 'none',
-	playMode: 'iframe',
 	...over
 });
 
 const cooked = (id: string, over: Partial<Media> = {}): Media =>
-	media(id, { playMode: 'file', stemStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
+	media(id, { stemStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
 
 function repo(): MediaRepository {
 	const { db } = openDb(':memory:');
@@ -44,7 +43,6 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 	expect(got.artist).toBe('A-ha');
 	expect(got.thumbnail).toBe('https://i.ytimg.com/vi/x/hq.jpg');
 	expect(got.stemStatus).toBe('ready');
-	expect(got.playMode).toBe('file');
 	expect(got.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
 	expect(got.sourceRef).toBe('vid-m1'); // ORIGIN identity survives the cook (search dedupe key)
 	// the derived artifacts must survive too, or a library song replays with no lyrics + no scoring
@@ -88,7 +86,7 @@ test('durationSec is rounded — yt-dlp reports fractional seconds, the column i
 test('listReady is the library: only stems-ready file media, newest id first', () => {
 	const r = repo();
 	r.upsert(media('m1')); // plain iframe → not in the library
-	r.upsert(media('m2', { playMode: 'file', stemStatus: 'queued' })); // still cooking → not yet
+	r.upsert(media('m2', { stemStatus: 'queued' })); // still cooking → not yet
 	r.upsert(cooked('m3'));
 	r.upsert(cooked('m5'));
 	r.upsert(cooked('m4'));
@@ -97,9 +95,11 @@ test('listReady is the library: only stems-ready file media, newest id first', (
 	expect(ids).toEqual(['m5', 'm4', 'm3']); // ULIDs are monotonic → newest first
 });
 
-test('listReady excludes a ready-but-iframe media (stems live on files, not embeds)', () => {
+test('listReady excludes a ready STATUS with no instrumental on disk', () => {
+	// The status and the artifact are written by separate steps; the library must mirror isPlayable
+	// rather than trusting the status alone, or a browse row resolves to a file that is not there.
 	const r = repo();
-	r.upsert(media('m1', { playMode: 'iframe', stemStatus: 'ready' }));
+	r.upsert(media('m1', { stemStatus: 'ready' }));
 	expect(r.listReady()).toHaveLength(0);
 });
 

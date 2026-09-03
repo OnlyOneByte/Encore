@@ -4,7 +4,6 @@
 import type { LyricsCandidate } from './lyrics';
 
 export type MediaSource = 'youtube' | 'local';
-export type PlayMode = 'iframe' | 'file';
 export type StemStatus = 'none' | 'queued' | 'ready';
 
 export interface Media {
@@ -37,7 +36,6 @@ export interface Media {
   durationSec: number;
   thumbnail?: string;
   stemStatus: StemStatus;
-  playMode: PlayMode; // the abstraction flag that carries the whole future (iframe -> file)
   /** MediaStore key of the separated instrumental (set when a stems job completes). This is what
    *  the TV file player loads; `sourceRef` stays the origin so the worker can still fetch the
    *  source and search can still recognise the song. */
@@ -66,13 +64,27 @@ export interface Media {
 }
 
 /**
- * The MediaStore key (file media) or embed id (iframe media) the player should load. A cooked song
- * plays its instrumental; everything else plays its origin. Keeping this in one pure helper is what
- * lets `sourceRef` stay immutable — the player asks for "what to play" instead of assuming the
- * origin field was rewritten under it.
+ * The MediaStore key the player should load, or `''` when this song has nothing playable yet.
+ *
+ * Nothing plays unprocessed: the only thing the TV ever loads is a separated instrumental. There is
+ * no embed path and no raw-source path, so a song that has not been cooked is simply not playable —
+ * which is what `isPlayable` reports and what rotation gates on.
+ *
+ * Keeping this in one pure helper is what lets `sourceRef` stay immutable: the player asks "what do I
+ * load" instead of assuming the origin field was rewritten under it.
  */
-export function playbackRef(m: Pick<Media, 'sourceRef' | 'playMode' | 'instrumentalRef'>): string {
-  return m.playMode === 'file' && m.instrumentalRef ? m.instrumentalRef : m.sourceRef;
+export function playbackRef(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): string {
+  return m.stemStatus === 'ready' && m.instrumentalRef ? m.instrumentalRef : '';
+}
+
+/**
+ * Can this song be played at all? True only for a cooked song with an instrumental on disk.
+ *
+ * `stemStatus === 'ready'` alone is not enough: the status and the artifact key are written by
+ * separate steps, and a status without a ref would hand the player an empty source.
+ */
+export function isPlayable(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): boolean {
+  return playbackRef(m) !== '';
 }
 
 export interface Singer {
@@ -113,8 +125,8 @@ export function clampKeyShift(semitones: number): number {
 /**
  * The MediaStore key for a file media at a given key shift. 0 → the original instrumental;
  * ±N → the pre-rendered pitch-shifted variant (e.g. `stems/m1-instrumental.+2.wav`). The worker
- * renders these; the TV resolves `/media/${keyedMediaRef(sourceRef, n)}`. A non-`.wav`/.mp4
- * ref (e.g. a youtube iframe ref) is returned unchanged — keying only applies to file media.
+ * renders these; the TV resolves `/media/${keyedMediaRef(sourceRef, n)}`. A ref with no file
+ * extension is returned unchanged — keying only applies to a real artifact key.
  */
 export function keyedMediaRef(sourceRef: string, keyShift: number): string {
   const k = clampKeyShift(keyShift);

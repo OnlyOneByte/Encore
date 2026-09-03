@@ -4,18 +4,18 @@
 //
 // Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
 
-import type { Media } from '@encore/shared';
+import { isPlayable, type Media } from '@encore/shared';
 
 /** Where a song sits on the readiness axis. */
 export type Readiness =
 	| 'ready' // stems separated and on disk — queue it and sing with no vocals, no wait
 	| 'cooking' // a stems job is in flight; rotation HOLDS its slot, so it is still queueable
-	| 'raw'; // playable as-is, but with the original vocals (youtube embed / plain local file)
+	| 'unacquired'; // no instrumental yet, so nothing to play — a candidate to cook, not a song to sing
 
 export function readinessOf(m: Media): Readiness {
-	if (m.playMode === 'file' && m.stemStatus === 'ready') return 'ready';
-	if (m.playMode === 'file' && m.stemStatus === 'queued') return 'cooking';
-	return 'raw';
+	if (isPlayable(m)) return 'ready';
+	if (m.stemStatus === 'queued') return 'cooking';
+	return 'unacquired';
 }
 
 /** Case-insensitive substring match over the fields a human would search by. */
@@ -28,7 +28,7 @@ export function matchesQuery(m: Media, query: string): boolean {
 export interface SearchPartition {
 	ready: Media[];
 	cooking: Media[];
-	raw: Media[];
+	unacquired: Media[];
 }
 
 /**
@@ -52,6 +52,6 @@ export function partitionSearch(query: string, catalog: Media[], results: Media[
 	return {
 		ready: all.filter((m) => readinessOf(m) === 'ready'),
 		cooking: all.filter((m) => readinessOf(m) === 'cooking'),
-		raw: all.filter((m) => readinessOf(m) === 'raw').sort((a, b) => rank(a) - rank(b))
+		unacquired: all.filter((m) => readinessOf(m) === 'unacquired').sort((a, b) => rank(a) - rank(b))
 	};
 }

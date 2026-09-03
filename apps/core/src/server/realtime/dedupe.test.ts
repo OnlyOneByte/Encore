@@ -4,7 +4,7 @@ import { handleQueueCommand, type HubDeps } from './hub';
 import { AuthoritativeState } from '../state/store';
 import { ulid, type ServerEvent, type Media, type ClientCommand } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'none', playMode: 'iframe' });
+const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 
 function harness() {
 	const published: ServerEvent[] = [];

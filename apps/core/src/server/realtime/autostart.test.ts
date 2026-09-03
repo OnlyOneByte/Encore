@@ -8,7 +8,7 @@ import { reconcileOnReady } from './player';
 import { AuthoritativeState } from '../state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'none', playMode: 'iframe' });
+const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 let _s = 0;
 const addCmd = (id: string, mediaId: string): ClientCommand => ({
 	clientOpId: 'op-' + id,

@@ -9,7 +9,7 @@ import { MAX_KEY_SHIFT, type Media, type QueueEntry, type ServerEvent } from '@e
 let _s = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({ id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_s });
 const media = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'none', playMode: 'iframe', ...over
+	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'none', ...over
 });
 
 function harness() {
@@ -18,11 +18,11 @@ function harness() {
 	const deps: HubDeps = {
 		state,
 		publish: (e) => published.push(e),
-		// m-file is a ready make-karaoke song; m-iframe is a plain YouTube song; m-cooking not ready
+		// m-file is a cooked song; m-uncooked has no instrumental; m-cooking is still separating
 		mediaById: new Map<string, Media>([
-			['m-file', media('m-file', { playMode: 'file', stemStatus: 'ready', sourceRef: 'stems/m-file-instrumental.wav' })],
+			['m-file', media('m-file', { stemStatus: 'ready', instrumentalRef: 'derived/stems/m-file-instrumental.wav' })],
 			['m-iframe', media('m-iframe')],
-			['m-cooking', media('m-cooking', { playMode: 'file', stemStatus: 'queued' })]
+			['m-cooking', media('m-cooking', { stemStatus: 'queued' })]
 		])
 	};
 	return { published, state, deps };
