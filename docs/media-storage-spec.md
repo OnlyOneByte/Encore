@@ -212,14 +212,37 @@ transcode.
 
 ## 6. Retention
 
-Nothing is evicted today. With ~150 MB/song that is a 7.5 GB night.
+Two jobs with different costs, deliberately separated (B-7-C5).
 
-- `ENCORE_MEDIA_MAX_GB` (default unset = unlimited) — a soft cap.
-- Over the cap, evict **derived-only**, least-recently-played first, never touching `audio` or `meta`.
+**Recompress legacy formats — the right tool for pre-policy space.** Songs cooked before §5 carry WAV
+stems ~8x larger than a cook produces today. Those bytes are already on disk, so they can be
+transcoded IN PLACE: no download, no Demucs run, and **the song never leaves the library**. Eviction
+would have been wrong here — it would have dropped 6 of 7 songs until re-cooked.
+
+*Measured on the live volume:* `derived/` went **911 MB → 136 MB** (22 stems converted), all 7 library
+songs still listed and all 7 serving 200 with their refs updated to `.m4a`.
+
+Safety rules that matter: the legacy file is deleted only once the destination exists and is
+non-empty (a large playable file beats a truncated one), each conversion is isolated so one failure
+cannot abandon the rest, and a failed transcode leaves the original in place.
+
+`-movflags +faststart` is attempted but not required. A host ffmpeg build can be leaner than the
+worker container's, and one here was: a stripped ffmpeg 7.1.1 with **no AAC encoder and no mp4
+muxer**, which failed all 12 conversions until the flag became optional and the log named the real
+cause. The bundled container ffmpeg is full-featured, so the core-side pass is correct in the shipped
+image; on a lean host the work belongs to the worker.
+
+**Evict derived artifacts over a soft cap.**
+
+- `ENCORE_MEDIA_MAX_GB` (default unset = unlimited) — a party box must not silently delete.
+- Over the cap, evict **derived-only**, least-recently-used first, never touching `audio` or `meta`.
   A song stays in the library and re-cooks on demand; that is a delay, not a loss.
-- `work/` is deleted on job completion, success or failure. (Today it is not — hence the 432 MB.)
-- Raw `audio` is never auto-deleted. If it ever needs to be, that is a separate explicit decision,
-  because it is the only unrecoverable class.
+- Recency currently falls back to `addedAt`, because play tracking is not wired
+  (`library.lastPlayedAt` is never incremented) — so it is oldest-added-first today. Worth upgrading.
+- `work/` is deleted on job completion by the WORKER (not the core — see §5).
+- Raw `audio` is never auto-deleted. Note that pre-policy `audio/` is still WAV (~494 MB here);
+  re-encoding it would reclaim ~8x but costs a second lossy generation on the only unrecoverable
+  class, so it stays an explicit human decision.
 
 ## 7. Open decisions
 
