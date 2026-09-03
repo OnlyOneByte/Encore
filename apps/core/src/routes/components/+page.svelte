@@ -31,34 +31,189 @@
 	// M8-C2 demo: a word-timed fixture + an auto-advancing position so the karaoke sweep is visible
 	// here in the dev gallery (the real /tv route feeds position from player telemetry).
 	const demoLyrics: LyricsDoc = {
-		language: 'en',
-		lines: [
-			{
-				start: 0,
-				end: 2.6,
-				text: 'Is this the real life',
-				words: [
-					{ word: 'Is', start: 0.0, end: 0.4 },
-					{ word: 'this', start: 0.4, end: 0.8 },
-					{ word: 'the', start: 0.8, end: 1.1 },
-					{ word: 'real', start: 1.1, end: 1.8 },
-					{ word: 'life', start: 1.8, end: 2.6 }
-				]
-			},
-			{
-				start: 2.8,
-				end: 5.4,
-				text: 'Is this just fantasy',
-				words: [
-					{ word: 'Is', start: 2.8, end: 3.1 },
-					{ word: 'this', start: 3.1, end: 3.5 },
-					{ word: 'just', start: 3.5, end: 4.0 },
-					{ word: 'fantasy', start: 4.0, end: 5.4 }
-				]
-			}
-		],
-		words: []
+	  "language": "en",
+	  "lines": [
+	    {
+	      "start": 0.0,
+	      "end": 2.6,
+	      "text": "Is this the real life",
+	      "words": [
+	        {
+	          "word": "Is",
+	          "start": 0.0,
+	          "end": 0.408
+	        },
+	        {
+	          "word": "this",
+	          "start": 0.48,
+	          "end": 0.888
+	        },
+	        {
+	          "word": "the",
+	          "start": 0.96,
+	          "end": 1.368
+	        },
+	        {
+	          "word": "real",
+	          "start": 1.44,
+	          "end": 1.848
+	        },
+	        {
+	          "word": "life",
+	          "start": 1.92,
+	          "end": 2.328
+	        }
+	      ]
+	    },
+	    {
+	      "start": 3.0,
+	      "end": 5.6,
+	      "text": "Is this just fantasy",
+	      "words": [
+	        {
+	          "word": "Is",
+	          "start": 3.0,
+	          "end": 3.51
+	        },
+	        {
+	          "word": "this",
+	          "start": 3.6,
+	          "end": 4.11
+	        },
+	        {
+	          "word": "just",
+	          "start": 4.2,
+	          "end": 4.71
+	        },
+	        {
+	          "word": "fantasy",
+	          "start": 4.8,
+	          "end": 5.31
+	        }
+	      ]
+	    },
+	    {
+	      "start": 6.0,
+	      "end": 8.6,
+	      "text": "Caught in a landslide",
+	      "words": [
+	        {
+	          "word": "Caught",
+	          "start": 6.0,
+	          "end": 6.51
+	        },
+	        {
+	          "word": "in",
+	          "start": 6.6,
+	          "end": 7.11
+	        },
+	        {
+	          "word": "a",
+	          "start": 7.2,
+	          "end": 7.71
+	        },
+	        {
+	          "word": "landslide",
+	          "start": 7.8,
+	          "end": 8.31
+	        }
+	      ]
+	    },
+	    {
+	      "start": 9.0,
+	      "end": 11.6,
+	      "text": "No escape from reality",
+	      "words": [
+	        {
+	          "word": "No",
+	          "start": 9.0,
+	          "end": 9.51
+	        },
+	        {
+	          "word": "escape",
+	          "start": 9.6,
+	          "end": 10.11
+	        },
+	        {
+	          "word": "from",
+	          "start": 10.2,
+	          "end": 10.71
+	        },
+	        {
+	          "word": "reality",
+	          "start": 10.8,
+	          "end": 11.31
+	        }
+	      ]
+	    },
+	    {
+	      "start": 12.0,
+	      "end": 14.6,
+	      "text": "Open your eyes",
+	      "words": [
+	        {
+	          "word": "Open",
+	          "start": 12.0,
+	          "end": 12.68
+	        },
+	        {
+	          "word": "your",
+	          "start": 12.8,
+	          "end": 13.48
+	        },
+	        {
+	          "word": "eyes",
+	          "start": 13.6,
+	          "end": 14.28
+	        }
+	      ]
+	    },
+	    {
+	      "start": 15.0,
+	      "end": 17.6,
+	      "text": "Look up to the skies and see",
+	      "words": [
+	        {
+	          "word": "Look",
+	          "start": 15.0,
+	          "end": 15.291
+	        },
+	        {
+	          "word": "up",
+	          "start": 15.343,
+	          "end": 15.634
+	        },
+	        {
+	          "word": "to",
+	          "start": 15.686,
+	          "end": 15.977
+	        },
+	        {
+	          "word": "the",
+	          "start": 16.029,
+	          "end": 16.32
+	        },
+	        {
+	          "word": "skies",
+	          "start": 16.371,
+	          "end": 16.663
+	        },
+	        {
+	          "word": "and",
+	          "start": 16.714,
+	          "end": 17.006
+	        },
+	        {
+	          "word": "see",
+	          "start": 17.057,
+	          "end": 17.349
+	        }
+	      ]
+	    }
+	  ],
+	  "words": []
 	};
+
 	// The line-sync floor: same lines, no per-word timings — what an un-alignable LRC renders as.
 	const demoLineOnly: LyricsDoc = {
 		language: 'en',
@@ -72,7 +227,7 @@
 		let raf = 0;
 		const loop = () => {
 			const elapsed = (performance.now() - t0) / 1000;
-			demoPos = elapsed % 6; // loop 0→6s
+			demoPos = elapsed % 18; // loop 0→18s across all six demo lines
 			demoScore = Math.round(((elapsed % 10) / 10) * 100); // 0→100 over 10s
 			raf = requestAnimationFrame(loop);
 		};

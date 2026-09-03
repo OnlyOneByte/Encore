@@ -215,9 +215,75 @@ test('parseLyricsDoc applies resegmentation, so existing artifacts benefit with 
 });
 
 test('the gap threshold is a tunable that behaves monotonically', () => {
-	const words = wordsWithGaps([['a', 0], ['b', 0.5], ['c', 0.5]]);
-	const line = { start: 0, end: 9, text: 'a b c', words };
-	expect(resegmentLine(line, 0.4)).toHaveLength(3); // every gap counts
+	// PAIRS, not single words: a lone word would be folded away by the orphan rule, masking the gap
+	// behaviour this is checking.
+	const words = wordsWithGaps([
+		['aa', 0], ['bb', 0.02],
+		['cc', 0.5], ['dd', 0.02],
+		['ee', 0.5], ['ff', 0.02]
+	]);
+	const line = { start: 0, end: 9, text: words.map((w) => w.word).join(' '), words };
+	expect(resegmentLine(line, 0.4)).toHaveLength(3); // every 0.5s gap counts
 	expect(resegmentLine(line, 2.0)).toHaveLength(1); // none do
 	expect(LINE_GAP_SEC).toBeGreaterThan(0);
+});
+
+// ── orphan single-word lines ───────────────────────────────────────────────────
+// Splitting on pauses alone produced rows holding one word for under a second ("here", "I" in the
+// live Creep overlay) — too fast to read and a wasted row of the reel.
+import { ORPHAN_MAX_SEC } from './lyrics';
+
+/** Build a line from [word, startSec, endSec] triples. */
+function lineOf(spec: Array<[string, number, number]>) {
+	const words = spec.map(([word, start, end]) => ({ word, start, end }));
+	return { start: words[0]!.start, end: words[words.length - 1]!.end, text: words.map((w) => w.word).join(' '), words };
+}
+
+test('a trailing orphan merges BACK into the phrase it belongs to ("...belong | here")', () => {
+	// "don't belong" then a tiny gap, "here", then a LONG pause before the next phrase
+	const line = lineOf([["don't", 0, 0.4], ['belong', 0.45, 0.8], ['here', 1.4, 1.7], ['I', 4.0, 4.2], ['still', 4.25, 4.5], ['care', 4.55, 4.9]]);
+	const out = resegmentLine(line);
+	expect(out.map((l) => l.text)).toEqual(["don't belong here", 'I still care']);
+});
+
+test('a leading orphan merges FORWARD ("I | want a perfect body")', () => {
+	// a real phrase, a long pause, then "I" immediately followed by its own phrase
+	const line = lineOf([
+		['have', 0, 0.4], ['control', 0.45, 0.9],
+		['I', 3.0, 3.15], ['want', 3.2, 3.5], ['a', 3.55, 3.65], ['body', 3.7, 4.0]
+	]);
+	const out = resegmentLine(line);
+	expect(out.map((l) => l.text)).toEqual(['have control', 'I want a body']);
+	// NOT "have control I", which is what always-merge-backwards would have produced
+	expect(out[0]!.text).not.toContain('I');
+});
+
+test('a one-word line that holds the screen long enough KEEPS its own line', () => {
+	// a held note: "Yeah" alone for 2s is a real lyric line
+	const line = lineOf([['Yeah', 0, 1.9], ['So', 2.6, 2.9], ['special', 2.95, 3.3]]);
+	const out = resegmentLine(line);
+	expect(out.map((l) => l.text)).toEqual(['Yeah', 'So special']);
+	expect(ORPHAN_MAX_SEC).toBe(1.0);
+});
+
+test('a multi-word short line is never treated as an orphan', () => {
+	const line = lineOf([['oh', 0, 0.2], ['no', 0.22, 0.4], ['So', 1.5, 1.8], ['special', 1.85, 2.2]]);
+	const out = resegmentLine(line);
+	expect(out.map((l) => l.text)).toEqual(['oh no', 'So special']);
+});
+
+// ── the lead offset ────────────────────────────────────────────────────────────
+import { LYRICS_LEAD_SEC } from './lyrics';
+
+test('the lead is a positive, sane number of seconds', () => {
+	// a full second would highlight the wrong line; zero reads as perpetually behind
+	expect(LYRICS_LEAD_SEC).toBeGreaterThan(0);
+	expect(LYRICS_LEAD_SEC).toBeLessThan(1);
+});
+
+test('leading the position selects the NEXT word sooner (what the knob is for)', () => {
+	const line = lineOf([['one', 0, 0.5], ['two', 0.5, 1.0], ['three', 1.0, 1.5]]);
+	// at 0.45s the audio is still on "one"; with the lead applied the cue has moved to "two"
+	expect(activeWordIndex(line, 0.45)).toBe(0);
+	expect(activeWordIndex(line, 0.45 + LYRICS_LEAD_SEC)).toBe(1);
 });
