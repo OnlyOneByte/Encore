@@ -78,6 +78,15 @@ The worker **dials home** to core (never the reverse) and shells out to `yt-dlp`
 directory core is using, or core will mark a job complete for a file it cannot serve.
 Expect **~1–2 min/song** on CPU. `ENCORE_WORKER_CONCURRENCY` (default `1`) is how many cook at once.
 
+A native worker also needs a **JavaScript runtime on PATH** — install `deno`. YouTube's player
+challenge (the signature and `n` parameters) cannot be solved without one, and yt-dlp additionally
+needs its solver script enabled via `--remote-components ejs:github`. Miss either and extraction
+silently degrades until **no audio-only format resolves at all**, so every cook fails at download
+with `Requested format is not available` — which looks like a broken worker rather than a missing
+dependency. The Docker images ship both (`deno` plus `/etc/yt-dlp.conf`); a native run does not, so
+either install `deno` and copy `apps/worker/yt-dlp.conf` to `/etc/yt-dlp.conf`, or point yt-dlp at it
+with `--config-location`.
+
 For a torch-free smoke test of the plumbing, `ENCORE_PROCESSOR=stub` needs only
 `pip install websockets` and walks the whole assign→progress→complete→ready path — but it writes a
 **placeholder file, not audio**, so the song will not actually play. Good for wiring, useless for singing.
