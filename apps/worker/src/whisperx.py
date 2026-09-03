@@ -14,6 +14,7 @@ run only on a worker box. Mirrors demucs.py / lyrics_source.py.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import time
@@ -44,6 +45,10 @@ from .lyrics_chain import (
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
 
 DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2
+
+# How often to emit a keepalive ProgressEvent while a blocking ML call runs. MUST stay comfortably
+# under the core's progressLeaseMs (30 s, leases.ts) or the reaper requeues a healthy job.
+LEASE_KEEPALIVE_SEC = 10.0
 
 
 def lyrics_key(media_id: str) -> str:
@@ -312,7 +317,13 @@ class WhisperXProcessor:
             audio_path=audio,
             vocals_path=self._vocals_path(job),
         )
-        texts = acquire(self._get_sources(), req)
+        # Run acquisition in a THREAD and keep emitting progress while it works (see _run_blocking).
+        texts: list[LyricsText] = []
+        async for kind, val in self._run_blocking(lambda: acquire(self._get_sources(), req), "aligning", 0):
+            if kind == "progress":
+                yield val
+            else:
+                texts = val
         if not texts:
             raise RuntimeError(
                 f"no lyrics text from any source for {artist or '?'} — {track or '?'} "
@@ -323,7 +334,14 @@ class WhisperXProcessor:
         yield ProgressEvent(stage="aligning", pct=0)
         candidates: list[dict[str, Any]] = []
         for text in texts:
-            built = self._time_one(text, audio, language)
+            built = None
+            async for kind, val in self._run_blocking(
+                lambda t=text: self._time_one(t, audio, language), "aligning", 50
+            ):
+                if kind == "progress":
+                    yield val
+                else:
+                    built = val
             if built is None:
                 continue
             doc, timing, timing_confidence = built
@@ -362,6 +380,30 @@ class WhisperXProcessor:
                 }
             },
         )
+
+    async def _run_blocking(self, fn: Any, stage: str, pct: int) -> AsyncIterator[tuple[str, Any]]:
+        """Run a BLOCKING call in a thread, yielding ("progress", ev) keepalives until it finishes,
+        then ("result", value) exactly once.
+
+        Both halves matter, and both were real failures observed on a live cook (B-3-C4 verification):
+
+          1. torch/whisper calls are synchronous. Awaiting them inline froze the asyncio event loop for
+             the whole ML pass, so the worker could not answer the websocket keepalive ping and the
+             server closed the connection mid-job ("keepalive ping timeout").
+          2. With the loop frozen, no job:progress could be sent either, so the core's 30 s PROGRESS
+             LEASE expired and the reaper requeued a job that was running fine — observed as
+             attempts=1 on a job that never actually failed. Each retry costs a full ASR + align pass,
+             so with maxAttempts=3 a slightly slower song fails permanently after minutes of CPU.
+
+        Demucs never hit this because it is a subprocess awaited through asyncio; in-process ML is not.
+        """
+        task = asyncio.ensure_future(asyncio.to_thread(fn))
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=LEASE_KEEPALIVE_SEC)
+            if task in done:
+                yield ("result", task.result())  # raises here if fn raised — same as a direct call
+                return
+            yield ("progress", ProgressEvent(stage=stage, pct=pct))
 
     def _vocals_path(self, job: JobSpec) -> str | None:
         """The isolated vocals stem for this media, if a stems job already wrote one (ASR wants it)."""

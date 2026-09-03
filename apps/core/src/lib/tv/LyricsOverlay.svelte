@@ -7,7 +7,6 @@
 		parseLyricsDoc,
 		activeLineIndex,
 		activeWordIndex,
-		wordFill,
 		lyricsNotice,
 		isAutoTranscribed,
 		type LyricsDoc,
@@ -108,7 +107,6 @@
 						class="word"
 						class:done={displayPos >= w.end}
 						class:active={i === ballWord}
-						style={i === ballWord ? `--fill:${(wordFill(w, displayPos) * 100).toFixed(1)}%` : ''}
 					>
 						{#if i === ballWord}<span class="ball" aria-hidden="true">●</span>{/if}{w.word}
 					</span>{' '}
@@ -131,15 +129,18 @@
 
 <style>
 	.lyrics {
+		/* CENTRED, not bottom-anchored. A cooked song plays an instrumental with no picture to avoid
+		   covering, so lyrics belong in the middle of the screen where they read from across a room;
+		   `bottom: 14%` left them crowding the lower-third and the join card. `inset` + flex centering
+		   keeps a wrapped 2-line lyric visually centred instead of growing downward off-balance. */
 		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 14%;
+		inset: 0;
 		z-index: 6;
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 0.4em;
+		justify-content: center;
+		gap: 0.7em;
 		padding: 0 6%;
 		text-align: center;
 		pointer-events: none;
@@ -149,15 +150,36 @@
 	   not compete with the sweep. Deliberately NOT dimmed: these are still the words to sing from, so
 	   making them harder to read would punish the singer for a provenance problem. */
 	.lyrics.unverified .line.current { font-style: italic; }
+	/*
+	 * Pinned to the BOTTOM EDGE and sized in rem.
+	 *
+	 * It was `0.30em` sitting directly under the lyrics, and em here resolves against .lyrics (1rem),
+	 * NOT the 3.6rem lyric — so it rendered at ~5px and was genuinely unreadable on a TV across a room.
+	 * A warning nobody can read is worse than none: it looks like diligence while informing no one.
+	 * Bottom-centre is deliberate — the lower-third owns bottom-left and the join card bottom-right, so
+	 * this is the one free edge, and it keeps the notice out of the sung text's way.
+	 */
 	.notice {
-		font-size: 0.30em;
-		letter-spacing: 0.14em;
+		position: absolute;
+		bottom: 4%;
+		left: 0;
+		right: 0;
+		font-size: 1.15rem;
+		font-weight: 600;
+		letter-spacing: 0.16em;
 		text-transform: uppercase;
-		color: rgba(255, 255, 255, 0.55);
+		color: rgba(255, 255, 255, 0.72);
 		font-style: normal;
 	}
 	.line {
-		line-height: 1.15;
+		/*
+		 * Loose leading is LOAD-BEARING, not decoration: the bouncing ball is absolutely positioned
+		 * above its word, so at tight leading it landed on top of the previous WRAPPED line ("this" in
+		 * "Is this the"). Long lyric lines wrap often, so the clearance has to come from the line box
+		 * itself — a gap between the current/next blocks does nothing for a wrap inside one line.
+		 * Verified by measuring ball vs word rects, not by eye.
+		 */
+		line-height: 1.9;
 		max-width: 90%;
 	}
 	.current {
@@ -173,17 +195,24 @@
 		position: relative;
 		display: inline-block;
 		color: rgba(255, 255, 255, 0.4); /* not yet sung */
-		transition: color 0.08s linear;
+		transition: color 0.12s linear;
 	}
 	.word.done {
-		color: #fff; /* fully sung */
+		color: #fff; /* sung */
 	}
+	/*
+	 * WHOLE-WORD highlight, not a left-to-right fill.
+	 *
+	 * The fill was a lie dressed as precision: it interpolated a sweep across each word as though we
+	 * knew where inside the word the singer was, when all we have is a start and an end from the
+	 * aligner — and on ASR text those bounds are themselves approximate. A partial wipe therefore
+	 * animated made-up sub-word detail, and read as busy while telling the singer nothing.
+	 *
+	 * Three flat states say exactly what is known and no more: dim = not yet, PINK = sing this now,
+	 * white = done.
+	 */
 	.word.active {
-		/* left-to-right sweep: bright up to --fill, dim after — the karaoke wipe */
-		background: linear-gradient(90deg, var(--accent2, #7cf) var(--fill), rgba(255, 255, 255, 0.4) var(--fill));
-		background-clip: text;
-		-webkit-background-clip: text;
-		color: transparent;
+		color: var(--accent2, #ff5cae);
 	}
 	.ball {
 		position: absolute;
