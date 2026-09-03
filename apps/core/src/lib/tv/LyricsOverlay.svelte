@@ -3,7 +3,16 @@
 	// by the current media and highlights each word in time as a classic karaoke sweep with a
 	// bouncing ball over the word being sung. The authoritative position arrives from the player
 	// (~4Hz via ontimeupdate); we interpolate it with requestAnimationFrame for a smooth 60fps sweep.
-	import { parseLyricsDoc, activeLineIndex, activeWordIndex, wordFill, type LyricsDoc } from './lyrics';
+	import {
+		parseLyricsDoc,
+		activeLineIndex,
+		activeWordIndex,
+		wordFill,
+		lyricsNotice,
+		isAutoTranscribed,
+		type LyricsDoc,
+		type LyricsProvenance
+	} from './lyrics';
 
 	interface Props {
 		lyricsRef?: string; // MediaStore key of the lyrics JSON on the current media
@@ -11,8 +20,21 @@
 		positionSec: number; // authoritative playback position (from TvPlayer telemetry)
 		playing?: boolean; // interpolate forward only while actually playing
 		visible?: boolean; // hide during attract/interstitial
+		/**
+		 * Where this text came from (B-3-C6) — `chosenCandidate(media)` on the TV route. Drives the
+		 * auto-transcribed caption. Absent/null means provenance is UNKNOWN (a pre-candidate artifact),
+		 * which is rendered exactly like verified text: we will not assert either way.
+		 */
+		provenance?: LyricsProvenance | null;
 	}
-	let { lyricsRef, doc: docProp, positionSec, playing = true, visible = true }: Props = $props();
+	let {
+		lyricsRef,
+		doc: docProp,
+		positionSec,
+		playing = true,
+		visible = true,
+		provenance = null
+	}: Props = $props();
 
 	let fetched = $state<LyricsDoc | null>(null);
 	let loadedRef: string | undefined;
@@ -73,10 +95,12 @@
 	);
 	const ballWord = $derived(curLine ? activeWordIndex(curLine, displayPos) : -1);
 	const show = $derived(visible && !!curLine);
+	const notice = $derived(lyricsNotice(provenance));
+	const unverified = $derived(isAutoTranscribed(provenance));
 </script>
 
 {#if show && curLine}
-	<div class="lyrics" role="presentation">
+	<div class="lyrics" class:unverified role="presentation">
 		<div class="line current">
 			{#if curLine.words.length}
 				{#each curLine.words as w, i (i)}
@@ -97,6 +121,11 @@
 		{#if nextLine}
 			<div class="line next">{nextLine.text}</div>
 		{/if}
+		{#if notice}
+			<!-- Small and permanent rather than a one-off toast: a singer who glances up mid-song still
+			     needs to know these words are a guess. -->
+			<div class="notice">{notice}</div>
+		{/if}
 	</div>
 {/if}
 
@@ -115,6 +144,17 @@
 		text-align: center;
 		pointer-events: none;
 		text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85);
+	}
+	/* Unverified text is set in italic — a persistent, glanceable signal that costs no space and does
+	   not compete with the sweep. Deliberately NOT dimmed: these are still the words to sing from, so
+	   making them harder to read would punish the singer for a provenance problem. */
+	.lyrics.unverified .line.current { font-style: italic; }
+	.notice {
+		font-size: 0.30em;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: rgba(255, 255, 255, 0.55);
+		font-style: normal;
 	}
 	.line {
 		line-height: 1.15;

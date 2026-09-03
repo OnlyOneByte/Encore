@@ -707,8 +707,19 @@ because its only real acceptance test is audible and needs the owner in the room
         tolerant parse so a corrupt blob cannot brick a hydrate. 9 tests, incl. the regression guard
         (a late line-level source cannot displace stored word timings) and the index-only-rewrite case
         that would otherwise silently destroy the set. **AUTO**
-  - [ ] **B-3-C6 · TV honesty + the line-sync floor.** Overlay distinguishes authoritative from
-        auto-transcribed and renders line-level as a stanza scroll. **AUTO** + **EYES-ON** via `/components`.
+  - [x] **B-3-C6 · TV honesty + the line-sync floor.** DONE. `lyricsNotice()`/`isAutoTranscribed()` in
+        `tv/lyrics.ts` (pure, 6 tests) + a `provenance` prop on `LyricsOverlay`, fed from
+        `chosenCandidate(media)` on the TV route. Auto-transcribed text renders ITALIC with a small
+        permanent caption "auto-transcribed · words may be wrong"; deliberately **not dimmed**, since
+        these are still the words to sing from and hurting legibility would punish the singer for a
+        provenance problem. Notice is permanent rather than a toast — someone glancing up mid-song still
+        needs to know. UNKNOWN provenance (pre-candidate artifact) renders like verified text and says
+        nothing: we can assert neither. The line-sync floor already worked (whole-line highlight +
+        next-line preview) and is now pinned in the gallery. `isAuthoritativeText` relaxed to a `Pick`
+        so the client can call it with provenance alone. **EYES-ON:** three gallery variants
+        (verified / auto-transcribed / line-only), asserted by DOM geometry rather than eyeballed —
+        `docs/mocks/b3c6-lyrics-provenance-eyeson.png`. Also corrected the stale ASR row in
+        `shared/lyrics.ts`'s header comment (the C4 measurement).
   - [ ] **B-3-C7 · captions tier + re-align-on-better-text** (the upgrade path C5 makes possible).
   **Deferred by the owner:** the human paste-in tier (needs a core endpoint + phone UI + storage).
   **Prerequisite, not a commit:** `whisperx==3.8.6` in the worker venv and
