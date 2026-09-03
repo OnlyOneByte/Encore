@@ -145,23 +145,26 @@ docs/              ← design docs + ROADMAP + UI mocks/screenshots
 **Done:** M0 foundation · M1 realtime spine · M2 join · M3 phone remote · M4 search ·
 M5 gapless TV · M6 hardening → **v0.1.0** · M7 make-karaoke (Demucs stems) → **v0.2.0** ·
 M8 word-timed lyrics + live scoring. Then backlog: **B-1** library · **B-5** readiness search ·
-**B-6** TV room states + presence · **B-7** media storage classes + browse + retention.
+**B-6** TV room states + presence · **B-7** media storage classes + browse + retention ·
+**B-3** tiered lyrics source chain (LRCLIB → captions → ASR, with provenance labelling).
 
-**Next:** **B-2** WebAudio pitch-shift (±key is a no-op on the TV today) · **B-3** offline lyrics ·
-**B-4** hot-titles persistence · **M9** accounts + multi-room. Commit-level plan and the live
-backlog queue: [`docs/ROADMAP.md`](docs/ROADMAP.md). Agent/human onboarding:
-[`docs/HANDOFF.md`](docs/HANDOFF.md).
+**Next:** **B-8** swap stem separation to `python-audio-separator` (better models than `htdemucs`;
+also improves the ASR lyrics tier, which reads the vocals stem) · **B-9** bake in `yt-dlp` + a
+smarter audio-stream pick · **B-4** hot-titles persistence · **M9** accounts + multi-room ·
+**B-2** WebAudio pitch-shift (±key is a no-op on the TV today). Open work only:
+[`docs/ROADMAP.md`](docs/ROADMAP.md) — shipped history is in [`docs/archive/`](docs/archive/).
+Agent/human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 
 ## Dev notes
 
 ```bash
-bun test          # 401 unit/integration tests (366 core + 35 shared) — runnable from the root
+bun test          # 479 unit/integration tests (425 core + 54 shared) — runnable from the root
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # both workspaces
-cd apps/worker && pytest   # 96 worker tests — needs `pip install pytest pytest-asyncio`
+cd apps/worker && pytest   # 142 worker tests — needs `pip install pytest pytest-asyncio`
 ```
 
-`pytest.ini` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** 27 of the 96 tests fail with
+`pytest.ini` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** the async tests fail with
 "async def functions are not natively supported" — a missing test dep, not a real failure.
 
 - `apps/core/e2e/party.mjs` — full two-phone + TV flow against a live server. Needs
