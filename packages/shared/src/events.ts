@@ -68,7 +68,7 @@ export type ClientEvent =
 
 // worker -> core
 export type WorkerMessage =
-  | { type: 'worker:hello'; workerId: string; authToken?: string; capabilities: JobType[]; concurrency: number; version: string }
+  | { type: 'worker:hello'; workerId: string; authToken?: string; capabilities: string[]; concurrency: number; version: string }
   | { type: 'worker:heartbeat'; workerId: string; slotsFree: number; runningJobIds: string[] }
   | { type: 'job:accept'; workerId: string; jobId: string }
   | { type: 'job:reject'; workerId: string; jobId: string; reason: string }

@@ -222,8 +222,9 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             print(f"[worker] could not set torch threads: {exc}", flush=True)
 
     by_type: dict[str, Processor] = {}
-    if "stems" in cfg.capabilities or "score" in cfg.capabilities:
+    if "stems" in cfg.capabilities or "score" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
         from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
+        from .processor import EngineRouter
 
         demucs = DemucsProcessor(
             model=cfg.demucs_model,
@@ -238,7 +239,17 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             segment=cfg.demucs_segment,
             shifts=cfg.demucs_shifts,
         )
-        by_type["stems"] = demucs
+        by_engine: dict[str, Processor] = {"demucs": demucs}
+        # B-8: only load the roformer engine (and its ~700MB checkpoint machinery) when this worker
+        # was given the stems:roformer capability — a demucs-only worker never imports bs_roformer.
+        if "stems:roformer" in cfg.capabilities:
+            from .roformer import RoformerProcessor
+
+            by_engine["roformer"] = RoformerProcessor(device=cfg.demucs_device, flac_level=cfg.flac_level)
+
+        router = EngineRouter(by_engine)
+        by_type["stems"] = router
+        by_type["stems-upgrade"] = router  # an upgrade is a separation job like any other (B-8/Stage 5)
         if "score" in cfg.capabilities:
             from .score import PitchTrackProcessor  # separate → extract reference pitch track (M8-C3)
 
