@@ -20,6 +20,7 @@ from collections import deque
 from typing import AsyncIterator, Awaitable, Callable
 
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, instrumental_path, vocals_path
+from .stream_quality import FORMAT_SELECTOR
 
 DEFAULT_MODEL = "htdemucs"
 
@@ -41,12 +42,19 @@ def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp")
 
     `out_template` must carry `%(ext)s` -- the extension is whatever YouTube served (m4a or webm), so
     the caller discovers the real filename with `find_downloaded` rather than assuming one.
+
+    B-9-C2: the selector is `stream_quality.FORMAT_SELECTOR`, not a bare `bestaudio`. yt-dlp's own
+    ranking is bitrate-led, so an old upload carrying BOTH a modern Opus stream and a legacy AAC one
+    can return the AAC purely because its nominal bitrate is higher. Everything downstream inherits
+    that choice -- separator, FLAC instrumental, ASR lyrics -- and no later encode can undo it. The
+    selector keeps a bare `bestaudio` as its final branch, so it only reorders preferences and never
+    makes a video undownloadable.
     """
     return [
         ytdlp_bin,
         "--no-playlist",
         "--newline",  # emit progress as discrete lines (not \r) so the parser sees each update
-        "-f", "bestaudio",  # audio-only, native container, no postprocessing
+        "-f", FORMAT_SELECTOR,  # audio-only, native container, codec-ranked (B-9-C2)
         "-o", out_template,
         source_uri,
     ]

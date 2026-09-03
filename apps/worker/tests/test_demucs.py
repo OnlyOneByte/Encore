@@ -214,7 +214,12 @@ async def test_missing_instrumental_output_raises(tmp_path):
 
 def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
     argv = demucs.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
-    assert "-f" in argv and "bestaudio" in argv
+    # B-9-C2 replaced the bare `bestaudio` with a codec-ranked selector, so assert the POLICY (an
+    # audio-only selector whose final fallback is still bestaudio) rather than one literal token.
+    assert "-f" in argv
+    selector = argv[argv.index("-f") + 1]
+    assert selector.split("/")[-1] == "bestaudio", selector
+    assert "bestvideo" not in selector
     # the regression that cost ~12x: no extract-audio transcode, and no wav anywhere
     assert "--audio-format" not in argv
     assert "wav" not in " ".join(argv)
