@@ -15,9 +15,35 @@ from src import roformer  # noqa: E402
 from src.processor import EngineRouter, JobSpec, ProgressEvent, CompleteResult  # noqa: E402
 
 
-def test_resolve_roformer_slug_maps_whitelisted_tokens():
-    assert roformer.resolve_roformer_slug({"model": "bs-roformer-1297"}).startswith("roformer-model-")
-    assert roformer.resolve_roformer_slug({"model": "mel-roformer-inst-v2"}).startswith("roformer-model-")
+def test_every_whitelist_token_resolves_to_a_real_registry_slug():
+    """The assertion this replaces checked only that a slug STARTED WITH "roformer-model-", which a
+    nonexistent slug satisfies — and one duly shipped (`mel-roformer-inst-v2` mapped to a slug absent
+    from the registry). Check membership in the registry's actual slug set instead."""
+    for token in roformer.ROFORMER_MODELS:
+        slug = roformer.resolve_roformer_slug({"model": token})
+        assert slug in roformer.ROFORMER_REGISTRY_SLUGS, f"{token} → {slug} is not a real slug"
+
+
+def test_mel_band_tokens_are_not_offered():
+    """bs_roformer's get_model_from_config implements only model_type == 'bs_roformer' and the package
+    ships no mel_band module, so a mel-band token would be unrunnable however it were mapped."""
+    assert not [t for t in roformer.ROFORMER_MODELS if "mel" in t]
+    with pytest.raises(ValueError, match="unknown roformer model"):
+        roformer.resolve_roformer_slug({"model": "mel-roformer-inst-v2"})
+
+
+def test_every_whitelist_token_has_a_measured_cost():
+    """A token without a cost entry silently loses its measured overlap/precision, which is how a
+    checkpoint ends up running at a default nobody chose."""
+    for token in roformer.ROFORMER_MODELS:
+        cost = roformer.roformer_cost(token)
+        assert cost is not None, f"{token} has no measured cost"
+        assert cost["overlap"] >= 1
+        assert cost["precision"] in ("fp32", "bf16")
+
+
+def test_roformer_cost_is_none_for_unknown_token():
+    assert roformer.roformer_cost("nope") is None
 
 
 def test_resolve_roformer_slug_defaults_when_unset():
