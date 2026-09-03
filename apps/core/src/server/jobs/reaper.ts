@@ -1,7 +1,7 @@
 // Job reaper — the single periodic tick (~3s) that enforces leases, plus the one-shot boot
 // recovery. I/O orchestrator over the pure `sweep`/`inflightToRecover` policy (leases.ts) and the
 // `JobRepository`. A requeue here makes the job eligible for redispatch (M7-C3). See
-// docs/job-lifecycle-and-worker-protocol.md §3.
+// docs/ARCHITECTURE.md.
 
 import type { JobRepository } from './repository';
 import { sweep, inflightToRecover, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';

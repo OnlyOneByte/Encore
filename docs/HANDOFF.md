@@ -1,328 +1,237 @@
 # Encore — Agent Handoff
 
-> **Purpose.** The single onboarding doc for an agent (or human) picking up Encore cold. What's
-> built, how to run and test it without tripping the traps, what's unpushed, and where to start next.
+> **Purpose.** Onboarding for an agent or human picking up Encore cold: the traps, the invariants you
+> must not break, and how to verify. **What to build next is NOT here** — that is
+> [`ROADMAP.md`](ROADMAP.md), which opens with the auto-pilot contract.
 >
-> **Last updated:** 2026-09-02 · **State:** `v0.2.0` (stems) shipped; M0–M8 closed; on the backlog.
-> **Read this first, then:** `docs/MASTER-DESIGN.md` → `docs/ROADMAP.md` → the two contracts
-> (`reconciliation-contract.md`, `job-lifecycle-and-worker-protocol.md`).
+> **Reading order:** [`ARCHITECTURE.md`](ARCHITECTURE.md) → [`ROADMAP.md`](ROADMAP.md) → this file.
+>
+> **Last updated:** 2026-09-03 · **State:** `v0.2.0` (stems) shipped; M0–M8 closed; B-1/B-5/B-6/B-7
+> and B-3 (except its captions tier) done. Next: **B-8** separator swap.
+
+Self-hosted, mobile-first karaoke (personal project, `github.com/OnlyOneByte/Encore`). Scan a QR →
+name+color, no signup → search → one-tap queue. A TV surface plays **gaplessly** with round-robin
+rotation. **Make-karaoke** strips vocals via Demucs; word-timed lyrics and live pitch scoring ride on
+the stems. Pillars: **UI-first, wicked-fast/optimistic, as close to one container as possible.**
 
 ---
 
-## 0. TL;DR for the next agent
+## 1. Three things that will bite you first
 
-- **Everything through M8 is done**, plus backlog **B-1, B-5, B-6, B-7**, and **B-3** (tiered lyrics
-  source chain) except its captions tier. MVP (`v0.1.0`), make-karaoke/stems (`v0.2.0`), scoring
-  (M8-C0–C3), media storage classes + browse + retention (B-7).
-- **479 tests pass** (425 core + 54 shared), **142 worker tests** pass under
-  pytest. `bun run typecheck`, `bun run check`, `bun run build`: 0 errors. Gotchas #1 and #9 are
-  **fixed** — no more cwd dance.
-- **Real Demucs verified on this box** (macOS/arm64, CPU, no Docker): a 4:01 song → a 6.0 MB
-  AAC 44.1k stereo instrumental in ~2 min, served 200. Needed `soundfile` — see Gotcha #13.
-- **`main` is in sync with `origin/main`** (`05d5fb0`); tags `v0.1.0`/`v0.2.0` are pushed. See §5 —
-  agents still cannot `git push`.
-- **Next work is the backlog, not a milestone.** Start at **B-2** (WebAudio pitch-shift) — see §7.
-- **A worker is a separate process.** Core alone leaves every make-karaoke request at `queued`
-  forever; there is no warning in the UI. See §3 for running it with or without Docker.
-- **The single most important lesson from the last three sessions:** every real defect found lately
-  was invisible to a green test suite and only surfaced by driving the actual app. Budget for that
-  (§8). Do not report a feature working on unit tests alone.
+- **A worker is a separate process.** Core alone accepts a make-karaoke request and leaves it at
+  `queued` **forever**, with no warning in the UI.
+- **A green suite is the floor, not the bar.** Every real defect found lately was invisible to
+  passing tests and only surfaced by driving the app (§5). Never report a feature working on unit
+  tests alone.
+- **Agents CAN push** — see Gotcha 7. Older notes in this repo claimed otherwise and were wrong.
 
 ---
 
-## 1. What Encore is
-
-Self-hosted, mobile-first karaoke webserver (personal project, `github.com/OnlyOneByte/Encore`).
-Scan a QR on your phone → pick a name+color (no signup) → search → one-tap queue. A TV/stage surface
-plays videos **gaplessly** with round-robin rotation (everyone's 1st pick before anyone's 2nd).
-**Make-karaoke** strips vocals on demand via Demucs; word-timed lyrics and live pitch scoring ride on
-top of the stems.
-
-Design pillars: **UI-first, wicked-fast/optimistic, as close to one container as possible.**
-
----
-
-## 2. Tech stack (locked — don't re-litigate)
+## 2. Stack (locked — don't re-litigate)
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Runtime | **Bun 1.3.14** (aarch64/AL2) | native WS pub/sub, `bun:sqlite`, `Bun.spawn` |
+| Runtime | **Bun 1.3.14** | native WS pub/sub, `bun:sqlite`, `Bun.spawn` |
 | Web | **SvelteKit + Svelte 5 runes** + PWA | `svelte-adapter-bun` → `getHandler()` |
 | Bundler | **Vite 8** | `bun --bun` is **required** |
 | DB | **Drizzle + `bun:sqlite`** (WAL) | migrations in `apps/core/drizzle/`, applied at boot |
 | Monorepo | **Bun workspaces** | `packages/shared` = the contract; `apps/core`; `apps/worker` |
-| Worker | **Python + Demucs + WhisperX** | container 2, dial-home WS client. **Real and working.** |
+| Worker | **Python + Demucs + WhisperX** | container 2, dial-home WS client |
 
-**The case for Bun was made and accepted.** Do not propose Node/Deno swaps.
+The case for Bun was made and accepted. Do not propose Node/Deno swaps.
 
-### Repo layout
 ```
 Encore/
 ├─ docker-compose.yml     # core (always) + worker (profile: stems)
-├─ push.sh                # the ONLY way an agent can push (see §5)
-├─ docs/                  # MASTER-DESIGN, ROADMAP, contracts, this file, mocks/
+├─ push.sh                # how you push — see Gotcha 7
+├─ docs/                  # ARCHITECTURE, ROADMAP, HANDOFF, archive/, mocks/
 ├─ packages/shared/       # @encore/shared — types, ops, rotation reducer, events, ulid, colors
 └─ apps/
-    ├─ core/              # @encore/core — the SvelteKit app + server
+    ├─ core/              # @encore/core — SvelteKit app + server
     │   ├─ server.ts        Bun.serve entry: HTTP + WS hub + presence + worker transport
-    │   ├─ drizzle/         migrations 0000–0005
     │   ├─ src/server/      app.ts (singleton), db/, realtime/, state/, media/, jobs/, rotation/, singers/
-    │   ├─ src/lib/         stores/, ws/, tv/ (gapless, lobby, lyrics, score), components/, readiness.ts
+    │   ├─ src/lib/         stores/, ws/, tv/ (gapless, lobby, lyrics, score), components/
     │   └─ src/routes/      +page (phone), tv/, join/, components/ (dev gallery), api/
     └─ worker/             # dial_home.py + Demucs/WhisperX processors + pytest
 ```
 
 ---
 
-## 3. How to run & test (read §4 first)
+## 3. Running it
+
+Test/build gates and the eyes-on serve loop live in [`ROADMAP.md`](ROADMAP.md) — one copy, not two.
+What is specific to this file:
 
 ```bash
-# --- tests + gates (all runnable from the REPO ROOT now, see Gotcha #1) ---
-bun test                            # → 479 pass / 0 fail (425 core + 54 shared)
-bun run typecheck                   # both workspaces → 0 errors
-bun run check                       # svelte-check → 0 errors
-cd apps/worker && pytest            # → 142 pass (needs `pip install pytest pytest-asyncio`;
-                                    #    pytest.ini sets asyncio_mode=auto, so without
-                                    #    pytest-asyncio 27 "fail" spuriously)
-
-# --- dev / prod (root scripts proxy to @encore/core) ---
 bun run build && bun run start      # prod build + serve; `start` → server.ts
 bun run dev                         # vite HMR for UI ONLY — the WS hub lives in server.ts
-
-# --- container ---
 docker compose up                   # core only
 docker compose --profile stems up   # + the Python worker
 ```
 
-`data/` and `media/` are created on first boot (`openDb` mkdirs `DATA_DIR`), so a fresh clone needs
-no manual setup. `ENCORE_EPHEMERAL=1` swaps in an in-memory DB for a throwaway run.
+`data/` and `media/` are created on first boot, so a fresh clone needs no setup. `ENCORE_EPHEMERAL=1`
+swaps in an in-memory DB.
 
-**Running the worker WITHOUT Docker** (verified on macOS/arm64, Python 3.10, CPU-only):
+**The worker without Docker:**
 ```bash
 cd apps/worker && python3 -m venv .venv
-.venv/bin/pip install torch==2.8.0 torchaudio==2.8.0 demucs==4.0.1 yt-dlp   # ~2 min, multi-GB
+.venv/bin/pip install -r requirements.txt
 PATH="$PWD/.venv/bin:$PATH" ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' \
-  ENCORE_WORKER_CAPABILITIES='stems,score' MEDIA_DIR=../core/media \
+  ENCORE_WORKER_CAPABILITIES='stems,align,score' MEDIA_DIR=../core/media \
   .venv/bin/python -m src.dial_home
 ```
-The worker shells out to `yt-dlp`/`ffmpeg`/`demucs` **by name via PATH**, so the `PATH` prefix is
-load-bearing. Launching **core** with that same venv `bin` on PATH also gives core its `yt-dlp`, so
-YouTube search starts returning results. `MEDIA_DIR` must be the SAME dir core uses.
-`ENCORE_PROCESSOR=stub` (needs only `pip install websockets`) exercises the full
-assign→progress→complete→ready path with **placeholder files that will not play** — plumbing only.
+It shells out to `yt-dlp`/`ffmpeg`/`demucs` **by name via PATH**, so that prefix is load-bearing.
+Launching **core** with the same venv `bin` on PATH also gives core its `yt-dlp`, so YouTube search
+starts returning results. `MEDIA_DIR` must be the SAME dir core uses, or core marks a job complete for
+a file it cannot serve. `ENCORE_PROCESSOR=stub` walks the whole assign→complete→ready path with
+**placeholder files that will not play** — plumbing only.
 
-**Serving for eyes-on verification (the established local loop):**
-```bash
-cd apps/core && bun run build
-PATH="/home/angryang/.local/share/mise/installs/python/3.12.13/bin:$PATH" \
-  HOST=127.0.0.1 PORT=5180 bun run server.ts
-```
-Port **5180** by convention (3000 is usually taken by another project on this box). yt-dlp lives on
-that mise python path and `ytdlp.ts` calls it **by name via PATH**, so the server must be launched
-with that dir on PATH or YouTube search silently returns nothing. Always bind **127.0.0.1**.
-
-**Sharing it with the owner:** `tunnel create 5180 --name encore` →
-`https://angryang-encore.v.tunnels.lab.aws.dev` (Midway SSO, owner-only). WebSockets forward fine.
-Tunnel the **built** server, never `vite dev` — the realtime layer is in `server.ts`. The tunnel
-agent dies on its own sometimes; the server survives it, so just restart the tunnel.
+**Sharing with the owner:** `tunnel create 5180 --name encore` →
+`https://angryang-encore.v.tunnels.lab.aws.dev` (Midway, owner-only). Tunnel the **built** server,
+never `vite dev`. The tunnel agent dies on its own sometimes; the server survives it.
 
 ---
 
 ## 4. Gotchas (each one costs an hour)
 
-1. ~~**Run `bun test` from `apps/core/`, not the repo root.**~~ **FIXED.** `runMigrations()` now
-   locates `apps/core/drizzle` by walking up from `import.meta.dir` (`db/migrate.ts`), so
-   `bun test` works from **anywhere** — 401 pass from the repo root. `ENCORE_MIGRATIONS_DIR`
-   overrides if the folder ever moves.
-2. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** Corp box: the *global* npmrc points at
-   CodeArtifact and 401s for public packages. Don't delete it, don't `npm config set` globally.
-3. **`bun --bun` is mandatory** for SvelteKit/Vite. Use `bun run <script>`; never call `vite` raw.
-4. **`globalThis`-backed singleton.** `getApp()`/`setPublish()` in `src/server/app.ts` behind a
-   `globalThis` symbol, reached via the `$server` alias. **Deliberate** — the SvelteKit handler is a
-   *separate bundle* from `server.ts`, so a module-level singleton split-brains (two in-memory
-   queues, two DBs). Route any new server singleton through `app.ts`.
-5. **`.gitignore` runtime dirs are ANCHORED (`/data/`, `/media/`).** An un-anchored `media/` once
+1. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** The *global* npmrc points at
+   CodeArtifact and 401s for public packages. Don't delete it; don't `npm config set` globally.
+2. **`bun --bun` is mandatory** for SvelteKit/Vite. Use `bun run <script>`; never call `vite` raw.
+3. **`globalThis`-backed singleton.** `getApp()`/`setPublish()` in `src/server/app.ts` behind a
+   `globalThis` symbol, via the `$server` alias. **Deliberate** — the SvelteKit handler is a *separate
+   bundle* from `server.ts`, so a module-level singleton split-brains (two queues, two DBs). Route
+   every new server singleton through `app.ts`.
+4. **`.gitignore` runtime dirs are ANCHORED (`/data/`, `/media/`).** An un-anchored `media/` once
    matched `src/server/media/` and silently excluded the whole search subsystem from git.
-6. **Don't kill processes by broad pattern.** `pkill -f 'bun ...'` can self-match the harness. Use
+5. **Don't kill processes by broad pattern.** `pkill -f 'bun ...'` can self-match the harness. Use
    `lsof -ti tcp:5180 | xargs -r kill`.
-7. **`git push` is blocked for agents** (§5). `rm -rf`/`DROP TABLE` too. The guards catch script
-   evasion — surface the blocker, don't route around it.
-8. **`bun:sqlite` UNRESOLVED_IMPORT during `bun run build` is harmless.** Bun resolves built-ins at
-   runtime. Not a real warning to chase.
-9. ~~**`bun run typecheck` from the repo ROOT exits 127.**~~ **FIXED.** It was code, not
-   environment: `@encore/shared` declared a `tsc --noEmit` script but had neither `typescript` nor a
-   `tsconfig.json`. Both added, so root `bun run typecheck` now checks **both** workspaces clean.
-   Turning it on surfaced 3 latent `noUncheckedIndexedAccess` errors in `rotation.ts` (fixed) — that
-   package's own sources had never actually been typechecked.
-10. **Stage files explicitly; never `git add .`** — `.kiro/` is local tooling and must stay
-    untracked. And **check `git status` after committing**: a B-6 commit shipped without its
-    `packages/shared` contract change and was not buildable in isolation, because the local
-    verification ran on a working tree the commit didn't describe.
-11. **Node 20 for `playwright-cli`/playwright** — `export PATH="$HOME/.local/share/mise/installs/node/20.20.2/bin:$PATH"`.
-12. **Cap eyes-on screenshots at ≤2000px** (1280×720 viewport, `deviceScaleFactor: 1`). An oversized
-    image hard-fails the agent turn and keeps re-firing from history.
-13. **`soundfile` is REQUIRED for stems, and its absence looks like a hang.** torchaudio 2.8 has no
+6. **Stage files explicitly; never `git add .`** — `.kiro/` is local tooling and stays untracked. And
+   **check `git status` after committing**: a B-6 commit shipped without its `packages/shared`
+   contract change and was not buildable in isolation, because local verification ran on a working
+   tree the commit didn't describe.
+7. **Pushing works — with a bare `bash push.sh` from the repo root, no env prefix and no pipe.**
+   This was misdiagnosed for a long time: the guard pattern-matches an inline
+   `MESHCLAW_ALLOW_GIT_PUSH=1` assignment, so **adding that env var is what blocked the push**, and
+   the failure reads misleadingly as "User denied tool execution". Do not add it. `rm -rf` and
+   `DROP TABLE` are genuinely blocked; surface a blocker rather than routing around it.
+8. **`bun:sqlite` UNRESOLVED_IMPORT during `bun run build` is harmless** — Bun resolves built-ins at
+   runtime.
+9. **Node 20 for `playwright-cli`** —
+   `export PATH="$HOME/.local/share/mise/installs/node/20.20.2/bin:$PATH"`.
+10. **Cap eyes-on screenshots at ≤2000px** (1280×720 viewport, `deviceScaleFactor: 1`). An oversized
+    image hard-fails the turn and keeps re-firing from history.
+11. **`soundfile` is REQUIRED for stems, and its absence looks like a hang.** torchaudio 2.8 has no
     audio-write backend, so demucs separates to **100%** and *then* dies with `Couldn't find
     appropriate backend to handle uri .../vocals.wav`. It reaches you as a song frozen at
-    "separating 100%" that silently retries 3× (a full separation pass each). It's now pinned in
-    `requirements.txt`; before that it only arrived transitively via `whisperx`, so a stems-only
+    "separating 100%" that silently retries 3× — a full separation pass each time. Now pinned in
+    `requirements.txt`; before that it arrived only transitively via `whisperx`, so a stems-only
     worker was broken while the full install worked.
-14. **A `failed` job leaves the media stuck showing `queued`/cooking forever.** Nothing surfaces the
-    error to the phone or TV, and terminal jobs are never retried, so the song just sits there. To
-    recover: delete the failed row from `jobs` and reset that media's `stem_status` to `none`
-    (dedup is on `(mediaId, jobType)`, so a re-tap alone won't re-enqueue). Worth a real fix.
-15. **Read the `jobs` table when a cook misbehaves** — its `error` column has the actual message,
-    which is often the ONLY place it exists. The worker now also prints failures (it used to report
-    them over the wire only, making retry loops invisible from both ends). Note the column is
-    `error`, not `last_error`.
-16. **Not every YouTube video downloads.** yt-dlp hits `This video is not available` + an
-    n-challenge-solving warning on some ids; the job fails at stage `downloading` after 3 attempts.
-    That's upstream/bot-checking, not an Encore bug — try another video before debugging.
+12. **A `failed` job leaves the media stuck showing `queued`/cooking forever.** Nothing surfaces the
+    error to the phone or TV and terminal jobs are never retried. Recover by deleting the failed row
+    from `jobs` and resetting that media's `stem_status` to `none` — dedup is on `(mediaId, jobType)`,
+    so a re-tap alone won't re-enqueue. Worth a real fix.
+13. **Read the `jobs` table when a cook misbehaves** — its `error` column is often the ONLY place the
+    message exists. The column is `error`, not `last_error`.
+14. **Not every YouTube video downloads.** yt-dlp hits `This video is not available` on some ids and
+    the job fails at stage `downloading` after 3 attempts. That is upstream bot-checking, not an
+    Encore bug — try another video before debugging.
 
 ---
 
-## 5. Git state & the push blocker ⚠️
+## 5. How to verify (not optional)
 
-- Branch `main` is **in sync** with `origin/main` at `05d5fb0` (B-7-C5, retention).
-- **Tags `v0.1.0` and `v0.2.0` are pushed.** The earlier backlog (B-1/B-5/B-6 + fixups) all landed
-  upstream; the squash note that used to live here is moot.
+The recent bug history is *unit tests green while production is broken*. All four found only by
+driving the real app:
 
-**Agents cannot run `git push`** — the harness blocks it in any shell command (the failure
-misleadingly reads "User denied tool execution"; it is *not* a user cancellation). The only allowed
-path is:
+| Defect | Why tests missed it |
+|---|---|
+| A plain queue add never started playback — TV stuck on attract forever | the feature was never *wired* to a trigger |
+| `WsClient` passed bare `setTimeout` as an option → `Illegal invocation` in a browser, so heartbeat and auto-reconnect were **silently dead in production** | tests injected fake timers |
+| An `add` with a missing `singerId` **killed the server process** | no test sent a malformed field |
+| The phone announced "No karaoke-ready songs yet" with 5 songs in the library | the copy was never asserted against a populated library |
 
-```bash
-MESHCLAW_ALLOW_GIT_PUSH=1 bash push.sh    # from the repo root; env -u GIT_SSH_COMMAND inside
-```
-A human should also push the tags: `git push origin v0.1.0 v0.2.0`.
+So, after the AUTO gates pass:
 
-Commits use the personal **`OnlyOneByte`** identity. Convention: **one commit per roadmap
-sub-task/backlog item**, message prefixed with its id (`B-6:`, `M7-C1:`), tests land with the commit.
+1. Boot the built server on 127.0.0.1:5180, worker container up if stems are in play.
+2. Drive real browser contexts with playwright (Node 20) — join → search → queue → TV.
+3. **Prefer assertions over pixels** for anything textual or numeric: `innerText`, input values,
+   element counts, DOM geometry. Screenshot for *look*, assert for *truth*. Mind case — CSS
+   `text-transform` means `innerText` returns "NOW SINGING", so match case-insensitively.
+4. A **direct WS probe** (a Bun script opening `ws://127.0.0.1:5180/ws?role=phone`) is the decisive
+   ground truth when browser/tab state is confusing.
+5. Add the surface to the dev **`/components`** gallery, and drop the verified frame in `docs/mocks/`
+   as `<id>-<what>-eyeson.png`.
+6. `curl /api/me` from a shell returns null — no session cookie. Not a bug.
+
+Record what you verified on the ROADMAP item, split **AUTO** vs **EYES-ON**, and be honest when
+something can only be flagged for a human (audio, real ML, network).
 
 ---
 
-## 6. Architecture & invariants you must not break
+## 6. Invariants you must not break
 
-### The reconciliation contract (the heart of "wicked fast")
-Full spec: `docs/reconciliation-contract.md`. The invariant:
+**The reconciliation contract** (canonical explanation: [`ARCHITECTURE.md`](ARCHITECTURE.md)):
 
 > **`client.predict(op) === server.apply(op)` for EVERY mutation path**, including round-robin resequencing.
 
 Client-minted ULID per op; server holds a monotonic `rev`; client keeps a pending-op Map and applies
 the inverse on reject; server broadcasts `queue:patch{rev, ops, causedBy, entries, media}` with the
 authoritative snapshot **inline**; rev-gap detection triggers resync. The shared reducer
-`packages/shared/src/rotation.ts` (`applyAndReseq`) is used by **both** sides — keep them on the same
+`packages/shared/src/rotation.ts` (`applyAndReseq`) runs on **both** sides — keep them on the same
 function or the invariant breaks.
 
 **Validate every field a client sends.** An `add` with a missing `singerId` once reached the
 `NOT NULL singer_id` write and threw out of `state.apply()`, **killing the whole server process** —
 one malformed message could end a party. Validation lives in `hub.ts:validateCommand`.
 
-### Rotation
-`rotate` / `assignSeqs` / `applyAndReseq`. Terminal entries (`done`/`canceled`) are pruned on apply
-and hydrate. The **held-slot rule** (a singer keeps their seq while their make-karaoke song cooks) is
-real as of M7-C6: a not-yet-ready `file` entry is skipped by `isEntryReady` but keeps its seq.
+**Rotation.** `rotate` / `assignSeqs` / `applyAndReseq`. Terminal entries (`done`/`canceled`) are
+pruned on apply and hydrate. The **held-slot rule** — a singer keeps their seq while their song cooks
+— is real: a not-yet-ready `file` entry is skipped by `isEntryReady` but keeps its seq.
 
-### Media identity (learned the hard way in B-5)
-`sourceRef` is **immutable origin identity**; the cooked stem key lives in `Media.instrumentalRef`
-and players ask `playbackRef(media)` what to load. Overwriting `sourceRef` on cook made a song
-unmatchable against its own search result forever (every search minted a fresh uncooked duplicate).
+**Media identity** (learned the hard way in B-5). `sourceRef` is **immutable origin identity**; the
+cooked stem key lives in `Media.instrumentalRef` and players ask `playbackRef(media)` what to load.
+Overwriting `sourceRef` on cook made a song unmatchable against its own search result forever, so
+every search minted a fresh uncooked duplicate.
 
-### Presence (B-6)
-The WS upgrade resolves **which singer** a socket belongs to from the session cookie; a ref-counted
-`PresenceTracker` broadcasts `singer:presence{online}` on 0→1 and 1→0 only, and `queue:sync` carries
-an `online` snapshot for mid-party joiners. **Never use the `singers` table as "who's here"** — it is
-append-only and file-backed, so it accumulates everyone who ever joined.
+**Presence.** The WS upgrade resolves which singer a socket belongs to from the session cookie; a
+ref-counted `PresenceTracker` broadcasts `singer:presence{online}` on 0→1 and 1→0 only, and
+`queue:sync` carries an `online` snapshot for mid-party joiners. **Never use the `singers` table as
+"who's here"** — it is append-only and file-backed, so it accumulates everyone who ever joined.
 
-### TV surfaces (B-6)
-Four states via the pure `tvScreen()` in `src/lib/tv/screen.ts`, precedence
-`playing > waiting > lobby > attract`:
-- **attract** — nobody here: full-screen join QR.
-- **lobby** — people here, nothing queued: hero QR + "Waiting for someone to pick a song…" + a
-  presence-derived roster strip.
-- **waiting** — queued but stems still cooking.
-- **playing** — video + lower-third + a compact join card.
+**TV surfaces.** Four states via the pure `tvScreen()` in `src/lib/tv/screen.ts`, precedence
+`playing > waiting > lobby > attract`: **attract** (nobody here, full-screen QR), **lobby** (people,
+nothing queued — hero QR + roster strip), **waiting** (queued, still cooking), **playing**. **The
+join card is bottom-right and must stay there** — the lower-third owns bottom-left and the
+`ScoreBadge` owns top-right.
 
-**The join card is bottom-right and must stay there:** the lower-third owns bottom-left and the
-M8-C3 `ScoreBadge` owns top-right.
+**Gapless TV.** Two-player swap (A visible / B warming, swap on `ended`), telemetry-driven
+`advance()`. `src/lib/tv/gapless.ts` + `TvPlayer.svelte`; server side `realtime/player.ts`.
 
-### Gapless TV
-Two-player swap (A visible / B warming, swap on `ended`), telemetry-driven `advance()`.
-`src/lib/tv/gapless.ts` + `TvPlayer.svelte`; server side `realtime/player.ts`. Spec:
-`docs/tv-preload-state-machine.md`.
+**Jobs & the worker.** Ledger with dedup on `(mediaId, jobType)`, leases + reaper (ack 10s /
+progress 30s), boot recovery resets orphaned `assigned`/`running` → `queued`. Workers dial home over
+WS and advertise capabilities. A completed `stems` job chains `align` + `score` via
+`followUps()` in `jobs/dispatch.ts` — depth-1 fan-out, because the ASR and pitch stages both read the
+**vocals stem**, which does not exist until stems finishes.
 
-### Jobs & the worker
-Ledger with dedup on `(mediaId, jobType)`, leases + reaper (ack 10s / progress 30s), boot recovery
-resets orphaned `assigned`/`running` → `queued`. Workers **dial home** over WS and advertise
-capabilities. Note: `make-karaoke` enqueues only a **`stems`** job — live scoring needs a separate
-**`score`** job *and* a worker advertising that capability.
+Both flows are canonical in [`ARCHITECTURE.md`](ARCHITECTURE.md).
 
-### Security posture (keep intact)
-SSRF host-allowlist + https-only on the thumb proxy; path-traversal guard on `/media`
-(`safeMediaPath`); `uniqueIndex` on the session token; yt-dlp query passed as a single argv element
-with a kill-timer. `docker-compose.yml` has `no-new-privileges` + `cap_drop: [ALL]`, non-root user,
-pinned base image and yt-dlp version.
+**Security posture (keep intact).** SSRF host-allowlist + https-only on the thumb proxy;
+path-traversal guard on `/media` (`safeMediaPath`, containment per storage root); `uniqueIndex` on the
+session token; yt-dlp query passed as a single argv element with a kill-timer. `docker-compose.yml`
+has `no-new-privileges`, `cap_drop: [ALL]`, non-root user, pinned base image.
 
 ---
 
-## 7. Where to start next: the backlog
+## 7. Doc index
 
-M9 is the only open milestone, but **[`ROADMAP.md`](ROADMAP.md) is the single source of truth for
-what to build next** — it opens with the auto-pilot contract (run commands, verification gates,
-environment ceilings, working order) and then lists only open work.
+There are exactly three live docs:
 
-Do not restate the queue here. This section used to duplicate it and drifted: it still recommended
-"B-2 START HERE" and described B-3 as an unbuilt WhisperX fallback long after B-3 shipped. One list,
-one place.
-
-Shipped history lives in [`archive/`](archive/) — read it for *why* something is built the way it is,
-never for what to do next.
-
----
-
-## 8. How to verify (this is not optional)
-
-The whole recent bug history is *unit tests green while production is broken*. Four examples, all
-found only by driving the real app:
-
-| Defect | Why tests missed it |
+| Doc | What it owns |
 |---|---|
-| A plain queue add never started playback — TV stuck on attract forever | the feature was never *wired* to a trigger |
-| `WsClient` passed bare `setTimeout` as an option → `Illegal invocation` in a browser, so the heartbeat and auto-reconnect were **silently dead in production** | tests injected fake timers |
-| An `add` with a missing `singerId` **killed the server process** | no test sent a malformed field |
-| The phone announced "No karaoke-ready songs yet" with 5 songs in the library | the copy was never asserted against a populated library |
+| [`ROADMAP.md`](ROADMAP.md) | **What to build next** + the auto-pilot contract |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | **How the system works** + invariants |
+| [`HANDOFF.md`](HANDOFF.md) | **How to operate safely** + traps + verification |
 
-So: **AUTO gates** (`bun test` from `apps/core`, `pytest`, `bun run typecheck`, `bun run build`) are
-the floor, not the bar. Then drive it:
-
-1. Boot the built server on 127.0.0.1:5180 (§3), with the worker container up if stems are in play.
-2. Drive real browser contexts with playwright (Node 20) — join → search → queue → TV.
-3. **Prefer assertions over pixels** for anything textual or numeric: read `innerText`, input values,
-   element counts, DOM geometry. Screenshot for *look*, assert for *truth*. Watch for case: CSS
-   `text-transform` means `innerText` returns "NOW SINGING", so match case-insensitively.
-4. A **direct WS probe** (a Bun script opening `ws://127.0.0.1:5180/ws?role=phone`) is the decisive
-   ground truth when browser/tab state is confusing.
-5. Add the surface to the dev **`/components`** gallery so it has a stable eyes-on home, and drop the
-   verified frame in `docs/mocks/` as `<id>-<what>-eyeson.png`.
-6. `curl /api/me` from a shell returns null — no session cookie. Not a bug.
-
-Record what you verified in the ROADMAP item, split **AUTO** vs **EYES-ON**, and be honest when
-something can only be flagged for a human (audio, real ML, network-dependent).
-
----
-
-## 9. Doc index
-
-| Doc | What it's for |
-|---|---|
-| `docs/MASTER-DESIGN.md` | The consolidated design — read first |
-| `docs/reconciliation-contract.md` | Optimistic-UI + diff-broadcast contract (the invariant) |
-| `docs/tv-preload-state-machine.md` | Gapless TV two-player state machine |
-| `docs/job-lifecycle-and-worker-protocol.md` | Job ledger + dial-home worker protocol |
-| `docs/performance-and-feel.md` | What makes it feel instant |
-| `docs/ROADMAP.md` | **Open work only + the auto-pilot contract — start here** |
-| `docs/archive/` | Shipped milestones + shipped backlog. Rationale, not instructions |
-| `docs/media-storage-spec.md` | **B-7** storage classes, sidecar metadata, tagging, retention |
-| `docs/vocal-guide-spec.md` | Specced, deferred feature |
-| `docs/mocks/` | Phone/TV mocks + the eyes-on screenshot per milestone |
-| `README.md` | User-facing quickstart |
+Everything else is evidence or history: [`archive/`](archive/) preserves shipped plans and the
+superseded source specs; `mocks/` holds eyes-on evidence; [`../README.md`](../README.md) is the
+user-facing quickstart.

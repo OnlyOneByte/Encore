@@ -1,7 +1,7 @@
 // Server-side rotation policy. Wraps the pure shared round-robin (`assignSeqs`) and adds the
 // server-only concerns: which entry plays NEXT, with the held-slot rule (skip an entry that
 // isn't ready yet — e.g. a make-karaoke song still being processed — without burning its fair
-// position). See docs/MASTER-DESIGN.md §4 and docs/tv-preload-state-machine.md §4.
+// position). See docs/ARCHITECTURE.md.
 
 import { assignSeqs, type QueueEntry, type Media } from '@encore/shared';
 

@@ -1,5 +1,5 @@
 // Two-player gapless controller — the marquee feature. Models the A/B swap as pure state so it
-// unit-tests without a DOM (docs/tv-preload-state-machine.md). The Svelte TV page binds two real
+// unit-tests without a DOM (docs/ARCHITECTURE.md). The Svelte TV page binds two real
 // players (iframe or <video>) to slots A/B and drives them from this controller's decisions.
 //
 // Invariant: the VISIBLE slot plays `current`; the HIDDEN slot pre-buffers `upNext`. On `ended`

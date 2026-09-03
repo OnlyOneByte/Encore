@@ -1,5 +1,5 @@
 // Core domain types — shared by the Bun server (authoritative) and the SvelteKit client.
-// See docs/MASTER-DESIGN.md §5 (Data model).
+// See docs/ARCHITECTURE.md (Data model).
 
 import type { LyricsCandidate } from './lyrics';
 
@@ -124,7 +124,7 @@ export type JobType = 'stems' | 'align' | 'score';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
 // Terminal states never leave; the dedup index ignores them so a song can be re-processed after
-// a failure/cancel. See docs/job-lifecycle-and-worker-protocol.md §2.
+// a failure/cancel. See docs/ARCHITECTURE.md.
 export const TERMINAL_JOB_STATUSES = ['ready', 'failed', 'canceled'] as const;
 
 export function isTerminalJob(status: JobStatus): boolean {

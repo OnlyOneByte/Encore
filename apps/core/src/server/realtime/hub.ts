@@ -1,6 +1,6 @@
 // Realtime hub — the command intake + broadcast brain. Decoupled from Bun.serve (it takes a
 // `publish` sink + an optional `sendToOrigin`) so it unit-tests without a real socket.
-// Flow (docs/reconciliation-contract.md §3-4): client queue:command -> validate -> apply to
+// Flow (docs/ARCHITECTURE.md): client queue:command -> validate -> apply to
 // authoritative state -> broadcast queue:patch{rev,ops,causedBy,entries}. Invalid -> op:reject
 // to the originator only (no broadcast).
 

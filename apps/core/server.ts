@@ -1,5 +1,5 @@
 // Encore core — the one Bun process. HTTP (SvelteKit) + native WebSocket pub/sub hub.
-// Locked in docs/MASTER-DESIGN.md §2/§2a: Bun.serve owns BOTH the SvelteKit request handler
+// Locked in docs/ARCHITECTURE.md: Bun.serve owns BOTH the SvelteKit request handler
 // AND the realtime hub, so there is no network hop between layers and the in-memory
 // authoritative state lives in this one process.
 //

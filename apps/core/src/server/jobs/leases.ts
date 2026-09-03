@@ -1,6 +1,6 @@
 // Pure lease policy — no DB, no clock, no IO (the I/O orchestrator is reaper.ts). Leases are the
 // crash-recovery mechanism: a job is only "owned" by a worker with a live WS session, enforced by
-// a deadline the reaper checks. See docs/job-lifecycle-and-worker-protocol.md §3.
+// a deadline the reaper checks. See docs/ARCHITECTURE.md.
 //
 // Two lease kinds, distinguished by the job's STATUS (not stored separately):
 //   • ack lease     — set on `assign`; worker must `job:accept` before it expires, else requeue

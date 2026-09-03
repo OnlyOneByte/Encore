@@ -1,6 +1,6 @@
 // Client realtime socket. Connects to /ws, heartbeats, auto-reconnects with capped backoff,
 // and resyncs on (re)connect via hello{lastRev} -> queue:sync. Gap detection: a queue:patch
-// whose rev skips ahead triggers a full resync. See docs/reconciliation-contract.md §6.
+// whose rev skips ahead triggers a full resync. See docs/ARCHITECTURE.md.
 //
 // Testable: inject a WebSocket factory (the `connect` option) so a mock socket can simulate
 // drop/restore without a real server. In the browser, the default factory uses global WebSocket.

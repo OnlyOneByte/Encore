@@ -1,5 +1,5 @@
 // Round-robin rotation — the differentiator. Pure function so the client can PREDICT
-// the exact order the server will assign. See docs/MASTER-DESIGN.md §4.
+// the exact order the server will assign. See docs/ARCHITECTURE.md.
 //
 // Rule: everyone's Nth pick plays before anyone's (N+1)th. Interleave each singer's
 // entries by their per-singer pick index, breaking ties by addedAt (join/queue order).

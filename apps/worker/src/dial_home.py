@@ -8,7 +8,7 @@ means the worker reconnects and re-announces.
 
 The actual stem separation is behind the Processor seam (processor.py). M7-C4 ships StubProcessor;
 M7-C5 swaps in real Demucs `htdemucs` with NO change to this loop. See
-docs/job-lifecycle-and-worker-protocol.md §5, §9.
+docs/ARCHITECTURE.md, §9.
 
 Run:  python -m src.dial_home   (or as a module inside the container)
 """

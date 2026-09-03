@@ -2,7 +2,7 @@
 // This module is imported by BOTH the SvelteKit client (optimistic apply) and the
 // Bun server (authoritative apply). Same code on both ends => the client's optimistic
 // prediction cannot diverge from what the server commits.
-// See docs/reconciliation-contract.md.
+// See docs/ARCHITECTURE.md.
 
 import type { QueueEntry, EntryStatus, Media } from './types';
 

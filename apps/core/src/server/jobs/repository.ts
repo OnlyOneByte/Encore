@@ -2,7 +2,7 @@
 // align, scoring). SQLite is authority here (NOT the transport): workers dial home over WS and the
 // ledger tracks ownership/lifecycle. This is the I/O layer; the legal-transition rules live in the
 // pure transitions.ts (mirrors store.ts ↔ shared/applyAndReseq). See
-// docs/job-lifecycle-and-worker-protocol.md §1, §6, §10.
+// docs/ARCHITECTURE.md.
 
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import type { DB } from '../db/index';

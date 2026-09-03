@@ -1,7 +1,7 @@
 // Storage layout — the SINGLE authority for where media lives (B-7-C2).
 //
 // Storage is split by REPLACEABILITY, not by file type, because that is what decides backup policy,
-// eviction policy, and what an operator may safely delete (docs/media-storage-spec.md §3):
+// eviction policy, and what an operator may safely delete (docs/ARCHITECTURE.md):
 //
 //   state    sqlite            rebuildable from meta + a rescan       ENCORE_DATA_DIR
 //   audio    raw originals     NOT regenerable — needs network, and   ENCORE_AUDIO_DIR
@@ -127,7 +127,7 @@ export function lyricsKey(mediaId: string): string {
 export function thumbKey(hash: string): string {
 	return `derived/thumbs/${hash}.jpg`;
 }
-/** The sidecar record — authoritative per docs/media-storage-spec.md §4. */
+/** The sidecar record — authoritative per docs/ARCHITECTURE.md. */
 export function metaKey(mediaId: string): string {
 	return `meta/${mediaId}.json`;
 }

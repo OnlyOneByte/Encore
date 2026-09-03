@@ -1,5 +1,5 @@
 // WebSocket event vocabulary — the wire contract between core, phones, TV, and workers.
-// See docs/MASTER-DESIGN.md §3 and docs/job-lifecycle-and-worker-protocol.md §5.
+// See docs/ARCHITECTURE.md.
 
 import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
@@ -60,7 +60,7 @@ export type ClientEvent =
 
 // ── dial-home worker protocol ─────────────────────────────────────────────────
 // Workers connect TO the core over WS (NAT-friendly, scale-out). All messages are JSON
-// { type, ...payload }. See docs/job-lifecycle-and-worker-protocol.md §5.
+// { type, ...payload }. See docs/ARCHITECTURE.md.
 
 // worker -> core
 export type WorkerMessage =

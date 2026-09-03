@@ -45,7 +45,7 @@ Within Approach A there are two fidelity tiers. **Ship A1 first.**
 
 The instrumental stays the **master** `<video>` element exactly as today — it keeps owning
 `play/pause`, `currentTime`, `ended`, and all telemetry that drives the gapless state machine
-(`docs/tv-preload-state-machine.md`). The vocals become a **secondary `<audio>` element** that
+(`tv-preload-state-machine.md`). The vocals become a **secondary `<audio>` element** that
 *follows* the master:
 
 - `play/pause` mirrors the master (same `$effect` that already gates the master).
@@ -203,7 +203,7 @@ the guide; returning to 0 re-enables it. Simple, honest, no new rendering.
 broadcasts `playback:state`) — never through the ephemeral `setPosition` path. This honors the
 existing invariant (`store.ts:58-71`, and the "ephemeral telemetry must not churn rev" finding):
 the guide changes rarely (a human dragging a slider), so rev churn is a non-issue, and every client
-converges on the level via the normal rev-based sync (`docs/reconciliation-contract.md`).
+converges on the level via the normal rev-based sync (`reconciliation-contract.md`).
 
 ## 13. Testing strategy
 

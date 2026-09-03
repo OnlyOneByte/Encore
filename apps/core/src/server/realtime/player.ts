@@ -128,7 +128,7 @@ export interface TvTelemetry {
 
 /**
  * Handle TV telemetry. The authoritative position advances on what ACTUALLY happened on screen
- * (docs/tv-preload-state-machine.md §5): on `ended`, advance to the next entry and re-broadcast.
+ * (docs/ARCHITECTURE.md): on `ended`, advance to the next entry and re-broadcast.
  * Otherwise just track position (so reconnecting clients see roughly where we are).
  */
 export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {

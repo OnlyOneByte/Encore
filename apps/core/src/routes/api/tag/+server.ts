@@ -1,6 +1,6 @@
 // POST /api/tag — set the genres (or free tags) on a library song (B-7-C4).
 //
-// Writes the SIDECAR first, because that is the authoritative record (docs/media-storage-spec.md §4),
+// Writes the SIDECAR first, because that is the authoritative record (docs/ARCHITECTURE.md),
 // then mirrors into the browse index. Order matters: if the process died between the two, a restart
 // re-syncs the index from the sidecars, whereas the reverse order would silently lose the edit.
 //

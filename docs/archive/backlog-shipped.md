@@ -115,7 +115,7 @@
 ## B-7 · Media storage layout + library metadata (complete)
 
 - [ ] **B-7 · Media storage layout + library metadata** — full spec:
-  `docs/media-storage-spec.md`. Storage is currently accumulated convention, not design, and three
+  [`reference/media-storage-spec.md`](reference/media-storage-spec.md). Storage is currently accumulated convention, not design, and three
   things follow from that: (a) the raw downloaded original is retained **by accident** in
   `media/stems/_work/<mediaId>/source.wav`, a scratch path nothing ever cleans up — **432 MB of the
   volume's 1.2 GB across ~8 songs** — while being the one asset that cannot be regenerated if a video

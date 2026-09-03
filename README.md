@@ -6,7 +6,7 @@ gapless TV, and live "make-karaoke" stem separation on the roadmap.
 
 > **v0.2.0 (stems)** — YouTube + local search, real-time round-robin queue, two-surface
 > phone+TV with gapless playback, **and live "make-karaoke" vocal removal** via Demucs.
-> Full design in [`docs/MASTER-DESIGN.md`](docs/MASTER-DESIGN.md).
+> Full design in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## ✨ What it does today
 
@@ -86,8 +86,8 @@ For a torch-free smoke test of the plumbing, `ENCORE_PROCESSOR=stub` needs only
 
 **Bun** runtime · **SvelteKit + Svelte 5 (PWA)** · **`Bun.serve` native WebSocket pub/sub** ·
 **`bun:sqlite` (WAL) + Drizzle** · in-memory authoritative state · bundled **yt-dlp + ffmpeg**.
-One container for the MVP; a Python **Demucs + WhisperX** worker joins (container 2) for stems.
-See [`docs/MASTER-DESIGN.md`](docs/MASTER-DESIGN.md) §2a.
+One container for the MVP; a Python **separator + WhisperX** worker joins (container 2) for stems.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 > **YouTube search** uses keyless `yt-dlp` (bundled in the Docker image). Core invokes it **by name
 > via PATH**, so in bare local dev without `yt-dlp` installed, YouTube search silently returns
@@ -123,7 +123,7 @@ docs/              ← design docs + ROADMAP + UI mocks/screenshots
 | `FFMPEG_BIN` | `ffmpeg` | ffmpeg binary used for recompression |
 
 **Storage classes** — split by *replaceability* so they can live on different volumes
-(see [`docs/media-storage-spec.md`](docs/media-storage-spec.md)). Each defaults under `MEDIA_DIR`.
+(see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)). Each defaults under `MEDIA_DIR`.
 
 | Env | Default | Holds |
 |---|---|---|

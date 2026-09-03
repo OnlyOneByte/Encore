@@ -18,7 +18,7 @@
 // PURE: no network, no I/O, no clock. The five rows above are the first five test cases.
 //
 // This is a HEURISTIC and it says so in its output. Every result carries `by` (which rule fired) and
-// `confidence`, matching the provenance convention in docs/media-storage-spec.md §4 — so a caller can
+// `confidence`, matching the provenance convention in docs/ARCHITECTURE.md — so a caller can
 // treat a confident parse and a guess differently instead of storing both as fact.
 
 /** Which rule produced the parse. Recorded as provenance on the canonical fields. */

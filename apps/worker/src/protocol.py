@@ -2,7 +2,7 @@
 
 No sockets, no torch, no asyncio: this is the unit-tested core (mirrors the TS pure-vs-I/O split,
 e.g. dispatch.ts vs worker-hub.ts). The I/O shell is dial_home.py. See
-docs/job-lifecycle-and-worker-protocol.md §5 for the wire contract.
+docs/ARCHITECTURE.md for the wire contract.
 """
 from __future__ import annotations
 
