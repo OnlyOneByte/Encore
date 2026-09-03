@@ -27,6 +27,32 @@ describe('SettingsRepository', () => {
 		expect(repo.getGlobal().defaultModel).toBe('htdemucs_ft');
 	});
 
+	it('the chosen FETCHER survives a write and a re-read', () => {
+		// REGRESSION: `defaultFetcher` existed on GlobalSettings and in the normalizer, but there was no
+		// column and `getGlobal` never selected it — so every read fell back to the shared default and a
+		// written choice vanished. Invisible while yt-dlp is the only implemented fetcher, and a silently
+		// wrong answer the moment a second one lands.
+		const repo = freshRepo();
+		expect(repo.getGlobal().defaultFetcher).toBe(DEFAULT_GLOBAL_SETTINGS.defaultFetcher);
+		const saved = repo.setGlobal({ defaultFetcher: 'ytdlp' });
+		expect(saved.defaultFetcher).toBe('ytdlp');
+		expect(repo.getGlobal().defaultFetcher).toBe('ytdlp');
+	});
+
+	it('`local` is refused as a deployment default, on write AND on a stale read', () => {
+		// `local` describes one media's bytes, so storing it as the default would mean "never download
+		// anything". Re-normalising on READ matters too: a value written by an older build, or a fetcher
+		// de-whitelisted between releases, must degrade rather than be served.
+		const repo = freshRepo();
+		expect(repo.setGlobal({ defaultFetcher: 'local' as never }).defaultFetcher).toBe(
+			DEFAULT_GLOBAL_SETTINGS.defaultFetcher
+		);
+		expect(repo.setGlobal({ defaultFetcher: 'librespot' as never }).defaultFetcher).toBe(
+			DEFAULT_GLOBAL_SETTINGS.defaultFetcher
+		);
+		expect(repo.getGlobal().defaultFetcher).toBe(DEFAULT_GLOBAL_SETTINGS.defaultFetcher);
+	});
+
 	it('a partial patch preserves the untouched fields', () => {
 		const repo = freshRepo();
 		repo.setGlobal({ defaultModel: 'htdemucs_ft' });

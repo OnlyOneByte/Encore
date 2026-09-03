@@ -130,7 +130,7 @@ export class WorkerHub {
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#d.getSettings?.();
-		// Flip the media to ready (playMode→file, instrumentalRef→what the worker wrote, stemStatus→
+		// Flip the media to ready (instrumentalRef→what the worker wrote, stemStatus→
 		// ready) so rotation's isEntryReady returns true and the held entry becomes playable.
 		// Separation jobs report WHICH engine+model produced the artifact, so an upgrade can be refused
 		// when it would not actually improve on what is published.
