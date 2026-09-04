@@ -37,6 +37,8 @@ export type ServerEvent =
   // `score` is a 0..100 rolling accuracy; hits/total are the scored (voiced-reference) frames.
   | { type: 'score:update'; entryId: string; singerId: string; score: number; hits: number; total: number }
   | { type: 'singer:joined'; singer: Singer }
+  | { type: 'singer:updated'; singer: PublicSinger }
+  | { type: 'singer:left'; singerId: string }
   // Who is in the room RIGHT NOW — the full set of singer ids holding a live socket,
   // broadcast whenever it changes. Full-set (not a delta) on purpose: it is a handful of ids, and
   // an idempotent snapshot cannot drift the way an add/remove stream can after a dropped frame.
