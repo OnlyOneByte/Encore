@@ -30,8 +30,12 @@ export interface TvScreenInput {
 	current: QueueEntry | null;
 	/** Every queue entry the TV knows about (used to tell "empty" from "queued but not playable"). */
 	entries: QueueEntry[];
-	/** How many singers hold a live socket right now (presence). */
-	onlineCount: number;
+	/**
+	 * How many singers are IN THE ROOM — holding a socket *or* away with one still counted. Not the
+	 * socket count: a room where everyone has pocketed their phone is still a room with people in it,
+	 * and treating it as empty is what used to send the TV back to the attract screen mid-party.
+	 */
+	inRoomCount: number;
 }
 
 /**
@@ -46,32 +50,42 @@ export interface TvScreenInput {
  * the screen back to "scan to join" would imply the queue was lost.
  */
 export function tvScreen(input: TvScreenInput): TvScreen {
-	const { playerState, current, entries, onlineCount } = input;
+	const { playerState, current, entries, inRoomCount } = input;
 	if (current && playerState !== 'waiting') return 'playing';
 	if (playerState === 'waiting') return 'waiting';
-	if (onlineCount > 0 || entries.length > 0) return 'lobby';
+	if (inRoomCount > 0 || entries.length > 0) return 'lobby';
 	return 'attract';
 }
 
-/** A singer as the TV roster needs them: display name + their identity color. */
+/** A singer as the TV roster needs them: display name, identity color, and whether they are reachable. */
 export interface RosterMember {
 	id: string;
 	displayName: string;
 	color: string;
+	/** `here` holds a live socket; `away` is in the room but unreachable (locked phone, pocket). */
+	state: 'here' | 'away';
 }
 
 /**
- * Build the lobby roster: present singers only, in arrival order, capped so a big party cannot
- * push chips over the rest of the screen. The overflow count is returned rather than rendered
- * so the caller decides the wording.
+ * Build the lobby roster: everyone in the room, capped so a big party cannot push chips over the rest
+ * of the screen. The overflow count is returned rather than rendered so the caller decides the wording.
+ *
+ * `here` singers are listed before `away` ones, so the cap sheds the unreachable first: if only eight
+ * chips fit, the eight worth showing are the people who can actually take a turn right now.
  */
 export function lobbyRoster(
-	online: string[],
+	here: string[],
+	away: string[],
 	singers: Map<string, { id: string; displayName: string; color: string }>,
 	max = 8
 ): { shown: RosterMember[]; overflow: number } {
-	// A presence id with no directory entry yet (presence arrived before queue:sync) is skipped
+	// A membership id with no directory entry yet (presence arrived before queue:sync) is skipped
 	// rather than rendered as "Someone" — a nameless chip is worse than one fewer chip.
-	const known = online.map((id) => singers.get(id)).filter((s): s is RosterMember => !!s);
+	const resolve = (ids: string[], state: 'here' | 'away'): RosterMember[] =>
+		ids
+			.map((id) => singers.get(id))
+			.filter((s): s is { id: string; displayName: string; color: string } => !!s)
+			.map((s) => ({ ...s, state }));
+	const known = [...resolve(here, 'here'), ...resolve(away, 'away')];
 	return { shown: known.slice(0, max), overflow: Math.max(0, known.length - max) };
 }

@@ -16,8 +16,7 @@
 		joinUrl: string;
 		placement?: 'hero' | 'corner';
 		/** How many singers are in the room right now; shown on the corner card. Hidden when 0. */
-		onlineCount?: number;
-		/** Pixel size of the QR image itself. */
+		onlineCount?: number;		/** Pixel size of the QR image itself. */
 		size?: number;
 	}
 

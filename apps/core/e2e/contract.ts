@@ -79,7 +79,7 @@ export const PRESET_COLOUR_NAMES = [
 ] as const;
 
 export const HOOKS: Hook[] = [
-	// join
+	// join (the colour picker itself is a shared component — see ColourPicker.svelte)
 	{
 		id: 'nameInput',
 		file: 'src/routes/join/+page.svelte',
@@ -88,19 +88,19 @@ export const HOOKS: Hook[] = [
 	},
 	{
 		id: 'swatchRadiogroup',
-		file: 'src/routes/join/+page.svelte',
+		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: 'aria-label={colorName(c)}',
 		why: 'presets are selected by accessible name; the old flow used a hex and broke'
 	},
 	{
 		id: 'colourNames',
-		file: 'src/routes/join/+page.svelte',
+		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: "'violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'",
 		why: 'PRESET_COLOUR_NAMES here must match the names the picker announces'
 	},
 	{
 		id: 'hueSlider',
-		file: 'src/routes/join/+page.svelte',
+		file: 'src/lib/components/ColourPicker.svelte',
 		anchor: 'aria-label="Pick your own color by hue"',
 		why: 'the flow proves a wheel hue survives the round trip, not just a preset'
 	},

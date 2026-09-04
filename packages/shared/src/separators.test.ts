@@ -11,8 +11,13 @@ import {
 	normalizeRoomSettings,
 	TV_PROGRESS_STYLES,
 	TV_BACKGROUND_STYLES,
+	TV_VISUALIZERS,
+	isTvVisualizer,
 	isTvBackgroundStyle,
 	DEFAULT_ROOM_SETTINGS,
+	MIN_SONG_INTRO_MS,
+	MAX_SONG_INTRO_MS,
+	effectiveSongIntroMs,
 	resolveCookSeparator,
 	resolveLyricsPresentation,
 	separatorCost,
@@ -191,17 +196,45 @@ describe('normalizeGlobalSettings', () => {
 });
 
 describe('room scope', () => {
-	it('defaults to a usable interstitial and no quality ceiling', () => {
+	it('defaults to a usable song intro and no quality ceiling', () => {
 		expect(normalizeRoomSettings(undefined)).toEqual(DEFAULT_ROOM_SETTINGS);
 		expect(DEFAULT_ROOM_SETTINGS.maxQualityRank).toBeNull();
+		expect(DEFAULT_ROOM_SETTINGS.songIntroEnabled).toBe(true);
 	});
 
-	it('clamps a nonsensical interstitial rather than rejecting the whole room', () => {
-		// an unbounded interstitial would strand the TV between songs
-		expect(normalizeRoomSettings({ interstitialMs: -500 }).interstitialMs).toBe(0);
-		expect(normalizeRoomSettings({ interstitialMs: 999_999 }).interstitialMs).toBe(15_000);
-		expect(normalizeRoomSettings({ interstitialMs: 1200 }).interstitialMs).toBe(1200);
-		expect(normalizeRoomSettings({ interstitialMs: NaN }).interstitialMs).toBe(DEFAULT_ROOM_SETTINGS.interstitialMs);
+	it('clamps a nonsensical song intro rather than rejecting the whole room', () => {
+		// an unbounded intro would strand the TV between songs
+		expect(normalizeRoomSettings({ songIntroMs: -500 }).songIntroMs).toBe(MIN_SONG_INTRO_MS);
+		expect(normalizeRoomSettings({ songIntroMs: 999_999 }).songIntroMs).toBe(MAX_SONG_INTRO_MS);
+		expect(normalizeRoomSettings({ songIntroMs: 1200 }).songIntroMs).toBe(1200);
+		expect(normalizeRoomSettings({ songIntroMs: NaN }).songIntroMs).toBe(DEFAULT_ROOM_SETTINGS.songIntroMs);
+	});
+
+	it('0 is NOT a valid duration — the toggle owns off, so there is one way to say it', () => {
+		expect(normalizeRoomSettings({ songIntroMs: 0 }).songIntroMs).toBe(MIN_SONG_INTRO_MS);
+	});
+
+	it('the toggle survives a duration change, which is why it is not a sentinel', () => {
+		// The old 0-means-off encoding destroyed the duration on the way off; this is the regression.
+		const off = normalizeRoomSettings({ songIntroEnabled: false, songIntroMs: 1500 });
+		expect(off.songIntroMs).toBe(1500);
+		expect(effectiveSongIntroMs(off)).toBe(0); // the TV hard-cuts
+		const backOn = normalizeRoomSettings({ songIntroEnabled: true }, off);
+		expect(backOn.songIntroMs).toBe(1500); // the dialled-in timing came back
+		expect(effectiveSongIntroMs(backOn)).toBe(1500);
+	});
+
+	it('a non-boolean toggle keeps the room current choice', () => {
+		const off = normalizeRoomSettings({ songIntroEnabled: false });
+		expect(normalizeRoomSettings({ songIntroEnabled: 'yes' as never }, off).songIntroEnabled).toBe(false);
+	});
+
+	it('clamps the presence grace window, where 0 IS meaningful', () => {
+		expect(normalizeRoomSettings({ presenceGraceMinutes: 0 }).presenceGraceMinutes).toBe(0);
+		expect(normalizeRoomSettings({ presenceGraceMinutes: -10 }).presenceGraceMinutes).toBe(0);
+		expect(normalizeRoomSettings({ presenceGraceMinutes: 99_999 }).presenceGraceMinutes).toBe(1440);
+		expect(normalizeRoomSettings({ presenceGraceMinutes: 45 }).presenceGraceMinutes).toBe(45);
+		expect(DEFAULT_ROOM_SETTINGS.presenceGraceMinutes).toBe(90);
 	});
 
 	it('treats a non-positive or non-numeric ceiling as no ceiling', () => {
@@ -498,7 +531,9 @@ describe('normalizeRoomSettings — lyrics text', () => {
 
 describe('tv background styles', () => {
 	it('leads with the opt-out so the default is not mistaken for a treatment', () => {
-		expect(TV_BACKGROUND_STYLES.map((s) => s.id)).toEqual(['off', 'gradient', 'singer', 'solid']);
+		// Ordering of the whole list is asserted by the `tv visualizers` block; this owns only the
+		// invariant that the opt-out comes first, so adding a style does not touch two tests.
+		expect(TV_BACKGROUND_STYLES[0]!.id).toBe('off');
 		expect(TV_BACKGROUND_STYLES.every((s) => s.label && s.note)).toBe(true);
 	});
 
@@ -529,7 +564,7 @@ describe('tv background styles', () => {
 	});
 
 	it('quantises the hue to the wheel step and wraps instead of rejecting', () => {
-		// an angle always has a meaning once wrapped, so clamping beats refusing (interstitialMs precedent)
+		// an angle always has a meaning once wrapped, so clamping beats refusing (song-intro precedent)
 		expect(normalizeRoomSettings({ tvBackgroundHue: 0 }).tvBackgroundHue).toBe(0);
 		expect(normalizeRoomSettings({ tvBackgroundHue: 7 }).tvBackgroundHue).toBe(0); // nearer 0 than 15
 		expect(normalizeRoomSettings({ tvBackgroundHue: 8 }).tvBackgroundHue).toBe(15); // rounds up
@@ -555,5 +590,53 @@ describe('tv background styles', () => {
 			expect(h).toBeGreaterThanOrEqual(0);
 			expect(h).toBeLessThan(360);
 		}
+	});
+});
+
+describe('tv visualizers', () => {
+	it('the visualizer style is offered last, after the plain colour choices', () => {
+		expect(TV_BACKGROUND_STYLES.map((s) => s.id)).toEqual(['off', 'gradient', 'singer', 'solid', 'visualizer']);
+	});
+
+	it('defaults to plasma — the one every old media player had', () => {
+		expect(DEFAULT_ROOM_SETTINGS.tvVisualizer).toBe('plasma');
+		// and the default background is still off, so adding this changes nothing on an existing box
+		expect(DEFAULT_ROOM_SETTINGS.tvBackgroundStyle).toBe('off');
+	});
+
+	it('guards the type at the boundary', () => {
+		expect(isTvVisualizer('plasma')).toBe(true);
+		expect(isTvVisualizer('PLASMA')).toBe(false);
+		expect(isTvVisualizer('bars')).toBe(false);
+		expect(isTvVisualizer(null)).toBe(false);
+		expect(isTvVisualizer(7)).toBe(false);
+		expect(isTvVisualizer(undefined)).toBe(false);
+	});
+
+	it('keeps the room current visualizer when a write is junk', () => {
+		expect(normalizeRoomSettings({ tvVisualizer: 'moire' }).tvVisualizer).toBe('moire');
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'starfield' as const };
+		expect(normalizeRoomSettings({ tvVisualizer: 'nope' as never }, room).tvVisualizer).toBe('starfield');
+	});
+
+	it('the variant is remembered while another background is selected', () => {
+		// Switching away from the visualizer and back must not forget the choice — the same property
+		// tvBackgroundHue has when the style is not `solid`.
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'visualizer' as const, tvVisualizer: 'lissajous' as const };
+		const away = normalizeRoomSettings({ tvBackgroundStyle: 'off' }, room);
+		expect(away.tvVisualizer).toBe('lissajous');
+		expect(normalizeRoomSettings({ tvBackgroundStyle: 'visualizer' }, away).tvVisualizer).toBe('lissajous');
+	});
+
+	it('a bad visualizer write never discards an unrelated choice', () => {
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'moire' as const, tvBackgroundHue: 75, songIntroMs: 7000 };
+		const out = normalizeRoomSettings({ tvVisualizer: 'garbage' as never }, room);
+		expect(out.tvVisualizer).toBe('moire');
+		expect(out.tvBackgroundHue).toBe(75);
+		expect(out.songIntroMs).toBe(7000);
+	});
+
+	it('every visualizer id is a plausible column value — no spaces or casing surprises', () => {
+		for (const v of TV_VISUALIZERS) expect(v.id).toMatch(/^[a-z][a-z0-9]*$/);
 	});
 });

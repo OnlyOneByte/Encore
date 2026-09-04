@@ -21,30 +21,46 @@ export interface WsClientOptions {
 	onEvent: (e: ServerEvent) => void; // server events for the store to apply
 	getLastRev: () => number; // store's current rev (for hello + gap detection)
 	onResyncNeeded?: () => void; // fired when a gap is detected (store may also resync on sync)
+	/** Fired on every connected-state edge, so the UI can show an offline cue. */
+	onConnectionChange?: (connected: boolean) => void;
 	heartbeatMs?: number;
+	/**
+	 * How long a heartbeat may go unanswered before this socket is presumed dead. The server answers
+	 * every `hello` with a `queue:sync`, so silence past this window means the socket is gone even
+	 * though it never fired `close` — see #presumeDead.
+	 */
+	livenessTimeoutMs?: number;
 	backoff?: number[]; // reconnect delays (ms), last value repeats
+	/** Bind page-lifecycle listeners (visibility/online/pageshow/resume). No-op outside a browser. */
+	bindLifecycle?: boolean;
 	setTimeoutFn?: typeof setTimeout;
 	clearTimeoutFn?: typeof clearTimeout;
 }
 
 const defaultConnect = (url: string): MinimalSocket => new WebSocket(url) as unknown as MinimalSocket;
 
-type ResolvedOptions = Required<Omit<WsClientOptions, 'onResyncNeeded'>> &
-	Pick<WsClientOptions, 'onResyncNeeded'>;
+type ResolvedOptions = Required<Omit<WsClientOptions, 'onResyncNeeded' | 'onConnectionChange'>> &
+	Pick<WsClientOptions, 'onResyncNeeded' | 'onConnectionChange'>;
 
 export class WsClient {
 	#opt: ResolvedOptions;
 	#sock: MinimalSocket | null = null;
 	#hbTimer: ReturnType<typeof setTimeout> | null = null;
 	#reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+	#livenessTimer: ReturnType<typeof setTimeout> | null = null;
 	#attempt = 0;
 	#closedByUs = false;
+	/** A beat is out and unanswered. Any inbound frame clears it; the watchdog acts if it doesn't. */
+	#awaitingAck = false;
+	#lifecycleBound = false;
 	connected = false;
 
 	constructor(opt: WsClientOptions) {
 		this.#opt = {
 			connect: defaultConnect,
 			heartbeatMs: 15_000,
+			livenessTimeoutMs: 10_000,
+			bindLifecycle: true,
 			backoff: [250, 500, 1000, 2000, 5000],
 			// Wrapped, NOT `setTimeout` bare: stored on an object and called as
 			// `this.#opt.setTimeoutFn(...)`, a bare reference gets `this === #opt`, and the browser's
@@ -55,46 +71,68 @@ export class WsClient {
 			setTimeoutFn: ((fn: () => void, ms?: number) => setTimeout(fn, ms)) as typeof setTimeout,
 			clearTimeoutFn: ((id: ReturnType<typeof setTimeout>) => clearTimeout(id)) as typeof clearTimeout,
 			onResyncNeeded: undefined,
+			onConnectionChange: undefined,
 			...opt
 		} as ResolvedOptions;
 	}
 
 	open(): void {
 		this.#closedByUs = false;
+		this.#bindLifecycle();
 		this.#dial();
 	}
 
 	close(): void {
 		this.#closedByUs = true;
+		this.#unbindLifecycle();
 		this.#clearTimers();
 		this.#sock?.close();
 		this.#sock = null;
-		this.connected = false;
+		this.#setConnected(false);
 	}
 
 	send(e: ClientEvent): void {
 		this.#sock?.send(JSON.stringify(e));
 	}
 
+	/**
+	 * Re-verify the connection after the page was frozen or the network came back.
+	 *
+	 * A socket frozen with its page is indistinguishable from a live one — `connected` stays true and
+	 * no `close` fires until the OS gets round to it, which on mobile can be never. So a wake does not
+	 * trust `connected`: it beats immediately and lets the liveness watchdog settle the question. Bound
+	 * to visibilitychange/online/pageshow/resume, and callable directly (which is how it is tested).
+	 */
+	wake(): void {
+		if (this.#closedByUs) return;
+		this.#attempt = 0; // a wake is not a retry — it must not inherit a capped backoff delay
+		if (!this.connected) {
+			this.#clearTimers();
+			this.#dial();
+			return;
+		}
+		this.#beat();
+	}
+
 	#dial(): void {
 		const sock = this.#opt.connect(this.#opt.url);
 		this.#sock = sock;
 		sock.onopen = () => {
-			this.connected = true;
+			this.#setConnected(true);
 			this.#attempt = 0;
 			// resync handshake: tell server our last rev; it replies queue:sync
-			this.send({ type: 'hello', lastRev: this.#opt.getLastRev() });
-			this.#scheduleHeartbeat();
+			this.#beat();
 		};
 		sock.onmessage = (ev) => this.#onMessage(ev.data);
 		sock.onclose = () => {
-			this.connected = false;
+			this.#setConnected(false);
 			this.#clearTimers();
 			if (!this.#closedByUs) this.#scheduleReconnect();
 		};
 	}
 
 	#onMessage(data: string): void {
+		this.#awaitingAck = false; // any inbound frame proves the socket is alive
 		let e: ServerEvent;
 		try {
 			e = JSON.parse(data);
@@ -113,11 +151,47 @@ export class WsClient {
 		this.#opt.onEvent(e);
 	}
 
+	/** One heartbeat: hello (doubles as ping), arm the watchdog, schedule the next beat. */
+	#beat(): void {
+		this.#awaitingAck = true;
+		this.send({ type: 'hello', lastRev: this.#opt.getLastRev() });
+		this.#armLiveness();
+		this.#scheduleHeartbeat();
+	}
+
 	#scheduleHeartbeat(): void {
-		this.#hbTimer = this.#opt.setTimeoutFn(() => {
-			this.send({ type: 'hello', lastRev: this.#opt.getLastRev() }); // doubles as ping
-			this.#scheduleHeartbeat();
-		}, this.#opt.heartbeatMs);
+		if (this.#hbTimer) this.#opt.clearTimeoutFn(this.#hbTimer);
+		this.#hbTimer = this.#opt.setTimeoutFn(() => this.#beat(), this.#opt.heartbeatMs);
+	}
+
+	#armLiveness(): void {
+		if (this.#livenessTimer) this.#opt.clearTimeoutFn(this.#livenessTimer);
+		this.#livenessTimer = this.#opt.setTimeoutFn(() => {
+			if (this.#closedByUs || !this.#awaitingAck) return;
+			this.#presumeDead();
+		}, this.#opt.livenessTimeoutMs);
+	}
+
+	/**
+	 * Tear down a socket that stopped answering but never closed. Handlers are detached BEFORE the
+	 * close so the socket's own `onclose` cannot schedule a second reconnect on top of ours.
+	 */
+	#presumeDead(): void {
+		const sock = this.#sock;
+		this.#sock = null;
+		this.#setConnected(false);
+		this.#clearTimers();
+		if (sock) {
+			sock.onopen = null;
+			sock.onclose = null;
+			sock.onmessage = null;
+			try {
+				sock.close();
+			} catch {
+				// already gone — the point was to stop using it, which we have
+			}
+		}
+		this.#scheduleReconnect();
 	}
 
 	#scheduleReconnect(): void {
@@ -127,10 +201,43 @@ export class WsClient {
 		this.#reconnectTimer = this.#opt.setTimeoutFn(() => this.#dial(), delay);
 	}
 
+	#setConnected(next: boolean): void {
+		if (this.connected === next) return;
+		this.connected = next;
+		this.#opt.onConnectionChange?.(next);
+	}
+
 	#clearTimers(): void {
 		if (this.#hbTimer) this.#opt.clearTimeoutFn(this.#hbTimer);
 		if (this.#reconnectTimer) this.#opt.clearTimeoutFn(this.#reconnectTimer);
+		if (this.#livenessTimer) this.#opt.clearTimeoutFn(this.#livenessTimer);
 		this.#hbTimer = null;
 		this.#reconnectTimer = null;
+		this.#livenessTimer = null;
+		this.#awaitingAck = false;
+	}
+
+	#onWake = () => this.wake();
+	#onVisibility = () => {
+		if (typeof document !== 'undefined' && document.visibilityState === 'visible') this.wake();
+	};
+
+	#bindLifecycle(): void {
+		if (!this.#opt.bindLifecycle || this.#lifecycleBound) return;
+		if (typeof document === 'undefined' || typeof window === 'undefined') return;
+		document.addEventListener('visibilitychange', this.#onVisibility);
+		document.addEventListener('resume', this.#onWake); // Page Lifecycle: thawed after freeze
+		window.addEventListener('pageshow', this.#onWake); // back/forward cache restore
+		window.addEventListener('online', this.#onWake);
+		this.#lifecycleBound = true;
+	}
+
+	#unbindLifecycle(): void {
+		if (!this.#lifecycleBound) return;
+		document.removeEventListener('visibilitychange', this.#onVisibility);
+		document.removeEventListener('resume', this.#onWake);
+		window.removeEventListener('pageshow', this.#onWake);
+		window.removeEventListener('online', this.#onWake);
+		this.#lifecycleBound = false;
 	}
 }
