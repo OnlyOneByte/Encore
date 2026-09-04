@@ -66,6 +66,7 @@ export class SettingsRepository {
 		const row = this.db.select().from(roomSettings).where(eq(roomSettings.roomId, roomId)).all()[0];
 		if (!row) return { ...DEFAULT_ROOM_SETTINGS };
 		return normalizeRoomSettings({
+			queueOrder: row.queueOrder,
 			tvProgressStyle: row.tvProgressStyle,
 			tvBackgroundStyle: row.tvBackgroundStyle,
 			tvBackgroundHue: row.tvBackgroundHue,

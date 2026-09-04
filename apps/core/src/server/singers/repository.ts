@@ -59,6 +59,17 @@ export class SingerRepository {
 		return this.byId(id);
 	}
 
+	/**
+	 * Stamp that this singer has STARTED a song. Drives the `least-recently-sung` ordering.
+	 *
+	 * Records only that they sang and when — never what — so it stays inside the same privacy line the
+	 * `plays` table draws (no singer id there, deliberately). Idempotent by nature: called from the
+	 * one place a song becomes current, and a repeat write with the same timestamp changes nothing.
+	 */
+	markSang(singerId: string, now: number): void {
+		this.#db.update(singers).set({ lastSungAt: now }).where(eq(singers.id, singerId)).run();
+	}
+
 	/** All singers, without session tokens (safe to broadcast). */
 	listPublic(): Omit<Singer, 'sessionToken'>[] {
 		return this.#db.select().from(singers).all().map(({ sessionToken: _t, ...rest }) => rest);
