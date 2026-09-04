@@ -10,7 +10,7 @@ import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import { getApp } from '$server/app';
 import { joinOrigin, fallbackJoinOrigin } from '$server/public-origin';
-import type { TvProgressStyle } from '@encore/shared';
+import { DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings } from '@encore/shared';
 
 export const load: PageServerLoad = async ({ url, request }) => {
 	const origin = joinOrigin(request, url);
@@ -23,22 +23,28 @@ export const load: PageServerLoad = async ({ url, request }) => {
 		width: 320,
 		color: { dark: '#0b0b12', light: '#ffffff' }
 	});
-	// Interstitial reveal duration (ms); 0 = pure gapless hard-cut. Room-scoped, because pacing is a
-	// property of the party. INTERSTITIAL_MS remains the deployment default a room starts from, so an
-	// existing install behaves as before until someone moves the slider. The TV also applies
-	// settings:changed live, so a change mid-party does not need a reload.
+	// Room pacing and presentation, plus the global layer the presentation is clamped against.
+	//
+	// Returned as ONE `EffectiveSettings` rather than field-by-field: the TV needs both layers to call
+	// `resolveLyricsPresentation`, and copying individual fields out here and again in the
+	// `settings:changed` branch is two lists that drift the moment a field is added.
+	//
+	// INTERSTITIAL_MS remains the deployment default a room starts from, so an existing install behaves
+	// as before until someone moves the slider. The TV also applies settings:changed live, so a change
+	// mid-party does not need a reload.
 	const envDefault = Math.max(0, Number(process.env.INTERSTITIAL_MS ?? 2500));
-	let interstitialMs = envDefault;
-	let tvProgressStyle: TvProgressStyle = 'card';
+	let settings: EffectiveSettings = {
+		...DEFAULT_EFFECTIVE_SETTINGS,
+		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, interstitialMs: envDefault }
+	};
 	try {
-		const room = getApp().settings.getRoom();
-		interstitialMs = room.interstitialMs;
-		tvProgressStyle = room.tvProgressStyle;
+		settings = getApp().settings.getEffective();
 	} catch {
 		// The app singleton is absent when this route is prerendered or unit-loaded; the env default is
 		// the correct answer there rather than a failed load.
 	}
 	// `joinOrigin` rides along so the TV can tell a settings change that moved the join address from one
 	// that did not: the QR is a server-rendered image, so only that case needs the load to re-run.
-	return { joinUrl, qrDataUrl, joinOrigin: origin, joinFallbackOrigin: fallback, interstitialMs, tvProgressStyle };
+	// `interstitialMs`/`tvProgressStyle` are no longer returned separately — they are in `settings`.
+	return { joinUrl, qrDataUrl, joinOrigin: origin, joinFallbackOrigin: fallback, settings };
 };

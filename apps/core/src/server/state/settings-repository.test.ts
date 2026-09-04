@@ -184,3 +184,69 @@ describe('SettingsRepository global scope: join origin', () => {
 		expect(repo.setGlobal({ defaultModel: 'htdemucs_ft' }).joinOrigin).toBe('http://10.69.1.169:3000');
 	});
 });
+
+describe('SettingsRepository room scope: lyrics presentation', () => {
+	it('defaults reproduce the previously-hardcoded TV', () => {
+		// The migration is additive with these as column defaults, so a room that existed before this
+		// feature must read back identical to how it rendered.
+		const room = freshRepo().getRoom();
+		expect(room.lyricsBall).toBe('bounce');
+		expect(room.lyricsHighlight).toBe('word');
+		expect(room.lyricsLeadMs).toBe(300);
+	});
+
+	it('round-trips all three through a write and a re-read', () => {
+		const repo = freshRepo();
+		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'line', lyricsLeadMs: 550 });
+		const room = repo.getRoom();
+		expect(room.lyricsBall).toBe('underline');
+		expect(room.lyricsHighlight).toBe('line');
+		expect(room.lyricsLeadMs).toBe(550);
+	});
+
+	it('a patch touching only the ball leaves the highlight and lead alone', () => {
+		// Same contract as every other room field: a per-field patch over CURRENT values, so a stale
+		// Settings page cannot clobber a choice it never showed.
+		const repo = freshRepo();
+		repo.setRoom({ lyricsHighlight: 'off', lyricsLeadMs: 900 });
+		repo.setRoom({ lyricsBall: 'steady' });
+		const room = repo.getRoom();
+		expect(room.lyricsBall).toBe('steady');
+		expect(room.lyricsHighlight).toBe('off');
+		expect(room.lyricsLeadMs).toBe(900);
+	});
+
+	it('an invalid style keeps the room CURRENT value rather than resetting to the default', () => {
+		const repo = freshRepo();
+		repo.setRoom({ lyricsBall: 'underline' });
+		repo.setRoom({ lyricsBall: 'disco' as never });
+		expect(repo.getRoom().lyricsBall).toBe('underline');
+	});
+
+	it('an out-of-range lead is clamped on write, not persisted raw', () => {
+		const repo = freshRepo();
+		repo.setRoom({ lyricsLeadMs: 99_999 });
+		expect(repo.getRoom().lyricsLeadMs).toBe(1500);
+		repo.setRoom({ lyricsLeadMs: -400 });
+		expect(repo.getRoom().lyricsLeadMs).toBe(0);
+	});
+
+	it('two rooms hold different presentation, since this is per-party', () => {
+		const repo = freshRepo();
+		repo.setRoom({ lyricsHighlight: 'line' }, 'loud-room');
+		repo.setRoom({ lyricsHighlight: 'word' }, 'quiet-room');
+		expect(repo.getRoom('loud-room').lyricsHighlight).toBe('line');
+		expect(repo.getRoom('quiet-room').lyricsHighlight).toBe('word');
+	});
+
+	it('presentation is untouched by a global lyrics-engine write', () => {
+		// The two layers answer different questions; a syncMode change must not rewrite the room's
+		// rendering choice, only what the resolver can honour.
+		const repo = freshRepo();
+		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'word' });
+		repo.setGlobal({ syncMode: 'lines' });
+		const room = repo.getRoom();
+		expect(room.lyricsBall).toBe('underline');
+		expect(room.lyricsHighlight).toBe('word');
+	});
+});

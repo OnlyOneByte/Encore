@@ -137,3 +137,135 @@ export function getSyncMode(id: string): SyncMode | undefined {
 export function isValidSyncMode(id: string): id is SyncModeId {
 	return getSyncMode(id) !== undefined;
 }
+
+// ── presentation ────────────────────────────────────────────────────────────
+// The two knobs above are PRODUCTION: they decide what timing data a cook produces, and they are
+// global because they cost model weights and RAM. The two below are PRESENTATION: they decide how
+// data that already exists gets drawn on one room's TV, and they are room-scoped for the same reason
+// `tvProgressStyle` is — a staging choice for one party's screen.
+//
+// They live here rather than beside `tvProgressStyle` in separators.ts because they are COUPLED to
+// `SYNC_MODES` above: a room can only render at or below the granularity the global mode produced.
+// Keeping the registry and the constraint it is checked against in one file is what stops the two
+// drifting. The resolver that applies the clamp is `resolveLyricsPresentation` in separators.ts,
+// which is where `EffectiveSettings` lives.
+
+/**
+ * The mark that tracks the word being sung.
+ *
+ * `needsWords` is the load-bearing field, not documentation: every marker except `off` has to sit on
+ * a specific word, so under `syncMode: 'lines'` there is no word to sit on and the mark is not merely
+ * ugly but unrenderable. The resolver reads this rather than re-deriving the rule per style.
+ */
+export type LyricsBallStyleId = 'bounce' | 'steady' | 'underline' | 'off';
+
+export interface LyricsBallStyle {
+	id: LyricsBallStyleId;
+	label: string;
+	/** Whether this mark requires per-word timings to have somewhere to land. */
+	needsWords: boolean;
+	note: string;
+}
+
+export const LYRICS_BALL_STYLES: readonly LyricsBallStyle[] = [
+	{
+		id: 'bounce',
+		label: 'Bouncing ball',
+		needsWords: true,
+		note: 'A dot above the word being sung, bouncing. The classic.'
+	},
+	{
+		id: 'steady',
+		label: 'Steady dot',
+		needsWords: true,
+		note: 'The same dot without the bounce. Calmer on a big screen across a room.'
+	},
+	{
+		id: 'underline',
+		label: 'Underline',
+		needsWords: true,
+		note: 'A bar under the word being sung. Reads as position without anything moving.'
+	},
+	{
+		id: 'off',
+		label: 'No marker',
+		needsWords: false,
+		note: 'Colour alone carries the current word. The least busy option, and the only one line sync can honour.'
+	}
+];
+
+export const DEFAULT_LYRICS_BALL: LyricsBallStyleId = 'bounce';
+
+export function getLyricsBallStyle(id: string): LyricsBallStyle | undefined {
+	return LYRICS_BALL_STYLES.find((s) => s.id === id);
+}
+
+export function isValidLyricsBall(id: unknown): id is LyricsBallStyleId {
+	return typeof id === 'string' && getLyricsBallStyle(id) !== undefined;
+}
+
+/**
+ * How the current lyric is lit.
+ *
+ * `granularity` mirrors `SyncMode.granularity` deliberately — that is the axis the clamp compares
+ * along. A `'word'` treatment under a `'line'` sync mode is asking for data that was never computed.
+ *
+ * Deliberately NOT included: a left-to-right sweep across each word. All an aligner gives us is a
+ * start and an end per word, so a partial wipe animates sub-word detail nobody measured — and on ASR
+ * text those bounds are themselves approximate. `SYNC_MODES` above states what forced alignment buys
+ * as "per-word highlighting", which is word-level marks, not sub-word ones.
+ */
+export type LyricsHighlightId = 'word' | 'line' | 'off';
+
+export interface LyricsHighlight {
+	id: LyricsHighlightId;
+	label: string;
+	/** The timing granularity this treatment needs. Compared against the global sync mode's. */
+	granularity: 'word' | 'line';
+	note: string;
+}
+
+export const LYRICS_HIGHLIGHTS: readonly LyricsHighlight[] = [
+	{
+		id: 'word',
+		label: 'Word by word',
+		granularity: 'word',
+		note: 'Each word lights as it comes: dim ahead, pink now, white once sung.'
+	},
+	{
+		id: 'line',
+		label: 'Whole line',
+		granularity: 'line',
+		note: 'Lights the current line and no more. Better when word timing is patchy — a stale word held for five seconds reads as broken, a line does not.'
+	},
+	{
+		id: 'off',
+		label: 'Just the words',
+		granularity: 'line',
+		note: 'No highlight at all. The scrolling reel alone shows where you are.'
+	}
+];
+
+export const DEFAULT_LYRICS_HIGHLIGHT: LyricsHighlightId = 'word';
+
+export function getLyricsHighlight(id: string): LyricsHighlight | undefined {
+	return LYRICS_HIGHLIGHTS.find((h) => h.id === id);
+}
+
+export function isValidLyricsHighlight(id: unknown): id is LyricsHighlightId {
+	return typeof id === 'string' && getLyricsHighlight(id) !== undefined;
+}
+
+/**
+ * Display lead, in ms: how far AHEAD of the audio the highlight runs.
+ *
+ * Replaces the hardcoded `LYRICS_LEAD_SEC = 0.3` in the TV's lyrics.ts, whose own comment already
+ * argued for this scope ("a presentation preference that can be retuned per room without recomputing
+ * anything"). A singer has to SEE a word before singing it, so lighting it exactly at its onset is
+ * already late, and CTC onsets on sustained sung vowels tend to land late themselves.
+ *
+ * Applied at display time, so it COMPOSES WITH rather than replaces any per-song measured offset: a
+ * fitted offset corrects for the recording, this corrects for the screen and the crowd in front of it.
+ */
+export const DEFAULT_LYRICS_LEAD_MS = 300;
+export const MAX_LYRICS_LEAD_MS = 1500;

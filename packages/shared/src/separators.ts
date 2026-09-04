@@ -16,10 +16,21 @@
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
 import {
 	DEFAULT_ASR_MODEL,
+	DEFAULT_LYRICS_BALL,
+	DEFAULT_LYRICS_HIGHLIGHT,
+	DEFAULT_LYRICS_LEAD_MS,
 	DEFAULT_SYNC_MODE,
+	MAX_LYRICS_LEAD_MS,
+	getLyricsBallStyle,
+	getLyricsHighlight,
+	getSyncMode,
 	isValidAsrModel,
+	isValidLyricsBall,
+	isValidLyricsHighlight,
 	isValidSyncMode,
 	type AsrModelId,
+	type LyricsBallStyleId,
+	type LyricsHighlightId,
 	type SyncModeId
 } from './lyrics-engines';
 
@@ -456,12 +467,29 @@ export interface RoomSettings {
 	 * worker fleet can run, so a room must not be able to request an engine no worker advertises.
 	 */
 	maxQualityRank: number | null;
+	/**
+	 * How the TV marks the word being sung, and how the current lyric is lit. Room-scoped for the same
+	 * reason `tvProgressStyle` is: staging choices for one party's screen, not properties of the box.
+	 *
+	 * Both are bounded ABOVE by the global `syncMode`: a word-level treatment needs word timings to
+	 * exist, and under `syncMode: 'lines'` they do not. Read them through `resolveLyricsPresentation`
+	 * rather than directly, so the clamp is applied in exactly one place.
+	 */
+	lyricsBall: LyricsBallStyleId;
+	lyricsHighlight: LyricsHighlightId;
+	/** How far ahead of the audio the highlight runs, in ms. See `DEFAULT_LYRICS_LEAD_MS`. */
+	lyricsLeadMs: number;
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	tvProgressStyle: 'card',
 	interstitialMs: 2500,
-	maxQualityRank: null
+	maxQualityRank: null,
+	// These three reproduce the TV's previously-hardcoded behaviour exactly, so adding the settings
+	// changes nothing until someone opens Settings.
+	lyricsBall: DEFAULT_LYRICS_BALL,
+	lyricsHighlight: DEFAULT_LYRICS_HIGHLIGHT,
+	lyricsLeadMs: DEFAULT_LYRICS_LEAD_MS
 };
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
@@ -481,7 +509,19 @@ export function normalizeRoomSettings(
 	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
 	const style = input?.tvProgressStyle;
 	const tvProgressStyle = isTvProgressStyle(style) ? style : d.tvProgressStyle;
-	return { tvProgressStyle, interstitialMs, maxQualityRank };
+	const ball = input?.lyricsBall;
+	const lyricsBall = isValidLyricsBall(ball) ? ball : d.lyricsBall;
+	const highlight = input?.lyricsHighlight;
+	const lyricsHighlight = isValidLyricsHighlight(highlight) ? highlight : d.lyricsHighlight;
+	// Clamped, like interstitialMs and for the same reason: a lead of 30s is nonsense but should still
+	// leave a usable room. A NEGATIVE lead is clamped to 0 rather than honoured — running the highlight
+	// BEHIND the audio has no use case and reads as the overlay being broken.
+	const lead = input?.lyricsLeadMs;
+	const lyricsLeadMs =
+		typeof lead === 'number' && Number.isFinite(lead)
+			? Math.min(MAX_LYRICS_LEAD_MS, Math.max(0, Math.round(lead)))
+			: d.lyricsLeadMs;
+	return { tvProgressStyle, interstitialMs, maxQualityRank, lyricsBall, lyricsHighlight, lyricsLeadMs };
 }
 
 /** Both layers as one payload — what a client renders and what `queue:sync` carries. */
@@ -516,4 +556,50 @@ export function resolveCookSeparator(settings: EffectiveSettings): { engine: Sep
 		}
 	}
 	return best ? { engine: best.engine, model: best.model } : { engine: DEFAULT_ENGINE, model: DEFAULT_MODEL };
+}
+
+/** What the TV should actually render for lyrics, after the room's request meets the box's reality. */
+export interface LyricsPresentation {
+	ball: LyricsBallStyleId;
+	highlight: LyricsHighlightId;
+	/** Seconds, because that is the unit the overlay and the position telemetry both work in. */
+	leadSec: number;
+	/**
+	 * True when the room asked for something the global sync mode cannot produce, so what is returned
+	 * is a degraded substitute. The Settings page says so rather than showing a picker whose value is
+	 * silently ignored — a control that does nothing is worse than one that is absent.
+	 */
+	clamped: boolean;
+}
+
+/**
+ * Resolve the room's lyrics presentation against what the deployment actually produces.
+ *
+ * The clamp is DOWNWARD-ONLY, the same shape as `resolveCookSeparator`'s quality ceiling and for the
+ * same kind of reason: the global setting is bounded by what the worker fleet can do, so a room must
+ * not be able to request something no cook produced. Here the bound is timing granularity — under
+ * `syncMode: 'lines'` there are no per-word timestamps, so a word-level highlight has nothing to
+ * light and a marker has no word to sit on.
+ *
+ * Deliberately reads `needsWords`/`granularity` off the registries instead of testing style ids, so
+ * adding a style is a registry entry and not an edit here.
+ */
+export function resolveLyricsPresentation(settings: EffectiveSettings): LyricsPresentation {
+	const { lyricsBall, lyricsHighlight, lyricsLeadMs } = settings.room;
+	const leadSec = lyricsLeadMs / 1000;
+	const wordsAvailable = getSyncMode(settings.global.syncMode)?.granularity === 'word';
+	if (wordsAvailable) return { ball: lyricsBall, highlight: lyricsHighlight, leadSec, clamped: false };
+
+	// Line-only timings: degrade rather than render a mark with no anchor.
+	const ballNeedsWords = getLyricsBallStyle(lyricsBall)?.needsWords ?? false;
+	const highlightNeedsWords = getLyricsHighlight(lyricsHighlight)?.granularity === 'word';
+	return {
+		ball: ballNeedsWords ? 'off' : lyricsBall,
+		// Falls to `line`, not `off`: the room still asked to be shown where it is, and line-level
+		// timing can honour that. Turning the highlight off entirely would discard a choice the room
+		// made for a reason unrelated to granularity.
+		highlight: highlightNeedsWords ? 'line' : lyricsHighlight,
+		leadSec,
+		clamped: ballNeedsWords || highlightNeedsWords
+	};
 }
