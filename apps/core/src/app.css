@@ -95,6 +95,47 @@
 	   itself, the mic bar, the toasts) must agree on it or they overlap. */
 	--peek-h: 132px;
 
+	/*
+	 * The bottom band the TV overlay CARDS own, and the lyrics reel must never enter. The join/QR
+	 * corner and the now-playing lower-third are both pinned to the bottom edge above the reel in the
+	 * paint order, so with nothing reserving space between them a large lyric setting — or even the
+	 * defaults on 16:9 — drove the reel down UNDER the cards and hid the words. `LyricsOverlay` sets
+	 * `.lyrics { bottom: var(--tv-chrome-h) }`, so the flex-centred reel shrinks and its centreline
+	 * rises into the freed space; collision becomes impossible at ANY lyric setting rather than merely
+	 * less likely at the defaults.
+	 *
+	 * DERIVED from the taller card (the lower-third), summed from its real type tokens so it tracks
+	 * them if they ever change, instead of a magic px. Note the 1.2 factor: these rows declare no
+	 * line-height, so each one occupies a LINE BOX of roughly 1.2x its font-size, not 1.0x. Summing
+	 * the raw font sizes under-reserves the band by about a quarter and leaves the song line still
+	 * covered, which is the trap this comment exists to stop someone falling back into.
+	 *   safe-y offset      max(40px, 6vh)      — the card floats this far off the bottom edge
+	 * + 1.2 x line boxes:
+	 *     --tv-label                           — "Now singing"
+	 *     --tv-name                            — who is singing (the tallest line)
+	 *     --tv-body                            — the title
+	 *     --tv-label                           — the in-card progress countdown, which renders INSIDE
+	 *                                            this card whenever tvProgressStyle is 'card' (the
+	 *                                            default), so it is a fourth row, not an extra
+	 * + 54px                                   — 16px+16px card padding, three 4px inter-row gaps,
+	 *                                            and the 6px margin above the progress row
+	 *
+	 * The join/QR corner card is the SHORTER of the two bottom cards (an 88px code plus 12px padding),
+	 * so sizing against the lower-third covers both.
+	 *
+	 * Built from clamp()/vh, not a bare px edge offset: stage-scale.test.ts source-scans the TV .svelte
+	 * files for fixed px edge offsets, and reserving the band from the same responsive tokens is what
+	 * keeps the reservation correct across resolutions — the whole reason the cards are token-sized.
+	 *
+	 * On a short panel this band is a large fraction of the height, which is honest rather than a bug:
+	 * the type tokens have px floors, so the card really is that big relative to a 720p screen. The
+	 * reel's own max-height absorbs the squeeze and the existing edge mask fades the surplus rows.
+	 */
+	--tv-chrome-h: calc(
+		var(--tv-safe-y) + 1.2 *
+			(var(--tv-label) + var(--tv-name) + var(--tv-body) + var(--tv-label)) + 54px
+	);
+
 	color-scheme: dark;
 }
 
