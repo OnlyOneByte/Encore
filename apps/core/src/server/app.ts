@@ -28,7 +28,7 @@ import {
 } from './media/retention';
 import { needsLyricsBackfill, BACKFILL_PRIORITY } from './jobs/backfill';
 import { backfillVocalsRefs } from './media/vocals-backfill';
-import { ffmpegLoudnessProbe, hasAudibleContent } from './media/loudness';
+import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
 import { existsSync } from 'node:fs';
 import { markLyricsQueued } from './jobs/make-karaoke';
@@ -246,7 +246,11 @@ export function getApp(): EncoreApp {
 				const res = await backfillVocalsRefs(mediaById.values(), {
 					resolve: (ref) => safeMediaPath(ref),
 					exists: (abs) => existsSync(abs),
-					audible: async (abs) => hasAudibleContent(await probe(abs)),
+					measure: async (abs) => {
+						const reading = await probe(abs);
+						if (!reading) return 'unknown'; // no ffmpeg — cannot judge, do not pretend to
+						return isDigitalSilence(reading) ? 'silent' : 'audible';
+					},
 					link: (id, ref) => {
 						// Runtime map AND the durable index: the in-memory Media is what the player and the
 						// phone read, while the upsert is what makes it survive the next restart (and, via
@@ -258,6 +262,18 @@ export function getApp(): EncoreApp {
 					}
 				});
 				if (res.linked > 0) console.log(`[core] guiding track: linked the vocals stem for ${res.linked} song(s)`);
+				if (res.unmeasured > 0) {
+					// Named separately from `linked` on purpose: these were trusted, not verified. Reporting
+					// them as linked would tell the operator the stems were checked when no check ran.
+					// Two causes, and the operator needs both: no ffmpeg on PATH at all, or an ffmpeg that
+					// cannot DEMUX this format — a stripped build (the one Playwright ships, for instance)
+					// runs fine and still refuses an m4a with "Invalid data found".
+					console.log(
+						`[core] guiding track: linked ${res.unmeasured} song(s) WITHOUT a loudness check —` +
+							' no usable probe (ffmpeg missing, or a build with no AAC/FLAC demuxer).' +
+							' Set FFMPEG_BIN to a full ffmpeg; until then a silent stem cannot be detected'
+					);
+				}
 				if (res.silent > 0) {
 					console.log(
 						`[core] guiding track: ${res.silent} song(s) have a SILENT vocals stem — not linked, re-cook to fix`
