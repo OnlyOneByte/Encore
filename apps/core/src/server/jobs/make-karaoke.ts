@@ -258,3 +258,22 @@ export function setMediaPitch(mediaId: string, uri: string | undefined, mediaByI
 	media.pitchRef = ref;
 	return true;
 }
+
+/**
+ * Attach the isolated VOCALS stem — the guiding track. Additive and independent of the stems flip:
+ * a separation reports both stems, and a song is perfectly playable with only the instrumental.
+ *
+ * Trusts what the worker reported, like markMediaReady does, because the worker owns the container
+ * format and re-deriving the key here would desync the ref from the file after any format change. It
+ * also owns the CONTENT check: a worker that measured its own vocals stem as silence omits it from
+ * the artifact entirely, so an absent ref is a real answer rather than a missing one. The core's own
+ * loudness probe (media/loudness.ts) exists for the other direction — already-cooked songs being
+ * backfilled, where no worker will run again.
+ */
+export function setMediaVocals(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	const ref = toRelativeKey(uri);
+	if (!media || !ref) return false;
+	media.vocalsRef = ref;
+	return true;
+}

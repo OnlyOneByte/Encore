@@ -78,7 +78,8 @@ export class SettingsRepository {
 			lyricsFont: row.lyricsFont,
 			lyricsCase: row.lyricsCase,
 			lyricsLinesBefore: row.lyricsLinesBefore,
-			lyricsLinesAfter: row.lyricsLinesAfter
+			lyricsLinesAfter: row.lyricsLinesAfter,
+			guideLevelDefault: row.guideLevelDefault
 		});
 	}
 

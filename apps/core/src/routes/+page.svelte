@@ -9,19 +9,27 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
+	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
 	import { cookAndQueue } from '$lib/cook-and-queue';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
-	import { isPlayable } from '@encore/shared';
+	import { isPlayable, hasGuidingTrack, effectiveGuideLevel } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
-	let playback = $state<PlaybackState>({ currentEntryId: null, positionSec: 0, isPlaying: false, keyShift: 0, background: null });
+	let playback = $state<PlaybackState>({
+		currentEntryId: null,
+		positionSec: 0,
+		isPlaying: false,
+		keyShift: 0,
+		background: null,
+		guideLevel: null
+	});
 	// live make-karaoke progress per mediaId — driven by media:status broadcasts AND seeded
 	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
@@ -93,11 +101,17 @@
 					if (e.type === 'queue:sync') {
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
+						// The room's guiding-track default — needed to LABEL the control, since a null
+						// per-song override means "inherit" and the phone would otherwise show 0%.
+						if (e.settings) roomGuideDefault = e.settings.room.guideLevelDefault;
 						queueMicrotask(() => store.resendPending());
 					}
 					if (e.type === 'queue:patch' && e.patch.media) mergeMedia(e.patch.media);
 					if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
 					if (e.type === 'playback:state') playback = e.state;
+					// A room default changed mid-party: adopt it so the guiding-track control keeps
+					// reporting the level the TV is actually mixing at.
+					if (e.type === 'settings:changed') roomGuideDefault = e.settings.room.guideLevelDefault;
 					if (e.type === 'score:update') myScore = e;
 					if (e.type === 'media:status') {
 						const next = new Map(mediaStatus);
@@ -410,6 +424,64 @@
 	const keyShiftEnabled = $derived(!!nowMedia && isPlayable(nowMedia));
 	const keyLabel = $derived(playback.keyShift === 0 ? 'Key' : `Key · ${playback.keyShift > 0 ? '+' : '−'}${Math.abs(playback.keyShift)}`);
 
+	// ── guiding track ──────────────────────────────────────────────────
+	// How loud the original vocals sit under the instrumental. Available only for a song that actually
+	// HAS an isolated vocals stem — the same shape as the key control being gated on separation.
+	const guideEnabled = $derived(!!nowMedia && hasGuidingTrack(nowMedia));
+	/** The room's standing default, adopted from queue:sync / settings:changed. */
+	let roomGuideDefault = $state(0);
+	/**
+	 * While a finger is on the slider we show the LOCAL value, not the server's. Without this the
+	 * thumb fights the ~throttled echo coming back over the websocket and jumps under the finger.
+	 */
+	let guideDragging = $state(false);
+	let guideDraft = $state(0);
+	const guideServerPct = $derived(
+		Math.round(effectiveGuideLevel({ guideLevel: playback.guideLevel }, roomGuideDefault) * 100)
+	);
+	const guidePct = $derived(guideDragging ? guideDraft : guideServerPct);
+
+	/**
+	 * Send at most this often while dragging. Every accepted level is authoritative playback state, so
+	 * it bumps `rev` and broadcasts to every client — an unthrottled `oninput` would emit one of those
+	 * per animation frame and churn rev hard enough to trip other clients' resync path. The `onchange`
+	 * on release always sends the final value, so throttling can never lose where the finger stopped.
+	 */
+	const GUIDE_SEND_THROTTLE_MS = 120;
+	let guideLastSent = 0;
+	let guidePending: ReturnType<typeof setTimeout> | null = null;
+
+	function sendGuide(pct: number): void {
+		guideLastSent = Date.now();
+		sendPlayer({ cmd: 'guide', level: pct / 100 });
+	}
+
+	function onGuideInput(pct: number): void {
+		guideDragging = true;
+		guideDraft = pct;
+		const since = Date.now() - guideLastSent;
+		if (since >= GUIDE_SEND_THROTTLE_MS) {
+			sendGuide(pct);
+			return;
+		}
+		// Trailing send so a slow drag that never crosses the threshold still moves the TV.
+		if (guidePending) clearTimeout(guidePending);
+		guidePending = setTimeout(() => {
+			guidePending = null;
+			sendGuide(guideDraft);
+		}, GUIDE_SEND_THROTTLE_MS - since);
+	}
+
+	function onGuideCommit(pct: number): void {
+		if (guidePending) {
+			clearTimeout(guidePending);
+			guidePending = null;
+		}
+		guideDraft = pct;
+		sendGuide(pct);
+		guideDragging = false;
+	}
+
 	// ── live mic pitch → score ─────────────────────────────────────────
 	const isMyTurn = $derived(!!me && !!nowEntry && nowEntry.singerId === me.id && playback.isPlaying);
 	const scoringAvailable = $derived(!!nowMedia && !!nowMedia.pitchRef);
@@ -666,6 +738,17 @@
 		<button class="ic no-drag" aria-label="skip" onclick={() => sendPlayer({ cmd: 'skip' })}><Icon name="next" /></button>
 	{/snippet}
 
+	<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
+	     sharing its labelled-row idiom; both are per-song adjustments to the same playing song. -->
+	<GuidingTrack
+		pct={guidePct}
+		available={guideEnabled}
+		roomDefaultPct={Math.round(roomGuideDefault * 100)}
+		pinned={playback.guideLevel !== null}
+		oninput={onGuideInput}
+		oncommit={onGuideCommit}
+	/>
+
 	<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
 		<span class="lab">{keyLabel}</span>
 		<button class="key-btn" disabled={!keyShiftEnabled || playback.keyShift <= -7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}><Icon name="minus" /> semitone</button>
@@ -921,6 +1004,7 @@
 	.key:not(.disabled) button:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
 	.key:not(.disabled) button:not(:disabled):active { transform: scale(0.95); }
 	.key button:disabled { cursor: default; }
+
 
 	/* everything docked sits ABOVE the collapsed sheet — see --peek-h in app.css */
 	.mic-bar {

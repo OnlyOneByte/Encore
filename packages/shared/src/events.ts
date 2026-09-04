@@ -57,7 +57,11 @@ export type PlayerCommand =
   | { cmd: 'key'; semitones: number }
   // Per-song override of the room's TV background. `style: null` hands the song back to the room
   // default. Whitelisted server-side against TV_BACKGROUND_STYLES — never trusted as a string.
-  | { cmd: 'background'; style: TvBackgroundStyle | null };
+  | { cmd: 'background'; style: TvBackgroundStyle | null }
+  // The GUIDING TRACK: how loud the isolated original vocals sit under the instrumental. `level` is
+  // the ABSOLUTE target 0..1 (not a delta), clamped server-side; `null` CLEARS the per-song override
+  // so the room default applies again. Only accepted for a song that actually has a vocals stem.
+  | { cmd: 'guide'; level: number | null };
 
 export type ClientEvent =
   | { type: 'queue:command'; command: ClientCommand }

@@ -3,6 +3,7 @@
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
+	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import { LYRICS_BALL_STYLES, LYRICS_HIGHLIGHTS } from '@encore/shared';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
@@ -280,6 +281,18 @@
 		seq={4} title="Gwen Stefani - Rich Girl" singerName="You" singerColor="#ff5cae" mine
 		subtitle="up next" removable reorderable canUp canDown
 	/>
+
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">GuidingTrack · every state</h2>
+	<!-- Off (the shipped default), a faint guide, halfway, full sing-along, the pinned-override hint,
+	     and unavailable because the song has no isolated vocals stem. -->
+	<div style="display:grid;gap:14px;">
+		<GuidingTrack pct={0} available={true} />
+		<GuidingTrack pct={15} available={true} />
+		<GuidingTrack pct={60} available={true} />
+		<GuidingTrack pct={100} available={true} />
+		<GuidingTrack pct={40} available={true} pinned={true} roomDefaultPct={15} />
+		<GuidingTrack pct={0} available={false} />
+	</div>
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">

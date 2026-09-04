@@ -18,7 +18,17 @@ import shutil
 from collections import deque
 from typing import AsyncIterator, Awaitable, Callable
 
-from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, instrumental_path, vocals_path
+from .processor import (
+    CompleteResult,
+    JobSpec,
+    ProgressEvent,
+    source_audio_path,
+    instrumental_path,
+    vocals_path,
+    volumedetect_argv,
+    parse_max_volume_db,
+    is_silent,
+)
 from .fetch import job_fetcher, local_source_path
 from .vocabulary import Fetcher
 from .stream_quality import FORMAT_SELECTOR
@@ -396,7 +406,16 @@ class DemucsProcessor:
             vocals_final = vocals_path(job.media_dir, job.media_id)
             try:
                 await self._run_quiet(encode_stem_argv(vocals_src, vocals_final, self._bitrate, self._ffmpeg_bin))
-                stems["vocals"] = vocals_final
+                # Measure it before reporting it. Separation can succeed and still write silence, and a
+                # SILENT guiding track is worse than none — it looks like it works. Reporting no
+                # artifact leaves the song playable with no guide, which is the honest outcome.
+                if await self._is_silent(vocals_final):
+                    print(
+                        f"[worker] vocals stem for {job.media_id} is digital silence — not reporting it",
+                        flush=True,
+                    )
+                else:
+                    stems["vocals"] = vocals_final
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job
                 pass
 
@@ -413,6 +432,21 @@ class DemucsProcessor:
         """Run a CLI that emits no useful progress (ffmpeg at loglevel=error), draining its output."""
         async for _ in self._runner(argv):
             pass
+
+    async def _is_silent(self, path: str) -> bool:
+        """Does this encoded stem measure as digital silence?
+
+        Unmeasurable (ffmpeg absent, or output we cannot parse) counts as NOT silent: see
+        processor.is_silent. Any failure here also degrades to "not silent" so a probe problem can
+        never cost the room a working guide.
+        """
+        try:
+            out: list[str] = []
+            async for line in self._runner(volumedetect_argv(path, self._ffmpeg_bin)):
+                out.append(line)
+            return is_silent(parse_max_volume_db("\n".join(out)))
+        except Exception:  # noqa: BLE001 — a failed probe must not fail the job or drop a good stem
+            return False
 
     async def _run_stage(
         self, stage: str, argv: list[str], parse: Callable[[str], int | None]
