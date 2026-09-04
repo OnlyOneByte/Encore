@@ -15,6 +15,7 @@
 // added without a label and a capability.
 
 import type { MediaSource } from './types';
+import { makeRegistry } from './registry';
 
 /**
  * `local` is not a downloader — it means the bytes are already on the media volume, so `sourceRef` is
@@ -56,17 +57,14 @@ export const FETCHERS: readonly Fetcher[] = [
 
 export const DEFAULT_FETCHER: FetcherId = 'ytdlp';
 
+const registry = makeRegistry(FETCHERS);
+
 export function getFetcher(id: string): Fetcher | undefined {
-	return FETCHERS.find((f) => f.id === id);
+	return registry.get(id);
 }
 
 export function isValidFetcher(id: string): id is FetcherId {
-	return getFetcher(id) !== undefined;
-}
-
-/** Fetchers a deployment can actually choose as its default — `local` is a property of a media. */
-export function selectableFetchers(): readonly Fetcher[] {
-	return FETCHERS.filter((f) => f.capability !== null);
+	return registry.isValid(id);
 }
 
 /**

@@ -2,7 +2,7 @@
 // See docs/ARCHITECTURE.md (Data model).
 
 import type { LyricsCandidate } from './lyrics';
-import type { TvBackgroundStyle } from './separators';
+import type { TvBackgroundStyle } from './settings';
 
 export type MediaSource = 'youtube' | 'local';
 export type StemStatus = 'none' | 'queued' | 'ready';
@@ -134,20 +134,6 @@ export function isPlayable(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): bo
   return playbackRef(m) !== '';
 }
 
-/**
- * Can this song offer a guiding track (the original vocals mixed back under the instrumental)?
- *
- * Requires BOTH a playable instrumental and a vocals stem, because the guide is an overlay on
- * something — there is nothing to mix vocals under until the song is playable at all. Songs
- * separated before the ref was persisted, and songs whose vocals stem came back silent, report
- * false and simply do not offer the control.
- */
-export function hasGuidingTrack(
-  m: Pick<Media, 'stemStatus' | 'instrumentalRef' | 'vocalsRef'>
-): boolean {
-  return isPlayable(m) && !!m.vocalsRef;
-}
-
 export interface Singer {
   id: string;
   displayName: string;
@@ -207,31 +193,6 @@ export const MAX_KEY_SHIFT = 7;
 export function clampKeyShift(semitones: number): number {
   if (!Number.isFinite(semitones)) return 0;
   return Math.max(-MAX_KEY_SHIFT, Math.min(MAX_KEY_SHIFT, Math.trunc(semitones)));
-}
-
-/**
- * Clamp a requested guiding-track level to `[0,1]`, or `null` to CLEAR the per-song override.
- *
- * `null`/`undefined` pass through as `null` (inherit the room default) — this is a settable field
- * where "cleared" and "rejected" must not collapse into the same value, so garbage is also `null`
- * rather than a silent 0: refusing to invent a level is honest, and inheriting is the safe fallback.
- * Rounded to whole percent so the persisted value stays tidy and two drags that land on the same
- * notch compare equal.
- */
-export function clampGuideLevel(level: number | null | undefined): number | null {
-  if (level === null || level === undefined || !Number.isFinite(level)) return null;
-  return Math.round(Math.max(0, Math.min(1, level)) * 100) / 100;
-}
-
-/**
- * The level the TV should actually mix at: the per-song override when one is pinned, otherwise the
- * room default. Never returns null — the player needs a number for `.volume`.
- */
-export function effectiveGuideLevel(
-  playback: Pick<PlaybackState, 'guideLevel'>,
-  roomDefault: number
-): number {
-  return playback.guideLevel ?? clampGuideLevel(roomDefault) ?? 0;
 }
 
 /**
