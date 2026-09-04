@@ -1,1 +1,0 @@
-ALTER TABLE `room_settings` DROP COLUMN `interstitial_ms`;

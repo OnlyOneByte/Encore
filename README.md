@@ -31,7 +31,7 @@ gapless TV, and live "make-karaoke" stem separation on the roadmap.
 
 | Phone remote | TV stage |
 |---|---|
-| ![phone](docs/mocks/m4c4-search-eyeson.png) | ![tv](docs/mocks/m5c3-tv-eyeson.png) |
+| ![phone](docs/mocks/m4c4-search-eyeson.png) | ![tv](docs/mocks/tv-lyrics-asr-word-eyeson.png) |
 
 ## 🚀 Quickstart
 
@@ -226,10 +226,10 @@ Agent/human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 ## Dev notes
 
 ```bash
-bun test          # 937 unit/integration tests — runnable from the root
+bun test          # 997 unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # both workspaces
-cd apps/worker && pytest   # 328 worker tests — needs `pip install pytest pytest-asyncio`
+cd apps/worker && pytest   # 371 worker tests — needs `pip install pytest pytest-asyncio`
 ```
 
 `pytest.ini` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** the async tests fail with

@@ -89,3 +89,42 @@ export function lobbyRoster(
 	const known = [...resolve(here, 'here'), ...resolve(away, 'away')];
 	return { shown: known.slice(0, max), overflow: Math.max(0, known.length - max) };
 }
+
+/**
+ * Is this join origin one that no phone in the room could actually reach?
+ *
+ * The join address is derived from the request host, so opening `/tv` ON the serving machine puts
+ * `http://127.0.0.1:PORT/join` (or `localhost`, a bare hostname, or an IPv6 loopback) on the wall.
+ * Every scan then fails silently — the phone cannot route to the TV's own loopback — with nothing in
+ * the room explaining why. The TV renders an operator notice instead of a working-looking QR when this
+ * returns true.
+ *
+ * Pure and string-only (no DOM, no `URL` global assumptions beyond the constructor) so the rule is
+ * unit-testable. Anything it cannot parse is treated as REACHABLE: a false "unreachable" would hide a
+ * QR that actually works, which is worse than showing one that might not.
+ *
+ * Unreachable hosts:
+ *  - the IPv4 loopback block 127.0.0.0/8 (127.0.0.1 … 127.255.255.255)
+ *  - `localhost` (any case)
+ *  - the IPv6 loopback `::1`
+ *  - a single-label host with no dot (e.g. `wsl`, a machine name) — not resolvable off-box by a phone
+ */
+export function isUnreachableJoinOrigin(origin: string | null | undefined): boolean {
+	if (!origin) return false; // no address yet → nothing to warn about
+	let host: string;
+	try {
+		host = new URL(origin).hostname;
+	} catch {
+		return false; // unparseable → do not claim it is unreachable
+	}
+	// URL leaves IPv6 hosts bracketed; strip for comparison.
+	const h = host.replace(/^\[|\]$/g, '').toLowerCase();
+	if (h === 'localhost') return true;
+	if (h === '::1') return true;
+	// IPv4 loopback block 127.0.0.0/8
+	if (/^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(h)) return true;
+	// A dotted host or any IPv6 literal (contains ':') is assumed routable; a single label with no dot
+	// is a bare machine name a phone on the LAN cannot resolve.
+	if (!h.includes('.') && !h.includes(':')) return true;
+	return false;
+}

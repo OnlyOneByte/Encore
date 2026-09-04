@@ -21,11 +21,28 @@ const cases: Media[] = [
 	m({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }),
 	m({ stemStatus: 'queued' }),
 	m({ source: 'local', stemStatus: 'none' }),
-	m({ stemStatus: 'ready' }) // ready status, no artifact — must classify the same on both sides
+	m({ stemStatus: 'ready' }), // ready status, no artifact — must classify the same on both sides
+	// Separated, now mid-align: stems done but lyrics still queued. Neither 'ready' nor 'queued' — the
+	// case that used to fall through to 'unacquired' and show a Sing button on a separated song.
+	m({ stemStatus: 'ready', lyricsStatus: 'queued', instrumentalRef: 'derived/stems/i-instrumental.flac' })
 ];
 
 test('client and server classify readiness identically for every media shape', () => {
 	for (const c of cases) expect(readinessOf(c)).toBe(serverReadinessOf(c));
+});
+
+test('THE BUG: a separated song mid-align reads as cooking, not unacquired', () => {
+	// stems ready + lyrics queued is past the stems gate but not finished. Before the gate-driven fix
+	// this matched neither 'ready' nor stemStatus==='queued', fell through to 'unacquired', and showed
+	// a Sing button on an already-separated song.
+	const midAlign = m({
+		stemStatus: 'ready',
+		lyricsStatus: 'queued',
+		instrumentalRef: 'derived/stems/i-instrumental.flac'
+	});
+	expect(readinessOf(midAlign)).toBe('cooking');
+	expect(serverReadinessOf(midAlign)).toBe('cooking');
+	expect(canCook(readinessOf(midAlign))).toBe(false); // no Sing/cook button on a separated song
 });
 
 test('a live media:status wins over the catalog copy (the row responds to the tap at once)', () => {

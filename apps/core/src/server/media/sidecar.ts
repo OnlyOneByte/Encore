@@ -240,22 +240,67 @@ function sidecarPath(mediaId: string): string {
 	return join(metaDir(), `${mediaId}.json`);
 }
 
-/** Read one sidecar, or null if absent/unparseable. Never throws — a corrupt file must not brick boot. */
+/**
+ * Read one sidecar, or null if absent/unparseable. Never throws — a corrupt file must not brick boot.
+ *
+ * Absent and corrupt both return null (a bad file cannot stop the process from booting), but they are
+ * NOT the same event: a MISSING sidecar is normal (an index-only song, a never-described id), while a
+ * sidecar that EXISTS and then fails to parse or fails the shape check is corruption of the record this
+ * design calls authoritative — the source of truth for that song is gone. That must not be silent, so
+ * the existing-but-unreadable case logs a distinct warning; the missing case says nothing.
+ */
 export async function readSidecar(mediaId: string): Promise<MediaSidecar | null> {
+	const path = sidecarPath(mediaId);
+	let existed = false;
 	try {
-		const file = Bun.file(sidecarPath(mediaId));
+		const file = Bun.file(path);
 		if (!(await file.exists())) return null;
+		existed = true;
 		const parsed = JSON.parse(await file.text()) as MediaSidecar;
-		return parsed && typeof parsed.id === 'string' ? parsed : null;
-	} catch {
+		if (parsed && typeof parsed.id === 'string') return parsed;
+		// The file is there and is valid JSON, but not a sidecar (wrong/empty shape). Still corruption of
+		// the authoritative record — treat it like a parse failure, not like an absent file.
+		console.warn(`[sidecar] authoritative record ${path} exists but failed the shape check (no string id); returning null`);
+		return null;
+	} catch (err) {
+		if (existed) {
+			// EXISTED but could not be read/parsed: partial JSON from an interrupted write, a truncated
+			// file, garbage. The one case that means silent loss of a song's source of truth.
+			console.warn(`[sidecar] authoritative record ${path} exists but could not be parsed; returning null:`, err);
+		}
 		return null;
 	}
 }
 
-/** Write one sidecar. Pretty-printed on purpose: this file is meant to be hand-edited. */
+/**
+ * Write one sidecar ATOMICALLY. Pretty-printed on purpose: this file is meant to be hand-edited.
+ *
+ * The naive `Bun.write(target, ...)` truncates the target in place, so a crash, kill, or ENOSPC
+ * mid-write leaves partial JSON on the record this design calls authoritative — readSidecar then
+ * returns null and the song's source of truth is simply gone. Instead write to a sibling temp file in
+ * the SAME directory (rename is only atomic within a filesystem) and rename it over the target: rename
+ * is atomic on POSIX, so a reader sees either the old complete file or the new complete file, never a
+ * half-written one. The temp file is unique per write so two concurrent writes to the same id cannot
+ * corrupt each other's temp.
+ */
 export async function writeSidecar(s: MediaSidecar): Promise<void> {
-	mkdirSync(metaDir(), { recursive: true });
-	await Bun.write(sidecarPath(s.id), JSON.stringify(s, null, 2) + '\n');
+	const dir = metaDir();
+	mkdirSync(dir, { recursive: true });
+	const target = sidecarPath(s.id);
+	const tmp = join(dir, `.${s.id}.${process.pid}.${Date.now()}.${Math.random().toString(36).slice(2)}.tmp`);
+	const { renameSync, unlinkSync } = await import('node:fs');
+	try {
+		await Bun.write(tmp, JSON.stringify(s, null, 2) + '\n');
+		renameSync(tmp, target);
+	} catch (err) {
+		// Best-effort cleanup so a failed write does not leave an orphan temp behind.
+		try {
+			unlinkSync(tmp);
+		} catch {
+			/* temp may not exist */
+		}
+		throw err;
+	}
 }
 
 /** Every media id that has a sidecar on disk. */

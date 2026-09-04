@@ -18,9 +18,14 @@
 		/** How many singers are in the room right now; shown on the corner card. Hidden when 0. */
 		onlineCount?: number;		/** Pixel size of the QR image itself. */
 		size?: number;
+		/**
+		 * The advertised join address is one no phone can reach (loopback / bare hostname). Render an
+		 * operator notice naming the fix instead of a QR that looks fine but every scan fails silently.
+		 */
+		unreachable?: boolean;
 	}
 
-	let { qrDataUrl, joinUrl, placement = 'hero', onlineCount = 0, size = placement === 'corner' ? 88 : 238 }: Props =
+	let { qrDataUrl, joinUrl, placement = 'hero', onlineCount = 0, size = placement === 'corner' ? 88 : 238, unreachable = false }: Props =
 		$props();
 
 	// The full URL is too long to read across a room in the corner treatment; the path is enough
@@ -28,7 +33,20 @@
 	const shortUrl = $derived(joinUrl.replace(/^https?:\/\//, ''));
 </script>
 
-{#if placement === 'corner'}
+{#if unreachable}
+	<!--
+		The join address is unroutable, so a QR would be a working-looking dead end. Say what is wrong
+		and how to fix it, in the TV type scale so an operator reads it from the sofa. Same corner/ hero
+		geometry as the QR it replaces, so the layout does not jump.
+	-->
+	<div class="badqr" class:corner={placement === 'corner'} class:hero={placement === 'hero'} role="alert">
+		<div class="badqr-t">Join QR unavailable</div>
+		<div class="badqr-b">
+			This screen is advertising <b>{shortUrl}</b>, which phones can't reach.
+		</div>
+		<div class="badqr-fix">Set the party address in Settings under Joining (or the ENCORE_PUBLIC_ORIGIN env var).</div>
+	</div>
+{:else if placement === 'corner'}
 	<div class="corner" aria-label="Scan to join Encore">
 		<div class="qr" style="--qr: {size}px"><img src={qrDataUrl} alt="QR code to join Encore" width={size} height={size} /></div>
 		<div class="meta">
@@ -116,5 +134,49 @@
 		color: var(--ok);
 		margin-top: 5px;
 		font-weight: 600;
+	}
+
+	/*
+	 * The dead-QR notice. --danger family so it does not read as a normal invitation, TV type scale so
+	 * it is legible from a sofa. `hero` centres it on the stage where the QR would have been; `corner`
+	 * pins it to the same bottom-right safe-area slot as the corner QR so mid-song layout is stable.
+	 */
+	.badqr {
+		border-radius: var(--radius);
+		background: rgba(42, 27, 34, 0.95);
+		border: 1px solid var(--danger);
+		box-shadow: var(--shadow);
+	}
+	.badqr.hero {
+		max-width: 34ch;
+		padding: 28px 34px;
+		text-align: center;
+	}
+	.badqr.corner {
+		position: absolute;
+		right: var(--tv-safe-x);
+		bottom: var(--tv-safe-y);
+		z-index: 7;
+		max-width: 30vw;
+		padding: 14px 20px;
+	}
+	.badqr-t {
+		font-size: var(--tv-name);
+		font-weight: 800;
+		color: var(--danger-ink);
+		margin-bottom: 8px;
+	}
+	.badqr-b {
+		font-size: var(--tv-body);
+		color: var(--ink);
+	}
+	.badqr-b b {
+		color: var(--danger-ink);
+		overflow-wrap: anywhere;
+	}
+	.badqr-fix {
+		font-size: var(--tv-label);
+		color: var(--ink-dim);
+		margin-top: 10px;
 	}
 </style>

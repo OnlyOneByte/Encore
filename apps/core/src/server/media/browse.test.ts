@@ -44,6 +44,42 @@ describe('canonical metadata in the index', () => {
 		repo.setCanonical('a', { artist: null, album: null, year: null });
 		expect(repo.artistFacets()).toEqual([]);
 	});
+
+	it('a partial patch (album/year OMITTED) leaves a previously-populated album/year intact', async () => {
+		// REGRESSION (FIX 2): album/year used to be written unconditionally, so the boot browse-sync —
+		// which passes them as null for most songs — re-nulled any populated album/year on EVERY restart.
+		// With the undefined-skip guard, omitting them means "do not touch".
+		const { media } = await import('../db/schema');
+		const { eq } = await import('drizzle-orm');
+		const { db } = openDb(':memory:');
+		runMigrations(db);
+		const r = new MediaRepository(db);
+		r.upsert(cooked('a'));
+
+		// A prior good write populated album + year.
+		r.setCanonical('a', { artist: 'Daft Punk', album: 'Discovery', year: 2001 });
+		// A later partial mirror knows only the artist (the boot browse-sync shape): omit album/year.
+		r.setCanonical('a', { artist: 'Daft Punk Deluxe' });
+
+		const row = db.select().from(media).where(eq(media.id, 'a')).all()[0]!;
+		expect(row.artistCanonical).toBe('Daft Punk Deluxe'); // artist updated
+		expect(row.album).toBe('Discovery'); // NOT re-nulled
+		expect(row.year).toBe(2001); // NOT re-nulled
+	});
+
+	it('an EXPLICIT null album/year still clears (a full authoritative mirror can un-set)', async () => {
+		const { media } = await import('../db/schema');
+		const { eq } = await import('drizzle-orm');
+		const { db } = openDb(':memory:');
+		runMigrations(db);
+		const r = new MediaRepository(db);
+		r.upsert(cooked('a'));
+		r.setCanonical('a', { artist: 'X', album: 'Y', year: 1999 });
+		r.setCanonical('a', { artist: 'X', album: null, year: null });
+		const row = db.select().from(media).where(eq(media.id, 'a')).all()[0]!;
+		expect(row.album).toBeNull();
+		expect(row.year).toBeNull();
+	});
 });
 
 describe('genre tags', () => {

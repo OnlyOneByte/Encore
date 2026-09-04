@@ -143,10 +143,19 @@
 	/*
 	 * The track shows the actual reachable colours rather than a generic rainbow, so what you drag
 	 * through is what you can get. Built from the same pinned lightness and chroma the picker emits.
+	 *
+	 * 44px interactive height (the project's minimum touch target); the input box itself is
+	 * transparent and the 22px rainbow is painted on the runnable-track pseudo-elements, which the
+	 * browser centres in the box. The 28px thumb on a 22px track was a 28px hit area — below 44px.
 	 */
 	.hue input {
 		-webkit-appearance: none;
 		appearance: none;
+		height: 44px;
+		background: transparent;
+		cursor: pointer;
+	}
+	.hue input::-webkit-slider-runnable-track {
 		height: 22px;
 		border-radius: 999px;
 		border: 1px solid var(--line);
@@ -157,12 +166,25 @@
 			oklch(0.7 0.16 360)
 		);
 	}
-	/* 28px thumb: the control is a 22px track, so the grab target has to be bigger than the track. */
+	.hue input::-moz-range-track {
+		height: 22px;
+		border-radius: 999px;
+		border: 1px solid var(--line);
+		background: linear-gradient(
+			to right,
+			oklch(0.7 0.16 0), oklch(0.7 0.16 45), oklch(0.7 0.16 90), oklch(0.7 0.16 135),
+			oklch(0.7 0.16 180), oklch(0.7 0.16 225), oklch(0.7 0.16 270), oklch(0.7 0.16 315),
+			oklch(0.7 0.16 360)
+		);
+	}
+	/* 28px thumb: bigger than the 22px track so it reads as the grab affordance. margin-top centres
+	   it on the 22px runnable-track: (22 - 28) / 2 = -3px. */
 	.hue input::-webkit-slider-thumb {
 		-webkit-appearance: none;
 		appearance: none;
 		width: 28px;
 		height: 28px;
+		margin-top: -3px;
 		border-radius: 50%;
 		background: var(--singer, #fff);
 		border: 3px solid var(--ink);

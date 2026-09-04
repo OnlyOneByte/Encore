@@ -53,7 +53,7 @@
 			bind:value={name}
 			placeholder="e.g. Maya"
 			maxlength="32"
-			style="padding:14px;font-size:1.1rem;color:var(--ink);background:var(--card);outline:none;"
+			style="padding:14px;font-size:1.1rem;color:var(--ink);background:var(--card);"
 			onkeydown={(e) => e.key === 'Enter' && join()}
 		/>
 	</label>

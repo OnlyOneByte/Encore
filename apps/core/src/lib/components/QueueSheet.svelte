@@ -162,7 +162,12 @@
 	.sheet.open { transform: translateY(var(--drag, 0px)); }
 	/* while a finger is down, follow it exactly — a transition here feels like lag */
 	.sheet.dragging { transition: none; }
-	.peek { padding: 8px 14px 10px; cursor: grab; touch-action: none; flex: 0 0 auto; }
+	/* .peek bottom padding carries the iOS home-indicator inset. .sheet is position:fixed, so the
+	   .app-shell's safe-area padding does not reach it — the collapsed peek (transport + seek row)
+	   would otherwise sit in the ~34px reserved for the home indicator. Matches the settings route's
+	   calc(28px + env(...)) pattern. A sibling adds a short-viewport rule from the route/token side;
+	   keeping this to the inset lets the two compose. */
+	.peek { padding: 8px 14px calc(10px + env(safe-area-inset-bottom, 0px)); cursor: grab; touch-action: none; flex: 0 0 auto; }
 	.seekrow { display: flex; align-items: center; gap: 9px; margin: 10px 0 2px; }
 	.time { font-size: 0.68rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; min-width: 30px; }
 	.time.r { text-align: right; }
@@ -197,7 +202,7 @@
 	 */
 	.chev { display: inline-block; transition: transform 0.28s ease; transform: rotate(0deg); }
 	.chev.up { transform: rotate(180deg); }
-	.body { overflow-y: auto; padding: 4px 14px 20px; -webkit-overflow-scrolling: touch; }
+	.body { overflow-y: auto; padding: 4px 14px calc(20px + env(safe-area-inset-bottom, 0px)); -webkit-overflow-scrolling: touch; }
 	/* keep the collapsed sheet from eating taps meant for the page behind it */
 	.sheet:not(.open) .body { pointer-events: none; }
 </style>

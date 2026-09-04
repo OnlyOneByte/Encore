@@ -1,21 +1,13 @@
--- SQUASHED BASELINE. This is not original history.
+-- SINGLE PRE-RELEASE BASELINE. Regenerated from src/server/db/schema.ts; this is the whole schema
+-- from an empty database in one migration, not incremental history.
 --
--- Fourteen incremental migrations (0000-0013) were collapsed into this one file while no production
--- deployment existed, so there was no database anywhere that needed the intermediate steps. Squashing
--- while that is true costs nothing and removes fourteen files' worth of read-path; squashing after a
--- deploy would strand it, because a live database's `__drizzle_migrations` records hashes that no
--- longer exist here.
+-- No production database existed when this was cut, so collapsing the prior chain stranded nothing.
+-- Anyone still holding an OLDER dev database must delete it and let the library rebuild -- the meta/
+-- sidecars are authoritative, and an old DB's __drizzle_migrations records hashes that no longer
+-- exist in this folder, so it cannot be migrated forward from.
 --
--- SO: once this is deployed to a real box, STOP editing this file. Every schema change after that is a
--- new numbered migration, forever.
---
--- Equivalence with the old chain was verified when it was collapsed: databases built from each were
--- introspected and compared, and were identical across all tables.
---
--- Regenerated since, still pre-deploy, to add media.lyrics_status — the lyrics half of the cook gate
--- (see packages/shared/src/gates.ts). NULL on a row written before the gate existed, which the gate
--- reads as "done if a lyrics artifact is already present", so an existing library does not become
--- unsingable on upgrade.
+-- Once this ships to a real box, STOP editing this file: every schema change after that is a new
+-- numbered migration.
 
 CREATE TABLE `global_settings` (
 	`id` text PRIMARY KEY DEFAULT 'singleton' NOT NULL,
@@ -24,12 +16,44 @@ CREATE TABLE `global_settings` (
 	`enqueue_upgrade` integer DEFAULT false NOT NULL,
 	`upgrade_engine` text DEFAULT 'roformer' NOT NULL,
 	`upgrade_model` text DEFAULT 'bs-roformer-1297' NOT NULL,
-	`default_fetcher` text DEFAULT 'ytdlp' NOT NULL
+	`default_fetcher` text DEFAULT 'ytdlp' NOT NULL,
+	`asr_model` text DEFAULT 'base' NOT NULL,
+	`sync_mode` text DEFAULT 'forced' NOT NULL,
+	`join_origin` text DEFAULT '' NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE `job_attempts` (
+	`id` text PRIMARY KEY NOT NULL,
+	`job_id` text NOT NULL,
+	`media_id` text NOT NULL,
+	`cook_id` text NOT NULL,
+	`job_type` text NOT NULL,
+	`attempt` integer DEFAULT 1 NOT NULL,
+	`worker_id` text,
+	`enqueued_at` integer NOT NULL,
+	`assigned_at` integer,
+	`started_at` integer,
+	`finished_at` integer,
+	`outcome` text,
+	`error` text,
+	`engine` text,
+	`model` text,
+	`backend` text,
+	`device` text,
+	`asr_model` text,
+	`sync_mode` text,
+	`audio_sec` integer,
+	`stages` text
+);
+--> statement-breakpoint
+CREATE INDEX `job_attempts_media_idx` ON `job_attempts` (`media_id`,`enqueued_at`);--> statement-breakpoint
+CREATE INDEX `job_attempts_cook_idx` ON `job_attempts` (`cook_id`);--> statement-breakpoint
+CREATE INDEX `job_attempts_job_idx` ON `job_attempts` (`job_id`);--> statement-breakpoint
+CREATE INDEX `job_attempts_type_finished_idx` ON `job_attempts` (`job_type`,`finished_at`);--> statement-breakpoint
 CREATE TABLE `jobs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`media_id` text NOT NULL,
+	`cook_id` text DEFAULT '' NOT NULL,
 	`job_type` text NOT NULL,
 	`status` text DEFAULT 'queued' NOT NULL,
 	`priority` integer DEFAULT 0 NOT NULL,
@@ -54,12 +78,13 @@ CREATE TABLE `media` (
 	`artist` text,
 	`duration_sec` integer NOT NULL,
 	`thumbnail` text,
+	`view_count` integer,
 	`lyrics_status` text,
 	`stem_status` text DEFAULT 'none' NOT NULL,
 	`instrumental_ref` text,
+	`vocals_ref` text,
 	`lyrics_ref` text,
 	`lyrics_candidates` text,
-	`pitch_ref` text,
 	`artist_canonical` text,
 	`title_canonical` text,
 	`mbid` text,
@@ -83,9 +108,21 @@ CREATE TABLE `playback_state` (
 	`current_entry_id` text,
 	`position_sec` integer DEFAULT 0 NOT NULL,
 	`is_playing` integer DEFAULT false NOT NULL,
-	`key_shift` integer DEFAULT 0 NOT NULL
+	`key_shift` integer DEFAULT 0 NOT NULL,
+	`background` text,
+	`guide_level` real
 );
 --> statement-breakpoint
+CREATE TABLE `plays` (
+	`id` text PRIMARY KEY NOT NULL,
+	`media_id` text NOT NULL,
+	`entry_id` text NOT NULL,
+	`at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE INDEX `plays_at_idx` ON `plays` (`at`);--> statement-breakpoint
+CREATE INDEX `plays_media_idx` ON `plays` (`media_id`,`at`);--> statement-breakpoint
+CREATE UNIQUE INDEX `plays_entry_idx` ON `plays` (`entry_id`);--> statement-breakpoint
 CREATE TABLE `queue_entries` (
 	`id` text PRIMARY KEY NOT NULL,
 	`media_id` text NOT NULL,
@@ -98,8 +135,22 @@ CREATE TABLE `queue_entries` (
 CREATE TABLE `room_settings` (
 	`room_id` text PRIMARY KEY NOT NULL,
 	`tv_progress_style` text DEFAULT 'card' NOT NULL,
-	`interstitial_ms` integer DEFAULT 2500 NOT NULL,
-	`max_quality_rank` integer
+	`tv_background_style` text DEFAULT 'off' NOT NULL,
+	`tv_background_hue` integer DEFAULT 240 NOT NULL,
+	`tv_visualizer` text DEFAULT 'plasma' NOT NULL,
+	`song_intro_enabled` integer DEFAULT true NOT NULL,
+	`song_intro_ms` integer DEFAULT 2500 NOT NULL,
+	`max_quality_rank` integer,
+	`lyrics_ball` text DEFAULT 'bounce' NOT NULL,
+	`lyrics_highlight` text DEFAULT 'word' NOT NULL,
+	`lyrics_lead_ms` integer DEFAULT 300 NOT NULL,
+	`lyrics_scale_pct` integer DEFAULT 100 NOT NULL,
+	`lyrics_font` text DEFAULT 'system' NOT NULL,
+	`lyrics_case` text DEFAULT 'natural' NOT NULL,
+	`lyrics_lines_before` integer DEFAULT 2 NOT NULL,
+	`lyrics_lines_after` integer DEFAULT 2 NOT NULL,
+	`guide_level_default` real DEFAULT 0 NOT NULL,
+	`presence_grace_minutes` integer DEFAULT 90 NOT NULL
 );
 --> statement-breakpoint
 CREATE TABLE `rooms` (

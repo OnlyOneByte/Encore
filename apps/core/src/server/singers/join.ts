@@ -68,6 +68,23 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	const color = normalizeSingerColor(input.color);
 
 	const singer = app.singers.create(name, color, app.now());
+
+	// Register the new singer with presence RIGHT NOW, in an away-ish state, so their name is held
+	// through the gap between this HTTP response and their WebSocket actually opening. PR #19 left that
+	// gap open: `create` writes the DB row, but the ONLY thing that registered a singer with the
+	// PresenceTracker was the WS `open` handler — so `presence.stateOf` returned 'gone' for a singer who
+	// had joined but whose socket had not landed, and a second phone could claim the identical name in
+	// that window (two guests both "Dana").
+	//
+	// Seeding as away (a socket that connected then dropped) rather than here means we do not lie about a
+	// live socket, and it composes correctly with everything downstream WITHOUT touching the tracker's
+	// internals: the real `connect` on WS-open promotes them to here and cancels the clock; an explicit
+	// `leave` (presence.forget) frees the name immediately; and the grace sweep expires them to gone on
+	// its own if the socket never comes. A rehydrated singer from a prior process never went through this
+	// path, so they stay gone and their name is reclaimable — the reclamation the check exists for.
+	app.presence.connect(singer.id);
+	app.presence.disconnect(singer.id, app.now());
+
 	app.publish({ type: 'singer:joined', singer });
 	return { singer };
 }

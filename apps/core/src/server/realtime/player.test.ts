@@ -43,6 +43,43 @@ test('seek sets clamped position', () => {
 	expect(state.playback.positionSec).toBe(0);
 });
 
+// ── a non-finite seek off the wire must NOT reach the NOT NULL position_sec column ──
+// Reported: a `seek` carries an unvalidated number; `Math.max(0, NaN)` is NaN, which SQLite stores
+// as NULL and throws out of the write-behind timer, killing the process long after the frame. Both a
+// NaN and an Infinity seek must leave playback untouched — and never persist a non-finite value.
+test('a NaN seek is ignored and leaves playback unchanged', () => {
+	const { state, deps } = harness();
+	handlePlayerCommand({ cmd: 'seek', positionSec: 42 }, deps); // a good position first
+	const persisted: unknown[] = [];
+	// wire a persistence sink so we can assert nothing non-finite is ever written through
+	const guarded = new AuthoritativeState({ persist: (snap) => persisted.push(snap.playback.positionSec) });
+	guarded.setPlayback({ positionSec: 42 });
+	handlePlayerCommand({ cmd: 'seek', positionSec: NaN }, { ...deps, state: guarded });
+	expect(guarded.playback.positionSec).toBe(42); // unchanged
+	guarded.flushNow();
+	expect(persisted.every((p) => Number.isFinite(p))).toBe(true);
+});
+
+test('an Infinity seek is ignored and leaves playback unchanged', () => {
+	const { state, deps } = harness();
+	handlePlayerCommand({ cmd: 'seek', positionSec: 7 }, deps);
+	expect(state.playback.positionSec).toBe(7);
+	handlePlayerCommand({ cmd: 'seek', positionSec: Infinity }, deps);
+	expect(state.playback.positionSec).toBe(7); // unchanged
+});
+
+test('setPlayback drops a non-finite numeric so no future caller can reintroduce the crash', () => {
+	const persisted: number[] = [];
+	const state = new AuthoritativeState({ persist: (snap) => persisted.push(snap.playback.positionSec) });
+	state.setPlayback({ positionSec: 30 });
+	state.setPlayback({ positionSec: NaN }); // last-line guard: dropped, not spread in
+	expect(state.playback.positionSec).toBe(30);
+	state.setPlayback({ positionSec: Infinity });
+	expect(state.playback.positionSec).toBe(30);
+	state.flushNow();
+	expect(persisted.every((p) => Number.isFinite(p))).toBe(true);
+});
+
 test('skip marks current done and advances to next', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });

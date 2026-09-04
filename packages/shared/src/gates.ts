@@ -89,3 +89,26 @@ export function pendingGates(m: Media): CookGate[] {
 export function currentGateLabel(m: Media): string | null {
 	return pendingGates(m)[0]?.pendingLabel ?? null;
 }
+
+/**
+ * Is a cook in flight — the song is not finished, but the pipeline has already started on it?
+ *
+ * Gate-DRIVEN on purpose, and this is the bug it fixes. Readiness used to decide "cooking" with a
+ * hardcoded `stemStatus === 'queued'`, which only ever saw the FIRST step. Once the lyrics gate
+ * landed, a song mid-align has `stemStatus: 'ready'` and `lyricsStatus: 'queued'` — past the stems
+ * check but not finished — so it matched neither "ready" nor "queued" and fell through to
+ * "unacquired", showing a Sing button on an already-separated song.
+ *
+ * The gate-driven test is "has any step made progress but the song is not done yet". A gate that is
+ * `done` means the cook got at least that far; a step whose status is `queued` means work is actively
+ * enqueued. Either is "cooking". Reading it off the gate table rather than a single status means a
+ * FUTURE gate cannot reopen this hole: a song sitting between two gates stays "cooking" automatically
+ * because an earlier gate reports done.
+ */
+export function isCooking(m: Media): boolean {
+	if (readyToSing(m)) return false;
+	// "Started" = any gate already reports done (the cook got at least that far — this is what catches
+	// the stems-ready / lyrics-queued window), OR the first step is actively enqueued (stems queued,
+	// where no gate is done yet). Both are cooking; only a song with nothing started is unacquired.
+	return GATES.some((g) => g.done(m)) || m.stemStatus === 'queued';
+}

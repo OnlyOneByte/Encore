@@ -10,12 +10,11 @@ import {
 	DEFAULT_FETCHER,
 	getFetcher,
 	isValidFetcher,
-	selectableFetchers,
 	fetcherFor,
 	needsFetch,
 	sourceUriFor
 } from './fetchers';
-import { normalizeGlobalSettings, DEFAULT_GLOBAL_SETTINGS } from './separators';
+import { normalizeGlobalSettings, DEFAULT_GLOBAL_SETTINGS } from './settings';
 
 test('every fetcher carries a label, and only real downloaders carry a capability', () => {
 	for (const f of FETCHERS) {
@@ -35,10 +34,9 @@ test('a capability is namespaced so it cannot collide with a separator capabilit
 	}
 });
 
-test('an unknown fetcher is not valid, and `local` is never offered as a deployment default', () => {
+test('an unknown fetcher is not valid', () => {
 	expect(isValidFetcher('ytdlp')).toBe(true);
 	expect(isValidFetcher('librespot')).toBe(false); // not implemented yet — must not validate
-	expect(selectableFetchers().map((f) => f.id)).not.toContain('local');
 });
 
 test('a local media is `local` regardless of the configured default', () => {

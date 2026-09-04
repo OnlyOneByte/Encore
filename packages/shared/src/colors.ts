@@ -293,13 +293,5 @@ function rgbToOklabAb([r, g, b]: [number, number, number]): { a: number; b: numb
 	};
 }
 
-/**
- * Kept for back-compat with callers that only ever wanted "is this one of the presets".
- * @deprecated Prefer isLegibleSingerColor — this one cannot accept a wheel hue.
- */
-export function isValidColor(c: string): boolean {
-	return (SINGER_COLORS as readonly string[]).includes(c);
-}
-
 /** A singer colour is any legible hex now, not one of eight literals. */
 export type SingerColor = string;

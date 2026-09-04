@@ -70,8 +70,15 @@ export class AuthoritativeState {
 		// used to overwrite a good value with undefined, which the write-behind flush then persisted as
 		// NULL against a NOT NULL column — throwing a SQLiteError out of the flush timer and KILLING THE
 		// PROCESS, asynchronously, long after the request that caused it. Absent means "leave it alone".
+		//
+		// A NON-FINITE numeric (NaN/Infinity, e.g. from `Math.max(0, NaN)` on an unvalidated wire seek)
+		// is the SAME crash by a different door: SQLite stores NaN as NULL and violates the same NOT NULL
+		// column from inside the flush timer. So drop non-finite numbers here too — this is the last-line
+		// guard behind player.ts, so no future caller can reintroduce the process-kill.
 		const defined = Object.fromEntries(
-			Object.entries(patch).filter(([, v]) => v !== undefined)
+			Object.entries(patch).filter(
+				([, v]) => v !== undefined && !(typeof v === 'number' && !Number.isFinite(v))
+			)
 		) as Partial<PlaybackState>;
 		this.#playback = { ...this.#playback, ...defined };
 		this.#rev++;

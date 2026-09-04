@@ -138,17 +138,22 @@ export class MediaRepository {
 	// things you cannot actually sing yet.
 
 	/** Mirror the canonical metadata for one media into the index (from its authoritative sidecar).
-	 *  `title` is optional so a caller that only knows the artist (the browse shape) still compiles; when
-	 *  omitted the stored title_canonical is left ALONE rather than nulled, since a partial mirror must
-	 *  not erase a good value. */
-	setCanonical(mediaId: string, c: { artist: string | null; title?: string | null; album: string | null; year: number | null }): void {
+	 *  `title`, `album` and `year` are all OPTIONAL and skipped when `undefined`, so a caller that only
+	 *  knows the artist (the browse-sync shape) still compiles AND does not erase columns it has no
+	 *  opinion on. This matters because the boot browse-sync passes album/year as null for most songs:
+	 *  writing null unconditionally re-nulled any previously-populated album/year on EVERY restart (a
+	 *  silent data regression). `undefined` means "do not touch"; an explicit `null` still clears. */
+	setCanonical(
+		mediaId: string,
+		c: { artist: string | null; title?: string | null; album?: string | null; year?: number | null }
+	): void {
 		this.#db
 			.update(media)
 			.set({
 				artistCanonical: c.artist,
 				...(c.title === undefined ? {} : { titleCanonical: c.title }),
-				album: c.album,
-				year: c.year
+				...(c.album === undefined ? {} : { album: c.album }),
+				...(c.year === undefined ? {} : { year: c.year })
 			})
 			.where(eq(media.id, mediaId))
 			.run();
