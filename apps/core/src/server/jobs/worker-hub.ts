@@ -83,7 +83,7 @@ export class WorkerHub {
 
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
-		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now());
+		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now(), msg.host);
 		this.#d.toWorker(msg.workerId, {
 			type: 'worker:welcome',
 			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000),
