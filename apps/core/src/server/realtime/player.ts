@@ -143,7 +143,13 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 			state.setPlayback({ positionSec: 0, isPlaying: true });
 			break;
 		case 'seek':
-			state.setPlayback({ positionSec: Math.max(0, cmd.positionSec) });
+			// cmd.positionSec is an unvalidated number off the wire. Math.max(0, NaN) is NaN, and NaN
+			// reaching the NOT NULL position_sec column throws out of the debounced write-behind timer,
+			// killing the process long after the frame. Drop a non-finite seek here (same tri-state
+			// invariant setPosition already enforces for telemetry), AND make setPlayback itself refuse
+			// non-finite numerics so no future caller can reintroduce the crash. A bad seek costs one
+			// ignored frame; crashing costs the party.
+			if (Number.isFinite(cmd.positionSec)) state.setPlayback({ positionSec: Math.max(0, cmd.positionSec) });
 			break;
 		case 'skip':
 			advance(deps);

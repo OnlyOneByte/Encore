@@ -188,3 +188,61 @@ def test_set_knobs_reach_the_cli_in_a_valid_shape():
 
 def test_jobs_of_one_is_not_passed_since_it_is_the_default():
     assert "-j" not in demucs.demucs_argv("in.wav", "/out", jobs=1)
+
+
+# ── worker token (FIX 1: close the auth loop with the core's role=worker gate) ──────────
+def test_worker_token_is_unset_by_default():
+    c = WorkerConfig.from_env({})
+    assert c.worker_token == ""
+
+
+def test_worker_token_read_from_env():
+    c = WorkerConfig.from_env({"ENCORE_WORKER_TOKEN": "s3cret"})
+    assert c.worker_token == "s3cret"
+
+
+def test_authed_core_ws_unset_token_is_byte_identical_to_core_ws():
+    # The pre-auth behaviour: no token means the URL is passed through unchanged.
+    c = WorkerConfig.from_env({"ENCORE_CORE_WS": "ws://host:3000/ws?role=worker"})
+    assert c.worker_token == ""
+    assert c.authed_core_ws() == "ws://host:3000/ws?role=worker"
+
+
+def test_authed_core_ws_appends_token_when_url_already_has_a_query():
+    # The documented form already carries ?role=worker, so the token must be an ADDITIONAL param.
+    c = WorkerConfig.from_env(
+        {"ENCORE_CORE_WS": "ws://host:3000/ws?role=worker", "ENCORE_WORKER_TOKEN": "abc123"}
+    )
+    url = c.authed_core_ws()
+    from urllib.parse import urlsplit, parse_qs
+
+    q = parse_qs(urlsplit(url).query)
+    assert q["role"] == ["worker"]
+    assert q["token"] == ["abc123"]
+    assert urlsplit(url).path == "/ws"
+
+
+def test_authed_core_ws_appends_token_when_url_has_no_query():
+    c = WorkerConfig.from_env({"ENCORE_CORE_WS": "ws://host:3000/ws", "ENCORE_WORKER_TOKEN": "abc123"})
+    url = c.authed_core_ws()
+    from urllib.parse import urlsplit, parse_qs
+
+    assert urlsplit(url).path == "/ws"
+    assert parse_qs(urlsplit(url).query)["token"] == ["abc123"]
+
+
+def test_authed_core_ws_replaces_a_pre_existing_token_rather_than_duplicating():
+    c = WorkerConfig.from_env(
+        {"ENCORE_CORE_WS": "ws://host/ws?role=worker&token=old", "ENCORE_WORKER_TOKEN": "new"}
+    )
+    from urllib.parse import urlsplit, parse_qs
+
+    assert parse_qs(urlsplit(c.authed_core_ws()).query)["token"] == ["new"]
+
+
+def test_describe_shows_token_presence_not_value():
+    c = WorkerConfig.from_env({"ENCORE_WORKER_TOKEN": "TOP-SECRET-VALUE"})
+    d = c.describe()
+    assert "worker_token=set" in d
+    assert "TOP-SECRET-VALUE" not in d
+    assert WorkerConfig.from_env({}).describe().count("worker_token=unset") == 1

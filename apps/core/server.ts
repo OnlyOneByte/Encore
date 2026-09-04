@@ -25,6 +25,14 @@ import { existsSync } from 'node:fs';
 const PORT = Number(process.env.PORT ?? 3000);
 const HOST = process.env.HOST ?? '0.0.0.0';
 
+// Optional shared secret gating role=worker WS upgrades. CONTRACT (a worker-side sibling implements
+// the other half): when ENCORE_WORKER_TOKEN is SET, a role=worker upgrade MUST present a matching
+// `token` query parameter or be refused with 401 — an unauthenticated LAN device must not be able to
+// register as a worker, soak up dispatch, and report fabricated completions. When UNSET, worker
+// upgrades are allowed as before, but we print ONE loud startup warning so an open box is never
+// silent. Other roles (phone/TV) are unaffected — they carry no dispatch authority.
+const WORKER_TOKEN = process.env.ENCORE_WORKER_TOKEN?.trim() || null;
+
 // shared singleton — the SAME authoritative state instance the SvelteKit /api routes use.
 const app = getApp();
 const state = app.state;
@@ -148,6 +156,12 @@ const server = Bun.serve<SocketData>({
 
 		if (url.pathname === '/ws') {
 			const role = url.searchParams.get('role') ?? 'phone';
+			// A role=worker socket carries dispatch authority (it registers via worker-hub #onHello,
+			// receives job assignments, and reports completions). When a shared secret is configured,
+			// require it here and refuse an unauthenticated worker with 401 rather than upgrading it.
+			if (role === 'worker' && WORKER_TOKEN && url.searchParams.get('token') !== WORKER_TOKEN) {
+				return new Response('unauthorized worker', { status: 401 });
+			}
 			// Resolve WHICH singer this socket belongs to, at upgrade, from the session cookie
 			// the browser sends on the WS handshake (same-origin, so it is there). Without this the
 			// socket is anonymous and presence is impossible. A TV or a not-yet-joined phone simply
@@ -289,6 +303,37 @@ setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 console.log(
 	`🎤 Encore core on http://${HOST}:${PORT}  (ws:/ws · health:/health · harness:/harness · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`
 );
+
+// FIX 3: shout once at boot when worker upgrades are unauthenticated, so an open box is loud, not
+// silent. When ENCORE_WORKER_TOKEN is set the gate is on and no warning is needed.
+if (!WORKER_TOKEN) {
+	console.warn(
+		'[core] ENCORE_WORKER_TOKEN is not set — role=worker WS upgrades are UNAUTHENTICATED. Any device ' +
+			'that can reach this port can register as a worker and receive job assignments. Set ' +
+			'ENCORE_WORKER_TOKEN to require a matching `token` on the worker handshake.'
+	);
+}
+
+// FIX 4: graceful shutdown. The authoritative state write-behinds on a 250ms debounce, so a
+// `docker stop` landing inside that window drops the pending queue/playback write unless we flush.
+// flushNow() exists precisely for this and nothing called it. Flush state, stop the reaper's timer,
+// then exit cleanly. Guarded so a second signal during shutdown can't re-enter.
+let shuttingDown = false;
+function gracefulShutdown(signal: string): void {
+	if (shuttingDown) return;
+	shuttingDown = true;
+	console.log(`[core] ${signal} received — flushing state and shutting down.`);
+	try {
+		state.flushNow();
+		app.reaper.stop();
+		server.stop();
+	} catch (err) {
+		console.error('[core] error during graceful shutdown:', err);
+	}
+	process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // ── dev harness markup (inline; not part of the SvelteKit app) ─────────────────
 function harnessHtml(): string {

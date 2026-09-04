@@ -37,6 +37,15 @@ import { mediaStatusFor } from './media-status';
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
 export type Broadcast = (event: ServerEvent) => void;
 
+/**
+ * How long a job may sit continuously unservable (no connected worker advertises its capability)
+ * before it is moved to a terminal `failed` state. Without a ceiling such a job parks `queued`
+ * forever: it never reaches a terminal state, so the TV and phone wait indefinitely on a song that
+ * can never cook. Two minutes is long enough to ride out a worker restart or a fleet that is still
+ * coming up, short enough that a genuinely unservable job surfaces as failed rather than hanging.
+ */
+const UNSERVABLE_TTL_MS = 120_000;
+
 export interface WorkerHubDeps {
 	jobs: JobRepository;
 	/** Per-attempt history. Optional so the hub still unit-tests bare; app.ts wires it. */
@@ -63,9 +72,11 @@ export interface WorkerHubDeps {
 export class WorkerHub {
 	#d: WorkerHubDeps;
 	#config: LeaseConfig;
-	/** Job ids already reported as unservable, so a dispatch loop that runs on every event does not
-	 *  reprint the same warning forever. Cleared per job the moment it finds a worker. */
-	#unservable = new Set<string>();
+	/** Job ids already reported as unservable, mapped to the time they FIRST became unservable, so a
+	 *  dispatch loop that runs on every event does not reprint the same warning forever AND can fail a
+	 *  job that has been unservable past UNSERVABLE_TTL_MS. Pruned on every terminal path (find-a-worker,
+	 *  complete, fail, TTL-fail) so ids for jobs that die while still queued cannot leak. */
+	#unservableSince = new Map<string, number>();
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
@@ -150,6 +161,7 @@ export class WorkerHub {
 	#onComplete(msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
+		this.#unservableSince.delete(msg.jobId); // terminal — prune any stale unservable tracking
 		// Record what the worker ACTUALLY ran, and its per-stage split, BEFORE completing: `complete`
 		// seals the attempt row, and a sealed row is never written again. Ordering matters here.
 		this.#d.attempts?.reportFacts(msg.jobId, {
@@ -215,6 +227,7 @@ export class WorkerHub {
 	#onFailed(msg: Extract<WorkerMessage, { type: 'job:failed' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
+		this.#unservableSince.delete(msg.jobId); // terminal or requeue — prune stale unservable tracking
 		this.#d.registry.releaseSlot(msg.workerId);
 		const attempts = job.attempts + 1;
 		if (msg.retryable && attempts < job.maxAttempts) {
@@ -263,12 +276,32 @@ export class WorkerHub {
 		// instead of the operator having to infer it.
 		for (const job of queued) {
 			if (hasCapableWorker(job, workers, capabilityFor)) continue;
-			if (this.#unservable.has(job.id)) continue;
-			this.#unservable.add(job.id);
+			// First time we've seen this job unservable: stamp when, warn once. On a later pass, if it has
+			// been continuously unservable past the TTL, move it to terminal `failed` so #emitStatus
+			// broadcasts `failed` and the TV/phone can stop waiting on a song that can never cook.
+			const since = this.#unservableSince.get(job.id);
+			if (since !== undefined) {
+				if (now - since >= UNSERVABLE_TTL_MS) {
+					const cap = capabilityFor(job);
+					const updated = this.#d.jobs.fail(
+						job.id,
+						`no connected worker advertised capability '${cap}' within ${Math.round(UNSERVABLE_TTL_MS / 1000)}s`,
+						now
+					);
+					this.#unservableSince.delete(job.id); // terminal now — prune so the id cannot leak
+					console.warn(
+						`[hub] job ${job.id} (${job.jobType}) FAILED: unservable for ${Math.round((now - since) / 1000)}s ` +
+							`(needs capability '${cap}', no connected worker ever advertised it)`
+					);
+					this.#emitStatus(updated);
+				}
+				continue; // already warned this stall; nothing else to do until the TTL fires
+			}
+			this.#unservableSince.set(job.id, now);
 			const cap = capabilityFor(job);
 			console.warn(
 				`[hub] job ${job.id} (${job.jobType}) needs capability '${cap}' and NO connected worker ` +
-					`advertises it — it will stay queued until one does. ` +
+					`advertises it — it will stay queued until one does or ${Math.round(UNSERVABLE_TTL_MS / 1000)}s elapse. ` +
 					`Connected: ${workers.length === 0 ? 'none' : workers.map((w) => `${w.workerId}[${w.capabilities.join(',')}]`).join(' ')}`
 			);
 			// Only tell the ROOM when the stalled job is one that blocks singing. An `align` follow-up
@@ -287,7 +320,7 @@ export class WorkerHub {
 		}
 
 		for (const { jobId, workerId } of planAssignments(queued, workers, capabilityFor)) {
-			this.#unservable.delete(jobId); // it found a worker; a later stall is a fresh event
+			this.#unservableSince.delete(jobId); // it found a worker; a later stall is a fresh event
 			const pending = this.#d.jobs.byId(jobId);
 			if (!pending) continue; // vanished between planning and dispatch
 			const media = this.#d.mediaById.get(pending.mediaId);
