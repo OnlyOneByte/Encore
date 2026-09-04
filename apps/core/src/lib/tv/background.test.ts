@@ -65,3 +65,17 @@ test('an unparseable singer colour still yields a usable stage', () => {
 		expect(css.length).toBeGreaterThan(0);
 	}
 });
+
+test('visualizer resolves to the stage floor, not to a colour', () => {
+	// The canvas paints itself; this value is only what shows beneath it before the first frame. Black
+	// rather than `transparent` on purpose — a transparent layer would reveal whatever is under the stage.
+	expect(stageBackgroundCss('visualizer', 240, '#ff5cae')).toBe('#000');
+});
+
+test('adding the visualizer style left the four colour styles untouched', () => {
+	// Guards against a regression in the same switch: the new case must not have changed its neighbours.
+	expect(stageBackgroundCss('off', 240, null)).toBe('#000');
+	expect(stageBackgroundCss('solid', 240, null)).toBe(stageHueToHex(240));
+	expect(stageBackgroundCss('gradient', 240, null)).toContain('var(--stage-glow)');
+	expect(stageBackgroundCss('singer', 240, '#5cb8ff')).toContain(stageHueToHex(nearestSingerHue('#5cb8ff')));
+});
