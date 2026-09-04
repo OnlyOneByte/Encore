@@ -101,14 +101,19 @@
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
 	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 6px; transform-origin: left center; transition: transform 0.4s ease; }
 	.stage { display: flex; justify-content: space-between; font-size: 0.74rem; color: var(--warn); margin-top: 7px; }
-	/* Identical to QueueRow's: same 30px targets, same horizontal row, same press feedback — so the
-	   controls don't visually reshuffle when a song finishes cooking and its card becomes a row. The
-	   card is taller than a row, so they sit on the title line rather than centred. */
-	.actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+	/* Identical to QueueRow's icon buttons, so the controls don't visually reshuffle when a song
+	   finishes cooking and its card becomes a row. The card is taller than a row, so the cluster aligns
+	   to the title line (flex-start) rather than the card's centre — its own comment already claimed
+	   this, but align-items:center floated the buttons mid-card. */
+	.actions { display: flex; align-items: flex-start; gap: 8px; flex: 0 0 auto; }
 	.act, .remove {
-		/* 44px: these were 30px with 6px gaps, below the reliable-tap threshold. */
-		width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line);
-		background: var(--card2); color: var(--ink-dim); font-size: 0.85rem; cursor: pointer;
+		/* 44px: these were 30px with 6px gaps, below the reliable-tap threshold. grid + place-items
+		   centres the block-display Icon (without it the mark landed off-centre). --radius-sm (12px) is
+		   the shared square-icon-button radius; these had a stray 10px. font-size sets the 1em glyph to
+		   an explicit 20px, matching SongRow (was an unused 0.85rem leaving it ~13.6px). */
+		width: 44px; height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+		background: var(--card2); color: var(--ink-dim); font-size: 20px; cursor: pointer;
+		display: grid; place-items: center;
 	}
 	.act:disabled { opacity: 0.35; cursor: default; }
 	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }
