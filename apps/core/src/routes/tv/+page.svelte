@@ -259,6 +259,13 @@
 			// learn singers who join AFTER our initial sync, or the lower-third shows "Someone" for
 			// late joiners instead of their real name (mirrors the phone).
 			if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
+			// A rename has to reach the TV or the roster chip and the "Now singing" lower-third keep the old
+			// name until the next full sync, which on a quiet room is not until someone touches the queue.
+			if (e.type === 'singer:updated') singers = new Map(singers).set(e.singer.id, e.singer);
+			if (e.type === 'singer:left') {
+				online = online.filter((id) => id !== e.singerId);
+				away = away.filter((id) => id !== e.singerId);
+			}
 		};
 	}
 

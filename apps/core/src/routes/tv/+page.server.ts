@@ -53,6 +53,6 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	}
 	// `joinOrigin` rides along so the TV can tell a settings change that moved the join address from one
 	// that did not: the QR is a server-rendered image, so only that case needs the load to re-run.
-	// `interstitialMs`/`tvProgressStyle` are no longer returned separately — they are in `settings`.
+	// The song-intro hold and `tvProgressStyle` are not returned separately — they are in `settings`.
 	return { joinUrl, qrDataUrl, joinOrigin: origin, joinFallbackOrigin: fallback, settings };
 };

@@ -110,6 +110,17 @@ export class PresenceTracker {
 	}
 
 	/**
+	 * Drop a singer outright, without waiting for any clock.
+	 *
+	 * This is what an EXPLICIT leave uses. The grace window exists because a dropped socket is ambiguous
+	 * — a locked phone looks exactly like a walk to the car — and that ambiguity is gone the moment
+	 * someone tells us they are leaving. Their name returns to the pool immediately.
+	 */
+	forget(singerId: string): boolean {
+		return this.#rec.delete(singerId);
+	}
+
+	/**
 	 * Advance membership and report it.
 	 *
 	 * This is the only thing that starts or clears a grace clock, and the only thing that can move a

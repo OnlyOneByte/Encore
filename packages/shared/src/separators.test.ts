@@ -564,7 +564,7 @@ describe('tv background styles', () => {
 	});
 
 	it('quantises the hue to the wheel step and wraps instead of rejecting', () => {
-		// an angle always has a meaning once wrapped, so clamping beats refusing (interstitialMs precedent)
+		// an angle always has a meaning once wrapped, so clamping beats refusing (song-intro precedent)
 		expect(normalizeRoomSettings({ tvBackgroundHue: 0 }).tvBackgroundHue).toBe(0);
 		expect(normalizeRoomSettings({ tvBackgroundHue: 7 }).tvBackgroundHue).toBe(0); // nearer 0 than 15
 		expect(normalizeRoomSettings({ tvBackgroundHue: 8 }).tvBackgroundHue).toBe(15); // rounds up
@@ -629,11 +629,11 @@ describe('tv visualizers', () => {
 	});
 
 	it('a bad visualizer write never discards an unrelated choice', () => {
-		const room = { ...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'moire' as const, tvBackgroundHue: 75, interstitialMs: 7000 };
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'moire' as const, tvBackgroundHue: 75, songIntroMs: 7000 };
 		const out = normalizeRoomSettings({ tvVisualizer: 'garbage' as never }, room);
 		expect(out.tvVisualizer).toBe('moire');
 		expect(out.tvBackgroundHue).toBe(75);
-		expect(out.interstitialMs).toBe(7000);
+		expect(out.songIntroMs).toBe(7000);
 	});
 
 	it('every visualizer id is a plausible column value — no spaces or casing surprises', () => {
