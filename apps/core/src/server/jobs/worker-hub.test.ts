@@ -5,9 +5,10 @@ import { test, expect } from 'bun:test';
 import { WorkerHub } from './worker-hub';
 import { WorkerRegistry } from './registry';
 import { JobRepository } from './repository';
+import { AttemptLedger } from './attempts';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
-import type { WorkerCommand, ServerEvent, Media } from '@encore/shared';
+import { attemptStages, realtimeFactor, type WorkerCommand, type ServerEvent, type Media } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 
@@ -18,7 +19,8 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 function harness() {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
-	const jobs = new JobRepository(db);
+	const attempts = new AttemptLedger(db);
+	const jobs = new JobRepository(db, attempts);
 	const registry = new WorkerRegistry();
 	const mediaById = new Map<string, Media>([['m1', media('m1')], ['m2', media('m2')]]);
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
@@ -27,6 +29,7 @@ function harness() {
 	const readied: string[] = [];
 	const hub = new WorkerHub({
 		jobs,
+		attempts,
 		registry,
 		mediaById,
 		toWorker: (workerId, cmd) => sent.push({ workerId, cmd }),
@@ -34,7 +37,7 @@ function harness() {
 		onMediaReady: (mediaId) => readied.push(mediaId),
 		now: () => clock
 	});
-	return { hub, jobs, registry, mediaById, sent, broadcasts, readied, setClock: (t: number) => (clock = t) };
+	return { hub, jobs, attempts, registry, mediaById, sent, broadcasts, readied, setClock: (t: number) => (clock = t) };
 }
 
 const cmdsOfType = (sent: { cmd: WorkerCommand }[], type: WorkerCommand['type']) =>
@@ -196,4 +199,91 @@ test('a job with no capable worker stays queued (unservable by the current fleet
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' }); // only stems
 	expect(jobs.byId(job.id)!.status).toBe('queued');
 	expect(cmdsOfType(sent, 'job:assign')).toHaveLength(0);
+});
+
+// ── the attempt ledger, driven through the real wire path ────────────────────────
+// These assert the full journey a duration takes: dispatch writes what was ASKED, the worker's
+// job:complete overwrites it with what actually RAN, and the row is sealed with its timings.
+
+test('a full cook records its timings, models and stage split on the attempt', () => {
+	const { hub, jobs, attempts, setClock } = harness();
+	jobs.enqueue('m1', 'stems', 0, T0);
+	setClock(T0 + 5_000); // 5s of queue wait
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	setClock(T0 + 6_000);
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: jobs.listByStatus('assigned')[0].id });
+	const jobId = jobs.listByStatus('running')[0].id;
+	setClock(T0 + 96_000); // 90s of actual work
+	hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId,
+		mediaUri: '/media/derived/stems/m1-instrumental.flac',
+		artifacts: { stems: { instrumental: '/media/derived/stems/m1-instrumental.flac' } },
+		facts: { engine: 'demucs', model: 'htdemucs', backend: 'torch' },
+		stages: [
+			{ stage: 'downloading', ms: 9_000 },
+			{ stage: 'separating', ms: 81_000 }
+		]
+	});
+
+	const [a] = attempts.byMedia('m1');
+	expect(a.outcome).toBe('ready');
+	expect(a.assignedAt! - a.enqueuedAt).toBe(5_000); // queue wait, separated at last
+	expect(a.finishedAt! - a.startedAt!).toBe(90_000); // processing time
+	expect(a.model).toBe('htdemucs');
+	expect(a.backend).toBe('torch');
+	// The split the core could never see on its own.
+	expect(attemptStages(a)).toEqual([
+		{ stage: 'downloading', ms: 9_000 },
+		{ stage: 'separating', ms: 81_000 }
+	]);
+	// media durationSec is 200 in this harness → 90s of compute for 200s of audio.
+	expect(realtimeFactor(a)).toBeCloseTo(0.45, 5);
+});
+
+test("the worker's resolved model wins over what dispatch asked for", () => {
+	const { hub, jobs, attempts, setClock } = harness();
+	jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: jobs.listByStatus('assigned')[0].id });
+	const jobId = jobs.listByStatus('running')[0].id;
+	setClock(T0 + 1_000);
+	hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId,
+		mediaUri: '/media/x.flac',
+		artifacts: { stems: { instrumental: '/media/x.flac' } },
+		// The core asked for the default; the worker actually loaded a different checkpoint.
+		facts: { engine: 'roformer', model: 'mel-band-roformer', device: 'cpu' }
+	});
+
+	const [a] = attempts.byMedia('m1');
+	expect(a.model).toBe('mel-band-roformer');
+	expect(a.device).toBe('cpu');
+});
+
+test('an older worker that reports no facts still gets a sealed, timed attempt', () => {
+	// The wire fields are additive: a worker built before this change sends neither, and the attempt
+	// must still carry the timings the CORE measured rather than being left open forever.
+	const { hub, jobs, attempts, setClock } = harness();
+	jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: jobs.listByStatus('assigned')[0].id });
+	const jobId = jobs.listByStatus('running')[0].id;
+	setClock(T0 + 30_000);
+	hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId,
+		mediaUri: '/media/x.flac',
+		artifacts: { stems: { instrumental: '/media/x.flac' } }
+	});
+
+	const [a] = attempts.byMedia('m1');
+	expect(a.outcome).toBe('ready');
+	expect(a.finishedAt! - a.startedAt!).toBe(30_000);
+	expect(attemptStages(a)).toEqual([]); // no breakdown, honestly empty
+	expect(a.model).toBe('htdemucs'); // what dispatch asked for still stands
 });

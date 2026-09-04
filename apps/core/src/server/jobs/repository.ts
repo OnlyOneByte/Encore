@@ -9,6 +9,7 @@ import type { DB } from '../db/index';
 import { jobs } from '../db/schema';
 import { ulid, type Job, type JobStatus, type JobType } from '@encore/shared';
 import { assertTransition } from './transitions';
+import type { AttemptLedger, AttemptFacts } from './attempts';
 
 // Dedup slot occupancy: a (mediaId, jobType) is "taken" by any job NOT failed/canceled — the same
 // set the partial unique index `jobs_live_media_type_idx` enforces (schema.ts). A `ready` job still
@@ -30,8 +31,15 @@ export interface JobPatch {
 
 export class JobRepository {
 	#db: DB;
-	constructor(db: DB) {
+	#ledger: AttemptLedger | null;
+	/**
+	 * The ledger is OPTIONAL so every existing unit test that constructs a bare repository keeps
+	 * working, and so a missing ledger can never break a cook — it is observability, not correctness.
+	 * app.ts wires it; tests that assert on history pass one in.
+	 */
+	constructor(db: DB, ledger?: AttemptLedger) {
 		this.#db = db;
+		this.#ledger = ledger ?? null;
 	}
 
 	/**
@@ -39,14 +47,19 @@ export class JobRepository {
 	 * Two singers queueing the same song get one job; the second add just subscribes to it. A new
 	 * job is only created when no slot-occupying job exists (i.e. the previous one failed/canceled,
 	 * or there never was one).
+	 *
+	 * `cookId` threads an existing cook through a chained step (stems inherits fetch's cook). Omitted
+	 * = this job STARTS a cook and mints its own. Reusing an existing live job does not re-open an
+	 * attempt: the caller is subscribing to work already in flight, not causing new work.
 	 */
-	enqueue(mediaId: string, jobType: JobType, priority: number, now: number): Job {
+	enqueue(mediaId: string, jobType: JobType, priority: number, now: number, cookId?: string): Job {
 		const existing = this.findLive(mediaId, jobType);
 		if (existing) return existing;
 
 		const job: Job = {
 			id: ulid(now),
 			mediaId,
+			cookId: cookId ?? ulid(now),
 			jobType,
 			status: 'queued',
 			priority,
@@ -62,6 +75,7 @@ export class JobRepository {
 			updatedAt: now
 		};
 		this.#db.insert(jobs).values(job).run();
+		this.#ledger?.open(job, now);
 		return job;
 	}
 
@@ -109,8 +123,10 @@ export class JobRepository {
 	// — semantic lifecycle helpers (thin wrappers over transition, named for the wire protocol §5) —
 
 	/** Dispatch: offer the job to a worker; the caller sets the ack-lease deadline. */
-	assign(id: string, workerId: string, leaseExpiresAt: number | null, now: number): Job {
-		return this.transition(id, 'assigned', { workerId, leaseExpiresAt }, now);
+	assign(id: string, workerId: string, leaseExpiresAt: number | null, now: number, facts: AttemptFacts = {}): Job {
+		const job = this.transition(id, 'assigned', { workerId, leaseExpiresAt }, now);
+		this.#ledger?.assigned(id, workerId, facts, now);
+		return job;
 	}
 
 	/**
@@ -119,7 +135,9 @@ export class JobRepository {
 	 * reaped as a dead running job. Pass the deadline (lease policy lives in the pure leases.ts).
 	 */
 	accept(id: string, leaseExpiresAt: number | null, now: number): Job {
-		return this.transition(id, 'running', { leaseExpiresAt }, now);
+		const job = this.transition(id, 'running', { leaseExpiresAt }, now);
+		this.#ledger?.started(id, now);
+		return job;
 	}
 
 	/** Worker progress (`job:progress`): self-loop in `running`, refresh stage/pct/lease. */
@@ -129,7 +147,9 @@ export class JobRepository {
 
 	/** Worker finished (`job:complete`): terminal `ready`. */
 	complete(id: string, now: number): Job {
-		return this.transition(id, 'ready', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
+		const job = this.transition(id, 'ready', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
+		this.#ledger?.closed(id, 'ready', now);
+		return job;
 	}
 
 	/**
@@ -140,21 +160,32 @@ export class JobRepository {
 	fail(id: string, error: string, now: number, attempts?: number): Job {
 		const patch: JobPatch = { error, leaseExpiresAt: null, workerId: null };
 		if (attempts !== undefined) patch.attempts = attempts;
-		return this.transition(id, 'failed', patch, now);
+		const job = this.transition(id, 'failed', patch, now);
+		this.#ledger?.closed(id, 'failed', now, error);
+		return job;
 	}
 
 	/** Song removed before finish (`job:cancel`): terminal `canceled`, frees the dedup slot. */
 	cancel(id: string, now: number): Job {
-		return this.transition(id, 'canceled', { leaseExpiresAt: null, workerId: null }, now);
+		const job = this.transition(id, 'canceled', { leaseExpiresAt: null, workerId: null }, now);
+		this.#ledger?.closed(id, 'canceled', now);
+		return job;
 	}
 
 	/**
 	 * Return a non-terminal job to the queue (worker reject, lease expiry, or boot recovery). The
 	 * caller decides whether to increment `attempts` — an ack-timeout doesn't (work never started),
 	 * a progress-lease expiry does. Clears the owner + lease.
+	 *
+	 * Two ledger writes, in order: the in-flight attempt is ABANDONED (it is over — a retry is not a
+	 * continuation of it), then a fresh attempt opens so the new wait is dated from now rather than
+	 * inheriting the abandoned attempt's queue time.
 	 */
 	requeue(id: string, attempts: number, now: number): Job {
-		return this.transition(id, 'queued', { workerId: null, leaseExpiresAt: null, attempts }, now);
+		this.#ledger?.closed(id, 'abandoned', now);
+		const job = this.transition(id, 'queued', { workerId: null, leaseExpiresAt: null, attempts }, now);
+		this.#ledger?.open(job, now);
+		return job;
 	}
 
 	/** Map a DB row to the shared Job (the row shape mirrors Job 1:1 — see schema.ts / shared types). */

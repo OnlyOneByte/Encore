@@ -20,6 +20,11 @@ gapless TV, and live "make-karaoke" stem separation on the roadmap.
   pitch is compared against a reference pitch track for a rolling accuracy score.
 - **📚 Karaoke library** — cooked songs persist in a self-describing media volume and are
   browsable by artist and genre.
+- **📊 Stats + audit** — `/stats` is a public page (library size, most-sung, top artists, sings per
+  day). `/metrics` is the internal one: time per pipeline step with queue wait shown separately,
+  end-to-end per cook, and cost per model measured against the whitelist's own declared `rtFactor`.
+  Click any song for `/metrics/<mediaId>` — every cook, every retry, which model ran it, and why it
+  failed. **The two internal pages are currently ungated** — see Configuration.
 - **Round-robin rotation** — everyone's 1st pick before anyone's 2nd; new joiners slot in fairly.
 - **Real-time + optimistic** — every tap renders instantly; 20 phones stay synced over flaky
   wifi; reconnects self-heal.
@@ -170,7 +175,8 @@ fallback for a job that carries neither.
 M5 gapless TV · M6 hardening → **v0.1.0** · M7 make-karaoke (Demucs stems) → **v0.2.0** ·
 M8 word-timed lyrics + live scoring. Then backlog: **B-1** library · **B-5** readiness search ·
 **B-6** TV room states + presence · **B-7** media storage classes + browse + retention ·
-**B-3** tiered lyrics source chain (LRCLIB → captions → ASR, with provenance labelling).
+**B-3** tiered lyrics source chain (LRCLIB → captions → ASR, with provenance labelling) ·
+**B-10** stats + audit dashboards (per-attempt job ledger, per-play log, measured model costs).
 
 **Next:** **B-8** swap stem separation to `python-audio-separator` (better models than `htdemucs`;
 also improves the ASR lyrics tier, which reads the vocals stem) · **B-9** bake in `yt-dlp` + a
@@ -182,10 +188,10 @@ Agent/human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 ## Dev notes
 
 ```bash
-bun test          # 479 unit/integration tests (425 core + 54 shared) — runnable from the root
+bun test          # 729 unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # both workspaces
-cd apps/worker && pytest   # 142 worker tests — needs `pip install pytest pytest-asyncio`
+cd apps/worker && pytest   # 328 worker tests — needs `pip install pytest pytest-asyncio`
 ```
 
 `pytest.ini` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** the async tests fail with

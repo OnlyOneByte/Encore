@@ -400,7 +400,14 @@ class DemucsProcessor:
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job
                 pass
 
-        yield CompleteResult(media_uri=final, artifacts={"stems": stems})
+        # Report the model THIS RUN resolved, not the one the core asked for: resolve_demucs_model
+        # applies its own default when params carry none, so the two can differ and only the worker
+        # knows which weights were actually loaded.
+        yield CompleteResult(
+            media_uri=final,
+            artifacts={"stems": stems},
+            facts={"engine": "demucs", "model": model, "backend": "torch"},
+        )
 
     async def _run_quiet(self, argv: list[str]) -> None:
         """Run a CLI that emits no useful progress (ffmpeg at loglevel=error), draining its output."""

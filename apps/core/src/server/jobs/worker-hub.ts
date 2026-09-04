@@ -19,8 +19,9 @@ import type {
 } from '@encore/shared';
 import { sourceUriFor } from '@encore/shared';
 import type { JobRepository } from './repository';
+import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
-import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental } from './dispatch';
+import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental, inheritsCook } from './dispatch';
 import { markMediaReady, setMediaLyrics, setMediaPitch, applyAnnotation, settleLyricsGate, markLyricsQueued } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
@@ -31,6 +32,8 @@ export type Broadcast = (event: ServerEvent) => void;
 
 export interface WorkerHubDeps {
 	jobs: JobRepository;
+	/** Per-attempt history. Optional so the hub still unit-tests bare; app.ts wires it. */
+	attempts?: AttemptLedger;
 	registry: WorkerRegistry;
 	/** Resolve a media's source URI (youtube id / file key) so the worker can pull it. */
 	mediaById: Map<string, Media>;
@@ -80,7 +83,7 @@ export class WorkerHub {
 
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
-		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now());
+		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now(), msg.host);
 		this.#d.toWorker(msg.workerId, {
 			type: 'worker:welcome',
 			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000),
@@ -127,7 +130,13 @@ export class WorkerHub {
 	 *  ready, then let the core reconcile playback (a held song slots back at its fair position). */
 	#onComplete(msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
-		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
+		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
+		// Record what the worker ACTUALLY ran, and its per-stage split, BEFORE completing: `complete`
+		// seals the attempt row, and a sealed row is never written again. Ordering matters here.
+		this.#d.attempts?.reportFacts(msg.jobId, {
+			...(msg.facts ?? {}),
+			stages: msg.stages?.length ? JSON.stringify(msg.stages) : undefined
+		});
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#d.getSettings?.();
 		// Flip the media to ready (instrumentalRef→what the worker wrote, stemStatus→
@@ -167,7 +176,9 @@ export class WorkerHub {
 		// a re-cooked song cannot stack duplicate align jobs; it inherits the completed job's priority so
 		// it stays as urgent as the song that needed it.
 		for (const next of followUps(job.jobType, settings)) {
-			this.#d.jobs.enqueue(job.mediaId, next, job.priority, this.#d.now());
+			// A chained step continues THIS cook so the song's end-to-end duration spans the whole run;
+			// `stems-upgrade` deliberately starts its own (see inheritsCook).
+			this.#d.jobs.enqueue(job.mediaId, next, job.priority, this.#d.now(), inheritsCook(next) ? job.cookId : undefined);
 			// Name the step the song is now waiting on, so the phone's cooking line can say "Timing
 			// lyrics" instead of leaving a finished separation looking idle.
 			if (next === 'align') markLyricsQueued(job.mediaId, this.#d.mediaById);
@@ -222,16 +233,28 @@ export class WorkerHub {
 		const settings = this.#d.getSettings?.();
 		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);
 		for (const { jobId, workerId } of planAssignments(queued, workers, capabilityFor)) {
-			const job = this.#d.jobs.assign(jobId, workerId, ackDeadline(now, this.#config), now);
+			const pending = this.#d.jobs.byId(jobId);
+			if (!pending) continue; // vanished between planning and dispatch
+			const media = this.#d.mediaById.get(pending.mediaId);
+			const params = assignParams(pending.jobType, media, this.#d.getSettings?.());
+			// Record WHAT WAS DISPATCHED onto the attempt, alongside the song's length so the cost can be
+			// reported as a rate rather than raw seconds. These are the request, not yet the truth: a
+			// worker that reports its own resolved model overwrites them (AttemptLedger.reportFacts).
+			const job = this.#d.jobs.assign(jobId, workerId, ackDeadline(now, this.#config), now, {
+				engine: params.engine ?? null,
+				model: params.model ?? null,
+				asrModel: params.asrModel ?? null,
+				syncMode: params.syncMode ?? null,
+				audioSec: media?.durationSec ?? null
+			});
 			this.#d.registry.claimSlot(workerId);
-			const media = this.#d.mediaById.get(job.mediaId);
 			this.#d.toWorker(workerId, {
 				type: 'job:assign',
 				jobId: job.id,
 				mediaId: job.mediaId,
 				jobType: job.jobType,
 				sourceUri: media ? sourceUriFor(media, this.#d.getSettings?.()?.defaultFetcher) : '',
-				params: assignParams(job.jobType, media, this.#d.getSettings?.())
+				params
 			});
 		}
 	}

@@ -14,6 +14,7 @@ import shutil
 import asyncio
 import json
 import os
+import time
 from typing import Any
 
 from . import protocol
@@ -56,7 +57,15 @@ class WorkerClient:
         self._tasks: set[asyncio.Task] = set()
 
     async def hello(self) -> None:
-        await self._send(protocol.hello(self.state.worker_id, self.state.capabilities, self.state.concurrency, self._version))
+        await self._send(
+            protocol.hello(
+                self.state.worker_id,
+                self.state.capabilities,
+                self.state.concurrency,
+                self._version,
+                protocol.host_facts(),
+            )
+        )
 
     async def send_heartbeat(self) -> None:
         await self._send(protocol.heartbeat(self.state.worker_id, self.state.slots_free, list(self.state.running)))
@@ -100,14 +109,27 @@ class WorkerClient:
     async def _run_job(self, job: JobSpec) -> None:
         try:
             result: CompleteResult | None = None
+            # Time each stage from the progress stream the processor already emits. Nothing inside the
+            # processors changes, so this cannot drift when one of them is edited.
+            timer = protocol.StageTimer(time.monotonic)
             async for ev in self._processor.process(job):
                 if isinstance(ev, ProgressEvent):
+                    timer.observe(ev.stage)
                     await self._send(protocol.progress(self.state.worker_id, job.job_id, ev.stage, ev.pct, ev.eta_sec))
                 else:  # CompleteResult
                     result = ev
             if result is None:
                 raise RuntimeError("processor produced no result")
-            await self._send(protocol.complete(self.state.worker_id, job.job_id, result.media_uri, result.artifacts))
+            await self._send(
+                protocol.complete(
+                    self.state.worker_id,
+                    job.job_id,
+                    result.media_uri,
+                    result.artifacts,
+                    facts=result.facts,
+                    stages=timer.finish(),
+                )
+            )
         except Exception as exc:  # noqa: BLE001 — report ANY failure to the core, which decides retry
             retryable = _is_retryable(exc)
             # LOG it too: reporting only over the wire made a retry loop invisible from both ends — a

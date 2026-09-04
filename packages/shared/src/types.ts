@@ -178,6 +178,17 @@ export interface Job {
   id: string;
   mediaId: string;
   jobType: JobType;
+  /**
+   * The COOK this job belongs to — one id shared by every step of one run (fetch → stems → align).
+   *
+   * `mediaId` cannot do this job. A song can be cooked more than once: a failure frees the dedup slot
+   * so it can be re-cooked, and `stems-upgrade` re-separates a finished song. Grouping attempt
+   * records by `mediaId` alone therefore blends distinct runs together, which makes an end-to-end
+   * duration meaningless (it would span from the first cook's enqueue to the last upgrade's finish).
+   * A `stems-upgrade` deliberately starts a NEW cook rather than inheriting: it is background work on
+   * an already-finished song, and its cost belongs to itself.
+   */
+  cookId: string;
   status: JobStatus;
   priority: number; // mirror of soonest rotationSeq; lower = sooner
   attempts: number;
@@ -190,6 +201,103 @@ export interface Job {
   leaseExpiresAt: number | null; // epoch ms; ack-lease or progress-lease deadline
   createdAt: number;
   updatedAt: number;
+}
+
+/** How one attempt at one job ended. `abandoned` = returned to the queue (reject / lease expiry). */
+export const ATTEMPT_OUTCOMES = ['ready', 'failed', 'canceled', 'abandoned'] as const;
+export type AttemptOutcome = (typeof ATTEMPT_OUTCOMES)[number];
+
+/**
+ * ONE ATTEMPT at one job — the audit spine, and the only place processing time is recorded.
+ *
+ * WHY THIS TABLE EXISTS. The `jobs` row is mutated in place: it carries `createdAt` and `updatedAt`
+ * and nothing else, and `updatedAt` is overwritten by every progress frame. So a finished job says
+ * only "this changed most recently at T" — you cannot tell how long it WAITED from how long it RAN,
+ * you cannot see a previous attempt at all (`attempts` is a counter and `error` keeps only the last
+ * message), and you cannot tell which model produced the result. None of that is recoverable later:
+ * an unrecorded duration is gone permanently. This table records each attempt as its own row.
+ *
+ * WHAT "APPEND-ONLY" MEANS HERE, PRECISELY. A row is opened when the job enters the queue and is
+ * filled in as that ONE attempt progresses (assigned → started → finished). Once it reaches an
+ * outcome it is never written again, and a retry opens a NEW row rather than overwriting the old one.
+ * So history is immutable; only the attempt currently in flight is still being written.
+ */
+export interface JobAttempt {
+  id: string;
+  jobId: string;
+  mediaId: string;
+  cookId: string;
+  jobType: JobType;
+  /** 1-based. Attempt 2 exists only because attempt 1 was abandoned or failed retryably. */
+  attempt: number;
+  workerId: string | null;
+
+  /**
+   * FOUR clocks, because one cannot answer the question. Every duration the dashboards report is a
+   * subtraction between two of these, and each is null until that moment actually happens — a job
+   * that never got picked up has no `startedAt`, and saying 0 there would invent work that never ran.
+   *
+   *   assignedAt − enqueuedAt  → queue wait (was the fleet busy?)
+   *   startedAt  − assignedAt  → ack latency (did the worker pick it up promptly?)
+   *   finishedAt − startedAt   → PROCESSING TIME — the number the internal dashboard is for
+   *   finishedAt − enqueuedAt, grouped by cookId → end-to-end for the whole song
+   */
+  enqueuedAt: number;
+  assignedAt: number | null;
+  startedAt: number | null;
+  finishedAt: number | null;
+
+  outcome: AttemptOutcome | null; // null = still in flight
+  error: string | null;
+
+  /**
+   * WHAT ACTUALLY RAN. Recorded per attempt because these are resolved from GLOBAL SETTINGS at
+   * dispatch time and settings are operator-editable: re-deriving a past cook's model from today's
+   * settings gives a confidently wrong answer. Written at assign time from the dispatched params
+   * (what was asked for); a worker that reports its own resolution overwrites them with the truth,
+   * since a worker can legitimately resolve something different from what it was asked.
+   */
+  engine: string | null;
+  model: string | null;
+  backend: string | null;
+  device: string | null;
+  asrModel: string | null;
+  syncMode: string | null;
+
+  /**
+   * The song's length, snapshotted. Raw seconds do not compare across songs — a 30s clip and a 7min
+   * track are not the same workload — so every reported cost is a RATE (seconds of compute per
+   * second of audio). Copied onto the attempt rather than joined from `media` because a media row's
+   * duration can be re-annotated later, which would silently rewrite historical rates.
+   */
+  audioSec: number | null;
+
+  /**
+   * Per-stage wall clock as a JSON string: `[{"stage":"separating","ms":51000}]`. Stored whole rather
+   * than as rows because it is only ever read whole — to render one attempt's breakdown — so a table
+   * would add a join and a migration without enabling a query. Use `attemptStages()` to read it.
+   */
+  stages: string | null;
+}
+
+/** Parse an attempt's stage breakdown. Returns [] for absent or malformed JSON — a corrupt
+ *  diagnostic must degrade to "no breakdown", never throw inside a dashboard render. */
+export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; ms: number }[] {
+  if (!a.stages) return [];
+  try {
+    const parsed = JSON.parse(a.stages);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s) => typeof s?.stage === 'string' && Number.isFinite(s?.ms));
+  } catch {
+    return [];
+  }
+}
+
+/** Seconds of compute per second of audio for one attempt. Null when it never ran or has no length. */
+export function realtimeFactor(a: Pick<JobAttempt, 'startedAt' | 'finishedAt' | 'audioSec'>): number | null {
+  if (a.startedAt === null || a.finishedAt === null) return null;
+  if (!a.audioSec || a.audioSec <= 0) return null;
+  return (a.finishedAt - a.startedAt) / 1000 / a.audioSec;
 }
 
 /**

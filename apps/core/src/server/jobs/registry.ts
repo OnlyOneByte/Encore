@@ -4,6 +4,8 @@
 // dispatcher can pick the least-loaded eligible worker (§4).
 
 
+import type { WorkerHost } from '@encore/shared';
+
 export interface WorkerSession {
 	workerId: string;
 	capabilities: string[]; // capability tokens (superset of JobType, e.g. 'stems:roformer')
@@ -11,6 +13,13 @@ export interface WorkerSession {
 	version: string;
 	slotsFree: number; // concurrency minus jobs currently assigned/running to it
 	lastSeen: number; // epoch ms of the last hello/heartbeat (liveness)
+	/**
+	 * What box this worker runs on, as it reported at handshake. Optional: a worker built before this
+	 * existed sends nothing, and the probes are best-effort even on one that does. Kept so a reader of
+	 * "stems took 43 minutes" can tell whether that was a GPU or four shared cores — previously the
+	 * worker resolved all of this at startup and only ever printed it to its own stdout.
+	 */
+	host?: WorkerHost;
 }
 
 export class WorkerRegistry {
@@ -26,7 +35,8 @@ export class WorkerRegistry {
 		capabilities: string[],
 		concurrency: number,
 		version: string,
-		now: number
+		now: number,
+		host?: WorkerHost
 	): WorkerSession {
 		const session: WorkerSession = {
 			workerId,
@@ -34,7 +44,8 @@ export class WorkerRegistry {
 			concurrency,
 			version,
 			slotsFree: concurrency,
-			lastSeen: now
+			lastSeen: now,
+			...(host ? { host } : {})
 		};
 		this.#workers.set(workerId, session);
 		return session;
