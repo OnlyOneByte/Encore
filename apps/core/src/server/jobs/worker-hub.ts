@@ -21,7 +21,7 @@ import { sourceUriFor } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { WorkerRegistry } from './registry';
 import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental } from './dispatch';
-import { markMediaReady, setMediaLyrics, setMediaPitch, applyAnnotation } from './make-karaoke';
+import { markMediaReady, setMediaLyrics, setMediaPitch, applyAnnotation, settleLyricsGate, markLyricsQueued } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 import { mediaStatusFor } from './media-status';
@@ -148,6 +148,10 @@ export class WorkerHub {
 		// Attach word-timed lyrics if the job carried an align artifact (the TV overlay). Additive:
 		// a stems-only complete leaves lyrics absent; an align complete populates lyricsRef.
 		setMediaLyrics(job.mediaId, msg.artifacts?.lyrics?.uri, this.#d.mediaById, msg.artifacts?.lyrics?.candidates);
+		// The lyrics GATE is satisfied by align having RUN, not by it having found words: a genuine
+		// instrumental completes with no artifact and is still a finished song. Set after setMediaLyrics
+		// so the artifact (when there is one) is already attached.
+		if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
 		// Attach the reference pitch track if a score job carried it (mic scoring). Additive.
 		setMediaPitch(job.mediaId, msg.artifacts?.pitch?.uri, this.#d.mediaById);
 		// Persist the cooked media NOW (stems key + lyrics + pitch) so a restart finds the separated
@@ -164,6 +168,9 @@ export class WorkerHub {
 		// it stays as urgent as the song that needed it.
 		for (const next of followUps(job.jobType, settings)) {
 			this.#d.jobs.enqueue(job.mediaId, next, job.priority, this.#d.now());
+			// Name the step the song is now waiting on, so the phone's cooking line can say "Timing
+			// lyrics" instead of leaving a finished separation looking idle.
+			if (next === 'align') markLyricsQueued(job.mediaId, this.#d.mediaById);
 		}
 		this.#emitStatus(updated);
 		this.#d.onMediaReady?.(job.mediaId); // core reconciles playback (start if idle / preload)
@@ -182,6 +189,12 @@ export class WorkerHub {
 		} else {
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
 			cleanJobWork(msg.jobId); // terminal: nothing will resume from this scratch
+			// A PERMANENTLY failed align must not hold the song hostage. Now that singing waits for the
+			// lyrics gate, leaving it unsettled would mean one broken metadata step — a worker OOM, a
+			// model that will not load — makes the song unsingable forever, with no way out but a manual
+			// DB edit. We tried, we are done waiting: settle the gate and let the party continue with no
+			// words on screen. The line logged just below is the record of why.
+			if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
 			// LOG a terminal failure. A dead `align` job is otherwise completely silent — the song still
 			// plays, it just never gets lyrics and nothing anywhere says why. The operator needs one line
 			// naming the media and the reason, since the jobs table is the only other record.

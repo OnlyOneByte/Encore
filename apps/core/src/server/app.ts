@@ -27,6 +27,7 @@ import {
 	transcodeDiagnostics
 } from './media/retention';
 import { needsLyricsBackfill, BACKFILL_PRIORITY } from './jobs/backfill';
+import { markLyricsQueued } from './jobs/make-karaoke';
 import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, lookupTitle, readAllSidecars } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -225,7 +226,10 @@ export function getApp(): EncoreApp {
 			// restart idempotent. Set ENCORE_LYRICS_BACKFILL=0 to skip (e.g. mid-party on a slow box).
 			if (process.env.ENCORE_LYRICS_BACKFILL !== '0') {
 				const need = needsLyricsBackfill(mediaById.values());
-				for (const id of need) jobs.enqueue(id, 'align', BACKFILL_PRIORITY, Date.now());
+				for (const id of need) {
+					jobs.enqueue(id, 'align', BACKFILL_PRIORITY, Date.now());
+					markLyricsQueued(id, mediaById);
+				}
 				if (need.length > 0) {
 					console.log(
 						`[core] lyrics backfill: queued ${need.length} align job(s) for already-cooked songs` +

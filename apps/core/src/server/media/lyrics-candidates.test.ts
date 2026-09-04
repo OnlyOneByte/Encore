@@ -18,7 +18,7 @@ const media = (over: Partial<Media> = {}): Media => ({
 	title: 'Toto - Africa (Lyrics)',
 	artist: 'Vibe Music',
 	durationSec: 295,
-	stemStatus: 'ready',
+	stemStatus: 'ready', lyricsStatus: 'ready',
 	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	...over
 });

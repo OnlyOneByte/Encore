@@ -7,6 +7,7 @@ import { eq, and, desc, asc, sql, isNotNull } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
 import type { Media, LyricsCandidate } from '@encore/shared';
+import { readyToSing } from '@encore/shared';
 
 type MediaRow = typeof media.$inferInsert;
 
@@ -21,6 +22,7 @@ const toRow = (m: Media): MediaRow => ({
 	durationSec: Math.round(m.durationSec),
 	thumbnail: m.thumbnail ?? null,
 	stemStatus: m.stemStatus,
+	lyricsStatus: m.lyricsStatus ?? null,
 	mbid: m.mbid ?? null,
 	annotationSource: m.annotation?.source ?? null,
 	annotationConfidence: m.annotation?.confidence ?? null,
@@ -53,6 +55,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	durationSec: r.durationSec,
 	thumbnail: r.thumbnail ?? undefined,
 	stemStatus: r.stemStatus,
+	lyricsStatus: r.lyricsStatus ?? undefined,
 	mbid: r.mbid ?? undefined,
 	// Only a COMPLETE pair is restored: a source without a confidence (or vice versa) is not provenance,
 	// and half-reading it would let the never-regress check compare against nothing.
@@ -104,9 +107,17 @@ export class MediaRepository {
 		return this.#db.select().from(media).all().map(fromRow);
 	}
 
-	/** The saved-karaoke library: songs whose stems are separated and ready (stems
-	 *  ready) — re-queueing one skips the worker entirely. Ordered newest-first by id
-	 *  (ULIDs are monotonic, so this is catalog-discovery order, not cook order). */
+	/**
+	 * The saved-karaoke library: songs that are FINISHED — every required cook gate satisfied — so
+	 * re-queueing one skips the worker entirely. Ordered newest-first by id (ULIDs are monotonic, so
+	 * this is catalog-discovery order, not cook order).
+	 *
+	 * The SQL narrows to separated songs, then `readyToSing` makes the final call in one place. Keeping
+	 * the whole predicate in SQL is what let the library and the phone drift apart once already: the
+	 * server listed a song the client's own rules said was still cooking, and it rendered in both
+	 * groups at the same time. The gate table is now the only definition of finished, and this query
+	 * defers to it rather than restating it.
+	 */
 	listReady(): Media[] {
 		return this.#db
 			.select()
@@ -114,7 +125,8 @@ export class MediaRepository {
 			.where(and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef)))
 			.orderBy(desc(media.id))
 			.all()
-			.map(fromRow);
+			.map(fromRow)
+			.filter(readyToSing);
 	}
 
 	// ── browse ───────────────────────────────────────────────────────────────

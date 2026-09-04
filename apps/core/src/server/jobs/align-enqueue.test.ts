@@ -12,7 +12,7 @@ const media = (over: Partial<Media> = {}): Media => ({
 	title: 'Britney Spears - Baby One More Time (Lyrics)', // the RAW title, as search stores it
 	artist: '7clouds', // the UPLOADER, not the artist
 	durationSec: 211,
-	stemStatus: 'ready',
+	stemStatus: 'ready', lyricsStatus: 'ready',
 	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	...over
 });
