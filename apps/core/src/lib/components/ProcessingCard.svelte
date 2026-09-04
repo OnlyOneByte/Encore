@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { SINGER_COLORS } from '@encore/shared';
+	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
 	interface Props {
@@ -49,7 +50,7 @@
 		status === 'downloading' ? 'Downloading…' :
 		status === 'separating' ? 'Separating vocals…' :
 		status === 'aligning' ? 'Aligning lyrics…' :
-		status === 'ready' ? 'Ready ✓' : 'Queued…'
+		status === 'ready' ? 'Ready' : 'Queued…'
 	);
 </script>
 
@@ -58,14 +59,14 @@
 	<div class="meta">
 		<div class="t">{title} <span class="sparkle">✨</span></div>
 		<div class="who">
-			{#if singerName}<i style="background:{singerColor}"></i> {singerName} · being prepared{:else}being prepared{/if}
+			{#if singerName}<i style="--singer:{singerColor}"></i> {singerName} · being prepared{:else}being prepared{/if}
 		</div>
 		<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
 		<div class="stage"><span>{stageLabel}</span><span>{pct}%</span></div>
 		<div class="chips">
 			{#each STAGES as s}
 				<span class="chip {state(s.key)}">
-					{#if state(s.key) === 'done'}✓ {/if}{#if state(s.key) === 'now'}● {/if}{s.label}
+					{#if state(s.key) === 'done'}<Icon name="check" />{/if}{#if state(s.key) === 'now'}<span class="now-dot" aria-hidden="true"></span>{/if}{s.label}
 				</span>
 			{/each}
 		</div>
@@ -73,11 +74,11 @@
 	{#if onremove || reorderable}
 		<div class="actions">
 			{#if reorderable}
-				<button class="act" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}>↑</button>
-				<button class="act" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}>↓</button>
+				<button class="act" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}><Icon name="arrow-up" /></button>
+				<button class="act" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}><Icon name="arrow-down" /></button>
 			{/if}
 			{#if onremove}
-				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}>✕</button>
+				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}><Icon name="close" /></button>
 			{/if}
 		</div>
 	{/if}
@@ -91,7 +92,7 @@
 	.t { font-weight: 600; }
 	.sparkle { color: var(--warn); }
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
-	.who i { width: 10px; height: 10px; border-radius: 50%; }
+	.who i { width: 10px; height: 10px; border-radius: 50%; background: var(--singer); }
 	.bar { height: 6px; border-radius: 6px; background: var(--card-tint2); overflow: hidden; margin-top: 9px; }
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
 	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 6px; transform-origin: left center; transition: transform 0.4s ease; }
@@ -109,7 +110,9 @@
 	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }
 	.remove:active { transform: scale(0.9); color: var(--accent2); }
 	.chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-	.chip { font-size: 0.66rem; padding: 3px 8px; border-radius: 20px; background: var(--card-tint2); color: var(--ink-dim); }
+	.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 0.66rem; padding: 3px 8px; border-radius: 20px; background: var(--card-tint2); color: var(--ink-dim); }
+	/* The "now" marker was a ● glyph; drawn instead so its size does not depend on a fallback font. */
+	.now-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
 	.chip.done { background: rgba(51, 214, 166, 0.16); color: var(--ok); }
 	.chip.now { background: rgba(255, 184, 77, 0.16); color: var(--warn); }
 </style>

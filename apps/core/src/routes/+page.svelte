@@ -9,6 +9,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
+	import Icon from '$lib/ui/Icon.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
 	import { cookAndQueue } from '$lib/cook-and-queue';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
@@ -440,13 +441,14 @@
 	{#if me}
 		<div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim);">
 			<span>{me.displayName}</span>
-			<span style="width:22px;height:22px;border-radius:50%;background:{me.color};box-shadow:0 0 0 3px {me.color}30;"></span>
-			<a
-				href="/settings"
-				aria-label="Settings"
-				title="Settings"
-				style="padding:4px 2px 4px 6px;font-size:1.05rem;line-height:1;color:var(--ink-dim);text-decoration:none;"
-			>⚙️</a>
+			<span class="me-dot" style="--singer:{me.color};"></span>
+			<!--
+			  Was a bare ⚙️ at font-size 1.05rem in ~18px of padding: a forced-colour-emoji glyph (the
+			  trailing U+FE0F requests emoji presentation outright) in a target under even the 24px WCAG
+			  2.5.8 floor, in an app that had already adopted 44px everywhere else. Now a real mark in a
+			  real target.
+			-->
+			<a class="gear" href="/settings" aria-label="Settings" title="Settings"><Icon name="gear" /></a>
 		</div>
 	{/if}
 </header>
@@ -499,7 +501,7 @@
 			{/if}
 			{#if browseFilter}
 				<div class="facets">
-					<button class="chip" onclick={() => setBrowse(null, '')}>✕ Clear filter</button>
+					<button class="chip chip-icon" onclick={() => setBrowse(null, '')}><Icon name="close" /> Clear filter</button>
 				</div>
 			{/if}
 		{/if}
@@ -620,17 +622,17 @@
 	ontoggle={(v) => (sheetOpen = v)}
 >
 	{#snippet controls()}
-		<button class="ic no-drag" aria-label="restart" onclick={() => sendPlayer({ cmd: 'restart' })}>⏮</button>
+		<button class="ic no-drag" aria-label="restart" onclick={() => sendPlayer({ cmd: 'restart' })}><Icon name="prev" /></button>
 		<button class="ic play no-drag" aria-label="play/pause" onclick={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}>
-			{playback.isPlaying ? '⏸' : '▶'}
+			<Icon name={playback.isPlaying ? 'pause' : 'play'} />
 		</button>
-		<button class="ic no-drag" aria-label="skip" onclick={() => sendPlayer({ cmd: 'skip' })}>⏭</button>
+		<button class="ic no-drag" aria-label="skip" onclick={() => sendPlayer({ cmd: 'skip' })}><Icon name="next" /></button>
 	{/snippet}
 
 	<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
 		<span class="lab">{keyLabel}</span>
-		<button disabled={!keyShiftEnabled || playback.keyShift <= -7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}>− semitone</button>
-		<button disabled={!keyShiftEnabled || playback.keyShift >= 7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}>＋ semitone</button>
+		<button class="key-btn" disabled={!keyShiftEnabled || playback.keyShift <= -7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}><Icon name="minus" /> semitone</button>
+		<button class="key-btn" disabled={!keyShiftEnabled || playback.keyShift >= 7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}><Icon name="plus" /> semitone</button>
 	</div>
 
 	<div class="grouphead">Up next · rotation</div>
@@ -710,6 +712,27 @@
 	main { flex: 1; padding: 6px 18px calc(var(--peek-h) + 28px); }
 
 	/*
+	 * The singer's own identity dot. The colour arrives as a --singer custom property rather than being
+	 * interpolated straight into `background:`, which is what lets the halo be derived with color-mix.
+	 * The previous form concatenated hex alpha digits onto the value — `box-shadow: 0 0 0 3px {color}30`
+	 * — and that only ever worked because all eight presets happened to be 6-digit hex. A 3-digit hex,
+	 * an rgb() or an oklch() produced invalid CSS and the halo silently vanished. color-mix takes any
+	 * colour syntax, so the free hue picker cannot break it.
+	 */
+	.me-dot {
+		width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;
+		background: var(--singer);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--singer) 19%, transparent);
+	}
+	/* 44px, matching every other control in the app. The emoji gear this replaced was ~18px. */
+	.gear {
+		display: grid; place-items: center;
+		min-width: 44px; min-height: 44px; margin-right: -10px;
+		font-size: 1.15rem; color: var(--ink-dim); text-decoration: none;
+	}
+	.gear:hover { color: var(--ink); }
+
+	/*
 	 * Wide viewports spend the extra room on MORE SONGS, not longer rows. Only song rows flow into
 	 * columns — the search box, chips, facet rails and group headings each label everything below
 	 * them, so a heading confined to one column would read as applying to half the list. The rule is
@@ -756,6 +779,8 @@
 	.chip.ok { color: var(--ok); }
 	.chip.warn { color: var(--warn); }
 	.chip.active { background: var(--accent-strong); border-color: transparent; color: var(--on-accent); }
+	/* a chip whose label leads with a mark rather than a word */
+	.chip-icon { display: inline-flex; align-items: center; gap: 6px; }
 	.chip:active { transform: scale(0.95); }
 	.grouphead {
 		font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase;
@@ -766,8 +791,7 @@
 	.grouphead.warn { color: var(--warn); }
 	.empty { color: var(--ink-dim); padding: 0 4px; font-size: 0.9rem; }
 
-	/* playback controls, rendered into the sheet's peek */
-	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
+	/* playback controls, rendered into the sheet's peek */	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
 	/* The one filled transport control. Solid accent + paired ink, because in stage 1 the glyph became
 	   an SVG drawn with currentColor — on --grad that mark sat at 2.84:1, under the 3:1 non-text floor. */
 	.ic.play { background: var(--accent-strong); color: var(--on-accent); border-color: transparent; width: 44px; height: 44px; }
@@ -778,6 +802,9 @@
 	.key .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
 	.key.shifted .lab { color: var(--warn); }
 	.key button { flex: 1; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: 10px; padding: 6px; font-size: 0.8rem; cursor: pointer; }
+	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
+	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
+	.key-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 	.key:not(.disabled) button:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
 	.key:not(.disabled) button:not(:disabled):active { transform: scale(0.95); }
 	.key button:disabled { cursor: default; }
