@@ -33,6 +33,7 @@ import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
 import { JobRepository } from './jobs/repository';
+import { AttemptLedger } from './jobs/attempts';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
@@ -54,6 +55,8 @@ export interface EncoreApp {
 	 */
 	plays: PlayTracker;
 	jobs: JobRepository;
+	/** Per-attempt processing history — durations, models, failures. The dashboards read this. */
+	attempts: AttemptLedger;
 	/** Room-level separator settings: the engine/model a cook uses + the upgrade policy. */
 	settings: SettingsRepository;
 	reaper: JobReaper;
@@ -136,7 +139,12 @@ export function getApp(): EncoreApp {
 	const { entries, playback } = hydrate(db);
 	state.hydrate(entries, playback);
 
-	const jobs = new JobRepository(db);
+	// The attempt ledger is the historical half of the job system: `jobs` holds one live row per
+	// (mediaId, jobType) and is overwritten in place, so every duration and every past attempt would
+	// otherwise be lost the moment it changed. Constructed here and handed to the repository, which
+	// records each lifecycle transition against it.
+	const attempts = new AttemptLedger(db);
+	const jobs = new JobRepository(db, attempts);
 	const settings = new SettingsRepository(db);
 	// Seed this room's pacing from INTERSTITIAL_MS on first boot only. Without this, adding the room
 	// scope would silently reset an install that had configured the env var, and writing it every boot
@@ -312,6 +320,7 @@ export function getApp(): EncoreApp {
 		// Set just below — the sink needs `app` to reach the media catalog.
 		plays: null as never,
 		jobs,
+		attempts,
 		settings,
 		reaper: null as never, // set below (needs onReaped → workerHub.dispatch)
 		workers,

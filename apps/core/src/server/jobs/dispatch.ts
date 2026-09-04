@@ -122,6 +122,23 @@ export function publishesInstrumental(jobType: JobType): boolean {
 }
 
 /**
+ * Does a follow-up step belong to the SAME cook as the job that triggered it?
+ *
+ * `fetch → stems → align` is one run: the song is not finished until its words are timed, so an
+ * end-to-end duration should span all three under one cook id.
+ *
+ * `stems-upgrade` is NOT, and this is the one case worth stating plainly. It is background work on an
+ * ALREADY-FINISHED song, chained off the cook only because completion is when the decision can be
+ * made. Letting it inherit would corrupt the headline number the internal dashboard exists to report:
+ * a 43-minute upgrade would be folded into a cook that actually delivered a singable song in 90
+ * seconds, making every end-to-end average a fiction. Its own cook id keeps its cost attributed to
+ * itself, which is also what makes an upgrade comparable model against model.
+ */
+export function inheritsCook(next: JobType): boolean {
+	return next !== 'stems-upgrade';
+}
+
+/**
  * The engine+model a completed separation job used, so `markMediaReady` can compare quality before
  * swapping a published instrumental. Non-separation jobs have no separator and return undefined,
  * which keeps their completion path unconditional.
