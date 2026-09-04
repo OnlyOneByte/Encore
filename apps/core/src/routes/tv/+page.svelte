@@ -8,7 +8,12 @@
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import { resolveLyricsPresentation, type EffectiveSettings, type TvBackgroundStyle } from '@encore/shared';
+	import {
+		effectiveGuideLevel,
+		resolveLyricsPresentation,
+		type EffectiveSettings,
+		type TvBackgroundStyle
+	} from '@encore/shared';
 	import { stageBackgroundCss } from '$lib/tv/background';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
@@ -60,6 +65,14 @@
 	let seekSec = $state(0);
 	// Per-song background override from playback:state. null = use the room default (the resting state).
 	let backgroundOverride = $state<TvBackgroundStyle | null>(null);
+	// The GUIDING TRACK, resolved the same way: the per-song override from playback:state (null = none
+	// pinned) over the room's standing default. `effectiveGuideLevel` does the resolution — read raw, a
+	// null override is indistinguishable from "explicitly off", which is the distinction that lets a
+	// room default survive a song change.
+	let guideOverride = $state<number | null>(null);
+	const guideLevel = $derived(
+		effectiveGuideLevel({ guideLevel: guideOverride }, settings.room.guideLevelDefault)
+	);
 	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
 
 	let ws: WebSocket | undefined;
@@ -187,6 +200,7 @@
 				// Per-song background override; null hands the song back to the room default.
 				// NOTE: keyShift is deliberately NOT read here — see the comment on `stageBg`.
 				backgroundOverride = e.state.background;
+				guideOverride = e.state.guideLevel;
 			}
 			// live media catalog updates (cooking progress + ready flip) so the TV leaves WAITING
 			// promptly and resolves the ready song's instrumental (also mitigates the cook→play gap)
@@ -288,6 +302,7 @@
 		active={visible === 'A'}
 		playing={isPlaying}
 		seekSec={seekSec}
+		{guideLevel}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
@@ -299,6 +314,7 @@
 		active={visible === 'B'}
 		playing={isPlaying}
 		seekSec={seekSec}
+		{guideLevel}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}

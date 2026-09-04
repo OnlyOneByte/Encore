@@ -27,6 +27,10 @@ import {
 	transcodeDiagnostics
 } from './media/retention';
 import { needsLyricsBackfill, BACKFILL_PRIORITY } from './jobs/backfill';
+import { backfillVocalsRefs } from './media/vocals-backfill';
+import { ffmpegLoudnessProbe, hasAudibleContent } from './media/loudness';
+import { safeMediaPath } from './media/local-files';
+import { existsSync } from 'node:fs';
 import { markLyricsQueued } from './jobs/make-karaoke';
 import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, lookupTitle, readAllSidecars } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
@@ -230,6 +234,39 @@ export function getApp(): EncoreApp {
 				indexed++;
 			}
 			if (indexed > 0) console.log(`[core] browse index synced from ${indexed} sidecars`);
+
+			// ── guiding-track backfill ───────────────────────────────────────────────
+			// Link the vocals stem for songs cooked while the core was dropping that artifact. Pure
+			// filesystem work — no job, no worker, no cpu — so unlike the lyrics backfill below there is
+			// nothing to queue and nothing for a singer's live cook to compete with. A silent stem is
+			// counted and deliberately NOT linked: see media/loudness.ts.
+			// Set ENCORE_VOCALS_BACKFILL=0 to skip.
+			if (process.env.ENCORE_VOCALS_BACKFILL !== '0') {
+				const probe = ffmpegLoudnessProbe();
+				const res = await backfillVocalsRefs(mediaById.values(), {
+					resolve: (ref) => safeMediaPath(ref),
+					exists: (abs) => existsSync(abs),
+					audible: async (abs) => hasAudibleContent(await probe(abs)),
+					link: (id, ref) => {
+						// Runtime map AND the durable index: the in-memory Media is what the player and the
+						// phone read, while the upsert is what makes it survive the next restart (and, via
+						// the repository's sidecar sink, what records it in meta/).
+						const live = mediaById.get(id);
+						if (!live) return;
+						live.vocalsRef = ref;
+						mediaRepo.upsert(live);
+					}
+				});
+				if (res.linked > 0) console.log(`[core] guiding track: linked the vocals stem for ${res.linked} song(s)`);
+				if (res.silent > 0) {
+					console.log(
+						`[core] guiding track: ${res.silent} song(s) have a SILENT vocals stem — not linked, re-cook to fix`
+					);
+				}
+				if (res.missing > 0) {
+					console.log(`[core] guiding track: ${res.missing} cooked song(s) have no vocals stem on disk (re-cook to add one)`);
+				}
+			}
 
 			// ── lyrics backfill ──────────────────────────────────────────────────────
 			// Songs cooked before the align pipeline existed have no align job and no way to get one, so the library's
