@@ -54,7 +54,11 @@ export function readyEmptyState(opts: { searchActive: boolean; libraryCount: num
 	// A genuinely empty library — the original copy is correct here, and only here.
 	if (libraryCount === 0) {
 		return {
-			message: 'No karaoke-ready songs yet — tap ✨ Karaoke on a search result to make one.',
+			// Names the button as it actually reads. This said "tap ✨ Karaoke", but the control has been
+			// labelled Sing since the two half-actions were merged — so the instruction pointed at a
+			// button that does not exist. The emoji is gone too: this is a plain string, it cannot hold a
+			// mark, and platform-dependent art in an instruction is worse than no art.
+			message: 'No karaoke-ready songs yet — tap Sing on a search result to make one.',
 			showAllCount: null
 		};
 	}

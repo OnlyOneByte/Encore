@@ -103,8 +103,8 @@
 </script>
 
 <header style="padding:26px 20px 8px;text-align:center;">
-	<div style="font-weight:800;font-size:1.6rem;letter-spacing:.5px;">
-		🎤 <span style="background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;">Encore</span>
+	<div class="brand">
+		<Icon name="mic" /> <span class="wordmark">Encore</span>
 	</div>
 	<p style="color:var(--ink-dim);margin:6px 0 0;font-size:.9rem;">Pick a name and color to start singing.</p>
 </header>
@@ -186,6 +186,14 @@
 
 <style>
 	.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+	/* The mic was 🎤 — platform-dependent art, and a tofu box with no emoji font. */
+	.brand { display: inline-flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; }
+	.wordmark {
+		background: var(--grad);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+	}
 	/* The selected colour, named and shown — a hue off the wheel has no swatch to point at. */
 	.colour-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 	.field-label { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }

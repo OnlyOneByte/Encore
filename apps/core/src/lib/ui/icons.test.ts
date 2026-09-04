@@ -48,12 +48,53 @@ const REPLACED: Record<string, string> = {
 
 const FE0F = '\uFE0F';
 
+/**
+ * Emoji-presentation ranges. Now that every UI mark is an SVG, this can ban emoji OUTRIGHT rather
+ * than tracking a list of individually-replaced codepoints — the earlier, weaker rule, which had to
+ * tolerate the decorative pictographs.
+ *
+ * The reason is consistency across devices, not taste. 🎤 is a different drawing on Apple, Google,
+ * Samsung and Windows, and on a browser with no emoji font it is a tofu box — which is precisely what
+ * the TV wordmark rendered as when screenshotted here, and a smart-TV browser is the same kind of
+ * stripped-down environment. An emoji is the one mark whose appearance is never the app's to choose.
+ */
+const EMOJI_RANGES = [
+	[0x1f000, 0x1faff], // pictographs, symbols, transport & map, supplemental
+	[0x2600, 0x27bf], // misc symbols + dingbats (☀ ✨ ✅ ➡)
+	[0x2b00, 0x2bff], // misc symbols and arrows
+	[0xfe0f, 0xfe0f] // the emoji-presentation selector itself
+] as const;
+
+function emojiIn(src: string): { index: number; cp: string }[] {
+	const hits: { index: number; cp: string }[] = [];
+	for (let i = 0; i < src.length; ) {
+		const cp = src.codePointAt(i)!;
+		const width = cp > 0xffff ? 2 : 1;
+		if (EMOJI_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi)) {
+			hits.push({ index: i, cp: 'U+' + cp.toString(16).toUpperCase().padStart(4, '0') });
+		}
+		i += width;
+	}
+	return hits;
+}
+
 function svelteFiles(dir: string): string[] {
 	const out: string[] = [];
 	for (const ent of readdirSync(dir, { withFileTypes: true })) {
 		const p = join(dir, ent.name);
 		if (ent.isDirectory()) out.push(...svelteFiles(p));
 		else if (ent.name.endsWith('.svelte')) out.push(p);
+	}
+	return out;
+}
+
+/** Client-side .ts, excluding tests — test files hold emoji as fixtures on purpose. */
+function tsFiles(dir: string): string[] {
+	const out: string[] = [];
+	for (const ent of readdirSync(dir, { withFileTypes: true })) {
+		const p = join(dir, ent.name);
+		if (ent.isDirectory()) out.push(...tsFiles(p));
+		else if (ent.name.endsWith('.ts') && !ent.name.endsWith('.test.ts')) out.push(p);
 	}
 	return out;
 }
@@ -103,6 +144,41 @@ test('nothing forces emoji presentation with U+FE0F', () => {
 		while (i !== -1) {
 			offenders.push(`${f.replace(SRC, 'src')}:${lineOf(src, i)}: U+FE0F forces colour emoji`);
 			i = src.indexOf(FE0F, i + 1);
+		}
+	}
+	expect(offenders).toEqual([]);
+});
+
+/**
+ * The strong rule: no emoji anywhere a guest can see, on any surface. Every mark is an SVG now, so
+ * there is nothing left that needs an exception — which is the point, because the previous rule had to
+ * enumerate replaced codepoints and quietly tolerated the decorative ones.
+ */
+test('no emoji in any UI-visible string', () => {
+	const offenders: string[] = [];
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const { index, cp } of emojiIn(src)) {
+			offenders.push(`${f.replace(SRC, 'src')}:${lineOf(src, index)}: ${cp} — use <Icon /> or drop it from the copy`);
+		}
+	}
+	expect(offenders).toEqual([]);
+});
+
+/**
+ * Copy shown to guests also lives in .ts (empty states, toasts). Those are plain strings that cannot
+ * hold a component, so the rule there is that the emoji goes and the sentence stands on its own.
+ * Scoped to the client lib: server-side files legitimately hold emoji as DATA — track-title.ts strips
+ * 🎵 out of scraped titles, and its fixtures must keep them.
+ */
+test('no emoji in user-facing copy in $lib', () => {
+	const offenders: string[] = [];
+	for (const f of tsFiles(join(SRC, 'lib'))) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const m of src.matchAll(/(['"`])((?:\\.|(?!\1)[^\\])*)\1/g)) {
+			for (const { cp } of emojiIn(m[2]!)) {
+				offenders.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${cp} in a string`);
+			}
 		}
 	}
 	expect(offenders).toEqual([]);

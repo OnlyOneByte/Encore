@@ -18,7 +18,7 @@
 	 * The 44px touch target belongs on the button, never here — shrinking the hit area to the glyph is
 	 * how a control ends up technically present and practically unhittable.
 	 */
-	import { ICON_PATHS, type IconName } from './icons';
+	import { ICON_PATHS, SOLID_ICONS, type IconName } from './icons';
 
 	let {
 		name,
@@ -42,6 +42,7 @@
 -->
 <svg
 	class="icon"
+	class:solid={SOLID_ICONS.includes(name)}
 	viewBox="0 0 24 24"
 	width={size}
 	height={size}
@@ -59,15 +60,15 @@
 <style>
 	/*
 	 * `block` kills the inline-descender gap that otherwise pushes a mark off-centre inside a grid- or
-	 * flex-centred button. The polygon marks (play/prev/next) are drawn filled as well as stroked so
-	 * they read as solid shapes rather than outlines at small sizes.
+	 * flex-centred button. Fill is opt-in via .solid — the transport marks read as solid shapes at small
+	 * sizes, but filling every rect would turn the mic capsule into a blob.
 	 */
 	.icon {
 		display: block;
 		flex: 0 0 auto;
 	}
-	.icon :global(polygon),
-	.icon :global(rect) {
+	.icon.solid :global(polygon),
+	.icon.solid :global(rect) {
 		fill: currentColor;
 	}
 </style>

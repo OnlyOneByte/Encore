@@ -247,7 +247,7 @@
 	{#if screen === 'attract'}
 		<!-- attract: nobody here yet — the QR is the only thing to do, so it owns the screen -->
 		<div class="attract">
-			<div class="brand">🎤 <span class="grad">Encore</span></div>
+			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
 			<div class="join">
 				<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size={320} />
 				<div class="join-copy">
@@ -259,7 +259,7 @@
 		</div>
 	{:else if screen === 'lobby'}
 		<!-- People ARE here, nothing queued — name them and say what we're waiting for -->
-		<div class="brand brand-float">🎤 <span class="grad">Encore</span></div>
+		<div class="brand brand-float"><Icon name="mic" /> <span class="grad">Encore</span></div>
 		<TvLobby
 			qrDataUrl={data.qrDataUrl}
 			joinUrl={data.joinUrl}
@@ -302,7 +302,7 @@
 
 	{#if tvState === 'waiting'}
 		<div class="interstitial">
-			<div class="up-song">🔥 Still cooking… hang tight</div>
+			<div class="up-song"><Icon name="flame" /> Still cooking… hang tight</div>
 		</div>
 	{/if}
 
@@ -321,7 +321,7 @@
 		justify-content: center; gap: 48px; z-index: 5;
 		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
-	.brand { position: absolute; top: 40px; left: 48px; font-weight: 800; font-size: 2rem; }
+	.brand { position: absolute; top: 40px; left: 48px; font-weight: 800; font-size: 2rem; display: inline-flex; align-items: center; gap: 12px; }
 	/* the lobby paints its own full-bleed backdrop, so the brand needs to float above it */
 	.brand-float { z-index: 6; }
 	.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
