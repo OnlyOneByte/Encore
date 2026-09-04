@@ -29,6 +29,13 @@
       "when": 1788550291006,
       "tag": "0003_lyrics_presentation",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788551170428,
+      "tag": "0004_job_attempts_and_plays",
+      "breakpoints": true
     }
   ]
 }
