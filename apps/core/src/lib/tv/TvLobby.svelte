@@ -92,7 +92,14 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		padding: 22px 40px;
+		/*
+		 * The BACKDROP is deliberately full-bleed (bottom: 0) so its fade reaches the edge of the panel,
+		 * but the CONTENT inside it must not be. Padding carries the safe-area inset instead of the
+		 * offset, because a set that overscans would otherwise crop the roster — the one place a guest
+		 * confirms the room actually saw them join. A guard that only inspects edge OFFSETS cannot catch
+		 * this shape, which is why it survived the first pass of the stage scale.
+		 */
+		padding: 22px var(--tv-safe-x) calc(var(--tv-safe-y) * 0.6);
 		background: linear-gradient(transparent, rgba(11, 11, 18, 0.9) 40%);
 		display: flex;
 		align-items: center;

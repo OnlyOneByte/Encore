@@ -90,8 +90,13 @@
 	}
 	.meta { min-width: 0; flex: 1; }
 	.t { font-weight: 600; font-size: 0.93rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	/* the cooking marker, inline with the title */
-	.sparkle { color: var(--warn); display: inline-grid; place-items: center; vertical-align: -2px; }
+	/*
+	 * The cooking marker, inline with the title. The margin is load-bearing: the emoji this replaced was
+	 * written as `<span class="sparkle"> ✨</span>` with the separating space INSIDE the span, so swapping
+	 * in a mark left the glyph welded to the last letter — "Sweet Caroline✨". A space in the markup would
+	 * be collapsed away by the flex layout, so the gap has to be a margin.
+	 */
+	.sparkle { color: var(--warn); display: inline-grid; place-items: center; vertical-align: -2px; margin-left: 5px; }
 	.s { font-size: 0.76rem; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.s.ok { color: var(--ok); }
 	.s.warn { color: var(--warn); }

@@ -15,6 +15,8 @@
  * expressible as those four.
  */
 
+import { writeFileSync } from 'node:fs';
+
 const DEFAULT_TIMEOUT = 10_000;
 
 /** Connect to a Chromium already listening on a debugging port. */
@@ -152,8 +154,45 @@ function makePage(send, sessionId) {
 			await this.fill(selector, String(value));
 		},
 
-		count: (selector) => evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`),
-		texts: (selector) =>
+		/**
+		 * Emulate a device viewport. Needed because the same build must be judged at two very different
+		 * sizes — a phone in a hand and a TV on a wall — and the TV scale is vh-relative, so a screenshot
+		 * taken at the wrong height is measuring the wrong design.
+		 */
+		async viewport(width, height, deviceScaleFactor = 2) {
+			await send(
+				'Emulation.setDeviceMetricsOverride',
+				{ width, height, deviceScaleFactor, mobile: width < 700 },
+				sessionId
+			);
+		},
+
+		/** PNG to disk. Returns the path, so a caller can hand it straight to a reader. */
+		async screenshot(path, { fullPage = false } = {}) {
+			const { data } = await send(
+				'Page.captureScreenshot',
+				{ format: 'png', captureBeyondViewport: fullPage },
+				sessionId
+			);
+			writeFileSync(path, Buffer.from(data, 'base64'));
+			return path;
+		},
+
+		/**
+		 * Dispatch a real keydown at an element. Needed for controls that are keyboard- and
+		 * pointer-driven rather than click-driven: the queue sheet's peek is a div with role=button and
+		 * pointer/keydown handlers, so `.click()` on it does precisely nothing and fails silently.
+		 */
+		async pressKey(selector, key) {
+			await this.waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`);
+			await evaluate(`(() => {
+				const el = document.querySelector(${JSON.stringify(selector)});
+				el.focus?.();
+				el.dispatchEvent(new KeyboardEvent('keydown', { key: ${JSON.stringify(key)}, bubbles: true }));
+			})()`);
+		},
+
+		count: (selector) => evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`),		texts: (selector) =>
 			evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].map(e => e.textContent.trim())`),
 		text: (selector) =>
 			evaluate(`(document.querySelector(${JSON.stringify(selector)})?.textContent ?? '').trim()`),

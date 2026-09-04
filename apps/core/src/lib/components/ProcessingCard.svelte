@@ -57,7 +57,7 @@
 <div class="qrow proc card">
 	<div class="seq">{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}</div>
 	<div class="meta">
-		<div class="t">{title} <span class="sparkle"><Icon name="sparkle" /></span></div>
+		<div class="t">{title}<span class="sparkle"><Icon name="sparkle" /></span></div>
 		<div class="who">
 			{#if singerName}<i style="--singer:{singerColor}"></i> {singerName} · being prepared{:else}being prepared{/if}
 		</div>
@@ -90,7 +90,9 @@
 	.seq { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 0.8rem; font-weight: 700; background: var(--card2); color: var(--ink-dim); flex: 0 0 auto; }
 	.meta { flex: 1; min-width: 0; }
 	.t { font-weight: 600; }
-	.sparkle { color: var(--warn); display: inline-grid; place-items: center; vertical-align: -2px; }
+	/* Spacing via margin, matching SongRow — one mechanism, not a literal space in one place and
+	   CSS in the other. */
+	.sparkle { color: var(--warn); display: inline-grid; place-items: center; vertical-align: -2px; margin-left: 5px; }
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
 	.who i { width: 10px; height: 10px; border-radius: 50%; background: var(--singer); }
 	.bar { height: 6px; border-radius: 6px; background: var(--card-tint2); overflow: hidden; margin-top: 9px; }

@@ -82,6 +82,35 @@ test('nothing on the stage is docked to an edge with a fixed pixel offset', () =
  * one pink colour, so a viewer could not tell a failure from a normal song change. Each must keep its
  * own treatment.
  */
+/**
+ * The shape the offset check above cannot see.
+ *
+ * A container may legitimately be full-bleed (`bottom: 0`) so its backdrop reaches the panel edge,
+ * while the CONTENT inside it still must not be — TvLobby's roster strip is exactly that, and it
+ * survived the first pass of the stage scale because the guard only inspected edge offsets. If a rule
+ * docks to an edge at 0 AND paints a background AND has padding, that padding is what keeps its content
+ * out of the overscan region, so it has to come from the safe-area tokens.
+ */
+test('a full-bleed edge container insets its content with the safe-area tokens', () => {
+	const offenders: string[] = [];
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+			const body = m[2]!;
+			const docked = /(?:top|bottom|left|right):\s*0(?:px)?\s*;/.test(body);
+			const paints = /background:/.test(body);
+			const pads = /padding:\s*([^;]+);/.exec(body);
+			if (!docked || !paints || !pads) continue;
+			if (!pads[1]!.includes('--tv-safe')) {
+				offenders.push(
+					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[1]!.trim()} pads with "${pads[1]!.trim()}" — use var(--tv-safe-x|y)`
+				);
+			}
+		}
+	}
+	expect(offenders).toEqual([]);
+});
+
 test('the three transient TV states are visually distinct', () => {
 	const src = readFileSync(join(SRC, 'routes', 'tv', '+page.svelte'), 'utf8');
 	for (const cls of ['state-next', 'state-error', 'state-waiting']) {
