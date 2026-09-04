@@ -56,7 +56,6 @@ export interface MediaSidecar {
 		audio: string | null;
 		instrumental: string | null;
 		vocals: string | null;
-		pitch: string | null;
 		/** The CHOSEN lyrics ref (whichever candidate pickBestLyrics selected). */
 		lyrics: string | null;
 		/**
@@ -133,7 +132,6 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			audio: prev?.artifacts.audio ?? null,
 			instrumental: m.instrumentalRef ?? prev?.artifacts.instrumental ?? null,
 			vocals: m.vocalsRef ?? prev?.artifacts.vocals ?? null,
-			pitch: m.pitchRef ?? prev?.artifacts.pitch ?? null,
 			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null,
 			// Runtime first, else a prior write: an index-only hydrate leaves lyricsCandidates undefined,
 			// and losing the set here would silently destroy the upgrade path the set exists for.
@@ -196,7 +194,6 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		vocalsRef: s.artifacts.vocals ?? undefined,
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,
-		pitchRef: s.artifacts.pitch ?? undefined,
 		// Carry the confidence-gated canonicals so a RESTORED media is immediately complete. The boot
 		// sync pass mirrors these into the index too, but an align job dispatched before it ran would
 		// otherwise look up the raw title and miss.

@@ -112,12 +112,6 @@ def vocals_path(media_dir: str, media_id: str) -> str:
     return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{VOCALS_EXT}")
 
 
-def pitch_track_path(media_dir: str, media_id: str) -> str:
-    """Deterministic MediaStore key for a media's reference pitch-track artifact. The core
-    fetches it via /media to score the live mic against. JSON, keyed parallel to the stems."""
-    return os.path.join(media_dir, "derived", "pitch", f"{media_id}-pitch.json")
-
-
 # ── silence detection ───────────────────────────────────────────────────────────
 # Separation can SUCCEED and still write digital silence. It has happened twice in the owner's
 # library: both stems came back pinned at the 16-bit floor, ~50KB against 20MB, and every readiness

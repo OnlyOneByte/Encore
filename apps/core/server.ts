@@ -14,8 +14,6 @@ import {
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './src/server/realtime/player';
-import { ScoreEngine, type PitchDocLoader } from './src/server/realtime/scoring';
-import { parseRefPitchDoc } from './src/server/scoring/scorer';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
@@ -65,19 +63,6 @@ for (const m of [
 ] as Media[]) {
 	if (!mediaById.has(m.id)) mediaById.set(m.id, m);
 }
-
-// Live-scoring engine. Loads a song's reference pitch track from the MediaStore (cached) and
-// scores incoming mic:pitch samples against it, broadcasting score:update.
-const scoreEngine = new ScoreEngine();
-const loadPitchDoc: PitchDocLoader = async (ref) => {
-	try {
-		const stream = await app.mediaStore.get(ref);
-		if (!stream) return null;
-		return parseRefPitchDoc(JSON.parse(await new Response(stream).text()));
-	} catch {
-		return null;
-	}
-};
 
 // Seed the local library FTS index so the "Library" tab returns results in dev (and as a demo
 // of local search). A real deployment would scan MEDIA_DIR here. The demo tracks are also added
@@ -273,12 +258,6 @@ const server = Bun.serve<SocketData>({
 					handleTelemetry(
 						{ positionSec: evt.positionSec, durationSec: evt.durationSec, status: evt.status, bufferedNextPct: evt.bufferedNextPct, ended: evt.status === 'ended' },
 						deps
-					);
-					break;
-				case 'mic:pitch':
-					scoreEngine.handleMicPitch(
-						{ positionSec: evt.positionSec, f0Hz: evt.f0Hz },
-						{ state, mediaById, publish: deps.publish, loadDoc: loadPitchDoc }
 					);
 					break;
 			}

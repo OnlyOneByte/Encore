@@ -94,23 +94,6 @@ def test_ensemble_needs_both_engines(monkeypatch, tmp_path):
     assert {"stems", "stems:roformer", "stems:ensemble"} <= set(caps2)
 
 
-def test_score_is_provable_but_not_advertised_by_default(monkeypatch, tmp_path):
-    # Nothing in the core's dispatch.ts enqueues a `score` job and each one costs a full
-    # re-separation, so advertising it is a standing offer nobody takes.
-    _with_path(monkeypatch, tmp_path)
-    _fake_bin(tmp_path, "demucs")
-
-    caps, probes, _w = capabilities.resolve()
-    assert "score" not in caps
-    assert any(p.token == "score" and p.available for p in probes), "provable, just not offered"
-
-    # …and an operator who wires up scoring can still ask for it, because it IS provable — the
-    # narrow-only rule must not become a way to make a real capability unreachable.
-    explicit, _p, warnings = capabilities.resolve(("stems", "score"))
-    assert set(explicit) == {"stems", "score"}
-    assert not any("score" in w and "cannot prove" in w for w in warnings)
-
-
 def test_a_cli_on_PATH_counts_even_when_the_module_is_invisible(monkeypatch, tmp_path):
     # The worker shells out BY NAME for the heavy lifting, so a venv-vs-system-python split (the normal
     # shape of a native install) is a perfectly capable box. Requiring the import would deny it.

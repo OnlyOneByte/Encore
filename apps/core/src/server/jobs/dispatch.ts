@@ -10,11 +10,11 @@ import type { WorkerSession } from './registry';
 /**
  * The jobs a just-COMPLETED job should enqueue next — the cook pipeline. PURE.
  *
- * `stems` chains to `align` + `score` rather than enqueueing all three up front because both read the
- * VOCALS STEM, which does not exist until stems finishes — enqueueing at once would race the
- * separation that produces their input and contend for the same cores. Both are strictly after stems
- * and neither chains further, so the pipeline stays a depth-1 fan-out. (Chaining costs nothing
- * user-visible: the song isn't singable until stems completes either.)
+ * `stems` chains to `align` rather than enqueueing both up front because align reads the VOCALS
+ * STEM, which does not exist until stems finishes — enqueueing at once would race the separation
+ * that produces its input and contend for the same cores. align is strictly after stems and chains
+ * no further, so the pipeline stays a depth-1 fan-out. (Chaining costs nothing user-visible: the
+ * song isn't singable until stems completes either.)
  */
 export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[] {
 	// Acquisition chains to separation: the song is not singable until it is separated, and separation
@@ -24,13 +24,6 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
 	if (jobType !== 'stems') return [];
 	// The COOK is fetch → stems → align, and nothing else. A song is not finished until its words are
 	// timed, so `align` is the last step of the pipeline rather than an optional garnish.
-	//
-	// `score` is deliberately NOT here and has no enqueue path at all. It does not produce anything the
-	// cook needs: it extracts a REFERENCE PITCH TRACK so the live mic comparison has a target (the
-	// class is `PitchTrackProcessor`; the job name has always been misleading). Two reasons it is out:
-	// it re-runs the ENTIRE separation to get vocals it could read off disk, which would double every
-	// cook, and live scoring is shelved until it is decided whether the singer's pitch should be
-	// buffered and scored after the song instead. Re-adding it is one line — but do the reuse fix first.
 	const next: JobType[] = ['align'];
 	// A completed cook optionally chains a re-separation at higher quality. It runs from the RETAINED
 	// raw audio, so it costs CPU but no re-download, and `markMediaReady` refuses to publish its

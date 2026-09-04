@@ -16,7 +16,6 @@
 	} from '@encore/shared';
 	import { stageBackgroundCss } from '$lib/tv/background';
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
-	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import { tvScreen, lobbyRoster } from '$lib/tv/screen';
@@ -62,8 +61,6 @@
 	let tvBackgroundStyle = $derived(settings.room.tvBackgroundStyle);
 	let tvBackgroundHue = $derived(settings.room.tvBackgroundHue);
 	let tvVisualizer = $derived(settings.room.tvVisualizer);
-	// live score for the current song, from score:update broadcasts (null until first sample)
-	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	// playback isPlaying (pause/resume from the phone) — wired into both player slots
 	let isPlaying = $state(true);
 	// seek target (positionSec from playback:state) — the player jumps the video on a real change
@@ -104,7 +101,6 @@
 	}
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
-		if (score && score.entryId !== cur?.id) score = null; // new song → drop the previous score
 		current = cur;
 		upNext = next;
 		// held-slot: if the server handed us a current whose media has no instrumental yet (a cooking
@@ -235,7 +231,6 @@
 				if (nextOrigin !== data.joinOrigin) invalidateAll();
 			}
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
-			if (e.type === 'score:update') score = e;
 			// pause/resume from the phone (playback:state.isPlaying) → drives the player slots
 			if (e.type === 'playback:state') {
 				isPlaying = e.state.isPlaying;
@@ -334,8 +329,6 @@
 		const m = mediaOf(current);
 		return m ? chosenCandidate(m) : null;
 	});
-	// show the live score badge whenever we have a score for the currently-playing entry
-	const showScore = $derived(screen === 'playing' && !!score && score.entryId === current?.id);
 </script>
 
 <div class="tv">
@@ -482,11 +475,6 @@
 			<div class="up-label">Making the karaoke</div>
 			<div class="up-song">Stripping the vocals — hang tight</div>
 		</div>
-	{/if}
-
-	{#if showScore && score}
-		<!-- Live score badge (top-right), color + label by accuracy band -->
-		<ScoreBadge score={score.score} hits={score.hits} total={score.total} />
 	{/if}
 
 	<div class="status" class:on={connected}></div>

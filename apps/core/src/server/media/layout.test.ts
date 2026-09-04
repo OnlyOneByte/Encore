@@ -9,7 +9,6 @@ import {
 	audioKey,
 	instrumentalKey,
 	vocalsKey,
-	pitchKey,
 	lyricsKey,
 	metaKey,
 	classOf,
@@ -46,7 +45,6 @@ describe('keys', () => {
 		expect(vocalsKey('m1')).toBe('derived/stems/m1-vocals.m4a');
 		// a pre-policy song keeps its own extension — the ref is stored per media, not re-derived
 		expect(instrumentalKey('m1', 'wav')).toBe('derived/stems/m1-instrumental.wav');
-		expect(pitchKey('m1')).toBe('derived/pitch/m1-pitch.json');
 		expect(lyricsKey('m1')).toBe('derived/lyrics/m1.json');
 		expect(metaKey('m1')).toBe('meta/m1.json');
 	});
@@ -62,13 +60,12 @@ describe('keys', () => {
 describe('toRelativeKey — the absolute-path bug', () => {
 	it('normalizes a worker-reported absolute path back to a servable ref', () => {
 		// Workers hand back os.path.join(media_dir, key). safeMediaPath rejects anything starting
-		// with "/", so storing the raw uri meant lyricsRef/pitchRef could never be fetched.
+		// with "/", so storing the raw uri meant lyricsRef could never be fetched.
 		const abs = join(root, 'derived', 'lyrics', 'm1.json');
 		expect(toRelativeKey(abs)).toBe('derived/lyrics/m1.json');
 	});
 
 	it('passes a relative ref through untouched', () => {
-		expect(toRelativeKey('derived/pitch/m1-pitch.json')).toBe('derived/pitch/m1-pitch.json');
 	});
 
 	it('returns null for a path outside every storage class', () => {
@@ -125,8 +122,6 @@ describe('migration off the legacy layout', () => {
 		writeFileSync(join(root, 'stems', '_work', 'm2', 'source.wav'), 'RAW-AUDIO-M2');
 		writeFileSync(join(root, 'stems', 'm1-instrumental.wav'), 'INST-M1');
 		writeFileSync(join(root, 'stems', 'm1-vocals.wav'), 'VOX-M1');
-		mkdirSync(join(root, 'pitch'), { recursive: true });
-		writeFileSync(join(root, 'pitch', 'm1-pitch.json'), '{}');
 		mkdirSync(join(root, 'lyrics'), { recursive: true });
 		writeFileSync(join(root, 'lyrics', 'm1.json'), '{}');
 	}
@@ -146,7 +141,6 @@ describe('migration off the legacy layout', () => {
 		applyMigration(planMigration(root));
 		expect(readFileSync(join(root, 'derived', 'stems', 'm1-instrumental.wav'), 'utf8')).toBe('INST-M1');
 		expect(readFileSync(join(root, 'derived', 'stems', 'm1-vocals.wav'), 'utf8')).toBe('VOX-M1');
-		expect(existsSync(join(root, 'derived', 'pitch', 'm1-pitch.json'))).toBe(true);
 		expect(existsSync(join(root, 'derived', 'lyrics', 'm1.json'))).toBe(true);
 	});
 
@@ -160,7 +154,6 @@ describe('migration off the legacy layout', () => {
 			audioRef: 'audio/m1.wav',
 			// a migrated legacy stem keeps its .wav name — the migration moves bytes, it does not transcode
 			instrumentalRef: 'derived/stems/m1-instrumental.wav',
-			pitchRef: 'derived/pitch/m1-pitch.json',
 			lyricsRef: 'derived/lyrics/m1.json'
 		});
 	});
@@ -191,12 +184,9 @@ describe('migration off the legacy layout', () => {
 	});
 
 	it('refuses to prune a legacy dir that still holds files it did not understand', () => {
-		mkdirSync(join(root, 'pitch'), { recursive: true });
-		writeFileSync(join(root, 'pitch', 'm1-pitch.json'), '{}');
 		const plan = planMigration(root);
 		// drop the move so the file stays put, then confirm the dir is NOT deleted with data in it
 		const res = applyMigration({ ...plan, moves: [] });
-		expect(existsSync(join(root, 'pitch', 'm1-pitch.json'))).toBe(true);
 		expect(res.pruned).toBe(0);
 	});
 
@@ -232,7 +222,7 @@ describe('migration off the legacy layout', () => {
 
 	it('ensureLayout creates every class dir', () => {
 		ensureLayout();
-		for (const d of ['audio', 'derived/stems', 'derived/pitch', 'derived/lyrics', 'derived/thumbs', 'meta', 'work']) {
+		for (const d of ['audio', 'derived/stems', 'derived/lyrics', 'derived/thumbs', 'meta', 'work']) {
 			expect(existsSync(join(root, ...d.split('/')))).toBe(true);
 		}
 		expect(mediaRoot()).toBe(root);
@@ -244,7 +234,7 @@ describe('migration off the legacy layout', () => {
 		// "Permission denied: /app/media/work/<jobId>". meta/ is core-only and stays restrictive.
 		ensureLayout();
 		const mode = (p: string) => statSync(p).mode & 0o777;
-		for (const d of ['audio', 'derived/stems', 'derived/pitch', 'derived/lyrics', 'work']) {
+		for (const d of ['audio', 'derived/stems', 'derived/lyrics', 'work']) {
 			expect(mode(join(root, ...d.split('/')))).toBe(0o777);
 		}
 		expect(mode(join(root, 'meta'))).not.toBe(0o777);

@@ -30,7 +30,6 @@ class Action(_StrEnum):
     STEMS = "stems"
     STEMS_UPGRADE = "stems-upgrade"
     ALIGN = "align"
-    SCORE = "score"
 
     @property
     def is_separation(self) -> bool:
@@ -130,7 +129,6 @@ STAGE_PLANS: dict[Action, list[Stage]] = {
     Action.STEMS: [Stage.DOWNLOADING, Stage.SEPARATING],
     Action.STEMS_UPGRADE: [Stage.DOWNLOADING, Stage.SEPARATING],
     Action.ALIGN: [Stage.DOWNLOADING, Stage.ALIGNING],
-    Action.SCORE: [Stage.DOWNLOADING, Stage.SEPARATING],
 }
 
 #: Relative separation quality, low to high. The upgrade path is "strictly greater rank", so an

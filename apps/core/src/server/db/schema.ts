@@ -63,7 +63,6 @@ export const media = sqliteTable('media', {
 	// would show auto-transcribed words unlabelled until the async sidecar pass caught up. Nothing
 	// queries inside it, so one JSON column beats a candidates table.
 	lyricsCandidates: text('lyrics_candidates'),
-	pitchRef: text('pitch_ref'),
 	// Canonical metadata for BROWSE. Derived by the track-title normalizer and mirrored here
 	// from the authoritative sidecar, because grouping the library by `artist` is useless — that column
 	// holds the YouTube uploader ("7clouds"), not the artist. Nullable: a low-confidence parse stores
@@ -231,7 +230,7 @@ export const jobs = sqliteTable(
 		// column existed read as "no cook recorded" instead of null-checking at every call site; those
 		// rows predate the attempt ledger and have no timings to group anyway.
 		cookId: text('cook_id').notNull().default(''),
-		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'score', 'stems-upgrade'] }).notNull(),
+		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'stems-upgrade'] }).notNull(),
 		status: text('status', {
 			enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']
 		})
@@ -279,7 +278,7 @@ export const jobAttempts = sqliteTable(
 		jobId: text('job_id').notNull(),
 		mediaId: text('media_id').notNull(),
 		cookId: text('cook_id').notNull(),
-		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'score', 'stems-upgrade'] }).notNull(),
+		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'stems-upgrade'] }).notNull(),
 		attempt: integer('attempt').notNull().default(1),
 		workerId: text('worker_id'),
 		// The four clocks. Nullable past `enqueued_at` because each records a moment that may never

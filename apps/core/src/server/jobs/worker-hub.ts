@@ -25,7 +25,6 @@ import { planAssignments, assignParams, followUps, requiredCapability, separator
 import {
 	markMediaReady,
 	setMediaLyrics,
-	setMediaPitch,
 	setMediaVocals,
 	applyAnnotation,
 	settleLyricsGate,
@@ -187,9 +186,7 @@ export class WorkerHub {
 		// instrumental completes with no artifact and is still a finished song. Set after setMediaLyrics
 		// so the artifact (when there is one) is already attached.
 		if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
-		// Attach the reference pitch track if a score job carried it (mic scoring). Additive.
-		setMediaPitch(job.mediaId, msg.artifacts?.pitch?.uri, this.#d.mediaById);
-		// Persist the cooked media NOW (stems key + lyrics + pitch) so a restart finds the separated
+		// Persist the cooked media NOW (stems key + lyrics) so a restart finds the separated
 		// song in the library instead of re-cooking it.
 		this.#d.persistMedia?.(job.mediaId);
 		this.#d.registry.releaseSlot(msg.workerId);

@@ -179,7 +179,6 @@ export function planEviction(candidates: EvictionCandidate[], capBytes: number |
 function derivedRefsOf(m: Media): string[] {
 	return [
 		m.instrumentalRef,
-		m.pitchRef,
 		m.lyricsRef,
 		vocalsKey(m.id),
 		m.instrumentalRef?.replace('-instrumental.', '-vocals.')
