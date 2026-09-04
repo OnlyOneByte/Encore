@@ -71,18 +71,25 @@
 	.up .seq { background: var(--accent-strong); color: var(--on-accent); }
 	.meta { min-width: 0; }
 	.t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
+	/* Same truncation as .t: a long name plus an appended away/adding badge could wrap and change the
+	   row's height between states. min-width:0 lets the flex item shrink below its content width. */
+	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.who i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--singer); }
 	/* Hue kept (it is the singer's identity), presence dimmed. */
 	.who i.dim { opacity: 0.5; }
 	.away { color: var(--warn); margin-left: 0.35em; }
 	.adding { color: var(--warn); }
 	.grip { margin-left: auto; color: var(--line-strong); display: grid; place-items: center; font-size: 1.1rem; cursor: grab; }
-	.actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+	.actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 	.act, .remove {
-		/* 44px: these were 30px with 6px gaps, below the reliable-tap threshold. */
-		width: 44px; height: 44px; border-radius: 10px; border: 1px solid var(--line);
-		background: var(--card2); color: var(--ink-dim); font-size: 0.85rem; cursor: pointer;
+		/* 44px: these were 30px with 6px gaps, below the reliable-tap threshold. grid + place-items
+		   centres the block-display Icon; without a centring context the mark landed off-centre inside
+		   the default inline-block button (the reported off-centre X). --radius-sm (12px) is the shared
+		   square-icon-button radius; these had a stray 10px. font-size sets the 1em glyph to an explicit
+		   20px, matching SongRow's action marks (was an unused 0.85rem leaving it ~13.6px). */
+		width: 44px; height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+		background: var(--card2); color: var(--ink-dim); font-size: 20px; cursor: pointer;
+		display: grid; place-items: center;
 	}
 	.act:disabled { opacity: 0.35; cursor: default; }
 	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }

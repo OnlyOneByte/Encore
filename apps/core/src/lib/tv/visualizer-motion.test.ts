@@ -31,7 +31,7 @@ test('under reduced motion it renders a still frame rather than nothing', () => 
 test('the loop is cancelled, not merely hidden, when the stage is not shown', () => {
 	// An idle TV on the attract screen must cost nothing. `playing` false has to short-circuit before
 	// requestAnimationFrame, and the effect must tear the frame down on cleanup.
-	expect(SRC).toMatch(/if \(!playing \|\| prefersReducedMotion\(\)\)/);
+	expect(SRC).toMatch(/if \(!shouldAnimate\(/);
 	expect(SRC).toContain('cancelAnimationFrame');
 });
 
@@ -41,7 +41,24 @@ test('the frame budget and the reduced backing store are both still in place', (
 	// nothing else would surface.
 	expect(SRC).toMatch(/const FRAME_MS = \d+/);
 	expect(SRC).toMatch(/const SCALE = 0?\.\d+/);
-	expect(SRC).toMatch(/now - last >= FRAME_MS/);
+	expect(SRC).toMatch(/frameDue\(now, last, FRAME_MS\)/);
+});
+
+test('variant and hue are read synchronously in the effect, so a room change is tracked', () => {
+	// The untracked-props defect: reading these ONLY inside the rAF callback left the $effect subscribed
+	// to neither, so a live visualizer/hue change was dropped until remount. They must be read in the
+	// effect body itself — before requestAnimationFrame — for Svelte to track them.
+	const effectBody = SRC.slice(SRC.indexOf('$effect(() => {'), SRC.indexOf('requestAnimationFrame(tick)'));
+	expect(effectBody).toMatch(/=\s*variant\b/);
+	expect(effectBody).toMatch(/=\s*hue\b/);
+});
+
+test('the time baseline lives outside the effect, so a re-run cannot pin t to zero', () => {
+	// The static-picture defect: `start` used to be a per-effect-run local, reset to ~0 on every re-run
+	// (a `playing` toggle, a tracked prop change, a remount), so `t` never accumulated. The baseline must
+	// be declared at component scope, ABOVE the effect, not inside it.
+	const beforeEffect = SRC.slice(0, SRC.indexOf('$effect(() => {'));
+	expect(beforeEffect).toMatch(/let clockStart: number \| null = null/);
 });
 
 test('the canvas is hidden from assistive tech', () => {

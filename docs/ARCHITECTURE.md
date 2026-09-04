@@ -548,22 +548,29 @@ Both layers are authoritative server state. A write to either broadcasts `settin
 the combined payload, and `queue:sync` includes both for mid-party joiners — a client never merges
 two events to learn the effective state.
 
-### The third lifetime: an ephemeral per-song override
+### The third lifetime: an ephemeral per-song override (field retained, no writer)
 
-`global` and `room` are both *persistent*. The TV stage background adds a third lifetime that is
-neither: `PlaybackState.background` overrides the room's choice for the **current song only**, and
-`null` — the resting value — means "defer to the room". The TV resolves
+`global` and `room` are both *persistent*. The TV stage background field, `PlaybackState.background`,
+was designed as a third lifetime that is neither: it overrode the room's choice for the **current song
+only**, with `null` — the resting value — meaning "defer to the room". The TV still resolves
 `playback.background ?? room.tvBackgroundStyle`.
 
-It rides `player:command` rather than the settings routes, because it is playback state, not a
-setting: it is broadcast on `playback:state`, and it must not survive the song.
+**No surface drives this field any more.** The phone now-playing drawer used to write it via a
+`player:command` (`{ cmd: 'background' }`), but the stage look is a room-wide decision, so that control
+was removed and the stage is now set **only in room settings**. The command handler, the wire message
+and the column are deliberately kept — removing them would force a `playback_state` schema migration
+for no user-visible gain — so with no writer the field simply stays `null` and the resolver above falls
+straight through to `room.tvBackgroundStyle`.
 
-**That last part is the trap.** `PlaybackState` is a long-lived singleton — nothing rebuilds it per
+The field still rides `playback:state` and is still cleared per song, which keeps the clearing
+mechanism below live for the fields that do have writers.
+
+**That clearing is the trap.** `PlaybackState` is a long-lived singleton — nothing rebuilds it per
 song — so every ephemeral field is cleared by being *named* at each of three `setPlayback` sites in
 `realtime/player.ts` (song advance, play-from-idle, `reconcileOnReady`). A field missed at any one of
 them silently leaks the previous singer's choice into the next turn, and the type checker cannot catch
-it. Adding an ephemeral field means editing all three and testing each path separately. `keyShift` is
-the other field with this shape.
+it. `keyShift` is the field that still carries a writer with this shape; `background` is named at the
+same sites and stays `null` because nothing sets it.
 
 ### Quality ladder and upgrades
 

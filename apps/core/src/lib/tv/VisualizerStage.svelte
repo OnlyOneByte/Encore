@@ -22,6 +22,7 @@
 	 * cannot see a canvas.
 	 */
 	import { VISUALIZER_RENDERERS, type VizContext } from './visualizers';
+	import { frameClock, frameDue, shouldAnimate } from './visualizer-loop';
 	import type { TvVisualizerId } from '@encore/shared';
 
 	interface Props {
@@ -42,6 +43,17 @@
 	let canvas = $state<HTMLCanvasElement | null>(null);
 
 	/**
+	 * The animation clock baseline (the timestamp treated as t=0), held OUTSIDE the effect on purpose.
+	 *
+	 * This is the fix for the "static picture" bug. It used to be a per-effect-run local (`let start =
+	 * 0`), so every effect re-run — a `playing` toggle, a `variant`/`hue` change now that those are
+	 * tracked, or the visualizer block remounting — reset it and pinned `t` near zero, drawing the same
+	 * `t ~ 0` frame forever. Living at component scope, it survives re-runs, so `t` keeps accumulating
+	 * and the picture actually moves. `null` until the first frame establishes it.
+	 */
+	let clockStart: number | null = null;
+
+	/**
 	 * Whether the viewer asked for less motion. Read once via matchMedia rather than a CSS query,
 	 * because the thing to disable is a JS loop, not a CSS animation.
 	 */
@@ -50,6 +62,15 @@
 	}
 
 	$effect(() => {
+		// Read every reactive input SYNCHRONOUSLY here so the effect TRACKS it. This is the other half of
+		// the bug: `variant` and `hue` were previously read only inside `render()`, which runs from the
+		// rAF callback — asynchronously, outside the effect's synchronous pass — so an `$effect`
+		// subscribed to neither, and changing the room's visualizer or hue was silently dropped until a
+		// full remount. Naming them here re-runs the effect on any change, rebuilding the loop with the
+		// new values (and `clockStart` survives that re-run, so motion is uninterrupted).
+		const activeVariant = variant;
+		const activeHue = hue;
+		const isPlaying = playing;
 		const el = canvas;
 		if (!el) return;
 		const ctx = el.getContext('2d');
@@ -67,30 +88,33 @@
 		window.addEventListener('resize', onResize);
 
 		const render = (tSec: number) => {
-			// `variant` is a registry id, so this lookup cannot miss — the Record is keyed by the union.
-			VISUALIZER_RENDERERS[variant](ctx as unknown as VizContext, {
+			// The registry is keyed by the id union, so this lookup cannot miss.
+			VISUALIZER_RENDERERS[activeVariant](ctx as unknown as VizContext, {
 				t: tSec,
-				hue,
+				hue: activeHue,
 				w: el.width,
 				h: el.height
 			});
 		};
 
-		if (!playing || prefersReducedMotion()) {
+		if (!shouldAnimate(isPlaying, prefersReducedMotion())) {
 			// One frame, then nothing. A still plasma is a legitimate background; a moving one behind
-			// lyrics is what a reduced-motion preference is asking us not to do.
+			// lyrics is what a reduced-motion preference is asking us not to do, and an idle attract
+			// screen must cost nothing.
 			render(0);
 			return () => window.removeEventListener('resize', onResize);
 		}
 
 		let raf = 0;
-		let start = 0;
-		let last = 0;
+		let last: number | null = null;
 		const tick = (now: number) => {
-			if (!start) start = now;
-			if (now - last >= FRAME_MS) {
+			// `clockStart` is component-scoped, so its baseline carries across effect re-runs and `t`
+			// keeps climbing instead of resetting.
+			const clock = frameClock(now, clockStart);
+			clockStart = clock.start;
+			if (frameDue(now, last, FRAME_MS)) {
 				last = now;
-				render((now - start) / 1000);
+				render(clock.tSec);
 			}
 			raf = requestAnimationFrame(tick);
 		};

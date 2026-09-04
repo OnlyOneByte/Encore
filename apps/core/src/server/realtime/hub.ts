@@ -45,6 +45,14 @@ export interface HubDeps {
 	/** Optional: idempotency ledger — returns true if this clientOpId was already applied. */
 	seenOp?: (clientOpId: string) => boolean;
 	/**
+	 * Optional: called AFTER a `remove` op is applied, with the removed entry's mediaId and the
+	 * post-remove queue. This is the seam that lets an explicit remove cancel a cook still in flight
+	 * (jobs/cancel.ts): the queue op alone never touched the job ledger, so the phone's remove button
+	 * on a cooking row removed the row while the worker kept cooking. server.ts wires this to
+	 * cancelJobsForMedia; unset in the pure hub tests, which only assert queue mutation.
+	 */
+	onEntryRemoved?: (mediaId: string, remainingEntries: QueueEntry[]) => void;
+	/**
 	 * The singer this socket authenticated as, resolved from the session cookie at WS upgrade.
 	 * `undefined` = a socket that never joined (a TV, a spectator, a probe). Queue mutations are
 	 * attributable acts, so they require one — and an `add` must carry this id, not one the client
@@ -121,7 +129,22 @@ export function handleQueueCommand(
 	}
 
 	if (cmd.op.op === 'add') deps.recordAdd?.(cmd.op.entry.mediaId); // popularity shortcut tracking
+
+	// Capture the removed entry's media BEFORE applying — after applyAndReseq it is gone from the
+	// authoritative array, and cancellation needs to know which media just lost a claim. Looked up on
+	// the pre-apply state so a remove of an already-absent id (validate rejects those) is a non-issue.
+	const removedMediaId =
+		cmd.op.op === 'remove'
+			? (deps.state.entries.find((e) => e.id === (cmd.op as { id: string }).id)?.mediaId ?? null)
+			: null;
+
 	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(cmd.op);
+
+	// An explicit remove of a cooking song must stop the cook, not just hide the row. The hook decides
+	// whether to actually cancel (it does not when another entry still needs the media — a shared
+	// cook). Fired AFTER the op is applied so it sees the post-remove queue.
+	if (removedMediaId) deps.onEntryRemoved?.(removedMediaId, entries);
+
 	// ONE broadcast (Finding #3): the patch carries the authoritative (pruned, reseq'd) entries +
 	// any referenced media inline, so clients adopt server rotationSeq without a second full
 	// queue:sync per mutation. The op is still included for clients that apply diffs.

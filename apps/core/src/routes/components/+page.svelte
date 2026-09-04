@@ -5,9 +5,10 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
-	import { LYRICS_BALL_STYLES, LYRICS_HIGHLIGHTS } from '@encore/shared';
+	import { LYRICS_BALL_STYLES, LYRICS_HIGHLIGHTS, TV_VISUALIZERS } from '@encore/shared';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
+	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
 
 	// A tiny inline QR stand-in for the gallery — the real one is generated server-side per room.
 	const demoQr =
@@ -432,5 +433,21 @@
 	<div style="position:relative;height:300px;margin-top:10px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
 		<span style="position:absolute;inset:0;display:grid;place-items:center;font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.22);">music video</span>
 		<JoinBadge qrDataUrl={demoQr} joinUrl="encore.local/join" placement="corner" onlineCount={4} />
+	</div>
+
+	<!-- VisualizerStage · all four variants. Absent from the gallery until now, which is exactly why the
+	     "green tests, dead motion" bug survived: the renderers were unit-tested but the loop that drives
+	     them was never mounted anywhere a human could watch it move. Each tile mounts the REAL component
+	     (a live ~30fps rAF loop) so a still tile here is a real regression, not a fixture artefact. -->
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">VisualizerStage (TV) · audio-paced backgrounds</h2>
+	<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
+		{#each TV_VISUALIZERS as v (v.id)}
+			<div>
+				<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;">{v.label}</div>
+				<div style="position:relative;height:200px;border-radius:16px;overflow:hidden;background:#000;">
+					<VisualizerStage variant={v.id} hue={265} playing />
+				</div>
+			</div>
+		{/each}
 	</div>
 </main>
