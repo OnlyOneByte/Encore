@@ -162,3 +162,78 @@ def test_pitch_track_to_artifact_regular_grid():
 def test_pitch_track_to_artifact_empty():
     doc = pt.pitch_track_to_artifact([])
     assert doc["frameCount"] == 0 and doc["f0Hz"] == [] and doc["voiced"] == []
+
+
+# ── regression: unbounded parabolic interpolation crashed on real audio ──────────────────────────
+#
+# Observed on a separated vocals stem: `IndexError: index 659 is out of bounds for axis 0 with size
+# 640`. A flat autocorrelation peak drives `denom` near zero, so the sub-sample correction
+# `0.5*(a-c)/denom` explodes and the resulting lag indexes past the end of the array. The old guard
+# only excluded denom EXACTLY zero. Two consequences, one loud and one silent: the crash, and a
+# nonsense f0 feeding the reference pitch track the singer's mic is scored against.
+
+def test_a_flat_autocorrelation_peak_does_not_crash_or_invent_a_pitch():
+    import numpy as np
+    from src.pitch_track import estimate_f0, extract_pitch_track
+
+    sr = 16000
+    # White noise has no periodicity, so its ACF peak is flat and noisy — the degenerate case.
+    rng = np.random.default_rng(1234)
+    for _ in range(200):
+        frame = rng.standard_normal(640).astype(np.float32)
+        f0, conf = estimate_f0(frame, sr, 70.0, 1200.0)  # must not raise
+        assert 0.0 <= conf <= 1.0
+        assert f0 == 0.0 or 70.0 <= f0 <= 1200.0 * 1.5, f"implausible f0 {f0}"
+
+
+def test_a_real_periodic_tone_still_resolves_accurately():
+    # The clamp must not cost accuracy on the case interpolation exists for.
+    import numpy as np
+    from src.pitch_track import estimate_f0
+
+    sr = 16000
+    for target in (196.0, 246.9, 440.0):  # see the KNOWN DEFECT below for why this starts at 196 Hz
+        t = np.arange(640) / sr
+        frame = np.sin(2 * np.pi * target * t).astype(np.float32)
+        f0, conf = estimate_f0(frame, sr, 70.0, 1200.0)
+        assert abs(f0 - target) / target < 0.05, f"{f0} vs {target}"
+        assert conf > 0.5
+
+
+def test_KNOWN_DEFECT_low_pitches_resolve_to_the_fmax_bound():
+    """Documents a REAL, UNFIXED bug so the suite stops implying pitch detection is sound.
+
+    `_autocorrelation` is a zero-padded LINEAR autocorrelation, so acf[k] tapers as k grows (fewer
+    overlapping samples). For a low pitch the taper beats the periodicity: a 110 Hz tone has its true
+    peak at lag 145, but lag 13 (the fmax bound) scores higher, so argmax picks the shortest lag and
+    reports ~1230 Hz — an octave and a half high, WITH high confidence (0.84), so the voicing gate does
+    not filter it.
+
+    Measured boundary on a 40ms frame at 16kHz: 82.4 Hz and 110 Hz are wrong; 146.8 Hz and above are
+    accurate. That band is the male vocal range (E2-C3), so a male singer would be scored against a
+    nonsense reference pitch track.
+
+    Latent today only because nothing enqueues a `score` job. The fix is normalising the ACF by overlap
+    count, or switching to CMNDF/YIN — a real algorithm change that needs its own validation, not a
+    tweak. Recorded here rather than silently tolerated.
+    """
+    import numpy as np
+    from src.pitch_track import estimate_f0
+
+    sr = 16000
+    for target in (82.4, 110.0):
+        t = np.arange(640) / sr
+        frame = np.sin(2 * np.pi * target * t).astype(np.float32)
+        f0, conf = estimate_f0(frame, sr, 70.0, 1200.0)
+        assert f0 > 1000.0, "if this now resolves correctly the defect is FIXED — delete this test"
+        assert conf > 0.5, "and it is confident about it, which is what makes it dangerous"
+
+
+def test_noise_does_not_crash_the_whole_track_extractor():
+    import numpy as np
+    from src.pitch_track import extract_pitch_track
+
+    rng = np.random.default_rng(7)
+    samples = rng.standard_normal(16000 * 3).astype(np.float32)
+    frames = extract_pitch_track(samples, 16000)  # used to raise IndexError partway through
+    assert len(frames) > 0

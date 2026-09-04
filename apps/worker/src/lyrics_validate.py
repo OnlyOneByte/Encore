@@ -43,9 +43,9 @@ MAX_WORD_SEC = 3.0
 #: Below this a word cannot be seen — it flashes. Measured: "a" at 20ms.
 MIN_WORD_SEC = 0.03
 
-#: Timing must cover at least this fraction of the song, or the ball freezes while the song plays on.
-#: Every mix-aligned artifact measured covered 87-96%, so this is deliberately loose enough to pass a
-#: real outro and tight enough to catch a truncated alignment.
+#: Coverage below this is worth a look. NOT a fault threshold: instrumental breaks and outros legitimately
+#: carry no words, and measured artifacts sit at 87-96% for that reason alone. Tuned to pass those and
+#: still surface the 64% case, which turned out to be a media/duration mismatch rather than bad timing.
 MIN_COVERAGE = 0.80
 
 #: Residual above this means the LRC is timed against a different recording.
@@ -84,10 +84,17 @@ class TimingReport:
 
     @property
     def thin_coverage(self) -> bool:
-        """Timing stops well before the song does — the ball freezes while the music plays on.
+        """Timing stops well before the song does. A PROMPT TO LOOK, not a fault.
 
-        Separate from `usable` on purpose: this is the signature of ASR dropping a verse or an outro,
-        which is a text-acquisition problem no aligner change can fix.
+        Measured on real songs, a shortfall is usually correct: an instrumental break or a long outro
+        genuinely contains no words. Take On Me's synth break has its vocals stem 18-28 dB below the
+        instrumental, and two independent Whisper models given only that clip both transcribe nothing.
+        The coarse reading that called this an "ASR gap" was wrong, and was reached by averaging energy
+        across a window that mixed a sung passage with a break.
+
+        It stays reported because the one genuinely broken case looks identical from here: an artifact
+        aligned against a DIFFERENT upload than the duration on record (observed: timings ending at
+        164s against a row claiming 254s — 64% coverage).
         """
         return 0.0 < self.coverage < MIN_COVERAGE
 

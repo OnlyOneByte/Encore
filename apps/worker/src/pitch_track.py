@@ -109,16 +109,29 @@ def estimate_f0(frame: np.ndarray, sample_rate: int, fmin: float = FMIN_HZ,
     lag = min_lag + peak_idx
 
     # Parabolic interpolation around the integer peak for sub-sample lag accuracy (→ accurate f0).
+    #
+    # The correction is CLAMPED to ±1 sample, and that is not defensive padding. By construction the
+    # true peak lies within one sample of the integer argmax, so a larger correction means the parabola
+    # is degenerate — a flat or noisy peak where `denom` is near zero and `0.5*(a-c)/denom` explodes.
+    # Unclamped, that produced two failures on real audio: a nonsense f0 (garbage in the reference pitch
+    # track the mic is scored against), and an outright crash, because the resulting lag indexed past the
+    # end of `acf` — observed as `IndexError: index 659 is out of bounds for axis 0 with size 640` on a
+    # separated vocals stem. Guarding on `denom != 0.0` alone does not catch near-zero.
     if 0 < lag < frame.size - 1:
         a, b, c = acf[lag - 1], acf[lag], acf[lag + 1]
         denom = a - 2.0 * b + c
         if denom != 0.0:
-            lag = lag + 0.5 * (a - c) / denom
+            shift = 0.5 * (a - c) / denom
+            if -1.0 <= shift <= 1.0:
+                lag = lag + shift
 
     if lag <= 0:
         return 0.0, 0.0
     f0 = sample_rate / lag
-    confidence = float(acf[int(round(lag))] / acf[0]) if acf[0] > 0 else 0.0
+    # Index the integer bin, never the interpolated lag: rounding a lag sitting at the top of the search
+    # range can land one past the last bin.
+    conf_idx = min(int(round(lag)), acf.size - 1)
+    confidence = float(acf[conf_idx] / acf[0]) if acf[0] > 0 else 0.0
     confidence = max(0.0, min(1.0, confidence))
     return float(f0), confidence
 
