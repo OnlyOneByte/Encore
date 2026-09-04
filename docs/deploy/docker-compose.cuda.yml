@@ -29,27 +29,17 @@ services:
         # runtime as nvidia-* packages, so no CUDA base image is needed either.
         TORCH_INDEX_URL: https://download.pytorch.org/whl/cu128
 
-    environment:
-      # EXPLICIT, not auto-detected. backends.py REFUSES a device it cannot reach, so naming cuda here
-      # turns a driver or passthrough mistake into a loud startup failure instead of a silent CPU cook
-      # that merely takes 20x longer and looks like a slow box.
-      - ENCORE_DEMUCS_DEVICE=cuda
-      # WhisperX rides faster-whisper/CTranslate2, which is CUDA-native — word-timed lyrics and the
-      # ASR fallback get the same speedup as separation, not just stems.
-      - ENCORE_WHISPERX_DEVICE=cuda
-      # A GPU box is the right place to own the whole pipeline. `fetch:ytdlp` matters: acquisition
-      # routes on its own capability, so with no fetch-capable worker connected every new song sits at
-      # 0% forever while the core waits for something to run the fetch job it enqueued.
-      - ENCORE_WORKER_CAPABILITIES=stems,align,score,fetch:ytdlp
-      # Start at one. On a GPU this contends for VRAM rather than CPU cores, and overcommitting fails
-      # as a CUDA OOM mid-cook rather than as graceful slowdown. 10 GB is comfortable for one
-      # separation but not for a separation plus WhisperX large-v3 at the same time. Raise it only
-      # after watching nvidia-smi through a real cook.
-      - ENCORE_WORKER_CONCURRENCY=1
-      # ENCORE_DEMUCS_JOBS and ENCORE_TORCH_THREADS are intentionally left unset. Both derive from
-      # os.cpu_count() (config.py auto_demucs_jobs / auto_torch_threads) and describe CPU parallelism,
-      # which is not what limits a GPU cook. The worker may still print a CPU-derived value on
-      # startup — that line is informational, not a claim about the GPU.
+    # Deliberately NO `environment:` block. Everything this override used to set —
+    # ENCORE_DEMUCS_DEVICE=cuda, ENCORE_WHISPERX_DEVICE=cuda, the capability list, the concurrency —
+    # is now measured by the worker at startup: it probes for an accelerator, derives the alignment
+    # device from the same decision, and advertises only the capabilities it can prove. Setting them
+    # here again would just be a second, staler copy of facts the box already knows, and the drift
+    # between this file's capability list and the base file's is precisely what left songs at 0%.
+    #
+    # If you want the old fail-loud behaviour on a driver or passthrough mistake, put ENCORE_DEVICE=cuda
+    # in a .env: an explicitly named device that cannot be reached is still a hard startup failure,
+    # whereas auto-detection quietly falls back to CPU. That is the one thing worth stating by hand,
+    # and it is a deployer's judgement rather than a property of this file.
 
     deploy:
       resources:

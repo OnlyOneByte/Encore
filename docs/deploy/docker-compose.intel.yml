@@ -8,12 +8,13 @@
 # as a torch DEVICE rather than a separate backend — so this path needs no separator code, only wheels
 # and device passthrough.
 #
-# NOTE this uses the BASE Dockerfile, not Dockerfile.intel. Intel Arc originally needed
-# intel-extension-for-pytorch as an extra install whose version had to be matched to both the host
-# driver and the pinned torch; that is no longer true. PyTorch ships native torch.xpu upstream and the
-# xpu index carries the exact versions requirements.txt pins (torch 2.8.0, torchaudio 2.8.0,
-# torchvision 0.23.0), so the ordinary image plus an index swap is enough. Dockerfile.intel is kept
-# alongside this file purely as an IPEX fallback if some driver pairing turns out to need it.
+# NOTE this uses the BASE Dockerfile. Intel Arc originally needed intel-extension-for-pytorch as an
+# extra install whose version had to be matched to both the host driver and the pinned torch; that is
+# no longer true. PyTorch ships native torch.xpu upstream and the xpu index carries the exact versions
+# requirements.txt pins (torch 2.8.0, torchaudio 2.8.0, torchvision 0.23.0), so the ordinary image plus
+# an index swap is enough. The old IPEX-based Dockerfile.intel has been DELETED; backends.py still
+# imports IPEX before torch when it is installed, so that path survives as belt-and-braces. Recover the
+# file from git history if a specific driver pairing ever turns out to need it.
 #
 # UNVERIFIED: no Arc hardware was ever available to run this. Every line below is reasoned from the
 # repo and Intel's documentation, not measured.
@@ -24,21 +25,20 @@ services:
       args:
         TORCH_INDEX_URL: https://download.pytorch.org/whl/xpu
 
-    environment:
-      # EXPLICIT on purpose. backends.py raises on a device it cannot reach, so a passthrough or
-      # driver mistake fails at startup rather than silently cooking on CPU — which on this workload
-      # is the difference between minutes and most of an hour.
-      #
-      # backends.py also imports intel_extension_for_pytorch BEFORE torch when it is present, because
-      # that import is what registers the xpu backend; without it a perfectly good Arc card reports as
-      # absent. With native torch.xpu that import is belt-and-braces rather than load-bearing.
-      - ENCORE_DEMUCS_DEVICE=xpu
-      - ENCORE_WORKER_CAPABILITIES=stems,align,score,fetch:ytdlp
-      - ENCORE_WORKER_CONCURRENCY=1
+    # No `environment:` block. The device, the alignment device, the capability list and the
+    # concurrency are all measured by the worker now: it probes for xpu (importing
+    # intel_extension_for_pytorch before torch where present, since that import is what registers the
+    # backend — belt-and-braces with native torch.xpu) and advertises only what it can prove.
+    #
+    # Set ENCORE_DEVICE=xpu in a .env if you want a passthrough or driver mistake to fail LOUDLY at
+    # startup rather than falling back to CPU. On this workload that is the difference between minutes
+    # and most of an hour, so it is worth considering — but it is a deployer's call, not a fact of the
+    # hardware, which is why it no longer lives here.
 
     devices:
-      # What actually makes the GPU visible. Without it torch.xpu.is_available() is false and the
-      # explicit device above raises at startup — which is the intended, loud failure.
+      # What actually makes the GPU visible. Without it torch.xpu.is_available() is false and the worker
+      # cooks on the CPU — or fails loudly at startup if you set ENCORE_DEVICE=xpu, which is the point
+      # of setting it.
       - /dev/dri:/dev/dri
 
     # The render/video group IDs differ between distributions, so these are NUMERIC and host-specific:

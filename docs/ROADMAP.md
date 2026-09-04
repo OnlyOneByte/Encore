@@ -273,13 +273,18 @@ which is the argument for the "green suite is the floor, not the bar" rule in
         supersede or delete the `htdemucs` numbers in `config.py` rather than leaving them to rot.
         Note `batch_size` and extra threads measured as near-worthless here — do not re-derive them
         from theory. *Done-when:* the committed defaults match a measurement taken on the engine in use.
-  - [ ] **B-8-C4 · device/acceleration config** mapped onto the library's backends, replacing the
-        thin `ENCORE_DEMUCS_DEVICE` passthrough. **AUTO** — selection logic + explicit-override paths.
-        For the Arc box this is now a one-line index swap, not IPEX: `torch 2.8.0+xpu` plus matching
-        `torchaudio 2.8.0` / `torchvision 0.23.0` are all published on
-        `download.pytorch.org/whl/xpu` for cp312/linux_x86_64 — the exact versions already pinned. So
-        the `IPEX_VERSION` build arg can go, and `docs/deploy/docker-compose.intel.yml` uses the
-        ordinary Dockerfile; `docs/deploy/Dockerfile.intel` is parked as an IPEX fallback only. The host
+  - [ ] **B-8-C4 · device/acceleration config** mapped onto the library's backends. The device layer it
+        was going to replace is **already done**: there is no `ENCORE_DEMUCS_DEVICE` passthrough left, the
+        worker probes its accelerator via `torch.accelerator` plus a usability check and derives the
+        alignment device from the same decision, and `docs/deploy/Dockerfile.intel` has been deleted (the
+        `xpu` index carries the exact pinned versions, so IPEX is no longer required). What remains for
+        B-8 specifically is the **second accelerator axis** `python-audio-separator` introduces: it picks
+        an ONNX Runtime execution provider independently of the torch device, and its `[cpu]`/`[gpu]`/
+        `[dml]` extras swap the `onnxruntime` wheel rather than torch. So the probe in `capabilities.py`
+        must learn to report the ORT provider too, and the image matrix has to be decided for both axes
+        at once rather than revisited afterwards. Note the library **already auto-detects** (cuda → mps →
+        DirectML opt-in → cpu) with no explicit device argument, so the risk is two detection paths
+        disagreeing, not detection being absent. The host
         still needs the Intel compute runtime and `/dev/dri`. **Superseded as the live target:** the
         deploy box is now Windows + WSL2 + RTX 3080, where the equivalent is
         `docs/deploy/docker-compose.cuda.yml` and `backends.py` already probes `cuda` first, so no

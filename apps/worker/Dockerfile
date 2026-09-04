@@ -59,10 +59,13 @@ COPY apps/worker/yt-dlp.conf /etc/yt-dlp.conf
 # worker sources (the dial-home client + processor + pure protocol)
 COPY apps/worker/src ./src
 
+# ENCORE_WORKER_CAPABILITIES is deliberately NOT baked here. It is now a narrowing filter over what
+# the worker can prove it can do (capabilities.py probes PATH and imports at startup), so a baked
+# `stems` would silently cap every container built from this image to separation only — dropping the
+# fetch and align it is perfectly capable of, and leaving those jobs unclaimed. That is exactly the
+# failure the probe was written to remove, so the image must stay silent and let the box speak.
 ENV PYTHONUNBUFFERED=1 \
 	ENCORE_CORE_WS=ws://core:3000/ws?role=worker \
-	ENCORE_WORKER_CONCURRENCY=1 \
-	ENCORE_WORKER_CAPABILITIES=stems \
 	MEDIA_DIR=/app/media
 VOLUME ["/app/media"]
 

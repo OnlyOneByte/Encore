@@ -76,14 +76,20 @@ python3 -m venv .venv
 
 PATH="$PWD/.venv/bin:$PATH" \
   ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' \
-  ENCORE_WORKER_CAPABILITIES='stems,score' \
   MEDIA_DIR=../core/media \
   .venv/bin/python -m src.dial_home
 ```
 
+Those two variables are the whole configuration. The worker probes the rest at startup and prints it:
+which accelerator it found (CUDA / Intel xpu / Apple MPS / CPU), how many cores it may actually use,
+how much memory, and — one line per capability, with the evidence — what it can prove it can do. A
+capability whose tool is missing is reported as loudly as one that is present, because *that* is the
+line that explains a song stuck at 0%.
+
 The worker **dials home** to core (never the reverse) and shells out to `yt-dlp`, `ffmpeg` and
-`demucs` **by name via PATH** — hence the `PATH` prefix above. `MEDIA_DIR` must point at the *same*
-directory core is using, or core will mark a job complete for a file it cannot serve.
+`demucs` **by name via PATH** — hence the `PATH` prefix above. That is also why capabilities are
+probed against PATH: a venv-vs-system-python split is a perfectly capable box. `MEDIA_DIR` must point
+at the *same* directory core is using, or core will mark a job complete for a file it cannot serve.
 Expect **~1–2 min/song** on CPU. `ENCORE_WORKER_CONCURRENCY` (default `1`) is how many cook at once.
 
 A native worker also needs a **JavaScript runtime on PATH** — install `deno`. YouTube's player
@@ -154,10 +160,37 @@ docs/              ← design docs + ROADMAP + UI mocks/screenshots
 `S3_REGION`, `S3_PREFIX`. Credentials come from the standard `AWS_*` env vars, which
 `Bun.S3Client` reads directly. A missing bucket falls back to `local` rather than failing to boot.
 
-**Worker** (container 2) — `ENCORE_CORE_WS`, `ENCORE_WORKER_CONCURRENCY` (`1`),
-`ENCORE_WORKER_CAPABILITIES` (`fetch:ytdlp,stems,align` — the whole cook; add `stems:roformer` for the
-RoFormer engine), `ENCORE_WORKER_ID`, `ENCORE_DEMUCS_MODEL`, `ENCORE_WHISPERX_DEVICE`,
-`ENCORE_ANNOTATE` (`1`; set `0` to skip the MusicBrainz lookup on a box with no outbound network).
+**Worker** (container 2) — two settings, and everything else is measured.
+
+| Env | Purpose |
+|---|---|
+| `ENCORE_CORE_WS` | where core is. No probe can guess this |
+| `MEDIA_DIR` | the volume core is also using. Must match, or core serves a file that isn't there |
+
+Everything below is an **override**, unset by default, present only for when a measurement is wrong or
+you want to deliberately limit a box: `ENCORE_WORKER_CAPABILITIES` (**narrows only** — see below),
+`ENCORE_DEVICE` (`cpu`/`cuda`/`xpu`/`mps`), `ENCORE_WORKER_CONCURRENCY` (`1`), `ENCORE_WORKER_ID`
+(derived from the hostname when unset), `ENCORE_DEMUCS_MODEL`, `ENCORE_DEMUCS_JOBS`,
+`ENCORE_TORCH_THREADS`, `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT`/`_SHIFTS`, `ENCORE_STEM_BITRATE`,
+`ENCORE_FLAC_LEVEL`, `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network).
+
+What the worker measures for itself: the **accelerator** (CUDA / ROCm / Intel xpu / Apple MPS / CPU,
+via `torch.accelerator` then a per-device usability probe), **usable cores** (the tightest of
+`cpu_count`, scheduler affinity and the cgroup quota — a container throttled to 2 cores no longer
+sizes itself for the host's 32), **memory**, the **alignment device** (derived from the same decision
+as separation, mapped to cpu/cuda since CTranslate2 has no xpu or mps backend), and its
+**capabilities**.
+
+> **Capabilities are proven, not declared.** At startup the worker checks what is actually installed —
+> `yt-dlp` on PATH → `fetch:ytdlp`, demucs → `stems`, the roformer engine → `stems:roformer`, whisperx
+> → `align` — and advertises only those, logging the evidence for each. `ENCORE_WORKER_CAPABILITIES`
+> can **subtract** from that set (a download-only box is a real layout) but cannot **add** to it: a
+> claim the box cannot honour is refused with a warning naming the missing tool. This is deliberate.
+> The old hand-typed string is what caused songs to sit at 0% forever — the core enqueued a `fetch` or
+> an `align` that nothing had claimed, which looks exactly like a hung worker.
+>
+> Core now says so too: a job no connected worker can run is logged by name (`needs capability
+> 'align' and NO connected worker advertises it`) instead of being parked silently.
 
 The **lyrics engines** — which Whisper checkpoint reads the words (`tiny`/`base`/`small`/`medium`/`large-v3`)
 and how they get timestamps (`forced` word timings vs `lines`) — are a **global setting**, not env: they
@@ -170,10 +203,6 @@ The **TV stage look** — what the room paints behind the song — is a **room s
 Any joined phone can also override it **for the current song only** from the now-playing controls; that
 override clears when the song does. Every option is generated at a pinned dark lightness because the
 lyrics sit on top of it, so no choice can make the words hard to read from the couch.
-
-> A worker must advertise `fetch:<downloader>` to acquire source audio — acquisition routes on its own
-> capability so a box that downloads and a box that separates need not be the same machine. Advertising
-> only `stems` leaves every new song stuck at 0%: the core enqueues a `fetch` nothing can run.
 
 ## Status & roadmap
 

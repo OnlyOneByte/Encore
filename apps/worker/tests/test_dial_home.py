@@ -208,7 +208,14 @@ def test_build_processor_routes_by_capability(monkeypatch):
     from src.score import PitchTrackProcessor
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
-    p = _build_processor()
+    # There is no longer a DEFAULT capability string to lean on: from_env leaves the set unresolved and
+    # config.resolve() fills it from probes, so a test that wants the full cook states the full cook.
+    # (That is the point — the routing table is built from what the box can prove, and this box has
+    # neither demucs nor whisperx installed.)
+    from src.config import WorkerConfig as _WC
+
+    full_cook = _WC(capabilities=("fetch:ytdlp", "stems", "align"))
+    p = _build_processor(full_cook)
     assert isinstance(p, RoutingProcessor)
     by_type = p._by_type  # introspect the routing table
     # stems now routes through an EngineRouter (engine chosen per-job); demucs is its default.
@@ -218,12 +225,10 @@ def test_build_processor_routes_by_capability(monkeypatch):
     assert isinstance(by_type["stems"]._by_engine["demucs"], DemucsProcessor)
     assert "roformer" not in by_type["stems"]._by_engine  # not built without the stems:roformer cap
     assert "score" not in by_type  # score is capability-gated AND has no enqueue path
-    assert isinstance(by_type["align"], WhisperXProcessor)  # part of the default cook
-    assert "fetch" in by_type  # acquisition is in the default cook (fetch:ytdlp)
+    assert isinstance(by_type["align"], WhisperXProcessor)  # part of the full cook
+    assert "fetch" in by_type  # acquisition rides its own capability (fetch:ytdlp)
 
     # A stems-ONLY worker is still expressible — it just has to say so explicitly.
-    from src.config import WorkerConfig as _WC
-
     only_stems = _build_processor(_WC(capabilities=("stems",)))._by_type
     assert "align" not in only_stems and "fetch" not in only_stems
 
