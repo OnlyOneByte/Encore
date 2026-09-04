@@ -143,6 +143,59 @@ def test_client_get_404_returns_none():
     assert ls.LrclibClient(fetcher=fetcher_returning(404, "")).get("x", "y") is None
 
 
+# ── search: a POOL of records, because one song has several recordings ────────────────
+
+SEARCH_BODY = (
+    "["
+    '{"id":11,"instrumental":false,"syncedLyrics":"[00:01.00]solo","plainLyrics":"solo",'
+    '"trackName":"Telephone","artistName":"Lady Gaga","albumName":"The Fame Monster","duration":218},'
+    '{"id":12,"instrumental":false,"syncedLyrics":"[00:01.00]feat","plainLyrics":"feat",'
+    '"trackName":"Telephone","artistName":"Lady Gaga feat. Beyoncé","albumName":"The Fame Monster","duration":243}'
+    "]"
+)
+
+
+def test_client_search_returns_every_record_with_its_own_metadata():
+    """The metadata is the whole reason to search: with two records under one artist+track, `artistName`
+    and `duration` are the only things distinguishing the versions."""
+    res = ls.LrclibClient(fetcher=fetcher_returning(200, SEARCH_BODY)).search("Lady Gaga", "Telephone")
+    assert [r.id for r in res] == [11, 12]
+    assert res[1].artist_name == "Lady Gaga feat. Beyoncé"
+    assert res[1].duration == 243.0
+    assert res[0].album_name == "The Fame Monster"
+
+
+def test_client_search_hits_the_search_endpoint_with_the_encore_user_agent():
+    f = fetcher_returning(200, SEARCH_BODY)
+    ls.LrclibClient(fetcher=f).search("Lady Gaga", "Telephone")
+    url, headers = f.calls[0]  # type: ignore[attr-defined]
+    assert "/api/search?" in url
+    assert "Encore" in headers["User-Agent"]  # LRCLIB etiquette, same as get()
+
+
+def test_client_search_404_and_empty_array_are_both_just_a_miss():
+    """Neither is an error: the caller falls back exactly as it would for a get() miss."""
+    assert ls.LrclibClient(fetcher=fetcher_returning(404, "")).search("x", "y") == []
+    assert ls.LrclibClient(fetcher=fetcher_returning(200, "[]")).search("x", "y") == []
+
+
+def test_client_search_tolerates_a_shape_it_does_not_recognise():
+    """An object where an array was expected is a miss, not a job failure — a provider changing its
+    response shape must not stop songs cooking."""
+    assert ls.LrclibClient(fetcher=fetcher_returning(200, '{"id":1}')).search("x", "y") == []
+    assert ls.LrclibClient(fetcher=fetcher_returning(200, "[1,2,null]")).search("x", "y") == []
+
+
+def test_client_search_non_200_raises_like_get():
+    with pytest.raises(ls.LyricsFetchError):
+        ls.LrclibClient(fetcher=fetcher_returning(500, "")).search("x", "y")
+
+
+def test_client_search_unparseable_body_raises():
+    with pytest.raises(ls.LyricsFetchError):
+        ls.LrclibClient(fetcher=fetcher_returning(200, "not json")).search("x", "y")
+
+
 def test_client_get_non_200_raises():
     with pytest.raises(ls.LyricsFetchError):
         ls.LrclibClient(fetcher=fetcher_returning(500, "")).get("x", "y")

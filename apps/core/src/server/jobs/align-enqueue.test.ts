@@ -29,6 +29,54 @@ test('align does not chain further — no infinite pipeline', () => {
 	expect(followUps('align')).toEqual([]);
 });
 
+// ── the artist credit: telling two RECORDINGS of one song apart ────────────────
+//
+// A lyrics provider holds a record per version, and every one of them matches the primary artist. So
+// "Lady Gaga / Telephone" alone cannot distinguish the release with Beyoncé's verse from the one
+// without, and the worker was handed whichever record the provider happened to return. The full billing
+// is parsed already; these pin that it now reaches the job that needs it.
+
+test('THE GAP: the full billing rides on an align job, not just the primary artist', () => {
+	const p = assignParams(
+		'align',
+		media({ artistCanonical: 'Lady Gaga', titleCanonical: 'Telephone', artistCredit: 'Lady Gaga feat. Beyoncé' })
+	);
+	expect(p.artist).toBe('Lady Gaga'); // the LOOKUP key stays the primary
+	expect(p.artistCredit).toBe('Lady Gaga feat. Beyoncé'); // the RANKING signal rides alongside
+});
+
+test('the credit is omitted when it would only repeat the primary artist', () => {
+	// A solo song's billing IS its primary artist. Sending it would add a field with no signal, and the
+	// worker's ranking axis would score every candidate identically — noise, not evidence.
+	const p = assignParams('align', media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me', artistCredit: 'a-ha' }));
+	expect(p.artistCredit).toBeUndefined();
+});
+
+test('a song with no parsed credit sends none', () => {
+	// Absent, not empty: a source that needs it must be able to tell "no credit" from "credit is blank".
+	expect(assignParams('align', media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me' })).artistCredit).toBeUndefined();
+});
+
+test('the credit is NOT a lookup key — it never replaces artist or track', () => {
+	// Querying the full billing would miss every record filed under the primary alone, which is the
+	// opposite of the fix. It only ever ranks what a search already returned.
+	const p = assignParams(
+		'align',
+		media({ artistCanonical: 'Lady Gaga', titleCanonical: 'Telephone', artistCredit: 'Lady Gaga feat. Beyoncé' })
+	);
+	expect(p.artist).not.toContain('Beyoncé');
+	expect(p.track).toBe('Telephone');
+});
+
+test('fetch carries the credit too, since it shares the lookup keys', () => {
+	const p = assignParams(
+		'fetch',
+		media({ artistCanonical: 'Lady Gaga', titleCanonical: 'Telephone', artistCredit: 'Lady Gaga feat. Beyoncé' }),
+		DEFAULT_GLOBAL_SETTINGS
+	);
+	expect(p.artistCredit).toBe('Lady Gaga feat. Beyoncé');
+});
+
 // ── params derivation ─────────────────────────────────────────────────────────
 test('stems still gets its separation model', () => {
 	expect(assignParams('stems', media()).model).toBe('htdemucs');

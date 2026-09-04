@@ -25,6 +25,8 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
+from .lyrics_source import MAX_VARIANTS, rank_lrclib_candidates
+
 # Text-source ids — must match LyricsTextSource in packages/shared/src/lyrics.ts.
 SOURCE_LRCLIB = "lrclib"
 SOURCE_CAPTIONS = "captions"
@@ -60,11 +62,21 @@ class LyricsRequest:
     artist: str | None = None
     track: str | None = None
     duration: float | None = None
+    #: The FULL billing as the upload wrote it ("Lady Gaga feat. Beyoncé") when one was parsed, versus
+    #: `artist` which is only the primary. Not a lookup key — LRCLIB is queried on the primary, because
+    #: querying the full credit misses every record filed under the primary alone. It is a RANKING
+    #: signal: among records that all match "Lady Gaga / Telephone", the one whose own artist string
+    #: also mentions Beyoncé is the better metadata match.
+    artist_credit: str | None = None
     #: The raw mixed audio (retained original). Fine for forced alignment.
     audio_path: str = ""
     #: The isolated vocals stem, when a stems job has already produced it. ASR wants THIS — a full mix
     #: transcribes badly — so it may be absent for a song whose stems have not been cooked.
     vocals_path: str | None = None
+    #: Cues from the upload's own human-authored caption track, already fetched and parsed by the
+    #: processor's async stage. None/[] means the upload has no manual track. Passed in rather than
+    #: fetched by the tier so this module performs no I/O.
+    caption_segments: list[dict[str, Any]] | None = None
 
 
 @dataclass
@@ -78,6 +90,15 @@ class LyricsText:
     timing: str = TIMING_NONE
     text_confidence: str = "medium"
     language: str | None = None
+    #: Which VERSION of the song this text is, for logs. None when the source has no notion of one.
+    variant: str | None = None
+    #: Other versions of this song the same source offered, best-first by cheap metadata ranking.
+    #:
+    #: Held on the winner rather than returned alongside it because only ONE of them may ever be
+    #: published: the artifact key is (media, source, timing), so two LRCLIB candidates would collide
+    #: on disk and in the candidate set. These are the losers of a choice that has not been made yet —
+    #: `select_variants` makes it once the ASR transcript exists to decide with.
+    alternates: list["LyricsText"] = field(default_factory=list)
 
     @property
     def plain_text(self) -> str:
@@ -102,35 +123,108 @@ class LrclibSource:
     Declines (None) rather than raising on: no confident metadata, a 404, an instrumental, or a
     network failure. A dead LRCLIB must degrade the RESULT, not fail the job — that conflation is the
     bug this whole commit exists to fix.
+
+    SEARCHES rather than gets, because a popular song has SEVERAL records and /api/get returns one of
+    them by fiat. Asking for a single record is how "Telephone (feat. Beyoncé)" ends up singing the
+    lyrics of "Telephone": both records match artist+track, /api/get picks whichever satisfies its ±2s
+    duration filter first, and nothing downstream ever learns there was a choice. This tier therefore
+    returns the metadata-best record with the rest attached as `alternates`, and defers the real
+    decision to `select_variants`, which has the ASR transcript to settle it with.
+
+    Falls back to `get()` when the search finds nothing: a record reachable by exact match but absent
+    from search results is unlikely but costs one request to rule out, and a regression from
+    "lyrics" to "no lyrics" is not an acceptable price for adding version selection.
     """
 
     name = SOURCE_LRCLIB
 
-    def __init__(self, client: Any, to_segments: Any) -> None:
+    def __init__(self, client: Any, to_segments: Any, max_variants: int = MAX_VARIANTS) -> None:
         self._client = client
         self._to_segments = to_segments  # whisperx.lrclib_to_segments, injected to avoid a cycle
+        self._max_variants = max_variants
 
-    def fetch(self, req: LyricsRequest) -> LyricsText | None:
-        if not req.artist or not req.track:
-            return None  # no confident metadata → an authoritative lookup is not possible
-        try:
-            res = self._client.get(req.artist, req.track, duration=req.duration)
-        except Exception:  # noqa: BLE001 — unreachable/5xx/TLS: a miss, not a job failure
-            return None
-        if res is None:
-            return None
+    def _to_text(self, res: Any, req: LyricsRequest) -> LyricsText | None:
         segments = self._to_segments(res, req.duration)
         if not segments:
             return None  # instrumental, or no usable lyrics body
-        synced = bool(getattr(res, "has_synced", False))
         return LyricsText(
             text_source=SOURCE_LRCLIB,
             segments=segments,
             # An LRC gives real line timings; plainLyrics segments carry only synthetic even spacing,
             # which is NOT sync and must not be presented as the line-level floor.
-            timing=TIMING_LINE if synced else TIMING_NONE,
+            timing=TIMING_LINE if bool(getattr(res, "has_synced", False)) else TIMING_NONE,
             text_confidence="high",
             language=None,
+            variant=getattr(res, "label", None),
+        )
+
+    def fetch(self, req: LyricsRequest) -> LyricsText | None:
+        if not req.artist or not req.track:
+            return None  # no confident metadata → an authoritative lookup is not possible
+
+        # The credit we can compare a record's artist string against. `artist_credit` carries the full
+        # billing ("Lady Gaga feat. Beyoncé") when the upload named one; `artist` alone is the primary.
+        credit = req.artist_credit or req.artist
+
+        pool: list[Any] = []
+        try:
+            found = self._client.search(req.artist, req.track)
+        except Exception:  # noqa: BLE001 — unreachable/5xx/TLS: a miss, not a job failure
+            found = []
+        if found:
+            pool = rank_lrclib_candidates(found, req.duration, credit, self._max_variants)
+
+        if not pool:
+            try:
+                one = self._client.get(req.artist, req.track, duration=req.duration)
+            except Exception:  # noqa: BLE001 — same class, same treatment
+                return None
+            if one is None:
+                return None
+            pool = [one]
+
+        texts = [t for t in (self._to_text(r, req) for r in pool) if t is not None]
+        if not texts:
+            return None
+        best, rest = texts[0], texts[1:]
+        best.alternates = rest
+        return best
+
+
+class CaptionsSource:
+    """Lyrics from the upload's own HUMAN-AUTHORED caption track.
+
+    Uniquely version-proof. Every other authoritative tier is indexed by artist+track and can only
+    return a record for *some* recording of the song; captions are attached to the exact upload being
+    sung over, so they cannot be about a different version. For a song with two popular releases that
+    makes this the tier least able to be wrong about which one it is.
+
+    Auto-generated captions are never fetched — see the module docstring in captions.py. That is why
+    this tier reports `high` confidence: what it returns is authored text, not ASR wearing a caption's
+    clothes, and the `low` grade documented for auto tracks in shared/lyrics.ts has nothing to demote
+    because no such track is ever requested.
+
+    Timing is LINE and stays line: a caption cue bounds a whole line, and any word timing comes from the
+    same forced aligner every other tier goes through.
+
+    PURE — the yt-dlp call happens in the align processor's async stage, through the same injected runner
+    the audio download uses, and the parsed cues arrive on the request. This tier owns no subprocess of
+    its own: an earlier draft did, and it made every existing processor test shell out to the network,
+    because the harness's injected fake runner had no way to reach a second private path to yt-dlp.
+    """
+
+    name = SOURCE_CAPTIONS
+
+    def fetch(self, req: LyricsRequest) -> LyricsText | None:
+        if not req.caption_segments:
+            return None  # no manual track on this upload — the common case, and not an error
+        return LyricsText(
+            text_source=SOURCE_CAPTIONS,
+            segments=list(req.caption_segments),
+            timing=TIMING_LINE,
+            text_confidence="high",
+            language=None,
+            variant="uploader captions",
         )
 
 
@@ -277,3 +371,106 @@ def score_against_asr(texts: list[LyricsText]) -> dict[str, float]:
         if score is not None:
             out[t.text_source] = score
     return out
+
+
+# ── variant selection: choosing WHICH VERSION of the song a source found ──────────────
+#
+# The problem this solves, and why the demotion above does not solve it.
+#
+# A popular song has several distinct recordings, and a lyrics provider holds a record for each. Ask
+# for "Lady Gaga / Telephone" and you may be handed the version without Beyoncé's verse. The existing
+# check notices the mismatch and demotes the text to `low`, which drops it below ASR — so the singer
+# gets Whisper's guess at sung words when the CORRECT lyrics were one record away. Detection without
+# re-selection makes the outcome worse, not better.
+#
+# THRESHOLDS CANNOT FIX THIS, and that is the crux. SUSPECT_AGREEMENT is calibrated for "a completely
+# different song"; two versions of the SAME song share most of their words, so the wrong one still
+# scores far above it. What separates them is not an absolute score but the COMPARISON: the version
+# whose words are actually being sung scores measurably higher than the one missing a verse. Argmax
+# needs no threshold at all — only that the scores differ.
+#
+# The absolute threshold keeps its own job: deciding whether even the WINNER is trustworthy. The two
+# are complementary, and both run — select first, then judge the winner.
+#
+# COST. Scoring is a token-set intersection over text already in memory, so choosing among five
+# candidates costs five set operations and exactly ONE alignment — the winner's. Selection deliberately
+# happens before the expensive step rather than after it.
+
+
+@dataclass
+class VariantChoice:
+    """What happened when one source offered several versions. Purely a report — for logs and tests."""
+
+    text_source: str
+    considered: int
+    chosen: str | None
+    chosen_score: float | None
+    #: (label, score) of everything not chosen, in the order considered.
+    rejected: list[tuple[str | None, float | None]] = field(default_factory=list)
+    #: "agreement" when the transcript decided it, "metadata" when it could not and cheap ranking stood.
+    decided_by: str = "metadata"
+
+    def summary(self) -> str:
+        head = f"{self.text_source}: {self.considered} versions, kept {self.chosen or '?'}"
+        if self.chosen_score is not None:
+            head += f" (agreement {self.chosen_score:.2f})"
+        if self.decided_by == "metadata":
+            return head + " — chosen on metadata; the transcript could not decide"
+        losers = ", ".join(
+            f"{label or '?'}" + (f" {score:.2f}" if score is not None else " —") for label, score in self.rejected
+        )
+        return head + (f", over {losers}" if losers else "")
+
+
+def select_variants(texts: list[LyricsText]) -> tuple[list[LyricsText], list[VariantChoice]]:
+    """Resolve every source's `alternates` down to its most likely version, using the ASR transcript.
+
+    Source-agnostic on purpose: LRCLIB offers versions of a recording and a captions track can offer
+    several language or authored tracks, and "which of these matches what is being sung" is one
+    question with one answer. Any source that attaches alternates gets the same treatment.
+
+    Falls back to the incoming (cheap-metadata) order whenever the transcript cannot decide — no ASR
+    tier ran, the vocals were too sparse to transcribe, or every candidate scored incomparable. That is
+    a real outcome for an instrumental, and guessing from an unusable signal would be worse than
+    keeping a duration match.
+
+    Returns the resolved texts in their original order, plus a report for each source that actually had
+    a choice to make.
+    """
+    asr = next((t for t in texts if t.text_source == SOURCE_ASR), None)
+    asr_text = asr.plain_text if asr is not None else ""
+
+    resolved: list[LyricsText] = []
+    reports: list[VariantChoice] = []
+
+    for text in texts:
+        pool = [text, *text.alternates]
+        if len(pool) < 2:
+            resolved.append(text)
+            continue
+
+        scores = [agreement_score(c.plain_text, asr_text) for c in pool] if asr_text else [None] * len(pool)
+        best = 0
+        if any(s is not None for s in scores):
+            # max on (score, negative index) so an exact tie keeps the earlier — i.e. the better
+            # metadata match. `-1.0` sorts an incomparable candidate below every scored one.
+            best = max(range(len(pool)), key=lambda i: (scores[i] if scores[i] is not None else -1.0, -i))
+            decided_by = "agreement"
+        else:
+            decided_by = "metadata"
+
+        winner = pool[best]
+        winner.alternates = []  # the choice is made; carrying the losers further would only confuse
+        resolved.append(winner)
+        reports.append(
+            VariantChoice(
+                text_source=winner.text_source,
+                considered=len(pool),
+                chosen=winner.variant,
+                chosen_score=scores[best],
+                rejected=[(c.variant, s) for i, (c, s) in enumerate(zip(pool, scores)) if i != best],
+                decided_by=decided_by,
+            )
+        )
+
+    return resolved, reports

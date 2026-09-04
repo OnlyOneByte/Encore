@@ -33,6 +33,17 @@ export interface Media {
    */
   artistCanonical?: string;
   /**
+   * The FULL artist billing as the upload wrote it ("Lady Gaga feat. Beyoncé"), where
+   * `artistCanonical` is only the primary. Set only when it differs from the primary — i.e. when the
+   * upload actually credited more than one artist.
+   *
+   * Not for display, and not a lookup key. It rides on an `align` job so the worker can tell two
+   * RECORDINGS of a song apart: a lyrics provider holds a record per version and every one of them
+   * matches the primary artist, so a song with a guest verse otherwise gets whichever record the
+   * provider happens to return. See `rank_lrclib_candidates` in the worker.
+   */
+  artistCredit?: string;
+  /**
    * The canonical TITLE, from the same normalizer and confidence rule as `artistCanonical`. `title`
    * stays the RAW title because that is what search matches and what a singer recognises in a result
    * list — but a lyrics lookup needs the song's actual name, so "Britney Spears - Baby One More Time

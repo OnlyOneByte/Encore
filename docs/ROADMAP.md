@@ -50,9 +50,9 @@ eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
   worker code.
 - YouTube autoplay-with-audio needs a user gesture in-browser.
 
-**Working order.** **B-8** (separator swap) → **B-9** (image + stream-source hygiene) → **B-3-C7p2**
-(captions) → **B-4** → **M9-C1** → **M9-C3** → **B-2** last. B-2 is last because its only real
-acceptance test is audible and needs the owner in the room.
+**Working order.** **B-8** (separator swap) → **B-9** (image + stream-source hygiene) →
+**B-3-C7p2b** (re-align on better text) → **B-4** → **M9-C1** → **M9-C3** → **B-2** last. B-2 is last
+because its only real acceptance test is audible and needs the owner in the room.
 
 ---
 
@@ -315,12 +315,31 @@ which is the argument for the "green suite is the floor, not the bar" rule in
         *Done-when:* for a title with both, the Opus stream is chosen. **AUTO** — pure ranking over
         recorded format lists; no network in the test.
 
-- [ ] **B-3-C7 (part 2) · captions tier + re-align on better text.** The backfill covers "no lyrics
-  yet"; this covers "LRCLIB became reachable, or the text was corrected". Captions were probed on two
-  library videos: one had none, the other only auto-generated — so this is a **middle** tier, not an
-  authoritative one. *Done-when:* a song whose text improves gets re-aligned **from retained audio**
-  (no re-download, no re-separation) and can never regress from word- to line-level timings.
-  **AUTO** — tier ordering, upgrade-not-regress invariant, re-align trigger.
+- [x] **B-3-C7 (part 2a) · captions tier + version selection.** Two changes that turned out to be one
+  feature. LRCLIB is now asked via `/api/search` (an ARRAY of records) instead of `/api/get` (one
+  record, duration-filtered ±2s), and the resulting pool is resolved against the ASR transcript. The
+  captions tier joins as a third text source, restricted to **uploader-authored** tracks — the argv
+  passes `--write-subs` and never `--write-auto-subs`, so an auto-generated (ASR) track cannot arrive
+  and be mistaken for authoritative text. Earlier probing found one library video with no captions and
+  one with only an automatic track, so treat this as an *occasional* tier — but when it fires it is the
+  only source that cannot be about a different recording, because it is attached to the exact upload.
+
+  **Why selection, not a threshold.** Detection already existed and made things worse: an agreement
+  below `SUSPECT_AGREEMENT` demoted the lookup to `low`, dropping it beneath ASR — so a wrong-version
+  match was answered with Whisper's guess at sung words rather than with the correct record sitting one
+  row away. And the threshold cannot fire here at all: measured on the two-version fixture, the WRONG
+  version scores **0.548** against the vocals (the right one 0.938) — far above the 0.25 wrong-song
+  cutoff. Argmax needs no threshold, only a difference, which is why the fix is comparative. The
+  absolute check keeps its own job: judging whether the *winner* is trustworthy.
+
+  Costs no extra alignment — the choice is made on text already in memory, so only the winner is
+  aligned. Depends on the ASR tier, hence on a vocals stem; a song aligned without one degrades to
+  duration-ranked selection.
+
+- [ ] **B-3-C7 (part 2b) · re-align on better text.** The backfill covers "no lyrics yet"; this covers
+  "LRCLIB became reachable, or the text was corrected". *Done-when:* a song whose text improves gets
+  re-aligned **from retained audio** (no re-download, no re-separation) and can never regress from
+  word- to line-level timings. **AUTO** — upgrade-not-regress invariant, re-align trigger.
 
 - [ ] **B-4 · Hot-titles persistence** — the popularity tracker is in-memory (survives refresh, not
   restart). Persist counts so "🔥 Popular tonight" survives a restart. **AUTO** — unit.
