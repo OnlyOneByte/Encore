@@ -420,12 +420,15 @@ class WhisperXProcessor:
                 rep = validate_timing(doc, params.get("durationSec"))
                 print(f"[worker] align: timing for {job.media_id} — {rep.summary()}", flush=True)
                 if rep.thin_coverage:
-                    # Diagnoses TRANSCRIPTION, not alignment: the aligner can only place words it was
-                    # given, so a shortfall means ASR dropped a verse or the outro.
+                    # Deliberately does NOT blame ASR. Measured on real songs: a shortfall is usually
+                    # CORRECT — an instrumental break or outro genuinely has no words. On Take On Me the
+                    # vocals stem sits 18-28 dB below the instrumental through its synth break, and two
+                    # independent Whisper models given only that clip both transcribe nothing, which is
+                    # the right answer. Coverage is a prompt to look, not a diagnosis.
                     print(
-                        f"[worker] align: {job.media_id} timing covers only {rep.coverage:.0%} of the "
-                        "song — the overlay will freeze on the last timed word. ASR text gap, not an "
-                        "alignment fault.",
+                        f"[worker] align: {job.media_id} timing covers {rep.coverage:.0%} of the song. "
+                        "Usually an instrumental break or outro; occasionally a media/duration mismatch "
+                        "(timings aligned against a different upload than the duration on record).",
                         flush=True,
                     )
                 if not rep.usable:
