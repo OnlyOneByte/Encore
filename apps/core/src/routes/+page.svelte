@@ -907,8 +907,11 @@
 		border-radius: 10px; padding: 8px 10px; font-size: 0.8rem; cursor: pointer; min-height: 44px;
 	}
 	.bg-pick:not(.disabled) .bg-btn:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
-	/* The active choice is stated by border + text, never by colour alone. */
-	.bg-btn.on { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+	/* The active choice is stated by border + text, never by colour alone. The BORDER carries the
+	   accent (a non-text element, 3:1 floor); the label stays --ink because --accent as text measures
+	   4.51:1 on --bg and only 3.95:1 on a card, so at 0.8rem it sits on the AA threshold and falls
+	   below it the moment this control moves onto a card. See lib/contrast.test.ts. */
+	.bg-btn.on { border-color: var(--accent); color: var(--ink); font-weight: 700; }
 	.bg-pick:not(.disabled) .bg-btn:not(:disabled):active { transform: scale(0.95); }
 	.bg-btn:disabled { cursor: default; }
 	.key.disabled { opacity: 0.5; }
