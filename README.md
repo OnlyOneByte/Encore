@@ -25,7 +25,10 @@ gapless TV, and live "make-karaoke" stem separation on the roadmap.
   end-to-end per cook, and cost per model measured against the whitelist's own declared `rtFactor`.
   Click any song for `/metrics/<mediaId>` — every cook, every retry, which model ran it, and why it
   failed. **The two internal pages are currently ungated** — see Configuration.
-- **Round-robin rotation** — everyone's 1st pick before anyone's 2nd; new joiners slot in fairly.
+- **The house rule is yours to pick** — **Fair rotation** (the default: everyone's 1st pick before
+  anyone's 2nd, new joiners slot in fairly), **first come first served**, **shuffle**, or **whoever
+  sang longest ago**. A room setting, so changing it re-orders the songs waiting instantly and never
+  interrupts the one playing.
 - **Real-time + optimistic** — every tap renders instantly; 20 phones stay synced over flaky
   wifi; reconnects self-heal.
 
