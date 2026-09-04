@@ -18,9 +18,20 @@ const media = (over: Partial<Media> = {}): Media => ({
 });
 
 // ── the cook pipeline ─────────────────────────────────────────────────────────
-test('a completed stems job enqueues align AND score (both were unreachable)', () => {
-	// score was blocked by the identical bug: nothing ever enqueued it, so live scoring could not fire.
-	expect(followUps('stems')).toEqual(['align', 'score']);
+test('the cook is fetch -> stems -> align, and ends there', () => {
+	// align is the LAST step of the cook, not an optional garnish: a song is not finished until its
+	// words are timed.
+	expect(followUps('fetch')).toEqual(['stems']);
+	expect(followUps('stems')).toEqual(['align']);
+});
+
+test('score has NO enqueue path — it is not part of the cook', () => {
+	// Deliberate: `score` extracts a reference pitch track for live mic comparison, and it currently
+	// re-runs the whole separation to get vocals it could read off disk. Chaining it doubled every cook.
+	// Nothing enqueues it until that is fixed and a decision lands on scoring after the song.
+	for (const t of ['fetch', 'stems', 'align', 'score', 'stems-upgrade'] as const) {
+		expect(followUps(t)).not.toContain('score');
+	}
 });
 
 test('align does not chain further — no infinite pipeline', () => {

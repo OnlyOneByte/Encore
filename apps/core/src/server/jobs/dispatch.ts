@@ -19,13 +19,23 @@ import type { WorkerSession } from './registry';
 export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[] {
 	// Acquisition chains to separation: the song is not singable until it is separated, and separation
 	// needs bytes on disk. Kept as a chain rather than enqueued together so `stems` cannot be dispatched
-	// before its input exists — the same reason align/score chain after stems.
+	// before its input exists — the same reason align chains after stems.
 	if (jobType === 'fetch') return ['stems'];
 	if (jobType !== 'stems') return [];
-	const next: JobType[] = ['align', 'score'];
+	// The COOK is fetch → stems → align, and nothing else. A song is not finished until its words are
+	// timed, so `align` is the last step of the pipeline rather than an optional garnish.
+	//
+	// `score` is deliberately NOT here and has no enqueue path at all. It does not produce anything the
+	// cook needs: it extracts a REFERENCE PITCH TRACK so the live mic comparison has a target (the
+	// class is `PitchTrackProcessor`; the job name has always been misleading). Two reasons it is out:
+	// it re-runs the ENTIRE separation to get vocals it could read off disk, which would double every
+	// cook, and live scoring is shelved until it is decided whether the singer's pitch should be
+	// buffered and scored after the song instead. Re-adding it is one line — but do the reuse fix first.
+	const next: JobType[] = ['align'];
 	// A completed cook optionally chains a re-separation at higher quality. It runs from the RETAINED
 	// raw audio, so it costs CPU but no re-download, and `markMediaReady` refuses to publish its
-	// result unless it actually outranks what is already there.
+	// result unless it actually outranks what is already there. Off unless a setting asks for it, so
+	// it is background work on a finished song rather than part of the cook.
 	if (settings?.enqueueUpgrade && isQualityUpgrade(
 		{ engine: settings.defaultEngine, model: settings.defaultModel },
 		{ engine: settings.upgradeEngine, model: settings.upgradeModel }
