@@ -19,6 +19,7 @@ import type {
 } from '@encore/shared';
 import { sourceUriFor } from '@encore/shared';
 import type { JobRepository } from './repository';
+import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
 import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental, inheritsCook } from './dispatch';
 import { markMediaReady, setMediaLyrics, setMediaPitch, applyAnnotation, settleLyricsGate, markLyricsQueued } from './make-karaoke';
@@ -31,6 +32,8 @@ export type Broadcast = (event: ServerEvent) => void;
 
 export interface WorkerHubDeps {
 	jobs: JobRepository;
+	/** Per-attempt history. Optional so the hub still unit-tests bare; app.ts wires it. */
+	attempts?: AttemptLedger;
 	registry: WorkerRegistry;
 	/** Resolve a media's source URI (youtube id / file key) so the worker can pull it. */
 	mediaById: Map<string, Media>;
@@ -127,7 +130,13 @@ export class WorkerHub {
 	 *  ready, then let the core reconcile playback (a held song slots back at its fair position). */
 	#onComplete(msg: Extract<WorkerMessage, { type: 'job:complete' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
-		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
+		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return; // stale
+		// Record what the worker ACTUALLY ran, and its per-stage split, BEFORE completing: `complete`
+		// seals the attempt row, and a sealed row is never written again. Ordering matters here.
+		this.#d.attempts?.reportFacts(msg.jobId, {
+			...(msg.facts ?? {}),
+			stages: msg.stages?.length ? JSON.stringify(msg.stages) : undefined
+		});
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#d.getSettings?.();
 		// Flip the media to ready (instrumentalRef→what the worker wrote, stemStatus→
