@@ -71,6 +71,12 @@
 		height: 100%;
 		border: 0;
 		object-fit: contain;
-		background: #000;
+		/*
+		 * TRANSPARENT, not #000. `object-fit: contain` letterboxes, and a make-karaoke song plays an
+		 * instrumental with no video track at all — so this element's own background used to paint the
+		 * whole screen black and would completely hide the room's stage background beneath it. The floor
+		 * is `.tv`'s black on the TV page, so nothing regresses when a room chooses `off`.
+		 */
+		background: transparent;
 	}
 </style>

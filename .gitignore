@@ -33,3 +33,6 @@ __pycache__/
 # os / editor
 .DS_Store
 *.log
+
+# agent scratch — working specs and notes live here, never committed
+.kiro

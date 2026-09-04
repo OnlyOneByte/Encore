@@ -67,6 +67,8 @@ export class SettingsRepository {
 		if (!row) return { ...DEFAULT_ROOM_SETTINGS };
 		return normalizeRoomSettings({
 			tvProgressStyle: row.tvProgressStyle,
+			tvBackgroundStyle: row.tvBackgroundStyle,
+			tvBackgroundHue: row.tvBackgroundHue,
 			interstitialMs: row.interstitialMs,
 			maxQualityRank: row.maxQualityRank,
 			lyricsBall: row.lyricsBall,

@@ -10,6 +10,8 @@ import {
 	DEFAULT_MODEL,
 	normalizeRoomSettings,
 	TV_PROGRESS_STYLES,
+	TV_BACKGROUND_STYLES,
+	isTvBackgroundStyle,
 	DEFAULT_ROOM_SETTINGS,
 	resolveCookSeparator,
 	resolveLyricsPresentation,
@@ -491,5 +493,67 @@ describe('normalizeRoomSettings — lyrics text', () => {
 	it('normalizes a valid font and case', () => {
 		expect(normalizeRoomSettings({ lyricsFont: 'mono' }).lyricsFont).toBe('mono');
 		expect(normalizeRoomSettings({ lyricsCase: 'lower' }).lyricsCase).toBe('lower');
+	});
+});
+
+describe('tv background styles', () => {
+	it('leads with the opt-out so the default is not mistaken for a treatment', () => {
+		expect(TV_BACKGROUND_STYLES.map((s) => s.id)).toEqual(['off', 'gradient', 'singer', 'solid']);
+		expect(TV_BACKGROUND_STYLES.every((s) => s.label && s.note)).toBe(true);
+	});
+
+	it('defaults to off, so an existing box looks identical after the migration', () => {
+		expect(DEFAULT_ROOM_SETTINGS.tvBackgroundStyle).toBe('off');
+	});
+
+	it('guards the type at the boundary', () => {
+		expect(isTvBackgroundStyle('singer')).toBe(true);
+		expect(isTvBackgroundStyle('SINGER')).toBe(false);
+		expect(isTvBackgroundStyle('rainbow')).toBe(false);
+		expect(isTvBackgroundStyle(null)).toBe(false);
+		expect(isTvBackgroundStyle(3)).toBe(false);
+		expect(isTvBackgroundStyle(undefined)).toBe(false);
+	});
+
+	it('keeps the room current choice when a write is junk, rather than resetting to the default', () => {
+		expect(normalizeRoomSettings({ tvBackgroundStyle: 'gradient' }).tvBackgroundStyle).toBe('gradient');
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'singer' as const };
+		expect(normalizeRoomSettings({ tvBackgroundStyle: 'nope' as never }, room).tvBackgroundStyle).toBe('singer');
+	});
+
+	it('rejecting one field never discards an unrelated choice the room already made', () => {
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'solid' as const, tvBackgroundHue: 75 };
+		const out = normalizeRoomSettings({ tvBackgroundStyle: 'garbage' as never }, room);
+		expect(out.tvBackgroundStyle).toBe('solid');
+		expect(out.tvBackgroundHue).toBe(75);
+	});
+
+	it('quantises the hue to the wheel step and wraps instead of rejecting', () => {
+		// an angle always has a meaning once wrapped, so clamping beats refusing (interstitialMs precedent)
+		expect(normalizeRoomSettings({ tvBackgroundHue: 0 }).tvBackgroundHue).toBe(0);
+		expect(normalizeRoomSettings({ tvBackgroundHue: 7 }).tvBackgroundHue).toBe(0); // nearer 0 than 15
+		expect(normalizeRoomSettings({ tvBackgroundHue: 8 }).tvBackgroundHue).toBe(15); // rounds up
+		expect(normalizeRoomSettings({ tvBackgroundHue: 22 }).tvBackgroundHue).toBe(15);
+		expect(normalizeRoomSettings({ tvBackgroundHue: 23 }).tvBackgroundHue).toBe(30);
+		expect(normalizeRoomSettings({ tvBackgroundHue: 360 }).tvBackgroundHue).toBe(0);
+		expect(normalizeRoomSettings({ tvBackgroundHue: 375 }).tvBackgroundHue).toBe(15);
+		expect(normalizeRoomSettings({ tvBackgroundHue: -15 }).tvBackgroundHue).toBe(345);
+		expect(normalizeRoomSettings({ tvBackgroundHue: -370 }).tvBackgroundHue).toBe(345);
+	});
+
+	it('falls back on a hue that is not a usable number', () => {
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundHue: 165 };
+		for (const junk of [NaN, Infinity, -Infinity, '90' as never, null as never, undefined]) {
+			expect(normalizeRoomSettings({ tvBackgroundHue: junk as never }, room).tvBackgroundHue).toBe(165);
+		}
+	});
+
+	it('every normalized hue is one the colour wheel can actually render', () => {
+		for (const raw of [0, 1, 44, 99, 180, 271, 359, 400, -1, -200]) {
+			const h = normalizeRoomSettings({ tvBackgroundHue: raw }).tvBackgroundHue;
+			expect(h % 15).toBe(0);
+			expect(h).toBeGreaterThanOrEqual(0);
+			expect(h).toBeLessThan(360);
+		}
 	});
 });
