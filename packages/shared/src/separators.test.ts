@@ -14,7 +14,8 @@ import {
 	resolveCookSeparator,
 	separatorCost,
 	estimateCookSeconds,
-	qualityRank
+	qualityRank,
+	normalizeJoinOrigin
 } from './separators';
 
 describe('separator registry', () => {
@@ -235,5 +236,46 @@ describe('tv progress styles', () => {
 		expect(normalizeRoomSettings({ tvProgressStyle: 'off' }).tvProgressStyle).toBe('off');
 		const room = { ...DEFAULT_ROOM_SETTINGS, tvProgressStyle: 'edge' as const };
 		expect(normalizeRoomSettings({ tvProgressStyle: 'nope' as never }, room).tvProgressStyle).toBe('edge');
+	});
+});
+
+describe('join origin', () => {
+	// The address the TV advertises. Global rather than room-scoped (it names the deployment) and
+	// settable rather than env-only, because the TV's own URL is often unreachable from a phone — a
+	// WSL2 host can open /tv only as `localhost`, which points every phone at itself.
+	it('defaults to empty, meaning "not declared — fall back to the env var, then the request"', () => {
+		expect(DEFAULT_GLOBAL_SETTINGS.joinOrigin).toBe('');
+	});
+
+	it('strips path, query and trailing slash so a pasted address-bar value works', () => {
+		expect(normalizeJoinOrigin('http://10.0.0.5:3000/tv?x=1')).toBe('http://10.0.0.5:3000');
+		expect(normalizeJoinOrigin('http://10.0.0.5:3000/')).toBe('http://10.0.0.5:3000');
+		expect(normalizeJoinOrigin('  https://party.example  ')).toBe('https://party.example');
+	});
+
+	it('distinguishes CLEARED from REJECTED, so emptying the field falls back rather than failing', () => {
+		// '' is a legitimate value; null is "not a usable origin". Collapsing the two would either make
+		// the field impossible to clear or make a typo silently re-enable auto-detection.
+		expect(normalizeJoinOrigin('')).toBe('');
+		expect(normalizeJoinOrigin('   ')).toBe('');
+		expect(normalizeJoinOrigin('192.168.1.20:3000')).toBeNull(); // no scheme — not openable
+		expect(normalizeJoinOrigin('not a url')).toBeNull();
+		expect(normalizeJoinOrigin(undefined)).toBeNull();
+	});
+
+	it('refuses a scheme a phone browser cannot open', () => {
+		for (const bad of ['ftp://10.0.0.5', 'javascript:alert(1)', 'file:///etc/passwd', 'ws://10.0.0.5']) {
+			expect(normalizeJoinOrigin(bad)).toBeNull();
+		}
+	});
+
+	it('a junk write keeps the declared address instead of reverting to auto-detection', () => {
+		// Reverting would put `localhost` back in the QR — the exact failure the setting exists to fix.
+		const declared = { ...DEFAULT_GLOBAL_SETTINGS, joinOrigin: 'http://10.69.1.169:3000' };
+		expect(normalizeGlobalSettings({ joinOrigin: 'nonsense' }, declared).joinOrigin).toBe('http://10.69.1.169:3000');
+		// An omitted field is a patch, not a clear.
+		expect(normalizeGlobalSettings({ asrModel: 'base' }, declared).joinOrigin).toBe('http://10.69.1.169:3000');
+		// An explicit empty string IS a clear.
+		expect(normalizeGlobalSettings({ joinOrigin: '' }, declared).joinOrigin).toBe('');
 	});
 });

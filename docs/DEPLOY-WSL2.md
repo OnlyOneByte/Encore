@@ -287,6 +287,9 @@ $EC exec worker python -c \
      with, `localhost` included. This is the normal WSL2 + portproxy case: the proxy forwards traffic
      arriving *from the network*, not the host's own loopback path, so the server machine typically
      cannot open its own LAN address at all — and it is usually the machine attached to the TV.
+   - Or set **Global → Joining → "Address phones join at"** on the phone settings page. Same value, same
+     precedence rules (the setting wins over the env var), no restart — which is the one that helps when
+     you are standing in the room and the QR says `localhost`. The TV picks up the change live.
 
    Check it by eye rather than inferring it: the join card on `/tv` prints the URL beneath the QR. If
    that text reads `localhost:3000`, no phone can use it.

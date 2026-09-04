@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, untrack } from 'svelte';
+	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
 	import { chosenCandidate, isPlayable } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
@@ -160,6 +161,13 @@
 			if (e.type === 'settings:changed') {
 				interstitialMs = e.settings.room.interstitialMs;
 				tvProgressStyle = e.settings.room.tvProgressStyle;
+				// The join address is the one setting the TV cannot apply in place: the QR is a
+				// server-rendered image, and the whole point of the setting is that the TV's own URL is
+				// not the address to advertise. An empty setting means "fall back", which resolves to the
+				// value the load already computed — so compare resolved-to-resolved and re-run the load
+				// only when the address actually moved, rather than on every unrelated settings write.
+				const nextOrigin = e.settings.global.joinOrigin || data.joinFallbackOrigin;
+				if (nextOrigin !== data.joinOrigin) invalidateAll();
 			}
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
 			if (e.type === 'score:update') score = e;

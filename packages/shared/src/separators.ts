@@ -327,6 +327,17 @@ export interface GlobalSettings {
 	 * Global for the same reason: `forced` needs a worker that can load the wav2vec2 align model.
 	 */
 	syncMode: SyncModeId;
+	/**
+	 * Origin the TV advertises for joining, e.g. `http://192.168.1.20:3000`. `''` means "not declared":
+	 * fall back to `ENCORE_PUBLIC_ORIGIN`, then to the address the TV itself was opened at.
+	 *
+	 * Global because it names the deployment's own address, which no single party owns. Settable at all
+	 * because the TV's own URL is frequently NOT an address a phone can use — a WSL2 host reaches its
+	 * service only via `localhost`, so the QR encodes `localhost` and every phone points at itself —
+	 * and the operator who knows the real address is not always the one who can restart the process
+	 * with an env var set.
+	 */
+	joinOrigin: string;
 }
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
@@ -337,8 +348,36 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 	upgradeEngine: 'roformer',
 	upgradeModel: 'bs-roformer-1297',
 	asrModel: DEFAULT_ASR_MODEL,
-	syncMode: DEFAULT_SYNC_MODE
+	syncMode: DEFAULT_SYNC_MODE,
+	// Empty, not a guess: an unset value defers to the env var and then to the request, both of which
+	// are right more often than any literal this file could name.
+	joinOrigin: ''
 };
+
+/**
+ * Coerce an operator-supplied join address to a bare origin, or `null` if it cannot be one.
+ *
+ * `''` is a legitimate value meaning "not declared" and is returned as `''`, so a caller can tell
+ * "cleared" from "rejected" — clearing the field must fall back to the env var, not be refused.
+ *
+ * Normalising through `URL.origin` drops any path, query or trailing slash, so a value pasted out of a
+ * browser address bar (`http://10.0.0.5:3000/tv`) stores as the origin a phone needs. Only http and
+ * https survive: the QR is opened by a phone browser, and the same string is what the cookie and
+ * fetch paths assume.
+ */
+export function normalizeJoinOrigin(input: unknown): string | null {
+	if (typeof input !== 'string') return null;
+	const raw = input.trim();
+	if (!raw) return '';
+	let parsed: URL;
+	try {
+		parsed = new URL(raw);
+	} catch {
+		return null;
+	}
+	if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+	return parsed.origin;
+}
 
 /** Coerce a partial/untrusted object to valid GlobalSettings, falling back per-field. Used by the
  *  write API so a bad client payload degrades to defaults rather than persisting garbage.
@@ -373,7 +412,10 @@ export function normalizeGlobalSettings(
 		// Same per-field degrade rule: a model or mode that has been de-whitelisted between releases
 		// falls back rather than being served, and rejecting it cannot disturb the other choice.
 		asrModel: input?.asrModel && isValidAsrModel(input.asrModel) ? input.asrModel : d.asrModel,
-		syncMode: input?.syncMode && isValidSyncMode(input.syncMode) ? input.syncMode : d.syncMode
+		syncMode: input?.syncMode && isValidSyncMode(input.syncMode) ? input.syncMode : d.syncMode,
+		// A value that is not a usable origin keeps the current one rather than clearing it: silently
+		// falling back to auto-detection is how a party ends up with `localhost` in the QR again.
+		joinOrigin: normalizeJoinOrigin(input?.joinOrigin) ?? d.joinOrigin
 	};
 }
 

@@ -16,6 +16,7 @@
 		ASR_MODELS,
 		SYNC_MODES,
 		qualityRank,
+		normalizeJoinOrigin,
 		type EffectiveSettings,
 		type GlobalSettings,
 		type RoomSettings,
@@ -24,7 +25,13 @@
 	} from '@encore/shared';
 
 	interface Props {
-		data: { settings: EffectiveSettings };
+		data: {
+			settings: EffectiveSettings;
+			/** What an empty join address resolves to — env var, else the address this page was opened at. */
+			joinOriginFallback: string;
+			/** Whether this phone reached the server over https. Only the server can answer this. */
+			requestIsHttps: boolean;
+		};
 	}
 	let { data }: Props = $props();
 
@@ -121,6 +128,44 @@
 		if (!engine) return;
 		onglobal({ upgradeEngine: id as SeparatorEngineId, upgradeModel: engine.models[0]!.id });
 	}
+
+	// ── joining ──────────────────────────────────────────────────────────────
+	// The one free-text setting, so it needs a draft rather than patching per keystroke: `http` is not
+	// yet a valid origin, and a normalizer running on every character would fight the typist.
+	let joinDraft = $state(untrack(() => data.settings.global.joinOrigin));
+	let joinError = $state('');
+	// Re-adopt only when the PERSISTED value moves (a load re-run, or a write from another phone).
+	// A plain `$effect` mirroring `settings` would also fire when an unrelated field is patched and
+	// would discard whatever the user had half-typed here.
+	let syncedJoin = untrack(() => data.settings.global.joinOrigin);
+	$effect(() => {
+		const stored = settings.global.joinOrigin;
+		if (stored !== syncedJoin) {
+			syncedJoin = stored;
+			joinDraft = stored;
+		}
+	});
+
+	// An https join address on a plain-http party is the mistake worth naming: the QR would be
+	// unopenable from the LAN. The reverse (http address behind an https tunnel) still opens, so it is
+	// not warned about.
+	let joinSchemeMismatch = $derived(settings.global.joinOrigin.startsWith('https://') && !data.requestIsHttps);
+
+	function commitJoinOrigin() {
+		const normalized = normalizeJoinOrigin(joinDraft);
+		if (normalized === null) {
+			// Refused locally rather than sent: the server would normalize an unusable value back to the
+			// current one, which reads to the user as "my typing vanished" with no reason given.
+			joinError = 'Not an address a phone can open. Include http:// or https://, e.g. http://192.168.1.20:3000.';
+			return;
+		}
+		joinError = '';
+		// Show what will actually be stored — a pasted `/tv` or trailing slash is dropped.
+		joinDraft = normalized;
+		syncedJoin = normalized;
+		if (normalized === settings.global.joinOrigin) return;
+		onglobal({ joinOrigin: normalized });
+	}
 </script>
 
 <svelte:head><title>Settings · Encore</title></svelte:head>
@@ -196,6 +241,33 @@
 			{/each}
 		</select>
 		{#if syncNote}<p class="hint">{syncNote}</p>{/if}
+
+		<h3 class="sub">Joining</h3>
+
+		<label class="field" for="join-origin">Address phones join at</label>
+		<input
+			id="join-origin"
+			class="text"
+			type="text"
+			inputmode="url"
+			autocomplete="off"
+			spellcheck="false"
+			placeholder={data.joinOriginFallback}
+			aria-describedby="join-origin-hint"
+			aria-invalid={joinError ? 'true' : undefined}
+			bind:value={joinDraft}
+			onchange={commitJoinOrigin}
+		/>
+		<p class="hint" id="join-origin-hint">
+			What the TV prints and puts in its QR code. Set it when the TV cannot reach the server at its own
+			address — leave it empty and the TV advertises <strong>{data.joinOriginFallback}</strong>.
+		</p>
+		{#if joinError}<p class="warn" role="alert">{joinError}</p>{/if}
+		{#if joinSchemeMismatch}
+			<p class="warn">
+				This party is running over plain http, so phones cannot open an https address.
+			</p>
+		{/if}
 
 		<button class="disclose" onclick={() => (advancedOpen = !advancedOpen)} aria-expanded={advancedOpen}>
 			<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} /> Advanced
@@ -389,18 +461,29 @@
 		color: var(--ink-dim);
 	}
 	select,
+	.text,
 	input[type='range'] {
 		width: 100%;
 		max-width: 420px;
 		box-sizing: border-box;
 	}
-	select {
+	select,
+	.text {
 		padding: 9px 10px;
 		border-radius: 10px;
 		border: 1px solid var(--line);
 		background: var(--card);
 		color: var(--ink);
 		font-size: 0.9rem;
+	}
+	/* A LAN address is read character by character to check it, so keep the digits monospaced and stop
+	   iOS from title-casing what the user types. */
+	.text {
+		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+		font-size: 0.86rem;
+	}
+	.text[aria-invalid='true'] {
+		border-color: var(--warn);
 	}
 	.hint {
 		margin: 6px 0 0;
