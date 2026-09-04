@@ -579,6 +579,28 @@
 						? 'The current line sits at the bottom — no preview of what is next.'
 						: 'How much of the verse shows around the line being sung.'}
 		</p>
+		<label class="field" for="guide-default">
+			Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
+		</label>
+		<input
+			id="guide-default"
+			type="range"
+			min="0"
+			max="100"
+			step="5"
+			value={Math.round(settings.room.guideLevelDefault * 100)}
+			onchange={(e) => onroom({ guideLevelDefault: Number(e.currentTarget.value) / 100 })}
+		/>
+		<p class="hint">
+			{settings.room.guideLevelDefault === 0
+				? 'Songs start with the original vocals removed. A singer can still fade them back in for one song from the now-playing sheet.'
+				: 'How loud the original singer starts out under the backing track. A faint guide helps a room doing songs it half-knows; anyone can still override it per song.'}
+		</p>
+		{#if settings.room.guideLevelDefault > 0}
+			<p class="hint">
+				Only applies to songs whose vocals were separated and kept — older cooks offer no guide.
+			</p>
+		{/if}
 	</section>
 
 	<button class="done" onclick={() => goto('/')}>Done</button>

@@ -13,7 +13,17 @@ const NOOP_PERSIST: StatePersistence = { persist() {} };
 
 export class AuthoritativeState {
 	#entries: QueueEntry[] = [];
-	#playback: PlaybackState = { currentEntryId: null, positionSec: 0, isPlaying: false, keyShift: 0, background: null };
+	// Both per-song overrides start null = "defer to the room default", NOT a concrete value.
+	// setPlayback filters only `undefined`, so an explicit null still writes through — which is what
+	// lets either one be cleared back to inheriting.
+	#playback: PlaybackState = {
+		currentEntryId: null,
+		positionSec: 0,
+		isPlaying: false,
+		keyShift: 0,
+		background: null,
+		guideLevel: null
+	};
 	#rev = 0;
 	#persistence: StatePersistence;
 	#flushTimer: ReturnType<typeof setTimeout> | null = null;
