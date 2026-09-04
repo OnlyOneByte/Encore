@@ -14,6 +14,7 @@ import {
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, orderingOf, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './src/server/realtime/player';
+import { cancelJobsForMedia } from './src/server/jobs/cancel';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
@@ -229,6 +230,11 @@ const server = Bun.serve<SocketData>({
 				onNowPlaying: (e) => app.plays.onNowPlaying(e),
 				onSang: (singerId) => app.singers.markSang(singerId, app.now()),
 				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
+				// An explicit remove of a cooking song stops the cook (subprocess kill + slot release +
+				// dedup-slot free), where before the row vanished but the worker kept cooking. The helper
+				// no-ops when a shared cook is still needed by another queue entry. See jobs/cancel.ts.
+				onEntryRemoved: (mediaId, remainingEntries) =>
+					cancelJobsForMedia(mediaId, { jobs: app.jobs, toWorker: app.toWorker, remainingEntries, now: app.now }),
 				actorSingerId: ws.data.singerId,
 				seenOp: (id) => {
 					if (seenOps.has(id)) return true;
