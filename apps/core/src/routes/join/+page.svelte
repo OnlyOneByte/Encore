@@ -38,22 +38,21 @@
 	}
 </script>
 
-<header style="padding:26px 20px 8px;text-align:center;">
+<header class="join-head">
 	<div class="brand">
 		<Icon name="mic" /> <span class="wordmark">Encore</span>
 	</div>
-	<p style="color:var(--ink-dim);margin:6px 0 0;font-size:.9rem;">Pick a name and color to start singing.</p>
+	<p class="lede">Pick a name and color to start singing.</p>
 </header>
 
-<main class="join-main" style="padding:18px 20px;display:flex;flex-direction:column;gap:20px;">
-	<label style="display:flex;flex-direction:column;gap:8px;">
-		<span style="font-size:.78rem;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-dim);">Your name</span>
+<main class="join-main">
+	<label class="name-field">
+		<span class="name-label">Your name</span>
 		<input
-			class="card"
+			class="card name-input"
 			bind:value={name}
 			placeholder="e.g. Maya"
 			maxlength="32"
-			style="padding:14px;font-size:1.1rem;color:var(--ink);background:var(--card);"
 			onkeydown={(e) => e.key === 'Enter' && join()}
 		/>
 	</label>
@@ -67,15 +66,18 @@
 
 	<button
 		class="btn-accent submit"
+		class:disabled={!canJoin}
 		disabled={!canJoin}
 		onclick={join}
-		style="padding:16px;font-size:1.1rem;border-radius:16px;opacity:{canJoin ? 1 : 0.5};"
 	>
 		{#if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
 	</button>
 </main>
 
 <style>
+	/* Was inline on <header>; moved here so the page's spacing lives in one place, not split between
+	   attributes and this block. */
+	.join-head { padding: 26px 20px 8px; text-align: center; }
 	/* The mic was 🎤 — platform-dependent art, and a tofu box with no emoji font. */
 	.brand { display: inline-flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; }
 	.wordmark {
@@ -84,7 +86,12 @@
 		background-clip: text;
 		color: transparent;
 	}
+	.lede { color: var(--ink-dim); margin: 6px 0 0; font-size: 0.9rem; }
 	.err { color: var(--danger); font-size: 0.9rem; }
+
+	.name-field { display: flex; flex-direction: column; gap: 8px; }
+	.name-label { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
+	.name-input { padding: 14px; font-size: 1.1rem; color: var(--ink); background: var(--card); }
 
 	/*
 	 * Join stays narrow while the shell widens: it is four short controls, so stretching the name
@@ -94,16 +101,25 @@
 	   attribute would make the desktop override below silently do nothing. */
 	.join-main {
 		flex: 1;
+		padding: 18px 20px;
+		display: flex;
+		flex-direction: column;
+		gap: 20px;
 	}
 	.submit {
 		/* On a phone the button sits at the bottom of the viewport, where a thumb already is. */
 		margin-top: auto;
+		/* --radius (18px), the card/sheet radius, for this full-width primary button; the inline 16px it
+		   replaced matched neither token. Padding + type keep it well over the 44px tap target. */
+		padding: 16px; font-size: 1.1rem; border-radius: var(--radius);
 		/* Centres the trailing mark with the label instead of letting it sit on the text baseline. */
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
 		gap: 8px;
 	}
+	/* Was an inline opacity bound to canJoin; the disabled attribute already carries the state. */
+	.submit.disabled { opacity: 0.5; }
 	@media (min-width: 768px) {
 		/*
 		 * Centre the wordmark and the form TOGETHER. Centring only the form leaves the header pinned to
