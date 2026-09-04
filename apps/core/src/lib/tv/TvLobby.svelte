@@ -81,8 +81,15 @@
 		<div class="strip">
 			<span class="label">In the room</span>
 			{#each roster as member (member.id)}
-				<span class="chip">
+				<!--
+				  An away singer is GREYED, not removed. Before this the roster was pure socket count, so a
+				  locked phone erased its owner from the screen — the one place a guest confirms the room
+				  saw them join. "away" is spelled out rather than implied by opacity alone: dimming is not
+				  a legible signal across a room, and it is invisible to anyone reading the chip aloud.
+				-->
+				<span class="chip" class:away={member.state === 'away'}>
 					<span class="swatch" style="--singer: {member.color}"></span>{member.displayName}
+					{#if member.state === 'away'}<span class="tag">away</span>{/if}
 				</span>
 			{/each}
 			{#if overflow > 0}
@@ -168,6 +175,26 @@
 	.chip.more {
 		padding: 10px 18px;
 		color: var(--ink-dim);
+	}
+	/*
+	 * Away: recessed, never hidden. The dot keeps its hue (that is the singer's identity, and fading it
+	 * would read as a different person) while the surface and name recede, so a glance separates "here
+	 * now" from "still in the room" without having to read every chip.
+	 */
+	.chip.away {
+		background: transparent;
+		color: var(--ink-dim);
+		font-weight: 500;
+	}
+	.chip.away .swatch {
+		opacity: 0.55;
+	}
+	.tag {
+		font-size: var(--tv-label);
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+		opacity: 0.8;
 	}
 	.swatch {
 		width: 22px;

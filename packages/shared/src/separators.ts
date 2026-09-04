@@ -16,6 +16,11 @@
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
 import { SINGER_HUE_STEP } from './colors';
 import {
+	DEFAULT_PRESENCE_GRACE_MINUTES,
+	MAX_PRESENCE_GRACE_MINUTES,
+	MIN_PRESENCE_GRACE_MINUTES
+} from './membership';
+import {
 	DEFAULT_ASR_MODEL,
 	DEFAULT_LYRICS_BALL,
 	DEFAULT_LYRICS_CASE,
@@ -318,7 +323,7 @@ export function isQualityUpgrade(
 //     would model a distinction that isn't real.
 //
 //   ROOM — a property of one party. Pacing and per-room policy: two rooms genuinely can want
-//     different interstitial timing, and a busy room may want to cap cook quality to keep its queue
+//     different song-intro timing, and a busy room may want to cap cook quality to keep its queue
 //     moving while the deployment default stays high.
 //
 // Both are authoritative SERVER state broadcast to clients (like presence), never phone-local
@@ -494,7 +499,12 @@ export const TV_BACKGROUND_STYLES = [
 		label: "Singer's colour",
 		note: 'The stage takes the colour of whoever is up, and changes with each turn.'
 	},
-	{ id: 'solid', label: 'One colour', note: 'A single colour you pick below. Stays put all night.' }
+	{ id: 'solid', label: 'One colour', note: 'A single colour you pick below. Stays put all night.' },
+	{
+		id: 'visualizer',
+		label: 'Audio visualizer',
+		note: 'Moving light behind the words, like an old media player. Pick which one below.'
+	}
 ] as const;
 
 export type TvBackgroundStyle = (typeof TV_BACKGROUND_STYLES)[number]['id'];
@@ -503,14 +513,55 @@ export function isTvBackgroundStyle(v: unknown): v is TvBackgroundStyle {
 	return typeof v === 'string' && TV_BACKGROUND_STYLES.some((s) => s.id === v);
 }
 
+/**
+ * Which visualizer the `visualizer` background runs. Read only when
+ * `tvBackgroundStyle === 'visualizer'`.
+ *
+ * ── Why these four and not bars or a scope ──
+ *
+ * Every entry here is a function of TIME. None of them claims to be showing the audio signal, and
+ * that is the selection rule, not an accident of what was easy.
+ *
+ * Spectrum bars and an oscilloscope are the obvious two omissions. They are omitted because they
+ * ASSERT they are drawing the signal, and nothing on this surface is reading it: there is no
+ * AudioContext on the TV today. Drawing them from a timer would be the same defect the lyrics overlay
+ * refuses by name — "a lie dressed as precision, animated made-up sub-word detail" (LyricsOverlay's
+ * comment on why a word-fill sweep was rejected). A plasma asserts nothing, so a plasma can be
+ * time-driven honestly.
+ *
+ * When real audio analysis lands, `bars` and `scope` join this registry AND every entry here gains
+ * modulation. Until then the picker must not offer a display that lies about its input.
+ */
+export const TV_VISUALIZERS = [
+	{
+		id: 'plasma',
+		label: 'Plasma',
+		note: 'Slow interference field, drifting. The demoscene classic.'
+	},
+	{
+		id: 'starfield',
+		label: 'Starfield',
+		note: 'Flying through stars. What the old media players did while a track played.'
+	},
+	{ id: 'moire', label: 'Ripples', note: 'Concentric rings interfering with each other.' },
+	{ id: 'lissajous', label: 'Phase curves', note: 'Looping curves that draw and redraw themselves.' }
+] as const;
+
+export type TvVisualizerId = (typeof TV_VISUALIZERS)[number]['id'];
+
+export function isTvVisualizer(v: unknown): v is TvVisualizerId {
+	return typeof v === 'string' && TV_VISUALIZERS.some((s) => s.id === v);
+}
+
 export interface RoomSettings {
 	/** Which progress treatment the TV renders. */
 	tvProgressStyle: TvProgressStyle;
 	/** What the TV paints behind the song. Room-scoped: it is one party's staging taste. */
 	tvBackgroundStyle: TvBackgroundStyle;
 	/**
-	 * Hue angle (0–359, quantised to SINGER_HUE_STEP) for the `solid` background. Only read when
-	 * `tvBackgroundStyle === 'solid'`.
+	 * Hue angle (0–359, quantised to SINGER_HUE_STEP) that colours the stage. Read by BOTH the `solid`
+	 * background and the `visualizer` one — they need the same thing (one hue, rendered inside the
+	 * legibility bound), so they share the field rather than each carrying their own.
 	 *
 	 * A HUE, not a hex, on purpose. The rendered colour is generated at the pinned stage lightness by
 	 * `stageHueToHex`, so a room cannot pick something bright enough to wash out the lyric reel, and
@@ -518,9 +569,27 @@ export interface RoomSettings {
 	 * singer halo cannot recur here.
 	 */
 	tvBackgroundHue: number;
-	/** TV "Next up" reveal duration. 0 = pure gapless hard-cut. Per-room because pacing is a property
-	 *  of the party, not the deployment. */
-	interstitialMs: number;
+	/**
+	 * Which visualizer runs when `tvBackgroundStyle === 'visualizer'`. Ignored otherwise.
+	 *
+	 * Held even while another background is selected, so switching to the visualizer and back does not
+	 * forget the choice — the same reason `tvBackgroundHue` survives a switch away from `solid`.
+	 */
+	tvVisualizer: TvVisualizerId;
+	/**
+	 * Whether the TV shows the song intro card (title, artist, singer) between songs. Off = a pure
+	 * gapless hard-cut.
+	 *
+	 * A separate boolean rather than the 0-means-off sentinel this field used to be: a sentinel
+	 * DESTROYS the duration when you toggle off, so turning the intro back on lost the timing you had
+	 * dialled in.
+	 */
+	songIntroEnabled: boolean;
+	/**
+	 * How long the intro card holds, in ms. Stored in ms (integer, no float rounding) and surfaced in
+	 * seconds. Per-room because pacing is a property of the party, not the deployment.
+	 */
+	songIntroMs: number;
 	/**
 	 * Optional per-room ceiling on cook quality, as a `qualityRank`. A busy room can cap cooks to keep
 	 * its queue moving while the deployment default stays high. `null` = no ceiling, use the global
@@ -560,7 +629,17 @@ export interface RoomSettings {
 	 * Ships at 0, which reproduces today's behaviour exactly (pure karaoke), so the feature is opt-in.
 	 */
 	guideLevelDefault: number;
+	/**
+	 * How long a singer stays in the room after their last socket drops AND their last pending song
+	 * leaves the queue. Per-room because it is a property of the party: a long evening where people
+	 * pocket their phones wants a generous window, a kiosk wants none.
+	 */
+	presenceGraceMinutes: number;
 }
+
+export const MIN_SONG_INTRO_MS = 500;
+export const MAX_SONG_INTRO_MS = 10_000;
+export const SONG_INTRO_STEP_MS = 500;
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	tvProgressStyle: 'card',
@@ -570,7 +649,11 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	// 240° — the blue that tested cleanest against the pink active word. Only used once a room picks
 	// `solid`, so this is the starting point of the slider rather than something anyone sees by default.
 	tvBackgroundHue: 240,
-	interstitialMs: 2500,
+	// Plasma is the one every old media player had, so it is the least surprising thing to find running
+	// the first time a room turns the visualizer on.
+	tvVisualizer: 'plasma',
+	songIntroEnabled: true,
+	songIntroMs: 2500,
 	maxQualityRank: null,
 	// These three reproduce the TV's previously-hardcoded behaviour exactly, so adding the settings
 	// changes nothing until someone opens Settings.
@@ -582,8 +665,17 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	lyricsCase: DEFAULT_LYRICS_CASE,
 	lyricsLinesBefore: DEFAULT_LYRICS_LINES_BEFORE,
 	lyricsLinesAfter: DEFAULT_LYRICS_LINES_AFTER,
-	guideLevelDefault: 0
+	guideLevelDefault: 0,
+	presenceGraceMinutes: DEFAULT_PRESENCE_GRACE_MINUTES
 };
+
+/**
+ * The hold the TV should actually apply. Keeps the gapless controller untouched: its existing
+ * `ms === 0` hard-cut branch still does the work when the intro is switched off.
+ */
+export function effectiveSongIntroMs(room: Pick<RoomSettings, 'songIntroEnabled' | 'songIntroMs'>): number {
+	return room.songIntroEnabled ? room.songIntroMs : 0;
+}
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
 export function normalizeRoomSettings(
@@ -593,11 +685,16 @@ export function normalizeRoomSettings(
 	// Falls back to the CURRENT room values, not hardcoded defaults: rejecting one invalid field must
 	// not discard an unrelated choice the room already made.
 	const d = base;
-	const ms = input?.interstitialMs;
 	// Clamped rather than rejected: a nonsensical value should still yield a usable room, and an
-	// unbounded interstitial would strand the TV between songs.
-	const interstitialMs =
-		typeof ms === 'number' && Number.isFinite(ms) ? Math.min(15_000, Math.max(0, Math.round(ms))) : d.interstitialMs;
+	// unbounded intro would strand the TV between songs. 0 is NOT in range — the toggle owns "off", so
+	// leaving a zero here would be a second way to say the same thing.
+	const ms = input?.songIntroMs;
+	const songIntroMs =
+		typeof ms === 'number' && Number.isFinite(ms)
+			? Math.min(MAX_SONG_INTRO_MS, Math.max(MIN_SONG_INTRO_MS, Math.round(ms)))
+			: d.songIntroMs;
+	const enabled = input?.songIntroEnabled;
+	const songIntroEnabled = typeof enabled === 'boolean' ? enabled : d.songIntroEnabled;
 	const cap = input?.maxQualityRank;
 	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
 	const style = input?.tvProgressStyle;
@@ -606,7 +703,7 @@ export function normalizeRoomSettings(
 	const lyricsBall = isValidLyricsBall(ball) ? ball : d.lyricsBall;
 	const highlight = input?.lyricsHighlight;
 	const lyricsHighlight = isValidLyricsHighlight(highlight) ? highlight : d.lyricsHighlight;
-	// Clamped, like interstitialMs and for the same reason: a lead of 30s is nonsense but should still
+	// Clamped, like the song intro and for the same reason: a lead of 30s is nonsense but should still
 	// leave a usable room. A NEGATIVE lead is clamped to 0 rather than honoured — running the highlight
 	// BEHIND the audio has no use case and reads as the overlay being broken.
 	const lead = input?.lyricsLeadMs;
@@ -614,7 +711,7 @@ export function normalizeRoomSettings(
 		typeof lead === 'number' && Number.isFinite(lead)
 			? Math.min(MAX_LYRICS_LEAD_MS, Math.max(0, Math.round(lead)))
 			: d.lyricsLeadMs;
-	// One helper for the three bounded integers. Clamped rather than rejected, like interstitialMs: a
+	// One helper for the three bounded integers. Clamped rather than rejected, like the song intro: a
 	// nonsensical value should still leave a usable room, and every bound here has a stated reason in
 	// lyrics-engines.ts (a legibility floor, or a row count past which the type must shrink to fit).
 	const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
@@ -634,7 +731,7 @@ export function normalizeRoomSettings(
 	const lyricsCase = isValidLyricsCase(textCase) ? textCase : d.lyricsCase;
 	const bg = input?.tvBackgroundStyle;
 	const tvBackgroundStyle = isTvBackgroundStyle(bg) ? bg : d.tvBackgroundStyle;
-	// Quantised and wrapped rather than rejected, matching interstitialMs: a hue is an angle, so every
+	// Quantised and wrapped rather than rejected, matching the song intro: a hue is an angle, so every
 	// number has a valid meaning once wrapped, and snapping to the wheel's step keeps the phone slider
 	// and the rendered stage agreeing. Non-finite input is the only thing with no sane reading.
 	const rawHue = input?.tvBackgroundHue;
@@ -642,19 +739,30 @@ export function normalizeRoomSettings(
 		typeof rawHue === 'number' && Number.isFinite(rawHue)
 			? (((Math.round(rawHue / SINGER_HUE_STEP) * SINGER_HUE_STEP) % 360) + 360) % 360
 			: d.tvBackgroundHue;
-	// Clamped, like interstitialMs: a room default outside 0..1 should still yield a usable room. Note
+	// Clamped, like the song intro: a room default outside 0..1 should still yield a usable room. Note
 	// this one is NOT nullable — the room default is the floor the per-song override falls back to, so
 	// there is nothing below it to inherit from. A junk write keeps the room's current value.
+	// Clamped like the intro: a nonsensical window should still yield a usable room. 0 IS a real choice
+	// here (no grace once your songs are done), so it is a bound rather than a rejected value.
+	const grace = input?.presenceGraceMinutes;
+	const presenceGraceMinutes =
+		typeof grace === 'number' && Number.isFinite(grace)
+			? Math.min(MAX_PRESENCE_GRACE_MINUTES, Math.max(MIN_PRESENCE_GRACE_MINUTES, Math.round(grace)))
+			: d.presenceGraceMinutes;
 	const gl = input?.guideLevelDefault;
 	const guideLevelDefault =
 		typeof gl === 'number' && Number.isFinite(gl)
 			? Math.round(Math.min(1, Math.max(0, gl)) * 100) / 100
 			: d.guideLevelDefault;
+	const viz = input?.tvVisualizer;
+	const tvVisualizer = isTvVisualizer(viz) ? viz : d.tvVisualizer;
 	return {
 		tvProgressStyle,
 		tvBackgroundStyle,
 		tvBackgroundHue,
-		interstitialMs,
+		tvVisualizer,
+		songIntroEnabled,
+		songIntroMs,
 		maxQualityRank,
 		lyricsBall,
 		lyricsHighlight,
@@ -664,7 +772,8 @@ export function normalizeRoomSettings(
 		lyricsCase,
 		lyricsLinesBefore,
 		lyricsLinesAfter,
-		guideLevelDefault
+		guideLevelDefault,
+		presenceGraceMinutes
 	};
 }
 

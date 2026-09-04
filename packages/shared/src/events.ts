@@ -25,7 +25,7 @@ export type ServerEvent =
   // singers/media are optional directories so clients can render names/titles per entry.
   // `online` is the presence snapshot (singer ids with a live socket) — a client that connects
   // mid-party needs the roster immediately, not on the next presence change.
-  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[]; online?: string[]; settings?: EffectiveSettings }
+  | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[]; online?: string[]; away?: string[]; settings?: EffectiveSettings }
   | { type: 'playback:state'; state: PlaybackState; rev: number }
   | { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
   // `unservable` marks a job that is queued but that NO connected worker advertises the capability
@@ -34,10 +34,12 @@ export type ServerEvent =
   // before any surface can show it, and it is what separates "cooking soon" from "stuck forever".
   | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }
   | { type: 'singer:joined'; singer: Singer }
+  | { type: 'singer:updated'; singer: PublicSinger }
+  | { type: 'singer:left'; singerId: string }
   // Who is in the room RIGHT NOW — the full set of singer ids holding a live socket,
   // broadcast whenever it changes. Full-set (not a delta) on purpose: it is a handful of ids, and
   // an idempotent snapshot cannot drift the way an add/remove stream can after a dropped frame.
-  | { type: 'singer:presence'; online: string[] }
+  | { type: 'singer:presence'; online: string[]; away: string[] }
   // Room-level separator settings changed. Full snapshot, not a delta (same reasoning as presence).
   | { type: 'settings:changed'; settings: EffectiveSettings }
   | { type: 'op:reject'; clientOpId: string; reason: string };

@@ -171,6 +171,21 @@ describe('evictDerived', () => {
 		expect(existsSync(join(root, 'derived/stems/a-instrumental.flac'))).toBe(false);
 	});
 
+	it('counts the vocals stem under the CURRENT extensions, not just when they happen to match', () => {
+		// The modern layout is instrumental=.flac (lossless, it is what plays aloud) and vocals=.m4a.
+		// Deriving the vocals ref by swapping "-instrumental." for "-vocals." therefore points at a
+		// .flac that does not exist, so every test using a .m4a instrumental passes by accident.
+		// derivedBytesOf feeds planEviction's cap comparison, so undercounting here means retention
+		// can conclude there is nothing to reclaim while the volume is genuinely over budget.
+		put('derived/stems/a-instrumental.flac', 500);
+		put('derived/stems/a-vocals.m4a', 400);
+		const m = media('a', { instrumentalRef: 'derived/stems/a-instrumental.flac' });
+
+		expect(derivedBytesOf(m)).toBe(900); // and NOT 500
+		// the plan and the eviction must agree, or the plan cannot predict what it frees
+		expect(evictDerived(m).bytes).toBe(900);
+	});
+
 	it('NEVER touches audio/ or meta/ — those are the unrecoverable classes', () => {
 		mkdirSync(join(root, 'audio'), { recursive: true });
 		mkdirSync(join(root, 'meta'), { recursive: true });

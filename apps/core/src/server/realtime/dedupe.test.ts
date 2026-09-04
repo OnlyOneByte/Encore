@@ -14,7 +14,8 @@ function harness() {
 		state,
 		publish: (e) => published.push(e),
 		mediaById: new Map([['m1', media('m1')]]),
-		seenOp: (id) => { if (seen.has(id)) return true; seen.add(id); return false; }
+		seenOp: (id) => { if (seen.has(id)) return true; seen.add(id); return false; },
+		actorSingerId: 's1'
 	};
 	return { published, state, deps };
 }

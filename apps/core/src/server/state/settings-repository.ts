@@ -69,7 +69,9 @@ export class SettingsRepository {
 			tvProgressStyle: row.tvProgressStyle,
 			tvBackgroundStyle: row.tvBackgroundStyle,
 			tvBackgroundHue: row.tvBackgroundHue,
-			interstitialMs: row.interstitialMs,
+			tvVisualizer: row.tvVisualizer,
+			songIntroEnabled: row.songIntroEnabled,
+			songIntroMs: row.songIntroMs,
 			maxQualityRank: row.maxQualityRank,
 			lyricsBall: row.lyricsBall,
 			lyricsHighlight: row.lyricsHighlight,
@@ -79,7 +81,8 @@ export class SettingsRepository {
 			lyricsCase: row.lyricsCase,
 			lyricsLinesBefore: row.lyricsLinesBefore,
 			lyricsLinesAfter: row.lyricsLinesAfter,
-			guideLevelDefault: row.guideLevelDefault
+			guideLevelDefault: row.guideLevelDefault,
+			presenceGraceMinutes: row.presenceGraceMinutes
 		});
 	}
 

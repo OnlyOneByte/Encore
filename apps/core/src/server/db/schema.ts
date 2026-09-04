@@ -128,7 +128,7 @@ export const playbackState = sqliteTable('playback_state', {
 	keyShift: integer('key_shift').notNull().default(0), // semitones
 	// Per-song TV background override. NULLABLE on purpose: null means "use the room default", which is
 	// the resting state, so it is a real value here rather than a missing one.
-	background: text('background', { enum: ['off', 'gradient', 'singer', 'solid'] }),
+	background: text('background', { enum: ['off', 'gradient', 'singer', 'solid', 'visualizer'] }),
 	// The guiding-track level for the current song, 0..1. REAL, not integer: keyShift is whole
 	// semitones but this is a fraction, and an integer column would silently round every level to
 	// 0 or 1. NULLABLE and defaulted to NULL on purpose — null means "inherit the room default",
@@ -173,14 +173,20 @@ export const roomSettings = sqliteTable('room_settings', {
 	tvProgressStyle: text('tv_progress_style', { enum: ['card', 'corner', 'edge', 'off'] })
 		.notNull()
 		.default('card'),
-	tvBackgroundStyle: text('tv_background_style', { enum: ['off', 'gradient', 'singer', 'solid'] })
+	tvBackgroundStyle: text('tv_background_style', { enum: ['off', 'gradient', 'singer', 'solid', 'visualizer'] })
 		.notNull()
 		.default('off'),
 	// A HUE ANGLE, not a colour. The rendered stage comes from `stageHueToHex` at a pinned lightness,
 	// so this column cannot carry something bright enough to wash out the lyric reel, and there is no
 	// colour string for anything downstream to mis-parse. Only read when the style is `solid`.
 	tvBackgroundHue: integer('tv_background_hue').notNull().default(240),
-	interstitialMs: integer('interstitial_ms').notNull().default(2500),
+	// Which visualizer runs when the style is `visualizer`. Kept across a switch away from it, so a room
+	// that tries another background and comes back does not lose the choice.
+	tvVisualizer: text('tv_visualizer', { enum: ['plasma', 'starfield', 'moire', 'lissajous'] })
+		.notNull()
+		.default('plasma'),
+	songIntroEnabled: integer('song_intro_enabled', { mode: 'boolean' }).notNull().default(true),
+	songIntroMs: integer('song_intro_ms').notNull().default(2500),
 	maxQualityRank: integer('max_quality_rank'),
 	// Lyrics presentation. Defaults reproduce the previously-hardcoded TV exactly, so an existing room
 	// renders identically after the migration. Enum-constrained at the column like tv_progress_style,
@@ -208,7 +214,10 @@ export const roomSettings = sqliteTable('room_settings', {
 	// The room's default guiding-track level, 0..1. REAL for the same reason as playback_state's —
 	// it is a fraction. NOT NULL default 0 so an existing room upgrades to today's behaviour
 	// (pure karaoke) rather than to an unexpected mix.
-	guideLevelDefault: real('guide_level_default').notNull().default(0)
+	guideLevelDefault: real('guide_level_default').notNull().default(0),
+	// How long someone stays in the room after their socket drops AND their last pending song leaves
+	// the queue. 0 = no grace once their songs are done.
+	presenceGraceMinutes: integer('presence_grace_minutes').notNull().default(90)
 });
 
 export const jobs = sqliteTable(

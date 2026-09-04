@@ -9,6 +9,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
+	import ProfileSheet from '$lib/components/ProfileSheet.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { cookAndQueue } from '$lib/cook-and-queue';
@@ -21,6 +22,13 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
+	/**
+	 * Singers who are in the room but unreachable. The phone ignored `singer:presence` entirely before
+	 * this, so an absent singer's queued song looked exactly like anyone else's — and since the room
+	 * skips those turns by hand, the surface holding the skip control was the one surface that could not
+	 * tell there was a decision to make.
+	 */
+	let awaySingers = $state<Set<string>>(new Set());
 	let playback = $state<PlaybackState>({
 		currentEntryId: null,
 		positionSec: 0,
@@ -33,6 +41,45 @@
 	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 	let sheetOpen = $state(false);
+	let profileOpen = $state(false);
+	/** What a leave would cost, fetched when the sheet opens so the confirm can state it in numbers. */
+	let leaveCost = $state<{ queuedCount: number; hasPlaying: boolean } | null>(null);
+
+	async function openProfile() {
+		profileOpen = true;
+		// Best-effort: the sheet still opens if this fails, and its confirm falls back to the no-songs
+		// wording rather than blocking on a count.
+		try {
+			const res = await fetch('/api/leave');
+			if (res.ok) leaveCost = await res.json();
+		} catch {
+			leaveCost = null;
+		}
+	}
+
+	/** Returns an error string for the sheet to show, or null once the change has landed. */
+	async function saveProfile(patch: { displayName: string; color: string }): Promise<string | null> {
+		const res = await fetch('/api/me', {
+			method: 'PATCH',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify(patch)
+		});
+		const body = await res.json().catch(() => ({}));
+		if (!res.ok) return body.error ?? 'Could not save that';
+		// Adopt the server's canonical values rather than the typed ones: the name is trimmed and capped
+		// and the colour canonicalised server-side, so echoing the input would briefly show something the
+		// room is not seeing.
+		me = body.singer;
+		singers = new Map(singers).set(body.singer.id, body.singer);
+		return null;
+	}
+
+	async function leaveRoom() {
+		await fetch('/api/leave', { method: 'POST' });
+		// The cookie is gone, so /join is the only honest destination — and a reload here would 401 into
+		// the same place with a flash of an empty remote on the way.
+		await goto('/join');
+	}
 
 	let store: QueueStore;
 	let ws: WsClient;
@@ -96,6 +143,7 @@
 			ws = new WsClient({
 				url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
 				getLastRev: () => store.rev,
+				onConnectionChange: (c) => (connected = c),
 				onEvent: (e: ServerEvent) => {
 					if (e.type === 'queue:sync') {
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
@@ -103,10 +151,23 @@
 						// The room's guiding-track default — needed to LABEL the control, since a null
 						// per-song override means "inherit" and the phone would otherwise show 0%.
 						if (e.settings) roomGuideDefault = e.settings.room.guideLevelDefault;
+						// An omitted list means "no info", not "nobody is away" — do not blank what we have.
+						if (e.away) awaySingers = new Set(e.away);
 						queueMicrotask(() => store.resendPending());
 					}
+					if (e.type === 'singer:presence') awaySingers = new Set(e.away);
 					if (e.type === 'queue:patch' && e.patch.media) mergeMedia(e.patch.media);
 					if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
+					// A rename must land on every OTHER phone too, or their queue rows keep naming someone
+					// who no longer goes by that.
+					if (e.type === 'singer:updated') singers = new Map(singers).set(e.singer.id, e.singer);
+					// Someone left on purpose. Their entries arrive as ordinary remove patches; this is what
+					// takes them out of the away set, which no patch would have implied.
+					if (e.type === 'singer:left') {
+						const next = new Set(awaySingers);
+						next.delete(e.singerId);
+						awaySingers = next;
+					}
 					if (e.type === 'playback:state') playback = e.state;
 					// A room default changed mid-party: adopt it so the guiding-track control keeps
 					// reporting the level the TV is actually mixing at.
@@ -129,7 +190,6 @@
 				}
 			});
 			ws.open();
-			connected = true;
 			loadShortcuts();
 			loadLibrary();
 		})();
@@ -525,10 +585,27 @@
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
 	<div class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></div>
+	<!--
+	  `connected` used to be assigned `true` once and never read or reset, so a phone whose socket had
+	  died looked identical to a live one while its taps piled up in the pending queue. The store keeps
+	  accepting them on purpose (they resend on resync) — this says so instead of implying they landed.
+	-->
+	{#if me && !connected}
+		<span class="offline-pill" role="status" aria-live="polite">
+			<Icon name="warning" /> Reconnecting…
+		</span>
+	{/if}
 	{#if me}
 		<div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim);">
-			<span>{me.displayName}</span>
-			<span class="me-dot" style="--singer:{me.color};"></span>
+			<!--
+			  The name + dot were inert text. They are the one place a guest already looks to check who the
+			  room thinks they are, so they are also where fixing it belongs — and a 44px target, since the
+			  gear next to it was fixed for exactly that reason.
+			-->
+			<button class="me-btn" onclick={openProfile} aria-label="Your profile">
+				<span>{me.displayName}</span>
+				<span class="me-dot" style="--singer:{me.color};"></span>
+			</button>
 			<!--
 			  Was a bare ⚙️ at font-size 1.05rem in ~18px of padding: a forced-colour-emoji glyph (the
 			  trailing U+FE0F requests emoji presentation outright) in a target under even the 24px WCAG
@@ -793,6 +870,7 @@
 					title={mediaTitle(e.mediaId)}
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
 					singerColor={s?.color ?? SINGER_COLORS[0]}
+					singerAway={awaySingers.has(e.singerId)}
 					status={proc.status}
 					pct={proc.pct}
 					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
@@ -812,6 +890,7 @@
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
 					singerColor={s?.color ?? SINGER_COLORS[0]}
 					mine={e.singerId === me?.id}
+					singerAway={awaySingers.has(e.singerId)}
 					up={e.id === nextPlayableId}
 					pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
 					subtitle={e.id === nextPlayableId ? 'up next' : ''}
@@ -833,6 +912,17 @@
 		<span>Removed “{undo.title}”</span>
 		<button onclick={doUndo}>Undo</button>
 	</div>
+{/if}
+
+{#if me}
+	<ProfileSheet
+		{me}
+		open={profileOpen}
+		{leaveCost}
+		onclose={() => (profileOpen = false)}
+		onsave={saveProfile}
+		onleave={leaveRoom}
+	/>
 {/if}
 
 {#if errorMsg}
@@ -1028,5 +1118,22 @@
 		position: fixed; left: 50%; bottom: calc(var(--peek-h) + 70px); transform: translateX(-50%); z-index: 30;
 		background: var(--danger-bg); color: var(--danger-ink); border: 1px solid var(--danger-line);
 		padding: 11px 16px; border-radius: 12px; font-size: 0.88rem; max-width: 90vw;
+	}
+
+	/* --warn, not --danger: a dropped socket is a transient degraded state that self-heals on the next
+	   backoff tick, not a failure the guest has to act on. */
+	/* Matches the gear beside it: a real 44px target, not text that happens to be tappable. */
+	.me-btn {
+		display: inline-flex; align-items: center; gap: 8px;
+		min-height: 44px; padding: 0 6px;
+		background: none; border: 0; cursor: pointer;
+		color: inherit; font: inherit;
+	}
+	.me-btn:active { opacity: 0.7; }
+
+	.offline-pill {
+		display: inline-flex; align-items: center; gap: 6px;
+		color: var(--warn); border: 1px solid var(--line-strong); border-radius: 999px;
+		padding: 4px 10px; font-size: 0.78rem; white-space: nowrap;
 	}
 </style>

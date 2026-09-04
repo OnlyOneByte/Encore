@@ -25,7 +25,10 @@ function deps(): HubDeps {
 		state,
 		mediaById: new Map([['m1', media('m1')]]),
 		publish: () => {},
-		now: () => 0
+		now: () => 0,
+		// A joined socket, so these cases still exercise malformed ENVELOPES rather than tripping the
+		// identity gate first and reporting 'join the room first' for every one of them.
+		actorSingerId: 's1'
 	} as unknown as HubDeps;
 }
 

@@ -10,6 +10,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
+import { can } from '$server/auth/capabilities';
 import type { GlobalSettings } from '@encore/shared';
 
 export const GET: RequestHandler = async () => {
@@ -19,7 +20,7 @@ export const GET: RequestHandler = async () => {
 export const PUT: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
-	if (!singer) return json({ error: 'join first' }, { status: 401 });
+	if (!can({ singerId: singer?.id }, 'settings:write-global')) return json({ error: 'join first' }, { status: 401 });
 
 	let body: Partial<GlobalSettings>;
 	try {

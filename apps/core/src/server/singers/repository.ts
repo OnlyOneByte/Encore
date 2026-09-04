@@ -45,6 +45,20 @@ export class SingerRepository {
 		return this.#db.select().from(singers).where(eq(singers.id, id)).all()[0] ?? null;
 	}
 
+	/**
+	 * Change a singer's name and colour. The FIRST update path this repository has had — it was
+	 * create/read only, which is why a guest who mistyped their name was stuck with it all night.
+	 *
+	 * The session token is deliberately untouched: renaming is not re-joining, so the phone keeps its
+	 * cookie and its place in the rotation.
+	 */
+	updateProfile(id: string, displayName: string, color: string): Singer | null {
+		const next = displayName.trim().slice(0, 32);
+		if (!next) return null;
+		this.#db.update(singers).set({ displayName: next, color }).where(eq(singers.id, id)).run();
+		return this.byId(id);
+	}
+
 	/** All singers, without session tokens (safe to broadcast). */
 	listPublic(): Omit<Singer, 'sessionToken'>[] {
 		return this.#db.select().from(singers).all().map(({ sessionToken: _t, ...rest }) => rest);

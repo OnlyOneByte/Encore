@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "1c11cf22-d71f-4ed1-bc87-115eb97c83d1",
+  "id": "5e41e94d-07d5-42b7-9d67-3fccdff18458",
   "prevId": "d3e8a8d8-a93c-4c91-b6a6-6bb3dcef4a14",
   "tables": {
     "global_settings": {
@@ -523,6 +523,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "pitch_ref": {
+          "name": "pitch_ref",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "artist_canonical": {
           "name": "artist_canonical",
           "type": "text",
@@ -845,6 +852,14 @@
           "notNull": true,
           "autoincrement": false,
           "default": 240
+        },
+        "tv_visualizer": {
+          "name": "tv_visualizer",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'plasma'"
         },
         "interstitial_ms": {
           "name": "interstitial_ms",
