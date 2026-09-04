@@ -271,6 +271,26 @@ export interface JobAttempt {
    * duration can be re-annotated later, which would silently rewrite historical rates.
    */
   audioSec: number | null;
+
+  /**
+   * Per-stage wall clock as a JSON string: `[{"stage":"separating","ms":51000}]`. Stored whole rather
+   * than as rows because it is only ever read whole — to render one attempt's breakdown — so a table
+   * would add a join and a migration without enabling a query. Use `attemptStages()` to read it.
+   */
+  stages: string | null;
+}
+
+/** Parse an attempt's stage breakdown. Returns [] for absent or malformed JSON — a corrupt
+ *  diagnostic must degrade to "no breakdown", never throw inside a dashboard render. */
+export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; ms: number }[] {
+  if (!a.stages) return [];
+  try {
+    const parsed = JSON.parse(a.stages);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((s) => typeof s?.stage === 'string' && Number.isFinite(s?.ms));
+  } catch {
+    return [];
+  }
 }
 
 /** Seconds of compute per second of audio for one attempt. Null when it never ran or has no length. */

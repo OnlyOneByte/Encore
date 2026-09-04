@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import AsyncIterator, Protocol
 
 from . import protocol
@@ -35,6 +35,11 @@ class ProgressEvent:
 class CompleteResult:
     media_uri: str
     artifacts: dict
+    # What this processor ACTUALLY resolved and ran — engine/model/backend/device. Distinct from
+    # `job.params`, which is what the core ASKED for: a processor may resolve a model alias to a
+    # different checkpoint, or fall back to CPU when the requested backend will not load. Defaults
+    # empty so a processor that reports nothing simply leaves the core's dispatched values standing.
+    facts: dict = field(default_factory=dict)
 
 
 @dataclass

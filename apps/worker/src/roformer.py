@@ -243,4 +243,11 @@ class RoformerProcessor:
 			except Exception as exc:  # noqa: BLE001 — vocals is an enhancement, never fail the cook for it
 				print(f"[worker] roformer vocals encode failed (non-fatal): {type(exc).__name__}", flush=True)
 
-		yield CompleteResult(media_uri=final, artifacts={"stems": stems})
+		# The RESOLVED checkpoint, not the token the core sent. This distinction is the whole reason the
+		# field exists here: a token was found to resolve to a different model than the one benchmarked
+		# under that name, and nothing in the ledger would have shown it.
+		yield CompleteResult(
+			media_uri=final,
+			artifacts={"stems": stems},
+			facts={"engine": "roformer", "model": slug, "backend": "bs-roformer-infer"},
+		)

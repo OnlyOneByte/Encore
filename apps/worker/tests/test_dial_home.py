@@ -58,7 +58,27 @@ async def test_hello_announces_capabilities(tmp_path):
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     await client.hello()
-    assert sock.sent[0] == protocol.hello("w1", ["stems"], 1, "test")
+    sent = sock.sent[0]
+    # Compared field-by-field rather than whole-frame: `hello` also carries best-effort HOST facts,
+    # which are by nature machine-specific (cpu count, platform string), so an equality assertion
+    # against a rebuilt frame would only pass on the box that wrote it.
+    assert sent["type"] == protocol.HELLO
+    assert sent["workerId"] == "w1"
+    assert sent["capabilities"] == ["stems"]
+    assert sent["concurrency"] == 1
+    assert sent["version"] == "test"
+
+
+@pytest.mark.asyncio
+async def test_hello_describes_the_box_it_runs_on(tmp_path):
+    # An operator reading "stems took 43 minutes" needs to know whether that was a GPU or four shared
+    # cores. The worker already resolved all of this at startup and only ever printed it.
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    await client.hello()
+    host = sock.sent[0]["host"]
+    assert isinstance(host["cpuCount"], int) and host["cpuCount"] >= 1
+    assert host["platform"] and host["machine"] and host["python"]
 
 
 @pytest.mark.asyncio

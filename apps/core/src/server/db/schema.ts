@@ -249,7 +249,13 @@ export const jobAttempts = sqliteTable(
 		asrModel: text('asr_model'),
 		syncMode: text('sync_mode'),
 		// Snapshotted song length, so every cost can be reported as a rate rather than raw seconds.
-		audioSec: integer('audio_sec')
+		audioSec: integer('audio_sec'),
+		// PER-STAGE wall clock as JSON: [{stage,ms}] in the order they ran. The core derives total
+		// processing time from its own clocks; this is the split it cannot see (download vs separate).
+		// One JSON column rather than a stage_timings table on the same reasoning as media.lyricsCandidates:
+		// nothing queries INSIDE it — it is read whole to render one attempt's breakdown — so a table
+		// would buy a join and a migration for no query it enables.
+		stages: text('stages')
 	},
 	(t) => ({
 		// the per-song audit page: every attempt for one song, newest last

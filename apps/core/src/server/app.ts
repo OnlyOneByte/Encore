@@ -356,6 +356,7 @@ export function getApp(): EncoreApp {
 
 	app.workerHub = new WorkerHub({
 		jobs,
+		attempts,
 		registry: workers,
 		mediaById,
 		toWorker: (workerId, cmd) => app.toWorker(workerId, cmd),
