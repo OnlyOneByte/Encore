@@ -209,13 +209,8 @@ export const HOOKS: Hook[] = [
 		why: 'the flow mixes the original vocals back in through this range input'
 	},
 
-	// per-song stage background (phone now-playing sheet)
-	{
-		id: 'stageBackground',
-		file: 'src/routes/+page.svelte',
-		anchor: 'class="bg-pick"',
-		why: 'the flow overrides the TV stage look for the current song from the .bg-btn buttons inside .bg-pick'
-	},
+	// per-song stage background hook removed: the stage look now lives only in room settings, so the
+	// phone route no longer renders a .bg-pick override control for the contract to anchor to.
 
 	// profile sheet (phone header → name / colour / leave)
 	{
