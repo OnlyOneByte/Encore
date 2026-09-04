@@ -1,1 +1,0 @@
-ALTER TABLE `room_settings` ADD `tv_visualizer` text DEFAULT 'plasma' NOT NULL;
