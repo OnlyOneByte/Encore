@@ -72,8 +72,9 @@ test('the flow imports the contract instead of hard-coding selectors', () => {
 test('the colour names in the contract match the ones the picker announces', () => {
 	// PRESET_COLOUR_NAMES is what the flow queries by. If the picker renames a colour, the flow must
 	// fail here rather than in a browser nobody has run.
-	const join_ = readFileSync(join(CORE, 'src/routes/join/+page.svelte'), 'utf8');
-	const declared = /PRESET_NAMES\s*=\s*\[([^\]]*)\]/.exec(join_)?.[1] ?? '';
+	// Extracted from /join so the profile sheet offers the same control; the names live with it.
+	const picker = readFileSync(join(CORE, 'src/lib/components/ColourPicker.svelte'), 'utf8');
+	const declared = /PRESET_NAMES\s*=\s*\[([^\]]*)\]/.exec(picker)?.[1] ?? '';
 	const names = [...declared.matchAll(/'([a-z]+)'/g)].map((m) => m[1]);
 	expect(names).toEqual([...PRESET_COLOUR_NAMES]);
 });

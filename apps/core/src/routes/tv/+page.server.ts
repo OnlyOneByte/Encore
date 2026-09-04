@@ -29,13 +29,21 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	// `resolveLyricsPresentation`, and copying individual fields out here and again in the
 	// `settings:changed` branch is two lists that drift the moment a field is added.
 	//
-	// INTERSTITIAL_MS remains the deployment default a room starts from, so an existing install behaves
-	// as before until someone moves the slider. The TV also applies settings:changed live, so a change
-	// mid-party does not need a reload.
-	const envDefault = Math.max(0, Number(process.env.INTERSTITIAL_MS ?? 2500));
+	// ENCORE_SONG_INTRO_MS remains the deployment default a room starts from (INTERSTITIAL_MS is still
+	// read as a deprecated alias), so an existing install behaves as before until someone moves the
+	// slider. `=0` means the intro is OFF, which is now the toggle rather than a sentinel duration. The
+	// TV also applies settings:changed live, so a change mid-party does not need a reload.
+	const envRaw = process.env.ENCORE_SONG_INTRO_MS ?? process.env.INTERSTITIAL_MS;
+	const envMs = envRaw === undefined ? undefined : Math.max(0, Number(envRaw));
+	const envRoom =
+		envMs === undefined || !Number.isFinite(envMs)
+			? {}
+			: envMs === 0
+				? { songIntroEnabled: false }
+				: { songIntroEnabled: true, songIntroMs: envMs };
 	let settings: EffectiveSettings = {
 		...DEFAULT_EFFECTIVE_SETTINGS,
-		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, interstitialMs: envDefault }
+		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, ...envRoom }
 	};
 	try {
 		settings = getApp().settings.getEffective();
@@ -45,6 +53,6 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	}
 	// `joinOrigin` rides along so the TV can tell a settings change that moved the join address from one
 	// that did not: the QR is a server-rendered image, so only that case needs the load to re-run.
-	// `interstitialMs`/`tvProgressStyle` are no longer returned separately — they are in `settings`.
+	// The song-intro hold and `tvProgressStyle` are not returned separately — they are in `settings`.
 	return { joinUrl, qrDataUrl, joinOrigin: origin, joinFallbackOrigin: fallback, settings };
 };

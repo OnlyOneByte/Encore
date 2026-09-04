@@ -5,6 +5,7 @@
 
 import {
 	ROOM_TOPIC,
+	graceMsOf,
 	type ClientEvent,
 	type ServerEvent,
 	type Media,
@@ -18,6 +19,7 @@ import { parseRefPitchDoc } from './src/server/scoring/scorer';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
+import { can } from './src/server/auth/capabilities';
 import { presentTracks, type LocalTrack } from './src/server/media/local';
 import { safeMediaPath } from './src/server/media/local-files';
 import { existsSync } from 'node:fs';
@@ -113,10 +115,43 @@ try {
 	console.warn('[core] build/handler.js not found — run `bun run build`. Serving WS + /health + /harness only.');
 }
 
-// Broadcast the current presence roster. Called on the 0→1 and 1→0 transitions only.
-function publishPresence(): void {
-	server.publish(ROOM_TOPIC, JSON.stringify({ type: 'singer:presence', online: app.presence.online() } satisfies ServerEvent));
+// The room's membership, as the TV renders it. `here` holds a socket; `away` is in the room but
+// unreachable (a locked phone, a pocket) and is still counted.
+let membership = { here: [] as string[], away: [] as string[] };
+
+/** A singer holds a stake in the room while any entry of theirs is still waiting to be sung. */
+function hasPendingSongs(singerId: string): boolean {
+	return state.entries.some((e) => e.singerId === singerId && (e.status === 'queued' || e.status === 'playing'));
 }
+
+/**
+ * Advance membership and broadcast it if it moved.
+ *
+ * Driven both by socket edges and by a timer, because `gone` is a property of elapsed time: no socket
+ * event can announce it. Compared against the last broadcast rather than published unconditionally, so
+ * a 20-second sweep over a quiet room is silent instead of a heartbeat every client must parse.
+ */
+function refreshMembership(): void {
+	const next = app.presence.evaluate({
+		now: app.now(),
+		graceMs: graceMsOf(app.settings.getRoom().presenceGraceMinutes),
+		hasPendingSongs
+	});
+	const same =
+		next.here.join() === membership.here.join() && next.away.join() === membership.away.join();
+	membership = { here: next.here, away: next.away };
+	if (!same) {
+		server.publish(
+			ROOM_TOPIC,
+			JSON.stringify({ type: 'singer:presence', online: next.here, away: next.away } satisfies ServerEvent)
+		);
+	}
+}
+
+// A singer's grace clock starts when their last pending song leaves the queue, so the queue changing
+// can move membership as surely as a socket closing. 20s is far finer than any sane grace window while
+// staying cheap: one pass over the entries per tick.
+const MEMBERSHIP_SWEEP_MS = 20_000;
 
 const server = Bun.serve<SocketData>({
 	port: PORT,
@@ -158,7 +193,7 @@ const server = Bun.serve<SocketData>({
 			// from the /api/join route reaches every socket).
 			setPublish((e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)));
 			// Announce only on the 0→1 transition so a second tab doesn't spam an unchanged roster.
-			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) publishPresence();
+			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
 		},
 		message(ws, raw) {
 			// Dial-home worker protocol (§5) — a separate message family on role=worker sockets.
@@ -189,10 +224,12 @@ const server = Bun.serve<SocketData>({
 				publish: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)),
 				mediaById,
 				listSingers: () => app.singers.listPublic(),
-				listOnline: () => app.presence.online(),
+				listOnline: () => membership.here,
+				listAway: () => membership.away,
 				getSettings: () => app.settings.getEffective(),
 				onNowPlaying: (e) => app.plays.onNowPlaying(e),
 				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
+				actorSingerId: ws.data.singerId,
 				seenOp: (id) => {
 					if (seenOps.has(id)) return true;
 					seenOps.add(id);
@@ -221,8 +258,15 @@ const server = Bun.serve<SocketData>({
 					// hang one on). reconcileOnReady starts the soonest-playable entry when nothing is
 					// current, and no-ops once something is already playing.
 					if (!state.playback.currentEntryId) reconcileOnReady(deps);
+					// A grace clock starts when someone's last pending song leaves the queue and clears when
+					// they queue another, so a queue change can move membership exactly as a socket can.
+					refreshMembership();
 					break;
 				case 'player:command':
+					// Pausing or skipping is an act on the whole room's music, so it needs an actor. Every
+					// joined singer is a host today; the gate here is only that you are IN the room, which a
+					// socket that never joined is not. See src/server/auth/capabilities.ts.
+					if (!can({ singerId: ws.data.singerId }, 'player:control')) break;
 					handlePlayerCommand(evt.command, deps);
 					break;
 				case 'tv:telemetry':
@@ -248,7 +292,10 @@ const server = Bun.serve<SocketData>({
 				return;
 			}
 			// Their last socket closing takes them out of the roster (1→0 only).
-			if (ws.data.singerId && app.presence.disconnect(ws.data.singerId)) publishPresence();
+			// Their last socket closing makes them AWAY, not gone — they keep their chip, their place and
+			// their songs. Expiry to `gone` is the sweep's job, once their queue is empty and the room's
+			// grace window has run out.
+			if (ws.data.singerId && app.presence.disconnect(ws.data.singerId, app.now())) refreshMembership();
 		}
 	}
 });
@@ -256,6 +303,9 @@ const server = Bun.serve<SocketData>({
 export function publishToRoom(payload: unknown): void {
 	server.publish(ROOM_TOPIC, JSON.stringify(payload));
 }
+
+// Expiry to `gone` is elapsed time, so nothing else in the process can announce it.
+setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
 
 console.log(
 	`🎤 Encore core on http://${HOST}:${PORT}  (ws:/ws · health:/health · harness:/harness · ui:${svelteKitFetch ? 'SvelteKit' : 'not built'})`

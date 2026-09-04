@@ -16,6 +16,11 @@
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
 import { SINGER_HUE_STEP } from './colors';
 import {
+	DEFAULT_PRESENCE_GRACE_MINUTES,
+	MAX_PRESENCE_GRACE_MINUTES,
+	MIN_PRESENCE_GRACE_MINUTES
+} from './membership';
+import {
 	DEFAULT_ASR_MODEL,
 	DEFAULT_LYRICS_BALL,
 	DEFAULT_LYRICS_CASE,
@@ -318,7 +323,7 @@ export function isQualityUpgrade(
 //     would model a distinction that isn't real.
 //
 //   ROOM — a property of one party. Pacing and per-room policy: two rooms genuinely can want
-//     different interstitial timing, and a busy room may want to cap cook quality to keep its queue
+//     different song-intro timing, and a busy room may want to cap cook quality to keep its queue
 //     moving while the deployment default stays high.
 //
 // Both are authoritative SERVER state broadcast to clients (like presence), never phone-local
@@ -571,9 +576,20 @@ export interface RoomSettings {
 	 * forget the choice — the same reason `tvBackgroundHue` survives a switch away from `solid`.
 	 */
 	tvVisualizer: TvVisualizerId;
-	/** TV "Next up" reveal duration. 0 = pure gapless hard-cut. Per-room because pacing is a property
-	 *  of the party, not the deployment. */
-	interstitialMs: number;
+	/**
+	 * Whether the TV shows the song intro card (title, artist, singer) between songs. Off = a pure
+	 * gapless hard-cut.
+	 *
+	 * A separate boolean rather than the 0-means-off sentinel this field used to be: a sentinel
+	 * DESTROYS the duration when you toggle off, so turning the intro back on lost the timing you had
+	 * dialled in.
+	 */
+	songIntroEnabled: boolean;
+	/**
+	 * How long the intro card holds, in ms. Stored in ms (integer, no float rounding) and surfaced in
+	 * seconds. Per-room because pacing is a property of the party, not the deployment.
+	 */
+	songIntroMs: number;
 	/**
 	 * Optional per-room ceiling on cook quality, as a `qualityRank`. A busy room can cap cooks to keep
 	 * its queue moving while the deployment default stays high. `null` = no ceiling, use the global
@@ -613,7 +629,17 @@ export interface RoomSettings {
 	 * Ships at 0, which reproduces today's behaviour exactly (pure karaoke), so the feature is opt-in.
 	 */
 	guideLevelDefault: number;
+	/**
+	 * How long a singer stays in the room after their last socket drops AND their last pending song
+	 * leaves the queue. Per-room because it is a property of the party: a long evening where people
+	 * pocket their phones wants a generous window, a kiosk wants none.
+	 */
+	presenceGraceMinutes: number;
 }
+
+export const MIN_SONG_INTRO_MS = 500;
+export const MAX_SONG_INTRO_MS = 10_000;
+export const SONG_INTRO_STEP_MS = 500;
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	tvProgressStyle: 'card',
@@ -626,7 +652,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	// Plasma is the one every old media player had, so it is the least surprising thing to find running
 	// the first time a room turns the visualizer on.
 	tvVisualizer: 'plasma',
-	interstitialMs: 2500,
+	songIntroEnabled: true,
+	songIntroMs: 2500,
 	maxQualityRank: null,
 	// These three reproduce the TV's previously-hardcoded behaviour exactly, so adding the settings
 	// changes nothing until someone opens Settings.
@@ -638,8 +665,17 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	lyricsCase: DEFAULT_LYRICS_CASE,
 	lyricsLinesBefore: DEFAULT_LYRICS_LINES_BEFORE,
 	lyricsLinesAfter: DEFAULT_LYRICS_LINES_AFTER,
-	guideLevelDefault: 0
+	guideLevelDefault: 0,
+	presenceGraceMinutes: DEFAULT_PRESENCE_GRACE_MINUTES
 };
+
+/**
+ * The hold the TV should actually apply. Keeps the gapless controller untouched: its existing
+ * `ms === 0` hard-cut branch still does the work when the intro is switched off.
+ */
+export function effectiveSongIntroMs(room: Pick<RoomSettings, 'songIntroEnabled' | 'songIntroMs'>): number {
+	return room.songIntroEnabled ? room.songIntroMs : 0;
+}
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
 export function normalizeRoomSettings(
@@ -649,11 +685,16 @@ export function normalizeRoomSettings(
 	// Falls back to the CURRENT room values, not hardcoded defaults: rejecting one invalid field must
 	// not discard an unrelated choice the room already made.
 	const d = base;
-	const ms = input?.interstitialMs;
 	// Clamped rather than rejected: a nonsensical value should still yield a usable room, and an
-	// unbounded interstitial would strand the TV between songs.
-	const interstitialMs =
-		typeof ms === 'number' && Number.isFinite(ms) ? Math.min(15_000, Math.max(0, Math.round(ms))) : d.interstitialMs;
+	// unbounded intro would strand the TV between songs. 0 is NOT in range — the toggle owns "off", so
+	// leaving a zero here would be a second way to say the same thing.
+	const ms = input?.songIntroMs;
+	const songIntroMs =
+		typeof ms === 'number' && Number.isFinite(ms)
+			? Math.min(MAX_SONG_INTRO_MS, Math.max(MIN_SONG_INTRO_MS, Math.round(ms)))
+			: d.songIntroMs;
+	const enabled = input?.songIntroEnabled;
+	const songIntroEnabled = typeof enabled === 'boolean' ? enabled : d.songIntroEnabled;
 	const cap = input?.maxQualityRank;
 	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
 	const style = input?.tvProgressStyle;
@@ -662,7 +703,7 @@ export function normalizeRoomSettings(
 	const lyricsBall = isValidLyricsBall(ball) ? ball : d.lyricsBall;
 	const highlight = input?.lyricsHighlight;
 	const lyricsHighlight = isValidLyricsHighlight(highlight) ? highlight : d.lyricsHighlight;
-	// Clamped, like interstitialMs and for the same reason: a lead of 30s is nonsense but should still
+	// Clamped, like the song intro and for the same reason: a lead of 30s is nonsense but should still
 	// leave a usable room. A NEGATIVE lead is clamped to 0 rather than honoured — running the highlight
 	// BEHIND the audio has no use case and reads as the overlay being broken.
 	const lead = input?.lyricsLeadMs;
@@ -670,7 +711,7 @@ export function normalizeRoomSettings(
 		typeof lead === 'number' && Number.isFinite(lead)
 			? Math.min(MAX_LYRICS_LEAD_MS, Math.max(0, Math.round(lead)))
 			: d.lyricsLeadMs;
-	// One helper for the three bounded integers. Clamped rather than rejected, like interstitialMs: a
+	// One helper for the three bounded integers. Clamped rather than rejected, like the song intro: a
 	// nonsensical value should still leave a usable room, and every bound here has a stated reason in
 	// lyrics-engines.ts (a legibility floor, or a row count past which the type must shrink to fit).
 	const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
@@ -690,7 +731,7 @@ export function normalizeRoomSettings(
 	const lyricsCase = isValidLyricsCase(textCase) ? textCase : d.lyricsCase;
 	const bg = input?.tvBackgroundStyle;
 	const tvBackgroundStyle = isTvBackgroundStyle(bg) ? bg : d.tvBackgroundStyle;
-	// Quantised and wrapped rather than rejected, matching interstitialMs: a hue is an angle, so every
+	// Quantised and wrapped rather than rejected, matching the song intro: a hue is an angle, so every
 	// number has a valid meaning once wrapped, and snapping to the wheel's step keeps the phone slider
 	// and the rendered stage agreeing. Non-finite input is the only thing with no sane reading.
 	const rawHue = input?.tvBackgroundHue;
@@ -698,9 +739,16 @@ export function normalizeRoomSettings(
 		typeof rawHue === 'number' && Number.isFinite(rawHue)
 			? (((Math.round(rawHue / SINGER_HUE_STEP) * SINGER_HUE_STEP) % 360) + 360) % 360
 			: d.tvBackgroundHue;
-	// Clamped, like interstitialMs: a room default outside 0..1 should still yield a usable room. Note
+	// Clamped, like the song intro: a room default outside 0..1 should still yield a usable room. Note
 	// this one is NOT nullable — the room default is the floor the per-song override falls back to, so
 	// there is nothing below it to inherit from. A junk write keeps the room's current value.
+	// Clamped like the intro: a nonsensical window should still yield a usable room. 0 IS a real choice
+	// here (no grace once your songs are done), so it is a bound rather than a rejected value.
+	const grace = input?.presenceGraceMinutes;
+	const presenceGraceMinutes =
+		typeof grace === 'number' && Number.isFinite(grace)
+			? Math.min(MAX_PRESENCE_GRACE_MINUTES, Math.max(MIN_PRESENCE_GRACE_MINUTES, Math.round(grace)))
+			: d.presenceGraceMinutes;
 	const gl = input?.guideLevelDefault;
 	const guideLevelDefault =
 		typeof gl === 'number' && Number.isFinite(gl)
@@ -713,7 +761,8 @@ export function normalizeRoomSettings(
 		tvBackgroundStyle,
 		tvBackgroundHue,
 		tvVisualizer,
-		interstitialMs,
+		songIntroEnabled,
+		songIntroMs,
 		maxQualityRank,
 		lyricsBall,
 		lyricsHighlight,
@@ -723,7 +772,8 @@ export function normalizeRoomSettings(
 		lyricsCase,
 		lyricsLinesBefore,
 		lyricsLinesAfter,
-		guideLevelDefault
+		guideLevelDefault,
+		presenceGraceMinutes
 	};
 }
 

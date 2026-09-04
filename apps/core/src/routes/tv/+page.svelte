@@ -2,7 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
-	import { chosenCandidate, isPlayable } from '@encore/shared';
+	import { chosenCandidate, isPlayable, effectiveSongIntroMs } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -30,6 +30,9 @@
 	// Singer ids with a live socket right now. Drives the lobby roster and the join card's
 	// count — NOT `singers`, which is every singer who ever joined (append-only + file-backed).
 	let online = $state<string[]>([]);
+	// In the room but unreachable — a locked phone, a pocket. Counted and rendered greyed, never
+	// erased: a socket dropping is not someone leaving the party.
+	let away = $state<string[]>([]);
 	// Room + global settings as ONE object, seeded from the load and kept live by settings:changed.
 	// Held whole rather than copied field-by-field: the previous shape needed a new local, a new effect
 	// line and a new assignment in the socket handler per field, which is three lists to keep in step.
@@ -38,7 +41,7 @@
 	$effect(() => {
 		settings = data.settings;
 	});
-	const interstitialMs = $derived(settings.room.interstitialMs);
+	const songIntroMs = $derived(effectiveSongIntroMs(settings.room));
 	// Already clamped against the global sync mode — the TV renders what it is handed.
 	const lyricsStyle = $derived(resolveLyricsPresentation(settings));
 
@@ -131,25 +134,55 @@
 		onVisibleEnded();
 	}
 
+	/**
+	 * Which entry the song-intro card is announcing. Captured explicitly at each point we enter the
+	 * interstitial rather than derived from `upNext`, because `nowplaying:changed` can land mid-intro and
+	 * advance both `current` and `upNext` — deriving it would make the card name the song after next.
+	 */
+	let introEntry = $state<QueueEntry | null>(null);
+	/** The session has shown at least one song, so the next intro is a transition rather than an opener. */
+	let openedOnce = $state(false);
+
 	function onVisibleEnded() {
 		const next = ctl.onEnded(upNext);
 		tvState = next;
 		// tell the server the song ended so it advances authoritatively (nowplaying:changed comes back)
 		sendTelemetry('ended');
 		if (next === 'interstitial') {
-			clearTimeout(interstitialTimer);
-			const ms = interstitialMs;
-			if (ms === 0) {
-				ctl.onInterstitialDone(); // pure gapless hard-cut
-				tvState = ctl.state;
-			} else {
-				interstitialTimer = setTimeout(() => {
-					ctl.onInterstitialDone();
-					tvState = ctl.state;
-				}, ms);
-			}
+			introEntry = upNext;
+			holdSongIntro();
 		}
 		syncSlots();
+	}
+
+	/**
+	 * The opening song of a session gets an intro too.
+	 *
+	 * The card used to fire only from `onEnded`, which was right when it was a "Next up" transition and
+	 * wrong now that it announces the song: the first song of the night — the one where nobody yet knows
+	 * whose turn it is — was the only one that appeared unannounced.
+	 */
+	function onFirstSongReady() {
+		if (openedOnce || songIntroMs === 0 || !current) return;
+		openedOnce = true;
+		introEntry = current;
+		ctl.enterInterstitial();
+		tvState = ctl.state;
+		holdSongIntro();
+	}
+
+	/** Hold on the intro card, then let the song start. 0 = the intro is switched off; hard-cut. */
+	function holdSongIntro() {
+		clearTimeout(interstitialTimer);
+		if (songIntroMs === 0) {
+			ctl.onInterstitialDone(); // pure gapless hard-cut
+			tvState = ctl.state;
+			return;
+		}
+		interstitialTimer = setTimeout(() => {
+			ctl.onInterstitialDone();
+			tvState = ctl.state;
+		}, songIntroMs);
 	}
 
 	function connect() {
@@ -179,8 +212,16 @@
 				// only adopt presence when the server actually sent it — an omitted `online` means
 				// "no info", not "nobody here", and must not blank a roster we already have.
 				if (e.online) online = e.online;
+				if (e.away) away = e.away;
 			}
-			if (e.type === 'singer:presence') online = e.online;
+			if (e.type === 'singer:presence') {
+				online = e.online;
+				away = e.away;
+			}
+			if (e.type === 'singer:presence') {
+				online = e.online;
+				away = e.away;
+			}
 			// Room settings are live: a change on a phone applies without reloading the TV. One
 			// assignment, so a new setting needs no edit here.
 			if (e.type === 'settings:changed') {
@@ -218,6 +259,13 @@
 			// learn singers who join AFTER our initial sync, or the lower-third shows "Someone" for
 			// late joiners instead of their real name (mirrors the phone).
 			if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
+			// A rename has to reach the TV or the roster chip and the "Now singing" lower-third keep the old
+			// name until the next full sync, which on a quiet room is not until someone touches the queue.
+			if (e.type === 'singer:updated') singers = new Map(singers).set(e.singer.id, e.singer);
+			if (e.type === 'singer:left') {
+				online = online.filter((id) => id !== e.singerId);
+				away = away.filter((id) => id !== e.singerId);
+			}
 		};
 	}
 
@@ -233,7 +281,7 @@
 	// Which surface the TV shows. Replaces the old `isAttract` (which collapsed "nobody here"
 	// and "people here, nothing queued" into one screen).
 	const screen = $derived(
-		tvScreen({ playerState: tvState, current, entries, onlineCount: online.length })
+		tvScreen({ playerState: tvState, current, entries, inRoomCount: online.length + away.length })
 	);
 
 	/*
@@ -253,6 +301,7 @@
 		}).length
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
+	const roster = $derived(lobbyRoster(online, away, singers));
 	/*
 	 * The stage background, and the band it is shown in.
 	 *
@@ -277,7 +326,6 @@
 	 */
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
 	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundHue, currentSingerColor));
-	const roster = $derived(lobbyRoster(online, singers));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
 	// Which candidate the current lyricsRef came from, so the overlay can label a guess.
@@ -318,7 +366,7 @@
 		playing={isPlaying}
 		seekSec={seekSec}
 		{guideLevel}
-		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
+		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; onFirstSongReady(); }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
 		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
@@ -330,7 +378,7 @@
 		playing={isPlaying}
 		seekSec={seekSec}
 		{guideLevel}
-		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
+		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; onFirstSongReady(); }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
 		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
@@ -394,7 +442,7 @@
 			qrDataUrl={data.qrDataUrl}
 			joinUrl={data.joinUrl}
 			placement="corner"
-			onlineCount={online.length}
+			onlineCount={online.length + away.length}
 		/>
 	{/if}
 
@@ -404,11 +452,17 @@
 	  were visually identical — a viewer could not tell a failure from a normal song change at a glance.
 	  Each now carries its own mark, its own colour family and its own eyebrow.
 	-->
-	{#if tvState === 'interstitial' && upNext}
+	{#if tvState === 'interstitial' && introEntry}
+		{@const m = mediaOf(introEntry)}
 		<div class="interstitial state-next">
-			<div class="up-label">Next up</div>
-			<div class="up-name">{singerName(upNext.singerId)}</div>
-			<div class="up-song">{mediaOf(upNext)?.title ?? ''}</div>
+			<!-- "Now singing" for the opener; "Next up" once the night is under way. Saying "Next up" for
+			     the very first song of the evening is simply untrue — there is no previous song it follows. -->
+			<div class="up-label">{openedOnce && introEntry.id !== current?.id ? 'Next up' : 'Now singing'}</div>
+			<div class="up-name">{singerName(introEntry.singerId)}</div>
+			<div class="up-song">{m?.title ?? ''}</div>
+			<!-- Artist was missing: title alone is often ambiguous between covers, and the room reads this
+			     card to decide whether the queued song is the version they meant. -->
+			{#if m?.artist}<div class="up-artist">{m.artist}</div>{/if}
 		</div>
 	{/if}
 
@@ -517,6 +571,8 @@
 	.up-label { font-size: var(--tv-label); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
 	.up-name { font-size: var(--tv-hero); font-weight: 800; }
 	.up-song { font-size: var(--tv-name); }
+	/* Secondary to the title: it disambiguates rather than identifies, so it must not compete with it. */
+	.up-artist { font-size: var(--tv-body); color: var(--ink-dim); margin-top: 6px; }
 	/* A mark large enough to be the first thing read, since it is what distinguishes these states. */
 	.state-mark { font-size: var(--tv-hero); line-height: 1; margin-bottom: 4px; }
 
