@@ -57,6 +57,23 @@ export function tvScreen(input: TvScreenInput): TvScreen {
 	return 'attract';
 }
 
+/**
+ * Should the lyrics reel and ball ADVANCE right now?
+ *
+ * `LyricsOverlay` extrapolates position from wall-clock while its `playing` prop is true. The screen
+ * being `playing` is necessary but NOT sufficient: a PAUSED song is still `current`, so gating the
+ * overlay on `screen`/`tvState` alone (the old `lyricsActive`) left the reel scrolling on while the
+ * audio was frozen. This folds in the real transport state so the words freeze with the sound.
+ *
+ * Advancing is distinct from VISIBLE — the overlay stays on screen while paused (frozen mid-line),
+ * so the caller keeps passing `visible` on the same `screen`/`tvState` condition and only feeds the
+ * ADVANCING signal through here.
+ */
+export function lyricsAdvancing(screen: TvScreen, tvState: string, isPlaying: boolean): boolean {
+	return screen === 'playing' && tvState !== 'interstitial' && isPlaying;
+}
+
+
 /** A singer as the TV roster needs them: display name, identity color, and whether they are reachable. */
 export interface RosterMember {
 	id: string;
