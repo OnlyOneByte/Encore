@@ -56,7 +56,7 @@
 
 	/* ── card: inside the now-singing lower third ─────────────────────────── */
 	.card-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
-	.t { font-size: 0.8rem; font-variant-numeric: tabular-nums; opacity: 0.95; }
+	.t { font-size: var(--tv-label); font-variant-numeric: tabular-nums; opacity: 0.95; }
 	.track.card { width: 210px; height: 5px; background: rgba(0, 0, 0, 0.35); border-radius: 4px; overflow: hidden; }
 	/* Solid white, not --grad: this sits on the card's own purple/pink gradient, where the accent
 	   gradient reads as noise rather than as a fill level. */
@@ -69,12 +69,12 @@
 	}
 	.topbar > i { background: var(--grad); }
 	.pill {
-		position: absolute; top: 26px; left: 30px; z-index: 7;
+		position: absolute; top: var(--tv-safe-y); left: var(--tv-safe-x); z-index: 7;
 		padding: 8px 16px; border-radius: 999px;
 		background: rgba(33, 33, 51, 0.85); border: 1px solid var(--line);
-		font-size: 1.05rem; font-variant-numeric: tabular-nums;
+		font-size: var(--tv-body); font-variant-numeric: tabular-nums;
 	}
-	.pill .lab { color: var(--ink-dim); font-size: 0.75rem; letter-spacing: 0.1em; text-transform: uppercase; }
+	.pill .lab { color: var(--ink-dim); font-size: var(--tv-label); letter-spacing: 0.1em; text-transform: uppercase; }
 
 	/* ── edge: full-bleed on the bottom edge ──────────────────────────────── */
 	.edgebar {

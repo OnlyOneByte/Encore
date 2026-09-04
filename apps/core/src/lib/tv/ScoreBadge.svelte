@@ -25,8 +25,8 @@
 <style>
 	.score-badge {
 		position: absolute;
-		top: 40px;
-		right: 40px;
+		top: var(--tv-safe-y);
+		right: var(--tv-safe-x);
 		z-index: 7;
 		display: flex;
 		flex-direction: column;
@@ -40,13 +40,13 @@
 		box-shadow: 0 0 32px color-mix(in srgb, var(--sc) 45%, transparent);
 	}
 	.score-label {
-		font-size: 0.85rem;
+		font-size: var(--tv-label);
 		font-weight: 800;
 		letter-spacing: 0.18em;
 		color: var(--sc);
 	}
 	.score-num {
-		font-size: 4rem;
+		font-size: var(--tv-hero);
 		font-weight: 900;
 		line-height: 1;
 		color: #fff;
@@ -54,7 +54,7 @@
 		text-shadow: 0 2px 16px rgba(0, 0, 0, 0.6);
 	}
 	.score-sub {
-		font-size: 0.9rem;
+		font-size: var(--tv-label);
 		color: var(--ink-dim);
 	}
 </style>

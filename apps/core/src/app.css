@@ -70,6 +70,24 @@
 
 	/* layout */
 	--max-w: 480px;
+
+	/*
+	 * TV / STAGE SCALE. A separate scale because the stage is not a big phone: it is read from three
+	 * metres, so the phone's tokens produce 12–19px text on a wall. Each clamp's MINIMUM is the
+	 * ten-foot legibility floor; the vh term lets a larger panel scale up instead of capping every set
+	 * at the smallest supported size. Global rather than scoped to the TV route so the same components
+	 * size correctly in the /components gallery, which renders them outside it.
+	 */
+	--tv-safe-x: max(48px, 5vw);
+	--tv-safe-y: max(32px, 5vh);
+	/* eyebrows, hints, secondary lines */
+	--tv-label: clamp(26px, 2.6vh, 40px);
+	/* song titles, and the join URL a guest may have to read out or type */
+	--tv-body: clamp(32px, 3.4vh, 52px);
+	/* who is singing */
+	--tv-name: clamp(44px, 5vh, 76px);
+	/* the one thing on an otherwise empty screen */
+	--tv-hero: clamp(56px, 7vh, 108px);
 	/* Height of the collapsed queue sheet's peek. A fallback only — QueueSheet overwrites this with the
 	   peek's MEASURED height on mount. Owned here because everything docked to the bottom (the sheet
 	   itself, the mic bar, the toasts) must agree on it or they overlap. */
