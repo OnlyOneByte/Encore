@@ -10,6 +10,7 @@
 	// and effects at the cost of rebuilding the part that already works.
 	import { keyedMediaRef, playbackRef, isPlayable, type Media } from '@encore/shared';
 	import { guideCorrection } from './guide-sync';
+	import { nextVideoSrc } from './video-src';
 	interface Props {
 		media: Media | null;
 		visible: boolean;
@@ -90,15 +91,24 @@
 	let masterReady = $state(false);
 	let guideSettled = $state(false);
 	let announced = $state(false);
+	// The src the <video> currently holds; the assign effect below writes the element ONLY when this
+	// changes (see that effect for why an unconditional binding restarts the song). Declared here with
+	// the other slot state so the reset effect can clear it.
+	let currentSrc = $state<string | null>(null);
 
 	// A new song in this slot forgets the previous one's readiness. Without this a re-warmed slot never
 	// reports ready again and the gapless swap stalls on it. This effect reads only `media?.id`, and
 	// writes nothing it reads, so it cannot loop.
+	//
+	// It also drops `currentSrc` to null: the {#if} unmounts and remounts the <video> per song, so a
+	// fresh element starts with no src, and a stale `currentSrc` from the previous element would make
+	// the assign effect wrongly conclude "unchanged" and never write the new element's src.
 	$effect(() => {
 		void media?.id;
 		masterReady = false;
 		guideSettled = false;
 		announced = false;
+		currentSrc = null;
 	});
 
 	$effect(() => {
@@ -168,6 +178,33 @@
 	}
 
 	/**
+	 * The src the element currently holds, tracked so we assign it ONLY when the resolved string
+	 * actually changes.
+	 *
+	 * Bug A: an unrelated cook finishing rebroadcasts a full `queue:sync`, and the TV route rebuilds
+	 * its media catalog into fresh object identities — including the one currently playing. A markup
+	 * binding `src={fileSrc(media)}` re-evaluates on that identity change and reassigns the element's
+	 * src, and assigning `HTMLMediaElement.src` RELOADS the resource and resets `currentTime` to 0 even
+	 * when the URL string is byte-identical. `fileSrc`/`playbackRef`/`keyedMediaRef` are pure in the
+	 * media's fields, so an unchanged song resolves to the same string and `nextVideoSrc` makes the
+	 * assignment a no-op. The decision lives in `video-src.ts` so it can be tested without a real
+	 * element; this effect only applies it.
+	 */
+	$effect(() => {
+		if (!video) return;
+		// A slot with nothing playable resolves to '' and clears the element, matching the {#if} that
+		// previously unmounted the <video> for unplayable media.
+		const resolved = media && isPlayable(media) ? fileSrc(media) : '';
+		const decision = nextVideoSrc(currentSrc, resolved);
+		if (!decision.changed) return;
+		currentSrc = decision.src;
+		// Assigning '' would set the src to the document URL and trigger a spurious load/error; use
+		// removeAttribute to genuinely clear it, mirroring an unmounted element.
+		if (decision.src === '') video.removeAttribute('src');
+		else video.src = decision.src;
+	});
+
+	/**
 	 * The drift governor. Runs on the master's existing ~4Hz `ontimeupdate` rather than its own timer,
 	 * so the guide is corrected against the clock that actually drives the room.
 	 *
@@ -188,7 +225,6 @@
 		<!-- svelte-ignore a11y_media_has_caption -->
 		<video
 			bind:this={video}
-			src={fileSrc(media)}
 			preload="auto"
 			oncanplaythrough={() => (masterReady = true)}
 			onended={() => onended?.()}
