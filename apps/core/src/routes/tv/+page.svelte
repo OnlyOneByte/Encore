@@ -196,6 +196,23 @@
 	const screen = $derived(
 		tvScreen({ playerState: tvState, current, entries, onlineCount: online.length })
 	);
+
+	/*
+	 * Queued entries that cannot be sung yet. Drives the lobby's wording: with one of these, "Waiting
+	 * for someone to pick a song…" is simply false — somebody picked, and the wait is the vocal
+	 * separation. The phone was already saying "You're next once it's ready" while the TV contradicted
+	 * it.
+	 *
+	 * isPlayable (not readyToSing) on purpose: this asks "could the TV load a file for it", which is the
+	 * same question the player asks, so the lobby cannot claim something is cooking that the player
+	 * would happily start.
+	 */
+	const pendingCount = $derived(
+		entries.filter((e) => {
+			const m = mediaOf(e);
+			return !m || !isPlayable(m);
+		}).length
+	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
 	const roster = $derived(lobbyRoster(online, singers));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
@@ -265,6 +282,7 @@
 			joinUrl={data.joinUrl}
 			roster={roster.shown}
 			overflow={roster.overflow}
+			{pendingCount}
 		/>
 	{:else}
 		<!-- now-playing lower-third -->

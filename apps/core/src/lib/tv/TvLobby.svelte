@@ -20,17 +20,44 @@
 		roster: RosterMember[];
 		/** How many present singers did not fit in `roster`. */
 		overflow?: number;
+		/**
+		 * Queued entries that cannot play yet — cooking, or waiting on a worker.
+		 *
+		 * The lobby covers TWO situations, not one, and the headline used to describe only the first:
+		 * "Waiting for someone to pick a song…" was shown even when somebody HAD picked one and it was
+		 * separating, because tvScreen() routes a queued-but-unplayable entry here (its `waiting` value
+		 * requires the player to be actively holding). So the screen contradicted the phone, which was
+		 * simultaneously saying "You're next once it's ready".
+		 */
+		pendingCount?: number;
 	}
 
-	let { qrDataUrl, joinUrl, roster, overflow = 0 }: Props = $props();
+	let { qrDataUrl, joinUrl, roster, overflow = 0, pendingCount = 0 }: Props = $props();
 
 	const count = $derived(roster.length + overflow);
+	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
+	const cooking = $derived(pendingCount > 0);
+
+	const headline = $derived(
+		cooking
+			? pendingCount === 1
+				? 'Making the karaoke…'
+				: `Making the karaoke · ${pendingCount} in line`
+			: 'Waiting for someone to pick a song…'
+	);
+
 	// With a rehydrated queue but nobody reconnected, the roster is empty — say something true
 	// rather than "0 in the room".
 	const sub = $derived(
-		count > 0
-			? `${count} in the room · search on your phone and tap Turn`
-			: 'Scan to join, then search on your phone and tap Turn'
+		cooking
+			? // Do NOT tell them to pick a song here: they already did, and the honest answer is that the
+				// wait is the vocal separation, not them.
+				count > 0
+				? `${count} in the room · stripping the vocals, this takes a minute`
+				: 'Stripping the vocals — this takes a minute'
+			: count > 0
+				? `${count} in the room · search on your phone and tap Turn`
+				: 'Scan to join, then search on your phone and tap Turn'
 	);
 </script>
 
@@ -38,7 +65,7 @@
 	<div class="stack">
 		<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size={238} />
 		<div class="copy">
-			<h1>Waiting for someone to pick a song…</h1>
+			<h1>{headline}</h1>
 			<p class="sub">{sub}</p>
 		</div>
 	</div>
