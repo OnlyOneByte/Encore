@@ -201,6 +201,51 @@ test('a job with no capable worker stays queued (unservable by the current fleet
 	expect(cmdsOfType(sent, 'job:assign')).toHaveLength(0);
 });
 
+// ── an unservable job must not park queued FOREVER (TTL → terminal failed) ──
+// Without a ceiling a job whose capability no connected worker advertises never reaches a terminal
+// state, so the TV/phone wait indefinitely. After UNSERVABLE_TTL_MS (~120s) it must move to `failed`
+// via jobs.fail so #emitStatus broadcasts `failed`.
+test('an unservable job past the TTL is failed and broadcasts failed', () => {
+	const { hub, jobs, broadcasts, setClock } = harness();
+	const job = jobs.enqueue('m1', 'align', 0, T0); // needs align capability
+	// A worker connects that can NEVER serve it → job first seen unservable at T0.
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	expect(jobs.byId(job.id)!.status).toBe('queued');
+
+	// Just under the TTL: still queued, not failed.
+	setClock(T0 + 119_000);
+	hub.dispatch();
+	expect(jobs.byId(job.id)!.status).toBe('queued');
+
+	// Past the TTL: terminal failed, and a media:status 'failed' is broadcast.
+	setClock(T0 + 121_000);
+	hub.dispatch();
+	const failed = jobs.byId(job.id)!;
+	expect(failed.status).toBe('failed');
+	expect(failed.error).toContain('align');
+	const last = broadcasts.at(-1) as Extract<ServerEvent, { type: 'media:status' }>;
+	expect(last).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'failed' });
+});
+
+test('a job that finds a worker before the TTL is unaffected (no spurious fail)', () => {
+	const { hub, jobs, setClock } = harness();
+	const job = jobs.enqueue('m1', 'align', 0, T0); // needs align
+	// Only a stems worker at first → unservable, first-seen at T0.
+	hub.handle({ type: 'worker:hello', workerId: 'w-stems', capabilities: ['stems'], concurrency: 1, version: '1' });
+	expect(jobs.byId(job.id)!.status).toBe('queued');
+
+	// Well before the TTL, an align-capable worker joins → job is assigned, not failed.
+	setClock(T0 + 30_000);
+	hub.handle({ type: 'worker:hello', workerId: 'w-align', capabilities: ['align'], concurrency: 1, version: '1' });
+	expect(jobs.byId(job.id)!.status).toBe('assigned');
+
+	// Even far past when the TTL WOULD have fired, the (now assigned) job is untouched: the unservable
+	// tracking was pruned the moment it found a worker, so a later stall can't retroactively fail it.
+	setClock(T0 + 200_000);
+	hub.dispatch();
+	expect(jobs.byId(job.id)!.status).toBe('assigned');
+});
+
 // ── the attempt ledger, driven through the real wire path ────────────────────────
 // These assert the full journey a duration takes: dispatch writes what was ASKED, the worker's
 // job:complete overwrites it with what actually RAN, and the row is sealed with its timings.

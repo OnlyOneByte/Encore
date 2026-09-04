@@ -388,3 +388,99 @@ def test_oversubscription_is_a_noop_when_cores_are_unknown():
 
     cfg = WorkerConfig.from_env({"ENCORE_WORKER_CONCURRENCY": "8", "ENCORE_DEMUCS_JOBS": "8"})
     assert dh.oversubscription_warnings(cfg, None) == []
+
+
+# ── FIX 4: a cancel message cancels the in-flight task (which kills the child via GeneratorExit) ──
+@pytest.mark.asyncio
+async def test_cancel_cancels_the_inflight_task_and_frees_the_slot(tmp_path):
+    sock = FakeSocket()
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class SlowProcessor:
+        async def process(self, job):
+            yield ProgressEvent("downloading", 0)
+            started.set()
+            try:
+                await asyncio.sleep(300)  # stand-in for a long separation holding a child
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+            yield  # pragma: no cover
+
+    client = WorkerClient(sock.send, SlowProcessor(), worker_id="w1", capabilities=["stems"], concurrency=1, media_dir=str(tmp_path))
+    await client.handle(assign(job_id="jX"))
+    await asyncio.wait_for(started.wait(), timeout=5)
+    assert client.state.slots_free == 0
+    task = client._tasks["jX"]
+
+    client._on_cancel({"type": protocol.CANCEL, "jobId": "jX"})
+    await asyncio.wait_for(cancelled.wait(), timeout=5)
+    await asyncio.gather(task, return_exceptions=True)
+    await asyncio.sleep(0)  # let the task's done-callback (which pops _tasks) run
+
+    # slot freed, no dangling task entry, and NO spurious job:failed reported to the core
+    assert client.state.slots_free == 1
+    assert "jX" not in client._tasks
+    assert sock.of_type(protocol.FAILED) == []
+
+
+@pytest.mark.asyncio
+async def test_cancel_for_an_untracked_job_still_frees_the_slot(tmp_path):
+    # A job whose task already finished (or a slot held without one) must still be freed by cancel —
+    # the pre-fix behaviour is preserved for that path.
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    client.state.start("ghost")
+    assert client.state.slots_free == 0
+    client._on_cancel({"type": protocol.CANCEL, "jobId": "ghost"})
+    assert client.state.slots_free == 1
+
+
+# ── FIX 5: a malformed frame fails only that job, never the connection ──────────────
+@pytest.mark.asyncio
+async def test_malformed_assign_missing_jobtype_rejects_just_that_job(tmp_path):
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    # a frame with a jobId but no jobType/mediaId used to raise KeyError and kill the socket
+    await client.handle({"type": protocol.ASSIGN, "jobId": "bad1"})
+    await client.drain()
+    rejects = sock.of_type(protocol.REJECT)
+    assert len(rejects) == 1 and rejects[0]["jobId"] == "bad1"
+    assert "malformed" in rejects[0]["reason"]
+    # the slot was never consumed and the client is still usable
+    assert client.state.slots_free == 1
+
+
+@pytest.mark.asyncio
+async def test_malformed_assign_missing_jobid_is_dropped_without_raising(tmp_path):
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    # no usable jobId → cannot send a job-scoped reject; must log-and-ignore, never raise
+    await client.handle({"type": protocol.ASSIGN, "mediaId": "m1", "jobType": "stems"})
+    await client.drain()
+    assert sock.sent == []  # nothing sent, nothing crashed
+    assert client.state.slots_free == 1
+
+
+@pytest.mark.asyncio
+async def test_a_bad_assign_frame_does_not_prevent_a_later_good_one(tmp_path):
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    await client.handle({"type": protocol.ASSIGN, "jobId": "bad"})  # malformed
+    await client.handle(assign(job_id="good"))                       # well-formed
+    await client.drain()
+    # the good job still ran to completion after the bad one was handled
+    completes = sock.of_type(protocol.COMPLETE)
+    assert len(completes) == 1
+
+
+@pytest.mark.asyncio
+async def test_unknown_message_type_is_logged(tmp_path, capsys):
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    await client.handle({"type": "some:future:message"})
+    assert sock.sent == []  # no reply
+    out = capsys.readouterr().out
+    assert "unhandled message type" in out
+    assert "some:future:message" in out

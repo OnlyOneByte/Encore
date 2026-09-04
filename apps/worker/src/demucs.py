@@ -261,6 +261,23 @@ class ProcessError(RuntimeError):
         super().__init__(f"{argv[0]} exited {returncode}: {output_tail.strip()[-500:]}")
 
 
+# An IDLE-OUTPUT timeout, NOT a wall-clock cap: a legitimate CPU separation can run 45+ minutes while
+# still printing a tqdm progress line, and a wall-clock bound short enough to catch a wedged child
+# would also kill a slow-but-healthy cook. So the clock is reset on EVERY line the child emits, and
+# only fires when the child has gone completely silent for this long — the signature of a wedged
+# process, not a slow one. yt-dlp and demucs both emit progress far more often than this.
+SUBPROCESS_IDLE_TIMEOUT_SEC = 600.0
+
+
+class ProcessTimeout(RuntimeError):
+    """A CLI produced no output for SUBPROCESS_IDLE_TIMEOUT_SEC and was killed as wedged. Retryable
+    on purpose: a stuck child is exactly the transient the core's existing retry path is meant for."""
+
+    def __init__(self, argv: list[str], idle_sec: float) -> None:
+        self.retryable = True
+        super().__init__(f"{argv[0]} produced no output for {idle_sec:.0f}s; killed as wedged")
+
+
 # A runner streams a command's merged stdout/stderr line-by-line and raises ProcessError on a
 # non-zero exit. Injecting it lets tests drive DemucsProcessor with canned output + no real binary.
 Runner = Callable[[list[str]], AsyncIterator[str]]
@@ -283,19 +300,54 @@ async def _iter_lines(stream: asyncio.StreamReader) -> AsyncIterator[str]:
         yield buf.decode("utf-8", "replace")
 
 
+async def _terminate(proc: "asyncio.subprocess.Process") -> None:
+    """Kill the child if it is still running, then AWAIT it so it is reaped (no zombie, no leaked
+    handle). SIGKILL rather than SIGTERM because these CLIs ignore polite signals mid-work, and by the
+    time we terminate we have already decided the process must not survive this generator."""
+    if proc.returncode is None:
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass  # it exited between the check and the kill — nothing to reap beyond the wait
+    try:
+        await proc.wait()
+    except Exception:  # noqa: BLE001 — reaping must never mask the original unwind
+        pass
+
+
 async def subprocess_runner(argv: list[str]) -> AsyncIterator[str]:
-    """Real runner: spawn the CLI, stream merged output, raise ProcessError on non-zero exit."""
+    """Real runner: spawn the CLI, stream merged output, raise ProcessError on non-zero exit.
+
+    The child is killed and reaped on EVERY exit path — a normal finish, an exception, or a
+    GeneratorExit thrown in when the consuming task is cancelled (the cancel path from dial_home).
+    Without that guarantee a cancelled or unwinding job orphaned demucs/roformer/yt-dlp, still holding
+    CPU or VRAM, while the core's lease expired and the reaper requeued — so retries STACKED real
+    separations of one song on a box that can barely run one. An idle-output timeout also kills a
+    child that has gone silent, so a wedged process cannot hold its slot forever.
+    """
     proc = await asyncio.create_subprocess_exec(
         *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
     )
     assert proc.stdout is not None
     tail: deque[str] = deque(maxlen=30)
-    async for line in _iter_lines(proc.stdout):
-        tail.append(line)
-        yield line
-    rc = await proc.wait()
-    if rc != 0:
-        raise ProcessError(argv, rc, "\n".join(tail))
+    try:
+        lines = _iter_lines(proc.stdout)
+        while True:
+            try:
+                line = await asyncio.wait_for(lines.__anext__(), timeout=SUBPROCESS_IDLE_TIMEOUT_SEC)
+            except StopAsyncIteration:
+                break
+            except asyncio.TimeoutError:
+                raise ProcessTimeout(argv, SUBPROCESS_IDLE_TIMEOUT_SEC)
+            tail.append(line)
+            yield line
+        rc = await proc.wait()
+        if rc != 0:
+            raise ProcessError(argv, rc, "\n".join(tail))
+    finally:
+        # Normal exit: proc has already been waited and this is a cheap no-op. Exception / timeout /
+        # GeneratorExit: this is the path that stops the orphaned child.
+        await _terminate(proc)
 
 
 class DemucsProcessor:
