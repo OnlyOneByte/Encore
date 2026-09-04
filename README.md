@@ -44,7 +44,7 @@ docker compose up                    # build + run core on http://localhost:3000
 docker compose --profile stems up    # + the Python Demucs/WhisperX worker (make-karaoke)
 ```
 
-Deploying on Windows with an NVIDIA GPU? See [`docs/DEPLOY-WSL2.md`](docs/DEPLOY-WSL2.md) — WSL2
+Deploying on Windows with an NVIDIA GPU? See [`docs/deploy/WSL2.md`](docs/deploy/WSL2.md) — WSL2
 networking is the part that bites (phones cannot reach a NAT'd WSL service by default).
 
 **Local dev (Bun ≥ 1.3) — from the repo root:**
@@ -130,7 +130,7 @@ apps/core/         ← Container 1: Bun + SvelteKit (the whole MVP)
   src/lib/           client: optimistic store, ws client, components, TV gapless controller
   src/routes/        phone (+page), /join, /tv, /api
 apps/worker/       ← Container 2: Python stems/align (dials home; `--profile stems`)
-docs/              ← design docs + ROADMAP + UI mocks/screenshots
+docs/              ← ARCHITECTURE + ROADMAP + HANDOFF; deploy/ benchmarks/ mocks/ archive/
 ```
 
 ## Configuration
