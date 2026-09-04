@@ -59,6 +59,15 @@ export const media = sqliteTable('media', {
 	// feature survive a restart instead of silently vanishing from a library song. Nullable: absent
 	// means no guide is offered (never separated, or the stem came back silent).
 	vocalsRef: text('vocals_ref'),
+	// The stems job's THIRD artifact: what the cook learned about the song's music — its key and the
+	// sung range — as one JSON blob (see packages/shared/src/song-profile.ts, SongProfile). Stored the
+	// same way as lyrics_candidates: nothing queries INSIDE it (transposition and range math all happen
+	// in the client from the whole record), so one JSON column beats a key_range table with no query to
+	// justify it. NULLABLE, and the null carries meaning: null ⇔ "the stems job has not run / this row
+	// predates the feature" and the stems cook gate reads that as still-cooking, whereas an all-nulls
+	// profile INSIDE the JSON ⇔ "analysis ran, found nothing" and is a FINISHED song. Losing that
+	// distinction is what would strand a silent-vocal song forever — see the gate comment.
+	songProfile: text('song_profile'),
 	// Worker artifact keys. A cooked song is only fully restored if its derived artifacts come
 	// back with it: without these, a library song would replay with stems but silently lose its
 	// word-timed lyrics overlay and its scoring reference track after a restart.

@@ -4,8 +4,9 @@ import { handlePlayerCommand, handleTelemetry, emitNowPlaying, reconcileOnReady 
 import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
 import { type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
 let _s = 0;
 const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({ id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: ++_s });
 

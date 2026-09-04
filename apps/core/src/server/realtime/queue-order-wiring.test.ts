@@ -16,7 +16,8 @@ import {
 	type Media,
 	type QueueEntry,
 	type QueueOrderId,
-	type ServerEvent
+	type ServerEvent,
+	EMPTY_SONG_PROFILE
 } from '@encore/shared';
 
 const media = (id: string): Media => ({
@@ -27,7 +28,8 @@ const media = (id: string): Media => ({
 	durationSec: 100,
 	stemStatus: 'ready',
 	lyricsStatus: 'ready',
-	instrumentalRef: `derived/stems/${id}-instrumental.flac`
+	instrumentalRef: `derived/stems/${id}-instrumental.flac`,
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 const entry = (id: string, singerId: string, addedAt: number, mediaId = 'm1'): QueueEntry => ({

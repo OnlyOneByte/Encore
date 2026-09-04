@@ -50,8 +50,15 @@ export const GATES: readonly CookGate[] = [
 	{
 		id: 'stems',
 		pendingLabel: 'Separating vocals',
-		// Status AND artifact — see the predicate note above.
-		done: (m) => m.stemStatus === 'ready' && !!m.instrumentalRef,
+		// Status AND artifact AND profile — all three from the ONE stems job, so this stays a single
+		// gate under a single id (the id names the JOB TYPE that satisfies it, and there is no 'key'
+		// job). The condition is the PRESENCE of the profile record, never that it carries key or range
+		// DATA — mirroring the lyrics gate below, done means the analysis RAN, not that it found
+		// anything. The trap it dodges: a silent vocal stem yields a profile of all nulls (a real
+		// outcome — see media/loudness.ts and song-profile.ts), and a data-requiring gate would leave
+		// that song unsingable FOREVER and never re-cook it either, because the re-cook check reads
+		// hasInstrumental, not this gate. So it would sit at "Separating vocals" with no way out.
+		done: (m) => m.stemStatus === 'ready' && !!m.instrumentalRef && !!m.songProfile,
 		required: true
 	},
 	{

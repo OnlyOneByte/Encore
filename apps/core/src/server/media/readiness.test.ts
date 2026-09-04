@@ -4,6 +4,7 @@
 import { test, expect } from 'bun:test';
 import { readinessOf, matchesQuery, partitionSearch } from './readiness';
 import type { Media } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const m = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
@@ -15,7 +16,7 @@ const m = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 const ready = (id: string, over: Partial<Media> = {}) =>
-	m(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `stems/${id}-instrumental.wav`, ...over });
+	m(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `stems/${id}-instrumental.wav`, songProfile: EMPTY_SONG_PROFILE, ...over });
 const cooking = (id: string, over: Partial<Media> = {}) => m(id, { stemStatus: 'queued', ...over });
 
 test('readinessOf classifies the three states a singer actually distinguishes', () => {

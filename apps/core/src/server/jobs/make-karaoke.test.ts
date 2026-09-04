@@ -3,7 +3,7 @@
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
 import { requestMakeKaraoke, markMediaReady, setMediaLyrics, instrumentalKey, soonestSeqFor, isCooked, cookState, type MakeKaraokeDeps } from './make-karaoke';
-import { pendingGates } from '@encore/shared';
+import { pendingGates, EMPTY_SONG_PROFILE } from '@encore/shared';
 import { JobRepository } from './repository';
 import { AuthoritativeState } from '../state/store';
 import { nextPlayable, isEntryReady } from '../rotation/index';
@@ -116,7 +116,7 @@ test('ROUND TRIP: cook → held while another plays → ready → plays at its p
 	const d = deps();
 	// two singers: a wants make-karaoke on m1 (queued first → seq 0), b has an already-cooked m2
 	d.mediaById.set('m1', media('m1'));
-	d.mediaById.set('m2', media('m2', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
+	d.mediaById.set('m2', media('m2', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: { ...EMPTY_SONG_PROFILE } }));
 	d.state.applyQueueOp({ op: 'add', entry: entry('q-a', 'm1', 'a') });
 	d.state.applyQueueOp({ op: 'add', entry: entry('q-b', 'm2', 'b') });
 
@@ -129,6 +129,9 @@ test('ROUND TRIP: cook → held while another plays → ready → plays at its p
 	// stems finish — but the cook is fetch → stems → ALIGN, so the song is not finished yet and q-a
 	// keeps yielding its turn. This is the gate doing its job: rotation waits for the whole cook.
 	markMediaReady('m1', d.mediaById);
+	// The same stems job also emits the song profile (the third artifact); model that so the stems gate
+	// is genuinely satisfied and only the lyrics gate is left holding q-a's slot.
+	d.mediaById.get('m1')!.songProfile = { ...EMPTY_SONG_PROFILE };
 	expect(nextPlayable(d.state.entries, d.mediaById).next?.id).toBe('q-b');
 	expect(nextPlayable(d.state.entries, d.mediaById).held.map((e) => e.id)).toContain('q-a');
 
@@ -169,8 +172,8 @@ test('cookState distinguishes unknown / playing / ready / cooking / cookable', (
 
 test('an already-cooked song is NEVER re-cooked (no second job, no wasted separation)', () => {
 	const d = deps();
-	// exactly the shape hydrated from disk on boot: file + ready + the instrumental key
-	d.mediaById.set('m1', media('m1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey('m1') }));
+	// exactly the shape hydrated from disk on boot: file + ready + the instrumental key + the profile
+	d.mediaById.set('m1', media('m1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey('m1'), songProfile: { ...EMPTY_SONG_PROFILE } }));
 
 	expect(requestMakeKaraoke('m1', d)).toBeNull();
 	expect(d.jobs.listByStatus('queued')).toHaveLength(0);
@@ -214,6 +217,10 @@ test('a reused ALREADY-READY job reconciles the media instead of deadlocking rot
 	const m = d.mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready'); // NOT left 'queued'
 	expect(m.instrumentalRef).toBe(instrumentalKey('m1'));
+	// The instrumental came back on reconcile; in the durable flow the sidecar restores the song
+	// profile alongside it (the third stems artifact), so the stems gate is genuinely complete. Model
+	// that restore here so pendingGates reflects the real remaining work rather than a test-only gap.
+	m.songProfile = { ...EMPTY_SONG_PROFILE };
 	// The deadlock is gone: the separation gate is satisfied, so nothing is waiting on a job that will
 	// never run. What remains is the ORDINARY wait for the rest of the cook — assert that precisely,
 	// rather than asserting playability, which now also depends on the lyrics gate.

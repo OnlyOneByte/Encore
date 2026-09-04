@@ -509,6 +509,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "song_profile": {
+          "name": "song_profile",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "lyrics_ref": {
           "name": "lyrics_ref",
           "type": "text",

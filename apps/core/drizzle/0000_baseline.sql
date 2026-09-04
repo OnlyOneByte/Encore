@@ -83,6 +83,7 @@ CREATE TABLE `media` (
 	`stem_status` text DEFAULT 'none' NOT NULL,
 	`instrumental_ref` text,
 	`vocals_ref` text,
+	`song_profile` text,
 	`lyrics_ref` text,
 	`lyrics_candidates` text,
 	`artist_canonical` text,

@@ -7,8 +7,9 @@ import { handleQueueCommand, type HubDeps } from './hub';
 import { reconcileOnReady } from './player';
 import { AuthoritativeState } from '../state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
 let _s = 0;
 const addCmd = (id: string, mediaId: string): ClientCommand => ({
 	clientOpId: 'op-' + id,
