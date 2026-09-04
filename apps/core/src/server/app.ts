@@ -154,11 +154,20 @@ export function getApp(): EncoreApp {
 	const playLog = new PlayLog(db);
 	const jobs = new JobRepository(db, attempts);
 	const settings = new SettingsRepository(db);
-	// Seed this room's pacing from INTERSTITIAL_MS on first boot only. Without this, adding the room
+	// Seed this room's pacing from the environment on first boot only. Without this, adding the room
 	// scope would silently reset an install that had configured the env var, and writing it every boot
 	// would instead stomp whatever someone chose on the phone.
-	if (process.env.INTERSTITIAL_MS !== undefined && !settings.hasRoom()) {
-		settings.setRoom({ interstitialMs: Math.max(0, Number(process.env.INTERSTITIAL_MS)) });
+	//
+	// INTERSTITIAL_MS is still honoured as a deprecated alias so a deployed box does not change behavior
+	// on upgrade, and =0 still means "off" — it now seeds the toggle rather than a sentinel duration.
+	const introEnv = process.env.ENCORE_SONG_INTRO_MS ?? process.env.INTERSTITIAL_MS;
+	if (introEnv !== undefined && !settings.hasRoom()) {
+		const ms = Math.max(0, Number(introEnv));
+		settings.setRoom(
+			Number.isFinite(ms) && ms === 0
+				? { songIntroEnabled: false }
+				: { songIntroEnabled: true, songIntroMs: ms }
+		);
 	}
 	const workers = new WorkerRegistry();
 	const mediaById = new Map<string, Media>();

@@ -78,3 +78,30 @@ test('swap alternates slots A->B->A across two transitions', () => {
 	expect(c.visible).toBe('A');
 	expect(c.currentId).toBe('q3');
 });
+
+// The song intro used to be reachable ONLY through onEnded, i.e. only via a gapless swap between two
+// songs. The first song of a session has nothing to swap from, so it was the one song that appeared
+// unannounced — precisely the song where nobody yet knows whose turn it is.
+test('enterInterstitial opens the intro from a state that is otherwise ready to play', () => {
+	const c = new GaplessController();
+	c.onNowPlaying(e('q1'), null); // → loading
+	expect(c.state).toBe('loading');
+	c.enterInterstitial();
+	expect(c.state).toBe('interstitial');
+	c.onInterstitialDone();
+	expect(c.state).toBe('playing');
+});
+
+test('enterInterstitial refuses states where an intro would be a lie', () => {
+	const c = new GaplessController();
+	// attract: there is no song to introduce
+	expect(c.state).toBe('attract');
+	c.enterInterstitial();
+	expect(c.state).toBe('attract');
+
+	// waiting: the media is still cooking, so announcing it as up would contradict the waiting screen
+	c.onNowPlaying(e('q1'), null);
+	c.enterWaiting();
+	c.enterInterstitial();
+	expect(c.state).toBe('waiting');
+});

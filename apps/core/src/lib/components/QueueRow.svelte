@@ -8,6 +8,13 @@
 		singerColor: string;
 		mine?: boolean;
 		up?: boolean; // currently playing / next up (accent the seq bubble)
+		/**
+		 * The singer who queued this is in the room but unreachable — a locked phone or a pocket.
+		 * Surfaced HERE because the room decides by hand whether to skip an absent singer's turn, and the
+		 * phone is where the skip control lives. Without it, a departed singer's song looked entirely
+		 * normal and nobody knew there was a decision to make.
+		 */
+		singerAway?: boolean;
 		subtitle?: string; // e.g. "now playing", "after Liam"
 		pending?: boolean; // optimistic, not yet confirmed
 		removable?: boolean; // show the remove affordance (mine, not currently playing)
@@ -19,7 +26,7 @@
 		ondown?: () => void;
 	}
 	let {
-		seq, title, singerName, singerColor, mine = false, up = false,
+		seq, title, singerName, singerColor, mine = false, up = false, singerAway = false,
 		subtitle = '', pending = false, removable = false,
 		reorderable = false, canUp = false, canDown = false, onremove, onup, ondown
 	}: Props = $props();
@@ -30,8 +37,8 @@
 	<div class="meta">
 		<div class="t">{title}</div>
 		<div class="who">
-			<i style="--singer:{singerColor}"></i>
-			{singerName}{#if subtitle} · {subtitle}{/if}{#if pending} · <span class="adding">adding…</span>{/if}
+			<i class:dim={singerAway} style="--singer:{singerColor}"></i>
+			{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if subtitle} · {subtitle}{/if}{#if pending} · <span class="adding">adding…</span>{/if}
 		</div>
 	</div>
 	{#if !pending}
@@ -66,6 +73,9 @@
 	.t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
 	.who i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--singer); }
+	/* Hue kept (it is the singer's identity), presence dimmed. */
+	.who i.dim { opacity: 0.5; }
+	.away { color: var(--warn); margin-left: 0.35em; }
 	.adding { color: var(--warn); }
 	.grip { margin-left: auto; color: var(--line-strong); display: grid; place-items: center; font-size: 1.1rem; cursor: grab; }
 	.actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }

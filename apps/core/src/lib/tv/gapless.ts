@@ -113,6 +113,17 @@ export class GaplessController {
 		if (this.state === 'interstitial') this.state = 'playing';
 	}
 
+	/**
+	 * Hold on the song-intro card from a state that is otherwise ready to play.
+	 *
+	 * `onEnded` reaches the interstitial via a gapless swap, which only exists between two songs. The
+	 * FIRST song of a session has nothing to swap from, so it needs its own way in — otherwise the one
+	 * song where nobody knows whose turn it is is the one song that plays unannounced.
+	 */
+	enterInterstitial(): void {
+		if (this.state === 'playing' || this.state === 'loading') this.state = 'interstitial';
+	}
+
 	/** Mark the current entry's media as not-ready (held slot): show waiting. */
 	enterWaiting(): void {
 		this.state = 'waiting';

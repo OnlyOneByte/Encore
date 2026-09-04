@@ -15,6 +15,9 @@ import {
 	isTvVisualizer,
 	isTvBackgroundStyle,
 	DEFAULT_ROOM_SETTINGS,
+	MIN_SONG_INTRO_MS,
+	MAX_SONG_INTRO_MS,
+	effectiveSongIntroMs,
 	resolveCookSeparator,
 	resolveLyricsPresentation,
 	separatorCost,
@@ -193,17 +196,45 @@ describe('normalizeGlobalSettings', () => {
 });
 
 describe('room scope', () => {
-	it('defaults to a usable interstitial and no quality ceiling', () => {
+	it('defaults to a usable song intro and no quality ceiling', () => {
 		expect(normalizeRoomSettings(undefined)).toEqual(DEFAULT_ROOM_SETTINGS);
 		expect(DEFAULT_ROOM_SETTINGS.maxQualityRank).toBeNull();
+		expect(DEFAULT_ROOM_SETTINGS.songIntroEnabled).toBe(true);
 	});
 
-	it('clamps a nonsensical interstitial rather than rejecting the whole room', () => {
-		// an unbounded interstitial would strand the TV between songs
-		expect(normalizeRoomSettings({ interstitialMs: -500 }).interstitialMs).toBe(0);
-		expect(normalizeRoomSettings({ interstitialMs: 999_999 }).interstitialMs).toBe(15_000);
-		expect(normalizeRoomSettings({ interstitialMs: 1200 }).interstitialMs).toBe(1200);
-		expect(normalizeRoomSettings({ interstitialMs: NaN }).interstitialMs).toBe(DEFAULT_ROOM_SETTINGS.interstitialMs);
+	it('clamps a nonsensical song intro rather than rejecting the whole room', () => {
+		// an unbounded intro would strand the TV between songs
+		expect(normalizeRoomSettings({ songIntroMs: -500 }).songIntroMs).toBe(MIN_SONG_INTRO_MS);
+		expect(normalizeRoomSettings({ songIntroMs: 999_999 }).songIntroMs).toBe(MAX_SONG_INTRO_MS);
+		expect(normalizeRoomSettings({ songIntroMs: 1200 }).songIntroMs).toBe(1200);
+		expect(normalizeRoomSettings({ songIntroMs: NaN }).songIntroMs).toBe(DEFAULT_ROOM_SETTINGS.songIntroMs);
+	});
+
+	it('0 is NOT a valid duration — the toggle owns off, so there is one way to say it', () => {
+		expect(normalizeRoomSettings({ songIntroMs: 0 }).songIntroMs).toBe(MIN_SONG_INTRO_MS);
+	});
+
+	it('the toggle survives a duration change, which is why it is not a sentinel', () => {
+		// The old 0-means-off encoding destroyed the duration on the way off; this is the regression.
+		const off = normalizeRoomSettings({ songIntroEnabled: false, songIntroMs: 1500 });
+		expect(off.songIntroMs).toBe(1500);
+		expect(effectiveSongIntroMs(off)).toBe(0); // the TV hard-cuts
+		const backOn = normalizeRoomSettings({ songIntroEnabled: true }, off);
+		expect(backOn.songIntroMs).toBe(1500); // the dialled-in timing came back
+		expect(effectiveSongIntroMs(backOn)).toBe(1500);
+	});
+
+	it('a non-boolean toggle keeps the room current choice', () => {
+		const off = normalizeRoomSettings({ songIntroEnabled: false });
+		expect(normalizeRoomSettings({ songIntroEnabled: 'yes' as never }, off).songIntroEnabled).toBe(false);
+	});
+
+	it('clamps the presence grace window, where 0 IS meaningful', () => {
+		expect(normalizeRoomSettings({ presenceGraceMinutes: 0 }).presenceGraceMinutes).toBe(0);
+		expect(normalizeRoomSettings({ presenceGraceMinutes: -10 }).presenceGraceMinutes).toBe(0);
+		expect(normalizeRoomSettings({ presenceGraceMinutes: 99_999 }).presenceGraceMinutes).toBe(1440);
+		expect(normalizeRoomSettings({ presenceGraceMinutes: 45 }).presenceGraceMinutes).toBe(45);
+		expect(DEFAULT_ROOM_SETTINGS.presenceGraceMinutes).toBe(90);
 	});
 
 	it('treats a non-positive or non-numeric ceiling as no ceiling', () => {

@@ -6,12 +6,15 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
+import { can } from '$server/auth/capabilities';
 import type { RoomSettings } from '@encore/shared';
 
 export const PUT: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
-	if (!singer) return json({ error: 'join first' }, { status: 401 });
+	// Routed through can() rather than an inline truthiness check so the room-settings gate moves with
+	// every other capability the day one of them narrows.
+	if (!can({ singerId: singer?.id }, 'settings:write-room')) return json({ error: 'join first' }, { status: 401 });
 
 	let body: Partial<RoomSettings>;
 	try {

@@ -186,7 +186,8 @@ export const roomSettings = sqliteTable('room_settings', {
 	tvVisualizer: text('tv_visualizer', { enum: ['plasma', 'starfield', 'moire', 'lissajous'] })
 		.notNull()
 		.default('plasma'),
-	interstitialMs: integer('interstitial_ms').notNull().default(2500),
+	songIntroEnabled: integer('song_intro_enabled', { mode: 'boolean' }).notNull().default(true),
+	songIntroMs: integer('song_intro_ms').notNull().default(2500),
 	maxQualityRank: integer('max_quality_rank'),
 	// Lyrics presentation. Defaults reproduce the previously-hardcoded TV exactly, so an existing room
 	// renders identically after the migration. Enum-constrained at the column like tv_progress_style,

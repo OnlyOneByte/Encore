@@ -22,6 +22,13 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
+	/**
+	 * Singers who are in the room but unreachable. The phone ignored `singer:presence` entirely before
+	 * this, so an absent singer's queued song looked exactly like anyone else's — and since the room
+	 * skips those turns by hand, the surface holding the skip control was the one surface that could not
+	 * tell there was a decision to make.
+	 */
+	let awaySingers = $state<Set<string>>(new Set());
 	let playback = $state<PlaybackState>({
 		currentEntryId: null,
 		positionSec: 0,
@@ -105,8 +112,11 @@
 						// The room's guiding-track default — needed to LABEL the control, since a null
 						// per-song override means "inherit" and the phone would otherwise show 0%.
 						if (e.settings) roomGuideDefault = e.settings.room.guideLevelDefault;
+						// An omitted list means "no info", not "nobody is away" — do not blank what we have.
+						if (e.away) awaySingers = new Set(e.away);
 						queueMicrotask(() => store.resendPending());
 					}
+					if (e.type === 'singer:presence') awaySingers = new Set(e.away);
 					if (e.type === 'queue:patch' && e.patch.media) mergeMedia(e.patch.media);
 					if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
 					if (e.type === 'playback:state') playback = e.state;
@@ -822,6 +832,7 @@
 					title={mediaTitle(e.mediaId)}
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
 					singerColor={s?.color ?? SINGER_COLORS[0]}
+					singerAway={awaySingers.has(e.singerId)}
 					status={proc.status}
 					pct={proc.pct}
 					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
@@ -841,6 +852,7 @@
 					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
 					singerColor={s?.color ?? SINGER_COLORS[0]}
 					mine={e.singerId === me?.id}
+					singerAway={awaySingers.has(e.singerId)}
 					up={e.id === nextPlayableId}
 					pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
 					subtitle={e.id === nextPlayableId ? 'up next' : ''}
