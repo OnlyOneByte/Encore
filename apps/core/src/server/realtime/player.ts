@@ -1,7 +1,13 @@
 // Player command handling — mutate authoritative playback state and broadcast playback:state.
 // play/pause/seek/restart adjust the PlaybackState; skip/next advances the current entry.
 
-import { clampKeyShift, type PlayerCommand, type ServerEvent, type QueueEntry } from '@encore/shared';
+import {
+	clampKeyShift,
+	isTvBackgroundStyle,
+	type PlayerCommand,
+	type ServerEvent,
+	type QueueEntry
+} from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
 import { mediaFor, type HubDeps } from './hub';
@@ -48,7 +54,8 @@ export function reconcileOnReady(deps: HubDeps): void {
 		const { next } = nextPlayable(state.entries, deps.mediaById);
 		if (next) {
 			state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
-			state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true });
+			// background: null — see advance(); an ephemeral override must not outlive its song.
+			state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true, background: null });
 			publishQueue(deps); // the entry left `queued` — tell clients now, not on the next resync
 			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		}
@@ -63,8 +70,21 @@ function advance(deps: HubDeps): QueueEntry | null {
 	if (cur) state.applyQueueOp({ op: 'status', id: cur, status: 'done' });
 	const { next } = nextPlayable(state.entries, deps.mediaById);
 	if (next) state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
-	// keyShift resets to 0 on every song change — a new song starts in its original key.
-	state.setPlayback({ currentEntryId: next?.id ?? null, positionSec: 0, isPlaying: !!next, keyShift: 0 });
+	/*
+	 * Both ephemeral fields reset here — a new song starts in its original key, and on the room's own
+	 * background rather than whatever the last singer set.
+	 *
+	 * This object is a long-lived SINGLETON: nothing rebuilds it per song, so every ephemeral field has
+	 * to be named at each of the three reset sites (here, play-from-idle, and reconcileOnReady) or it
+	 * silently leaks into the next singer's turn. Adding an ephemeral field means editing all three.
+	 */
+	state.setPlayback({
+		currentEntryId: next?.id ?? null,
+		positionSec: 0,
+		isPlaying: !!next,
+		keyShift: 0,
+		background: null
+	});
 	// The statuses above are a queue mutation; broadcast it here so BOTH callers (an explicit skip and
 	// a TV `ended`) converge clients immediately rather than at the next resync. Only when something
 	// ACTUALLY changed: a skip in an empty room mutates nothing, and publishing an unchanged snapshot
@@ -85,7 +105,7 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 				const { next } = nextPlayable(state.entries, deps.mediaById);
 				if (next) {
 					state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
-					state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true, keyShift: 0 });
+					state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true, keyShift: 0, background: null });
 					publishQueue(deps); // it just left `queued`
 					break;
 				}
@@ -112,6 +132,22 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 			const media = cur && deps.mediaById.get(cur.mediaId);
 			if (cur && media && isEntryReady(cur, deps.mediaById)) {
 				state.setPlayback({ keyShift: clampKeyShift(cmd.semitones) });
+			}
+			break;
+		}
+		case 'background': {
+			/*
+			 * WHITELISTED, never trusted. This value reaches setPlayback, which write-behinds straight
+			 * into SQLite, and the two process-kills this codebase has had both came from an unvalidated
+			 * value reaching that flush. `null` is a legitimate value (hand the song back to the room
+			 * default), so it is accepted explicitly rather than falling through as "absent".
+			 *
+			 * Anything else — an unknown id, a number, an object — is IGNORED rather than rejected: this
+			 * is a cosmetic party control, so a malformed frame should leave the stage exactly as it was,
+			 * not tear down the socket.
+			 */
+			if (cmd.style === null || isTvBackgroundStyle(cmd.style)) {
+				state.setPlayback({ background: cmd.style });
 			}
 			break;
 		}

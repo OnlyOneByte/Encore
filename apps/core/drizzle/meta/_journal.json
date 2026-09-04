@@ -50,6 +50,13 @@
       "when": 1788551876656,
       "tag": "0006_lyrics_text",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788552201989,
+      "tag": "0007_tv_background",
+      "breakpoints": true
     }
   ]
 }

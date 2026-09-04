@@ -164,6 +164,50 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		repo.setRoom({ interstitialMs: 7000 });
 		expect(repo.setRoom({ interstitialMs: NaN }).interstitialMs).toBe(7000);
 	});
+
+	it('an unconfigured room reads as black — an existing box looks identical after the migration', () => {
+		expect(freshRepo().getRoom().tvBackgroundStyle).toBe('off');
+	});
+
+	it('a background choice survives the round trip through SQLite', () => {
+		// getRoom builds the normalizer input field-by-field, so a column it forgets to pass silently
+		// reads back as the default no matter what was written. Only a real round trip catches that.
+		const repo = freshRepo();
+		expect(repo.setRoom({ tvBackgroundStyle: 'singer' }).tvBackgroundStyle).toBe('singer');
+		expect(repo.getRoom().tvBackgroundStyle).toBe('singer');
+		expect(repo.setRoom({ tvBackgroundStyle: 'solid', tvBackgroundHue: 165 }).tvBackgroundHue).toBe(165);
+		expect(repo.getRoom().tvBackgroundHue).toBe(165);
+		expect(repo.getRoom().tvBackgroundStyle).toBe('solid');
+	});
+
+	it('a bad background write keeps every unrelated choice the room already made', () => {
+		const repo = freshRepo();
+		repo.setRoom({ tvBackgroundStyle: 'solid', tvBackgroundHue: 75, interstitialMs: 7000, tvProgressStyle: 'edge' });
+		const after = repo.setRoom({ tvBackgroundStyle: 'nonsense' as never });
+		expect(after.tvBackgroundStyle).toBe('solid');
+		expect(after.tvBackgroundHue).toBe(75);
+		expect(after.interstitialMs).toBe(7000);
+		expect(after.tvProgressStyle).toBe('edge');
+	});
+
+	it('the stored hue is always one the wheel can render', () => {
+		const repo = freshRepo();
+		expect(repo.setRoom({ tvBackgroundHue: 200 }).tvBackgroundHue).toBe(195); // snapped to the step
+		expect(repo.getRoom().tvBackgroundHue).toBe(195);
+		expect(repo.setRoom({ tvBackgroundHue: -30 }).tvBackgroundHue).toBe(330); // wrapped, not rejected
+	});
+
+	it('the room default set is complete — every field has a value with no writes at all', () => {
+		// A field added to RoomSettings but forgotten in DEFAULT_ROOM_SETTINGS reads as undefined here and
+		// would reach a NOT NULL column on the first write.
+		const room = freshRepo().getRoom();
+		for (const [k, v] of Object.entries(room)) {
+			if (k === 'maxQualityRank') continue; // legitimately nullable
+			expect(v, `${k} has no default`).not.toBeUndefined();
+			expect(v, `${k} has no default`).not.toBeNull();
+		}
+		expect(Object.keys(room).sort()).toEqual(Object.keys(DEFAULT_ROOM_SETTINGS).sort());
+	});
 });
 
 describe('SettingsRepository global scope: join origin', () => {
