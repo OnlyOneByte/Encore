@@ -118,6 +118,70 @@ def pitch_track_path(media_dir: str, media_id: str) -> str:
     return os.path.join(media_dir, "derived", "pitch", f"{media_id}-pitch.json")
 
 
+# ── silence detection ───────────────────────────────────────────────────────────
+# Separation can SUCCEED and still write digital silence. It has happened twice in the owner's
+# library: both stems came back pinned at the 16-bit floor, ~50KB against 20MB, and every readiness
+# check downstream only ever verified that the file EXISTED. The song then sat in the Ready list and
+# would have played four minutes of nothing.
+#
+# For the guiding track that failure is worse than a missing stem, because a silent guide looks like
+# a working one — the singer drags the control up and nothing happens. The worker is the right place
+# to catch it: it owns the encoder, it has ffmpeg, and it knows the answer immediately. A stem it
+# measures as silent is simply not reported, so an absent artifact stays a real answer rather than a
+# missing one.
+
+#: Peak at or below this (dBFS) is digital silence. 16-bit silence measures ~-91 dB; no real vocal
+#: stem peaks near it. -90 leaves headroom for a dithered "silent" file without catching real audio.
+SILENCE_FLOOR_DB = -90.0
+
+
+def volumedetect_argv(path: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
+    """ffmpeg argv that measures a file's mean/max volume and writes nothing."""
+    return [
+        ffmpeg_bin,
+        "-hide_banner",
+        "-nostats",
+        "-i",
+        path,
+        "-af",
+        "volumedetect",
+        "-f",
+        "null",
+        "-",
+    ]
+
+
+def parse_max_volume_db(output: str) -> float | None:
+    """PURE: pull `max_volume: -N dB` out of ffmpeg's volumedetect output.
+
+    Returns None when the line is absent (ffmpeg error, wrong filter, truncated output). None means
+    UNMEASURABLE, which is deliberately not the same as silent -- see `is_silent`.
+    """
+    for line in output.splitlines():
+        idx = line.find("max_volume:")
+        if idx == -1:
+            continue
+        tail = line[idx + len("max_volume:") :].strip()
+        token = tail.split(" ", 1)[0]
+        try:
+            return float(token)
+        except ValueError:
+            return None
+    return None
+
+
+def is_silent(max_volume_db: float | None) -> bool:
+    """PURE: is this reading digital silence?
+
+    An UNMEASURABLE file (None) is NOT silence. If ffmpeg is missing or refuses the file, declaring
+    every stem silent would throw away working guides across the whole library; trusting the encoder
+    is the safer failure. We only ever act on a positive measurement.
+    """
+    if max_volume_db is None:
+        return False
+    return max_volume_db <= SILENCE_FLOOR_DB
+
+
 class RoutingProcessor:
     """Dispatch a job to the right sub-processor by job_type (stems→Demucs, align→WhisperX).
     Unknown types raise (the dial-home loop reports a failure)."""
