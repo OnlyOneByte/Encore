@@ -45,6 +45,7 @@ from .lyrics_chain import (
     score_against_asr,
 )
 from .lyrics_presplit import presplit_texts
+from .lyrics_validate import validate_timing
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
 
 DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2
@@ -381,11 +382,27 @@ class WhisperXProcessor:
                     flush=True,
                 )
                 text.text_confidence = "low"
+        # THE AUDIO THE ALIGNER GETS. Prefer the isolated vocals stem; fall back to the mix only when
+        # no stem exists (a song cooked before stems were retained).
+        #
+        # This was the bug: the aligner ran on the raw mix while the ASR tier — the SAME family of
+        # wav2vec2 speech model — was correctly routed to the stem. Measured across six real artifacts
+        # on the reference box, aligning on the mix produced one word smeared to 5.7s, 3-15 words per
+        # song collapsed under 30ms, and gaps up to 63s where the aligner lost the vocal under the
+        # band. The stem is already separated, already retained (~6MB/song) and already in this
+        # request; nothing new is downloaded or computed to use it.
+        align_audio = req.vocals_path or audio
+        if req.vocals_path is None:
+            print(
+                f"[worker] align: no vocals stem for {job.media_id} — aligning against the MIX, "
+                "which is materially less accurate. Re-cook to get a stem.",
+                flush=True,
+            )
         candidates: list[dict[str, Any]] = []
         for text in texts:
             built = None
             async for kind, val in self._run_blocking(
-                lambda t=text: self._time_one(t, audio, language), "aligning", 50
+                lambda t=text: self._time_one(t, align_audio, language), "aligning", 50
             ):
                 if kind == "progress":
                     yield val
@@ -394,6 +411,33 @@ class WhisperXProcessor:
             if built is None:
                 continue
             doc, timing, timing_confidence = built
+            # VALIDATE before publishing. `is_valid_lyrics` only asks whether SOME word has a
+            # timestamp, which six real artifacts satisfied while containing a 63-second hole, a word
+            # smeared across 5.7s, and function words at 20ms. Report every run so a bad cook leaves a
+            # record, and refuse to publish WORD timing that would visibly misbehave — degrading to the
+            # source's own line sync is worse per-word but never jumps backwards or freezes.
+            if timing == TIMING_WORD:
+                rep = validate_timing(doc, params.get("durationSec"))
+                print(f"[worker] align: timing for {job.media_id} — {rep.summary()}", flush=True)
+                if rep.thin_coverage:
+                    # Diagnoses TRANSCRIPTION, not alignment: the aligner can only place words it was
+                    # given, so a shortfall means ASR dropped a verse or the outro.
+                    print(
+                        f"[worker] align: {job.media_id} timing covers only {rep.coverage:.0%} of the "
+                        "song — the overlay will freeze on the last timed word. ASR text gap, not an "
+                        "alignment fault.",
+                        flush=True,
+                    )
+                if not rep.usable:
+                    print(
+                        f"[worker] align: REFUSING word timing for {job.media_id} "
+                        f"({rep.out_of_order} out-of-order word(s)) — degrading to line sync",
+                        flush=True,
+                    )
+                    if text.timing != TIMING_LINE:
+                        continue  # nothing honest left to publish for this source
+                    doc = line_synced_lyrics(text.segments, language=text.language or language)
+                    timing, timing_confidence = TIMING_LINE, "low"
             ref = candidate_key(job.media_id, text.text_source, timing)
             final = os.path.join(job.media_dir, ref)
             os.makedirs(os.path.dirname(final), exist_ok=True)
@@ -456,7 +500,12 @@ class WhisperXProcessor:
             yield ("progress", ProgressEvent(stage=stage, pct=pct))
 
     def _vocals_path(self, job: JobSpec) -> str | None:
-        """The isolated vocals stem for this media, if a stems job already wrote one (ASR wants it)."""
+        """The isolated vocals stem, if a stems job already wrote one.
+
+        Wanted by BOTH consumers of this audio, for the same reason: they are both wav2vec2-family
+        speech models, and a dense musical mix is not speech. ASR transcribes it; forced alignment
+        times it.
+        """
         p = vocals_path(job.media_dir, job.media_id)
         return p if os.path.exists(p) else None
 
@@ -464,6 +513,11 @@ class WhisperXProcessor:
         self, text: LyricsText, audio: str, language: str
     ) -> tuple[dict[str, Any], str, str] | None:
         """Turn one acquired text into (doc, timing, timingConfidence), or None if unusable.
+
+        `audio` MUST be the isolated vocals stem when one exists — see the caller. Forced alignment is
+        a wav2vec2 speech model, so aligning against a full mix smears word boundaries wherever the
+        band is loud, which is measurable in the output as long words stretched across passages the
+        aligner lost and short function words collapsed to ~20ms.
 
         Order: a source that ALREADY has word timings (ASR) keeps them; otherwise force-align, and on
         any aligner failure fall back to the source's own line timings. A source with neither is
