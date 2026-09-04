@@ -163,6 +163,30 @@ export function planEviction(candidates: EvictionCandidate[], capBytes: number |
 }
 
 /**
+ * Every `derived/` ref a song could have on disk — the ONE list both the eviction and the plan read.
+ *
+ * They used to build this inline and had drifted: the plan omitted `vocalsKey`, so a modern cook's
+ * vocals stem was deleted by `evictDerived` but invisible to `derivedBytesOf`. It read as correct
+ * because the ext-blind `-instrumental.`→`-vocals.` swap only resolves when the two stems share an
+ * extension — true of the legacy `.wav`/`.m4a` cooks the tests used, false of the modern layout
+ * (instrumental `.flac`, vocals `.m4a`). `planEviction` compares the SUM against the cap, so
+ * undercounting made retention conclude there was nothing to reclaim on a volume genuinely over
+ * budget. Anything derived that a song can own belongs here, not in a caller.
+ *
+ * `vocalsKey` covers the current layout; the swap is retained for legacy cooks whose vocals stem
+ * shares the instrumental's extension. Callers dedupe with a Set, so overlap is free.
+ */
+function derivedRefsOf(m: Media): string[] {
+	return [
+		m.instrumentalRef,
+		m.pitchRef,
+		m.lyricsRef,
+		vocalsKey(m.id),
+		m.instrumentalRef?.replace('-instrumental.', '-vocals.')
+	].filter((r): r is string => !!r);
+}
+
+/**
  * Delete a song's derived artifacts and return the refs that were removed. The caller resets the media
  * to un-cooked so rotation stops treating it as playable and a re-request re-cooks it.
  * NEVER touches `audio/` or `meta/`.
@@ -170,10 +194,7 @@ export function planEviction(candidates: EvictionCandidate[], capBytes: number |
 export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 	const removed: string[] = [];
 	let bytes = 0;
-	const refs = [m.instrumentalRef, m.pitchRef, m.lyricsRef, vocalsKey(m.id), m.instrumentalRef?.replace('-instrumental.', '-vocals.')].filter(
-		(r): r is string => !!r
-	);
-	for (const ref of new Set(refs)) {
+	for (const ref of new Set(derivedRefsOf(m))) {
 		const abs = safeMediaPath(ref);
 		if (!abs || !existsSync(abs)) continue;
 		try {
@@ -187,13 +208,10 @@ export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 	return { removed, bytes };
 }
 
-/** Total bytes of a song's derived artifacts, for the eviction plan. */
+/** Total bytes of a song's derived artifacts, for the eviction plan. Must agree with evictDerived. */
 export function derivedBytesOf(m: Media): number {
-	const refs = [m.instrumentalRef, m.pitchRef, m.lyricsRef, m.instrumentalRef?.replace('-instrumental.', '-vocals.')].filter(
-		(r): r is string => !!r
-	);
 	let n = 0;
-	for (const ref of new Set(refs)) {
+	for (const ref of new Set(derivedRefsOf(m))) {
 		const abs = safeMediaPath(ref);
 		if (abs && existsSync(abs)) {
 			try {
