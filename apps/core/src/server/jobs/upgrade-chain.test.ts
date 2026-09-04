@@ -1,15 +1,11 @@
 import { test, expect } from 'bun:test';
 import { followUps, separatorFor } from './dispatch';
 import { markMediaReady } from './make-karaoke';
-import { isQualityUpgrade, qualityRank, type Media, type GlobalSettings } from '@encore/shared';
+import { isQualityUpgrade, qualityRank, DEFAULT_GLOBAL_SETTINGS, type Media, type GlobalSettings } from '@encore/shared';
 
 const settings = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({
-	defaultEngine: 'demucs',
+	...DEFAULT_GLOBAL_SETTINGS,
 	defaultModel: 'htdemucs',
-	enqueueUpgrade: false,
-	upgradeEngine: 'roformer',
-	upgradeModel: 'bs-roformer-1297',
-	defaultFetcher: 'ytdlp' as const,
 	...o
 });
 

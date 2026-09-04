@@ -7,11 +7,16 @@ PURE + dependency-light: just numpy + the stdlib `wave` reader — NO torch, NO 
 so the whole tracker unit-tests in-sandbox against a synthesized tone (the pitch.py convention:
 pure DSP split from the heavy binaries). It runs on the isolated `vocals.wav` Demucs already emits.
 
-Algorithm: framed **autocorrelation** f0 estimation. For each analysis frame we take the linear
-autocorrelation (via FFT), find the strongest lag inside the vocal-range lag window
-[sr/fmax .. sr/fmin], refine it with parabolic interpolation for sub-sample accuracy, and derive
-f0 = sr / lag. A frame is `voiced` only when it has enough energy AND a strong enough normalized
-autocorrelation peak — silence / unpitched noise comes back `voiced=False, f0=0`.
+Algorithm: framed **normalized cross-correlation** (NCCF) f0 estimation, the same algorithm the
+phone's mic detector runs (`apps/core/src/lib/mic/pitch-detect.ts`) — deliberately, because the two
+are the two halves of one comparison. A reference track built by a different estimator than the mic
+it is scored against contributes its own bias to every score.
+
+Per frame: take the linear autocorrelation (via FFT), divide each lag by the energy of the two
+overlapping windows so the result is a true correlation coefficient, pick the shortest-lag strong
+peak inside the vocal-range window [sr/fmax .. sr/fmin], refine it with parabolic interpolation, and
+derive f0 = sr / lag. A frame is `voiced` only when it has enough energy AND a strong enough
+correlation peak — silence / unpitched noise comes back `voiced=False, f0=0`.
 """
 from __future__ import annotations
 
@@ -36,6 +41,19 @@ HOP_MS = 10.0
 #  • normalized-autocorrelation floor rejects unpitched noise (no periodicity → low peak).
 VOICED_RMS_FLOOR = 0.10
 VOICED_CORR_FLOOR = 0.30
+
+# A normalized ACF peaks just as high at a multiple of the true period as at the period itself, so a
+# plain argmax can latch onto a subharmonic and report an octave (or two) low. Instead take the
+# SHORTEST-lag peak clearing this fraction of the global best — the fundamental, McLeod-style. Mirrors
+# the 0.9 the phone's detector uses; both ends of the comparison must make the same octave choice.
+PEAK_PICK_RATIO = 0.9
+
+# NCCF divides by the energy of the two overlapping windows, and at a lag approaching the frame length
+# those windows are a handful of samples — enough for noise to normalize to ±1 and read as a perfect
+# pitch. Never search past half the frame, so at least half of it always contributes. This never binds
+# in production framing (a 40 ms frame at 44.1 kHz searches to lag 678 of 1764) — it bounds a caller
+# passing a frame too short for the fmin it asked for.
+MAX_LAG_FRACTION = 0.5
 
 A4_HZ = 440.0
 A4_MIDI = 69  # MIDI note number of A4 (concert A)
@@ -71,10 +89,14 @@ def midi_to_hz(midi: float) -> float:
 
 
 def _autocorrelation(frame: np.ndarray) -> np.ndarray:
-    """Linear (non-circular) autocorrelation of a frame via FFT, lags 0..len-1.
+    """RAW linear (non-circular) autocorrelation of a frame via FFT, lags 0..len-1.
 
     Zero-padding to ≥2N before the FFT makes the circular FFT correlation equal the linear one over
-    the returned lag range (no wrap-around contamination)."""
+    the returned lag range (no wrap-around contamination).
+
+    This is the UNNORMALIZED correlation and must not be peak-picked directly: acf[k] sums only the
+    (N−k) overlapping products, so it decays with lag purely because fewer samples contribute. See
+    `_normalized_correlation` for why that decay used to break low pitches outright."""
     n = frame.size
     size = 1
     while size < 2 * n:
@@ -84,43 +106,87 @@ def _autocorrelation(frame: np.ndarray) -> np.ndarray:
     return acf
 
 
+def _normalized_correlation(frame: np.ndarray, min_lag: int, max_lag: int) -> np.ndarray:
+    """Correlation coefficient per lag over [min_lag, max_lag] — NCCF, values in [-1, 1].
+
+    Divides the raw correlation at each lag by `sqrt(E_head · E_tail)`, the energies of the two
+    windows that actually overlap at that lag. That cancels the (N−k) triangular bias exactly, so a
+    clean tone scores ≈1.0 at its period regardless of how long that period is.
+
+    Why this matters rather than being a refinement: the raw ACF's bias is a *monotonic decay with
+    lag*, which systematically favours SHORT lags — i.e. high pitches. On the production framing
+    (40 ms at 44.1 kHz, searching to lag 678 of 1764 samples) the decay was steep enough to beat real
+    periodicity for any pitch below ~147 Hz: a 110 Hz tone scored 0.818 at the fmax bound against
+    0.773 at its true period, so argmax took the bound and reported ~1230 Hz — an octave and a half
+    high, at confidence 0.84, which sails through the voicing gate. E2–C3 is the male vocal range, so
+    every male singer would have been scored against a nonsense reference curve.
+
+    Computed with prefix sums of squares, so each window energy is O(1) and the whole lag sweep stays
+    vectorized."""
+    n = frame.size
+    acf = _autocorrelation(frame)
+    prefix = np.concatenate(([0.0], np.cumsum(frame * frame)))  # prefix[i] = energy of frame[:i]
+
+    lags = np.arange(min_lag, max_lag + 1)
+    head = prefix[n - lags]              # energy of frame[0 : n-lag)
+    tail = prefix[n] - prefix[lags]      # energy of frame[lag : n)
+    scale = np.sqrt(head * tail)
+
+    out = np.zeros(lags.size, dtype=np.float64)
+    ok = scale > 0.0
+    out[ok] = acf[lags[ok]] / scale[ok]
+    return out
+
+
 def estimate_f0(frame: np.ndarray, sample_rate: int, fmin: float = FMIN_HZ,
                 fmax: float = FMAX_HZ) -> tuple[float, float]:
-    """Estimate one frame's (f0_hz, confidence). Returns (0.0, 0.0) when no periodic peak is found.
+    """Estimate one frame's (f0_hz, confidence). Returns (0.0, …) when no periodic peak is found.
 
-    confidence is the autocorrelation peak height normalized by lag-0 energy (1.0 = perfectly
-    periodic). The caller applies the voicing gates; this just reports the best periodicity found."""
+    confidence is the best normalized-correlation value found (1.0 = perfectly periodic), and is
+    reported even when no f0 is returned so a caller can tell "unpitched" from "pitched but rejected".
+    The voicing gates live in `extract_pitch_track`; this just reports the best periodicity found."""
     frame = frame.astype(np.float64)
     frame = frame - frame.mean()  # remove DC so a silent-with-offset frame doesn't read as periodic
     energy = float(np.dot(frame, frame))
     if energy <= 0.0:
         return 0.0, 0.0
 
-    acf = _autocorrelation(frame)
-
-    # Search only physically meaningful lags for the vocal range.
+    # Search only physically meaningful lags for the vocal range (see MAX_LAG_FRACTION).
     min_lag = max(1, int(sample_rate / fmax))
-    max_lag = min(frame.size - 1, int(sample_rate / fmin))
-    if max_lag <= min_lag:
+    max_lag = min(int(frame.size * MAX_LAG_FRACTION), int(sample_rate / fmin))
+    if max_lag <= min_lag + 1:
         return 0.0, 0.0
 
-    window = acf[min_lag : max_lag + 1]
-    peak_idx = int(np.argmax(window))
-    lag = min_lag + peak_idx
+    nccf = _normalized_correlation(frame, min_lag, max_lag)
+    best = float(nccf.max())
+    confidence = max(0.0, min(1.0, best))
+    if best <= 0.0:
+        return 0.0, confidence
 
-    # Parabolic interpolation around the integer peak for sub-sample lag accuracy (→ accurate f0).
-    if 0 < lag < frame.size - 1:
-        a, b, c = acf[lag - 1], acf[lag], acf[lag + 1]
-        denom = a - 2.0 * b + c
-        if denom != 0.0:
-            lag = lag + 0.5 * (a - c) / denom
+    # Shortest-lag local maximum clearing PEAK_PICK_RATIO × best — the fundamental rather than a
+    # subharmonic of it. Interior only, so the parabolic step below always has both neighbours.
+    interior = nccf[1:-1]
+    strong = (interior >= PEAK_PICK_RATIO * best) & (interior >= nccf[:-2]) & (interior >= nccf[2:])
+    if not strong.any():
+        return 0.0, confidence  # strong correlation but no clean peak (edge-dominated / noise)
+    idx = int(np.argmax(strong)) + 1  # argmax finds the FIRST True → the shortest qualifying lag
+    lag = float(min_lag + idx)
 
-    if lag <= 0:
-        return 0.0, 0.0
-    f0 = sample_rate / lag
-    confidence = float(acf[int(round(lag))] / acf[0]) if acf[0] > 0 else 0.0
-    confidence = max(0.0, min(1.0, confidence))
-    return float(f0), confidence
+    # Parabolic interpolation for sub-sample lag accuracy, applied ONLY at a genuine maximum
+    # (denom < 0, i.e. concave). A flat or convex neighbourhood makes `0.5*(a-c)/denom` explode; that
+    # was previously guarded only against denom EXACTLY zero, which on real audio produced both a
+    # nonsense f0 and an outright crash — `IndexError: index 659 is out of bounds for axis 0 with
+    # size 640` — when the resulting lag indexed past the end of the array.
+    a, b, c = nccf[idx - 1], nccf[idx], nccf[idx + 1]
+    denom = a - 2.0 * b + c
+    if denom < 0.0:
+        shift = 0.5 * (a - c) / denom
+        if -1.0 < shift < 1.0:
+            lag += shift
+
+    if lag <= 0.0:
+        return 0.0, confidence
+    return float(sample_rate / lag), confidence
 
 
 # ── framed extraction over a whole signal ───────────────────────────────────────────

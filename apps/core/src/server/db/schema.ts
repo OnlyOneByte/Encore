@@ -133,7 +133,14 @@ export const globalSettings = sqliteTable('global_settings', {
 	// Which downloader acquires source audio. Global rather than per-room: a room cannot choose a
 	// fetcher its workers cannot run. `local` is never stored here — that describes one media's bytes,
 	// not a deployment default — and normalizeGlobalSettings refuses it on both read and write.
-	defaultFetcher: text('default_fetcher').notNull().default('ytdlp')
+	defaultFetcher: text('default_fetcher').notNull().default('ytdlp'),
+	// The lyrics half of a cook: which Whisper checkpoint reads the words, and how those words get
+	// timestamps. Global for the same reason as the fetcher — both are properties of the worker fleet
+	// (weights it must download and hold, an align model it must be able to load), not of one party.
+	// Defaults match the values the worker hardcoded before these were settings, so an existing
+	// deployment cooks identically until someone changes them.
+	asrModel: text('asr_model').notNull().default('base'),
+	syncMode: text('sync_mode').notNull().default('forced')
 });
 
 // One party's own policy, keyed by room so multi-room is a row per room rather than a migration.

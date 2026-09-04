@@ -180,7 +180,8 @@ def test_build_processor_stub_override(monkeypatch):
 
 
 def test_build_processor_routes_by_capability(monkeypatch):
-    # default CAPABILITIES = ["stems"] → a RoutingProcessor that maps stems→Demucs
+    # The DEFAULT is now the whole cook (fetch:ytdlp,stems,align), so the default routing table carries
+    # all three. `score` stays capability-gated and absent: nothing enqueues it.
     from src.processor import RoutingProcessor
     from src.demucs import DemucsProcessor
     from src.whisperx import WhisperXProcessor
@@ -196,9 +197,15 @@ def test_build_processor_routes_by_capability(monkeypatch):
     assert isinstance(by_type["stems"], EngineRouter)
     assert isinstance(by_type["stems"]._by_engine["demucs"], DemucsProcessor)
     assert "roformer" not in by_type["stems"]._by_engine  # not built without the stems:roformer cap
-    assert "score" not in by_type  # score is capability-gated, not advertised by default
-    assert "align" not in by_type  # not advertised by default
-    assert "fetch" not in by_type  # acquisition is capability-gated: no fetch:* advertised here
+    assert "score" not in by_type  # score is capability-gated AND has no enqueue path
+    assert isinstance(by_type["align"], WhisperXProcessor)  # part of the default cook
+    assert "fetch" in by_type  # acquisition is in the default cook (fetch:ytdlp)
+
+    # A stems-ONLY worker is still expressible — it just has to say so explicitly.
+    from src.config import WorkerConfig as _WC
+
+    only_stems = _build_processor(_WC(capabilities=("stems",)))._by_type
+    assert "align" not in only_stems and "fetch" not in only_stems
 
     # A fetch-ONLY worker is legitimate: it downloads and cannot separate. That asymmetry is why
     # acquisition routes on its own capability instead of riding along with stems.

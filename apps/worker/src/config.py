@@ -160,6 +160,14 @@ class WorkerConfig:
     whisperx_device: str = "cpu"
 
     # ── lyrics ────────────────────────────────────────────────────────────────────
+    #: Which faster-whisper checkpoint the ASR tier transcribes with, and how words get timestamps.
+    #: These are a DEPLOYMENT choice and normally arrive per-job in `params` from the core's global
+    #: settings; these env values are the fallback for a job that carries neither — an older core, or a
+    #: worker driven directly in a test. Whitelist lives in packages/shared/src/lyrics-engines.ts.
+    asr_model: str = "base"
+    sync_mode: str = "forced"
+
+    # ── lyrics ────────────────────────────────────────────────────────────────────
     #: LRCLIB base URL. Configurable because reachability is a property of the BOX, not the
     #: project: lrclib.net is blocked on the owner's laptop but fine elsewhere. Point this at a proxy,
     #: or at a self-hosted LRCLIB built from their published DB dump — which suits a party box better
@@ -214,6 +222,8 @@ class WorkerConfig:
             stem_bitrate=e.get("ENCORE_STEM_BITRATE", "192k").strip() or "192k",
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
             whisperx_device=e.get("ENCORE_WHISPERX_DEVICE", "cpu"),
+            asr_model=(e.get("ENCORE_ASR_MODEL", "").strip() or "base"),
+            sync_mode=(e.get("ENCORE_SYNC_MODE", "").strip().lower() or "forced"),
             lrclib_base=(e.get("ENCORE_LRCLIB_BASE", "").strip().rstrip("/") or "https://lrclib.net"),
             ytdlp_bin=e.get("ENCORE_YTDLP_BIN", "yt-dlp"),
             demucs_bin=e.get("ENCORE_DEMUCS_BIN", "demucs"),
