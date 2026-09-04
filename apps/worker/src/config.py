@@ -155,6 +155,12 @@ class WorkerConfig:
     concurrency: int = 1
     media_dir: str = "/app/media"
     processor: str = "real"  # "stub" forces the no-ML path
+    #: Shared secret the core requires on the worker WS handshake. The core gates `role=worker`
+    #: connections when ENCORE_WORKER_TOKEN is set on ITS side (server.ts) and returns 401 otherwise,
+    #: so a worker that does not present the same token is refused and ALL cooking silently stops.
+    #: Empty/unset means the connection carries no token — identical to the pre-auth behaviour, for a
+    #: deployment that has not set a token. NEVER logged as a value: `describe()` shows presence only.
+    worker_token: str = ""
 
     # ── separation (demucs) ───────────────────────────────────────────────────────
     demucs_model: str = "htdemucs"
@@ -258,6 +264,7 @@ class WorkerConfig:
             concurrency=concurrency,
             media_dir=_str(e, "MEDIA_DIR", "/app/media"),
             processor=_str(e, "ENCORE_PROCESSOR", "real").lower(),
+            worker_token=_str(e, "ENCORE_WORKER_TOKEN", ""),
             demucs_model=_str(e, "ENCORE_DEMUCS_MODEL", "htdemucs"),
             device=device,
             demucs_jobs=demucs_jobs,
@@ -288,6 +295,7 @@ class WorkerConfig:
             f"jobs={self.demucs_jobs}",
             f"concurrency={self.concurrency}",
             f"caps={','.join(self.capabilities) or 'unresolved'}",
+            f"worker_token={'set' if self.worker_token else 'unset'}",
         ]
         if self.demucs_overlap is not None:
             bits.append(f"overlap={self.demucs_overlap}")
@@ -298,6 +306,25 @@ class WorkerConfig:
         if self.torch_threads is not None:
             bits.append(f"torch_threads={self.torch_threads}")
         return " ".join(bits)
+
+    def authed_core_ws(self) -> str:
+        """The core WebSocket URL with the worker token attached, if one is configured.
+
+        The core gates `role=worker` connections when ENCORE_WORKER_TOKEN is set on its side, reading
+        the token from the `token` query param (server.ts). `core_ws` almost always ALREADY carries a
+        query string (the documented form is `ws://host:3000/ws?role=worker`), so the token is added
+        as an additional param — rebuilt through urllib rather than string-concatenated so an existing
+        `?`/`&` and any pre-existing `token` are handled correctly. Unset token returns `core_ws`
+        unchanged, which is byte-identical to the pre-auth behaviour.
+        """
+        if not self.worker_token:
+            return self.core_ws
+        from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+
+        parts = urlsplit(self.core_ws)
+        query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "token"]
+        query.append(("token", self.worker_token))
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))
 
 
 def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConfig, list[str]]:

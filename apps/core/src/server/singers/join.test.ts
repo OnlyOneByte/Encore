@@ -147,12 +147,36 @@ test('a name returns to the pool once its owner has GONE', () => {
 	expect(second.singer.id).not.toBe(dana.id);
 });
 
-test('a name nobody ever connected as does not block a join', () => {
-	// A singer row with no socket this process (e.g. rehydrated after a restart) is `gone` by definition,
-	// so their name must not be held hostage by the append-only table.
+test('a rehydrated singer that never reconnected does not block a join', () => {
+	// A singer row with no presence record this process (e.g. rehydrated after a restart) is `gone` by
+	// definition, so their name must not be held hostage by the append-only table. Simulated by writing
+	// the row through the repository directly, bypassing the join-time presence seed doJoin adds.
 	const { app } = appHarness();
-	doJoin(app, { displayName: 'Ghost', color: SINGER_COLORS[0] });
+	const ghost = app.singers.create('Ghost', SINGER_COLORS[0], app.now());
+	expect(app.presence.stateOf(ghost.id, app.now(), 999_999, false)).toBe('gone');
 	expect(() => doJoin(app, { displayName: 'Ghost', color: SINGER_COLORS[1] })).not.toThrow();
+});
+
+// ── the /api/join → WebSocket-open gap (PR #19 regression) ─────────────────────
+// doJoin writes the singer row, but only the WS `open` handler used to register them with presence. In
+// the window before that socket lands, presence.stateOf returned `gone` — so a second phone could claim
+// the identical name. doJoin now seeds the singer into presence as away at join time to close that gap.
+
+test('two joins with the SAME name inside the join window collide', () => {
+	const { app } = appHarness();
+	doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] });
+	// No presence.connect — the first phone's socket has not opened yet, but the join seed holds the name.
+	expect(() => doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] })).toThrow(NameTakenError);
+});
+
+test('the join seed is AWAY, so the name frees up once the grace sweep expires it', () => {
+	// A phone that joined and immediately died must not hold a name for the whole night: the away seed
+	// expires through the ordinary sweep, same as any dropped socket.
+	const { app } = appHarness();
+	app.settings.setRoom({ presenceGraceMinutes: 0 }); // expire on the first sweep after the drain
+	doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] });
+	app.presence.evaluate({ now: app.now(), graceMs: 0, hasPendingSongs: () => false });
+	expect(() => doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] })).not.toThrow();
 });
 
 test('distinct names are unaffected', () => {

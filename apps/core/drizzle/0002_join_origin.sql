@@ -1,1 +1,0 @@
-ALTER TABLE `global_settings` ADD `join_origin` text DEFAULT '' NOT NULL;

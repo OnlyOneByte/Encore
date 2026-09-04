@@ -56,7 +56,10 @@ class WorkerClient:
             capabilities=list(capabilities or CAPABILITIES),
             concurrency=concurrency,
         )
-        self._tasks: set[asyncio.Task] = set()
+        # jobId -> its in-flight processing task, so a cancel can reach the RIGHT task (and through
+        # it, with the subprocess_runner kill-on-GeneratorExit, the child process). A bare set could
+        # only be drained, not cancelled by job.
+        self._tasks: dict[str, asyncio.Task] = {}
 
     async def hello(self) -> None:
         await self._send(
@@ -85,10 +88,25 @@ class WorkerClient:
             return await self._on_assign(msg)
         if t == protocol.CANCEL:
             return self._on_cancel(msg)
+        # An unknown type used to fall through silently, so protocol drift (a core speaking a message
+        # this worker predates) was invisible from the worker side. Log it — one line, no reply.
+        print(f"[worker] ignoring unhandled message type {t!r}", flush=True)
 
     async def _on_assign(self, msg: dict[str, Any]) -> None:
-        job_id = msg["jobId"]
-        job_type = msg["jobType"]
+        # Validate the required fields BEFORE touching state. A missing key used to raise KeyError,
+        # which escaped the `async for` loop into the broad reconnect handler and tore down the socket
+        # — killing EVERY in-flight job on it for one malformed frame. Fail just this one job instead.
+        job_id = msg.get("jobId")
+        job_type = msg.get("jobType")
+        media_id = msg.get("mediaId")
+        if not isinstance(job_id, str) or not job_id:
+            # No usable job id: we cannot send a job-scoped reject, so log and drop this frame only.
+            print(f"[worker] ignoring malformed job:assign (missing/invalid jobId): {msg!r}", flush=True)
+            return
+        if not isinstance(job_type, str) or not job_type or not isinstance(media_id, str) or not media_id:
+            print(f"[worker] rejecting malformed job:assign {job_id!r} (missing jobType/mediaId)", flush=True)
+            await self._send(protocol.reject(self.state.worker_id, job_id, "malformed assign: missing jobType/mediaId"))
+            return
         ok, reason = self.state.can_accept(job_type)
         if not ok:
             await self._send(protocol.reject(self.state.worker_id, job_id, reason))
@@ -97,7 +115,7 @@ class WorkerClient:
         self.state.start(job_id)
         job = JobSpec(
             job_id=job_id,
-            media_id=msg["mediaId"],
+            media_id=media_id,
             job_type=job_type,
             source_uri=msg.get("sourceUri", ""),
             params=msg.get("params", {}),
@@ -105,8 +123,8 @@ class WorkerClient:
         )
         # run processing concurrently so the loop keeps reading ping/cancel
         task = asyncio.ensure_future(self._run_job(job))
-        self._tasks.add(task)
-        task.add_done_callback(self._tasks.discard)
+        self._tasks[job_id] = task
+        task.add_done_callback(lambda _t, jid=job_id: self._tasks.pop(jid, None))
 
     async def _run_job(self, job: JobSpec) -> None:
         try:
@@ -149,14 +167,24 @@ class WorkerClient:
             shutil.rmtree(os.path.join(job.media_dir, "work", job.job_id), ignore_errors=True)
 
     def _on_cancel(self, msg: dict[str, Any]) -> None:
-        # cooperative cancel: drop the slot now; the core already moved the job to canceled.
-        # (Real Demucs subprocess termination wires in where there is a process to kill.)
-        self.state.finish(msg.get("jobId", ""))
+        # Cancel the in-flight task for this job. With subprocess_runner's kill-on-GeneratorExit, the
+        # cancellation propagates a GeneratorExit into the processor's async generator and kills the
+        # child (demucs / roformer / yt-dlp) rather than orphaning it. The task's done-callback removes
+        # it from self._tasks, and _run_job's finally frees the slot — so cancel leaves no dangling
+        # task entry and reports no spurious failure to the core (CancelledError is not caught by the
+        # `except Exception` that sends job:failed). If no task is tracked (already finished, or the
+        # slot was held without one), just free the slot as before.
+        job_id = msg.get("jobId", "")
+        task = self._tasks.get(job_id)
+        if task is not None and not task.done():
+            task.cancel()
+            return  # the task's finally frees the slot; do not double-finish
+        self.state.finish(job_id)
 
     async def drain(self) -> None:
         """Await any in-flight job tasks (graceful shutdown / test settling)."""
         if self._tasks:
-            await asyncio.gather(*list(self._tasks), return_exceptions=True)
+            await asyncio.gather(*list(self._tasks.values()), return_exceptions=True)
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -353,7 +381,9 @@ async def _run_forever() -> None:
     processor: Processor = _build_processor(cfg)
     while True:
         try:
-            async with websockets.connect(cfg.core_ws) as ws:
+            # Attach the worker token (if configured) only to the CONNECT url — never to the log line
+            # below, which prints the token-free cfg.core_ws so the secret never lands in the log.
+            async with websockets.connect(cfg.authed_core_ws()) as ws:
                 client = WorkerClient(
                     lambda m: ws.send(json.dumps(m)), processor,
                     worker_id=cfg.worker_id,
@@ -365,7 +395,13 @@ async def _run_forever() -> None:
                 await client.hello()
                 print(f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})")
                 async for raw in ws:
-                    await client.handle(json.loads(raw))
+                    # Per-frame guard: a single malformed frame (bad JSON, or an exception escaping a
+                    # handler) must fail only that frame, not drop the connection and every in-flight
+                    # job on it. Only a genuine socket error should reach the reconnect handler below.
+                    try:
+                        await client.handle(json.loads(raw))
+                    except Exception as exc:  # noqa: BLE001 — contain a bad frame; keep the socket up
+                        print(f"[worker] dropped a bad frame ({exc!r})", flush=True)
         except Exception as exc:  # noqa: BLE001 — connection dropped; back off and redial
             print(f"[worker] disconnected ({exc!r}); reconnecting in {RECONNECT_BACKOFF_SEC}s")
             await asyncio.sleep(RECONNECT_BACKOFF_SEC)

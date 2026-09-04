@@ -167,6 +167,12 @@
 						const next = new Set(awaySingers);
 						next.delete(e.singerId);
 						awaySingers = next;
+						// Also drop them from the singers map. A singer who leaves with no queued songs
+						// produces no queue:patch, so without this their name keeps rendering on every other
+						// phone until the next full sync. joined/updated rebuild this map; left must too.
+						const nextSingers = new Map(singers);
+						nextSingers.delete(e.singerId);
+						singers = nextSingers;
 					}
 					if (e.type === 'playback:state') playback = e.state;
 					// A room default changed mid-party: adopt it so the guiding-track control keeps
@@ -176,15 +182,24 @@
 						const next = new Map(mediaStatus);
 						next.set(e.mediaId, { status: e.status, pct: e.pct, etaSec: e.etaSec });
 						mediaStatus = next;
-						// reflect the flip on the catalog copy so readiness agrees without a full sync
+						// reflect the flip on the catalog copy so readiness agrees without a full sync.
+						// A `failed` cook must NOT be written back as 'queued' — that pins the row in the
+						// Cooking group at 0% forever with no failure signal (the singer never learns the
+						// cook died). Preserve the existing stemStatus on failure, matching the TV route.
 						const m = mediaCatalog.get(e.mediaId);
 						if (m) {
 							const nm = new Map(mediaCatalog);
-							nm.set(e.mediaId, { ...m, stemStatus: e.status === 'ready' ? 'ready' : 'queued' });
+							nm.set(e.mediaId, {
+								...m,
+								stemStatus:
+									e.status === 'ready' ? 'ready' : e.status === 'failed' ? m.stemStatus : 'queued'
+							});
 							mediaCatalog = nm;
 						}
 						// a song that just finished cooking belongs in the saved library now
 						if (e.status === 'ready') loadLibrary();
+						// Surface a died cook to the singer instead of leaving the row silently stuck.
+						if (e.status === 'failed') showError(`Couldn't make karaoke for “${mediaTitle(e.mediaId)}” — try again.`);
 					}
 					store.onServerEvent(e);
 				}
@@ -583,7 +598,7 @@
 	);
 </script>
 
-<header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
+<header class="topbar" style="display:flex;align-items:center;gap:10px;">
 	<div class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></div>
 	<!--
 	  `connected` used to be assigned `true` once and never read or reset, so a phone whose socket had
@@ -992,7 +1007,7 @@
 		}
 	}
 	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; min-height: 52px; }
-	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; outline: none; }
+	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; }
 	.chips { display: flex; gap: 7px; margin-bottom: 14px; }
 	/* One collapsed row where two facet rails used to render inline and reshuffle as you typed. */
 	.browse { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
@@ -1074,7 +1089,7 @@
 	.key.disabled { opacity: 0.5; }
 	.key .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
 	.key.shifted .lab { color: var(--warn); }
-	.key button { flex: 1; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: 10px; padding: 6px; font-size: 0.8rem; cursor: pointer; }
+	.key button { flex: 1; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: 10px; padding: 6px; font-size: 0.8rem; cursor: pointer; min-height: 44px; }
 	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
 	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
 	.key-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -1135,5 +1150,39 @@
 		display: inline-flex; align-items: center; gap: 6px;
 		color: var(--warn); border: 1px solid var(--line-strong); border-radius: 999px;
 		padding: 4px 10px; font-size: 0.78rem; white-space: nowrap;
+	}
+
+	/* Base header padding, declared here (not inline) so the short-viewport rule below can shrink it —
+	   an inline style would outrank the media query and silently defeat it. */
+	.topbar { padding: 16px 18px 8px; }
+
+	/*
+	 * Respect a reduced-motion preference. Both remaining animations otherwise run unguarded and
+	 * indefinitely: the search spinner and the skeleton shimmer. Disable them; a static spinner is a
+	 * fine resting state. (The mic pulse this block also covered went away with live scoring.)
+	 */
+	@media (prefers-reduced-motion: reduce) {
+		.search-spinner,
+		.skel-thumb,
+		.skel-line {
+			animation: none;
+		}
+	}
+
+	/*
+	 * Landscape / short viewports (e.g. a phone held sideways at 844×390). The docked now-playing peek
+	 * plus header, search box, chip row and section labels otherwise consume almost the whole height,
+	 * leaving no room for result rows. Shrink the peek token and the top chrome so at least a couple of
+	 * rows stay visible. --peek-h is the fallback the sheet overwrites with its measured peek height on
+	 * mount, but on a short screen a smaller fallback still buys rows before that measurement lands.
+	 */
+	@media (max-height: 480px) {
+		:root { --peek-h: 84px; }
+		.topbar { padding: 6px 18px 4px; }
+		main { padding-top: 2px; }
+		.searchbox { min-height: 42px; padding: 8px 14px; margin-bottom: 6px; }
+		.chips { margin-bottom: 8px; }
+		.browse, .facets { margin-bottom: 4px; }
+		.grouphead { margin: 8px 4px 4px; }
 	}
 </style>

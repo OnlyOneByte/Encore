@@ -18,7 +18,7 @@
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
-	import { tvScreen, lobbyRoster } from '$lib/tv/screen';
+	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin } from '$lib/tv/screen';
 
 	let { data } = $props();
 
@@ -250,6 +250,21 @@
 						stemStatus: e.status === 'ready' ? 'ready' : e.status === 'failed' ? m.stemStatus : 'queued'
 					});
 				}
+				// A cook that FAILED, or a job NO connected worker can ever run (`unservable`), will never
+				// become playable — and enterWaiting() sets no timer, so if this is the entry the room is
+				// holding on, the party stares at "Making the karaoke" forever. Leave WAITING the same way
+				// the dead-media path does: say so on screen via the error treatment, tell the server the
+				// entry ended so it advances authoritatively, and drop out of the waiting hold.
+				// Defensive: this fires purely on the wire signal and does not assume the server TTL fix
+				// has landed.
+				const stuck = e.status === 'failed' || e.unservable === true;
+				if (stuck && tvState === 'waiting' && current && current.mediaId === e.mediaId) {
+					const who = singerName(current.singerId);
+					skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
+					setTimeout(() => (skipNotice = ''), 4000);
+					sendTelemetry('ended');
+					onVisibleEnded();
+				}
 			}
 			// learn singers who join AFTER our initial sync, or the lower-third shows "Someone" for
 			// late joiners instead of their real name (mirrors the phone).
@@ -329,6 +344,15 @@
 		const m = mediaOf(current);
 		return m ? chosenCandidate(m) : null;
 	});
+	/*
+	 * Whether the join QR advertises an address no phone can reach.
+	 *
+	 * `data.joinOrigin` is derived from the request host, so opening /tv ON the serving machine puts a
+	 * loopback / bare-hostname address on the wall and every scan fails silently. When that is the case
+	 * we replace the working-looking QR with an operator notice that names the fix, rather than letting
+	 * the room discover the dead QR one failed scan at a time.
+	 */
+	const joinUnreachable = $derived(isUnreachableJoinOrigin(data.joinOrigin));
 </script>
 
 <div class="tv">
@@ -399,12 +423,14 @@
 		<div class="attract">
 			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
 			<div class="join">
-				<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size={320} />
-				<div class="join-copy">
-					<h1>Scan to join the party</h1>
-					<p class="url">{data.joinUrl}</p>
-					<p class="hint">Pick a name, queue a song, grab the mic.</p>
-				</div>
+				<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size={320} unreachable={joinUnreachable} />
+				{#if !joinUnreachable}
+					<div class="join-copy">
+						<h1>Scan to join the party</h1>
+						<p class="url">{data.joinUrl}</p>
+						<p class="hint">Pick a name, queue a song, grab the mic.</p>
+					</div>
+				{/if}
 			</div>
 		</div>
 	{:else if screen === 'lobby'}
@@ -416,6 +442,7 @@
 			roster={roster.shown}
 			overflow={roster.overflow}
 			{pendingCount}
+			unreachable={joinUnreachable}
 		/>
 	{:else}
 		<!-- now-playing lower-third -->
@@ -436,6 +463,7 @@
 			joinUrl={data.joinUrl}
 			placement="corner"
 			onlineCount={online.length + away.length}
+			unreachable={joinUnreachable}
 		/>
 	{/if}
 

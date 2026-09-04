@@ -157,6 +157,56 @@ describe('sidecar I/O and index rebuild', () => {
 		expect(await readAllSidecars()).toEqual([]); // skipped, not fatal
 	});
 
+	it('a corrupt-but-PRESENT sidecar logs a distinct warning; a missing one is silent', async () => {
+		const warnings: string[] = [];
+		const orig = console.warn;
+		console.warn = (...args: unknown[]) => {
+			warnings.push(args.map(String).join(' '));
+		};
+		try {
+			// Missing: normal, must NOT warn.
+			expect(await readSidecar('never-existed')).toBeNull();
+			expect(warnings).toHaveLength(0);
+
+			// Present but unparseable: corruption of the authoritative record — must warn, must not throw.
+			await writeSidecar(sidecarFromMedia(media(), NOW));
+			await Bun.write(join(root, 'meta', 'm1.json'), '{ half a fi');
+			expect(await readSidecar('m1')).toBeNull();
+			expect(warnings.length).toBe(1);
+			expect(warnings[0]).toContain('m1.json');
+
+			// Present, valid JSON, but wrong shape: still corruption, still warns.
+			warnings.length = 0;
+			await Bun.write(join(root, 'meta', 'm1.json'), '{"not":"a sidecar"}');
+			expect(await readSidecar('m1')).toBeNull();
+			expect(warnings.length).toBe(1);
+			expect(warnings[0]).toContain('shape check');
+		} finally {
+			console.warn = orig;
+		}
+	});
+
+	it('writeSidecar is atomic: it leaves no temp file behind and readback is complete', async () => {
+		const { readdirSync } = await import('node:fs');
+		const s = sidecarFromMedia(media(), NOW);
+		await writeSidecar(s);
+		const metaFiles = readdirSync(join(root, 'meta'));
+		// Exactly the target — no leftover .tmp sibling from the write-then-rename.
+		expect(metaFiles).toEqual(['m1.json']);
+		expect(await readSidecar('m1')).toEqual(s); // fully written, parseable
+	});
+
+	it('overwriting an existing sidecar never exposes a partial file', async () => {
+		// Two writes to the same id land via distinct temps + rename, so a reader always sees one whole
+		// file — either the old complete one or the new complete one.
+		await writeSidecar(sidecarFromMedia(media({ id: 'x' }), NOW));
+		const updated = sidecarFromMedia(media({ id: 'x', instrumentalRef: 'derived/stems/x-instrumental.m4a' }), NOW + 1000);
+		await writeSidecar(updated);
+		const back = await readSidecar('x');
+		expect(back).toEqual(updated);
+		expect(back!.artifacts.instrumental).toBe('derived/stems/x-instrumental.m4a');
+	});
+
 	it('a missing sidecar is null, not an error', async () => {
 		expect(await readSidecar('nope')).toBeNull();
 		expect(await readAllSidecars()).toEqual([]);

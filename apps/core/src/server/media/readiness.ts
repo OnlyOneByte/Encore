@@ -4,7 +4,7 @@
 //
 // Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
 
-import { readyToSing, type Media } from '@encore/shared';
+import { isCooking, readyToSing, type Media } from '@encore/shared';
 
 /** Where a song sits on the readiness axis. */
 export type Readiness =
@@ -13,8 +13,11 @@ export type Readiness =
 	| 'unacquired'; // no instrumental yet, so nothing to play — a candidate to cook, not a song to sing
 
 export function readinessOf(m: Media): Readiness {
+	// Gate-driven, and MUST stay byte-identical to the client's copy (apps/core/src/lib/readiness.ts).
+	// `isCooking` reads the cook gates rather than a single `stemStatus === 'queued'` check, so a song
+	// mid-align (stems ready, lyrics queued) reads as cooking instead of falling through to unacquired.
 	if (readyToSing(m)) return 'ready';
-	if (m.stemStatus === 'queued') return 'cooking';
+	if (isCooking(m)) return 'cooking';
 	return 'unacquired';
 }
 
