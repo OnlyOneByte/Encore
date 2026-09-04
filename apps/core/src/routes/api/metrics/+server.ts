@@ -25,6 +25,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const steps = perStep(attempts);
 	const overall = e2e(attempts);
 	const models = perModel(attempts);
+	const titleOf = new Map(app.media.all().map((mm) => [mm.id, mm.titleCanonical ?? mm.title]));
 
 	return json({
 		// Sample size first, and flagged, because it governs how much of the rest means anything. A
@@ -45,8 +46,13 @@ export const GET: RequestHandler = async ({ url }) => {
 		asr: perAsrModel(attempts).map((a) => ({ ...a, provisional: isAnecdote(a.n) })),
 		// Sub-step split, from what the worker reported. Empty for attempts predating that.
 		stages: perStage(attempts),
-		// Slowest complete cooks, for finding the outlier rather than reasoning about the mean.
-		slowestCooks: perCook(attempts).filter((c) => c.complete).slice(0, 10),
+		// Slowest complete cooks, for finding the outlier rather than reasoning about the mean. Titles are
+		// joined here because a media id is not a song: an operator navigating a list of "m-zombie" has
+		// to open each one to find out what it is. /api/stats already does the same join.
+		slowestCooks: perCook(attempts)
+			.filter((c) => c.complete)
+			.slice(0, 10)
+			.map((c) => ({ ...c, title: titleOf.get(c.mediaId) ?? null })),
 		workers: app.workers.list().map((w) => ({
 			workerId: w.workerId,
 			capabilities: w.capabilities,

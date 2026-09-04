@@ -77,9 +77,9 @@
 	<p class="back"><a href="/metrics"><Icon name="arrow-left" size="0.9em" /> metrics</a></p>
 
 	{#if error}
-		<p class="note">{error}</p>
+		<p class="note" role="alert">{error}</p>
 	{:else if !audit}
-		<p class="note">Loading…</p>
+		<p class="note" role="status">Loading…</p>
 	{:else}
 		<h1>{audit.media?.titleCanonical ?? audit.media?.title ?? mediaId}</h1>
 		{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
@@ -117,20 +117,26 @@
 								{#if a.attempt > 1}<span class="retry">attempt {a.attempt}</span>{/if}
 								<span class="pill {a.outcome ?? 'running'}">{a.outcome ?? 'running'}</span>
 							</div>
-							<div class="row note">
-								<span>ran {dur(a.processingMs)}</span>
-								<span>queued {dur(a.queueWaitMs)}</span>
-								{#if a.rtFactor !== null}<span>{a.rtFactor.toFixed(2)}× realtime</span>{/if}
-								{#if a.workerId}<span>{a.workerId}</span>{/if}
+							<!-- The duration is why the page exists, so it is the one bright figure. It used to sit
+							     in the same muted grey and weight as the worker id beside it. -->
+							<div class="metrics-row">
+								<span class="ran">{dur(a.processingMs)}</span>
+								<span class="secondary">queued {dur(a.queueWaitMs)}</span>
+								{#if a.rtFactor !== null}<span class="secondary">{a.rtFactor.toFixed(2)}× realtime</span>{/if}
+								{#if a.workerId}<span class="secondary">{a.workerId}</span>{/if}
 							</div>
 							{#if usedModels(a.models).length}
-								<div class="row note">
-									{#each usedModels(a.models) as [k, v] (k)}<span>{k}: {v}</span>{/each}
-								</div>
+								<!-- A key:value grid rather than a run-on space-separated line, which became
+								     untrackable once the card widened to the 1080px desktop shell. -->
+								<dl class="facts">
+									{#each usedModels(a.models) as [k, v] (k)}
+										<div><dt>{k}</dt><dd>{v}</dd></div>
+									{/each}
+								</dl>
 							{/if}
 							{#if a.stages.length}
-								<div class="row note">
-									{#each a.stages as s (s.stage)}<span>{s.stage} {dur(s.ms)}</span>{/each}
+								<div class="metrics-row">
+									{#each a.stages as s (s.stage)}<span class="secondary">{s.stage} {dur(s.ms)}</span>{/each}
 								</div>
 							{/if}
 							{#if a.error}<p class="err">{a.error}</p>{/if}
@@ -152,10 +158,19 @@
 </section>
 
 <style>
+	/*
+	 * Capped narrower than the 1080px shell on purpose. This is a TIMELINE of short rows, and at full
+	 * desktop width each row became a very long line whose start and end were hard to associate.
+	 */
 	.audit {
 		display: grid;
 		gap: 1rem;
 		padding: 1rem 0 3rem;
+		max-width: 760px;
+	}
+	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
+	.card {
+		padding: 1rem 1.1rem;
 	}
 	.back a {
 		color: var(--ink-dim);
@@ -163,15 +178,19 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3rem;
+		min-height: 32px;
 	}
 	h1 {
 		font-size: 1.25rem;
 		margin: 0;
 	}
+	/* The cook owns the attempts beneath it, so its header takes full ink and a dividing rule. At
+	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
 	h2 {
-		font-size: 0.95rem;
+		font-size: 1rem;
 		margin: 0;
-		color: var(--ink-dim);
+		color: var(--ink);
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
 	}
@@ -193,26 +212,73 @@
 	}
 	.steps {
 		list-style: none;
-		margin: 0.8rem 0 0;
+		margin: 0.9rem 0 0;
 		padding: 0;
 		display: grid;
-		gap: 0.75rem;
+		gap: 0.6rem;
 	}
+	/*
+	 * Each attempt is a NESTED PANEL on the cook's card, not a floating stripe. A 2px left border was
+	 * the only thing marking one level of nesting, so cook and attempt read as the same depth — which
+	 * is precisely the parent/child relationship cookId exists to express.
+	 */
 	.steps li {
+		background: var(--bg2);
 		border-left: 2px solid var(--line-strong);
-		padding-left: 0.7rem;
+		border-radius: var(--radius-sm);
+		padding: 0.6rem 0.75rem;
 	}
+	/* A whole tinted block, so the eye FINDS the bad attempt instead of reading for it. The border
+	   alone left a failure looking like its neighbours. */
 	.steps li.failed {
 		border-left-color: var(--danger);
+		background: var(--danger-bg);
 	}
 	.steps li.abandoned {
 		border-left-color: var(--warn);
+		background: var(--card2);
 	}
 	.row {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem 0.9rem;
 		align-items: baseline;
+	}
+	.metrics-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem 0.9rem;
+		align-items: baseline;
+		margin-top: 0.35rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.ran {
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--ink);
+	}
+	.secondary {
+		font-size: 0.75rem;
+		color: var(--ink-dim);
+	}
+	/* Aligned pairs instead of a run-on line: keys stay dim, values take ink. */
+	.facts {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
+		gap: 0.2rem 1.2rem;
+		margin: 0.45rem 0 0;
+		font-size: 0.75rem;
+	}
+	.facts div {
+		display: flex;
+		gap: 0.35rem;
+	}
+	.facts dt {
+		color: var(--ink-dim);
+	}
+	.facts dd {
+		margin: 0;
+		color: var(--ink);
 	}
 	.retry {
 		font-size: 0.72rem;
@@ -226,6 +292,7 @@
 		border-radius: 999px;
 		border: 1px solid var(--line-strong);
 		color: var(--ink-dim);
+		white-space: nowrap;
 	}
 	.pill.ready {
 		color: var(--ok);
