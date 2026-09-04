@@ -133,7 +133,7 @@
 	}
 
 	/**
-	 * "✨ Sing this" — the raw row's ONE action: take the turn, then start the cook.
+	 * "✨ Sing" — the raw row's ONE action: take the turn, then start the cook.
 	 *
 	 * Order is load-bearing, not stylistic: the core derives the cook's job priority from the rotation
 	 * position of the turns pointing at that media, so cooking first files the job at

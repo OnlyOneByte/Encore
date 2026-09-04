@@ -57,7 +57,7 @@
 			position while it separates. See $lib/cook-and-queue.ts.
 		-->
 		<button class="sing" title="Take a turn now and strip the vocals — you keep your place in line while it cooks"
-			onclick={() => onmake?.()}>✨ Sing this</button>
+			onclick={() => onmake?.()}>✨ Sing</button>
 	{:else}
 		<button class="add" class:queued={inQueue} aria-label={inQueue ? 'already in the queue' : 'add a turn'}
 			disabled={inQueue}

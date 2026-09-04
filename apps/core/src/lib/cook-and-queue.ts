@@ -1,4 +1,4 @@
-// "Sing this" — ONE action for a song that still has its vocals: take a turn AND start the cook.
+// "Sing" — ONE action for a song that still has its vocals: take a turn AND start the cook.
 //
 // It used to be two buttons, and picking either one alone was a dead end:
 //
