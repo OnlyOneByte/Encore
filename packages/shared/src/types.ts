@@ -2,6 +2,7 @@
 // See docs/ARCHITECTURE.md (Data model).
 
 import type { LyricsCandidate } from './lyrics';
+import type { SongProfile } from './song-profile';
 import type { TvBackgroundStyle } from './settings';
 
 export type MediaSource = 'youtube' | 'local';
@@ -108,6 +109,19 @@ export interface Media {
    * which the gate treats as done when a lyrics artifact is already present.
    */
   lyricsStatus?: StepStatus;
+  /**
+   * What the cook LEARNED about the music: detected key, and the range the original singer sang.
+   *
+   * Produced by the same `stems` job as the two audio stems, so it is the third artifact of one step
+   * rather than a separate pipeline stage — and it is the reason the `stems` gate checks for it (see
+   * gates.ts). Present means analysis RAN; the fields inside are individually nullable because a song
+   * can legitimately have no detectable key, no voiced vocal, or neither.
+   *
+   * Absent means not analysed yet, which for a song cooked before this field existed is also true —
+   * and is why the gate's predicate tolerates it via `stemStatus`, rather than making an existing
+   * library unsingable on upgrade.
+   */
+  songProfile?: SongProfile;
 }
 
 /**
@@ -209,20 +223,15 @@ export function clampKeyShift(semitones: number): number {
 }
 
 /**
- * The MediaStore key for a file media at a given key shift. 0 → the original instrumental;
- * ±N → the pre-rendered pitch-shifted variant (e.g. `stems/m1-instrumental.+2.wav`). The worker
- * renders these; the TV resolves `/media/${keyedMediaRef(sourceRef, n)}`. A ref with no file
- * extension is returned unchanged — keying only applies to a real artifact key.
+ * There is deliberately NO `keyedMediaRef` here any more.
+ *
+ * It used to resolve a pre-rendered pitch-shifted variant (`stems/<id>-instrumental.+2.flac`) that
+ * nothing ever produced — `apps/worker/src/pitch.py` existed as tested pure logic that `processor.py`
+ * never called — so the TV had to ignore `keyShift` entirely or hand the gapless controller a 404
+ * mid-song. Transposition now happens in the browser (see `apps/core/src/lib/tv/pitch-shift.ts`),
+ * which needs no files, works on every already-cooked song, and can shift the guiding-track stem by
+ * the same amount instead of muting it. Both the ref helper and the worker renderer are gone.
  */
-export function keyedMediaRef(sourceRef: string, keyShift: number): string {
-  const k = clampKeyShift(keyShift);
-  if (k === 0) return sourceRef;
-  const dot = sourceRef.lastIndexOf('.');
-  if (dot <= 0) return sourceRef; // no extension → not a keyable file ref
-  const sign = k > 0 ? `+${k}` : `${k}`;
-  return `${sourceRef.slice(0, dot)}.${sign}${sourceRef.slice(dot)}`;
-}
-
 export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 

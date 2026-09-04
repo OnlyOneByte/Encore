@@ -9,6 +9,7 @@ export * from './rotation';
 export * from './membership';
 export * from './queue-order';
 export * from './lyrics';
+export * from './song-profile';
 export * from './events';
 export * from './separators';
 export * from './settings';
