@@ -233,31 +233,42 @@ async def test_aligner_failure_falls_back_to_line_sync(tmp_path):
     assert whisperx.is_valid_lyrics(doc) is False  # no word timings — but still shipped line-sync
 
 
+# "This song has no words" is a RESULT, not an error. These three used to assert a raise, which was
+# defensible while lyrics were a garnish — a red job on a song that played fine. It stopped being
+# defensible once readiness waits for the lyrics gate: a raise would leave a genuine instrumental stuck
+# cooking forever on a step that worked correctly. The job now COMPLETES with no lyrics artifact.
+
+
+async def _completes_with_no_lyrics(proc, job) -> None:
+    events = await drain(proc, job)
+    done = [e for e in events if isinstance(e, CompleteResult)]
+    assert len(done) == 1, "expected exactly one CompleteResult, not a raise"
+    assert not done[0].artifacts.get("lyrics"), "no words found → no lyrics artifact to publish"
+
+
 @pytest.mark.asyncio
-async def test_no_lyrics_found_raises(tmp_path):
+async def test_no_lyrics_found_COMPLETES_with_no_lyrics(tmp_path):
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(found=False), aligner=FakeAligner())
-    with pytest.raises(RuntimeError, match="no lyrics text from any source"):
-        await drain(proc, spec(tmp_path))
+    await _completes_with_no_lyrics(proc, spec(tmp_path))
 
 
 @pytest.mark.asyncio
-async def test_instrumental_track_raises(tmp_path):
+async def test_an_instrumental_COMPLETES_rather_than_being_stuck_forever(tmp_path):
+    # The load-bearing case: an instrumental has no lyrics BY NATURE. Failing it would make the song
+    # permanently unsingable via the readiness gate.
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(instrumental=True), aligner=FakeAligner())
-    with pytest.raises(RuntimeError, match="no lyrics text from any source"):
-        await drain(proc, spec(tmp_path))
+    await _completes_with_no_lyrics(proc, spec(tmp_path))
 
 
 @pytest.mark.asyncio
 async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(tmp_path):
-    """Acquisition and timing are separate concerns now. Without confident metadata the LRCLIB
-    source DECLINES (it never asks for a guessed title); the job then fails only because nothing else
-    supplied text. It is no longer an assertion about params, which is what let "no LRCLIB" mean "no
-    lyrics" — see the next test for the whole point of the split."""
+    """Acquisition and timing are separate concerns. Without confident metadata the LRCLIB source
+    DECLINES (it never asks for a guessed title); the job then completes with nothing to time. It is not
+    an assertion about params, which is what let "no LRCLIB" mean "no lyrics"."""
     client = fake_client()
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=client, aligner=FakeAligner())
     job = JobSpec(job_id="j", media_id="m1", job_type="align", source_uri="/tmp/a.wav", params={}, media_dir=str(tmp_path))
-    with pytest.raises(RuntimeError, match="no lyrics text from any source"):
-        await drain(proc, job)
+    await _completes_with_no_lyrics(proc, job)
 
 
 # ── acquisition is SEPARATE from timing ────────────────────────────────
@@ -297,7 +308,16 @@ def _text(source, timing, lines=("line one here", "line two here"), conf="high")
     segs = [{"start": i * 2.0, "end": i * 2.0 + 1.5, "text": t} for i, t in enumerate(lines)]
     if timing == TIMING_WORD:
         for s in segs:
-            s["words"] = [{"word": w, "start": s["start"], "end": s["end"]} for w in s["text"].split()]
+            # SEQUENCE the words across the line, the way a real aligner does. This used to give every
+            # word the LINE's own start/end, which meant word 2 appeared to begin before word 1 had
+            # finished — output no real aligner produces (zero order violations across six real
+            # artifacts) and which the timing validator correctly refuses as an incoherent highlight.
+            toks = s["text"].split()
+            span = (s["end"] - s["start"]) / max(1, len(toks))
+            s["words"] = [
+                {"word": w, "start": round(s["start"] + i * span, 3), "end": round(s["start"] + (i + 1) * span, 3)}
+                for i, w in enumerate(toks)
+            ]
     return LyricsText(text_source=source, segments=segs, timing=timing, text_confidence=conf)
 
 

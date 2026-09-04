@@ -108,6 +108,16 @@ export interface JobParams {
   track?: string; // canonical title for a lyrics lookup; absent when the parse wasn't confident
   album?: string;
   durationSec?: number; // narrows an LRCLIB match and bounds line-sync fallback timings
+  /**
+   * The lyrics engines for an `align` job, chosen by the deployment (see lyrics-engines.ts).
+   * `asrModel` is a faster-whisper token; `syncMode` is 'forced' (wav2vec2 word timings) or 'lines'
+   * (use each source's own line timings and skip the align model entirely).
+   *
+   * Optional on the wire so a core that predates the setting still produces valid params — the worker
+   * falls back to its own defaults, which are these same values.
+   */
+  asrModel?: string;
+  syncMode?: string;
 }
 
 // core -> worker

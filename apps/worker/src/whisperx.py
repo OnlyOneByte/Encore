@@ -20,7 +20,7 @@ from typing import Any, AsyncIterator, Callable, Protocol
 
 from .demucs import Runner, download_argv, parse_ytdlp_progress, subprocess_runner
 from .fetch import job_fetcher, local_source_path
-from .vocabulary import Fetcher
+from .vocabulary import AsrModel, Fetcher, SyncMode, parse_asr_model, parse_sync_mode
 from .lyrics_source import (
     LRCLIB_BASE,
     LrclibClient,
@@ -45,6 +45,7 @@ from .lyrics_chain import (
     score_against_asr,
 )
 from .lyrics_presplit import presplit_texts
+from .lyrics_validate import validate_timing
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
 
 DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2
@@ -253,17 +254,23 @@ class WhisperXProcessor:
         aligner: Aligner | None = None,
         transcriber: Transcriber | None = None,
         model: str = DEFAULT_MODEL,
+        sync_mode: str = SyncMode.FORCED.value,
         lrclib_base: str = LRCLIB_BASE,
         sources: list[LyricsSource] | None = None,
     ) -> None:
         self._runner = runner
         self._ytdlp_bin = ytdlp_bin
         self._device = device
-        self._model = model
+        self._model = parse_asr_model(model).value
+        self._sync_mode = parse_sync_mode(sync_mode)
         self._lrclib_base = lrclib_base
         self._lyrics_client = lyrics_client  # None → constructed lazily (real LRCLIB)
         self._aligner = aligner  # None → constructed lazily (real WhisperX)
         self._transcriber = transcriber  # None → constructed lazily (real faster-whisper)
+        # Whether the caller OWNS these. An injected transcriber or source list is a test's fake, and a
+        # job's `asrModel` must never silently replace it — see `_adopt_job_engines`.
+        self._transcriber_injected = transcriber is not None
+        self._sources_injected = sources is not None
         # None → the default chain, built lazily. Injecting FAKE sources is how the whole
         # acquisition+timing flow tests with no network and no ML.
         self._sources = sources
@@ -293,10 +300,38 @@ class WhisperXProcessor:
             self._aligner = WhisperxForcedAligner(device=self._device)
         return self._aligner
 
+    def _adopt_job_engines(self, params: dict[str, Any]) -> None:
+        """Adopt the deployment's lyrics engines from this job's params.
+
+        The core sends its GLOBAL settings on every align job, exactly as it sends a separator's
+        engine+model on a stems job, so an operator changing the model on the settings page takes
+        effect on the next cook with no worker restart. Absent values keep whatever this worker was
+        constructed with (its env fallback), so an older core changes nothing.
+
+        Changing the model DROPS the cached transcriber, and with it the cached source list that holds
+        it — otherwise AsrSource would keep transcribing with the previous weights while the log
+        claimed otherwise. That reload is why the value is compared first: every job normally carries
+        the same setting, so the common case rebuilds nothing.
+
+        An INJECTED transcriber or source list is never replaced. Those are a test's fakes, and letting
+        a wire value swap them would mean a test could accidentally load multi-GB real weights.
+        """
+        self._sync_mode = parse_sync_mode(params.get("syncMode"), self._sync_mode)
+        model = parse_asr_model(params.get("asrModel"), AsrModel(self._model)).value
+        if model == self._model:
+            return
+        print(f"[worker] align: ASR model {self._model} → {model} (reloading weights)", flush=True)
+        self._model = model
+        if not self._transcriber_injected:
+            self._transcriber = None
+            if not self._sources_injected:
+                self._sources = None  # rebuilt around the new transcriber on next use
+
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
         work = os.path.join(job.media_dir, "work", job.job_id)
         os.makedirs(work, exist_ok=True)
         params = job.params if isinstance(job.params, dict) else {}
+        self._adopt_job_engines(params)
         artist = str(params.get("artist") or "").strip()
         track = str(params.get("track") or "").strip()
         language = str(params.get("language") or "en").strip() or "en"
@@ -381,11 +416,27 @@ class WhisperXProcessor:
                     flush=True,
                 )
                 text.text_confidence = "low"
+        # THE AUDIO THE ALIGNER GETS. Prefer the isolated vocals stem; fall back to the mix only when
+        # no stem exists (a song cooked before stems were retained).
+        #
+        # This was the bug: the aligner ran on the raw mix while the ASR tier — the SAME family of
+        # wav2vec2 speech model — was correctly routed to the stem. Measured across six real artifacts
+        # on the reference box, aligning on the mix produced one word smeared to 5.7s, 3-15 words per
+        # song collapsed under 30ms, and gaps up to 63s where the aligner lost the vocal under the
+        # band. The stem is already separated, already retained (~6MB/song) and already in this
+        # request; nothing new is downloaded or computed to use it.
+        align_audio = req.vocals_path or audio
+        if req.vocals_path is None:
+            print(
+                f"[worker] align: no vocals stem for {job.media_id} — aligning against the MIX, "
+                "which is materially less accurate. Re-cook to get a stem.",
+                flush=True,
+            )
         candidates: list[dict[str, Any]] = []
         for text in texts:
             built = None
             async for kind, val in self._run_blocking(
-                lambda t=text: self._time_one(t, audio, language), "aligning", 50
+                lambda t=text: self._time_one(t, align_audio, language), "aligning", 50
             ):
                 if kind == "progress":
                     yield val
@@ -394,6 +445,36 @@ class WhisperXProcessor:
             if built is None:
                 continue
             doc, timing, timing_confidence = built
+            # VALIDATE before publishing. `is_valid_lyrics` only asks whether SOME word has a
+            # timestamp, which six real artifacts satisfied while containing a 63-second hole, a word
+            # smeared across 5.7s, and function words at 20ms. Report every run so a bad cook leaves a
+            # record, and refuse to publish WORD timing that would visibly misbehave — degrading to the
+            # source's own line sync is worse per-word but never jumps backwards or freezes.
+            if timing == TIMING_WORD:
+                rep = validate_timing(doc, params.get("durationSec"))
+                print(f"[worker] align: timing for {job.media_id} — {rep.summary()}", flush=True)
+                if rep.thin_coverage:
+                    # Deliberately does NOT blame ASR. Measured on real songs: a shortfall is usually
+                    # CORRECT — an instrumental break or outro genuinely has no words. On Take On Me the
+                    # vocals stem sits 18-28 dB below the instrumental through its synth break, and two
+                    # independent Whisper models given only that clip both transcribe nothing, which is
+                    # the right answer. Coverage is a prompt to look, not a diagnosis.
+                    print(
+                        f"[worker] align: {job.media_id} timing covers {rep.coverage:.0%} of the song. "
+                        "Usually an instrumental break or outro; occasionally a media/duration mismatch "
+                        "(timings aligned against a different upload than the duration on record).",
+                        flush=True,
+                    )
+                if not rep.usable:
+                    print(
+                        f"[worker] align: REFUSING word timing for {job.media_id} "
+                        f"({rep.out_of_order} out-of-order word(s)) — degrading to line sync",
+                        flush=True,
+                    )
+                    if text.timing != TIMING_LINE:
+                        continue  # nothing honest left to publish for this source
+                    doc = line_synced_lyrics(text.segments, language=text.language or language)
+                    timing, timing_confidence = TIMING_LINE, "low"
             ref = candidate_key(job.media_id, text.text_source, timing)
             final = os.path.join(job.media_dir, ref)
             os.makedirs(os.path.dirname(final), exist_ok=True)
@@ -456,7 +537,12 @@ class WhisperXProcessor:
             yield ("progress", ProgressEvent(stage=stage, pct=pct))
 
     def _vocals_path(self, job: JobSpec) -> str | None:
-        """The isolated vocals stem for this media, if a stems job already wrote one (ASR wants it)."""
+        """The isolated vocals stem, if a stems job already wrote one.
+
+        Wanted by BOTH consumers of this audio, for the same reason: they are both wav2vec2-family
+        speech models, and a dense musical mix is not speech. ASR transcribes it; forced alignment
+        times it.
+        """
         p = vocals_path(job.media_dir, job.media_id)
         return p if os.path.exists(p) else None
 
@@ -464,6 +550,11 @@ class WhisperXProcessor:
         self, text: LyricsText, audio: str, language: str
     ) -> tuple[dict[str, Any], str, str] | None:
         """Turn one acquired text into (doc, timing, timingConfidence), or None if unusable.
+
+        `audio` MUST be the isolated vocals stem when one exists — see the caller. Forced alignment is
+        a wav2vec2 speech model, so aligning against a full mix smears word boundaries wherever the
+        band is loud, which is measurable in the output as long words stretched across passages the
+        aligner lost and short function words collapsed to ~20ms.
 
         Order: a source that ALREADY has word timings (ASR) keeps them; otherwise force-align, and on
         any aligner failure fall back to the source's own line timings. A source with neither is
@@ -474,6 +565,17 @@ class WhisperXProcessor:
             doc = normalize_lyrics({"language": lang, "segments": text.segments})
             if is_valid_lyrics(doc):
                 return doc, TIMING_WORD, "medium"
+        # SYNC MODE. `lines` skips forced alignment entirely rather than failing it — one fewer ML pass
+        # per cook, at the cost of the bouncing ball. It takes the SAME path the aligner's failure
+        # fallback takes, so there is one line-sync implementation rather than two that can drift.
+        if self._sync_mode is SyncMode.LINES:
+            if text.timing != TIMING_LINE:
+                return None  # nothing to sync against, and this mode will not go and find timings
+            doc = line_synced_lyrics(text.segments, language=lang)
+            # `high` confidence: these are the source's own timings, unmodified. Whether they are RIGHT
+            # for this recording is a different question — an LRC written for another upload of the song
+            # is confidently wrong, which is why `forced` remains the default.
+            return (doc, TIMING_LINE, "high") if is_line_synced(doc) else None
         try:
             aligned = self._get_aligner().align(text.segments, audio, lang)
             doc = normalize_lyrics(aligned)

@@ -14,6 +14,14 @@
 // to arbitrary Hugging Face ids is a deliberate future toggle, not the default.
 
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
+import {
+	DEFAULT_ASR_MODEL,
+	DEFAULT_SYNC_MODE,
+	isValidAsrModel,
+	isValidSyncMode,
+	type AsrModelId,
+	type SyncModeId
+} from './lyrics-engines';
 
 export type SeparatorEngineId = 'demucs' | 'roformer' | 'ensemble';
 
@@ -308,6 +316,17 @@ export interface GlobalSettings {
 	 * `local` is never valid here: that is a property of an individual media, not a default.
 	 */
 	defaultFetcher: FetcherId;
+	/**
+	 * Which Whisper checkpoint the ASR tier transcribes sung vocals with. Global because the weights
+	 * are a property of the box: they have to be downloaded once and held in RAM by the worker, so a
+	 * room cannot pick a model its fleet cannot load.
+	 */
+	asrModel: AsrModelId;
+	/**
+	 * How words get their timestamps — forced alignment (per-word) or the source's own line timings.
+	 * Global for the same reason: `forced` needs a worker that can load the wav2vec2 align model.
+	 */
+	syncMode: SyncModeId;
 }
 
 export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
@@ -316,7 +335,9 @@ export const DEFAULT_GLOBAL_SETTINGS: GlobalSettings = {
 	defaultModel: DEFAULT_MODEL,
 	enqueueUpgrade: false,
 	upgradeEngine: 'roformer',
-	upgradeModel: 'bs-roformer-1297'
+	upgradeModel: 'bs-roformer-1297',
+	asrModel: DEFAULT_ASR_MODEL,
+	syncMode: DEFAULT_SYNC_MODE
 };
 
 /** Coerce a partial/untrusted object to valid GlobalSettings, falling back per-field. Used by the
@@ -349,6 +370,10 @@ export function normalizeGlobalSettings(
 		...upgrade,
 		defaultFetcher: fetcher,
 		enqueueUpgrade: typeof input?.enqueueUpgrade === 'boolean' ? input.enqueueUpgrade : d.enqueueUpgrade,
+		// Same per-field degrade rule: a model or mode that has been de-whitelisted between releases
+		// falls back rather than being served, and rejecting it cannot disturb the other choice.
+		asrModel: input?.asrModel && isValidAsrModel(input.asrModel) ? input.asrModel : d.asrModel,
+		syncMode: input?.syncMode && isValidSyncMode(input.syncMode) ? input.syncMode : d.syncMode
 	};
 }
 

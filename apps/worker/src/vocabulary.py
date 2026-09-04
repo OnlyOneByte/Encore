@@ -70,6 +70,42 @@ class Engine(_StrEnum):
     ENSEMBLE = "ensemble"
 
 
+class AsrModel(_StrEnum):
+    """Which faster-whisper checkpoint the ASR tier transcribes sung vocals with.
+
+    A deployment choice carried in an align job's params, mirroring AsrModelId in
+    packages/shared/src/lyrics-engines.ts — which is the source of truth for the whitelist and the
+    only place a new checkpoint should be added first.
+
+    Enumerated rather than passed through as a free string for a specific reason: an unrecognised token
+    reaches `whisperx.load_model()`, which tries to resolve it as a HuggingFace repo, fails, and is
+    swallowed by AsrSource's `except` — so the tier quietly DECLINES and the song finishes cooking with
+    no words and nothing in the log naming why. Parsing at the boundary turns that into an immediate,
+    named failure.
+    """
+
+    TINY = "tiny"
+    BASE = "base"
+    SMALL = "small"
+    MEDIUM = "medium"
+    LARGE_V3 = "large-v3"
+
+
+class SyncMode(_StrEnum):
+    """HOW a song's words get their timestamps.
+
+    FORCED runs wav2vec2 forced alignment against the isolated vocals stem and yields per-word
+    timings — the bouncing ball. LINES skips alignment entirely and keeps each source's own line
+    timings, which costs one fewer ML pass per cook but cannot highlight individual words.
+
+    Both were always code paths; LINES was only ever reachable as the landing spot of an `except` in
+    whisperx.py's `_time_one`. Naming it makes it a choice instead of a consolation prize.
+    """
+
+    FORCED = "forced"
+    LINES = "lines"
+
+
 class Backend(_StrEnum):
     """HOW an engine executes on this particular worker.
 
@@ -143,6 +179,34 @@ def parse_engine(value: str | None, default: Engine = Engine.DEMUCS) -> Engine:
         return Engine(value)
     except ValueError:
         raise ValueError(f"unknown engine {value!r}; expected one of {[e.value for e in Engine]}") from None
+
+
+def parse_asr_model(value: str | None, default: AsrModel = AsrModel.BASE) -> AsrModel:
+    """Coerce a wire ASR model token to an AsrModel. Absent means the default; unknown RAISES.
+
+    `default` is BASE deliberately: it is what whisperx.py hardcoded before this was configurable, so
+    an align job from a core that predates the setting transcribes exactly as it always did.
+    """
+    if value is None or value == "":
+        return default
+    try:
+        return AsrModel(value)
+    except ValueError:
+        raise ValueError(
+            f"unknown ASR model {value!r}; expected one of {[m.value for m in AsrModel]}"
+        ) from None
+
+
+def parse_sync_mode(value: str | None, default: SyncMode = SyncMode.FORCED) -> SyncMode:
+    """Coerce a wire sync mode to a SyncMode. Absent means the default; unknown raises."""
+    if value is None or value == "":
+        return default
+    try:
+        return SyncMode(value)
+    except ValueError:
+        raise ValueError(
+            f"unknown sync mode {value!r}; expected one of {[m.value for m in SyncMode]}"
+        ) from None
 
 
 def parse_backend(value: str | None, default: Backend = Backend.TORCH) -> Backend:

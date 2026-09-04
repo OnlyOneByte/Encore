@@ -4,7 +4,7 @@
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
 import type { Job, JobParams, JobType, Media, GlobalSettings } from '@encore/shared';
-import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_GLOBAL_SETTINGS, DEFAULT_FETCHER, getEngine, getFetcher, fetcherFor, isQualityUpgrade } from '@encore/shared';
+import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_GLOBAL_SETTINGS, DEFAULT_FETCHER, DEFAULT_ASR_MODEL, DEFAULT_SYNC_MODE, getEngine, getFetcher, fetcherFor, isQualityUpgrade } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 /**
@@ -77,7 +77,17 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 		};
 	}
 	if (jobType !== 'align') return { fetcher };
-	return { fetcher, ...lookupKeys(media) };
+	// An align job carries the LYRICS engines the same way a stems job carries its separator: the model
+	// that reads the words and the mode that timestamps them. Before this the worker hardcoded both, so
+	// an operator watching wrong words scroll past the TV had nothing to change. Falls back to the
+	// shared defaults when no settings are provided (a unit test), which are the values the worker used
+	// when they were hardcoded — so an align job with no settings behaves exactly as it always did.
+	return {
+		fetcher,
+		asrModel: settings?.asrModel ?? DEFAULT_ASR_MODEL,
+		syncMode: settings?.syncMode ?? DEFAULT_SYNC_MODE,
+		...lookupKeys(media)
+	};
 }
 
 /**

@@ -14,7 +14,10 @@ from src import demucs
 
 def test_defaults_are_the_shipped_behaviour():
     c = WorkerConfig.from_env({})
-    assert c.capabilities == ("stems",)
+    # The WHOLE cook, not just separation. A stems-only default silently breaks the quickstart: the
+    # core still enqueues `fetch` and `align`, nothing claims them, and the song sits at 0% or never
+    # gets lyrics — indistinguishable from a hung worker.
+    assert c.capabilities == ("fetch:ytdlp", "stems", "align")
     assert c.concurrency == 1
     assert c.demucs_model == "htdemucs"
     assert c.demucs_jobs == auto_demucs_jobs()  # scales with the box, not a hardcoded guess
@@ -109,7 +112,7 @@ def test_shifts_may_be_zero_but_jobs_may_not():
 
 def test_empty_capabilities_does_not_produce_a_useless_worker():
     c = WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": " , ,"})
-    assert c.capabilities == ("stems",)
+    assert c.capabilities == ("fetch:ytdlp", "stems", "align")
     assert c.warnings
 
 

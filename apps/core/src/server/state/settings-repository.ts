@@ -41,7 +41,9 @@ export class SettingsRepository {
 			enqueueUpgrade: row.enqueueUpgrade,
 			upgradeEngine: row.upgradeEngine as GlobalSettings['upgradeEngine'],
 			upgradeModel: row.upgradeModel,
-			defaultFetcher: row.defaultFetcher as GlobalSettings['defaultFetcher']
+			defaultFetcher: row.defaultFetcher as GlobalSettings['defaultFetcher'],
+			asrModel: row.asrModel as GlobalSettings['asrModel'],
+			syncMode: row.syncMode as GlobalSettings['syncMode']
 		});
 	}
 
