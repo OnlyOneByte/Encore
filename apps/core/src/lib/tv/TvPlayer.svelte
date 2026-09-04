@@ -9,6 +9,8 @@
 	// reason this is two media elements rather than a WebAudio graph — a graph buys sample-exact lock
 	// and effects at the cost of rebuilding the part that already works.
 	import { keyedMediaRef, playbackRef, isPlayable, type Media } from '@encore/shared';
+	import { guideCorrection } from './guide-sync';
+	import { nextVideoSrc } from './video-src';
 	interface Props {
 		media: Media | null;
 		visible: boolean;
@@ -40,11 +42,21 @@
 	let vocals: HTMLAudioElement | undefined = $state();
 
 	/**
-	 * Snap the guide back to the master when it drifts past this. Two independent media elements are
-	 * not sample-locked, and a nudge of a few tens of ms is inaudible on a vocal sitting under a
-	 * backing track — whereas a full re-decode to lock them would not be.
+	 * How the guide is held against the master — and specifically why it is NOT held with seeks.
+	 *
+	 * Two independent media elements are not sample-locked, so the guide is always drifting. The
+	 * obvious correction — assign `vocals.currentTime` — is the wrong tool at this scale: setting
+	 * `currentTime` flushes the decoder and re-primes the buffer, which is an audible discontinuity.
+	 * Correcting a 40ms drift on the master's ~4Hz `timeupdate` therefore meant a decoder flush every
+	 * few hundred ms, heard as a faint continuous crackle under the instrumental. The nudge was never
+	 * the cheap half of that trade; it was the expensive half.
+	 *
+	 * The policy itself lives in `guide-sync.ts` as a pure function, so it can be tested without two
+	 * real media elements. This component only applies the answer.
 	 */
-	const DRIFT_TOLERANCE_SEC = 0.04;
+
+	/** Pre-roll alignment only. Before the guide is playing a seek costs nothing, so it stays a seek. */
+	const GUIDE_PREROLL_ALIGN_SEC = 0.04;
 
 	/**
 	 * How long to wait for the guide to become playable before giving up on it for this slot.
@@ -79,15 +91,24 @@
 	let masterReady = $state(false);
 	let guideSettled = $state(false);
 	let announced = $state(false);
+	// The src the <video> currently holds; the assign effect below writes the element ONLY when this
+	// changes (see that effect for why an unconditional binding restarts the song). Declared here with
+	// the other slot state so the reset effect can clear it.
+	let currentSrc = $state<string | null>(null);
 
 	// A new song in this slot forgets the previous one's readiness. Without this a re-warmed slot never
 	// reports ready again and the gapless swap stalls on it. This effect reads only `media?.id`, and
 	// writes nothing it reads, so it cannot loop.
+	//
+	// It also drops `currentSrc` to null: the {#if} unmounts and remounts the <video> per song, so a
+	// fresh element starts with no src, and a stale `currentSrc` from the previous element would make
+	// the assign effect wrongly conclude "unchanged" and never write the new element's src.
 	$effect(() => {
 		void media?.id;
 		masterReady = false;
 		guideSettled = false;
 		announced = false;
+		currentSrc = null;
 	});
 
 	$effect(() => {
@@ -120,13 +141,20 @@
 		if (!vocals || !video) return;
 		if (active && visible && playing) {
 			// Line it up BEFORE starting, so the guide does not enter a couple of seconds behind and get
-			// dragged forward audibly by the first governor tick.
-			if (Math.abs(vocals.currentTime - video.currentTime) > DRIFT_TOLERANCE_SEC) {
+			// dragged forward audibly by the first governor tick. A seek here is free — nothing is
+			// audible yet — which is exactly why the governor below does not use one.
+			if (Math.abs(vocals.currentTime - video.currentTime) > GUIDE_PREROLL_ALIGN_SEC) {
 				vocals.currentTime = video.currentTime;
 			}
+			// Start from neutral; the governor re-derives any trim it still needs from real drift.
+			vocals.playbackRate = 1;
+			// A tempo trim must never become a pitch shift on a sung vocal. Set explicitly rather than
+			// trusting the default, which is not uniform across browsers.
+			vocals.preservesPitch = true;
 			vocals.play().catch(() => {});
 		} else {
 			vocals.pause();
+			vocals.playbackRate = 1;
 		}
 	});
 
@@ -150,14 +178,45 @@
 	}
 
 	/**
+	 * The src the element currently holds, tracked so we assign it ONLY when the resolved string
+	 * actually changes.
+	 *
+	 * Bug A: an unrelated cook finishing rebroadcasts a full `queue:sync`, and the TV route rebuilds
+	 * its media catalog into fresh object identities — including the one currently playing. A markup
+	 * binding `src={fileSrc(media)}` re-evaluates on that identity change and reassigns the element's
+	 * src, and assigning `HTMLMediaElement.src` RELOADS the resource and resets `currentTime` to 0 even
+	 * when the URL string is byte-identical. `fileSrc`/`playbackRef`/`keyedMediaRef` are pure in the
+	 * media's fields, so an unchanged song resolves to the same string and `nextVideoSrc` makes the
+	 * assignment a no-op. The decision lives in `video-src.ts` so it can be tested without a real
+	 * element; this effect only applies it.
+	 */
+	$effect(() => {
+		if (!video) return;
+		// A slot with nothing playable resolves to '' and clears the element, matching the {#if} that
+		// previously unmounted the <video> for unplayable media.
+		const resolved = media && isPlayable(media) ? fileSrc(media) : '';
+		const decision = nextVideoSrc(currentSrc, resolved);
+		if (!decision.changed) return;
+		currentSrc = decision.src;
+		// Assigning '' would set the src to the document URL and trigger a spurious load/error; use
+		// removeAttribute to genuinely clear it, mirroring an unmounted element.
+		if (decision.src === '') video.removeAttribute('src');
+		else video.src = decision.src;
+	});
+
+	/**
 	 * The drift governor. Runs on the master's existing ~4Hz `ontimeupdate` rather than its own timer,
 	 * so the guide is corrected against the clock that actually drives the room.
+	 *
+	 * It corrects with `playbackRate`, not `currentTime`: see `guide-sync.ts` for why seeking here is
+	 * what made the guide crackle.
 	 */
 	function syncGuide(): void {
 		if (!vocals || !video || vocals.seeking) return;
-		if (Math.abs(vocals.currentTime - video.currentTime) > DRIFT_TOLERANCE_SEC) {
-			vocals.currentTime = video.currentTime;
-		}
+		const correction = guideCorrection(vocals.currentTime, video.currentTime);
+		if (correction.kind === 'reseek') vocals.currentTime = video.currentTime;
+		// Assign only on a real change: writing playbackRate is not free on every element.
+		if (vocals.playbackRate !== correction.rate) vocals.playbackRate = correction.rate;
 	}
 </script>
 
@@ -166,7 +225,6 @@
 		<!-- svelte-ignore a11y_media_has_caption -->
 		<video
 			bind:this={video}
-			src={fileSrc(media)}
 			preload="auto"
 			oncanplaythrough={() => (masterReady = true)}
 			onended={() => onended?.()}

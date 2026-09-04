@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { tvScreen, lobbyRoster } from './screen';
+import { tvScreen, lobbyRoster, lyricsAdvancing } from './screen';
 import type { QueueEntry } from '@encore/shared';
 
 const entry = (id: string, singerId = 's1'): QueueEntry =>
@@ -39,6 +39,28 @@ describe('tvScreen', () => {
 		// After a restart the queue is back before any phone re-opens its socket. Falling back to
 		// "scan to join" there would imply the queue was lost.
 		expect(tvScreen({ playerState: 'attract', current: null, entries: [entry('e1')], inRoomCount: 0 })).toBe('lobby');
+	});
+});
+
+describe('lyricsAdvancing', () => {
+	it('advances while a song plays', () => {
+		expect(lyricsAdvancing('playing', 'playing', true)).toBe(true);
+	});
+
+	it('does NOT advance while paused, even though the screen is still playing (Bug B)', () => {
+		// The bug: a paused song is still `current`, so the old screen-only gate kept the reel and ball
+		// scrolling with no audio. The transport state must freeze them.
+		expect(lyricsAdvancing('playing', 'playing', false)).toBe(false);
+	});
+
+	it('does not advance during the interstitial (a song is not on the words yet)', () => {
+		expect(lyricsAdvancing('playing', 'interstitial', true)).toBe(false);
+	});
+
+	it('does not advance on the idle screens regardless of transport', () => {
+		expect(lyricsAdvancing('attract', 'attract', true)).toBe(false);
+		expect(lyricsAdvancing('lobby', 'attract', true)).toBe(false);
+		expect(lyricsAdvancing('waiting', 'waiting', true)).toBe(false);
 	});
 });
 

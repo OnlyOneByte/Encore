@@ -267,7 +267,16 @@
 		   `bottom: 14%` left them crowding the lower-third and the join card. `inset` + flex centering
 		   keeps a wrapped 2-line lyric visually centred instead of growing downward off-balance. */
 		position: absolute;
-		inset: 0;
+		/* NOT `inset: 0`. The bottom is pulled up by the reserved chrome band the join/QR corner and the
+		   now-playing lower-third occupy, so the reel's box ends where the cards begin and the two can
+		   never overlap. Because the box stays `justify-content: center`, reserving that band shrinks it
+		   and RAISES the centreline into the freed upper space — the "compress the lyrics, move the
+		   centreline up" the user asked for, achieved structurally with no new setting. Top/left/right
+		   are unchanged. */
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: var(--tv-chrome-h);
 		z-index: 6;
 		display: flex;
 		flex-direction: column;
@@ -287,7 +296,7 @@
 	   making them harder to read would punish the singer for a provenance problem. */
 	.lyrics.unverified .row.current { font-style: italic; }
 	/*
-	 * Pinned to the BOTTOM EDGE and sized in rem.
+	 * Rides with the reel box, NOT the screen edge, and sized in rem.
 	 *
 	 * It was `0.30em` sitting directly under the lyrics, and em here resolves against .lyrics (1rem),
 	 * NOT the 3.6rem lyric — so it rendered at ~5px and was genuinely unreadable on a TV across a room.
@@ -295,13 +304,15 @@
 	 * Bottom-centre is deliberate — the lower-third owns bottom-left and the join card bottom-right, so
 	 * this is the one free edge, and it keeps the notice out of the sung text's way.
 	 *
-	 * Anchored with `--tv-safe-y`, NOT a 4% inset: 4% of 1080 is ~43px, inside the ~54px a TV crops for
-	 * overscan, so the one signal telling a singer these words are a guess could be clipped off-screen.
-	 * The shared safe-area token keeps it inside the readable region like every other edge element.
+	 * Anchored at the BOTTOM of the .lyrics box (`bottom: 0`), which now stops at the top of the
+	 * reserved chrome band. It used to sit at `bottom: var(--tv-safe-y)` measured from the SCREEN edge,
+	 * which after reserving the band would land INSIDE it and be painted over by the cards. Since the
+	 * .lyrics box itself is already held out of the overscan region by the band (built from
+	 * --tv-safe-y), `bottom: 0` here is a box-relative anchor, not a bare screen-edge px offset.
 	 */
 	.notice {
 		position: absolute;
-		bottom: var(--tv-safe-y);
+		bottom: 0;
 		left: 0;
 		right: 0;
 		font-size: var(--tv-label);
@@ -350,6 +361,15 @@
 		--lyrics-fade-top: calc(var(--lyrics-row-h) * var(--lyrics-fade-top-on, 1));
 		--lyrics-fade-bot: calc(var(--lyrics-row-h) * var(--lyrics-fade-bot-on, 1));
 		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-h));
+		/*
+		 * A ceiling so an EXTREME setting cannot outgrow the freed space above the chrome band. At the
+		 * max scalePct with max linesBefore+linesAfter the derived height can exceed what remains once
+		 * the band is reserved; capping it lets the existing edge mask fade absorb the surplus rows
+		 * rather than the reel spilling back down toward the cards. Symmetric --tv-safe-y keeps a little
+		 * breathing room at the top mirror of the band. Does not change default geometry: at the default
+		 * five rows the derived height is well under this cap, so the reel is unaffected.
+		 */
+		max-height: calc(100vh - var(--tv-chrome-h) - var(--tv-safe-y));
 		overflow: hidden;
 		mask-image: linear-gradient(
 			to bottom,

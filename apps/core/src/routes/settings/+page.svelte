@@ -685,7 +685,7 @@
 			type="range"
 			min="0"
 			max="100"
-			step="5"
+			step="1"
 			value={Math.round(settings.room.guideLevelDefault * 100)}
 			onchange={(e) => onroom({ guideLevelDefault: Number(e.currentTarget.value) / 100 })}
 		/>

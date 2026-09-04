@@ -2,7 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
-	import { chosenCandidate, isPlayable, effectiveSongIntroMs } from '@encore/shared';
+	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -18,7 +18,7 @@
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
-	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin } from '$lib/tv/screen';
+	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
 
 	let { data } = $props();
 
@@ -82,6 +82,27 @@
 	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
 	let reconnectAttempt = 0;
 	let disposed = false;
+
+	/**
+	 * Fold a fresh `queue:sync` media list into the existing catalog, PRESERVING the existing object
+	 * identity for any song whose fields are unchanged.
+	 *
+	 * Bug A root cause: the old `new Map(e.media.map(...))` gave every Media a fresh identity on every
+	 * sync, including the one currently playing. `applyNowPlaying` -> `syncSlots` then wrote that new
+	 * object into `slotMedia`, and even with TvPlayer's src-assign guard this is the honest fix — an
+	 * unrelated cook must not churn the object graph the whole render tree reads. Comparing by JSON is
+	 * adequate here: Media is a flat, JSON-shaped record already sent over the wire as JSON, so a
+	 * structural match means genuinely-equal fields, and reusing the prior object on a match keeps
+	 * identity stable for every downstream consumer.
+	 */
+	function mergeCatalog(prev: Map<string, Media>, incoming: Media[]): Map<string, Media> {
+		const next = new Map<string, Media>();
+		for (const m of incoming) {
+			const existing = prev.get(m.id);
+			next.set(m.id, existing && JSON.stringify(existing) === JSON.stringify(m) ? existing : m);
+		}
+		return next;
+	}
 
 	function mediaOf(entry: QueueEntry | null): Media | null {
 		return entry ? (mediaCatalog.get(entry.mediaId) ?? null) : null;
@@ -204,7 +225,7 @@
 			if (e.type === 'queue:sync') {
 				entries = e.entries;
 				if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
-				if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
+				if (e.media) mediaCatalog = mergeCatalog(mediaCatalog, e.media);
 				// only adopt presence when the server actually sent it — an omitted `online` means
 				// "no info", not "nobody here", and must not blank a roster we already have.
 				if (e.online) online = e.online;
@@ -338,6 +359,15 @@
 	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundHue, currentSingerColor));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
+	// Bug B: the reel and ball ADVANCE only while the transport is actually playing. `lyricsActive`
+	// stays true through a pause (a paused song is still `current`), so binding the overlay's `playing`
+	// prop to it kept the words scrolling with the audio frozen. Visibility still rides `lyricsActive`
+	// — the overlay stays on screen, just frozen mid-line.
+	const lyricsPlaying = $derived(lyricsAdvancing(screen, tvState, isPlaying));
+	// Bug C: the lower-third showed the RAW upload title. Resolve the display fields once — canonical
+	// title/artist when a confident parse produced them, never the uploader. Artist is null when there
+	// is nothing trustworthy, and the markup omits the line rather than inventing one.
+	const nowPlayingDisplay = $derived(songDisplay(mediaOf(current)));
 	// Which candidate the current lyricsRef came from, so the overlay can label a guess.
 	// Null for a pre-candidate artifact — unknown provenance, asserted as neither verified nor not.
 	const lyricsProvenance = $derived.by(() => {
@@ -406,7 +436,7 @@
 		lyricsRef={mediaOf(current)?.lyricsRef}
 		provenance={lyricsProvenance}
 		{positionSec}
-		playing={lyricsActive}
+		playing={lyricsPlaying}
 		visible={lyricsActive}
 		ball={lyricsStyle.ball}
 		highlight={lyricsStyle.highlight}
@@ -449,7 +479,9 @@
 		<div class="lower-third">
 			<span class="ls-label">Now singing</span>
 			<span class="ls-name">{singerName(current?.singerId)}</span>
-			<span class="ls-song">{mediaOf(current)?.title ?? ''}</span>
+			<span class="ls-song">{nowPlayingDisplay.title}</span>
+			<!-- Artist only when a confident parse produced one — never the uploader. -->
+			{#if nowPlayingDisplay.artist}<span class="ls-artist">{nowPlayingDisplay.artist}</span>{/if}
 			{#if tvProgressStyle === 'card'}
 				<TvProgress style="card" elapsedSec={positionSec} {durationSec} />
 			{/if}
@@ -475,15 +507,17 @@
 	-->
 	{#if tvState === 'interstitial' && introEntry}
 		{@const m = mediaOf(introEntry)}
+		{@const d = songDisplay(m)}
 		<div class="interstitial state-next">
 			<!-- "Now singing" for the opener; "Next up" once the night is under way. Saying "Next up" for
 			     the very first song of the evening is simply untrue — there is no previous song it follows. -->
 			<div class="up-label">{openedOnce && introEntry.id !== current?.id ? 'Next up' : 'Now singing'}</div>
 			<div class="up-name">{singerName(introEntry.singerId)}</div>
-			<div class="up-song">{m?.title ?? ''}</div>
-			<!-- Artist was missing: title alone is often ambiguous between covers, and the room reads this
-			     card to decide whether the queued song is the version they meant. -->
-			{#if m?.artist}<div class="up-artist">{m.artist}</div>{/if}
+			<div class="up-song">{d.title}</div>
+			<!-- Artist disambiguates between covers, but ONLY when trustworthy: the old fallback rendered
+			     the UPLOADER (e.g. "7clouds") as the artist, which is a bug, not a fallback. Show the
+			     canonical artist or nothing. -->
+			{#if d.artist}<div class="up-artist">{d.artist}</div>{/if}
 		</div>
 	{/if}
 
@@ -577,7 +611,22 @@
 	}
 	.ls-label { font-size: var(--tv-label); letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.92; }
 	.ls-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--tv-name); font-weight: 800; }
-	.ls-song { font-size: var(--tv-body); opacity: 0.97; }
+	/*
+	 * Clamp the title to two lines. An UNPARSED long raw title (no canonical title to shorten it) would
+	 * otherwise grow the card downward — the TV-LAYOUT agent is reserving a fixed bottom band for these
+	 * cards, and an unbounded title defeats that. -webkit-line-clamp is the only cross-browser two-line
+	 * clamp; it needs the -webkit box display and hidden overflow to take effect.
+	 */
+	.ls-song {
+		font-size: var(--tv-body); opacity: 0.97;
+		display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+		overflow: hidden;
+	}
+	/* Secondary to the title: it disambiguates rather than identifies, so it stays dimmer and one line. */
+	.ls-artist {
+		font-size: var(--tv-body); color: var(--ink-dim);
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+	}
 	.interstitial {
 		position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center;
 		justify-content: center; gap: 12px; background: rgba(11, 11, 18, 0.94);

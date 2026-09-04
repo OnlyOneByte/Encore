@@ -42,7 +42,7 @@
 		type="range"
 		min="0"
 		max="100"
-		step="5"
+		step="1"
 		value={shown}
 		disabled={!available}
 		aria-label="Guiding track — original vocal level"

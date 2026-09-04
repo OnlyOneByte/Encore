@@ -206,8 +206,7 @@ The **TV stage look** — what the room paints behind the song — is a **room s
 **audio visualizer** (plasma, starfield, ripples, phase curves) with a second picker for which one. The
 visualizers follow the music's pace rather than the sound itself — the TV does not listen to the audio,
 which is also why no spectrum bars or waveform are offered: they would only be pretending to show it.
-Any joined phone can also override it **for the current song only** from the now-playing controls; that
-override clears when the song does. Every option is generated at a pinned dark lightness because the
+Every option is generated at a pinned dark lightness because the
 lyrics sit on top of it, so no choice can make the words hard to read from the couch.
 
 ## Status & roadmap

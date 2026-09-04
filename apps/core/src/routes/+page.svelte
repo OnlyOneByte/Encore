@@ -1,7 +1,6 @@
 <script lang="ts">
 	import {
 		SINGER_COLORS,
-		TV_BACKGROUND_STYLES,
 		DEFAULT_EFFECTIVE_SETTINGS,
 		queueOrderLabel,
 		reorderIsMeaningful,
@@ -869,32 +868,12 @@
 	</div>
 
 	<!--
-		Per-song stage background. UNGATED, like every other control in this group (restart/play/skip and
-		±semitone carry no ownership check either) — repainting the stage is a party control, and a
-		strictly milder one than skip.
-
-		"Room default" is a real choice, not an absence: it sends `style: null`, handing the song back to
-		whatever the room picked, which is how you undo a change without knowing what the room's setting
-		was.
+		The TV stage look lives ONLY in room settings now. The per-song override that used to sit here
+		(a phone repainting the stage for the current song via sendPlayer 'background') was removed: the
+		stage is a room-wide decision, not a per-singer one, so a single writer in Settings is correct.
+		The server command, PlaybackState.background field and the TV resolver are deliberately kept —
+		with no writer the field simply stays null and the resolver already falls back to the room style.
 	-->
-	<div class="bg-pick" class:disabled={!nowEntry} class:overridden={playback.background !== null}>
-		<span class="lab">Stage</span>
-		<button
-			class="bg-btn"
-			class:on={playback.background === null}
-			disabled={!nowEntry}
-			onclick={() => sendPlayer({ cmd: 'background', style: null })}>Room default</button
-		>
-		{#each TV_BACKGROUND_STYLES as s (s.id)}
-			<button
-				class="bg-btn"
-				class:on={playback.background === s.id}
-				disabled={!nowEntry}
-				title={s.note}
-				onclick={() => sendPlayer({ cmd: 'background', style: s.id })}>{s.label}</button
-			>
-		{/each}
-	</div>
 
 	<div class="grouphead">Up next · {orderLabel}</div>
 	{#if queued.length === 0}
@@ -1090,26 +1069,6 @@
 	.ic:active { transform: scale(0.92); }
 
 	.key { display: flex; gap: 6px; margin: 6px 0 2px; align-items: center; }
-	/*
-	 * Wraps, unlike .key: five choices will not fit one phone row at a 44px touch target, and shrinking
-	 * them to fit is how a control becomes unhittable mid-song in a dark room.
-	 */
-	.bg-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; align-items: center; }
-	.bg-pick.disabled { opacity: 0.5; }
-	.bg-pick .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
-	.bg-pick.overridden .lab { color: var(--warn); }
-	.bg-btn {
-		border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim);
-		border-radius: 10px; padding: 8px 10px; font-size: 0.8rem; cursor: pointer; min-height: 44px;
-	}
-	.bg-pick:not(.disabled) .bg-btn:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
-	/* The active choice is stated by border + text, never by colour alone. The BORDER carries the
-	   accent (a non-text element, 3:1 floor); the label stays --ink because --accent as text measures
-	   4.51:1 on --bg and only 3.95:1 on a card, so at 0.8rem it sits on the AA threshold and falls
-	   below it the moment this control moves onto a card. See lib/contrast.test.ts. */
-	.bg-btn.on { border-color: var(--accent); color: var(--ink); font-weight: 700; }
-	.bg-pick:not(.disabled) .bg-btn:not(:disabled):active { transform: scale(0.95); }
-	.bg-btn:disabled { cursor: default; }
 	.key.disabled { opacity: 0.5; }
 	.key .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
 	.key.shifted .lab { color: var(--warn); }
