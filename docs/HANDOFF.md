@@ -143,6 +143,18 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
 14. **Not every YouTube video downloads.** yt-dlp hits `This video is not available` on some ids and
     the job fails at stage `downloading` after 3 attempts. That is upstream bot-checking, not an
     Encore bug — try another video before debugging.
+15. **An ephemeral `PlaybackState` field LEAKS across songs unless you name it three times.** That
+    object is a long-lived singleton — nothing rebuilds it per song — so each per-song field is
+    cleared by being listed at three separate `setPlayback` calls in `realtime/player.ts`: `advance()`
+    (reached by an explicit skip **and** by TV `ended` telemetry), the play-from-idle branch, and
+    `reconcileOnReady`. Miss one and the previous singer's choice carries into the next turn. The type
+    checker cannot catch it, so test each path separately — `realtime/background.test.ts` has one test
+    per path for exactly this reason. Fields with this shape today: `keyShift`, `background`.
+16. **Nothing above z-index 0 on the TV may paint an opaque background.** `TvPlayer`'s `<video>` used
+    to carry `background: #000`; with `object-fit: contain` and a video-less instrumental that painted
+    the entire screen and hid the stage background completely. If a new TV layer looks like it "isn't
+    rendering", check what is painting over it before checking your own code — and see
+    ARCHITECTURE §4 for the full stacking contract.
 
 ---
 
