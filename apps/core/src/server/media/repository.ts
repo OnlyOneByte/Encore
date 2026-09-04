@@ -27,6 +27,7 @@ const toRow = (m: Media): MediaRow => ({
 	annotationSource: m.annotation?.source ?? null,
 	annotationConfidence: m.annotation?.confidence ?? null,
 	instrumentalRef: m.instrumentalRef ?? null,
+	vocalsRef: m.vocalsRef ?? null,
 	lyricsRef: m.lyricsRef ?? null,
 	// JSON blob, not a table: nothing queries inside the set.
 	lyricsCandidates: m.lyricsCandidates?.length ? JSON.stringify(m.lyricsCandidates) : null,
@@ -67,6 +68,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 				}
 			: undefined,
 	instrumentalRef: r.instrumentalRef ?? undefined,
+	vocalsRef: r.vocalsRef ?? undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
 	lyricsCandidates: parseCandidates(r.lyricsCandidates),
 	pitchRef: r.pitchRef ?? undefined,

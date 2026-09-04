@@ -552,6 +552,14 @@ export interface RoomSettings {
 	/** Lines of already-sung context above the current one, and of upcoming lyric below it. */
 	lyricsLinesBefore: number;
 	lyricsLinesAfter: number;
+	/**
+	 * The room's default GUIDING TRACK level (0..1) — how loud the original vocals sit under the
+	 * instrumental when a song carries no per-song override. Per-room because it is a property of the
+	 * party: a crowd doing songs it half-knows wants a permanent faint guide, a confident room wants 0.
+	 *
+	 * Ships at 0, which reproduces today's behaviour exactly (pure karaoke), so the feature is opt-in.
+	 */
+	guideLevelDefault: number;
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
@@ -573,7 +581,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	lyricsFont: DEFAULT_LYRICS_FONT,
 	lyricsCase: DEFAULT_LYRICS_CASE,
 	lyricsLinesBefore: DEFAULT_LYRICS_LINES_BEFORE,
-	lyricsLinesAfter: DEFAULT_LYRICS_LINES_AFTER
+	lyricsLinesAfter: DEFAULT_LYRICS_LINES_AFTER,
+	guideLevelDefault: 0
 };
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
@@ -633,6 +642,14 @@ export function normalizeRoomSettings(
 		typeof rawHue === 'number' && Number.isFinite(rawHue)
 			? (((Math.round(rawHue / SINGER_HUE_STEP) * SINGER_HUE_STEP) % 360) + 360) % 360
 			: d.tvBackgroundHue;
+	// Clamped, like interstitialMs: a room default outside 0..1 should still yield a usable room. Note
+	// this one is NOT nullable — the room default is the floor the per-song override falls back to, so
+	// there is nothing below it to inherit from. A junk write keeps the room's current value.
+	const gl = input?.guideLevelDefault;
+	const guideLevelDefault =
+		typeof gl === 'number' && Number.isFinite(gl)
+			? Math.round(Math.min(1, Math.max(0, gl)) * 100) / 100
+			: d.guideLevelDefault;
 	return {
 		tvProgressStyle,
 		tvBackgroundStyle,
@@ -646,7 +663,8 @@ export function normalizeRoomSettings(
 		lyricsFont,
 		lyricsCase,
 		lyricsLinesBefore,
-		lyricsLinesAfter
+		lyricsLinesAfter,
+		guideLevelDefault
 	};
 }
 

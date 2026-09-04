@@ -132,7 +132,7 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			// audio has no field on Media (the worker owns it); preserve whatever a prior write knew.
 			audio: prev?.artifacts.audio ?? null,
 			instrumental: m.instrumentalRef ?? prev?.artifacts.instrumental ?? null,
-			vocals: prev?.artifacts.vocals ?? null,
+			vocals: m.vocalsRef ?? prev?.artifacts.vocals ?? null,
 			pitch: m.pitchRef ?? prev?.artifacts.pitch ?? null,
 			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null,
 			// Runtime first, else a prior write: an index-only hydrate leaves lyricsCandidates undefined,
@@ -191,6 +191,9 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 					}
 				: undefined,
 		instrumentalRef: s.artifacts.instrumental ?? undefined,
+		// The sidecar is authoritative, so a song whose vocals artifact was recorded before the DB was
+		// wiped gets its guiding track back here without a re-cook.
+		vocalsRef: s.artifacts.vocals ?? undefined,
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,
 		pitchRef: s.artifacts.pitch ?? undefined,

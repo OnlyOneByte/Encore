@@ -22,7 +22,15 @@ import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
 import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental, inheritsCook, hasCapableWorker } from './dispatch';
-import { markMediaReady, setMediaLyrics, setMediaPitch, applyAnnotation, settleLyricsGate, markLyricsQueued } from './make-karaoke';
+import {
+	markMediaReady,
+	setMediaLyrics,
+	setMediaPitch,
+	setMediaVocals,
+	applyAnnotation,
+	settleLyricsGate,
+	markLyricsQueued
+} from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 import { mediaStatusFor } from './media-status';
@@ -161,6 +169,12 @@ export class WorkerHub {
 		// media ready with a key for a file that does not exist.
 		if (publishesInstrumental(job.jobType)) {
 			markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
+			// The same separation also isolated the vocals — the guiding track. This artifact was
+			// arriving on the wire and being dropped, which is why a cooked song had no guide even
+			// though the file was sitting on disk next to the instrumental. Additive and independent:
+			// a worker that could not encode vocals, or measured them as silence, reports none and the
+			// song simply offers no guide.
+			setMediaVocals(job.mediaId, msg.artifacts?.stems?.vocals, this.#d.mediaById);
 		}
 		// A fetch may have identified the song. Applied under a never-regress rule so a later `medium`
 		// cannot downgrade an existing `high` citation. Declined annotation leaves the normalizer's
