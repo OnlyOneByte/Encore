@@ -84,8 +84,8 @@
 	/* corner: pinned bottom-right, opposite the lower-third, below the score badge */
 	.corner {
 		position: absolute;
-		right: 34px;
-		bottom: 34px;
+		right: var(--tv-safe-x);
+		bottom: var(--tv-safe-y);
 		z-index: 7;
 		display: flex;
 		align-items: center;
@@ -103,18 +103,18 @@
 		box-shadow: none;
 	}
 	.t {
-		font-size: 0.74rem;
+		font-size: var(--tv-label);
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
 	.u {
-		font-size: 0.98rem;
+		font-size: var(--tv-body);
 		font-weight: 700;
 		margin-top: 3px;
 	}
 	.n {
-		font-size: 0.84rem;
+		font-size: var(--tv-label);
 		color: var(--ok);
 		margin-top: 5px;
 		font-weight: 600;

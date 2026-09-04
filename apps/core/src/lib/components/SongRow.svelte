@@ -4,6 +4,7 @@
 	// line and which actions appear; the layout never changes, so a row that finishes cooking morphs
 	// in place instead of jumping between lists.
 	import type { Readiness } from '$lib/readiness';
+	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {
 		title: string;
@@ -23,7 +24,7 @@
 	// "with vocals" out loud, or a singer queues a plain YouTube video and cannot tell why the
 	// original singer is still audible.
 	const sub = $derived.by(() => {
-		if (readiness === 'ready') return `🎤 instrumental ready${artist ? ' · ' + artist : ''}`;
+		if (readiness === 'ready') return `instrumental ready${artist ? ' · ' + artist : ''}`;
 		if (readiness === 'cooking') {
 			const eta = etaSec && etaSec > 0 ? ` · ~${Math.max(1, Math.round(etaSec / 60))} min` : '';
 			return `Separating vocals… ${pct}%${eta}`;
@@ -38,9 +39,9 @@
 	same song twice (Enter on the row, then Tab-Enter on the button). The two buttons carry the actions.
 -->
 <div class="row card" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}>
-	<div class="thumb"></div>
+	<div class="thumb"><Icon name="play" /></div>
 	<div class="meta">
-		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"> ✨</span>{/if}</div>
+		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}</div>
 		<div class="s" class:ok={readiness === 'ready'} class:warn={readiness === 'cooking'}>{sub}</div>
 		{#if readiness === 'cooking'}
 			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
@@ -57,11 +58,11 @@
 			position while it separates. See $lib/cook-and-queue.ts.
 		-->
 		<button class="sing" title="Take a turn now and strip the vocals — you keep your place in line while it cooks"
-			onclick={() => onmake?.()}>✨ Sing</button>
+			onclick={() => onmake?.()}><Icon name="sparkle" /> Sing</button>
 	{:else}
 		<button class="add" class:queued={inQueue} aria-label={inQueue ? 'already in the queue' : 'add a turn'}
 			disabled={inQueue}
-			onclick={() => onadd?.()}>{inQueue ? '✓ Queued' : '＋ Turn'}</button>
+			onclick={() => onadd?.()}>{#if inQueue}<Icon name="check" /> Queued{:else}<Icon name="plus" /> Turn{/if}</button>
 	{/if}
 </div>
 
@@ -75,14 +76,27 @@
 	/* readiness is legible at a glance from the border alone, before any text is read */
 	.row.ready { border-color: var(--ok); }
 	.row.cooking { background: linear-gradient(var(--card), var(--card-tint)); border-color: var(--line-tint); }
+	/*
+	 * The play badge was `content: '▶'` on a pseudo-element — a codepoint in CSS, which is the one place
+	 * a naive attribute-level scan for stray glyphs would never have found it. It is a real mark now, so
+	 * the thumb centres its child instead.
+	 */
 	.thumb {
 		width: 56px; height: 40px; border-radius: 8px; flex: 0 0 auto;
-		background: linear-gradient(135deg, var(--track-bg), var(--card)); position: relative;
+		background: linear-gradient(135deg, var(--track-bg), var(--card));
+		display: grid; place-items: center;
+		color: rgba(255, 255, 255, 0.55);
+		font-size: 0.9rem;
 	}
-	.thumb::after { content: '▶'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff8; font-size: 0.8rem; }
 	.meta { min-width: 0; flex: 1; }
 	.t { font-weight: 600; font-size: 0.93rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.sparkle { color: var(--warn); }
+	/*
+	 * The cooking marker, inline with the title. The margin is load-bearing: the emoji this replaced was
+	 * written as `<span class="sparkle"> ✨</span>` with the separating space INSIDE the span, so swapping
+	 * in a mark left the glyph welded to the last letter — "Sweet Caroline✨". A space in the markup would
+	 * be collapsed away by the flex layout, so the gap has to be a margin.
+	 */
+	.sparkle { color: var(--warn); display: inline-grid; place-items: center; vertical-align: -2px; margin-left: 5px; }
 	.s { font-size: 0.76rem; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.s.ok { color: var(--ok); }
 	.s.warn { color: var(--warn); }
@@ -91,20 +105,22 @@
 	.add {
 		min-height: 44px;
 		flex: 0 0 auto; border: 0; border-radius: 10px; padding: 9px 12px; font-weight: 700;
-		font-size: 0.82rem; background: var(--grad); color: #fff; cursor: pointer;
+		font-size: 0.82rem; background: var(--accent-strong); color: var(--on-accent); cursor: pointer;
+		display: inline-flex; align-items: center; gap: 6px;
 	}
 	.add:active { transform: scale(0.94); }
 	.add.queued { background: var(--card2); border: 1px solid var(--ok); color: var(--ok); }
 	/*
-	 * The raw row's single primary action. It takes the gradient because it IS the primary intent on
-	 * this row — and because the weight used to sit on the wrong button: `.add` (gradient) was the
+	 * The raw row's single primary action. It takes the accent fill because it IS the primary intent on
+	 * this row — and because the weight used to sit on the wrong button: `.add` was the
 	 * dead end (a turn that could never become ready) while the cook was styled as a secondary
 	 * outline. The hierarchy was not missing, it was inverted.
 	 */
 	.sing {
+		display: inline-flex; align-items: center; gap: 6px;
 		min-height: 44px;
 		flex: 0 0 auto; border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 700;
-		font-size: 0.82rem; background: var(--grad); color: #fff; cursor: pointer;
+		font-size: 0.82rem; background: var(--accent-strong); color: var(--on-accent); cursor: pointer;
 	}
 	.sing:active { transform: scale(0.94); }
 </style>

@@ -11,6 +11,7 @@
 	// unreachable by keyboard and screen reader.
 	import type { Snippet } from 'svelte';
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
+	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -136,7 +137,7 @@
 		     readers in the button's aria-label above. -->
 		<div class="hint">
 			{#if !open && queueCount > 0}{queueCount} in the rotation{/if}
-			<span class="chev" class:up={!open}>⌃</span>
+			<span class="chev" class:up={!open}><Icon name="chevron-down" /></span>
 		</div>
 	</div>
 
@@ -188,8 +189,14 @@
 		font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
 		color: var(--ink-dim); margin-top: 9px;
 	}
-	.chev { display: inline-block; transition: transform 0.28s ease; transform: rotate(180deg); }
-	.chev.up { transform: rotate(0deg); }
+	/*
+	 * Base state is OPEN, where the chevron points down ("push down to close"). Collapsed adds .up and
+	 * flips it to point up ("pull up"). The rotations are the inverse of what they were, because the
+	 * glyph this replaced (U+2303) pointed UP at rest while the mark points DOWN at rest — same
+	 * on-screen behaviour, opposite starting geometry.
+	 */
+	.chev { display: inline-block; transition: transform 0.28s ease; transform: rotate(0deg); }
+	.chev.up { transform: rotate(180deg); }
 	.body { overflow-y: auto; padding: 4px 14px 20px; -webkit-overflow-scrolling: touch; }
 	/* keep the collapsed sheet from eating taps meant for the page behind it */
 	.sheet:not(.open) .body { pointer-events: none; }

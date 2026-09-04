@@ -202,7 +202,7 @@
 		bottom: 4%;
 		left: 0;
 		right: 0;
-		font-size: 1.15rem;
+		font-size: var(--tv-label);
 		font-weight: 600;
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
@@ -215,7 +215,7 @@
 	 * exact, and pink/white against grey is already a stronger cue than size.
 	 */
 	.viewport {
-		font-size: 3.1rem;
+		font-size: clamp(3.1rem, 6.4vh, 6rem);
 		font-weight: 800;
 		width: 100%;
 		/*
@@ -259,7 +259,7 @@
 		 */
 		line-height: 1.9;
 		max-width: 100%;
-		color: rgba(255, 255, 255, 0.34); /* upcoming lines */
+		color: rgba(255, 255, 255, 0.62); /* upcoming — must be READ, not merely sensed */
 		transition: color 0.3s ease;
 	}
 	.row.past {
@@ -268,7 +268,7 @@
 	.word {
 		position: relative;
 		display: inline-block;
-		color: rgba(255, 255, 255, 0.4); /* not yet sung */
+		color: rgba(255, 255, 255, 0.66); /* not yet sung */
 		transition: color 0.12s linear;
 	}
 	.word.done {
