@@ -100,18 +100,49 @@ def preferred_torch_device(configured: str | None) -> tuple[str | None, str]:
     Returns (device, reason). An explicit device is validated, not trusted: asking for `xpu` on a box
     with no Intel GPU raises rather than quietly running on CPU, because the whole point of setting it
     was to get the accelerator.
+
+    Auto-detection asks `torch.accelerator` first (PyTorch's own device-agnostic API, ≥ 2.6 and so
+    present on the pinned 2.8). It reports the accelerator the WHEEL was built for, which is exactly
+    the right question given that a wheel carries one backend — but only that, so its answer is still
+    put through `torch_device_available` before being used. Presence in the build is not usability on
+    the box: a cu128 wheel on a machine with no NVIDIA card answers "cuda" and would then fail on the
+    first allocation. The explicit ladder remains as the fallback for anything torch.accelerator
+    cannot see.
     """
     if configured:
         if not torch_device_available(configured):
             raise ValueError(
                 f"torch device {configured!r} is not available on this worker; "
-                "leave ENCORE_DEMUCS_DEVICE unset to auto-select, or install the matching runtime"
+                "leave ENCORE_DEVICE unset to auto-select, or install the matching runtime"
             )
         return configured, f"explicitly configured device {configured}"
-    for device in ("cuda", "xpu", "mps"):
+    for device in _accelerator_candidates():
         if torch_device_available(device):
             return device, f"auto-detected {device}"
     return None, "no accelerator detected; letting the separator default to CPU"
+
+
+def _accelerator_candidates() -> tuple[str, ...]:
+    """Device strings to try, best first — torch's own answer ahead of the hand-written ladder.
+
+    Wrapped in a total try/except because `torch.accelerator.is_available()` has raised rather than
+    returned False when no device is present (pytorch#144567), and a tuning helper must never be the
+    reason a worker fails to start.
+    """
+    ladder = ("cuda", "xpu", "mps")
+    try:
+        import torch
+
+        accelerator = getattr(torch, "accelerator", None)
+        if accelerator is not None and accelerator.is_available():
+            current = accelerator.current_accelerator()
+            kind = getattr(current, "type", None)
+            if kind:
+                # Put torch's answer first, keep the rest as fallback rather than trusting it alone.
+                return (kind, *(d for d in ladder if d != kind))
+    except Exception:
+        pass
+    return ladder
 
 
 def resolve_backend(

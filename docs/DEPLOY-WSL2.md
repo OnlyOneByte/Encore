@@ -35,21 +35,49 @@ Encore's whole join flow is *phones on the LAN scan a QR shown on the TV*. Two f
   > upstream. A WSL2 LAN deployment is the plain-HTTP case, so this fix is load-bearing here.
 
 **Fix both.** Use WSL mirrored networking, which makes WSL share the Windows host's network
-interfaces so LAN devices reach it directly. Create or edit `C:\Users\<you>\.wslconfig`:
+interfaces so LAN devices reach it directly.
+
+**Update WSL first.** Mirrored networking needs **WSL 2.0.0 or newer**, and the version shipped in the
+box is usually older than that — so do this before writing any config, because a stale WSL silently
+ignores the setting rather than reporting it:
+
+```powershell
+wsl --version              # want: WSL version 2.0.0 or newer
+wsl --update               # in-place update of the WSL runtime + kernel
+wsl --update --pre-release # only if --version is still too old after the above
+wsl --shutdown             # required for a new .wslconfig to be read
+```
+
+`wsl --update` updates the WSL *runtime*, not your distro's packages. Those are separate:
+
+```bash
+# inside the distro, for the packages Encore actually uses
+sudo apt update && sudo apt upgrade -y
+```
+
+Now create or edit `C:\Users\<you>\.wslconfig`:
 
 ```ini
 [wsl2]
 networkingMode=mirrored
+# Lets the distro reach services bound on the Windows host (and vice versa). A [wsl2] key, NOT an
+# experimental one — see the warning below.
+hostAddressLoopback=true
 # torch + WhisperX are memory-hungry; set this deliberately rather than taking the default.
 memory=16GB
 processors=8
-
-[experimental]
-hostAddressLoopback=true
 ```
 
-Then `wsl --shutdown` and restart. Mirrored mode needs **Windows 11 22H2 or newer with WSL 2.0+**
-(`wsl --version` to check).
+Then `wsl --shutdown` and restart.
+
+> **Do NOT put these under `[experimental]`.** Older guides — and earlier revisions of this file — show
+> `hostAddressLoopback` (and sometimes `networkingMode`) inside an `[experimental]` section, because that
+> is where they lived while mirrored networking was in preview. They are ordinary `[wsl2]` keys as of
+> WSL 2.0, and leaving them under `[experimental]` on a current WSL means they are **parsed and
+> ignored**: you get no error, no warning, and a box that behaves exactly as if you had never edited the
+> file. That is a genuinely expensive failure to debug, because every symptom points at the firewall or
+> the app instead of at the config. If you have an `[experimental]` block from an older guide, delete it
+> outright rather than moving keys out of it one at a time.
 
 ### Mirrored mode needs the Hyper-V firewall opened too — this is the step that bites
 
@@ -91,20 +119,42 @@ and cross-check from Windows, which is authoritative:
 
 **Those two agreeing IS the check that mirrored mode took effect.** If WSL reports a `172.x` while
 Windows reports your `192.168.x`, you are still on NAT: `.wslconfig` was not picked up (wrong path — it
-must be `%USERPROFILE%\.wslconfig` — or no `wsl --shutdown` afterwards), and the portproxy fallback
-below applies instead.
+must be `%USERPROFILE%\.wslconfig` — an `[experimental]` block swallowing the keys, or no
+`wsl --shutdown` afterwards), and the portproxy fallback below applies instead.
 
 > `networkingMode=bridged` is a **different** mode, not a synonym. It needs `vmSwitch=` naming an
 > *external* Hyper-V vSwitch and takes its own DHCP lease; without that switch it has no usable
 > address at all. Use `mirrored`.
 
-**If mirrored mode is unavailable** (Windows 10, or an older WSL), fall back to a port proxy from an
-Administrator PowerShell — replacing the WSL IP each boot, because NAT reassigns it:
+### Mirrored mode can activate and still be broken — observed on this deployment
+
+Worth knowing before you spend an evening on it: on the actual deploy box, mirrored mode came up
+**half-working**. `loopback0` was present, which is the tell that mirrored mode *did* activate, but the
+`eth` interface was **DOWN**, so nothing was reachable from the LAN at all. That combination is
+confusing precisely because the usual check (does mirrored appear active?) says yes.
+
+Diagnose it with:
+
+```bash
+ip -br link          # loopback0 present = mirrored active; look for eth* state DOWN
+ip -br addr          # a mirrored eth with no address is the broken case
+```
+
+**The fix that actually worked was to go back to NAT + portproxy** — delete `networkingMode=mirrored`
+from `.wslconfig`, `wsl --shutdown`, and use the port proxy below. Do not read that as "mirrored is
+wrong"; it is the cleaner mode when it works, and it removes the per-boot IP dance. But if you are
+debugging a phone that cannot connect, the portproxy path is the one this deployment has actually
+verified end to end, so switch to it early rather than treating it as a last resort.
+
+**Use the port proxy** when mirrored is unavailable (Windows 10, or an older WSL) *or* when it comes up
+broken as above. From an Administrator PowerShell — replacing the WSL IP each boot, because NAT
+reassigns it:
 
 ```powershell
 $wslIp = (wsl hostname -I).Trim().Split()[0]
 netsh interface portproxy delete v4tov4 listenport=3000 listenaddress=0.0.0.0 2>$null
 netsh interface portproxy add v4tov4 listenport=3000 listenaddress=0.0.0.0 connectport=3000 connectaddress=$wslIp
+netsh interface portproxy show v4tov4     # confirm the rule is there and points at the current IP
 ```
 
 Either way, allow inbound 3000 through Windows Firewall:
@@ -211,8 +261,12 @@ worker (uid 10001) could not write to it. Converting it to a bind mount breaks t
 Confirm the merge resolved the way you expect before building anything:
 
 ```bash
-$EC --profile stems config | less    # look for TORCH_INDEX_URL, ENCORE_DEMUCS_DEVICE, driver: nvidia
+$EC --profile stems config | less    # look for TORCH_INDEX_URL and driver: nvidia
 ```
+
+The overrides intentionally set no `ENCORE_*` device or capability variables any more — the worker
+probes its own accelerator and reports it. `ENCORE_DEVICE` appears here only if you put it in a `.env`
+yourself, which is worth doing on this box for the reason in the verification step below.
 
 ---
 
@@ -255,11 +309,21 @@ $EC exec worker python -c \
    [worker] separator backend: torch — explicitly configured torch (explicitly configured device cuda)
    ```
 
-   The device must be named. If it instead reports auto-selection with no accelerator, then
-   `ENCORE_DEMUCS_DEVICE=cuda` never reached the container — and per `backends.py`'s contract an
-   explicitly-requested-but-unavailable device *raises*, so a quiet CPU line means the env var is
-   missing rather than the GPU being unreachable. The config line from `Config.describe()` also
-   carries `device=`; `device=auto` there is the same tell.
+   The device must be named. With nothing set, a working GPU reports auto-detection:
+
+   ```
+   [worker] hardware: accel=cuda cpus=8 device='NVIDIA GeForce RTX 3080' vram=10GiB mem=15GiB
+   [worker] separator backend: torch — auto-selected torch (auto-detected cuda)
+   ```
+
+   If it instead reports `accel=cpu` and "no accelerator detected", the GPU is not reachable inside the
+   container — driver, `nvidia-container-toolkit`, or the device reservation. Auto-detection falls back
+   to CPU **quietly**, which on this workload is the difference between minutes and most of an hour, so
+   on a box you *expect* to have a GPU it is worth putting `ENCORE_DEVICE=cuda` in a `.env`: per
+   `backends.py`'s contract an explicitly-requested-but-unavailable device *raises*, turning a silent
+   20x slowdown into a startup failure you cannot miss. The config line from `describe()` also carries
+   `device=`; `device=auto` there means nothing was forced, not that nothing was found — read the
+   `hardware:` line for what was actually detected.
 
 3. **Core is reachable from Windows:** open `http://localhost:3000/tv` in a Windows browser.
 
@@ -354,6 +418,55 @@ docker compose --profile stems up -d worker
 ```
 
 Data and media are untouched by this — they live in the volumes from §4, not in the image.
+
+---
+
+## 10. Updating
+
+Three things update independently, and conflating them is how "I updated and it broke" happens.
+
+**The deployment** — new Encore code. `$EC` is the compose invocation you exported in §4:
+
+```bash
+cd ~/Encore                       # the WSL-side clone from §3, never /mnt/c
+git pull
+
+$EC --profile stems build         # rebuild core + worker against the new source
+$EC --profile stems up -d         # recreate the changed containers only
+$EC --profile stems ps            # confirm both came back up
+docker compose logs -f --tail=50 worker
+```
+
+Migrations apply automatically on core's boot, so there is no separate step. `data/` and `media/`
+survive: they are volumes, not image content.
+
+A worker rebuild re-resolves the torch wheel from `TORCH_INDEX_URL`, so it is **multi-GB and slow** on
+the CUDA path. When only core changed, name it and skip that entirely: `$EC build core`.
+
+**WSL itself** — see §1. `wsl --version`, `wsl --update`, then `wsl --shutdown`. Do this when
+networking misbehaves or a `.wslconfig` key appears to be ignored, not routinely.
+
+**The GPU stack** — the NVIDIA driver is a **Windows** update, never installed inside WSL (§2). The
+container toolkit is a distro package:
+
+```bash
+sudo apt update && sudo apt install --only-upgrade nvidia-container-toolkit
+sudo nvidia-ctk runtime configure --runtime=docker   # re-run if the toolkit's config was replaced
+```
+
+After any driver or toolkit change, re-run the §6 GPU gate before trusting a cook — the failure mode is
+a worker that silently falls back to CPU, and the `[worker] hardware:` line reading `accel=cpu` on a box
+you expect to be `accel=cuda` is the tell.
+
+Reclaiming space after several rebuilds, since torch layers accumulate fast:
+
+```bash
+docker image prune -f      # dangling layers only — safe
+docker builder prune -f    # the build cache; next build is slower but correct
+```
+
+Do **not** reach for `docker system prune -a --volumes` here: `--volumes` takes `data/` and `media/`
+with it, which is the library and the SQLite database.
 
 ---
 

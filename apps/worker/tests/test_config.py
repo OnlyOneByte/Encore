@@ -14,19 +14,23 @@ from src import demucs
 
 def test_defaults_are_the_shipped_behaviour():
     c = WorkerConfig.from_env({})
-    # The WHOLE cook, not just separation. A stems-only default silently breaks the quickstart: the
-    # core still enqueues `fetch` and `align`, nothing claims them, and the song sits at 0% or never
-    # gets lyrics — indistinguishable from a hung worker.
-    assert c.capabilities == ("fetch:ytdlp", "stems", "align")
+    # Capabilities are no longer DECLARED here. from_env is pure over env, and what a box can actually
+    # do depends on PATH and importable modules — host facts. So the env layer carries only an optional
+    # narrowing override, and the effective set is filled in by config.resolve() from probes.
+    assert c.capabilities == (), "unresolved until probed — never a hardcoded guess"
+    assert c.capabilities_override is None, "no override means 'advertise everything provable'"
     assert c.concurrency == 1
     assert c.demucs_model == "htdemucs"
     assert c.demucs_jobs == auto_demucs_jobs()  # scales with the box, not a hardcoded guess
     assert c.stem_bitrate == "192k"
     # unset = let the tool decide; we do not invent a value
-    assert c.demucs_device is None
+    assert c.device is None
     assert c.demucs_overlap is None
     assert c.demucs_segment is None
     assert c.demucs_shifts is None
+    # Alignment no longer defaults to a hardcoded "cpu" — that made a GPU box transcribe on the CPU
+    # unless a human set a second variable. None means "derive it from the resolved device".
+    assert c.whisperx_device is None
     # torch_threads is the ONE exception to "unset = let the tool decide": leaving it alone means every
     # one of `concurrency x demucs_jobs` separations defaults to all cores and they fight. Derived from
     # the box rather than hardcoded, so this asserts the derivation and not one machine's answer.
@@ -37,7 +41,7 @@ def test_defaults_are_the_shipped_behaviour():
 def test_every_perf_knob_is_settable():
     c = WorkerConfig.from_env({
         "ENCORE_DEMUCS_MODEL": "htdemucs_ft",
-        "ENCORE_DEMUCS_DEVICE": "cuda:1",
+        "ENCORE_DEVICE": "cuda:1",
         "ENCORE_DEMUCS_JOBS": "8",
         "ENCORE_DEMUCS_OVERLAP": "0.1",
         "ENCORE_DEMUCS_SEGMENT": "7",
@@ -48,11 +52,25 @@ def test_every_perf_knob_is_settable():
         "ENCORE_FLAC_LEVEL": "5",
         "ENCORE_FFMPEG_BIN": "/opt/ffmpeg",
     })
-    assert (c.demucs_model, c.demucs_device, c.demucs_jobs) == ("htdemucs_ft", "cuda:1", 8)
+    assert (c.demucs_model, c.device, c.demucs_jobs) == ("htdemucs_ft", "cuda:1", 8)
     assert (c.demucs_overlap, c.demucs_segment, c.demucs_shifts) == (0.1, 7, 2)
     assert (c.torch_threads, c.concurrency) == (4, 3)
     assert (c.stem_bitrate, c.flac_level, c.ffmpeg_bin) == ("256k", 5, "/opt/ffmpeg")
     assert c.warnings == ()
+
+
+def test_legacy_demucs_device_still_works_but_says_it_is_deprecated():
+    # An existing deployment must not break on upgrade — but the old name applied to separation only,
+    # and now sets the device for the whole worker, which is what every operator setting it wanted.
+    c = WorkerConfig.from_env({"ENCORE_DEMUCS_DEVICE": "cuda"})
+    assert c.device == "cuda"
+    assert any("deprecated" in w for w in c.warnings)
+
+
+def test_the_new_device_name_wins_over_the_legacy_one():
+    c = WorkerConfig.from_env({"ENCORE_DEVICE": "cuda", "ENCORE_DEMUCS_DEVICE": "cpu"})
+    assert c.device == "cuda"
+    assert any("ENCORE_DEVICE wins" in w for w in c.warnings)
 
 
 def test_auto_jobs_scales_with_cores_and_never_ooms_a_small_box():
@@ -110,14 +128,44 @@ def test_shifts_may_be_zero_but_jobs_may_not():
     assert WorkerConfig.from_env({"ENCORE_DEMUCS_JOBS": "0"}).demucs_jobs == auto_demucs_jobs()
 
 
-def test_empty_capabilities_does_not_produce_a_useless_worker():
+def test_blank_capability_override_is_treated_as_absent_not_as_an_empty_set():
+    # " , ," must mean "no override given", NOT "advertise nothing". Reading it as an empty set would
+    # produce a worker that connects and is never given work — the exact silent failure the probe
+    # exists to remove.
     c = WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": " , ,"})
-    assert c.capabilities == ("fetch:ytdlp", "stems", "align")
-    assert c.warnings
+    assert c.capabilities_override is None
+
+
+def test_blank_env_vars_fall_back_to_defaults_not_to_empty_strings():
+    # Compose plumbs optional overrides as `FOO=${FOO:-}`, which puts an EMPTY STRING in the
+    # environment rather than leaving it absent. `dict.get(key, default)` sees a present value and
+    # returns "", so an unset override became demucs_model="" — a worker that passes `-n ''` to demucs
+    # and fails every cook for a reason the config line would not explain.
+    blank = {k: "" for k in (
+        "ENCORE_CORE_WS", "ENCORE_WORKER_ID", "ENCORE_WORKER_VERSION", "MEDIA_DIR",
+        "ENCORE_PROCESSOR", "ENCORE_DEMUCS_MODEL", "ENCORE_STEM_BITRATE", "ENCORE_ASR_MODEL",
+        "ENCORE_SYNC_MODE", "ENCORE_LRCLIB_BASE", "ENCORE_YTDLP_BIN", "ENCORE_DEMUCS_BIN",
+        "ENCORE_FFMPEG_BIN", "ENCORE_WORKER_CAPABILITIES", "ENCORE_DEVICE",
+        "ENCORE_WORKER_CONCURRENCY", "ENCORE_DEMUCS_JOBS", "ENCORE_TORCH_THREADS",
+        "ENCORE_FLAC_LEVEL",
+    )}
+    c = WorkerConfig.from_env(blank)
+    assert c.demucs_model == "htdemucs"
+    assert c.core_ws == "ws://localhost:3000/ws?role=worker"
+    assert c.media_dir == "/app/media"
+    assert c.processor == "real"
+    assert (c.stem_bitrate, c.flac_level) == ("192k", 8)
+    assert (c.asr_model, c.sync_mode) == ("base", "forced")
+    assert (c.ytdlp_bin, c.demucs_bin, c.ffmpeg_bin) == ("yt-dlp", "demucs", "ffmpeg")
+    assert c.lrclib_base == "https://lrclib.net"
+    assert c.concurrency == 1
+    assert c.capabilities_override is None
+    assert c.device is None
+    assert c.warnings == (), "a blank override is not a misconfiguration and must not warn"
 
 
 def test_describe_names_the_throughput_settings():
-    line = WorkerConfig.from_env({"ENCORE_DEMUCS_JOBS": "8", "ENCORE_DEMUCS_DEVICE": "cuda"}).describe()
+    line = WorkerConfig.from_env({"ENCORE_DEMUCS_JOBS": "8", "ENCORE_DEVICE": "cuda"}).describe()
     assert "jobs=8" in line and "device=cuda" in line and "concurrency=1" in line
 
 

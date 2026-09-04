@@ -21,7 +21,7 @@ import { sourceUriFor } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
-import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental, inheritsCook } from './dispatch';
+import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental, inheritsCook, hasCapableWorker } from './dispatch';
 import { markMediaReady, setMediaLyrics, setMediaPitch, applyAnnotation, settleLyricsGate, markLyricsQueued } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
@@ -56,6 +56,9 @@ export interface WorkerHubDeps {
 export class WorkerHub {
 	#d: WorkerHubDeps;
 	#config: LeaseConfig;
+	/** Job ids already reported as unservable, so a dispatch loop that runs on every event does not
+	 *  reprint the same warning forever. Cleared per job the moment it finds a worker. */
+	#unservable = new Set<string>();
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
@@ -84,6 +87,15 @@ export class WorkerHub {
 	/** Worker (re)connected: register, send welcome handshake, then dispatch any waiting work. */
 	#onHello(msg: Extract<WorkerMessage, { type: 'worker:hello' }>): void {
 		this.#d.registry.hello(msg.workerId, msg.capabilities, msg.concurrency, msg.version, this.#d.now(), msg.host);
+		// Log what joined, hardware included. On a heterogeneous fleet this is how "why was that cook
+		// slow" gets answered from the core's log without shelling into the worker. `cpuCount` is the
+		// worker's EFFECTIVE count, so `(contained)` marks a box that was given a slice of a bigger one.
+		const hw = msg.host
+			? `${msg.host.accelerator ?? (msg.host.cuda ? 'cuda' : 'cpu')}/${msg.host.cpuCount ?? '?'}cpu${msg.host.contained ? ' (contained)' : ''}`
+			: 'hardware unreported';
+		console.log(
+			`[hub] worker ${msg.workerId} joined: ${hw}, caps=[${msg.capabilities.join(',')}], slots=${msg.concurrency}`
+		);
 		this.#d.toWorker(msg.workerId, {
 			type: 'worker:welcome',
 			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000),
@@ -232,7 +244,39 @@ export class WorkerHub {
 		// so route by the SETTINGS-resolved capability, not the bare job type.
 		const settings = this.#d.getSettings?.();
 		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);
+
+		// Separate "waiting for a free slot" from "no connected worker can EVER run this". Both leave
+		// the job queued, and conflating them is how a song sits at 0% forever looking like a hung
+		// worker: the real cause is that nothing in the fleet advertises the capability, which no
+		// amount of waiting fixes. Reported once per job so the log names the missing capability
+		// instead of the operator having to infer it.
+		for (const job of queued) {
+			if (hasCapableWorker(job, workers, capabilityFor)) continue;
+			if (this.#unservable.has(job.id)) continue;
+			this.#unservable.add(job.id);
+			const cap = capabilityFor(job);
+			console.warn(
+				`[hub] job ${job.id} (${job.jobType}) needs capability '${cap}' and NO connected worker ` +
+					`advertises it — it will stay queued until one does. ` +
+					`Connected: ${workers.length === 0 ? 'none' : workers.map((w) => `${w.workerId}[${w.capabilities.join(',')}]`).join(' ')}`
+			);
+			// Only tell the ROOM when the stalled job is one that blocks singing. An `align` follow-up
+			// on an already-published song is genuinely unservable, but the song is playable and
+			// broadcasting a 'queued' status for it would regress a ready song to cooking on every
+			// phone — a worse bug than the one being reported. Missing lyrics is not missing audio.
+			const media = this.#d.mediaById.get(job.mediaId);
+			if (media?.instrumentalRef) continue;
+			this.#d.broadcast({
+				type: 'media:status',
+				mediaId: job.mediaId,
+				status: mediaStatusFor(job),
+				pct: job.progressPct,
+				unservable: true
+			});
+		}
+
 		for (const { jobId, workerId } of planAssignments(queued, workers, capabilityFor)) {
+			this.#unservable.delete(jobId); // it found a worker; a later stall is a fresh event
 			const pending = this.#d.jobs.byId(jobId);
 			if (!pending) continue; // vanished between planning and dispatch
 			const media = this.#d.mediaById.get(pending.mediaId);
