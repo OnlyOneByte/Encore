@@ -134,6 +134,7 @@ CREATE TABLE `queue_entries` (
 --> statement-breakpoint
 CREATE TABLE `room_settings` (
 	`room_id` text PRIMARY KEY NOT NULL,
+	`queue_order` text DEFAULT 'fair' NOT NULL,
 	`tv_progress_style` text DEFAULT 'card' NOT NULL,
 	`tv_background_style` text DEFAULT 'off' NOT NULL,
 	`tv_background_hue` integer DEFAULT 240 NOT NULL,
@@ -164,7 +165,8 @@ CREATE TABLE `singers` (
 	`display_name` text NOT NULL,
 	`color` text NOT NULL,
 	`session_token` text NOT NULL,
-	`joined_at` integer NOT NULL
+	`joined_at` integer NOT NULL,
+	`last_sung_at` integer
 );
 --> statement-breakpoint
 CREATE UNIQUE INDEX `singers_session_token_idx` ON `singers` (`session_token`);

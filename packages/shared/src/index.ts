@@ -7,6 +7,7 @@ export * from './gates';
 export * from './ops';
 export * from './rotation';
 export * from './membership';
+export * from './queue-order';
 export * from './lyrics';
 export * from './events';
 export * from './separators';
