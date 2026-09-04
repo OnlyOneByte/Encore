@@ -19,7 +19,7 @@ const addCmd = (id: string, mediaId: string): ClientCommand => ({
 function harness() {
 	const published: ServerEvent[] = [];
 	const state = new AuthoritativeState();
-	const deps: HubDeps = { state, publish: (e) => published.push(e), mediaById: new Map([['m1', media('m1')], ['m2', media('m2')]]) };
+	const deps: HubDeps = { state, publish: (e) => published.push(e), mediaById: new Map([['m1', media('m1')], ['m2', media('m2')]]), actorSingerId: 's1' };
 	return { published, state, deps };
 }
 
