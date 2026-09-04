@@ -12,11 +12,21 @@ import {
 	TV_PROGRESS_STYLES,
 	DEFAULT_ROOM_SETTINGS,
 	resolveCookSeparator,
+	resolveLyricsPresentation,
 	separatorCost,
 	estimateCookSeconds,
 	qualityRank,
-	normalizeJoinOrigin
+	normalizeJoinOrigin,
+	type RoomSettings
 } from './separators';
+import {
+	LYRICS_BALL_STYLES,
+	LYRICS_HIGHLIGHTS,
+	DEFAULT_LYRICS_BALL,
+	DEFAULT_LYRICS_HIGHLIGHT,
+	DEFAULT_LYRICS_LEAD_MS,
+	MAX_LYRICS_LEAD_MS
+} from './lyrics-engines';
 
 describe('separator registry', () => {
 	it('the live default is a real, live-selectable pairing', () => {
@@ -191,7 +201,9 @@ describe('room scope', () => {
 describe('resolveCookSeparator', () => {
 	const withCap = (cap: number | null, global = DEFAULT_GLOBAL_SETTINGS) => ({
 		global,
-		room: { tvProgressStyle: 'card' as const, interstitialMs: 2500, maxQualityRank: cap }
+		// Spread the defaults rather than listing fields: this helper cares about maxQualityRank only,
+		// and an inline literal made every future RoomSettings field a compile error here.
+		room: { ...DEFAULT_ROOM_SETTINGS, maxQualityRank: cap }
 	});
 
 	it('uses the global default when the room sets no ceiling', () => {
@@ -277,5 +289,97 @@ describe('join origin', () => {
 		expect(normalizeGlobalSettings({ asrModel: 'base' }, declared).joinOrigin).toBe('http://10.69.1.169:3000');
 		// An explicit empty string IS a clear.
 		expect(normalizeGlobalSettings({ joinOrigin: '' }, declared).joinOrigin).toBe('');
+	});
+});
+
+describe('lyrics presentation registries', () => {
+	it('every default is a real registry entry', () => {
+		expect(LYRICS_BALL_STYLES.some((s) => s.id === DEFAULT_LYRICS_BALL)).toBe(true);
+		expect(LYRICS_HIGHLIGHTS.some((h) => h.id === DEFAULT_LYRICS_HIGHLIGHT)).toBe(true);
+	});
+
+	it('every entry carries a label and a stated tradeoff', () => {
+		// The house rule for a registry: a style cannot be added without saying what it costs.
+		for (const s of [...LYRICS_BALL_STYLES, ...LYRICS_HIGHLIGHTS]) {
+			expect(s.label.length).toBeGreaterThan(0);
+			expect(s.note.length).toBeGreaterThan(0);
+		}
+	});
+
+	it('exactly one marker survives line-only timing, and it is the no-marker one', () => {
+		// If this ever grows past one, resolveLyricsPresentation's degrade target needs revisiting.
+		const anchorless = LYRICS_BALL_STYLES.filter((s) => !s.needsWords);
+		expect(anchorless.map((s) => s.id)).toEqual(['off']);
+	});
+
+	it('the defaults reproduce the TV that shipped before this setting existed', () => {
+		// A bouncing ball + word-by-word pink + 0.3s lead was hardcoded. Regressing these silently
+		// changes every existing room on upgrade.
+		expect(DEFAULT_LYRICS_BALL).toBe('bounce');
+		expect(DEFAULT_LYRICS_HIGHLIGHT).toBe('word');
+		expect(DEFAULT_LYRICS_LEAD_MS).toBe(300);
+	});
+});
+
+describe('normalizeRoomSettings — lyrics presentation', () => {
+	it('keeps valid styles and falls back per-field to CURRENT values', () => {
+		const room = { ...DEFAULT_ROOM_SETTINGS, lyricsBall: 'underline' as const, lyricsHighlight: 'line' as const };
+		expect(normalizeRoomSettings({ lyricsBall: 'steady' }, room).lyricsBall).toBe('steady');
+		// A rejected field must not drag an unrelated choice back to the hardcoded default.
+		expect(normalizeRoomSettings({ lyricsBall: 'disco' as never }, room).lyricsBall).toBe('underline');
+		expect(normalizeRoomSettings({ lyricsBall: 'disco' as never }, room).lyricsHighlight).toBe('line');
+	});
+
+	it('clamps the lead rather than rejecting it, and refuses a negative lead', () => {
+		expect(normalizeRoomSettings({ lyricsLeadMs: -200 }).lyricsLeadMs).toBe(0);
+		expect(normalizeRoomSettings({ lyricsLeadMs: 99_999 }).lyricsLeadMs).toBe(MAX_LYRICS_LEAD_MS);
+		expect(normalizeRoomSettings({ lyricsLeadMs: 450 }).lyricsLeadMs).toBe(450);
+		expect(normalizeRoomSettings({ lyricsLeadMs: 450.6 }).lyricsLeadMs).toBe(451);
+		expect(normalizeRoomSettings({ lyricsLeadMs: NaN }).lyricsLeadMs).toBe(DEFAULT_LYRICS_LEAD_MS);
+	});
+});
+
+describe('resolveLyricsPresentation', () => {
+	const settings = (syncMode: 'forced' | 'lines', room: Partial<RoomSettings> = {}) => ({
+		global: { ...DEFAULT_GLOBAL_SETTINGS, syncMode },
+		room: { ...DEFAULT_ROOM_SETTINGS, ...room }
+	});
+
+	it('honours the room exactly when word timings exist', () => {
+		const r = resolveLyricsPresentation(settings('forced', { lyricsBall: 'steady', lyricsHighlight: 'word' }));
+		expect(r).toEqual({ ball: 'steady', highlight: 'word', leadSec: 0.3, clamped: false });
+	});
+
+	it('a room may render BELOW the granularity produced — that is a real choice, not a clamp', () => {
+		// The whole point of the room layer: the aligner ran, the word data is on disk, and this screen
+		// still elects line-level because its songs have patchy timing.
+		const r = resolveLyricsPresentation(settings('forced', { lyricsHighlight: 'line', lyricsBall: 'off' }));
+		expect(r.highlight).toBe('line');
+		expect(r.clamped).toBe(false);
+	});
+
+	it('drops a word-anchored marker under line-only sync, because it has no word to sit on', () => {
+		for (const ball of ['bounce', 'steady', 'underline'] as const) {
+			const r = resolveLyricsPresentation(settings('lines', { lyricsBall: ball }));
+			expect(r.ball).toBe('off');
+			expect(r.clamped).toBe(true);
+		}
+	});
+
+	it('degrades a word highlight to line, NOT to off', () => {
+		// The room asked to be shown where it is. Line timing can honour that; turning the highlight off
+		// would discard a choice made for reasons unrelated to granularity.
+		const r = resolveLyricsPresentation(settings('lines', { lyricsHighlight: 'word' }));
+		expect(r.highlight).toBe('line');
+	});
+
+	it('reports clamped=false when line-only sync can satisfy the room as asked', () => {
+		const r = resolveLyricsPresentation(settings('lines', { lyricsBall: 'off', lyricsHighlight: 'line' }));
+		expect(r).toEqual({ ball: 'off', highlight: 'line', leadSec: 0.3, clamped: false });
+	});
+
+	it('passes the lead through as seconds regardless of clamping', () => {
+		expect(resolveLyricsPresentation(settings('forced', { lyricsLeadMs: 0 })).leadSec).toBe(0);
+		expect(resolveLyricsPresentation(settings('lines', { lyricsLeadMs: 1200 })).leadSec).toBe(1.2);
 	});
 });
