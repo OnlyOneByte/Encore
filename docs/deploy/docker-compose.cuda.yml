@@ -4,7 +4,7 @@
 #     --profile stems up -d
 #
 # Current deploy target: Windows x86_64 + WSL2 + RTX 3080 (10 GB). Full runbook, including the WSL
-# networking that breaks first, is docs/DEPLOY-WSL2.md — read that before running this.
+# networking that breaks first, is docs/deploy/WSL2.md — read that before running this.
 #
 # An override rather than a second full compose file: core's definition, the hardening anchor and the
 # volume wiring all keep coming from the base file, so a change there reaches this deployment too

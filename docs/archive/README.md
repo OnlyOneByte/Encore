@@ -10,6 +10,19 @@ Nothing in this directory is an instruction to the auto-pilot. The three live do
 
 - [`milestones-m0-m8.md`](milestones-m0-m8.md) — closed milestone-by-milestone build record.
 - [`backlog-shipped.md`](backlog-shipped.md) — shipped backlog detail and rationale.
+- [`AUDIT-worker-autodetect.md`](AUDIT-worker-autodetect.md) — the worker hardware/capability
+  autodetect audit, whose findings have since landed.
+
+## Shipped feature specs
+
+[`specs/`](specs/) holds the working spec for each feature that has since shipped and merged. They
+record the design decisions and the rejected alternatives behind a feature, which the canonical docs
+deliberately do not carry — `ARCHITECTURE.md` says how the system works now, not which three options
+were weighed to get there.
+
+A spec lands here when its feature merges. The root `docs/` directory holds exactly three files —
+`ARCHITECTURE.md`, `ROADMAP.md`, `HANDOFF.md` — and everything else lives in a subdirectory, so an
+in-flight spec belongs in `docs/specs/` and moves here on merge.
 
 ## Superseded source specs
 

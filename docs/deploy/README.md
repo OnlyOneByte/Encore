@@ -18,7 +18,7 @@ than of its accelerator.
 
 | file | target | notes |
 |---|---|---|
-| `docker-compose.cuda.yml` | NVIDIA (the current deploy target: Windows + WSL2 + RTX 3080) | Needs no custom Dockerfile — see below. Full runbook: [`../DEPLOY-WSL2.md`](../DEPLOY-WSL2.md) |
+| `docker-compose.cuda.yml` | NVIDIA (the current deploy target: Windows + WSL2 + RTX 3080) | Needs no custom Dockerfile — see below. Full runbook: [`WSL2.md`](WSL2.md) |
 | `docker-compose.intel.yml` | Intel Arc (parked — the deploy box changed) | Uses the **base** Dockerfile plus the `xpu` wheel index |
 
 Both overrides now contain **only what is genuinely host-side**: the GPU device reservation, the
