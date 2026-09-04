@@ -165,6 +165,12 @@ live on the Settings page and ride on every `align` job, so changing the model t
 cook with no worker restart. `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only the
 fallback for a job that carries neither.
 
+The **TV stage look** — what the room paints behind the song — is a **room setting**, not env: Black
+(the default, so an existing box looks unchanged), Room glow, Singer's colour, or One colour you pick.
+Any joined phone can also override it **for the current song only** from the now-playing controls; that
+override clears when the song does. Every option is generated at a pinned dark lightness because the
+lyrics sit on top of it, so no choice can make the words hard to read from the couch.
+
 > A worker must advertise `fetch:<downloader>` to acquire source audio — acquisition routes on its own
 > capability so a box that downloads and a box that separates need not be the same machine. Advertising
 > only `stems` leaves every new song stuck at 0%: the core enqueues a `fetch` nothing can run.
@@ -188,7 +194,7 @@ Agent/human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 ## Dev notes
 
 ```bash
-bun test          # 729 unit/integration tests — runnable from the root
+bun test          # 819 unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # both workspaces
 cd apps/worker && pytest   # 328 worker tests — needs `pip install pytest pytest-asyncio`

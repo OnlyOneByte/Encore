@@ -314,11 +314,20 @@ which is the argument for the "green suite is the floor, not the bar" rule in
 - [ ] **M9-C3 · multi-room** — room codes, per-room topics. *Done-when:* two independent rooms run on
   one core. Tag **v1.0.0**.
 
-- [ ] **B-2 · WebAudio pitch-shift (semitones)** — ±key currently **no-ops on the TV**. Add a
-  client-side phase-vocoder AudioWorklet so `keyShift` re-pitches the instrumental live with tempo
-  preserved, and wire `keyShift` into `TvPlayer`. *Done-when:* ±1 semitone audibly shifts pitch
-  without changing tempo. **AUTO** — cents→ratio and framing math; **EYES-ON/AUDIO** — the shift
-  itself. Last in the order for exactly that reason.
+- [ ] **B-2 · pitch-shift (semitones)** — ±key **no-ops on the TV**, and the reason is bigger than a
+  missing AudioWorklet: **there are two mutually exclusive designs and neither is finished.**
+  `keyedMediaRef` resolves a *pre-rendered* variant (`stems/<id>-instrumental.+2.flac`) and the worker
+  renderer for those — `apps/worker/src/pitch.py` — exists as unit-tested pure logic that
+  `processor.py` **never calls**, so no variant is ever produced. A browser-side shift needs no files
+  at all and would make `keyedMediaRef`/`pitch.py` dead code.
+  So B-2 is a fork first, implementation second: **(a)** finish the pre-rendered path (wire `pitch.py`
+  into `processor.py`, accept up to 14 extra renders per cook and the disk), or **(b)** shift in the
+  browser with an AudioWorklet phase-vocoder and delete the file-ref path.
+  Only *after* that does wiring `keyShift` into `TvPlayer` make sense — doing it today points
+  `<video>.src` at a 404 and hands the gapless controller a media failure mid-song, which is why the
+  TV deliberately still ignores the field (see the comment on `stageBg` in `tv/+page.svelte`).
+  *Done-when:* ±1 semitone audibly shifts pitch without changing tempo. **AUTO** — cents→ratio and
+  framing math; **EYES-ON/AUDIO** — the shift itself. Last in the order for exactly that reason.
 
 - [ ] **B-10-C7 · gate `/metrics` and the audit log** — the two internal surfaces shipped **ungated**,
   by decision: Encore has no operator identity, and the only auth axis is anonymous vs any-singer,
@@ -375,6 +384,27 @@ Consequences that shape any change here:
 
 Parked deliberately. These return only if the owner says so.
 
+- **Early-2000s visualizers on the TV** (spectrum bars, oscilloscope, "swimming" Milkdrop plasma).
+  Scoped, not built. The stage-background registry carries them for free as extra ids, so the cost is
+  the renderer, not the plumbing — but **three separate blockers sit under them**, each a missing
+  pipeline step rather than wiring:
+  - *Score-reactive* (the cheap tier, no `AudioContext` needed) is inert today: `'score'` appears in
+    the job-type enum and **nowhere else** — nothing enqueues a score job, so `pitchRef` is never
+    populated and `score:update` never fires. Same class of gap B-3 fixed for `align`. Shipping it in
+    the picker would put an option in front of a guest that does nothing.
+  - *Real FFT* needs an `AudioContext` on the TV, which does not exist — the mic and all Web Audio
+    live on the **phone** (`$lib/mic/`). It also needs a **user gesture** the TV never receives;
+    `TvPlayer` swallows the autoplay rejection (`video.play().catch(() => {})`), so an `AudioContext`
+    would start suspended with nothing to resume it. And `createMediaElementSource` must reach
+    `destination` or **the song goes silent** — a failure no unit test catches.
+  - *Where they are allowed on screen* is unresolved. Full-bore eye candy behind word-timed lyrics is
+    the worst case for readability; it belongs on the **no-lyrics** screens (lobby, `waiting`,
+    interstitial), which is the opposite band from the one the stage background deliberately occupies.
+    A product ruling, not a patch.
+  One incidental note for whoever picks this up: FFT works at all only because `TvPlayer.fileSrc`
+  hardcodes `/media/${ref}` instead of `MediaStore.url(ref)`, so the media element is always
+  same-origin. Switch the TV to presigned object-store URLs and every FFT visualizer silently goes
+  flat with no error.
 - **Human lyrics review UI** (idea from `karaoke-gen`, which treats review as a first-class pipeline
   stage). Well-motivated: C6 shipped provenance *labelling*, and review is the next rung up, with
   `SOURCE_MANUAL` already reserved in `lyrics_chain.py` for it to populate. Needs a core endpoint +
