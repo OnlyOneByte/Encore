@@ -214,7 +214,10 @@ export const roomSettings = sqliteTable('room_settings', {
 	// The room's default guiding-track level, 0..1. REAL for the same reason as playback_state's —
 	// it is a fraction. NOT NULL default 0 so an existing room upgrades to today's behaviour
 	// (pure karaoke) rather than to an unexpected mix.
-	guideLevelDefault: real('guide_level_default').notNull().default(0)
+	guideLevelDefault: real('guide_level_default').notNull().default(0),
+	// How long someone stays in the room after their socket drops AND their last pending song leaves
+	// the queue. 0 = no grace once their songs are done.
+	presenceGraceMinutes: integer('presence_grace_minutes').notNull().default(90)
 });
 
 export const jobs = sqliteTable(

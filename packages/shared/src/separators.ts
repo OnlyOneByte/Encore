@@ -16,6 +16,11 @@
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
 import { SINGER_HUE_STEP } from './colors';
 import {
+	DEFAULT_PRESENCE_GRACE_MINUTES,
+	MAX_PRESENCE_GRACE_MINUTES,
+	MIN_PRESENCE_GRACE_MINUTES
+} from './membership';
+import {
 	DEFAULT_ASR_MODEL,
 	DEFAULT_LYRICS_BALL,
 	DEFAULT_LYRICS_CASE,
@@ -613,6 +618,12 @@ export interface RoomSettings {
 	 * Ships at 0, which reproduces today's behaviour exactly (pure karaoke), so the feature is opt-in.
 	 */
 	guideLevelDefault: number;
+	/**
+	 * How long a singer stays in the room after their last socket drops AND their last pending song
+	 * leaves the queue. Per-room because it is a property of the party: a long evening where people
+	 * pocket their phones wants a generous window, a kiosk wants none.
+	 */
+	presenceGraceMinutes: number;
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
@@ -638,7 +649,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	lyricsCase: DEFAULT_LYRICS_CASE,
 	lyricsLinesBefore: DEFAULT_LYRICS_LINES_BEFORE,
 	lyricsLinesAfter: DEFAULT_LYRICS_LINES_AFTER,
-	guideLevelDefault: 0
+	guideLevelDefault: 0,
+	presenceGraceMinutes: DEFAULT_PRESENCE_GRACE_MINUTES
 };
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
@@ -701,6 +713,13 @@ export function normalizeRoomSettings(
 	// Clamped, like interstitialMs: a room default outside 0..1 should still yield a usable room. Note
 	// this one is NOT nullable — the room default is the floor the per-song override falls back to, so
 	// there is nothing below it to inherit from. A junk write keeps the room's current value.
+	// Clamped like interstitialMs: a nonsensical window should still yield a usable room. 0 is a real
+	// choice (no grace once your songs are done), so it is a bound rather than a rejected value.
+	const grace = input?.presenceGraceMinutes;
+	const presenceGraceMinutes =
+		typeof grace === 'number' && Number.isFinite(grace)
+			? Math.min(MAX_PRESENCE_GRACE_MINUTES, Math.max(MIN_PRESENCE_GRACE_MINUTES, Math.round(grace)))
+			: d.presenceGraceMinutes;
 	const gl = input?.guideLevelDefault;
 	const guideLevelDefault =
 		typeof gl === 'number' && Number.isFinite(gl)
@@ -723,7 +742,8 @@ export function normalizeRoomSettings(
 		lyricsCase,
 		lyricsLinesBefore,
 		lyricsLinesAfter,
-		guideLevelDefault
+		guideLevelDefault,
+		presenceGraceMinutes
 	};
 }
 

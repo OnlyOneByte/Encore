@@ -26,6 +26,8 @@ export interface HubDeps {
 	listSingers?: () => PublicSinger[];
 	/** Optional: presence snapshot (singer ids with a live socket) for the sync directory. */
 	listOnline?: () => string[];
+	/** Optional: singers in the room but unreachable — a locked phone, a pocket. Rendered greyed. */
+	listAway?: () => string[];
 	/** Optional: room-level separator settings snapshot for the sync directory. */
 	getSettings?: () => EffectiveSettings;
 	/** Optional: notified when the current entry CHANGES, for play tracking (retention's LRU signal). */
@@ -133,7 +135,7 @@ export function mediaFor(entries: QueueEntry[], deps: HubDeps): Media[] {
  *  directories (when the hub has them) so clients can render names/titles per entry. */
 export function syncEvent(
 	state: AuthoritativeState,
-	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline' | 'getSettings'>
+	deps?: Pick<HubDeps, 'mediaById' | 'listSingers' | 'listOnline' | 'listAway' | 'getSettings'>
 ): Extract<ServerEvent, { type: 'queue:sync' }> {
 	return {
 		type: 'queue:sync',
@@ -142,6 +144,7 @@ export function syncEvent(
 		singers: deps?.listSingers?.(),
 		media: deps ? [...deps.mediaById.values()] : undefined,
 		online: deps?.listOnline?.(),
+		away: deps?.listAway?.(),
 		settings: deps?.getSettings?.()
 	};
 }
