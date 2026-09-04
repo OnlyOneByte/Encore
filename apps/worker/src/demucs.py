@@ -32,6 +32,13 @@ from .processor import (
 from .fetch import job_fetcher, local_source_path
 from .vocabulary import Fetcher
 from .stream_quality import FORMAT_SELECTOR
+from .song_profile import build_song_profile
+
+# The analysis step: (instrumental_wav, vocals_wav, media_id) -> songProfile dict. Injectable so the
+# subprocess-fake tests (whose "WAV" files hold placeholder bytes, not real PCM) can pass a no-op and
+# assert the wiring/always-publish contract without needing real audio. The real default reads the
+# two scratch WAVs that already exist at stage 3 — no extra separation, no extra decode.
+Profiler = Callable[[str | None, str | None, str], dict]
 
 DEFAULT_MODEL = "htdemucs"
 
@@ -372,6 +379,7 @@ class DemucsProcessor:
         segment: int | None = None,
         shifts: int | None = None,
         mover: Callable[[str, str], None] = shutil.move,
+        profiler: "Profiler" = build_song_profile,
     ) -> None:
         self._model = model
         self._runner = runner
@@ -387,6 +395,7 @@ class DemucsProcessor:
         self._segment = segment
         self._shifts = shifts
         self._move = mover
+        self._profiler = profiler
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
         work = os.path.join(job.media_dir, "work", job.job_id)
@@ -471,12 +480,26 @@ class DemucsProcessor:
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job
                 pass
 
+        # ── songProfile: key (from the INSTRUMENTAL) + vocal range (from the VOCALS) ──────
+        # Analysed from the RAW separated WAVs that still exist in scratch here — `produced` and
+        # `vocals_src` — so this costs NO extra separation and NO extra decode. The vocals WAV is used
+        # even when it measured as digital silence above (so it was NOT published as a stem): the
+        # summarizer then finds no voiced frames and returns nulls, which is exactly the "present but
+        # empty" profile core needs to see so a silent-vocals song reads as cooked, not stuck.
+        # ALWAYS published, even on total analysis failure (nulls) — an ABSENT profile means "still
+        # cooking" to core, so omitting it would strand the song forever.
+        song_profile = self._profiler(
+            produced if os.path.exists(produced) else None,
+            vocals_src if os.path.exists(vocals_src) else None,
+            job.media_id,
+        )
+
         # Report the model THIS RUN resolved, not the one the core asked for: resolve_demucs_model
         # applies its own default when params carry none, so the two can differ and only the worker
         # knows which weights were actually loaded.
         yield CompleteResult(
             media_uri=final,
-            artifacts={"stems": stems},
+            artifacts={"stems": stems, "songProfile": song_profile},
             facts={"engine": "demucs", "model": model, "backend": "torch"},
         )
 
