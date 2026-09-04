@@ -389,27 +389,32 @@ Consequences that shape any change here:
 
 Parked deliberately. These return only if the owner says so.
 
-- **Early-2000s visualizers on the TV** (spectrum bars, oscilloscope, "swimming" Milkdrop plasma).
-  Scoped, not built. The stage-background registry carries them for free as extra ids, so the cost is
-  the renderer, not the plumbing — but **three separate blockers sit under them**, each a missing
-  pipeline step rather than wiring:
-  - *Score-reactive* (the cheap tier, no `AudioContext` needed) is inert today: `'score'` appears in
-    the job-type enum and **nowhere else** — nothing enqueues a score job, so `pitchRef` is never
-    populated and `score:update` never fires. Same class of gap B-3 fixed for `align`. Shipping it in
-    the picker would put an option in front of a guest that does nothing.
-  - *Real FFT* needs an `AudioContext` on the TV, which does not exist — the mic and all Web Audio
-    live on the **phone** (`$lib/mic/`). It also needs a **user gesture** the TV never receives;
-    `TvPlayer` swallows the autoplay rejection (`video.play().catch(() => {})`), so an `AudioContext`
-    would start suspended with nothing to resume it. And `createMediaElementSource` must reach
-    `destination` or **the song goes silent** — a failure no unit test catches.
-  - *Where they are allowed on screen* is unresolved. Full-bore eye candy behind word-timed lyrics is
-    the worst case for readability; it belongs on the **no-lyrics** screens (lobby, `waiting`,
-    interstitial), which is the opposite band from the one the stage background deliberately occupies.
-    A product ruling, not a patch.
-  One incidental note for whoever picks this up: FFT works at all only because `TvPlayer.fileSrc`
-  hardcodes `/media/${ref}` instead of `MediaStore.url(ref)`, so the media element is always
-  same-origin. Switch the TV to presigned object-store URLs and every FFT visualizer silently goes
-  flat with no error.
+- **Audio-REACTIVE visualizers** — the time-driven ones shipped; making them respond to the sound did
+  not. What shipped: four renderers (plasma, starfield, ripples, phase curves) as pure functions of `t`,
+  selectable per room. What is still parked, and why each was designed *around* rather than solved:
+  - *Real FFT.* Still needs an `AudioContext` on the TV, which does not exist. The gesture problem is
+    **less severe than previously recorded here**: `/tv` has no gesture handler, but `TvPlayer` also
+    swallows its autoplay rejection, so the app *already* depends on the TV permitting unmuted autoplay
+    — an `AudioContext` is the same bet, not a new one. The real work is the graph: one
+    `MediaElementAudioSourceNode` per `<video>` (two slots, each recreated when its `{#if}` toggles),
+    following whichever slot is audible across a gapless swap, and reaching `ctx.destination` or **the
+    song goes silent**. See HANDOFF gotcha 18.
+  - *`bars` and `scope`.* Deliberately absent from `TV_VISUALIZERS`, and a test pins the exclusion by
+    id. They assert they are drawing the signal; nothing reads it. They arrive **with** real analysis or
+    not at all — and that test is the thing to delete, on purpose, in the commit that adds it.
+  - *Score-reactive modulation.* Still blocked on the same gap: `'score'` appears in the job-type enum
+    and nowhere else, so nothing enqueues a score job, `pitchRef` is never populated and `score:update`
+    never fires.
+  - *Visualizers on the no-lyrics screens* (lobby, `waiting`, interstitial), where eye candy is safest
+    because nothing competes with it. The ratified band for backgrounds is playing-only; extending it is
+    a separate decision, not a follow-up.
+  One incidental note that is load-bearing for any FFT work: it is possible at all only because
+  `TvPlayer.fileSrc` hardcodes `/media/${ref}` instead of `MediaStore.url(ref)`, so the media element is
+  always same-origin. Switch the TV to presigned object-store URLs and every FFT visualizer silently
+  goes flat with no error.
+- **Milkdrop-class WebGL preset rendering.** A hand-rolled fragment shader if ever, not `butterchurn`:
+  this project vendored Lucide *path geometry* rather than accept a webfont, to stay offline-LAN-safe,
+  and a multi-MB preset-interpreting engine is the opposite of that.
 - **Human lyrics review UI** (idea from `karaoke-gen`, which treats review as a first-class pipeline
   stage). Well-motivated: C6 shipped provenance *labelling*, and review is the next rung up, with
   `SOURCE_MANUAL` already reserved in `lyrics_chain.py` for it to populate. Needs a core endpoint +
