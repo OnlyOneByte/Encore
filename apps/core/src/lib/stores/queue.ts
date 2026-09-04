@@ -12,6 +12,7 @@ import {
 	applyAndReseq,
 	inverseOp,
 	ulid,
+	type Ordering,
 	type QueueOp,
 	type QueueEntry,
 	type ServerEvent,
@@ -32,6 +33,18 @@ export interface QueueStoreDeps {
 	mintId?: () => string; // injectable for deterministic tests
 	/** Optional: surface a rejected op to the UI (e.g. a toast). */
 	onReject?: (reason: string) => void;
+	/**
+	 * The room's ordering — which algorithm, plus the sing history it may read.
+	 *
+	 * A GETTER because both halves move at runtime: the room can change algorithm mid-party and the
+	 * history changes every time a song starts. It exists at all because the optimistic prediction
+	 * has to be made with the SAME ordering the server will commit — predicting with fair rotation in
+	 * a first-come-first-served room puts every add in the wrong place for a frame and then snaps,
+	 * which is the exact flicker `applyAndReseq` is shared to prevent.
+	 *
+	 * Absent = fair rotation, the pre-setting behaviour.
+	 */
+	ordering?: () => Ordering;
 }
 
 export class QueueStore {
@@ -99,13 +112,18 @@ export class QueueStore {
 		return this.#lastAddedAt;
 	}
 
+	/** The room's ordering, or fair rotation when the app has not supplied one. */
+	#ordering(): Ordering {
+		return this.#deps.ordering?.() ?? {};
+	}
+
 	#optimistic(op: QueueOp): void {
 		const inverse = inverseOp(this.#entries, op);
 		const clientOpId = (this.#deps.mintId ?? ulid)();
 		this.#pending.set(clientOpId, { op, inverse, baseRev: this.#rev });
 		// Run the SAME reducer the server runs (applyAndReseq) so the optimistic row lands at its
 		// real round-robin position THIS FRAME — no jump-to-bottom-then-resort flicker (Finding #2).
-		this.#entries = applyAndReseq(this.#entries, op);
+		this.#entries = applyAndReseq(this.#entries, op, this.#ordering());
 		this.#emit();
 		this.#deps.sendCommand({ clientOpId, baseRev: this.#rev, op });
 	}
@@ -146,11 +164,11 @@ export class QueueStore {
 			// originator's optimistic row snap to the server's canonical rotationSeq with zero flicker
 			// (Finding #2/#3) and drops terminal entries the server pruned.
 			let base = e.patch.entries.map((x) => ({ ...x }));
-			for (const { op } of this.#pending.values()) base = applyAndReseq(base, op);
+			for (const { op } of this.#pending.values()) base = applyAndReseq(base, op, this.#ordering());
 			this.#entries = base;
 		} else {
 			// Pure re-ack (dedup path) carries no entries and no ops — nothing to apply.
-			for (const op of e.patch.ops) this.#entries = applyAndReseq(this.#entries, op);
+			for (const op of e.patch.ops) this.#entries = applyAndReseq(this.#entries, op, this.#ordering());
 		}
 		this.#emit();
 	}
@@ -160,7 +178,7 @@ export class QueueStore {
 		// REBASE: authoritative truth, then re-apply still-pending local ops on top (via the shared
 		// reducer so seqs match the server) so the user's in-flight changes don't vanish on resync.
 		let base = e.entries.map((x) => ({ ...x }));
-		for (const { op } of this.#pending.values()) base = applyAndReseq(base, op);
+		for (const { op } of this.#pending.values()) base = applyAndReseq(base, op, this.#ordering());
 		this.#entries = base;
 		this.#emit();
 	}
