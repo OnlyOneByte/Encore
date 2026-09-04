@@ -32,7 +32,8 @@ export function sqlitePersistence(db: DB): StatePersistence {
 						currentEntryId: playback.currentEntryId,
 						positionSec: playback.positionSec,
 						isPlaying: playback.isPlaying,
-						keyShift: playback.keyShift
+						keyShift: playback.keyShift,
+						background: playback.background
 					})
 					.onConflictDoUpdate({
 						target: playbackState.id,
@@ -40,7 +41,8 @@ export function sqlitePersistence(db: DB): StatePersistence {
 							currentEntryId: playback.currentEntryId,
 							positionSec: playback.positionSec,
 							isPlaying: playback.isPlaying,
-							keyShift: playback.keyShift
+							keyShift: playback.keyShift,
+							background: playback.background
 						}
 					})
 					.run();
