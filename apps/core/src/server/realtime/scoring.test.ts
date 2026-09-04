@@ -16,7 +16,7 @@ const DOC: RefPitchDoc = {
 };
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'v', title: id, durationSec: 200, stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', ...over
+	id, source: 'youtube', sourceRef: 'v', title: id, durationSec: 200, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', ...over
 });
 const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({
 	id, mediaId, singerId, status: 'playing', rotationSeq: 0, addedAt: 1

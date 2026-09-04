@@ -20,7 +20,14 @@ export interface MakeKaraokeDeps {
 }
 
 // A media never queued yet still gets cooked, just at the back of the priority order.
-const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
+/**
+ * Priority for a cook nobody is waiting on: sorts after every queued turn.
+ *
+ * Exported because two other places reason about it — `backfill.ts` deliberately reuses the value for
+ * the lyrics backfill (both mean "nobody is waiting on this"), and the client's cook-and-queue rule
+ * exists precisely to avoid a singer's cook being filed here.
+ */
+export const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
 
 /**
  * The deterministic MediaStore key for a media's instrumental stem (stored on Media.instrumentalRef).
@@ -132,6 +139,28 @@ export function markMediaReady(
 	media.instrumentalRef = toRelativeKey(reportedUri) ?? instrumentalKey(mediaId);
 	media.stemStatus = 'ready';
 	if (separator) media.separator = separator;
+	return true;
+}
+
+/**
+ * Mark the lyrics gate SETTLED for this media — align has run, whatever it found.
+ *
+ * "Settled", not "succeeded". `ready` here means the step is finished, and a song with no words is a
+ * legitimate finished song: requiring a lyrics artifact would leave every genuine instrumental stuck
+ * cooking forever on a step that worked correctly. See packages/shared/src/gates.ts.
+ */
+export function settleLyricsGate(mediaId: string, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media) return false;
+	media.lyricsStatus = 'ready';
+	return true;
+}
+
+/** Mark the lyrics gate as IN FLIGHT, so the phone can name the step a song is waiting on. */
+export function markLyricsQueued(mediaId: string, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media || media.lyricsStatus === 'ready') return false; // never walk a settled gate backwards
+	media.lyricsStatus = 'queued';
 	return true;
 }
 

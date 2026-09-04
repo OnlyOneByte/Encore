@@ -5,7 +5,7 @@ import { AuthoritativeState } from '../state/store';
 import { ulid, type ServerEvent, type Media, type ClientCommand } from '@encore/shared';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac'
+	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac'
 });
 
 function harness() {

@@ -3,7 +3,7 @@
 // isn't ready yet — e.g. a make-karaoke song still being processed — without burning its fair
 // position). See docs/ARCHITECTURE.md.
 
-import { assignSeqs, isPlayable, type QueueEntry, type Media } from '@encore/shared';
+import { assignSeqs, readyToSing, type QueueEntry, type Media } from '@encore/shared';
 
 /** Re-derive fair round-robin order + contiguous rotationSeq. Server owns this value. */
 export function reseq(entries: QueueEntry[]): QueueEntry[] {
@@ -16,7 +16,7 @@ export function isEntryReady(entry: QueueEntry, mediaById: Map<string, Media>): 
 	if (!m) return false;
 	// Nothing plays unprocessed, so this is the whole rule: no instrumental, no playback. An entry
 	// that is not ready keeps its rotationSeq and slots back in at the same fair position later.
-	return isPlayable(m);
+	return readyToSing(m);
 }
 
 /**

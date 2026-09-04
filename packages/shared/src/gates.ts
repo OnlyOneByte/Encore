@@ -1,0 +1,91 @@
+// The COOK GATES — one declaration of what "ready to sing" means, so adding a processing step is a
+// one-line change instead of a hunt through call sites.
+//
+// This exists because `isPlayable` had quietly come to mean FOUR different things: can the TV player
+// load this file, may rotation hand this entry to the TV, should the library list it, and should a
+// re-cook be skipped. Adding "…and its lyrics are timed" to that one predicate would have made a song
+// without lyrics get RE-COOKED from scratch, because `cookState` reads the same function to decide
+// whether the work is already done. Those are different questions and now have different names:
+//
+//   playbackRef / hasInstrumental → "what file do I load" (the TV player, the re-cook check)
+//   readyToSing                   → "is this song finished" (rotation, the library, the Ready group)
+//
+// Adding a future step (a loudness pass, a key-detection pass, a vocal-guide render) means adding one
+// entry to GATES. Nothing else moves: every consumer already asks `readyToSing` / `pendingGates`.
+
+import type { Media } from './types';
+
+export interface CookGate {
+	/** Stable id — matches the job type that satisfies it, so a log line reads the same on both sides. */
+	readonly id: 'stems' | 'lyrics';
+	/** What the phone says while this step is outstanding. */
+	readonly pendingLabel: string;
+	/**
+	 * Is this step FINISHED for this song?
+	 *
+	 * A predicate rather than a bare status check, because "done" is not uniform: separation is only
+	 * done when the status says ready AND the artifact key exists (they are written by separate steps,
+	 * and a status without a ref hands the player an empty source), whereas alignment is done as soon
+	 * as it has RUN — a song with no words is a legitimate result, so requiring a lyrics artifact would
+	 * block every instrumental forever.
+	 */
+	readonly done: (m: Media) => boolean;
+	/**
+	 * Does singing WAIT for this step?
+	 *
+	 * Every gate here is required today. The flag exists so a future enrichment can be declared in the
+	 * same table — visible to the progress UI, not blocking the turn — instead of being bolted on
+	 * outside the model, which is how `score` and `align` ended up entangled with playability.
+	 */
+	readonly required: boolean;
+}
+
+/**
+ * The pipeline, in order. THE place to add a step.
+ *
+ * `score` is deliberately absent: it produces a reference pitch track for live mic comparison, has no
+ * enqueue path, and does not gate singing. See followUps in the core's dispatch.ts.
+ */
+export const GATES: readonly CookGate[] = [
+	{
+		id: 'stems',
+		pendingLabel: 'Separating vocals',
+		// Status AND artifact — see the predicate note above.
+		done: (m) => m.stemStatus === 'ready' && !!m.instrumentalRef,
+		required: true
+	},
+	{
+		id: 'lyrics',
+		pendingLabel: 'Timing lyrics',
+		// Ran, not "produced words". `lyricsRef` is absent for a genuine instrumental and that song is
+		// still finished. Media cooked before this gate existed carry no lyricsStatus at all; they are
+		// treated as done when they already have a lyrics artifact, so an existing library does not
+		// silently become unsingable on upgrade.
+		done: (m) => m.lyricsStatus === 'ready' || !!m.lyricsRef,
+		required: true
+	}
+] as const;
+
+/**
+ * Is this song finished — every required step done?
+ *
+ * The single gate for rotation, the library list, and the phone's Ready group.
+ */
+export function readyToSing(m: Media): boolean {
+	return GATES.every((g) => !g.required || g.done(m));
+}
+
+/** The required steps still outstanding, in pipeline order. Empty ⇔ `readyToSing`. */
+export function pendingGates(m: Media): CookGate[] {
+	return GATES.filter((g) => g.required && !g.done(m));
+}
+
+/**
+ * What the song is waiting on right now, for the phone's cooking sub-line — or `null` when finished.
+ *
+ * The FIRST outstanding step, because the pipeline is a chain: reporting "Timing lyrics" while
+ * separation is still running would name a step that has not started.
+ */
+export function currentGateLabel(m: Media): string | null {
+	return pendingGates(m)[0]?.pendingLabel ?? null;
+}

@@ -48,12 +48,21 @@
 		{/if}
 	</div>
 	{#if onmake}
-		<button class="make" title="Make karaoke (strip the vocals)"
-			onclick={() => onmake?.()}>✨ Karaoke</button>
+		<!--
+			ONE action, not two. A raw row used to offer `✨ Karaoke` and `＋ Turn` side by side at equal
+			weight, and either one alone was a dead end: queueing without cooking held a rotation slot
+			that could never become ready (silently skipped every pass, forever), and cooking without
+			queueing filled the library but gave the singer no turn. The primary action is the whole
+			intent — take a turn AND start the cook — and the held-slot rule keeps the singer's fair
+			position while it separates. See $lib/cook-and-queue.ts.
+		-->
+		<button class="sing" title="Take a turn now and strip the vocals — you keep your place in line while it cooks"
+			onclick={() => onmake?.()}>✨ Sing</button>
+	{:else}
+		<button class="add" class:queued={inQueue} aria-label={inQueue ? 'already in the queue' : 'add a turn'}
+			disabled={inQueue}
+			onclick={() => onadd?.()}>{inQueue ? '✓ Queued' : '＋ Turn'}</button>
 	{/if}
-	<button class="add" class:queued={inQueue} aria-label={inQueue ? 'already in the queue' : 'add a turn'}
-		disabled={inQueue}
-		onclick={() => onadd?.()}>{inQueue ? '✓ Queued' : '＋ Turn'}</button>
 </div>
 
 <style>
@@ -86,11 +95,16 @@
 	}
 	.add:active { transform: scale(0.94); }
 	.add.queued { background: var(--card2); border: 1px solid var(--ok); color: var(--ok); }
-	.make {
+	/*
+	 * The raw row's single primary action. It takes the gradient because it IS the primary intent on
+	 * this row — and because the weight used to sit on the wrong button: `.add` (gradient) was the
+	 * dead end (a turn that could never become ready) while the cook was styled as a secondary
+	 * outline. The hierarchy was not missing, it was inverted.
+	 */
+	.sing {
 		min-height: 44px;
-		flex: 0 0 auto; border: 1px solid var(--line); border-radius: 10px; padding: 9px 9px;
-		font-weight: 700; font-size: 0.76rem; background: var(--card2); color: var(--warn); cursor: pointer;
+		flex: 0 0 auto; border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 700;
+		font-size: 0.82rem; background: var(--grad); color: #fff; cursor: pointer;
 	}
-	.make:active { transform: scale(0.94); }
-	.make + .add { margin-left: 8px; }
+	.sing:active { transform: scale(0.94); }
 </style>

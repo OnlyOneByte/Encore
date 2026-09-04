@@ -107,6 +107,13 @@ def _opt_float(env: dict[str, str], key: str, warnings: list[str], *, lo: float,
     return v
 
 
+# The cook this worker can complete end to end: acquire → separate → time the words. Kept as ONE
+# constant so the default and the empty-value fallback cannot drift apart, and so the value the docs
+# quote has a single home. `score` is absent on purpose — nothing enqueues it (see followUps in the
+# core's dispatch.ts).
+DEFAULT_CAPABILITIES = "fetch:ytdlp,stems,align"
+
+
 @dataclass(frozen=True)
 class WorkerConfig:
     # ── placement / identity ──────────────────────────────────────────────────────
@@ -172,10 +179,14 @@ class WorkerConfig:
         e = dict(os.environ if env is None else env)
         w: list[str] = []
 
-        caps = tuple(c.strip() for c in e.get("ENCORE_WORKER_CAPABILITIES", "stems").split(",") if c.strip())
+        # The whole cook (fetch → stems → align), not just separation. A `stems`-only default is worse
+        # than it looks: the core still enqueues `fetch` and `align`, nothing claims them, and the song
+        # sits at 0% or never gets lyrics — indistinguishable from a hung worker. A box that should NOT
+        # do everything says so explicitly.
+        caps = tuple(c.strip() for c in e.get("ENCORE_WORKER_CAPABILITIES", DEFAULT_CAPABILITIES).split(",") if c.strip())
         if not caps:
-            w.append("ENCORE_WORKER_CAPABILITIES was empty; using 'stems'")
-            caps = ("stems",)
+            w.append(f"ENCORE_WORKER_CAPABILITIES was empty; using '{DEFAULT_CAPABILITIES}'")
+            caps = tuple(DEFAULT_CAPABILITIES.split(","))
 
         concurrency = _int(e, "ENCORE_WORKER_CONCURRENCY", 1, w)
         demucs_jobs = _int(e, "ENCORE_DEMUCS_JOBS", auto_demucs_jobs(), w)

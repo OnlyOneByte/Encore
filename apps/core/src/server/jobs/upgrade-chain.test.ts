@@ -44,13 +44,13 @@ test('isQualityUpgrade requires strictly better and treats missing current as up
 });
 
 // ── follow-ups ────────────────────────────────────────────────────────────────
-test('a cook chains align+score, and the upgrade only when it would improve quality', () => {
-	expect(followUps('stems', settings())).toEqual(['align', 'score']); // upgrade disabled
-	expect(followUps('stems', settings({ enqueueUpgrade: true }))).toEqual(['align', 'score', 'stems-upgrade']);
+test('a cook chains align, and the upgrade only when it would improve quality', () => {
+	expect(followUps('stems', settings())).toEqual(['align']); // upgrade disabled
+	expect(followUps('stems', settings({ enqueueUpgrade: true }))).toEqual(['align', 'stems-upgrade']);
 	// enabled but the "upgrade" is not actually better → not enqueued, so no wasted 40-min cook
 	expect(
 		followUps('stems', settings({ enqueueUpgrade: true, upgradeEngine: 'demucs', upgradeModel: 'htdemucs' }))
-	).toEqual(['align', 'score']);
+	).toEqual(['align']);
 });
 
 test('an upgrade job chains nothing further (depth-1 fan-out)', () => {
@@ -78,7 +78,7 @@ test('a first cook publishes and records its separator', () => {
 
 test('a BETTER upgrade replaces the instrumental and its provenance', () => {
 	const byId = new Map([
-		['m1', media({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', separator: { engine: 'demucs', model: 'htdemucs' } })]
+		['m1', media({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', separator: { engine: 'demucs', model: 'htdemucs' } })]
 	]);
 	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'roformer', model: 'bs-roformer-1297' })).toBe(true);
 	expect(byId.get('m1')!.separator).toEqual({ engine: 'roformer', model: 'bs-roformer-1297' });
@@ -87,7 +87,7 @@ test('a BETTER upgrade replaces the instrumental and its provenance', () => {
 test('THE INVARIANT: a worse or equal result never replaces a published instrumental', () => {
 	const published = { engine: 'roformer', model: 'bs-roformer-1297' };
 	const byId = new Map([
-		['m1', media({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', separator: published })]
+		['m1', media({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', separator: published })]
 	]);
 	// a worse engine result arriving late (e.g. a re-queued plain cook) is refused
 	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'demucs', model: 'htdemucs' })).toBe(false);

@@ -10,9 +10,12 @@
 -- new numbered migration, forever.
 --
 -- Equivalence with the old chain was verified when it was collapsed: databases built from each were
--- introspected and compared across all tables on columns, types, defaults, NOT NULL, primary keys and
--- indexes -- identical. The only difference in raw CREATE text was column ORDER (an ALTER appends; a
--- CREATE follows schema.ts declaration order), which SQLite does not treat as semantic.
+-- introspected and compared, and were identical across all tables.
+--
+-- Regenerated since, still pre-deploy, to add media.lyrics_status — the lyrics half of the cook gate
+-- (see packages/shared/src/gates.ts). NULL on a row written before the gate existed, which the gate
+-- reads as "done if a lyrics artifact is already present", so an existing library does not become
+-- unsingable on upgrade.
 
 CREATE TABLE `global_settings` (
 	`id` text PRIMARY KEY DEFAULT 'singleton' NOT NULL,
@@ -51,6 +54,7 @@ CREATE TABLE `media` (
 	`artist` text,
 	`duration_sec` integer NOT NULL,
 	`thumbnail` text,
+	`lyrics_status` text,
 	`stem_status` text DEFAULT 'none' NOT NULL,
 	`instrumental_ref` text,
 	`lyrics_ref` text,
