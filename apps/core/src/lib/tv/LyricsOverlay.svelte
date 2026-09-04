@@ -274,7 +274,10 @@
 		align-items: center;
 		justify-content: center;
 		gap: 0.7em;
-		padding: 0 6%;
+		/* Safe-area token, not a hardcoded 6%: an edge inset the whole TV surface shares one source of
+		   truth, so a future overscan change propagates here instead of leaving the lyrics wider than
+		   every other edge-anchored element. */
+		padding: 0 var(--tv-safe-x);
 		text-align: center;
 		pointer-events: none;
 		text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85);
@@ -291,10 +294,14 @@
 	 * A warning nobody can read is worse than none: it looks like diligence while informing no one.
 	 * Bottom-centre is deliberate — the lower-third owns bottom-left and the join card bottom-right, so
 	 * this is the one free edge, and it keeps the notice out of the sung text's way.
+	 *
+	 * Anchored with `--tv-safe-y`, NOT a 4% inset: 4% of 1080 is ~43px, inside the ~54px a TV crops for
+	 * overscan, so the one signal telling a singer these words are a guess could be clipped off-screen.
+	 * The shared safe-area token keeps it inside the readable region like every other edge element.
 	 */
 	.notice {
 		position: absolute;
-		bottom: 4%;
+		bottom: var(--tv-safe-y);
 		left: 0;
 		right: 0;
 		font-size: var(--tv-label);
@@ -469,6 +476,12 @@
 		   it is. */
 		.ball.bounce {
 			animation: none;
+		}
+		/* The reel's line-to-line transform slides the WHOLE full-width lyric column on every line
+		   change — the largest, most vestibular-triggering motion on the TV. Snap it instead: the row
+		   still moves to the right place, it just does not glide there. */
+		.reel {
+			transition: none;
 		}
 	}
 	@keyframes bounce {

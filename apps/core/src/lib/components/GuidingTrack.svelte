@@ -102,8 +102,11 @@
 		appearance: none;
 		display: block;
 		width: 100%;
-		height: 24px;
-		margin: 13px 0 0;
+		/* 44px hit area — the project's minimum touch target. The row was 24px (a 22px thumb + 2px),
+		   which is itself below 44px, so the row did not rescue the target. The PAINTED track stays a
+		   4px hairline (::-webkit-slider-runnable-track below); only the interactive box grows. */
+		height: 44px;
+		margin: 3px 0 0;
 		background: transparent;
 		cursor: pointer;
 	}
@@ -119,8 +122,9 @@
 		border-radius: 4px;
 		background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) var(--fill), var(--track-bg) var(--fill));
 	}
-	/* A 22px thumb on a 4px track: the TRACK is a hairline for legibility, the THUMB is what a thumb
-	   actually has to hit, and the 24px input box keeps the hit area at the row height. */
+	/* A 22px thumb on a 4px track: the TRACK is a hairline for legibility, the THUMB is the visible
+	   grab affordance, and the 44px input box (above) supplies the touch target — the box is centered
+	   on the track, so margin-top: -9px still centers the 22px thumb on the 4px runnable track. */
 	.gt-slider::-webkit-slider-thumb {
 		-webkit-appearance: none;
 		appearance: none;
