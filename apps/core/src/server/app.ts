@@ -34,6 +34,7 @@ import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
 import { JobRepository } from './jobs/repository';
 import { AttemptLedger } from './jobs/attempts';
+import { PlayLog } from './media/play-log';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
@@ -57,6 +58,8 @@ export interface EncoreApp {
 	jobs: JobRepository;
 	/** Per-attempt processing history — durations, models, failures. The dashboards read this. */
 	attempts: AttemptLedger;
+	/** One row per performance — the time axis the sidecar's play COUNTER cannot provide. */
+	playLog: PlayLog;
 	/** Room-level separator settings: the engine/model a cook uses + the upgrade policy. */
 	settings: SettingsRepository;
 	reaper: JobReaper;
@@ -144,6 +147,7 @@ export function getApp(): EncoreApp {
 	// otherwise be lost the moment it changed. Constructed here and handed to the repository, which
 	// records each lifecycle transition against it.
 	const attempts = new AttemptLedger(db);
+	const playLog = new PlayLog(db);
 	const jobs = new JobRepository(db, attempts);
 	const settings = new SettingsRepository(db);
 	// Seed this room's pacing from INTERSTITIAL_MS on first boot only. Without this, adding the room
@@ -321,6 +325,7 @@ export function getApp(): EncoreApp {
 		plays: null as never,
 		jobs,
 		attempts,
+		playLog,
 		settings,
 		reaper: null as never, // set below (needs onReaped → workerHub.dispatch)
 		workers,
@@ -338,10 +343,15 @@ export function getApp(): EncoreApp {
 		now: () => Date.now()
 	};
 
-	// A play updates the SIDECAR only: it is the authoritative library record, retention reads recency
-	// straight from it, and nothing else needs the number — so this costs one small JSON write per song
-	// and no migration. Fire-and-forget: bookkeeping must never delay the song starting.
-	app.plays = new PlayTracker((mediaId) => {
+	// A play is recorded TWICE, deliberately, because the two answer different questions:
+	//   - the SIDECAR carries the authoritative lifetime total and the recency retention's LRU reads.
+	//     One small JSON write per song, no migration.
+	//   - the LOG carries one row per performance, which is the only thing that can answer WHEN. A
+	//     counter cannot produce a trend line, and queue_entries is wiped on every flush and on boot.
+	// The log write is synchronous and tiny (one indexed insert); the sidecar write stays
+	// fire-and-forget because it is file I/O and bookkeeping must never delay the song starting.
+	app.plays = new PlayTracker((mediaId, entryId) => {
+		playLog.record(mediaId, entryId, app.now());
 		void (async () => {
 			try {
 				const side = await readSidecar(mediaId);
