@@ -193,5 +193,77 @@ export const HOOKS: Hook[] = [
 		file: 'src/routes/tv/+page.svelte',
 		anchor: 'state-error',
 		why: 'the three transient states must stay distinguishable, so each keeps its own class'
+	},
+	{
+		id: 'tvSongIntro',
+		file: 'src/routes/tv/+page.svelte',
+		anchor: 'class="interstitial state-next"',
+		why: 'the song-intro card names who is up before playback; the flow reads .up-song / .up-name off it'
+	},
+
+	// guiding track (phone now-playing sheet body)
+	{
+		id: 'guidingTrack',
+		file: 'src/lib/components/GuidingTrack.svelte',
+		anchor: 'aria-label="Guiding track — original vocal level"',
+		why: 'the flow mixes the original vocals back in through this range input'
+	},
+
+	// per-song stage background (phone now-playing sheet)
+	{
+		id: 'stageBackground',
+		file: 'src/routes/+page.svelte',
+		anchor: 'class="bg-pick"',
+		why: 'the flow overrides the TV stage look for the current song from the .bg-btn buttons inside .bg-pick'
+	},
+
+	// profile sheet (phone header → name / colour / leave)
+	{
+		id: 'profileOpen',
+		file: 'src/routes/+page.svelte',
+		anchor: 'aria-label="Your profile"',
+		why: 'the flow opens the profile sheet from the header me-button'
+	},
+	{
+		id: 'profileName',
+		file: 'src/lib/components/ProfileSheet.svelte',
+		anchor: 'id="profile-name"',
+		why: 'the flow edits the singer name in the profile sheet through this field'
+	},
+	{
+		id: 'profileLeave',
+		file: 'src/lib/components/ProfileSheet.svelte',
+		anchor: 'Leave the room',
+		why: 'the flow reaches the destructive leave-the-room action by this label'
+	},
+
+	// away / presence indicator (queue row)
+	{
+		id: 'queueAway',
+		file: 'src/lib/components/QueueRow.svelte',
+		anchor: 'class="away"',
+		why: 'the flow proves an unreachable singer is marked away so the room can decide to skip them'
+	},
+
+	// TV visualizer picker (settings)
+	{
+		id: 'tvVisualizer',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="tv-visualizer"',
+		why: 'the flow selects which audio visualizer paints the TV stage'
+	},
+
+	// stats + metrics pages
+	{
+		id: 'statsPage',
+		file: 'src/routes/stats/+page.svelte',
+		anchor: '<h1>Party stats</h1>',
+		why: 'the public stats page landmark the flow lands on at /stats'
+	},
+	{
+		id: 'metricsPage',
+		file: 'src/routes/metrics/+page.svelte',
+		anchor: '<h1>Processing metrics</h1>',
+		why: 'the internal metrics page landmark the flow lands on at /metrics'
 	}
 ];
