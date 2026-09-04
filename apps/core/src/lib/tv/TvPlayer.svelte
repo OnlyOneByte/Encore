@@ -8,9 +8,10 @@
 	// and the lyrics overlay run on. Nothing about the existing playback path changes, which is the
 	// reason this is two media elements rather than a WebAudio graph — a graph buys sample-exact lock
 	// and effects at the cost of rebuilding the part that already works.
-	import { keyedMediaRef, playbackRef, isPlayable, type Media } from '@encore/shared';
+	import { playbackRef, isPlayable, type Media } from '@encore/shared';
 	import { guideCorrection } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
+	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	interface Props {
 		media: Media | null;
 		visible: boolean;
@@ -41,6 +42,12 @@
 	let video: HTMLVideoElement | undefined = $state();
 	let vocals: HTMLAudioElement | undefined = $state();
 
+	// Lazily-built pitch-shift graphs, one per element (master instrumental + optional guide vocals).
+	// Declared here so both the volume effect and the shift-wiring effect below reference the same
+	// instances. Not $state — nothing renders off them; they are imperative WebAudio handles.
+	let masterGraph: PitchShiftGraph | undefined;
+	let guideGraph: PitchShiftGraph | undefined;
+
 	/**
 	 * How the guide is held against the master — and specifically why it is NOT held with seeks.
 	 *
@@ -68,11 +75,12 @@
 	 */
 	const GUIDE_READY_TIMEOUT_MS = 4000;
 
-	// The vocals stem is rendered at key 0 only, so a transposed song has no matching guide: mixing
-	// key-0 vocals under a +2 instrumental is musically wrong, not merely imperfect. keyShift is not
-	// yet wired on the TV (see ROADMAP), so today this is always 0 and the guide always applies —
-	// but the guard belongs here, with the mixing, rather than being owed to whoever wires it.
-	const effectiveGuide = $derived(keyShift !== 0 ? 0 : Math.max(0, Math.min(1, guideLevel)));
+	// The vocals stem is rendered at key 0. It USED to be force-muted whenever keyShift !== 0, because
+	// mixing key-0 vocals under a +2 instrumental is musically wrong — but muting it meant the singer
+	// lost their guide the moment they transposed, which is exactly when a guide is most wanted. Now the
+	// guide is pitch-shifted by the SAME amount as the instrumental (see the two PitchShiftGraphs below),
+	// so it stays in key with what is playing and the level applies unchanged at any shift.
+	const effectiveGuide = $derived(Math.max(0, Math.min(1, guideLevel)));
 
 	const guideRef = $derived(media?.vocalsRef ?? null);
 	/**
@@ -158,9 +166,12 @@
 		}
 	});
 
-	// The level itself — the whole "how loud are the original vocals" knob.
+	// The level itself — the whole "how loud are the original vocals" knob. Set on the element for the
+	// native (unshifted) path AND on the guide graph, because once the guide is routed through WebAudio
+	// for a shift the element's `volume` is bypassed and only the graph's gain governs it.
 	$effect(() => {
 		if (vocals) vocals.volume = effectiveGuide;
+		guideGraph?.setGain(effectiveGuide);
 	});
 
 	// seek the <video> when the phone scrubs. Only a real JUMP (>1.5s from where we are) seeks —
@@ -171,10 +182,58 @@
 		if (active && Math.abs(video.currentTime - seekSec) > 1.5) video.currentTime = seekSec;
 	});
 
+	// ── pitch shift (the ± semitone transpose, made audible) ─────────────────────────────────────────
+	//
+	// ONE graph per element (master instrumental + optional guide vocals), built LAZILY on the first
+	// non-zero shift. See pitch-shift.ts for the full trap write-up; the short version enforced here:
+	//
+	//   • keyShift 0 -> we never construct a graph, so the audio path is byte-for-byte today's plain
+	//     <video>/<audio>. This must never regress: a broken shift is bad, killing all room audio is
+	//     catastrophic.
+	//   • only the ACTIVE slot shifts. The hidden pre-warming slot is paused, and a MediaElementSource
+	//     is a PERMANENT capture — so wrapping the hidden element early would commit it to WebAudio
+	//     before it is even playing, for no benefit. keyShift is a room-wide value; when this slot
+	//     becomes active the effect re-runs and applies it.
+	//   • the graph resumes its own context; if it cannot (the wall was never clicked) it degrades to
+	//     audible-but-unshifted rather than to silence — handled inside PitchShiftGraph.
+	//
+	// Graphs are created on demand and torn down when the element unmounts (see the bind cleanup).
+	$effect(() => {
+		// Read reactive deps up front so the effect re-runs when any of them change.
+		const shift = active ? keyShift : 0;
+		const v = video;
+		const g = vocals;
+		if (!v) return;
+		// Master. Only ever build the graph once there is a real shift to apply; setShift(0) on an
+		// un-built graph is a documented no-op.
+		if (needsShift(shift) && !masterGraph) masterGraph = new PitchShiftGraph(v);
+		masterGraph?.setShift(shift);
+		// Guide, when it is mounted. Shifting it by the SAME amount is what lets us keep it audible under
+		// a transposed instrumental instead of muting it.
+		if (g) {
+			if (needsShift(shift) && !guideGraph) guideGraph = new PitchShiftGraph(g);
+			guideGraph?.setShift(shift);
+		}
+	});
+
+	// Tear the graphs down with the component. detach() cannot restore an element's native output (the
+	// source capture is permanent) but the elements are being destroyed with the slot, so this just
+	// releases the AudioContext and revokes the worklet blob URL.
+	$effect(() => {
+		return () => {
+			masterGraph?.detach();
+			guideGraph?.detach();
+			masterGraph = undefined;
+			guideGraph = undefined;
+		};
+	});
+
 	function fileSrc(m: Media): string {
-		// resolve the keyed instrumental variant for the active slot (0 → the original file).
+		// The SINGLE separated instrumental — there are no per-key files any more. Transposition happens
+		// in the browser via the PitchShiftGraph below, so the src never depends on keyShift and can
+		// never 404 on a variant nothing rendered (the whole reason the TV used to ignore the shift).
 		// playbackRef is the separated instrumental; sourceRef is the ORIGIN and is never played.
-		return `/media/${keyedMediaRef(playbackRef(m), active ? keyShift : 0)}`;
+		return `/media/${playbackRef(m)}`;
 	}
 
 	/**
@@ -185,7 +244,7 @@
 	 * its media catalog into fresh object identities — including the one currently playing. A markup
 	 * binding `src={fileSrc(media)}` re-evaluates on that identity change and reassigns the element's
 	 * src, and assigning `HTMLMediaElement.src` RELOADS the resource and resets `currentTime` to 0 even
-	 * when the URL string is byte-identical. `fileSrc`/`playbackRef`/`keyedMediaRef` are pure in the
+	 * when the URL string is byte-identical. `fileSrc`/`playbackRef` are pure in the
 	 * media's fields, so an unchanged song resolves to the same string and `nextVideoSrc` makes the
 	 * assignment a no-op. The decision lives in `video-src.ts` so it can be tested without a real
 	 * element; this effect only applies it.
