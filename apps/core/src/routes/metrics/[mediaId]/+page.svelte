@@ -69,6 +69,53 @@
 	const stamp = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
 	/** Only the model fields this step actually carries — a null is "not applicable", not "unknown". */
 	const usedModels = (m: Record<string, string | null>) => Object.entries(m).filter(([, v]) => v);
+
+	/**
+	 * Plain wording for the internal vocabulary. The database stores `fetch`/`stems`/`align` and
+	 * `abandoned`, which describe the implementation rather than what happened, and "abandoned" in
+	 * particular reads as a decision someone made rather than a step that was given up on and retried.
+	 */
+	const STEP_LABELS: Record<string, string> = {
+		fetch: 'download',
+		stems: 'remove vocals',
+		align: 'time lyrics',
+		score: 'pitch track',
+		'stems-upgrade': 'redo vocals'
+	};
+	const stepLabel = (jobType: string) => STEP_LABELS[jobType] ?? jobType;
+
+	const OUTCOME_LABELS: Record<string, string> = {
+		ready: 'done',
+		failed: 'failed',
+		abandoned: 'gave up, retried',
+		canceled: 'canceled',
+		running: 'running'
+	};
+	const outcomeLabel = (outcome: string | null) => OUTCOME_LABELS[outcome ?? 'running'] ?? (outcome ?? 'running');
+
+	/** The model/hardware keys, in words. `asrModel` and `syncMode` are field names, not English. */
+	const FACT_LABELS: Record<string, string> = {
+		engine: 'separator',
+		model: 'model',
+		backend: 'runtime',
+		device: 'hardware',
+		asrModel: 'speech model',
+		syncMode: 'timing'
+	};
+	const factLabel = (k: string) => FACT_LABELS[k] ?? k;
+
+	/** The worker's own sub-step names. `separating`/`aligning` describe the code, not the work. */
+	const STAGE_LABELS: Record<string, string> = {
+		downloading: 'downloading',
+		separating: 'removing vocals',
+		aligning: 'timing lyrics'
+	};
+	const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage;
+
+	/** A song length reads as 4:14, not 254s. */
+	function songLength(sec: number): string {
+		return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+	}
 </script>
 
 <svelte:head><title>Encore — audit {mediaId}</title></svelte:head>
@@ -84,59 +131,57 @@
 		<h1>{audit.media?.titleCanonical ?? audit.media?.title ?? mediaId}</h1>
 		{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
 		<p class="note">
-			{mediaId}{#if audit.media}{' · '}{audit.media.durationSec}s{/if} · {audit.plays.length} recorded plays
+			{#if audit.media}{songLength(audit.media.durationSec)} long · {/if}sung {audit.plays.length} times
 		</p>
 
 		{#if !audit.hasHistory}
-			<!-- Distinguishing "never processed" from "processed before we started recording" matters: the
-			     second is the normal state for every song already in an existing library. -->
 			<div class="card">
 				<p class="note">
-					No processing history. This song was cooked before the attempt ledger existed, so its timings
-					were never recorded — they are not recoverable.
+					No history for this song — it was processed before this page existed, so its timings were
+					never recorded.
 				</p>
 			</div>
+		{:else}
+			<p class="note">
+				Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several
+				steps, and a step can be retried.
+			</p>
 		{/if}
 
 		{#each audit.cooks as cook, i (cook.cookId)}
 			<div class="card">
 				<header>
-					<h2>Cook {i + 1}</h2>
-					<span class="pill {cook.outcome}">{cook.outcome}</span>
+					<h2>Run {i + 1}</h2>
+					<span class="pill {cook.outcome}">{outcomeLabel(cook.outcome)}</span>
 				</header>
 				<p class="note">
-					{stamp(cook.startedAt)} · total {dur(cook.totalMs)}
-					{#if cook.totalMs === null}(still running){/if}
+					{stamp(cook.startedAt)}{#if cook.totalMs !== null}{' · took '}{dur(cook.totalMs)}{:else}{' · still going'}{/if}
 				</p>
 
 				<ol class="steps">
 					{#each cook.attempts as a (a.id)}
 						<li class:failed={a.outcome === 'failed'} class:abandoned={a.outcome === 'abandoned'}>
 							<div class="row">
-								<strong>{a.jobType}</strong>
-								{#if a.attempt > 1}<span class="retry">attempt {a.attempt}</span>{/if}
-								<span class="pill {a.outcome ?? 'running'}">{a.outcome ?? 'running'}</span>
+								<strong>{stepLabel(a.jobType)}</strong>
+								{#if a.attempt > 1}<span class="retry">try {a.attempt}</span>{/if}
+								<span class="pill {a.outcome ?? 'running'}">{outcomeLabel(a.outcome)}</span>
 							</div>
-							<!-- The duration is why the page exists, so it is the one bright figure. It used to sit
-							     in the same muted grey and weight as the worker id beside it. -->
 							<div class="metrics-row">
 								<span class="ran">{dur(a.processingMs)}</span>
-								<span class="secondary">queued {dur(a.queueWaitMs)}</span>
-								{#if a.rtFactor !== null}<span class="secondary">{a.rtFactor.toFixed(2)}× realtime</span>{/if}
-								{#if a.workerId}<span class="secondary">{a.workerId}</span>{/if}
+								<span class="secondary">waited {dur(a.queueWaitMs)}</span>
+								{#if a.rtFactor !== null}<span class="secondary">{a.rtFactor.toFixed(2)}× song length</span>{/if}
+								{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
 							</div>
 							{#if usedModels(a.models).length}
-								<!-- A key:value grid rather than a run-on space-separated line, which became
-								     untrackable once the card widened to the 1080px desktop shell. -->
 								<dl class="facts">
 									{#each usedModels(a.models) as [k, v] (k)}
-										<div><dt>{k}</dt><dd>{v}</dd></div>
+										<div><dt>{factLabel(k)}</dt><dd>{v}</dd></div>
 									{/each}
 								</dl>
 							{/if}
 							{#if a.stages.length}
 								<div class="metrics-row">
-									{#each a.stages as s (s.stage)}<span class="secondary">{s.stage} {dur(s.ms)}</span>{/each}
+									{#each a.stages as s (s.stage)}<span class="secondary">{stageLabel(s.stage)} {dur(s.ms)}</span>{/each}
 								</div>
 							{/if}
 							{#if a.error}<p class="err">{a.error}</p>{/if}
