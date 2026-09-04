@@ -69,6 +69,7 @@ export class SettingsRepository {
 			tvProgressStyle: row.tvProgressStyle,
 			tvBackgroundStyle: row.tvBackgroundStyle,
 			tvBackgroundHue: row.tvBackgroundHue,
+			tvVisualizer: row.tvVisualizer,
 			interstitialMs: row.interstitialMs,
 			maxQualityRank: row.maxQualityRank,
 			lyricsBall: row.lyricsBall,

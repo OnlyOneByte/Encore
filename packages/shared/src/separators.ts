@@ -494,7 +494,12 @@ export const TV_BACKGROUND_STYLES = [
 		label: "Singer's colour",
 		note: 'The stage takes the colour of whoever is up, and changes with each turn.'
 	},
-	{ id: 'solid', label: 'One colour', note: 'A single colour you pick below. Stays put all night.' }
+	{ id: 'solid', label: 'One colour', note: 'A single colour you pick below. Stays put all night.' },
+	{
+		id: 'visualizer',
+		label: 'Audio visualizer',
+		note: 'Moving light behind the words, like an old media player. Pick which one below.'
+	}
 ] as const;
 
 export type TvBackgroundStyle = (typeof TV_BACKGROUND_STYLES)[number]['id'];
@@ -503,14 +508,55 @@ export function isTvBackgroundStyle(v: unknown): v is TvBackgroundStyle {
 	return typeof v === 'string' && TV_BACKGROUND_STYLES.some((s) => s.id === v);
 }
 
+/**
+ * Which visualizer the `visualizer` background runs. Read only when
+ * `tvBackgroundStyle === 'visualizer'`.
+ *
+ * ── Why these four and not bars or a scope ──
+ *
+ * Every entry here is a function of TIME. None of them claims to be showing the audio signal, and
+ * that is the selection rule, not an accident of what was easy.
+ *
+ * Spectrum bars and an oscilloscope are the obvious two omissions. They are omitted because they
+ * ASSERT they are drawing the signal, and nothing on this surface is reading it: there is no
+ * AudioContext on the TV today. Drawing them from a timer would be the same defect the lyrics overlay
+ * refuses by name — "a lie dressed as precision, animated made-up sub-word detail" (LyricsOverlay's
+ * comment on why a word-fill sweep was rejected). A plasma asserts nothing, so a plasma can be
+ * time-driven honestly.
+ *
+ * When real audio analysis lands, `bars` and `scope` join this registry AND every entry here gains
+ * modulation. Until then the picker must not offer a display that lies about its input.
+ */
+export const TV_VISUALIZERS = [
+	{
+		id: 'plasma',
+		label: 'Plasma',
+		note: 'Slow interference field, drifting. The demoscene classic.'
+	},
+	{
+		id: 'starfield',
+		label: 'Starfield',
+		note: 'Flying through stars. What the old media players did while a track played.'
+	},
+	{ id: 'moire', label: 'Ripples', note: 'Concentric rings interfering with each other.' },
+	{ id: 'lissajous', label: 'Phase curves', note: 'Looping curves that draw and redraw themselves.' }
+] as const;
+
+export type TvVisualizerId = (typeof TV_VISUALIZERS)[number]['id'];
+
+export function isTvVisualizer(v: unknown): v is TvVisualizerId {
+	return typeof v === 'string' && TV_VISUALIZERS.some((s) => s.id === v);
+}
+
 export interface RoomSettings {
 	/** Which progress treatment the TV renders. */
 	tvProgressStyle: TvProgressStyle;
 	/** What the TV paints behind the song. Room-scoped: it is one party's staging taste. */
 	tvBackgroundStyle: TvBackgroundStyle;
 	/**
-	 * Hue angle (0–359, quantised to SINGER_HUE_STEP) for the `solid` background. Only read when
-	 * `tvBackgroundStyle === 'solid'`.
+	 * Hue angle (0–359, quantised to SINGER_HUE_STEP) that colours the stage. Read by BOTH the `solid`
+	 * background and the `visualizer` one — they need the same thing (one hue, rendered inside the
+	 * legibility bound), so they share the field rather than each carrying their own.
 	 *
 	 * A HUE, not a hex, on purpose. The rendered colour is generated at the pinned stage lightness by
 	 * `stageHueToHex`, so a room cannot pick something bright enough to wash out the lyric reel, and
@@ -518,6 +564,13 @@ export interface RoomSettings {
 	 * singer halo cannot recur here.
 	 */
 	tvBackgroundHue: number;
+	/**
+	 * Which visualizer runs when `tvBackgroundStyle === 'visualizer'`. Ignored otherwise.
+	 *
+	 * Held even while another background is selected, so switching to the visualizer and back does not
+	 * forget the choice — the same reason `tvBackgroundHue` survives a switch away from `solid`.
+	 */
+	tvVisualizer: TvVisualizerId;
 	/** TV "Next up" reveal duration. 0 = pure gapless hard-cut. Per-room because pacing is a property
 	 *  of the party, not the deployment. */
 	interstitialMs: number;
@@ -570,6 +623,9 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	// 240° — the blue that tested cleanest against the pink active word. Only used once a room picks
 	// `solid`, so this is the starting point of the slider rather than something anyone sees by default.
 	tvBackgroundHue: 240,
+	// Plasma is the one every old media player had, so it is the least surprising thing to find running
+	// the first time a room turns the visualizer on.
+	tvVisualizer: 'plasma',
 	interstitialMs: 2500,
 	maxQualityRank: null,
 	// These three reproduce the TV's previously-hardcoded behaviour exactly, so adding the settings
@@ -650,10 +706,13 @@ export function normalizeRoomSettings(
 		typeof gl === 'number' && Number.isFinite(gl)
 			? Math.round(Math.min(1, Math.max(0, gl)) * 100) / 100
 			: d.guideLevelDefault;
+	const viz = input?.tvVisualizer;
+	const tvVisualizer = isTvVisualizer(viz) ? viz : d.tvVisualizer;
 	return {
 		tvProgressStyle,
 		tvBackgroundStyle,
 		tvBackgroundHue,
+		tvVisualizer,
 		interstitialMs,
 		maxQualityRank,
 		lyricsBall,

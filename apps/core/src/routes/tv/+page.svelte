@@ -15,6 +15,7 @@
 		type TvBackgroundStyle
 	} from '@encore/shared';
 	import { stageBackgroundCss } from '$lib/tv/background';
+	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
@@ -57,6 +58,7 @@
 	// settings:changed needs no per-field assignment here.
 	let tvBackgroundStyle = $derived(settings.room.tvBackgroundStyle);
 	let tvBackgroundHue = $derived(settings.room.tvBackgroundHue);
+	let tvVisualizer = $derived(settings.room.tvVisualizer);
 	// live score for the current song, from score:update broadcasts (null until first sample)
 	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	// playback isPlaying (pause/resume from the phone) — wired into both player slots
@@ -294,7 +296,20 @@
 		document order matches the paint order. `.tv` keeps its own black as the floor under it, which is
 		what shows while this layer is faded out.
 	-->
-	<div class="stage-bg" class:shown={!isAttract} style="background: {stageBg}"></div>
+	<div class="stage-bg" class:shown={!isAttract} style="background: {stageBg}">
+		<!--
+			INSIDE the stage layer, not a sibling: the visualizer then inherits the one visibility gate and
+			the one crossfade already proven for backgrounds, rather than introducing a second element that
+			has to agree with this one about when to show. `stageBg` is its black floor (see
+			background.ts's `visualizer` case), so a first frame that has not painted yet shows black.
+
+			`playing` is the SAME `!isAttract` band, so the loop is cancelled on the idle screens instead of
+			animating behind an opaque attract gradient for nothing.
+		-->
+		{#if resolvedBackground === 'visualizer'}
+			<VisualizerStage variant={tvVisualizer} hue={tvBackgroundHue} playing={!isAttract} />
+		{/if}
+	</div>
 	<!-- two stacked player slots -->
 	<TvPlayer
 		media={slotMedia.A}

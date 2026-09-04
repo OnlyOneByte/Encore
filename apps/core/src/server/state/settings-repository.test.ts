@@ -197,6 +197,22 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		expect(repo.setRoom({ tvBackgroundHue: -30 }).tvBackgroundHue).toBe(330); // wrapped, not rejected
 	});
 
+	it('a visualizer choice survives the round trip through SQLite', () => {
+		const repo = freshRepo();
+		expect(repo.getRoom().tvVisualizer).toBe('plasma');
+		expect(repo.setRoom({ tvBackgroundStyle: 'visualizer', tvVisualizer: 'starfield' }).tvVisualizer).toBe('starfield');
+		expect(repo.getRoom().tvVisualizer).toBe('starfield');
+		expect(repo.getRoom().tvBackgroundStyle).toBe('visualizer');
+	});
+
+	it('the visualizer choice is kept when the room switches to another background and back', () => {
+		const repo = freshRepo();
+		repo.setRoom({ tvBackgroundStyle: 'visualizer', tvVisualizer: 'lissajous' });
+		repo.setRoom({ tvBackgroundStyle: 'gradient' });
+		expect(repo.getRoom().tvVisualizer).toBe('lissajous');
+		expect(repo.setRoom({ tvBackgroundStyle: 'visualizer' }).tvVisualizer).toBe('lissajous');
+	});
+
 	it('the room default set is complete — every field has a value with no writes at all', () => {
 		// A field added to RoomSettings but forgotten in DEFAULT_ROOM_SETTINGS reads as undefined here and
 		// would reach a NOT NULL column on the first write.

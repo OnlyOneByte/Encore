@@ -159,6 +159,14 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
     the entire screen and hid the stage background completely. If a new TV layer looks like it "isn't
     rendering", check what is painting over it before checking your own code — and see
     ARCHITECTURE §4 for the full stacking contract.
+17. **`server.ts` serves the BUILT bundle, so a source edit is invisible until you rebuild.** Tuning a
+    renderer and re-screenshotting gave byte-identical frames twice before this was obvious — the
+    capture was of the previous build. `bun run build` between an edit and an eyes-on capture, always.
+18. **Routing a `<video>` into a Web Audio graph SILENCES it unless you reconnect `destination`.** No
+    audio graph exists on the TV yet, so this is a trap waiting for whoever adds one. Note the phone's
+    mic code deliberately does the opposite — `mic-capture.ts` connects source→analyser and *not* to
+    destination, on purpose. Copying that pattern onto the TV is exactly the bug, the symptom is a
+    silent karaoke party, and no unit test catches it.
 
 ---
 
