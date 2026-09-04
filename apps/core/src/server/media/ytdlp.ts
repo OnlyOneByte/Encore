@@ -7,6 +7,30 @@
 
 import type { SearchResult } from './resolver';
 
+/**
+ * The thumbnail URL for a YouTube video id, DERIVED rather than taken from yt-dlp's `thumbnails[]`.
+ *
+ * Three reasons, all measured against yt-dlp 2026.08.19:
+ *
+ *  1. INCONSISTENT ASPECT. `thumbnails[].at(-1)` is whatever the extractor happened to list last, and
+ *     that varies by result set: a `ytsearch3` returned `hq720.jpg` (720×404, 16:9) while a
+ *     `ytsearch1` for the same video returned `hqdefault.jpg` — which is 4:3 and therefore
+ *     letterboxed with black bars inside a 16:9 slot. One row would have bars and its neighbour none.
+ *  2. WRONG SIZE. The largest listed variant is 720px wide, ~13× the pixels an 84px row thumbnail
+ *     needs. `mqdefault` is 320×180 — right for the slot at 2–3× DPR, and a fraction of the bytes on
+ *     the phone's wifi.
+ *  3. UNSIGNED, THEREFORE CACHEABLE FOREVER. The listed URLs carry `?sqp=…&rs=…` signature
+ *     parameters. The proxy's disk cache keys on the whole URL (see thumbs.ts `thumbKey`), so any
+ *     change in those parameters silently writes a second copy of the same image. The bare
+ *     `mqdefault.jpg` form has no query string at all, so one video is one cache entry for good.
+ *
+ * `i.ytimg.com` is already on the proxy's SSRF host allowlist, and every YouTube video has an
+ * `mqdefault`, so this needs no fallback.
+ */
+export function ytThumbnailUrl(videoId: string): string {
+	return `https://i.ytimg.com/vi/${encodeURIComponent(videoId)}/mqdefault.jpg`;
+}
+
 // yt-dlp --dump-json emits one JSON object per line (flat playlist for ytsearch).
 export function parseSearchJson(lines: string): SearchResult[] {
 	const out: SearchResult[] = [];
@@ -22,7 +46,11 @@ export function parseSearchJson(lines: string): SearchResult[] {
 				title: j.title ?? j.id,
 				artist: j.uploader ?? j.channel ?? undefined,
 				durationSec: Math.round(j.duration ?? 0),
-				thumbnail: j.thumbnail ?? (j.thumbnails?.at(-1)?.url) ?? undefined
+				thumbnail: ytThumbnailUrl(j.id),
+				// `view_count` IS present in --flat-playlist output (measured), unlike `upload_date` and
+				// `release_timestamp`, which are null there and would each cost a per-video metadata call.
+				// Guarded on the type because a non-number would render as "NaN views".
+				viewCount: typeof j.view_count === 'number' && Number.isFinite(j.view_count) ? j.view_count : undefined
 			});
 		} catch {
 			// skip malformed lines
