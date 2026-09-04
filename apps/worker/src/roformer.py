@@ -25,6 +25,7 @@ from typing import AsyncIterator
 
 from .fetch import job_fetcher, local_source_path
 from .vocabulary import Fetcher
+from .song_profile import build_song_profile
 from .processor import (
 	CompleteResult,
 	JobSpec,
@@ -179,10 +180,14 @@ class RoformerProcessor:
 	needed to confirm the exact output-stem filenames and the token→slug mapping. The plumbing mirrors
 	DemucsProcessor and the CLI flags are confirmed against bs-roformer-infer 0.1.5 --help."""
 
-	def __init__(self, *, device: str | None = None, flac_level: int = 8, roformer_bin: str = "bs-roformer-infer") -> None:
+	def __init__(self, *, device: str | None = None, flac_level: int = 8, roformer_bin: str = "bs-roformer-infer", profiler=build_song_profile) -> None:
 		self._device = device
 		self._flac_level = flac_level
 		self._roformer_bin = roformer_bin
+		# Injectable analysis step (instrumental_wav, vocals_wav, media_id) -> songProfile. Defaults to
+		# the real builder; tests driving the fake subprocess runner pass a no-op (its "WAV" files are
+		# placeholder bytes). See DemucsProcessor.Profiler for the rationale.
+		self._profiler = profiler
 
 	async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
 		from . import demucs as d  # reuse fetch/encode argv builders + the subprocess runner
@@ -243,11 +248,19 @@ class RoformerProcessor:
 			except Exception as exc:  # noqa: BLE001 — vocals is an enhancement, never fail the cook for it
 				print(f"[worker] roformer vocals encode failed (non-fatal): {type(exc).__name__}", flush=True)
 
+		# ── songProfile: key (INSTRUMENTAL) + vocal range (VOCALS) ──────────────────────
+		# Analysed from the raw separated files bs-roformer wrote into `store` (`produced` /
+		# `vocals_src`) — no extra separation, no extra decode. ALWAYS published, with null inner
+		# fields on any analysis failure: core reads a PRESENT profile as "the step ran" and an ABSENT
+		# one as "still cooking", so omitting it would strand the song. Mirrors the demucs engine so the
+		# artifact is engine-agnostic.
+		song_profile = self._profiler(produced, vocals_src, job.media_id)
+
 		# The RESOLVED checkpoint, not the token the core sent. This distinction is the whole reason the
 		# field exists here: a token was found to resolve to a different model than the one benchmarked
 		# under that name, and nothing in the ledger would have shown it.
 		yield CompleteResult(
 			media_uri=final,
-			artifacts={"stems": stems},
+			artifacts={"stems": stems, "songProfile": song_profile},
 			facts={"engine": "roformer", "model": slug, "backend": "bs-roformer-infer"},
 		)
