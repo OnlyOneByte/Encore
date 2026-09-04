@@ -8,7 +8,7 @@
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import type { TvProgressStyle } from '@encore/shared';
+	import { resolveLyricsPresentation, type EffectiveSettings } from '@encore/shared';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
@@ -23,12 +23,17 @@
 	// Singer ids with a live socket right now. Drives the lobby roster and the join card's
 	// count — NOT `singers`, which is every singer who ever joined (append-only + file-backed).
 	let online = $state<string[]>([]);
-	// Seeded from the room's stored pacing and kept live by settings:changed. The effect re-adopts
-	// `data` so a load re-run is not pinned to the value captured at mount.
-	let interstitialMs = $state(untrack(() => data.interstitialMs) ?? 2500);
+	// Room + global settings as ONE object, seeded from the load and kept live by settings:changed.
+	// Held whole rather than copied field-by-field: the previous shape needed a new local, a new effect
+	// line and a new assignment in the socket handler per field, which is three lists to keep in step.
+	// The effect re-adopts `data` so a load re-run is not pinned to the value captured at mount.
+	let settings = $state<EffectiveSettings>(untrack(() => data.settings));
 	$effect(() => {
-		interstitialMs = data.interstitialMs ?? 2500;
+		settings = data.settings;
 	});
+	const interstitialMs = $derived(settings.room.interstitialMs);
+	// Already clamped against the global sync mode — the TV renders what it is handed.
+	const lyricsStyle = $derived(resolveLyricsPresentation(settings));
 
 	let current = $state<QueueEntry | null>(null);
 	let upNext = $state<QueueEntry | null>(null);
@@ -41,10 +46,7 @@
 	// dropped. Progress needs both.
 	let durationSec = $state(0);
 	let skipNotice = $state('');
-	let tvProgressStyle = $state<TvProgressStyle>(untrack(() => data.tvProgressStyle) ?? 'card');
-	$effect(() => {
-		tvProgressStyle = data.tvProgressStyle ?? 'card';
-	});
+	let tvProgressStyle = $derived(settings.room.tvProgressStyle);
 	// live score for the current song, from score:update broadcasts (null until first sample)
 	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	// playback isPlaying (pause/resume from the phone) — wired into both player slots
@@ -157,10 +159,10 @@
 				if (e.online) online = e.online;
 			}
 			if (e.type === 'singer:presence') online = e.online;
-			// Room pacing is live: a slider move on a phone applies without reloading the TV.
+			// Room settings are live: a change on a phone applies without reloading the TV. One
+			// assignment, so a new setting needs no edit here.
 			if (e.type === 'settings:changed') {
-				interstitialMs = e.settings.room.interstitialMs;
-				tvProgressStyle = e.settings.room.tvProgressStyle;
+				settings = e.settings;
 				// The join address is the one setting the TV cannot apply in place: the QR is a
 				// server-rendered image, and the whole point of the setting is that the TV's own URL is
 				// not the address to advertise. An empty setting means "fall back", which resolves to the
@@ -267,6 +269,9 @@
 		{positionSec}
 		playing={lyricsActive}
 		visible={lyricsActive}
+		ball={lyricsStyle.ball}
+		highlight={lyricsStyle.highlight}
+		leadSec={lyricsStyle.leadSec}
 	/>
 
 	{#if screen === 'attract'}

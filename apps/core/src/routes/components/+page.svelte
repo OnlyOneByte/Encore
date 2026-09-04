@@ -4,6 +4,7 @@
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
+	import { LYRICS_BALL_STYLES, LYRICS_HIGHLIGHTS } from '@encore/shared';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
@@ -286,6 +287,37 @@
 		<LyricsOverlay doc={demoLineOnly} positionSec={demoPos} playing visible
 			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'line' }} />
 	</div>
+
+	<!--
+		Every room-selectable treatment, on one doc, at ONE PINNED position. Side by side is the only way
+		to judge these: the difference between a bouncing and a steady dot is motion, and between word and
+		line highlighting is what a patchy artifact does to each.
+
+		`playing={false}` and a fixed position are load-bearing, not laziness. The demo clock above loops
+		0→18s, so with it running each card renders a different moment and the variants are not comparable
+		— and a screenshot lands wherever the rAF happened to be. Pinned at 0.8s (+0.3s default lead =
+		1.1s) "the" is mid-word, so one frame shows all three word states at once: "Is"/"this" sung,
+		"the" current, "real"/"life" still ahead.
+
+		These cards are TALLER than the ones above because the reel is 9.5em of a clamp()-scaled font —
+		around 470px here. At 280px the card clipped it and hid the centred current row, which is the row
+		these variants exist to show.
+	-->
+	{#each LYRICS_BALL_STYLES as s (s.id)}
+		<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · marker: {s.label}</h2>
+		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+			<LyricsOverlay doc={demoLyrics} positionSec={0.8} playing={false} visible ball={s.id} highlight="word"
+				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
+		</div>
+	{/each}
+
+	{#each LYRICS_HIGHLIGHTS as h (h.id)}
+		<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · highlight: {h.label}</h2>
+		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+			<LyricsOverlay doc={demoLyrics} positionSec={0.8} playing={false} visible ball="off" highlight={h.id}
+				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
+		</div>
+	{/each}
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">TV room states · lobby + corner join card</h2>
 	<!-- The three TV surfaces, scaled down. The point of the pair is that "nobody here" and "people

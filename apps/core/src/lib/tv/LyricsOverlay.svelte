@@ -13,6 +13,12 @@
 		type LyricsDoc,
 		type LyricsProvenance
 	} from './lyrics';
+	import {
+		DEFAULT_LYRICS_BALL,
+		DEFAULT_LYRICS_HIGHLIGHT,
+		type LyricsBallStyleId,
+		type LyricsHighlightId
+	} from '@encore/shared';
 
 	interface Props {
 		lyricsRef?: string; // MediaStore key of the lyrics JSON on the current media
@@ -28,6 +34,14 @@
 		provenance?: LyricsProvenance | null;
 		/** Seconds to run the highlight AHEAD of the audio — see LYRICS_LEAD_SEC for why. */
 		leadSec?: number;
+		/**
+		 * How the sung word is marked, and how the current lyric is lit. Both come from the room's
+		 * settings via `resolveLyricsPresentation`, which has ALREADY clamped them against what the
+		 * deployment's sync mode produces — so this component renders what it is handed and does not
+		 * re-derive the rule. Defaults reproduce the treatment that was hardcoded here.
+		 */
+		ball?: LyricsBallStyleId;
+		highlight?: LyricsHighlightId;
 	}
 	let {
 		lyricsRef,
@@ -36,7 +50,9 @@
 		playing = true,
 		visible = true,
 		provenance = null,
-		leadSec = LYRICS_LEAD_SEC
+		leadSec = LYRICS_LEAD_SEC,
+		ball = DEFAULT_LYRICS_BALL,
+		highlight = DEFAULT_LYRICS_HIGHLIGHT
 	}: Props = $props();
 
 	let fetched = $state<LyricsDoc | null>(null);
@@ -128,10 +144,18 @@
 		return () => ro.disconnect();
 	});
 	const unverified = $derived(isAutoTranscribed(provenance));
+	/**
+	 * Whether to render the current line as individual word spans at all.
+	 *
+	 * Only the `word` treatment needs them. Under `line`/`off` the plain-text branch is both cheaper
+	 * and the reason no second renderer exists — and it keeps the row a single text node, so the
+	 * ResizeObserver has less to re-measure per line change.
+	 */
+	const wordLevel = $derived(highlight === 'word');
 </script>
 
 {#if show && doc && curLine}
-	<div class="lyrics" class:unverified role="presentation">
+	<div class="lyrics hl-{highlight}" class:unverified role="presentation">
 		<!--
 			A SCROLLING REEL, not a two-slot swap. Previously the current line was replaced in place and
 			the "next" line jumped up into it, which read as a hard cut on every line change. Here every
@@ -144,13 +168,21 @@
 			<div class="reel" bind:this={reelEl} style="transform: translateY({reelOffset}px)">
 				{#each doc.lines as l, i (i)}
 					<div class="row" class:current={i === lineIdx} class:past={i < lineIdx}>
-						{#if i === lineIdx && l.words.length}
+						{#if i === lineIdx && l.words.length && wordLevel}
 							{#each l.words as w, wi (wi)}
 								<span class="word" class:done={cuePos >= w.end} class:active={wi === ballWord}>
-									{#if wi === ballWord}<span class="ball" aria-hidden="true">●</span>{/if}{w.word}
+									{#if wi === ballWord && ball !== 'off'}<span
+											class="ball {ball}"
+											aria-hidden="true">{ball === 'underline' ? '' : '●'}</span
+										>{/if}{w.word}
 								</span>{' '}
 							{/each}
 						{:else}
+							<!--
+								The plain-text branch. It already existed as the fallback for a line-timed doc, and
+								a room choosing `line`/`off` reuses it rather than adding a second renderer — the
+								whole reason this feature is small. `.row.current` carries the line-level treatment.
+							-->
 							{l.text}
 						{/if}
 					</div>
@@ -265,6 +297,22 @@
 	.row.past {
 		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
 	}
+	/*
+	 * LINE-LEVEL treatment. The `line` room setting lights the whole current lyric in the accent and
+	 * says nothing about position within it — which is the honest reading when word timings are patchy
+	 * (measured coverage runs 87-93% with real holes, and a stale word held for five seconds reads as
+	 * broken where a stale line does not).
+	 *
+	 * `off` deliberately gets NO accent: the reel's own contrast ladder — 0.62 upcoming, white current,
+	 * 0.2 past — is what shows position, and PR #8 raised those dim states specifically so they can be
+	 * read rather than merely sensed. That is what makes a no-highlight read-along viable at all.
+	 */
+	.lyrics.hl-line .row.current {
+		color: var(--accent2);
+	}
+	.lyrics.hl-off .row.current {
+		color: #fff;
+	}
 	.word {
 		position: relative;
 		display: inline-block;
@@ -288,14 +336,51 @@
 	.word.active {
 		color: var(--accent2);
 	}
+	/*
+	 * THE MARKER. One absolutely-positioned element per variant, so switching style never changes the
+	 * word's own box and cannot reflow the reel mid-song (the transform-only animation is the whole
+	 * reason the scroll is smooth).
+	 */
 	.ball {
 		position: absolute;
-		top: -0.85em;
 		left: 50%;
+		color: var(--accent2, #7cf);
+	}
+	/* Dot variants sit ABOVE the word. The loose 1.9 line-height above is load-bearing for this: at
+	   tight leading the dot lands on the previous wrapped row. */
+	.ball.bounce,
+	.ball.steady {
+		top: -0.85em;
 		transform: translateX(-50%);
 		font-size: 0.5em;
-		color: var(--accent2, #7cf);
+	}
+	.ball.bounce {
 		animation: bounce 0.5s ease-in-out infinite alternate;
+	}
+	/*
+	 * `steady` is the same dot with no animation — for a wall-sized screen where a bouncing mark is
+	 * motion in the corner of the eye all song. Not a separate glyph: the point is that only the
+	 * movement differs.
+	 */
+	/*
+	 * `underline` is a BAR, not a glyph — hence the empty text node in the markup. A rule under the
+	 * word reads as position without adding anything above the line, which is what makes it the calm
+	 * option on a busy screen.
+	 */
+	.ball.underline {
+		bottom: 0.42em;
+		width: 100%;
+		height: 0.07em;
+		border-radius: 0.04em;
+		transform: translateX(-50%);
+		background: var(--accent2, #7cf);
+	}
+	@media (prefers-reduced-motion: reduce) {
+		/* Degrade to `steady` rather than removing the mark: the singer still needs to know which word
+		   it is. */
+		.ball.bounce {
+			animation: none;
+		}
 	}
 	@keyframes bounce {
 		from {

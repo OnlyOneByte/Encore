@@ -157,7 +157,17 @@ export const roomSettings = sqliteTable('room_settings', {
 		.notNull()
 		.default('card'),
 	interstitialMs: integer('interstitial_ms').notNull().default(2500),
-	maxQualityRank: integer('max_quality_rank')
+	maxQualityRank: integer('max_quality_rank'),
+	// Lyrics presentation. Defaults reproduce the previously-hardcoded TV exactly, so an existing room
+	// renders identically after the migration. Enum-constrained at the column like tv_progress_style,
+	// so a hand-edited DB cannot smuggle in a style the renderer has no branch for.
+	lyricsBall: text('lyrics_ball', { enum: ['bounce', 'steady', 'underline', 'off'] })
+		.notNull()
+		.default('bounce'),
+	lyricsHighlight: text('lyrics_highlight', { enum: ['word', 'line', 'off'] })
+		.notNull()
+		.default('word'),
+	lyricsLeadMs: integer('lyrics_lead_ms').notNull().default(300)
 });
 
 export const jobs = sqliteTable(
