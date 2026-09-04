@@ -149,6 +149,79 @@ export const SINGER_HUES: readonly number[] = Array.from(
 /** Every colour the wheel can emit. */
 export const SINGER_WHEEL: readonly string[] = SINGER_HUES.map((h) => hueToHex(h));
 
+// ── stage tier ─────────────────────────────────────────────────────────────
+//
+// The TV stage background is a DIFFERENT tier from the singer dot palette above, and the difference
+// is load-bearing rather than taste.
+//
+// A dot is ~12px of fill on a dark card, so SINGER_L = 0.70 is right for it. The stage is the WHOLE
+// SCREEN, and for a make-karaoke song it sits directly behind word-timed lyrics whose only defence
+// is `text-shadow: 0 2px 18px rgba(0,0,0,.85)` (LyricsOverlay.svelte) — a glow tuned against black.
+// Painting the dot palette across that field would wash the reel out. So the stage is pinned far
+// darker and far less saturated, and these two numbers are a LEGIBILITY BOUND: raising them
+// regresses the lyrics, which is why they live here in shared code rather than in a picker.
+
+/** Perceptual lightness for a full-screen stage background. */
+export const STAGE_BG_L = 0.22;
+/** Chroma for a full-screen stage background. */
+export const STAGE_BG_C = 0.07;
+
+/**
+ * Hue of `--accent2` (#ff5cae) — the "sing this now" active-word colour in the lyrics overlay.
+ * Derived, not hardcoded, so it cannot drift away from the token it mirrors.
+ */
+const ACCENT2_HUE = nearestSingerHue('#ff5cae');
+
+/**
+ * Angular width of the guard, in degrees. Inside it, a stage hue gives up brightness on a RAMP.
+ *
+ * 60° is where the rendered mockups stopped showing any loss. Deliberately a ramp and not a
+ * threshold: a binary flip put a cliff in the middle of the wheel, so the two stops either side of
+ * it got wildly different stages for a 15° change — and it forced a single answer onto hue 30
+ * (coral, which did flatten) and hue 300 (purple, which did not) even though both sit exactly 45°
+ * out. No defensible rule distinguishes them by hue angle alone, so both get the same mild
+ * reduction rather than one of them getting a fabricated exception.
+ */
+const ACCENT2_GUARD_DEG = 60;
+
+/** Lightness at the worst case — a stage hue sitting exactly on the active-word hue. */
+const STAGE_BG_L_GUARDED = 0.13;
+
+/** Shortest angular distance between two hues, in degrees (0–180). */
+function hueDistance(a: number, b: number): number {
+	const d = Math.abs((((a - b) % 360) + 360) % 360);
+	return Math.min(d, 360 - d);
+}
+
+/**
+ * Stage lightness for a hue: `STAGE_BG_L` everywhere except inside the guard band, ramping linearly
+ * down to `STAGE_BG_L_GUARDED` as the hue closes on the active-word hue.
+ */
+export function stageLightnessForHue(hueDeg: number): number {
+	const hue = ((hueDeg % 360) + 360) % 360;
+	const dist = hueDistance(hue, ACCENT2_HUE);
+	if (dist >= ACCENT2_GUARD_DEG) return STAGE_BG_L;
+	const t = dist / ACCENT2_GUARD_DEG; // 0 at the collision, 1 at the edge of the band
+	return STAGE_BG_L_GUARDED + t * (STAGE_BG_L - STAGE_BG_L_GUARDED);
+}
+
+/**
+ * A stage background colour for a hue.
+ *
+ * Mostly this is just `hueToHex` at the stage tier. The exception is the guard: a stage generated
+ * from a hue NEAR `--accent2` steals the active word's cue, because the highlight and the field it
+ * sits on are then the same hue family. Three fixes were rendered; this is the one chosen, because
+ * it keeps BOTH the hue and the chroma and gives up only brightness — so "the stage is your colour"
+ * stays true for a pink singer, while the pink word wins on lightness contrast instead of hue.
+ *
+ * Rotating the hue away (the obvious fix) was rejected: it hands a pink singer a purple stage, which
+ * defeats the entire point of the option.
+ */
+export function stageHueToHex(hueDeg: number): string {
+	return hueToHex(hueDeg, stageLightnessForHue(hueDeg), STAGE_BG_C);
+}
+
+
 // ── validation ─────────────────────────────────────────────────────────────
 
 /**

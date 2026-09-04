@@ -2,6 +2,7 @@
 // See docs/ARCHITECTURE.md (Data model).
 
 import type { LyricsCandidate } from './lyrics';
+import type { TvBackgroundStyle } from './separators';
 
 export type MediaSource = 'youtube' | 'local';
 export type StemStatus = 'none' | 'queued' | 'ready';
@@ -137,6 +138,18 @@ export interface PlaybackState {
   positionSec: number;
   isPlaying: boolean;
   keyShift: number; // semitones the current song is transposed (+sharp / -flat), 0 = original
+  /**
+   * Per-song override of the room's TV background. `null` = defer to the room default, which is the
+   * normal state — the TV resolves `playback.background ?? room.tvBackgroundStyle`.
+   *
+   * An OVERRIDE rather than a show/hide toggle, because that subsumes the toggle ('off' is the hide
+   * case) and additionally buys "make it purple, just for this song" with no extra mechanism.
+   *
+   * Ephemeral like keyShift: reset to null on every song change. Note that this reset is EXPLICIT at
+   * each site in realtime/player.ts — nothing rebuilds this object per song — so a field omitted
+   * there silently leaks into the next singer's turn.
+   */
+  background: TvBackgroundStyle | null;
 }
 
 // How far the singer can transpose, in semitones (a perfect fifth either way — covers most voices).
