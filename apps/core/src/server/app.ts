@@ -46,6 +46,7 @@ import { reconcileOnReady } from './realtime/player';
 import { syncEvent } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
 import { ObjectMediaStore, bunS3Client } from './media/object-store';
+import { singHistoryFrom } from '@encore/shared';
 import type { ServerEvent, Media, WorkerCommand } from '@encore/shared';
 
 export interface EncoreApp {
@@ -141,7 +142,15 @@ export function getApp(): EncoreApp {
 		console.warn(`[core] storage layout migration skipped: ${(err as Error).message} — running on the existing layout`);
 	}
 
-	const state = new AuthoritativeState(sqlitePersistence(db));
+	// Settings BEFORE the authoritative state, because the state's ordering (which algorithm decides
+	// who sings next) is read out of them. A getter, not a value: the room can change the algorithm
+	// mid-party and the sing history moves every time a song starts.
+	const settings = new SettingsRepository(db);
+	const singers = new SingerRepository(db);
+	const state = new AuthoritativeState(sqlitePersistence(db), 250, () => ({
+		order: settings.getRoom().queueOrder,
+		lastSungAt: singHistoryFrom(singers.listPublic())
+	}));
 	const { entries, playback } = hydrate(db);
 	state.hydrate(entries, playback);
 
@@ -152,7 +161,6 @@ export function getApp(): EncoreApp {
 	const attempts = new AttemptLedger(db);
 	const playLog = new PlayLog(db);
 	const jobs = new JobRepository(db, attempts);
-	const settings = new SettingsRepository(db);
 	// Seed this room's pacing from the environment on first boot only. Without this, adding the room
 	// scope would silently reset an install that had configured the env var, and writing it every boot
 	// would instead stomp whatever someone chose on the phone.
@@ -379,7 +387,7 @@ export function getApp(): EncoreApp {
 	const app: EncoreApp = {
 		db,
 		state,
-		singers: new SingerRepository(db),
+		singers,
 		presence: new PresenceTracker(),
 		// Set just below — the sink needs `app` to reach the media catalog.
 		plays: null as never,
@@ -448,7 +456,18 @@ export function getApp(): EncoreApp {
 		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
 		onMediaReady: () => {
 			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online(), getSettings: () => app.settings.getEffective() }));
-			reconcileOnReady({ state, publish: (e) => app.publish(e), mediaById, onNowPlaying: (e) => app.plays.onNowPlaying(e) });
+			// listSingers + getSettings are not optional garnish here: reconcileOnReady picks what plays
+			// next, so without them it would pick using fair rotation while every client is looking at a
+			// queue ordered by whatever the room actually chose.
+			reconcileOnReady({
+				state,
+				publish: (e) => app.publish(e),
+				mediaById,
+				listSingers: () => app.singers.listPublic(),
+				getSettings: () => app.settings.getEffective(),
+				onNowPlaying: (e) => app.plays.onNowPlaying(e),
+				onSang: (singerId) => app.singers.markSang(singerId, app.now())
+			});
 		},
 		now: () => app.now()
 	});

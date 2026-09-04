@@ -12,7 +12,7 @@ import {
 } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
-import { mediaFor, type HubDeps } from './hub';
+import { mediaFor, orderingOf, type HubDeps } from './hub';
 
 /**
  * Broadcast the authoritative queue after a PLAYBACK transition changed entry statuses.
@@ -34,12 +34,31 @@ function publishQueue(deps: HubDeps): void {
 /** Emit nowplaying:changed with the current entry + the soonest-ready upNext (drives TV preload). */
 export function emitNowPlaying(deps: HubDeps): void {
 	const cur = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId) ?? null;
-	const upNext = upNextAfter(cur?.id ?? null, deps.state.entries, deps.mediaById);
+	const upNext = upNextAfter(cur?.id ?? null, deps.state.entries, deps.mediaById, orderingOf(deps));
 	// Play tracking hooks in HERE because every playback transition funnels through this one emit.
 	// The tracker itself dedupes, since this is also re-emitted without a change (a cook finishing
 	// re-broadcasts nowplaying so the TV preloads the newly-ready song).
 	deps.onNowPlaying?.(cur ? { id: cur.id, mediaId: cur.mediaId } : null);
 	deps.publish({ type: 'nowplaying:changed', current: cur, upNext });
+}
+
+/**
+ * A singer's turn BEGINS: flip the entry to `playing`, stamp that this singer has now sung, and
+ * re-derive the ordering.
+ *
+ * The three steps are one operation because their ORDER matters. Under `least-recently-sung` the
+ * stamp is an input to the ordering, so stamping after the reseq would leave the singer who just
+ * started at the front of the queue with their remaining picks — visibly the opposite of the rule —
+ * until some unrelated mutation happened to re-derive it. `reorder()` is a true no-op (no rev bump,
+ * no broadcast) under every ordering that ignores sing history, so this is safe on all four.
+ *
+ * Callers must still publish; this deliberately does not, because each of the three call sites
+ * publishes a different combination of queue/playback/nowplaying.
+ */
+function beginSinging(deps: HubDeps, entry: QueueEntry): void {
+	deps.state.applyQueueOp({ op: 'status', id: entry.id, status: 'playing' });
+	deps.onSang?.(entry.singerId);
+	deps.state.reorder();
 }
 
 /**
@@ -53,9 +72,9 @@ export function emitNowPlaying(deps: HubDeps): void {
 export function reconcileOnReady(deps: HubDeps): void {
 	const { state } = deps;
 	if (!state.playback.currentEntryId) {
-		const { next } = nextPlayable(state.entries, deps.mediaById);
+		const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 		if (next) {
-			state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
+			beginSinging(deps, next);
 			// A SONG START, so every ephemeral field resets here too — see advance(). keyShift was the one
 			// this site forgot: a song that began this way (the room idled while it cooked, then the cook
 			// finished) silently inherited the previous singer's transpose.
@@ -79,8 +98,8 @@ function advance(deps: HubDeps): QueueEntry | null {
 	const { state } = deps;
 	const cur = state.playback.currentEntryId;
 	if (cur) state.applyQueueOp({ op: 'status', id: cur, status: 'done' });
-	const { next } = nextPlayable(state.entries, deps.mediaById);
-	if (next) state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
+	const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
+	if (next) beginSinging(deps, next);
 	/*
 	 * Every ephemeral field resets here — a new song starts in its original key, on the room's own
 	 * background rather than whatever the last singer set, and at the room's own guiding-track level.
@@ -118,9 +137,9 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 	switch (cmd.cmd) {
 		case 'play': {
 			if (!state.playback.currentEntryId) {
-				const { next } = nextPlayable(state.entries, deps.mediaById);
+				const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 				if (next) {
-					state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
+					beginSinging(deps, next);
 					state.setPlayback({
 						currentEntryId: next.id,
 						positionSec: 0,
