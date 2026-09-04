@@ -16,7 +16,7 @@ import type { Media } from '@encore/shared';
 
 const media = (id: string): Media => ({
 	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', instrumentalRef: `derived/stems/${id}-instrumental.flac`
+	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `derived/stems/${id}-instrumental.flac`
 });
 
 function deps(): HubDeps {

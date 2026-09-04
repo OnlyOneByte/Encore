@@ -20,7 +20,7 @@ function harness() {
 		publish: (e) => published.push(e),
 		// m-file is a cooked song; m-uncooked has no instrumental; m-cooking is still separating
 		mediaById: new Map<string, Media>([
-			['m-file', media('m-file', { stemStatus: 'ready', instrumentalRef: 'derived/stems/m-file-instrumental.wav' })],
+			['m-file', media('m-file', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/m-file-instrumental.wav' })],
 			['m-iframe', media('m-iframe')],
 			['m-cooking', media('m-cooking', { stemStatus: 'queued' })]
 		])

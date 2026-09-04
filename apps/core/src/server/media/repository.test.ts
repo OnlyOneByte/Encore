@@ -19,7 +19,7 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 });
 
 const cooked = (id: string, over: Partial<Media> = {}): Media =>
-	media(id, { stemStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
+	media(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
 
 function repo(): MediaRepository {
 	const { db } = openDb(':memory:');
@@ -99,7 +99,7 @@ test('listReady excludes a ready STATUS with no instrumental on disk', () => {
 	// The status and the artifact are written by separate steps; the library must mirror isPlayable
 	// rather than trusting the status alone, or a browse row resolves to a file that is not there.
 	const r = repo();
-	r.upsert(media('m1', { stemStatus: 'ready' }));
+	r.upsert(media('m1', { stemStatus: 'ready', lyricsStatus: 'ready' }));
 	expect(r.listReady()).toHaveLength(0);
 });
 

@@ -19,7 +19,7 @@ const m = (over: Partial<Media> = {}): Media => ({
 });
 
 test('a cooked song plays its instrumental, NOT its origin', () => {
-	const cooked = m({ stemStatus: 'ready', instrumentalRef: 'stems/m1-instrumental.wav' });
+	const cooked = m({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'stems/m1-instrumental.wav' });
 	expect(playbackRef(cooked)).toBe('stems/m1-instrumental.wav');
 	expect(isPlayable(cooked)).toBe(true);
 	expect(cooked.sourceRef).toBe('djV11Xbc914'); // origin still intact for search dedupe
@@ -47,8 +47,8 @@ test('mid-cook is not playable, and a ready status without an artifact is not ei
 	expect(playbackRef(m({ stemStatus: 'queued' }))).toBe('');
 	// stemStatus and instrumentalRef are written by separate steps. A status that has run ahead of its
 	// artifact must not hand the player an empty <video> src.
-	expect(playbackRef(m({ stemStatus: 'ready' }))).toBe('');
-	expect(isPlayable(m({ stemStatus: 'ready' }))).toBe(false);
+	expect(playbackRef(m({ stemStatus: 'ready', lyricsStatus: 'ready' }))).toBe('');
+	expect(isPlayable(m({ stemStatus: 'ready', lyricsStatus: 'ready' }))).toBe(false);
 });
 
 test('an instrumental without a ready status is not playable either', () => {
@@ -58,7 +58,7 @@ test('an instrumental without a ready status is not playable either', () => {
 });
 
 test('composes with keyedMediaRef: the ±key variant is derived from the INSTRUMENTAL', () => {
-	const cooked = m({ stemStatus: 'ready', instrumentalRef: 'stems/m1-instrumental.wav' });
+	const cooked = m({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'stems/m1-instrumental.wav' });
 	expect(keyedMediaRef(playbackRef(cooked), 2)).toBe('stems/m1-instrumental.+2.wav');
 	expect(keyedMediaRef(playbackRef(cooked), 0)).toBe('stems/m1-instrumental.wav');
 });

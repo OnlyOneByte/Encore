@@ -171,6 +171,15 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		durationSec: s.canonical.durationSec,
 		thumbnail: s.raw.thumbnail ?? undefined,
 		stemStatus: cooked ? 'ready' : 'none',
+		// The lyrics gate is DERIVED from the artifact rather than stored, so the sidecar keeps its
+		// meaning: artifacts are the truth and status is a projection of them.
+		//
+		// The one case this cannot recover is "align ran and correctly found no words" — a genuine
+		// instrumental has no artifact to infer from, so after a DB wipe it comes back unsettled and is
+		// not singable until align runs again. That self-heals: the boot lyrics backfill enqueues it and
+		// the step costs ~18s. Storing a bit here instead would mean the sidecar asserting something no
+		// file on disk can corroborate, which is the property that made these records trustworthy.
+		lyricsStatus: s.artifacts.lyrics ? 'ready' : undefined,
 		mbid: s.canonical.mbid ?? undefined,
 		// Provenance is per-field in the sidecar; Media carries one summary. Artist is the field that
 		// matters (it is what browse groups by and what the never-regress rule protects), so it decides.

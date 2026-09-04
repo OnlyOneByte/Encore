@@ -336,10 +336,23 @@ class WhisperXProcessor:
             else:
                 texts = val
         if not texts:
-            raise RuntimeError(
-                f"no lyrics text from any source for {artist or '?'} — {track or '?'} "
-                "(instrumental, or every tier missed)"
+            # "This song has no words" is a RESULT, not an error.
+            #
+            # This used to raise, which was defensible while lyrics were a garnish: a failed align left
+            # a red job on a song that played fine. It stops being defensible the moment readiness
+            # waits for align — a raise would mean a genuine instrumental (no lyrics by nature) could
+            # NEVER become playable, stuck cooking forever on a step that is working correctly.
+            #
+            # Completing with no lyrics artifact says exactly what happened: alignment ran, found no
+            # text in any tier, and there is nothing to time. Core marks the lyrics step settled and the
+            # song finishes cooking with no words on screen.
+            print(
+                f"[worker] align: no lyrics text from any source for {artist or '?'} — {track or '?'} "
+                "(instrumental, or every tier missed) — completing with no lyrics",
+                flush=True,
             )
+            yield CompleteResult(media_uri="", artifacts={})
+            return
 
         # Re-lineate the AUTO-TRANSCRIBED texts only (a whisper segment is a ~30s VAD blob of several
         # lyric lines; authoritative tiers already arrive line-broken). See lyrics_presplit.

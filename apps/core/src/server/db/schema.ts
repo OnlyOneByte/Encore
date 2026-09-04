@@ -34,6 +34,10 @@ export const media = sqliteTable('media', {
 	artist: text('artist'),
 	durationSec: integer('duration_sec').notNull(),
 	thumbnail: text('thumbnail'),
+	// The lyrics half of the cook gate (see packages/shared/src/gates.ts). NULL on rows written before
+	// the gate existed, which the gate reads as "done if a lyrics artifact is already present" so an
+	// existing library does not become unsingable on upgrade.
+	lyricsStatus: text('lyrics_status', { enum: ['none', 'queued', 'ready'] }),
 	stemStatus: text('stem_status', { enum: ['none', 'queued', 'ready'] })
 		.notNull()
 		.default('none'),

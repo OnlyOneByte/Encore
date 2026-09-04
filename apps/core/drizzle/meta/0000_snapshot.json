@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2bf7d367-73ea-4e50-8d6c-aac7e4a9e605",
+  "id": "ef844871-b44c-4922-aac4-82c61de603ff",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "global_settings": {
@@ -247,6 +247,13 @@
         },
         "thumbnail": {
           "name": "thumbnail",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lyrics_status": {
+          "name": "lyrics_status",
           "type": "text",
           "primaryKey": false,
           "notNull": false,

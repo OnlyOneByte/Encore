@@ -15,7 +15,7 @@ const m = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 const ready = (id: string, over: Partial<Media> = {}) =>
-	m(id, { stemStatus: 'ready', instrumentalRef: `stems/${id}-instrumental.wav`, ...over });
+	m(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `stems/${id}-instrumental.wav`, ...over });
 const cooking = (id: string, over: Partial<Media> = {}) => m(id, { stemStatus: 'queued', ...over });
 
 test('readinessOf classifies the three states a singer actually distinguishes', () => {
