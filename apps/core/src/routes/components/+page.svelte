@@ -254,11 +254,43 @@
 
 <main style="padding:14px 16px 200px;">
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);">SongRow · the readiness axis</h2>
-	<!-- One row shape, three states. The sub-line's job is to answer "what do I get if I tap this?" -->
-	<SongRow title="Take On Me" artist="a-ha" readiness="ready" />
-	<SongRow title="Take On Me" artist="a-ha" readiness="ready" inQueue />
-	<SongRow title="Bohemian Rhapsody" artist="Queen" readiness="cooking" pct={68} etaSec={70} />
-	<SongRow title="Mr. Brightside" artist="The Killers" readiness="unacquired" onmake={() => {}} />
+	<!--
+		One row shape, three states. Thumbnails are the DERIVED i.ytimg mqdefault URL (see
+		ytThumbnailUrl), served through /api/thumb — so on a box with no route to the internet these
+		render the gradient placeholder rather than a broken image, which is itself worth seeing here.
+	-->
+	<SongRow title="a-ha - Take On Me (Official Video)" artistCanonical="a-ha" artist="a-ha" readiness="ready"
+		thumbnail="https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg" durationSec={225} viewCount={1892000000} />
+	<SongRow title="a-ha - Take On Me (Official Video)" artistCanonical="a-ha" artist="a-ha" readiness="ready" inQueue
+		thumbnail="https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg" durationSec={225} viewCount={1892000000} />
+	<SongRow title="Queen — Bohemian Rhapsody (Sub. Español / Lyrics)"
+		artistCanonical="Queen" artist="Richie Lyrics" readiness="cooking"
+		thumbnail="https://i.ytimg.com/vi/AlmHSUirAOs/mqdefault.jpg" durationSec={358} viewCount={265947}
+		pct={68} etaSec={70} />
+	<SongRow title="The Killers - Mr. Brightside" artistCanonical="The Killers" artist="TheKillersMusic" readiness="unacquired" onmake={() => {}}
+		thumbnail="https://i.ytimg.com/vi/gGdGFtwCNBE/mqdefault.jpg" durationSec={228} viewCount={648760065} />
+
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">SongRow · telling one song's uploads apart</h2>
+	<!--
+		The reason this row exists, as real yt-dlp results for one query. Under the old one-line row all
+		six read as the same song: the version marker was truncated, there was no duration, and the
+		thumbnail was a grey gradient. Rows 5 and 6 are a movie trailer and a 22-minute concert rip.
+	-->
+	<SongRow title="Queen – Bohemian Rhapsody (Official Video Remastered)"
+		artistCanonical="Queen" artist="Queen Official" readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg" durationSec={360} viewCount={2093310583} onmake={() => {}} />
+	<SongRow title="Queen - Bohemian Rhapsody (Lyrics)"
+		artistCanonical="Queen" artist="Vibe Tracks" readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/Vsum-2Cs2gI/mqdefault.jpg" durationSec={361} viewCount={3105203} onmake={() => {}} />
+	<SongRow title="Queen - Bohemian Rhapsody (Live Aid 1985)"
+		artistCanonical="Queen" artist="Live Aid and Queen Official" readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/vbvyNnw8Qjg/mqdefault.jpg" durationSec={165} viewCount={306017891} onmake={() => {}} />
+	<SongRow title="Bohemian Rhapsody | Official Trailer [HD] | 20th Century FOX" artist="20th Century Studios" readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/mP0VHJYFOAU/mqdefault.jpg" durationSec={151} viewCount={40878083} onmake={() => {}} />
+	<SongRow title="Bohemian Rhapsody 2018 BONUS Complete Live Aid Performance 1080p BluRay" artist="Rulli Haerul" readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/QXbqiAZgeCE/mqdefault.jpg" durationSec={1316} viewCount={7866057} onmake={() => {}} />
+	<!-- No thumbnail, no duration, no views — a local library file. Must degrade, not break. -->
+	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">QueueRow</h2>
 	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor="#33d6a6" up subtitle="now playing" />

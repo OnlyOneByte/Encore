@@ -54,6 +54,17 @@ export interface Media {
   annotation?: { source: 'musicbrainz' | 'normalizer'; confidence: 'high' | 'medium' };
   durationSec: number;
   thumbnail?: string;
+  /**
+   * Views the SOURCE reported, at the moment we last saw this song in a search.
+   *
+   * Display only, and a TIEBREAKER rather than a fact about the song: between two lyric uploads of one
+   * track, 2.1B vs 266K is what tells a singer which is the canonical one. Deliberately not used by
+   * ranking, dedupe or any gate — a popularity number must never decide what plays.
+   *
+   * Undefined means "never learned one" (a local library file, or a resolver that reports none), which
+   * is why it is optional rather than 0: the row omits the chip instead of claiming zero views.
+   */
+  viewCount?: number;
   stemStatus: StemStatus;
   /** MediaStore key of the separated instrumental (set when a stems job completes). This is what
    *  the TV file player loads; `sourceRef` stays the origin so the worker can still fetch the

@@ -11,3 +11,4 @@ export * from './fetchers';
 export * from './lyrics-engines';
 export * from './ulid';
 export * from './colors';
+export * from './video-kind';

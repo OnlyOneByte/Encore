@@ -64,6 +64,13 @@
       "when": 1788552843550,
       "tag": "0008_guiding_track",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788553331602,
+      "tag": "0009_media_view_count",
+      "breakpoints": true
     }
   ]
 }
