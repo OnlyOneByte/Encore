@@ -67,13 +67,62 @@ export type ClientEvent =
 
 // worker -> core
 export type WorkerMessage =
-  | { type: 'worker:hello'; workerId: string; authToken?: string; capabilities: string[]; concurrency: number; version: string }
+  | { type: 'worker:hello'; workerId: string; authToken?: string; capabilities: string[]; concurrency: number; version: string; host?: WorkerHost }
   | { type: 'worker:heartbeat'; workerId: string; slotsFree: number; runningJobIds: string[] }
   | { type: 'job:accept'; workerId: string; jobId: string }
   | { type: 'job:reject'; workerId: string; jobId: string; reason: string }
   | { type: 'job:progress'; workerId: string; jobId: string; stage: MediaStatus; pct: number; etaSec?: number }
-  | { type: 'job:complete'; workerId: string; jobId: string; mediaUri: string; artifacts?: JobArtifacts }
+  | {
+      type: 'job:complete';
+      workerId: string;
+      jobId: string;
+      mediaUri: string;
+      artifacts?: JobArtifacts;
+      /** What the worker ACTUALLY resolved and ran. See ResolvedFacts. */
+      facts?: ResolvedFacts;
+      /** Per-stage wall clock for this job, in the order the stages ran. */
+      stages?: StageTiming[];
+    }
   | { type: 'job:failed'; workerId: string; jobId: string; error: string; retryable: boolean };
+
+/**
+ * What the worker actually ran, as opposed to what the core asked for.
+ *
+ * These differ more often than it looks: a processor applies its own default when the core sends no
+ * model, resolves a token to a checkpoint (a token was once found to resolve to a DIFFERENT model
+ * than the one benchmarked under that name), and falls back to CPU when a requested backend will not
+ * load. The core cannot know any of it, so per-model metrics built from dispatched values would be
+ * reporting requests as facts. Every field optional: a step reports only the axes that apply to it.
+ */
+export interface ResolvedFacts {
+  engine?: string;
+  model?: string;
+  backend?: string;
+  device?: string;
+  asrModel?: string;
+  syncMode?: string;
+}
+
+/**
+ * How long one stage of a job took. The core can already derive TOTAL processing time from its own
+ * accept→complete stamps; this is the SPLIT it cannot see — whether the 43 minutes were the download
+ * or the separation. Measured on the worker because only it observes a stage transition.
+ */
+export interface StageTiming {
+  stage: string;
+  ms: number;
+}
+
+/** The box a worker runs on. Best-effort and every field optional — a diagnostic must never fail a
+ *  handshake, and torch is genuinely absent under ENCORE_PROCESSOR=stub. */
+export interface WorkerHost {
+  platform?: string;
+  machine?: string;
+  python?: string;
+  cpuCount?: number;
+  torch?: string;
+  cuda?: boolean;
+}
 
 // Where workers pull source / push stems. local = a shared volume (single-box); object = S3/MinIO
 // for workers on other boxes (MASTER-DESIGN §2). Sent verbatim in worker:welcome.

@@ -16,6 +16,7 @@ function job(over: Partial<Job>): Job {
 	return {
 		id: 'j',
 		mediaId: 'm',
+		cookId: 'cook-j',
 		jobType: 'stems',
 		status: 'running',
 		priority: 0,

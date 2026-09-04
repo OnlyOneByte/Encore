@@ -42,14 +42,26 @@ STAGE_PLANS: dict[str, list[str]] = {
 
 
 # ── worker -> core message builders ──────────────────────────────────────────────
-def hello(worker_id: str, capabilities: list[str], concurrency: int, version: str) -> dict[str, Any]:
-    return {
+def hello(
+    worker_id: str,
+    capabilities: list[str],
+    concurrency: int,
+    version: str,
+    host: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    msg: dict[str, Any] = {
         "type": HELLO,
         "workerId": worker_id,
         "capabilities": capabilities,
         "concurrency": concurrency,
         "version": version,
     }
+    # What this box actually is. The worker already resolves all of it at startup and PRINTS it, so a
+    # log line was the only record — an operator reading "stems took 43 minutes" on the dashboard had
+    # no way to know whether that was a GPU or 4 shared cores. Optional so an older core ignores it.
+    if host:
+        msg["host"] = host
+    return msg
 
 
 def heartbeat(worker_id: str, slots_free: int, running_job_ids: list[str]) -> dict[str, Any]:
@@ -71,10 +83,29 @@ def progress(worker_id: str, job_id: str, stage: str, pct: int, eta_sec: int | N
     return msg
 
 
-def complete(worker_id: str, job_id: str, media_uri: str, artifacts: dict[str, Any] | None = None) -> dict[str, Any]:
+def complete(
+    worker_id: str,
+    job_id: str,
+    media_uri: str,
+    artifacts: dict[str, Any] | None = None,
+    facts: dict[str, Any] | None = None,
+    stages: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
     msg: dict[str, Any] = {"type": COMPLETE, "workerId": worker_id, "jobId": job_id, "mediaUri": media_uri}
     if artifacts is not None:
         msg["artifacts"] = artifacts
+    # WHAT ACTUALLY RAN. The core only ever knew what it ASKED for: it resolves engine/model from
+    # global settings at dispatch and the worker can legitimately resolve something else (a model
+    # alias, a backend this host cannot load, a device fallback to CPU). Without this the per-model
+    # dashboard would be reporting requests as if they were facts.
+    if facts:
+        msg["facts"] = facts
+    # PER-STAGE wall clock. The core can already derive TOTAL processing time from its own
+    # accept→complete timestamps; what it cannot see is the split — whether 40 of those 43 minutes
+    # were the download or the separation. Measured here because only the worker knows when a stage
+    # actually changed.
+    if stages:
+        msg["stages"] = stages
     return msg
 
 
@@ -128,3 +159,68 @@ class WorkerState:
 def stages_for(job_type: str) -> list[str]:
     """The ordered stages a job of this type emits (falls back to a download+separate plan)."""
     return STAGE_PLANS.get(job_type, [STAGE_DOWNLOADING, STAGE_SEPARATING])
+
+
+class StageTimer:
+    """Measure how long each stage of one job took, from the progress stream it already emits.
+
+    WHY HERE AND NOT IN EACH PROCESSOR. Every processor already yields a ProgressEvent whenever it
+    moves to a new stage, so the transitions are all observable from outside — which means timing them
+    needs no change to demucs.py, roformer.py or whisperx.py at all, and cannot drift when one of them
+    is edited. A stage ENDS when a different stage begins, or when the job finishes.
+
+    Injected clock (`monotonic`) so this is a pure unit under test: no sleeping, no asyncio. Monotonic
+    rather than wall time because a duration must not go negative if the host's clock steps.
+    """
+
+    def __init__(self, monotonic) -> None:
+        self._now = monotonic
+        self._current: str | None = None
+        self._started: float = 0.0
+        self._done: list[dict[str, Any]] = []
+
+    def observe(self, stage: str) -> None:
+        """A progress event arrived. Closes the previous stage when the name actually changed."""
+        if stage == self._current:
+            return  # same stage ticking pct — not a transition
+        self._close()
+        self._current = stage
+        self._started = self._now()
+
+    def finish(self) -> list[dict[str, Any]]:
+        """Close the final stage and return [{stage, ms}] in the order they ran."""
+        self._close()
+        self._current = None
+        return list(self._done)
+
+    def _close(self) -> None:
+        if self._current is None:
+            return
+        ms = int(round((self._now() - self._started) * 1000))
+        self._done.append({"stage": self._current, "ms": max(0, ms)})
+
+
+def host_facts() -> dict[str, Any]:
+    """Describe the box this worker runs on, for the metrics dashboard.
+
+    Best-effort by construction: torch may be absent entirely (the stub processor needs no ML), and a
+    probe that raised here would take down a worker over a diagnostic. Every field is therefore
+    optional and a failed probe is simply omitted rather than guessed.
+    """
+    import os
+    import platform
+
+    facts: dict[str, Any] = {
+        "platform": platform.platform(),
+        "machine": platform.machine(),
+        "python": platform.python_version(),
+        "cpuCount": os.cpu_count(),
+    }
+    try:  # torch is optional — ENCORE_PROCESSOR=stub runs without it
+        import torch  # type: ignore
+
+        facts["torch"] = torch.__version__
+        facts["cuda"] = bool(torch.cuda.is_available())
+    except Exception:
+        pass
+    return facts

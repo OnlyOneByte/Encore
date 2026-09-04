@@ -510,6 +510,11 @@ class WhisperXProcessor:
                     "candidates": candidates,
                 }
             },
+            # The lyrics axis, as RESOLVED on this processor: _adopt_job_engines has already folded the
+            # job's params into these instance fields, applying its own default when the core sent
+            # nothing or sent a value that has since been de-whitelisted. Device is deliberately absent
+            # — it belongs to the transcriber/aligner, not here, and a guess would be worse than a null.
+            facts={"asrModel": self._model, "syncMode": self._sync_mode.value},
         )
 
     async def _run_blocking(self, fn: Any, stage: str, pct: int) -> AsyncIterator[tuple[str, Any]]:

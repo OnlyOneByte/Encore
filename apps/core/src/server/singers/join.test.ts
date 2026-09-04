@@ -18,12 +18,15 @@ import { LocalMediaStore } from '../media/store';
 import { PresenceTracker } from '../realtime/presence';
 import { PlayTracker } from '../media/plays';
 import type { EncoreApp } from '../app';
+import { AttemptLedger } from '../jobs/attempts';
+import { PlayLog } from '../media/play-log';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 	const { db } = openDb(':memory:');
 	runMigrations(db);
 	const published: ServerEvent[] = [];
-	const jobs = new JobRepository(db);
+	const attempts = new AttemptLedger(db);
+	const jobs = new JobRepository(db, attempts);
 	const workers = new WorkerRegistry();
 	const mediaById = new Map();
 	const app: EncoreApp = {
@@ -33,6 +36,8 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		presence: new PresenceTracker(),
 		plays: new PlayTracker(() => {}),
 		jobs,
+		attempts,
+		playLog: new PlayLog(db),
 		settings: new SettingsRepository(db),
 		reaper: new JobReaper(jobs),
 		workers,
