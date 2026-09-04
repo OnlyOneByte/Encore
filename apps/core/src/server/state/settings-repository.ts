@@ -71,7 +71,12 @@ export class SettingsRepository {
 			maxQualityRank: row.maxQualityRank,
 			lyricsBall: row.lyricsBall,
 			lyricsHighlight: row.lyricsHighlight,
-			lyricsLeadMs: row.lyricsLeadMs
+			lyricsLeadMs: row.lyricsLeadMs,
+			lyricsScalePct: row.lyricsScalePct,
+			lyricsFont: row.lyricsFont,
+			lyricsCase: row.lyricsCase,
+			lyricsLinesBefore: row.lyricsLinesBefore,
+			lyricsLinesAfter: row.lyricsLinesAfter
 		});
 	}
 

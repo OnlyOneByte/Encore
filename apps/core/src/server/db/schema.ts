@@ -167,7 +167,20 @@ export const roomSettings = sqliteTable('room_settings', {
 	lyricsHighlight: text('lyrics_highlight', { enum: ['word', 'line', 'off'] })
 		.notNull()
 		.default('word'),
-	lyricsLeadMs: integer('lyrics_lead_ms').notNull().default(300)
+	lyricsLeadMs: integer('lyrics_lead_ms').notNull().default(300),
+	// The reel's type. `lyrics_scale_pct` is a PERCENT of the computed distance-based scale, not a size
+	// — see DEFAULT_LYRICS_SCALE_PCT for why storing an absolute size would be wrong. Integer so this
+	// table stays all-integer; enum-constrained where there is a registry, so a hand-edited DB cannot
+	// name a font or case the renderer has no branch for.
+	lyricsScalePct: integer('lyrics_scale_pct').notNull().default(100),
+	lyricsFont: text('lyrics_font', { enum: ['system', 'grotesk', 'serif', 'mono'] })
+		.notNull()
+		.default('system'),
+	lyricsCase: text('lyrics_case', { enum: ['natural', 'upper', 'lower'] })
+		.notNull()
+		.default('natural'),
+	lyricsLinesBefore: integer('lyrics_lines_before').notNull().default(2),
+	lyricsLinesAfter: integer('lyrics_lines_after').notNull().default(2)
 });
 
 export const jobs = sqliteTable(
