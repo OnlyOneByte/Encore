@@ -269,3 +269,156 @@ export function isValidLyricsHighlight(id: unknown): id is LyricsHighlightId {
  */
 export const DEFAULT_LYRICS_LEAD_MS = 300;
 export const MAX_LYRICS_LEAD_MS = 1500;
+
+// ── text ────────────────────────────────────────────────────────────────────
+// The reel's TYPE, as opposed to the marks drawn on it. Room-scoped for the same reason the ball and
+// the highlight are, and gathered here beside them so one file answers "what can a room change about
+// the lyrics".
+//
+// PR #8 gave the reel a distance-based scale (`clamp(3.1rem, 6.4vh, 6rem)`) and the PR that added the
+// ball/highlight settings deliberately kept size and row count OUT, on the grounds that re-exposing
+// them would let a party undo that legibility work. That reasoning holds for RAW values, so what is
+// exposed here is a BOUNDED ADJUSTMENT on top of the computed scale rather than a replacement for it.
+// Every range below has a floor for that reason; they are not arbitrary.
+
+/**
+ * Font for the lyric reel.
+ *
+ * Every stack is LOCALLY AVAILABLE — no webfont, no CDN, nothing fetched. That is the same constraint
+ * that made the icon system vendor path geometry instead of taking a font dependency: the box is a LAN
+ * deployment that may have no route out, and a missing glyph on this deployment has already rendered
+ * as a tofu box. So each option ends in a generic family and degrades rather than failing.
+ *
+ * `stack: 'inherit'` is not a cop-out — it is the honest way to say "whatever the app already uses",
+ * which keeps the default identical to today without duplicating app.css's stack here where it would
+ * drift.
+ */
+export type LyricsFontId = 'system' | 'grotesk' | 'serif' | 'mono';
+
+export interface LyricsFont {
+	id: LyricsFontId;
+	label: string;
+	/** A CSS font-family value, or `inherit` to take the app's own stack. */
+	stack: string;
+	note: string;
+}
+
+export const LYRICS_FONTS: readonly LyricsFont[] = [
+	{
+		id: 'system',
+		label: 'System',
+		stack: 'inherit',
+		note: "The same face as the rest of the app. Always available, whatever the TV's browser has."
+	},
+	{
+		id: 'grotesk',
+		label: 'Wide sans',
+		stack: "'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif",
+		note: 'Slightly wider letterforms, which hold up better read from across a room.'
+	},
+	{
+		id: 'serif',
+		label: 'Serif',
+		stack: "Georgia, 'Times New Roman', serif",
+		note: 'Higher stroke contrast. Easier on the eye on a bright screen, harder on a dim one.'
+	},
+	{
+		id: 'mono',
+		label: 'Monospace',
+		stack: "ui-monospace, 'Courier New', monospace",
+		note: 'Even letter widths, so a line does not shift as words light up. Fits fewer words per row.'
+	}
+];
+
+export const DEFAULT_LYRICS_FONT: LyricsFontId = 'system';
+
+export function getLyricsFont(id: string): LyricsFont | undefined {
+	return LYRICS_FONTS.find((f) => f.id === id);
+}
+
+export function isValidLyricsFont(id: unknown): id is LyricsFontId {
+	return typeof id === 'string' && getLyricsFont(id) !== undefined;
+}
+
+/**
+ * Letter case, applied as `text-transform`.
+ *
+ * Presentation-only: it does not change the DOM text, so the per-word spans, the marker and the
+ * highlight are all untouched. Both non-default options cost something real, and the notes say so
+ * rather than presenting three equivalent styles — a room should be able to choose them, and should
+ * not be surprised afterwards.
+ */
+export type LyricsCaseId = 'natural' | 'upper' | 'lower';
+
+export interface LyricsCase {
+	id: LyricsCaseId;
+	label: string;
+	/** The `text-transform` value. `none` leaves the source text alone. */
+	transform: 'none' | 'uppercase' | 'lowercase';
+	note: string;
+}
+
+export const LYRICS_CASES: readonly LyricsCase[] = [
+	{
+		id: 'natural',
+		label: 'As written',
+		transform: 'none',
+		note: 'The words exactly as the lyrics source has them.'
+	},
+	{
+		id: 'upper',
+		label: 'ALL CAPS',
+		transform: 'uppercase',
+		note: 'Uniform and bold, but every line gets wider so more of them wrap — and running text is slower to read without ascenders to give a word its shape.'
+	},
+	{
+		id: 'lower',
+		label: 'all lowercase',
+		transform: 'lowercase',
+		note: 'Softer look. Loses proper nouns and the word "I", which for lyrics is a change to the words rather than to the styling.'
+	}
+];
+
+export const DEFAULT_LYRICS_CASE: LyricsCaseId = 'natural';
+
+export function getLyricsCase(id: string): LyricsCase | undefined {
+	return LYRICS_CASES.find((c) => c.id === id);
+}
+
+export function isValidLyricsCase(id: unknown): id is LyricsCaseId {
+	return typeof id === 'string' && getLyricsCase(id) !== undefined;
+}
+
+/**
+ * Text size as a PERCENT of the computed distance-based scale — never an absolute size.
+ *
+ * A stored pixel size would discard the `vh` term in `clamp(3.1rem, 6.4vh, 6rem)`, so the same room
+ * would render wrong the moment the TV's resolution changed. That is precisely the bug PR #8's scale
+ * fixed, and a settings field is not worth reintroducing it. A multiplier keeps the adaptive scale and
+ * layers the room's preference on top.
+ *
+ * An integer percent rather than a float factor because every other numeric in `RoomSettings` is an
+ * integer and a REAL column for one field is not worth the schema asymmetry.
+ *
+ * The 80 floor is the legibility guard, deliberately not lower: below it the reel stops being readable
+ * from a couch, which is the whole thing the scale exists to guarantee.
+ */
+export const DEFAULT_LYRICS_SCALE_PCT = 100;
+export const MIN_LYRICS_SCALE_PCT = 80;
+export const MAX_LYRICS_SCALE_PCT = 160;
+
+/**
+ * How many lines show before and after the current one.
+ *
+ * Independent rather than one "context" number, because the two are not equally useful: lines already
+ * sung are continuity, lines still coming are preparation, and a room that wants to see what is next
+ * without a history is a reasonable ask.
+ *
+ * Capped because the reel occupies a fixed fraction of the screen. Past these counts the type has to
+ * shrink to fit, which would undo the distance-legibility work through the back door — the same reason
+ * `lyricsScalePct` has a floor.
+ */
+export const DEFAULT_LYRICS_LINES_BEFORE = 2;
+export const DEFAULT_LYRICS_LINES_AFTER = 2;
+export const MAX_LYRICS_LINES_BEFORE = 3;
+export const MAX_LYRICS_LINES_AFTER = 4;

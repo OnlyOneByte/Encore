@@ -17,19 +17,32 @@ import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
 import {
 	DEFAULT_ASR_MODEL,
 	DEFAULT_LYRICS_BALL,
+	DEFAULT_LYRICS_CASE,
+	DEFAULT_LYRICS_FONT,
 	DEFAULT_LYRICS_HIGHLIGHT,
 	DEFAULT_LYRICS_LEAD_MS,
+	DEFAULT_LYRICS_LINES_AFTER,
+	DEFAULT_LYRICS_LINES_BEFORE,
+	DEFAULT_LYRICS_SCALE_PCT,
 	DEFAULT_SYNC_MODE,
 	MAX_LYRICS_LEAD_MS,
+	MAX_LYRICS_LINES_AFTER,
+	MAX_LYRICS_LINES_BEFORE,
+	MAX_LYRICS_SCALE_PCT,
+	MIN_LYRICS_SCALE_PCT,
 	getLyricsBallStyle,
 	getLyricsHighlight,
 	getSyncMode,
 	isValidAsrModel,
 	isValidLyricsBall,
+	isValidLyricsCase,
+	isValidLyricsFont,
 	isValidLyricsHighlight,
 	isValidSyncMode,
 	type AsrModelId,
 	type LyricsBallStyleId,
+	type LyricsCaseId,
+	type LyricsFontId,
 	type LyricsHighlightId,
 	type SyncModeId
 } from './lyrics-engines';
@@ -479,6 +492,18 @@ export interface RoomSettings {
 	lyricsHighlight: LyricsHighlightId;
 	/** How far ahead of the audio the highlight runs, in ms. See `DEFAULT_LYRICS_LEAD_MS`. */
 	lyricsLeadMs: number;
+	/**
+	 * The reel's TYPE, as opposed to the marks drawn on it. Unlike `lyricsBall`/`lyricsHighlight` these
+	 * are NOT clamped against the global sync mode — size, font, case and row counts do not depend on
+	 * whether word timings exist — so they are read straight off the room rather than through
+	 * `resolveLyricsPresentation`. Routing them through it would dilute what its `clamped` flag means.
+	 */
+	lyricsScalePct: number;
+	lyricsFont: LyricsFontId;
+	lyricsCase: LyricsCaseId;
+	/** Lines of already-sung context above the current one, and of upcoming lyric below it. */
+	lyricsLinesBefore: number;
+	lyricsLinesAfter: number;
 }
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
@@ -489,7 +514,12 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	// changes nothing until someone opens Settings.
 	lyricsBall: DEFAULT_LYRICS_BALL,
 	lyricsHighlight: DEFAULT_LYRICS_HIGHLIGHT,
-	lyricsLeadMs: DEFAULT_LYRICS_LEAD_MS
+	lyricsLeadMs: DEFAULT_LYRICS_LEAD_MS,
+	lyricsScalePct: DEFAULT_LYRICS_SCALE_PCT,
+	lyricsFont: DEFAULT_LYRICS_FONT,
+	lyricsCase: DEFAULT_LYRICS_CASE,
+	lyricsLinesBefore: DEFAULT_LYRICS_LINES_BEFORE,
+	lyricsLinesAfter: DEFAULT_LYRICS_LINES_AFTER
 };
 
 /** Coerce a partial/untrusted object to valid RoomSettings, falling back per-field. */
@@ -521,7 +551,37 @@ export function normalizeRoomSettings(
 		typeof lead === 'number' && Number.isFinite(lead)
 			? Math.min(MAX_LYRICS_LEAD_MS, Math.max(0, Math.round(lead)))
 			: d.lyricsLeadMs;
-	return { tvProgressStyle, interstitialMs, maxQualityRank, lyricsBall, lyricsHighlight, lyricsLeadMs };
+	// One helper for the three bounded integers. Clamped rather than rejected, like interstitialMs: a
+	// nonsensical value should still leave a usable room, and every bound here has a stated reason in
+	// lyrics-engines.ts (a legibility floor, or a row count past which the type must shrink to fit).
+	const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
+		typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback;
+	const lyricsScalePct = clampInt(
+		input?.lyricsScalePct,
+		MIN_LYRICS_SCALE_PCT,
+		MAX_LYRICS_SCALE_PCT,
+		d.lyricsScalePct
+	);
+	// Zero is a legitimate value for both: a room may want no history, or nothing revealed ahead.
+	const lyricsLinesBefore = clampInt(input?.lyricsLinesBefore, 0, MAX_LYRICS_LINES_BEFORE, d.lyricsLinesBefore);
+	const lyricsLinesAfter = clampInt(input?.lyricsLinesAfter, 0, MAX_LYRICS_LINES_AFTER, d.lyricsLinesAfter);
+	const font = input?.lyricsFont;
+	const lyricsFont = isValidLyricsFont(font) ? font : d.lyricsFont;
+	const textCase = input?.lyricsCase;
+	const lyricsCase = isValidLyricsCase(textCase) ? textCase : d.lyricsCase;
+	return {
+		tvProgressStyle,
+		interstitialMs,
+		maxQualityRank,
+		lyricsBall,
+		lyricsHighlight,
+		lyricsLeadMs,
+		lyricsScalePct,
+		lyricsFont,
+		lyricsCase,
+		lyricsLinesBefore,
+		lyricsLinesAfter
+	};
 }
 
 /** Both layers as one payload — what a client renders and what `queue:sync` carries. */
