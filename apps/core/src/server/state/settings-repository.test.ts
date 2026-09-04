@@ -165,3 +165,22 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		expect(repo.setRoom({ interstitialMs: NaN }).interstitialMs).toBe(7000);
 	});
 });
+
+describe('SettingsRepository global scope: join origin', () => {
+	it('defaults to empty and round-trips a declared address', () => {
+		const repo = freshRepo();
+		expect(repo.getGlobal().joinOrigin).toBe('');
+		expect(repo.setGlobal({ joinOrigin: 'http://10.69.1.169:3000/tv' }).joinOrigin).toBe('http://10.69.1.169:3000');
+		expect(repo.getGlobal().joinOrigin).toBe('http://10.69.1.169:3000');
+		// Explicit empty clears it, back to env/request auto-detection.
+		expect(repo.setGlobal({ joinOrigin: '' }).joinOrigin).toBe('');
+	});
+
+	it('a patch to another field leaves the declared address alone', () => {
+		// The whole reason setGlobal normalizes over CURRENT values: a slider move elsewhere must not
+		// silently put `localhost` back in the TV's QR.
+		const repo = freshRepo();
+		repo.setGlobal({ joinOrigin: 'http://10.69.1.169:3000' });
+		expect(repo.setGlobal({ defaultModel: 'htdemucs_ft' }).joinOrigin).toBe('http://10.69.1.169:3000');
+	});
+});

@@ -15,6 +15,13 @@
       "when": 1788541702667,
       "tag": "0001_asr_sync_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788548145978,
+      "tag": "0002_join_origin",
+      "breakpoints": true
     }
   ]
 }
