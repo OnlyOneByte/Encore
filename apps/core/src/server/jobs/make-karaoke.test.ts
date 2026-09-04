@@ -3,6 +3,7 @@
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
 import { requestMakeKaraoke, markMediaReady, setMediaLyrics, setMediaPitch, instrumentalKey, soonestSeqFor, isCooked, cookState, type MakeKaraokeDeps } from './make-karaoke';
+import { pendingGates } from '@encore/shared';
 import { JobRepository } from './repository';
 import { AuthoritativeState } from '../state/store';
 import { nextPlayable, isEntryReady } from '../rotation/index';
@@ -123,7 +124,7 @@ test('ROUND TRIP: cook → held while another plays → ready → plays at its p
 	const d = deps();
 	// two singers: a wants make-karaoke on m1 (queued first → seq 0), b has an already-cooked m2
 	d.mediaById.set('m1', media('m1'));
-	d.mediaById.set('m2', media('m2', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
+	d.mediaById.set('m2', media('m2', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
 	d.state.applyQueueOp({ op: 'add', entry: entry('q-a', 'm1', 'a') });
 	d.state.applyQueueOp({ op: 'add', entry: entry('q-b', 'm2', 'b') });
 
@@ -133,18 +134,25 @@ test('ROUND TRIP: cook → held while another plays → ready → plays at its p
 	const held = nextPlayable(d.state.entries, d.mediaById).held.map((e) => e.id);
 	expect(held).toContain('q-a');
 
-	// stems finish → media ready → q-a is playable again AT its fair position (seq 0, before q-b)
+	// stems finish — but the cook is fetch → stems → ALIGN, so the song is not finished yet and q-a
+	// keeps yielding its turn. This is the gate doing its job: rotation waits for the whole cook.
 	markMediaReady('m1', d.mediaById);
+	expect(nextPlayable(d.state.entries, d.mediaById).next?.id).toBe('q-b');
+	expect(nextPlayable(d.state.entries, d.mediaById).held.map((e) => e.id)).toContain('q-a');
+
+	// lyrics land → every required gate satisfied → q-a is playable again AT its fair position
+	// (seq 0, before q-b), which is the whole point of the held slot.
+	d.mediaById.get('m1')!.lyricsStatus = 'ready';
 	expect(nextPlayable(d.state.entries, d.mediaById).next?.id).toBe('q-a');
 });
 
 // ── dedupe to already-separated stems (the durable catalog's payoff) ────────────────────
 
 test('isCooked is true only when a ready status has an instrumental to show for it', () => {
-	expect(isCooked(media('m1', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }))).toBe(true);
+	expect(isCooked(media('m1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }))).toBe(true);
 	expect(isCooked(media('m1', { stemStatus: 'queued' }))).toBe(false);
 	// status ran ahead of the artifact — playing this would hand the TV an empty source
-	expect(isCooked(media('m1', { stemStatus: 'ready' }))).toBe(false);
+	expect(isCooked(media('m1', { stemStatus: 'ready', lyricsStatus: 'ready' }))).toBe(false);
 	expect(isCooked(media('m1'))).toBe(false);
 });
 
@@ -155,7 +163,7 @@ test('cookState distinguishes unknown / playing / ready / cooking / cookable', (
 	d.mediaById.set('plain', media('plain'));
 	expect(cookState('plain', d)).toBe('cookable');
 
-	d.mediaById.set('done', media('done', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
+	d.mediaById.set('done', media('done', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
 	expect(cookState('done', d)).toBe('ready');
 
 	d.mediaById.set('wip', media('wip', { stemStatus: 'queued' }));
@@ -170,7 +178,7 @@ test('cookState distinguishes unknown / playing / ready / cooking / cookable', (
 test('an already-cooked song is NEVER re-cooked (no second job, no wasted separation)', () => {
 	const d = deps();
 	// exactly the shape hydrated from disk on boot: file + ready + the instrumental key
-	d.mediaById.set('m1', media('m1', { stemStatus: 'ready', instrumentalRef: instrumentalKey('m1') }));
+	d.mediaById.set('m1', media('m1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey('m1') }));
 
 	expect(requestMakeKaraoke('m1', d)).toBeNull();
 	expect(d.jobs.listByStatus('queued')).toHaveLength(0);
@@ -214,5 +222,10 @@ test('a reused ALREADY-READY job reconciles the media instead of deadlocking rot
 	const m = d.mediaById.get('m1')!;
 	expect(m.stemStatus).toBe('ready'); // NOT left 'queued'
 	expect(m.instrumentalRef).toBe(instrumentalKey('m1'));
+	// The deadlock is gone: the separation gate is satisfied, so nothing is waiting on a job that will
+	// never run. What remains is the ORDINARY wait for the rest of the cook — assert that precisely,
+	// rather than asserting playability, which now also depends on the lyrics gate.
+	expect(pendingGates(m).map((g) => g.id)).toEqual(['lyrics']);
+	m.lyricsStatus = 'ready';
 	expect(isEntryReady(entry('q', 'm1'), d.mediaById)).toBe(true); // playable, not held forever
 });

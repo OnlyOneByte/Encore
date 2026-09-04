@@ -4,7 +4,7 @@
 //
 // Pure: no DB, no network, no clock. The route supplies the catalog + resolver results.
 
-import { isPlayable, type Media } from '@encore/shared';
+import { readyToSing, type Media } from '@encore/shared';
 
 /** Where a song sits on the readiness axis. */
 export type Readiness =
@@ -13,7 +13,7 @@ export type Readiness =
 	| 'unacquired'; // no instrumental yet, so nothing to play — a candidate to cook, not a song to sing
 
 export function readinessOf(m: Media): Readiness {
-	if (isPlayable(m)) return 'ready';
+	if (readyToSing(m)) return 'ready';
 	if (m.stemStatus === 'queued') return 'cooking';
 	return 'unacquired';
 }

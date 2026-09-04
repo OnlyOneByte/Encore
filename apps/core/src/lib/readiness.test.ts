@@ -18,7 +18,7 @@ const m = (over: Partial<Media> = {}): Media => ({
 
 const cases: Media[] = [
 	m(),
-	m({ stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }),
+	m({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }),
 	m({ stemStatus: 'queued' }),
 	m({ source: 'local', stemStatus: 'none' }),
 	m({ stemStatus: 'ready' }) // ready status, no artifact — must classify the same on both sides
@@ -106,13 +106,21 @@ test('a live cooking status beats a catalog copy that still says ready', () => {
 	expect(entryPlayable(m({ stemStatus: 'queued' }), { status: 'ready' })).toBe(true);
 });
 
+test('separated but lyrics never ran is NOT playable — the gate waits for the whole cook', () => {
+	// The gate change: a song is finished when every required step is done, not when the instrumental
+	// exists. Rotation holds its slot and moves on to whoever IS finished.
+	const noLyrics = m({ stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+	expect(entryPlayable(noLyrics)).toBe(false);
+	expect(entryPlayable({ ...noLyrics, lyricsStatus: 'ready' })).toBe(true);
+});
+
 test('unknown media is not playable (matches the server returning false)', () => {
 	expect(entryPlayable(undefined)).toBe(false);
 });
 
 test('THE BUG: up-next skips a cooking first entry and names the first READY one', () => {
 	const cook = m({ id: 'cooking', stemStatus: 'queued' });
-	const ready = m({ id: 'ready', stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+	const ready = m({ id: 'ready', stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 	const byId = new Map([[cook.id, cook], [ready.id, ready]]);
 	const queued = [entry('e1', 'cooking'), entry('e2', 'ready')];
 
@@ -121,7 +129,7 @@ test('THE BUG: up-next skips a cooking first entry and names the first READY one
 });
 
 test('up-next is the first entry when it is already playable', () => {
-	const ready = m({ id: 'ready', stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+	const ready = m({ id: 'ready', stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 	const byId = new Map([[ready.id, ready]]);
 	const queued = [entry('e1', 'ready'), entry('e2', 'ready')];
 	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBe('e1');

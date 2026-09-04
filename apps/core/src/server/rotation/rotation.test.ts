@@ -9,7 +9,7 @@ const e = (id: string, singerId: string, addedAt: number, mediaId = 'm-' + id): 
 });
 const m = (id: string, over: Partial<Media> = {}): Media => ({
 	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', ...over
+	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', ...over
 });
 
 test('reseq: three singers interleave fairly', () => {
@@ -42,7 +42,7 @@ test('HELD SLOT: a not-ready (cooking) entry is skipped but keeps its position',
 	expect(reseq(entries).find((x) => x.id === 'a1')!.rotationSeq).toBe(0);
 
 	// once a1's stems are ready, it becomes the next playable again at its held position
-	media.set('m-a1', m('m-a1', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
+	media.set('m-a1', m('m-a1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
 	expect(nextPlayable(entries, media).next?.id).toBe('a1');
 });
 
@@ -50,8 +50,8 @@ test('isEntryReady: ready ONLY with an instrumental — nothing plays unprocesse
 	const media = new Map([
 		['none', m('none', { stemStatus: 'none', instrumentalRef: undefined })],
 		['queued', m('queued', { stemStatus: 'queued', instrumentalRef: undefined })],
-		['skewed', m('skewed', { stemStatus: 'ready', instrumentalRef: undefined })],
-		['cooked', m('cooked', { stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })]
+		['skewed', m('skewed', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: undefined })],
+		['cooked', m('cooked', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })]
 	]);
 	// An unseparated song is a cook candidate, not something the room can sing — this is the change
 	// from the embed era, where a YouTube entry was always immediately playable.

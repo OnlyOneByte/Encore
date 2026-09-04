@@ -6,6 +6,12 @@ import type { LyricsCandidate } from './lyrics';
 export type MediaSource = 'youtube' | 'local';
 export type StemStatus = 'none' | 'queued' | 'ready';
 
+/**
+ * Where one processing step of the cook has got to. Same shape as `StemStatus`, named for the general
+ * case because the cook now has more than one gated step (see gates.ts).
+ */
+export type StepStatus = 'none' | 'queued' | 'ready';
+
 export interface Media {
   id: string;
   source: MediaSource;
@@ -71,6 +77,14 @@ export interface Media {
    * `chosenCandidate(media)` rather than duplicating the fields here.
    */
   lyricsCandidates?: LyricsCandidate[];
+  /**
+   * How far the `align` step has got — the lyrics half of the cook gate (see gates.ts).
+   *
+   * `ready` means alignment RAN, not that it found words: a genuine instrumental completes with no
+   * `lyricsRef`, and it is still a finished song. Absent on media cooked before this field existed,
+   * which the gate treats as done when a lyrics artifact is already present.
+   */
+  lyricsStatus?: StepStatus;
   pitchRef?: string; // MediaStore key of the reference pitch-track JSON artifact — the
   // melody the server scores the live mic against. Absent until a score job completes.
 }

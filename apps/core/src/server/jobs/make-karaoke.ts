@@ -143,6 +143,28 @@ export function markMediaReady(
 }
 
 /**
+ * Mark the lyrics gate SETTLED for this media — align has run, whatever it found.
+ *
+ * "Settled", not "succeeded". `ready` here means the step is finished, and a song with no words is a
+ * legitimate finished song: requiring a lyrics artifact would leave every genuine instrumental stuck
+ * cooking forever on a step that worked correctly. See packages/shared/src/gates.ts.
+ */
+export function settleLyricsGate(mediaId: string, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media) return false;
+	media.lyricsStatus = 'ready';
+	return true;
+}
+
+/** Mark the lyrics gate as IN FLIGHT, so the phone can name the step a song is waiting on. */
+export function markLyricsQueued(mediaId: string, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media || media.lyricsStatus === 'ready') return false; // never walk a settled gate backwards
+	media.lyricsStatus = 'queued';
+	return true;
+}
+
+/**
  * Apply a `fetch` job's MusicBrainz annotation, or refuse.
  *
  * NEVER REGRESSES. A `high` annotation carries an MBID and a duration that corroborated it; a `medium`

@@ -20,7 +20,7 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 });
 
 const cooked = (id: string, over: Partial<Media> = {}) =>
-	media(id, { stemStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
+	media(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
 
 let repo: MediaRepository;
 

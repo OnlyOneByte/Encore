@@ -5,7 +5,7 @@ import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
 import { type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 let _s = 0;
 const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({ id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: ++_s });
 
@@ -79,7 +79,7 @@ test('reconcileOnReady: room idled while cooking → the freshly-ready song star
 	expect(state.playback.currentEntryId).toBeNull();
 
 	// stems finish → media ready → reconcile starts it
-	deps.mediaById.set('m1', { ...media('m1'), stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+	deps.mediaById.set('m1', { ...media('m1'), stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 	reconcileOnReady(deps);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(state.playback.isPlaying).toBe(true);
@@ -96,7 +96,7 @@ test('reconcileOnReady: something already playing → only re-emits nowplaying (
 	const before = state.playback.currentEntryId;
 	published.length = 0;
 
-	deps.mediaById.set('m2', { ...media('m2'), stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+	deps.mediaById.set('m2', { ...media('m2'), stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
 	reconcileOnReady(deps);
 	expect(state.playback.currentEntryId).toBe(before); // q1 NOT preempted
 	// no new playback:state (we didn't change playback), just a nowplaying refresh so TV preloads m2
