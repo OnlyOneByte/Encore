@@ -11,6 +11,8 @@
 		title: string;
 		singerName?: string;
 		singerColor?: string;
+		/** The singer who queued this is in the room but unreachable (locked phone, pocket). */
+		singerAway?: boolean;
 		status: MediaStatus; // queued|downloading|separating|aligning|ready|failed
 		pct: number;
 		// A cooking song is still a QUEUE ENTRY, so it gets the same controls a ready row does: remove
@@ -25,7 +27,7 @@
 		ondown?: () => void;
 	}
 	let {
-		seq, title, singerName, singerColor = SINGER_COLORS[0], status, pct,
+		seq, title, singerName, singerColor = SINGER_COLORS[0], singerAway = false, status, pct,
 		onremove, reorderable = false, canUp = false, canDown = false, onup, ondown
 	}: Props = $props();
 
@@ -59,7 +61,9 @@
 	<div class="meta">
 		<div class="t">{title}<span class="sparkle"><Icon name="sparkle" /></span></div>
 		<div class="who">
-			{#if singerName}<i style="--singer:{singerColor}"></i> {singerName} · being prepared{:else}being prepared{/if}
+			<!-- Same away marker as QueueRow: a cook outlives its owner's attention span, and the room
+			     should not learn the singer left only once the song reaches the front. -->
+			{#if singerName}<i class:dim={singerAway} style="--singer:{singerColor}"></i> {singerName}{#if singerAway}<span class="away">· away</span>{/if} · being prepared{:else}being prepared{/if}
 		</div>
 		<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
 		<div class="stage"><span>{stageLabel}</span><span>{pct}%</span></div>
@@ -94,6 +98,8 @@
 	   CSS in the other. */
 	.sparkle { color: var(--warn); display: inline-grid; place-items: center; vertical-align: -2px; margin-left: 5px; }
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
+	.who i.dim { opacity: 0.5; }
+	.who .away { color: var(--warn); margin-left: 0.35em; }
 	.who i { width: 10px; height: 10px; border-radius: 50%; background: var(--singer); }
 	.bar { height: 6px; border-radius: 6px; background: var(--card-tint2); overflow: hidden; margin-top: 9px; }
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */

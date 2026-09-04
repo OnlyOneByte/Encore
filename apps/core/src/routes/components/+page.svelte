@@ -426,9 +426,9 @@
 			qrDataUrl={demoQr}
 			joinUrl="encore.local/join"
 			roster={[
-				{ id: 'a', displayName: 'Angelo', color: '#7c5cff' },
-				{ id: 'm', displayName: 'Maya', color: '#ff5cae' },
-				{ id: 'd', displayName: 'Devon', color: '#33d6a6' }
+				{ id: 'a', displayName: 'Angelo', color: '#7c5cff', state: 'here' },
+				{ id: 'm', displayName: 'Maya', color: '#ff5cae', state: 'here' },
+				{ id: 'd', displayName: 'Devon', color: '#33d6a6', state: 'away' }
 			]}
 			overflow={2}
 		/>

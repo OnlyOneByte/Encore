@@ -31,6 +31,11 @@
 		resolveLyricsPresentation,
 		stageHueToHex,
 		SINGER_HUE_STEP,
+		MIN_SONG_INTRO_MS,
+		MAX_SONG_INTRO_MS,
+		SONG_INTRO_STEP_MS,
+		MIN_PRESENCE_GRACE_MINUTES,
+		MAX_PRESENCE_GRACE_MINUTES,
 		type EffectiveSettings,
 		type GlobalSettings,
 		type LyricsBallStyleId,
@@ -59,6 +64,17 @@
 	// answers. The effect re-adopts `data` so a load re-run (client-side nav back here, or
 	// invalidation) shows fresh server values, not the mount-time snapshot.
 	let settings = $state<EffectiveSettings>(untrack(() => data.settings));
+
+	// Minutes read badly past an hour ("120 minutes"), and 0 needs saying in words rather than as a
+	// number that looks like a missing value.
+	const graceLabel = $derived.by(() => {
+		const m = settings.room.presenceGraceMinutes;
+		if (m === 0) return 'no grace';
+		if (m < 60) return `${m} min`;
+		const h = Math.floor(m / 60);
+		const rem = m % 60;
+		return rem === 0 ? `${h} hr` : `${h} hr ${rem} min`;
+	});
 	$effect(() => {
 		settings = data.settings;
 	});
@@ -452,22 +468,54 @@
 			</p>
 		{/if}
 
-		<label class="field" for="interstitial">
-			Next-up reveal · {(settings.room.interstitialMs / 1000).toFixed(1)}s
+		<label class="check">
+			<input
+				type="checkbox"
+				checked={settings.room.songIntroEnabled}
+				onchange={(e) => onroom({ songIntroEnabled: e.currentTarget.checked })}
+			/>
+			Song intro before each turn
 		</label>
+		<p class="hint">A card naming the song, artist and singer.</p>
+
+		<label class="field" class:dim={!settings.room.songIntroEnabled} for="song-intro-ms">
+			Song intro duration · {(settings.room.songIntroMs / 1000).toFixed(1)}s
+		</label>
+		<!--
+		  The range MUST match the server clamp exactly (MIN/MAX_SONG_INTRO_MS). A slider narrower than
+		  the clamp has shipped here before: the UI silently refuses values the server would have taken.
+		-->
 		<input
-			id="interstitial"
+			id="song-intro-ms"
 			type="range"
-			min="0"
-			max="15000"
-			step="500"
-			value={settings.room.interstitialMs}
-			onchange={(e) => onroom({ interstitialMs: Number(e.currentTarget.value) })}
+			min={MIN_SONG_INTRO_MS}
+			max={MAX_SONG_INTRO_MS}
+			step={SONG_INTRO_STEP_MS}
+			disabled={!settings.room.songIntroEnabled}
+			value={settings.room.songIntroMs}
+			onchange={(e) => onroom({ songIntroMs: Number(e.currentTarget.value) })}
 		/>
 		<p class="hint">
-			{settings.room.interstitialMs === 0
-				? 'Straight into the next song.'
-				: 'How long the TV shows who is up next.'}
+			{settings.room.songIntroEnabled
+				? 'How long the TV holds on the card before the song starts.'
+				: 'Intro is off — the TV cuts straight into the next song.'}
+		</p>
+
+		<label class="field" for="presence-grace">
+			Keep people in the room for · {graceLabel}
+		</label>
+		<input
+			id="presence-grace"
+			type="range"
+			min={MIN_PRESENCE_GRACE_MINUTES}
+			max={MAX_PRESENCE_GRACE_MINUTES}
+			step="15"
+			value={settings.room.presenceGraceMinutes}
+			onchange={(e) => onroom({ presenceGraceMinutes: Number(e.currentTarget.value) })}
+		/>
+		<p class="hint">
+			A locked phone does not mean someone left, so they stay on the roster — greyed — until this
+			runs out. The clock only starts once they have no songs left in the queue.
 		</p>
 
 		<h3 class="sub">Lyrics on the TV</h3>
@@ -757,6 +805,10 @@
 		margin: 12px 0 4px;
 		font-size: 0.82rem;
 		color: var(--ink-dim);
+	}
+	/* The duration is inert while the intro is off; the label recedes with its control. */
+	.field.dim {
+		opacity: 0.5;
 	}
 	select,
 	.text,

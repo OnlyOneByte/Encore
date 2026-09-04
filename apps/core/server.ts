@@ -19,6 +19,7 @@ import { parseRefPitchDoc } from './src/server/scoring/scorer';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
+import { can } from './src/server/auth/capabilities';
 import { presentTracks, type LocalTrack } from './src/server/media/local';
 import { safeMediaPath } from './src/server/media/local-files';
 import { existsSync } from 'node:fs';
@@ -262,6 +263,10 @@ const server = Bun.serve<SocketData>({
 					refreshMembership();
 					break;
 				case 'player:command':
+					// Pausing or skipping is an act on the whole room's music, so it needs an actor. Every
+					// joined singer is a host today; the gate here is only that you are IN the room, which a
+					// socket that never joined is not. See src/server/auth/capabilities.ts.
+					if (!can({ singerId: ws.data.singerId }, 'player:control')) break;
 					handlePlayerCommand(evt.command, deps);
 					break;
 				case 'tv:telemetry':
