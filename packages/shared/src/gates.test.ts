@@ -3,6 +3,7 @@
 import { test, expect } from 'bun:test';
 import { GATES, readyToSing, pendingGates, currentGateLabel, isCooking } from './gates';
 import { isPlayable, type Media } from './types';
+import { EMPTY_SONG_PROFILE } from './song-profile';
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -14,8 +15,18 @@ const m = (over: Partial<Media> = {}): Media => ({
 	...over
 });
 
+// A stems-complete song now needs THREE things: status, the instrumental ref, AND a song profile
+// (all produced by the one stems job). The profile defaults to EMPTY here — the all-nulls "analysis
+// ran, found nothing" value — because the stems gate keys on the profile's PRESENCE, not its data, so
+// an empty profile is a fully cooked stems step. Tests that probe the missing-profile boundary pass
+// `songProfile: undefined` explicitly.
 const cooked = (over: Partial<Media> = {}): Media =>
-	m({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', ...over });
+	m({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		songProfile: { ...EMPTY_SONG_PROFILE },
+		...over
+	});
 
 test('a song is ready to sing only when EVERY required gate is done', () => {
 	expect(readyToSing(m())).toBe(false); // nothing done
@@ -27,6 +38,25 @@ test('separation needs the artifact, not just the status', () => {
 	// The status and the ref are written by separate steps; a status alone would hand the player an
 	// empty source.
 	expect(readyToSing(m({ stemStatus: 'ready', lyricsStatus: 'ready' }))).toBe(false);
+});
+
+test('separation also needs the song profile RECORD — the third stems artifact', () => {
+	// The stems job produces the instrumental, the vocals, AND the key/range profile. A song with the
+	// status and ref but no profile has a stems step that has not finished, so it is not ready to sing.
+	const noProfile = cooked({ songProfile: undefined, lyricsStatus: 'ready' });
+	expect(noProfile.songProfile).toBeUndefined();
+	expect(readyToSing(noProfile)).toBe(false);
+	expect(pendingGates(noProfile).map((g) => g.id)).toEqual(['stems']);
+});
+
+test('an ALL-NULLS profile still finishes the stems gate — the silent-vocal trap', () => {
+	// A silent vocal stem yields a profile with every field null. The gate keys on the profile's
+	// PRESENCE, not its data, so this song is FINISHED — the alternative (requiring key/range data)
+	// would leave it unsingable forever AND never re-cook it, because the re-cook check reads
+	// hasInstrumental, not the gate.
+	const emptyProfile = cooked({ songProfile: { ...EMPTY_SONG_PROFILE }, lyricsStatus: 'ready' });
+	expect(emptyProfile.songProfile).toEqual(EMPTY_SONG_PROFILE);
+	expect(readyToSing(emptyProfile)).toBe(true);
 });
 
 test('alignment is done when it RAN — an instrumental with no words is still finished', () => {

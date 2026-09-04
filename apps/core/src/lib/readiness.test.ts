@@ -5,6 +5,7 @@ import { test, expect } from 'bun:test';
 import { readinessOf, displayReadiness, canCook, readyEmptyState } from './readiness';
 import { readinessOf as serverReadinessOf } from '../server/media/readiness';
 import type { Media } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -18,13 +19,13 @@ const m = (over: Partial<Media> = {}): Media => ({
 
 const cases: Media[] = [
 	m(),
-	m({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }),
+	m({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE }),
 	m({ stemStatus: 'queued' }),
 	m({ source: 'local', stemStatus: 'none' }),
 	m({ stemStatus: 'ready' }), // ready status, no artifact — must classify the same on both sides
 	// Separated, now mid-align: stems done but lyrics still queued. Neither 'ready' nor 'queued' — the
 	// case that used to fall through to 'unacquired' and show a Sing button on a separated song.
-	m({ stemStatus: 'ready', lyricsStatus: 'queued', instrumentalRef: 'derived/stems/i-instrumental.flac' })
+	m({ stemStatus: 'ready', lyricsStatus: 'queued', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE })
 ];
 
 test('client and server classify readiness identically for every media shape', () => {
@@ -38,7 +39,10 @@ test('THE BUG: a separated song mid-align reads as cooking, not unacquired', () 
 	const midAlign = m({
 		stemStatus: 'ready',
 		lyricsStatus: 'queued',
-		instrumentalRef: 'derived/stems/i-instrumental.flac'
+		instrumentalRef: 'derived/stems/i-instrumental.flac',
+		// The stems job emits the profile with the instrumental, so a real mid-align song already has it;
+		// without it the stems gate is not done and this would read as unacquired, not cooking.
+		songProfile: EMPTY_SONG_PROFILE
 	});
 	expect(readinessOf(midAlign)).toBe('cooking');
 	expect(serverReadinessOf(midAlign)).toBe('cooking');
@@ -126,7 +130,7 @@ test('a live cooking status beats a catalog copy that still says ready', () => {
 test('separated but lyrics never ran is NOT playable — the gate waits for the whole cook', () => {
 	// The gate change: a song is finished when every required step is done, not when the instrumental
 	// exists. Rotation holds its slot and moves on to whoever IS finished.
-	const noLyrics = m({ stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+	const noLyrics = m({ stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
 	expect(entryPlayable(noLyrics)).toBe(false);
 	expect(entryPlayable({ ...noLyrics, lyricsStatus: 'ready' })).toBe(true);
 });
@@ -137,7 +141,7 @@ test('unknown media is not playable (matches the server returning false)', () =>
 
 test('THE BUG: up-next skips a cooking first entry and names the first READY one', () => {
 	const cook = m({ id: 'cooking', stemStatus: 'queued' });
-	const ready = m({ id: 'ready', stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+	const ready = m({ id: 'ready', stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
 	const byId = new Map([[cook.id, cook], [ready.id, ready]]);
 	const queued = [entry('e1', 'cooking'), entry('e2', 'ready')];
 
@@ -146,7 +150,7 @@ test('THE BUG: up-next skips a cooking first entry and names the first READY one
 });
 
 test('up-next is the first entry when it is already playable', () => {
-	const ready = m({ id: 'ready', stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+	const ready = m({ id: 'ready', stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
 	const byId = new Map([[ready.id, ready]]);
 	const queued = [entry('e1', 'ready'), entry('e2', 'ready')];
 	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBe('e1');

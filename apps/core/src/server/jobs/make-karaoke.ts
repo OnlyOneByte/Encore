@@ -5,7 +5,7 @@
 // See MASTER-DESIGN §4, §6.
 
 import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '@encore/shared';
-import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade, isPlayable, needsFetch } from '@encore/shared';
+import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade, isPlayable, needsFetch, normalizeSongProfile } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
@@ -262,5 +262,33 @@ export function setMediaVocals(mediaId: string, uri: string | undefined, mediaBy
 	const ref = toRelativeKey(uri);
 	if (!media || !ref) return false;
 	media.vocalsRef = ref;
+	return true;
+}
+
+/**
+ * Attach the SONG PROFILE — the key + vocal-range analysis a stems job produces alongside the two
+ * stems. Additive and independent of the instrumental flip, like setMediaVocals.
+ *
+ * TWO things differ from setMediaVocals, and both are load-bearing:
+ *
+ *  1. It ALWAYS WRITES once the stems job completes, even when the worker reported nothing. A vocals
+ *     ref is dropped when absent because a song is fine with no guide; a profile is not, because its
+ *     PRESENCE is half the stems cook gate (gates.ts). `undefined`/garbage in normalizes to
+ *     EMPTY_SONG_PROFILE (all inner fields null) rather than leaving the field unset — that all-nulls
+ *     record is the honest "analysis ran, found nothing" answer that lets a silent-vocal song finish
+ *     cooking instead of hanging on "Separating vocals" forever with no way out (the re-cook check
+ *     reads hasInstrumental, not the gate, so a data-requiring gate would never re-cook it either).
+ *
+ *  2. It normalizes at THIS boundary. The value is untrusted wire data off a worker `complete` frame;
+ *     normalizeSongProfile validates each field independently and degrades a bad half to null rather
+ *     than rejecting the whole record, so a garbage key cannot throw away a good measured range.
+ *
+ * Always returns true when the media exists — there is no "no usable value" outcome, since an empty
+ * profile is itself a valid, gate-satisfying result.
+ */
+export function setMediaSongProfile(mediaId: string, profile: unknown, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media) return false;
+	media.songProfile = normalizeSongProfile(profile);
 	return true;
 }
