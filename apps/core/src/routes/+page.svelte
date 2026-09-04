@@ -44,7 +44,7 @@
 		// playable-aware badge in the queue list below.
 		if (idx === 0) {
 			const playable = entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId));
-			return playable ? "You're up next! 🎤" : "You're next once it's ready ✨";
+			return playable ? "You're up next!" : "You're next once it's ready";
 		}
 		const before = q[idx - 1];
 		const beforeName = before ? singers.get(before.singerId)?.displayName ?? 'someone' : 'someone';
@@ -437,7 +437,7 @@
 </script>
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
-	<div style="font-weight:800;font-size:1.25rem;">🎤 <span style="background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;">Encore</span></div>
+	<div class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></div>
 	{#if me}
 		<div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim);">
 			<span>{me.displayName}</span>
@@ -457,7 +457,7 @@
 	<!-- ONE box across every source: a singer picks by readiness ("can I sing this now?"), never by
 	     which index the song came from — so there is no source switch. -->
 	<div class="card searchbox">
-		<span style="color:var(--ink-dim)">🔎</span>
+		<span class="search-mark"><Icon name="search" /></span>
 		<input bind:value={query} oninput={onQueryInput} aria-label="Search a song or artist"
 			placeholder="Search a song or artist…" />
 		{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
@@ -466,10 +466,10 @@
 	<div class="chips" role="group" aria-label="Filter by readiness">
 		<button class="chip" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
 		<button class="chip ok" class:active={filter === 'ready'} onclick={() => (filter = 'ready')}>
-			🎤 Ready{#if libraryCount}&nbsp;{libraryCount}{/if}
+			<Icon name="mic" /> Ready{#if libraryCount}&nbsp;{libraryCount}{/if}
 		</button>
 		<button class="chip warn" class:active={filter === 'cooking'} onclick={() => (filter = 'cooking')}>
-			✨ Cooking{#if cookingRows.length}&nbsp;{cookingRows.length}{/if}
+			<Icon name="sparkle" /> Cooking{#if cookingRows.length}&nbsp;{cookingRows.length}{/if}
 		</button>
 	</div>
 
@@ -569,7 +569,7 @@
 			{@const popularRows = unaccounted(popular)}
 			{@const recentRows = unaccounted(recent)}
 			{#if popularRows.length}
-				<div class="grouphead">🔥 Popular tonight</div>
+				<div class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</div>
 				{#each popularRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
@@ -578,7 +578,7 @@
 				{/each}
 			{/if}
 			{#if recentRows.length}
-				<div class="grouphead">🕑 Recently queued</div>
+				<div class="grouphead grouphead-mark"><Icon name="clock" /> Recently queued</div>
 				{#each recentRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
@@ -587,7 +587,7 @@
 				{/each}
 			{/if}
 			{#if !popularRows.length && !recentRows.length && !library.length}
-				<p class="empty">Search for a song above, or be the first to queue one ✨</p>
+				<p class="empty">Search for a song above, or be the first to queue one.</p>
 			{/if}
 		{/if}
 	{/if}
@@ -599,7 +599,7 @@
 			{#if empty.showAllCount !== null}
 				<!-- the way back: the library is one tap away, not gone -->
 				<div style="display:flex;justify-content:center;padding:0 0 8px;">
-					<button class="chip ok" onclick={clearSearch}>🎤 Show all {empty.showAllCount}</button>
+					<button class="chip ok chip-icon" onclick={clearSearch}><Icon name="mic" /> Show all {empty.showAllCount}</button>
 				</div>
 			{/if}
 		{:else}
@@ -637,7 +637,7 @@
 
 	<div class="grouphead">Up next · rotation</div>
 	{#if queued.length === 0}
-		<p class="empty">Queue's empty — add a song to start the party ✨</p>
+		<p class="empty">Queue's empty — add a song to start the party.</p>
 	{:else}
 		{#each queued as e, i (e.id)}
 			{@const s = singerOf(e.singerId)}
@@ -686,7 +686,7 @@
 {#if isMyTurn && scoringAvailable}
 	<div class="mic-bar">
 		{#if !micEnabled}
-			<button class="mic-btn" onclick={() => { micError = ''; micEnabled = true; }}>🎤 Sing — enable mic</button>
+			<button class="mic-btn" onclick={() => { micError = ''; micEnabled = true; }}><Icon name="mic" /> Sing — enable mic</button>
 		{:else if showMyScore && myScore}
 			<span class="mic-score"><span class="dot"></span> Score <strong>{myScore.score}</strong> · {myScore.hits}/{myScore.total} on pitch</span>
 		{:else}
@@ -710,6 +710,19 @@
 <style>
 	/* the sheet's peek is docked, so the page must be able to scroll clear of it */
 	main { flex: 1; padding: 6px 18px calc(var(--peek-h) + 28px); }
+
+	/*
+	 * The wordmark. The mic was 🎤 — a different drawing on every platform, and a tofu box on a browser
+	 * with no emoji font, which is not something a brand mark can be. The gradient stays on the TEXT
+	 * (background-clip), where it is the glyph fill against the page and carries no label of its own.
+	 */
+	.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.25rem; }
+	.wordmark {
+		background: var(--grad);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+	}
 
 	/*
 	 * The singer's own identity dot. The colour arrives as a --singer custom property rather than being
@@ -779,8 +792,11 @@
 	.chip.ok { color: var(--ok); }
 	.chip.warn { color: var(--warn); }
 	.chip.active { background: var(--accent-strong); border-color: transparent; color: var(--on-accent); }
-	/* a chip whose label leads with a mark rather than a word */
+	/* any label that leads with a mark rather than a word */
 	.chip-icon { display: inline-flex; align-items: center; gap: 6px; }
+	.chip { display: inline-flex; align-items: center; gap: 6px; }
+	.search-mark { display: grid; place-items: center; color: var(--ink-dim); }
+	.grouphead-mark { display: flex; align-items: center; gap: 7px; }
 	.chip:active { transform: scale(0.95); }
 	.grouphead {
 		font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase;
@@ -818,6 +834,7 @@
 		display: flex; align-items: center; gap: 10px; justify-content: center;
 	}
 	.mic-btn {
+		display: inline-flex; align-items: center; gap: 8px;
 		border: 0; border-radius: 999px; padding: 12px 22px; font-size: 1rem; font-weight: 800;
 		background: var(--accent-strong); color: var(--on-accent); box-shadow: var(--shadow); cursor: pointer;
 	}

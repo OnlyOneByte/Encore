@@ -24,7 +24,7 @@
 	// "with vocals" out loud, or a singer queues a plain YouTube video and cannot tell why the
 	// original singer is still audible.
 	const sub = $derived.by(() => {
-		if (readiness === 'ready') return `🎤 instrumental ready${artist ? ' · ' + artist : ''}`;
+		if (readiness === 'ready') return `instrumental ready${artist ? ' · ' + artist : ''}`;
 		if (readiness === 'cooking') {
 			const eta = etaSec && etaSec > 0 ? ` · ~${Math.max(1, Math.round(etaSec / 60))} min` : '';
 			return `Separating vocals… ${pct}%${eta}`;
@@ -41,7 +41,7 @@
 <div class="row card" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}>
 	<div class="thumb"><Icon name="play" /></div>
 	<div class="meta">
-		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"> ✨</span>{/if}</div>
+		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}</div>
 		<div class="s" class:ok={readiness === 'ready'} class:warn={readiness === 'cooking'}>{sub}</div>
 		{#if readiness === 'cooking'}
 			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
@@ -58,7 +58,7 @@
 			position while it separates. See $lib/cook-and-queue.ts.
 		-->
 		<button class="sing" title="Take a turn now and strip the vocals — you keep your place in line while it cooks"
-			onclick={() => onmake?.()}>✨ Sing</button>
+			onclick={() => onmake?.()}><Icon name="sparkle" /> Sing</button>
 	{:else}
 		<button class="add" class:queued={inQueue} aria-label={inQueue ? 'already in the queue' : 'add a turn'}
 			disabled={inQueue}
@@ -90,7 +90,8 @@
 	}
 	.meta { min-width: 0; flex: 1; }
 	.t { font-weight: 600; font-size: 0.93rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.sparkle { color: var(--warn); }
+	/* the cooking marker, inline with the title */
+	.sparkle { color: var(--warn); display: inline-grid; place-items: center; vertical-align: -2px; }
 	.s { font-size: 0.76rem; color: var(--ink-dim); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.s.ok { color: var(--ok); }
 	.s.warn { color: var(--warn); }
@@ -111,6 +112,7 @@
 	 * outline. The hierarchy was not missing, it was inverted.
 	 */
 	.sing {
+		display: inline-flex; align-items: center; gap: 6px;
 		min-height: 44px;
 		flex: 0 0 auto; border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 700;
 		font-size: 0.82rem; background: var(--accent-strong); color: var(--on-accent); cursor: pointer;
