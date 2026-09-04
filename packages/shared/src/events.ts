@@ -4,7 +4,7 @@
 import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
 import type { LyricsCandidate } from './lyrics';
-import type { EffectiveSettings } from './separators';
+import type { EffectiveSettings, TvBackgroundStyle } from './separators';
 
 export const ROOM_TOPIC = 'room:main'; // single room for MVP; Bun.serve pub/sub topic
 
@@ -50,7 +50,10 @@ export type PlayerCommand =
   | { cmd: 'seek'; positionSec: number }
   // ± key on a make-karaoke (file) song. `semitones` is the ABSOLUTE target (not a delta), clamped
   // server-side to ±MAX_KEY_SHIFT; the server picks the matching pre-rendered instrumental.
-  | { cmd: 'key'; semitones: number };
+  | { cmd: 'key'; semitones: number }
+  // Per-song override of the room's TV background. `style: null` hands the song back to the room
+  // default. Whitelisted server-side against TV_BACKGROUND_STYLES — never trusted as a string.
+  | { cmd: 'background'; style: TvBackgroundStyle | null };
 
 export type ClientEvent =
   | { type: 'queue:command'; command: ClientCommand }

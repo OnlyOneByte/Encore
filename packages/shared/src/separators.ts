@@ -14,6 +14,7 @@
 // to arbitrary Hugging Face ids is a deliberate future toggle, not the default.
 
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
+import { SINGER_HUE_STEP } from './colors';
 import {
 	DEFAULT_ASR_MODEL,
 	DEFAULT_LYRICS_BALL,
@@ -467,9 +468,56 @@ export function isTvProgressStyle(v: unknown): v is TvProgressStyle {
 	return typeof v === 'string' && TV_PROGRESS_STYLES.some((s) => s.id === v);
 }
 
+/**
+ * What the TV paints BEHIND the video.
+ *
+ * Worth knowing why this matters more than it sounds: a make-karaoke song plays a separated
+ * instrumental, which has no video track, so the `<video>` renders nothing and this background is
+ * the ENTIRE visual field for the song — sitting directly behind the word-timed lyric reel. It is
+ * not decoration around letterbox bars.
+ *
+ * A registry rather than a bare union, for the same reason as TV_PROGRESS_STYLES: the phone renders
+ * the picker from one source and a new style cannot be added without a label.
+ *
+ * ONE axis, not two. These do not compose — "one colour" and "the singer's colour" are two answers
+ * to the same question, so a second axis would only manufacture invalid combinations.
+ */
+export const TV_BACKGROUND_STYLES = [
+	{ id: 'off', label: 'Black', note: 'Plain black behind the song. What the TV has always done.' },
+	{
+		id: 'gradient',
+		label: 'Room glow',
+		note: 'The same glow the join and lobby screens use, kept up while a song plays.'
+	},
+	{
+		id: 'singer',
+		label: "Singer's colour",
+		note: 'The stage takes the colour of whoever is up, and changes with each turn.'
+	},
+	{ id: 'solid', label: 'One colour', note: 'A single colour you pick below. Stays put all night.' }
+] as const;
+
+export type TvBackgroundStyle = (typeof TV_BACKGROUND_STYLES)[number]['id'];
+
+export function isTvBackgroundStyle(v: unknown): v is TvBackgroundStyle {
+	return typeof v === 'string' && TV_BACKGROUND_STYLES.some((s) => s.id === v);
+}
+
 export interface RoomSettings {
 	/** Which progress treatment the TV renders. */
 	tvProgressStyle: TvProgressStyle;
+	/** What the TV paints behind the song. Room-scoped: it is one party's staging taste. */
+	tvBackgroundStyle: TvBackgroundStyle;
+	/**
+	 * Hue angle (0–359, quantised to SINGER_HUE_STEP) for the `solid` background. Only read when
+	 * `tvBackgroundStyle === 'solid'`.
+	 *
+	 * A HUE, not a hex, on purpose. The rendered colour is generated at the pinned stage lightness by
+	 * `stageHueToHex`, so a room cannot pick something bright enough to wash out the lyric reel, and
+	 * there is no colour string to parse — the `#rgb`-vs-`#rrggbb` trap that silently dropped the
+	 * singer halo cannot recur here.
+	 */
+	tvBackgroundHue: number;
 	/** TV "Next up" reveal duration. 0 = pure gapless hard-cut. Per-room because pacing is a property
 	 *  of the party, not the deployment. */
 	interstitialMs: number;
@@ -508,6 +556,12 @@ export interface RoomSettings {
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	tvProgressStyle: 'card',
+	// `off` so an existing box looks byte-identical after the migration: today's TV is plain black
+	// behind the song, and a default that changed the stage would be a surprise, not a feature.
+	tvBackgroundStyle: 'off',
+	// 240° — the blue that tested cleanest against the pink active word. Only used once a room picks
+	// `solid`, so this is the starting point of the slider rather than something anyone sees by default.
+	tvBackgroundHue: 240,
 	interstitialMs: 2500,
 	maxQualityRank: null,
 	// These three reproduce the TV's previously-hardcoded behaviour exactly, so adding the settings
@@ -569,8 +623,20 @@ export function normalizeRoomSettings(
 	const lyricsFont = isValidLyricsFont(font) ? font : d.lyricsFont;
 	const textCase = input?.lyricsCase;
 	const lyricsCase = isValidLyricsCase(textCase) ? textCase : d.lyricsCase;
+	const bg = input?.tvBackgroundStyle;
+	const tvBackgroundStyle = isTvBackgroundStyle(bg) ? bg : d.tvBackgroundStyle;
+	// Quantised and wrapped rather than rejected, matching interstitialMs: a hue is an angle, so every
+	// number has a valid meaning once wrapped, and snapping to the wheel's step keeps the phone slider
+	// and the rendered stage agreeing. Non-finite input is the only thing with no sane reading.
+	const rawHue = input?.tvBackgroundHue;
+	const tvBackgroundHue =
+		typeof rawHue === 'number' && Number.isFinite(rawHue)
+			? (((Math.round(rawHue / SINGER_HUE_STEP) * SINGER_HUE_STEP) % 360) + 360) % 360
+			: d.tvBackgroundHue;
 	return {
 		tvProgressStyle,
+		tvBackgroundStyle,
+		tvBackgroundHue,
 		interstitialMs,
 		maxQualityRank,
 		lyricsBall,
