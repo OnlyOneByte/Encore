@@ -15,10 +15,16 @@
 		TV_PROGRESS_STYLES,
 		ASR_MODELS,
 		SYNC_MODES,
+		LYRICS_BALL_STYLES,
+		LYRICS_HIGHLIGHTS,
+		MAX_LYRICS_LEAD_MS,
 		qualityRank,
 		normalizeJoinOrigin,
+		resolveLyricsPresentation,
 		type EffectiveSettings,
 		type GlobalSettings,
+		type LyricsBallStyleId,
+		type LyricsHighlightId,
 		type RoomSettings,
 		type SeparatorEngineId,
 		type TvProgressStyle
@@ -85,6 +91,19 @@
 		qualityRank(settings.global.upgradeEngine, settings.global.upgradeModel) >
 			qualityRank(settings.global.defaultEngine, settings.global.defaultModel)
 	);
+
+	let ballNote = $derived(LYRICS_BALL_STYLES.find((s) => s.id === settings.room.lyricsBall)?.note ?? '');
+	let highlightNote = $derived(
+		LYRICS_HIGHLIGHTS.find((h) => h.id === settings.room.lyricsHighlight)?.note ?? ''
+	);
+	// Ask the SAME resolver the TV uses, rather than re-testing syncMode here. If the two ever
+	// disagreed, this page would be confidently wrong about what is on screen.
+	let resolved = $derived(resolveLyricsPresentation(settings));
+	let lyricsClamped = $derived(resolved.clamped);
+	let resolvedHighlight = $derived(
+		LYRICS_HIGHLIGHTS.find((h) => h.id === resolved.highlight)?.label.toLowerCase() ?? resolved.highlight
+	);
+	let resolvedBall = $derived(resolved.ball !== 'off');
 
 	/**
 	 * Apply a patch optimistically, then reconcile on the authoritative response — the same shape the
@@ -347,6 +366,64 @@
 			{settings.room.interstitialMs === 0
 				? 'Straight into the next song.'
 				: 'How long the TV shows who is up next.'}
+		</p>
+
+		<h3 class="sub">Lyrics on the TV</h3>
+
+		<label class="field" for="lyrics-highlight">Highlight</label>
+		<select
+			id="lyrics-highlight"
+			value={settings.room.lyricsHighlight}
+			onchange={(e) => onroom({ lyricsHighlight: e.currentTarget.value as LyricsHighlightId })}
+		>
+			{#each LYRICS_HIGHLIGHTS as h (h.id)}
+				<option value={h.id}>{h.label}</option>
+			{/each}
+		</select>
+		{#if highlightNote}<p class="hint">{highlightNote}</p>{/if}
+
+		<label class="field" for="lyrics-ball">Marker</label>
+		<select
+			id="lyrics-ball"
+			value={settings.room.lyricsBall}
+			onchange={(e) => onroom({ lyricsBall: e.currentTarget.value as LyricsBallStyleId })}
+		>
+			{#each LYRICS_BALL_STYLES as s (s.id)}
+				<option value={s.id}>{s.label}</option>
+			{/each}
+		</select>
+		{#if ballNote}<p class="hint">{ballNote}</p>{/if}
+
+		<!--
+			Say when a choice is not being honoured. The global sync mode decides whether per-word timings
+			exist at all, so under "Line sync only" a word-level treatment has nothing to light and a
+			marker has no word to sit on. A picker that silently does nothing is worse than one that
+			explains itself — and this names the setting to change, since it is on this same page above.
+		-->
+		{#if lyricsClamped}
+			<p class="warn">
+				Showing <strong>{resolvedHighlight}</strong>{resolvedBall ? '' : ' with no marker'} instead: this
+				deployment's timing is set to “Line sync only”, so there are no per-word timings to follow.
+				Change <em>Lyrics timing</em> under Global to get word-level lyrics back.
+			</p>
+		{/if}
+
+		<label class="field" for="lyrics-lead">
+			Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
+		</label>
+		<input
+			id="lyrics-lead"
+			type="range"
+			min="0"
+			max={MAX_LYRICS_LEAD_MS}
+			step="50"
+			value={settings.room.lyricsLeadMs}
+			onchange={(e) => onroom({ lyricsLeadMs: Number(e.currentTarget.value) })}
+		/>
+		<p class="hint">
+			{settings.room.lyricsLeadMs === 0
+				? 'Lit exactly on the beat — which reads as late, because you have to see a word before singing it.'
+				: 'How far ahead of the music the words light up. Nudge it up if the room is singing behind.'}
 		</p>
 	</section>
 
