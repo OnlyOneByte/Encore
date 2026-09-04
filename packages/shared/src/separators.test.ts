@@ -11,6 +11,8 @@ import {
 	normalizeRoomSettings,
 	TV_PROGRESS_STYLES,
 	TV_BACKGROUND_STYLES,
+	TV_VISUALIZERS,
+	isTvVisualizer,
 	isTvBackgroundStyle,
 	DEFAULT_ROOM_SETTINGS,
 	resolveCookSeparator,
@@ -498,7 +500,9 @@ describe('normalizeRoomSettings — lyrics text', () => {
 
 describe('tv background styles', () => {
 	it('leads with the opt-out so the default is not mistaken for a treatment', () => {
-		expect(TV_BACKGROUND_STYLES.map((s) => s.id)).toEqual(['off', 'gradient', 'singer', 'solid']);
+		// Ordering of the whole list is asserted by the `tv visualizers` block; this owns only the
+		// invariant that the opt-out comes first, so adding a style does not touch two tests.
+		expect(TV_BACKGROUND_STYLES[0]!.id).toBe('off');
 		expect(TV_BACKGROUND_STYLES.every((s) => s.label && s.note)).toBe(true);
 	});
 
@@ -555,5 +559,53 @@ describe('tv background styles', () => {
 			expect(h).toBeGreaterThanOrEqual(0);
 			expect(h).toBeLessThan(360);
 		}
+	});
+});
+
+describe('tv visualizers', () => {
+	it('the visualizer style is offered last, after the plain colour choices', () => {
+		expect(TV_BACKGROUND_STYLES.map((s) => s.id)).toEqual(['off', 'gradient', 'singer', 'solid', 'visualizer']);
+	});
+
+	it('defaults to plasma — the one every old media player had', () => {
+		expect(DEFAULT_ROOM_SETTINGS.tvVisualizer).toBe('plasma');
+		// and the default background is still off, so adding this changes nothing on an existing box
+		expect(DEFAULT_ROOM_SETTINGS.tvBackgroundStyle).toBe('off');
+	});
+
+	it('guards the type at the boundary', () => {
+		expect(isTvVisualizer('plasma')).toBe(true);
+		expect(isTvVisualizer('PLASMA')).toBe(false);
+		expect(isTvVisualizer('bars')).toBe(false);
+		expect(isTvVisualizer(null)).toBe(false);
+		expect(isTvVisualizer(7)).toBe(false);
+		expect(isTvVisualizer(undefined)).toBe(false);
+	});
+
+	it('keeps the room current visualizer when a write is junk', () => {
+		expect(normalizeRoomSettings({ tvVisualizer: 'moire' }).tvVisualizer).toBe('moire');
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'starfield' as const };
+		expect(normalizeRoomSettings({ tvVisualizer: 'nope' as never }, room).tvVisualizer).toBe('starfield');
+	});
+
+	it('the variant is remembered while another background is selected', () => {
+		// Switching away from the visualizer and back must not forget the choice — the same property
+		// tvBackgroundHue has when the style is not `solid`.
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'visualizer' as const, tvVisualizer: 'lissajous' as const };
+		const away = normalizeRoomSettings({ tvBackgroundStyle: 'off' }, room);
+		expect(away.tvVisualizer).toBe('lissajous');
+		expect(normalizeRoomSettings({ tvBackgroundStyle: 'visualizer' }, away).tvVisualizer).toBe('lissajous');
+	});
+
+	it('a bad visualizer write never discards an unrelated choice', () => {
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'moire' as const, tvBackgroundHue: 75, interstitialMs: 7000 };
+		const out = normalizeRoomSettings({ tvVisualizer: 'garbage' as never }, room);
+		expect(out.tvVisualizer).toBe('moire');
+		expect(out.tvBackgroundHue).toBe(75);
+		expect(out.interstitialMs).toBe(7000);
+	});
+
+	it('every visualizer id is a plausible column value — no spaces or casing surprises', () => {
+		for (const v of TV_VISUALIZERS) expect(v.id).toMatch(/^[a-z][a-z0-9]*$/);
 	});
 });
