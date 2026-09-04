@@ -4,7 +4,7 @@ import { doJoin } from './join';
 import { SingerRepository } from './repository';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
-import { SINGER_COLORS, type ServerEvent } from '@encore/shared';
+import { SINGER_COLORS, SINGER_WHEEL, type ServerEvent } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
 import { createPopularityTracker } from '../media/popularity';
@@ -68,6 +68,29 @@ test('invalid color falls back to the first palette color', () => {
 	const { app } = appHarness();
 	const { singer } = doJoin(app, { displayName: 'Sam', color: '#nonsense' });
 	expect(singer.color).toBe(SINGER_COLORS[0]);
+});
+
+test('a wheel hue is KEPT, not rewritten to a preset', () => {
+	// The behaviour change. This used to be an allowlist of the eight presets, so a guest who picked
+	// any other hue joined as violet with nothing said — which made a colour wheel impossible.
+	const { app } = appHarness();
+	const picked = SINGER_WHEEL[7]!;
+	const { singer } = doJoin(app, { displayName: 'Ada', color: picked });
+	expect(singer.color).toBe(picked);
+	expect(singer.color).not.toBe(SINGER_COLORS[0]);
+});
+
+test('a colour whose dot would vanish on the dark surfaces is refused', () => {
+	const { app } = appHarness();
+	const { singer } = doJoin(app, { displayName: 'Kai', color: '#000000' });
+	expect(singer.color).toBe(SINGER_COLORS[0]);
+});
+
+test('shorthand hex is canonicalised on the way in', () => {
+	// Everything downstream interpolates this straight into CSS, so one shape is worth enforcing here.
+	const { app } = appHarness();
+	const { singer } = doJoin(app, { displayName: 'Ren', color: '#0AF' });
+	expect(singer.color).toBe('#00aaff');
 });
 
 test('blank display name is rejected', () => {

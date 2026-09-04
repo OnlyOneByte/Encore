@@ -9,6 +9,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
+	import Icon from '$lib/ui/Icon.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
 	import { cookAndQueue } from '$lib/cook-and-queue';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
@@ -43,7 +44,7 @@
 		// playable-aware badge in the queue list below.
 		if (idx === 0) {
 			const playable = entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId));
-			return playable ? "You're up next! 🎤" : "You're next once it's ready ✨";
+			return playable ? "You're up next!" : "You're next once it's ready";
 		}
 		const before = q[idx - 1];
 		const beforeName = before ? singers.get(before.singerId)?.displayName ?? 'someone' : 'someone';
@@ -206,6 +207,13 @@
 	const showReady = $derived(filter === 'all' || filter === 'ready');
 	const showCooking = $derived(filter === 'all' || filter === 'cooking');
 	const showRaw = $derived(filter === 'all');
+	/*
+	 * The readiness group headings only earn their space when more than one group is on screen. With a
+	 * chip selected, "Ready to sing · no wait" restates the chip directly above it — the fourth of the
+	 * four overlapping filter mechanisms, and the one that was pure duplication. A browse facet keeps
+	 * its heading either way, because there the heading carries the count and the facet name.
+	 */
+	const showGroupHeads = $derived(filter === 'all');
 
 	/**
 	 * The songs the readiness groups above already account for. The whole point of the readiness axis
@@ -323,6 +331,15 @@
 	// artist cannot collapse the rail to that one artist and strand you with no way back.
 	let facets = $state<{ artists: { artist: string; count: number }[]; genres: { genre: string; count: number }[] }>({ artists: [], genres: [] });
 	let browseFilter = $state<{ artist?: string; genre?: string } | null>(null);
+	/*
+	 * Browse starts collapsed so the readiness spine is the only filter on screen at rest. It opens
+	 * itself when a facet is active, because a filter narrowing the list while its control is hidden
+	 * reads as an empty library rather than an applied filter.
+	 */
+	let browseOpen = $state(false);
+	$effect(() => {
+		if (browseFilter) browseOpen = true;
+	});
 
 	function setBrowse(kind: 'artist' | 'genre' | null, value: string) {
 		// tapping the active chip again clears it — a filter you cannot undo is a trap
@@ -436,17 +453,18 @@
 </script>
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
-	<div style="font-weight:800;font-size:1.25rem;">🎤 <span style="background:var(--grad);-webkit-background-clip:text;background-clip:text;color:transparent;">Encore</span></div>
+	<div class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></div>
 	{#if me}
 		<div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim);">
 			<span>{me.displayName}</span>
-			<span style="width:22px;height:22px;border-radius:50%;background:{me.color};box-shadow:0 0 0 3px {me.color}30;"></span>
-			<a
-				href="/settings"
-				aria-label="Settings"
-				title="Settings"
-				style="padding:4px 2px 4px 6px;font-size:1.05rem;line-height:1;color:var(--ink-dim);text-decoration:none;"
-			>⚙️</a>
+			<span class="me-dot" style="--singer:{me.color};"></span>
+			<!--
+			  Was a bare ⚙️ at font-size 1.05rem in ~18px of padding: a forced-colour-emoji glyph (the
+			  trailing U+FE0F requests emoji presentation outright) in a target under even the 24px WCAG
+			  2.5.8 floor, in an app that had already adopted 44px everywhere else. Now a real mark in a
+			  real target.
+			-->
+			<a class="gear" href="/settings" aria-label="Settings" title="Settings"><Icon name="gear" /></a>
 		</div>
 	{/if}
 </header>
@@ -455,7 +473,7 @@
 	<!-- ONE box across every source: a singer picks by readiness ("can I sing this now?"), never by
 	     which index the song came from — so there is no source switch. -->
 	<div class="card searchbox">
-		<span style="color:var(--ink-dim)">🔎</span>
+		<span class="search-mark"><Icon name="search" /></span>
 		<input bind:value={query} oninput={onQueryInput} aria-label="Search a song or artist"
 			placeholder="Search a song or artist…" />
 		{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
@@ -464,51 +482,72 @@
 	<div class="chips" role="group" aria-label="Filter by readiness">
 		<button class="chip" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
 		<button class="chip ok" class:active={filter === 'ready'} onclick={() => (filter = 'ready')}>
-			🎤 Ready{#if libraryCount}&nbsp;{libraryCount}{/if}
+			<Icon name="mic" /> Ready{#if libraryCount}&nbsp;{libraryCount}{/if}
 		</button>
 		<button class="chip warn" class:active={filter === 'cooking'} onclick={() => (filter = 'cooking')}>
-			✨ Cooking{#if cookingRows.length}&nbsp;{cookingRows.length}{/if}
+			<Icon name="sparkle" /> Cooking{#if cookingRows.length}&nbsp;{cookingRows.length}{/if}
 		</button>
 	</div>
 
 	{#if showReady}
 		{@const readyList = searchActive ? readyResults : library}
-		<!-- Facet rails over the karaoke library, shown only when NOT searching: a query is already a
-		     filter, and stacking two leaves you with zero results and no idea which caused it. Hidden
-		     below two facets, since "browse by artist" across one artist is just a list. -->
+		<!--
+		  Browse lives behind ONE disclosure. Previously the two facet rails rendered inline whenever the
+		  library had enough variety, so the top of the screen could stack four independent ways to narrow
+		  the same list — three readiness chips, an artist rail, a genre rail, and group headings that
+		  re-announced the readiness axis in prose. Worse, the rails appeared and vanished as you typed,
+		  so the control row changed shape while you were using it. One collapsed row keeps the readiness
+		  spine primary and the control set stable.
+		-->
 		{#if !searchActive && (facets.artists.length > 1 || facets.genres.length > 1)}
-			{#if facets.artists.length > 1}
-				<div class="facets" role="group" aria-label="Browse by artist">
-					<span class="facet-label">Artist</span>
-					{#each facets.artists as f (f.artist)}
-						<button class="chip" class:active={browseFilter?.artist === f.artist} onclick={() => setBrowse('artist', f.artist)}>
-							{f.artist}&nbsp;<span class="facet-count">{f.count}</span>
-						</button>
-					{/each}
-				</div>
-			{/if}
-			{#if facets.genres.length > 1}
-				<div class="facets" role="group" aria-label="Browse by genre">
-					<span class="facet-label">Genre</span>
-					{#each facets.genres as f (f.genre)}
-						<button class="chip ok" class:active={browseFilter?.genre === f.genre} onclick={() => setBrowse('genre', f.genre)}>
-							{f.genre}&nbsp;<span class="facet-count">{f.count}</span>
-						</button>
-					{/each}
-				</div>
-			{/if}
-			{#if browseFilter}
-				<div class="facets">
-					<button class="chip" onclick={() => setBrowse(null, '')}>✕ Clear filter</button>
-				</div>
+			<div class="browse">
+				<button
+					class="browse-toggle"
+					aria-expanded={browseOpen}
+					onclick={() => (browseOpen = !browseOpen)}
+				>
+					<Icon name={browseOpen ? 'chevron-down' : 'chevron-right'} />
+					Browse
+					{#if browseFilter}<span class="browse-active">{browseFilter.artist ?? browseFilter.genre}</span>{/if}
+				</button>
+				<!-- Clearing stays reachable while collapsed: a filter you cannot see is a filter you
+				     cannot undo, and an empty-looking list with no visible cause is the result. -->
+				{#if browseFilter}
+					<button class="chip chip-icon" onclick={() => setBrowse(null, '')}><Icon name="close" /> Clear</button>
+				{/if}
+			</div>
+			{#if browseOpen}
+				{#if facets.artists.length > 1}
+					<div class="facets" role="group" aria-label="Browse by artist">
+						<span class="facet-label">Artist</span>
+						{#each facets.artists as f (f.artist)}
+							<button class="chip" class:active={browseFilter?.artist === f.artist} onclick={() => setBrowse('artist', f.artist)}>
+								{f.artist}&nbsp;<span class="facet-count">{f.count}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+				{#if facets.genres.length > 1}
+					<div class="facets" role="group" aria-label="Browse by genre">
+						<span class="facet-label">Genre</span>
+						{#each facets.genres as f (f.genre)}
+							<button class="chip ok" class:active={browseFilter?.genre === f.genre} onclick={() => setBrowse('genre', f.genre)}>
+								{f.genre}&nbsp;<span class="facet-count">{f.count}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 		{/if}
 		{#if readyList.length}
-			<div class="grouphead ok">
-				{browseFilter && !searchActive
-					? `${browseFilter.artist ?? browseFilter.genre} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
-					: 'Ready to sing · no wait'}
-			</div>
+			{@const facetHead = browseFilter && !searchActive}
+			{#if showGroupHeads || facetHead}
+				<div class="grouphead ok">
+					{facetHead
+						? `${browseFilter?.artist ?? browseFilter?.genre} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
+						: 'Ready to sing · no wait'}
+				</div>
+			{/if}
 			{#each readyList as m (m.id)}
 				<SongRow title={m.title} artist={m.artistCanonical ?? m.artist} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 			{/each}
@@ -518,7 +557,7 @@
 	{#if showCooking && cookingRows.length}
 		<!-- Queue it anyway: rotation HOLDS a cooking song's slot, so it keeps its fair
 		     position and plays when the stems land. Cooking is not a blocked state. -->
-		<div class="grouphead warn">Cooking · queue it anyway</div>
+		{#if showGroupHeads}<div class="grouphead warn">Cooking · queue it anyway</div>{/if}
 		{#each cookingRows as c (c.id)}
 			<SongRow
 				title={c.media.title}
@@ -567,7 +606,7 @@
 			{@const popularRows = unaccounted(popular)}
 			{@const recentRows = unaccounted(recent)}
 			{#if popularRows.length}
-				<div class="grouphead">🔥 Popular tonight</div>
+				<div class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</div>
 				{#each popularRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
@@ -576,7 +615,7 @@
 				{/each}
 			{/if}
 			{#if recentRows.length}
-				<div class="grouphead">🕑 Recently queued</div>
+				<div class="grouphead grouphead-mark"><Icon name="clock" /> Recently queued</div>
 				{#each recentRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
@@ -585,7 +624,7 @@
 				{/each}
 			{/if}
 			{#if !popularRows.length && !recentRows.length && !library.length}
-				<p class="empty">Search for a song above, or be the first to queue one ✨</p>
+				<p class="empty">Search for a song above, or be the first to queue one.</p>
 			{/if}
 		{/if}
 	{/if}
@@ -597,7 +636,7 @@
 			{#if empty.showAllCount !== null}
 				<!-- the way back: the library is one tap away, not gone -->
 				<div style="display:flex;justify-content:center;padding:0 0 8px;">
-					<button class="chip ok" onclick={clearSearch}>🎤 Show all {empty.showAllCount}</button>
+					<button class="chip ok chip-icon" onclick={clearSearch}><Icon name="mic" /> Show all {empty.showAllCount}</button>
 				</div>
 			{/if}
 		{:else}
@@ -620,22 +659,22 @@
 	ontoggle={(v) => (sheetOpen = v)}
 >
 	{#snippet controls()}
-		<button class="ic no-drag" aria-label="restart" onclick={() => sendPlayer({ cmd: 'restart' })}>⏮</button>
+		<button class="ic no-drag" aria-label="restart" onclick={() => sendPlayer({ cmd: 'restart' })}><Icon name="prev" /></button>
 		<button class="ic play no-drag" aria-label="play/pause" onclick={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}>
-			{playback.isPlaying ? '⏸' : '▶'}
+			<Icon name={playback.isPlaying ? 'pause' : 'play'} />
 		</button>
-		<button class="ic no-drag" aria-label="skip" onclick={() => sendPlayer({ cmd: 'skip' })}>⏭</button>
+		<button class="ic no-drag" aria-label="skip" onclick={() => sendPlayer({ cmd: 'skip' })}><Icon name="next" /></button>
 	{/snippet}
 
 	<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
 		<span class="lab">{keyLabel}</span>
-		<button disabled={!keyShiftEnabled || playback.keyShift <= -7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}>− semitone</button>
-		<button disabled={!keyShiftEnabled || playback.keyShift >= 7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}>＋ semitone</button>
+		<button class="key-btn" disabled={!keyShiftEnabled || playback.keyShift <= -7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}><Icon name="minus" /> semitone</button>
+		<button class="key-btn" disabled={!keyShiftEnabled || playback.keyShift >= 7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}><Icon name="plus" /> semitone</button>
 	</div>
 
 	<div class="grouphead">Up next · rotation</div>
 	{#if queued.length === 0}
-		<p class="empty">Queue's empty — add a song to start the party ✨</p>
+		<p class="empty">Queue's empty — add a song to start the party.</p>
 	{:else}
 		{#each queued as e, i (e.id)}
 			{@const s = singerOf(e.singerId)}
@@ -684,7 +723,7 @@
 {#if isMyTurn && scoringAvailable}
 	<div class="mic-bar">
 		{#if !micEnabled}
-			<button class="mic-btn" onclick={() => { micError = ''; micEnabled = true; }}>🎤 Sing — enable mic</button>
+			<button class="mic-btn" onclick={() => { micError = ''; micEnabled = true; }}><Icon name="mic" /> Sing — enable mic</button>
 		{:else if showMyScore && myScore}
 			<span class="mic-score"><span class="dot"></span> Score <strong>{myScore.score}</strong> · {myScore.hits}/{myScore.total} on pitch</span>
 		{:else}
@@ -710,6 +749,40 @@
 	main { flex: 1; padding: 6px 18px calc(var(--peek-h) + 28px); }
 
 	/*
+	 * The wordmark. The mic was 🎤 — a different drawing on every platform, and a tofu box on a browser
+	 * with no emoji font, which is not something a brand mark can be. The gradient stays on the TEXT
+	 * (background-clip), where it is the glyph fill against the page and carries no label of its own.
+	 */
+	.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.25rem; }
+	.wordmark {
+		background: var(--grad);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+	}
+
+	/*
+	 * The singer's own identity dot. The colour arrives as a --singer custom property rather than being
+	 * interpolated straight into `background:`, which is what lets the halo be derived with color-mix.
+	 * The previous form concatenated hex alpha digits onto the value — `box-shadow: 0 0 0 3px {color}30`
+	 * — and that only ever worked because all eight presets happened to be 6-digit hex. A 3-digit hex,
+	 * an rgb() or an oklch() produced invalid CSS and the halo silently vanished. color-mix takes any
+	 * colour syntax, so the free hue picker cannot break it.
+	 */
+	.me-dot {
+		width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;
+		background: var(--singer);
+		box-shadow: 0 0 0 3px color-mix(in srgb, var(--singer) 19%, transparent);
+	}
+	/* 44px, matching every other control in the app. The emoji gear this replaced was ~18px. */
+	.gear {
+		display: grid; place-items: center;
+		min-width: 44px; min-height: 44px; margin-right: -10px;
+		font-size: 1.15rem; color: var(--ink-dim); text-decoration: none;
+	}
+	.gear:hover { color: var(--ink); }
+
+	/*
 	 * Wide viewports spend the extra room on MORE SONGS, not longer rows. Only song rows flow into
 	 * columns — the search box, chips, facet rails and group headings each label everything below
 	 * them, so a heading confined to one column would read as applying to half the list. The rule is
@@ -733,9 +806,20 @@
 			grid-column: auto;
 		}
 	}
-	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; }
+	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; min-height: 52px; }
 	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; outline: none; }
 	.chips { display: flex; gap: 7px; margin-bottom: 14px; }
+	/* One collapsed row where two facet rails used to render inline and reshuffle as you typed. */
+	.browse { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+	.browse-toggle {
+		min-height: 44px; display: inline-flex; align-items: center; gap: 7px;
+		background: none; border: 0; padding: 0 2px; cursor: pointer;
+		color: var(--ink-dim); font-size: 0.68rem; font-weight: 700;
+		letter-spacing: 0.14em; text-transform: uppercase;
+	}
+	.browse-toggle:hover { color: var(--ink); }
+	/* Names the active facet on the collapsed row, so a narrowed list always shows its cause. */
+	.browse-active { color: var(--accent2); text-transform: none; letter-spacing: 0; font-size: 0.8rem; }
 	/* browse facet rails: horizontally scrollable so a 20-artist library cannot push the
 	   song list off the screen on a phone. */
 	.facets {
@@ -750,12 +834,21 @@
 	}
 	.facet-count { opacity: .55; font-variant-numeric: tabular-nums; }
 	.chip {
-		padding: 7px 13px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+		/* 44px, matching the queue actions and the row buttons. These were ~30px: above the 24px WCAG
+		   floor, but below the threshold this app had already set for itself everywhere else — and the
+		   readiness chips are the most-tapped controls on the screen. */
+		min-height: 44px;
+		display: inline-flex; align-items: center; gap: 6px;
+		padding: 7px 14px; border-radius: 22px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
 		background: var(--card); border: 1px solid var(--line); color: var(--ink-dim);
 	}
 	.chip.ok { color: var(--ok); }
 	.chip.warn { color: var(--warn); }
-	.chip.active { background: var(--grad); border-color: transparent; color: #fff; }
+	.chip.active { background: var(--accent-strong); border-color: transparent; color: var(--on-accent); }
+	/* any label that leads with a mark rather than a word */
+	.chip-icon { display: inline-flex; align-items: center; gap: 6px; }
+	.search-mark { display: grid; place-items: center; color: var(--ink-dim); }
+	.grouphead-mark { display: flex; align-items: center; gap: 7px; }
 	.chip:active { transform: scale(0.95); }
 	.grouphead {
 		font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase;
@@ -766,9 +859,10 @@
 	.grouphead.warn { color: var(--warn); }
 	.empty { color: var(--ink-dim); padding: 0 4px; font-size: 0.9rem; }
 
-	/* playback controls, rendered into the sheet's peek */
-	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
-	.ic.play { background: var(--grad); border-color: transparent; width: 44px; height: 44px; }
+	/* playback controls, rendered into the sheet's peek */	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
+	/* The one filled transport control. Solid accent + paired ink, because in stage 1 the glyph became
+	   an SVG drawn with currentColor — on --grad that mark sat at 2.84:1, under the 3:1 non-text floor. */
+	.ic.play { background: var(--accent-strong); color: var(--on-accent); border-color: transparent; width: 44px; height: 44px; }
 	.ic:active { transform: scale(0.92); }
 
 	.key { display: flex; gap: 6px; margin: 6px 0 2px; align-items: center; }
@@ -776,6 +870,9 @@
 	.key .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
 	.key.shifted .lab { color: var(--warn); }
 	.key button { flex: 1; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: 10px; padding: 6px; font-size: 0.8rem; cursor: pointer; }
+	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
+	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
+	.key-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
 	.key:not(.disabled) button:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
 	.key:not(.disabled) button:not(:disabled):active { transform: scale(0.95); }
 	.key button:disabled { cursor: default; }
@@ -789,8 +886,9 @@
 		display: flex; align-items: center; gap: 10px; justify-content: center;
 	}
 	.mic-btn {
+		display: inline-flex; align-items: center; gap: 8px;
 		border: 0; border-radius: 999px; padding: 12px 22px; font-size: 1rem; font-weight: 800;
-		background: var(--grad); color: #fff; box-shadow: var(--shadow); cursor: pointer;
+		background: var(--accent-strong); color: var(--on-accent); box-shadow: var(--shadow); cursor: pointer;
 	}
 	.mic-live { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent2); }
 	.mic-score {
@@ -831,7 +929,7 @@
 		padding: 12px 16px; box-shadow: var(--shadow); font-size: 0.9rem; max-width: 90vw;
 	}
 	.undo-toast button {
-		border: 0; background: var(--grad); color: #fff; font-weight: 700;
+		border: 0; background: var(--accent-strong); color: var(--on-accent); font-weight: 700;
 		border-radius: 8px; padding: 6px 12px; cursor: pointer;
 	}
 	.error-toast {

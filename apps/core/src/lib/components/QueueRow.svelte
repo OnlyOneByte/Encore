@@ -1,5 +1,6 @@
 <script lang="ts">
 	// A row in the rotation queue. Ported from docs/mocks.
+	import Icon from '$lib/ui/Icon.svelte';
 	interface Props {
 		seq: number; // 1-based display position
 		title: string;
@@ -29,20 +30,20 @@
 	<div class="meta">
 		<div class="t">{title}</div>
 		<div class="who">
-			<i style="background:{singerColor}"></i>
+			<i style="--singer:{singerColor}"></i>
 			{singerName}{#if subtitle} · {subtitle}{/if}{#if pending} · <span class="adding">adding…</span>{/if}
 		</div>
 	</div>
 	{#if !pending}
 		<div class="actions">
 			{#if reorderable}
-				<button class="act" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}>↑</button>
-				<button class="act" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}>↓</button>
+				<button class="act" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}><Icon name="arrow-up" /></button>
+				<button class="act" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}><Icon name="arrow-down" /></button>
 			{/if}
 			{#if removable}
-				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}>✕</button>
+				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}><Icon name="close" /></button>
 			{:else if !reorderable}
-				<div class="grip">⋮⋮</div>
+				<div class="grip" aria-hidden="true"><Icon name="grip" /></div>
 			{/if}
 		</div>
 	{/if}
@@ -60,13 +61,13 @@
 		width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
 		font-size: 0.8rem; font-weight: 700; background: var(--card2); color: var(--ink-dim); flex: 0 0 auto;
 	}
-	.up .seq { background: var(--grad); color: #fff; }
+	.up .seq { background: var(--accent-strong); color: var(--on-accent); }
 	.meta { min-width: 0; }
 	.t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
-	.who i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+	.who i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--singer); }
 	.adding { color: var(--warn); }
-	.grip { margin-left: auto; color: var(--line-strong); font-size: 1.1rem; cursor: grab; }
+	.grip { margin-left: auto; color: var(--line-strong); display: grid; place-items: center; font-size: 1.1rem; cursor: grab; }
 	.actions { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
 	.act, .remove {
 		/* 44px: these were 30px with 6px gaps, below the reliable-tap threshold. */

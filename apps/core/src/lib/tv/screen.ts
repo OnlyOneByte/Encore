@@ -12,8 +12,13 @@ import type { QueueEntry, Media } from '@encore/shared';
 /**
  * What the TV should be showing.
  * - `attract`  — nobody is here. The QR is the only thing to do, so it owns the screen.
- * - `lobby`    — people ARE here but nothing is queued: name them and say what we're waiting for.
- * - `waiting`  — something is queued but its stems are still cooking (held slot).
+ * - `lobby`    — people are here, or something is queued, but nothing can play yet. Note this covers
+ *                TWO situations the caller must word differently: nothing picked at all, and something
+ *                picked that is still cooking. It previously claimed "nothing is queued", which was
+ *                wrong — a queued-but-unplayable entry lands here too, and the lobby told guests to
+ *                pick a song when one was already separating.
+ * - `waiting`  — the PLAYER is actively holding for media that is still cooking (mid-set), which is a
+ *                narrower thing than "something queued is not ready".
  * - `playing`  — a song is up; the video owns the screen and the QR retreats to a corner.
  */
 export type TvScreen = 'attract' | 'lobby' | 'waiting' | 'playing';
