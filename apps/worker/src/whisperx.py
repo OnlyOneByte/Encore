@@ -20,7 +20,7 @@ from typing import Any, AsyncIterator, Callable, Protocol
 
 from .demucs import Runner, download_argv, parse_ytdlp_progress, subprocess_runner
 from .fetch import job_fetcher, local_source_path
-from .vocabulary import Fetcher
+from .vocabulary import AsrModel, Fetcher, SyncMode, parse_asr_model, parse_sync_mode
 from .lyrics_source import (
     LRCLIB_BASE,
     LrclibClient,
@@ -254,17 +254,23 @@ class WhisperXProcessor:
         aligner: Aligner | None = None,
         transcriber: Transcriber | None = None,
         model: str = DEFAULT_MODEL,
+        sync_mode: str = SyncMode.FORCED.value,
         lrclib_base: str = LRCLIB_BASE,
         sources: list[LyricsSource] | None = None,
     ) -> None:
         self._runner = runner
         self._ytdlp_bin = ytdlp_bin
         self._device = device
-        self._model = model
+        self._model = parse_asr_model(model).value
+        self._sync_mode = parse_sync_mode(sync_mode)
         self._lrclib_base = lrclib_base
         self._lyrics_client = lyrics_client  # None → constructed lazily (real LRCLIB)
         self._aligner = aligner  # None → constructed lazily (real WhisperX)
         self._transcriber = transcriber  # None → constructed lazily (real faster-whisper)
+        # Whether the caller OWNS these. An injected transcriber or source list is a test's fake, and a
+        # job's `asrModel` must never silently replace it — see `_adopt_job_engines`.
+        self._transcriber_injected = transcriber is not None
+        self._sources_injected = sources is not None
         # None → the default chain, built lazily. Injecting FAKE sources is how the whole
         # acquisition+timing flow tests with no network and no ML.
         self._sources = sources
@@ -294,10 +300,38 @@ class WhisperXProcessor:
             self._aligner = WhisperxForcedAligner(device=self._device)
         return self._aligner
 
+    def _adopt_job_engines(self, params: dict[str, Any]) -> None:
+        """Adopt the deployment's lyrics engines from this job's params.
+
+        The core sends its GLOBAL settings on every align job, exactly as it sends a separator's
+        engine+model on a stems job, so an operator changing the model on the settings page takes
+        effect on the next cook with no worker restart. Absent values keep whatever this worker was
+        constructed with (its env fallback), so an older core changes nothing.
+
+        Changing the model DROPS the cached transcriber, and with it the cached source list that holds
+        it — otherwise AsrSource would keep transcribing with the previous weights while the log
+        claimed otherwise. That reload is why the value is compared first: every job normally carries
+        the same setting, so the common case rebuilds nothing.
+
+        An INJECTED transcriber or source list is never replaced. Those are a test's fakes, and letting
+        a wire value swap them would mean a test could accidentally load multi-GB real weights.
+        """
+        self._sync_mode = parse_sync_mode(params.get("syncMode"), self._sync_mode)
+        model = parse_asr_model(params.get("asrModel"), AsrModel(self._model)).value
+        if model == self._model:
+            return
+        print(f"[worker] align: ASR model {self._model} → {model} (reloading weights)", flush=True)
+        self._model = model
+        if not self._transcriber_injected:
+            self._transcriber = None
+            if not self._sources_injected:
+                self._sources = None  # rebuilt around the new transcriber on next use
+
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
         work = os.path.join(job.media_dir, "work", job.job_id)
         os.makedirs(work, exist_ok=True)
         params = job.params if isinstance(job.params, dict) else {}
+        self._adopt_job_engines(params)
         artist = str(params.get("artist") or "").strip()
         track = str(params.get("track") or "").strip()
         language = str(params.get("language") or "en").strip() or "en"
@@ -531,6 +565,17 @@ class WhisperXProcessor:
             doc = normalize_lyrics({"language": lang, "segments": text.segments})
             if is_valid_lyrics(doc):
                 return doc, TIMING_WORD, "medium"
+        # SYNC MODE. `lines` skips forced alignment entirely rather than failing it — one fewer ML pass
+        # per cook, at the cost of the bouncing ball. It takes the SAME path the aligner's failure
+        # fallback takes, so there is one line-sync implementation rather than two that can drift.
+        if self._sync_mode is SyncMode.LINES:
+            if text.timing != TIMING_LINE:
+                return None  # nothing to sync against, and this mode will not go and find timings
+            doc = line_synced_lyrics(text.segments, language=lang)
+            # `high` confidence: these are the source's own timings, unmodified. Whether they are RIGHT
+            # for this recording is a different question — an LRC written for another upload of the song
+            # is confidently wrong, which is why `forced` remains the default.
+            return (doc, TIMING_LINE, "high") if is_line_synced(doc) else None
         try:
             aligned = self._get_aligner().align(text.segments, audio, lang)
             doc = normalize_lyrics(aligned)

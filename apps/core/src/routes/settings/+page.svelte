@@ -12,6 +12,8 @@
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
+		ASR_MODELS,
+		SYNC_MODES,
 		qualityRank,
 		type EffectiveSettings,
 		type GlobalSettings,
@@ -51,6 +53,19 @@
 	// A slow engine on the LIVE path is the footgun worth naming in the UI: RoFormer measured ~44min
 	// per song on CPU versus ~50s for htdemucs. Someone should learn that here, not at a party.
 	let liveSlow = $derived(engineOf(settings.global.defaultEngine)?.speed === 'slow');
+
+	// ── lyrics ───────────────────────────────────────────────────────────────
+	// The two knobs on the words rather than the audio. Same shape as the splitter pair above: the
+	// note comes from the registry so a model cannot appear here without its tradeoff stated.
+	let asrNote = $derived(ASR_MODELS.find((m) => m.id === settings.global.asrModel)?.note ?? '');
+	let syncNote = $derived(SYNC_MODES.find((m) => m.id === settings.global.syncMode)?.note ?? '');
+
+	// The same footgun as a slow splitter, and worth naming in the same place: a bigger reader is the
+	// one lever on wrong words, and it is also the one that turns a two-minute cook into a long wait on
+	// a CPU box. Nobody should discover that at a party.
+	let asrSlow = $derived(
+		['slow', 'slowest'].includes(ASR_MODELS.find((m) => m.id === settings.global.asrModel)?.speed ?? '')
+	);
 
 	// An "upgrade" that is not actually better never runs, so say so rather than letting the toggle
 	// look active while nothing happens.
@@ -151,6 +166,35 @@
 		{#if liveSlow}
 			<p class="warn">Slow on CPU — around 45 minutes per song. Better suited to upgrades.</p>
 		{/if}
+
+		<h3 class="sub">Lyrics</h3>
+
+		<label class="field" for="asr-model">Lyrics reader</label>
+		<select
+			id="asr-model"
+			value={settings.global.asrModel}
+			onchange={(e) => onglobal({ asrModel: e.currentTarget.value as GlobalSettings['asrModel'] })}
+		>
+			{#each ASR_MODELS as model (model.id)}
+				<option value={model.id}>{model.label} · {model.params}</option>
+			{/each}
+		</select>
+		{#if asrNote}<p class="hint">{asrNote}</p>{/if}
+		{#if asrSlow}
+			<p class="warn">A big reader needs real memory and adds minutes to every cook on a CPU box.</p>
+		{/if}
+
+		<label class="field" for="sync-mode">Lyrics timing</label>
+		<select
+			id="sync-mode"
+			value={settings.global.syncMode}
+			onchange={(e) => onglobal({ syncMode: e.currentTarget.value as GlobalSettings['syncMode'] })}
+		>
+			{#each SYNC_MODES as mode (mode.id)}
+				<option value={mode.id}>{mode.label}</option>
+			{/each}
+		</select>
+		{#if syncNote}<p class="hint">{syncNote}</p>{/if}
 
 		<button class="disclose" onclick={() => (advancedOpen = !advancedOpen)} aria-expanded={advancedOpen}>
 			{advancedOpen ? '▾' : '▸'} Advanced
@@ -317,6 +361,16 @@
 	.scope-note {
 		margin: 0 0 10px;
 		font-size: 0.78rem;
+		color: var(--ink-dim);
+	}
+	/* Groups the two lyrics pickers under Global without implying a third scope — it is a subheading
+	   inside Global, so it sits between h2 and .field in weight. */
+	.sub {
+		margin: 20px 0 0;
+		font-size: 0.82rem;
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
 	.field {

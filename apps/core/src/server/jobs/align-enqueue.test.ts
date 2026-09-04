@@ -3,7 +3,7 @@
 // decides whether a lyrics lookup is even attempted.
 import { test, expect } from 'bun:test';
 import { assignParams, followUps } from './dispatch';
-import type { Media } from '@encore/shared';
+import { DEFAULT_GLOBAL_SETTINGS, type Media } from '@encore/shared';
 
 const media = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -46,12 +46,12 @@ test('stems still gets its separation model', () => {
 
 test('stems carries the room engine+model; upgrade carries the upgrade engine+model', () => {
 	const settings = {
+		...DEFAULT_GLOBAL_SETTINGS,
 		defaultEngine: 'demucs' as const,
 		defaultModel: 'htdemucs_ft',
 		enqueueUpgrade: true,
 		upgradeEngine: 'roformer' as const,
-		upgradeModel: 'bs-roformer-1297',
-		defaultFetcher: 'ytdlp' as const
+		upgradeModel: 'bs-roformer-1297'
 	};
 	const stems = assignParams('stems', media(), settings);
 	expect(stems.engine).toBe('demucs');
@@ -95,9 +95,41 @@ test('a confident artist with an unconfident title still omits only the title', 
 	expect(p.track).toBeUndefined();
 });
 
+// ── the lyrics engines reach the worker ───────────────────────────────────────
+test("the operator's chosen reader and timing mode ride on every align job", () => {
+	// This is the whole delivery mechanism for the setting. Both were hardcoded on the worker
+	// (DEFAULT_MODEL = "base" in whisperx.py, and forced alignment as the only path), and dial_home.py
+	// never passed a model at all — so nothing an operator did could change the words on the TV.
+	const p = assignParams('align', media(), {
+		...DEFAULT_GLOBAL_SETTINGS,
+		asrModel: 'medium',
+		syncMode: 'lines'
+	});
+	expect(p.asrModel).toBe('medium');
+	expect(p.syncMode).toBe('lines');
+});
+
+test('with no settings, align falls back to what the worker used when these were hardcoded', () => {
+	// So a unit test, or a core that predates the setting, produces an align job that behaves exactly
+	// as align always did rather than silently changing the model.
+	const p = assignParams('align', media());
+	expect(p.asrModel).toBe('base');
+	expect(p.syncMode).toBe('forced');
+});
+
+test('the lyrics engines are for align only — a stems job carries a separator instead', () => {
+	// Keeps the two axes from bleeding into each other: a separation job has no opinion about words.
+	const s = { ...DEFAULT_GLOBAL_SETTINGS, asrModel: 'small' as const, syncMode: 'lines' as const };
+	expect(assignParams('stems', media(), s).asrModel).toBeUndefined();
+	expect(assignParams('stems', media(), s).syncMode).toBeUndefined();
+	expect(assignParams('fetch', media(), s).asrModel).toBeUndefined();
+});
+
 test('unknown media and a zero duration do not produce junk params', () => {
 	// The fetcher is a DECLARATION the worker needs, not junk — it is what replaced inferring
-	// acquisition from the URI's shape. Only the LOOKUP keys must stay absent when unconfident.
-	expect(assignParams('align', undefined)).toEqual({ fetcher: 'ytdlp' });
+	// acquisition from the URI's shape. The lyrics engines are declarations of the same kind: an align
+	// job now says which model reads the words and how they get timestamps, exactly as a stems job says
+	// which separator to run. Only the LOOKUP keys must stay absent when unconfident.
+	expect(assignParams('align', undefined)).toEqual({ fetcher: 'ytdlp', asrModel: 'base', syncMode: 'forced' });
 	expect(assignParams('align', media({ durationSec: 0 })).durationSec).toBeUndefined();
 });

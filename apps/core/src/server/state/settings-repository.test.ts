@@ -39,6 +39,31 @@ describe('SettingsRepository', () => {
 		expect(repo.getGlobal().defaultFetcher).toBe('ytdlp');
 	});
 
+	it('the chosen LYRICS ENGINES survive a write and a re-read', () => {
+		// Same trap as `defaultFetcher` above, and the reason that regression test exists: a field can be
+		// on GlobalSettings and in the normalizer while having no column and never being selected, so
+		// every read falls back to the default and the operator's choice silently vanishes. Here it would
+		// be worse than invisible — the settings page would show `medium` while every cook kept using
+		// `base`, so the one lever on wrong words would look like it did nothing.
+		const repo = freshRepo();
+		expect(repo.getGlobal().asrModel).toBe(DEFAULT_GLOBAL_SETTINGS.asrModel);
+		const saved = repo.setGlobal({ asrModel: 'medium', syncMode: 'lines' });
+		expect(saved.asrModel).toBe('medium');
+		expect(saved.syncMode).toBe('lines');
+		expect(repo.getGlobal().asrModel).toBe('medium');
+		expect(repo.getGlobal().syncMode).toBe('lines');
+	});
+
+	it('a de-whitelisted stored model degrades on READ rather than being served to a worker', () => {
+		// A checkpoint removed between releases leaves a row naming it. Serving that value would send a
+		// worker a token it fails to load; re-normalizing on read is what makes the stale row harmless.
+		const repo = freshRepo();
+		repo.setGlobal({ asrModel: 'small' });
+		// simulate the row surviving a release that dropped the checkpoint
+		repo.setGlobal({ asrModel: 'no-longer-shipped' as never });
+		expect(repo.getGlobal().asrModel).toBe('small'); // fell back to the current value, not garbage
+	});
+
 	it('`local` is refused as a deployment default, on write AND on a stale read', () => {
 		// `local` describes one media's bytes, so storing it as the default would mean "never download
 		// anything". Re-normalising on READ matters too: a value written by an older build, or a fetcher
