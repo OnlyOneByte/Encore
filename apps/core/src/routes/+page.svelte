@@ -97,6 +97,7 @@
 			ws = new WsClient({
 				url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
 				getLastRev: () => store.rev,
+				onConnectionChange: (c) => (connected = c),
 				onEvent: (e: ServerEvent) => {
 					if (e.type === 'queue:sync') {
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
@@ -131,7 +132,6 @@
 				}
 			});
 			ws.open();
-			connected = true;
 			loadShortcuts();
 			loadLibrary();
 		})();
@@ -544,6 +544,16 @@
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
 	<div class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></div>
+	<!--
+	  `connected` used to be assigned `true` once and never read or reset, so a phone whose socket had
+	  died looked identical to a live one while its taps piled up in the pending queue. The store keeps
+	  accepting them on purpose (they resend on resync) — this says so instead of implying they landed.
+	-->
+	{#if me && !connected}
+		<span class="offline-pill" role="status" aria-live="polite">
+			<Icon name="warning" /> Reconnecting…
+		</span>
+	{/if}
 	{#if me}
 		<div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim);">
 			<span>{me.displayName}</span>
@@ -1086,5 +1096,13 @@
 		position: fixed; left: 50%; bottom: calc(var(--peek-h) + 70px); transform: translateX(-50%); z-index: 30;
 		background: var(--danger-bg); color: var(--danger-ink); border: 1px solid var(--danger-line);
 		padding: 11px 16px; border-radius: 12px; font-size: 0.88rem; max-width: 90vw;
+	}
+
+	/* --warn, not --danger: a dropped socket is a transient degraded state that self-heals on the next
+	   backoff tick, not a failure the guest has to act on. */
+	.offline-pill {
+		display: inline-flex; align-items: center; gap: 6px;
+		color: var(--warn); border: 1px solid var(--line-strong); border-radius: 999px;
+		padding: 4px 10px; font-size: 0.78rem; white-space: nowrap;
 	}
 </style>

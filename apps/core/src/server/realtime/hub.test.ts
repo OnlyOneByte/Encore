@@ -14,7 +14,8 @@ function harness() {
 	const deps: HubDeps = {
 		state,
 		publish: (e) => published.push(e),
-		mediaById: new Map([['m1', media('m1')]])
+		mediaById: new Map([['m1', media('m1')]]),
+		actorSingerId: 's1'
 	};
 	return { published, state, deps };
 }

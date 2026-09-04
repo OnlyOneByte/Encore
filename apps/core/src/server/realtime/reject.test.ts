@@ -15,7 +15,8 @@ function harness() {
 	const deps: HubDeps = {
 		state,
 		publish: (e) => published.push(e),
-		mediaById: new Map([['m1', media('m1')]])
+		mediaById: new Map([['m1', media('m1')]]),
+		actorSingerId: 's1'
 	};
 	return { published, toOrigin, state, deps };
 }
@@ -59,7 +60,7 @@ test('validateCommand returns precise reasons', () => {
 	expect(validateCommand(cmd({ op: 'status', id: 'x', status: 'done' }), deps)).toContain('unknown entry');
 	expect(
 		validateCommand(
-			cmd({ op: 'add', entry: { id: 'q', mediaId: 'm1', singerId: 's', status: 'queued', rotationSeq: -1, addedAt: 1 } }),
+			cmd({ op: 'add', entry: { id: 'q', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } }),
 			deps
 		)
 	).toBeNull();

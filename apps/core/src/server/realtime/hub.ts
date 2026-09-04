@@ -34,6 +34,13 @@ export interface HubDeps {
 	recordAdd?: (mediaId: string) => void;
 	/** Optional: idempotency ledger — returns true if this clientOpId was already applied. */
 	seenOp?: (clientOpId: string) => boolean;
+	/**
+	 * The singer this socket authenticated as, resolved from the session cookie at WS upgrade.
+	 * `undefined` = a socket that never joined (a TV, a spectator, a probe). Queue mutations are
+	 * attributable acts, so they require one — and an `add` must carry this id, not one the client
+	 * picked, or any socket could queue songs as anybody.
+	 */
+	actorSingerId?: string;
 }
 
 /** Validate a command against current state. Returns an error string, or null if valid. */
@@ -46,6 +53,10 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 	if (!cmd || typeof cmd !== 'object') return 'malformed command';
 	if (!cmd.clientOpId) return 'missing clientOpId';
 	if (!cmd.op || typeof cmd.op !== 'object' || typeof cmd.op.op !== 'string') return 'malformed op';
+	// Identity BEFORE shape: the socket's singerId is resolved at upgrade and was previously used only
+	// to drive presence — never to authorize anything. So any socket, including one that never joined,
+	// could mutate the queue, and an `add` was credited to whatever singerId the client typed.
+	if (!deps.actorSingerId) return 'join the room first';
 	const { op } = cmd;
 	switch (op.op) {
 		case 'add':
@@ -55,6 +66,10 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// and take the WHOLE SERVER PROCESS DOWN, mid-party, on one malformed client message.
 			// Found by driving the real server. Reject it like any other bad op.
 			if (!op.entry.singerId) return 'missing singerId';
+			// Rejected rather than silently overwritten: the client always sends its own id, so a
+			// mismatch is a bug or an impersonation attempt. Both are worth surfacing, and rewriting
+			// the op would leave the sender's optimistic copy disagreeing with the server forever.
+			if (op.entry.singerId !== deps.actorSingerId) return 'singerId does not match this session';
 			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
 			return null;
 		case 'remove':
