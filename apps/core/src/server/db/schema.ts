@@ -140,7 +140,12 @@ export const globalSettings = sqliteTable('global_settings', {
 	// Defaults match the values the worker hardcoded before these were settings, so an existing
 	// deployment cooks identically until someone changes them.
 	asrModel: text('asr_model').notNull().default('base'),
-	syncMode: text('sync_mode').notNull().default('forced')
+	syncMode: text('sync_mode').notNull().default('forced'),
+	// Address the TV's join QR advertises. '' = not declared, fall back to ENCORE_PUBLIC_ORIGIN and
+	// then to the request. Global because it names the deployment's own address; stored rather than
+	// env-only because the TV's own URL is often unusable from a phone (a WSL2 host can reach itself
+	// only as `localhost`) and whoever knows the real address may not be able to restart the process.
+	joinOrigin: text('join_origin').notNull().default('')
 });
 
 // One party's own policy, keyed by room so multi-room is a row per room rather than a migration.

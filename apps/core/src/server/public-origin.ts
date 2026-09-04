@@ -17,11 +17,19 @@
 // proxy). So the honest rule is: believe a forwarding header when one is present, and otherwise say
 // http, because that is what this socket actually is.
 
+import { getApp } from './app';
+import { normalizeJoinOrigin } from '@encore/shared';
+
 /** Header a proxy uses to report the original scheme. Comma-separated when proxies chain. */
 const PROTO_HEADERS = ['x-forwarded-proto', 'x-forwarded-protocol'] as const;
 
 /**
  * Operator override for the whole computation, e.g. `ENCORE_PUBLIC_ORIGIN=http://10.69.1.169:3000`.
+ *
+ * This is the BOOT-TIME declaration; the same address is also settable at runtime as the `joinOrigin`
+ * global setting, which takes precedence for the join QR (see `joinOrigin` below). Both exist because
+ * they answer to different people: the env var belongs to whoever starts the container, the setting to
+ * whoever is standing in the room when the QR turns out to say `localhost`.
  *
  * WHY AN OVERRIDE IS NEEDED AT ALL. Deriving the origin from the request is right for phones — they
  * reached us somehow, and that route is by definition one that works for them. It is wrong for the
@@ -43,33 +51,29 @@ const PROTO_HEADERS = ['x-forwarded-proto', 'x-forwarded-protocol'] as const;
 function configuredOrigin(): string | null {
 	const raw = (typeof process !== 'undefined' ? process.env?.ENCORE_PUBLIC_ORIGIN : undefined)?.trim();
 	if (!raw) return null;
-	let parsed: URL;
-	try {
-		parsed = new URL(raw);
-	} catch {
+	// Same coercion the stored setting goes through, so the env var and the settings page cannot accept
+	// different spellings of the same address.
+	const normalized = normalizeJoinOrigin(raw);
+	if (!normalized) {
 		// Deliberately ignored rather than thrown: a typo here must not take the TV screen down. The
 		// request-derived value below is a working fallback for phones, which is the majority case.
-		console.warn(`[encore] ENCORE_PUBLIC_ORIGIN is not a valid URL, ignoring: ${raw}`);
+		console.warn(`[encore] ENCORE_PUBLIC_ORIGIN is not a usable http(s) origin, ignoring: ${raw}`);
 		return null;
 	}
-	if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-		console.warn(`[encore] ENCORE_PUBLIC_ORIGIN must be http or https, ignoring: ${raw}`);
-		return null;
-	}
-	// `origin` normalises away any path, query or trailing slash, so a value copied out of a browser
-	// address bar works as-is.
-	return parsed.origin;
+	return normalized;
 }
 
 /**
  * Scheme + authority a client should use, e.g. `http://192.168.1.20:3000`.
  *
- * `ENCORE_PUBLIC_ORIGIN` wins outright when set. Otherwise `host` is taken from the
+ * `configured` (when non-empty) wins outright. Otherwise `host` is taken from the
  * Host/X-Forwarded-Host header rather than from `url` so a LAN IP, a tunnel hostname and localhost
  * all produce a URL that resolves from where the request came from.
+ *
+ * Split out from `publicOrigin` so the resolution rule is testable without an app singleton, and so a
+ * caller that already holds a declared origin does not have to re-read it.
  */
-export function publicOrigin(request: Request, url: URL): string {
-	const configured = configuredOrigin();
+export function resolveOrigin(request: Request, url: URL, configured: string | null | undefined): string {
 	if (configured) return configured;
 	const headers = request.headers;
 	let proto = '';
@@ -84,6 +88,54 @@ export function publicOrigin(request: Request, url: URL): string {
 	if (proto !== 'http' && proto !== 'https') proto = 'http';
 	const host = (headers.get('x-forwarded-host') ?? headers.get('host') ?? url.host).split(',')[0]!.trim();
 	return `${proto}://${host}`;
+}
+
+/**
+ * Origin to use for THIS request's own concerns — the scheme the cookie must agree with.
+ *
+ * Deliberately does NOT consult the stored `joinOrigin` setting: see `joinOrigin()` below.
+ */
+export function publicOrigin(request: Request, url: URL): string {
+	return resolveOrigin(request, url, configuredOrigin());
+}
+
+/**
+ * Origin the TV advertises for joining — what the QR encodes and what the screen prints.
+ *
+ * Resolution order, most specific first:
+ *   1. the `joinOrigin` GLOBAL SETTING, so an operator can fix a wrong QR from a phone,
+ *   2. `ENCORE_PUBLIC_ORIGIN`, the same declaration made at boot,
+ *   3. the request, which is only ever right by luck for the TV (see `configuredOrigin`).
+ *
+ * WHY THIS IS SEPARATE FROM THE COOKIE PATH. The advertised join address and the route a given phone
+ * actually took can legitimately differ — a room can advertise a tunnel while a phone on the LAN
+ * reaches the box directly over plain http. Deciding the cookie's `Secure` flag from the advertised
+ * origin would mark that phone's cookie Secure, the browser would discard it, and /join would appear
+ * to succeed while /api/me 401s. Per-request derivation cannot make that mistake: a phone that really
+ * came in over the tunnel carries `X-Forwarded-Proto: https` and gets a Secure cookie on its own
+ * merits. So: this function answers "where should a phone go", `publicOrigin` answers "how did this
+ * phone get here", and they are allowed to disagree.
+ *
+ * Reads settings per call rather than caching, matching the env var's behaviour — a change from the
+ * settings page has to apply without a restart.
+ */
+export function joinOrigin(request: Request, url: URL): string {
+	let stored = '';
+	try {
+		stored = getApp().settings.getGlobal().joinOrigin;
+	} catch {
+		// The app singleton is absent under unit load and during prerender; the env var and the request
+		// are the correct answers there rather than a failed load.
+	}
+	return resolveOrigin(request, url, stored || configuredOrigin());
+}
+
+/**
+ * What an empty `joinOrigin` setting resolves to — env, else this request. Lets the settings UI show
+ * the address it would fall back to instead of an empty box the user has to guess at.
+ */
+export function fallbackJoinOrigin(request: Request, url: URL): string {
+	return publicOrigin(request, url);
 }
 
 /**
