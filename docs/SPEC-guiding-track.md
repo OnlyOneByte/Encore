@@ -1,10 +1,40 @@
 # Guiding track — scope
 
-> **Status:** scoped, not built. Grounded in the code at `46dada5`.
+> **Status:** BUILT on `feat/guiding-track`. Placement A (a slider in the sheet body) chosen by the
+> owner. Grounded in the code at `46dada5`, then merged up to `30b8b6d`.
 > Supersedes [`archive/reference/vocal-guide-spec.md`](archive/reference/vocal-guide-spec.md),
 > which was written against v0.2.0 and is wrong about the most important thing: the worker
 > **no longer discards the vocals stem.** It is already separated, encoded, written to disk, and
-> preserved by retention. Roughly a third of that spec's plan is already shipped.
+> preserved by retention. Roughly a third of that spec's plan was already shipped.
+
+## 0. What was verified, and what was not
+
+Verified against a real server (`bun run build` + `server.ts`) on an isolated copy of four real
+cooked songs, driven over the real websocket:
+
+- The backfill linked the vocals stem for real songs from real files, persisted the ref to SQLite
+  **and** the sidecar, and the refs came back after the database was deleted.
+- The `guide` command: `0.15` accepted, `9` clamped to `1`, `-3` to `0`, `0.1234` rounded to `0.12`,
+  `null` clears to inherit, `0` pins an explicit off, `rev` advances on accept, a song change resets
+  to `null`, and a malformed `player:command` frame leaves the room alive.
+- The room default: `0.2` accepted, a junk write keeps `0.2`, `5` clamps to `1`.
+- The TV mounts **both** media elements (instrumental `<video>` + vocals `<audio>`) from the room
+  default alone, with no phone interaction — and at level `0` mounts **no** second element at all,
+  which is the "the default costs nothing" claim.
+- Every state of the phone control, rendered from the real component in a real browser via
+  `/components`.
+
+**Not verified: how it SOUNDS.** No audio hardware here, and no full ffmpeg on this box — the only
+ffmpeg available is Playwright's screen-recording build, which cannot demux either m4a or FLAC. Two
+consequences, both of which need a box with real ffmpeg and speakers:
+
+1. **Drift is unmeasured.** The governor is implemented and the elements provably mount, but whether
+   the guide stays inaudibly locked across a full song is exactly the thing a green suite cannot say.
+2. **The silence refusal is unit-tested only.** `parseVolumeDetect`/`isDigitalSilence` are covered
+   against real captured ffmpeg output, but the end-to-end refusal never ran here — the probe
+   correctly reported "could not measure" and said so in the boot log. On a box with no usable probe
+   the backfill links stems **unmeasured** and logs that plainly; the two known-silent songs in the
+   live library will be refused on the deploy box, where ffmpeg is real.
 
 ## 1. What it is
 

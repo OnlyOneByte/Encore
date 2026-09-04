@@ -9,6 +9,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
+	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
 	import { cookAndQueue } from '$lib/cook-and-queue';
@@ -439,14 +440,6 @@
 		Math.round(effectiveGuideLevel({ guideLevel: playback.guideLevel }, roomGuideDefault) * 100)
 	);
 	const guidePct = $derived(guideDragging ? guideDraft : guideServerPct);
-	const guideValueLabel = $derived(!guideEnabled ? 'Off' : guidePct === 0 ? 'Off' : `${guidePct}%`);
-	const guideHint = $derived(
-		!guideEnabled
-			? 'No isolated vocals for this song yet. Re-cook it to get a guiding track.'
-			: playback.guideLevel !== null && Math.round(roomGuideDefault * 100) !== guideServerPct
-				? `Set for this song. The room default is ${Math.round(roomGuideDefault * 100)}%.`
-				: "Fades the original singer back in, quietly, for a song you don't quite know."
-	);
 
 	/**
 	 * Send at most this often while dragging. Every accepted level is authoritative playback state, so
@@ -745,30 +738,16 @@
 		<button class="ic no-drag" aria-label="skip" onclick={() => sendPlayer({ cmd: 'skip' })}><Icon name="next" /></button>
 	{/snippet}
 
-	<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Lives in the sheet
-	     BODY, not the peek — the peek is a pointer-drag surface for the sheet itself, and a range input
-	     there would fight that gesture for every drag. -->
-	<div class="gt" class:disabled={!guideEnabled}>
-		<div class="gt-head">
-			<span class="lab">Guiding track</span>
-			<span class="gt-val">{guideValueLabel}</span>
-		</div>
-		<input
-			class="gt-slider"
-			type="range"
-			min="0"
-			max="100"
-			step="5"
-			value={guidePct}
-			disabled={!guideEnabled}
-			aria-label="Guiding track — original vocal level"
-			style="--fill:{guidePct}%"
-			oninput={(e) => onGuideInput(Number(e.currentTarget.value))}
-			onchange={(e) => onGuideCommit(Number(e.currentTarget.value))}
-		/>
-		<div class="gt-scale"><span>Off</span><span>Sing-along</span></div>
-		<p class="gt-hint">{guideHint}</p>
-	</div>
+	<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
+	     sharing its labelled-row idiom; both are per-song adjustments to the same playing song. -->
+	<GuidingTrack
+		pct={guidePct}
+		available={guideEnabled}
+		roomDefaultPct={Math.round(roomGuideDefault * 100)}
+		pinned={playback.guideLevel !== null}
+		oninput={onGuideInput}
+		oncommit={onGuideCommit}
+	/>
 
 	<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
 		<span class="lab">{keyLabel}</span>
@@ -1026,51 +1005,6 @@
 	.key:not(.disabled) button:not(:disabled):active { transform: scale(0.95); }
 	.key button:disabled { cursor: default; }
 
-	/* ── guiding track ──────────────────────────────────────────────────────────
-	   The app's only other range input (the interstitial slider in settings) is left native. This one
-	   is styled because it sits in the performance surface next to the transport, where an unstyled
-	   OS slider reads as a different application. Track/fill use the same 4px + --grad idiom as the
-	   seek row in the sheet peek. */
-	.gt { margin: 10px 0 2px; }
-	.gt.disabled { opacity: 0.5; }
-	.gt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-	.gt .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
-	.gt-val { font-size: 0.78rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-	.gt-hint { font-size: 0.7rem; color: var(--ink-dim); margin: 6px 0 0; line-height: 1.45; }
-	.gt-scale { display: flex; justify-content: space-between; font-size: 0.62rem; color: var(--ink-dim); margin-top: 5px; }
-
-	.gt-slider {
-		-webkit-appearance: none; appearance: none;
-		display: block; width: 100%; height: 24px; margin: 13px 0 0;
-		background: transparent; cursor: pointer;
-	}
-	/* --fill is set inline from the current value: a gradient stop is how a native range shows a
-	   filled portion without a second element, and it keeps the paint on the track itself. */
-	.gt-slider::-webkit-slider-runnable-track {
-		height: 4px; border-radius: 4px;
-		background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) var(--fill), var(--track-bg) var(--fill));
-	}
-	.gt-slider::-moz-range-track {
-		height: 4px; border-radius: 4px;
-		background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) var(--fill), var(--track-bg) var(--fill));
-	}
-	/* 22px thumb on a 4px track: the TRACK is a hairline for legibility, the THUMB is what a thumb has
-	   to hit, and the 24px input box keeps the hit area at the row height. */
-	.gt-slider::-webkit-slider-thumb {
-		-webkit-appearance: none; appearance: none;
-		width: 22px; height: 22px; border-radius: 50%; margin-top: -9px;
-		background: var(--ink); border: 2px solid var(--accent);
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-	}
-	.gt-slider::-moz-range-thumb {
-		width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--accent);
-		background: var(--ink); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-	}
-	.gt.disabled .gt-slider { cursor: default; }
-	.gt.disabled .gt-slider::-webkit-slider-runnable-track { background: var(--track-bg); }
-	.gt.disabled .gt-slider::-moz-range-track { background: var(--track-bg); }
-	.gt.disabled .gt-slider::-webkit-slider-thumb { background: var(--ink-dim); border-color: var(--line-strong); }
-	.gt.disabled .gt-slider::-moz-range-thumb { background: var(--ink-dim); border-color: var(--line-strong); }
 
 	/* everything docked sits ABOVE the collapsed sheet — see --peek-h in app.css */
 	.mic-bar {

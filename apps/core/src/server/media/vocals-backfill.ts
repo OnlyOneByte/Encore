@@ -54,19 +54,32 @@ export interface VocalsBackfillIO {
 	resolve(ref: string): string | null;
 	/** Does the file exist on disk? */
 	exists(absPath: string): boolean;
-	/** Does it contain audible audio? `null` = could not measure (treated as audible). */
-	audible(absPath: string): Promise<boolean>;
+	/**
+	 * Measure the file. `'unknown'` means the probe could not run at all (no ffmpeg) — deliberately
+	 * distinct from `'audible'`, because the two justify the same ACTION but are very different
+	 * operational facts and the operator needs to be told which one happened.
+	 */
+	measure(absPath: string): Promise<'audible' | 'silent' | 'unknown'>;
 	/** Record the ref on the media (runtime map + durable index). */
 	link(mediaId: string, ref: string): void;
 }
 
 export interface VocalsBackfillResult {
-	/** Songs that gained a guiding track. */
+	/** Songs that gained a guiding track after measuring as audible. */
 	linked: number;
 	/** Songs whose vocals stem exists but is digital silence — deliberately NOT linked. */
 	silent: number;
 	/** Songs with no vocals file at all (cooked before the stem was published). */
 	missing: number;
+	/**
+	 * Linked WITHOUT being measured, because no probe was available.
+	 *
+	 * These are counted apart from `linked` rather than hidden inside it. Refusing to link when the
+	 * probe cannot run would mean a box with no ffmpeg offers no guiding track at all, which is far
+	 * worse than trusting a file the worker already wrote — but an operator reading "linked 4" when
+	 * two of the four are silent has been told something false. So: link, and say so.
+	 */
+	unmeasured: number;
 }
 
 /**
@@ -77,7 +90,7 @@ export async function backfillVocalsRefs(
 	catalog: Iterable<Media>,
 	io: VocalsBackfillIO
 ): Promise<VocalsBackfillResult> {
-	const res: VocalsBackfillResult = { linked: 0, silent: 0, missing: 0 };
+	const res: VocalsBackfillResult = { linked: 0, silent: 0, missing: 0, unmeasured: 0 };
 	const byId = new Map<string, Media>();
 	for (const m of catalog) byId.set(m.id, m);
 
@@ -96,12 +109,14 @@ export async function backfillVocalsRefs(
 			res.missing++;
 			continue;
 		}
-		if (!(await io.audible(found.abs))) {
+		const verdict = await io.measure(found.abs);
+		if (verdict === 'silent') {
 			res.silent++;
 			continue;
 		}
 		io.link(id, found.ref);
-		res.linked++;
+		if (verdict === 'unknown') res.unmeasured++;
+		else res.linked++;
 	}
 	return res;
 }
