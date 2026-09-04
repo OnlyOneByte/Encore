@@ -15,8 +15,17 @@
 	} from './lyrics';
 	import {
 		DEFAULT_LYRICS_BALL,
+		DEFAULT_LYRICS_CASE,
+		DEFAULT_LYRICS_FONT,
 		DEFAULT_LYRICS_HIGHLIGHT,
+		DEFAULT_LYRICS_LINES_AFTER,
+		DEFAULT_LYRICS_LINES_BEFORE,
+		DEFAULT_LYRICS_SCALE_PCT,
+		getLyricsCase,
+		getLyricsFont,
 		type LyricsBallStyleId,
+		type LyricsCaseId,
+		type LyricsFontId,
 		type LyricsHighlightId
 	} from '@encore/shared';
 
@@ -42,6 +51,18 @@
 		 */
 		ball?: LyricsBallStyleId;
 		highlight?: LyricsHighlightId;
+		/**
+		 * The reel's TYPE. Read straight off the room — unlike `ball`/`highlight` these need no clamp,
+		 * because none of them depends on whether word timings exist.
+		 *
+		 * `scalePct` is a percent of the computed distance-based scale, NOT a size. See
+		 * DEFAULT_LYRICS_SCALE_PCT for why storing an absolute size would break on a resolution change.
+		 */
+		scalePct?: number;
+		font?: LyricsFontId;
+		textCase?: LyricsCaseId;
+		linesBefore?: number;
+		linesAfter?: number;
 	}
 	let {
 		lyricsRef,
@@ -52,7 +73,12 @@
 		provenance = null,
 		leadSec = LYRICS_LEAD_SEC,
 		ball = DEFAULT_LYRICS_BALL,
-		highlight = DEFAULT_LYRICS_HIGHLIGHT
+		highlight = DEFAULT_LYRICS_HIGHLIGHT,
+		scalePct = DEFAULT_LYRICS_SCALE_PCT,
+		font = DEFAULT_LYRICS_FONT,
+		textCase = DEFAULT_LYRICS_CASE,
+		linesBefore = DEFAULT_LYRICS_LINES_BEFORE,
+		linesAfter = DEFAULT_LYRICS_LINES_AFTER
 	}: Props = $props();
 
 	let fetched = $state<LyricsDoc | null>(null);
@@ -118,7 +144,7 @@
 	const ballWord = $derived(curLine ? activeWordIndex(curLine, cuePos) : -1);
 	const show = $derived(visible && !!curLine);
 	const notice = $derived(lyricsNotice(provenance));
-	// Reel scrolling: measure where the current row sits and centre it. Measured (not row*height) so a
+	// Reel scrolling: measure where the current row sits and place it. Measured (not row*height) so a
 	// wrapped line cannot drift the whole column out of alignment.
 	let viewportEl = $state<HTMLElement | null>(null);
 	let reelEl = $state<HTMLElement | null>(null);
@@ -126,10 +152,31 @@
 	function measureReel() {
 		const row = reelEl?.querySelector<HTMLElement>('.row.current');
 		if (!row || !viewportEl) return;
-		reelOffset = -(row.offsetTop + row.offsetHeight / 2 - viewportEl.clientHeight / 2);
+		/*
+		 * CENTRED is only correct when the row counts match.
+		 *
+		 * Centring the current row makes "equal rows above and below" a geometric consequence rather
+		 * than a choice — with it centred you CANNOT show 1 before and 3 after at any viewport height.
+		 * So asymmetry has to move the anchor, not the height.
+		 *
+		 * The sign matters and is easy to get backwards (it was, first time): wanting MORE lines AFTER
+		 * means the current line must sit HIGHER, to leave room below it. So the bias is
+		 * before-minus-after, and a positive result pushes the current line down.
+		 *
+		 * `rowHeight` is read from the DOM rather than computed from the em, because the scale is a
+		 * clamp() the browser resolves and a wrapped row is taller than one line — the same reason the
+		 * offset itself is measured.
+		 */
+		const rowHeight = row.offsetHeight;
+		const bias = ((linesBefore - linesAfter) / 2) * rowHeight;
+		reelOffset = -(row.offsetTop + row.offsetHeight / 2 - viewportEl.clientHeight / 2 - bias);
 	}
 	$effect(() => {
 		void lineIdx; // re-measure on every line change
+		// Re-measure when the row counts move too: the bias and the viewport height both change, and a
+		// settings write can land mid-song.
+		void linesBefore;
+		void linesAfter;
 		measureReel();
 	});
 	// Re-measure on any SIZE change too, not just a line change. A row's height is not constant: the
@@ -152,10 +199,26 @@
 	 * ResizeObserver has less to re-measure per line change.
 	 */
 	const wordLevel = $derived(highlight === 'word');
+	/*
+	 * The type, as custom properties on the root, so the stylesheet keeps owning the geometry and this
+	 * component only supplies numbers.
+	 *
+	 * `--lyrics-rows` is the load-bearing one: the viewport height was a hardcoded 9.5em because it was
+	 * 5 rows of 1.9em leading, and that constant is exactly what a row-count setting invalidates.
+	 */
+	const rowCount = $derived(linesBefore + 1 + linesAfter);
+	const fontStack = $derived(getLyricsFont(font)?.stack ?? 'inherit');
+	const caseTransform = $derived(getLyricsCase(textCase)?.transform ?? 'none');
+	const typeStyle = $derived(
+		`--lyrics-scale: ${scalePct / 100}; --lyrics-rows: ${rowCount}; ` +
+			`--lyrics-font: ${fontStack}; --lyrics-case: ${caseTransform}; ` +
+			// An edge with no context rows must not be faded — there the current line IS the edge row.
+			`--lyrics-fade-top-on: ${linesBefore > 0 ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 ? 1 : 0}`
+	);
 </script>
 
 {#if show && doc && curLine}
-	<div class="lyrics hl-{highlight}" class:unverified role="presentation">
+	<div class="lyrics hl-{highlight}" class:unverified role="presentation" style={typeStyle}>
 		<!--
 			A SCROLLING REEL, not a two-slot swap. Previously the current line was replaced in place and
 			the "next" line jumped up into it, which read as a hard cut on every line change. Here every
@@ -247,35 +310,56 @@
 	 * exact, and pink/white against grey is already a stronger cue than size.
 	 */
 	.viewport {
-		font-size: clamp(3.1rem, 6.4vh, 6rem);
+		/*
+		 * The distance-based scale from the TV type work, times the room's preference.
+		 *
+		 * A MULTIPLIER, not a replacement: the clamp is what makes the reel adapt to the screen, so a
+		 * stored pixel size would render wrong the moment the TV's resolution changed. `--lyrics-scale`
+		 * is bounded well away from 0 in @encore/shared for the same reason.
+		 */
+		font-size: calc(clamp(3.1rem, 6.4vh, 6rem) * var(--lyrics-scale, 1));
 		font-weight: 800;
+		font-family: var(--lyrics-font, inherit);
+		text-transform: var(--lyrics-case, none);
 		width: 100%;
 		/*
-		 * FIVE rows: two sung lines above, the current one, two upcoming below — enough context to see
-		 * the shape of the verse coming instead of one line at a time. Rows are 1.9em (line-height), so
-		 * 5 x 1.9 = 9.5em.
+		 * Height is DERIVED from the row count, not a constant. It was 9.5em because that is 5 rows of
+		 * 1.9em leading — two sung above, the current one, two coming below. The moment the counts became
+		 * a setting that constant was a bug waiting to be seen, so the arithmetic is written out instead.
 		 *
-		 * The mask fades the OUTER rows rather than clipping them, which is what makes the reel read as
-		 * a continuous scroll: a line dims away as it leaves instead of vanishing at a hard edge.
+		 * The mask fades the OUTER rows rather than clipping them, which is what makes the reel read as a
+		 * continuous scroll: a line dims away as it leaves instead of vanishing at a hard edge.
+		 *
+		 * The fade stops are in `em` (one row deep at each edge), NOT the percentages they used to be.
+		 * Percentages were tuned for exactly five rows: at three rows a 13% stop reaches into the current
+		 * line and dims the words being sung, and at seven rows it barely fades at all. In em the fade is
+		 * one row regardless of how many there are.
+		 *
+		 * An edge with NO context rows is not faded at all. With `linesBefore: 0` the current line IS the
+		 * top row, so fading the top edge dims the words being sung — caught eyes-on, and the reason the
+		 * two edges are separate variables rather than one. There is nothing there to fade away to.
 		 */
-		height: 9.5em;
+		--lyrics-row-h: 1.9em;
+		--lyrics-fade-top: calc(var(--lyrics-row-h) * var(--lyrics-fade-top-on, 1));
+		--lyrics-fade-bot: calc(var(--lyrics-row-h) * var(--lyrics-fade-bot-on, 1));
+		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-h));
 		overflow: hidden;
 		mask-image: linear-gradient(
 			to bottom,
-			transparent 0%,
-			rgba(0, 0, 0, 0.35) 13%,
-			#000 32%,
-			#000 68%,
-			rgba(0, 0, 0, 0.35) 87%,
+			transparent 0,
+			rgba(0, 0, 0, 0.35) calc(var(--lyrics-fade-top) * 0.45),
+			#000 var(--lyrics-fade-top),
+			#000 calc(100% - var(--lyrics-fade-bot)),
+			rgba(0, 0, 0, 0.35) calc(100% - var(--lyrics-fade-bot) * 0.45),
 			transparent 100%
 		);
 		-webkit-mask-image: linear-gradient(
 			to bottom,
-			transparent 0%,
-			rgba(0, 0, 0, 0.35) 13%,
-			#000 32%,
-			#000 68%,
-			rgba(0, 0, 0, 0.35) 87%,
+			transparent 0,
+			rgba(0, 0, 0, 0.35) calc(var(--lyrics-fade-top) * 0.45),
+			#000 var(--lyrics-fade-top),
+			#000 calc(100% - var(--lyrics-fade-bot)),
+			rgba(0, 0, 0, 0.35) calc(100% - var(--lyrics-fade-bot) * 0.45),
 			transparent 100%
 		);
 	}
@@ -287,9 +371,14 @@
 	.row {
 		/*
 		 * Loose leading is LOAD-BEARING: the ball is absolutely positioned above its word, so at tight
-		 * leading it landed on the previous wrapped line ("this" in "Is this the").
+		 * leading it landed on the previous wrapped line ("this" in "Is this the"). That is also why
+		 * leading is NOT a room setting — it would let a room silently break the marker.
+		 *
+		 * Reads the same variable the viewport's height is computed from, so the row leading and the row
+		 * count can never disagree. As an em it resolves against the row's own (inherited) font size, so
+		 * it means exactly what the bare `1.9` did.
 		 */
-		line-height: 1.9;
+		line-height: var(--lyrics-row-h, 1.9em);
 		max-width: 100%;
 		color: rgba(255, 255, 255, 0.62); /* upcoming — must be READ, not merely sensed */
 		transition: color 0.3s ease;

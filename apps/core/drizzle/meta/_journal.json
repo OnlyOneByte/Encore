@@ -43,6 +43,13 @@
       "when": 1788551192771,
       "tag": "0005_attempt_stages",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788551876656,
+      "tag": "0006_lyrics_text",
+      "breakpoints": true
     }
   ]
 }

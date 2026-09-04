@@ -250,3 +250,86 @@ describe('SettingsRepository room scope: lyrics presentation', () => {
 		expect(room.lyricsHighlight).toBe('word');
 	});
 });
+
+describe('SettingsRepository room scope: lyrics text', () => {
+	it('defaults reproduce the reel that shipped before these columns existed', () => {
+		const room = freshRepo().getRoom();
+		expect(room.lyricsScalePct).toBe(100);
+		expect(room.lyricsFont).toBe('system');
+		expect(room.lyricsCase).toBe('natural');
+		expect(room.lyricsLinesBefore).toBe(2);
+		expect(room.lyricsLinesAfter).toBe(2);
+	});
+
+	it('round-trips all five through a write and a re-read', () => {
+		const repo = freshRepo();
+		repo.setRoom({
+			lyricsScalePct: 130,
+			lyricsFont: 'serif',
+			lyricsCase: 'upper',
+			lyricsLinesBefore: 1,
+			lyricsLinesAfter: 3
+		});
+		const room = repo.getRoom();
+		expect(room.lyricsScalePct).toBe(130);
+		expect(room.lyricsFont).toBe('serif');
+		expect(room.lyricsCase).toBe('upper');
+		expect(room.lyricsLinesBefore).toBe(1);
+		expect(room.lyricsLinesAfter).toBe(3);
+	});
+
+	it('persists ZERO lines, rather than treating it as unset and falling back to 2', () => {
+		// The bug this guards: 0 is falsy, so a `|| default` anywhere in the read path would silently
+		// restore the history a room explicitly turned off.
+		const repo = freshRepo();
+		repo.setRoom({ lyricsLinesBefore: 0, lyricsLinesAfter: 0 });
+		const room = repo.getRoom();
+		expect(room.lyricsLinesBefore).toBe(0);
+		expect(room.lyricsLinesAfter).toBe(0);
+	});
+
+	it('a patch touching only the font leaves the other four alone', () => {
+		const repo = freshRepo();
+		repo.setRoom({ lyricsScalePct: 145, lyricsCase: 'lower', lyricsLinesAfter: 4 });
+		repo.setRoom({ lyricsFont: 'mono' });
+		const room = repo.getRoom();
+		expect(room.lyricsFont).toBe('mono');
+		expect(room.lyricsScalePct).toBe(145);
+		expect(room.lyricsCase).toBe('lower');
+		expect(room.lyricsLinesAfter).toBe(4);
+	});
+
+	it('an out-of-band scale is clamped on write, not persisted raw', () => {
+		const repo = freshRepo();
+		repo.setRoom({ lyricsScalePct: 5 });
+		expect(repo.getRoom().lyricsScalePct).toBe(80);
+		repo.setRoom({ lyricsScalePct: 400 });
+		expect(repo.getRoom().lyricsScalePct).toBe(160);
+	});
+
+	it('an invalid font keeps the room CURRENT value rather than resetting to the default', () => {
+		const repo = freshRepo();
+		repo.setRoom({ lyricsFont: 'serif' });
+		repo.setRoom({ lyricsFont: 'papyrus' as never });
+		expect(repo.getRoom().lyricsFont).toBe('serif');
+	});
+
+	it('two rooms hold different type, since this is per-party', () => {
+		const repo = freshRepo();
+		repo.setRoom({ lyricsScalePct: 160, lyricsCase: 'upper' }, 'far-tv');
+		repo.setRoom({ lyricsScalePct: 90, lyricsCase: 'natural' }, 'close-tv');
+		expect(repo.getRoom('far-tv').lyricsScalePct).toBe(160);
+		expect(repo.getRoom('close-tv').lyricsScalePct).toBe(90);
+		expect(repo.getRoom('far-tv').lyricsCase).toBe('upper');
+	});
+
+	it('text settings are untouched by a marker/highlight write', () => {
+		// The two groups are independent: one is the type, the other the marks drawn on it.
+		const repo = freshRepo();
+		repo.setRoom({ lyricsFont: 'mono', lyricsLinesBefore: 0 });
+		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'line' });
+		const room = repo.getRoom();
+		expect(room.lyricsFont).toBe('mono');
+		expect(room.lyricsLinesBefore).toBe(0);
+	});
+});

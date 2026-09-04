@@ -17,13 +17,21 @@
 		SYNC_MODES,
 		LYRICS_BALL_STYLES,
 		LYRICS_HIGHLIGHTS,
+		LYRICS_FONTS,
+		LYRICS_CASES,
 		MAX_LYRICS_LEAD_MS,
+		MIN_LYRICS_SCALE_PCT,
+		MAX_LYRICS_SCALE_PCT,
+		MAX_LYRICS_LINES_BEFORE,
+		MAX_LYRICS_LINES_AFTER,
 		qualityRank,
 		normalizeJoinOrigin,
 		resolveLyricsPresentation,
 		type EffectiveSettings,
 		type GlobalSettings,
 		type LyricsBallStyleId,
+		type LyricsCaseId,
+		type LyricsFontId,
 		type LyricsHighlightId,
 		type RoomSettings,
 		type SeparatorEngineId,
@@ -104,6 +112,9 @@
 		LYRICS_HIGHLIGHTS.find((h) => h.id === resolved.highlight)?.label.toLowerCase() ?? resolved.highlight
 	);
 	let resolvedBall = $derived(resolved.ball !== 'off');
+
+	let fontNote = $derived(LYRICS_FONTS.find((f) => f.id === settings.room.lyricsFont)?.note ?? '');
+	let caseNote = $derived(LYRICS_CASES.find((c) => c.id === settings.room.lyricsCase)?.note ?? '');
 
 	/**
 	 * Apply a patch optimistically, then reconcile on the authoritative response — the same shape the
@@ -424,6 +435,88 @@
 			{settings.room.lyricsLeadMs === 0
 				? 'Lit exactly on the beat — which reads as late, because you have to see a word before singing it.'
 				: 'How far ahead of the music the words light up. Nudge it up if the room is singing behind.'}
+		</p>
+
+		<label class="field" for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</label>
+		<input
+			id="lyrics-scale"
+			type="range"
+			min={MIN_LYRICS_SCALE_PCT}
+			max={MAX_LYRICS_SCALE_PCT}
+			step="5"
+			value={settings.room.lyricsScalePct}
+			onchange={(e) => onroom({ lyricsScalePct: Number(e.currentTarget.value) })}
+		/>
+		<!--
+			Says PERCENT OF, not a size, because that is what it is: the TV already picks a size from its
+			own height, and this scales that. Saying "48px" would be a number that means nothing on a
+			different screen.
+		-->
+		<p class="hint">
+			Relative to the size the TV picks for its own screen. {settings.room.lyricsScalePct === 100
+				? 'Right now, exactly that.'
+				: settings.room.lyricsScalePct > 100
+					? 'Bigger, so fewer words fit a line.'
+					: 'Smaller, so more of the verse fits.'}
+		</p>
+
+		<label class="field" for="lyrics-font">Font</label>
+		<select
+			id="lyrics-font"
+			value={settings.room.lyricsFont}
+			onchange={(e) => onroom({ lyricsFont: e.currentTarget.value as LyricsFontId })}
+		>
+			{#each LYRICS_FONTS as f (f.id)}
+				<option value={f.id}>{f.label}</option>
+			{/each}
+		</select>
+		{#if fontNote}<p class="hint">{fontNote}</p>{/if}
+
+		<label class="field" for="lyrics-case">Letter case</label>
+		<select
+			id="lyrics-case"
+			value={settings.room.lyricsCase}
+			onchange={(e) => onroom({ lyricsCase: e.currentTarget.value as LyricsCaseId })}
+		>
+			{#each LYRICS_CASES as c (c.id)}
+				<option value={c.id}>{c.label}</option>
+			{/each}
+		</select>
+		{#if caseNote}<p class="hint">{caseNote}</p>{/if}
+
+		<label class="field" for="lyrics-before">Lines already sung · {settings.room.lyricsLinesBefore}</label>
+		<input
+			id="lyrics-before"
+			type="range"
+			min="0"
+			max={MAX_LYRICS_LINES_BEFORE}
+			step="1"
+			value={settings.room.lyricsLinesBefore}
+			onchange={(e) => onroom({ lyricsLinesBefore: Number(e.currentTarget.value) })}
+		/>
+
+		<label class="field" for="lyrics-after">Lines coming up · {settings.room.lyricsLinesAfter}</label>
+		<input
+			id="lyrics-after"
+			type="range"
+			min="0"
+			max={MAX_LYRICS_LINES_AFTER}
+			step="1"
+			value={settings.room.lyricsLinesAfter}
+			onchange={(e) => onroom({ lyricsLinesAfter: Number(e.currentTarget.value) })}
+		/>
+		<!--
+			One hint for the pair, because the interesting cases are combinations. Zero on both is legal
+			and is the one worth naming, since it looks like a mistake and is not.
+		-->
+		<p class="hint">
+			{settings.room.lyricsLinesBefore === 0 && settings.room.lyricsLinesAfter === 0
+				? 'Just the line being sung, nothing around it.'
+				: settings.room.lyricsLinesBefore === 0
+					? 'The current line sits at the top, with what is coming below it.'
+					: settings.room.lyricsLinesAfter === 0
+						? 'The current line sits at the bottom — no preview of what is next.'
+						: 'How much of the verse shows around the line being sung.'}
 		</p>
 	</section>
 
