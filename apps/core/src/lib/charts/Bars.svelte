@@ -66,10 +66,17 @@
 		white-space: nowrap;
 	}
 	.value {
-		font-size: 0.82rem;
+		/*
+		 * The count IS the data, so it reads at the label's weight rather than as a footnote. At
+		 * 0.82rem/--ink-dim it was the smallest, dimmest thing in a row whose entire purpose is that
+		 * number. min-width keeps the right edge stable so a column of values aligns.
+		 */
+		font-size: 0.9rem;
 		font-variant-numeric: tabular-nums;
-		color: var(--ink-dim);
+		color: var(--ink);
 		flex: none;
+		min-width: 5ch;
+		text-align: right;
 	}
 	.track {
 		height: 8px;

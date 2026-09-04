@@ -69,6 +69,53 @@
 	const stamp = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
 	/** Only the model fields this step actually carries — a null is "not applicable", not "unknown". */
 	const usedModels = (m: Record<string, string | null>) => Object.entries(m).filter(([, v]) => v);
+
+	/**
+	 * Plain wording for the internal vocabulary. The database stores `fetch`/`stems`/`align` and
+	 * `abandoned`, which describe the implementation rather than what happened, and "abandoned" in
+	 * particular reads as a decision someone made rather than a step that was given up on and retried.
+	 */
+	const STEP_LABELS: Record<string, string> = {
+		fetch: 'download',
+		stems: 'remove vocals',
+		align: 'time lyrics',
+		score: 'pitch track',
+		'stems-upgrade': 'redo vocals'
+	};
+	const stepLabel = (jobType: string) => STEP_LABELS[jobType] ?? jobType;
+
+	const OUTCOME_LABELS: Record<string, string> = {
+		ready: 'done',
+		failed: 'failed',
+		abandoned: 'gave up, retried',
+		canceled: 'canceled',
+		running: 'running'
+	};
+	const outcomeLabel = (outcome: string | null) => OUTCOME_LABELS[outcome ?? 'running'] ?? (outcome ?? 'running');
+
+	/** The model/hardware keys, in words. `asrModel` and `syncMode` are field names, not English. */
+	const FACT_LABELS: Record<string, string> = {
+		engine: 'separator',
+		model: 'model',
+		backend: 'runtime',
+		device: 'hardware',
+		asrModel: 'speech model',
+		syncMode: 'timing'
+	};
+	const factLabel = (k: string) => FACT_LABELS[k] ?? k;
+
+	/** The worker's own sub-step names. `separating`/`aligning` describe the code, not the work. */
+	const STAGE_LABELS: Record<string, string> = {
+		downloading: 'downloading',
+		separating: 'removing vocals',
+		aligning: 'timing lyrics'
+	};
+	const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage;
+
+	/** A song length reads as 4:14, not 254s. */
+	function songLength(sec: number): string {
+		return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+	}
 </script>
 
 <svelte:head><title>Encore — audit {mediaId}</title></svelte:head>
@@ -77,60 +124,64 @@
 	<p class="back"><a href="/metrics"><Icon name="arrow-left" size="0.9em" /> metrics</a></p>
 
 	{#if error}
-		<p class="note">{error}</p>
+		<p class="note" role="alert">{error}</p>
 	{:else if !audit}
-		<p class="note">Loading…</p>
+		<p class="note" role="status">Loading…</p>
 	{:else}
 		<h1>{audit.media?.titleCanonical ?? audit.media?.title ?? mediaId}</h1>
 		{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
 		<p class="note">
-			{mediaId}{#if audit.media}{' · '}{audit.media.durationSec}s{/if} · {audit.plays.length} recorded plays
+			{#if audit.media}{songLength(audit.media.durationSec)} long · {/if}sung {audit.plays.length} times
 		</p>
 
 		{#if !audit.hasHistory}
-			<!-- Distinguishing "never processed" from "processed before we started recording" matters: the
-			     second is the normal state for every song already in an existing library. -->
 			<div class="card">
 				<p class="note">
-					No processing history. This song was cooked before the attempt ledger existed, so its timings
-					were never recorded — they are not recoverable.
+					No history for this song — it was processed before this page existed, so its timings were
+					never recorded.
 				</p>
 			</div>
+		{:else}
+			<p class="note">
+				Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several
+				steps, and a step can be retried.
+			</p>
 		{/if}
 
 		{#each audit.cooks as cook, i (cook.cookId)}
 			<div class="card">
 				<header>
-					<h2>Cook {i + 1}</h2>
-					<span class="pill {cook.outcome}">{cook.outcome}</span>
+					<h2>Run {i + 1}</h2>
+					<span class="pill {cook.outcome}">{outcomeLabel(cook.outcome)}</span>
 				</header>
 				<p class="note">
-					{stamp(cook.startedAt)} · total {dur(cook.totalMs)}
-					{#if cook.totalMs === null}(still running){/if}
+					{stamp(cook.startedAt)}{#if cook.totalMs !== null}{' · took '}{dur(cook.totalMs)}{:else}{' · still going'}{/if}
 				</p>
 
 				<ol class="steps">
 					{#each cook.attempts as a (a.id)}
 						<li class:failed={a.outcome === 'failed'} class:abandoned={a.outcome === 'abandoned'}>
 							<div class="row">
-								<strong>{a.jobType}</strong>
-								{#if a.attempt > 1}<span class="retry">attempt {a.attempt}</span>{/if}
-								<span class="pill {a.outcome ?? 'running'}">{a.outcome ?? 'running'}</span>
+								<strong>{stepLabel(a.jobType)}</strong>
+								{#if a.attempt > 1}<span class="retry">try {a.attempt}</span>{/if}
+								<span class="pill {a.outcome ?? 'running'}">{outcomeLabel(a.outcome)}</span>
 							</div>
-							<div class="row note">
-								<span>ran {dur(a.processingMs)}</span>
-								<span>queued {dur(a.queueWaitMs)}</span>
-								{#if a.rtFactor !== null}<span>{a.rtFactor.toFixed(2)}× realtime</span>{/if}
-								{#if a.workerId}<span>{a.workerId}</span>{/if}
+							<div class="metrics-row">
+								<span class="ran">{dur(a.processingMs)}</span>
+								<span class="secondary">waited {dur(a.queueWaitMs)}</span>
+								{#if a.rtFactor !== null}<span class="secondary">{a.rtFactor.toFixed(2)}× song length</span>{/if}
+								{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
 							</div>
 							{#if usedModels(a.models).length}
-								<div class="row note">
-									{#each usedModels(a.models) as [k, v] (k)}<span>{k}: {v}</span>{/each}
-								</div>
+								<dl class="facts">
+									{#each usedModels(a.models) as [k, v] (k)}
+										<div><dt>{factLabel(k)}</dt><dd>{v}</dd></div>
+									{/each}
+								</dl>
 							{/if}
 							{#if a.stages.length}
-								<div class="row note">
-									{#each a.stages as s (s.stage)}<span>{s.stage} {dur(s.ms)}</span>{/each}
+								<div class="metrics-row">
+									{#each a.stages as s (s.stage)}<span class="secondary">{stageLabel(s.stage)} {dur(s.ms)}</span>{/each}
 								</div>
 							{/if}
 							{#if a.error}<p class="err">{a.error}</p>{/if}
@@ -152,10 +203,19 @@
 </section>
 
 <style>
+	/*
+	 * Capped narrower than the 1080px shell on purpose. This is a TIMELINE of short rows, and at full
+	 * desktop width each row became a very long line whose start and end were hard to associate.
+	 */
 	.audit {
 		display: grid;
 		gap: 1rem;
 		padding: 1rem 0 3rem;
+		max-width: 760px;
+	}
+	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
+	.card {
+		padding: 1rem 1.1rem;
 	}
 	.back a {
 		color: var(--ink-dim);
@@ -163,15 +223,19 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3rem;
+		min-height: 32px;
 	}
 	h1 {
 		font-size: 1.25rem;
 		margin: 0;
 	}
+	/* The cook owns the attempts beneath it, so its header takes full ink and a dividing rule. At
+	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
 	h2 {
-		font-size: 0.95rem;
+		font-size: 1rem;
 		margin: 0;
-		color: var(--ink-dim);
+		color: var(--ink);
+		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
 	}
@@ -193,26 +257,73 @@
 	}
 	.steps {
 		list-style: none;
-		margin: 0.8rem 0 0;
+		margin: 0.9rem 0 0;
 		padding: 0;
 		display: grid;
-		gap: 0.75rem;
+		gap: 0.6rem;
 	}
+	/*
+	 * Each attempt is a NESTED PANEL on the cook's card, not a floating stripe. A 2px left border was
+	 * the only thing marking one level of nesting, so cook and attempt read as the same depth — which
+	 * is precisely the parent/child relationship cookId exists to express.
+	 */
 	.steps li {
+		background: var(--bg2);
 		border-left: 2px solid var(--line-strong);
-		padding-left: 0.7rem;
+		border-radius: var(--radius-sm);
+		padding: 0.6rem 0.75rem;
 	}
+	/* A whole tinted block, so the eye FINDS the bad attempt instead of reading for it. The border
+	   alone left a failure looking like its neighbours. */
 	.steps li.failed {
 		border-left-color: var(--danger);
+		background: var(--danger-bg);
 	}
 	.steps li.abandoned {
 		border-left-color: var(--warn);
+		background: var(--card2);
 	}
 	.row {
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.5rem 0.9rem;
 		align-items: baseline;
+	}
+	.metrics-row {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.35rem 0.9rem;
+		align-items: baseline;
+		margin-top: 0.35rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.ran {
+		font-size: 0.9rem;
+		font-weight: 600;
+		color: var(--ink);
+	}
+	.secondary {
+		font-size: 0.75rem;
+		color: var(--ink-dim);
+	}
+	/* Aligned pairs instead of a run-on line: keys stay dim, values take ink. */
+	.facts {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
+		gap: 0.2rem 1.2rem;
+		margin: 0.45rem 0 0;
+		font-size: 0.75rem;
+	}
+	.facts div {
+		display: flex;
+		gap: 0.35rem;
+	}
+	.facts dt {
+		color: var(--ink-dim);
+	}
+	.facts dd {
+		margin: 0;
+		color: var(--ink);
 	}
 	.retry {
 		font-size: 0.72rem;
@@ -226,6 +337,7 @@
 		border-radius: 999px;
 		border: 1px solid var(--line-strong);
 		color: var(--ink-dim);
+		white-space: nowrap;
 	}
 	.pill.ready {
 		color: var(--ok);
