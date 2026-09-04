@@ -20,7 +20,14 @@ export interface MakeKaraokeDeps {
 }
 
 // A media never queued yet still gets cooked, just at the back of the priority order.
-const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
+/**
+ * Priority for a cook nobody is waiting on: sorts after every queued turn.
+ *
+ * Exported because two other places reason about it — `backfill.ts` deliberately reuses the value for
+ * the lyrics backfill (both mean "nobody is waiting on this"), and the client's cook-and-queue rule
+ * exists precisely to avoid a singer's cook being filed here.
+ */
+export const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
 
 /**
  * The deterministic MediaStore key for a media's instrumental stem (stored on Media.instrumentalRef).

@@ -10,6 +10,7 @@
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import { MicPitch } from '$lib/mic/mic-capture';
+	import { cookAndQueue } from '$lib/cook-and-queue';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
 	import { isPlayable } from '@encore/shared';
@@ -129,6 +130,18 @@
 		store?.addSong(mediaId);
 		if (navigator.vibrate) navigator.vibrate(8);
 		setTimeout(loadShortcuts, 300); // refresh popular/recent after the add lands
+	}
+
+	/**
+	 * "✨ Sing this" — the raw row's ONE action: take the turn, then start the cook.
+	 *
+	 * Order is load-bearing, not stylistic: the core derives the cook's job priority from the rotation
+	 * position of the turns pointing at that media, so cooking first files the job at
+	 * NO_QUEUE_PRIORITY — behind the lyrics backfill — while a singer stands there waiting. See
+	 * $lib/cook-and-queue.ts for the full reasoning and its test.
+	 */
+	function singThis(mediaId: string) {
+		cookAndQueue({ queue: () => addSong(mediaId), cook: () => void makeKaraoke(mediaId) });
 	}
 
 	/** Request stem-separation ("make karaoke") — flips the song to a cooking file server-side; the
@@ -543,7 +556,7 @@
 						pct={liveOf(m.id)?.pct ?? 0}
 						inQueue={inMyQueue(m.id)}
 						onadd={() => addSong(m.id)}
-						onmake={canCook(r) ? () => makeKaraoke(m.id) : undefined}
+						onmake={canCook(r) ? () => singThis(m.id) : undefined}
 					/>
 				{/each}
 			{/if}
@@ -559,7 +572,7 @@
 					{@const r = readinessFor(m)}
 					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
 						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
-						onmake={canCook(r) ? () => makeKaraoke(m.id) : undefined} />
+						onmake={canCook(r) ? () => singThis(m.id) : undefined} />
 				{/each}
 			{/if}
 			{#if recentRows.length}
@@ -568,7 +581,7 @@
 					{@const r = readinessFor(m)}
 					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
 						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
-						onmake={canCook(r) ? () => makeKaraoke(m.id) : undefined} />
+						onmake={canCook(r) ? () => singThis(m.id) : undefined} />
 				{/each}
 			{/if}
 			{#if !popularRows.length && !recentRows.length && !library.length}
