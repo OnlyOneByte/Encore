@@ -755,7 +755,7 @@
 	}
 	.chip.ok { color: var(--ok); }
 	.chip.warn { color: var(--warn); }
-	.chip.active { background: var(--grad); border-color: transparent; color: #fff; }
+	.chip.active { background: var(--accent-strong); border-color: transparent; color: var(--on-accent); }
 	.chip:active { transform: scale(0.95); }
 	.grouphead {
 		font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase;
@@ -768,7 +768,9 @@
 
 	/* playback controls, rendered into the sheet's peek */
 	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
-	.ic.play { background: var(--grad); border-color: transparent; width: 44px; height: 44px; }
+	/* The one filled transport control. Solid accent + paired ink, because in stage 1 the glyph became
+	   an SVG drawn with currentColor — on --grad that mark sat at 2.84:1, under the 3:1 non-text floor. */
+	.ic.play { background: var(--accent-strong); color: var(--on-accent); border-color: transparent; width: 44px; height: 44px; }
 	.ic:active { transform: scale(0.92); }
 
 	.key { display: flex; gap: 6px; margin: 6px 0 2px; align-items: center; }
@@ -790,7 +792,7 @@
 	}
 	.mic-btn {
 		border: 0; border-radius: 999px; padding: 12px 22px; font-size: 1rem; font-weight: 800;
-		background: var(--grad); color: #fff; box-shadow: var(--shadow); cursor: pointer;
+		background: var(--accent-strong); color: var(--on-accent); box-shadow: var(--shadow); cursor: pointer;
 	}
 	.mic-live { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent2); }
 	.mic-score {
@@ -831,7 +833,7 @@
 		padding: 12px 16px; box-shadow: var(--shadow); font-size: 0.9rem; max-width: 90vw;
 	}
 	.undo-toast button {
-		border: 0; background: var(--grad); color: #fff; font-weight: 700;
+		border: 0; background: var(--accent-strong); color: var(--on-accent); font-weight: 700;
 		border-radius: 8px; padding: 6px 12px; cursor: pointer;
 	}
 	.error-toast {

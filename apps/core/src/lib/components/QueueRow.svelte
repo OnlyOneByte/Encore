@@ -60,7 +60,7 @@
 		width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
 		font-size: 0.8rem; font-weight: 700; background: var(--card2); color: var(--ink-dim); flex: 0 0 auto;
 	}
-	.up .seq { background: var(--grad); color: #fff; }
+	.up .seq { background: var(--accent-strong); color: var(--on-accent); }
 	.meta { min-width: 0; }
 	.t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }

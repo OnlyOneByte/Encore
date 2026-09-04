@@ -91,20 +91,20 @@
 	.add {
 		min-height: 44px;
 		flex: 0 0 auto; border: 0; border-radius: 10px; padding: 9px 12px; font-weight: 700;
-		font-size: 0.82rem; background: var(--grad); color: #fff; cursor: pointer;
+		font-size: 0.82rem; background: var(--accent-strong); color: var(--on-accent); cursor: pointer;
 	}
 	.add:active { transform: scale(0.94); }
 	.add.queued { background: var(--card2); border: 1px solid var(--ok); color: var(--ok); }
 	/*
-	 * The raw row's single primary action. It takes the gradient because it IS the primary intent on
-	 * this row — and because the weight used to sit on the wrong button: `.add` (gradient) was the
+	 * The raw row's single primary action. It takes the accent fill because it IS the primary intent on
+	 * this row — and because the weight used to sit on the wrong button: `.add` was the
 	 * dead end (a turn that could never become ready) while the cook was styled as a secondary
 	 * outline. The hierarchy was not missing, it was inverted.
 	 */
 	.sing {
 		min-height: 44px;
 		flex: 0 0 auto; border: 0; border-radius: 10px; padding: 9px 14px; font-weight: 700;
-		font-size: 0.82rem; background: var(--grad); color: #fff; cursor: pointer;
+		font-size: 0.82rem; background: var(--accent-strong); color: var(--on-accent); cursor: pointer;
 	}
 	.sing:active { transform: scale(0.94); }
 </style>

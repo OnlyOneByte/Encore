@@ -19,7 +19,23 @@
 	--accent2: #ff5cae;
 	--ok: #33d6a6;
 	--warn: #ffb84d;
+	/*
+	 * --grad is DECORATION ONLY: progress fills, the wordmark via background-clip. NEVER put a text
+	 * label on it. White on the pink stop measures 2.84:1 — below even the 3:1 non-text floor, let
+	 * alone AA's 4.5:1 for the 0.82rem/700 labels these buttons actually use. There is no ink that
+	 * fixes it either: pure black scrapes 4.83:1 on the violet stop and a barely-tinted #12081f
+	 * already fails at 4.47:1, because #7c5cff sits at OKLCH L≈0.56 — too light for white, too dark
+	 * for black. Text-bearing surfaces use --accent-strong instead.
+	 */
 	--grad: linear-gradient(135deg, var(--accent), var(--accent2));
+	/*
+	 * The actionable accent: a solid fill that CAN carry a label. A 3% darken of --accent, visually
+	 * near-identical, but white on it measures 4.88:1 — AA with margin. Solid rather than a gradient
+	 * is also the honest signal: gradient reads as brand chrome, one flat colour reads as "tap this".
+	 */
+	--accent-strong: #7455f0;
+	/* The only ink permitted on --accent-strong. Paired so the two can never drift apart. */
+	--on-accent: #ffffff;
 
 	/* Surfaces tinted toward the accent, for a row that is cooking or is yours. Tokens because the
 	   codebase kept re-inventing them as one-off hexes, which is what breaks a theme swap. */
@@ -132,8 +148,8 @@ body {
 .btn-accent {
 	border: 0;
 	border-radius: 10px;
-	background: var(--grad);
-	color: #fff;
+	background: var(--accent-strong);
+	color: var(--on-accent);
 	font-weight: 700;
 	cursor: pointer;
 }
