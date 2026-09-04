@@ -1157,13 +1157,11 @@
 	.topbar { padding: 16px 18px 8px; }
 
 	/*
-	 * Respect a reduced-motion preference. Three animations otherwise run unguarded and indefinitely:
-	 * micpulse (the whole time a guest holds the mic through their turn), the search spinner, and the
-	 * skeleton shimmer. Disable them; a static spinner/dot is a fine resting state.
+	 * Respect a reduced-motion preference. Both remaining animations otherwise run unguarded and
+	 * indefinitely: the search spinner and the skeleton shimmer. Disable them; a static spinner is a
+	 * fine resting state. (The mic pulse this block also covered went away with live scoring.)
 	 */
 	@media (prefers-reduced-motion: reduce) {
-		.mic-live .dot,
-		.mic-score .dot,
 		.search-spinner,
 		.skel-thumb,
 		.skel-line {

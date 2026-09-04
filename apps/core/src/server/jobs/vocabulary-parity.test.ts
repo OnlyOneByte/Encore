@@ -43,7 +43,7 @@ describe('TS↔Python vocabulary parity', () => {
 	test('JobType matches the worker Action enum', () => {
 		// JobType is a bare union type, so it has no runtime value to import — the union is asserted
 		// against the Python enum via an explicit list that TypeScript itself checks below.
-		const tsJobTypes = ['fetch', 'stems', 'stems-upgrade', 'align', 'score'] as const;
+		const tsJobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
 		// If JobType ever gains or loses a member, this assignment stops compiling, so the list above
 		// cannot silently fall behind the type it mirrors.
 		const _exhaustive: readonly import('@encore/shared').JobType[] = tsJobTypes;
