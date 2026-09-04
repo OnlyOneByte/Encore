@@ -52,5 +52,12 @@ export function stageBackgroundCss(
 		}
 		case 'solid':
 			return stageHueToHex(hue);
+		case 'visualizer':
+			// The FLOOR under the canvas, not the visualizer itself. A visualizer is a drawing loop, not
+			// a CSS value, so it cannot be expressed here at all — `VisualizerStage` mounts inside this
+			// same layer and paints over this black. Returning black rather than `transparent` matters:
+			// it keeps the layer opaque, so a canvas that has not painted its first frame yet shows the
+			// stage's own floor instead of whatever is beneath it.
+			return '#000';
 	}
 }
