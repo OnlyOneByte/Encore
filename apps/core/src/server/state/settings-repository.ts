@@ -68,7 +68,10 @@ export class SettingsRepository {
 		return normalizeRoomSettings({
 			tvProgressStyle: row.tvProgressStyle,
 			interstitialMs: row.interstitialMs,
-			maxQualityRank: row.maxQualityRank
+			maxQualityRank: row.maxQualityRank,
+			lyricsBall: row.lyricsBall,
+			lyricsHighlight: row.lyricsHighlight,
+			lyricsLeadMs: row.lyricsLeadMs
 		});
 	}
 
