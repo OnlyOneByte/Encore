@@ -2,7 +2,7 @@
 // authoritative state; this is hydrated on boot and persisted asynchronously.
 // Mirrors the domain types in @encore/shared. See docs/ARCHITECTURE.md.
 
-import { sqliteTable, text, integer, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
+import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
 export const rooms = sqliteTable('rooms', {
@@ -44,6 +44,11 @@ export const media = sqliteTable('media', {
 	// The separated instrumental's MediaStore key. Kept SEPARATE from source_ref so source_ref stays
 	// the song's immutable origin identity (what search dedupes on) — see Media.sourceRef.
 	instrumentalRef: text('instrumental_ref'),
+	// The isolated vocals stem — the guiding track. Separation always writes it next to the
+	// instrumental, so this is the ref to a file that already exists; persisting it is what makes the
+	// feature survive a restart instead of silently vanishing from a library song. Nullable: absent
+	// means no guide is offered (never separated, or the stem came back silent).
+	vocalsRef: text('vocals_ref'),
 	// Worker artifact keys. A cooked song is only fully restored if its derived artifacts come
 	// back with it: without these, a library song would replay with stems but silently lose its
 	// word-timed lyrics overlay and its scoring reference track after a restart.
@@ -119,7 +124,12 @@ export const playbackState = sqliteTable('playback_state', {
 	keyShift: integer('key_shift').notNull().default(0), // semitones
 	// Per-song TV background override. NULLABLE on purpose: null means "use the room default", which is
 	// the resting state, so it is a real value here rather than a missing one.
-	background: text('background', { enum: ['off', 'gradient', 'singer', 'solid'] })
+	background: text('background', { enum: ['off', 'gradient', 'singer', 'solid'] }),
+	// The guiding-track level for the current song, 0..1. REAL, not integer: keyShift is whole
+	// semitones but this is a fraction, and an integer column would silently round every level to
+	// 0 or 1. NULLABLE and defaulted to NULL on purpose — null means "inherit the room default",
+	// which is a different statement from the number 0 ("explicitly off for this song").
+	guideLevel: real('guide_level')
 });
 
 // Room-level separator settings. Single-row ('singleton') like playback_state: these govern
@@ -190,7 +200,11 @@ export const roomSettings = sqliteTable('room_settings', {
 		.notNull()
 		.default('natural'),
 	lyricsLinesBefore: integer('lyrics_lines_before').notNull().default(2),
-	lyricsLinesAfter: integer('lyrics_lines_after').notNull().default(2)
+	lyricsLinesAfter: integer('lyrics_lines_after').notNull().default(2),
+	// The room's default guiding-track level, 0..1. REAL for the same reason as playback_state's —
+	// it is a fraction. NOT NULL default 0 so an existing room upgrades to today's behaviour
+	// (pure karaoke) rather than to an unexpected mix.
+	guideLevelDefault: real('guide_level_default').notNull().default(0)
 });
 
 export const jobs = sqliteTable(

@@ -57,6 +57,13 @@
       "when": 1788552201989,
       "tag": "0007_tv_background",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788552843550,
+      "tag": "0008_guiding_track",
+      "breakpoints": true
     }
   ]
 }

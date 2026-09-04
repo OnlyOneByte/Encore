@@ -33,7 +33,8 @@ export function sqlitePersistence(db: DB): StatePersistence {
 						positionSec: playback.positionSec,
 						isPlaying: playback.isPlaying,
 						keyShift: playback.keyShift,
-						background: playback.background
+						background: playback.background,
+						guideLevel: playback.guideLevel
 					})
 					.onConflictDoUpdate({
 						target: playbackState.id,
@@ -42,7 +43,8 @@ export function sqlitePersistence(db: DB): StatePersistence {
 							positionSec: playback.positionSec,
 							isPlaying: playback.isPlaying,
 							keyShift: playback.keyShift,
-							background: playback.background
+							background: playback.background,
+							guideLevel: playback.guideLevel
 						}
 					})
 					.run();

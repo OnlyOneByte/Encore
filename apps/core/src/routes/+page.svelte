@@ -21,7 +21,14 @@
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
-	let playback = $state<PlaybackState>({ currentEntryId: null, positionSec: 0, isPlaying: false, keyShift: 0, background: null });
+	let playback = $state<PlaybackState>({
+		currentEntryId: null,
+		positionSec: 0,
+		isPlaying: false,
+		keyShift: 0,
+		background: null,
+		guideLevel: null
+	});
 	// live make-karaoke progress per mediaId — driven by media:status broadcasts AND seeded
 	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());

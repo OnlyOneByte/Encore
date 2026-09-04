@@ -4,6 +4,8 @@
 import {
 	clampKeyShift,
 	isTvBackgroundStyle,
+	clampGuideLevel,
+	hasGuidingTrack,
 	type PlayerCommand,
 	type ServerEvent,
 	type QueueEntry
@@ -54,8 +56,17 @@ export function reconcileOnReady(deps: HubDeps): void {
 		const { next } = nextPlayable(state.entries, deps.mediaById);
 		if (next) {
 			state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
-			// background: null — see advance(); an ephemeral override must not outlive its song.
-			state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true, background: null });
+			// A SONG START, so every ephemeral field resets here too — see advance(). keyShift was the one
+			// this site forgot: a song that began this way (the room idled while it cooked, then the cook
+			// finished) silently inherited the previous singer's transpose.
+			state.setPlayback({
+				currentEntryId: next.id,
+				positionSec: 0,
+				isPlaying: true,
+				keyShift: 0,
+				background: null,
+				guideLevel: null
+			});
 			publishQueue(deps); // the entry left `queued` — tell clients now, not on the next resync
 			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		}
@@ -71,8 +82,12 @@ function advance(deps: HubDeps): QueueEntry | null {
 	const { next } = nextPlayable(state.entries, deps.mediaById);
 	if (next) state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
 	/*
-	 * Both ephemeral fields reset here — a new song starts in its original key, and on the room's own
-	 * background rather than whatever the last singer set.
+	 * Every ephemeral field resets here — a new song starts in its original key, on the room's own
+	 * background rather than whatever the last singer set, and at the room's own guiding-track level.
+	 *
+	 * Note the two nullable ones reset to null, which is INHERIT (the room default), not to a concrete
+	 * value: pinning guideLevel to 0 here would mean a room that wants a permanent faint guide loses it
+	 * at every song boundary.
 	 *
 	 * This object is a long-lived SINGLETON: nothing rebuilds it per song, so every ephemeral field has
 	 * to be named at each of the three reset sites (here, play-from-idle, and reconcileOnReady) or it
@@ -83,7 +98,8 @@ function advance(deps: HubDeps): QueueEntry | null {
 		positionSec: 0,
 		isPlaying: !!next,
 		keyShift: 0,
-		background: null
+		background: null,
+		guideLevel: null
 	});
 	// The statuses above are a queue mutation; broadcast it here so BOTH callers (an explicit skip and
 	// a TV `ended`) converge clients immediately rather than at the next resync. Only when something
@@ -105,7 +121,14 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 				const { next } = nextPlayable(state.entries, deps.mediaById);
 				if (next) {
 					state.applyQueueOp({ op: 'status', id: next.id, status: 'playing' });
-					state.setPlayback({ currentEntryId: next.id, positionSec: 0, isPlaying: true, keyShift: 0, background: null });
+					state.setPlayback({
+						currentEntryId: next.id,
+						positionSec: 0,
+						isPlaying: true,
+						keyShift: 0,
+						background: null,
+						guideLevel: null
+					});
 					publishQueue(deps); // it just left `queued`
 					break;
 				}
@@ -148,6 +171,22 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 			 */
 			if (cmd.style === null || isTvBackgroundStyle(cmd.style)) {
 				state.setPlayback({ background: cmd.style });
+			}
+			break;
+		}
+		case 'guide': {
+			// The guiding track needs an actual vocals stem to mix, so this gates on hasGuidingTrack
+			// rather than just readiness: a song separated before the ref was persisted, or one whose
+			// vocals came back silent, has nothing to turn up. No-op there — silently accepting would
+			// pin a level the TV cannot honour and leave the phone showing a lie.
+			//
+			// `null` is a legitimate value here too (hand the song back to the room default), and it is
+			// clamped rather than trusted for the same reason the background style is whitelisted: this
+			// reaches setPlayback, which write-behinds straight into SQLite.
+			const cur = state.entries.find((e) => e.id === state.playback.currentEntryId);
+			const media = cur && deps.mediaById.get(cur.mediaId);
+			if (cur && media && hasGuidingTrack(media)) {
+				state.setPlayback({ guideLevel: clampGuideLevel(cmd.level) });
 			}
 			break;
 		}
