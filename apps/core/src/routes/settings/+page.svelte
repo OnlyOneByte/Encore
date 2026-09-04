@@ -36,6 +36,9 @@
 		SONG_INTRO_STEP_MS,
 		MIN_PRESENCE_GRACE_MINUTES,
 		MAX_PRESENCE_GRACE_MINUTES,
+		QUEUE_ORDERS,
+		getQueueOrder,
+		type QueueOrderId,
 		type EffectiveSettings,
 		type GlobalSettings,
 		type LyricsBallStyleId,
@@ -78,6 +81,10 @@
 	$effect(() => {
 		settings = data.settings;
 	});
+
+	// The chosen algorithm's own note, so the consequence is stated by the registry rather than
+	// duplicated here — the same reason the TV-progress and lyrics pickers read theirs.
+	const queueOrderNote = $derived(getQueueOrder(settings.room.queueOrder)?.note ?? '');
 
 	let advancedOpen = $state(false);
 	let failed = $state(false);
@@ -392,6 +399,19 @@
 	<section>
 		<h2>This room</h2>
 		<p class="scope-note">Only this party.</p>
+
+		<label class="field" for="queue-order">Who sings next</label>
+		<select
+			id="queue-order"
+			value={settings.room.queueOrder}
+			onchange={(e) => onroom({ queueOrder: e.currentTarget.value as QueueOrderId })}
+		>
+			{#each QUEUE_ORDERS as o (o.id)}
+				<option value={o.id}>{o.label}</option>
+			{/each}
+		</select>
+		{#if queueOrderNote}<p class="hint">{queueOrderNote}</p>{/if}
+		<p class="hint">Changing this re-orders the songs waiting. It never interrupts the one playing.</p>
 
 		<label class="field" for="tv-progress">TV song progress</label>
 		<select
