@@ -8,7 +8,8 @@
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import { resolveLyricsPresentation, type EffectiveSettings } from '@encore/shared';
+	import { resolveLyricsPresentation, type EffectiveSettings, type TvBackgroundStyle } from '@encore/shared';
+	import { stageBackgroundCss } from '$lib/tv/background';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
@@ -47,12 +48,18 @@
 	let durationSec = $state(0);
 	let skipNotice = $state('');
 	let tvProgressStyle = $derived(settings.room.tvProgressStyle);
+	// What the room paints behind the song. Derived from the same settings object, so a live
+	// settings:changed needs no per-field assignment here.
+	let tvBackgroundStyle = $derived(settings.room.tvBackgroundStyle);
+	let tvBackgroundHue = $derived(settings.room.tvBackgroundHue);
 	// live score for the current song, from score:update broadcasts (null until first sample)
 	let score = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
 	// playback isPlaying (pause/resume from the phone) — wired into both player slots
 	let isPlaying = $state(true);
 	// seek target (positionSec from playback:state) — the player jumps the video on a real change
 	let seekSec = $state(0);
+	// Per-song background override from playback:state. null = use the room default (the resting state).
+	let backgroundOverride = $state<TvBackgroundStyle | null>(null);
 	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
 
 	let ws: WebSocket | undefined;
@@ -174,7 +181,13 @@
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
 			if (e.type === 'score:update') score = e;
 			// pause/resume from the phone (playback:state.isPlaying) → drives the player slots
-			if (e.type === 'playback:state') { isPlaying = e.state.isPlaying; seekSec = e.state.positionSec; }
+			if (e.type === 'playback:state') {
+				isPlaying = e.state.isPlaying;
+				seekSec = e.state.positionSec;
+				// Per-song background override; null hands the song back to the room default.
+				// NOTE: keyShift is deliberately NOT read here — see the comment on `stageBg`.
+				backgroundOverride = e.state.background;
+			}
 			// live media catalog updates (cooking progress + ready flip) so the TV leaves WAITING
 			// promptly and resolves the ready song's instrumental (also mitigates the cook→play gap)
 			if (e.type === 'media:status') {
@@ -224,6 +237,30 @@
 		}).length
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
+	/*
+	 * The stage background, and the band it is shown in.
+	 *
+	 * Gated on `!isAttract` — the SAME flag that gates the player slots — rather than on
+	 * `screen === 'playing'`. That is deliberate: a literal playing check would drop the background
+	 * during the interstitial, putting a black flash between every song, and it would also drop it on
+	 * `waiting` (a song IS on the stage, it is still cooking). Reusing the flag also means the two
+	 * conditions cannot drift apart later.
+	 *
+	 * The attract and lobby screens keep painting their own glow at z-index 5 and are untouched by this
+	 * feature, so they sit above this layer regardless.
+	 */
+	const currentSingerColor = $derived(current ? (singers.get(current.singerId)?.color ?? null) : null);
+	/*
+	 * The override wins over the room default when set; `null` means defer to the room.
+	 *
+	 * Deliberately NOT wiring `keyShift` here while in the same handler, even though the TV ignores it
+	 * today: `keyedMediaRef` resolves a PRE-RENDERED variant that nothing produces (apps/worker's
+	 * pitch.py is never called from processor.py), so passing a non-zero shift to TvPlayer would point
+	 * <video>.src at a 404 and hand the gapless controller a media failure mid-song. That belongs to
+	 * B-2, which first has to choose between rendering those variants and shifting in the browser.
+	 */
+	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
+	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundHue, currentSingerColor));
 	const roster = $derived(lobbyRoster(online, singers));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
@@ -238,6 +275,12 @@
 </script>
 
 <div class="tv">
+	<!--
+		z-index 0 — the stage background, beneath both player slots (1 and 2). First child so the
+		document order matches the paint order. `.tv` keeps its own black as the floor under it, which is
+		what shows while this layer is faded out.
+	-->
+	<div class="stage-bg" class:shown={!isAttract} style="background: {stageBg}"></div>
 	<!-- two stacked player slots -->
 	<TvPlayer
 		media={slotMedia.A}
@@ -384,6 +427,18 @@
 		background: #000;
 		overflow: hidden;
 	}
+	/*
+	 * Fades in and out on the same 0.25s opacity curve the player slots use (TvPlayer `.slot`), so the
+	 * lobby→stage handover matches the crossfade already in the gapless swap instead of hard-cutting.
+	 */
+	.stage-bg {
+		position: absolute;
+		inset: 0;
+		z-index: 0;
+		opacity: 0;
+		transition: opacity 0.25s ease;
+	}
+	.stage-bg.shown { opacity: 1; }
 	.attract {
 		position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
 		justify-content: center; gap: 48px; z-index: 5;
