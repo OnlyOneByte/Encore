@@ -278,6 +278,38 @@ queued → assigned → running → ready
   stem, so starting them before separation would race and contend.
 - Core flips media refs/status only after the worker completes and artifacts exist.
 
+### The attempt ledger — history, as opposed to state
+
+The `jobs` row above is the **dispatch slot**: exactly one live row per `(mediaId, jobType)`, mutated
+in place. That shape is what makes dedup correct, and it is also why it can hold no history — a retry
+reuses the row, so there is nowhere to put a second attempt. It carries `createdAt` and `updatedAt`
+and nothing else, and `updatedAt` is overwritten by every progress frame.
+
+`job_attempts` is the other half. One row per attempt, opened when the job enters the queue and
+sealed at its outcome; once sealed it is never written again, and a retry opens a new row. It carries
+**four clocks** — `enqueuedAt`, `assignedAt`, `startedAt`, `finishedAt` — because one cannot separate
+time spent waiting from time spent working, and each is null until that moment actually happens (a job
+nothing picked up has no start, and 0 there would invent work). It also carries the **resolved**
+engine/model/backend/device and asrModel/syncMode, which cannot be re-derived later: they resolve from
+operator-editable global settings at dispatch, and a worker may resolve something different again.
+
+`cookId` groups the steps of one run. `mediaId` cannot: a song may be cooked more than once (a failure
+frees the dedup slot; `stems-upgrade` re-separates a finished song), so grouping by media blends
+distinct runs and makes an end-to-end duration meaningless. `stems-upgrade` deliberately starts a NEW
+cook — it is background work on an already-finished song, and folding a 43-minute upgrade into a cook
+that delivered a singable song in 90 seconds would make every end-to-end average a fiction.
+
+The ledger is **observability and never a failure mode**: it is optional on the repository, and a
+lifecycle event with no open attempt is a no-op rather than a throw, so deploying it with jobs in
+flight does not fail on the first completion. The worker measures per-stage wall clock from the
+progress stream it already emits (so no processor contains timing code) and reports it, plus what it
+actually ran, on `job:complete` — all additive optional fields, so an older worker still completes.
+
+`plays` is the same idea for performances: the sidecar's `playCount` remains the authoritative
+lifetime total, but a counter has no time axis, and `queue_entries` is wiped on every flush and on
+boot. One row per play, deduped on `entryId` by a unique index so a restart cannot double-count the
+song that was on screen.
+
 A worker accepts a job when it advertises a capability that serves the job's **action**, matched on the
 action prefix rather than as a literal string. Both axes namespace their capabilities — `stems:roformer`
 for an engine, `fetch:ytdlp` for a downloader — so a literal comparison rejected work the worker could
@@ -434,6 +466,21 @@ Keep these intact:
 - yt-dlp: query is one argv element, with a kill timer — never shell-concatenate user input.
 - Containers: non-root, `no-new-privileges`, `cap_drop: [ALL]`, pinned base/dependencies.
 - Workers dial home; core does not need inbound reachability to arbitrary worker hosts.
+
+Known and accepted, not an oversight:
+
+- **There is no operator identity.** The only auth axis is anonymous vs *any* singer holding a session
+  cookie, which any device on the LAN obtains by POSTing `/api/join` with a name. So a "joined singer"
+  check is a liveness check, not an authorization one.
+- Consequently `/metrics`, `/api/metrics` and `/api/audit/*` ship **ungated**. They expose worker ids,
+  resolved model/backend/device names, host details and terminal error strings — no singer identities
+  and no media bytes. `PUT /api/settings` has the same property and higher stakes: any joined phone
+  can change the separator engine and which Whisper weights the fleet loads.
+- The honest fixes are a shared secret (`ENCORE_ADMIN_TOKEN`), binding those routes to a trusted
+  interface, or a real host/operator concept that closes both. Tracked as B-10-C7.
+- `/stats` and `/api/stats` are public **by design** and are aggregate-only. This is structural rather
+  than a filter: the `plays` table has no singer column, so no per-singer figure can be served from it
+  even by mistake.
 
 ## 11. Historical source specs
 
