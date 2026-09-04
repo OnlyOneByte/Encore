@@ -9,6 +9,7 @@
 	// reason this is two media elements rather than a WebAudio graph — a graph buys sample-exact lock
 	// and effects at the cost of rebuilding the part that already works.
 	import { keyedMediaRef, playbackRef, isPlayable, type Media } from '@encore/shared';
+	import { guideCorrection } from './guide-sync';
 	interface Props {
 		media: Media | null;
 		visible: boolean;
@@ -40,11 +41,21 @@
 	let vocals: HTMLAudioElement | undefined = $state();
 
 	/**
-	 * Snap the guide back to the master when it drifts past this. Two independent media elements are
-	 * not sample-locked, and a nudge of a few tens of ms is inaudible on a vocal sitting under a
-	 * backing track — whereas a full re-decode to lock them would not be.
+	 * How the guide is held against the master — and specifically why it is NOT held with seeks.
+	 *
+	 * Two independent media elements are not sample-locked, so the guide is always drifting. The
+	 * obvious correction — assign `vocals.currentTime` — is the wrong tool at this scale: setting
+	 * `currentTime` flushes the decoder and re-primes the buffer, which is an audible discontinuity.
+	 * Correcting a 40ms drift on the master's ~4Hz `timeupdate` therefore meant a decoder flush every
+	 * few hundred ms, heard as a faint continuous crackle under the instrumental. The nudge was never
+	 * the cheap half of that trade; it was the expensive half.
+	 *
+	 * The policy itself lives in `guide-sync.ts` as a pure function, so it can be tested without two
+	 * real media elements. This component only applies the answer.
 	 */
-	const DRIFT_TOLERANCE_SEC = 0.04;
+
+	/** Pre-roll alignment only. Before the guide is playing a seek costs nothing, so it stays a seek. */
+	const GUIDE_PREROLL_ALIGN_SEC = 0.04;
 
 	/**
 	 * How long to wait for the guide to become playable before giving up on it for this slot.
@@ -120,13 +131,20 @@
 		if (!vocals || !video) return;
 		if (active && visible && playing) {
 			// Line it up BEFORE starting, so the guide does not enter a couple of seconds behind and get
-			// dragged forward audibly by the first governor tick.
-			if (Math.abs(vocals.currentTime - video.currentTime) > DRIFT_TOLERANCE_SEC) {
+			// dragged forward audibly by the first governor tick. A seek here is free — nothing is
+			// audible yet — which is exactly why the governor below does not use one.
+			if (Math.abs(vocals.currentTime - video.currentTime) > GUIDE_PREROLL_ALIGN_SEC) {
 				vocals.currentTime = video.currentTime;
 			}
+			// Start from neutral; the governor re-derives any trim it still needs from real drift.
+			vocals.playbackRate = 1;
+			// A tempo trim must never become a pitch shift on a sung vocal. Set explicitly rather than
+			// trusting the default, which is not uniform across browsers.
+			vocals.preservesPitch = true;
 			vocals.play().catch(() => {});
 		} else {
 			vocals.pause();
+			vocals.playbackRate = 1;
 		}
 	});
 
@@ -152,12 +170,16 @@
 	/**
 	 * The drift governor. Runs on the master's existing ~4Hz `ontimeupdate` rather than its own timer,
 	 * so the guide is corrected against the clock that actually drives the room.
+	 *
+	 * It corrects with `playbackRate`, not `currentTime`: see `guide-sync.ts` for why seeking here is
+	 * what made the guide crackle.
 	 */
 	function syncGuide(): void {
 		if (!vocals || !video || vocals.seeking) return;
-		if (Math.abs(vocals.currentTime - video.currentTime) > DRIFT_TOLERANCE_SEC) {
-			vocals.currentTime = video.currentTime;
-		}
+		const correction = guideCorrection(vocals.currentTime, video.currentTime);
+		if (correction.kind === 'reseek') vocals.currentTime = video.currentTime;
+		// Assign only on a real change: writing playbackRate is not free on every element.
+		if (vocals.playbackRate !== correction.rate) vocals.playbackRate = correction.rate;
 	}
 </script>
 
