@@ -34,6 +34,11 @@ export const media = sqliteTable('media', {
 	artist: text('artist'),
 	durationSec: integer('duration_sec').notNull(),
 	thumbnail: text('thumbnail'),
+	// Views the source reported when this song was last seen in a search. DISPLAY ONLY — a tiebreaker
+	// between two uploads of one track, never an input to ranking, dedupe or any cook gate. Persisted
+	// rather than left on the search response so a song already in the library carries it too; NULL
+	// means "never learned one", which the row renders as no chip rather than as "0 views".
+	viewCount: integer('view_count'),
 	// The lyrics half of the cook gate (see packages/shared/src/gates.ts). NULL on rows written before
 	// the gate existed, which the gate reads as "done if a lyrics artifact is already present" so an
 	// existing library does not become unsingable on upgrade.
