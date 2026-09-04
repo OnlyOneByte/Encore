@@ -423,11 +423,47 @@ misconfigured accelerator should be loud, not merely slow.
 Intel Arc is a torch **device** (`xpu`), not a separate backend: the pipeline is unchanged and only the
 dependency and device differ. `docs/deploy/docker-compose.intel.yml` is that deployment, and it needs
 no custom image — PyTorch ships native `torch.xpu` upstream and the `xpu` wheel index carries the exact
-versions already pinned, so the ordinary Dockerfile plus an index swap is enough.
-`docs/deploy/Dockerfile.intel` is kept beside it purely as an IPEX fallback, since IPEX was originally
-what registered the device with torch. OpenVINO is registered as a known backend but reports
-unavailable — Intel publishes IR weights with STFT/iSTFT stripped for a C++ pipeline, so supporting it
-is a port rather than a dependency.
+versions already pinned, so the ordinary Dockerfile plus an index swap is enough. (An IPEX-based
+`Dockerfile.intel` used to sit beside it and has been deleted; `backends.py` still imports IPEX before
+torch when present, so that path is belt-and-braces rather than a required image.) OpenVINO is
+registered as a known backend but reports unavailable — Intel publishes IR weights with STFT/iSTFT
+stripped for a C++ pipeline, so supporting it is a port rather than a dependency.
+
+### What the worker measures, and what it is told
+
+The boundary is deliberate and runs one way: **the core decides what a cook produces, the worker decides
+how its own box executes it.**
+
+Core-side, because these are persisted onto `Media.separator` and feed the never-regress upgrade ladder
+(`isQualityUpgrade`): separator engine, model, ASR model, sync mode, fetcher, lookup keys. If workers
+chose their own, two boxes would publish inconsistent instrumentals and quality ranking would mean
+nothing.
+
+Worker-side, because they change throughput and not output, and only the worker can see them: device,
+backend, thread counts, `-j`. All of these are **probed, not configured** — accelerator via
+`torch.accelerator` plus a per-device usability check (presence in the wheel is not usability on the
+box), usable cores as the tightest of `cpu_count`, scheduler affinity and the cgroup quota, memory from
+`/proc/meminfo` and the cgroup ceiling. The alignment device is derived from the same resolution as
+separation, mapped through `whisperx_device_for` because CTranslate2 has only cuda and cpu backends, so
+an Intel or Apple box separates on its accelerator and still aligns on the CPU.
+
+**Capabilities are proven too** (`capabilities.py`). Each token is backed by a probe — `yt-dlp` on PATH
+or importable → `fetch:ytdlp`, demucs → `stems`, the roformer engine → `stems:roformer`, both →
+`stems:ensemble`, whisperx → `align` — and the evidence is logged either way. `ENCORE_WORKER_CAPABILITIES`
+narrows that set and can never extend it: a box claiming work it cannot do is what left songs at 0%
+forever, which is indistinguishable from a hung worker. `score` is provable whenever separation is but
+is not advertised by default, since nothing enqueues it.
+
+The one thing the worker reports **up** is hardware: `worker:hello` carries an optional `runtime`
+(accelerator, device name, usable cores, memory, VRAM, torch version, whether a cgroup limit applies),
+stored on the `WorkerSession`. Before this the core made every cost-bearing decision against a static
+reference box — `estimateCookSeconds` takes a `hardwareFactor` nothing supplied. The field is additive,
+so a worker that omits it is treated exactly as it was before.
+
+Symmetrically, the core now says when it cannot place work: a queued job whose capability no connected
+worker advertises is logged by name via `hasCapableWorker`, and flagged `unservable` on `media:status`
+when the song is not already playable — a stalled `align` follow-up on a published song is left alone,
+because missing lyrics is not missing audio.
 
 ### Settings scopes
 

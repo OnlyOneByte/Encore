@@ -49,34 +49,43 @@ services:
       dockerfile: apps/worker/Dockerfile
     profiles: ["stems"] # not started in the default MVP up
     environment:
+      # The ONLY two settings a deployer must get right. Everything else the worker measures about
+      # itself at startup: which accelerator is present, how many cores it may actually use, how much
+      # memory, and which engines are installed (and therefore which capabilities it can honestly
+      # advertise). See apps/worker/src/hardware.py and capabilities.py.
       - ENCORE_CORE_WS=ws://core:3000/ws?role=worker
-      # How many songs this worker cooks AT ONCE. Separate from demucs' own internal parallelism
-      # below: concurrency drains a party's queue faster, jobs makes one song finish sooner.
-      - ENCORE_WORKER_CONCURRENCY=${ENCORE_WORKER_CONCURRENCY:-1}
-      # What this worker can DO, and therefore what the cook can complete. The default is the WHOLE
-      # pipeline (fetch → stems → align) because a partial default silently breaks the quickstart:
-      # without `fetch:ytdlp` the core enqueues an acquisition nothing can claim and every new song
-      # sits at 0% forever, and without `align` no song ever gets word-timed lyrics. Both failures look
-      # like a hung worker rather than a missing capability, which is exactly how they went unnoticed —
-      # the accelerator overrides under docs/deploy/ had the full set while this, the file everyone
-      # actually starts from, advertised `stems` alone.
-      # `score` is deliberately absent: nothing enqueues it (see followUps in dispatch.ts).
-      - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-fetch:ytdlp,stems,align}
-      # ── separation performance ───────────────────────────────────────────────────────
-      # Every knob below is OPTIONAL: unset means demucs' own default still applies, so a fleet can
-      # be tuned per box (a GPU machine and a CPU machine want different numbers) without a rebuild.
-      # The worker prints its effective config on startup — check that line first when a box is slow.
-      - ENCORE_DEMUCS_MODEL=${ENCORE_DEMUCS_MODEL:-htdemucs}   # htdemucs_ft = better, ~4x slower
-      - ENCORE_DEMUCS_DEVICE=${ENCORE_DEMUCS_DEVICE:-}         # unset = cuda if available, else cpu
-      - ENCORE_DEMUCS_JOBS=${ENCORE_DEMUCS_JOBS:-}             # parallel chunk jobs; memory for speed
-      - ENCORE_DEMUCS_OVERLAP=${ENCORE_DEMUCS_OVERLAP:-}       # default 0.25; lower = faster
-      - ENCORE_DEMUCS_SEGMENT=${ENCORE_DEMUCS_SEGMENT:-}       # smaller = lower peak memory
-      - ENCORE_DEMUCS_SHIFTS=${ENCORE_DEMUCS_SHIFTS:-}         # >1 averages predictions: better, slower
-      - ENCORE_TORCH_THREADS=${ENCORE_TORCH_THREADS:-}         # cap intra-op threads when JOBS > 1
-      - ENCORE_WHISPERX_DEVICE=${ENCORE_WHISPERX_DEVICE:-cpu}
-      # ── encoding ─────────────────────────────────────────────────────────────────────
-      - ENCORE_STEM_BITRATE=${ENCORE_STEM_BITRATE:-192k}       # the lossy VOCALS stem only
-      - ENCORE_FLAC_LEVEL=${ENCORE_FLAC_LEVEL:-8}              # instrumental is lossless
+      # MEDIA_DIR is set by the image; the volume below is what has to agree with core's.
+      #
+      # ── overrides, all optional and all unset by default ─────────────────────────────
+      # Present so a measurement that turns out wrong on some box can be corrected without a rebuild.
+      # Leave them empty unless you have measured a reason:
+      #
+      #   ENCORE_WORKER_CAPABILITIES  NARROWS what this box advertises (e.g. `fetch:ytdlp` for a
+      #                               download-only worker). It can only subtract from what the worker
+      #                               can prove — a claim it cannot honour is refused with a warning,
+      #                               because that is what used to leave songs stuck at 0% forever.
+      #   ENCORE_DEVICE               forces cpu/cuda/xpu/mps. An unreachable device fails LOUDLY at
+      #                               startup, which is the point: naming it turns a driver or
+      #                               passthrough mistake into a crash instead of a silent CPU cook.
+      #   ENCORE_WORKER_CONCURRENCY   songs cooked at once. 1 is right until measured otherwise.
+      #   ENCORE_DEMUCS_MODEL         htdemucs_ft = better, ~4x slower.
+      #   ENCORE_DEMUCS_JOBS          parallel chunk jobs; auto-sized from usable cores.
+      #   ENCORE_TORCH_THREADS        intra-op cap; auto-sized from concurrency x jobs.
+      #   ENCORE_DEMUCS_OVERLAP/_SEGMENT/_SHIFTS, ENCORE_STEM_BITRATE, ENCORE_FLAC_LEVEL
+      #
+      # A worker id is derived from the hostname when unset, so two workers can no longer collide on a
+      # shared default and silently replace each other in the core's registry.
+      - ENCORE_WORKER_CAPABILITIES=${ENCORE_WORKER_CAPABILITIES:-}
+      - ENCORE_DEVICE=${ENCORE_DEVICE:-}
+      - ENCORE_WORKER_CONCURRENCY=${ENCORE_WORKER_CONCURRENCY:-}
+      - ENCORE_DEMUCS_MODEL=${ENCORE_DEMUCS_MODEL:-}
+      - ENCORE_DEMUCS_JOBS=${ENCORE_DEMUCS_JOBS:-}
+      - ENCORE_DEMUCS_OVERLAP=${ENCORE_DEMUCS_OVERLAP:-}
+      - ENCORE_DEMUCS_SEGMENT=${ENCORE_DEMUCS_SEGMENT:-}
+      - ENCORE_DEMUCS_SHIFTS=${ENCORE_DEMUCS_SHIFTS:-}
+      - ENCORE_TORCH_THREADS=${ENCORE_TORCH_THREADS:-}
+      - ENCORE_STEM_BITRATE=${ENCORE_STEM_BITRATE:-}
+      - ENCORE_FLAC_LEVEL=${ENCORE_FLAC_LEVEL:-}
     volumes:
       # Shares the local MediaStore volume (single-box mode). The worker writes raw audio into
       # audio/ and stems into derived/ using the SAME keys the core resolves — see

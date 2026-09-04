@@ -28,7 +28,11 @@ export type ServerEvent =
   | { type: 'queue:sync'; rev: number; entries: QueueEntry[]; singers?: PublicSinger[]; media?: Media[]; online?: string[]; settings?: EffectiveSettings }
   | { type: 'playback:state'; state: PlaybackState; rev: number }
   | { type: 'nowplaying:changed'; current: QueueEntry | null; upNext: QueueEntry | null }
-  | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number }
+  // `unservable` marks a job that is queued but that NO connected worker advertises the capability
+  // for — it will never start, as distinct from waiting its turn. Optional and currently
+  // informational: the phone does not render it yet, but the distinction has to exist on the wire
+  // before any surface can show it, and it is what separates "cooking soon" from "stuck forever".
+  | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }
   // Live SingStar-style score for the current song, recomputed as mic pitch arrives.
   // `score` is a 0..100 rolling accuracy; hits/total are the scored (voiced-reference) frames.
   | { type: 'score:update'; entryId: string; singerId: string; score: number; hits: number; total: number }
@@ -117,14 +121,36 @@ export interface StageTiming {
 }
 
 /** The box a worker runs on. Best-effort and every field optional — a diagnostic must never fail a
- *  handshake, and torch is genuinely absent under ENCORE_PROCESSOR=stub. */
+ *  handshake, and torch is genuinely absent under ENCORE_PROCESSOR=stub.
+ *
+ *  Every field is a MEASUREMENT, never a setting. Two are easy to misread:
+ *  `cpuCount` is the EFFECTIVE count the worker may actually use — the tightest of the host's cores,
+ *  scheduler affinity and the cgroup quota — not the machine's total, because a container throttled to
+ *  two cores on a 32-core host is the case worth knowing about and `os.cpu_count()` hides it.
+ *  `vramBytes` is physical capacity, so it says a card is big enough to consider, never that a
+ *  checkpoint will fit alongside whatever is already resident.
+ *
+ *  This is also what makes `estimateCookSeconds`'s `hardwareFactor` real: it has always taken that
+ *  parameter and nothing ever supplied one, so every estimate assumed the reference box. */
 export interface WorkerHost {
   platform?: string;
   machine?: string;
   python?: string;
-  cpuCount?: number;
+  cpuCount?: number; // effective, post-cgroup — NOT the host's total
   torch?: string;
+  /** Kept for the readers that already branch on it; `accelerator` supersedes it and is derived from
+   *  the same probe, so the two cannot disagree. */
   cuda?: boolean;
+  /** WHICH accelerator, not merely whether CUDA is present. ROCm masquerades as `cuda` in torch's API
+   *  (there is no `torch.rocm`), so a plain boolean reported an AMD card as NVIDIA. */
+  accelerator?: 'cuda' | 'rocm' | 'xpu' | 'mps' | 'cpu';
+  deviceName?: string;
+  deviceCount?: number;
+  memoryBytes?: number | null;
+  vramBytes?: number | null; // physical capacity, not free memory
+  /** A cgroup limit is in force, so `cpuCount` is below what the machine actually has. Worth
+   *  surfacing: it is the difference between "this box is small" and "this box was given a slice". */
+  contained?: boolean;
 }
 
 // Where workers pull source / push stems. local = a shared volume (single-box); object = S3/MinIO

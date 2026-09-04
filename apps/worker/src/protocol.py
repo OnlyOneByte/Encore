@@ -203,24 +203,48 @@ class StageTimer:
 def host_facts() -> dict[str, Any]:
     """Describe the box this worker runs on, for the metrics dashboard.
 
+    Delegates to hardware.probe() rather than re-deriving the fields, because a second copy of
+    "what is this machine" drifts from the first: the auto-sizers already have to know the EFFECTIVE
+    core count (the tightest of cpu_count, scheduler affinity and the cgroup quota), and a dashboard
+    reporting `os.cpu_count()` beside a worker that sized itself for 2 of those 32 cores is worse than
+    reporting nothing — the two numbers disagree and neither is labelled.
+
     Best-effort by construction: torch may be absent entirely (the stub processor needs no ML), and a
     probe that raised here would take down a worker over a diagnostic. Every field is therefore
-    optional and a failed probe is simply omitted rather than guessed.
+    optional and a failed probe is omitted rather than guessed.
     """
-    import os
     import platform
+
+    from .hardware import probe
+
+    try:
+        report = probe()
+    except Exception:
+        # Never fail a handshake over a diagnostic.
+        return {"platform": platform.platform(), "machine": platform.machine(),
+                "python": platform.python_version()}
 
     facts: dict[str, Any] = {
         "platform": platform.platform(),
-        "machine": platform.machine(),
+        "machine": report.machine,
         "python": platform.python_version(),
-        "cpuCount": os.cpu_count(),
+        # EFFECTIVE, not the host's total — see WorkerHost.cpuCount in events.ts.
+        "cpuCount": report.cpus,
+        "accelerator": report.accelerator,
+        # Kept so readers already branching on `cuda` keep working. Derived from the same probe as
+        # `accelerator` so the two cannot disagree, and false for ROCm — which reports through torch's
+        # cuda API but is not CUDA, and was previously indistinguishable from it.
+        "cuda": report.accelerator == "cuda",
+        "contained": report.contained,
     }
-    try:  # torch is optional — ENCORE_PROCESSOR=stub runs without it
-        import torch  # type: ignore
-
-        facts["torch"] = torch.__version__
-        facts["cuda"] = bool(torch.cuda.is_available())
-    except Exception:
-        pass
+    if report.torch_version:
+        facts["torch"] = report.torch_version
+    if report.device_name:
+        facts["deviceName"] = report.device_name
+    if report.device_count:
+        facts["deviceCount"] = report.device_count
+    if report.memory_bytes:
+        facts["memoryBytes"] = report.memory_bytes
+    if report.vram_bytes:
+        facts["vramBytes"] = report.vram_bytes
     return facts
