@@ -19,6 +19,7 @@ import { PresenceTracker } from '../realtime/presence';
 import { PlayTracker } from '../media/plays';
 import type { EncoreApp } from '../app';
 import { AttemptLedger } from '../jobs/attempts';
+import { PlayLog } from '../media/play-log';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 	const { db } = openDb(':memory:');
@@ -36,6 +37,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		plays: new PlayTracker(() => {}),
 		jobs,
 		attempts,
+		playLog: new PlayLog(db),
 		settings: new SettingsRepository(db),
 		reaper: new JobReaper(jobs),
 		workers,
