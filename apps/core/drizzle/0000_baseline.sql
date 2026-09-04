@@ -86,6 +86,7 @@ CREATE TABLE `media` (
 	`lyrics_ref` text,
 	`lyrics_candidates` text,
 	`artist_canonical` text,
+	`artist_credit` text,
 	`title_canonical` text,
 	`mbid` text,
 	`annotation_source` text,

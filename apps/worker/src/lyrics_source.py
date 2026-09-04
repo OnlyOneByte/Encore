@@ -138,6 +138,13 @@ class LrclibResult:
     instrumental: bool
     synced_lyrics: str | None
     plain_lyrics: str | None
+    #: The record's OWN metadata, as LRCLIB has it. Absent from an /api/get response we already know
+    #: the query for, but load-bearing for /api/search: with several records under one artist+track
+    #: these fields are the only thing distinguishing "Telephone" from "Telephone (feat. Beyoncé)".
+    track_name: str | None = None
+    artist_name: str | None = None
+    album_name: str | None = None
+    duration: float | None = None
 
     @property
     def has_synced(self) -> bool:
@@ -146,6 +153,21 @@ class LrclibResult:
     @property
     def has_plain(self) -> bool:
         return bool(self.plain_lyrics and self.plain_lyrics.strip())
+
+    @property
+    def label(self) -> str:
+        """Short human label for logs — which VERSION of the song this record is. The whole point of
+        searching a pool is being able to say which one won and which one lost."""
+        who = self.artist_name or "?"
+        what = self.track_name or "?"
+        bits = [f"{who} — {what}"]
+        if self.album_name:
+            bits.append(self.album_name)
+        if self.duration:
+            bits.append(f"{int(round(self.duration))}s")
+        if self.id is not None:
+            bits.append(f"#{self.id}")
+        return f"{bits[0]} ({', '.join(bits[1:])})" if len(bits) > 1 else bits[0]
 
 
 # fetcher: (url, headers) -> (status_code, body_text). Injected so tests need no network.
@@ -163,19 +185,113 @@ def lrclib_get_url(base: str, artist: str, track: str, duration: float | None = 
     return f"{base}/api/get?{urlencode(q)}"
 
 
+def lrclib_search_url(base: str, artist: str, track: str) -> str:
+    """URL for the SEARCH endpoint, which returns an ARRAY of records rather than /api/get's single
+    best guess.
+
+    Deliberately NO duration filter. /api/get takes one and applies a ±2s tolerance, which is exactly
+    what hides the problem this function exists to solve: a song with two popular versions has two
+    records minutes apart in length, and duration-filtering the query picks one of them by fiat before
+    anything has looked at the words. Ranking on duration happens locally, in
+    `rank_lrclib_candidates`, where a near-miss can still be considered instead of never being seen.
+    """
+    from urllib.parse import urlencode
+
+    return f"{base}/api/search?{urlencode({'artist_name': artist, 'track_name': track})}"
+
+
 def parse_lrclib_response(d: dict[str, Any]) -> LrclibResult:
+    dur = d.get("duration")
     return LrclibResult(
         id=d.get("id") if isinstance(d.get("id"), int) else None,
         instrumental=bool(d.get("instrumental")),
         synced_lyrics=d.get("syncedLyrics") if isinstance(d.get("syncedLyrics"), str) else None,
         plain_lyrics=d.get("plainLyrics") if isinstance(d.get("plainLyrics"), str) else None,
+        track_name=d.get("trackName") if isinstance(d.get("trackName"), str) else None,
+        artist_name=d.get("artistName") if isinstance(d.get("artistName"), str) else None,
+        album_name=d.get("albumName") if isinstance(d.get("albumName"), str) else None,
+        duration=float(dur) if isinstance(dur, (int, float)) else None,
     )
 
 
+# ── pure: ranking a pool of candidate versions ────────────────────────────────────
+#
+# This orders the pool CHEAPLY, before any model runs. It does not attempt to identify the right
+# version — it cannot, because the only evidence that settles it is the words actually being sung, and
+# that lives in the ASR transcript (see select_variants in lyrics_chain.py). What this buys is a
+# sensible order for the case where the transcript cannot decide: ties, an instrumental that
+# transcribes to nothing, or a box with no ASR tier at all.
+
+#: How many records from a search are worth carrying forward. Each one costs a token-set comparison,
+#: not an alignment, so the cap is about bounding response size and log noise rather than compute.
+MAX_VARIANTS = 5
+
+#: A duration gap beyond this is strong evidence of a different recording, but NOT a disqualification:
+#: a padded lyric-video upload legitimately runs long, and refusing those is how the correct record
+#: gets dropped. It only ever pushes a candidate down the order.
+DURATION_TOLERANCE_SEC = 10.0
+
+
+def _credit_tokens(s: str | None) -> set[str]:
+    return {t for t in re.split(r"[^\w']+", (s or "").lower()) if t}
+
+
+def candidate_sort_key(
+    res: LrclibResult, duration: float | None = None, credit: str | None = None
+) -> tuple[float, float, float]:
+    """Sort key for one candidate — LOWER is better (so it drops straight into `sorted`).
+
+    Three axes, most decisive first:
+
+    1. **Has real lyrics at all.** A record flagged instrumental, or holding neither synced nor plain
+       text, is useless regardless of how well its metadata matches.
+    2. **Duration proximity** to the audio we actually downloaded. The strongest metadata signal for
+       the two-versions case: a guest verse typically adds 10-40 seconds, so the feat. and non-feat
+       records are usually far apart in length. Unknown duration on either side scores as the
+       tolerance rather than as a mismatch — "cannot tell" must not rank below "known to differ".
+    3. **Credit overlap** — how much of the record's own artist string is accounted for by the credit
+       we parsed from the upload. This is what lets "Lady Gaga feat. Beyoncé" outrank plain
+       "Lady Gaga" when the upload named both. Zero when we have no credit to compare, which leaves
+       the earlier axes to decide.
+    """
+    usable = 0.0 if (not res.instrumental and (res.has_synced or res.has_plain)) else 1.0
+
+    if duration is None or res.duration is None:
+        gap = DURATION_TOLERANCE_SEC
+    else:
+        gap = abs(res.duration - duration)
+
+    want = _credit_tokens(credit)
+    overlap = 0.0
+    if want:
+        have = _credit_tokens(res.artist_name)
+        if have:
+            overlap = len(want & have) / len(want)
+
+    return (usable, gap, -overlap)
+
+
+def rank_lrclib_candidates(
+    results: list[LrclibResult],
+    duration: float | None = None,
+    credit: str | None = None,
+    limit: int = MAX_VARIANTS,
+) -> list[LrclibResult]:
+    """Best-first pool, capped at `limit`. Records with no usable lyrics body are dropped outright
+    rather than merely ranked last — carrying an instrumental record forward would let it win a
+    comparison against a transcript that is itself near-empty."""
+    keep = [r for r in results if not r.instrumental and (r.has_synced or r.has_plain)]
+    keep.sort(key=lambda r: candidate_sort_key(r, duration, credit))
+    return keep[: max(0, limit)]
+
+
 class LrclibClient:
-    """Thin LRCLIB /api/get client. get() returns None on a 404 (no match — caller falls back to ASR
-    or ships instrumental), raises LyricsFetchError on other non-200s. Decoupled from the network via
-    an injected fetcher, so the whole client unit-tests with canned JSON."""
+    """Thin LRCLIB client over /api/get (one best-guess record) and /api/search (every record).
+
+    `get()` returns None on a 404 and `search()` returns [] — a miss in either shape. Both raise
+    LyricsFetchError on other non-200s. Decoupled from the network via an injected fetcher, so the
+    whole client unit-tests with canned JSON.
+    """
 
     def __init__(self, fetcher: Fetcher | None = None, base_url: str = LRCLIB_BASE) -> None:
         self._fetch = fetcher or _urllib_fetch
@@ -192,6 +308,30 @@ class LrclibClient:
             return parse_lrclib_response(json.loads(body))
         except (ValueError, TypeError) as exc:
             raise LyricsFetchError(f"lrclib returned unparseable body: {exc}") from exc
+
+    def search(self, artist: str, track: str) -> list[LrclibResult]:
+        """Every record LRCLIB holds for this artist+track, unranked and unfiltered.
+
+        Returns [] for a 404 or an empty array — both mean "nothing to choose from", and the caller
+        falls back exactly as it would for a `get()` miss. A non-list body is treated the same way
+        rather than raising: a shape we do not recognise is a miss, not a job failure.
+
+        Raises only on a genuine transport/server error, matching `get()`, so `LrclibSource` can keep
+        swallowing that one class in one place.
+        """
+        url = lrclib_search_url(self._base, artist, track)
+        status, body = self._fetch(url, {"User-Agent": USER_AGENT, "Accept": "application/json"})
+        if status == 404:
+            return []
+        if status != 200:
+            raise LyricsFetchError(f"lrclib search returned {status} for {artist} — {track}")
+        try:
+            payload = json.loads(body)
+        except (ValueError, TypeError) as exc:
+            raise LyricsFetchError(f"lrclib search returned unparseable body: {exc}") from exc
+        if not isinstance(payload, list):
+            return []
+        return [parse_lrclib_response(d) for d in payload if isinstance(d, dict)]
 
 
 def _urllib_fetch(url: str, headers: dict[str, str]) -> tuple[int, str]:

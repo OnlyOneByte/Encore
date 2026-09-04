@@ -79,6 +79,16 @@ export const media = sqliteTable('media', {
 	// title misses even when the artist is right. Nullable on the same principle as artist_canonical —
 	// a low-confidence parse stores NULL rather than a guess.
 	titleCanonical: text('title_canonical'),
+	// The FULL artist billing as the upload wrote it ("Lady Gaga feat. Beyoncé"), where
+	// artist_canonical holds only the primary ("Lady Gaga"). The normalizer has always parsed both and
+	// discarded this one.
+	//
+	// Kept because it is the difference between two RECORDINGS, not two spellings. A lyrics provider
+	// holds a separate record per version, all of them matching "Lady Gaga / Telephone", so the primary
+	// artist cannot distinguish them and the version with a guest verse gets picked at random. This is a
+	// ranking signal for that choice, not a lookup key — querying the full billing would miss every
+	// record filed under the primary alone. Nullable on the same principle as the two above.
+	artistCredit: text('artist_credit'),
 	// MusicBrainz recording id, and how the canonicals above came to be trusted. Persisted rather than
 	// left in memory because the never-regress rule reads it: without a stored confidence a restart
 	// forgets that an artist was CITED, and the next `medium` annotation would overwrite it freely.

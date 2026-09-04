@@ -579,12 +579,35 @@ known-good artifact.
 Lyrics separate **text acquisition** from **timing**:
 
 - Text sources: LRCLIB, captions, ASR, reserved manual tier.
+- **Captions are uploader-authored only.** The yt-dlp argv passes `--write-subs` and never
+  `--write-auto-subs`, so an automatic (ASR) track cannot arrive. The refusal is structural rather than
+  a filter: accepted as "captions", YouTube's ASR — made from the *mixed* audio, so worse than the
+  local tier, which reads an isolated vocals stem — would be treated as authoritative and could outrank
+  a correct lookup. Uniquely, captions are attached to the exact upload, so they cannot be about a
+  different recording of the song.
 - Timing source: one WhisperX force-alignment layer for any text source.
 - ASR transcription yields segment/line bounds, **not word timings**; `align()` supplies words.
 - ASR always runs because it is both a fallback and a validation signal against confident wrong
   lookups, and it identifies language.
+- **Which VERSION a source found is chosen against the ASR transcript.** A provider holds one record
+  per recording and they all match artist+track, so `/api/get` (a single duration-filtered record) picked
+  one by fiat — a song with a guest verse got whichever came back. LRCLIB is searched instead, the pool
+  is ranked cheaply (lyrics present, duration proximity, then artist-credit overlap), and the ASR
+  transcript decides among them.
+
+  The decision is **comparative, not thresholded**, and the two are complementary rather than
+  alternatives. Selection asks *which candidate agrees most* — no cutoff, which is the point: two
+  versions of one song share most of their words, and measured on the reference fixture the WRONG version
+  scores 0.548 against the vocals versus 0.938 for the right one, both far above the 0.25 wrong-song
+  threshold. The threshold then does its own separate job: judging whether the winner is trustworthy at
+  all, demoting it below ASR if not.
+
+  Costs no extra alignment — the choice is made on text already in memory, so only the winner is timed.
+  It depends on the ASR tier and therefore on a vocals stem, which is why `align` is chained *after*
+  `stems`; a song aligned without a stem falls back to duration-ranked selection.
 - Candidates are retained with source, timing fidelity, confidence, language and creation time;
-  `pickBestLyrics()` chooses without destroying upgrade paths.
+  `pickBestLyrics()` chooses without destroying upgrade paths. Agreement is published per candidate, so
+  an equal-rank tie between two sources also breaks toward the one matching the vocals.
 - Authoritative text + line timing ranks above ASR text + word timing: correct words with coarse
   highlighting beat wrong words with polished animation.
 - Provenance is visible: auto-transcribed lyrics must not masquerade as authoritative.

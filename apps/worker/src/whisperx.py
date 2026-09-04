@@ -36,6 +36,7 @@ from .lyrics_chain import (
     TIMING_LINE,
     TIMING_WORD,
     AsrSource,
+    CaptionsSource,
     LrclibSource,
     LyricsRequest,
     LyricsSource,
@@ -43,7 +44,9 @@ from .lyrics_chain import (
     acquire,
     candidate_key,
     score_against_asr,
+    select_variants,
 )
+from .captions import caption_argv, read_captions
 from .lyrics_presplit import presplit_texts
 from .lyrics_validate import validate_timing
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
@@ -281,11 +284,13 @@ class WhisperXProcessor:
         return self._lyrics_client
 
     def _get_sources(self) -> list[LyricsSource]:
-        """The acquisition chain. Order is informational only — `acquire` runs them ALL and
-        `pickBestLyrics` (TS) decides what the TV shows."""
+        """The acquisition chain. Order is informational only — `acquire` runs them ALL, then
+        `select_variants` resolves each source's own versions and `pickBestLyrics` (TS) decides what
+        the TV shows."""
         if self._sources is None:
             self._sources = [
                 LrclibSource(self._client(), lrclib_to_segments),
+                CaptionsSource(),
                 AsrSource(self._get_transcriber(), normalize_lyrics),
             ]
         return self._sources
@@ -341,7 +346,8 @@ class WhisperXProcessor:
         # ── stage 1: obtain the source audio ──────────────────────────────────────
         # Reuse the retained raw original if a stems job already fetched it — an align job for a
         # cooked song then costs no network.
-        if job_fetcher(job) is Fetcher.LOCAL:
+        is_local = job_fetcher(job) is Fetcher.LOCAL
+        if is_local:
             audio = local_source_path(job)
         else:
             audio = source_audio_path(job.media_dir, job.media_id)
@@ -352,6 +358,35 @@ class WhisperXProcessor:
             else:
                 yield ProgressEvent(stage="downloading", pct=100)
 
+        # ── stage 1b: the upload's own caption track, if a human wrote one ────────
+        # Runs through the SAME injected runner as the audio download, so it is faked wherever that is.
+        # Never fatal: yt-dlp exits non-zero when a video simply has no manual subtitles, which is the
+        # common case and not a failure. `--write-subs` without `--write-auto-subs` means an
+        # auto-generated (ASR) track cannot arrive here — see captions.py.
+        #
+        # Skipped for a DECLARED-LOCAL source, on the same rule as the audio above: a library file has no
+        # upload to ask, so there is nothing to fetch and no reason to touch the network.
+        caption_dir = os.path.join(work, "captions")
+        caption_segments: list[dict[str, Any]] = []
+        if job.source_uri and not is_local:
+            os.makedirs(caption_dir, exist_ok=True)
+            try:
+                async for ev in self._run_stage(
+                    "downloading",
+                    caption_argv(job.source_uri, os.path.join(caption_dir, "captions.%(ext)s"), self._ytdlp_bin),
+                    parse_ytdlp_progress,
+                ):
+                    yield ev
+            except Exception as exc:  # noqa: BLE001 — no captions / no yt-dlp / no network: all a miss
+                print(f"[worker] align: no caption track for {job.media_id} ({exc})", flush=True)
+            caption_segments = read_captions(caption_dir)
+            if caption_segments:
+                print(
+                    f"[worker] align: {job.media_id} has an uploader-authored caption track "
+                    f"({len(caption_segments)} lines) — using it as an authoritative text tier",
+                    flush=True,
+                )
+
         # ── stage 2: ACQUIRE text from every source ──────────────────────
         # Independently, not first-hit: authoritative text and ASR are complements (the ideal
         # artifact is authoritative text force-aligned), and a dead LRCLIB must degrade the RESULT,
@@ -360,9 +395,11 @@ class WhisperXProcessor:
             media_id=job.media_id,
             artist=artist or None,
             track=track or None,
+            artist_credit=str(params.get("artistCredit") or "").strip() or None,
             duration=duration,
             audio_path=audio,
             vocals_path=self._vocals_path(job),
+            caption_segments=caption_segments,
         )
         texts: list[LyricsText] = []
         async for kind, val in self._run_blocking(lambda: acquire(self._get_sources(), req), "aligning", 0):
@@ -397,6 +434,21 @@ class WhisperXProcessor:
         # splitter that can only damage them. (Scoring itself compares token SETS, which splitting
         # cannot change.)
         texts = presplit_texts(texts)
+
+        # ── stage 2b: CHOOSE WHICH VERSION ────────────────────────────────────────
+        # A source that offered several versions of the song is resolved here, against the ASR
+        # transcript, BEFORE anything is aligned — so choosing among five candidates costs five token-set
+        # comparisons and still exactly one alignment.
+        #
+        # This is the step that makes the demotion below worth having. On its own, detecting a mismatch
+        # only downgrades the lookup and hands the song to ASR's guess at sung words; with selection, a
+        # mismatch first gets a chance to be answered by a BETTER RECORD of the same song. Note the two
+        # use the signal differently and both are needed: selection is comparative (which candidate
+        # agrees most, no threshold involved, which is why it separates two versions that both score well
+        # above SUSPECT_AGREEMENT), and the demotion is absolute (is the winner trustworthy at all).
+        texts, choices = select_variants(texts)
+        for choice in choices:
+            print(f"[worker] align: {job.media_id} lyrics version — {choice.summary()}", flush=True)
 
         # ── stage 3: TIMING — force-align each text; degrade to its own line sync ─
         yield ProgressEvent(stage="aligning", pct=0)
