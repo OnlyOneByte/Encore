@@ -140,6 +140,19 @@ export interface Singer {
   color: string; // hex; the per-singer accent used across both surfaces
   sessionToken: string;
   joinedAt: number;
+  /**
+   * When this singer last STARTED a song. Absent/null = has not sung.
+   *
+   * The signal the `least-recently-sung` ordering runs on, and the reason it lives on the singer
+   * rather than in the play log: `plays` deliberately carries no singer id, because over a small
+   * library "who sang what" is identifying. This records THAT someone sang and when — not what they
+   * sang — which is the least the rotation can know and still be fair, and it is why the stamp is
+   * safe to broadcast on the public roster the phones already receive.
+   *
+   * Stamped at song START, not end: the point is that their remaining picks drop behind everyone
+   * else's the moment their turn begins.
+   */
+  lastSungAt?: number | null;
 }
 
 export type EntryStatus = 'queued' | 'playing' | 'waiting' | 'done' | 'skipped';

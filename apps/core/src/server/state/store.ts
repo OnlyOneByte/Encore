@@ -2,7 +2,7 @@
 // a queue:patch broadcast is computed from RAM (sub-ms). Writes update memory, bump `rev`, and
 // schedule a write-behind flush to SQLite. Hydrated once on boot. See MASTER-DESIGN §7 (Tier 1 #2).
 
-import { applyAndReseq, assignSeqs, isTerminal, type QueueOp, type QueueEntry, type PlaybackState } from '@encore/shared';
+import { applyAndReseq, assignSeqs, isTerminal, type Ordering, type QueueOp, type QueueEntry, type PlaybackState } from '@encore/shared';
 
 export interface StatePersistence {
 	/** Write-behind sink. Called (debounced) after mutations; must be side-effect-only. */
@@ -28,10 +28,18 @@ export class AuthoritativeState {
 	#persistence: StatePersistence;
 	#flushTimer: ReturnType<typeof setTimeout> | null = null;
 	#flushDelayMs: number;
+	#orderingOf: () => Ordering;
 
-	constructor(persistence: StatePersistence = NOOP_PERSIST, flushDelayMs = 250) {
+	/**
+	 * `orderingOf` is a GETTER, not a value: the room's ordering algorithm is a setting that can change
+	 * mid-party, and the sing-history it may read changes every time a song starts. Reading it per
+	 * mutation means nothing has to be re-wired when either moves. Defaults to `{}` — fair rotation —
+	 * so a caller with no settings to hand (tests, a boot path) gets the pre-setting behaviour.
+	 */
+	constructor(persistence: StatePersistence = NOOP_PERSIST, flushDelayMs = 250, orderingOf: () => Ordering = () => ({})) {
 		this.#persistence = persistence;
 		this.#flushDelayMs = flushDelayMs;
+		this.#orderingOf = orderingOf;
 	}
 
 	get rev(): number {
@@ -47,19 +55,41 @@ export class AuthoritativeState {
 
 	/** Seed from durable storage on boot (does NOT bump rev or schedule a flush). */
 	hydrate(entries: QueueEntry[], playback: PlaybackState | null): void {
-		// drop terminal (done/skipped) rows and normalize fairness order on load
-		this.#entries = assignSeqs(entries.filter((e) => !isTerminal(e)));
+		// drop terminal (done/skipped) rows and normalize the room's ordering on load
+		this.#entries = assignSeqs(entries.filter((e) => !isTerminal(e)), this.#orderingOf());
 		if (playback) this.#playback = { ...playback };
+	}
+
+	/**
+	 * Re-derive the ordering WITHOUT a queue op — for when the ordering itself changed rather than the
+	 * queue: the room switched algorithm, or a singer started a song and the sing-history the
+	 * `least-recently-sung` policy reads moved.
+	 *
+	 * Returns null when the resulting order is IDENTICAL, and in that case touches nothing: no rev
+	 * bump, no flush. That is what makes it safe to call unconditionally from the playback path and the
+	 * settings endpoint — under an ordering that ignores sing history this is a cheap no-op, and
+	 * republishing an unchanged snapshot would make every client re-adopt state and re-apply its
+	 * pending ops for nothing.
+	 */
+	reorder(): { rev: number; entries: QueueEntry[] } | null {
+		const next = assignSeqs(this.#entries, this.#orderingOf());
+		const same =
+			next.length === this.#entries.length && next.every((e, i) => e.id === this.#entries[i]!.id);
+		if (same) return null;
+		this.#entries = next;
+		this.#rev++;
+		this.#scheduleFlush();
+		return { rev: this.#rev, entries: this.entries };
 	}
 
 	/**
 	 * Apply a queue op authoritatively via the SHARED `applyAndReseq` (the same function the client
 	 * optimistic store runs), which handles move-as-addedAt-permute, prunes terminal entries, and
-	 * re-derives fair round-robin rotationSeq. Bumps rev, schedules write-behind. Returns the
-	 * canonical op + the authoritative (pruned, reseq'd) entries snapshot for the broadcast.
+	 * re-derives the room's ordering as contiguous rotationSeq. Bumps rev, schedules write-behind.
+	 * Returns the canonical op + the authoritative (pruned, reseq'd) entries snapshot for the broadcast.
 	 */
 	applyQueueOp(op: QueueOp): { rev: number; canonicalOps: QueueOp[]; entries: QueueEntry[] } {
-		this.#entries = applyAndReseq(this.#entries, op);
+		this.#entries = applyAndReseq(this.#entries, op, this.#orderingOf());
 		this.#rev++;
 		this.#scheduleFlush();
 		return { rev: this.#rev, canonicalOps: [op], entries: this.entries };

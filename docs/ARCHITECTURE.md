@@ -110,6 +110,39 @@ client field before it reaches state/SQLite — one missing `singerId` once kill
 pruned on apply and hydrate. A not-ready file entry is skipped by `isEntryReady` but keeps its
 `rotationSeq`, so cooking never burns a singer's turn.
 
+WHICH ordering is a room setting (`RoomSettings.queueOrder`), and the registry is
+`packages/shared/src/queue-order.ts` (built with `makeRegistry`, like every other flat registry): fair
+rotation (the default and the pre-setting behaviour),
+first-come-first-served, a stable shuffle, and whoever-sang-longest-ago. Adding one is a registry
+entry plus one pure function — as long as it needs nothing but the queued entries and `Ordering`.
+
+Three things make this work, and all three are load-bearing:
+
+- **The ordering is threaded, not looked up.** Every function takes an optional `Ordering`
+  (`{ order, lastSungAt }`) defaulting to fair, so a caller with no settings to hand behaves as it did
+  before the setting existed. The server assembles it in ONE place — `orderingOf(deps)` in
+  `realtime/hub.ts` — because a second source is how the server comes to pick a different "next" than
+  the queue every client is looking at.
+- **The client must know it.** `applyAndReseq` runs on the phone too; predicting with fair rotation in
+  a first-come-first-served room puts every add in the wrong place for a frame and then snaps. The
+  phone holds `EffectiveSettings` (seeded from `queue:sync`, kept live by `settings:changed`) and hands
+  the store a *getter*, so a mid-party change needs no re-wiring.
+- **Changing it must reseq the live queue.** Unlike every other room setting, this one is not a
+  render-time choice: `rotationSeq` is stored per entry, so `PUT /api/settings/room` calls
+  `state.reorder()` and broadcasts a `queue:patch`. `reorder()` returns null when the order is
+  unchanged and then touches nothing, which is what makes it safe to call from the playback path too.
+  It never interrupts the current song — ordering ranks only `queued` entries.
+
+`least-recently-sung` reads `Singer.lastSungAt`, stamped at song START (their remaining picks should
+drop behind everyone else's the moment their turn begins). It lives on the singer, not in `plays`,
+because that table deliberately carries no singer id: this records THAT someone sang and when, never
+what. With no history the policy is exactly fair, so a party starts identically either way.
+
+A drag-reorder stays policy-agnostic: `move` permutes the singer's own `addedAt` stamps rather than
+rewriting seqs, so under every addedAt-reading ordering a singer reorders their own songs within the
+slots they already hold and can never jump another singer. Under `shuffle` the rank comes from the
+entry id, so a move is a legal no-op and the phone hides the arrows (`respectsAddedAt`).
+
 ### Presence
 
 The WS upgrade identifies a singer from the session cookie. `PresenceTracker` is ref-counted and

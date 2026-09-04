@@ -1,8 +1,15 @@
 <script lang="ts">
-	import { SINGER_COLORS, TV_BACKGROUND_STYLES } from '@encore/shared';
+	import {
+		SINGER_COLORS,
+		TV_BACKGROUND_STYLES,
+		DEFAULT_EFFECTIVE_SETTINGS,
+		queueOrderLabel,
+		reorderIsMeaningful,
+		singHistoryFrom
+	} from '@encore/shared';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import type { ServerEvent, QueueEntry, Media, PublicSinger, PlaybackState, PlayerCommand } from '@encore/shared';
+	import type { ServerEvent, QueueEntry, Media, PublicSinger, PlaybackState, PlayerCommand, EffectiveSettings } from '@encore/shared';
 	import { QueueStore } from '$lib/stores/queue';
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
@@ -81,6 +88,18 @@
 		await goto('/join');
 	}
 
+	// The room's settings, seeded from queue:sync and kept live by settings:changed — the SAME two
+	// events /tv listens to. The phone needs them for one reason beyond display: `room.queueOrder` is
+	// an input to the optimistic reducer, so an add can only land in its real position if this is
+	// current. Defaults until the first sync, which is fair rotation — the pre-setting behaviour.
+	let settings = $state<EffectiveSettings>(DEFAULT_EFFECTIVE_SETTINGS);
+	// Reordering your own picks is meaningless under `shuffle` (rank comes from the entry id), so the
+	// arrows are hidden rather than offered as a control that silently does nothing.
+	const canReorder = $derived(reorderIsMeaningful(settings.room.queueOrder));
+	// The list heading named the order "rotation" unconditionally, which stops being true the moment
+	// the room picks anything else. Eyes-on: it still said ROTATION with the room on first-come-first-served.
+	const orderLabel = $derived(queueOrderLabel(settings.room.queueOrder));
+
 	let store: QueueStore;
 	let ws: WsClient;
 
@@ -136,7 +155,10 @@
 			store = new QueueStore({
 				singerId: me.id,
 				sendCommand: (cmd) => ws.send({ type: 'queue:command', command: cmd }),
-				onReject: (reason) => showError(`Couldn't do that: ${reason}`)
+				onReject: (reason) => showError(`Couldn't do that: ${reason}`),
+				// Read at apply time, not captured: both the algorithm and the sing history change while
+				// the party runs, and predicting with a stale ordering is what makes a row jump.
+				ordering: () => ({ order: settings.room.queueOrder, lastSungAt: singHistoryFrom(singers.values()) })
 			});
 			store.subscribe((e) => (entries = e));
 
@@ -146,6 +168,7 @@
 				onConnectionChange: (c) => (connected = c),
 				onEvent: (e: ServerEvent) => {
 					if (e.type === 'queue:sync') {
+						if (e.settings) settings = e.settings;
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
 						// The room's guiding-track default — needed to LABEL the control, since a null
@@ -157,6 +180,7 @@
 					}
 					if (e.type === 'singer:presence') awaySingers = new Set(e.away);
 					if (e.type === 'queue:patch' && e.patch.media) mergeMedia(e.patch.media);
+					if (e.type === 'settings:changed') settings = e.settings;
 					if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
 					// A rename must land on every OTHER phone too, or their queue rows keep naming someone
 					// who no longer goes by that.
@@ -872,7 +896,7 @@
 		{/each}
 	</div>
 
-	<div class="grouphead">Up next · rotation</div>
+	<div class="grouphead">Up next · {orderLabel}</div>
 	{#if queued.length === 0}
 		<p class="empty">Queue's empty — add a song to start the party.</p>
 	{:else}
@@ -889,7 +913,7 @@
 					status={proc.status}
 					pct={proc.pct}
 					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-					reorderable={e.singerId === me?.id && myPicks.length > 1}
+					reorderable={canReorder && e.singerId === me?.id && myPicks.length > 1}
 					canUp={myIdx(e.id) > 0}
 					canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
 					onup={() => moveMine(e.id, -1)}
@@ -910,7 +934,7 @@
 					pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
 					subtitle={e.id === nextPlayableId ? 'up next' : ''}
 					removable={e.singerId === me?.id}
-					reorderable={e.singerId === me?.id && myPicks.length > 1}
+					reorderable={canReorder && e.singerId === me?.id && myPicks.length > 1}
 					canUp={myIdx(e.id) > 0}
 					canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
 					onremove={() => removeWithUndo(e)}

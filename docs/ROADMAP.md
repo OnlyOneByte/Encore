@@ -177,6 +177,22 @@ which is the argument for the "green suite is the floor, not the bar" rule in
 
 ## Open queue
 
+- [x] **Queue order as a room setting** (shipped, branch `feat/queue-order-room-setting`) — the
+  ordering algorithm moved out of `rotation.ts` into a registry
+  (`packages/shared/src/queue-order.ts`) and onto `RoomSettings.queueOrder`: **Fair rotation** (the
+  default, byte-identical to the old hardcoded behaviour), **first come, first served**, a **stable
+  shuffle** (rank hashed from the entry id, so it is fixed once a song is in and identical on both
+  sides of the wire), and **whoever sang longest ago** (reads `Singer.lastSungAt`, stamped at song
+  start; with no history it IS fair). Design in `docs/ARCHITECTURE.md` §4 and
+  `docs/SPEC-queue-order-room-setting.md`.
+
+  Remaining open work here, deliberately not built:
+  - **A room-scoped away/skip interaction.** `least-recently-sung` orders by when someone last sang;
+    a singer who is present but away is a separate concept the presence lifecycle owns.
+  - **No per-singer song history.** The stamp records that someone sang and when, never what, to stay
+    inside the line `plays` draws (no `singer_id`, on purpose). Any future policy that wants "who has
+    sung this song" needs that decision revisited first, not worked around.
+
 - [ ] **B-8 · Swap the separator to `python-audio-separator`** — the fit is clean because
   `demucs.py` is pure argv-plus-subprocess with **zero numeric imports**: the dial-home loop, job
   ledger and progress reporting do not move.

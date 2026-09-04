@@ -136,7 +136,9 @@
 		     information you cannot get from the affordance. The instruction survives for screen
 		     readers in the button's aria-label above. -->
 		<div class="hint">
-			{#if !open && queueCount > 0}{queueCount} in the rotation{/if}
+			<!-- "in the rotation" was hardcoded, and is wrong for a room on first-come-first-served or
+			     shuffle. "waiting" is true under every ordering and needs no prop. -->
+			{#if !open && queueCount > 0}{queueCount} waiting{/if}
 			<span class="chev" class:up={!open}><Icon name="chevron-down" /></span>
 		</div>
 	</div>

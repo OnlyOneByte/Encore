@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "2ea144ff-9c6a-4962-a475-05fe3e49eb3b",
+  "id": "5ffa4ef6-10d9-4300-82d7-bfe306b9dae7",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "global_settings": {
@@ -822,6 +822,14 @@
           "notNull": true,
           "autoincrement": false
         },
+        "queue_order": {
+          "name": "queue_order",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'fair'"
+        },
         "tv_progress_style": {
           "name": "tv_progress_style",
           "type": "text",
@@ -1031,6 +1039,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
+          "autoincrement": false
+        },
+        "last_sung_at": {
+          "name": "last_sung_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
           "autoincrement": false
         }
       },

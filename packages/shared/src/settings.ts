@@ -20,6 +20,7 @@ import {
 	type SeparatorEngineId
 } from './separators';
 import { makeRegistry } from './registry';
+import { DEFAULT_QUEUE_ORDER, isQueueOrder, type QueueOrderId } from './queue-order';
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
 import { SINGER_HUE_STEP } from './colors';
 import {
@@ -318,6 +319,17 @@ export function isTvVisualizer(v: unknown): v is TvVisualizerId {
 }
 
 export interface RoomSettings {
+	/**
+	 * Which ordering algorithm decides who sings next. Room-scoped because it is a HOUSE RULE: a living
+	 * room wants a rotation, a bar with a sign-up sheet wants first-come-first-served, and two parties
+	 * on one core can genuinely disagree. The registry lives in queue-order.ts.
+	 *
+	 * Unlike every other room setting this one is not a render-time choice: `rotationSeq` is stored on
+	 * each entry, so a write that changes it must re-derive the live queue and broadcast (see the room
+	 * settings endpoint). It never interrupts the song already playing — ordering ranks only `queued`
+	 * entries.
+	 */
+	queueOrder: QueueOrderId;
 	/** Which progress treatment the TV renders. */
 	tvProgressStyle: TvProgressStyle;
 	/** What the TV paints behind the song. Room-scoped: it is one party's staging taste. */
@@ -406,6 +418,7 @@ export const MAX_SONG_INTRO_MS = 10_000;
 export const SONG_INTRO_STEP_MS = 500;
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
+	queueOrder: DEFAULT_QUEUE_ORDER,
 	tvProgressStyle: 'card',
 	// `off` so an existing box looks byte-identical after the migration: today's TV is plain black
 	// behind the song, and a default that changed the stage would be a surprise, not a feature.
@@ -463,6 +476,10 @@ export function normalizeRoomSettings(
 	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
 	const style = input?.tvProgressStyle;
 	const tvProgressStyle = isTvProgressStyle(style) ? style : d.tvProgressStyle;
+	// Reject-to-current, like tvProgressStyle: a de-whitelisted algorithm must leave the room on the one
+	// it is already running rather than silently swapping the house rule mid-party.
+	const orderId = input?.queueOrder;
+	const queueOrder = isQueueOrder(orderId) ? orderId : d.queueOrder;
 	const ball = input?.lyricsBall;
 	const lyricsBall = isValidLyricsBall(ball) ? ball : d.lyricsBall;
 	const highlight = input?.lyricsHighlight;
@@ -521,6 +538,7 @@ export function normalizeRoomSettings(
 	const viz = input?.tvVisualizer;
 	const tvVisualizer = isTvVisualizer(viz) ? viz : d.tvVisualizer;
 	return {
+		queueOrder,
 		tvProgressStyle,
 		tvBackgroundStyle,
 		tvBackgroundHue,

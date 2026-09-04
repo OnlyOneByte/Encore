@@ -12,7 +12,7 @@ import {
 	type WorkerMessage,
 	type WorkerCommand
 } from '@encore/shared';
-import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
+import { handleQueueCommand, syncEvent, orderingOf, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './src/server/realtime/player';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
@@ -227,6 +227,7 @@ const server = Bun.serve<SocketData>({
 				listAway: () => membership.away,
 				getSettings: () => app.settings.getEffective(),
 				onNowPlaying: (e) => app.plays.onNowPlaying(e),
+				onSang: (singerId) => app.singers.markSang(singerId, app.now()),
 				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
 				actorSingerId: ws.data.singerId,
 				seenOp: (id) => {
@@ -245,7 +246,7 @@ const server = Bun.serve<SocketData>({
 					ws.send(JSON.stringify(syncEvent(state, deps)));
 					ws.send(JSON.stringify({ type: 'playback:state', state: state.playback, rev: state.rev }));
 					const cur = state.entries.find((e) => e.id === state.playback.currentEntryId) ?? null;
-					const upNext = upNextAfter(cur?.id ?? null, state.entries, mediaById);
+					const upNext = upNextAfter(cur?.id ?? null, state.entries, mediaById, orderingOf(deps));
 					ws.send(JSON.stringify({ type: 'nowplaying:changed', current: cur, upNext }));
 					break;
 				}

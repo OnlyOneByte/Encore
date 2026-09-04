@@ -10,8 +10,10 @@ import type {
 	QueueEntry,
 	Media,
 	PublicSinger,
-	EffectiveSettings
+	EffectiveSettings,
+	Ordering
 } from '@encore/shared';
+import { singHistoryFrom } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
 
 export type Publish = (event: ServerEvent) => void;
@@ -32,6 +34,12 @@ export interface HubDeps {
 	getSettings?: () => EffectiveSettings;
 	/** Optional: notified when the current entry CHANGES, for play tracking (retention's LRU signal). */
 	onNowPlaying?: (entry: { id: string; mediaId: string } | null) => void;
+	/**
+	 * Optional: stamp that a singer has STARTED a song. Separate from `onNowPlaying` because it is not
+	 * telemetry — it feeds the `least-recently-sung` ordering, so it must land BEFORE the reseq and
+	 * broadcast that follow, whereas play tracking only has to happen eventually.
+	 */
+	onSang?: (singerId: string) => void;
 	/** Optional: record a queue-add for popularity shortcuts. */
 	recordAdd?: (mediaId: string) => void;
 	/** Optional: idempotency ledger — returns true if this clientOpId was already applied. */
@@ -126,9 +134,26 @@ export function handleQueueCommand(
 }
 
 /** Media records referenced by the given entries (so observers can render titles for others' adds). */
-export function mediaFor(entries: QueueEntry[], deps: HubDeps): Media[] {
+export function mediaFor(entries: QueueEntry[], deps: Pick<HubDeps, 'mediaById'>): Media[] {
 	const ids = new Set(entries.map((e) => e.mediaId));
 	return [...deps.mediaById.values()].filter((m) => ids.has(m.id));
+}
+
+/**
+ * The room's ordering, assembled from deps that already exist: the `queueOrder` setting says WHICH
+ * algorithm, and the singer roster carries the sing history the `least-recently-sung` one reads.
+ *
+ * Derived here rather than passed in as its own dep so there is exactly one place that decides what
+ * the server considers the current ordering — a second source is how the server would come to pick a
+ * different "next" than the queue every client is looking at. Built via the SHARED
+ * `singHistoryFrom` so the map is identical to the one the phone builds from the same records.
+ */
+export function orderingOf(deps: Pick<HubDeps, 'getSettings' | 'listSingers'>): Ordering {
+	const singers = deps.listSingers?.();
+	return {
+		order: deps.getSettings?.().room.queueOrder,
+		lastSungAt: singers ? singHistoryFrom(singers) : undefined
+	};
 }
 
 /** Full-state response for a (re)connecting client — the resync path. Includes singer + media
