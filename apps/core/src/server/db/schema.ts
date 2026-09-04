@@ -18,7 +18,12 @@ export const singers = sqliteTable(
 		displayName: text('display_name').notNull(),
 		color: text('color').notNull(),
 		sessionToken: text('session_token').notNull(),
-		joinedAt: integer('joined_at').notNull()
+		joinedAt: integer('joined_at').notNull(),
+		// When this singer last STARTED a song — the signal the `least-recently-sung` ordering runs on.
+		// NULL means "has not sung", which is deliberately distinct from 0: an unsung singer sorts ahead
+		// of everyone who has sung. Stored here rather than in `plays` because that table deliberately
+		// carries no singer id (see its comment): this records THAT someone sang and when, never what.
+		lastSungAt: integer('last_sung_at')
 	},
 	// Finding #3: session_token is the auth lookup key (bySessionToken on every authed request).
 	// UNIQUE index = O(log n) lookup instead of a table scan AND prevents a (vanishingly unlikely
@@ -170,6 +175,13 @@ export const globalSettings = sqliteTable('global_settings', {
 // A setting belongs here only when two rooms on one core could genuinely want different values.
 export const roomSettings = sqliteTable('room_settings', {
 	roomId: text('room_id').primaryKey(),
+	// The house rule: which ordering algorithm decides who sings next. Enum-constrained at the column
+	// like the style settings, so a hand-edited DB cannot name an algorithm that does not exist — and
+	// the default is today's fair rotation, so an existing room's behaviour is unchanged by the column
+	// appearing.
+	queueOrder: text('queue_order', { enum: ['fair', 'fcfs', 'shuffle', 'least-recently-sung'] })
+		.notNull()
+		.default('fair'),
 	tvProgressStyle: text('tv_progress_style', { enum: ['card', 'corner', 'edge', 'off'] })
 		.notNull()
 		.default('card'),

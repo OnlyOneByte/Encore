@@ -4,7 +4,9 @@ import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { runMigrations } from '../db/migrate';
 import * as schema from '../db/schema';
 import { SettingsRepository } from './settings-repository';
-import { DEFAULT_GLOBAL_SETTINGS, DEFAULT_ROOM_SETTINGS } from '@encore/shared';
+import { DEFAULT_GLOBAL_SETTINGS, DEFAULT_ROOM_SETTINGS, QUEUE_ORDERS } from '@encore/shared';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 function freshRepo() {
 	const sqlite = new Database(':memory:');
@@ -391,5 +393,57 @@ describe('SettingsRepository room scope: lyrics text', () => {
 		const room = repo.getRoom();
 		expect(room.lyricsFont).toBe('mono');
 		expect(room.lyricsLinesBefore).toBe(0);
+	});
+});
+
+describe('SettingsRepository room scope: the ordering algorithm', () => {
+	it('defaults to fair rotation — the behaviour that existed before the setting', () => {
+		expect(freshRepo().getRoom().queueOrder).toBe('fair');
+	});
+
+	it('round-trips every registered algorithm', () => {
+		const repo = freshRepo();
+		for (const p of QUEUE_ORDERS) {
+			expect(repo.setRoom({ queueOrder: p.id }).queueOrder).toBe(p.id);
+			expect(repo.getRoom().queueOrder).toBe(p.id);
+		}
+	});
+
+	it('an unregistered algorithm keeps the room on the one it is running', () => {
+		// Reject-to-current, not reset-to-default: silently swapping the house rule mid-party because a
+		// checkpoint of a name was retired is worse than ignoring the write.
+		const repo = freshRepo();
+		repo.setRoom({ queueOrder: 'fcfs' });
+		expect(repo.setRoom({ queueOrder: 'round-robin' as never }).queueOrder).toBe('fcfs');
+		expect(repo.setRoom({ queueOrder: undefined }).queueOrder).toBe('fcfs');
+	});
+
+	it('a patch touching only pacing leaves the algorithm alone', () => {
+		const repo = freshRepo();
+		repo.setRoom({ queueOrder: 'shuffle' });
+		expect(repo.setRoom({ songIntroMs: 1000 }).queueOrder).toBe('shuffle');
+	});
+
+	it('the columns live in the SINGLE baseline, not a follow-on migration', () => {
+		// This feature was built while main still carried thirteen incremental migrations, so it shipped
+		// its own numbered one. Main then collapsed the chain to one pre-release baseline, and these two
+		// columns were FOLDED INTO it rather than re-added on top — there is no production database yet, so
+		// a second migration would be history nobody needs to replay.
+		//
+		// Asserted against the SQL rather than the live DB because a fresh DB would read correct either
+		// way; what matters is that the baseline is the only file, so an old dev DB cannot be migrated
+		// forward (see the file's own header) and nothing silently re-adds a column.
+		const folder = process.env.ENCORE_MIGRATIONS_DIR ?? join(import.meta.dir, '..', '..', '..', 'drizzle');
+		const journal = JSON.parse(readFileSync(join(folder, 'meta', '_journal.json'), 'utf8')) as {
+			entries: { idx: number; tag: string }[];
+		};
+		expect(journal.entries.map((e) => e.tag)).toEqual(['0000_baseline']);
+		const sql = readFileSync(join(folder, '0000_baseline.sql'), 'utf8');
+		expect(sql).toContain("`queue_order` text DEFAULT 'fair' NOT NULL");
+		expect(sql).toContain('`last_sung_at` integer');
+		// nullable on purpose: NULL means "has not sung", which sorts ahead of everyone who has
+		expect(sql).not.toContain('`last_sung_at` integer NOT NULL');
+		// and the provenance header survived the regeneration, or the next person re-adds the chain
+		expect(sql).toContain('SINGLE PRE-RELEASE BASELINE');
 	});
 });
