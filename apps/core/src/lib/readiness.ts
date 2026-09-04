@@ -1,15 +1,16 @@
 // Client-side mirror of the server's readiness axis (src/server/media/readiness.ts). Duplicated
 // rather than imported because @encore/shared is the client/server contract and this is a derived
 // view concern — but the classification MUST agree with the server's, so it is unit-tested here too.
-import { isPlayable, readyToSing, type Media, type MediaStatus } from '@encore/shared';
+import { isCooking, isPlayable, readyToSing, type Media, type MediaStatus } from '@encore/shared';
 
 export type Readiness = 'ready' | 'cooking' | 'unacquired';
 
 export function readinessOf(m: Media): Readiness {
-	// FINISHED, not merely playable — the client mirrors the server's gate table so the two surfaces
-	// cannot disagree about which group a song belongs to (they did, and it rendered in both).
+	// Gate-driven, and MUST stay byte-identical to the client's copy (apps/core/src/lib/readiness.ts).
+	// `isCooking` reads the cook gates rather than a single `stemStatus === 'queued'` check, so a song
+	// mid-align (stems ready, lyrics queued) reads as cooking instead of falling through to unacquired.
 	if (readyToSing(m)) return 'ready';
-	if (m.stemStatus === 'queued') return 'cooking';
+	if (isCooking(m)) return 'cooking';
 	return 'unacquired';
 }
 

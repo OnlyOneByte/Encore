@@ -19,6 +19,7 @@
 	//      cannot be cut off, and the title gets two lines besides.
 	//   4. THE VIEW COUNT. The tiebreaker between two lyric uploads of one song (2.1B vs 266K).
 	import type { Readiness } from '$lib/readiness';
+	import { cookStageLabel } from '$lib/cook-phrasing';
 	import Icon from '$lib/ui/Icon.svelte';
 	import {
 		classifyVideoKind,
@@ -27,7 +28,7 @@
 		formatViewCount,
 		isUnusualSongDuration,
 		VIDEO_KIND_LABEL
-	} from '@encore/shared';
+	} from '$lib/video-kind';
 
 	interface Props {
 		/**
@@ -135,11 +136,8 @@
 	 * review called those the honest part.
 	 */
 	const stateChip = $derived.by(() => {
-		if (readiness === 'ready') return 'Karaoke ready';
-		if (readiness === 'cooking') {
-			const eta = etaSec && etaSec > 0 ? ` · ~${Math.max(1, Math.round(etaSec / 60))} min left` : '';
-			return `Making karaoke… ${pct}%${eta}`;
-		}
+		if (readiness === 'ready') return cookStageLabel('ready');
+		if (readiness === 'cooking') return cookStageLabel('separating', { pct, etaSec });
 		return null;
 	});
 
@@ -184,7 +182,7 @@
 		{#if kindLabel || stateChip || views || durationNote}
 			<div class="chips">
 				{#if stateChip}
-					<span class="chip state" class:ok={readiness === 'ready'} class:warn={readiness === 'cooking'}>{stateChip}</span>
+					<span class="chip state" class:ok={readiness === 'ready'} class:warn={readiness === 'cooking'} aria-live="polite">{stateChip}</span>
 				{/if}
 				{#if kindLabel}<span class="chip kind {kind}">{kindLabel}</span>{/if}
 				<!-- The red badge, said out loud. Ordered after the kind so "Live · Longer than a song"
@@ -269,7 +267,11 @@
 		font-size: 0.62rem; font-weight: 700; padding: 1px 4px; border-radius: 4px;
 		font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
 	}
-	.dur.odd { background: var(--danger); color: var(--on-accent); }
+	/* Dark ink on the danger fill, not white. White on #ff6b6b is 2.78:1 — below AA for this
+	   0.62rem/700 badge (normal-size, needs 4.5:1). --danger-bg (#2a1b22) is the danger family's
+	   dark surface and measures 5.92:1 here, AA with margin. It reuses a token rather than
+	   inventing a hex, and pairs the badge with the same ink the sibling .chip.odd-dur uses. */
+	.dur.odd { background: var(--danger); color: var(--danger-bg); }
 
 	.meta { min-width: 0; flex: 1; }
 	/*

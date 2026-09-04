@@ -3,6 +3,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
+	import { cookStageChipLabel, cookStageLabel } from '$lib/cook-phrasing';
 	interface Props {
 		// Queue-slot number + the singer who asked for it. Both absent when the card renders OUTSIDE
 		// the rotation list — a song cooking for someone else's turn still needs somewhere to show its
@@ -31,15 +32,14 @@
 		onremove, reorderable = false, canUp = false, canDown = false, onup, ondown
 	}: Props = $props();
 
-	const STAGES: { key: MediaStatus; label: string }[] = [
-		{ key: 'queued', label: 'Queued' },
-		{ key: 'downloading', label: 'Downloaded' },
-		{ key: 'separating', label: 'Separating' },
-		// `aligning` is a stage the worker really reports. Omitting it here rendered every chip as done
-		// during it, so the card claimed the song was finished while it was still cooking.
-		{ key: 'aligning', label: 'Lyrics' },
-		{ key: 'ready', label: 'Ready' }
-	];
+	// The stages shown as chips, in worker order. Labels come from the shared helper so the card and
+	// SongRow speak one vocabulary; `aligning` is included because the worker really reports it, and
+	// omitting it rendered every chip as done during it (claiming the song was finished while cooking).
+	const STAGE_KEYS: MediaStatus[] = ['queued', 'downloading', 'separating', 'aligning', 'ready'];
+	const STAGES: { key: MediaStatus; label: string }[] = STAGE_KEYS.map((key) => ({
+		key,
+		label: cookStageChipLabel(key)
+	}));
 	const order = ['queued', 'downloading', 'separating', 'aligning', 'ready'];
 	function state(key: MediaStatus): 'done' | 'now' | 'todo' {
 		const cur = order.indexOf(status);
@@ -48,12 +48,8 @@
 		if (k === cur) return 'now';
 		return 'todo';
 	}
-	const stageLabel = $derived(
-		status === 'downloading' ? 'Downloading…' :
-		status === 'separating' ? 'Separating vocals…' :
-		status === 'aligning' ? 'Aligning lyrics…' :
-		status === 'ready' ? 'Ready' : 'Queued…'
-	);
+	// pct is shown separately in the .stage row, so the line itself omits it.
+	const stageLabel = $derived(cookStageLabel(status));
 </script>
 
 <div class="qrow proc card">
@@ -66,7 +62,7 @@
 			{#if singerName}<i class:dim={singerAway} style="--singer:{singerColor}"></i> {singerName}{#if singerAway}<span class="away">· away</span>{/if} · being prepared{:else}being prepared{/if}
 		</div>
 		<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
-		<div class="stage"><span>{stageLabel}</span><span>{pct}%</span></div>
+		<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{pct}%</span></div>
 		<div class="chips">
 			{#each STAGES as s}
 				<span class="chip {state(s.key)}">

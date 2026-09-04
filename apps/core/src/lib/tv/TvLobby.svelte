@@ -30,9 +30,11 @@
 		 * simultaneously saying "You're next once it's ready".
 		 */
 		pendingCount?: number;
+		/** The advertised join address is unroutable — render the operator notice, not a dead QR. */
+		unreachable?: boolean;
 	}
 
-	let { qrDataUrl, joinUrl, roster, overflow = 0, pendingCount = 0 }: Props = $props();
+	let { qrDataUrl, joinUrl, roster, overflow = 0, pendingCount = 0, unreachable = false }: Props = $props();
 
 	const count = $derived(roster.length + overflow);
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
@@ -63,18 +65,20 @@
 
 <div class="lobby">
 	<div class="stack">
-		<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size={238} />
-		<div class="copy">
-			<h1>{headline}</h1>
-			<p class="sub">{sub}</p>
-			<!--
-				The address in text as well as in the QR. The attract screen prints it and this screen did
-				not, which left the lobby — the state a latecomer actually walks in on — with no way to join
-				when a camera will not scan the code. Same treatment as attract so the two screens do not
-				disagree about what the address looks like.
-			-->
-			<p class="url">{joinUrl}</p>
-		</div>
+		<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size={238} {unreachable} />
+		{#if !unreachable}
+			<div class="copy">
+				<h1>{headline}</h1>
+				<p class="sub">{sub}</p>
+				<!--
+					The address in text as well as in the QR. The attract screen prints it and this screen did
+					not, which left the lobby — the state a latecomer actually walks in on — with no way to join
+					when a camera will not scan the code. Same treatment as attract so the two screens do not
+					disagree about what the address looks like.
+				-->
+				<p class="url">{joinUrl}</p>
+			</div>
+		{/if}
 	</div>
 
 	{#if roster.length > 0}
