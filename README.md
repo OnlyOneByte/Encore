@@ -13,11 +13,11 @@ gapless TV, and live "make-karaoke" stem separation on the roadmap.
 - **📱 Phone remote** — scan to join (name + color, no signup), search YouTube/Library,
   one-tap queue, drag-reorder your picks, remove+undo, now-playing controls, pull-up queue sheet.
 - **📺 TV/stage** — four room states (attract → lobby → waiting → playing), gapless two-player
-  video, "Now singing" lower-third, "Next up" interstitial, live score badge.
+  video, "Now singing" lower-third, "Next up" interstitial.
 - **🎛️ Make-karaoke** — tap Karaoke on any search result and a Demucs worker strips the vocals;
   the singer keeps their rotation slot while it cooks (~1–2 min/song on CPU).
-- **🎤 Word-timed lyrics + live scoring** — WhisperX timings drive a bouncing-ball overlay; mic
-  pitch is compared against a reference pitch track for a rolling accuracy score.
+- **🎤 Word-timed lyrics** — WhisperX timings drive a bouncing-ball overlay, with the ball and
+  highlight style configurable per room.
 - **📚 Karaoke library** — cooked songs persist in a self-describing media volume and are
   browsable by artist and genre.
 - **📊 Stats + audit** — `/stats` is a public page (library size, most-sung, top artists, sings per
@@ -208,7 +208,7 @@ lyrics sit on top of it, so no choice can make the words hard to read from the c
 
 **Done:** M0 foundation · M1 realtime spine · M2 join · M3 phone remote · M4 search ·
 M5 gapless TV · M6 hardening → **v0.1.0** · M7 make-karaoke (Demucs stems) → **v0.2.0** ·
-M8 word-timed lyrics + live scoring. Then backlog: **B-1** library · **B-5** readiness search ·
+M8 word-timed lyrics. Then backlog: **B-1** library · **B-5** readiness search ·
 **B-6** TV room states + presence · **B-7** media storage classes + browse + retention ·
 **B-3** tiered lyrics source chain (LRCLIB → captions → ASR, with provenance labelling) ·
 **B-10** stats + audit dashboards (per-attempt job ledger, per-play log, measured model costs).

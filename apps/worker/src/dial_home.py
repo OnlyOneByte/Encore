@@ -234,8 +234,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     # torch.set_num_threads() in THIS process cannot reach it — the child inherits os.environ, so
     # OMP/MKL are how the cap crosses the process boundary. Measured on a 10-core box: `-j 1` already
     # ran ~3.9 cores wide, so `-j 4` uncapped just oversubscribes (86s vs 99s); the cap is what lets
-    # jobs scale instead of fight. torch.set_num_threads() still applies to the IN-PROCESS consumers
-    # (pitch/score extraction).
+    # jobs scale instead of fight. torch.set_num_threads() still applies to the IN-PROCESS consumers.
     if cfg.torch_threads is not None:
         os.environ["OMP_NUM_THREADS"] = str(cfg.torch_threads)
         os.environ["MKL_NUM_THREADS"] = str(cfg.torch_threads)
@@ -252,7 +251,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     # on the GPU and then transcribed on the CPU unless a human set a second env var. One resolution
     # means the two cannot disagree.
     device: str | None = None
-    if any(c in cfg.capabilities for c in ("stems", "score", "stems:roformer", "stems:ensemble", "align")):
+    if any(c in cfg.capabilities for c in ("stems", "stems:roformer", "stems:ensemble", "align")):
         from .backends import resolve_backend
         from .vocabulary import Engine
 
@@ -271,7 +270,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
 
             annotator = MusicBrainzClient()
         by_type["fetch"] = FetchProcessor(ytdlp_bin=cfg.ytdlp_bin, annotator=annotator)
-    if "stems" in cfg.capabilities or "score" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
+    if "stems" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
         from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
         from .processor import EngineRouter
 
@@ -299,10 +298,6 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         router = EngineRouter(by_engine)
         by_type["stems"] = router
         by_type["stems-upgrade"] = router  # an upgrade is a separation job like any other
-        if "score" in cfg.capabilities:
-            from .score import PitchTrackProcessor  # separate → extract reference pitch track
-
-            by_type["score"] = PitchTrackProcessor(separator=demucs)
     if "align" in cfg.capabilities:
         from .config import whisperx_device_for
         from .whisperx import WhisperXProcessor

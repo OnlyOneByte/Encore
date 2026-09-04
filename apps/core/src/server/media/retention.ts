@@ -170,7 +170,7 @@ export function planEviction(candidates: EvictionCandidate[], capBytes: number |
 export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 	const removed: string[] = [];
 	let bytes = 0;
-	const refs = [m.instrumentalRef, m.pitchRef, m.lyricsRef, vocalsKey(m.id), m.instrumentalRef?.replace('-instrumental.', '-vocals.')].filter(
+	const refs = [m.instrumentalRef, m.lyricsRef, vocalsKey(m.id), m.instrumentalRef?.replace('-instrumental.', '-vocals.')].filter(
 		(r): r is string => !!r
 	);
 	for (const ref of new Set(refs)) {
@@ -189,7 +189,7 @@ export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 
 /** Total bytes of a song's derived artifacts, for the eviction plan. */
 export function derivedBytesOf(m: Media): number {
-	const refs = [m.instrumentalRef, m.pitchRef, m.lyricsRef, m.instrumentalRef?.replace('-instrumental.', '-vocals.')].filter(
+	const refs = [m.instrumentalRef, m.lyricsRef, m.instrumentalRef?.replace('-instrumental.', '-vocals.')].filter(
 		(r): r is string => !!r
 	);
 	let n = 0;

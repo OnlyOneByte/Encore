@@ -12,7 +12,7 @@ Status: **LIVING** · this file holds **what is left to build**. Everything ship
 
 **What Encore is today.** A self-hosted karaoke server that works end to end: phone remote (QR join,
 search, one-tap queue), TV/stage (gapless playback, room states, presence), a Demucs worker that
-strips vocals on demand, word-timed lyrics with provenance labelling, and live mic scoring. Songs
+strips vocals on demand, and word-timed lyrics with provenance labelling. Songs
 persist in a self-describing media volume, browsable by artist and genre.
 
 **Run it.**
@@ -42,7 +42,6 @@ eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
 - `lrclib.net` fails DNS outright (`gaierror`) **on this laptop only**; `huggingface.co` and
   `www.youtube.com` resolve from the same shell. So it is a box property, not a project fact — hence
   `ENCORE_LRCLIB_BASE`. WhisperX models **do** download, so real-ML lyrics work is verifiable here.
-- **No microphone** — live scoring is verified with a synthesized pitch stream.
 - Demucs/WhisperX run in the worker container, ~1–2 min/song on CPU.
 - Host ffmpeg (`/home/angryang/ffmpeg/ffmpeg`) is a **stripped 7.1.1 build**: no AAC encoder, no mp4
   muxer, no `ffprobe`. Use the **container's** ffmpeg (`docker exec`) for probing and transcoding.
@@ -393,10 +392,8 @@ Parked deliberately. These return only if the owner says so.
   Scoped, not built. The stage-background registry carries them for free as extra ids, so the cost is
   the renderer, not the plumbing — but **three separate blockers sit under them**, each a missing
   pipeline step rather than wiring:
-  - *Score-reactive* (the cheap tier, no `AudioContext` needed) is inert today: `'score'` appears in
-    the job-type enum and **nowhere else** — nothing enqueues a score job, so `pitchRef` is never
-    populated and `score:update` never fires. Same class of gap B-3 fixed for `align`. Shipping it in
-    the picker would put an option in front of a guest that does nothing.
+  - *Score-reactive* has no data to react to: scoring was removed outright (there is no `score` job,
+    no reference pitch track, no `score:update`). It returns only if the scoring redesign lands.
   - *Real FFT* needs an `AudioContext` on the TV, which does not exist — the mic and all Web Audio
     live on the **phone** (`$lib/mic/`). It also needs a **user gesture** the TV never receives;
     `TvPlayer` swallows the autoplay rejection (`video.play().catch(() => {})`), so an `AudioContext`
@@ -415,8 +412,10 @@ Parked deliberately. These return only if the owner says so.
   `SOURCE_MANUAL` already reserved in `lyrics_chain.py` for it to populate. Needs a core endpoint +
   phone UI + storage, so it is a feature, not a commit.
 - **Lossless source audio via trackers/Spotify** (`flacfetch`) — see above; the owner's call.
-- **M8-C4 · end-of-song score reveal + session leaderboard** — deferred 2026-09-02 to close M8. Live
-  scoring already works on both surfaces, so this is presentation polish on a capability that exists.
+- **Scoring, redesigned from scratch** — the original implementation was REMOVED (see below). A
+  redesign is scoped: derive a per-word note grid from the vocals stem + align timings, DTW-align the
+  singer, score multi-axis with pitch as ~half. Blocked on the capture problem: a phone mic in a loud
+  room hears the backing track, and every credible system solves that with hardware, not software.
   Carries the **v0.3.0 (scoring)** tag if revived.
 - **VBR or mono for the vocals stem** — it is CBR 192k today, so silence costs the same as singing.
 - **Re-encoding `audio/`** — still ~494 MB of pre-policy WAV. It is the only **unrecoverable** class,

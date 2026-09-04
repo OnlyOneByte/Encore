@@ -36,7 +36,6 @@ test('only separation publishes an instrumental — a fetch must not', () => {
 	// when none is reported — marking the media ready for a file that does not exist.
 	expect(publishesInstrumental('fetch')).toBe(false);
 	expect(publishesInstrumental('align')).toBe(false);
-	expect(publishesInstrumental('score')).toBe(false);
 });
 
 test('a high annotation replaces the uploader string with a cited artist and title', () => {

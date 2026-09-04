@@ -11,7 +11,6 @@
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import { MicPitch } from '$lib/mic/mic-capture';
 	import { cookAndQueue } from '$lib/cook-and-queue';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
 	import type { MediaStatus } from '@encore/shared';
@@ -112,7 +111,6 @@
 					// A room default changed mid-party: adopt it so the guiding-track control keeps
 					// reporting the level the TV is actually mixing at.
 					if (e.type === 'settings:changed') roomGuideDefault = e.settings.room.guideLevelDefault;
-					if (e.type === 'score:update') myScore = e;
 					if (e.type === 'media:status') {
 						const next = new Map(mediaStatus);
 						next.set(e.mediaId, { status: e.status, pct: e.pct, etaSec: e.etaSec });
@@ -500,13 +498,7 @@
 		guideDragging = false;
 	}
 
-	// ── live mic pitch → score ─────────────────────────────────────────
-	const isMyTurn = $derived(!!me && !!nowEntry && nowEntry.singerId === me.id && playback.isPlaying);
-	const scoringAvailable = $derived(!!nowMedia && !!nowMedia.pitchRef);
-	let micEnabled = $state(false); // user must opt in (getUserMedia needs a gesture + permission)
-	let micError = $state('');
-	let myScore = $state<Extract<ServerEvent, { type: 'score:update' }> | null>(null);
-	const showMyScore = $derived(isMyTurn && !!myScore && myScore.entryId === nowEntry?.id && myScore.singerId === me?.id);
+	// ── interpolated playback position ─────────────────────────────────
 	let posAnchor = { pos: 0, wall: 0 };
 	$effect(() => {
 		posAnchor = { pos: playback.positionSec, wall: performance.now() };
@@ -529,17 +521,6 @@
 	const nowDurationSec = $derived(
 		nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0
 	);
-	$effect(() => {
-		if (!(isMyTurn && micEnabled)) return;
-		const mic = new MicPitch((s) => {
-			ws?.send({ type: 'mic:pitch', positionSec: livePositionSec(), f0Hz: s.f0Hz, confidence: s.clarity });
-		});
-		mic.start().catch(() => {
-			micError = 'Microphone unavailable — check permissions';
-			micEnabled = false;
-		});
-		return () => mic.stop();
-	});
 </script>
 
 <header style="padding:16px 18px 8px;display:flex;align-items:center;gap:10px;">
@@ -847,19 +828,6 @@
 	{/if}
 </QueueSheet>
 
-{#if isMyTurn && scoringAvailable}
-	<div class="mic-bar">
-		{#if !micEnabled}
-			<button class="mic-btn" onclick={() => { micError = ''; micEnabled = true; }}><Icon name="mic" /> Sing — enable mic</button>
-		{:else if showMyScore && myScore}
-			<span class="mic-score"><span class="dot"></span> Score <strong>{myScore.score}</strong> · {myScore.hits}/{myScore.total} on pitch</span>
-		{:else}
-			<span class="mic-live"><span class="dot"></span> Listening… sing along!</span>
-		{/if}
-		{#if micError}<span class="mic-err">{micError}</span>{/if}
-	</div>
-{/if}
-
 {#if undo}
 	<div class="undo-toast" role="status">
 		<span>Removed “{undo.title}”</span>
@@ -1025,32 +993,6 @@
 	.key button:disabled { cursor: default; }
 
 
-	/* everything docked sits ABOVE the collapsed sheet — see --peek-h in app.css */
-	.mic-bar {
-		/* Tracks --max-w like the sheet and now-playing: docked controls that outrun the content column
-		   read as belonging to the window rather than to the remote. */
-		position: fixed; left: 0; right: 0; bottom: calc(var(--peek-h) + 62px); z-index: 20;
-		max-width: var(--max-w); margin: 0 auto; padding: 0 12px;
-		display: flex; align-items: center; gap: 10px; justify-content: center;
-	}
-	.mic-btn {
-		display: inline-flex; align-items: center; gap: 8px;
-		border: 0; border-radius: 999px; padding: 12px 22px; font-size: 1rem; font-weight: 800;
-		background: var(--accent-strong); color: var(--on-accent); box-shadow: var(--shadow); cursor: pointer;
-	}
-	.mic-live { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: var(--accent2); }
-	.mic-score {
-		display: inline-flex; align-items: center; gap: 8px; font-weight: 700; color: #fff;
-		background: var(--card); border: 1px solid var(--accent2); border-radius: 999px;
-		padding: 10px 18px; box-shadow: var(--shadow);
-	}
-	.mic-score strong { font-size: 1.25rem; color: var(--accent2); font-variant-numeric: tabular-nums; }
-	.mic-live .dot, .mic-score .dot {
-		width: 10px; height: 10px; border-radius: 50%; background: var(--accent2);
-		animation: micpulse 1s ease-in-out infinite;
-	}
-	@keyframes micpulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: .4; transform: scale(1.4); } }
-	.mic-err { font-size: .8rem; color: var(--danger); }
 	.search-spinner {
 		width: 15px; height: 15px; flex: none; border-radius: 50%;
 		border: 2px solid var(--line); border-top-color: var(--accent2);
