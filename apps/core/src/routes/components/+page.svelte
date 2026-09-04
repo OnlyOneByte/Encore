@@ -220,6 +220,21 @@
 		lines: demoLyrics.lines.map((l) => ({ ...l, words: [] })),
 		words: []
 	};
+	/*
+	 * A SHORT-line variant, for the row-count cards only.
+	 *
+	 * The real demo lines wrap to two visual lines at gallery width, which doubles a row's height and
+	 * makes "how many rows are showing" impossible to read off a frame — the one thing those cards
+	 * exist to show. Two words per line cannot wrap, so a row is one line and the count is countable.
+	 */
+	const demoShort: LyricsDoc = {
+		language: 'en',
+		lines: demoLyrics.lines.map((l) => {
+			const words = l.words.slice(0, 2);
+			return { ...l, words, text: words.map((w) => w.word).join(' ') || l.text };
+		}),
+		words: []
+	};
 	let demoPos = $state(0);
 	let demoScore = $state(0); // sweeps 0→100 so the badge moves through all bands (eyes-on)
 	onMount(() => {
@@ -316,6 +331,45 @@
 		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
 			<LyricsOverlay doc={demoLyrics} positionSec={0.8} playing={false} visible ball="off" highlight={h.id}
 				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
+		</div>
+	{/each}
+
+	<!--
+		The TYPE settings. These cards are chosen for what a STILL frame can actually prove: a size
+		extreme, an asymmetric row count, a case transform and a font swap all show up in one shot,
+		whereas the marker variants needed motion. Each holds every other knob at its default so one
+		card demonstrates one thing.
+
+		Row-count cards carry their own height, because the reel's height is now DERIVED from the count —
+		a fixed 500px box would clip the 7-row case and hide exactly what it is meant to show.
+
+		The demo doc has SIX lines, so the largest reels reserve rows the song cannot fill: at 4 lines
+		after, a current line near the end shows empty space below rather than four lyrics. That is the
+		doc's limit, not the reel's — the exact row counts and offsets are asserted numerically against
+		the DOM rather than read off these frames.
+	-->
+	{#each [
+		{ what: 'size 80% (the legibility floor)', props: { scalePct: 80 }, h: 500, short: false },
+		{ what: 'size 160% (the ceiling)', props: { scalePct: 160 }, h: 760, short: false },
+		{ what: 'case ALL CAPS — note the extra wrapping', props: { textCase: 'upper' as const }, h: 500, short: false },
+		{ what: 'case all lowercase', props: { textCase: 'lower' as const }, h: 500, short: false },
+		{ what: 'font serif', props: { font: 'serif' as const }, h: 500, short: false },
+		{ what: 'font monospace — fewest words per row', props: { font: 'mono' as const }, h: 500, short: false },
+		{ what: 'rows 0 before / 2 after — no history', props: { linesBefore: 0, linesAfter: 2 }, h: 460, short: true },
+		{ what: 'rows 2 before / 0 after — nothing revealed ahead', props: { linesBefore: 2, linesAfter: 0 }, h: 460, short: true },
+		{ what: 'rows 2 before / 2 after — the default, for comparison', props: { linesBefore: 2, linesAfter: 2 }, h: 700, short: true },
+		{ what: 'rows 1 before / 4 after — asymmetric, current line sits high', props: { linesBefore: 1, linesAfter: 4 }, h: 820, short: true },
+		{ what: 'rows 3 before / 4 after — the maximum reel', props: { linesBefore: 3, linesAfter: 4 }, h: 1080, short: true }
+	] as c (c.what)}
+		<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · {c.what}</h2>
+		<div style="position:relative;height:{c.h}px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+			<!--
+				9.5s puts the current line at index 3 of 6, so there are three lines BEFORE it and two
+				after. Pinning at 0.8s (as the marker cards do) sits on line 0, where "2 lines before" has
+				nothing to show and the card proves nothing — which is exactly how it read first time.
+			-->
+			<LyricsOverlay doc={c.short ? demoShort : demoLyrics} positionSec={9.5} playing={false} visible highlight="word" ball="bounce"
+				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} {...c.props} />
 		</div>
 	{/each}
 

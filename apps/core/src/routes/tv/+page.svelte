@@ -272,6 +272,11 @@
 		ball={lyricsStyle.ball}
 		highlight={lyricsStyle.highlight}
 		leadSec={lyricsStyle.leadSec}
+		scalePct={settings.room.lyricsScalePct}
+		font={settings.room.lyricsFont}
+		textCase={settings.room.lyricsCase}
+		linesBefore={settings.room.lyricsLinesBefore}
+		linesAfter={settings.room.lyricsLinesAfter}
 	/>
 
 	{#if screen === 'attract'}
