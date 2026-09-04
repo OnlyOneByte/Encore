@@ -1,0 +1,1 @@
+ALTER TABLE `media` DROP COLUMN `pitch_ref`;

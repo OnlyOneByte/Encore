@@ -114,7 +114,7 @@ export function getApp(): EncoreApp {
 	// Bring the media volume onto the storage classes BEFORE anything reads the catalog.
 	// Idempotent — a no-op on a fresh or already-migrated volume — so it stays wired in permanently.
 	// The raw original is PROMOTED out of the old scratch dir rather than deleted with it; DB refs are
-	// rewritten in the same pass so instrumentalRef/pitchRef/lyricsRef keep pointing at real files.
+	// rewritten in the same pass so instrumentalRef/lyricsRef keep pointing at real files.
 	//
 	// WRAPPED, and deliberately so: storage housekeeping must NEVER stop the party server from
 	// booting. The first real run of this crashed startup on an EACCES, because the old scratch dir
@@ -122,9 +122,8 @@ export function getApp(): EncoreApp {
 	// tidy a directory is a far worse failure than a volume that stays on the old layout.
 	try {
 		const layout = migrateStorageLayout((mediaId, fields) => {
-			const sets: Partial<Record<'instrumentalRef' | 'pitchRef' | 'lyricsRef', string>> = {};
+			const sets: Partial<Record<'instrumentalRef' | 'lyricsRef', string>> = {};
 			if (fields.instrumentalRef) sets.instrumentalRef = fields.instrumentalRef;
-			if (fields.pitchRef) sets.pitchRef = fields.pitchRef;
 			if (fields.lyricsRef) sets.lyricsRef = fields.lyricsRef;
 			if (Object.keys(sets).length) db.update(mediaTable).set(sets).where(eq(mediaTable.id, mediaId)).run();
 		});
@@ -351,7 +350,6 @@ export function getApp(): EncoreApp {
 					// back to un-cooked: rotation stops treating it as playable, a re-request re-cooks it
 					live.instrumentalRef = undefined;
 					live.lyricsRef = undefined;
-					live.pitchRef = undefined;
 					live.stemStatus = 'none';
 					mediaRepo.upsert(live);
 				}

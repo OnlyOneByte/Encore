@@ -9,7 +9,7 @@
 //     `audio/<id>.wav` rather than deleted with the rest of the scratch.
 //   - `stems/*`, `pitch/*`, `lyrics/*`, `.thumbs/*` → under `derived/` (the evictable class,
 //     recomputable from `audio/`).
-//   - DB refs rewritten in the same pass so `instrumentalRef`/`pitchRef`/`lyricsRef` keep pointing at
+//   - DB refs rewritten in the same pass so `instrumentalRef`/`lyricsRef` keep pointing at
 //     real files. A half-migrated convention is the byte-for-byte mismatch that makes the TV 404 on a
 //     file that exists.
 //
@@ -127,7 +127,6 @@ export function planMigration(root = mediaRoot()): MigrationPlan {
 	// ── 2. derived artifacts into the derived class ────────────────────────────────────
 	for (const [legacyDir, derivedSub, field] of [
 		['stems', 'stems', null],
-		['pitch', 'pitch', 'pitchRef'],
 		['lyrics', 'lyrics', 'lyricsRef']
 	] as Array<[string, string, string | null]>) {
 		const abs = join(root, legacyDir);

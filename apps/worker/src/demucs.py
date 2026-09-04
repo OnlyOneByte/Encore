@@ -349,7 +349,7 @@ class DemucsProcessor:
         # Lands in the `audio/` storage class in its NATIVE container, NOT as WAV in scratch. Raw
         # audio is the one asset that cannot be regenerated (needs network, disappears with the
         # upload), and transcoding lossy YouTube audio to WAV costs ~12x the bytes for zero fidelity.
-        # Reused: an existing file means a later align/score job skips the download.
+        # Reused: an existing file means a later align job skips the download.
         if job_fetcher(job) is Fetcher.LOCAL:
             input_path = local_source_path(job)
         else:

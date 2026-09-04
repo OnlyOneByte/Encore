@@ -6,7 +6,7 @@
 //   state    sqlite            rebuildable from meta + a rescan       ENCORE_DATA_DIR
 //   audio    raw originals     NOT regenerable — needs network, and   ENCORE_AUDIO_DIR
 //                              gone forever if the source disappears
-//   derived  stems/pitch/      regenerable from audio (CPU only)      ENCORE_DERIVED_DIR
+//   derived  stems/lyrics/     regenerable from audio (CPU only)      ENCORE_DERIVED_DIR
 //            lyrics/thumbs
 //   meta     sidecar JSON      the authoritative record               ENCORE_META_DIR
 //   work     job scratch       deleted on job completion              <root>/work
@@ -100,8 +100,8 @@ export function audioKey(mediaId: string, ext = 'wav'): string {
  * - **instrumental → FLAC (lossless).** This plays out of the speakers at volume, the one place a
  *   second lossy generation is audible: the image's only AAC encoder (ffmpeg native — no libfdk_aac)
  *   smears high-frequency transients, exactly what a crash cymbal is. Lossless removes that generation.
- * - **vocals → AAC (lossy).** Nothing plays it aloud; it feeds pitch extraction and the future vocal
- *   guide, so transparency is not the bar.
+ * - **vocals → AAC (lossy).** Nothing plays it aloud at full level; it feeds the guiding track, so
+ *   transparency is not the bar.
  *
  * Songs cooked under an earlier policy keep their own (per-media) refs and still play — these helpers
  * only name NEW output.
@@ -116,9 +116,6 @@ export function instrumentalKey(mediaId: string, ext: string = INSTRUMENTAL_EXT)
 }
 export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT): string {
 	return `derived/stems/${mediaId}-vocals.${ext}`;
-}
-export function pitchKey(mediaId: string): string {
-	return `derived/pitch/${mediaId}-pitch.json`;
 }
 export function lyricsKey(mediaId: string): string {
 	return `derived/lyrics/${mediaId}.json`;
@@ -135,7 +132,6 @@ export function metaKey(mediaId: string): string {
 export const LEGACY = {
 	instrumental: (id: string) => `stems/${id}-instrumental.wav`,
 	vocals: (id: string) => `stems/${id}-vocals.wav`,
-	pitch: (id: string) => `pitch/${id}-pitch.json`,
 	lyrics: (id: string) => `lyrics/${id}.json`,
 	/** Raw audio was written here as SCRATCH and never cleaned up — 432MB of it on the live box. */
 	sourceAudio: (id: string) => `stems/_work/${id}/source.wav`,
@@ -148,7 +144,7 @@ export const LEGACY = {
  *
  * Workers report ABSOLUTE paths in `job:complete` artifacts (they write into a mounted volume and hand
  * back `os.path.join(media_dir, key)`). Storing that absolute path is a bug we shipped: `safeMediaPath`
- * rejects any ref starting with "/", so an absolute `lyricsRef`/`pitchRef` could never be served — the
+ * rejects any ref starting with "/", so an absolute `lyricsRef` could never be served — the
  * artifact existed on disk and the overlay silently got nothing. Strip any known class root back to a
  * relative key; return null if it is outside all of them (a config error, not something to store).
  */

@@ -345,6 +345,5 @@ def capability_probe_lines(cfg: WorkerConfig) -> list[str]:
     lines = []
     for p in caps_mod.probe_all(ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin):
         mark = "yes" if p.available else "NO "
-        advertised = " (not advertised by default)" if p.available and p.token in caps_mod.NOT_ADVERTISED_BY_DEFAULT else ""
-        lines.append(f"  {mark} {p.token}: {p.reason}{advertised}")
+        lines.append(f"  {mark} {p.token}: {p.reason}")
     return lines

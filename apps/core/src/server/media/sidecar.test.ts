@@ -70,12 +70,11 @@ describe('sidecarFromMedia', () => {
 
 	it('carries the artifact refs that make a cooked song restorable', () => {
 		const s = sidecarFromMedia(
-			media({ instrumentalRef: 'derived/stems/m1-instrumental.m4a', lyricsRef: 'derived/lyrics/m1.json', pitchRef: 'derived/pitch/m1-pitch.json' }),
+			media({ instrumentalRef: 'derived/stems/m1-instrumental.m4a', lyricsRef: 'derived/lyrics/m1.json' }),
 			NOW
 		);
 		expect(s.artifacts.instrumental).toBe('derived/stems/m1-instrumental.m4a');
 		expect(s.artifacts.lyrics).toBe('derived/lyrics/m1.json');
-		expect(s.artifacts.pitch).toBe('derived/pitch/m1-pitch.json');
 	});
 
 	it('a MANUAL edit survives a rewrite — curation must not be erased by a re-parse', () => {

@@ -25,18 +25,8 @@ test('the cook is fetch -> stems -> align, and ends there', () => {
 	expect(followUps('stems')).toEqual(['align']);
 });
 
-test('score has NO enqueue path — it is not part of the cook', () => {
-	// Deliberate: `score` extracts a reference pitch track for live mic comparison, and it currently
-	// re-runs the whole separation to get vocals it could read off disk. Chaining it doubled every cook.
-	// Nothing enqueues it until that is fixed and a decision lands on scoring after the song.
-	for (const t of ['fetch', 'stems', 'align', 'score', 'stems-upgrade'] as const) {
-		expect(followUps(t)).not.toContain('score');
-	}
-});
-
 test('align does not chain further — no infinite pipeline', () => {
 	expect(followUps('align')).toEqual([]);
-	expect(followUps('score')).toEqual([]);
 });
 
 // ── params derivation ─────────────────────────────────────────────────────────

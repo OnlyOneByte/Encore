@@ -33,9 +33,6 @@ export type ServerEvent =
   // informational: the phone does not render it yet, but the distinction has to exist on the wire
   // before any surface can show it, and it is what separates "cooking soon" from "stuck forever".
   | { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }
-  // Live SingStar-style score for the current song, recomputed as mic pitch arrives.
-  // `score` is a 0..100 rolling accuracy; hits/total are the scored (voiced-reference) frames.
-  | { type: 'score:update'; entryId: string; singerId: string; score: number; hits: number; total: number }
   | { type: 'singer:joined'; singer: Singer }
   // Who is in the room RIGHT NOW — the full set of singer ids holding a live socket,
   // broadcast whenever it changes. Full-set (not a delta) on purpose: it is a handful of ids, and
@@ -67,9 +64,6 @@ export type ClientEvent =
   | { type: 'queue:command'; command: ClientCommand }
   | { type: 'player:command'; command: PlayerCommand }
   | { type: 'tv:telemetry'; positionSec: number; durationSec: number; status: string; bufferedNextPct: number }
-  // Phone → core: one live mic pitch sample. f0Hz=0 means the phone detected no pitch
-  // (silence). The core scores it against the current song's reference pitch track at positionSec.
-  | { type: 'mic:pitch'; positionSec: number; f0Hz: number; confidence?: number }
   | { type: 'hello'; lastRev: number };
 
 // ── dial-home worker protocol ─────────────────────────────────────────────────

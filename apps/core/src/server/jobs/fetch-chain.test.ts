@@ -23,11 +23,10 @@ test('fetch chains to stems — acquisition is never a dead end', () => {
 });
 
 test('fetch does NOT chain align/score directly — those need the vocals stem', () => {
-	// align and score read the isolated vocals, which only exists after separation. Chaining them off
-	// fetch would race the separation that produces their input.
+	// align reads the isolated vocals, which only exists after separation. Chaining it off
+	// fetch would race the separation that produces its input.
 	const next = followUps('fetch', settings());
 	expect(next).not.toContain('align');
-	expect(next).not.toContain('score');
 });
 
 test('fetch routes on the DOWNLOADER capability, not on stems', () => {

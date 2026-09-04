@@ -14,7 +14,7 @@ Encore is a self-hosted karaoke server with two surfaces:
 - **Phone remote:** QR join (name + color, no signup), unified YouTube/library search grouped by
   readiness, one-tap queue, singer-owned reordering, now-playing controls.
 - **TV/stage:** attract → lobby → waiting → playing, gapless two-player playback, lower-third,
-  lyrics, score, persistent join card.
+  lyrics, persistent join card.
 
 The loop is deliberately simple:
 
@@ -33,7 +33,7 @@ at the front is skipped without losing its fairness position (the **held-slot ru
 └───────────────────────────────────────────────────────────────────┘
 ┌─ Container 2: encore-worker ─────────────────────────────────────┐
 │ Python · separator · WhisperX · ffmpeg                            │
-│ dials home over WebSocket · stems + lyrics alignment + scoring   │
+│ dials home over WebSocket · stems + lyrics alignment             │
 └───────────────────────────────────────────────────────────────────┘
 ```
 
@@ -127,10 +127,9 @@ playing > waiting > lobby > attract
 - **attract:** nobody present; full-screen QR.
 - **lobby:** people present, no queue; hero QR + roster.
 - **waiting:** queued media still cooking.
-- **playing:** media, lower-third, lyrics/score, compact join card.
+- **playing:** media, lower-third, lyrics, compact join card.
 
-Spatial ownership is contractual: lower-third = bottom-left, join card = bottom-right, score =
-top-right.
+Spatial ownership is contractual: lower-third = bottom-left, join card = bottom-right.
 
 ### Stage stacking
 
@@ -317,8 +316,8 @@ queued → assigned → running → ready
 - Acquisition is its own job. A cook starts at `fetch`, which chains to `stems` through
   `followUps()`, so a separation is never dispatched before its input exists. A local media skips
   acquisition: its bytes are already on the volume.
-- A completed `stems` job enqueues `align` + `score` through `followUps()` — both need the vocals
-  stem, so starting them before separation would race and contend.
+- A completed `stems` job enqueues `align` through `followUps()` — it needs the vocals stem, so
+  starting it before separation would race and contend.
 - Core flips media refs/status only after the worker completes and artifacts exist.
 
 ### The attempt ledger — history, as opposed to state
@@ -451,8 +450,7 @@ an Intel or Apple box separates on its accelerator and still aligns on the CPU.
 or importable → `fetch:ytdlp`, demucs → `stems`, the roformer engine → `stems:roformer`, both →
 `stems:ensemble`, whisperx → `align` — and the evidence is logged either way. `ENCORE_WORKER_CAPABILITIES`
 narrows that set and can never extend it: a box claiming work it cannot do is what left songs at 0%
-forever, which is indistinguishable from a hung worker. `score` is provable whenever separation is but
-is not advertised by default, since nothing enqueues it.
+forever, which is indistinguishable from a hung worker.
 
 The one thing the worker reports **up** is hardware: `worker:hello` carries an optional `runtime`
 (accelerator, device name, usable cores, memory, VRAM, torch version, whether a cgroup limit applies),
@@ -517,7 +515,7 @@ re-download — and the swap is refused unless the new artifact strictly outrank
 unranked pair scores zero and can never win, so an unknown or de-whitelisted model cannot displace a
 known-good artifact.
 
-## 8. Lyrics and scoring
+## 8. Lyrics
 
 Lyrics separate **text acquisition** from **timing**:
 
@@ -532,9 +530,9 @@ Lyrics separate **text acquisition** from **timing**:
   highlighting beat wrong words with polished animation.
 - Provenance is visible: auto-transcribed lyrics must not masquerade as authoritative.
 
-Scoring compares live microphone pitch against a worker-extracted reference pitch track. The worker
-advertises `score`; UI consumes `score:update`. No microphone on the development box means real flow
-uses a synthesized pitch stream for machine verification.
+Live scoring was removed (see ROADMAP): it compared mic pitch against a reference pitch curve, which
+is not how any credible karaoke system scores, and a phone mic in a loud room cannot support the
+claim. A redesign is scoped but unbuilt.
 
 ## 9. Performance model
 

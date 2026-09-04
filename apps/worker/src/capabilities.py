@@ -27,13 +27,6 @@ from dataclasses import dataclass
 
 from .backends import _module_available
 
-#: `score` is provable whenever separation is (the pitch tracker takes a separator), but is NOT
-#: advertised by default: nothing in the core's dispatch.ts enqueues a `score` job, and each one costs
-#: a full re-separation. Advertising it would be a standing offer nobody takes. It stays in the
-#: provable set so an operator who wires up scoring can re-add it via the override without the
-#: narrow-only rule blocking them.
-NOT_ADVERTISED_BY_DEFAULT = frozenset({"score"})
-
 
 @dataclass(frozen=True)
 class Probe:
@@ -86,11 +79,6 @@ def probe_all(*, ytdlp_bin: str = "yt-dlp", demucs_bin: str = "demucs",
     probes.append(Probe(
         "align", align_ok,
         "whisperx importable" if align_ok else "whisperx not importable",
-    ))
-
-    probes.append(Probe(
-        "score", stems_ok,
-        "separation available" if stems_ok else "needs separation",
     ))
 
     return probes
@@ -152,7 +140,7 @@ def resolve(
             )
         caps = requested & proven
     else:
-        caps = proven - NOT_ADVERTISED_BY_DEFAULT
+        caps = proven
 
     if not caps:
         # Not fatal: a worker with no capabilities is useless but harmless, and it must still connect

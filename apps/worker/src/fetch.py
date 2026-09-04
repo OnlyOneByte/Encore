@@ -59,7 +59,7 @@ async def resolve_source_audio(job: JobSpec, download) -> AsyncIterator[Progress
     audio = source_audio_path(job.media_dir, job.media_id)
     os.makedirs(os.path.dirname(audio), exist_ok=True)
     if os.path.exists(audio):
-        # Retained from an earlier job for this media, so a cooked song's later align/score costs no
+        # Retained from an earlier job for this media, so a cooked song's later align costs no
         # network at all. This reuse is why acquisition is worth being its own job rather than a step
         # repeated by every consumer.
         yield ProgressEvent(stage=Stage.DOWNLOADING, pct=100)
