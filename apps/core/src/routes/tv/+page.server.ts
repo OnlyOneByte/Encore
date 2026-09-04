@@ -1,17 +1,23 @@
-// TV attract screen load: build the join QR (data URL) from the request so phones on the LAN can scan
-// it. Generated server-side once per load.
+// TV attract screen load: build the join QR (data URL) from the address phones should use, so they can
+// scan it. Generated server-side once per load.
 //
-// NOT from `url.origin`: adapter-node reports https for every request unless PROTOCOL_HEADER is set, so
-// that produced an https QR on a plain-HTTP LAN deployment — unopenable by any phone. See
-// $server/public-origin.
+// NOT from `url.origin`, and not from this request alone: adapter-node reports https for every request
+// unless PROTOCOL_HEADER is set (so `url.origin` produced an unopenable https QR on a plain-HTTP LAN),
+// and the TV's own address is frequently one only the TV can reach — a WSL2 host opens /tv at
+// `localhost`, which would hand every phone a QR pointing at itself. `joinOrigin()` prefers the
+// declared address (settings, then env) and falls back to the request. See $server/public-origin.
 import type { PageServerLoad } from './$types';
 import QRCode from 'qrcode';
 import { getApp } from '$server/app';
-import { publicOrigin } from '$server/public-origin';
+import { joinOrigin, fallbackJoinOrigin } from '$server/public-origin';
 import type { TvProgressStyle } from '@encore/shared';
 
 export const load: PageServerLoad = async ({ url, request }) => {
-	const joinUrl = `${publicOrigin(request, url)}/join`;
+	const origin = joinOrigin(request, url);
+	// What an empty setting resolves to (env, else this request). The TV needs it to recognise a
+	// settings change that CLEARED the address, which moves the QR back to this value.
+	const fallback = fallbackJoinOrigin(request, url);
+	const joinUrl = `${origin}/join`;
 	const qrDataUrl = await QRCode.toDataURL(joinUrl, {
 		margin: 1,
 		width: 320,
@@ -32,5 +38,7 @@ export const load: PageServerLoad = async ({ url, request }) => {
 		// The app singleton is absent when this route is prerendered or unit-loaded; the env default is
 		// the correct answer there rather than a failed load.
 	}
-	return { joinUrl, qrDataUrl, interstitialMs, tvProgressStyle };
+	// `joinOrigin` rides along so the TV can tell a settings change that moved the join address from one
+	// that did not: the QR is a server-rendered image, so only that case needs the load to re-run.
+	return { joinUrl, qrDataUrl, joinOrigin: origin, joinFallbackOrigin: fallback, interstitialMs, tvProgressStyle };
 };

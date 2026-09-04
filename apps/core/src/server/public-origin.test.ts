@@ -5,7 +5,7 @@
 // `https://192.168.1.20:3000` on the deployment the README documents, and the QR encoded a URL no phone
 // on the LAN could open. Invisible in normal testing because the usual path is an https tunnel.
 import { test, expect } from 'bun:test';
-import { publicOrigin, publicOriginIsHttps } from './public-origin';
+import { publicOrigin, publicOriginIsHttps, joinOrigin, fallbackJoinOrigin, resolveOrigin } from './public-origin';
 
 const req = (headers: Record<string, string> = {}) => new Request('https://ignored.example/tv', { headers });
 const url = new URL('https://ignored.example/tv');
@@ -126,8 +126,10 @@ test('an explicit http origin does NOT, even when a proxy claims https', () => {
 	expect(secure).toBe(false);
 });
 
-test('the cookie flag and the QR can never disagree about the scheme', () => {
-	// One derivation, two callers: assert they agree rather than trusting that they do.
+test('the cookie flag and the per-request origin can never disagree about the scheme', () => {
+	// One derivation, two callers: assert they agree rather than trusting that they do. NOTE this is the
+	// PER-REQUEST origin, not the advertised join address — see the joinOrigin block below for why those
+	// two are allowed to differ.
 	const cases: Record<string, string>[] = [
 		{ host: '10.69.1.169:3000' },
 		{ host: 'h', 'x-forwarded-proto': 'https' },
@@ -137,4 +139,48 @@ test('the cookie flag and the QR can never disagree about the scheme', () => {
 		const r = req(headers);
 		expect(publicOriginIsHttps(r, url)).toBe(publicOrigin(r, url).startsWith('https:'));
 	}
+});
+
+// ── joinOrigin: the address the TV advertises ────────────────────────────────────
+// Same problem as ENCORE_PUBLIC_ORIGIN, one layer up: the person who can fix a QR that says
+// `localhost` is standing in the room, not restarting the container. So the address is also a stored
+// GLOBAL SETTING, which wins over the env var, which wins over the request.
+//
+// `resolveOrigin` is the rule with the source of the declared value factored out, so the precedence is
+// testable without standing up an app singleton (which is what holds the settings repository).
+
+test('a declared origin wins over every header — the localhost-TV case, from the settings page', () => {
+	const o = resolveOrigin(
+		req({ host: 'localhost:3000', 'x-forwarded-host': 'proxy.example', 'x-forwarded-proto': 'https' }),
+		new URL('http://localhost:3000/tv'),
+		'http://10.69.1.169:3000'
+	);
+	expect(o).toBe('http://10.69.1.169:3000');
+});
+
+test('an empty or absent declaration falls through to the request, so clearing the field auto-detects', () => {
+	for (const declared of ['', null, undefined]) {
+		expect(resolveOrigin(req({ host: '192.168.1.20:3000' }), url, declared)).toBe('http://192.168.1.20:3000');
+	}
+});
+
+test('with no app singleton the join address is the env var, then the request', () => {
+	// The settings repository lives on the app, which is absent under unit load and during prerender.
+	// That must degrade to the boot-time declaration rather than throwing and blanking the TV.
+	expect(withOrigin('http://10.69.1.169:3000', () => joinOrigin(req({ host: 'localhost:3000' }), url))).toBe(
+		'http://10.69.1.169:3000'
+	);
+	expect(withOrigin(undefined, () => joinOrigin(req({ host: '192.168.1.20:3000' }), url))).toBe(
+		'http://192.168.1.20:3000'
+	);
+});
+
+test('fallbackJoinOrigin is what an empty setting resolves to, so the UI can show it', () => {
+	// The settings page prints this as the field's placeholder; if it disagreed with what joinOrigin
+	// actually falls back to, the UI would advertise an address the TV does not use.
+	const r = req({ host: '192.168.1.20:3000' });
+	expect(withOrigin(undefined, () => fallbackJoinOrigin(r, url))).toBe(
+		withOrigin(undefined, () => joinOrigin(r, url))
+	);
+	expect(withOrigin('http://10.0.0.5:3000', () => fallbackJoinOrigin(r, url))).toBe('http://10.0.0.5:3000');
 });

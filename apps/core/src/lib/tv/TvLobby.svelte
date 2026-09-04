@@ -67,6 +67,13 @@
 		<div class="copy">
 			<h1>{headline}</h1>
 			<p class="sub">{sub}</p>
+			<!--
+				The address in text as well as in the QR. The attract screen prints it and this screen did
+				not, which left the lobby — the state a latecomer actually walks in on — with no way to join
+				when a camera will not scan the code. Same treatment as attract so the two screens do not
+				disagree about what the address looks like.
+			-->
+			<p class="url">{joinUrl}</p>
 		</div>
 	</div>
 
@@ -112,6 +119,13 @@
 		font-size: var(--tv-label);
 		color: var(--ink-dim);
 		margin: 6px 0 0;
+	}
+	/* Matches the attract screen's treatment of the same string. */
+	.url {
+		font-size: var(--tv-body);
+		color: var(--accent2);
+		margin: 10px 0 0;
+		overflow-wrap: anywhere;
 	}
 
 	.strip {
