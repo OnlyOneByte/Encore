@@ -103,18 +103,18 @@ describe('SettingsRepository — room scope', () => {
 	it('persists room settings independently of global', () => {
 		const repo = freshRepo();
 		repo.setGlobal({ defaultModel: 'htdemucs_ft' });
-		repo.setRoom({ interstitialMs: 0 });
+		repo.setRoom({ songIntroEnabled: false });
 		// each scope keeps its own values; a room write must not disturb deployment policy
-		expect(repo.getRoom().interstitialMs).toBe(0);
+		expect(repo.getRoom().songIntroEnabled).toBe(false);
 		expect(repo.getGlobal().defaultModel).toBe('htdemucs_ft');
 	});
 
 	it('keys rooms separately, so two rooms do not share policy', () => {
 		const repo = freshRepo();
-		repo.setRoom({ interstitialMs: 1000 }, 'room-a');
-		repo.setRoom({ interstitialMs: 4000 }, 'room-b');
-		expect(repo.getRoom('room-a').interstitialMs).toBe(1000);
-		expect(repo.getRoom('room-b').interstitialMs).toBe(4000);
+		repo.setRoom({ songIntroMs: 1000 }, 'room-a');
+		repo.setRoom({ songIntroMs: 4000 }, 'room-b');
+		expect(repo.getRoom('room-a').songIntroMs).toBe(1000);
+		expect(repo.getRoom('room-b').songIntroMs).toBe(4000);
 		// an untouched room still gets defaults rather than another room's values
 		expect(repo.getRoom('room-c')).toEqual(DEFAULT_ROOM_SETTINGS);
 	});
@@ -153,16 +153,16 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		// The bug this pins: setRoom normalized against hardcoded defaults, so one bad field discarded an
 		// unrelated choice the room had already made. Same defect previously fixed on the global scope.
 		const repo = freshRepo();
-		repo.setRoom({ tvProgressStyle: 'corner', interstitialMs: 7000 });
+		repo.setRoom({ tvProgressStyle: 'corner', songIntroMs: 7000 });
 		const after = repo.setRoom({ tvProgressStyle: 'nonsense' as never });
 		expect(after.tvProgressStyle).toBe('corner');
-		expect(after.interstitialMs).toBe(7000);
+		expect(after.songIntroMs).toBe(7000);
 	});
 
-	it('an invalid interstitial keeps the room value rather than resetting to 2500', () => {
+	it('an invalid song intro duration keeps the room value rather than resetting to 2500', () => {
 		const repo = freshRepo();
-		repo.setRoom({ interstitialMs: 7000 });
-		expect(repo.setRoom({ interstitialMs: NaN }).interstitialMs).toBe(7000);
+		repo.setRoom({ songIntroMs: 7000 });
+		expect(repo.setRoom({ songIntroMs: NaN }).songIntroMs).toBe(7000);
 	});
 
 	it('an unconfigured room reads as black — an existing box looks identical after the migration', () => {
@@ -182,11 +182,11 @@ describe('SettingsRepository room scope: tv progress style', () => {
 
 	it('a bad background write keeps every unrelated choice the room already made', () => {
 		const repo = freshRepo();
-		repo.setRoom({ tvBackgroundStyle: 'solid', tvBackgroundHue: 75, interstitialMs: 7000, tvProgressStyle: 'edge' });
+		repo.setRoom({ tvBackgroundStyle: 'solid', tvBackgroundHue: 75, songIntroMs: 7000, tvProgressStyle: 'edge' });
 		const after = repo.setRoom({ tvBackgroundStyle: 'nonsense' as never });
 		expect(after.tvBackgroundStyle).toBe('solid');
 		expect(after.tvBackgroundHue).toBe(75);
-		expect(after.interstitialMs).toBe(7000);
+		expect(after.songIntroMs).toBe(7000);
 		expect(after.tvProgressStyle).toBe('edge');
 	});
 

@@ -2,7 +2,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
-import { doJoin } from '$server/singers/join';
+import { doJoin, NameTakenError } from '$server/singers/join';
 import { SESSION_COOKIE } from '$server/singers/repository';
 import { publicOriginIsHttps } from '$server/public-origin';
 
@@ -12,7 +12,10 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 	try {
 		result = doJoin(getApp(), { displayName: body.displayName, color: body.color });
 	} catch (e) {
-		return json({ error: (e as Error).message }, { status: 400 });
+		// 409, not 400: the request is well-formed, the name is simply spoken for. The phone shows this
+		// verbatim, so it has to read as a sentence about the name rather than a validation failure.
+		const status = e instanceof NameTakenError ? 409 : 400;
+		return json({ error: (e as Error).message }, { status });
 	}
 	cookies.set(SESSION_COOKIE, result.singer.sessionToken, {
 		path: '/',

@@ -117,6 +117,6 @@ describe('normalizeRoomSettings guideLevelDefault', () => {
 
 	it('an omitted field is a patch, not a reset', () => {
 		const base = { ...DEFAULT_ROOM_SETTINGS, guideLevelDefault: 0.25 };
-		expect(normalizeRoomSettings({ interstitialMs: 1000 }, base).guideLevelDefault).toBe(0.25);
+		expect(normalizeRoomSettings({ songIntroMs: 1000 }, base).guideLevelDefault).toBe(0.25);
 	});
 });

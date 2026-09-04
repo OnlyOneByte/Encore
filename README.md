@@ -142,7 +142,7 @@ docs/              ← design docs + ROADMAP + UI mocks/screenshots
 | `DATA_DIR` | `./data` | SQLite (WAL) location — created if missing |
 | `MEDIA_DIR` | `./media` | root of the media volume — created if missing |
 | `MEDIA_STORE` | `local` | `local` volume or `object` (MinIO/S3, for remote workers) |
-| `INTERSTITIAL_MS` | `2500` | TV "Next up" reveal duration (0 = pure gapless hard-cut) |
+| `ENCORE_SONG_INTRO_MS` | `2500` | song-intro card duration, seeded into the room on first boot only (`0` = intro off, pure gapless hard-cut). `INTERSTITIAL_MS` is still read as a deprecated alias. Both the duration and the on/off toggle live in **Settings → Room** afterwards |
 | `ENCORE_EPHEMERAL` | unset | `1` → in-memory DB; nothing persists (handy for a throwaway test instance) |
 | `FFMPEG_BIN` | `ffmpeg` | ffmpeg binary used for recompression |
 

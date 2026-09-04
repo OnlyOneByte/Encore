@@ -1,6 +1,6 @@
 // join -> singer:joined broadcast -> singer appears (validated via doJoin).
 import { test, expect } from 'bun:test';
-import { doJoin } from './join';
+import { doJoin, NameTakenError } from './join';
 import { SingerRepository } from './repository';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
@@ -16,6 +16,7 @@ import { WorkerRegistry } from '../jobs/registry';
 import { WorkerHub } from '../jobs/worker-hub';
 import { LocalMediaStore } from '../media/store';
 import { PresenceTracker } from '../realtime/presence';
+import { AuthoritativeState } from '../state/store';
 import { PlayTracker } from '../media/plays';
 import type { EncoreApp } from '../app';
 import { AttemptLedger } from '../jobs/attempts';
@@ -31,7 +32,9 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 	const mediaById = new Map();
 	const app: EncoreApp = {
 		db,
-		state: null as never,
+		// A real state, not null: doJoin now consults the queue, because a name stays claimed while its
+		// owner still holds a turn.
+		state: new AuthoritativeState(),
 		singers: new SingerRepository(db),
 		presence: new PresenceTracker(),
 		plays: new PlayTracker(() => {}),
@@ -101,4 +104,59 @@ test('shorthand hex is canonicalised on the way in', () => {
 test('blank display name is rejected', () => {
 	const { app } = appHarness();
 	expect(() => doJoin(app, { displayName: '   ', color: SINGER_COLORS[0] })).toThrow('display name required');
+});
+
+// ── display-name uniqueness ────────────────────────────────────────────────────
+// First come, first served — but only against people still IN THE ROOM. The singers table is
+// append-only, so an unqualified unique check would claim a name forever and next month's Dana would be
+// rejected by a ghost row from tonight.
+
+test('a name held by someone here is refused', () => {
+	const { app } = appHarness();
+	const first = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] });
+	app.presence.connect(first.singer.id);
+	expect(() => doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] })).toThrow(NameTakenError);
+});
+
+test('the check ignores case and surrounding whitespace', () => {
+	const { app } = appHarness();
+	app.presence.connect(doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] }).singer.id);
+	expect(() => doJoin(app, { displayName: '  dana ', color: SINGER_COLORS[1] })).toThrow(NameTakenError);
+	expect(() => doJoin(app, { displayName: 'DANA', color: SINGER_COLORS[1] })).toThrow(NameTakenError);
+});
+
+test('a name is still held while its owner is AWAY, so nobody takes it while she is in the kitchen', () => {
+	const { app } = appHarness();
+	const dana = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] }).singer;
+	app.presence.connect(dana.id);
+	app.presence.disconnect(dana.id, app.now());
+	expect(() => doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] })).toThrow(NameTakenError);
+});
+
+test('a name returns to the pool once its owner has GONE', () => {
+	const { app } = appHarness();
+	app.settings.setRoom({ presenceGraceMinutes: 0 }); // expire on the first sweep after the drain
+	const dana = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] }).singer;
+	app.presence.connect(dana.id);
+	app.presence.disconnect(dana.id, app.now());
+	app.presence.evaluate({ now: app.now(), graceMs: 0, hasPendingSongs: () => false });
+
+	// This is the case unqualified uniqueness would have broken forever: a different Dana, another night.
+	const second = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] });
+	expect(second.singer.displayName).toBe('Dana');
+	expect(second.singer.id).not.toBe(dana.id);
+});
+
+test('a name nobody ever connected as does not block a join', () => {
+	// A singer row with no socket this process (e.g. rehydrated after a restart) is `gone` by definition,
+	// so their name must not be held hostage by the append-only table.
+	const { app } = appHarness();
+	doJoin(app, { displayName: 'Ghost', color: SINGER_COLORS[0] });
+	expect(() => doJoin(app, { displayName: 'Ghost', color: SINGER_COLORS[1] })).not.toThrow();
+});
+
+test('distinct names are unaffected', () => {
+	const { app } = appHarness();
+	app.presence.connect(doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] }).singer.id);
+	expect(() => doJoin(app, { displayName: 'Maya', color: SINGER_COLORS[1] })).not.toThrow();
 });

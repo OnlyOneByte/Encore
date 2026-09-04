@@ -78,6 +78,20 @@
       "when": 1788553966968,
       "tag": "0010_tv_visualizer",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1788555026436,
+      "tag": "0011_presence_and_song_intro",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "6",
+      "when": 1788555037943,
+      "tag": "0012_drop_interstitial",
+      "breakpoints": true
     }
   ]
 }
