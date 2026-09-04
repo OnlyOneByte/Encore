@@ -16,6 +16,8 @@
 // stored setting can be validated against it, the settings page renders a picker from one source,
 // and a new model cannot be added without a label and a stated tradeoff.
 
+import { makeRegistry } from './registry';
+
 /**
  * A faster-whisper model token, passed straight to `whisperx.load_model()`.
  *
@@ -85,12 +87,14 @@ export const ASR_MODELS: readonly AsrModel[] = [
 /** Matches whisperx.py's DEFAULT_MODEL, so exposing this setting changes no existing behaviour. */
 export const DEFAULT_ASR_MODEL: AsrModelId = 'base';
 
+const asrRegistry = makeRegistry(ASR_MODELS);
+
 export function getAsrModel(id: string): AsrModel | undefined {
-	return ASR_MODELS.find((m) => m.id === id);
+	return asrRegistry.get(id);
 }
 
 export function isValidAsrModel(id: string): id is AsrModelId {
-	return getAsrModel(id) !== undefined;
+	return asrRegistry.isValid(id);
 }
 
 /**
@@ -130,12 +134,14 @@ export const SYNC_MODES: readonly SyncMode[] = [
 
 export const DEFAULT_SYNC_MODE: SyncModeId = 'forced';
 
+const syncModeRegistry = makeRegistry(SYNC_MODES);
+
 export function getSyncMode(id: string): SyncMode | undefined {
-	return SYNC_MODES.find((m) => m.id === id);
+	return syncModeRegistry.get(id);
 }
 
 export function isValidSyncMode(id: string): id is SyncModeId {
-	return getSyncMode(id) !== undefined;
+	return syncModeRegistry.isValid(id);
 }
 
 // ── presentation ────────────────────────────────────────────────────────────
@@ -196,12 +202,14 @@ export const LYRICS_BALL_STYLES: readonly LyricsBallStyle[] = [
 
 export const DEFAULT_LYRICS_BALL: LyricsBallStyleId = 'bounce';
 
+const lyricsBallRegistry = makeRegistry(LYRICS_BALL_STYLES);
+
 export function getLyricsBallStyle(id: string): LyricsBallStyle | undefined {
-	return LYRICS_BALL_STYLES.find((s) => s.id === id);
+	return lyricsBallRegistry.get(id);
 }
 
 export function isValidLyricsBall(id: unknown): id is LyricsBallStyleId {
-	return typeof id === 'string' && getLyricsBallStyle(id) !== undefined;
+	return lyricsBallRegistry.isValid(id);
 }
 
 /**
@@ -248,12 +256,14 @@ export const LYRICS_HIGHLIGHTS: readonly LyricsHighlight[] = [
 
 export const DEFAULT_LYRICS_HIGHLIGHT: LyricsHighlightId = 'word';
 
+const lyricsHighlightRegistry = makeRegistry(LYRICS_HIGHLIGHTS);
+
 export function getLyricsHighlight(id: string): LyricsHighlight | undefined {
-	return LYRICS_HIGHLIGHTS.find((h) => h.id === id);
+	return lyricsHighlightRegistry.get(id);
 }
 
 export function isValidLyricsHighlight(id: unknown): id is LyricsHighlightId {
-	return typeof id === 'string' && getLyricsHighlight(id) !== undefined;
+	return lyricsHighlightRegistry.isValid(id);
 }
 
 /**
@@ -332,12 +342,14 @@ export const LYRICS_FONTS: readonly LyricsFont[] = [
 
 export const DEFAULT_LYRICS_FONT: LyricsFontId = 'system';
 
+const lyricsFontRegistry = makeRegistry(LYRICS_FONTS);
+
 export function getLyricsFont(id: string): LyricsFont | undefined {
-	return LYRICS_FONTS.find((f) => f.id === id);
+	return lyricsFontRegistry.get(id);
 }
 
 export function isValidLyricsFont(id: unknown): id is LyricsFontId {
-	return typeof id === 'string' && getLyricsFont(id) !== undefined;
+	return lyricsFontRegistry.isValid(id);
 }
 
 /**
@@ -381,12 +393,14 @@ export const LYRICS_CASES: readonly LyricsCase[] = [
 
 export const DEFAULT_LYRICS_CASE: LyricsCaseId = 'natural';
 
+const lyricsCaseRegistry = makeRegistry(LYRICS_CASES);
+
 export function getLyricsCase(id: string): LyricsCase | undefined {
-	return LYRICS_CASES.find((c) => c.id === id);
+	return lyricsCaseRegistry.get(id);
 }
 
 export function isValidLyricsCase(id: unknown): id is LyricsCaseId {
-	return typeof id === 'string' && getLyricsCase(id) !== undefined;
+	return lyricsCaseRegistry.isValid(id);
 }
 
 /**

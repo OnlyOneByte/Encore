@@ -1,7 +1,7 @@
 // The gate table is the pipeline's definition of "finished", so these pin the parts that are easy to
 // get wrong when a future step is added.
 import { test, expect } from 'bun:test';
-import { GATES, readyToSing, pendingGates, currentGateLabel } from './gates';
+import { GATES, readyToSing, pendingGates, currentGateLabel, isCooking } from './gates';
 import { isPlayable, type Media } from './types';
 
 const m = (over: Partial<Media> = {}): Media => ({
@@ -74,4 +74,18 @@ test('every gate has a distinct id and a pending label', () => {
 	// A future step added without a label would render an empty status line on the phone.
 	expect(new Set(GATES.map((g) => g.id)).size).toBe(GATES.length);
 	for (const g of GATES) expect(g.pendingLabel.length).toBeGreaterThan(0);
+});
+
+test('isCooking is gate-driven — it catches a song sitting between two gates', () => {
+	// Not started: nothing acquired, no step queued → not cooking (it is unacquired).
+	expect(isCooking(m())).toBe(false);
+	// Stems actively queued → cooking.
+	expect(isCooking(m({ stemStatus: 'queued' }))).toBe(true);
+	// THE BUG: stems done, lyrics queued — a later gate is pending, but an earlier gate is done, so
+	// the gate-driven check keeps it cooking instead of a hardcoded stemStatus==='queued' missing it.
+	expect(isCooking(cooked({ lyricsStatus: 'queued' }))).toBe(true);
+	// Even with lyrics simply not started, a separated song is still mid-cook, not unacquired.
+	expect(isCooking(cooked())).toBe(true);
+	// Finished → not cooking.
+	expect(isCooking(cooked({ lyricsStatus: 'ready' }))).toBe(false);
 });

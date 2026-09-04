@@ -4,7 +4,7 @@
 import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
 import type { LyricsCandidate } from './lyrics';
-import type { EffectiveSettings, TvBackgroundStyle } from './separators';
+import type { EffectiveSettings, TvBackgroundStyle } from './settings';
 
 export const ROOM_TOPIC = 'room:main'; // single room for MVP; Bun.serve pub/sub topic
 
@@ -128,10 +128,7 @@ export interface StageTiming {
  *  scheduler affinity and the cgroup quota — not the machine's total, because a container throttled to
  *  two cores on a 32-core host is the case worth knowing about and `os.cpu_count()` hides it.
  *  `vramBytes` is physical capacity, so it says a card is big enough to consider, never that a
- *  checkpoint will fit alongside whatever is already resident.
- *
- *  This is also what makes `estimateCookSeconds`'s `hardwareFactor` real: it has always taken that
- *  parameter and nothing ever supplied one, so every estimate assumed the reference box. */
+ *  checkpoint will fit alongside whatever is already resident. */
 export interface WorkerHost {
   platform?: string;
   machine?: string;

@@ -4,10 +4,14 @@ import {
 	getEngine,
 	isValidSeparator,
 	isLiveSelectable,
-	normalizeGlobalSettings,
-	DEFAULT_GLOBAL_SETTINGS,
 	DEFAULT_ENGINE,
 	DEFAULT_MODEL,
+	separatorCost,
+	qualityRank
+} from './separators';
+import {
+	normalizeGlobalSettings,
+	DEFAULT_GLOBAL_SETTINGS,
 	normalizeRoomSettings,
 	TV_PROGRESS_STYLES,
 	TV_BACKGROUND_STYLES,
@@ -20,12 +24,9 @@ import {
 	effectiveSongIntroMs,
 	resolveCookSeparator,
 	resolveLyricsPresentation,
-	separatorCost,
-	estimateCookSeconds,
-	qualityRank,
 	normalizeJoinOrigin,
 	type RoomSettings
-} from './separators';
+} from './settings';
 import {
 	LYRICS_BALL_STYLES,
 	LYRICS_HIGHLIGHTS,
@@ -130,22 +131,6 @@ describe('measured cost', () => {
 	it('the live default is genuinely faster than realtime', () => {
 		// A live cook has to finish while the singer waits, so the default must be sub-realtime.
 		expect(separatorCost(DEFAULT_ENGINE, DEFAULT_MODEL)!.rtFactor).toBeLessThan(1);
-	});
-
-	it('estimateCookSeconds scales with song length and hardware', () => {
-		// htdemucs is 0.29: a 200s song is ~58s on the reference box.
-		expect(estimateCookSeconds('demucs', 'htdemucs', 200)).toBe(58);
-		// a box twice as fast halves it
-		expect(estimateCookSeconds('demucs', 'htdemucs', 200, 0.5)).toBe(29);
-		// roformer is the upgrade tier: minutes, not seconds
-		expect(estimateCookSeconds('roformer', 'bs-roformer-1297', 200)!).toBeGreaterThan(1000);
-	});
-
-	it('estimateCookSeconds returns null rather than guessing', () => {
-		expect(estimateCookSeconds('demucs', 'no-such-model', 200)).toBeNull();
-		expect(estimateCookSeconds('nope', 'htdemucs', 200)).toBeNull();
-		expect(estimateCookSeconds('demucs', 'htdemucs', 0)).toBeNull();
-		expect(estimateCookSeconds('demucs', 'htdemucs', Number.NaN)).toBeNull();
 	});
 });
 
