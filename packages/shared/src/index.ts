@@ -8,5 +8,6 @@ export * from './lyrics';
 export * from './events';
 export * from './separators';
 export * from './fetchers';
+export * from './lyrics-engines';
 export * from './ulid';
 export * from './colors';

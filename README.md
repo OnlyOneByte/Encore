@@ -150,10 +150,15 @@ docs/              ← design docs + ROADMAP + UI mocks/screenshots
 `Bun.S3Client` reads directly. A missing bucket falls back to `local` rather than failing to boot.
 
 **Worker** (container 2) — `ENCORE_CORE_WS`, `ENCORE_WORKER_CONCURRENCY` (`1`),
-`ENCORE_WORKER_CAPABILITIES` (`stems`; add `fetch:ytdlp` to let it acquire audio, `align` for
-word-timed lyrics, `stems:roformer` for the RoFormer engine), `ENCORE_WORKER_ID`,
-`ENCORE_DEMUCS_MODEL`, `ENCORE_WHISPERX_DEVICE`, `ENCORE_ANNOTATE` (`1`; set `0` to skip the
-MusicBrainz lookup on a box with no outbound network).
+`ENCORE_WORKER_CAPABILITIES` (`fetch:ytdlp,stems,align` — the whole cook; add `stems:roformer` for the
+RoFormer engine), `ENCORE_WORKER_ID`, `ENCORE_DEMUCS_MODEL`, `ENCORE_WHISPERX_DEVICE`,
+`ENCORE_ANNOTATE` (`1`; set `0` to skip the MusicBrainz lookup on a box with no outbound network).
+
+The **lyrics engines** — which Whisper checkpoint reads the words (`tiny`/`base`/`small`/`medium`/`large-v3`)
+and how they get timestamps (`forced` word timings vs `lines`) — are a **global setting**, not env: they
+live on the Settings page and ride on every `align` job, so changing the model takes effect on the next
+cook with no worker restart. `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only the
+fallback for a job that carries neither.
 
 > A worker must advertise `fetch:<downloader>` to acquire source audio — acquisition routes on its own
 > capability so a box that downloads and a box that separates need not be the same machine. Advertising

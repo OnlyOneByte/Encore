@@ -1,6 +1,6 @@
 import { test, expect } from 'bun:test';
 import { requiredCapability, planAssignments, hasCapableWorker, type CapabilityFor } from './dispatch';
-import type { Job, GlobalSettings } from '@encore/shared';
+import { DEFAULT_GLOBAL_SETTINGS, type Job, type GlobalSettings } from '@encore/shared';
 import type { WorkerSession } from './registry';
 
 function job(id: string, jobType: Job['jobType']): Job {
@@ -28,12 +28,8 @@ function worker(id: string, capabilities: string[], slotsFree = 1): WorkerSessio
 }
 
 const settings = (o: Partial<GlobalSettings>): GlobalSettings => ({
-	defaultEngine: 'demucs',
+	...DEFAULT_GLOBAL_SETTINGS,
 	defaultModel: 'htdemucs',
-	enqueueUpgrade: false,
-	upgradeEngine: 'roformer',
-	upgradeModel: 'bs-roformer-1297',
-	defaultFetcher: 'ytdlp' as const,
 	...o
 });
 

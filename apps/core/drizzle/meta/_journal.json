@@ -8,6 +8,13 @@
       "when": 1788536239691,
       "tag": "0000_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1788541702667,
+      "tag": "0001_asr_sync_settings",
+      "breakpoints": true
     }
   ]
 }
