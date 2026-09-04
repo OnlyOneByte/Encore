@@ -288,8 +288,14 @@
 		/>
 	{/if}
 
+	<!--
+	  Three transient states, three treatments. They used to share one `.interstitial` block and one
+	  pink `.up-song`, so "Next up: Bohemian Rhapsody", "that track would not play" and "still cooking"
+	  were visually identical — a viewer could not tell a failure from a normal song change at a glance.
+	  Each now carries its own mark, its own colour family and its own eyebrow.
+	-->
 	{#if tvState === 'interstitial' && upNext}
-		<div class="interstitial">
+		<div class="interstitial state-next">
 			<div class="up-label">Next up</div>
 			<div class="up-name">{singerName(upNext.singerId)}</div>
 			<div class="up-song">{mediaOf(upNext)?.title ?? ''}</div>
@@ -297,12 +303,20 @@
 	{/if}
 
 	{#if skipNotice}
-		<div class="interstitial"><div class="up-song"><Icon name="warning" /> {skipNotice}</div></div>
+		<!-- An error. --danger exists precisely so this cannot be mistaken for an affirmative event. -->
+		<div class="interstitial state-error" role="alert">
+			<div class="state-mark"><Icon name="warning" /></div>
+			<div class="up-label">Skipped</div>
+			<div class="up-song">{skipNotice}</div>
+		</div>
 	{/if}
 
 	{#if tvState === 'waiting'}
-		<div class="interstitial">
-			<div class="up-song"><Icon name="flame" /> Still cooking… hang tight</div>
+		<!-- Not an error and not a transition: work in progress. Warm, and it names what is happening. -->
+		<div class="interstitial state-waiting">
+			<div class="state-mark"><Icon name="flame" /></div>
+			<div class="up-label">Making the karaoke</div>
+			<div class="up-song">Stripping the vocals — hang tight</div>
 		</div>
 	{/if}
 
@@ -315,38 +329,96 @@
 </div>
 
 <style>
-	.tv { position: fixed; inset: 0; background: #000; overflow: hidden; }
+	/*
+	 * TV TYPE SCALE AND SAFE AREA — tokens live in app.css so the same components size correctly in the
+	 * /components gallery, which renders them outside this route.
+	 *
+	 * This surface was inheriting the phone's tokens verbatim, which is how "Now singing", the song
+	 * title, the score sub-line and the join URL all ended up at 12–19px — sized for a device held at
+	 * 40cm and displayed on a wall at three metres.
+	 *
+	 * Safe area: every edge element previously used a fixed 40–48px offset, which sits INSIDE the
+	 * overscan region many television sets still apply (~5%, or ~54px vertically at 1080p). The
+	 * lower-third naming who is singing and the join QR could both be clipped off the screen. One pair
+	 * of tokens now owns every edge, so there is a single place to reason about corners.
+	 */
+	.tv {
+		position: fixed;
+		inset: 0;
+		background: #000;
+		overflow: hidden;
+	}
 	.attract {
 		position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
 		justify-content: center; gap: 48px; z-index: 5;
 		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
-	.brand { position: absolute; top: 40px; left: 48px; font-weight: 800; font-size: 2rem; display: inline-flex; align-items: center; gap: 12px; }
+	.brand {
+		position: absolute; top: var(--tv-safe-y); left: var(--tv-safe-x);
+		font-weight: 800; font-size: var(--tv-name); display: inline-flex; align-items: center; gap: 12px;
+	}
 	/* the lobby paints its own full-bleed backdrop, so the brand needs to float above it */
 	.brand-float { z-index: 6; }
 	.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 	.join { display: flex; align-items: center; gap: 56px; }
-	.join-copy h1 { font-size: 3rem; margin: 0 0 12px; max-width: 9ch; line-height: 1.05; }
-	.url { font-size: 1.4rem; color: var(--accent2); margin: 0 0 16px; }
-	.hint { font-size: 1.2rem; color: var(--ink-dim); margin: 0; }
+	.join-copy h1 { font-size: var(--tv-hero); margin: 0 0 12px; max-width: 9ch; line-height: 1.05; }
+	/*
+	 * The URL is the fallback when a camera will not scan, so someone is typing it from across the room.
+	 * It was 22px — the least readable thing on a screen whose entire job is to be joined.
+	 */
+	.url { font-size: var(--tv-body); color: var(--accent2); margin: 0 0 16px; overflow-wrap: anywhere; }
+	.hint { font-size: var(--tv-label); color: var(--ink-dim); margin: 0; }
 	.lower-third {
 		/* Capped: unbounded, a long title or singer name grew this card rightward into the join QR at
 		   bottom-right. 46vw leaves the QR its corner on every aspect ratio. */
-		position: absolute; left: 48px; bottom: 48px; z-index: 6; display: flex; flex-direction: column;
+		position: absolute; left: var(--tv-safe-x); bottom: var(--tv-safe-y); z-index: 6;
+		display: flex; flex-direction: column;
 		max-width: 46vw;
-		gap: 4px; padding: 16px 24px; border-radius: 16px;
-		background: linear-gradient(120deg, rgba(124, 92, 255, 0.85), rgba(255, 92, 174, 0.7)); backdrop-filter: blur(6px);
+		gap: 4px; padding: 16px 28px; border-radius: 16px;
+		/*
+		 * Near-opaque, not a 0.7 tint. This card sits over arbitrary video, so translucency put its
+		 * white text at a contrast ratio nothing could predict — and backdrop-filter is unreliable on TV
+		 * browsers, so the blur that was supposed to rescue it may never run at all.
+		 */
+		background: linear-gradient(120deg, rgba(88, 62, 200, 0.96), rgba(190, 55, 130, 0.94));
+		backdrop-filter: blur(6px);
 	}
-	.ls-label { font-size: 0.8rem; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.85; }
-	.ls-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 1.8rem; font-weight: 800; }
-	.ls-song { font-size: 1.2rem; opacity: 0.95; }
+	.ls-label { font-size: var(--tv-label); letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.92; }
+	.ls-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--tv-name); font-weight: 800; }
+	.ls-song { font-size: var(--tv-body); opacity: 0.97; }
 	.interstitial {
 		position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center;
-		justify-content: center; gap: 12px; background: rgba(11, 11, 18, 0.92);
+		justify-content: center; gap: 12px; background: rgba(11, 11, 18, 0.94);
+		padding: var(--tv-safe-y) var(--tv-safe-x);
+		text-align: center;
 	}
-	.up-label { font-size: 1rem; letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
-	.up-name { font-size: 3.4rem; font-weight: 800; }
-	.up-song { font-size: 1.8rem; color: var(--accent2); }
-	.status { position: absolute; top: 48px; right: 48px; width: 12px; height: 12px; border-radius: 50%; background: var(--ink-dim); z-index: 8; }
-	.status.on { background: var(--ok); box-shadow: 0 0 0 4px rgba(51, 214, 166, 0.18); }
+	.up-label { font-size: var(--tv-label); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
+	.up-name { font-size: var(--tv-hero); font-weight: 800; }
+	.up-song { font-size: var(--tv-name); }
+	/* A mark large enough to be the first thing read, since it is what distinguishes these states. */
+	.state-mark { font-size: var(--tv-hero); line-height: 1; margin-bottom: 4px; }
+
+	/* Affirmative: something good is about to happen. */
+	.state-next .up-song { color: var(--accent2); }
+
+	/* Failure. Distinct family AND a distinct eyebrow, so colour is not the only carrier. */
+	.state-error { background: rgba(42, 27, 34, 0.95); }
+	.state-error .state-mark { color: var(--danger); }
+	.state-error .up-label { color: var(--danger-ink); }
+	.state-error .up-song { color: var(--danger-ink); }
+
+	/* Work in progress: neither affirmative nor broken. */
+	.state-waiting .state-mark { color: var(--warn); }
+	.state-waiting .up-label { color: var(--warn); }
+	.state-waiting .up-song { color: var(--ink); }
+
+	/*
+	 * Connection telemetry. Larger than the old 12px and pulled inside the safe area — at 12px in a
+	 * corner a TV may clip it informed nobody, and anyone who did see it read it as a stuck pixel.
+	 */
+	.status {
+		position: absolute; top: var(--tv-safe-y); right: var(--tv-safe-x);
+		width: 16px; height: 16px; border-radius: 50%; background: var(--ink-dim); z-index: 8;
+	}
+	.status.on { background: var(--ok); box-shadow: 0 0 0 5px rgba(51, 214, 166, 0.18); }
 </style>

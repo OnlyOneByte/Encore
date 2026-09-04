@@ -78,11 +78,11 @@
 		text-align: center;
 	}
 	h1 {
-		font-size: 2.2rem;
+		font-size: var(--tv-name);
 		margin: 0;
 	}
 	.sub {
-		font-size: 1.05rem;
+		font-size: var(--tv-label);
 		color: var(--ink-dim);
 		margin: 6px 0 0;
 	}
@@ -101,7 +101,7 @@
 		flex-wrap: wrap;
 	}
 	.label {
-		font-size: 0.8rem;
+		font-size: var(--tv-label);
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
@@ -114,7 +114,7 @@
 		border-radius: 999px;
 		background: var(--card);
 		border: 1px solid var(--line);
-		font-size: 1.15rem;
+		font-size: var(--tv-body);
 		font-weight: 600;
 	}
 	.chip.more {

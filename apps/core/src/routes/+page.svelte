@@ -207,6 +207,13 @@
 	const showReady = $derived(filter === 'all' || filter === 'ready');
 	const showCooking = $derived(filter === 'all' || filter === 'cooking');
 	const showRaw = $derived(filter === 'all');
+	/*
+	 * The readiness group headings only earn their space when more than one group is on screen. With a
+	 * chip selected, "Ready to sing · no wait" restates the chip directly above it — the fourth of the
+	 * four overlapping filter mechanisms, and the one that was pure duplication. A browse facet keeps
+	 * its heading either way, because there the heading carries the count and the facet name.
+	 */
+	const showGroupHeads = $derived(filter === 'all');
 
 	/**
 	 * The songs the readiness groups above already account for. The whole point of the readiness axis
@@ -324,6 +331,15 @@
 	// artist cannot collapse the rail to that one artist and strand you with no way back.
 	let facets = $state<{ artists: { artist: string; count: number }[]; genres: { genre: string; count: number }[] }>({ artists: [], genres: [] });
 	let browseFilter = $state<{ artist?: string; genre?: string } | null>(null);
+	/*
+	 * Browse starts collapsed so the readiness spine is the only filter on screen at rest. It opens
+	 * itself when a facet is active, because a filter narrowing the list while its control is hidden
+	 * reads as an empty library rather than an applied filter.
+	 */
+	let browseOpen = $state(false);
+	$effect(() => {
+		if (browseFilter) browseOpen = true;
+	});
 
 	function setBrowse(kind: 'artist' | 'genre' | null, value: string) {
 		// tapping the active chip again clears it — a filter you cannot undo is a trap
@@ -475,42 +491,63 @@
 
 	{#if showReady}
 		{@const readyList = searchActive ? readyResults : library}
-		<!-- Facet rails over the karaoke library, shown only when NOT searching: a query is already a
-		     filter, and stacking two leaves you with zero results and no idea which caused it. Hidden
-		     below two facets, since "browse by artist" across one artist is just a list. -->
+		<!--
+		  Browse lives behind ONE disclosure. Previously the two facet rails rendered inline whenever the
+		  library had enough variety, so the top of the screen could stack four independent ways to narrow
+		  the same list — three readiness chips, an artist rail, a genre rail, and group headings that
+		  re-announced the readiness axis in prose. Worse, the rails appeared and vanished as you typed,
+		  so the control row changed shape while you were using it. One collapsed row keeps the readiness
+		  spine primary and the control set stable.
+		-->
 		{#if !searchActive && (facets.artists.length > 1 || facets.genres.length > 1)}
-			{#if facets.artists.length > 1}
-				<div class="facets" role="group" aria-label="Browse by artist">
-					<span class="facet-label">Artist</span>
-					{#each facets.artists as f (f.artist)}
-						<button class="chip" class:active={browseFilter?.artist === f.artist} onclick={() => setBrowse('artist', f.artist)}>
-							{f.artist}&nbsp;<span class="facet-count">{f.count}</span>
-						</button>
-					{/each}
-				</div>
-			{/if}
-			{#if facets.genres.length > 1}
-				<div class="facets" role="group" aria-label="Browse by genre">
-					<span class="facet-label">Genre</span>
-					{#each facets.genres as f (f.genre)}
-						<button class="chip ok" class:active={browseFilter?.genre === f.genre} onclick={() => setBrowse('genre', f.genre)}>
-							{f.genre}&nbsp;<span class="facet-count">{f.count}</span>
-						</button>
-					{/each}
-				</div>
-			{/if}
-			{#if browseFilter}
-				<div class="facets">
-					<button class="chip chip-icon" onclick={() => setBrowse(null, '')}><Icon name="close" /> Clear filter</button>
-				</div>
+			<div class="browse">
+				<button
+					class="browse-toggle"
+					aria-expanded={browseOpen}
+					onclick={() => (browseOpen = !browseOpen)}
+				>
+					<Icon name={browseOpen ? 'chevron-down' : 'chevron-right'} />
+					Browse
+					{#if browseFilter}<span class="browse-active">{browseFilter.artist ?? browseFilter.genre}</span>{/if}
+				</button>
+				<!-- Clearing stays reachable while collapsed: a filter you cannot see is a filter you
+				     cannot undo, and an empty-looking list with no visible cause is the result. -->
+				{#if browseFilter}
+					<button class="chip chip-icon" onclick={() => setBrowse(null, '')}><Icon name="close" /> Clear</button>
+				{/if}
+			</div>
+			{#if browseOpen}
+				{#if facets.artists.length > 1}
+					<div class="facets" role="group" aria-label="Browse by artist">
+						<span class="facet-label">Artist</span>
+						{#each facets.artists as f (f.artist)}
+							<button class="chip" class:active={browseFilter?.artist === f.artist} onclick={() => setBrowse('artist', f.artist)}>
+								{f.artist}&nbsp;<span class="facet-count">{f.count}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
+				{#if facets.genres.length > 1}
+					<div class="facets" role="group" aria-label="Browse by genre">
+						<span class="facet-label">Genre</span>
+						{#each facets.genres as f (f.genre)}
+							<button class="chip ok" class:active={browseFilter?.genre === f.genre} onclick={() => setBrowse('genre', f.genre)}>
+								{f.genre}&nbsp;<span class="facet-count">{f.count}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 		{/if}
 		{#if readyList.length}
-			<div class="grouphead ok">
-				{browseFilter && !searchActive
-					? `${browseFilter.artist ?? browseFilter.genre} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
-					: 'Ready to sing · no wait'}
-			</div>
+			{@const facetHead = browseFilter && !searchActive}
+			{#if showGroupHeads || facetHead}
+				<div class="grouphead ok">
+					{facetHead
+						? `${browseFilter?.artist ?? browseFilter?.genre} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
+						: 'Ready to sing · no wait'}
+				</div>
+			{/if}
 			{#each readyList as m (m.id)}
 				<SongRow title={m.title} artist={m.artistCanonical ?? m.artist} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 			{/each}
@@ -520,7 +557,7 @@
 	{#if showCooking && cookingRows.length}
 		<!-- Queue it anyway: rotation HOLDS a cooking song's slot, so it keeps its fair
 		     position and plays when the stems land. Cooking is not a blocked state. -->
-		<div class="grouphead warn">Cooking · queue it anyway</div>
+		{#if showGroupHeads}<div class="grouphead warn">Cooking · queue it anyway</div>{/if}
 		{#each cookingRows as c (c.id)}
 			<SongRow
 				title={c.media.title}
@@ -769,9 +806,20 @@
 			grid-column: auto;
 		}
 	}
-	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; }
+	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; min-height: 52px; }
 	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; outline: none; }
 	.chips { display: flex; gap: 7px; margin-bottom: 14px; }
+	/* One collapsed row where two facet rails used to render inline and reshuffle as you typed. */
+	.browse { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+	.browse-toggle {
+		min-height: 44px; display: inline-flex; align-items: center; gap: 7px;
+		background: none; border: 0; padding: 0 2px; cursor: pointer;
+		color: var(--ink-dim); font-size: 0.68rem; font-weight: 700;
+		letter-spacing: 0.14em; text-transform: uppercase;
+	}
+	.browse-toggle:hover { color: var(--ink); }
+	/* Names the active facet on the collapsed row, so a narrowed list always shows its cause. */
+	.browse-active { color: var(--accent2); text-transform: none; letter-spacing: 0; font-size: 0.8rem; }
 	/* browse facet rails: horizontally scrollable so a 20-artist library cannot push the
 	   song list off the screen on a phone. */
 	.facets {
@@ -786,7 +834,12 @@
 	}
 	.facet-count { opacity: .55; font-variant-numeric: tabular-nums; }
 	.chip {
-		padding: 7px 13px; border-radius: 20px; font-size: 0.78rem; font-weight: 600; cursor: pointer;
+		/* 44px, matching the queue actions and the row buttons. These were ~30px: above the 24px WCAG
+		   floor, but below the threshold this app had already set for itself everywhere else — and the
+		   readiness chips are the most-tapped controls on the screen. */
+		min-height: 44px;
+		display: inline-flex; align-items: center; gap: 6px;
+		padding: 7px 14px; border-radius: 22px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
 		background: var(--card); border: 1px solid var(--line); color: var(--ink-dim);
 	}
 	.chip.ok { color: var(--ok); }
@@ -794,7 +847,6 @@
 	.chip.active { background: var(--accent-strong); border-color: transparent; color: var(--on-accent); }
 	/* any label that leads with a mark rather than a word */
 	.chip-icon { display: inline-flex; align-items: center; gap: 6px; }
-	.chip { display: inline-flex; align-items: center; gap: 6px; }
 	.search-mark { display: grid; place-items: center; color: var(--ink-dim); }
 	.grouphead-mark { display: flex; align-items: center; gap: 7px; }
 	.chip:active { transform: scale(0.95); }
