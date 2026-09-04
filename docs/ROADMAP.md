@@ -320,6 +320,24 @@ which is the argument for the "green suite is the floor, not the bar" rule in
   without changing tempo. **AUTO** — cents→ratio and framing math; **EYES-ON/AUDIO** — the shift
   itself. Last in the order for exactly that reason.
 
+- [ ] **B-10-C7 · gate `/metrics` and the audit log** — the two internal surfaces shipped **ungated**,
+  by decision: Encore has no operator identity, and the only auth axis is anonymous vs any-singer,
+  which any LAN phone obtains by POSTing `/api/join`. A singer check would have been theatre. What is
+  exposed today: worker ids, resolved model/backend/device names, host details, and terminal error
+  strings — no singer identities and no media bytes. Two honest fixes, either is small:
+  `ENCORE_ADMIN_TOKEN` compared on the two endpoints, or binding those routes to a trusted interface.
+  The same gap already lets any joined phone `PUT /api/settings` (now including `asrModel` and
+  `syncMode`, i.e. which Whisper weights the fleet loads), so a real **host/operator concept** would
+  close both — that is the larger option, and it is a product decision, not a patch.
+  **AUTO** — the gate rejects an unauthenticated read; **EYES-ON** — the settings page still works.
+
+- [ ] **B-10-C8 · retention for the two append-only tables** — `job_attempts` and `plays` grow without
+  bound. Nothing prunes them and nothing should until there is a policy: attempt history is the only
+  record of how a song was made, so eviction is a real loss rather than a cache miss. Mirror
+  `ENCORE_MEDIA_MAX_GB`'s shape (a soft cap, oldest-first, unset = never delete). Not urgent — a row
+  is tens of bytes and a busy party writes a few hundred — but it should not be discovered later as a
+  surprise. **AUTO** — unit.
+
 ---
 
 ## B-3 design notes (the part still worth reading)

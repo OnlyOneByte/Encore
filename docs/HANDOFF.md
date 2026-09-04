@@ -94,6 +94,14 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
 
 ## 4. Gotchas (each one costs an hour)
 
+0. **`/metrics` is empty for songs cooked before the attempt ledger shipped, and that is correct.**
+   Processing history lives in `job_attempts`, which only starts recording when it is deployed — the
+   durations of past cooks were never written down and are not recoverable. A song with no history
+   says so explicitly on its audit page rather than reading as "never processed". Related: `/metrics`
+   and `/api/audit/*` are **ungated** by decision (there is no operator identity in Encore; any LAN
+   phone can self-join), so treat them as LAN-visible. See ARCHITECTURE §10 and ROADMAP B-10-C7.
+   Also: a fresh git worktree has no `node_modules`, so `bun test` reports ~39 phantom failures on
+   `@encore/shared` until you run `bun install`.
 1. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** The *global* npmrc points at
    CodeArtifact and 401s for public packages. Don't delete it; don't `npm config set` globally.
 2. **`bun --bun` is mandatory** for SvelteKit/Vite. Use `bun run <script>`; never call `vite` raw.
