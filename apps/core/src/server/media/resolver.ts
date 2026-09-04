@@ -12,6 +12,8 @@ export interface SearchResult {
 	artist?: string;
 	durationSec: number;
 	thumbnail?: string;
+	/** Views as the source reported them. Display-only tiebreaker — see Media.viewCount. */
+	viewCount?: number;
 }
 
 export interface MediaResolver {
@@ -50,6 +52,7 @@ export function resultToMedia(id: string, r: SearchResult): Media {
 		annotation: confidence && parsed.artist ? { source: 'normalizer', confidence } : undefined,
 		durationSec: r.durationSec,
 		thumbnail: r.thumbnail,
+		viewCount: r.viewCount,
 		stemStatus: 'none'
 	};
 }
