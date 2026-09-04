@@ -197,6 +197,24 @@
 	function readinessFor(m: Media): Readiness {
 		return displayReadiness(m, liveOf(m.id));
 	}
+	/**
+	 * Everything a SongRow displays about a song, in ONE place.
+	 *
+	 * Spread rather than written out at each call site because there are five of them (ready, cooking,
+	 * raw, popular, recently-queued) and they had already drifted: the ready group read
+	 * `artistCanonical ?? artist` while the other four read the raw `artist`, so one song showed a
+	 * different name depending on which group it happened to be in. Both canonical fields are passed
+	 * through and SongRow decides how to combine them, so that judgement lives in one component instead
+	 * of being re-made at five tag sites.
+	 */
+	const rowMeta = (m: Media) => ({
+		title: m.title,
+		artist: m.artist,
+		artistCanonical: m.artistCanonical,
+		thumbnail: m.thumbnail,
+		durationSec: m.durationSec,
+		viewCount: m.viewCount
+	});
 	/** Is this song already in MY part of the rotation? Turns ＋ Turn into a ✓ Queued confirmation. */
 	function inMyQueue(mediaId: string): boolean {
 		return queued.some((e) => e.mediaId === mediaId && e.singerId === me?.id);
@@ -621,7 +639,7 @@
 				</div>
 			{/if}
 			{#each readyList as m (m.id)}
-				<SongRow title={m.title} artist={m.artistCanonical ?? m.artist} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+				<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 			{/each}
 		{/if}
 	{/if}
@@ -632,8 +650,7 @@
 		{#if showGroupHeads}<div class="grouphead warn">Cooking · queue it anyway</div>{/if}
 		{#each cookingRows as c (c.id)}
 			<SongRow
-				title={c.media.title}
-				artist={c.media.artist}
+				{...rowMeta(c.media)}
 				readiness="cooking"
 				pct={c.pct}
 				etaSec={c.etaSec}
@@ -661,8 +678,7 @@
 				{#each rawRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow
-						title={m.title}
-						artist={m.artist}
+						{...rowMeta(m)}
 						readiness={r}
 						pct={liveOf(m.id)?.pct ?? 0}
 						inQueue={inMyQueue(m.id)}
@@ -681,7 +697,7 @@
 				<div class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</div>
 				{#each popularRows as m (m.id)}
 					{@const r = readinessFor(m)}
-					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
+					<SongRow {...rowMeta(m)} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
 						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
 						onmake={canCook(r) ? () => singThis(m.id) : undefined} />
 				{/each}
@@ -690,7 +706,7 @@
 				<div class="grouphead grouphead-mark"><Icon name="clock" /> Recently queued</div>
 				{#each recentRows as m (m.id)}
 					{@const r = readinessFor(m)}
-					<SongRow title={m.title} artist={m.artist} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
+					<SongRow {...rowMeta(m)} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
 						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
 						onmake={canCook(r) ? () => singThis(m.id) : undefined} />
 				{/each}
