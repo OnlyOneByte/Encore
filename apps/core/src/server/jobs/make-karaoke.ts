@@ -208,7 +208,7 @@ export function applyAnnotation(
  *
  * The uri is NORMALIZED to a relative key: workers report absolute filesystem paths, and
  * `safeMediaPath` rejects any ref starting with "/", so storing the raw uri meant the overlay could
- * never fetch an artifact that existed on disk. `setMediaPitch` starved mic scoring the same way.
+ * never fetch an artifact that existed on disk.
  */
 export function setMediaLyrics(
 	mediaId: string,
@@ -243,19 +243,6 @@ export function setMediaLyrics(
 	const ref = toRelativeKey(uri);
 	if (!ref) return false;
 	media.lyricsRef = ref;
-	return true;
-}
-
-/**
- * Attach the reference pitch-track artifact to a media so the server can score the live
- * mic against it. Additive and independent of the stems flip — a `score` job publishes it.
- * Returns true if the media existed and a usable ref was set. (Normalized — see setMediaLyrics.)
- */
-export function setMediaPitch(mediaId: string, uri: string | undefined, mediaById: Map<string, Media>): boolean {
-	const media = mediaById.get(mediaId);
-	const ref = toRelativeKey(uri);
-	if (!media || !ref) return false;
-	media.pitchRef = ref;
 	return true;
 }
 

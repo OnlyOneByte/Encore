@@ -33,7 +33,6 @@ def test_separation_actions_are_flagged():
     assert Action.STEMS.is_separation
     assert Action.STEMS_UPGRADE.is_separation
     assert not Action.ALIGN.is_separation
-    assert not Action.SCORE.is_separation
 
 
 def test_parse_action_rejects_unknown_at_the_boundary():

@@ -50,7 +50,7 @@ Encore/
     ├─ core/              # @encore/core — SvelteKit app + server
     │   ├─ server.ts        Bun.serve entry: HTTP + WS hub + presence + worker transport
     │   ├─ src/server/      app.ts (singleton), db/, realtime/, state/, media/, jobs/, rotation/, singers/
-    │   ├─ src/lib/         stores/, ws/, tv/ (gapless, lobby, lyrics, score), components/
+    │   ├─ src/lib/         stores/, ws/, tv/ (gapless, lobby, lyrics), components/
     │   └─ src/routes/      +page (phone), tv/, join/, components/ (dev gallery), api/
     └─ worker/             # dial_home.py + Demucs/WhisperX processors + pytest
 ```
@@ -250,16 +250,15 @@ ref-counted `PresenceTracker` broadcasts `singer:presence{online}` on 0→1 and 
 **TV surfaces.** Four states via the pure `tvScreen()` in `src/lib/tv/screen.ts`, precedence
 `playing > waiting > lobby > attract`: **attract** (nobody here, full-screen QR), **lobby** (people,
 nothing queued — hero QR + roster strip), **waiting** (queued, still cooking), **playing**. **The
-join card is bottom-right and must stay there** — the lower-third owns bottom-left and the
-`ScoreBadge` owns top-right.
+join card is bottom-right and must stay there** — the lower-third owns bottom-left.
 
 **Gapless TV.** Two-player swap (A visible / B warming, swap on `ended`), telemetry-driven
 `advance()`. `src/lib/tv/gapless.ts` + `TvPlayer.svelte`; server side `realtime/player.ts`.
 
 **Jobs & the worker.** Ledger with dedup on `(mediaId, jobType)`, leases + reaper (ack 10s /
 progress 30s), boot recovery resets orphaned `assigned`/`running` → `queued`. Workers dial home over
-WS and advertise capabilities. A completed `stems` job chains `align` + `score` via
-`followUps()` in `jobs/dispatch.ts` — depth-1 fan-out, because the ASR and pitch stages both read the
+WS and advertise capabilities. A completed `stems` job chains `align` via
+`followUps()` in `jobs/dispatch.ts` — depth-1 fan-out, because the ASR stage reads the
 **vocals stem**, which does not exist until stems finishes.
 
 Both flows are canonical in [`ARCHITECTURE.md`](ARCHITECTURE.md).

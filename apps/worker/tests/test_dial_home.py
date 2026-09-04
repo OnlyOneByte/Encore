@@ -201,11 +201,10 @@ def test_build_processor_stub_override(monkeypatch):
 
 def test_build_processor_routes_by_capability(monkeypatch):
     # The DEFAULT is now the whole cook (fetch:ytdlp,stems,align), so the default routing table carries
-    # all three. `score` stays capability-gated and absent: nothing enqueues it.
+    # all three.
     from src.processor import RoutingProcessor
     from src.demucs import DemucsProcessor
     from src.whisperx import WhisperXProcessor
-    from src.score import PitchTrackProcessor
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
     # There is no longer a DEFAULT capability string to lean on: from_env leaves the set unresolved and
@@ -224,7 +223,6 @@ def test_build_processor_routes_by_capability(monkeypatch):
     assert isinstance(by_type["stems"], EngineRouter)
     assert isinstance(by_type["stems"]._by_engine["demucs"], DemucsProcessor)
     assert "roformer" not in by_type["stems"]._by_engine  # not built without the stems:roformer cap
-    assert "score" not in by_type  # score is capability-gated AND has no enqueue path
     assert isinstance(by_type["align"], WhisperXProcessor)  # part of the full cook
     assert "fetch" in by_type  # acquisition rides its own capability (fetch:ytdlp)
 
@@ -243,9 +241,6 @@ def test_build_processor_routes_by_capability(monkeypatch):
 
     # Capabilities come from the CONFIG seam, not a mutable module global — pass one explicitly.
     from src.config import WorkerConfig
-
-    ps = _build_processor(WorkerConfig(capabilities=("stems", "score")))
-    assert isinstance(ps._by_type["score"], PitchTrackProcessor)
 
     p2 = _build_processor(WorkerConfig(capabilities=("stems", "align")))
     assert isinstance(p2._by_type["align"], WhisperXProcessor)

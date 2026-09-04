@@ -5,9 +5,8 @@
 	`corner` is the during-playback treatment: a compact card pinned bottom-right, so a latecomer
 	who walks in mid-song can still get in without asking anyone to stop the music.
 
-	Bottom-right is deliberate and load-bearing: the "Now singing" lower-third owns bottom-LEFT and
-	the ScoreBadge owns top-right, so bottom-right is the only free corner. Do not move it to
-	the top-right — it will sit under the score.
+	Bottom-right is deliberate: the "Now singing" lower-third owns bottom-LEFT, so bottom-right is
+	the corner that stays clear of it.
 -->
 <script lang="ts">
 	interface Props {

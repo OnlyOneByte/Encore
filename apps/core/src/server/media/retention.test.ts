@@ -162,14 +162,12 @@ describe('evictDerived', () => {
 	it('removes every derived artifact and reports the bytes', () => {
 		put('derived/stems/a-instrumental.m4a', 500);
 		put('derived/stems/a-vocals.m4a', 400);
-		mkdirSync(join(root, 'derived', 'pitch'), { recursive: true });
-		put('derived/pitch/a-pitch.json', 100);
-		const m = media('a', { pitchRef: 'derived/pitch/a-pitch.json' });
+		const m = media('a');
 
-		expect(derivedBytesOf(m)).toBe(1000);
+		expect(derivedBytesOf(m)).toBe(900);
 		const { removed, bytes } = evictDerived(m);
-		expect(bytes).toBe(1000);
-		expect(removed.length).toBe(3);
+		expect(bytes).toBe(900);
+		expect(removed.length).toBe(2);
 		expect(existsSync(join(root, 'derived/stems/a-instrumental.flac'))).toBe(false);
 	});
 
