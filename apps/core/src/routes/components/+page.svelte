@@ -4,6 +4,8 @@
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
+	import RangeBar from '$lib/components/RangeBar.svelte';
+	import type { SongProfile } from '@encore/shared';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import { LYRICS_BALL_STYLES, LYRICS_HIGHLIGHTS, TV_VISUALIZERS } from '@encore/shared';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
@@ -28,6 +30,34 @@
 		);
 	import type { LyricsDoc } from '$lib/tv/lyrics';
 	import { onMount } from 'svelte';
+
+	// Demo SongProfiles for the RangeBar gallery. A tenor-ish chorus that lives high, so the histogram
+	// weight is visibly lopsided (index 0 = lowMidi = 48/C3). p05..p95 is the solid block; low/high the
+	// whiskers. `keyFull` carries a detected key too, for the SongRow chip example below.
+	const profileFull: SongProfile = {
+		keyTonic: 7, // G
+		keyMode: 'major',
+		keyConfidence: 0.82,
+		lowMidi: 48, // C3
+		highMidi: 72, // C5
+		p05Midi: 55, // G3
+		p95Midi: 67, // G4
+		// 25 semitones C3..C5; time piles up around the upper-middle (the chorus camps high)
+		histogram: [2, 3, 4, 5, 6, 9, 14, 20, 26, 30, 28, 22, 15, 10, 7, 5, 4, 3, 2, 1, 1, 0, 0, 0, 0]
+	};
+	// Same range, but NO histogram — the block must degrade to a flat fill (range known, weight unknown).
+	const profileNoHist: SongProfile = { ...profileFull, histogram: null };
+	// A key but NO measured range (silent/instrumental vocal stem). The bar renders NOTHING.
+	const profileKeyOnly: SongProfile = {
+		keyTonic: 2, // D
+		keyMode: 'minor',
+		keyConfidence: 0.71,
+		lowMidi: null,
+		highMidi: null,
+		p05Midi: null,
+		p95Midi: null,
+		histogram: null
+	};
 
 	// Demo: a word-timed fixture + an auto-advancing position so the karaoke sweep is visible
 	// here in the dev gallery (the real /tv route feeds position from player telemetry).
@@ -261,6 +291,9 @@
 		thumbnail="https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg" durationSec={225} viewCount={1892000000} />
 	<SongRow title="a-ha - Take On Me (Official Video)" artistCanonical="a-ha" artist="a-ha" readiness="ready" inQueue
 		thumbnail="https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg" durationSec={225} viewCount={1892000000} />
+	<!-- Ready row carrying a detected KEY chip (the chip is ready-only; a cooking/raw row never shows it). -->
+	<SongRow title="Journey - Don't Stop Believin' (Official Video)" artistCanonical="Journey" artist="Journey" readiness="ready"
+		thumbnail="https://i.ytimg.com/vi/1k8craCGpgs/mqdefault.jpg" durationSec={251} viewCount={789000000} keyName="E major" />
 	<SongRow title="Queen — Bohemian Rhapsody (Sub. Español / Lyrics)"
 		artistCanonical="Queen" artist="Richie Lyrics" readiness="cooking"
 		thumbnail="https://i.ytimg.com/vi/AlmHSUirAOs/mqdefault.jpg" durationSec={358} viewCount={265947}
@@ -322,6 +355,40 @@
 		<GuidingTrack pct={100} available={true} />
 		<GuidingTrack pct={40} available={true} pinned={true} roomDefaultPct={15} />
 		<GuidingTrack pct={0} available={false} />
+	</div>
+
+	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">RangeBar · every state</h2>
+	<!--
+		The vocal-range bar in each state it must survive. Rendered on a card so the token colours match
+		the sheet body it lives in on the phone. Each is captioned with what it proves, because several
+		of these states render NOTHING and a blank space is only correct if you know it is meant to be
+		blank.
+	-->
+	<div style="display:grid;gap:16px;">
+		<div>
+			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Full range + histogram (chorus lives high)</p>
+			<RangeBar profile={profileFull} />
+		</div>
+		<div>
+			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Full range, NO histogram (flat block)</p>
+			<RangeBar profile={profileNoHist} />
+		</div>
+		<div>
+			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Shifted +5 semitones (block + weight slide right)</p>
+			<RangeBar profile={profileFull} keyShift={5} />
+		</div>
+		<div>
+			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Shifted −5 semitones (slides left)</p>
+			<RangeBar profile={profileFull} keyShift={-5} />
+		</div>
+		<div>
+			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Key only, no range: renders nothing (blank on purpose)</p>
+			<RangeBar profile={profileKeyOnly} />
+		</div>
+		<div>
+			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">No profile: renders nothing (blank on purpose)</p>
+			<RangeBar profile={null} />
+		</div>
 	</div>
 
 	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (TV) · VERIFIED text</h2>
