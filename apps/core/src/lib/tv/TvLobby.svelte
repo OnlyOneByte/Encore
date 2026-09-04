@@ -48,7 +48,7 @@
 			<span class="label">In the room</span>
 			{#each roster as member (member.id)}
 				<span class="chip">
-					<span class="swatch" style="background: {member.color}"></span>{member.displayName}
+					<span class="swatch" style="--singer: {member.color}"></span>{member.displayName}
 				</span>
 			{/each}
 			{#if overflow > 0}
@@ -126,5 +126,13 @@
 		height: 22px;
 		border-radius: 50%;
 		flex: none;
+		background: var(--singer);
+		/*
+		 * A hairline ring so a dot never dissolves into the chip. Guests choose their own hue now, and
+		 * although the picker's pinned lightness guarantees at least 3:1 against the surfaces, this dot
+		 * is the ONLY thing distinguishing one singer from another on a screen read from across a room —
+		 * so it gets a defined edge rather than relying on fill contrast alone.
+		 */
+		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
 	}
 </style>
