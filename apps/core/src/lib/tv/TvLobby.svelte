@@ -29,8 +29,8 @@
 	// rather than "0 in the room".
 	const sub = $derived(
 		count > 0
-			? `${count} in the room · search on your phone and tap ＋ Turn`
-			: 'Scan to join, then search on your phone and tap ＋ Turn'
+			? `${count} in the room · search on your phone and tap Turn`
+			: 'Scan to join, then search on your phone and tap Turn'
 	);
 </script>
 

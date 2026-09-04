@@ -6,6 +6,7 @@
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
+	import Icon from '$lib/ui/Icon.svelte';
 	import type { TvProgressStyle } from '@encore/shared';
 	import ScoreBadge from '$lib/tv/ScoreBadge.svelte';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
@@ -296,7 +297,7 @@
 	{/if}
 
 	{#if skipNotice}
-		<div class="interstitial"><div class="up-song">⚠️ {skipNotice}</div></div>
+		<div class="interstitial"><div class="up-song"><Icon name="warning" /> {skipNotice}</div></div>
 	{/if}
 
 	{#if tvState === 'waiting'}

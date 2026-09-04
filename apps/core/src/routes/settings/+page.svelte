@@ -9,6 +9,7 @@
 	// stale page can only change the field it sends, never clobber a newer choice it never touched.
 	import { untrack } from 'svelte';
 	import { goto } from '$app/navigation';
+	import Icon from '$lib/ui/Icon.svelte';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -127,8 +128,8 @@
 <div class="settings-page">
 <header>
 	<!-- A real link, so back is the browser's back and the route is shareable. -->
-	<a class="back" href="/" aria-label="Back to the remote">←</a>
-	<h1>⚙️ Settings</h1>
+	<a class="back" href="/" aria-label="Back to the remote"><Icon name="arrow-left" /></a>
+	<h1><Icon name="gear" /> Settings</h1>
 </header>
 
 <main>
@@ -197,7 +198,7 @@
 		{#if syncNote}<p class="hint">{syncNote}</p>{/if}
 
 		<button class="disclose" onclick={() => (advancedOpen = !advancedOpen)} aria-expanded={advancedOpen}>
-			{advancedOpen ? '▾' : '▸'} Advanced
+			<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} /> Advanced
 		</button>
 
 		{#if advancedOpen}
@@ -307,7 +308,12 @@
 		color: var(--ink-dim);
 		text-decoration: none;
 		font-size: 1.2rem;
-		padding: 4px 6px;
+		/* 44px, matching the rest of the app — this was a ~26px box around a bare ← glyph. */
+		display: grid;
+		place-items: center;
+		min-width: 44px;
+		min-height: 44px;
+		margin-left: -10px;
 		border-radius: 8px;
 	}
 	.back:focus-visible {
@@ -316,6 +322,9 @@
 	h1 {
 		margin: 0;
 		font-size: 1.1rem;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
 	}
 	main {
 		max-width: 1040px;
@@ -411,6 +420,9 @@
 		color: var(--ink);
 		font-size: 0.85rem;
 		cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 	}
 	.advanced {
 		margin-top: 4px;

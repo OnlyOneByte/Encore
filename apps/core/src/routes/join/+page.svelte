@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { page } from '$app/state';
 	import { safeNextPath } from '$lib/next-path';
+	import Icon from '$lib/ui/Icon.svelte';
 
 	/** Arrow keys move within the group, which is what a radiogroup is expected to do. */
 	function onSwatchKey(e: KeyboardEvent) {
@@ -93,7 +94,7 @@
 				>
 					<!-- A tick, not just the ring: selection conveyed by colour alone is invisible to a
 					     colour-blind guest choosing between the two violets or the two pinks. -->
-					{#if color === c}<span class="tick" aria-hidden="true">✓</span>{/if}
+					{#if color === c}<span class="tick"><Icon name="check" strokeWidth={3} /></span>{/if}
 				</button>
 			{/each}
 		</div>
@@ -109,7 +110,7 @@
 		onclick={join}
 		style="padding:16px;font-size:1.1rem;border-radius:16px;opacity:{canJoin ? 1 : 0.5};"
 	>
-		{submitting ? 'Joining…' : 'Start singing →'}
+		{#if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
 	</button>
 </main>
 
@@ -121,7 +122,8 @@
 		display: grid; place-items: center;
 	}
 	.swatch.sel { border-color: var(--ink); }
-	.tick { color: var(--bg); font-size: 1.3rem; font-weight: 900; text-shadow: 0 1px 2px rgba(255, 255, 255, 0.5); }
+	/* Dark tick on a light swatch, with a faint light halo so it survives the darker presets too. */
+	.tick { color: var(--bg); font-size: 1.3rem; display: grid; place-items: center; filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.5)); }
 	.err { color: var(--danger); font-size: 0.9rem; }
 
 	/*
@@ -136,6 +138,11 @@
 	.submit {
 		/* On a phone the button sits at the bottom of the viewport, where a thumb already is. */
 		margin-top: auto;
+		/* Centres the trailing mark with the label instead of letting it sit on the text baseline. */
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
 	}
 	@media (min-width: 768px) {
 		/*
