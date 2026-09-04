@@ -22,7 +22,7 @@ import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
-const OUT = process.argv[2] ?? join(import.meta.dir, '..', '..', '..', 'docs', 'shots');
+const OUT = process.argv[2] ?? join(import.meta.dir, '..', '..', '..', 'docs', 'mocks');
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9500);
 
 const PHONE = [430, 860];
@@ -66,8 +66,14 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
+/*
+ * Frame names follow the repo's existing convention for eyes-on evidence: <id>-<what>-eyeson.png,
+ * alongside the m0c5-/b7c4-/b8- frames already in docs/mocks. `ds` is this branch's id (design
+ * system). The suffix is applied here rather than by hand so a regenerated set cannot drift out of
+ * the convention.
+ */
 async function shoot(page, name, note) {
-	const path = join(OUT, `${name}.png`);
+	const path = join(OUT, `ds-${name}-eyeson.png`);
 	await page.screenshot(path);
 	shots.push({ name, note, path });
 	console.log(`  ${name}.png — ${note}`);
@@ -82,34 +88,34 @@ try {
 	await tv.viewport(...TV, 1);
 	await tv.goto(`${base}/tv`);
 	await tv.waitFor(`document.querySelector('.url') !== null`);
-	await shoot(tv, 'tv-1-attract', 'nobody here yet — the QR owns the screen');
+	await shoot(tv, 'tv-attract', 'nobody here yet — the QR owns the screen');
 
 	// ── join, both ways of picking a colour ──────────────────────────────────
 	const maya = await browser.newPage();
 	await maya.viewport(...PHONE);
 	await maya.goto(`${base}/join`);
-	await shoot(maya, 'join-1-default', 'presets, with the violet default selected');
+	await shoot(maya, 'join-presets', 'presets, with the violet default selected');
 
 	await maya.setRange(SEL.hueSlider, 150);
 	await sleep(300);
-	await shoot(maya, 'join-2-hue-wheel', 'a hue picked off the wheel — lightness and chroma stay pinned');
+	await shoot(maya, 'join-hue-wheel', 'a hue picked off the wheel — lightness and chroma stay pinned');
 
 	await maya.fill(SEL.nameInput, 'Maya');
 	await maya.clickByLabel(SEL.swatch(PRESET_COLOUR_NAMES[1]).name); // pink
 	await sleep(250);
-	await shoot(maya, 'join-3-ready', 'name entered and a preset chosen, submit enabled');
+	await shoot(maya, 'join-ready', 'name entered and a preset chosen, submit enabled');
 	await maya.clickByText('Start singing');
 	await maya.waitFor(`location.pathname === '/'`);
 	await maya.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
 
 	// ── phone remote ─────────────────────────────────────────────────────────
 	await sleep(600);
-	await shoot(maya, 'phone-1-empty', 'first run: nothing cooked yet, so the library is empty');
+	await shoot(maya, 'phone-empty', 'first run: nothing cooked yet, so the library is empty');
 
 	await maya.fill(SEL.search, 'caroline');
 	await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, { timeout: 15_000 });
 	await sleep(400);
-	await shoot(maya, 'phone-2-search', 'unified search — one row shape, one action per row');
+	await shoot(maya, 'phone-search', 'unified search — one row shape, one action per row');
 
 	// queue whichever action is offered; a fresh install has only raw results
 	const action = (await maya.count(SEL.addTurn)) > 0 ? SEL.addTurn : SEL.sing;
@@ -120,7 +126,7 @@ try {
 		})
 		.catch(() => 0);
 	await sleep(900);
-	await shoot(maya, 'phone-3-cooking', 'the song is cooking and HOLDS its rotation slot');
+	await shoot(maya, 'phone-cooking', 'the song is cooking and HOLDS its rotation slot');
 
 	// The peek is a div with role=button driven by pointer + keydown handlers, not onclick, so a click
 	// does nothing at all. ArrowUp is its documented open gesture.
@@ -129,7 +135,7 @@ try {
 		timeout: 5000
 	});
 	await sleep(600);
-	await shoot(maya, 'phone-4-queue-sheet', 'the pull-up sheet: rotation plus the transport');
+	await shoot(maya, 'phone-queue-sheet', 'the pull-up sheet: rotation plus the transport');
 
 	// second guest, so the roster and cross-client sync are visible
 	const ada = await browser.newPage();
@@ -140,7 +146,7 @@ try {
 	await ada.clickByText('Start singing');
 	await ada.waitFor(`location.pathname === '/'`);
 	await sleep(900);
-	await shoot(ada, 'phone-5-second-guest', "Ada's view — the same rotation, synced over the socket");
+	await shoot(ada, 'phone-second-guest', "Ada's view — the same rotation, synced over the socket");
 
 	// ── settings ─────────────────────────────────────────────────────────────
 	/*
@@ -151,15 +157,15 @@ try {
 	await ada.goto(`${base}/settings`);
 	await ada.waitFor(`location.pathname === '/settings'`);
 	await sleep(600);
-	await shoot(ada, 'settings-1', 'global vs room scope, stated rather than implied');
+	await shoot(ada, 'settings', 'global vs room scope, stated rather than implied');
 	await ada.clickByText('Advanced');
 	await sleep(400);
-	await shoot(ada, 'settings-2-advanced', 'the advanced disclosure open');
+	await shoot(ada, 'settings-advanced', 'the advanced disclosure open');
 
 	// ── TV again, now that the room has people and a queue ───────────────────
 	await tv.goto(`${base}/tv`);
 	await sleep(1500);
-	await shoot(tv, 'tv-2-lobby', 'people are here — the roster names them');
+	await shoot(tv, 'tv-lobby-cooking', 'a song is cooking — the headline says so instead of asking for another pick');
 
 	// ── the component gallery ────────────────────────────────────────────────
 	const gallery = await browser.newPage();
