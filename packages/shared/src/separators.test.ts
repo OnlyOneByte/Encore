@@ -25,7 +25,18 @@ import {
 	DEFAULT_LYRICS_BALL,
 	DEFAULT_LYRICS_HIGHLIGHT,
 	DEFAULT_LYRICS_LEAD_MS,
-	MAX_LYRICS_LEAD_MS
+	MAX_LYRICS_LEAD_MS,
+	LYRICS_FONTS,
+	LYRICS_CASES,
+	DEFAULT_LYRICS_FONT,
+	DEFAULT_LYRICS_CASE,
+	DEFAULT_LYRICS_SCALE_PCT,
+	MIN_LYRICS_SCALE_PCT,
+	MAX_LYRICS_SCALE_PCT,
+	DEFAULT_LYRICS_LINES_BEFORE,
+	DEFAULT_LYRICS_LINES_AFTER,
+	MAX_LYRICS_LINES_BEFORE,
+	MAX_LYRICS_LINES_AFTER
 } from './lyrics-engines';
 
 describe('separator registry', () => {
@@ -381,5 +392,104 @@ describe('resolveLyricsPresentation', () => {
 	it('passes the lead through as seconds regardless of clamping', () => {
 		expect(resolveLyricsPresentation(settings('forced', { lyricsLeadMs: 0 })).leadSec).toBe(0);
 		expect(resolveLyricsPresentation(settings('lines', { lyricsLeadMs: 1200 })).leadSec).toBe(1.2);
+	});
+});
+
+describe('lyrics text registries', () => {
+	it('every default is a real registry entry', () => {
+		expect(LYRICS_FONTS.some((f) => f.id === DEFAULT_LYRICS_FONT)).toBe(true);
+		expect(LYRICS_CASES.some((c) => c.id === DEFAULT_LYRICS_CASE)).toBe(true);
+	});
+
+	it('every entry carries a label and a stated tradeoff', () => {
+		for (const e of [...LYRICS_FONTS, ...LYRICS_CASES]) {
+			expect(e.label.length).toBeGreaterThan(0);
+			expect(e.note.length).toBeGreaterThan(0);
+		}
+	});
+
+	it('no font stack fetches anything — the box may have no route out', () => {
+		// The hard constraint: a webfont or a CDN url here would render as nothing on a LAN deployment.
+		// Same reason the icon system vendors path geometry instead of taking a font dependency.
+		for (const f of LYRICS_FONTS) {
+			expect(f.stack).not.toMatch(/https?:|url\(|@import/i);
+		}
+	});
+
+	it('every font stack ends in a generic family, so a missing face degrades instead of tofu', () => {
+		const generics = ['sans-serif', 'serif', 'monospace', 'system-ui', 'ui-monospace', 'cursive'];
+		for (const f of LYRICS_FONTS) {
+			if (f.stack === 'inherit') continue; // inherits the app's own stack, which has its own fallback
+			const last = f.stack.split(',').pop()!.trim().replace(/['"]/g, '');
+			expect(generics).toContain(last);
+		}
+	});
+
+	it('the default case leaves the source text alone', () => {
+		// `natural` must be a true no-op: the lyrics are the words the source gave us.
+		expect(LYRICS_CASES.find((c) => c.id === DEFAULT_LYRICS_CASE)?.transform).toBe('none');
+	});
+
+	it('the defaults reproduce the reel that shipped before these settings existed', () => {
+		// 100% of the PR #8 scale, the app's own font, unmodified case, and the 2 + current + 2 rows the
+		// viewport's 9.5em was built for. Regressing any of these silently changes every existing room.
+		expect(DEFAULT_LYRICS_SCALE_PCT).toBe(100);
+		expect(DEFAULT_LYRICS_FONT).toBe('system');
+		expect(DEFAULT_LYRICS_CASE).toBe('natural');
+		expect(DEFAULT_LYRICS_LINES_BEFORE).toBe(2);
+		expect(DEFAULT_LYRICS_LINES_AFTER).toBe(2);
+	});
+
+	it('the scale floor is a legibility guard, not a formality', () => {
+		// If this ever drops toward 0 the distance-based scale stops guaranteeing anything.
+		expect(MIN_LYRICS_SCALE_PCT).toBeGreaterThanOrEqual(80);
+		expect(MAX_LYRICS_SCALE_PCT).toBeGreaterThan(MIN_LYRICS_SCALE_PCT);
+	});
+});
+
+describe('normalizeRoomSettings — lyrics text', () => {
+	it('clamps the scale to the legibility band rather than rejecting it', () => {
+		expect(normalizeRoomSettings({ lyricsScalePct: 10 }).lyricsScalePct).toBe(MIN_LYRICS_SCALE_PCT);
+		expect(normalizeRoomSettings({ lyricsScalePct: 9999 }).lyricsScalePct).toBe(MAX_LYRICS_SCALE_PCT);
+		expect(normalizeRoomSettings({ lyricsScalePct: 125 }).lyricsScalePct).toBe(125);
+		expect(normalizeRoomSettings({ lyricsScalePct: 124.6 }).lyricsScalePct).toBe(125);
+		expect(normalizeRoomSettings({ lyricsScalePct: NaN }).lyricsScalePct).toBe(DEFAULT_LYRICS_SCALE_PCT);
+	});
+
+	it('accepts ZERO lines before or after — no history and no preview are both real choices', () => {
+		expect(normalizeRoomSettings({ lyricsLinesBefore: 0 }).lyricsLinesBefore).toBe(0);
+		expect(normalizeRoomSettings({ lyricsLinesAfter: 0 }).lyricsLinesAfter).toBe(0);
+		// A negative count is not a choice, it is a bad write.
+		expect(normalizeRoomSettings({ lyricsLinesBefore: -4 }).lyricsLinesBefore).toBe(0);
+	});
+
+	it('caps row counts so the reel cannot outgrow its share of the screen', () => {
+		expect(normalizeRoomSettings({ lyricsLinesBefore: 99 }).lyricsLinesBefore).toBe(MAX_LYRICS_LINES_BEFORE);
+		expect(normalizeRoomSettings({ lyricsLinesAfter: 99 }).lyricsLinesAfter).toBe(MAX_LYRICS_LINES_AFTER);
+	});
+
+	it('keeps before and after independent, so an asymmetric reel is expressible', () => {
+		const r = normalizeRoomSettings({ lyricsLinesBefore: 0, lyricsLinesAfter: 3 });
+		expect(r.lyricsLinesBefore).toBe(0);
+		expect(r.lyricsLinesAfter).toBe(3);
+	});
+
+	it('falls back per-field to CURRENT values, not to the defaults', () => {
+		const room = {
+			...DEFAULT_ROOM_SETTINGS,
+			lyricsFont: 'serif' as const,
+			lyricsCase: 'upper' as const,
+			lyricsScalePct: 140
+		};
+		// One junk field must not discard three unrelated choices the room already made.
+		const r = normalizeRoomSettings({ lyricsFont: 'comic-sans' as never }, room);
+		expect(r.lyricsFont).toBe('serif');
+		expect(r.lyricsCase).toBe('upper');
+		expect(r.lyricsScalePct).toBe(140);
+	});
+
+	it('normalizes a valid font and case', () => {
+		expect(normalizeRoomSettings({ lyricsFont: 'mono' }).lyricsFont).toBe('mono');
+		expect(normalizeRoomSettings({ lyricsCase: 'lower' }).lyricsCase).toBe('lower');
 	});
 });
