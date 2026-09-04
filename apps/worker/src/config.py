@@ -1,23 +1,40 @@
 """Worker configuration — one place that reads the environment.
 
 The dial-home architecture is explicitly heterogeneous: a GPU box and a CPU box connect to the same
-core and should be tuned differently. Per-worker env is the right shape for that, so every
-performance knob (`-j`, `--overlap`, `--segment`, `--shifts`, `-d`, stem bitrate, FLAC level, torch
-threads) is configurable here, not just the placement settings.
+core and should be tuned differently. But that does NOT mean a human should have to describe each box
+to it. The rule here is that anything the worker can MEASURE about itself, it measures — cores,
+memory, accelerator, which engines are installed — and the environment is reserved for the two facts
+no probe can reach (where the core is, which volume it shares) plus overrides for when a measurement
+is wrong or an operator wants to deliberately limit a box.
 
 Design rules:
   - PURE `from_env(env)` -- takes the environment as an argument, so it is testable without mutating
-    the process.
+    the process. Host facts (hostname, PATH, cgroup limits, torch devices) are resolved separately in
+    `resolve()`, which keeps that purity intact.
   - Bad input NEVER crashes the worker and never silently becomes zero. A malformed number falls
     back to the default and is reported in `warnings`, because a worker quietly running with
     `concurrency=0` accepts no jobs and looks like a network problem.
   - Anything left unset is OMITTED from the CLI rather than passed as a guessed value, so upstream
     defaults (demucs' own overlap, its cuda-if-available device pick) keep applying.
+  - An override may NARROW what a box does; it may not claim something the box cannot prove.
 """
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
+
+from .hardware import effective_cpus
+
+
+def _str(env: dict[str, str], key: str, default: str) -> str:
+    """A string setting where BLANK means unset.
+
+    `dict.get(key, default)` is wrong for compose-style plumbing: `FOO=${FOO:-}` puts an empty string
+    in the environment, which is present, so `.get` returns `""` and the default never applies. That
+    turned an unset override into `demucs_model=""` — a worker that passes `-n ''` to demucs and fails
+    every cook for a reason nothing in the config line would explain.
+    """
+    return env.get(key, "").strip() or default
 
 
 def _int(env: dict[str, str], key: str, default: int, warnings: list[str], *, minimum: int = 1) -> int:
@@ -62,8 +79,12 @@ def auto_demucs_jobs(cpu_count: int | None = None) -> int:
 
     Scaled by cores because each job holds its own model copy: 4 of them would exhaust a small box.
     One job per 8 cores, capped at 4 → 32 cores gives 4, 8 cores gives 1.
+
+    The core count comes from `effective_cpus()`, not `os.cpu_count()`: inside a throttled container
+    the latter reports the HOST's cores, so a 2-core container would start 4 model-holding jobs and
+    every song would get slower. That mistake is invisible on an un-contained box.
     """
-    n = cpu_count if cpu_count is not None else (os.cpu_count() or 1)
+    n = cpu_count if cpu_count is not None else effective_cpus()
     return max(1, min(4, n // 8))
 
 
@@ -80,15 +101,16 @@ def auto_torch_threads(concurrency: int, demucs_jobs: int, cpu_count: int | None
     right on a 32-core box, over-subscribes an 8-core one, and leaves an x86_64 GPU host misconfigured.
 
     Returns None when nothing can contend (a single separation), because a cap could then only make
-    things worse: torch's own default is physical-core aware, whereas `os.cpu_count()` reports LOGICAL
-    CPUs, so pinning to it on an SMT box would oversubscribe 2x. That caveat also softens the divided
-    value on an SMT host, where this lands nearer two threads per physical core than one — still far
-    better than uncapped, but not exact. Set ENCORE_TORCH_THREADS explicitly to measure a specific box.
+    things worse: torch's own default is physical-core aware, whereas the counts here are LOGICAL
+    CPUs, so pinning to them on an SMT box would oversubscribe 2x. That caveat also softens the
+    divided value on an SMT host, where this lands nearer two threads per physical core than one —
+    still far better than uncapped, but not exact. Set ENCORE_TORCH_THREADS explicitly to measure a
+    specific box.
     """
     parallel = max(1, concurrency) * max(1, demucs_jobs)
     if parallel <= 1:
         return None
-    n = cpu_count if cpu_count is not None else (os.cpu_count() or 1)
+    n = cpu_count if cpu_count is not None else effective_cpus()
     return max(1, n // parallel)
 
 
@@ -107,28 +129,39 @@ def _opt_float(env: dict[str, str], key: str, warnings: list[str], *, lo: float,
     return v
 
 
-# The cook this worker can complete end to end: acquire → separate → time the words. Kept as ONE
-# constant so the default and the empty-value fallback cannot drift apart, and so the value the docs
-# quote has a single home. `score` is absent on purpose — nothing enqueues it (see followUps in the
-# core's dispatch.ts).
-DEFAULT_CAPABILITIES = "fetch:ytdlp,stems,align"
+# Which faster-whisper devices exist at all. CTranslate2 (what whisperx transcribes through) has a
+# CUDA backend and a CPU backend and nothing else — there is no xpu or mps path — so an Intel or Apple
+# box that separates on its accelerator must still align on the CPU. Mapping instead of passing the
+# device straight through is what stops "one device for the whole worker" from crashing alignment on
+# exactly the hardware it was meant to help.
+def whisperx_device_for(device: str | None) -> str:
+    """The alignment device implied by the worker's resolved torch device."""
+    return "cuda" if device and device.startswith("cuda") else "cpu"
 
 
 @dataclass(frozen=True)
 class WorkerConfig:
     # ── placement / identity ──────────────────────────────────────────────────────
     core_ws: str = "ws://localhost:3000/ws?role=worker"
+    #: Empty means "derive one from the hostname" (see hardware.default_worker_id). Resolved outside
+    #: from_env because a hostname is a property of the HOST, not the environment.
     worker_id: str = ""
     version: str = "0.1.0"
-    capabilities: tuple[str, ...] = ("stems",)
+    #: The EFFECTIVE capability set — proven by probe, not declared. Empty until resolved (see
+    #: capabilities.resolve), which cannot happen in from_env because probing touches PATH and imports.
+    capabilities: tuple[str, ...] = ()
+    #: An operator's request, which may only NARROW the proven set. None = advertise everything proven.
+    capabilities_override: tuple[str, ...] | None = None
     concurrency: int = 1
     media_dir: str = "/app/media"
     processor: str = "real"  # "stub" forces the no-ML path
 
     # ── separation (demucs) ───────────────────────────────────────────────────────
     demucs_model: str = "htdemucs"
-    #: None => let demucs pick (cuda if available, else cpu). Set to force "cpu" / "cuda" / "cuda:1".
-    demucs_device: str | None = None
+    #: ONE device override for the whole worker (separation AND alignment). None => auto-detect the
+    #: best accelerator present. Set to force "cpu" / "cuda" / "cuda:1" / "xpu" / "mps"; an explicit
+    #: device that is not reachable raises at startup rather than silently cooking on CPU.
+    device: str | None = None
     #: Parallel chunk jobs. Each job holds its own model copy, so this trades MEMORY for wall time.
     #: Defaults to `auto_demucs_jobs(cpu_count)` rather than a fixed number: measured 1.72x on a 32-core
     #: box (21.8s -> 12.7s for a 60s clip), but 4 model copies would OOM a small machine, so the
@@ -150,14 +183,17 @@ class WorkerConfig:
     #: network, where every call would decline anyway and only cost a timeout per cook.
     annotate: bool = True
     #: Which backend executes a separator engine here: "torch", "mlx", or unset for auto-detect.
-    #: Distinct from demucs_device: the backend is the IMPLEMENTATION, the device is where torch runs.
+    #: Distinct from `device`: the backend is the IMPLEMENTATION, the device is where torch runs.
     #: An explicit backend that is unavailable fails at startup rather than silently cooking on CPU.
     separator_backend: str | None = None
 
     # ── encoding ──────────────────────────────────────────────────────────────────
     stem_bitrate: str = "192k"  # the lossy VOCALS stem; the instrumental is lossless
     flac_level: int = 8
-    whisperx_device: str = "cpu"
+    #: None => derived from the resolved device via `whisperx_device_for`. It used to default to a
+    #: hardcoded "cpu", which meant a CUDA box separated on the GPU and then transcribed on the CPU
+    #: unless a human set a SECOND env var — slow, correct-looking, and silent.
+    whisperx_device: str | None = None
 
     # ── lyrics ────────────────────────────────────────────────────────────────────
     #: Which faster-whisper checkpoint the ASR tier transcribes with, and how words get timestamps.
@@ -187,14 +223,12 @@ class WorkerConfig:
         e = dict(os.environ if env is None else env)
         w: list[str] = []
 
-        # The whole cook (fetch → stems → align), not just separation. A `stems`-only default is worse
-        # than it looks: the core still enqueues `fetch` and `align`, nothing claims them, and the song
-        # sits at 0% or never gets lyrics — indistinguishable from a hung worker. A box that should NOT
-        # do everything says so explicitly.
-        caps = tuple(c.strip() for c in e.get("ENCORE_WORKER_CAPABILITIES", DEFAULT_CAPABILITIES).split(",") if c.strip())
-        if not caps:
-            w.append(f"ENCORE_WORKER_CAPABILITIES was empty; using '{DEFAULT_CAPABILITIES}'")
-            caps = tuple(DEFAULT_CAPABILITIES.split(","))
+        # Capabilities are PROVEN, not declared (see capabilities.py). This env var survives only as a
+        # narrowing filter — "this box could do everything but I want it to only fetch" is a real fleet
+        # layout, whereas claiming a capability the box lacks is the failure the probe removes. Left
+        # unresolved here because probing touches PATH and imports, and from_env is pure over env.
+        raw_caps = tuple(c.strip() for c in e.get("ENCORE_WORKER_CAPABILITIES", "").split(",") if c.strip())
+        caps_override = raw_caps or None
 
         concurrency = _int(e, "ENCORE_WORKER_CONCURRENCY", 1, w)
         demucs_jobs = _int(e, "ENCORE_DEMUCS_JOBS", auto_demucs_jobs(), w)
@@ -202,16 +236,30 @@ class WorkerConfig:
         if torch_threads is None:
             torch_threads = auto_torch_threads(concurrency, demucs_jobs)
 
+        # ENCORE_DEMUCS_DEVICE is the old name and applied to separation only. Accepted so an existing
+        # deployment keeps working, but it now sets the device for the WHOLE worker, which is what the
+        # operator wanted in every case we have seen.
+        device = (e.get("ENCORE_DEVICE", "").strip() or None)
+        legacy_device = (e.get("ENCORE_DEMUCS_DEVICE", "").strip() or None)
+        if legacy_device and not device:
+            device = legacy_device
+            w.append(
+                "ENCORE_DEMUCS_DEVICE is deprecated; it now sets the device for alignment too. "
+                "Rename it to ENCORE_DEVICE, or unset it entirely to auto-detect"
+            )
+        elif legacy_device and device:
+            w.append("both ENCORE_DEVICE and ENCORE_DEMUCS_DEVICE are set; ENCORE_DEVICE wins")
+
         return WorkerConfig(
-            core_ws=e.get("ENCORE_CORE_WS", "ws://localhost:3000/ws?role=worker"),
-            worker_id=e.get("ENCORE_WORKER_ID", ""),
-            version=e.get("ENCORE_WORKER_VERSION", "0.1.0"),
-            capabilities=caps,
+            core_ws=_str(e, "ENCORE_CORE_WS", "ws://localhost:3000/ws?role=worker"),
+            worker_id=_str(e, "ENCORE_WORKER_ID", ""),
+            version=_str(e, "ENCORE_WORKER_VERSION", "0.1.0"),
+            capabilities_override=caps_override,
             concurrency=concurrency,
-            media_dir=e.get("MEDIA_DIR", "/app/media"),
-            processor=e.get("ENCORE_PROCESSOR", "real").lower(),
-            demucs_model=e.get("ENCORE_DEMUCS_MODEL", "htdemucs"),
-            demucs_device=(e.get("ENCORE_DEMUCS_DEVICE", "").strip() or None),
+            media_dir=_str(e, "MEDIA_DIR", "/app/media"),
+            processor=_str(e, "ENCORE_PROCESSOR", "real").lower(),
+            demucs_model=_str(e, "ENCORE_DEMUCS_MODEL", "htdemucs"),
+            device=device,
             demucs_jobs=demucs_jobs,
             demucs_overlap=_opt_float(e, "ENCORE_DEMUCS_OVERLAP", w, lo=0.0, hi=0.99),
             demucs_segment=_opt_int(e, "ENCORE_DEMUCS_SEGMENT", w),
@@ -219,15 +267,15 @@ class WorkerConfig:
             torch_threads=torch_threads,
             annotate=e.get("ENCORE_ANNOTATE", "1").strip() not in ("0", "false", "no"),
             separator_backend=(e.get("ENCORE_SEPARATOR_BACKEND", "").strip().lower() or None),
-            stem_bitrate=e.get("ENCORE_STEM_BITRATE", "192k").strip() or "192k",
+            stem_bitrate=_str(e, "ENCORE_STEM_BITRATE", "192k"),
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
-            whisperx_device=e.get("ENCORE_WHISPERX_DEVICE", "cpu"),
-            asr_model=(e.get("ENCORE_ASR_MODEL", "").strip() or "base"),
-            sync_mode=(e.get("ENCORE_SYNC_MODE", "").strip().lower() or "forced"),
-            lrclib_base=(e.get("ENCORE_LRCLIB_BASE", "").strip().rstrip("/") or "https://lrclib.net"),
-            ytdlp_bin=e.get("ENCORE_YTDLP_BIN", "yt-dlp"),
-            demucs_bin=e.get("ENCORE_DEMUCS_BIN", "demucs"),
-            ffmpeg_bin=e.get("ENCORE_FFMPEG_BIN", "ffmpeg"),
+            whisperx_device=(e.get("ENCORE_WHISPERX_DEVICE", "").strip() or None),
+            asr_model=_str(e, "ENCORE_ASR_MODEL", "base"),
+            sync_mode=_str(e, "ENCORE_SYNC_MODE", "forced").lower(),
+            lrclib_base=_str(e, "ENCORE_LRCLIB_BASE", "https://lrclib.net").rstrip("/"),
+            ytdlp_bin=_str(e, "ENCORE_YTDLP_BIN", "yt-dlp"),
+            demucs_bin=_str(e, "ENCORE_DEMUCS_BIN", "demucs"),
+            ffmpeg_bin=_str(e, "ENCORE_FFMPEG_BIN", "ffmpeg"),
             warnings=tuple(w),
         )
 
@@ -236,10 +284,10 @@ class WorkerConfig:
         bits = [
             f"model={self.demucs_model}",
             f"backend={self.separator_backend or 'auto'}",
-            f"device={self.demucs_device or 'auto'}",
+            f"device={self.device or 'auto'}",
             f"jobs={self.demucs_jobs}",
             f"concurrency={self.concurrency}",
-            f"caps={','.join(self.capabilities)}",
+            f"caps={','.join(self.capabilities) or 'unresolved'}",
         ]
         if self.demucs_overlap is not None:
             bits.append(f"overlap={self.demucs_overlap}")
@@ -250,3 +298,53 @@ class WorkerConfig:
         if self.torch_threads is not None:
             bits.append(f"torch_threads={self.torch_threads}")
         return " ".join(bits)
+
+
+def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConfig, list[str]]:
+    """Fill in everything that depends on the HOST rather than the environment.
+
+    Kept out of `from_env` on purpose: that function is pure over a dict so the perf knobs stay
+    testable without touching the machine, and probing PATH, importing modules and reading a hostname
+    are all host facts. Same reasoning as `oversubscription_warnings`.
+
+    `device` is the already-resolved torch device (from backends.resolve_backend), passed in so the
+    alignment device is derived from the SAME decision that separation uses rather than a second,
+    independent guess that could disagree.
+
+    Returns (config, warnings). Warnings are additive — a probe that drops a requested capability must
+    say so, or the operator is left with a worker that silently does less than they asked.
+    """
+    from . import capabilities as caps_mod
+    from .hardware import default_worker_id
+
+    caps, _probes, warnings = caps_mod.resolve(
+        cfg.capabilities_override,
+        ytdlp_bin=cfg.ytdlp_bin,
+        demucs_bin=cfg.demucs_bin,
+    )
+    resolved = replace(
+        cfg,
+        capabilities=caps,
+        worker_id=cfg.worker_id or default_worker_id(),
+        whisperx_device=cfg.whisperx_device or whisperx_device_for(device),
+    )
+    if cfg.whisperx_device and cfg.whisperx_device not in ("cpu", "cuda") and not cfg.whisperx_device.startswith("cuda"):
+        warnings.append(
+            f"ENCORE_WHISPERX_DEVICE={cfg.whisperx_device!r} is not a device whisperx can use "
+            "(CTranslate2 supports cuda and cpu only); alignment will likely fail"
+        )
+    return resolved, warnings
+
+
+def capability_probe_lines(cfg: WorkerConfig) -> list[str]:
+    """One line per capability with the evidence, for the startup log. A capability that is MISSING is
+    the interesting case — that is the one that leaves songs stuck at 0% — so absent ones are reported
+    just as loudly as present ones."""
+    from . import capabilities as caps_mod
+
+    lines = []
+    for p in caps_mod.probe_all(ytdlp_bin=cfg.ytdlp_bin, demucs_bin=cfg.demucs_bin):
+        mark = "yes" if p.available else "NO "
+        advertised = " (not advertised by default)" if p.available and p.token in caps_mod.NOT_ADVERTISED_BY_DEFAULT else ""
+        lines.append(f"  {mark} {p.token}: {p.reason}{advertised}")
+    return lines

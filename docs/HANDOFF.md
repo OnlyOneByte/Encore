@@ -77,10 +77,14 @@ swaps in an in-memory DB.
 cd apps/worker && python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 PATH="$PWD/.venv/bin:$PATH" ENCORE_CORE_WS='ws://localhost:3000/ws?role=worker' \
-  ENCORE_WORKER_CAPABILITIES='stems,align,score' MEDIA_DIR=../core/media \
+  MEDIA_DIR=../core/media \
   .venv/bin/python -m src.dial_home
 ```
-It shells out to `yt-dlp`/`ffmpeg`/`demucs` **by name via PATH**, so that prefix is load-bearing.
+Those two variables are the whole configuration — no capability list, no device. The worker probes its
+own hardware and installed engines at startup and prints both, one line per capability with the
+evidence; a missing tool is reported as loudly as a present one. It shells out to
+`yt-dlp`/`ffmpeg`/`demucs` **by name via PATH**, so that prefix is load-bearing — and it is also what
+the capability probe checks, so a venv the worker cannot see means capabilities it will not claim.
 Launching **core** with the same venv `bin` on PATH also gives core its `yt-dlp`, so YouTube search
 starts returning results. `MEDIA_DIR` must be the SAME dir core uses, or core marks a job complete for
 a file it cannot serve. `ENCORE_PROCESSOR=stub` walks the whole assign→complete→ready path with

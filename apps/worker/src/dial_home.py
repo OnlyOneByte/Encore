@@ -24,10 +24,12 @@ from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubPr
 
 # All environment reading lives in config.py, so there is ONE place to look for "what is this worker
 # actually configured to do" — and so the perf knobs are testable without mutating os.environ.
+# Host-derived values (capabilities, worker id, alignment device) are filled in by config.resolve()
+# at startup, which is why this is the raw config and not the effective one.
 CONFIG = WorkerConfig.from_env()
 
 CORE_URL = CONFIG.core_ws
-WORKER_ID = CONFIG.worker_id or "worker-1"
+WORKER_ID = CONFIG.worker_id
 CONCURRENCY = CONFIG.concurrency
 CAPABILITIES = list(CONFIG.capabilities)
 MEDIA_DIR = CONFIG.media_dir
@@ -168,33 +170,46 @@ def _is_retryable(exc: Exception) -> bool:
     return not any(p in msg for p in permanent)
 
 
-def oversubscription_warnings(cfg: WorkerConfig, cores: int | None) -> list[str]:
+def oversubscription_warnings(cfg: WorkerConfig, cores: int | None,
+                              memory_bytes: int | None = None) -> list[str]:
     """Warn when concurrency x jobs asks for more parallel work than the box can run.
 
-    PURE (cores is passed in) so it unit-tests without touching the machine. This is its own check
-    rather than part of WorkerConfig.from_env because core count is a property of the HOST, not the
-    environment, and from_env is deliberately pure over env alone.
+    PURE (cores and memory are passed in) so it unit-tests without touching the machine. This is its
+    own check rather than part of WorkerConfig.from_env because core count is a property of the HOST,
+    not the environment, and from_env is deliberately pure over env alone.
 
     Worth warning about because the two knobs MULTIPLY: `concurrency=4, jobs=4` is 16 concurrent
     demucs chunk workers, each holding its own model copy, so the box thrashes and every song gets
     slower — the opposite of what raising them looks like it should do. Never fatal: a GPU box or a
     deliberate over-commit is the operator's call.
 
+    `cores` should be the EFFECTIVE count (hardware.effective_cpus), not os.cpu_count(): inside a
+    throttled container the host figure hides exactly the contention this is looking for.
+
     Only MEMORY-and-scheduling contention is reported here. There is deliberately no "you forgot to
     cap threads" warning any more: `from_env` derives `torch_threads` from concurrency x jobs whenever
     it is unset, so the condition that warning described cannot arise, and a warning naming a fix that
     has already been applied is worse than none. What remains is the case config cannot fix for you —
-    asking for more parallel separations than the host has cores.
+    asking for more parallel separations than the host has cores, or than its RAM can hold.
     """
     out: list[str] = []
-    if not cores:
-        return out
     parallel = max(1, cfg.concurrency) * max(1, cfg.demucs_jobs)
-    if parallel > cores:
+    if cores and parallel > cores:
         out.append(
             f"concurrency={cfg.concurrency} x demucs_jobs={cfg.demucs_jobs} = {parallel} parallel "
-            f"separations on {cores} cores; songs will contend"
+            f"separations on {cores} usable cores; songs will contend"
         )
+    if memory_bytes:
+        # Each parallel separation holds its own model copy plus the decoded audio it is working on.
+        # ~2 GiB is the conservative figure for htdemucs; roformer is heavier, so this under-warns
+        # rather than crying wolf.
+        need = parallel * 2 * 1024**3
+        if need > memory_bytes:
+            out.append(
+                f"{parallel} parallel separations need roughly {need // 1024**3} GiB but only "
+                f"{memory_bytes // 1024**3} GiB is available; expect the OOM killer rather than "
+                "slow cooks — lower ENCORE_WORKER_CONCURRENCY or ENCORE_DEMUCS_JOBS"
+            )
     return out
 
 
@@ -232,6 +247,19 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             print(f"[worker] could not set torch threads: {exc}", flush=True)
 
     by_type: dict[str, Processor] = {}
+    # Resolve the device ONCE for the whole worker. Separation and alignment used to answer this
+    # question independently — and alignment's answer was a hardcoded "cpu" — so a CUDA box separated
+    # on the GPU and then transcribed on the CPU unless a human set a second env var. One resolution
+    # means the two cannot disagree.
+    device: str | None = None
+    if any(c in cfg.capabilities for c in ("stems", "score", "stems:roformer", "stems:ensemble", "align")):
+        from .backends import resolve_backend
+        from .vocabulary import Engine
+
+        choice = resolve_backend(cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.device)
+        device = choice.device
+        print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
+
     if any(c.startswith("fetch:") for c in cfg.capabilities):
         from .fetch import FetchProcessor
 
@@ -244,16 +272,8 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             annotator = MusicBrainzClient()
         by_type["fetch"] = FetchProcessor(ytdlp_bin=cfg.ytdlp_bin, annotator=annotator)
     if "stems" in cfg.capabilities or "score" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
-        from .backends import resolve_backend
         from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
         from .processor import EngineRouter
-        from .vocabulary import Backend, Engine
-
-        # Resolve HOW separation executes here before building anything. An explicitly configured
-        # backend that is unavailable raises, so a misconfigured deployment fails at startup instead
-        # of cooking on CPU at a fraction of the expected speed.
-        choice = resolve_backend(cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.demucs_device)
-        print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
 
         demucs = DemucsProcessor(
             model=cfg.demucs_model,
@@ -262,7 +282,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             ffmpeg_bin=cfg.ffmpeg_bin,
             bitrate=cfg.stem_bitrate,
             flac_level=cfg.flac_level,
-            device=choice.device,
+            device=device,
             jobs=cfg.demucs_jobs,
             overlap=cfg.demucs_overlap,
             segment=cfg.demucs_segment,
@@ -274,7 +294,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         if "stems:roformer" in cfg.capabilities:
             from .roformer import RoformerProcessor
 
-            by_engine["roformer"] = RoformerProcessor(device=choice.device, flac_level=cfg.flac_level)
+            by_engine["roformer"] = RoformerProcessor(device=device, flac_level=cfg.flac_level)
 
         router = EngineRouter(by_engine)
         by_type["stems"] = router
@@ -284,12 +304,14 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
 
             by_type["score"] = PitchTrackProcessor(separator=demucs)
     if "align" in cfg.capabilities:
+        from .config import whisperx_device_for
         from .whisperx import WhisperXProcessor
 
-        # Hybrid forced-alignment: LRCLIB known text + WhisperX wav2vec2 align().
-        # device cpu by default; a GPU worker sets ENCORE_WHISPERX_DEVICE=cuda.
+        # Follows the same device decision as separation, mapped through whisperx_device_for because
+        # CTranslate2 has only cuda and cpu backends — an xpu or mps box separates on its accelerator
+        # and still aligns on the CPU, which is a real constraint rather than a missed optimisation.
         by_type["align"] = WhisperXProcessor(
-            device=cfg.whisperx_device,
+            device=cfg.whisperx_device or whisperx_device_for(device),
             ytdlp_bin=cfg.ytdlp_bin,
             lrclib_base=cfg.lrclib_base,
             model=cfg.asr_model,
@@ -299,24 +321,54 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
 
 
 async def _run_forever() -> None:
-    """Production entry: connect, (re)announce, pump messages, reconnect with backoff on drop."""
+    """Production entry: probe the box, connect, (re)announce, pump messages, reconnect on drop."""
     import websockets  # container-2 dependency; imported lazily so tests don't need it
 
-    # Say what this worker is actually configured to do. On a heterogeneous fleet (one GPU box, one
-    # CPU box) "why is this one slow" is answered by this line, not by guessing at the compose file.
-    print(f"[worker] config: {CONFIG.describe()}", flush=True)
-    for warning in CONFIG.warnings:
+    from . import hardware
+    from .config import capability_probe_lines, resolve
+
+    # Probe the hardware FIRST: the report is both what the core is told and what the auto-sizers used,
+    # so printing it makes "why is this box slow" answerable from the log alone rather than by guessing
+    # at the compose file.
+    report = hardware.probe()
+    print(f"[worker] hardware: {report.describe()}", flush=True)
+
+    # Then resolve what the box can prove it does. A device is resolved inside _build_processor; the
+    # same value is derived here so alignment and the report agree with separation.
+    from .backends import preferred_torch_device
+
+    try:
+        device, _why = preferred_torch_device(CONFIG.device)
+    except ValueError as exc:
+        # An explicit device that is not reachable is fatal ON PURPOSE — it means the operator asked
+        # for an accelerator and would otherwise get a silent CPU cook at a fraction of the speed.
+        print(f"[worker] FATAL: {exc}", flush=True)
+        raise
+
+    cfg, resolve_warnings = resolve(CONFIG, device=device)
+    print(f"[worker] config: {cfg.describe()}", flush=True)
+    print("[worker] capabilities (probed):", flush=True)
+    for line in capability_probe_lines(cfg):
+        print(f"[worker]{line}", flush=True)
+    for warning in (*cfg.warnings, *resolve_warnings):
         print(f"[worker] config warning: {warning}", flush=True)
-    for warning in oversubscription_warnings(CONFIG, os.cpu_count()):
+    for warning in oversubscription_warnings(cfg, report.cpus, report.memory_bytes):
         print(f"[worker] config warning: {warning}", flush=True)
 
-    processor: Processor = _build_processor(CONFIG)
+    processor: Processor = _build_processor(cfg)
     while True:
         try:
-            async with websockets.connect(CORE_URL) as ws:
-                client = WorkerClient(lambda m: ws.send(json.dumps(m)), processor)
+            async with websockets.connect(cfg.core_ws) as ws:
+                client = WorkerClient(
+                    lambda m: ws.send(json.dumps(m)), processor,
+                    worker_id=cfg.worker_id,
+                    capabilities=list(cfg.capabilities),
+                    concurrency=cfg.concurrency,
+                    media_dir=cfg.media_dir,
+                    version=cfg.version,
+                )
                 await client.hello()
-                print(f"[worker] {WORKER_ID} connected to {CORE_URL} (caps={client.state.capabilities})")
+                print(f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})")
                 async for raw in ws:
                     await client.handle(json.loads(raw))
         except Exception as exc:  # noqa: BLE001 — connection dropped; back off and redial
