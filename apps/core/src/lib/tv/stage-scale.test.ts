@@ -120,3 +120,33 @@ test('the three transient TV states are visually distinct', () => {
 	const errorBlock = /\.state-error[^{]*\{([^}]*)\}/.exec(src)?.[1] ?? '';
 	expect(errorBlock).not.toContain('--accent2');
 });
+
+/*
+ * The overlap this bug lived in. The join/QR corner and the now-playing lower-third are pinned to the
+ * bottom edge and win the paint order (z-index 6/7) over the lyrics reel; nothing reserved space
+ * between them, so a large lyric setting — or even the defaults on 16:9 — drove the flex-centred reel
+ * down UNDER the cards and hid the words. The fix reserves a bottom chrome band the reel cannot enter.
+ * No test asserted the reel stays clear of the cards; these two lock the reservation in so a future
+ * edit cannot silently reintroduce it. Pure geometry the tests cannot SEE, so they guard the
+ * structural precondition: the band token exists and the reel yields to it.
+ */
+test('app.css defines the --tv-chrome-h band from responsive tokens, not a bare px edge', () => {
+	const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
+	const decl = /--tv-chrome-h:\s*([^;]+);/.exec(css);
+	expect(decl).not.toBeNull();
+	const value = decl![1]!;
+	// Built from the same --tv-* tokens the cards use, so the band tracks them across resolutions
+	// instead of freezing a magic pixel height.
+	expect(value).toContain('--tv-safe-y');
+	expect(value).toContain('var(--tv-');
+});
+
+test('the lyrics reel reserves the bottom chrome band instead of filling the whole screen', () => {
+	const src = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'LyricsOverlay.svelte'), 'utf8'));
+	const block = /\.lyrics\s*\{([^}]*)\}/.exec(src)?.[1] ?? '';
+	expect(block).not.toBe('');
+	// It must NOT be `inset: 0` again — that is exactly the state that let the cards cover the words.
+	expect(/inset:\s*0/.test(block)).toBe(false);
+	// It must yield its bottom to the reserved band, so its centreline rises clear of the cards.
+	expect(/bottom:\s*var\(--tv-chrome-h\)/.test(block)).toBe(true);
+});
