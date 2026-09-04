@@ -92,9 +92,15 @@ export function classifyVideoKind(title: string): VideoKind {
 	return 'unknown';
 }
 
-/** Short label for the chip. `unknown` has none: an empty chip is worse than no chip. */
+/*
+ * "Not music", not "Not a song?".
+ *
+ * A first-time guest reading the old label said it was "phrased as a question to me, which is
+ * bizarre — am I being asked?". It was: a question mark hedging OUR uncertainty looked like a prompt
+ * for the guest to answer. The hedge belongs in this comment, not on the chip.
+ */
 export const VIDEO_KIND_LABEL: Record<VideoKind, string | null> = {
-	suspect: 'Not a song?',
+	suspect: 'Not music',
 	live: 'Live',
 	lyric: 'Lyric video',
 	official: 'Official video',
@@ -123,6 +129,19 @@ export const SONG_MIN_SEC = 75;
 export function isUnusualSongDuration(durationSec: number | undefined): boolean {
 	if (!durationSec || durationSec <= 0) return false;
 	return durationSec > SONG_MAX_SEC || durationSec < SONG_MIN_SEC;
+}
+
+/**
+ * The same judgement IN WORDS, for a chip beside the badge.
+ *
+ * Exists because a first-time guest reviewing this screen read the red 21:56 badge as "a red badge
+ * you don't understand" — the colour said something was wrong without saying what, which is worse
+ * than staying quiet. The most trustworthy signal on the row was the least legible one. Null when the
+ * duration is ordinary or unknown, so no chip renders.
+ */
+export function durationHint(durationSec: number | undefined): string | null {
+	if (!isUnusualSongDuration(durationSec)) return null;
+	return durationSec! > SONG_MAX_SEC ? 'Longer than a song' : 'Shorter than a song';
 }
 
 /** `3:44` / `21:56` / `1:02:03`. Empty string for an absent or zero duration, so the badge can hide. */

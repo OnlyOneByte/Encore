@@ -4,6 +4,7 @@
 import { test, it, expect, describe } from 'bun:test';
 import {
 	classifyVideoKind,
+	durationHint,
 	isUnusualSongDuration,
 	formatDuration,
 	formatViewCount,
@@ -89,6 +90,33 @@ test('unknown carries no label, so no empty chip can render', () => {
 	for (const kind of ['suspect', 'live', 'lyric', 'official'] as const) {
 		expect(VIDEO_KIND_LABEL[kind]).toBeTruthy();
 	}
+});
+
+// A first-time guest read "Not a song?" as a question being put TO them. A chip states; it does not ask.
+test('no label is phrased as a question', () => {
+	for (const label of Object.values(VIDEO_KIND_LABEL)) {
+		if (label) expect(label).not.toContain('?');
+	}
+});
+
+describe('durationHint — the red badge, in words', () => {
+	it('names which way the duration is wrong', () => {
+		expect(durationHint(21 * 60 + 56)).toBe('Longer than a song');
+		expect(durationHint(30)).toBe('Shorter than a song');
+	});
+
+	it('says nothing about an ordinary or unknown duration', () => {
+		expect(durationHint(224)).toBeNull();
+		expect(durationHint(0)).toBeNull();
+		expect(durationHint(undefined)).toBeNull();
+	});
+
+	// The badge colour and the chip must never disagree — they are the same judgement.
+	it('agrees with isUnusualSongDuration for every case', () => {
+		for (const d of [undefined, 0, 30, 74, 75, 224, 360, 480, 481, 1316]) {
+			expect(durationHint(d) !== null).toBe(isUnusualSongDuration(d));
+		}
+	});
 });
 
 describe('isUnusualSongDuration — a threshold, not a parse', () => {

@@ -22,6 +22,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import {
 		classifyVideoKind,
+		durationHint,
 		formatDuration,
 		formatViewCount,
 		isUnusualSongDuration,
@@ -107,8 +108,10 @@
 
 	const duration = $derived(formatDuration(durationSec));
 	// A threshold, not a parse — see isUnusualSongDuration. Draws the badge as a warning so a 21:56
-	// concert rip and a 0:30 clip invite a second look without being hidden.
+	// concert rip and a 0:30 clip invite a second look without being hidden. The colour alone was read
+	// by a first-time guest as "a red badge you don't understand", so the words go in a chip too.
 	const oddDuration = $derived(isUnusualSongDuration(durationSec));
+	const durationNote = $derived(durationHint(durationSec));
 
 	// Kind is guessed from the RAW title, so it is only offered when there is something to say:
 	// `unknown` yields no label and therefore no chip, rather than an empty pill or a false "Official".
@@ -124,12 +127,18 @@
 	 * the group header above these rows says "Needs karaoke · has vocals", and the header is guaranteed
 	 * to be on screen whenever raw rows are: both are gated on `filter === 'all'` (+page.svelte
 	 * `showRaw` / `showGroupHeads`), so there is no filter state that shows one without the other.
+	 *
+	 * PARTY ENGLISH, not engineer English. A first-time guest called the earlier wording — "Separating
+	 * vocals…" and "instrumental ready" — "written for the developer, not the guest at a party":
+	 * separating vocals is what the WORKER does, and "instrumental" is a musician's word. What a guest
+	 * is waiting for is a karaoke track. The percentage and the ETA stay exactly as they were; the same
+	 * review called those the honest part.
 	 */
 	const stateChip = $derived.by(() => {
-		if (readiness === 'ready') return 'instrumental ready';
+		if (readiness === 'ready') return 'Karaoke ready';
 		if (readiness === 'cooking') {
-			const eta = etaSec && etaSec > 0 ? ` · ~${Math.max(1, Math.round(etaSec / 60))} min` : '';
-			return `Separating vocals… ${pct}%${eta}`;
+			const eta = etaSec && etaSec > 0 ? ` · ~${Math.max(1, Math.round(etaSec / 60))} min left` : '';
+			return `Making karaoke… ${pct}%${eta}`;
 		}
 		return null;
 	});
@@ -172,12 +181,15 @@
 	<div class="meta">
 		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}</div>
 		{#if byline}<div class="byline">{byline}</div>{/if}
-		{#if kindLabel || stateChip || views}
+		{#if kindLabel || stateChip || views || durationNote}
 			<div class="chips">
 				{#if stateChip}
 					<span class="chip state" class:ok={readiness === 'ready'} class:warn={readiness === 'cooking'}>{stateChip}</span>
 				{/if}
 				{#if kindLabel}<span class="chip kind {kind}">{kindLabel}</span>{/if}
+				<!-- The red badge, said out loud. Ordered after the kind so "Live · Longer than a song"
+				     reads as one thought about the same recording. -->
+				{#if durationNote}<span class="chip odd-dur">{durationNote}</span>{/if}
 				{#if views}<span class="chip">{views} views</span>{/if}
 			</div>
 		{/if}
@@ -307,6 +319,8 @@
 	.chip.kind.lyric { background: #2f2440; border-color: var(--line-tint); color: #c4a9ff; }
 	.chip.kind.live { background: #33260f; border-color: #5a441a; color: var(--warn); }
 	.chip.kind.suspect { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
+	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
+	.chip.odd-dur { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
 
 	.bar { height: 4px; border-radius: 4px; background: var(--card-tint2); overflow: hidden; margin-top: 7px; }
 	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 4px; transform-origin: left center; transition: transform 0.4s ease; }
@@ -354,5 +368,15 @@
 		.thumb { width: 64px; height: 36px; }
 		.t { -webkit-line-clamp: 3; line-clamp: 3; }
 		.row { gap: 9px; }
+		/*
+		 * Claw back height. A guest reviewing the 320px frame could see only about four songs before
+		 * the player bar and called it irritating to scroll — and comparing uploads is the entire point,
+		 * so how many fit at once IS the feature. Smaller chips and tighter gaps buy roughly a fifth of
+		 * a row back without shrinking the title or the 44px target.
+		 */
+		.chip { font-size: 0.62rem; padding: 1px 6px; }
+		.chips { gap: 4px; margin-top: 5px; }
+		.byline { font-size: 0.72rem; }
+		.row { padding: 8px; }
 	}
 </style>
