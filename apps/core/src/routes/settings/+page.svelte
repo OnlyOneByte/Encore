@@ -590,9 +590,9 @@
 	<section>
 		<h2>Diagnostics</h2>
 		<p class="hint">
-			<a class="diag" href="/metrics">Processing metrics</a> — how long each step of a cook takes,
-			and what each model actually costs on this box. <a class="diag" href="/stats">Party stats</a>
-			is the guest-facing page, safe to share.
+			<a class="diag" href="/metrics">Processing metrics</a> — how long each step takes, and how fast
+			each model runs on this machine. <a class="diag" href="/stats">Party stats</a> is the guest
+			page, safe to share.
 		</p>
 	</section>
 

@@ -85,6 +85,27 @@
 	function rt(v: number | null): string {
 		return v === null ? '—' : `${v.toFixed(2)}×`;
 	}
+
+	/**
+	 * Plain names for the internal job types. `fetch`/`stems`/`align` are what the code calls them and
+	 * what the database stores; they are not what the steps DO, and this page is read by a person.
+	 */
+	const STEP_LABELS: Record<string, string> = {
+		fetch: 'download',
+		stems: 'remove vocals',
+		align: 'time lyrics',
+		score: 'pitch track',
+		'stems-upgrade': 'redo vocals'
+	};
+	const stepLabel = (jobType: string) => STEP_LABELS[jobType] ?? jobType;
+
+	/** The worker's own sub-step names. `separating`/`aligning` describe the code, not the work. */
+	const STAGE_LABELS: Record<string, string> = {
+		downloading: 'downloading',
+		separating: 'removing vocals',
+		aligning: 'timing lyrics'
+	};
+	const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage;
 </script>
 
 <svelte:head><title>Encore — metrics</title></svelte:head>
@@ -103,52 +124,50 @@
 			rather than live state, and that is the first thing an operator needs to know.
 		-->
 		{#if m.workers.length === 0}
-			<p class="banner" role="status">No worker connected — nothing can cook right now.</p>
+			<p class="banner" role="status">No worker connected — songs can't be processed right now.</p>
 		{/if}
 
 		<p class="note">
-			{m.sample.attempts} recorded attempts across {m.sample.cooks} complete cooks.
-			{#if m.sample.provisional}<strong>Small sample — treat every average below as provisional.</strong>{/if}
-			History starts when the attempt ledger was deployed; anything cooked before that has no timings.
+			{m.sample.attempts} runs across {m.sample.cooks} songs.
+			{#if m.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
+			Songs processed before this page existed have no timings.
 		</p>
 
 		<div class="card">
-			<h2>End to end</h2>
+			<h2>Start to finish</h2>
 			<div class="kv">
-				<div><span class="k">mean</span><span class="v">{dur(m.e2e.meanMs)}</span></div>
-				<div><span class="k">p50</span><span class="v">{dur(m.e2e.p50Ms)}</span></div>
-				<div><span class="k">p95</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
-				<div><span class="k">cooks</span><span class="v">{m.e2e.n}</span></div>
+				<div><span class="k">typical</span><span class="v">{dur(m.e2e.p50Ms)}</span></div>
+				<div><span class="k">average</span><span class="v">{dur(m.e2e.meanMs)}</span></div>
+				<div><span class="k">worst</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
+				<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
 			</div>
-			<p class="note">Request to singable song, including time queued. Complete cooks only.</p>
+			<p class="note">From asking for a song to it being ready to sing, waiting included.</p>
 		</div>
 
 		<div class="card">
-			<h2>Per step</h2>
+			<h2>Each step</h2>
 			{#if m.steps.length === 0}
-				<p class="note">No steps recorded yet.</p>
+				<p class="note">Nothing processed yet.</p>
 			{:else}
 				<div class="scroller">
 				<table>
 					<thead>
 						<tr>
 							<th scope="col">step</th>
-							<th scope="col">n</th>
-							<th scope="col">mean</th>
-							<th scope="col">p50</th>
-							<th scope="col">p95</th>
-							<th scope="col">queue</th>
-							<th scope="col">rate</th>
-							<th scope="col">fail</th>
+							<th scope="col">runs</th>
+							<th scope="col">average</th>
+							<th scope="col">typical</th>
+							<th scope="col">worst</th>
+							<th scope="col">waited</th>
+							<th scope="col">speed</th>
+							<th scope="col">failed</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each m.steps as s (s.jobType)}
 							<tr>
-								<td class="name">{s.jobType}{#if s.provisional}<span class="flag">n&lt;10</span>{/if}</td>
+								<td class="name">{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</td>
 								<td>{s.n}</td>
-								<!-- The slowest step is the page's headline answer, so it is bolded rather than
-								     left for the reader to compare three different unit scales by eye. -->
 								<td class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</td>
 								<td>{dur(s.p50Ms)}</td>
 								<td>{dur(s.p95Ms)}</td>
@@ -161,42 +180,36 @@
 				</table>
 				</div>
 				<p class="note">
-					<strong>mean/p50/p95</strong> are processing time only — queue wait is the separate column, which is
-					the distinction the job table could never express. <strong>rate</strong> is compute seconds per second
-					of audio. <strong>fail</strong> counts failed plus abandoned attempts; neither is averaged into the
-					timings. <strong>n&lt;10</strong> marks a sample too small to average with confidence.
+					Times are work only — <strong>waited</strong> is time sitting in the queue.
+					<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as
+					the music. <strong>failed</strong> runs are left out of the averages.
 				</p>
 			{/if}
 		</div>
 
 		<div class="card">
-			<h2>Separator cost — this box vs the benchmark</h2>
+			<h2>Vocal removal — this machine vs the benchmark</h2>
 			{#if m.models.length === 0}
-				<p class="note">No separation has been recorded yet.</p>
+				<p class="note">No vocals removed yet.</p>
 			{:else}
 				<div class="scroller">
 				<table>
 					<thead>
 						<tr>
-							<th scope="col">engine / model</th>
-							<th scope="col">n</th>
-							<th scope="col">measured</th>
-							<th scope="col">declared</th>
-							<th scope="col">ratio</th>
+							<th scope="col">model</th>
+							<th scope="col">runs</th>
+							<th scope="col">here</th>
+							<th scope="col">benchmark</th>
+							<th scope="col">vs</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each m.models as r (String(r.engine) + String(r.model))}
 							<tr>
-								<td class="name">{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">n&lt;10</span>{/if}</td>
+								<td class="name">{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td>
 								<td>{r.n}</td>
 								<td>{rt(r.meanRtFactor)}</td>
-								<td>{r.declared ? `${r.declared.rtFactor.toFixed(2)}× (${r.declared.provenance})` : '—'}</td>
-								<!--
-									Marked in BOTH directions. Only >1.5 was flagged, so a box running 14x FASTER than
-									its declared cost rendered as ordinary ink — yet a benchmark that pessimistic is as
-									wrong for sizing a party as an optimistic one, just in the safe direction.
-								-->
+								<td>{r.declared ? `${r.declared.rtFactor.toFixed(2)}×` : '—'}</td>
 								<td
 									class:slower={(r.ratioToDeclared ?? 1) > 1.5}
 									class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
@@ -207,35 +220,34 @@
 				</table>
 				</div>
 				<p class="note">
-					<strong>declared</strong> is the whitelist's own <code>SeparatorCost.rtFactor</code>, benchmarked once on a
-					32-core Graviton 3 — several entries say <code>estimated</code> outright. <strong>ratio</strong> is measured ÷
-					declared: 1.0 means the benchmark holds on this box, <span class="slower">above 1.5</span> means meaningfully
-					slower here, <span class="faster">below 0.67</span> means the benchmark is pessimistic. It is for sizing a
-					party, not a pass/fail.
+					<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
+					<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is
+					slower here, <span class="faster">under 0.67×</span> means the benchmark was too pessimistic.
+					Use it to plan, not to pass or fail.
 				</p>
 			{/if}
 		</div>
 
 		<div class="card">
-			<h2>Lyrics models</h2>
+			<h2>Lyrics transcription</h2>
 			{#if m.asr.length === 0}
-				<p class="note">No alignment has been recorded yet.</p>
+				<p class="note">No lyrics timed yet.</p>
 			{:else}
 				<div class="scroller">
 				<table>
 					<thead>
 						<tr>
-							<th scope="col">ASR model</th>
-							<th scope="col">sync</th>
-							<th scope="col">n</th>
-							<th scope="col">mean</th>
-							<th scope="col">rate</th>
+							<th scope="col">model</th>
+							<th scope="col">timing</th>
+							<th scope="col">runs</th>
+							<th scope="col">average</th>
+							<th scope="col">speed</th>
 						</tr>
 					</thead>
 					<tbody>
 						{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
 							<tr>
-								<td class="name">{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">n&lt;10</span>{/if}</td>
+								<td class="name">{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td>
 								<td class="name">{r.syncMode ?? '—'}</td>
 								<td>{r.n}</td>
 								<td>{dur(r.meanMs)}</td>
@@ -245,47 +257,43 @@
 					</tbody>
 				</table>
 				</div>
-				<p class="note">
-					There is no declared cost to compare against: <code>AsrModel</code> carries a parameter count but
-					deliberately no <code>rtFactor</code>, with a note not to add one until someone times these on real
-					hardware. This table is that measurement.
-				</p>
+				<p class="note">These models have never been timed anywhere, so there is no benchmark to compare against. This is the first measurement.</p>
 			{/if}
 		</div>
 
 		{#if m.stages.length}
 			<div class="card">
 				<h2>Where the time goes</h2>
-				<Bars rows={m.stages.map((s) => ({ label: s.stage, value: Math.round((s.meanMs ?? 0) / 1000), hint: `${s.n} samples` }))} unit="s avg" />
-				<p class="note">Reported by the worker per sub-step. The core can only see totals on its own.</p>
+				<Bars rows={m.stages.map((s) => ({ label: stageLabel(s.stage), value: Math.round((s.meanMs ?? 0) / 1000), hint: `${s.n} runs` }))} unit="s avg" />
+				<p class="note">Measured by the worker inside each step.</p>
 			</div>
 		{/if}
 
 		{#if m.slowestCooks.length}
 			<div class="card">
-				<h2>Slowest cooks</h2>
+				<h2>Slowest songs</h2>
 				<ol class="cooks">
 					{#each m.slowestCooks as c (c.cookId)}
 						<li>
 							<a href="/metrics/{c.mediaId}">{c.title ?? c.mediaId}</a>
 							<span class="v">{dur(c.totalMs)}</span>
-							<span class="note">{dur(c.workMs)} of work across {c.steps} steps</span>
+							<span class="note">{dur(c.workMs)} working, {c.steps} steps</span>
 						</li>
 					{/each}
 				</ol>
-				<p class="note">Total above work means it spent the difference waiting for a free worker.</p>
+				<p class="note">The gap between the two numbers was spent waiting for a free worker.</p>
 			</div>
 		{/if}
 
 		<div class="card">
 			<h2>Workers</h2>
 			{#if m.workers.length === 0}
-				<p class="note">No worker connected. Nothing can cook.</p>
+				<p class="note">Nothing is connected, so no song can be processed.</p>
 			{:else}
 				{#each m.workers as w (w.workerId)}
 					<div class="worker">
 						<strong>{w.workerId}</strong>
-						<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} slots free</span>
+						<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} free</span>
 						{#if w.host}<span class="note">{JSON.stringify(w.host)}</span>{/if}
 					</div>
 				{/each}
@@ -483,8 +491,5 @@
 	.worker .note {
 		margin: 0;
 		word-break: break-all;
-	}
-	code {
-		font-size: 0.72rem;
 	}
 </style>

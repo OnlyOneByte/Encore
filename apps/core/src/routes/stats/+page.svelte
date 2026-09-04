@@ -66,10 +66,10 @@
 			<div class="card tile">
 				<span class="n">{stats.library.ready}</span>
 				<span class="k">ready to sing</span>
-				<!-- The catalog number is a footnote, never the headline: it counts every row a search
-				     ever materialised (271 behind 7 singable songs on the live box), so quoting it as
-				     "the library" overstates it by ~40x. -->
-				<span class="sub">{stats.library.catalog} in the catalog</span>
+				<!-- The catalog count is a footnote, never the headline: it counts every search result ever
+				     seen (271 behind 7 singable songs on the live box), so quoting it as "the library"
+				     overstates it by ~40x. -->
+				<span class="sub">of {stats.library.catalog} found</span>
 			</div>
 			<div class="card tile">
 				<span class="n">{stats.sings.distinctSongs}</span>
@@ -95,13 +95,13 @@
 			<Bars rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))} unit="sings" empty="No artists identified yet" />
 			<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
 			     guessing a low-confidence artist, so some sung songs cannot be attributed at all. -->
-			<p class="note">Only songs whose artist could be identified are counted here.</p>
+			<p class="note">Songs we couldn't match to an artist aren't counted.</p>
 		</div>
 
 		<div class="card">
 			<h2>Sings per day</h2>
 			<Trend points={stats.perDay} since={stats.window.since} until={now} />
-			<p class="note">A day with no bar had no sings recorded — which also covers a day the server was off, since the log cannot tell those apart.</p>
+			<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
 		</div>
 	{/if}
 </section>
