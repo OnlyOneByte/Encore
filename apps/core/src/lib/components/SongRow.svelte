@@ -60,6 +60,15 @@
 		durationSec?: number;
 		/** Views as the source reported them. Absent → no chip; see Media.viewCount. */
 		viewCount?: number;
+		/**
+		 * The song's ORIGINAL key as a spelled ASCII label ('G major'), or absent. A FLAT prop, not the
+		 * whole SongProfile: the row only ever shows the original key text, so passing the profile would
+		 * hand it data it must not render and re-derive the label the parent already has. Gated at the
+		 * chip (readiness ready AND present), matching the omit-when-null convention of every sibling
+		 * chip — a missing key is honest, and a detected key is only meaningful once the song is cooked.
+		 * MUST stay ASCII (helper returns 'G#'/'Ab'); a typographic sharp/flat trips icons.test.ts.
+		 */
+		keyName?: string;
 		pct?: number; // cooking progress, 0..100
 		etaSec?: number;
 		/** Already in the rotation — the add action becomes a confirmation instead of a repeat. */
@@ -76,6 +85,7 @@
 		thumbnail,
 		durationSec,
 		viewCount,
+		keyName,
 		pct = 0,
 		etaSec,
 		inQueue = false,
@@ -120,6 +130,14 @@
 	const kindLabel = $derived(VIDEO_KIND_LABEL[kind]);
 
 	const views = $derived(formatViewCount(viewCount));
+
+	/*
+	 * The key chip is shown ONLY on a READY row with a detected key. Cooking/raw rows have no analysed
+	 * key yet (it comes out of the stems job), so a key here would be a phantom; and the omit-when-null
+	 * convention means a falsy guard makes both the chip and — if it is the last one — the whole .chips
+	 * wrapper disappear. `keyName` is already the confidence-gated ASCII label from the parent.
+	 */
+	const showKey = $derived(readiness === 'ready' && !!keyName);
 
 	/*
 	 * The state chip replaces the old prose sub-line. That line read
@@ -179,12 +197,15 @@
 	<div class="meta">
 		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}</div>
 		{#if byline}<div class="byline">{byline}</div>{/if}
-		{#if kindLabel || stateChip || views || durationNote}
+		{#if kindLabel || stateChip || views || durationNote || showKey}
 			<div class="chips">
 				{#if stateChip}
 					<span class="chip state" class:ok={readiness === 'ready'} class:warn={readiness === 'cooking'} aria-live="polite">{stateChip}</span>
 				{/if}
 				{#if kindLabel}<span class="chip kind {kind}">{kindLabel}</span>{/if}
+				<!-- The detected key. A bare chip (no colour family) — it is a neutral musical fact, not a
+				     status or a warning, so it must not borrow the semantic tints. ASCII label only. -->
+				{#if showKey}<span class="chip">{keyName}</span>{/if}
 				<!-- The red badge, said out loud. Ordered after the kind so "Live · Longer than a song"
 				     reads as one thought about the same recording. -->
 				{#if durationNote}<span class="chip odd-dur">{durationNote}</span>{/if}
