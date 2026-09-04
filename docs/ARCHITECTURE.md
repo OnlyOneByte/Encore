@@ -56,7 +56,8 @@ Repository shape:
 packages/shared/   realtime contract + pure shared reducers
 apps/core/         SvelteKit surfaces + Bun server + SQLite + media/job coordination
 apps/worker/       dial-home Python worker + separator/WhisperX processors
-docs/              ARCHITECTURE + HANDOFF + ROADMAP; history under archive/
+docs/              ARCHITECTURE + HANDOFF + ROADMAP at root; everything else in a subfolder
+                   (deploy/ benchmarks/ mocks/, and history under archive/)
 ```
 
 ## 3. Authority and realtime

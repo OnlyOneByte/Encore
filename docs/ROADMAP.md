@@ -303,7 +303,7 @@ which is the argument for the "green suite is the floor, not the bar" rule in
         still needs the Intel compute runtime and `/dev/dri`. **Superseded as the live target:** the
         deploy box is now Windows + WSL2 + RTX 3080, where the equivalent is
         `docs/deploy/docker-compose.cuda.yml` and `backends.py` already probes `cuda` first, so no
-        selection code changes at all. See `docs/DEPLOY-WSL2.md`.
+        selection code changes at all. See `docs/deploy/WSL2.md`.
 
 - [ ] **B-9 · Source-audio and image hygiene** — two small independent fixes:
   - [ ] **B-9-C1 · bake `yt-dlp` into the worker image.** It is currently pip-installed at runtime,
