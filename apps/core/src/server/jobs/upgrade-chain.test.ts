@@ -44,13 +44,13 @@ test('isQualityUpgrade requires strictly better and treats missing current as up
 });
 
 // ── follow-ups ────────────────────────────────────────────────────────────────
-test('a cook chains align+score, and the upgrade only when it would improve quality', () => {
-	expect(followUps('stems', settings())).toEqual(['align', 'score']); // upgrade disabled
-	expect(followUps('stems', settings({ enqueueUpgrade: true }))).toEqual(['align', 'score', 'stems-upgrade']);
+test('a cook chains align, and the upgrade only when it would improve quality', () => {
+	expect(followUps('stems', settings())).toEqual(['align']); // upgrade disabled
+	expect(followUps('stems', settings({ enqueueUpgrade: true }))).toEqual(['align', 'stems-upgrade']);
 	// enabled but the "upgrade" is not actually better → not enqueued, so no wasted 40-min cook
 	expect(
 		followUps('stems', settings({ enqueueUpgrade: true, upgradeEngine: 'demucs', upgradeModel: 'htdemucs' }))
-	).toEqual(['align', 'score']);
+	).toEqual(['align']);
 });
 
 test('an upgrade job chains nothing further (depth-1 fan-out)', () => {
