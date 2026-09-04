@@ -603,6 +603,21 @@
 		{/if}
 	</section>
 
+	<!--
+		The only entry point to the internal dashboards, and deliberately HERE rather than on a guest
+		surface. /metrics is ungated (there is no operator identity — any phone can POST /api/join), so
+		linking it from the phone remote or the TV would advertise worker ids, model names, host details
+		and error strings to every device in the room. Settings is already the operator's surface.
+	-->
+	<section>
+		<h2>Diagnostics</h2>
+		<p class="hint">
+			<a class="diag" href="/metrics">Processing metrics</a> — how long each step takes, and how fast
+			each model runs on this machine. <a class="diag" href="/stats">Party stats</a> is the guest
+			page, safe to share.
+		</p>
+	</section>
+
 	<button class="done" onclick={() => goto('/')}>Done</button>
 </main>
 </div>
@@ -821,6 +836,13 @@
 	.check input {
 		width: 18px;
 		height: 18px;
+	}
+	/* --ink + underline, not an accent colour: both accent tokens fail AA as text on a card
+	   (3.95:1 and 3.52:1), and the underline carries the link affordance without relying on hue. */
+	.diag {
+		color: var(--ink);
+		text-decoration: underline;
+		text-underline-offset: 0.2em;
 	}
 	.done {
 		display: block;

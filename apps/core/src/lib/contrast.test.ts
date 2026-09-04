@@ -69,6 +69,43 @@ test('--on-accent passes AA on --accent-strong (the actionable pair)', () => {
 	expect(r).toBeGreaterThanOrEqual(AA_TEXT);
 });
 
+/*
+ * THE GAP THIS CLOSES. The accent tokens exist to be BACKGROUNDS that carry --on-accent. Used the
+ * other way round -- as a text colour on a dark surface -- they both fail AA outright:
+ *
+ *   --accent        on --card = 3.95:1
+ *   --accent-strong on --card = 3.52:1   (worse, because "strong" means darker, for white ON it)
+ *
+ * That is counter-intuitive enough that it already happened once: the /metrics "slowest cooks" links
+ * shipped as `color: var(--accent)` and the suite stayed green, because every other test here checks
+ * whether a PAIR is safe and none checked whether this pair was in USE. A reviewer then proposed
+ * "fix" it by switching to --accent-strong, which would have made the contrast worse while looking
+ * like a remedy. So this test asserts the pairs are unusable AND scans for anyone using them, the
+ * same belt-and-braces shape as the --grad usage scan.
+ */
+test('the accent tokens are not safe as text, and nothing uses them that way', () => {
+	for (const t of ['accent', 'accent-strong']) {
+		expect(ratio(token(t), token('card'))).toBeLessThan(AA_TEXT);
+	}
+
+	const files = [
+		join(SRC, 'app.css'),
+		...svelteFiles(join(SRC, 'lib')),
+		...svelteFiles(join(SRC, 'routes'))
+	];
+	const offenders: string[] = [];
+	for (const f of files) {
+		for (const block of readFileSync(f, 'utf8').matchAll(/\{([^{}]*)\}/g)) {
+			const body = block[1]!;
+			// A `color:` set to an accent token. A background, border or fill is the intended use.
+			if (/(^|[;\s])color:\s*var\(--accent(-strong)?\)/.test(body)) {
+				offenders.push(`${f.replace(SRC, 'src')}: text color on var(--accent)`);
+			}
+		}
+	}
+	expect(offenders).toEqual([]);
+});
+
 test('the focus ring is visible against every surface it can appear on', () => {
 	const fails: string[] = [];
 	for (const surface of ['bg', 'card', 'card2']) {
