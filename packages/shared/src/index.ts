@@ -11,6 +11,7 @@ export * from './queue-order';
 export * from './lyrics';
 export * from './song-profile';
 export * from './events';
+export * from './cook-progress';
 export * from './separators';
 export * from './settings';
 export * from './fetchers';
