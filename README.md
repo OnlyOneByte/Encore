@@ -8,7 +8,7 @@ rotation fair. One container to run it; a second if you want it making karaoke t
 |---|---|
 | ![the phone remote, searching](docs/mocks/tour-phone-search-eyeson.png) | ![the TV mid-song with word-timed lyrics](docs/mocks/tour-tv-lyrics-word-eyeson.png) |
 
-Every surface has a frame in [`docs/mocks/`](docs/mocks/) — 43 of them, each one the real app driven
+Every surface has a frame in [`docs/mocks/`](docs/mocks/) — 46 of them, each one the real app driven
 into that state. Design and rationale live in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quickstart

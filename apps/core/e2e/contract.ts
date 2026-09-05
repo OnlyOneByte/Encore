@@ -93,6 +93,7 @@ export const SEL = {
 	setting: (id: string) => `#${id}`,
 	SETTING_IDS: [
 		'join-origin',
+		'sync-mode',
 		'queue-order',
 		'tv-progress',
 		'tv-background',
@@ -380,6 +381,12 @@ export const HOOKS: Hook[] = [
 		file: 'src/routes/settings/+page.svelte',
 		anchor: 'id="lyrics-font"',
 		why: 'capture shoots the reel in a second face through this picker'
+	},
+	{
+		id: 'settingSyncMode',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="sync-mode"',
+		why: 'capture puts the deployment on line-sync to shoot the clamp notice, then puts it back'
 	},
 	{
 		id: 'settingLyricsCase',

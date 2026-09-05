@@ -234,6 +234,18 @@ try {
 	await sleep(700);
 
 	// ── phone remote: the library, then search ───────────────────────────────
+	// ── phone remote: the library, then search ───────────────────────────────
+	/*
+	 * The TV is in its LOBBY state at this exact point and nowhere else in this run: someone is in the
+	 * room, but nothing is queued yet. It is one of the four room states the README claims, it is easy
+	 * to miss because it exists only in the gap between joining and picking, and it is the screen that
+	 * proves the room distinguishes "nobody here" from "nobody has picked yet".
+	 */
+	await frame('tv-lobby', async () => {
+		await sleep(900);
+		await shoot(tv, 'tv-lobby', 'someone is here but nothing is queued — the room asks for a pick');
+	});
+
 	await frame('phone-library', () =>
 		shoot(maya, 'phone-library', 'the library as it opens — cooked songs, newest first')
 	);
@@ -292,6 +304,19 @@ try {
 			});
 			await sleep(400);
 			await maya.clickByLabel(SEL.play.name);
+			/*
+			 * The song-intro card lives in the gap between "the player is ready" and "the song is
+			 * playing", so it has to be caught here — before the position check below, which by
+			 * definition cannot pass while the room is still holding on the intro. It is time-boxed to
+			 * the room's songIntroMs (2.5s by default, and `0` turns it off entirely), so this is
+			 * best-effort by design: a miss costs one frame and is reported, never the run.
+			 */
+			await frame('tv-song-intro', async () => {
+				await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.stateNext)}) !== null`, {
+					timeout: 20_000
+				});
+				await shoot(tv, 'tv-song-intro', 'the song-intro card names who is up before the music starts');
+			});
 			// the TV naming a singer means a song is CURRENT — not that it is moving
 			await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.lowerThird)}) !== null`, {
 				timeout: 25_000
@@ -395,6 +420,27 @@ try {
 		await ada.clickByText('Advanced');
 		await sleep(500);
 		await shoot(ada, 'settings-advanced', 'the advanced disclosure open — the progressive upgrade chain');
+	});
+
+	/*
+	 * The clamp notice, which is the one settings warning worth a frame.
+	 *
+	 * Global timing decides whether per-word timings EXIST; the room only decides how they are drawn.
+	 * So asking for a word-level marker while the deployment is on line-sync is a request the room
+	 * cannot honour — and rather than silently ignoring the picker, the page says which treatment it
+	 * substituted and which global setting to change to get the other one back. Without this frame that
+	 * interaction is invisible until someone hits it and assumes their setting is broken.
+	 */
+	await frame('settings-lyrics-clamped', async () => {
+		await setSetting(ada, 'sync-mode', 'lines');
+		await setSetting(ada, 'lyrics-highlight', 'word');
+		await setSetting(ada, 'lyrics-ball', 'bounce');
+		await ada.evaluate(
+			`document.querySelector(${JSON.stringify(SEL.setting('lyrics-ball'))})?.scrollIntoView({ block: 'center' })`
+		);
+		await sleep(500);
+		await shoot(ada, 'settings-lyrics-clamped', 'a room asking for word timings a line-sync deployment cannot give');
+		await setSetting(ada, 'sync-mode', 'forced'); // put the deployment back
 	});
 
 	/*
