@@ -154,7 +154,10 @@
 	 * a progress bar that jumps to the beginning on pause. See lib/ws/send.ts.
 	 */
 	function sendTelemetry(status: string, positionSec = 0, durationSec = 0, bufferedNextPct = 0) {
-		trySend(ws, JSON.stringify({ type: 'tv:telemetry', positionSec, durationSec, status, bufferedNextPct }));
+		// Stamp the entry this frame is about on `ended` so the server can tell "the song I am
+		// playing ended" from a stale/duplicate `ended` and refuse to double-advance (#70).
+		const entryId = status === 'ended' ? (current?.id ?? undefined) : undefined;
+		trySend(ws, JSON.stringify({ type: 'tv:telemetry', positionSec, durationSec, status, bufferedNextPct, entryId }));
 	}
 
 	function onVisibleError() {
@@ -163,7 +166,8 @@
 		// across the room with nothing explaining why.
 		skipNotice = 'Skipping — that track would not play';
 		setTimeout(() => (skipNotice = ''), 4000);
-		sendTelemetry('ended');
+		// onVisibleEnded() already sends the single `ended` frame; sending it here too made the
+		// server advance twice and eat the next singer's turn (#70).
 		onVisibleEnded();
 	}
 
@@ -296,7 +300,7 @@
 					const who = singerName(current.singerId);
 					skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
 					setTimeout(() => (skipNotice = ''), 4000);
-					sendTelemetry('ended');
+					// onVisibleEnded() already sends the single `ended` frame (#70).
 					onVisibleEnded();
 				}
 			}
