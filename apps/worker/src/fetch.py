@@ -8,9 +8,14 @@ died several stages later inside ffmpeg with "No such file", which reports the s
 cause.
 
 The core now DECLARES the fetcher in job params and this module parses it at the boundary, so an
-unrecognised fetcher fails before a byte moves. `resolve_source_audio` is the one place that answers
-"where are this job's bytes, and do I have to go and get them", and both separation and alignment call
-it instead of re-deriving the answer.
+unrecognised fetcher fails before a byte moves. `resolve_source_audio` is MEANT to be the one place that
+answers "where are this job's bytes, and do I have to go and get them".
+
+It is not, yet. Only FetchProcessor calls it: DemucsProcessor, RoformerProcessor and WhisperXProcessor
+each import `job_fetcher` + `local_source_path` and re-derive the branch inline — three copies of the
+answer this function exists to centralise. An earlier version of this docstring asserted they all called
+it, which was the more expensive kind of wrong: a reader had no reason to check. Consolidating them is
+`docs/specs/SPEC-worker-pipeline.md` §7 E6.
 
 FetchProcessor makes acquisition a JOB rather than a stage. That is what lets a box which can download
 and a box which can separate be different machines: a fetch routes on `fetch:<fetcher>` while a cook
