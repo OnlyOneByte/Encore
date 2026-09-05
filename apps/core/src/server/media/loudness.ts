@@ -54,11 +54,6 @@ export function isDigitalSilence(reading: LoudnessReading | null): boolean {
 	return reading.maxDb <= SILENCE_FLOOR_DB;
 }
 
-/** PURE: the inverse, for readability at call sites that gate on usable audio. */
-export function hasAudibleContent(reading: LoudnessReading | null): boolean {
-	return !isDigitalSilence(reading);
-}
-
 export type LoudnessProbe = (absPath: string) => Promise<LoudnessReading | null>;
 
 /**

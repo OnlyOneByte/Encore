@@ -88,6 +88,41 @@ def auto_demucs_jobs(cpu_count: int | None = None) -> int:
     return max(1, min(4, n // 8))
 
 
+def auto_demucs_segment(free_vram: int | None = None) -> int | None:
+    """A segment length that fits in the accelerator memory actually AVAILABLE, or None for demucs' own.
+
+    `--segment` is the chunk of audio demucs processes at once, and peak VRAM scales with it. The
+    interesting direction is only DOWNWARD: htdemucs cannot be given a segment longer than the one it
+    was trained on, so there is nothing to win by raising it — the win is not dying on a card that is
+    already half-occupied.
+
+    Keyed on FREE memory rather than `Accelerator.vram_bytes`, which is physical capacity. That
+    distinction is the whole reason this exists: a 12 GiB card with a browser, a display server or a
+    second cook already on it can have under 3 GiB free, and a worker that sizes itself for 12 fails at
+    the first chunk with a CUDA OOM — reported to the room as a failed cook, not as a full card.
+
+    None means "say nothing and let demucs choose", which is correct in three cases: no accelerator
+    (CPU separation is bounded by RAM, and the box's own swap behaviour is a better judge than a guess
+    here), memory we could not measure, and a card with room to spare.
+
+    THE BANDS ARE CONSERVATIVE, NOT MEASURED. Unlike `auto_demucs_jobs`, whose numbers come from timing
+    a real 32-core box, no GPU was available to profile peak VRAM per segment second — so these are
+    deliberately pessimistic round numbers, and the comment says so rather than implying a benchmark
+    that was never run. An operator who has measured their own card should set
+    `ENCORE_DEMUCS_SEGMENT`, which always wins over this.
+    """
+    if free_vram is None:
+        return None
+    gib = free_vram / (1024**3)
+    if gib >= 6.0:
+        return None  # room for the model's full training segment; adding a flag would only constrain it
+    if gib >= 4.0:
+        return 7
+    if gib >= 3.0:
+        return 5
+    return 3  # very tight — small chunks are slower per song, but a slow cook beats an OOM
+
+
 def auto_torch_threads(concurrency: int, demucs_jobs: int, cpu_count: int | None = None) -> int | None:
     """An intra-op thread cap derived from how many separations can actually run at once.
 

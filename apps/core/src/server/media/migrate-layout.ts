@@ -156,12 +156,6 @@ export function planMigration(root = mediaRoot()): MigrationPlan {
 	return { moves, prunes, refRewrites };
 }
 
-/** Does this volume still carry the legacy layout? */
-export function needsMigration(root = mediaRoot()): boolean {
-	const plan = planMigration(root);
-	return plan.moves.length > 0 || plan.prunes.length > 0;
-}
-
 /**
  * Execute a plan. `rewriteRefs` is injected (rather than importing the DB) so this unit-tests against
  * a real temp filesystem with no database, and so the caller owns transaction boundaries.
@@ -282,9 +276,4 @@ export function cleanJobWork(jobId: string): void {
 	} catch {
 		/* scratch cleanup is best-effort — never fail a completed job over it */
 	}
-}
-
-/** Unused, but keeps `extname` honest for callers that promote a non-wav original later. */
-export function audioExtOf(path: string): string {
-	return extname(path).replace(/^\./, '') || 'wav';
 }

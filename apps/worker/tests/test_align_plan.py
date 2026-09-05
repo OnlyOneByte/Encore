@@ -779,3 +779,98 @@ async def test_an_AGREEING_lookup_keeps_its_authority_and_records_the_score(tmp_
     # A trustworthy winner means the baselines have done their job by grading it — publishing one for its
     # own sake would cost a whole extra alignment pass to produce words nobody shows.
     assert SOURCE_ASR not in bysrc
+
+
+# ── is this LRC even for this recording? ──────────────────────────────────────────
+
+#: A synced LRC long enough for the fit to MEAN anything. The fit solves for scale and offset, so with
+#: two or three lines almost any series can be fitted and the verdict is `inconclusive` -- which is what
+#: the first draft of these tests hit, passing while the detector never ran. Sixteen lines is a normal
+#: verse-chorus LRC and is where a structural difference stops being absorbable by scale alone.
+LRC_STARTS = [2 * i + 1 for i in range(16)]
+SIXTEEN_LINE_LRC = "\n".join(
+    f"[00:{s:02d}.00]line {i} of the song here" for i, s in enumerate(LRC_STARTS)
+)
+
+
+class ExtraBridgeAligner:
+    """An aligner reporting a recording that has TWELVE SECONDS this LRC does not know about.
+
+    A wrong-version LRC is not merely offset or stretched -- the fit absorbs both deliberately, because a
+    longer intro and a different tempo are what a legitimate remaster looks like (both asserted below).
+    What it cannot absorb is a structural difference: an added instrumental bridge displaces every line
+    after it while leaving the ones before it alone, and no single scale+offset fits both halves.
+
+    Monotonic, which matters: the first version of this fake used ALTERNATING shifts, and the resulting
+    out-of-order words made `validate_timing` refuse the word timing and degrade to line sync before the
+    detector was ever consulted. A real different-master alignment is monotonic -- it is simply not
+    LINEAR in the LRC's own clock.
+    """
+
+    def __init__(self, insert_after=8, seconds=12.0):
+        self.insert_after = insert_after
+        self.seconds = seconds
+        self.calls = []
+
+    def align(self, segments, audio_path, language):
+        self.calls.append((len(segments), audio_path, language))
+        out = []
+        for i, s in enumerate(segments):
+            shift = self.seconds if i >= self.insert_after else 0.0
+            start, end = s["start"] + shift, s["end"] + shift
+            toks = s["text"].split()
+            span = (end - start) / max(1, len(toks))
+            words = [
+                {"word": tok, "start": round(start + j * span, 3), "end": round(start + (j + 1) * span, 3)}
+                for j, tok in enumerate(toks)
+            ]
+            out.append({"start": start, "end": end, "text": s["text"], "words": words})
+        return {"language": language, "segments": out}
+
+
+@pytest.mark.asyncio
+async def test_an_LRC_whose_timings_do_not_fit_this_recording_is_REPORTED(tmp_path, capsys):
+    """The detector this wires up -- a Theil-Sen fit that had zero callers until now.
+
+    `_time_one`'s own docstring names the failure it addresses: "an LRC written for another upload of the
+    song is confidently wrong". Nothing looked. Published timings still come from the aligner, so they
+    are correct for THIS audio; what the note warns about is the WORDS, since an LRC that cannot be
+    fitted to this recording is evidence they belong to another release.
+    """
+    proc = plans.align_runner(
+        runner=fake_ytdlp_runner(),
+        lyrics_client=fake_client(synced=SIXTEEN_LINE_LRC),
+        aligner=ExtraBridgeAligner(),
+    )
+    events = await drain(proc, spec(tmp_path, durationSec=60.0))
+    assert [e for e in events if isinstance(e, CompleteResult)], "the cook must still COMPLETE"
+
+    out = capsys.readouterr().out
+    assert "do NOT fit this recording" in out, out
+    assert "may belong to another version" in out
+
+
+@pytest.mark.asyncio
+async def test_a_legitimate_REMASTER_is_not_mistaken_for_the_wrong_version(tmp_path, capsys):
+    """The false positive that would matter more than the miss.
+
+    A re-release with a longer intro and a slightly different tempo is the SAME words, and the fit
+    absorbs both by design (offset and scale). If this warned, every correctly-timed song would carry a
+    scary note and an operator would learn to ignore the one that matters.
+    """
+
+    class RemasterAligner(ExtraBridgeAligner):
+        def align(self, segments, audio_path, language):
+            stretched = [
+                {**s, "start": 1.12 * s["start"] + 4.0, "end": 1.12 * s["end"] + 4.0} for s in segments
+            ]
+            return ExtraBridgeAligner(insert_after=99).align(stretched, audio_path, language)
+
+    proc = plans.align_runner(
+        runner=fake_ytdlp_runner(),
+        lyrics_client=fake_client(synced=SIXTEEN_LINE_LRC),
+        aligner=RemasterAligner(),
+    )
+    await drain(proc, spec(tmp_path, durationSec=60.0))
+    out = capsys.readouterr().out
+    assert "do NOT fit this recording" not in out, out

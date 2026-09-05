@@ -21,7 +21,7 @@ import importlib.util
 import platform
 from dataclasses import dataclass
 
-from .vocabulary import Backend, Engine
+from .vocabulary import Backend, Engine, parse_backend
 
 
 def _module_available(name: str) -> bool:
@@ -157,11 +157,9 @@ def resolve_backend(
     deployment misconfiguration surfaces at worker startup rather than as mysteriously slow cooks.
     """
     if configured:
-        backend = Backend(configured) if configured in {b.value for b in Backend} else None
-        if backend is None:
-            raise ValueError(
-                f"unknown backend {configured!r}; expected one of {[b.value for b in Backend]}"
-            )
+        # Through vocabulary.parse_backend, not a hand-rolled copy of it: this coercion existed twice,
+        # identically, and the boundary parser is the one that is tested as a boundary parser.
+        backend = parse_backend(configured)
         if not backend_available(backend, engine):
             raise ValueError(
                 f"backend {backend.value!r} is not available for engine {engine.value!r} on this "

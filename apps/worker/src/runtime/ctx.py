@@ -135,11 +135,3 @@ class Ctx:
     def note(self, line: str) -> None:
         """Record something an operator would want in the log. The runner prints it."""
         self.out.notes.append(line)
-
-    def get_path(self, dotted: str) -> Any:
-        """Read a `reads`/`writes` key like 'audio.path'. Used by the runtime's own guards, so a
-        declaration and the field it names cannot drift apart."""
-        target: Any = self
-        for part in dotted.split("."):
-            target = getattr(target, part)
-        return target

@@ -79,15 +79,6 @@ export async function ytDlpAvailable(spawn = Bun.spawn, now: () => number = Date
 	return _available;
 }
 
-/** Per-video-id metadata cache (resolve a video id once). */
-const metaCache = new Map<string, SearchResult>();
-export function cacheMeta(r: SearchResult): void {
-	metaCache.set(r.sourceRef, r);
-}
-export function getCachedMeta(id: string): SearchResult | undefined {
-	return metaCache.get(id);
-}
-
 const SEARCH_TIMEOUT_MS = 10_000; // Finding #5c: a hung yt-dlp must not hold the request open
 
 /** YtSearchBackend: run `yt-dlp ytsearchN:<query> --dump-json --flat-playlist`. */
@@ -104,7 +95,6 @@ export async function ytDlpSearch(query: string, limit: number): Promise<SearchR
 		const text = await new Response(proc.stdout).text();
 		await proc.exited;
 		const results = parseSearchJson(text);
-		results.forEach(cacheMeta);
 		return results;
 	} catch {
 		return [];

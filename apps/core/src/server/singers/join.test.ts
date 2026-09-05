@@ -4,7 +4,7 @@ import { doJoin, NameTakenError } from './join';
 import { SingerRepository } from './repository';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
-import { SINGER_COLORS, SINGER_WHEEL, type ServerEvent } from '@encore/shared';
+import { SINGER_COLORS, SINGER_HUES, hueToHex, type ServerEvent } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
 import { createPopularityTracker } from '../media/popularity';
@@ -82,7 +82,7 @@ test('a wheel hue is KEPT, not rewritten to a preset', () => {
 	// The behaviour change. This used to be an allowlist of the eight presets, so a guest who picked
 	// any other hue joined as violet with nothing said — which made a colour wheel impossible.
 	const { app } = appHarness();
-	const picked = SINGER_WHEEL[7]!;
+	const picked = hueToHex(SINGER_HUES[7]!);
 	const { singer } = doJoin(app, { displayName: 'Ada', color: picked });
 	expect(singer.color).toBe(picked);
 	expect(singer.color).not.toBe(SINGER_COLORS[0]);

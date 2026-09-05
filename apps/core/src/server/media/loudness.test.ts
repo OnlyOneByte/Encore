@@ -1,7 +1,7 @@
 // Loudness probing — the check that stops a SILENT vocals stem being published as a working
 // guiding track. Pure parser + verdict; the ffmpeg spawn is not exercised here.
 import { describe, it, expect } from 'bun:test';
-import { parseVolumeDetect, isDigitalSilence, hasAudibleContent, SILENCE_FLOOR_DB } from './loudness';
+import { parseVolumeDetect, isDigitalSilence, SILENCE_FLOOR_DB } from './loudness';
 
 // Real ffmpeg volumedetect output, trimmed to the summary block.
 const HEALTHY = `
@@ -56,7 +56,6 @@ describe('isDigitalSilence', () => {
 
 	it('treats an unmeasurable file as audible, so a missing ffmpeg cannot disable every guide', () => {
 		expect(isDigitalSilence(null)).toBe(false);
-		expect(hasAudibleContent(null)).toBe(true);
 	});
 
 	it('the floor leaves headroom below any real signal', () => {
