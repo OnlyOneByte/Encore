@@ -9,8 +9,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import vocal_range  # noqa: E402
-from src.vocal_range import PitchFrame  # noqa: E402
+from src.analysis import vocal_range  # noqa: E402
+from src.analysis.vocal_range import PitchFrame  # noqa: E402
 
 
 def _frame(t, midi, voiced=True):

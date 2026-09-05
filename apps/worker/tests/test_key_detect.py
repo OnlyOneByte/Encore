@@ -9,7 +9,7 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import key_detect  # noqa: E402
+from src.analysis import key_detect  # noqa: E402
 
 SR = 22050
 

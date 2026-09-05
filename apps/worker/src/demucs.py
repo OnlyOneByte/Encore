@@ -32,7 +32,7 @@ from .processor import (
 from .fetch import job_fetcher, local_source_path
 from .vocabulary import Fetcher
 from .stream_quality import FORMAT_SELECTOR
-from .song_profile import build_song_profile
+from .analysis import build_song_profile
 
 # The analysis step: (instrumental_wav, vocals_wav, media_id) -> songProfile dict. Injectable so the
 # subprocess-fake tests (whose "WAV" files hold placeholder bytes, not real PCM) can pass a no-op and
