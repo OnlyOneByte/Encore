@@ -34,7 +34,34 @@ from typing import Any, Iterable
 
 #: Caption languages worth asking for, best-first. Kept narrow deliberately: a lyrics track in a
 #: language the aligner is not running on would align badly and score as a mismatch anyway.
-DEFAULT_SUB_LANGS = "en.*,en"
+#:
+#: EXPLICIT CODES, NEVER A PATTERN. This was `"en.*,en"`, and the `en.*` glob is what earned YouTube's
+#: `HTTP Error 429: Too Many Requests`. YouTube offers an auto-caption track translated into ~190
+#: languages, and for a video whose audio is not English those appear under `en-<source>` codes
+#: (`en-cs`, `en-de`, ...) — every one of which `en.*` matches. So one align job fired dozens of
+#: timedtext requests back to back, got rate-limited part way through, and the tier came out degraded or
+#: empty. It was waste on top of that: `find_caption_file` refuses translations and returns exactly ONE
+#: file, so all but one of those downloads was discarded on arrival.
+#:
+#: `en-orig` is YouTube's marker for the ORIGINAL auto-caption language and is why it leads: on a video
+#: that has it, it is the only track guaranteed not to be a translation. The regional variants follow
+#: because `find_caption_file` accepts them and some uploads carry only `en-GB`.
+DEFAULT_SUB_LANGS = "en-orig,en,en-US,en-GB"
+
+#: Seconds to wait before EACH subtitle download. The one flag that directly answers a 429: the requests
+#: are what YouTube rate-limits, and this is what stops them arriving as a burst. Small on purpose —
+#: `--skip-download` means this whole call is a handful of metadata requests, so the added wall time is
+#: about a second per track and it runs inside a cook that already takes minutes.
+SUB_SLEEP_SEC = 1
+
+#: Backoff for an HTTP error that is retryable, 429 included: exponential from 1s, capped at 30s. Without
+#: it yt-dlp gives a rate-limited track exactly one chance and moves on, which is how a transient 429
+#: became a permanently missing baseline.
+HTTP_RETRY_SLEEP = "http:exp=1:30"
+
+#: Retries for the extractor step itself, ahead of any track download. YouTube rate-limits the player
+#: request too, and a 429 there loses every track at once rather than one.
+EXTRACTOR_RETRIES = 3
 
 # A WebVTT cue timing line: "00:01:23.456 --> 00:01:25.000 align:start position:0%".
 # Hours are optional in the spec ("01:23.456"), so the leading group is conditional.
@@ -127,6 +154,10 @@ def caption_argv(
 
     `--skip-download` keeps this cheap enough to attempt on every align job — it is a metadata request,
     not a second download of audio the worker already has.
+
+    The three throttle/retry flags exist because this call is rate-limited in practice, not in theory:
+    YouTube answers a burst of timedtext requests with `HTTP Error 429`, and a caption miss here is
+    silent (the step swallows it and the tier just has no baseline). See the constants above.
     """
     return [
         ytdlp_bin,
@@ -138,6 +169,13 @@ def caption_argv(
         "vtt/srt/best",
         "--convert-subs",
         "vtt",
+        # Rate-limit survival. Ordered before -o purely for readability; yt-dlp does not care.
+        "--sleep-subtitles",
+        str(SUB_SLEEP_SEC),
+        "--retry-sleep",
+        HTTP_RETRY_SLEEP,
+        "--extractor-retries",
+        str(EXTRACTOR_RETRIES),
         "--no-playlist",
         "--no-warnings",
         "-o",
@@ -148,9 +186,14 @@ def caption_argv(
 
 #: A TRANSLATED caption track. YouTube exposes machine translations of a caption track under the target
 #: language with a long opaque suffix ("en-nP7Qs3xK9dQ"), alongside the original which is either plain
-#: ("en") or explicitly marked ("en-orig"). Region variants ("en-GB", "pt-BR") are short and are NOT
-#: translations.
+#: ("en") or explicitly marked ("en-orig").
 _TRANSLATED_SUFFIX = re.compile(r"-[A-Za-z0-9_-]{8,}$")
+
+#: A "translated FROM" marker: a lowercase language subtag after the target language, as in `en-cs`
+#: (English translated from Czech). Short, so `_TRANSLATED_SUFFIX` never saw it — which is exactly the
+#: hole this closes. The discriminator against a legitimate REGION variant is case, per BCP 47: a region
+#: subtag is uppercase (`en-GB`, `pt-BR`) and a language subtag is lowercase (`en-cs`, `en-pt`).
+_TRANSLATED_FROM = re.compile(r"-[a-z]{2,3}$")
 
 
 def is_translated_track(name: str) -> bool:
@@ -160,12 +203,16 @@ def is_translated_track(name: str) -> bool:
     translated into English; as a baseline that text would be fluent, long enough to pass
     MIN_TOKENS_TO_COMPARE, and about the right song in the WRONG language — so it would not abstain, it
     would vote confidently against every correct candidate. That is worse than having no baseline.
+
+    Two shapes, because YouTube uses two. The opaque-suffix form (`en-nP7Qs3xK9dQ`) was covered from the
+    start; the `en-<lang>` form (`en-cs`) was not, and slipped through as a legitimate track because it
+    is as short as a region variant. Case tells them apart — see the patterns above.
     """
     stem = name.rsplit(".", 1)[0]  # drop .vtt / .srt
     lang = stem.rsplit(".", 1)[-1] if "." in stem else stem
     if lang.endswith("-orig"):
         return False
-    return bool(_TRANSLATED_SUFFIX.search(lang))
+    return bool(_TRANSLATED_SUFFIX.search(lang) or _TRANSLATED_FROM.search(lang))
 
 
 def find_caption_file(directory: str) -> str | None:
