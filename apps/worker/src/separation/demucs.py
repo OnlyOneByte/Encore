@@ -29,7 +29,7 @@ from ..processor import (
     parse_max_volume_db,
     is_silent,
 )
-from ..acquisition.fetch import job_fetcher, local_source_path
+from ..acquisition.fetch import find_downloaded, job_fetcher, local_source_path
 from ..vocabulary import Fetcher
 from ..acquisition.stream_quality import FORMAT_SELECTOR
 from ..analysis import build_song_profile
@@ -147,20 +147,6 @@ def encode_stem_argv(input_wav: str, out_path: str, bitrate: str = STEM_BITRATE,
     ]
 
 
-def find_downloaded(directory: str, media_id: str) -> str | None:
-    """The file yt-dlp actually produced for this media id, whatever extension it chose.
-
-    Returns None if nothing landed. Ignores yt-dlp's `.part` fragments so an interrupted download is
-    never mistaken for a finished one.
-    """
-    try:
-        names = sorted(os.listdir(directory))
-    except OSError:
-        return None
-    for name in names:
-        if name.startswith(f"{media_id}.") and not name.endswith((".part", ".ytdl", ".temp")):
-            return os.path.join(directory, name)
-    return None
 
 
 def demucs_argv(

@@ -48,32 +48,60 @@ def local_source_path(job: JobSpec) -> str:
     return job.source_uri if os.path.isabs(job.source_uri) else os.path.join(job.media_dir, job.source_uri)
 
 
+def find_downloaded(directory: str, media_id: str) -> str | None:
+    """The file yt-dlp actually produced for this media id, whatever extension it chose.
+
+    Returns None if nothing landed. Ignores yt-dlp's `.part` fragments so an interrupted download is
+    never mistaken for a finished one.
+    """
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return None
+    for name in names:
+        if name.startswith(f"{media_id}.") and not name.endswith((".part", ".ytdl", ".temp")):
+            return os.path.join(directory, name)
+    return None
+
+
 async def resolve_source_audio(job: JobSpec, download) -> AsyncIterator[ProgressEvent | str]:
     """Yield progress while ensuring this job's source audio is on disk, then yield its path LAST.
 
-    One implementation for every consumer, so separation and alignment cannot disagree about where the
-    bytes live or when a download is needed. `download` is an injected async generator taking
-    (source_uri, out_path) so this stays testable without a network or a subprocess.
+    `download` is an injected async generator taking (source_uri, out_template) so this stays testable
+    without a network or a subprocess. A LOCAL job never downloads: its bytes are already on the volume.
 
-    A LOCAL job never downloads: its bytes are already on the volume by definition.
+    DISCOVERS the filename rather than assuming one, and that is a fix. This used to pass
+    `source_audio_path(...)` — a literal `audio/<id>.wav` — straight to yt-dlp, while `download_argv`'s
+    own docstring says the template "must carry `%(ext)s` … so the caller discovers the real filename with
+    `find_downloaded` rather than assuming one". Given a literal name yt-dlp writes the m4a or webm bytes
+    into a file called `.wav`. Nothing broke, because ffmpeg sniffs content and ignores the extension, so
+    the mislabelling stayed invisible until something trusted the name — and meanwhile the two separation
+    engines did it correctly, which is a large part of why they never adopted this function.
+
+    Backward compatible: `find_downloaded` globs `<id>.*`, so it still finds the legacy mislabelled `.wav`
+    files already sitting on a live volume as well as correctly-named new downloads.
     """
     if job_fetcher(job) is Fetcher.LOCAL:
         yield local_source_path(job)
         return
 
-    audio = source_audio_path(job.media_dir, job.media_id)
-    os.makedirs(os.path.dirname(audio), exist_ok=True)
-    if os.path.exists(audio):
-        # Retained from an earlier job for this media, so a cooked song's later align costs no
-        # network at all. This reuse is why acquisition is worth being its own job rather than a step
-        # repeated by every consumer.
+    audio_dir = os.path.dirname(source_audio_path(job.media_dir, job.media_id))
+    os.makedirs(audio_dir, exist_ok=True)
+
+    found = find_downloaded(audio_dir, job.media_id)
+    if found is not None:
+        # Retained from an earlier job for this media, so a cooked song's later align costs no network at
+        # all. This reuse is why acquisition is worth being its own job rather than a step repeated by
+        # every consumer.
         yield ProgressEvent(stage=Stage.DOWNLOADING, pct=100)
-        yield audio
+        yield found
         return
 
-    async for ev in download(job.source_uri, audio):
+    async for ev in download(job.source_uri, os.path.join(audio_dir, f"{job.media_id}.%(ext)s")):
         yield ev
-    yield audio
+    landed = find_downloaded(audio_dir, job.media_id)
+    if landed is not None:
+        yield landed
 
 
 class FetchProcessor:
