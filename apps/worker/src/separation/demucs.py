@@ -1,44 +1,26 @@
-"""Real make-karaoke pipeline: yt-dlp (fetch source) → Demucs htdemucs (split vocals) → instrumental.
+"""Demucs: the argv, the progress parsing, and the stem paths its CLI produces.
 
-The PURE half (argv builders, progress parsers, stem-path resolver, retryability classifier) has no
-subprocess / torch and is unit-tested. The I/O half (DemucsProcessor) streams the two CLIs through
-an INJECTABLE async runner, so the whole flow tests with a fake subprocess; the real binaries only
-run on a worker box / GPU.
+PURE, and entirely so since S3 — argv builders, progress parsers, stem-path resolvers, the retryability
+classifier and the subprocess error types. Nothing here runs a job. The orchestration this module used to
+own moved to `steps/separate.py`, and `DemucsProcessor` was deleted; the engine adapter that answers the
+four questions a separation step asks is `separation/engines.py`.
 
-Demucs `--two-stems=vocals` emits two files; the INSTRUMENTAL (backing track) is `no_vocals.wav`.
-Both are published: the instrumental is the karaoke output; the isolated `vocals.wav` feeds pitch
-extraction and the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md).
+Fetching moved too: `download_argv` and `parse_ytdlp_progress` now live in `acquisition/fetch.py`, because
+a yt-dlp argv builder in the demucs module was pre-package residue, and it forced the acquisition step to
+import from the separation domain to download a file.
+
+Demucs `--two-stems=vocals` emits two files; the INSTRUMENTAL (backing track) is `no_vocals.wav`. Both are
+published: the instrumental is the karaoke output, and the isolated `vocals.wav` feeds the song profile and
+the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md).
 """
 from __future__ import annotations
 
 import asyncio
 import os
 import re
-import shutil
 import signal
 from collections import deque
-from typing import AsyncIterator, Awaitable, Callable
-
-from ..processor import (
-    CompleteResult,
-    JobSpec,
-    ProgressEvent,
-    source_audio_path,
-    instrumental_path,
-    vocals_path,
-    volumedetect_argv,
-    parse_max_volume_db,
-    is_silent,
-)
-from ..vocabulary import Fetcher
-from ..acquisition.stream_quality import FORMAT_SELECTOR
-from ..analysis import build_song_profile
-
-# The analysis step: (instrumental_wav, vocals_wav, media_id) -> songProfile dict. Injectable so the
-# subprocess-fake tests (whose "WAV" files hold placeholder bytes, not real PCM) can pass a no-op and
-# assert the wiring/always-publish contract without needing real audio. The real default reads the
-# two scratch WAVs that already exist at stage 3 — no extra separation, no extra decode.
-Profiler = Callable[[str | None, str | None, str], dict]
+from typing import AsyncIterator, Callable
 
 DEFAULT_MODEL = "htdemucs"
 
@@ -62,35 +44,6 @@ def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
     return requested
 
 # ── pure helpers (no IO) ─────────────────────────────────────────────────────────
-
-
-def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
-    """yt-dlp argv: fetch the best audio-only stream in its NATIVE container -- no transcode.
-
-    Passing `-x --audio-format wav` inflated a ~5 MB lossy YouTube stream (Opus 135k / AAC 129k --
-    measured) into ~59 MB of WAV: a ~12x cost for ZERO fidelity gain, since you cannot restore
-    information YouTube already discarded, so the WAV was a lossless copy of lossy audio. The native
-    stream is both smaller and higher fidelity than any re-encode.
-
-    `out_template` must carry `%(ext)s` -- the extension is whatever YouTube served (m4a or webm), so
-    the caller discovers the real filename with `find_downloaded` rather than assuming one.
-
-    The selector is `stream_quality.FORMAT_SELECTOR`, not a bare `bestaudio`. yt-dlp's own
-    ranking is bitrate-led, so an old upload carrying BOTH a modern Opus stream and a legacy AAC one
-    can return the AAC purely because its nominal bitrate is higher. Everything downstream inherits
-    that choice -- separator, FLAC instrumental, ASR lyrics -- and no later encode can undo it. Its
-    final branch is a bare `best` rather than a bare `bestaudio`, because every `bestaudio` branch
-    requires an audio-only stream to exist and a muxed-only video would otherwise fail at download;
-    with `best` the selector only reorders preferences and never makes a video undownloadable.
-    """
-    return [
-        ytdlp_bin,
-        "--no-playlist",
-        "--newline",  # emit progress as discrete lines (not \r) so the parser sees each update
-        "-f", FORMAT_SELECTOR,  # audio-only, native container, codec-ranked
-        "-o", out_template,
-        source_uri,
-    ]
 
 
 def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
@@ -206,14 +159,7 @@ def demucs_vocals_path(out_dir: str, model: str = DEFAULT_MODEL) -> str:
     return os.path.join(out_dir, model, "vocals.wav")
 
 
-_YTDLP_PCT = re.compile(r"\[download\]\s+([\d.]+)%")
 _TQDM_PCT = re.compile(r"(\d+)%\|")  # demucs uses a tqdm bar: "  56%|████▏     | ..."
-
-
-def parse_ytdlp_progress(line: str) -> int | None:
-    """Extract the download percentage from a yt-dlp `[download] 45.2% of ...` line, else None."""
-    m = _YTDLP_PCT.search(line)
-    return int(float(m.group(1))) if m else None
 
 
 def parse_demucs_progress(line: str) -> int | None:
@@ -272,7 +218,7 @@ class ProcessTimeout(RuntimeError):
 
 
 # A runner streams a command's merged stdout/stderr line-by-line and raises ProcessError on a
-# non-zero exit. Injecting it lets tests drive DemucsProcessor with canned output + no real binary.
+# non-zero exit. Injecting it lets tests drive a separation step with canned output + no real binary.
 Runner = Callable[[list[str]], AsyncIterator[str]]
 
 

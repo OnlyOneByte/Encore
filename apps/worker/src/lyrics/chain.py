@@ -133,8 +133,14 @@ class LyricsText:
     language: str | None = None
     #: BASELINE (evidence of what is heard) or CANDIDATE (authored text to be judged). See the role
     #: constants above — this is what decides whether a text is scored or does the scoring.
+    #:
+    #: ASSIGNED BY THE REGISTRY, not by the source that fetched the text: `lyrics/registry.py` stamps it
+    #: from the fetching source's `SourceSpec`. The sources used to set it themselves, which made the
+    #: registry's `role`/`baseline_rank` fields a second declaration of the same fact that nothing read —
+    #: so the two could disagree and every test would stay green. The default below therefore applies
+    #: only to a text built by hand (a test, or one rehydrated from disk by `split_blob_text`).
     role: str = ROLE_CANDIDATE
-    #: Preference among baselines when one must be SHOWN. None for candidates.
+    #: Preference among baselines when one must be SHOWN. None for candidates. Registry-assigned, as above.
     baseline_rank: int | None = None
     #: A short stable id for this text WITHIN its source, so two baselines from the same source can
     #: coexist on disk ('vocals' and 'mix' are both `asr`). Part of the artifact key; see candidate_key.
@@ -204,7 +210,6 @@ class LrclibSource:
             timing=TIMING_LINE if bool(getattr(res, "has_synced", False)) else TIMING_NONE,
             text_confidence="high",
             language=None,
-            role=ROLE_CANDIDATE,
             variant=getattr(res, "label", None),
         )
 
@@ -274,7 +279,6 @@ class CaptionsSource:
             timing=TIMING_LINE,
             text_confidence="high",
             language=None,
-            role=ROLE_CANDIDATE,
             tag="manual",
             variant="uploader captions",
         )
@@ -343,8 +347,6 @@ class AsrSource:
             timing=TIMING_WORD if any(l.get("words") for l in lines) else TIMING_LINE,
             text_confidence="low",
             language=doc.get("language"),
-            role=ROLE_BASELINE,
-            baseline_rank=BASELINE_ASR_MIX if self._audio == self.AUDIO_MIX else BASELINE_ASR_VOCALS,
             tag=self._audio,
             variant=f"whisper/{self._audio}",
         )
@@ -379,8 +381,6 @@ class AutoCaptionsSource:
             # even when this is the only text left to show, the TV labels it as auto-transcribed.
             text_confidence="low",
             language=None,
-            role=ROLE_BASELINE,
-            baseline_rank=BASELINE_CAPTIONS_AUTO,
             tag="auto",
             variant="youtube auto-captions",
         )

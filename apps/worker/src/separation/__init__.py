@@ -18,7 +18,7 @@ KNOWN SEAM PROBLEM, recorded rather than fixed here. `roformer` does `from . imp
 borrow the argv builders and the subprocess runner, and `acquisition/fetch` and `../whisperx` reach in
 for the same things. Those are platform concerns (running a CLI, parsing yt-dlp progress) that ended up
 living in an engine module because it was the first to need them.
-`docs/specs/SPEC-worker-pipeline.md` S3 lifts them out; this stage only moved files, so the borrowing is
+`docs/archive/specs/SPEC-worker-pipeline.md` S3 lifts them out; this stage only moved files, so the borrowing is
 unchanged and still ugly.
 """
 from __future__ import annotations

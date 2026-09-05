@@ -298,8 +298,9 @@ def oversubscription_warnings(cfg: WorkerConfig, cores: int | None,
 
 def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     """Build the processor from this worker's capabilities. ENCORE_PROCESSOR=stub forces the no-ML
-    StubProcessor. Otherwise a RoutingProcessor dispatches by job type: stems→DemucsProcessor,
-    align→WhisperXProcessor. Imports are lazy so torch only loads for advertised capabilities.
+    StubProcessor. Otherwise a RoutingProcessor dispatches by job type onto a PlanRunner per action —
+    fetch, stems, stems-upgrade and align — each running the declared plan for that action. Imports are
+    lazy so torch only loads for advertised capabilities.
 
     Config is read ON CALL, not captured at import: a module-level default would silently ignore an
     environment set after import, and be untestable.
@@ -392,7 +393,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         #
         # A PlanRunner over the declared align plan, not a bespoke processor: eight named steps rather
         # than one 257-line method, and engines resolved per JOB rather than mutated on this instance.
-        # See docs/specs/SPEC-worker-pipeline.md S2.
+        # See docs/archive/specs/SPEC-worker-pipeline.md S2.
         by_type["align"] = align_runner(
             runner=subprocess_runner,
             lyrics_client=LrclibClient(base_url=cfg.lrclib_base),

@@ -15,7 +15,7 @@ process, no fixtures that rot when YouTube changes.
 """
 from __future__ import annotations
 
-from src.separation import demucs
+from src.acquisition import fetch as fetch_mod
 from src.acquisition.stream_quality import (
     FORMAT_SELECTOR,
     officiality_score,
@@ -45,13 +45,13 @@ def test_selector_prefers_opus_then_m4a_then_falls_back_to_bestaudio():
 def test_selector_never_requests_video_or_a_transcode():
     assert "bestvideo" not in FORMAT_SELECTOR
     # the format policy still holds: native container, no extract-audio, no wav.
-    argv = demucs.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
+    argv = fetch_mod.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
     assert "--audio-format" not in argv
     assert "wav" not in " ".join(argv)
 
 
 def test_download_argv_uses_the_ranked_selector_not_bare_bestaudio():
-    argv = demucs.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
+    argv = fetch_mod.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
     assert FORMAT_SELECTOR in argv, argv
     # the extension stays a template -- the container is whichever branch won
     assert "%(ext)s" in " ".join(argv)

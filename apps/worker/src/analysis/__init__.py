@@ -15,7 +15,7 @@ two call sites hand-assembling the same artifact dict is what let `songProfile` 
 "Separating vocals" forever, caught only by a parity guard added afterwards.
 
 It is analysis of a recording, so it belongs beside neither the thing that produced the stems nor the
-thing that reads the words. `docs/specs/SPEC-worker-pipeline.md` §5 makes it an explicit `KeyAndRange`
+thing that reads the words. `docs/archive/specs/SPEC-worker-pipeline.md` §5 makes it an explicit `KeyAndRange`
 step in both separation plans, which is what finally makes it measurable.
 
 PURE by construction: numpy in, dict out. No subprocess, no network, no torch.

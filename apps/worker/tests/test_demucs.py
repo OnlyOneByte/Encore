@@ -38,7 +38,7 @@ def test_acquisition_is_DECLARED_not_inferred_from_the_uri_shape():
 
 
 def test_download_argv_shape():
-    argv = demucs.download_argv("https://yt/x", "/w/source.wav", ytdlp_bin="yt-dlp")
+    argv = fetch_mod.download_argv("https://yt/x", "/w/source.wav", ytdlp_bin="yt-dlp")
     assert argv[0] == "yt-dlp"
     assert "--no-playlist" in argv and "--newline" in argv
     assert argv[-1] == "https://yt/x"  # url is the final positional
@@ -56,9 +56,9 @@ def test_demucs_argv_and_output_path():
 
 
 def test_parse_ytdlp_progress():
-    assert demucs.parse_ytdlp_progress("[download]  45.2% of 4.30MiB at 1.2MiB/s") == 45
-    assert demucs.parse_ytdlp_progress("[download] 100% of 4.30MiB") == 100
-    assert demucs.parse_ytdlp_progress("[info] some other line") is None
+    assert fetch_mod.parse_ytdlp_progress("[download]  45.2% of 4.30MiB at 1.2MiB/s") == 45
+    assert fetch_mod.parse_ytdlp_progress("[download] 100% of 4.30MiB") == 100
+    assert fetch_mod.parse_ytdlp_progress("[info] some other line") is None
 
 
 def test_parse_demucs_progress():
@@ -250,7 +250,7 @@ async def test_missing_instrumental_output_raises(tmp_path):
 # restore what YouTube already discarded. These tests pin the policy so it cannot silently regress.
 
 def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
-    argv = demucs.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
+    argv = fetch_mod.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
     # Assert the POLICY (a codec-ranked selector whose final fallback can always download something)
     # rather than one literal token. The last branch is `best`, not `bestaudio`: a `bestaudio` branch
     # needs an audio-only stream to exist, and a muxed-only video would otherwise fail the cook.

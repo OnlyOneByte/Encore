@@ -1,5 +1,7 @@
-"""BS-RoFormer separation engine. Same Processor interface as DemucsProcessor, selected when a
-stems job carries params.engine == 'roformer'. Uses the bs-roformer-infer package (inference-only,
+"""BS-RoFormer separation engine: its model registry, its argv, and where it writes stems.
+
+Selected when a stems job carries `params.engine == 'roformer'`, resolved by `engine_for` in
+`separation/engines.py` before the first step runs. Uses the bs-roformer-infer package (inference-only,
 MIT), which owns checkpoint download + sha256 verification and a repointable model registry.
 
 INTEGRATION: bs-roformer-infer 0.1.5 exposes a CLI (`bs-roformer-infer`), not the README's
@@ -8,8 +10,10 @@ matches the demucs pattern exactly and keeps bs_roformer/torch OFF the dial-home
 <slug>` auto-resolves and sha256-downloads the checkpoint on first use, so there is no separate
 download step. Flags confirmed against `bs-roformer-infer --help` on 0.1.5.
 
-The PURE half (model-token→slug map, argv builder, output-stem resolver) has no torch and is
-unit-tested. Only a worker advertising the `stems:roformer` capability builds this processor.
+PURE, all of it: the model-token→slug map, the argv builder, and the output-stem discovery. No torch, no
+subprocess, no orchestration — `RoformerProcessor` was deleted in S3 and `steps/separate.py` runs the job.
+The two places this engine genuinely differs from demucs (its input must be ALONE in a directory, and its
+outputs must be DISCOVERED rather than derived from the model name) are stated in `engines.py`.
 
 ⚠️ A REAL COOK IS UNVERIFIED IN THIS ENVIRONMENT. A ~45-minute CPU cook plus the ~700MB first-run
 checkpoint download are needed to confirm (a) the exact output-stem filenames bs-roformer-infer
@@ -21,20 +25,6 @@ set the `stems:roformer` capability.
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
-
-from ..vocabulary import Fetcher
-from ..analysis import build_song_profile
-from ..processor import (
-	CompleteResult,
-	JobSpec,
-	ProgressEvent,
-	instrumental_path,
-	vocals_path,
-	source_audio_path,
-	INSTRUMENTAL_EXT,
-	VOCALS_EXT,
-)
 
 # ── pure helpers (no torch, no session) ──────────────────────────────────────────
 
