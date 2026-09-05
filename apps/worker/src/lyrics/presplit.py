@@ -313,21 +313,20 @@ def _subdivide(seg: dict[str, Any], pieces: list[str]) -> list[dict[str, Any]]:
     return out
 
 
-def split_blob_text(
-    text: LyricsText, max_chars: int = MAX_LINE_CHARS, bounder: LineBounder | None = None
+def _relineate_segments(
+    text: LyricsText, max_chars: int, lineator: Callable[[str], list[str]]
 ) -> LyricsText:
-    """Re-lineate one non-authoritative text's segments. Returns a NEW LyricsText; input untouched.
+    """Re-lineate every text-only segment of `text` with `lineator`; return a NEW LyricsText.
 
-    A segment that already carries WORD timings is passed through whole. Splitting its text would
-    orphan those timings from the words they belong to, and the case does not arise in practice
-    anyway — MEASURED (lyrics/chain.py AsrSource): whisper `transcribe()` returns segment bounds and no
-    word timings, so the blob tier is line-timed and the aligner is what produces words. Skipping
-    rather than attempting a partition keeps a whole class of timing corruption out of reach.
+    `lineator` maps one segment body to its output lines — the ONE place the authoritative and
+    non-authoritative tiers differ. A segment that already carries WORD timings is passed through
+    whole: splitting its text would orphan those timings from the words they belong to (MEASURED —
+    whisper `transcribe()` returns segment bounds and no word timings, so this guards a case that
+    should not arise). A segment that maps to one line or fewer is left as the SAME object.
 
     `timing` is deliberately NOT changed: subdividing a line-timed segment yields more line-timed
     segments, and the tier's own claim about what it supplies is still true.
     """
-    bound = bounder if bounder is not None else bound_lines
     segments: list[dict[str, Any]] = []
     for seg in text.segments:
         if not isinstance(seg, dict):
@@ -336,8 +335,7 @@ def split_blob_text(
         if seg.get("words") or not isinstance(body, str) or not body.strip():
             segments.append(seg)
             continue
-        pieces = bound(boundary_split(body, max_chars), max_chars)
-        pieces = [p for p in pieces if p.strip()]
+        pieces = [p for p in lineator(body) if p.strip()]
         if len(pieces) <= 1:
             segments.append(seg)
             continue
@@ -349,12 +347,53 @@ def split_blob_text(
     return replace(text, segments=segments)
 
 
+def split_blob_text(
+    text: LyricsText, max_chars: int = MAX_LINE_CHARS, bounder: LineBounder | None = None
+) -> LyricsText:
+    """Re-lineate one NON-authoritative text: semantic boundary split THEN length bound.
+
+    This is the auto-transcribed path — ASR and demoted auto-caption tracks — where line structure has
+    to be INVENTED because the source never had lines (see the module header). `boundary_split` finds
+    the phrase boundaries; the injected `bounder` (upstream, length-only) cleans up any piece still too
+    long. Returns a NEW LyricsText; input untouched.
+    """
+    bound = bounder if bounder is not None else bound_lines
+    return _relineate_segments(text, max_chars, lambda body: bound(boundary_split(body, max_chars), max_chars))
+
+
+def bound_blob_text(
+    text: LyricsText, max_chars: int = MAX_LINE_CHARS, bounder: LineBounder | None = None
+) -> LyricsText:
+    """Length-bound one AUTHORITATIVE text's segments, WITHOUT semantic re-lineation. New LyricsText.
+
+    Two jobs were fused into `split_blob_text` and only the fused pair ran on any tier, so authoritative
+    text (LRCLIB synced/plain, real human caption tracks) reached the TV with no length bounding at all
+    — the display-time `LINE_MAX_CHARS` fallback its own header dismisses as no better than a char count
+    was the only thing catching an over-long human-authored line.
+
+    So bound here, but do NOT call `boundary_split`: the semantic repacker's comma/opener/sentence rules
+    rewrite line STRUCTURE, and rewriting a line a human wrote can only damage it. The upstream bounder
+    "only ever splits, never joins, so feeding it pre-broken lines is safe: it intervenes only on the
+    pieces still too long" — so each segment's existing (human) line is handed over as-is, and upstream
+    touches it only when it overflows a row. `is_authoritative_text` in `presplit_texts` is the fence
+    that routes text here versus to `split_blob_text`.
+    """
+    bound = bounder if bounder is not None else bound_lines
+    return _relineate_segments(text, max_chars, lambda body: bound([body], max_chars))
+
+
 def presplit_texts(
     texts: list[LyricsText], max_chars: int = MAX_LINE_CHARS, bounder: LineBounder | None = None
 ) -> list[LyricsText]:
-    """Re-lineate the auto-transcribed texts in an acquisition result; pass the rest through as-is."""
+    """Length-bound every text tier; re-lineate ONLY the auto-transcribed ones.
+
+    Two distinct jobs, split along `is_authoritative_text`:
+      • length bounding runs on EVERY tier (a human line can still overflow a TV row), and
+      • semantic re-lineation runs ONLY where line structure was never present to begin with — ASR and
+        the auto-caption tracks demoted to `low` confidence to land on that side of the fence.
+    """
     return [
-        t
+        bound_blob_text(t, max_chars=max_chars, bounder=bounder)
         if is_authoritative_text(t.text_source, t.text_confidence)
         else split_blob_text(t, max_chars=max_chars, bounder=bounder)
         for t in texts
