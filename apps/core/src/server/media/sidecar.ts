@@ -16,13 +16,18 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Media, LyricsCandidate } from '@encore/shared';
 import { pickBestLyrics } from '@encore/shared';
+import type { SongProfile } from '@encore/shared';
+import { normalizeSongProfile } from '@encore/shared';
 import { metaDir } from './paths';
 import { parseTrackTitle, type TrackParseRule } from './track-title';
 
 /** Bump when the on-disk shape changes incompatibly. Readers tolerate older schemas. */
 // 2: `artifacts.lyricsCandidates` added. `artifacts.lyrics` keeps its meaning (the CHOSEN ref), so a
 // schema-1 record still reads correctly — it just has no provenance, reported as unknown not invented.
-export const SIDECAR_SCHEMA = 2;
+// 3: `artifacts.songProfile` added (key + vocal range). Purely additive: a schema-2 record simply has
+// no profile, which mediaFromSidecar restores as absent — the stems gate then reads that song as
+// still-cooking and the boot pipeline re-analyses it, exactly as an old song with no vocals ref did.
+export const SIDECAR_SCHEMA = 3;
 
 /** How a derived field was obtained. Mirrors the lyrics chain's provenance idea on purpose. */
 export interface FieldProvenance {
@@ -63,6 +68,13 @@ export interface MediaSidecar {
 		 * which is what makes re-alignment possible later without re-fetching audio. Absent on schema-1.
 		 */
 		lyricsCandidates?: LyricsCandidate[];
+		/**
+		 * The key + vocal-range analysis (see SongProfile). Authoritative here so a DB wipe restores it
+		 * without re-cooking — the durability claim the media layer makes for every derived artifact.
+		 * Optional/absent on schema-2 records; an all-nulls profile is a real, gate-satisfying value and
+		 * is NOT the same as absent (which means the analysis never ran).
+		 */
+		songProfile?: SongProfile;
 	};
 	library: {
 		tags: string[];
@@ -135,7 +147,11 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			lyrics: m.lyricsRef ?? prev?.artifacts.lyrics ?? null,
 			// Runtime first, else a prior write: an index-only hydrate leaves lyricsCandidates undefined,
 			// and losing the set here would silently destroy the upgrade path the set exists for.
-			lyricsCandidates: m.lyricsCandidates ?? prev?.artifacts.lyricsCandidates
+			lyricsCandidates: m.lyricsCandidates ?? prev?.artifacts.lyricsCandidates,
+			// Same runtime-first / preserve-prior rule as lyricsCandidates: an index-only hydrate that has
+			// not read the sidecar yet carries no profile on the Media, so falling back to the prior
+			// write is what stops a sidecar rewrite from erasing an already-recorded key/range.
+			songProfile: m.songProfile ?? prev?.artifacts.songProfile
 		},
 		library: {
 			tags: prev?.library.tags ?? [],
@@ -194,6 +210,11 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		vocalsRef: s.artifacts.vocals ?? undefined,
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,
+		// Restore the key/range so a wiped DB comes back with the analysis intact — no re-cook. The
+		// stored value is authoritative but still untrusted (an older writer, a hand edit), so it is
+		// re-normalized on the way out; a schema-2 sidecar has none and this stays undefined, which the
+		// gate reads as still-cooking so the boot pipeline re-analyses it.
+		songProfile: s.artifacts.songProfile ? normalizeSongProfile(s.artifacts.songProfile) : undefined,
 		// Carry the confidence-gated canonicals so a RESTORED media is immediately complete. The boot
 		// sync pass mirrors these into the index too, but an align job dispatched before it ran would
 		// otherwise look up the raw title and miss.

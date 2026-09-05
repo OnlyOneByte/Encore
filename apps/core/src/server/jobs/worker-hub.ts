@@ -26,6 +26,7 @@ import {
 	markMediaReady,
 	setMediaLyrics,
 	setMediaVocals,
+	setMediaSongProfile,
 	applyAnnotation,
 	settleLyricsGate,
 	markLyricsQueued
@@ -186,6 +187,18 @@ export class WorkerHub {
 			// a worker that could not encode vocals, or measured them as silence, reports none and the
 			// song simply offers no guide.
 			setMediaVocals(job.mediaId, msg.artifacts?.stems?.vocals, this.#d.mediaById);
+			// The SAME separation also analysed the two stems for key + range and reported it as a third
+			// artifact, a SIBLING of `stems` rather than a member of it (a profile is not a file). Persisted
+			// here, at the boundary, because its PRESENCE completes the stems cook gate (gates.ts) — so
+			// unlike the vocals ref this is written even when the worker found nothing, and
+			// setMediaSongProfile normalizes the untrusted frame to a valid profile.
+			//
+			// Read through the DECLARED wire field, not structurally. This line previously reached into
+			// `artifacts.stems.songProfile` while the worker published `artifacts.songProfile`, so the
+			// value was always undefined — and with the gate requiring it, every separated song stalled at
+			// "Separating vocals" permanently. Unit tests on both sides passed throughout, because each
+			// mocked its own shape.
+			setMediaSongProfile(job.mediaId, msg.artifacts?.songProfile, this.#d.mediaById);
 		}
 		// A fetch may have identified the song. Applied under a never-regress rule so a later `medium`
 		// cannot downgrade an existing `high` citation. Declined annotation leaves the normalizer's

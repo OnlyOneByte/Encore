@@ -6,6 +6,7 @@ import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
 import { MediaRepository } from './repository';
 import type { Media } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 import { instrumentalKey } from './paths';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
@@ -20,7 +21,7 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 });
 
 const cooked = (id: string, over: Partial<Media> = {}) =>
-	media(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
+	media(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey(id), songProfile: EMPTY_SONG_PROFILE, ...over });
 
 let repo: MediaRepository;
 

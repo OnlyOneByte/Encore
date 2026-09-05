@@ -3,9 +3,9 @@ import { test, expect } from 'bun:test';
 import { handlePlayerCommand } from './player';
 import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
-import { ulid, type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
+import { ulid, type ServerEvent, type Media, type QueueEntry, EMPTY_SONG_PROFILE } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' });
+const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
 let _seq = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({ id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_seq });
 

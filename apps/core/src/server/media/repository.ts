@@ -7,7 +7,7 @@ import { eq, and, desc, asc, sql, isNotNull } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
 import type { Media, LyricsCandidate } from '@encore/shared';
-import { readyToSing } from '@encore/shared';
+import { readyToSing, normalizeSongProfile } from '@encore/shared';
 
 type MediaRow = typeof media.$inferInsert;
 
@@ -29,6 +29,11 @@ const toRow = (m: Media): MediaRow => ({
 	annotationConfidence: m.annotation?.confidence ?? null,
 	instrumentalRef: m.instrumentalRef ?? null,
 	vocalsRef: m.vocalsRef ?? null,
+	// The whole SongProfile as one JSON string, or null when absent — the index copy of the sidecar's
+	// authoritative profile. Serialized whole (not per-field columns) because nothing queries inside it.
+	// Absent stays null rather than being written as EMPTY_SONG_PROFILE: null is "stems never ran", which
+	// the gate must be able to tell apart from an all-nulls profile ("ran, found nothing" = finished).
+	songProfile: m.songProfile ? JSON.stringify(m.songProfile) : null,
 	lyricsRef: m.lyricsRef ?? null,
 	// JSON blob, not a table: nothing queries inside the set.
 	lyricsCandidates: m.lyricsCandidates?.length ? JSON.stringify(m.lyricsCandidates) : null,
@@ -44,6 +49,19 @@ function parseCandidates(raw: string | null): LyricsCandidate[] | undefined {
 		return Array.isArray(parsed) && parsed.length ? (parsed as LyricsCandidate[]) : undefined;
 	} catch {
 		return undefined;
+	}
+}
+
+/**
+ * Tolerant JSON.parse for the song_profile column — returns `null` on unparseable garbage rather than
+ * throwing. `null` then flows into normalizeSongProfile, which maps it to EMPTY_SONG_PROFILE, so a
+ * truncated or hand-mangled blob degrades to "ran, found nothing" instead of crashing the boot hydrate.
+ */
+function safeParse(raw: string): unknown {
+	try {
+		return JSON.parse(raw);
+	} catch {
+		return null;
 	}
 }
 
@@ -70,6 +88,12 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 			: undefined,
 	instrumentalRef: r.instrumentalRef ?? undefined,
 	vocalsRef: r.vocalsRef ?? undefined,
+	// A NULL column means the stems job has not run — leave songProfile UNDEFINED (absent), which the
+	// gate reads as still-cooking. A present string is untrusted (an older build, a hand-edited sidecar
+	// mirrored here) so it is re-normalized at this boundary: normalizeSongProfile degrades any bad half
+	// to null rather than throwing, so a corrupt profile downgrades to EMPTY_SONG_PROFILE (still a
+	// gate-satisfying "ran, found nothing") instead of bricking the hydrate.
+	songProfile: r.songProfile ? normalizeSongProfile(safeParse(r.songProfile)) : undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
 	lyricsCandidates: parseCandidates(r.lyricsCandidates),
 	artistCanonical: r.artistCanonical ?? undefined,

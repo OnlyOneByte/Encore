@@ -23,6 +23,52 @@ const WORKER_SRC = join(import.meta.dir, '../../../../worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
 const capabilities = readFileSync(join(WORKER_SRC, 'capabilities.py'), 'utf8');
 
+/**
+ * The ARTIFACT ENVELOPE is a second unguarded contract, and it bit for real.
+ *
+ * Both separator engines yield `CompleteResult(artifacts={"stems": ..., "songProfile": ...})`, so the
+ * profile is a SIBLING of `stems`. The core's `#onComplete` originally reached for
+ * `artifacts.stems.songProfile` instead — one level too deep — so the value arrived `undefined` on
+ * every single cook. Nothing caught it: the worker's pytest asserted its own dict and the core's
+ * bun test asserted its own mock, and neither ever saw the other's shape.
+ *
+ * The consequence was not a missing chip. Because the `stems` cook gate requires the profile to be
+ * PRESENT, every separated song would have sat at "Separating vocals" forever, and the re-cook check
+ * reads `hasInstrumental` rather than the gate, so nothing would ever have retried it. A silent
+ * whole-library stall from a one-word path difference.
+ *
+ * So: assert the key sits at the TOP level of the artifacts dict in both engines, the same way the
+ * enum parity above is asserted — by reading the Python as text.
+ */
+const ENGINE_SOURCES = ['demucs.py', 'roformer.py'] as const;
+
+describe('artifact envelope parity (worker yield vs core read)', () => {
+	for (const file of ENGINE_SOURCES) {
+		test(`${file} publishes songProfile as a SIBLING of stems, not inside it`, () => {
+			const src = readFileSync(join(WORKER_SRC, file), 'utf8');
+			// The literal the engine yields. Both engines build it inline in the CompleteResult call.
+			const yielded = [...src.matchAll(/artifacts\s*=\s*\{([^}]*)\}/g)].map((m) => m[1]!);
+			expect(yielded.length).toBeGreaterThan(0);
+			const publishesAtTopLevel = yielded.some((body) => /["']songProfile["']\s*:/.test(body));
+			expect(publishesAtTopLevel).toBe(true);
+		});
+	}
+
+	test('core reads it from the top level too — no reaching through stems', () => {
+		const raw = readFileSync(join(import.meta.dir, 'worker-hub.ts'), 'utf8');
+		// Strip comments before scanning. The comment at that read site DOCUMENTS the bad path in prose,
+		// so a naive scan flags its own explanation — the same trap icons.test.ts calls out, where a
+		// guard that reds on its own documentation gets deleted within a week. Newlines are preserved so
+		// nothing else about the file shifts.
+		const hub = raw
+			.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+			.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
+		expect(hub).toContain('artifacts?.songProfile');
+		// The exact drift that shipped once. Guard the shape, not just the presence of a read.
+		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*songProfile/);
+	});
+});
+
 /** Members of a `class Name(_StrEnum)` block, by their string VALUE (`FOO = "foo"` → `foo`). */
 function pyEnumValues(src: string, className: string): string[] {
 	const start = src.indexOf(`class ${className}(_StrEnum):`);
