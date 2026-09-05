@@ -248,7 +248,7 @@ export const LYRICS_HIGHLIGHTS: readonly LyricsHighlight[] = [
 	},
 	{
 		id: 'off',
-		label: 'Just the words',
+		label: 'Just scroll',
 		granularity: 'line',
 		note: 'No highlight at all. The scrolling reel alone shows where you are.'
 	}
