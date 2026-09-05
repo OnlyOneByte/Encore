@@ -76,17 +76,31 @@ test('every phone control that sizes its own box reaches 44px', () => {
 /**
  * The specific controls that regressed before, asserted by name. A structural rule can be satisfied
  * while the exact control that broke slips through a gap in it, so these are pinned.
+ *
+ * `44px` OR `var(--tap)` satisfies each one. Pinning only the literal made this guard fight the
+ * design system it belongs to: once app.css named the standard as `--tap: 44px`, expressing a control
+ * in the token FAILED the very test that exists to enforce the token's value. A guard that punishes
+ * the correct spelling teaches people to work around it, so both forms are accepted and `--tap` is
+ * checked to still BE 44px -- which is the part that actually matters.
  */
 test('the controls that previously fell short declare 44px explicitly', () => {
 	const phone = readFileSync(join(SRC, 'routes', '+page.svelte'), 'utf8');
 	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
+	const css = readFileSync(join(SRC, 'app.css'), 'utf8');
+
+	// If --tap ever drifts off the standard, accepting it below would silently lower the bar.
+	expect(css).toMatch(new RegExp(`--tap:\\s*${TAP}px\\s*;`));
+
+	const SIZE = `(?:${TAP}px|var\\(--tap\\))`;
+	const declares = (src: string, cls: string, prop: string) =>
+		new RegExp(`\\.${cls}\\s*\\{[^}]*${prop}:\\s*${SIZE}`, 's').test(src);
 
 	// the settings gear was ~18px, under even the 24px WCAG minimum
-	expect(/\.gear\s*\{[^}]*min-(?:width|height):\s*44px/s.test(phone)).toBe(true);
+	expect(declares(phone, 'gear', 'min-(?:width|height)')).toBe(true);
 	// the readiness chips were ~30px
-	expect(/\.chip\s*\{[^}]*min-height:\s*44px/s.test(phone)).toBe(true);
+	expect(declares(phone, 'chip', 'min-height')).toBe(true);
 	// the browse disclosure is new and must not repeat the mistake
-	expect(/\.browse-toggle\s*\{[^}]*min-height:\s*44px/s.test(phone)).toBe(true);
+	expect(declares(phone, 'browse-toggle', 'min-height')).toBe(true);
 	// the settings back link was ~26px
-	expect(/\.back\s*\{[^}]*min-(?:width|height):\s*44px/s.test(settings)).toBe(true);
+	expect(declares(settings, 'back', 'min-(?:width|height)')).toBe(true);
 });

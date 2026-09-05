@@ -152,7 +152,8 @@
 		 * this shape, which is why it survived the first pass of the stage scale.
 		 */
 		padding: 22px var(--tv-safe-x) calc(var(--tv-safe-y) * 0.6);
-		background: linear-gradient(transparent, rgba(11, 11, 18, 0.9) 40%);
+		/* rgba(11,11,18,0.9) was --bg at 90%; color-mix keeps the fade on the theme's background. */
+		background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 90%, transparent) 40%);
 		display: flex;
 		align-items: center;
 		justify-content: center;
@@ -212,6 +213,7 @@
 		 * is the ONLY thing distinguishing one singer from another on a screen read from across a room —
 		 * so it gets a defined edge rather than relying on fill contrast alone.
 		 */
-		box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.25);
+		/* rgba(255,255,255,0.25) was a translucent-white ring; --ink is the theme's near-white. */
+		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 25%, transparent);
 	}
 </style>

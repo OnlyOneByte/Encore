@@ -61,9 +61,12 @@
 	}
 	.label {
 		font-size: 0.9rem;
-		overflow: hidden;
-		text-overflow: ellipsis;
-		white-space: nowrap;
+		/*
+		 * Wrap to a second line rather than clip with an ellipsis. The full label was ONLY in the
+		 * title attribute, which never fires on touch (no :hover), so a long artist or model name was
+		 * unrecoverable on a phone. Two lines keep it readable everywhere; title stays as a mouse bonus.
+		 */
+		overflow-wrap: anywhere;
 	}
 	.value {
 		/*
@@ -80,13 +83,13 @@
 	}
 	.track {
 		height: 8px;
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		background: var(--track-bg);
 		overflow: hidden;
 	}
 	.fill {
 		height: 100%;
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		background: var(--grad);
 		min-width: 2px;
 	}

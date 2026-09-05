@@ -45,15 +45,22 @@
 {#if total === 0}
 	<p class="empty">{empty}</p>
 {:else}
-	<div class="chart" role="img" aria-label="{total} sings over {calendar.length} days">
+	<!-- role=group (not img): img would make the per-day buttons presentational to AT, hiding the
+	     counts. The group carries the summary via aria-label; each column button exposes its own day. -->
+	<div class="chart" role="group" aria-label="{total} sings over {calendar.length} days">
 		{#each calendar as slot (slot.day)}
-			<div
+			<button
+				type="button"
 				class="col"
 				class:missing={slot.plays === null}
 				title={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays}`}
+				aria-label={slot.plays === null ? `${slot.day}: no plays recorded` : `${slot.day}: ${slot.plays} sings`}
 			>
 				<div class="bar" style:height="{slot.plays === null ? 0 : Math.max(6, (slot.plays / max) * 100)}%"></div>
-			</div>
+				<!-- title alone is desktop-only (no :hover on touch), so the count also lives in aria-label
+				     for AT and in this readout, revealed on tap/focus, so a phone can surface the value. -->
+				<span class="readout">{slot.plays === null ? '·' : slot.plays}</span>
+			</button>
 		{/each}
 	</div>
 	<p class="axis">
@@ -75,6 +82,47 @@
 		display: flex;
 		align-items: flex-end;
 		min-width: 3px;
+		/* Was a div; now a real button so the day is tap-/keyboard-reachable. Strip the chrome. */
+		position: relative;
+		padding: 0;
+		border: 0;
+		background: none;
+		font: inherit;
+		color: inherit;
+		cursor: pointer;
+	}
+	.readout {
+		/*
+		 * The per-day count, hidden until the column is hovered, tapped, or focused. title= is
+		 * desktop-only (touch never fires :hover), so this is the path that makes the number reachable
+		 * on a phone. opacity only — layout props in transitions are forbidden, and this needs none.
+		 */
+		position: absolute;
+		left: 50%;
+		bottom: 100%;
+		transform: translateX(-50%);
+		font-size: 0.66rem;
+		font-variant-numeric: tabular-nums;
+		color: var(--ink);
+		background: var(--card2);
+		padding: 1px 5px;
+		border-radius: var(--radius-xs);
+		pointer-events: none;
+		opacity: 0;
+		transition: opacity 0.12s ease;
+		white-space: nowrap;
+	}
+	/* :focus as well as :focus-visible, because :focus-visible is keyboard-driven and does NOT match a
+	   touch tap — without the plain :focus a phone tap focused the column and still revealed nothing,
+	   which was the whole point of moving the count out of title=. */
+	.col:hover .readout,
+	.col:focus .readout,
+	.col:focus-visible .readout {
+		opacity: 1;
+	}
+	.col:focus-visible {
+		outline: 2px solid var(--accent);
+		outline-offset: 2px;
 	}
 	.bar {
 		width: 100%;
@@ -90,6 +138,8 @@
 	 * while letting the actual plays carry the shape.
 	 */
 	.missing .bar {
+		/* !important is load-bearing: the bar carries an inline style:height (0 for a missing day),
+		   and only !important lets this stylesheet rule beat that inline value to draw the 2px tick. */
 		height: 2px !important;
 		background: var(--line);
 		opacity: 0.6;

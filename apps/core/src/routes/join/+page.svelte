@@ -53,6 +53,8 @@
 			bind:value={name}
 			placeholder="e.g. Maya"
 			maxlength="32"
+			autocomplete="nickname"
+			enterkeyhint="go"
 			onkeydown={(e) => e.key === 'Enter' && join()}
 		/>
 	</label>
@@ -87,9 +89,14 @@
 		color: transparent;
 	}
 	.lede { color: var(--ink-dim); margin: 6px 0 0; font-size: 0.9rem; }
-	.err { color: var(--danger); font-size: 0.9rem; }
+	/* --danger-ink (text-on-dark ink), NOT --danger (the semantic failure FILL): using the fill token
+	   as text put join's error one tap away from ProfileSheet's error in a different, wrong red. */
+	.err { color: var(--danger-ink); font-size: 0.9rem; }
 
 	.name-field { display: flex; flex-direction: column; gap: 8px; }
+	/* Eyebrow label: this exact idiom (0.78rem / 0.12em / uppercase / --ink-dim) is a THIRD copy of one
+	   in ProfileSheet (.field) and ColourPicker (.field-label). Kept local since this file owns only
+	   this copy; flagged for a later shared primitive rather than reaching into siblings. */
 	.name-label { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
 	.name-input { padding: 14px; font-size: 1.1rem; color: var(--ink); background: var(--card); }
 
