@@ -3,7 +3,18 @@
 Restructure the Python worker around a declared, one-level **plan of steps** per action, executed by a
 generic runner over a typed per-job **context**.
 
-Status: **proposed**, nothing built. Decision record — what was chosen, what was rejected, and why.
+Status: **built**, S0–S5. Decision record — what was chosen, what was rejected, and why.
+
+Shipped: the domain packages, the runtime (`Ctx` / `Step` / `LinearPlan` / `PlanRunner`), all four actions
+on declared plans, and enforcement E1–E8. **S6 (the lyrics source registry) is the one stage not built** —
+`AcquireTexts._build_sources` still hardcodes the five sources, so a source's precondition is still an
+early `return None` inside it rather than a declared requirement, and no setting can filter them.
+
+Three things the build changed from what is written below, each recorded where it matters:
+`PublishStemsIfBetter` does not exist (§5) — the outranking refusal is core-side, so the two separation
+plans coincide today. `resolve_source_audio` was deleted rather than fixed (§7 E6) — keeping a second
+implementation of "where are the bytes" would have recreated the duplication the guard exists to stop.
+And the generated doc landed in `ARCHITECTURE.md` §7.1 rather than a new file (§7 E5).
 
 ---
 

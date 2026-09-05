@@ -86,6 +86,11 @@ class StemsCtx:
     #: Encoded, publishable stems keyed by name. A stem measured as digital silence is deliberately
     #: absent rather than present-and-empty.
     published: dict[str, str] = field(default_factory=dict)
+    #: Did the vocals stem measure as digital silence? Separation can SUCCEED and write silence, and a
+    #: silent guiding track is worse than a missing one because it looks like it works. Recorded rather
+    #: than acted on immediately: the profile analysis still reads the raw vocals WAV, so a silent-vocals
+    #: song gets a present-but-empty profile and reads as cooked rather than stuck.
+    vocals_silent: bool = False
     #: Key + vocal range, or the null profile. Always written, so the cook gate can require presence.
     song_profile: dict[str, Any] | None = None
 
