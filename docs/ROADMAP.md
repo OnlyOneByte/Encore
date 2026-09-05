@@ -513,38 +513,33 @@ Two ordering constraints that are not preference:
   the whole room during a pause, which is exactly when people are looking at the screen. **AUTO** —
   the purity property is testable without a browser; **EYES-ON** to confirm the pause/defocus cycle.
 
-- [ ] **T-21 · Repair the e2e harness — it is the loop's only pair of eyes, and it is blind** —
-  **do this before any other discovery work.** `bun run e2e/party.mjs` currently aborts at its FIRST
-  assertion against a freshly-started, genuinely empty server, and it misattributes the cause:
+- [x] **T-21 · Repair the e2e harness — it is the loop's only pair of eyes, and it is blind** —
+  **done.** `bun run e2e/party.mjs` now completes 10/10 against a seeded ephemeral server.
 
-  `party.mjs:104` decides the room is fresh with
-  `document.querySelector('.url') !== null`. That class **no longer exists** — `contract.ts:77`
-  records, in its own words, that `.url` rotted and was replaced, and a live `/tv` serves
-  `class="attract"` with no `.url` anywhere in the document. So the probe times out after 4s and the
-  script prints "This flow needs an empty room… restart the server", sending the reader after a
-  server that was already empty.
+  Two claims in the original entry were wrong, and the corrections are the interesting part:
 
-  **The structural hole, which is the actual finding.** `contract.test.ts` guards selectors that come
-  *from* `contract.ts`, and 48 call sites correctly use `SEL.*`. Exactly **four** bypass it as
-  hardcoded literals, so the guard cannot see them and `bun test` stays green while the flow is dead:
+  **`.url` had not been deleted — it was on the wrong screen.** It is the LOBBY's typed join address
+  (`TvLobby.svelte`), so it renders only once somebody HAS joined. The gate was therefore *inverted*:
+  it could never pass on the fresh empty room it demanded, which is why it printed "restart the
+  server" at a server that was already empty. The attract screen's own address is `.idle-url`.
 
-  | Site | Literal | State |
-  |---|---|---|
-  | `e2e/party.mjs:104` | `.url` | **rotted — breaks the run at step one** |
-  | `e2e/party.mjs:206` | `.proc` | unguarded |
-  | `e2e/capture.mjs:314` | `.qrow` | unguarded |
-  | `e2e/capture.mjs:319` | `.sheet` | unguarded |
+  **There were eight unguarded literals, not four.** The original table missed `.hint` (a class the TV
+  renders nowhere — the ten-foot assertion measured nothing and defaulted to 0px), `.brand`, `.peek`,
+  and `#tab-${id}`; and once the guard was broadened past "must start with `.` or `#`" it found five
+  more (`video, audio` ×2 — which had already rotted once from a bare `video` — plus `h1` ×2 and
+  `body`). The guard now works by CALL SITE (any selector-taking function invoked with a string
+  literal) rather than by guessing selector syntax, because every syntactic guess was a hole.
 
-  This is the same failure the `party.mjs` header says was fixed structurally ("three selector
-  families had moved while `bun test` stayed green, because nothing in the suite ever looked at this
-  script"). It was fixed for the 48 and missed for the 4.
+  A third defect had no entry at all: the flow trusted the FIRST render for "is the room empty", but
+  `online`/`away` are filled only by the socket's `queue:sync`, so the server ships the attract screen
+  for every room — `/tv` on a server holding a leftover guest returns `attract`, `idle-url` and
+  "Nobody here yet". The gate now waits for the socket, lets the sync land, and re-checks the screen at
+  the moment of measurement so a late flip is reported as the environment problem it is.
 
-  *Done-when:* all four literals are sourced from `contract.ts`; a guard fails on any selector literal
-  in `e2e/*.mjs` that does not come from the contract, **proven by planting one**; and
-  `bun run e2e/party.mjs` completes against a seeded ephemeral server. Also verify `e2e/seed-media.mjs`
-  against the server's index: seeding into `$MEDIA_DIR` and starting with that same `MEDIA_DIR` left
-  `/api/library` empty, so the seeder's write path and the demo-catalog filter may disagree — confirm
-  before assuming the seeder works. **AUTO** — the guard and the flow are both machine-checkable.
+  Also resolved: `e2e/seed-media.mjs` is **correct**, and the suspicion against it was a misdiagnosis.
+  `/api/library` lists only songs whose stems are on disk (`app.media.listReady()`), and the four
+  placeholders have none — so an empty `/api/library` is right. The flow searches, and
+  `/api/search?q=…` returns the seeded tracks.
 
 - [ ] **T-22 · Rebase the lyrics text-size scale, and let it go much further** — today's **80%** should
   become the new **100%**, and the range should allow a far bigger change than it does.

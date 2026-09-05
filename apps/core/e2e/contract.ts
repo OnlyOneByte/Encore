@@ -57,7 +57,20 @@ export const SEL = {
 	sing: '.row .sing',
 	queueRow: '.qrow',
 	queueTitle: '.qrow .t',
+	/*
+	 * A song cooking in the rotation. ProcessingCard renders `class="qrow proc ..."`, so `.proc` is a
+	 * SUBSET of `.qrow`, not a sibling of it — the flow's `queued + processing > 0` therefore
+	 * double-counts a cooking card. Harmless for an existence check, and named here so nobody later
+	 * reads an exact total off the pair.
+	 */
+	processing: '.proc',
 	browseToggle: '.browse-toggle',
+
+	// ── the pull-up queue sheet (capture drives the transport through it) ──
+	/** The sheet surface; `.open` on it is what says the pull-up actually pulled up. */
+	sheet: '.sheet',
+	/** The grab handle. ArrowUp on it is the documented open gesture, and where the transport lives. */
+	peek: '.peek',
 
 	// ── transport (in the queue sheet's peek) ─────────────────────────────
 	play: { role: 'button' as const, name: 'play/pause' },
@@ -65,6 +78,38 @@ export const SEL = {
 	restart: { role: 'button' as const, name: 'restart' },
 
 	// ── TV ────────────────────────────────────────────────────────────────
+	/*
+	 * THE EMPTY-ROOM STAGE, and the three things asserted on it.
+	 *
+	 * `.attract` is the state itself. It is what "the room is empty" should have been keyed on all
+	 * along: the flow used to wait for `.url`, which is the LOBBY's typed address (TvLobby.svelte) and
+	 * therefore appears only once somebody HAS joined. The gate was inverted — it could not pass on the
+	 * fresh empty room it demanded, and its failure message blamed leftover guests for the one
+	 * condition that would have satisfied it.
+	 *
+	 * The attract screen's own address is `.idle-url` and its instruction is `.idle-head`, and BOTH
+	 * live behind the reachable-origin branch: when the advertised address is loopback or a bare
+	 * hostname the TV replaces the QR block with `.badqr` (correctly — a QR to an unroutable address is
+	 * a working-looking dead end). So `.badqr` is part of the contract too, because it is how the flow
+	 * tells "the origin is not routable" apart from "someone already joined" instead of reporting one
+	 * as the other.
+	 */
+	/** The TV's socket indicator. `.on` appears when the WebSocket opens, which is the only barrier the
+	 *  flow has before the room state it renders can be believed. */
+	tvConnected: '.status.on',
+	attract: '.attract',
+	joinAddress: '.idle-url',
+	stageHeadline: '.idle-head',
+	/** The wordmark whose inset proves stage chrome clears the overscan region. */
+	stageBrand: '.brand',
+	badQr: '.badqr',
+	/** The TV's master/guide media elements. An <audio> carries the instrumental, so a bare `video`
+	 *  selector read -1 forever and every playing frame in the gallery was silently skipped. */
+	mediaEl: 'video, audio',
+	/** A page's landmark heading — capture waits on it to know a route has painted. */
+	pageHeading: 'h1',
+	/** Everything rendered, for an assertion about whether a screen says ANYTHING at all. */
+	pageBody: 'body',
 	lowerThird: '.lower-third',
 	nowSong: '.ls-song',
 	nowName: '.ls-name',
@@ -91,6 +136,15 @@ export const SEL = {
 	 * visible labels are similar ("Off" appears in four different pickers).
 	 */
 	setting: (id: string) => `#${id}`,
+	/**
+	 * A settings SCOPE tab, by id. Capture drives the real tab rather than navigating to `?tab=`, so
+	 * the control that gates every setting below it is exercised too. The ids are template-interpolated
+	 * in the source (`id="tab-{t.id}"`), so there is no `id="tab-you"` to grep for and no id list is
+	 * kept here — a hand-kept copy of the page's `TABS` registry is exactly the duplicated vocabulary
+	 * this repo keeps getting wrong. What is asserted instead is this helper's FORMAT against the
+	 * page's own interpolated attribute; see contract.test.ts.
+	 */
+	settingsTab: (id: string) => `#tab-${id}`,
 	SETTING_IDS: [
 		'join-origin',
 		'sync-mode',
@@ -201,6 +255,24 @@ export const HOOKS: Hook[] = [
 		anchor: 'class="qrow',
 		why: 'the rotation is read from .qrow to compare order across phones'
 	},
+	{
+		id: 'processing',
+		file: 'src/lib/components/ProcessingCard.svelte',
+		anchor: '.proc',
+		why: 'a cooking song holds its rotation slot; .proc is a subset of .qrow, so either class proves it'
+	},
+	{
+		id: 'sheetSurface',
+		file: 'src/lib/components/QueueSheet.svelte',
+		anchor: 'class="sheet-surface sheet"',
+		why: 'capture waits for .sheet.open to know the pull-up actually opened before it shoots it'
+	},
+	{
+		id: 'peekHandle',
+		file: 'src/lib/components/QueueSheet.svelte',
+		anchor: 'class="peek"',
+		why: 'the grab handle capture sends ArrowUp to; the transport lives inside it'
+	},
 
 	// transport
 	{
@@ -223,6 +295,37 @@ export const HOOKS: Hook[] = [
 	},
 
 	// TV
+	/*
+	 * The attract screen and the two pieces of type the flow measures on it, anchored to the FILE and
+	 * not merely to the class. That distinction is the whole lesson of the `.url` rot: `.brand` is
+	 * rendered by BOTH tv/+page.svelte and TvLobby.svelte, so a check that only asks "does any source
+	 * carry this class" stays green when the attract screen loses it and the lobby keeps it — which is
+	 * the exact shape of the bug that made the flow assert the lobby's address against the empty room.
+	 */
+	{
+		id: 'attract',
+		file: 'src/routes/tv/+page.svelte',
+		anchor: 'class="attract"',
+		why: 'the empty-room stage; the flow gates on THIS to know the room is fresh, not on the lobby address'
+	},
+	{
+		id: 'joinAddress',
+		file: 'src/routes/tv/+page.svelte',
+		anchor: 'class="idle-url"',
+		why: 'the typed join address on attract — the flow asserts it is legible at ten feet'
+	},
+	{
+		id: 'stageHeadline',
+		file: 'src/routes/tv/+page.svelte',
+		anchor: 'class="idle-head"',
+		why: 'the attract instruction; the flow asserts it clears the ten-foot floor'
+	},
+	{
+		id: 'stageBrand',
+		file: 'src/routes/tv/+page.svelte',
+		anchor: 'class="brand"',
+		why: 'the wordmark whose inset proves stage chrome clears the overscan region'
+	},
 	{
 		id: 'lowerThird',
 		file: 'src/routes/tv/+page.svelte',
