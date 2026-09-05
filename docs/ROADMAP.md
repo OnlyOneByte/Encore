@@ -490,11 +490,14 @@ Parked deliberately. These return only if the owner says so.
   `SOURCE_MANUAL` already reserved in `lyrics_chain.py` for it to populate. Needs a core endpoint +
   phone UI + storage, so it is a feature, not a commit.
 - **Lossless source audio via trackers/Spotify** (`flacfetch`) — see above; the owner's call.
-- **Scoring, redesigned from scratch** — the original implementation was REMOVED (see below). A
-  redesign is scoped: derive a per-word note grid from the vocals stem + align timings, DTW-align the
-  singer, score multi-axis with pitch as ~half. Blocked on the capture problem: a phone mic in a loud
-  room hears the backing track, and every credible system solves that with hardware, not software.
-  Carries the **v0.3.0 (scoring)** tag if revived.
+- **Scoring, redesigned from scratch** — the original implementation was REMOVED (see below). The
+  research behind the redesign is written up in
+  [`docs/research/scoring.md`](research/scoring.md): derive a per-word note grid from the vocals stem
+  + align timings (the `KeyAndRange` step is the precedent — same domain, same plan, no extra
+  separation), DTW-align the singer, score multi-axis with pitch as ~half, and let a room setting pick
+  a TIER rather than on/off. Blocked on the capture problem: a phone mic in a loud room hears the
+  backing track, and every credible system solves that with hardware, not software. Carries the
+  **v0.3.0 (scoring)** tag if revived.
 - **VBR or mono for the vocals stem** — it is CBR 192k today, so silence costs the same as singing.
 - **Re-encoding `audio/`** — still ~494 MB of pre-policy WAV. It is the only **unrecoverable** class,
   so touching it is the owner's call.
