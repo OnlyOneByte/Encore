@@ -19,6 +19,7 @@
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
+	import { isAutoTranscribed } from '$lib/tv/lyrics';
 	import { cookStageLabel } from '$lib/cook-phrasing';
 
 	let { data } = $props();
@@ -424,6 +425,21 @@
 		return m ? chosenCandidate(m) : null;
 	});
 	/*
+	 * Whether those words are a machine's guess.
+	 *
+	 * The reel tints an unverified line amber; this drives the short label naming why, which lives in
+	 * the now-singing block rather than floating centre-bottom as it used to. Unknown provenance (a
+	 * pre-candidate artifact) is NOT unverified — we will not assert either way about text we cannot
+	 * trace, so a missing provenance renders exactly like verified text.
+	 */
+	const lyricsUnverified = $derived(isAutoTranscribed(lyricsProvenance));
+	/*
+	 * The join address without its scheme. Someone reading this off a wall types the host and the path;
+	 * "http://" is nine characters of noise on the least readable thing on the screen. The QR still
+	 * carries the full URL, so nothing is lost — only shown differently.
+	 */
+	const joinShort = $derived(data.joinUrl.replace(/^https?:\/\//, ''));
+	/*
 	 * Whether the join QR advertises an address no phone can reach.
 	 *
 	 * `data.joinOrigin` is derived from the request host, so opening /tv ON the serving machine puts a
@@ -529,23 +545,33 @@
 	/>
 
 	{#if screen === 'attract'}
-		<!-- attract: nobody here yet — the QR is the only thing to do, so it owns the screen -->
+		<!--
+			NOBODY HAS JOINED. Structurally the same screen as the lobby: wordmark, one instruction, the
+			QR, the typed fallback beneath it, and a strip along the bottom. Only the instruction and
+			what the strip carries differ — the lobby lists who is here, this lists what to do. Before,
+			this screen stacked the QR beside its copy and had no bottom row at all, which made it the
+			one state that did not look like its sibling and the one with an empty lower third.
+		-->
 		<div class="attract">
-			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
-			<div class="join">
-				<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size="var(--tv-qr)" unreachable={joinUnreachable} />
-				{#if !joinUnreachable}
-					<div class="join-copy">
-						<h1>Scan to join the party</h1>
-						<p class="url">{data.joinUrl}</p>
-						<p class="hint">Pick a name, queue a song, grab the mic.</p>
-					</div>
+			<div class="idle">
+				<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
+				{#if joinUnreachable}
+					<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size="var(--tv-qr)" unreachable={true} />
+				{:else}
+					<h1 class="idle-head">Scan to <span class="grad">join the party</span></h1>
+					<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size="var(--tv-qr)" unreachable={false} />
+					<!-- The typed fallback for a camera that will not scan. PRIMARY content here, so it
+					     takes its own tier rather than the corner-chrome one. -->
+					<p class="idle-url">{joinShort}</p>
 				{/if}
+			</div>
+			<div class="idle-strip">
+				<span class="is-label">Nobody here yet</span>
+				<span class="is-copy">Pick a name, pick a song, grab the mic</span>
 			</div>
 		</div>
 	{:else if screen === 'lobby'}
 		<!-- People ARE here, nothing queued — name them and say what we're waiting for -->
-		<div class="brand brand-float"><Icon name="mic" /> <span class="grad">Encore</span></div>
 		<TvLobby
 			qrDataUrl={data.qrDataUrl}
 			joinUrl={data.joinUrl}
@@ -555,23 +581,51 @@
 			unreachable={joinUnreachable}
 		/>
 	{:else}
-		<!-- now-playing lower-third -->
+		<!--
+			WHO IS SINGING — bottom-left, and no longer a card.
+
+			It was a near-opaque violet→pink slab, which is what made the stage read as furniture rather
+			than a stage: a filled panel over the room's chosen background (a gradient, the singer's own
+			colour, or an animated visualiser) amputates the feature they picked. Three independent
+			designers, working from the requirements with no sight of this file, all set this information
+			as plain text directly on the backdrop instead. Contrast comes from a painted scrim plus a
+			text-shadow, which also sidesteps `backdrop-filter` being unreliable on TV browsers — the
+			blur that was supposed to rescue the translucent version may never run at all.
+
+			The class name and the ResizeObserver binding stay: `--tv-chrome-h` is measured from this
+			element, and losing the card does not change that the reel must clear whatever it occupies.
+		-->
 		<div class="lower-third" bind:this={lowerThirdEl}>
-			<span class="ls-label">Now singing</span>
-			<span class="ls-name">{singerName(current?.singerId)}</span>
-			<span class="ls-song">{nowPlayingDisplay.title}</span>
-			<!-- Artist only when a confident parse produced one — never the uploader. -->
-			{#if nowPlayingDisplay.artist}<span class="ls-artist">{nowPlayingDisplay.artist}</span>{/if}
-			<!-- The sounding key + how far it is transposed. Only rendered when the cook found a
-			     trustworthy key; muted like the eyebrow so it reads as metadata, not a heading. It lives in
-			     the card because all four screen corners are already occupied (brand top-left, status
-			     top-right, score/lyrics centre, join QR bottom-right) — the card is the only free space, and
-			     it is capped at 46vw so this extra line cannot grow it into the QR.
-			     NOTE the card can now reach five lines (eyebrow, singer, two-line title, artist, key). It is
-			     bottom-anchored and grows UPWARD, so it cannot reach the QR, but a fixed bottom band is
-			     being reserved for these cards — worth an eyes-on at 1080p before trusting the worst case. -->
+			<span class="ls-name"
+				><span class="ls-dot" style="--singer: {currentSingerColor ?? 'var(--accent2)'}"
+				></span>{singerName(current?.singerId)}</span
+			>
+			<!--
+				Artist only when a confident parse produced one — never the uploader. Inline with the title
+				rather than its own row: it disambiguates a cover, it does not identify the song, so it
+				reads as a suffix. The separator carries its own NBSP because Svelte collapses the leading
+				space next to a tag boundary — which shipped as "Mr. Brightside· The Killers" until an
+				eyes-on frame caught it.
+			-->
+			<span class="ls-song"
+				>{nowPlayingDisplay.title}{#if nowPlayingDisplay.artist}<span class="ls-artist"
+						>{'\u00a0· '}{nowPlayingDisplay.artist}</span
+					>{/if}</span
+			>
+			<!-- The sounding key + how far it is transposed, when the cook found a trustworthy one. -->
 			{#if keyLine}
 				<span class="ls-key">{keyLine}</span>
+			{/if}
+			<!--
+				WHERE THESE WORDS CAME FROM. The reel tints an auto-transcribed line amber, and that tint
+				is what the singer actually reads the meaning off; this line only has to name why the
+				words look different. It replaces a full-width letter-spaced sentence that used to float
+				centre-bottom, where it landed in the gutter between the two bottom corners and read as
+				debris. In flow inside this block it cannot overlap anything, and it is about THIS song,
+				which is what this block is about.
+			-->
+			{#if lyricsUnverified}
+				<span class="ls-asr">Auto-Transcribed lyrics</span>
 			{/if}
 			{#if tvProgressStyle === 'card'}
 				<TvProgress style="card" elapsedSec={positionSec} {durationSec} />
@@ -580,12 +634,30 @@
 		{#if tvProgressStyle !== 'card'}
 			<TvProgress style={tvProgressStyle} elapsedSec={positionSec} {durationSec} />
 		{/if}
+		<!--
+			WHOSE TURN IS NEXT — top-right, and permanent.
+
+			The stage never carried this: the song-intro card names the next singer for a couple of
+			seconds and then it is gone, so someone waiting their turn had nothing to look at all song.
+			Offset below the connection dot rather than beside it, in vh so the clearance holds at any
+			resolution.
+		-->
+		{#if upNext && upNext.id !== current?.id}
+			{@const nextMedia = mediaOf(upNext)}
+			<div class="upnext">
+				<span class="un-label">Up next</span>
+				<span class="un-name"
+					><span class="un-dot" style="--singer: {singers.get(upNext.singerId)?.color ?? 'var(--ink-dim)'}"
+					></span>{singerName(upNext.singerId)}</span
+				>
+				<span class="un-song">{songDisplay(nextMedia).title}</span>
+			</div>
+		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
 		<JoinBadge
 			qrDataUrl={data.qrDataUrl}
 			joinUrl={data.joinUrl}
 			placement="corner"
-			onlineCount={online.length + away.length}
 			unreachable={joinUnreachable}
 		/>
 	{/if}
@@ -702,46 +774,128 @@
 	.stage-bg.shown { opacity: 1; }
 	.attract {
 		position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-		justify-content: center; gap: 48px; z-index: 5;
+		justify-content: center; z-index: 5;
 		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
 	.brand {
 		position: absolute; top: var(--tv-safe-y); left: var(--tv-safe-x);
 		font-weight: 800; font-size: var(--tv-name); display: inline-flex; align-items: center; gap: 12px;
 	}
-	/* the lobby paints its own full-bleed backdrop; the brand floats on the chrome layer above it */
-	.brand-float { z-index: 7; }
 	.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
-	.join { display: flex; align-items: center; gap: 56px; }
-	.join-copy h1 { font-size: var(--tv-hero); margin: 0 0 12px; max-width: 9ch; line-height: 1.05; }
 	/*
-	 * The URL is the fallback when a camera will not scan, so someone is typing it from across the room.
-	 * It was 22px — the least readable thing on a screen whose entire job is to be joined.
+	 * THE IDLE STACK, shared in shape by both idle screens: wordmark, one instruction, the QR, the typed
+	 * fallback. Centred as a column so the QR is centred on the screen and the URL reads as its caption
+	 * — the two are the same object at both scales, which is what makes the corner version during a song
+	 * legible as the same thing shrunk.
 	 */
-	.url { font-size: var(--tv-body); color: var(--accent2); margin: 0 0 16px; overflow-wrap: anywhere; }
-	.hint { font-size: var(--tv-label); color: var(--ink-dim); margin: 0; }
+	.idle {
+		display: flex; flex-direction: column; align-items: center; text-align: center;
+	}
+	/* In flow here, not pinned to the corner: on the idle screens the wordmark heads the stack. */
+	.idle .brand { position: static; font-size: var(--tv-name); }
+	/*
+	 * The rhythm is deliberately UNEVEN — wordmark, a beat, the instruction, a bigger beat, then the
+	 * thing you point a phone at — so it cannot come from one flex `gap`, which would force all three
+	 * intervals equal. Both in vh so the proportions hold at 720p and 4K instead of being right at one
+	 * size.
+	 *
+	 * The instruction sits at --tv-hero, well below the sung-lyric tier: it is read once, not sung
+	 * along to, and taking it down is what pays for the room above the QR.
+	 */
+	.idle-head {
+		font-size: var(--tv-hero); font-weight: 900; line-height: 1.04; margin: 5.2vh 0 0;
+		max-width: 22ch;
+	}
+	.idle :global(.hero) { margin-top: 6.2vh; }
+	.idle-url {
+		font-size: var(--tv-joinurl); font-weight: 800; color: var(--ink);
+		margin: 3vh 0 0; overflow-wrap: anywhere;
+	}
+	/*
+	 * The bottom strip. Full-bleed background so it reaches the panel edge, content inset with the
+	 * safe-area tokens because that is what keeps it out of the overscan crop — the same shape as the
+	 * lobby's roster strip, and the reason both idles have an occupied lower third instead of one of
+	 * them trailing off into black.
+	 */
+	.idle-strip {
+		position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
+		display: flex; align-items: baseline; justify-content: center; gap: 1.2em; flex-wrap: wrap;
+		padding: 2vh var(--tv-safe-x) var(--tv-safe-y);
+		background: linear-gradient(0deg, rgba(3, 3, 8, 0.9), rgba(3, 3, 8, 0));
+	}
+	.is-label { font-size: var(--tv-eyebrow); letter-spacing: 0.2em; text-transform: uppercase;
+		color: var(--ink-dim); font-weight: 700; }
+	.is-copy { font-size: var(--tv-body); font-weight: 600; }
 	.lower-third {
-		/* Capped: unbounded, a long title or singer name grew this card rightward into the join QR at
+		/* Capped: unbounded, a long title or singer name grew this rightward into the join QR at
 		   bottom-right. 46vw leaves the QR its corner on every aspect ratio. */
 		position: absolute; left: var(--tv-safe-x); bottom: var(--tv-safe-y); z-index: 7;
 		display: flex; flex-direction: column;
 		max-width: 46vw;
-		gap: 4px; padding: 16px 28px; border-radius: 16px;
+		gap: 2px;
 		/*
-		 * Near-opaque, not a 0.7 tint. This card sits over arbitrary video, so translucency put its
-		 * white text at a contrast ratio nothing could predict — and backdrop-filter is unreliable on TV
-		 * browsers, so the blur that was supposed to rescue it may never run at all.
+		 * NO CARD. No background, no padding, no border-radius, no backdrop-filter — see the markup
+		 * comment for why. Legibility over arbitrary video comes from the text-shadow below, which is
+		 * the same device the lyrics reel already uses and which works on every TV browser.
 		 *
-		 * LEGITIMATE LITERAL EXCEPTION (kept, per the token sweep): these are NOT --grad. --grad is
-		 * decoration-only and white text on it measures 2.84:1 (app.css) — below the 3:1 floor. These
-		 * two stops are --accent/--accent2 deliberately DARKENED (88,62,200 vs accent 124,92,255) so
-		 * white reads over them AND over the video behind them. This is the contrast-critical text-over-
-		 * video case the sweep exempts; converting it to var(--grad) would reintroduce the contrast bug.
+		 * Dropping the fill also drops the reason the block was capped in height: it no longer reads as
+		 * an object that can collide with the QR, only as text that must not run into it.
 		 */
-		background: linear-gradient(120deg, rgba(88, 62, 200, 0.96), rgba(190, 55, 130, 0.94));
-		backdrop-filter: blur(6px);
+		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
 	}
-	.ls-label { font-size: var(--tv-label); letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.92; }
+	/* The singer's own colour, as a dot rather than a fill. It is their identity everywhere else in
+	   the app, and a dot carries that at a size that cannot compete with the words. */
+	.ls-dot {
+		display: inline-block; width: 0.52em; height: 0.52em; border-radius: 50%;
+		margin-right: 0.42em; vertical-align: baseline;
+		/* --singer, not an inline background: the colour has to be composable (a glow, a border, a
+		   gradient stop) and singer-color.test.ts enforces the custom-property form. */
+		background: var(--singer);
+	}
+	.ls-name { font-size: var(--tv-name); font-weight: 800; line-height: 1.05;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	/*
+	 * Clamp the title to two lines. An UNPARSED long raw title (no canonical title to shorten it) would
+	 * otherwise grow the block upward without bound. -webkit-line-clamp is the only cross-browser
+	 * two-line clamp; it needs the -webkit box display and hidden overflow to take effect.
+	 */
+	.ls-song {
+		font-size: var(--tv-body); font-weight: 600;
+		display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+		overflow: hidden;
+	}
+	/* Secondary to the title: it disambiguates rather than identifies, so it stays dimmer. */
+	.ls-artist { color: var(--ink-dim); font-weight: 500; }
+	/* Metadata, not a heading. */
+	.ls-key { font-size: var(--tv-label); color: var(--ink-dim); font-weight: 600; letter-spacing: 0.04em; }
+	/*
+	 * The provenance label, in the caution family so it matches the amber tint the reel puts on the
+	 * words themselves. Not uppercase and not letter-spaced: it is a short label read once, and the
+	 * tracked-out version of this string is precisely what read as debris before.
+	 */
+	.ls-asr { font-size: var(--tv-label); color: var(--warn); font-weight: 700; }
+
+	/*
+	 * UP NEXT — top-right, dim, and small. It answers "am I soon?" for the one person who needs it and
+	 * must not compete with the words for anyone else, so it sits at the eyebrow/label tier.
+	 *
+	 * Offset below the connection dot with a vh term rather than a pixel nudge, so the clearance scales
+	 * with the panel instead of being correct only at 1080p.
+	 */
+	.upnext {
+		position: absolute; right: var(--tv-safe-x); top: calc(var(--tv-safe-y) + 2.6vh); z-index: 7;
+		display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
+		max-width: 32vw; text-align: right;
+		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
+	}
+	.un-label { font-size: var(--tv-eyebrow); letter-spacing: 0.18em; text-transform: uppercase;
+		color: var(--ink-dim); font-weight: 700; }
+	.un-name { font-size: var(--tv-body); font-weight: 800;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 32vw; }
+	.un-dot { display: inline-block; width: 0.5em; height: 0.5em; border-radius: 50%;
+		margin-right: 0.4em; background: var(--singer); }
+	.un-song { font-size: var(--tv-label); color: var(--ink-dim); font-weight: 600;
+		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 32vw; }
 	.ls-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--tv-name); font-weight: 800; }
 	/*
 	 * Clamp the title to two lines. An UNPARSED long raw title (no canonical title to shorten it) would
@@ -764,13 +918,27 @@
 	.interstitial {
 		position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center;
 		justify-content: center; gap: 12px;
-		/* rgba(11,11,18,0.94) was --bg at 94%. color-mix keeps the theme swap intact. */
-		background: color-mix(in srgb, var(--bg) 94%, transparent);
+		/*
+		 * A SCRIM, not a wash. This was --bg at 94%, which blanked the room's chosen backdrop — a
+		 * gradient, the singer's colour, or an animated visualiser — for every song change and every
+		 * cook hold. That is the black-flash class of problem the background layer is deliberately gated
+		 * on `!isAttract` to avoid, undone one layer up. Dark in the middle where the words go, clear at
+		 * the edges so the corner chrome and the backdrop stay visible underneath: the state reads as
+		 * something happening ON the stage rather than as a different screen.
+		 *
+		 * The error state overrides this back to near-opaque — see below.
+		 */
+		background: radial-gradient(
+			70% 55% at 50% 50%,
+			color-mix(in srgb, var(--bg) 88%, transparent) 0%,
+			color-mix(in srgb, var(--bg) 62%, transparent) 62%,
+			transparent 100%
+		);
 		padding: var(--tv-safe-y) var(--tv-safe-x);
 		text-align: center;
 	}
-	.up-label { font-size: var(--tv-label); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
-	.up-name { font-size: var(--tv-hero); font-weight: 800; }
+	.up-label { font-size: var(--tv-eyebrow); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
+	.up-name { font-size: var(--tv-hero); font-weight: 900; line-height: 1.02; }
 	.up-song { font-size: var(--tv-name); }
 	/* Secondary to the title: it disambiguates rather than identifies, so it must not compete with it. */
 	.up-artist { font-size: var(--tv-body); color: var(--ink-dim); margin-top: 6px; }
@@ -780,8 +948,14 @@
 	/* Affirmative: something good is about to happen. */
 	.state-next .up-song { color: var(--accent2); }
 
-	/* Failure. Distinct family AND a distinct eyebrow, so colour is not the only carrier.
-	   rgba(42,27,34,0.95) was --danger-bg at 95%; color-mix keeps it themeable. */
+	/*
+	 * Failure — and the ONE state that keeps the full opaque wash.
+	 *
+	 * A skip is rare, urgent and must be unmissable, and demoting it to a scrim beside a cheerful
+	 * now-singing block is exactly the "cannot tell a failure from a normal song change" bug this
+	 * surface already fixed once. Distinct family AND a distinct eyebrow, so colour is not the only
+	 * carrier. rgba(42,27,34,0.95) was --danger-bg at 95%; color-mix keeps it themeable.
+	 */
 	.state-error { background: color-mix(in srgb, var(--danger-bg) 95%, transparent); }
 	.state-error .state-mark { color: var(--danger); }
 	.state-error .up-label { color: var(--danger-ink); }

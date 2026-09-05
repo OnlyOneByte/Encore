@@ -388,7 +388,19 @@ export const SONG_INTRO_STEP_MS = 500;
 
 export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	queueOrder: DEFAULT_QUEUE_ORDER,
-	tvProgressStyle: 'card',
+	/*
+	 * `edge` — a hairline along the bottom of the panel — rather than `card`.
+	 *
+	 * `card` meant "the bar and the clock live inside the now-singing card", and there is no card any
+	 * more: the now-singing block is plain text on the backdrop, because a filled panel covered the
+	 * room's chosen background. `card` still WORKS (the block renders the clock row inline, so the
+	 * setting keeps its meaning rather than silently becoming something else) but it is no longer the
+	 * right default: the edge hairline states elapsed time without adding a numeric row to a block whose
+	 * whole point is that it is quiet.
+	 *
+	 * Existing rooms are untouched — this is the default for a room that has never chosen.
+	 */
+	tvProgressStyle: 'edge',
 	// `off` so an existing box looks byte-identical after the migration: today's TV is plain black
 	// behind the song, and a default that changed the stage would be a surprise, not a feature.
 	tvBackgroundStyle: 'off',

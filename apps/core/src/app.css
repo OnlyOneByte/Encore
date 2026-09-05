@@ -115,14 +115,37 @@
 	/* 6vh (64.8px at 1080p), not 5vh: the old max(32px,5vh) resolved to exactly 54px, sitting right on
 	   the ~5% overscan boundary with zero margin, while --tv-safe-x (5vw ≈ 96px) had ample room. */
 	--tv-safe-y: max(40px, 6vh);
-	/* eyebrows, hints, secondary lines */
-	--tv-label: clamp(26px, 2.6vh, 40px);
-	/* song titles, and the join URL a guest may have to read out or type */
-	--tv-body: clamp(32px, 3.4vh, 52px);
+	/*
+	 * TWO LADDERS, NOT ONE. The reel and the corner chrome were sharing tiers, so shrinking the corners
+	 * (the stage was reading as a dashboard: singer name at 54px, title at 35px, competing with the
+	 * words) also shrank the lyric context rows, and enlarging the words also enlarged the furniture.
+	 * They are split here so each can be tuned against what it is for: the reel is READ AND SUNG, the
+	 * corners are GLANCED AT. Every minimum is still at or above the ten-foot floor.
+	 */
+	/* THE REEL. The sung line is the reason the screen exists, so it is the largest thing on it — but
+	   not so large it wraps to three rows, which pushed the marked word off the optical centre.
+	   Every row uses this ONE size: the rows are differentiated by colour, not scale. That is what
+	   keeps the reel's scroll arithmetic exact — measureReel() derives its asymmetry bias from a row
+	   height, so a second row tier would make that bias wrong whenever a room ran an asymmetric
+	   linesBefore/linesAfter. Colour already separates sung / singing / coming. */
+	--tv-lyric: clamp(48px, 8.4vh, 210px);
+	/* THE CORNERS. Sized DOWN from the reel on purpose — see the ladder note above. */
+	/* eyebrow labels ("Now singing", "Up next", "In the room") */
+	--tv-eyebrow: clamp(16px, 1.5vh, 36px);
+	/* key, clock, and other edge metadata */
+	--tv-label: clamp(20px, 2vh, 50px);
+	/* song titles, and the corner join URL */
+	--tv-body: clamp(24px, 2.5vh, 62px);
 	/* who is singing */
-	--tv-name: clamp(44px, 5vh, 76px);
-	/* the one thing on an otherwise empty screen */
-	--tv-hero: clamp(56px, 7vh, 108px);
+	--tv-name: clamp(26px, 3.4vh, 84px);
+	/*
+	 * The idle screens' join URL. Its own tier because it is PRIMARY content there — the typed fallback
+	 * for a phone whose camera will not scan — while the same URL in the playback corner is chrome. One
+	 * token for both would force a choice between an unreadable fallback and inflated corner furniture.
+	 */
+	--tv-joinurl: clamp(26px, 3.4vh, 86px);
+	/* the one thing on an otherwise empty screen: the idle headline, and whose turn it is */
+	--tv-hero: clamp(40px, 5.6vh, 140px);
 	/*
 	 * The hero join QR, sized in vmin so it GROWS with the panel. The old fixed 320px (attract) / 238px
 	 * (lobby) meant the code stayed a phone-sized square on a 4K wall while everything around it scaled
