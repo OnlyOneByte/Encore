@@ -53,6 +53,24 @@ export interface MediaStore {
 	exists(ref: string): Promise<boolean>;
 	/** Read the bytes (used by the /media proxy for object stores; the worker pulls the source). */
 	get(ref: string): Promise<ReadableStream | null>;
+	/**
+	 * Byte size of the stored object, or null when it is absent or the size cannot be known.
+	 *
+	 * OPTIONAL because it is a capability, not a requirement: the `/media` route serves HTTP byte
+	 * ranges only for a store that can answer both this and `getRange`, and degrades to a plain full
+	 * `200` for one that cannot. Range support is what makes a media element seekable, and what makes
+	 * WebKit play at all — see media/http-range.ts.
+	 */
+	size?(ref: string): Promise<number | null>;
+	/**
+	 * Read an INCLUSIVE byte range. `start`/`end` are already validated against the real size by the
+	 * caller, so an implementation may assume `0 <= start <= end < size`.
+	 *
+	 * May return a `Blob` rather than a stream, and SHOULD when it can: a `Response` built from a Blob
+	 * carries a `Content-Length`, while one built from a `ReadableStream` is sent chunked with none.
+	 * Media elements use that length to know the resource size without decoding to the end.
+	 */
+	getRange?(ref: string, start: number, end: number): Promise<ReadableStream | Blob | null>;
 	/** Write bytes (the worker pushes stems/lyrics). */
 	put(ref: string, data: Uint8Array | ReadableStream | Blob): Promise<void>;
 	/**
@@ -86,6 +104,27 @@ export class LocalMediaStore implements MediaStore {
 		if (!abs) return null;
 		const file = Bun.file(abs);
 		return (await file.exists()) ? file.stream() : null;
+	}
+
+	/** `BunFile` is a `Blob`, so the size is a stat away — no read. Null for absent/unsafe refs. */
+	async size(ref: string): Promise<number | null> {
+		const abs = this.#abs(ref);
+		if (!abs) return null;
+		const file = Bun.file(abs);
+		return (await file.exists()) ? file.size : null;
+	}
+
+	/**
+	 * A slice of the file, as a Blob so the response carries a `Content-Length`. `Blob.slice` takes an
+	 * EXCLUSIVE end, while HTTP ranges are inclusive — hence `end + 1`. Getting that wrong drops the
+	 * final byte of every chunk, which a decoder reports as a corrupt stream rather than a short read.
+	 */
+	async getRange(ref: string, start: number, end: number): Promise<Blob | null> {
+		const abs = this.#abs(ref);
+		if (!abs) return null;
+		const file = Bun.file(abs);
+		if (!(await file.exists())) return null;
+		return file.slice(start, end + 1);
 	}
 
 	async put(ref: string, data: Uint8Array | ReadableStream | Blob): Promise<void> {

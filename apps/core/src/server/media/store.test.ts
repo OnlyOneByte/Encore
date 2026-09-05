@@ -87,6 +87,58 @@ test('LocalMediaStore refuses an unsafe ref on put and returns null on get/exist
 	expect(store.url('stems/ok.wav')).toBe('/media/stems/ok.wav'); // local always proxies same-origin
 });
 
+// ── the range capability the /media route serves byte ranges from ──────────────────
+// `size` + `getRange` are what let the route answer `206 Partial Content`. Without them the route
+// hands a media element the whole file for a `Range: bytes=0-1` probe, and WebKit refuses to play at
+// all — see media/http-range.ts. Tested against real bytes on disk because the bug these guard is an
+// off-by-one at the slice boundary, which no amount of mocking would surface.
+
+test('LocalMediaStore.size reports the byte length, and null for absent/unsafe refs', async () => {
+	const store = new LocalMediaStore();
+	expect(await store.size('stems/x-instrumental.flac')).toBeNull(); // absent
+	await store.put('stems/x-instrumental.flac', new TextEncoder().encode('0123456789'));
+	expect(await store.size('stems/x-instrumental.flac')).toBe(10);
+	expect(await store.size('../escape.flac')).toBeNull(); // traversal, before any disk access
+	await rm(dir, { recursive: true, force: true });
+});
+
+test('LocalMediaStore.getRange treats end as INCLUSIVE, matching HTTP', async () => {
+	const store = new LocalMediaStore();
+	await store.put('stems/x-instrumental.flac', new TextEncoder().encode('0123456789'));
+	const text = async (start: number, end: number) =>
+		new Response(await store.getRange('stems/x-instrumental.flac', start, end)).text();
+
+	expect(await text(0, 1)).toBe('01'); // the WebKit probe: two bytes, not one
+	expect(await text(3, 5)).toBe('345'); // a mid-file slice keeps both endpoints
+	// The final byte is reachable — an exclusive end would drop it and read as a corrupt stream.
+	expect(await text(9, 9)).toBe('9');
+	// The whole file, which is how the route serves a full 200 with a Content-Length.
+	expect(await text(0, 9)).toBe('0123456789');
+
+	await rm(dir, { recursive: true, force: true });
+});
+
+test('LocalMediaStore.getRange returns null for an absent or unsafe ref', async () => {
+	const store = new LocalMediaStore();
+	expect(await store.getRange('stems/missing.flac', 0, 1)).toBeNull();
+	expect(await store.getRange('../escape.flac', 0, 1)).toBeNull();
+});
+
+test('LocalMediaStore.getRange hands back a Blob of exactly the range length', async () => {
+	// Blob-ness is not incidental. Bun sends a ReadableStream body chunked and DROPS an explicit
+	// content-length, so returning a stream here would silently cost the response the header a media
+	// element reads the resource size from; a Blob lets the runtime set it from `size`. The header
+	// itself is a wire-level concern the in-process `Response` does not expose, so it is verified
+	// against a live server (`curl -D -`) rather than asserted here — what is asserted is the property
+	// the runtime derives it from.
+	const store = new LocalMediaStore();
+	await store.put('stems/x-instrumental.flac', new TextEncoder().encode('0123456789'));
+	const body = await store.getRange('stems/x-instrumental.flac', 2, 4);
+	expect(body).toBeInstanceOf(Blob);
+	expect((body as Blob).size).toBe(3); // inclusive 2..4
+	await rm(dir, { recursive: true, force: true });
+});
+
 // ── ObjectMediaStore with an in-memory fake S3 ─────────────────────────────────────
 function fakeS3(): S3Like & { store: Map<string, Blob>; presigned: string[] } {
 	const store = new Map<string, Blob>();
