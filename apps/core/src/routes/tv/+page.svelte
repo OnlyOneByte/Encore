@@ -19,6 +19,7 @@
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
+	import { cookStageLabel } from '$lib/cook-phrasing';
 
 	let { data } = $props();
 
@@ -310,6 +311,43 @@
 		};
 	});
 
+	/*
+	 * FIX: MEASURE the reserved bottom chrome band instead of predicting it.
+	 *
+	 * The band the lyrics reel must not enter has to clear the lower-third card. app.css derives a
+	 * static `--tv-chrome-h` by summing the card's type tokens with a 1.2 line-box fudge and a magic
+	 * 54px — a prediction that under-counts the card's REAL height (it silently assumed a fixed row
+	 * set), so the sung line could still be covered by the "Now singing" card, and any new row added to
+	 * the card (a vocal-range line, a second progress style) re-breaks it. A ResizeObserver on the
+	 * actual rendered card reserves exactly what it occupies, whatever it renders today or tomorrow.
+	 *
+	 * The card is `position: absolute; bottom: var(--tv-safe-y)`, so the band from the screen edge is
+	 * its offset plus its measured height. We write that as `--tv-chrome-h` on `.tv`, overriding the
+	 * app.css fallback (which still applies before the first measurement and whenever the card is
+	 * absent — attract/lobby, where the reel is hidden anyway).
+	 */
+	let lowerThirdEl = $state<HTMLElement | undefined>();
+	let measuredCardPx = $state<number | null>(null);
+	$effect(() => {
+		const el = lowerThirdEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver((entries) => {
+			for (const e of entries) {
+				// borderBoxSize is the full rendered box (padding + border included), which is what the
+				// reel must clear. offsetHeight is the fallback where the array form is unsupported.
+				const box = e.borderBoxSize?.[0]?.blockSize;
+				measuredCardPx = typeof box === 'number' ? box : el.offsetHeight;
+			}
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+	// The band, as a CSS length written onto `.tv`. Null before the first measure -> undefined style ->
+	// app.css's static --tv-chrome-h fallback stands.
+	const chromeBandStyle = $derived(
+		measuredCardPx === null ? undefined : `--tv-chrome-h: calc(var(--tv-safe-y) + ${Math.ceil(measuredCardPx)}px)`
+	);
+
 	// Which surface the TV shows. Replaces the old `isAttract` (which collapsed "nobody here"
 	// and "people here, nothing queued" into one screen).
 	const screen = $derived(
@@ -423,7 +461,7 @@
 	const loadingDisplay = $derived(songDisplay(mediaOf(current)));
 </script>
 
-<div class="tv">
+<div class="tv" style={chromeBandStyle}>
 	<!--
 		z-index 0 — the stage background, beneath both player slots (1 and 2). First child so the
 		document order matches the paint order. `.tv` keeps its own black as the floor under it, which is
@@ -452,7 +490,8 @@
 		seekSec={seekSec}
 		{keyShift}
 		{guideLevel}
-		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; onFirstSongReady(); }}
+		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); }}
+		onprewarmed={() => { ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
 		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
@@ -465,7 +504,8 @@
 		seekSec={seekSec}
 		{keyShift}
 		{guideLevel}
-		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; onFirstSongReady(); }}
+		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); }}
+		onprewarmed={() => { ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
 		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
@@ -493,7 +533,7 @@
 		<div class="attract">
 			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
 			<div class="join">
-				<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size={320} unreachable={joinUnreachable} />
+				<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size="var(--tv-qr)" unreachable={joinUnreachable} />
 				{#if !joinUnreachable}
 					<div class="join-copy">
 						<h1>Scan to join the party</h1>
@@ -516,7 +556,7 @@
 		/>
 	{:else}
 		<!-- now-playing lower-third -->
-		<div class="lower-third">
+		<div class="lower-third" bind:this={lowerThirdEl}>
 			<span class="ls-label">Now singing</span>
 			<span class="ls-name">{singerName(current?.singerId)}</span>
 			<span class="ls-song">{nowPlayingDisplay.title}</span>
@@ -579,11 +619,17 @@
 			<div class="up-song">{skipNotice}</div>
 		</div>
 	{:else if transient === 'waiting'}
-		<!-- Not an error and not a transition: work in progress. Warm, and it names what is happening. -->
+		<!-- Not an error and not a transition: work in progress. Warm, and it names what is happening.
+		     The words come from cook-phrasing (the ONE guest-facing cook vocabulary, shared with the
+		     phone) so the TV and the phone describe the same pipeline state identically. The TV only
+		     knows a coarse "cooking" state, so it passes the least-committal in-flight value 'queued' —
+		     exactly as SongRow does — rather than naming a step (e.g. 'separating') it cannot know. The
+		     sub-line stays a plain reassurance, deliberately NOT the old "Stripping the vocals" (the
+		     musician's word cook-phrasing exists to retire). -->
 		<div class="interstitial state-waiting">
 			<div class="state-mark"><Icon name="flame" /></div>
-			<div class="up-label">Making the karaoke</div>
-			<div class="up-song">Stripping the vocals — hang tight</div>
+			<div class="up-label">{cookStageLabel('queued')}</div>
+			<div class="up-song">Hang tight — this takes a minute</div>
 		</div>
 	{:else if transient === 'loading'}
 		<!--

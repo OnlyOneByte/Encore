@@ -26,17 +26,20 @@ from dataclasses import dataclass, field
 from typing import Any, Protocol
 
 from .source import MAX_VARIANTS, rank_lrclib_candidates
+from ..vocabulary import TextSource, Timing
 
-# Text-source ids — must match LyricsTextSource in packages/shared/src/lyrics.ts.
-SOURCE_LRCLIB = "lrclib"
-SOURCE_CAPTIONS = "captions"
-SOURCE_ASR = "asr"
-SOURCE_MANUAL = "manual"
+# Text-source ids and timing tiers. Promoted to enums in src/vocabulary.py (TextSource, Timing) so the
+# TS↔Python guard in apps/core/src/server/jobs/vocabulary-parity.test.ts covers them — a comment saying
+# "must match LyricsTextSource" cannot fail a build; the enum can. Re-exported under the original names
+# so every importer of chain.py is unchanged, and `.value` keeps them plain strings for JSON/argv/keys.
+SOURCE_LRCLIB = TextSource.LRCLIB.value
+SOURCE_CAPTIONS = TextSource.CAPTIONS.value
+SOURCE_ASR = TextSource.ASR.value
+SOURCE_MANUAL = TextSource.MANUAL.value
 
-# Timing fidelity a source supplies UNAIDED — must match LyricsTiming in the same TS module.
-TIMING_WORD = "word"
-TIMING_LINE = "line"
-TIMING_NONE = "none"
+TIMING_WORD = Timing.WORD.value
+TIMING_LINE = Timing.LINE.value
+TIMING_NONE = Timing.NONE.value
 
 # ── ROLES: the two-tier split ─────────────────────────────────────────────────────
 #

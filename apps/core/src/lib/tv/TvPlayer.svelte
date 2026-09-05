@@ -20,7 +20,15 @@
 		seekSec?: number; // playback:state.positionSec — jump the video when the phone seeks
 		keyShift?: number; // ± semitones for a file song — selects the keyed instrumental
 		guideLevel?: number; // 0..1 — how loud the original vocals sit under the instrumental
+		// Fires ONLY while this slot is the visible one. Drives the controller's onVisibleReady, which
+		// flips `loading` -> `playing`. Gating it on visibility is load-bearing: the hidden pre-warming
+		// slot buffers a whole song ahead of time, so if it reported here it would flip the room to
+		// `playing` over the visible slot's black frame (P1). Hidden readiness has its own callback.
 		onready?: () => void;
+		// Fires when the buffer is settled REGARDLESS of visibility — the gapless pre-warm signal. The
+		// controller only acts on it when the id matches the slot it is warming, so the visible slot
+		// calling this is a documented no-op.
+		onprewarmed?: () => void;
 		onended?: () => void;
 		onerror?: () => void; // dead/unplayable media — caller should skip
 		onposition?: (sec: number, dur: number) => void;
@@ -34,6 +42,7 @@
 		keyShift = 0,
 		guideLevel = 0,
 		onready,
+		onprewarmed,
 		onended,
 		onerror,
 		onposition
@@ -98,7 +107,14 @@
 	// timed out.
 	let masterReady = $state(false);
 	let guideSettled = $state(false);
-	let announced = $state(false);
+	// Two independent latches, because the two reports mean different things and fire on different
+	// conditions. `prewarmedFired` guards the buffer-settled signal (any visibility, once per song);
+	// `visibleReadyFired` guards the visible-ready signal (only while visible). They are separate
+	// because a slot that buffers WHILE HIDDEN and is later swapped to visible must still fire
+	// onready then — a single latch shared with the pre-warm report would already be spent, and the
+	// room would flip to `playing` off a stale signal or (before this split) off the hidden slot.
+	let prewarmedFired = $state(false);
+	let visibleReadyFired = $state(false);
 	// The src the <video> currently holds; the assign effect below writes the element ONLY when this
 	// changes (see that effect for why an unconditional binding restarts the song). Declared here with
 	// the other slot state so the reset effect can clear it.
@@ -115,13 +131,44 @@
 		void media?.id;
 		masterReady = false;
 		guideSettled = false;
-		announced = false;
+		prewarmedFired = false;
+		visibleReadyFired = false;
 		currentSrc = null;
+		// FIX: tear the pitch-shift graphs down PER SONG, not just on component destroy. A graph binds a
+		// PERMANENT MediaElementAudioSourceNode to the <video>/<audio> the {#if} mounts for THIS media;
+		// when media changes the {#if} unmounts that element and mounts a fresh one, but a graph left in
+		// place is still wired to the destroyed element. The shift-wiring effect below would then see
+		// `masterGraph` already set (`!masterGraph` false) and post setShift() to a dead node — silent on
+		// the transposed song. Returning the teardown as this effect's cleanup runs it on the NEXT
+		// media?.id change, before the shift-wiring effect rebuilds, so the new element gets its own
+		// graph. This effect is registered before that one, so ordering is guaranteed. Component destroy
+		// runs the same cleanup, which is why the old destroy-only teardown is gone.
+		return () => {
+			masterGraph?.detach();
+			guideGraph?.detach();
+			masterGraph = undefined;
+			guideGraph = undefined;
+		};
 	});
 
+	// Buffer settled. Report it as a pre-warm signal on ANY slot — the controller ignores it unless the
+	// id is the one it is warming (the visible slot's call is a no-op). This is what lets the hidden
+	// slot advertise a gapless-ready next song.
 	$effect(() => {
-		if (masterReady && (guideSettled || !wantsGuide) && !announced) {
-			announced = true;
+		if (masterReady && (guideSettled || !wantsGuide) && !prewarmedFired) {
+			prewarmedFired = true;
+			onprewarmed?.();
+		}
+	});
+
+	// Visible-ready. Fires only when THIS slot is the one on screen and its buffer is settled. Because
+	// it also depends on `visible`, a slot that settled while hidden fires this the moment a gapless
+	// swap makes it visible — exactly when the room should leave `loading` for `playing`. It never
+	// fires from the hidden pre-warming slot, so a pre-buffered next song can no longer flip the room
+	// to playing over the visible slot's black frame.
+	$effect(() => {
+		if (visible && masterReady && (guideSettled || !wantsGuide) && !visibleReadyFired) {
+			visibleReadyFired = true;
 			onready?.();
 		}
 	});
@@ -197,7 +244,9 @@
 	//   • the graph resumes its own context; if it cannot (the wall was never clicked) it degrades to
 	//     audible-but-unshifted rather than to silence — handled inside PitchShiftGraph.
 	//
-	// Graphs are created on demand and torn down when the element unmounts (see the bind cleanup).
+	// Graphs are created on demand and torn down per media change by the reset effect above (its
+	// cleanup detaches them before this effect rebuilds against the fresh element), and on component
+	// destroy.
 	$effect(() => {
 		// Read reactive deps up front so the effect re-runs when any of them change.
 		const shift = active ? keyShift : 0;
@@ -214,18 +263,6 @@
 			if (needsShift(shift) && !guideGraph) guideGraph = new PitchShiftGraph(g);
 			guideGraph?.setShift(shift);
 		}
-	});
-
-	// Tear the graphs down with the component. detach() cannot restore an element's native output (the
-	// source capture is permanent) but the elements are being destroyed with the slot, so this just
-	// releases the AudioContext and revokes the worklet blob URL.
-	$effect(() => {
-		return () => {
-			masterGraph?.detach();
-			guideGraph?.detach();
-			masterGraph = undefined;
-			guideGraph = undefined;
-		};
 	});
 
 	function fileSrc(m: Media): string {

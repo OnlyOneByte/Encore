@@ -24,6 +24,7 @@ from ..processor import (
     volumedetect_argv,
 )
 from ..runtime.ctx import Ctx
+from ..runtime.runner import run_stage
 from ..runtime.step import Step, StepResult
 from ..separation.demucs import STEM_BITRATE, decode_argv, encode_flac_argv, encode_stem_argv
 from ..separation.engines import SeparatorEngine, engine_for
@@ -80,14 +81,13 @@ class Separate(Step):
         out_dir = os.path.join(ctx.work, "separated")
         os.makedirs(out_dir, exist_ok=True)
 
-        yield ProgressEvent(stage=self.stage, pct=0)
-        last = -1
-        async for line in ctx.runner(engine.separate_argv(ctx.audio.decoded_wav or "", out_dir, model)):
-            pct = engine.parse_progress(line)
-            if pct is not None and pct != last:
-                last = pct
-                yield ProgressEvent(stage=self.stage, pct=pct)
-        yield ProgressEvent(stage=self.stage, pct=100)
+        argv = engine.separate_argv(ctx.audio.decoded_wav or "", out_dir, model)
+        # The ONE subprocess-with-progress loop, shared by every step that shells out. Its docstring
+        # records that it was written to kill exactly this copy (demucs/whisperx each had one; roformer
+        # borrowed it) — and the local copy this replaces had drifted back, emitting an UNCONDITIONAL
+        # final pct=100 that double-fired whenever a parser already reached 100. run_stage guards it.
+        async for ev in run_stage(ctx.runner, self.stage, argv, engine.parse_progress):
+            yield ev
 
         found = engine.find_outputs(out_dir, model)
         if not found.get("instrumental"):

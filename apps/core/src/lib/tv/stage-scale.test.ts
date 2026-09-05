@@ -160,3 +160,147 @@ test('the lyrics reel reserves the bottom chrome band instead of filling the who
 	// It must yield its bottom to the reserved band, so its centreline rises clear of the cards.
 	expect(/bottom:\s*var\(--tv-chrome-h\)/.test(block)).toBe(true);
 });
+
+/*
+ * FIX 3b — the hero join QR must scale with the panel, not freeze at a pixel size.
+ *
+ * The bug: `<JoinBadge ... size={320}>` (attract) and `size={238}` (lobby) rendered a fixed-pixel QR
+ * inside a canvas that keeps growing on a 4K wall, so the code stayed phone-sized and became the
+ * hardest thing on the screen to scan. A mutation test proved the point — flipping `size={320}` to
+ * `size={9999}` survived the ENTIRE suite, because nothing constrained the hero QR's size at all.
+ *
+ * These guards close that hole two ways: the token must be defined in vmin (grows with the panel), and
+ * no HERO JoinBadge may pass a bare numeric `size` (which is exactly what the mutation did — and what
+ * dead-ends at a pixel cap). The corner badge keeps its numeric default (fixed-geometry card), so this
+ * is scoped to the hero callers.
+ */
+const TV_ROUTE = readFileSync(join(SRC, 'routes', 'tv', '+page.svelte'), 'utf8');
+const TV_LOBBY = readFileSync(join(SRC, 'lib', 'tv', 'TvLobby.svelte'), 'utf8');
+const APP_CSS = readFileSync(join(SRC, 'app.css'), 'utf8');
+
+test('the --tv-qr token exists and scales the QR in vmin, not a fixed px', () => {
+	const css = stripComments(APP_CSS);
+	const decl = /--tv-qr:\s*([^;]+);/.exec(css);
+	expect(decl).not.toBeNull();
+	// vmin (the shorter viewport side) is what makes the QR grow with the panel instead of capping.
+	expect(decl![1]!).toContain('vmin');
+});
+
+test('every HERO join badge sizes from the --tv-qr token, never a bare pixel number', () => {
+	// This is the assertion the size={320}->size={9999} mutation must not survive: a hero badge with a
+	// numeric size is the fixed-pixel bug, whatever the number is.
+	const offenders: string[] = [];
+	for (const [name, src] of [
+		['routes/tv/+page.svelte', TV_ROUTE],
+		['lib/tv/TvLobby.svelte', TV_LOBBY]
+	] as const) {
+		const clean = stripComments(src);
+		for (const m of clean.matchAll(/<JoinBadge\b[^>]*?placement="hero"[^>]*?>/gs)) {
+			const tag = m[0];
+			// A hero badge must NOT carry a numeric size ({320}, {238}, {9999}, …).
+			if (/size=\{\s*\d+(?:\.\d+)?\s*\}/.test(tag)) {
+				offenders.push(`${name}: hero JoinBadge uses a fixed numeric size — use size="var(--tv-qr)"`);
+			}
+			// …and it MUST carry the token.
+			if (!/size="var\(--tv-qr\)"/.test(tag)) {
+				offenders.push(`${name}: hero JoinBadge does not size from var(--tv-qr)`);
+			}
+		}
+	}
+	expect(offenders).toEqual([]);
+});
+
+/*
+ * FIX 3a — the reserved chrome band must be MEASURED, not predicted.
+ *
+ * The static app.css sum under-counted the card's real height (it hard-assumed a fixed row set), so
+ * the sung lyric line could still be covered, and any row added to the card re-broke it. The route now
+ * observes the rendered lower-third and overrides --tv-chrome-h with its true height. Pure geometry the
+ * tests cannot SEE, so these guard the structural precondition: a ResizeObserver is wired to the card
+ * and the measured value overrides the token.
+ */
+test('the TV route measures the lower-third with a ResizeObserver', () => {
+	const clean = stripComments(TV_ROUTE);
+	expect(clean).toContain('ResizeObserver');
+	// the observer must actually be bound to the lower-third element, not merely imported
+	expect(/bind:this=\{lowerThirdEl\}/.test(clean)).toBe(true);
+	expect(/lower-third/.test(clean)).toBe(true);
+});
+
+test('the measured card height overrides --tv-chrome-h on the stage', () => {
+	const clean = stripComments(TV_ROUTE);
+	// the override must be written from the measured value and applied to the .tv container
+	expect(/--tv-chrome-h:\s*calc\(/.test(clean)).toBe(true);
+	expect(/style=\{chromeBandStyle\}/.test(clean)).toBe(true);
+});
+
+/*
+ * FIX 4 — the TV speaks the shared cook vocabulary, not its own.
+ *
+ * The waiting state and the lobby hand-wrote "Making the karaoke" / "Separating" / "Stripping the
+ * vocals". Both now call cookStageLabel (cook-phrasing.ts), the ONE guest-facing cook vocabulary the
+ * phone already uses, so phone and TV describe the same pipeline state identically.
+ */
+test('the TV cook wording comes from cook-phrasing, not a hand-written string', () => {
+	for (const [name, src] of [
+		['routes/tv/+page.svelte', TV_ROUTE],
+		['lib/tv/TvLobby.svelte', TV_LOBBY]
+	] as const) {
+		expect(src).toContain("from '$lib/cook-phrasing'");
+		expect(src.includes('cookStageLabel')).toBe(true);
+	}
+	// and the retired musician's-word phrasings must be gone from the TV surfaces
+	const clean = stripComments(TV_ROUTE) + stripComments(TV_LOBBY);
+	expect(/Stripping the vocals/i.test(clean)).toBe(false);
+});
+
+/*
+ * FIX 1 — a slot may report VISIBLE readiness only while it is visible.
+ *
+ * Both player slots wired onready to ctl.onVisibleReady(), so the hidden PRE-WARMING slot (which
+ * buffers a whole song ahead) could flip the room to `playing` over the visible slot's black frame.
+ * onready now fires only while visible; the hidden pre-warm signal has its own callback, onprewarmed.
+ * These guards lock in the split so a future edit cannot re-conflate them.
+ */
+test('TvPlayer gates its visible-ready report on visibility and separates the pre-warm signal', () => {
+	const player = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'TvPlayer.svelte'), 'utf8'));
+	// the effect that calls onready() must be guarded by `visible` (the condition starts with it)
+	const onreadyEffect = /if\s*\(\s*visible\s*&&[\s\S]*?onready\?\.\(\)/.test(player);
+	expect(onreadyEffect).toBe(true);
+	// and a distinct pre-warm callback must exist for the hidden slot's buffered signal
+	expect(player).toContain('onprewarmed');
+});
+
+test('the route drives onVisibleReady from onready and onHiddenReady from onprewarmed — never mixed', () => {
+	const clean = stripComments(TV_ROUTE);
+	// onHiddenReady must be reached from onprewarmed, not from onready
+	for (const m of clean.matchAll(/onready=\{[^}]*\}/g)) {
+		expect(m[0]).not.toContain('onHiddenReady');
+	}
+	// and each slot must wire the pre-warm callback to onHiddenReady
+	const prewarms = [...clean.matchAll(/onprewarmed=\{[^}]*\}/g)];
+	expect(prewarms.length).toBe(2);
+	for (const m of prewarms) expect(m[0]).toContain('onHiddenReady');
+});
+
+/*
+ * FIX 2 — the pitch-shift graphs are torn down per song, not only on component destroy.
+ *
+ * A graph binds a PERMANENT MediaElementAudioSourceNode to the <video> the {#if} mounts for one media.
+ * When media changes the element is unmounted and a new one mounted, but a graph left in place still
+ * points at the destroyed element, and the shift-wiring effect then posts setShift() to a dead node —
+ * silent on the transposed song. The teardown must run on media change; the guard asserts the effect
+ * that detaches the graphs reads media?.id (so it re-runs per song) rather than nothing (destroy-only).
+ */
+test('the pitch-shift graph teardown runs per media change, not only on destroy', () => {
+	// Strip BOTH block and line comments — a `// media?.id` in prose must not satisfy this guard, which
+	// is exactly the vacuous pass the codebase's comment-lies defect produces.
+	const raw = readFileSync(join(SRC, 'lib', 'tv', 'TvPlayer.svelte'), 'utf8');
+	const player = stripComments(raw).replace(/\/\/[^\n]*/g, '');
+	// find the effect body that detaches both graphs
+	const teardown = /\$effect\(\(\)\s*=>\s*\{([\s\S]*?masterGraph\?\.detach\(\)[\s\S]*?)\}\s*\);/.exec(player)?.[1] ?? '';
+	expect(teardown).not.toBe('');
+	// it must READ media?.id as an executable statement (the `void media?.id;` trip that makes the
+	// effect re-run, and its cleanup fire, per song) — not merely mention it.
+	expect(/void\s+media\?\.id\s*;/.test(teardown)).toBe(true);
+});

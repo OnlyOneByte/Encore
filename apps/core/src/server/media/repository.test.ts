@@ -195,3 +195,35 @@ test('a half-written provenance pair is not restored as provenance', () => {
 	expect(r.byId('m2')!.annotation).toBeUndefined();
 	expect(r.byId('m2')!.mbid).toBe('mb-9');
 });
+
+test('setTags is atomic: a throw between delete and insert leaves the ORIGINAL tags intact', () => {
+	// setTags deletes every tag of a kind, then re-inserts. Without a transaction, a throw between the
+	// two statements would leave the media with the old tags gone and the new ones never written —
+	// silent, unbounded tag loss. Wrapping both in one transaction makes it all-or-nothing.
+	const { db } = openDb(':memory:');
+	runMigrations(db);
+	const r = new MediaRepository(db);
+	r.upsert(cooked('m1'));
+	r.setTags('m1', 'genre', ['rock', 'pop']);
+	expect(r.tagsOf('m1', 'genre').sort()).toEqual(['pop', 'rock']);
+
+	// Force a throw AFTER the delete has run but BEFORE the insert commits, from inside the transaction.
+	// setTags calls tx.delete/tx.insert on the transaction handle (not db directly), so we wrap
+	// db.transaction to poison the tx's insert — the delete still runs, the insert throws, and the
+	// transaction must roll the delete back.
+	const realTransaction = db.transaction.bind(db);
+	// biome-ignore lint/suspicious/noExplicitAny: test-only monkeypatch to inject a mid-transaction throw
+	(db as any).transaction = (fn: (tx: any) => unknown) =>
+		realTransaction((tx: any) => {
+			tx.insert = () => {
+				throw new Error('crash between delete and insert');
+			};
+			return fn(tx);
+		});
+	expect(() => r.setTags('m1', 'genre', ['jazz'])).toThrow('crash between delete and insert');
+	// biome-ignore lint/suspicious/noExplicitAny: restore the real method
+	(db as any).transaction = realTransaction;
+
+	// Rolled back: the pre-throw tags survive; the aborted 'jazz' write left nothing behind.
+	expect(r.tagsOf('m1', 'genre').sort()).toEqual(['pop', 'rock']);
+});

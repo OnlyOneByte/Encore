@@ -3,7 +3,7 @@
 
 import type { LyricsCandidate } from './lyrics';
 import type { SongProfile } from './song-profile';
-import type { TvBackgroundStyle } from './settings';
+import type { TvBackgroundStyle } from './tv-background';
 
 export type MediaSource = 'youtube' | 'local';
 export type StemStatus = 'none' | 'queued' | 'ready';

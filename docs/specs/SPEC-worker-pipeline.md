@@ -299,7 +299,8 @@ PLANS: dict[Action, list[Step]] = {
         Separate(),
         ProbeSilence(),
         KeyAndRange(),
-        PublishStemsIfBetter(),      # refuses unless it outranks what is already published
+        PublishStems(),              # AS BUILT: publishes unconditionally; the outranking
+                                     # refusal is CORE-side, not here (see below)
     ],
     Action.ALIGN: [
         AcquireAudio(),
@@ -314,12 +315,19 @@ PLANS: dict[Action, list[Step]] = {
 }
 ```
 
-`STEMS_UPGRADE` gets its own plan rather than sharing `STEMS` with a swapped publish step. The two
-differ in the step that matters most — one publishes unconditionally, one refuses unless it outranks —
-and sharing would push that difference into a conditional inside `PublishStems`, which is exactly the
-kind of hidden branch this design exists to make visible. Five duplicated entries is a cheaper price
-than one step that behaves differently depending on which plan invoked it. The duplication is also
-inert: `validate_plan` (§7 E1) checks both, and the generated doc shows both.
+**As built, `STEMS` and `STEMS_UPGRADE` run the identical step list — both end in `PublishStems()`.**
+This spec originally proposed a separate `PublishStemsIfBetter` step for the upgrade plan, on the
+reasoning that the two plans "differ in the step that matters most — one publishes unconditionally, one
+refuses unless it outranks". That step **was never built, deliberately.** The outranking refusal is not
+worker behaviour: it lives **core-side in `markMediaReady`** (`apps/core/src/server/jobs/worker-hub.ts`),
+which — when a separation job completes — compares the engine+model the worker reports against what is
+already published on `Media.separator` and refuses to swap in an artifact that does not strictly
+outrank it (`isQualityUpgrade`). The worker always publishes what it produced; the core decides whether
+that publication is allowed to displace the current instrumental. Inventing a worker step that "refuses
+unless it outranks" would have been asserting worker behaviour the code does not have — the exact
+failure mode §1.2 and §7 exist to prevent. So the two separation plans coincide today, `STEMS_UPGRADE`
+still has its own `Action` entry only so the core can route it as a distinct job type, and the
+duplication is inert: `validate_plan` (§7 E1) checks both and the generated doc shows both.
 
 `ProbeSilence` is a step even though its only effect is to *withhold* one artifact. Separation can
 succeed and write digital silence — it has happened twice in this library, both stems pinned at the
@@ -614,7 +622,7 @@ stage that changes behaviour and could ship separately or not at all.
 | Retry loops | the **core's** job ledger | a loop inside the worker | `job_attempts` + `/metrics/<mediaId>` audit every attempt; an internal loop would report 1 attempt where 3 ran |
 | Control flow | linear, behind a `Plan.after()` seam | a transition table now | no divergence to point at; the seam makes it one class to revisit (§5.2) |
 | Execution | sequential | DAG with parallel steps | concurrency is per-job; steps are genuinely sequential |
-| `stems-upgrade` | its own plan | `STEMS` with a swapped publish step | the difference is the publish rule itself; sharing hides it in a conditional |
+| `stems-upgrade` | its own `Action`, identical step list to `STEMS` | a distinct `PublishStemsIfBetter` step | AS BUILT: the outranking refusal is core-side in `markMediaReady`, so both plans end in `PublishStems` and coincide; the upgrade needs only a separate action for routing (§5) |
 | `ProbeSilence` | its own step | inside `Separate` | measurable in `/metrics`, visible skip, testable with no ffmpeg |
 | Song profile | own `analysis/` domain + `KeyAndRange` step | inside `separation/` | key detection and vocal range are analysis, not separation; today called from two engines inline |
 | Context | typed dataclass, namespaced | `dict[str, Any]` | the typing is what makes reads/writes checkable; a dict makes the idea decoration |

@@ -159,6 +159,25 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_separating_reaches_100_exactly_once_when_the_parser_already_did(tmp_path):
+    """The Separate step used to emit an UNCONDITIONAL final pct=100 on top of whatever the parser
+    yielded, so a separator whose last progress line was `100%` produced TWO ('separating', 100) events.
+    Routing the step through the runner's run_stage — the single loop, which guards the tail with
+    `if last < 100` — collapses that to one. Non-vacuous: on the old inline loop this asserts 2.
+    """
+    runner = fake_runner({
+        "yt-dlp": ["[download] 100% of 4MiB"],
+        "demucs": [" 50%|███   | 1/2", "100%|██████| 2/2"],  # parser reaches 100 on the last line
+    })
+    proc = plans.stems_runner(runner=runner)
+    events = await drain(proc, spec(tmp_path))
+    separating_hundreds = [
+        e for e in events if isinstance(e, ProgressEvent) and e.stage == "separating" and e.pct == 100
+    ]
+    assert len(separating_hundreds) == 1
+
+
+@pytest.mark.asyncio
 async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
     # demucs wrote the instrumental but not vocals.wav → the job still completes with the
     # instrumental; the vocals key is simply absent (never fails the load-bearing output).

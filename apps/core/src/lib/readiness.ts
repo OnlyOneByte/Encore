@@ -34,6 +34,10 @@ export function displayReadiness(m: Media, live?: { status: MediaStatus }): Read
 	if (live) {
 		if (live.status === 'ready') return 'ready';
 		if (live.status === 'failed') return readyToSing(m) ? 'ready' : 'failed';
+		// A cancel is terminal but is NOT a failure — the catalog answers. settleStemsGate has already
+		// put the media back to un-cooked, so this reads as 'unacquired' and the row offers Sing again.
+		// Reporting 'failed' here would tell a guest who removed a song that the cook broke.
+		if (live.status === 'canceled') return readinessOf(m);
 		return 'cooking';
 	}
 	return readinessOf(m);
@@ -109,10 +113,10 @@ export function entryPlayable(
 	live?: { status: MediaStatus }
 ): boolean {
 	// A live status decides in both directions: `ready` means the cook just landed and the catalog
-	// copy hasn't caught up; anything else mid-flight means still cooking. `failed` says nothing about
-	// playability, so the catalog answers.
+	// copy hasn't caught up; anything else mid-flight means still cooking. `failed` and `canceled` are
+	// terminal and say nothing about playability, so the catalog answers for both.
 	if (live && live.status === 'ready') return true;
-	if (live && live.status !== 'failed') return false; // queued/downloading/separating/aligning
+	if (live && live.status !== 'failed' && live.status !== 'canceled') return false; // still cooking
 	if (!media) return false;
 	return readyToSing(media);
 }

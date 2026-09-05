@@ -47,9 +47,11 @@
 		MAX_PRESENCE_GRACE_MINUTES,
 		QUEUE_ORDERS,
 		getQueueOrder,
+		FETCHERS,
 		type PublicSinger,
 		type QueueOrderId,
 		type EffectiveSettings,
+		type FetcherId,
 		type GlobalSettings,
 		type LyricsBallStyleId,
 		type LyricsCaseId,
@@ -155,6 +157,43 @@
 	// A slow engine on the LIVE path is the footgun worth naming in the UI: RoFormer measured ~44min
 	// per song on CPU versus ~50s for htdemucs. Someone should learn that here, not at a party.
 	let liveSlow = $derived(engineOf(settings.global.defaultEngine)?.speed === 'slow');
+
+	// ── room quality ceiling ───────────────────────────────────────────────────
+	/*
+	 * The room-scoped cook-quality cap, offered as REAL pairings rather than a raw `qualityRank`
+	 * integer. Each option is one live-selectable engine+model, valued by its rank, and the empty
+	 * option means "no cap" (`null`). Built from the same registry + `qualityRank` that
+	 * `resolveCookSeparator` reads, so the choices the operator sees are exactly the ceilings the
+	 * resolver can honour — never an invented number. Sorted low→high because the control caps quality
+	 * DOWNWARD, so the cheaper/faster ceilings read first.
+	 *
+	 * `rank === 0` pairings are excluded: an unranked model can never win `resolveCookSeparator`, so
+	 * offering it as a ceiling would name a floor nothing sits at.
+	 */
+	const qualityCeilings = liveEngines
+		.flatMap((engine) =>
+			engine.models.map((model) => ({
+				rank: qualityRank(engine.id, model.id),
+				label: `${engine.label} · ${model.label}`
+			}))
+		)
+		.filter((c) => c.rank > 0)
+		.sort((a, b) => a.rank - b.rank);
+
+	// The global default's own rank, so the ceiling control can say when a chosen cap sits AT OR ABOVE
+	// it — the cap is downward-only, so such a cap changes nothing and the copy must say so rather than
+	// implying it raised quality.
+	let defaultRank = $derived(qualityRank(settings.global.defaultEngine, settings.global.defaultModel));
+	let capAboveDefault = $derived(
+		settings.room.maxQualityRank !== null && settings.room.maxQualityRank >= defaultRank
+	);
+
+	// ── audio acquisition ───────────────────────────────────────────────────────
+	// The downloader every new cook's source audio comes through. `local` is excluded: it names one
+	// media's already-present bytes, not a default a room could pick (see fetchers.ts / the schema
+	// comment). Sourced note, same as the splitter and reader pickers.
+	const defaultFetchers = FETCHERS.filter((f) => f.id !== 'local');
+	let fetcherNote = $derived(FETCHERS.find((f) => f.id === settings.global.defaultFetcher)?.note ?? '');
 
 	// ── lyrics ───────────────────────────────────────────────────────────────
 	// The two knobs on the words rather than the audio. Same shape as the splitter pair above: the
@@ -531,6 +570,46 @@
 			</div>
 
 			<div class="card">
+				<h2 class="cardhead">Cook quality</h2>
+				<div class="cardbody">
+					<label class="field" for="quality-ceiling">Cap this room at</label>
+					<!--
+						A ceiling, offered as real engine+model pairings valued by their rank, not a raw
+						integer. The value is the `qualityRank`; the empty option is `null` = no cap. The
+						resolver picks the best live pairing AT OR UNDER this, so these are exactly the
+						ceilings it can honour.
+					-->
+					<select
+						id="quality-ceiling"
+						value={settings.room.maxQualityRank ?? ''}
+						onchange={(e) =>
+							onroom({
+								maxQualityRank: e.currentTarget.value === '' ? null : Number(e.currentTarget.value)
+							})}
+					>
+						<option value="">No cap — use the server default</option>
+						{#each qualityCeilings as c (c.rank)}
+							<option value={c.rank}>Up to {c.label}</option>
+						{/each}
+					</select>
+					<!--
+						Downward-only, and this is where a party learns it: the server's default is already
+						bounded by what the worker fleet can run, so a room can only ask for the same or less.
+					-->
+					<p class="hint">
+						Only ever lowers cook quality below the server's default, to keep a busy queue moving. It
+						cannot raise it.
+					</p>
+					{#if capAboveDefault}
+						<p class="warn">
+							This cap is at or above the server's current default, so it changes nothing. Pick a
+							lower one to actually cap this room.
+						</p>
+					{/if}
+				</div>
+			</div>
+
+			<div class="card">
 				<h2 class="cardhead">The TV</h2>
 				<div class="cardbody">
 					<div class="pair">
@@ -827,6 +906,24 @@
 					{#if liveSlow}
 						<p class="warn">Slow on CPU — around 45 minutes per song. Better suited to upgrades.</p>
 					{/if}
+
+					<label class="field" for="fetcher">Where audio comes from</label>
+					<select
+						id="fetcher"
+						value={settings.global.defaultFetcher}
+						onchange={(e) => onglobal({ defaultFetcher: e.currentTarget.value as FetcherId })}
+					>
+						{#each defaultFetchers as f (f.id)}
+							<option value={f.id}>{f.label}</option>
+						{/each}
+					</select>
+					{#if fetcherNote}<p class="hint">{fetcherNote}</p>{/if}
+					<!--
+						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
+						EVERY new cook downloads its source through, and a worker that cannot run it fails the
+						fetch before any separation starts.
+					-->
+					<p class="warn">Changes where every new cook gets its audio. A worker that cannot run it will fail the download.</p>
 				</div>
 			</div>
 

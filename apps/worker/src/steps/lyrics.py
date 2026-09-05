@@ -41,7 +41,7 @@ from ..lyrics import (
 )
 from ..processor import ProgressEvent
 from ..runtime.ctx import Ctx
-from ..runtime.runner import run_blocking
+from ..runtime.runner import run_stage, run_blocking
 from ..runtime.step import Outcome, Step, StepResult
 from ..vocabulary import Stage, SyncMode
 
@@ -83,10 +83,11 @@ class FetchCaptions(Step):
             auto=self.auto,
         )
         try:
-            yield ProgressEvent(stage=self.stage, pct=0)
-            async for _line in ctx.runner(argv):
-                pass
-            yield ProgressEvent(stage=self.stage, pct=100)
+            # yt-dlp caption fetch emits no parseable progress, so the parser is constant-None: the
+            # shared run_stage then brackets the drain with pct=0 and a single pct=100 — exactly the
+            # bracket this step emitted by hand before it shared one implementation with the others.
+            async for ev in run_stage(ctx.runner, self.stage, argv, lambda _line: None):
+                yield ev
         except Exception as exc:  # noqa: BLE001 — no track / no yt-dlp / no network: all the same miss
             ctx.note(f"{self.name}: none ({exc})")
 

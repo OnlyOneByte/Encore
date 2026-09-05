@@ -35,8 +35,13 @@ test('the "pick a song" prompt is conditional, never shown while something is co
 test('the cooking copy explains the wait rather than asking for another pick', () => {
 	const cookingCopy = /cooking\s*\?([\s\S]*?)'Waiting for someone to pick a song/.exec(LOBBY)?.[1] ?? '';
 	expect(cookingCopy.length).toBeGreaterThan(0);
-	// naming the actual cause is the point — "karaoke"/"vocals", not "pick"
-	expect(/karaoke|vocals/i.test(cookingCopy)).toBe(true);
+	// naming the actual cause is the point — "karaoke"/"vocals", not "pick". The headline now sources
+	// that wording from the shared `cookStageLabel` (cook-phrasing.ts) — the ONE guest-facing cook
+	// vocabulary, shared with the phone — instead of a hand-written "Making the karaoke…" literal, so
+	// this accepts the helper call as well as the literal word. Rendered text is still "Making karaoke…";
+	// what changed is the TV no longer speaks its own dialect. (It used to require the literal string,
+	// which pinned the exact divergence FIX 4 removed.)
+	expect(/karaoke|vocals|cookStageLabel/i.test(cookingCopy)).toBe(true);
 	expect(/tap Turn/.test(cookingCopy)).toBe(false);
 });
 

@@ -179,3 +179,28 @@ test('nothing playable → no up-next (the whole queue is cooking)', () => {
 	const queued = [entry('e1', 'cooking'), entry('e2', 'cooking')];
 	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBeNull();
 });
+
+// ── a cancel is not a failure ──────────────────────────────────────────────────────────────────
+// Removing a cooking song settles it back to un-cooked exactly like a terminal failure, so the two
+// need the SAME store effect and OPPOSITE copy. Reusing 'failed' for a cancel made the phone tell a
+// guest who deliberately removed a song "Couldn't make karaoke" — a lie about their own action.
+
+test('a canceled cook reads from the catalog, not as a failure', () => {
+	expect(displayReadiness(m(), { status: 'canceled' })).toBe('unacquired');
+	// The distinction that matters: same input shape, different verdict.
+	expect(displayReadiness(m(), { status: 'failed' })).toBe('failed');
+});
+
+test('a canceled cook offers Sing again rather than a failure chip', () => {
+	expect(canCook(displayReadiness(m(), { status: 'canceled' }))).toBe(true);
+});
+
+test('a canceled status leaves playability to the catalog, like failed', () => {
+	const cooked = m({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'ready'
+	});
+	expect(entryPlayable(cooked, { status: 'canceled' })).toBe(true);
+	expect(entryPlayable(m(), { status: 'canceled' })).toBe(false);
+});

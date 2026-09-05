@@ -30,6 +30,42 @@ export interface MakeKaraokeDeps {
 export const NO_QUEUE_PRIORITY = Number.MAX_SAFE_INTEGER;
 
 /**
+ * How many cooks ONE singer may have in flight at the same time.
+ *
+ * Not a lifetime quota — a guest whose earlier songs finished cooking can always start more; this
+ * bounds only what is cooking RIGHT NOW. WHY it exists: `requestMakeKaraoke` dedups on
+ * stems-existence alone, so nothing stopped one phone from tapping Sing down a whole search page and
+ * enqueueing a 1–2 minute GPU job per distinct song — a self-inflicted denial of service that needs
+ * no malice, just an impatient guest. Three is generous for a real singer (you queue a couple ahead)
+ * while capping the fan-out a single guest can impose on a shared box's worker fleet.
+ */
+export const MAX_CONCURRENT_COOKS_PER_SINGER = 3;
+
+/**
+ * How many DISTINCT songs this singer currently has cooking — the bound FIX 2 enforces.
+ *
+ * A cook is attributed to a singer through their queue entries: the cook-and-queue flow queues a song
+ * before cooking it, so a singer's in-flight cooks are the cooking media among the entries they
+ * authored. Counts distinct mediaIds (two entries for the same song are one cook, matching dedup) and
+ * only those still cooking (stemStatus 'queued' and not yet playable — a finished cook no longer
+ * counts against the bound). `exclude` drops the media being requested so a re-tap of a song already
+ * cooking is never counted against its own owner.
+ */
+export function countInFlightCooks(
+	singerId: string,
+	deps: Pick<MakeKaraokeDeps, 'mediaById' | 'state'>,
+	exclude?: string
+): number {
+	const cooking = new Set<string>();
+	for (const e of deps.state.entries) {
+		if (e.singerId !== singerId || e.mediaId === exclude) continue;
+		const media = deps.mediaById.get(e.mediaId);
+		if (media && media.stemStatus === 'queued' && !isCooked(media)) cooking.add(e.mediaId);
+	}
+	return cooking.size;
+}
+
+/**
  * The deterministic MediaStore key for a media's instrumental stem (stored on Media.instrumentalRef).
  * MUST match the worker's output location (apps/worker/src/processor.py instrumental_path →
  * <media_dir>/derived/stems/<mediaId>-instrumental.wav), since the TV file player resolves
@@ -64,15 +100,27 @@ export type CookState =
 	| 'playing' // the live song; cooking it would yank the video out from under the room
 	| 'ready' // stems already separated (persisted from an earlier session) — no re-cook
 	| 'cooking' // a live job is already working on it; a repeat request dedupes to that job
+	| 'over-limit' // this singer already has MAX_CONCURRENT_COOKS_PER_SINGER cooks in flight
 	| 'cookable'; // nothing separated yet — go
 
-export function cookState(mediaId: string, deps: Pick<MakeKaraokeDeps, 'mediaById' | 'state'>): CookState {
+export function cookState(
+	mediaId: string,
+	deps: Pick<MakeKaraokeDeps, 'mediaById' | 'state'>,
+	singerId?: string
+): CookState {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return 'unknown';
 	const current = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId);
 	if (current && current.mediaId === mediaId) return 'playing';
 	if (isCooked(media)) return 'ready';
 	if (media.stemStatus === 'queued') return 'cooking';
+	// A NEW cook (nothing separated, not already cooking) is refused when this singer is already at
+	// their in-flight cap. Checked LAST — an already-cooking or ready song is never blocked, since it
+	// starts no new work. Only evaluated when a singer is named; the anonymous internal callers
+	// (backfill, tests) impose no cap.
+	if (singerId && countInFlightCooks(singerId, deps, mediaId) >= MAX_CONCURRENT_COOKS_PER_SINGER) {
+		return 'over-limit';
+	}
 	return 'cookable';
 }
 
@@ -80,17 +128,22 @@ export function cookState(mediaId: string, deps: Pick<MakeKaraokeDeps, 'mediaByI
  * Request stem-separation for a media. Idempotent: a repeat request (or two singers queueing the
  * same song) dedupes to the SAME job, and a song whose stems are ALREADY on disk (persisted across
  * restarts) is never re-cooked. Returns the job, or null when there is no work — unknown media, the
- * currently-playing song, or already cooked. Callers that need to tell those apart ask `cookState`.
+ * currently-playing song, already cooked, OR the requesting singer is already at their in-flight cook
+ * cap. Callers that need to tell those apart ask `cookState` (pass the same `singerId`).
  */
-export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps): Job | null {
+export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps, singerId?: string): Job | null {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return null;
 
-	const state = cookState(mediaId, deps);
+	const state = cookState(mediaId, deps, singerId);
 	if (state === 'playing') return null; // would disrupt the live song
 	// Stems are already separated (this session or a previous one) — burning 1–2 min of GPU to
 	// recompute an identical instrumental is the exact waste the durable catalog exists to prevent.
 	if (state === 'ready') return null;
+	// This singer already has too many cooks in flight — refuse the new one rather than let one guest
+	// flood the worker fleet. An already-cooking song (state === 'cooking') is NOT blocked here: it
+	// starts no new work, so it falls through to the dedup below.
+	if (state === 'over-limit') return null;
 
 	// Mark it cooking → rotation holds its slot until the instrumental exists.
 	media.stemStatus = 'queued';

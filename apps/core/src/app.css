@@ -123,6 +123,16 @@
 	--tv-name: clamp(44px, 5vh, 76px);
 	/* the one thing on an otherwise empty screen */
 	--tv-hero: clamp(56px, 7vh, 108px);
+	/*
+	 * The hero join QR, sized in vmin so it GROWS with the panel. The old fixed 320px (attract) / 238px
+	 * (lobby) meant the code stayed a phone-sized square on a 4K wall while everything around it scaled
+	 * up, so from a sofa it was the hardest thing on the screen to scan — the TV scaled down correctly
+	 * and failed upward. vmin (the shorter viewport side) keeps it square and proportional on any aspect
+	 * ratio. Floor 300px keeps it scannable on a 720p panel; the 26vmin term overtakes the floor above
+	 * ~1150px min-side and carries it up to a 460px cap on 4K, big enough to scan across a room without
+	 * crowding the copy beside it. JoinBadge takes this token as its `size`.
+	 */
+	--tv-qr: clamp(300px, 26vmin, 460px);
 	/* Height of the collapsed queue sheet's peek. A fallback only — QueueSheet overwrites this with the
 	   peek's MEASURED height on mount. Owned here because everything docked to the bottom (the sheet
 	   itself, the mic bar, the toasts) must agree on it or they overlap. */
@@ -136,6 +146,14 @@
 	 * `.lyrics { bottom: var(--tv-chrome-h) }`, so the flex-centred reel shrinks and its centreline
 	 * rises into the freed space; collision becomes impossible at ANY lyric setting rather than merely
 	 * less likely at the defaults.
+	 *
+	 * THIS VALUE IS A FALLBACK. The TV route MEASURES the rendered lower-third with a ResizeObserver and
+	 * overrides `--tv-chrome-h` on `.tv` with `calc(var(--tv-safe-y) + <measured px>)`, so the reserved
+	 * band is exactly what the card occupies — including any row added later (a vocal-range line, a
+	 * second progress style) that this static sum cannot know about. This calc is what stands before the
+	 * first measurement and on the attract/lobby screens where the card is absent and the reel is hidden
+	 * anyway. It intentionally over-reserves (the 1.2 line-box factor + padding constant) so the
+	 * pre-measure frame errs toward hiding surplus lyric rows rather than covering the sung line.
 	 *
 	 * DERIVED from the taller card (the lower-third), summed from its real type tokens so it tracks
 	 * them if they ever change, instead of a magic px. Note the 1.2 factor: these rows declare no
@@ -311,20 +329,13 @@ body {
 }
 
 /*
- * SHEET CHROME, shared by the queue sheet and the profile sheet.
+ * SHEET CHROME — the fixed-to-bottom scrim + surface geometry. Used by the queue sheet (QueueSheet),
+ * the only sheet left after name/colour editing moved to the /settings route.
  *
- * Only the CHROME is shared, deliberately -- there is no <Sheet> wrapper component, because the two
- * sheets are not variants of one thing. The queue sheet is a persistent dock: its peek is always on
- * screen, it drags, and the page behind it stays interactive. The profile sheet is a true modal: it is
- * absent when closed, and it traps focus and locks the page. A wrapper taking `modal={true|false}`
- * would be a props-driven if/else over two different behaviours -- and it would have to make the
- * focus trap conditional, which is exactly the mistake that leaves a dock trapping the page's focus.
- * So the surface is shared here, and the modal BEHAVIOUR is shared in lib/ui/modal.ts instead.
- *
- * Background, max-height and z-index stay with each sheet: they genuinely differ today (--card vs
- * --card2, 88dvh vs 82dvh, 41 vs 10), and folding them in would be a design decision dressed up as a
- * refactor. The dvh part is load-bearing rather than cosmetic, so design-system.test.ts asserts both
- * sheets cap in dvh instead of this file quietly defaulting it where neither would use the default.
+ * Only the CHROME lives here: there is no <Sheet> wrapper component. The queue sheet is a persistent
+ * dock — its peek is always on screen, it drags, and the page behind it stays interactive — so it
+ * needs no focus trap or page lock. Background, max-height and z-index stay with the sheet itself
+ * rather than defaulting here, so a second sheet added later must state its own.
  */
 .sheet-scrim {
 	position: fixed;

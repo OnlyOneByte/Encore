@@ -2,7 +2,7 @@
 // a stems job at need-priority, dedups repeats, and refuses to disrupt the live song. markMediaReady
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
-import { requestMakeKaraoke, markMediaReady, setMediaLyrics, instrumentalKey, soonestSeqFor, isCooked, cookState, settleStemsGate, type MakeKaraokeDeps } from './make-karaoke';
+import { requestMakeKaraoke, markMediaReady, setMediaLyrics, instrumentalKey, soonestSeqFor, isCooked, cookState, settleStemsGate, countInFlightCooks, MAX_CONCURRENT_COOKS_PER_SINGER, type MakeKaraokeDeps } from './make-karaoke';
 import { pendingGates, EMPTY_SONG_PROFILE } from '@encore/shared';
 import { JobRepository } from './repository';
 import { AuthoritativeState } from '../state/store';
@@ -259,4 +259,78 @@ test('settling never walks a FINISHED cook backwards', () => {
 test('settling an unknown media is a no-op, not a crash', () => {
 	const d = deps();
 	expect(settleStemsGate('nope', d.mediaById)).toBe(false);
+});
+
+// ── FIX 2: a single guest cannot flood the worker fleet with unbounded concurrent cooks ───────────
+// requestMakeKaraoke deduped on stems-existence alone, so one phone tapping Sing down a search page
+// enqueued a 1–2 min GPU job per distinct song. The cap bounds only what is cooking AT ONCE, per
+// singer — a lifetime quota would wrongly punish a guest whose earlier songs already finished.
+
+function cook(d: ReturnType<typeof deps>, id: string, singerId: string) {
+	d.mediaById.set(id, media(id));
+	d.state.applyQueueOp({ op: 'add', entry: entry('q-' + id, id, singerId) });
+	return requestMakeKaraoke(id, d, singerId);
+}
+
+test('countInFlightCooks counts a singer’s distinct cooking songs, not finished or others’', () => {
+	const d = deps();
+	cook(d, 'm1', 'alice');
+	cook(d, 'm2', 'alice');
+	expect(countInFlightCooks('alice', d)).toBe(2);
+	// bob's cook does not count against alice
+	cook(d, 'm3', 'bob');
+	expect(countInFlightCooks('alice', d)).toBe(2);
+	// a finished cook drops out of the in-flight count
+	markMediaReady('m1', d.mediaById);
+	d.mediaById.get('m1')!.songProfile = { ...EMPTY_SONG_PROFILE };
+	expect(countInFlightCooks('alice', d)).toBe(1);
+});
+
+test('a singer at the cap is refused a NEW cook (over-limit), and the count is honest', () => {
+	const d = deps();
+	for (let i = 0; i < MAX_CONCURRENT_COOKS_PER_SINGER; i++) cook(d, 'm' + i, 'alice');
+	expect(countInFlightCooks('alice', d)).toBe(MAX_CONCURRENT_COOKS_PER_SINGER);
+
+	// One more distinct song → refused.
+	d.mediaById.set('over', media('over'));
+	d.state.applyQueueOp({ op: 'add', entry: entry('q-over', 'over', 'alice') });
+	expect(cookState('over', d, 'alice')).toBe('over-limit');
+	expect(requestMakeKaraoke('over', d, 'alice')).toBeNull();
+	expect(d.mediaById.get('over')!.stemStatus).toBe('none'); // never flipped to cooking
+});
+
+test('the cap is PER singer and only bounds concurrency — another singer and a freed slot both proceed', () => {
+	const d = deps();
+	for (let i = 0; i < MAX_CONCURRENT_COOKS_PER_SINGER; i++) cook(d, 'm' + i, 'alice');
+	// A different singer is unaffected.
+	expect(cookState('m0', d, 'bob')).not.toBe('over-limit'); // (m0 is already cooking, so 'cooking')
+	d.mediaById.set('bobsong', media('bobsong'));
+	d.state.applyQueueOp({ op: 'add', entry: entry('q-bob', 'bobsong', 'bob') });
+	expect(requestMakeKaraoke('bobsong', d, 'bob')).not.toBeNull();
+
+	// alice finishes one → she can cook again (not a lifetime quota).
+	markMediaReady('m0', d.mediaById);
+	d.mediaById.get('m0')!.songProfile = { ...EMPTY_SONG_PROFILE };
+	d.mediaById.set('again', media('again'));
+	d.state.applyQueueOp({ op: 'add', entry: entry('q-again', 'again', 'alice') });
+	expect(requestMakeKaraoke('again', d, 'alice')).not.toBeNull();
+});
+
+test('an anonymous request (no singerId) imposes no cap — internal callers are never blocked', () => {
+	const d = deps();
+	for (let i = 0; i < MAX_CONCURRENT_COOKS_PER_SINGER + 2; i++) {
+		d.mediaById.set('n' + i, media('n' + i));
+		d.state.applyQueueOp({ op: 'add', entry: entry('qn' + i, 'n' + i, 'alice') });
+		expect(requestMakeKaraoke('n' + i, d)).not.toBeNull(); // no singerId → no cap
+	}
+});
+
+test('re-tapping a song already cooking is never counted against its own owner (dedup, not a block)', () => {
+	const d = deps();
+	// alice fills the cap, then re-taps one of her own cooking songs.
+	for (let i = 0; i < MAX_CONCURRENT_COOKS_PER_SINGER; i++) cook(d, 'm' + i, 'alice');
+	// m0 is already cooking; a repeat request dedupes to the same job rather than being refused.
+	const again = requestMakeKaraoke('m0', d, 'alice');
+	expect(again).not.toBeNull();
+	expect(cookState('m0', d, 'alice')).toBe('cooking'); // not 'over-limit'
 });

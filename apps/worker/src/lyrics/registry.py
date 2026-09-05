@@ -13,9 +13,6 @@ silently — and the lyrics chain had no equivalent.
 So a source DECLARES what it requires, one place decides whether the requirement is met, and an unmet
 requirement is REPORTED by name. A source that declines for its own reasons still can, but a source that
 never got the chance says which input was missing.
-
-Second thing this buys: filtering becomes data. "Do not grade with machine captions" is a set difference
-over `SPECS`, not an edit to a chain.
 """
 from __future__ import annotations
 
@@ -133,21 +130,15 @@ def build_sources(
     to_segments: Any = None,
     transcriber: Any = None,
     normalize: Any = None,
-    enabled: frozenset[str] | None = None,
 ) -> tuple[list[LyricsSource], list[str]]:
     """The sources that CAN run for this request, plus a line per source that cannot.
 
     Returns (sources, notes). The notes are the whole point: a source excluded because its requirement was
     not met says which one, so a dead provider is distinguishable from a song with no lyrics.
-
-    `enabled` filters by spec id — the hook a setting would use. None means all of them.
     """
     sources: list[LyricsSource] = []
     notes: list[str] = []
     for spec in SPECS:
-        if enabled is not None and spec.id not in enabled:
-            notes.append(f"{spec.id}: disabled by settings")
-            continue
         missing = unmet(spec.requires, req)
         if missing:
             notes.append(f"{spec.id}: did not run — no {', '.join(missing)}")

@@ -501,3 +501,96 @@ def test_building_a_stems_runner_pulls_NO_ml_framework():
     loaded = {m.split(".")[0] for m in sys.modules}
     assert "torch" not in loaded
     assert "bs_roformer" not in loaded
+
+
+# ── FIX 1: a dropped socket must CANCEL the abandoned client's in-flight tasks, not orphan them ──
+@pytest.mark.asyncio
+async def test_drain_cancel_cancels_inflight_tasks(tmp_path):
+    """drain(cancel=True) is what the reconnect path calls when the socket drops. The old client is
+    abandoned; without cancelling, its cook runs to completion against a dead socket, loses its
+    result, and races the core's reaper (which requeues the same job) -- duplicate GPU work. Proven
+    non-vacuous: on the old drain() (await-only, no cancel arg) this raises TypeError, and even a
+    no-cancel await would hang forever on the 300s sleep instead of returning."""
+    sock = FakeSocket()
+    started = asyncio.Event()
+    cancelled = asyncio.Event()
+
+    class SlowProcessor:
+        async def process(self, job):
+            yield ProgressEvent("downloading", 0)
+            started.set()
+            try:
+                await asyncio.sleep(300)  # a long separation holding a child process
+            except asyncio.CancelledError:
+                cancelled.set()
+                raise
+            yield  # pragma: no cover
+
+    client = make_client(sock, tmp_path)
+    client._processor = SlowProcessor()
+    await client.handle(assign(job_id="jDrop"))
+    await asyncio.wait_for(started.wait(), timeout=5)
+    assert client.state.slots_free == 0
+    old_task = client._tasks["jDrop"]
+
+    # simulate the reconnect-loop finally block on a socket drop
+    await asyncio.wait_for(client.drain(cancel=True), timeout=5)
+
+    assert cancelled.is_set(), "the abandoned cook was cancelled (GeneratorExit reaches the child)"
+    assert old_task.cancelled() or old_task.done()
+    assert "jDrop" not in client._tasks  # done-callback popped it
+    # a cancelled cook reports NO job:failed (CancelledError is not the broad except that sends failed)
+    assert sock.of_type(protocol.FAILED) == []
+
+
+@pytest.mark.asyncio
+async def test_drain_without_cancel_still_awaits(tmp_path):
+    # The default (cancel=False) preserves the graceful-settle behaviour every other test relies on.
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    await client.handle(assign())
+    await client.drain()  # no cancel arg
+    assert sock.of_type(protocol.COMPLETE), "the job ran to completion, not cancelled"
+
+
+# ── FIX 2: object MediaStore with no uploader wired must REFUSE, not silently store locally ──
+@pytest.mark.asyncio
+async def test_object_store_without_uploader_rejects_the_job(tmp_path):
+    """MEDIA_STORE=object on the core + a worker with no S3 uploader = the worker would write a local
+    path and report it, the core marks the song ready and serves from S3 where nothing was put.
+    Proven non-vacuous: without the _on_assign guard this job is ACCEPTED and completes (see
+    test_full_assign_to_complete_flow with the same stub), so the reject asserted here would be
+    absent on the old code."""
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)  # can_publish_object defaults False
+    await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "object", "bucket": "encore-media"}})
+    await client.handle(assign(job_id="jObj"))
+    await client.drain()
+    rejects = sock.of_type(protocol.REJECT)
+    assert len(rejects) == 1 and rejects[0]["jobId"] == "jObj"
+    assert "no S3 uploader" in rejects[0]["reason"]
+    assert sock.of_type(protocol.ACCEPT) == [] and sock.of_type(protocol.COMPLETE) == []
+    assert client.state.slots_free == 1  # slot never consumed
+
+
+@pytest.mark.asyncio
+async def test_object_store_with_uploader_accepts(tmp_path):
+    # When a build DOES wire an uploader (can_publish_object=True), object mode is honoured normally.
+    sock = FakeSocket()
+    client = WorkerClient(sock.send, StubProcessor(), worker_id="w1", capabilities=["stems"],
+                          concurrency=1, media_dir=str(tmp_path), version="test", can_publish_object=True)
+    await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "object", "bucket": "encore-media"}})
+    await client.handle(assign(job_id="jOk"))
+    await client.drain()
+    assert sock.of_type(protocol.ACCEPT) and sock.of_type(protocol.COMPLETE)
+
+
+@pytest.mark.asyncio
+async def test_local_store_is_unaffected_by_the_object_guard(tmp_path):
+    # Local mode (the default and the missing/bucketless-object fallback) accepts as before.
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "local"}})
+    await client.handle(assign(job_id="jLocal"))
+    await client.drain()
+    assert sock.of_type(protocol.COMPLETE)

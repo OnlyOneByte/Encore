@@ -141,11 +141,23 @@ export interface EvictionCandidate {
  * Which songs to strip back to un-cooked, least-recently-used first, until the derived total fits the
  * cap. PURE.
  *
+ * `protectedIds` names media that must NEVER be evicted regardless of age — the currently-playing song
+ * and everything queued. A cook stripped out from under a live or queued entry would vanish mid-party
+ * (stemStatus reset to 'none', derived stems gone, an entry pointing at a media that can no longer
+ * play). Enforcing the exclusion HERE, in the pure function, means the guarantee holds no matter what
+ * a caller remembers to filter — the previous design left it to the caller and the caller did not.
+ * Protected songs still count toward the total (they occupy real bytes), so the plan can conclude the
+ * cap is unreachable and evict everything it is allowed to rather than under-reporting the pressure.
+ *
  * Recency signal caveat: play tracking is not wired yet (`library.lastPlayedAt` is never incremented),
  * so callers pass `addedAt` — making this oldest-added-first, not truly least-recently-played. Worth
  * upgrading once plays are counted.
  */
-export function planEviction(candidates: EvictionCandidate[], capBytes: number | null): string[] {
+export function planEviction(
+	candidates: EvictionCandidate[],
+	capBytes: number | null,
+	protectedIds: ReadonlySet<string> = new Set()
+): string[] {
 	if (capBytes === null) return [];
 	const total = candidates.reduce((n, c) => n + c.derivedBytes, 0);
 	if (total <= capBytes) return [];
@@ -156,6 +168,7 @@ export function planEviction(candidates: EvictionCandidate[], capBytes: number |
 	for (const c of byAge) {
 		if (running <= capBytes) break;
 		if (c.derivedBytes === 0) continue; // nothing to reclaim
+		if (protectedIds.has(c.mediaId)) continue; // in use: playing or queued — never strip it
 		evict.push(c.mediaId);
 		running -= c.derivedBytes;
 	}

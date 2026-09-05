@@ -128,7 +128,17 @@ def test_there_is_exactly_ONE_thing_that_executes_a_plan():
 def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
     """Directly closes §1.2's first case: `resolve_source_audio` was documented as "the one place" and
     three of its four callers re-derived the answer instead — and got it WRONG, downloading to a literal
-    `.wav` when yt-dlp needed a `%(ext)s` template."""
+    `.wav` when yt-dlp needed a `%(ext)s` template.
+
+    The regression this must catch is a NEW module that reaches into `acquisition` (the package) or
+    `acquisition.fetch` (its byte-location primitives) to re-derive where a job's audio lives. The guard
+    used to AND the import test with `"job_fetcher" in <file text>`, which made it vacuous: that literal
+    appears only in the three allowed files, so `offenders` was always empty and the assert could never
+    fail — and the very regression it names would import `acquisition` WITHOUT the symbol and sail
+    through. The import edge is the whole signal; there is no honest reason to also require a specific
+    symbol name. Importing `acquisition.stream_quality` (the format-selector constant, used by
+    separation) is NOT re-deriving byte location, so it is deliberately not matched.
+    """
     # fetch.py holds the primitives; acquire.py is the one step that uses them; __init__ is the package
     # surface that re-exports them.
     allowed = {"acquisition/fetch.py", "acquisition/__init__.py", "steps/acquire.py"}
@@ -138,8 +148,15 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
         if rel in allowed:
             continue
         names = _imports(path)
-        bad = [n for n in names if n.endswith("acquisition.fetch") or n.endswith("acquisition")]
-        if bad and "job_fetcher" in path.read_text(encoding="utf-8"):
+        bad = [n for n in names if n.endswith("acquisition.fetch") or n == "acquisition" or n.endswith(".acquisition")]
+        # `_imports` records a dotted module and so misses `from . import acquisition` / `from .. import
+        # acquisition`, where the package is an imported NAME not part of the module path — the exact
+        # shape a regression module would reach for. Scan the imported names directly to close that gap.
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.ImportFrom) and node.level > 0 and not node.module:
+                bad.extend(f"from . import {a.name}" for a in node.names if a.name == "acquisition")
+        if bad:
             offenders[rel] = bad
     assert not offenders, (
         f"{sorted(offenders)} re-derive where a job's audio is. Use the AcquireAudio step, or "
