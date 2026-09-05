@@ -589,7 +589,7 @@ known-good artifact.
 
 Every action is one flat plan of steps over a typed per-job context, executed by a single `PlanRunner`
 (`apps/worker/src/runtime/`). Divergence is resolved by `plan_for` **before** the first step runs, so
-there is no mid-plan branching — see `docs/specs/SPEC-worker-pipeline.md` §5.2 for the analysis and for
+there is no mid-plan branching — see `docs/archive/specs/SPEC-worker-pipeline.md` §5.2 for the analysis and for
 the trigger that would revisit it.
 
 The tables below are **generated from the plans**, because hand-written architecture prose about this

@@ -7,7 +7,7 @@
 
 This layer knows about plans, steps and contexts. It knows nothing about audio, lyrics or separation, and
 it must never import from a domain package — the dependency rule in
-`docs/specs/SPEC-worker-pipeline.md` §3. `PLANS` is populated by `src/plans.py`, which is the one module
+`docs/archive/specs/SPEC-worker-pipeline.md` §3. `PLANS` is populated by `src/plans.py`, which is the one module
 allowed to import both the runtime and the steps, precisely so that rule holds mechanically rather than
 by good intentions.
 """

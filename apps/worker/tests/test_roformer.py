@@ -2,8 +2,6 @@
 REAL-ML/NET and unverified in this environment (see roformer.py's module warning), so these cover the
 argv-free logic: model-token→slug resolution, output-stem discovery, and engine selection.
 """
-import asyncio
-import os
 import sys
 from pathlib import Path
 
@@ -12,7 +10,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.separation import roformer  # noqa: E402
-from src.processor import JobSpec, ProgressEvent, CompleteResult  # noqa: E402
 
 
 def test_every_whitelist_token_resolves_to_a_real_registry_slug():
@@ -84,7 +81,7 @@ def test_roformer_argv_omits_device_when_unset():
 # ── engine selection ──────────────────────────────────────────────────────────────
 #
 # Was EngineRouter, a second dispatch layer that picked a whole processor per engine. Choosing a separator
-# is plan SELECTION now (docs/specs/SPEC-worker-pipeline.md §5.2c): `engine_for` resolves it before the
+# is plan SELECTION now (docs/archive/specs/SPEC-worker-pipeline.md §5.2c): `engine_for` resolves it before the
 # first step runs, and one Separate step asks whichever engine won the same four questions.
 
 

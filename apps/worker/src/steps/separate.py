@@ -13,7 +13,7 @@ nothing happens. As a step, both engines get it.
 from __future__ import annotations
 
 import os
-from typing import Any, AsyncIterator
+from typing import AsyncIterator
 
 from ..processor import (
     ProgressEvent,

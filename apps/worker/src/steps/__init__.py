@@ -5,5 +5,5 @@ package and yields progress. The knowledge lives in `lyrics/`, `separation/`, `a
 and `metadata/`; a step decides when that knowledge runs and what it writes to the context.
 
 This layer may import a domain and the runtime. A domain may import neither, which is the dependency rule
-in `docs/specs/SPEC-worker-pipeline.md` §3 and is enforced by tests/test_worker_layers.py.
+in `docs/archive/specs/SPEC-worker-pipeline.md` §3 and is enforced by tests/test_worker_layers.py.
 """

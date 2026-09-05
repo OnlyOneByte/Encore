@@ -123,6 +123,35 @@ SPECS: tuple[SourceSpec, ...] = (
 )
 
 
+@dataclass(frozen=True)
+class _Classified:
+    """One built source, wearing the tier its spec assigns it.
+
+    This is what makes `SourceSpec.role` and `SourceSpec.baseline_rank` load-bearing rather than
+    decorative. The source classes used to stamp their own tier — `AsrSource` even re-derived which
+    baseline rank it was from its `audio` argument — so the registry's declaration was a SECOND copy of a
+    fact `chain.py` already owned, read by nothing but the registry's own self-consistency tests. Those
+    two copies could drift and the suite would not notice: a source quietly returning CANDIDATE would make
+    it eligible to be published as the song's words while the registry still called it a baseline.
+
+    Stamping here deletes the second copy instead of synchronizing it. A source now answers only "what
+    text can I get", and the registry answers "and what is that text's standing" — which is where the
+    classification was always described.
+    """
+
+    inner: LyricsSource
+    role: str
+    baseline_rank: int | None
+
+    def fetch(self, req: LyricsRequest) -> Any:
+        got = self.inner.fetch(req)
+        if got is None:
+            return None
+        got.role = self.role
+        got.baseline_rank = self.baseline_rank
+        return got
+
+
 def build_sources(
     req: LyricsRequest,
     *,
@@ -144,6 +173,12 @@ def build_sources(
             notes.append(f"{spec.id}: did not run — no {', '.join(missing)}")
             continue
         sources.append(
-            spec.build(client=client, to_segments=to_segments, transcriber=transcriber, normalize=normalize)
+            _Classified(
+                inner=spec.build(
+                    client=client, to_segments=to_segments, transcriber=transcriber, normalize=normalize
+                ),
+                role=spec.role,
+                baseline_rank=spec.baseline_rank,
+            )
         )
     return sources, notes

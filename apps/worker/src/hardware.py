@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import platform
 import socket
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 #: cgroup v2 then v1 locations for the CPU quota and the memory ceiling. Both layouts are still in
 #: the wild (Amazon Linux 2 is v1, most modern distros are v2), and a v2-only reader silently
