@@ -15,7 +15,7 @@
  * interpreter and run inside the ordinary `bun test` gate — a drift reds a check instead of a party.
  */
 import { describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/shared';
 
@@ -40,12 +40,22 @@ const capabilities = readFileSync(join(WORKER_SRC, 'capabilities.py'), 'utf8');
  * So: assert the key sits at the TOP level of the artifacts dict in both engines, the same way the
  * enum parity above is asserted — by reading the Python as text.
  */
-const ENGINE_SOURCES = ['demucs.py', 'roformer.py'] as const;
+/**
+ * Paths are RELATIVE TO `WORKER_SRC` rather than bare filenames, because the worker's modules moved into
+ * domain packages (`docs/specs/SPEC-worker-pipeline.md` S0) and this guard reads them as text. A
+ * hardcoded flat filename made a cross-language guard break on a pure file move — which is a real cost,
+ * since the guard is the only thing standing between a shape mismatch and a silent whole-library stall.
+ */
+const ENGINE_SOURCES = ['separation/demucs.py', 'separation/roformer.py'] as const;
 
 describe('artifact envelope parity (worker yield vs core read)', () => {
 	for (const file of ENGINE_SOURCES) {
 		test(`${file} publishes songProfile as a SIBLING of stems, not inside it`, () => {
-			const src = readFileSync(join(WORKER_SRC, file), 'utf8');
+			const path = join(WORKER_SRC, file);
+			// Fail LOUDLY on a moved file rather than vacuously passing on an empty read. A guard that
+			// quietly stops guarding is worse than no guard: the whole point is that nobody is watching.
+			expect(existsSync(path), `${file} not found under ${WORKER_SRC} — did the module move?`).toBe(true);
+			const src = readFileSync(path, 'utf8');
 			// The literal the engine yields. Both engines build it inline in the CompleteResult call.
 			const yielded = [...src.matchAll(/artifacts\s*=\s*\{([^}]*)\}/g)].map((m) => m[1]!);
 			expect(yielded.length).toBeGreaterThan(0);
