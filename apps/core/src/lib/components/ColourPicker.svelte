@@ -29,6 +29,16 @@
 	 * Names, because "#7c5cff" tells a screen-reader user nothing they can act on — and because a
 	 * sighted guest picking off a wheel deserves to know what they landed on too, so this is shown on
 	 * screen as well as announced.
+	 *
+	 * COUPLING (load-bearing, currently unguarded): PRESET_NAMES is mapped to the shared SINGER_COLORS
+	 * BY POSITION — PRESET_NAMES[i] is the name of SINGER_COLORS[i]. Nothing asserts the two arrays
+	 * stay the same length or the same order, so reordering or resizing EITHER (this array here, or
+	 * SINGER_COLORS in packages/shared/src/colors.ts) silently mislabels a colour: a reader would
+	 * announce "green" for the amber dot. This array cannot be reordered without also reordering
+	 * SINGER_COLORS, and vice versa. The single named chokepoint for this mapping is presetIndex()
+	 * below — every read of PRESET_NAMES goes through it. contract.test.ts already pins THIS list's
+	 * exact contents (violet…mint), which is a partial guard; it does NOT check the shared side, so a
+	 * SINGER_COLORS reorder in packages/shared would pass every current test while mislabelling dots.
 	 */
 	const PRESET_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'];
 	const HUE_NAMES = [
@@ -48,13 +58,29 @@
 
 	/** The label for whatever is currently selected, preset or wheel pick. */
 	const colorLabel = $derived(
-		(SINGER_COLORS as readonly string[]).includes(value)
-			? PRESET_NAMES[(SINGER_COLORS as readonly string[]).indexOf(value)]!
-			: hueName(hue)
+		presetIndex(value) !== -1 ? PRESET_NAMES[presetIndex(value)]! : hueName(hue)
 	);
 
+	/**
+	 * Maps a preset hex to its position in the shared SINGER_COLORS array — the one place the
+	 * name-by-index coupling is made explicit. presetIndex(hex) returns -1 for a non-preset (a wheel
+	 * hue), so every read of PRESET_NAMES goes through the SAME index and there is a single, named
+	 * chokepoint if the two arrays ever drift.
+	 */
+	function presetIndex(hex: string): number {
+		return (SINGER_COLORS as readonly string[]).indexOf(hex);
+	}
+
+	/**
+	 * The bare colour name for a preset, or a neutral fallback for a wheel hue.
+	 *
+	 * Returns just "violet", NOT "violet swatch": this is used as each preset radio's aria-label, and
+	 * the element is ALREADY announced as a radio by its role, so appending "swatch" makes a reader
+	 * say "violet swatch, radio button" — the noun is redundant control-type noise.
+	 */
 	export function colorName(hex: string): string {
-		return `${PRESET_NAMES[(SINGER_COLORS as readonly string[]).indexOf(hex)] ?? 'color'} swatch`;
+		const i = presetIndex(hex);
+		return i === -1 ? 'color' : PRESET_NAMES[i]!;
 	}
 
 	function pickHue(h: number) {
@@ -151,13 +177,18 @@
 	.hue input {
 		-webkit-appearance: none;
 		appearance: none;
-		height: 44px;
+		height: var(--tap);
 		background: transparent;
 		cursor: pointer;
+		/* Own the touch gesture so the drag is never re-interpreted as a page scroll. Inside the
+		   profile sheet (overflow-y:auto) a hue drag with any vertical component was handed to the
+		   sheet's scroll and the hue never moved; the slider only travels on ONE axis, so claiming all
+		   touch behaviour here costs nothing and makes the horizontal drag reliable. */
+		touch-action: none;
 	}
 	.hue input::-webkit-slider-runnable-track {
 		height: 22px;
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		border: 1px solid var(--line);
 		background: linear-gradient(
 			to right,
@@ -168,7 +199,7 @@
 	}
 	.hue input::-moz-range-track {
 		height: 22px;
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		border: 1px solid var(--line);
 		background: linear-gradient(
 			to right,

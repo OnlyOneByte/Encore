@@ -155,7 +155,12 @@
 	 */
 	const stateChip = $derived.by(() => {
 		if (readiness === 'ready') return cookStageLabel('ready');
-		if (readiness === 'cooking') return cookStageLabel('separating', { pct, etaSec });
+		// SongRow only ever has a 3-value `readiness`, never the worker sub-status. cookStageLabel is
+		// coarse for exactly this reason — every in-flight status collapses to one "Making karaoke…"
+		// line — so this passes 'queued' as the least-committal in-flight value rather than naming a
+		// specific step (e.g. 'separating') the row has no way to know. Naming a step here would print
+		// a guess as fact: an aligning song would read as if it were still separating.
+		if (readiness === 'cooking') return cookStageLabel('queued', { pct, etaSec });
 		return null;
 	});
 
@@ -276,6 +281,8 @@
 	 * a naive attribute-level scan for stray glyphs would never have found it. It is a real mark now.
 	 */
 	.ph { color: rgba(255, 255, 255, 0.55); font-size: 0.9rem; display: grid; place-items: center; }
+	/* Translucent white kept as a literal on purpose: it is a wash over the thumbnail slot (a photo
+	   when one loads), the same photo-overlay exception as the duration badge's ink — not a theme colour. */
 
 	/*
 	 * Duration burned into the frame's corner — YouTube's own convention, so it needs no label and
@@ -284,7 +291,10 @@
 	 */
 	.dur {
 		position: absolute; right: 3px; bottom: 3px;
-		background: rgba(0, 0, 0, 0.84); color: #fff;
+		/* The near-black wash is the shared --scrim-strong (0.85 ≈ the old 0.84, reads identically).
+		   The ink stays a literal #fff on purpose: this sits on an arbitrary video frame, not a theme
+		   surface, so white is a deliberate photo-overlay exception rather than a themeable colour. */
+		background: var(--scrim-strong); color: #fff;
 		font-size: 0.62rem; font-weight: 700; padding: 1px 4px; border-radius: 4px;
 		font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
 	}
@@ -330,17 +340,17 @@
 	 * the only part a singer standing there waiting actually wants.
 	 */
 	.chip.state { white-space: normal; }
-	.chip.state.ok { background: #14322a; border-color: #1d5344; color: var(--ok); }
-	.chip.state.warn { background: #33260f; border-color: #5a441a; color: var(--warn); }
+	.chip.state.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
+	.chip.state.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
 	/*
 	 * One colour per kind, and they are semantic rather than decorative: green = the studio recording
 	 * you probably want, purple = a lyric video, amber = a different recording (live), red = probably
 	 * not a song at all. The label carries the meaning on its own, so colour is reinforcement — never
 	 * the only cue.
 	 */
-	.chip.kind.official { background: #14322a; border-color: #1d5344; color: var(--ok); }
-	.chip.kind.lyric { background: #2f2440; border-color: var(--line-tint); color: #c4a9ff; }
-	.chip.kind.live { background: #33260f; border-color: #5a441a; color: var(--warn); }
+	.chip.kind.official { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
+	.chip.kind.lyric { background: var(--card-tint2); border-color: var(--line-tint); color: var(--accent-ink); }
+	.chip.kind.live { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
 	.chip.kind.suspect { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
 	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
 	.chip.odd-dur { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }

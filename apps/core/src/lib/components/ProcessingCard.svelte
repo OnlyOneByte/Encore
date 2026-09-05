@@ -56,11 +56,20 @@
 	<div class="seq">{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}</div>
 	<div class="meta">
 		<div class="t">{title}<span class="sparkle"><Icon name="sparkle" /></span></div>
-		<div class="who">
-			<!-- Same away marker as QueueRow: a cook outlives its owner's attention span, and the room
-			     should not learn the singer left only once the song reaches the front. -->
-			{#if singerName}<i class:dim={singerAway} style="--singer:{singerColor}"></i> {singerName}{#if singerAway}<span class="away">· away</span>{/if} · being prepared{:else}being prepared{/if}
-		</div>
+		{#if singerName}
+			<div class="who">
+				<!-- Same away marker as QueueRow: a cook outlives its owner's attention span, and the room
+				     should not learn the singer left only once the song reaches the front.
+
+				     This line names the SINGER and nothing else. It used to end in "· being prepared" (and
+				     rendered a bare "being prepared" with no singer), which was a fourth phrasing for cook
+				     state alongside cook-phrasing.ts's "Making karaoke...", the chip strip's "Making
+				     karaoke", and SongRow's chip -- and it sat one line above the .stage row that already
+				     says exactly that, from the shared source. Redundant AND divergent, so it is gone. -->
+				<i class:dim={singerAway} style="--singer:{singerColor}"></i> {singerName}{#if singerAway}<span
+						class="away">· away</span>{/if}
+			</div>
+		{/if}
 		<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
 		<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{pct}%</span></div>
 		<div class="chips">
@@ -122,6 +131,8 @@
 	.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 0.66rem; padding: 3px 8px; border-radius: 20px; background: var(--card-tint2); color: var(--ink-dim); }
 	/* The "now" marker was a ● glyph; drawn instead so its size does not depend on a fallback font. */
 	.now-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
-	.chip.done { background: rgba(51, 214, 166, 0.16); color: var(--ok); }
-	.chip.now { background: rgba(255, 184, 77, 0.16); color: var(--warn); }
+	/* 16% tints DERIVED from the tokens via color-mix, not the --ok/--warn hexes hand-inlined at
+	   0.16 alpha — a hand-inlined copy silently desyncs the moment either token changes. */
+	.chip.done { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+	.chip.now { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 </style>

@@ -149,7 +149,7 @@
 </section>
 
 <style>
-	.backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 9; }
+	.backdrop { position: fixed; inset: 0; background: var(--scrim); z-index: 9; }
 	.sheet {
 		position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
 		max-width: var(--max-w); margin: 0 auto;
@@ -157,7 +157,10 @@
 		border-top-right-radius: 20px; box-shadow: var(--shadow);
 		display: flex; flex-direction: column;
 		/* collapsed: only the peek shows. Expanded: most of the screen, body scrolls. */
-		max-height: 82vh;
+		/* dvh, not vh: on iOS Safari vh resolves to the LARGE viewport (URL bar hidden), so with the
+		   bar showing the expanded sheet overflows the visible area and its footer hides under browser
+		   chrome. dvh tracks the currently-visible height. */
+		max-height: 82dvh;
 		transform: translateY(calc(100% - var(--peek-h, 132px) + var(--drag, 0px)));
 		transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 	}
@@ -173,17 +176,17 @@
 	.seekrow { display: flex; align-items: center; gap: 9px; margin: 10px 0 2px; }
 	.time { font-size: 0.68rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; min-width: 30px; }
 	.time.r { text-align: right; }
-	.track { flex: 1; height: 4px; background: var(--line); border-radius: 4px; overflow: hidden; }
+	.track { flex: 1; height: 4px; background: var(--line); border-radius: var(--radius-xs); overflow: hidden; }
 	/* scaleX, not width: animating width triggers layout every frame, which motion.test.ts forbids
 	   outright. The fill is full-width and scaled from its left edge instead, which composites. The
 	   transition exists because position arrives about once a second — without it the bar visibly
 	   steps; with it the steps read as continuous motion. */
 	.track > i {
-		display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 4px;
+		display: block; height: 100%; width: 100%; background: var(--grad); border-radius: var(--radius-xs);
 		transform-origin: left center; transition: transform 1s linear;
 	}
 	@media (prefers-reduced-motion: reduce) { .track > i { transition: none; } }
-	.peek:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: 18px; }
+	.peek:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius); }
 	.grip { width: 40px; height: 4px; border-radius: 3px; background: var(--line-strong); margin: 2px auto 10px; }
 	.line { display: flex; align-items: center; gap: 12px; }
 	.txt { min-width: 0; flex: 1; }
