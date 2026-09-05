@@ -22,6 +22,7 @@ import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/sha
 const WORKER_SRC = join(import.meta.dir, '../../../../worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
 const capabilities = readFileSync(join(WORKER_SRC, 'capabilities.py'), 'utf8');
+const protocolPy = readFileSync(join(WORKER_SRC, 'protocol.py'), 'utf8');
 
 /**
  * The ARTIFACT ENVELOPE is a second unguarded contract, and it bit for real.
@@ -97,6 +98,23 @@ function pyEnumValues(src: string, className: string): string[] {
 }
 
 /** Capability tokens the worker can actually advertise, as hand-typed in capabilities.py. */
+/**
+ * Frame-name constants from `protocol.py`, for one direction. The file groups them under
+ * `# worker -> core` / `# core -> worker` comments, so the section is the direction: reading the whole
+ * file would conflate the two unions and let a verb move sides unnoticed.
+ */
+function pyWireVerbs(section: 'worker -> core' | 'core -> worker'): string[] {
+	const start = protocolPy.indexOf(`# ${section}`);
+	if (start < 0) throw new Error(`protocol.py has no '# ${section}' section — did the grouping change?`);
+	const rest = protocolPy.slice(start + section.length);
+	// Stop at the NEXT comment line of any kind: the direction markers are themselves comments, so
+	// they delimit the groups. (An earlier version excluded the markers from this stop, which merged
+	// both directions into one list — caught by the worker→core assertion, not by review.)
+	const end = rest.search(/\n#/);
+	const body = end < 0 ? rest : rest.slice(0, end);
+	return [...body.matchAll(/^[A-Z_]+ = "([^"]+)"/gm)].map((m) => m[1]!);
+}
+
 function pyCapabilityTokens(): string[] {
 	return [...capabilities.matchAll(/Probe\(\s*"([^"]+)"/g)].map((m) => m[1]!);
 }
@@ -172,5 +190,110 @@ describe('TS↔Python vocabulary parity', () => {
 		// `local` needs no worker — it is served from the media volume, so it advertises nothing.
 		const routed = FETCHERS.filter((f) => f.id !== 'local').map((f) => `fetch:${f.id}`);
 		expect(routed.filter((c) => !advertisable.has(c))).toEqual([]);
+	});
+	/**
+	 * The WIRE VERBS were the last contract in this file guarded only by a comment.
+	 *
+	 * `protocol.py` carries `# message type strings (must match packages/shared/src/events.ts)` above
+	 * eleven frame names, and nothing checked it. Rename a frame on either side and every test here
+	 * stayed green while the worker silently ignored an unrecognised `type` (or the core dropped the
+	 * worker's) — a worker that connects, handshakes, and then never accepts a job. That is the same
+	 * "hung worker at 0%" signature the capability-derivation work was written to end, one layer up.
+	 */
+	test('worker→core frame names match the WorkerMessage union', () => {
+		const tsWorkerMessages = [
+			'worker:hello',
+			'worker:heartbeat',
+			'job:accept',
+			'job:reject',
+			'job:progress',
+			'job:complete',
+			'job:failed'
+		] as const;
+		// Same trick as JobType above: TypeScript checks the list IS the union, so it cannot fall behind.
+		const _exhaustive: readonly import('@encore/shared').WorkerMessage['type'][] = tsWorkerMessages;
+		void _exhaustive;
+		expect(pyWireVerbs('worker -> core').sort()).toEqual([...tsWorkerMessages].sort());
+	});
+
+	test('core→worker frame names match the WorkerCommand union', () => {
+		const tsWorkerCommands = ['worker:welcome', 'job:assign', 'job:cancel', 'ping'] as const;
+		const _exhaustive: readonly import('@encore/shared').WorkerCommand['type'][] = tsWorkerCommands;
+		void _exhaustive;
+		expect(pyWireVerbs('core -> worker').sort()).toEqual([...tsWorkerCommands].sort());
+	});
+
+	/**
+	 * `Stage` was the one worker enum this file did not cross-check. The worker emits it as
+	 * `job:progress.stage`, typed `MediaStatus`, and the core rebroadcasts it to phones — so a stage
+	 * the union does not contain is a progress row that renders no label or freezes mid-cook. Subset,
+	 * not equality: `queued`/`ready`/`failed`/`canceled` are core-side states no worker emits.
+	 */
+	test('worker stages are all valid MediaStatus values', () => {
+		const tsMediaStatuses = [
+			'queued',
+			'downloading',
+			'separating',
+			'aligning',
+			'ready',
+			'failed',
+			'canceled'
+		] as const;
+		const _exhaustive: readonly import('@encore/shared').MediaStatus[] = tsMediaStatuses;
+		void _exhaustive;
+		const stages = pyEnumValues(vocabulary, 'Stage');
+		expect(stages.length).toBeGreaterThan(0); // a silent empty parse would pass vacuously
+		expect(stages.filter((s) => !tsMediaStatuses.includes(s as never))).toEqual([]);
+	});
+
+	test('protocol.py is where the wire-verb read expects it', () => {
+		const path = join(WORKER_SRC, 'protocol.py');
+		expect(existsSync(path), `protocol.py not found under ${WORKER_SRC} — did the module move?`).toBe(
+			true
+		);
+	});
+});
+
+/**
+ * The roformer TOKEN→CHECKPOINT identity, which is currently BROKEN ON PURPOSE.
+ *
+ * `separators.ts` offers `bs-roformer-1297` to phones as selectable, ranks it 35 ("highest separation
+ * quality") and carries a measured `rtFactor` of 8.28. The worker resolves that same token to
+ * `roformer-model-bs-roformer-sw-by-jarredou`, which is `BS-Rofo-SW-Fixed.ckpt` — NOT the
+ * `model_bs_roformer_ep_317_sdr_12.9755.ckpt` those numbers were measured against. `roformer.py` says
+ * so in a `⚠️ KNOWN MISMATCH` comment.
+ *
+ * A comment cannot fail. These tests pin the divergence instead: the first asserts every roformer token
+ * the UI offers is resolvable at all (the prior bug was a token mapping to no registry slug), and the
+ * second pins the mapping AS IT IS, so repointing it to the benchmarked checkpoint — roadmap B-8 — has
+ * to come here and state that it did. Neither test blesses the mismatch; they stop it being silent.
+ */
+describe('roformer token ↔ checkpoint identity', () => {
+	const roformerPy = readFileSync(join(WORKER_SRC, 'separation/roformer.py'), 'utf8');
+
+	function pyRoformerModels(): Record<string, string> {
+		const block = roformerPy.match(/ROFORMER_MODELS\s*=\s*\{([\s\S]*?)\n\}/);
+		if (!block) throw new Error('ROFORMER_MODELS not found in roformer.py — did the table move?');
+		const out: Record<string, string> = {};
+		for (const m of block[1]!.matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) out[m[1]!] = m[2]!;
+		return out;
+	}
+
+	test('every roformer model the UI offers resolves to a slug the worker can run', () => {
+		const mapped = pyRoformerModels();
+		expect(Object.keys(mapped).length).toBeGreaterThan(0);
+		const offered = SEPARATOR_ENGINES.filter((e) => e.id === 'roformer').flatMap((e) =>
+			e.models.map((m) => m.id)
+		);
+		expect(offered.length).toBeGreaterThan(0);
+		expect(offered.filter((id) => !mapped[id])).toEqual([]);
+	});
+
+	test('bs-roformer-1297 still resolves to the KNOWN-MISMATCHED slug, not the benchmarked one', () => {
+		// Change this only together with the rtFactor/rank in separators.ts and the comment in
+		// roformer.py — the point of the pin is that the three move as one.
+		expect(pyRoformerModels()['bs-roformer-1297']).toBe(
+			'roformer-model-bs-roformer-sw-by-jarredou'
+		);
 	});
 });

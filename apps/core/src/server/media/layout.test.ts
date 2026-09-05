@@ -15,7 +15,14 @@ import {
 	toRelativeKey,
 	mediaRoot
 } from './paths';
-import { planMigration, applyMigration, needsMigration, ensureLayout } from './migrate-layout';
+import { planMigration, applyMigration, ensureLayout } from './migrate-layout';
+
+// What `migrateStorageLayout` itself checks -- asserted the same way here, so the test cannot pass
+// against a predicate production does not use.
+const nothingLeftToDo = (root: string) => {
+	const plan = planMigration(root);
+	return plan.moves.length === 0 && plan.prunes.length === 0;
+};
 import { safeMediaPath } from './local-files';
 
 let root: string;
@@ -162,7 +169,7 @@ describe('migration off the legacy layout', () => {
 		seedLegacy();
 		const first = applyMigration(planMigration(root));
 		expect(first.moved).toBeGreaterThan(0);
-		expect(needsMigration(root)).toBe(false);
+		expect(nothingLeftToDo(root)).toBe(true);
 
 		const second = applyMigration(planMigration(root));
 		expect(second.moved).toBe(0);
@@ -171,7 +178,7 @@ describe('migration off the legacy layout', () => {
 	});
 
 	it('is a no-op on a fresh volume', () => {
-		expect(needsMigration(root)).toBe(false);
+		expect(nothingLeftToDo(root)).toBe(true);
 		expect(applyMigration(planMigration(root)).moved).toBe(0);
 	});
 

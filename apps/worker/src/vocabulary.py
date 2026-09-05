@@ -6,10 +6,14 @@ Naming them once here gives three properties the strings did not have:
 
   * `parse_*` turns an untrusted wire value into a member or raises at the BOUNDARY, so an unknown
     action fails before any work starts rather than deep inside a pipeline.
-  * the upgrade ladder is declared data (`QUALITY_RANK`), so "is this better than what we have?" is a
-    lookup rather than an ad-hoc comparison repeated per call site.
   * `str` mixin keeps every member usable wherever a plain string is expected (dict keys, JSON,
     argv), so this is additive rather than a migration.
+
+NOT here: the separation quality ladder. A `QUALITY_RANK` table used to live in this module, mirroring
+`packages/shared/src/separators.ts` — but the refusal to publish an artifact that does not outrank the
+current one is decided CORE-side in `markMediaReady`, so the worker copy had no caller and the two
+tables could drift with nothing comparing them. It is deleted rather than guarded by a parity test,
+because a test would only have kept a dead table faithfully in sync with a live one.
 """
 from __future__ import annotations
 
@@ -160,22 +164,6 @@ STAGE_PLANS: dict[Action, list[Stage]] = {
     Action.ALIGN: [Stage.DOWNLOADING, Stage.ALIGNING],
 }
 
-#: Relative separation quality, low to high. The upgrade path is "strictly greater rank", so an
-#: upgrade can never swap in an artifact that is not actually better than the one already published.
-#: Ranks are engine+model pairs because a checkpoint choice matters as much as the engine.
-QUALITY_RANK: dict[tuple[Engine, str], int] = {
-    (Engine.DEMUCS, "htdemucs"): 10,
-    (Engine.DEMUCS, "htdemucs_6s"): 15,
-    (Engine.DEMUCS, "htdemucs_ft"): 20,
-    # The `mel-roformer-inst-v2` rung (30) is gone: its slug is absent from bs-roformer-infer's
-    # registry and the package implements only the BS-RoFormer architecture, so no mel-band
-    # checkpoint could ever have run. See ROFORMER_MODELS in roformer.py.
-    (Engine.ROFORMER, "bs-roformer-1297"): 35,
-    (Engine.ENSEMBLE, "instrumental_full"): 40,
-    (Engine.ENSEMBLE, "instrumental_clean"): 45,
-}
-
-
 def parse_action(value: str) -> Action:
     """Coerce a wire job type to an Action, raising on anything unknown."""
     try:
@@ -252,30 +240,3 @@ def stages_for(action: Action | str) -> list[Stage]:
     return STAGE_PLANS.get(key, [Stage.DOWNLOADING, Stage.SEPARATING])
 
 
-def quality_rank(engine: Engine | str, model: str) -> int:
-    """Rank of an engine+model pair; 0 for an unranked pair so it never wins an upgrade comparison."""
-    eng = engine if isinstance(engine, Engine) else parse_engine(engine)
-    return QUALITY_RANK.get((eng, model), 0)
-
-
-def is_upgrade(current: tuple[Engine | str, str] | None, candidate: tuple[Engine | str, str]) -> bool:
-    """Whether `candidate` is strictly better than `current`.
-
-    A missing current counts as an upgrade (there is nothing to regress). Equal or lower rank is NOT
-    an upgrade, which is what stops a re-cook from replacing a better artifact with a worse one.
-    """
-    cand = quality_rank(*candidate)
-    if cand == 0:
-        return False  # an unranked candidate is never provably better
-    if current is None:
-        return True
-    return cand > quality_rank(*current)
-
-
-#: The capability token a worker advertises for a separation engine+backend pair. Backend rides the
-#: token so routing stays in ONE mechanism (the core already matches on capability strings) rather
-#: than adding a parallel field to worker:hello. TORCH omits its suffix so the token a demucs/torch
-#: worker advertises stays exactly `stems`, keeping existing workers and their routing unchanged.
-def capability_token(action: Action, engine: Engine, backend: Backend = Backend.TORCH) -> str:
-    base = action.value if engine is Engine.DEMUCS else f"{action.value}:{engine.value}"
-    return base if backend is Backend.TORCH else f"{base}:{backend.value}"

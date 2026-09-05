@@ -11,12 +11,9 @@ from src.vocabulary import (  # noqa: E402
     Backend,
     Engine,
     Stage,
-    capability_token,
-    is_upgrade,
     parse_action,
     parse_backend,
     parse_engine,
-    quality_rank,
     stages_for,
 )
 
@@ -62,42 +59,3 @@ def test_every_action_has_a_stage_plan_ending_in_work():
         assert plan and plan[0] is Stage.DOWNLOADING
     assert stages_for(Action.ALIGN)[-1] is Stage.ALIGNING
     assert stages_for(Action.STEMS_UPGRADE)[-1] is Stage.SEPARATING
-
-
-# ── the upgrade ladder ────────────────────────────────────────────────────────────
-def test_quality_ranks_order_the_ladder_as_designed():
-    assert quality_rank(Engine.DEMUCS, "htdemucs") < quality_rank(Engine.DEMUCS, "htdemucs_ft")
-    assert quality_rank(Engine.DEMUCS, "htdemucs_ft") < quality_rank(Engine.ROFORMER, "bs-roformer-1297")
-    assert quality_rank(Engine.ROFORMER, "bs-roformer-1297") < quality_rank(Engine.ENSEMBLE, "instrumental_clean")
-
-
-def test_unranked_pair_scores_zero_so_it_never_wins():
-    assert quality_rank(Engine.DEMUCS, "not-a-model") == 0
-    assert is_upgrade((Engine.DEMUCS, "htdemucs"), (Engine.DEMUCS, "not-a-model")) is False
-
-
-def test_upgrade_requires_strictly_better():
-    fast = (Engine.DEMUCS, "htdemucs")
-    better = (Engine.DEMUCS, "htdemucs_ft")
-    best = (Engine.ENSEMBLE, "instrumental_clean")
-    assert is_upgrade(fast, better) is True
-    assert is_upgrade(fast, best) is True
-    assert is_upgrade(better, fast) is False  # never regress
-    assert is_upgrade(better, better) is False  # equal is not an upgrade, so a re-cook is a no-op
-
-
-def test_missing_current_counts_as_an_upgrade():
-    assert is_upgrade(None, (Engine.DEMUCS, "htdemucs")) is True
-
-
-# ── capability tokens ─────────────────────────────────────────────────────────────
-def test_demucs_torch_keeps_the_bare_stems_token():
-    # existing workers advertise exactly 'stems'; the scheme must not break their routing
-    assert capability_token(Action.STEMS, Engine.DEMUCS, Backend.TORCH) == "stems"
-    assert capability_token(Action.STEMS_UPGRADE, Engine.DEMUCS) == "stems-upgrade"
-
-
-def test_non_default_engine_and_backend_extend_the_token():
-    assert capability_token(Action.STEMS, Engine.ROFORMER) == "stems:roformer"
-    assert capability_token(Action.STEMS, Engine.DEMUCS, Backend.MLX) == "stems:mlx"
-    assert capability_token(Action.STEMS, Engine.ROFORMER, Backend.MLX) == "stems:roformer:mlx"

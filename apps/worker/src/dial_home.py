@@ -28,7 +28,6 @@ from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubPr
 # at startup, which is why this is the raw config and not the effective one.
 CONFIG = WorkerConfig.from_env()
 
-CORE_URL = CONFIG.core_ws
 WORKER_ID = CONFIG.worker_id
 CONCURRENCY = CONFIG.concurrency
 CAPABILITIES = list(CONFIG.capabilities)

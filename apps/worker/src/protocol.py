@@ -31,7 +31,6 @@ PING = "ping"
 # existing call sites and remain plain-string comparable.
 STAGE_DOWNLOADING = Stage.DOWNLOADING.value
 STAGE_SEPARATING = Stage.SEPARATING.value
-STAGE_ALIGNING = Stage.ALIGNING.value
 
 # The stage sequence a job of each type passes through (drives the live phone progress bar).
 # `stems` = download the source then separate vocals; `align` = download then word-align lyrics.
