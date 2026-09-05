@@ -66,6 +66,43 @@ def test_the_argv_downloads_no_media():
         assert "--skip-download" in caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s", auto=auto)
 
 
+def test_the_requested_langs_are_explicit_codes_never_a_glob():
+    """The `en.*` glob is what earned `HTTP Error 429: Too Many Requests` from YouTube.
+
+    YouTube offers the auto-caption track machine-translated into ~190 languages, and for a video whose
+    audio is not English they appear under `en-<source>` codes (`en-cs`, `en-de`, ...) — all matched by
+    `en.*`. One align job therefore fired dozens of timedtext requests, got rate-limited part way
+    through, and left the tier with a degraded or missing baseline. Doubly wasteful, since
+    `find_caption_file` refuses translations and returns exactly one file.
+
+    A pattern here is the defect, so the test bans the metacharacter rather than pinning an exact string.
+    """
+    argv = caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s")
+    langs = argv[argv.index("--sub-langs") + 1]
+    assert "*" not in langs, f"a glob in --sub-langs fans out into a 429: {langs!r}"
+    codes = langs.split(",")
+    assert codes, "at least one language must be requested"
+    assert len(codes) <= 6, f"every extra code is another rate-limited request: {codes!r}"
+    assert "en-orig" in codes  # YouTube's original-language marker: the one track that cannot be a translation
+    assert "en" in codes
+
+
+def test_the_argv_survives_a_rate_limit_instead_of_losing_the_baseline():
+    """A caption miss is SILENT — the step swallows the failure and the tier simply has no baseline — so
+    a transient 429 must be retried rather than dropped.
+
+    Pinned as behaviour, not formatting: spacing the requests out is what stops the burst, and backing
+    off is what recovers the track that was refused anyway.
+    """
+    for auto in (False, True):
+        argv = caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s", auto=auto)
+        assert "--sleep-subtitles" in argv, "requests must not arrive as a burst"
+        assert int(argv[argv.index("--sleep-subtitles") + 1]) >= 1
+        # Exponential backoff on a retryable HTTP status, 429 among them.
+        assert argv[argv.index("--retry-sleep") + 1].startswith("http:exp=")
+        assert int(argv[argv.index("--extractor-retries") + 1]) >= 1
+
+
 def test_cues_become_timed_segments():
     segs = parse_vtt(SAMPLE_VTT)
     assert [s["text"] for s in segs] == ["Hello, hello baby", "You called, I can't hear a thing"]
@@ -162,6 +199,28 @@ def test_a_MACHINE_TRANSLATED_track_is_recognised_as_such():
     assert not is_translated_track("captions.en-orig.vtt")
     assert not is_translated_track("captions.en-GB.vtt")
     assert not is_translated_track("captions.pt-BR.vtt")
+
+
+def test_a_translated_FROM_track_is_recognised_despite_a_short_suffix():
+    """The second shape of translation, and the one that slipped through.
+
+    YouTube also names a translation `en-<source language>` — `en-cs` is English translated from Czech,
+    observed live in a worker log. The opaque-suffix pattern needs 8+ characters, so a two-letter subtag
+    sailed past it and could have been selected as a BASELINE: fluent English about the right song, long
+    enough not to abstain, and therefore able to vote confidently against every correct candidate.
+
+    Case is the discriminator, per BCP 47: a REGION subtag is uppercase (`en-GB`), a LANGUAGE subtag is
+    lowercase (`en-cs`). Both cases are asserted together because a rule that rejected `en-GB` would
+    throw away legitimate tracks that some uploads are the only carrier of.
+    """
+    assert is_translated_track("captions.en-cs.vtt")
+    assert is_translated_track("captions.en-de.vtt")
+    assert is_translated_track("captions.en-fil.vtt")  # three-letter subtags exist
+    # Region variants and the original marker must survive the widened rule.
+    assert not is_translated_track("captions.en-GB.vtt")
+    assert not is_translated_track("captions.en-US.vtt")
+    assert not is_translated_track("captions.pt-BR.vtt")
+    assert not is_translated_track("captions.en-orig.vtt")
 
 
 def test_a_translated_track_is_REFUSED_rather_than_ranked_last(tmp_path):
