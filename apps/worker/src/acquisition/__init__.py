@@ -1,7 +1,7 @@
 """Acquisition: where a job's bytes are, and whether we have to go and get them.
 
-  * `fetch` — the fetcher vocabulary parsed at the boundary, `resolve_source_audio`, and
-    `FetchProcessor`, which makes acquisition a JOB rather than a stage.
+  * `fetch` — the fetcher vocabulary parsed at the boundary, the yt-dlp argv and its progress parser,
+    and `find_downloaded`, which discovers the name yt-dlp actually wrote.
   * `stream_quality` — which of YouTube's audio streams to ask for, ranked by codec generation rather
     than by nominal bitrate.
 

@@ -1,6 +1,6 @@
 """Enforcement: the tests that make the architecture stick.
 
-`docs/specs/SPEC-worker-pipeline.md` §1.2 established that this codebase's failure mode is not missing
+`docs/archive/specs/SPEC-worker-pipeline.md` §1.2 established that this codebase's failure mode is not missing
 abstractions but UNENFORCED ones — four verified cases, one of which shipped a near-miss bug. So every
 mechanism the refactor introduced gets a test that fails when someone routes around it. Without this file
 the refactor is decoration.
@@ -118,7 +118,7 @@ def test_there_is_exactly_ONE_thing_that_executes_a_plan():
     unexpected = {k: v for k, v in found.items() if k not in allowed}
     assert not unexpected, (
         f"new Processor implementations: {unexpected}. Work belongs in a Step inside a plan, not in a "
-        f"class with its own process() — see docs/specs/SPEC-worker-pipeline.md §7 E3."
+        f"class with its own process() — see docs/archive/specs/SPEC-worker-pipeline.md §7 E3."
     )
 
 
@@ -244,4 +244,39 @@ def test_the_pipeline_doc_matches_what_the_plans_actually_declare():
     assert committed.strip() == render().strip(), (
         "docs/ARCHITECTURE.md's generated region is stale — run `python3 -m src.docgen --write` from "
         "apps/worker"
+    )
+
+
+# ── E9: the registry is the ONLY place a source's tier is decided ─────────────────
+
+
+def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
+    """The tier a source speaks in belongs to its SourceSpec, and to nothing else.
+
+    Before this, `chain.py`'s four sources each set `role=` (and AsrSource re-derived `baseline_rank=` from
+    its audio argument) on the text they returned, while `registry.py` declared the same two facts in SPECS
+    — read by nothing but the registry's own self-consistency tests. Two copies, no reader, no way to
+    notice a disagreement: a source quietly returning CANDIDATE would become eligible to be published as
+    the song's words while every test stayed green.
+
+    AST, not a substring scan, because the words appear in this repo's prose constantly — the docstring
+    above says `role=` twice. The np.correlate guard learned this the same way: a text search over source
+    passes on a comment that says the right thing while the code does the wrong one.
+    """
+    chain = Path(__file__).resolve().parents[1] / "src" / "lyrics" / "chain.py"
+    tree = ast.parse(chain.read_text(encoding="utf-8"))
+
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        # Only LyricsText(...) construction matters. Assigning to a LyricsText the caller already owns is
+        # what the registry itself does, and that is the one place allowed to.
+        if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "LyricsText"):
+            continue
+        for kw in node.keywords:
+            if kw.arg in {"role", "baseline_rank"}:
+                offenders.append(f"chain.py:{node.lineno} passes {kw.arg}= to LyricsText")
+
+    assert not offenders, (
+        "a lyrics source is deciding its own tier again — that belongs to its SourceSpec in "
+        "lyrics/registry.py, which stamps it in _Classified.fetch: " + "; ".join(offenders)
     )

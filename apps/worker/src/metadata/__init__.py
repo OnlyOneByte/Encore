@@ -14,8 +14,9 @@ misses. Album and year are parsed to SELECT a recording but deliberately never p
 to compilations and bootleggery often enough that a wrong album is worse than none.
 
 MusicBrainz allows one request per second per IP and penalises excess by declining everything, so calls
-go through a process-global serialised rate gate. That gate SLEEPS, which is why `FetchProcessor` runs
-annotation off the event loop: a blocking sleep here would stall the worker, and with concurrency > 1 the
+go through a process-global serialised rate gate. That gate SLEEPS, which is why the `Annotate` step hands
+the call to `asyncio.to_thread` rather than awaiting it inline: a blocking sleep on the event loop would
+stall the worker, and with concurrency > 1 the
 other job's progress events would stop arriving and its lease would start expiring. Waiting on metadata
 must not look like a hung separation.
 NAME COLLISION, deliberately not papered over: this package has a submodule `annotate` AND that module

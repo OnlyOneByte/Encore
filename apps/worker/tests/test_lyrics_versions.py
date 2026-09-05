@@ -14,9 +14,9 @@ Two mechanisms, deliberately separate, and the distinction is the point of most 
 """
 from __future__ import annotations
 
-import pytest
 
 from src.lyrics.chain import (
+    BASELINE_CAPTIONS_AUTO,
     ROLE_BASELINE,
     ROLE_CANDIDATE,
     SOURCE_ASR,
@@ -35,6 +35,7 @@ from src.lyrics.chain import (
     composite_score,
     select_by_baselines,
 )
+from src.lyrics.registry import build_sources
 from src.lyrics.source import (
     DURATION_TOLERANCE_SEC,
     LrclibResult,
@@ -500,29 +501,56 @@ def test_captions_decline_when_the_upload_has_no_manual_track():
 
 def test_authored_captions_are_a_CANDIDATE_and_authoritative():
     """`high` confidence is defensible only because an automatic track cannot reach this tier — the two
-    arrive from separate fetches into separate directories. See test_captions.py."""
+    arrive from separate fetches into separate directories. See test_captions.py.
+
+    The ROLE is asserted through the registry (below), not here: the source no longer decides its own tier.
+    """
     got = CaptionsSource().fetch(
         LyricsRequest(media_id="m", caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}])
     )
     assert got is not None
-    assert got.role == ROLE_CANDIDATE
     assert got.text_source == SOURCE_CAPTIONS
     assert got.text_confidence == "high"
     assert got.timing == TIMING_LINE  # a cue bounds a LINE; word timings come from the aligner
     assert got.tag == "manual"
 
 
-def test_automatic_captions_are_a_BASELINE_and_never_authoritative():
+def test_automatic_captions_are_never_authoritative():
     """The reversal the two-tier split earns. The same text that would be dangerous as a source of record
     is useful as a third opinion on what is audible — and `low` keeps isAuthoritativeText() false, so even
-    when it is all that is left the TV labels it."""
+    when it is all that is left the TV labels it.
+    """
     got = AutoCaptionsSource().fetch(
         LyricsRequest(media_id="m", auto_caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}])
     )
     assert got is not None
-    assert got.role == ROLE_BASELINE
     assert got.text_confidence == "low"
     assert got.tag == "auto"
+
+
+def test_the_REGISTRY_decides_which_tier_each_source_speaks_in():
+    """The two-tier split, asserted where it is now declared — and the assertion the old pair could not
+    make.
+
+    Those tests read `role` off a directly-constructed source, so they were checking that `chain.py` agreed
+    with itself. The authored-captions one was worse than redundant: CANDIDATE is `LyricsText`'s default, so
+    it would have passed even with the assignment deleted. This drives the real path — registry builds the
+    source, source fetches, registry stamps the tier — so a source and its spec cannot disagree.
+    """
+    req = LyricsRequest(
+        media_id="m",
+        caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}],
+        auto_caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}],
+    )
+    sources, _ = build_sources(req)
+    by_tier = {}
+    for src in sources:
+        got = src.fetch(req)
+        if got is not None:
+            by_tier[got.text_source, got.tag] = (got.role, got.baseline_rank)
+
+    assert by_tier[SOURCE_CAPTIONS, "manual"] == (ROLE_CANDIDATE, None)
+    assert by_tier[SOURCE_CAPTIONS, "auto"] == (ROLE_BASELINE, BASELINE_CAPTIONS_AUTO)
 
 
 def test_the_two_caption_kinds_read_from_SEPARATE_inputs():

@@ -8,30 +8,37 @@ died several stages later inside ffmpeg with "No such file", which reports the s
 cause.
 
 The core now DECLARES the fetcher in job params and this module parses it at the boundary, so an
-unrecognised fetcher fails before a byte moves. `resolve_source_audio` is MEANT to be the one place that
-answers "where are this job's bytes, and do I have to go and get them".
+unrecognised fetcher fails before a byte moves.
 
-It is not, yet. Only FetchProcessor calls it: DemucsProcessor, RoformerProcessor and WhisperXProcessor
-each import `job_fetcher` + `local_source_path` and re-derive the branch inline — three copies of the
-answer this function exists to centralise. An earlier version of this docstring asserted they all called
-it, which was the more expensive kind of wrong: a reader had no reason to check. Consolidating them is
-`docs/specs/SPEC-worker-pipeline.md` §7 E6.
+ONE ANSWER, finally. `resolve_source_audio` used to claim in this very docstring that it was the single
+place answering "where are this job's bytes, and do I have to go and get them" — while only
+`FetchProcessor` called it and three other processors re-derived the branch inline. That was the more
+expensive kind of wrong: a reader had no reason to check. S3 resolved it by DELETING the function rather
+than fixing its callers, because the surviving copy was also the wrong one (it assumed a `.wav` extension
+yt-dlp never wrote). The step `AcquireAudio` is now the only answer, for all four actions, and
+`tests/test_worker_layers.py` E6 fails if a second one appears —
+`docs/archive/specs/SPEC-worker-pipeline.md` §7 E6.
 
-FetchProcessor makes acquisition a JOB rather than a stage. That is what lets a box which can download
-and a box which can separate be different machines: a fetch routes on `fetch:<fetcher>` while a cook
-routes on `stems`, so neither capability implies the other.
+Acquisition is a JOB rather than a stage. That is what lets a box which can download and a box which can
+separate be different machines: a fetch routes on `fetch:<fetcher>` while a cook routes on `stems`, so
+neither capability implies the other.
 
 PURE/IO SPLIT as elsewhere in this worker: the argv builder and the fetcher parsing are pure and unit
-tested; only FetchProcessor touches the network, through the same injectable runner the other
-processors use.
+tested: the argv builders below are pure, and the only thing that touches the network is the runner
+`AcquireAudio` injects, which the tests replace with a fake.
+
+`download_argv` and `parse_ytdlp_progress` live HERE, not in `separation/demucs.py` where they were born.
+They were part of the pre-S0 monolith, and left where they were, the acquisition step had to reach into
+the separation domain to download a file — the one thing E6 says acquisition owns.
 """
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+import re
 
-from ..processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path
-from ..vocabulary import Fetcher, Stage, parse_fetcher
+from ..processor import JobSpec
+from ..vocabulary import Fetcher, parse_fetcher
+from .stream_quality import FORMAT_SELECTOR
 
 
 def job_fetcher(job: JobSpec) -> Fetcher:
@@ -63,3 +70,42 @@ def find_downloaded(directory: str, media_id: str) -> str | None:
             return os.path.join(directory, name)
     return None
 
+
+def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp") -> list[str]:
+    """yt-dlp argv: fetch the best audio-only stream in its NATIVE container -- no transcode.
+
+    Passing `-x --audio-format wav` inflated a ~5 MB lossy YouTube stream (Opus 135k / AAC 129k --
+    measured) into ~59 MB of WAV: a ~12x cost for ZERO fidelity gain, since you cannot restore
+    information YouTube already discarded, so the WAV was a lossless copy of lossy audio. The native
+    stream is both smaller and higher fidelity than any re-encode.
+
+    `out_template` must carry `%(ext)s` -- the extension is whatever YouTube served (m4a or webm), so
+    the caller discovers the real filename with `find_downloaded` rather than assuming one.
+
+    The selector is `stream_quality.FORMAT_SELECTOR`, not a bare `bestaudio`. yt-dlp's own
+    ranking is bitrate-led, so an old upload carrying BOTH a modern Opus stream and a legacy AAC one
+    can return the AAC purely because its nominal bitrate is higher. Everything downstream inherits
+    that choice -- separator, FLAC instrumental, ASR lyrics -- and no later encode can undo it. Its
+    final branch is a bare `best` rather than a bare `bestaudio`, because every `bestaudio` branch
+    requires an audio-only stream to exist and a muxed-only video would otherwise fail at download;
+    with `best` the selector only reorders preferences and never makes a video undownloadable.
+    """
+    return [
+        ytdlp_bin,
+        "--no-playlist",
+        "--newline",  # emit progress as discrete lines (not \r) so the parser sees each update
+        "-f", FORMAT_SELECTOR,  # audio-only, native container, codec-ranked
+        "-o", out_template,
+        source_uri,
+    ]
+
+
+#: yt-dlp reports download progress as `[download]  45.2% of 5.34MiB at ...`. Compiled once at import
+#: because it is matched against every line a download emits.
+_YTDLP_PCT = re.compile(r"\[download\]\s+([\d.]+)%")
+
+
+def parse_ytdlp_progress(line: str) -> int | None:
+    """Extract the download percentage from a yt-dlp `[download] 45.2% of ...` line, else None."""
+    m = _YTDLP_PCT.search(line)
+    return int(float(m.group(1))) if m else None

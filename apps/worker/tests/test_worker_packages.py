@@ -1,6 +1,6 @@
 """Guards on the worker's package structure.
 
-These exist because S0 of docs/specs/SPEC-worker-pipeline.md introduced packages, and packaging has two
+These exist because S0 of docs/archive/specs/SPEC-worker-pipeline.md introduced packages, and packaging has two
 failure modes that are silent until something far away breaks. Both were hit while doing the move, which
 is why they are pinned rather than remembered.
 
@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 DOMAIN_PACKAGES = ["acquisition", "analysis", "lyrics", "metadata", "separation"]
 
 #: The runtime layers. These execute a plan and know nothing about audio, lyrics or separation — see
-#: docs/specs/SPEC-worker-pipeline.md §3. Listed separately from the domains because the layering guard
+#: docs/archive/specs/SPEC-worker-pipeline.md §3. Listed separately from the domains because the layering guard
 #: treats them differently: a domain may not import these, and these may not import a domain.
 RUNTIME_PACKAGES = ["runtime", "steps"]
 
