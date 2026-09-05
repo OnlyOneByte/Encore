@@ -239,8 +239,15 @@ export interface VoiceBand {
  * These describe MATERIAL, not people: the UI says "sits in tenor range", never "for tenors". The
  * distinction matters at a party — a label that tells a guest what they are is a worse experience than
  * no label, and it would be wrong anyway, since nothing here measured them.
+ *
+ * TYPED NON-EMPTY (`[VoiceBand, ...VoiceBand[]]`) rather than `readonly VoiceBand[]`, because the
+ * registry having a first entry is a real invariant that `voiceBandFor` depends on: it seeds its
+ * nearest-centre search with `VOICE_BANDS[0]` and returns that seed if no band ever scores closer.
+ * Under `noUncheckedIndexedAccess` a plain array makes that seed `VoiceBand | undefined`, so the
+ * declared `VoiceBand | null` return was unassignable — the type understated the table, and the honest
+ * fix is to state the invariant here rather than assert it away at the use site.
  */
-export const VOICE_BANDS: readonly VoiceBand[] = [
+export const VOICE_BANDS: readonly [VoiceBand, ...VoiceBand[]] = [
   { id: 'bass', label: 'Bass', lowMidi: 40, highMidi: 64 }, // E2-E4
   { id: 'baritone', label: 'Baritone', lowMidi: 45, highMidi: 69 }, // A2-A4
   { id: 'tenor', label: 'Tenor', lowMidi: 48, highMidi: 72 }, // C3-C5
