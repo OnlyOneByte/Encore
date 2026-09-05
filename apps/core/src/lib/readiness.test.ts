@@ -57,12 +57,29 @@ test('a live media:status wins over the catalog copy (the row responds to the ta
 	expect(displayReadiness(fresh, { status: 'ready' })).toBe('ready');
 });
 
-test('a failed cook falls back to the catalog, so the song reads as still needing one', () => {
-	expect(displayReadiness(m(), { status: 'failed' })).toBe('unacquired');
+test('a failed cook READS as failed, so the singer learns the cook died', () => {
+	// This used to fall through to the catalog and report 'unacquired' — or, while stemStatus was still
+	// mid-flight, 'cooking', which is what made a dead cook read "Making karaoke… 0%" forever. The only
+	// failure signal was a four-second toast; look away and the information was gone for good.
+	expect(displayReadiness(m(), { status: 'failed' })).toBe('failed');
 });
 
-test('only an unacquired song can be cooked', () => {
+test('a failed cook on an already-singable song is not a failure the guest needs', () => {
+	// A dead lyrics upgrade on a cooked song: still fully singable, so reporting failure would be
+	// alarming and wrong. The gates decide singability, as everywhere else.
+	const cooked = m({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'ready'
+	});
+	expect(displayReadiness(cooked, { status: 'failed' })).toBe('ready');
+});
+
+test('an unacquired or FAILED song can be cooked; one in flight or done cannot', () => {
 	expect(canCook('unacquired')).toBe(true);
+	// The retry path. A failed cook settles back to un-cooked server-side, so offering Sing again is a
+	// real action rather than a button that answers "already cooked".
+	expect(canCook('failed')).toBe(true);
 	expect(canCook('ready')).toBe(false);
 	expect(canCook('cooking')).toBe(false);
 });

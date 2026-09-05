@@ -188,7 +188,10 @@
 							nm.set(e.mediaId, {
 								...m,
 								stemStatus:
-									e.status === 'ready' ? 'ready' : e.status === 'failed' ? m.stemStatus : 'queued'
+									// A failed cook settles back to un-cooked server-side (settleStemsGate), so the
+									// optimistic copy follows it. This used to preserve the mid-flight status, which
+									// is what kept the row reading as cooking after the job had already died.
+									e.status === 'ready' ? 'ready' : e.status === 'failed' ? 'none' : 'queued'
 							});
 							mediaCatalog = nm;
 						}
@@ -301,7 +304,12 @@
 	 */
 	const cookingRows = $derived.by(() => {
 		const ids = new Set<string>();
-		for (const [id, s] of mediaStatus) if (s.status !== 'ready' && s.status !== 'failed') ids.add(id);
+		// `failed` is INCLUDED, deliberately. It used to be filtered out, which meant a dead cook lost
+		// its row entirely: the song settled back to un-cooked, dropped out of this group, and the
+		// singer's only trace of it was a four-second toast. This is the one group guaranteed to be
+		// visible regardless of the search box, so it is the only place a failure can reliably be seen —
+		// and the row carries its own red chip plus a Sing button to retry.
+		for (const [id, s] of mediaStatus) if (s.status !== 'ready') ids.add(id);
 		for (const [id, m] of mediaCatalog) if (readinessFor(m) === 'cooking') ids.add(id);
 		return [...ids]
 			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
@@ -757,15 +765,27 @@
 	{#if showCooking && cookingRows.length}
 		<!-- Queue it anyway: rotation HOLDS a cooking song's slot, so it keeps its fair
 		     position and plays when the stems land. Cooking is not a blocked state. -->
-		{#if showGroupHeads}<div class="grouphead warn">Cooking · queue it anyway</div>{/if}
+		{#if showGroupHeads}
+			<!-- "Queue it anyway" is true of a cooking song — rotation HOLDS its slot, so it keeps its fair
+			     position and plays when the stems land. It is NOT true of a failed one, so the head stops
+			     saying it as soon as the group contains a dead cook rather than inviting a guest to queue
+			     a song that will never play. -->
+			<div class="grouphead warn">
+				{cookingRows.some((c) => liveOf(c.id)?.status === 'failed')
+					? 'Cooking · one didn’t work — tap Sing to try again'
+					: 'Cooking · queue it anyway'}
+			</div>
+		{/if}
 		{#each cookingRows as c (c.id)}
+			{@const r = displayReadiness(c.media, liveOf(c.id))}
 			<SongRow
 				{...rowMeta(c.media)}
-				readiness="cooking"
+				readiness={r}
 				pct={c.pct}
 				etaSec={c.etaSec}
 				inQueue={inMyQueue(c.id)}
 				onadd={() => addSong(c.id)}
+				onmake={canCook(r) ? () => singThis(c.id) : undefined}
 			/>
 		{/each}
 	{/if}

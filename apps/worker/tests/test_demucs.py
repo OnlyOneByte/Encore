@@ -97,6 +97,12 @@ def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, e
             out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
             os.makedirs(os.path.dirname(out), exist_ok=True)
             Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
+        elif binary == "ffmpeg" and "volumedetect" in argv:
+            # A measuring call, not a writing one: it ends in `-f null -`, so there is no output file.
+            # Treating it like an encode wrote to dirname("-") == "" and raised, which the probe's
+            # try/except then swallowed — so these tests never actually exercised the silence probe.
+            yield "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
+            return
         elif binary == "ffmpeg":
             out = argv[-1]
             os.makedirs(os.path.dirname(out), exist_ok=True)

@@ -332,3 +332,52 @@ test('an older worker that reports no facts still gets a sealed, timed attempt',
 	expect(attemptStages(a)).toEqual([]); // no breakdown, honestly empty
 	expect(a.model).toBe('htdemucs'); // what dispatch asked for still stands
 });
+
+test('a terminally failed stems job settles the media back to un-cooked and says so', () => {
+	// The phantom cook: #onFailed used to leave stemStatus mid-flight, so isCooking stayed true, the
+	// phone row read "Making karaoke… 0%" forever and cookState refused a retry. One worker OOM made
+	// the song permanently unsingable with no way out but a DB edit.
+	const { hub, jobs, mediaById, broadcasts } = harness();
+	// enqueue alone does not touch the media; requestMakeKaraoke is what marks it in flight, so set the
+	// state that a real cook would have left behind.
+	mediaById.set('m1', media('m1', { stemStatus: 'queued' }));
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // in flight
+
+	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: job.id, error: 'CUDA OOM', retryable: false });
+
+	expect(jobs.byId(job.id)!.status).toBe('failed');
+	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // settled — retryable again
+	// And the phone is told, so the row can render the failure rather than a stalled progress line.
+	const statuses = broadcasts.filter((e) => e.type === 'media:status');
+	expect(statuses.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'failed' });
+});
+
+test('a failed ALIGN leaves a separated song singable — it does not settle the stems side', () => {
+	// The asymmetry is deliberate: a dead lyrics step must not throw away a good instrumental.
+	const { hub, jobs, mediaById } = harness();
+	mediaById.set('m1', media('m1', { stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac' }));
+	const job = jobs.enqueue('m1', 'align', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: job.id, error: 'model would not load', retryable: false });
+
+	expect(mediaById.get('m1')!.stemStatus).toBe('ready'); // instrumental preserved
+	expect(mediaById.get('m1')!.lyricsStatus).toBe('ready'); // lyrics gate settled instead
+});
+
+test('a terminally failed FETCH also settles the media — the common stranding case', () => {
+	// requestMakeKaraoke marks the media cooking BEFORE the download, so a dead fetch stranded it
+	// exactly like a dead separation. This was the more likely of the two in practice: a missing deno
+	// or a broken yt-dlp fails every fetch on the box.
+	const { hub, jobs, mediaById } = harness();
+	mediaById.set('m1', media('m1', { stemStatus: 'queued' }));
+	const job = jobs.enqueue('m1', 'fetch', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['fetch:ytdlp'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: job.id, error: 'Requested format is not available', retryable: false });
+
+	expect(mediaById.get('m1')!.stemStatus).toBe('none');
+});
