@@ -42,12 +42,97 @@ def test_is_authoritative_text_mirrors_the_ts_predicate():
     assert not is_authoritative_text(SOURCE_CAPTIONS, "low")  # auto-captions: ASR wearing a caption hat
 
 
-def test_presplit_leaves_authoritative_text_completely_alone():
-    # LRCLIB arrives line-broken by a human; a splitter can only damage it. Same object, not a copy.
-    seg = [{"start": 0.0, "end": 8.0, "text": BLOB, "words": []}]
+def bound_only(lines, max_chars):
+    """A length-only bounder: bisect any line wider than the budget at a word boundary, greedily.
+
+    Stands in for upstream (`karaoke-lyrics-processor`) in the pure tests — it BOUNDS by length and
+    does nothing else, which is exactly the job the authoritative tier is meant to get. It has none of
+    boundary_split's comma/opener/sentence rules, so if a re-lineation shows up in the output it can
+    only have come from boundary_split, not from here.
+    """
+    out = []
+    for line in lines:
+        while len(line) > max_chars:
+            cut = line.rfind(" ", 0, max_chars + 1)
+            if cut <= 0:
+                break
+            out.append(line[:cut])
+            line = line[cut + 1 :]
+        out.append(line)
+    return out
+
+
+# A short authoritative line and a long one on their own segments. The long one is a single human lyric
+# line that overflows a TV row; the short one already fits.
+LONG_AUTHORITATIVE = "and I will wait right here for you until the very last light goes out tonight"
+
+
+def test_presplit_length_bounds_authoritative_text_that_overflows_a_row():
+    # THE #59 fix: before this, LRCLIB synced/plain text was passed through with no length bounding at
+    # all — only the display-time LINE_MAX_CHARS fallback caught an over-long human line. It must be
+    # bounded at cook time now, exactly like every other tier.
+    seg = [{"start": 0.0, "end": 8.0, "text": LONG_AUTHORITATIVE, "words": []}]
     lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=seg, timing=TIMING_LINE, text_confidence="high")
+    out = lp.presplit_texts([lrclib], bounder=bound_only)
+    assert len(out[0].segments) > 1  # the over-long line was bounded into rows
+    assert all(len(s["text"]) <= lp.MAX_LINE_CHARS for s in out[0].segments)
+
+
+def test_presplit_does_NOT_run_the_semantic_splitter_on_authoritative_text():
+    # The guard the issue asks for: length bounding runs on every tier, but the semantic re-lineator
+    # (comma/opener/sentence rules) must NOT touch human-authored lines. With a bounder that bounds
+    # nothing, an authoritative line FULL of boundary_split triggers (commas, ", and", a capital
+    # opener) still comes back as ONE segment — proof boundary_split never ran. The same text on the
+    # ASR tier is shredded into its clauses (asserted below), so the fence is doing real work.
+    rich = "I walked the harbour road, and every light faded. So tell me where it goes"
+    assert len(lp.boundary_split(rich)) > 1  # boundary_split WOULD split this
+    seg = [{"start": 0.0, "end": 8.0, "text": rich, "words": []}]
+    lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=list(seg), timing=TIMING_LINE, text_confidence="high")
     out = lp.presplit_texts([lrclib], bounder=passthrough)
-    assert out[0] is lrclib
+    assert len(out[0].segments) == 1
+    assert out[0].segments[0]["text"] == rich  # verbatim: not re-lineated
+    # and the SAME text on the auto-transcribed tier IS re-lineated — the fence, not luck
+    asr = LyricsText(text_source=SOURCE_ASR, segments=list(seg), timing=TIMING_LINE, text_confidence="low")
+    asr_out = lp.presplit_texts([asr], bounder=passthrough)
+    assert len(asr_out[0].segments) > 1
+
+
+def test_presplit_leaves_an_already_short_authoritative_line_as_the_same_object():
+    # A human line that already fits a row is not touched — bound_blob_text returns the SAME segment
+    # object when the line maps to one piece, so provenance and identity are preserved.
+    seg = {"start": 0.0, "end": 4.0, "text": "and I will wait for you", "words": []}
+    lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=[seg], timing=TIMING_LINE, text_confidence="high")
+    out = lp.presplit_texts([lrclib], bounder=bound_only)
+    assert out[0].segments == [seg]
+
+
+def test_bound_blob_text_preserves_provenance_and_does_not_mutate_input():
+    seg = [{"start": 0.0, "end": 8.0, "text": LONG_AUTHORITATIVE, "words": []}]
+    lrclib = LyricsText(
+        text_source=SOURCE_LRCLIB, segments=seg, timing=TIMING_LINE, text_confidence="high", language="en"
+    )
+    out = lp.bound_blob_text(lrclib, bounder=bound_only)
+    assert len(lrclib.segments) == 1  # input untouched
+    assert (out.text_source, out.timing, out.text_confidence, out.language) == (
+        SOURCE_LRCLIB,
+        TIMING_LINE,
+        "high",
+        "en",
+    )
+
+
+def test_bound_blob_text_passes_a_WORD_TIMED_authoritative_segment_through_whole():
+    # A synced LRC line that already carries word timings must not be re-partitioned: splitting the
+    # text would orphan the timings from the words. Same guard split_blob_text has, shared via
+    # _relineate_segments.
+    seg = {
+        "start": 0.0,
+        "end": 8.0,
+        "text": LONG_AUTHORITATIVE,
+        "words": [{"word": "and", "start": 0.0, "end": 0.2}],
+    }
+    lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=[seg], timing=TIMING_WORD, text_confidence="high")
+    assert lp.bound_blob_text(lrclib, bounder=bound_only).segments == [seg]
 
 
 def test_presplit_splits_asr_and_low_confidence_captions():
