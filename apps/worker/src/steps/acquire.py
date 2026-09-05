@@ -15,7 +15,7 @@ from ..runtime.ctx import Ctx
 from ..runtime.runner import run_stage
 from ..runtime.step import Step, StepResult
 from ..acquisition.fetch import find_downloaded, job_fetcher, local_source_path
-from ..separation.demucs import download_argv, parse_ytdlp_progress
+from ..acquisition.fetch import download_argv, parse_ytdlp_progress
 from ..vocabulary import Fetcher, Stage
 
 

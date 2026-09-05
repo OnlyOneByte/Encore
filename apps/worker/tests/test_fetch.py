@@ -21,7 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src import plans  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
-from src.vocabulary import Fetcher, Stage  # noqa: E402
+from src.vocabulary import Fetcher  # noqa: E402
 
 
 def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):

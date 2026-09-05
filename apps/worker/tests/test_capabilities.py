@@ -10,7 +10,6 @@ depending on what happens to be installed on the test machine.
 """
 from __future__ import annotations
 
-import os
 import stat
 
 from src import capabilities
