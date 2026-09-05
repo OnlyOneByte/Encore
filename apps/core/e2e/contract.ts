@@ -70,7 +70,39 @@ export const SEL = {
 	nowName: '.ls-name',
 	stateNext: '.state-next',
 	stateError: '.state-error',
-	stateWaiting: '.state-waiting'
+	stateWaiting: '.state-waiting',
+	/*
+	 * The join QR, addressed by the ALT TEXT rather than a class.
+	 *
+	 * capture.mjs used to wait for `.url` to decide the attract screen had painted. That class no
+	 * longer exists — the short address is `.u` inside `.hero`/`.corner` — so the very first step of a
+	 * capture run timed out and took all 40-odd frames with it. The alt text is what a user is
+	 * promised, so it moves far less often than the presentational class beside it, and anchoring here
+	 * means `bun test` reports the move instead of a capture run discovering it.
+	 */
+	qrImage: 'img[alt="QR code to join Encore"]',
+	/** The word the ball is currently sitting on — proof the reel is MOVING, not merely rendered. */
+	activeWord: '.lyrics .word.active',
+
+	// ── settings (capture drives the room variants through these) ──────────
+	/*
+	 * Every room/global control the capture flips, by id. Addressed by id because these are real
+	 * <select>/<input> elements with stable ids, and because a settings page has many controls whose
+	 * visible labels are similar ("Off" appears in four different pickers).
+	 */
+	setting: (id: string) => `#${id}`,
+	SETTING_IDS: [
+		'join-origin',
+		'sync-mode',
+		'queue-order',
+		'tv-progress',
+		'tv-background',
+		'tv-visualizer',
+		'lyrics-highlight',
+		'lyrics-ball',
+		'lyrics-font',
+		'lyrics-case'
+	]
 } as const;
 
 /**
@@ -275,5 +307,91 @@ export const HOOKS: Hook[] = [
 		file: 'src/routes/metrics/+page.svelte',
 		anchor: '<h1>Processing metrics</h1>',
 		why: 'the internal metrics page landmark the flow lands on at /metrics'
+	},
+
+	/*
+	 * Anchors the CAPTURE flow depends on (apps/core/e2e/capture.mjs).
+	 *
+	 * Registered here for the same reason as everything above: capture is a long stateful chain, and
+	 * when an anchor moves the run does not go red in a useful way — it produces a plausible-looking
+	 * but wrong set of frames, or dies on step one. `.url` moving is precisely what happened.
+	 */
+	{
+		id: 'qrImage',
+		file: 'src/lib/tv/JoinBadge.svelte',
+		anchor: 'alt="QR code to join Encore"',
+		why: 'capture waits on this to know the attract screen has painted; `.url` rotted and broke the run'
+	},
+	{
+		id: 'badQr',
+		file: 'src/lib/tv/JoinBadge.svelte',
+		anchor: 'Join QR unavailable',
+		why: 'the misconfigured-origin frame is the first-run failure worth showing; capture drives it deliberately'
+	},
+	{
+		id: 'activeWord',
+		file: 'src/lib/tv/LyricsOverlay.svelte',
+		anchor: 'class:active={wi === ballWord}',
+		why: 'the ONLY proof the lyrics reel is advancing rather than frozen on line one'
+	},
+	{
+		id: 'stageBg',
+		file: 'src/routes/tv/+page.svelte',
+		anchor: 'class="stage-bg"',
+		why: 'the stage-look frames are shot against this layer'
+	},
+	{
+		id: 'settingJoinOrigin',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="join-origin"',
+		why: 'capture flips the advertised party address to shoot the unreachable-QR screen'
+	},
+	{
+		id: 'settingQueueOrder',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="queue-order"',
+		why: 'the house rule picker the room-settings frame is centred on'
+	},
+	{
+		id: 'settingTvProgress',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="tv-progress"',
+		why: 'capture shoots all four progress placements through this picker'
+	},
+	{
+		id: 'settingTvBackground',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="tv-background"',
+		why: 'capture shoots every stage look through this picker'
+	},
+	{
+		id: 'settingLyricsBall',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="lyrics-ball"',
+		why: 'capture shoots each marker style through this picker'
+	},
+	{
+		id: 'settingLyricsHighlight',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="lyrics-highlight"',
+		why: 'capture shoots each highlight mode through this picker'
+	},
+	{
+		id: 'settingLyricsFont',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="lyrics-font"',
+		why: 'capture shoots the reel in a second face through this picker'
+	},
+	{
+		id: 'settingSyncMode',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="sync-mode"',
+		why: 'capture puts the deployment on line-sync to shoot the clamp notice, then puts it back'
+	},
+	{
+		id: 'settingLyricsCase',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'id="lyrics-case"',
+		why: 'capture shoots upper-case words through this picker'
 	}
 ];
