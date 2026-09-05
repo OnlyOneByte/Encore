@@ -289,7 +289,11 @@
 		padding: 0 var(--tv-safe-x);
 		text-align: center;
 		pointer-events: none;
-		text-shadow: 0 2px 18px rgba(0, 0, 0, 0.85);
+		/* The black wash that lifts the words off the video. Tokenised to --scrim-strong (the 0.85 alpha
+		   this used is exactly that token's value): the tree had grown five different black-wash alphas
+		   for this one effect, and this was one of them. Not a legibility risk — it darkens BEHIND the
+		   glyphs, it does not touch the pure-white ink itself. */
+		text-shadow: 0 2px 18px var(--scrim-strong);
 	}
 	/* Unverified text is set in italic — a persistent, glanceable signal that costs no space and does
 	   not compete with the sweep. Deliberately NOT dimmed: these are still the words to sing from, so
@@ -319,6 +323,8 @@
 		font-weight: 600;
 		letter-spacing: 0.16em;
 		text-transform: uppercase;
+		/* Dimmed white over video, same white-over-video family as the reel ladder — the alpha is the
+		   dim, and there is no pure-white token to reference. Kept literal on purpose. */
 		color: rgba(255, 255, 255, 0.72);
 		font-style: normal;
 	}
@@ -371,6 +377,13 @@
 		 */
 		max-height: calc(100vh - var(--tv-chrome-h) - var(--tv-safe-y));
 		overflow: hidden;
+		/*
+		 * DELIBERATE LITERALS, not scrims. A mask reads only the LUMINANCE/alpha of each stop, never the
+		 * hue — `#000`/`rgba(0,0,0,·)` here mean "fully visible" / "partly visible", they are an opacity
+		 * ramp for the edge fade, not the black wash that lifts text off video. Tokenising them to
+		 * --scrim-strong would silently change the fade (that token is 0.85, this ramp is a full-black
+		 * core with a 0.35 knee) and couple two unrelated effects. So these stay literal on purpose.
+		 */
 		mask-image: linear-gradient(
 			to bottom,
 			transparent 0,
@@ -427,16 +440,22 @@
 		color: var(--accent2);
 	}
 	.lyrics.hl-off .row.current {
+		/* KEPT AS A LITERAL FOR LEGIBILITY. Pure white is the maximum-contrast state over video and is
+		   the whole point of the current line — there is no token for it (--ink is #f3f3fb, deliberately
+		   NOT pure white, so swapping to it would REDUCE contrast at three metres). Legibility outranks
+		   token purity here. */
 		color: #fff;
 	}
 	.word {
 		position: relative;
 		display: inline-block;
+		/* Part of the reel's deliberate white-over-video contrast ladder (0.66 not-yet / #fff sung); the
+		   alpha IS the cue, and there is no pure-white token to reference. Kept literal on purpose. */
 		color: rgba(255, 255, 255, 0.66); /* not yet sung */
 		transition: color 0.12s linear;
 	}
 	.word.done {
-		color: #fff; /* sung */
+		color: #fff; /* sung — pure white kept as a literal for max legibility over video (no white token) */
 	}
 	/*
 	 * WHOLE-WORD highlight, not a left-to-right fill.
@@ -460,7 +479,9 @@
 	.ball {
 		position: absolute;
 		left: 50%;
-		color: var(--accent2, #7cf);
+		/* --accent2 is unconditionally defined in app.css, so the old `#7cf` fallback was dead code and
+		   a stray literal — the pink marker is theme-bound, it must ride the token. */
+		color: var(--accent2);
 	}
 	/* Dot variants sit ABOVE the word. The loose 1.9 line-height above is load-bearing for this: at
 	   tight leading the dot lands on the previous wrapped row. */
@@ -489,7 +510,9 @@
 		height: 0.07em;
 		border-radius: 0.04em;
 		transform: translateX(-50%);
-		background: var(--accent2, #7cf);
+		/* Theme-bound like the dot marker above; --accent2 is always defined, the `#7cf` fallback was
+		   dead. */
+		background: var(--accent2);
 	}
 	@media (prefers-reduced-motion: reduce) {
 		/* Degrade to `steady` rather than removing the mark: the singer still needs to know which word
