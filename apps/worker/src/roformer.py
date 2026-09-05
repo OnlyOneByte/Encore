@@ -25,7 +25,7 @@ from typing import AsyncIterator
 
 from .fetch import job_fetcher, local_source_path
 from .vocabulary import Fetcher
-from .song_profile import build_song_profile
+from .analysis import build_song_profile
 from .processor import (
 	CompleteResult,
 	JobSpec,
