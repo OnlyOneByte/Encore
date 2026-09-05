@@ -58,7 +58,7 @@ app.reaper.start();
 // reconnects so a retry never double-applies. In-memory (process-lifetime), insertion-ordered.
 const seenOps = new Set<string>();
 
-// MVP/harness media catalog. Real media is resolved via /api/search (M4) + persisted on demand.
+// MVP/harness media catalog. Real media is resolved via /api/search + persisted on demand.
 // Seed a few youtube demos so the dev harness can add songs that validate even without yt-dlp.
 // IMPORTANT: seed only what is MISSING. getApp() has already hydrated the durable catalog, so
 // an unconditional set would overwrite a demo song that was cooked on a previous night with this

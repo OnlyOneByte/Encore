@@ -10,7 +10,7 @@
 	//
 	//   1. THE THUMBNAIL. `Media.thumbnail` has always been fetched, persisted and sent to the phone,
 	//      and the row drew a grey gradient with a play mark instead. The proxy that serves it
-	//      (/api/thumb, SSRF-allowlisted + disk-cached) shipped in M6-C1 and had no caller until now.
+	//      (/api/thumb, SSRF-allowlisted + disk-cached) already existed but had no caller until now.
 	//   2. THE DURATION. Also always present, also never displayed. It is the ONLY signal here that
 	//      cannot be fooled by a title, which is what makes 21:56 and 2:31 so useful.
 	//   3. THE FULL VERSION MARKER. "(Official Music Video)" / "(Lyrics)" / "(Live Aid 1985)" is the

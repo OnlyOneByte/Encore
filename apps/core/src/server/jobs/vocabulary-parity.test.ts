@@ -265,7 +265,8 @@ describe('TS↔Python vocabulary parity', () => {
  *
  * A comment cannot fail. These tests pin the divergence instead: the first asserts every roformer token
  * the UI offers is resolvable at all (the prior bug was a token mapping to no registry slug), and the
- * second pins the mapping AS IT IS, so repointing it to the benchmarked checkpoint — roadmap B-8 — has
+ * second pins the mapping AS IT IS, so repointing it to the checkpoint those quality numbers were
+ * actually measured against has
  * to come here and state that it did. Neither test blesses the mismatch; they stop it being silent.
  */
 describe('roformer token ↔ checkpoint identity', () => {
