@@ -184,7 +184,7 @@ which is the argument for the "green suite is the floor, not the bar" rule in
   shuffle** (rank hashed from the entry id, so it is fixed once a song is in and identical on both
   sides of the wire), and **whoever sang longest ago** (reads `Singer.lastSungAt`, stamped at song
   start; with no history it IS fair). Design in `docs/ARCHITECTURE.md` §4 and
-  `docs/SPEC-queue-order-room-setting.md`.
+  `docs/archive/specs/SPEC-queue-order-room-setting.md`.
 
   Remaining open work here, deliberately not built:
   - **A room-scoped away/skip interaction.** `least-recently-sung` orders by when someone last sang;
