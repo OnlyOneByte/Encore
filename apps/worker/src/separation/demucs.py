@@ -18,7 +18,7 @@ import shutil
 from collections import deque
 from typing import AsyncIterator, Awaitable, Callable
 
-from .processor import (
+from ..processor import (
     CompleteResult,
     JobSpec,
     ProgressEvent,
@@ -29,10 +29,10 @@ from .processor import (
     parse_max_volume_db,
     is_silent,
 )
-from .fetch import job_fetcher, local_source_path
-from .vocabulary import Fetcher
-from .stream_quality import FORMAT_SELECTOR
-from .analysis import build_song_profile
+from ..acquisition.fetch import job_fetcher, local_source_path
+from ..vocabulary import Fetcher
+from ..acquisition.stream_quality import FORMAT_SELECTOR
+from ..analysis import build_song_profile
 
 # The analysis step: (instrumental_wav, vocals_wav, media_id) -> songProfile dict. Injectable so the
 # subprocess-fake tests (whose "WAV" files hold placeholder bytes, not real PCM) can pass a no-op and

@@ -23,10 +23,10 @@ from __future__ import annotations
 import os
 from typing import AsyncIterator
 
-from .fetch import job_fetcher, local_source_path
-from .vocabulary import Fetcher
-from .analysis import build_song_profile
-from .processor import (
+from ..acquisition.fetch import job_fetcher, local_source_path
+from ..vocabulary import Fetcher
+from ..analysis import build_song_profile
+from ..processor import (
 	CompleteResult,
 	JobSpec,
 	ProgressEvent,

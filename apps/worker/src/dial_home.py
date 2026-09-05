@@ -288,18 +288,18 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
 
     if any(c.startswith("fetch:") for c in cfg.capabilities):
-        from .fetch import FetchProcessor
+        from .acquisition.fetch import FetchProcessor
 
         # Acquisition needs no ML, so it is built whenever a fetch capability is advertised — including
         # on a box that cannot separate at all. That asymmetry is the point of routing fetch separately.
         annotator = None
         if cfg.annotate:
-            from .annotate import MusicBrainzClient
+            from .metadata.annotate import MusicBrainzClient
 
             annotator = MusicBrainzClient()
         by_type["fetch"] = FetchProcessor(ytdlp_bin=cfg.ytdlp_bin, annotator=annotator)
     if "stems" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
-        from .demucs import DemucsProcessor  # lazy: torch off the import path until selected
+        from .separation.demucs import DemucsProcessor  # lazy: torch off the import path until selected
         from .processor import EngineRouter
 
         demucs = DemucsProcessor(
@@ -319,7 +319,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         # Only load the roformer engine (and its ~700MB checkpoint machinery) when this worker
         # was given the stems:roformer capability — a demucs-only worker never imports bs_roformer.
         if "stems:roformer" in cfg.capabilities:
-            from .roformer import RoformerProcessor
+            from .separation.roformer import RoformerProcessor
 
             by_engine["roformer"] = RoformerProcessor(device=device, flac_level=cfg.flac_level)
 

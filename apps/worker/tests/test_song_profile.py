@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import demucs  # noqa: E402
+from src.separation import demucs  # noqa: E402
 from src.analysis import song_profile  # noqa: E402
 from src.processor import CompleteResult, JobSpec  # noqa: E402
 
