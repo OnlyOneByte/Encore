@@ -17,16 +17,23 @@ from __future__ import annotations
 import pytest
 
 from src.lyrics_chain import (
+    ROLE_BASELINE,
+    ROLE_CANDIDATE,
     SOURCE_ASR,
     SOURCE_CAPTIONS,
     SOURCE_LRCLIB,
     TIMING_LINE,
     TIMING_NONE,
+    AutoCaptionsSource,
     CaptionsSource,
     LrclibSource,
     LyricsRequest,
     LyricsText,
-    select_variants,
+    baselines_of,
+    candidate_key,
+    candidates_of,
+    composite_score,
+    select_by_baselines,
 )
 from src.lyrics_source import (
     DURATION_TOLERANCE_SEC,
@@ -54,17 +61,22 @@ ASR_OF_FEAT = f"{SHARED} boy the way you blowing up my fone wont make me leave n
 
 
 def text(source: str, body: str, variant: str) -> LyricsText:
+    """A CANDIDATE — an authored claim about the song's words, to be graded."""
     return LyricsText(
         text_source=source,
         segments=[{"start": 0.0, "end": 1.0, "text": line} for line in body.split(" ")],
         timing=TIMING_LINE,
         text_confidence="high",
+        role=ROLE_CANDIDATE,
         variant=variant,
     )
 
 
-def asr(body: str) -> LyricsText:
-    t = text(SOURCE_ASR, body, "whisper")
+def base(body: str, rank: int = 0, variant: str = "whisper/vocals", source: str = SOURCE_ASR) -> LyricsText:
+    """A BASELINE — evidence of what is audible. It grades; it is never graded."""
+    t = text(source, body, variant)
+    t.role = ROLE_BASELINE
+    t.baseline_rank = rank
     t.text_confidence = "low"
     return t
 
@@ -72,25 +84,25 @@ def asr(body: str) -> LyricsText:
 # ── the headline behaviour ────────────────────────────────────────────────────────────
 
 
-def test_THE_BUG_the_version_matching_the_vocals_is_chosen_over_the_one_that_does_not():
+def test_THE_BUG_the_version_matching_the_audio_is_chosen_over_the_one_that_does_not():
     """The whole feature. Both records are 'Lady Gaga / Telephone'; the sung audio has the guest verse."""
     lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "solo")
     lrclib.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "feat")]
 
-    resolved, choices = select_variants([lrclib, asr(ASR_OF_FEAT)])
+    sel = select_by_baselines([lrclib, base(ASR_OF_FEAT)])
 
-    chosen = next(t for t in resolved if t.text_source == SOURCE_LRCLIB)
-    assert chosen.variant == "feat"
-    assert [c.considered for c in choices] == [2]
-    assert choices[0].decided_by == "agreement"
+    assert sel.publish[0].variant == "feat"
+    assert [c.considered for c in sel.choices] == [2]
+    assert sel.choices[0].decided_by == "agreement"
+    assert not sel.winner_suspect
 
 
 def test_the_wrong_version_scores_ABOVE_the_wrong_song_threshold_so_a_threshold_cannot_fix_this():
     """Why selection had to be comparative rather than a tuned cutoff.
 
-    If the losing version scored below SUSPECT_AGREEMENT, the pre-existing demotion would already have
-    handled this case and none of this code would be needed. It does not: two versions of one song share
-    most of their words. This test fails the moment someone 'simplifies' selection into a threshold.
+    If the losing version scored below SUSPECT_AGREEMENT, the absolute check would already have handled
+    this case and none of this code would be needed. It does not: two versions of one song share most of
+    their words. This test fails the moment someone 'simplifies' selection into a threshold.
     """
     from src.lyrics_chain import SUSPECT_AGREEMENT, agreement_score
 
@@ -101,99 +113,198 @@ def test_the_wrong_version_scores_ABOVE_the_wrong_song_threshold_so_a_threshold_
     assert right > wrong  # ...and is only exposed by comparison
 
 
-def test_selection_happens_on_TEXT_so_it_costs_no_alignment():
-    """Cost claim, pinned: the loser is discarded before any timing work, and only one text survives to
-    be aligned. A future refactor that aligned every candidate first would break this."""
+def test_THE_MEAN_of_several_baselines_decides_not_any_single_one():
+    """The two-tier core. A single baseline is one opinion with its own blind spots; the composite is the
+    mean across independent ones, so a baseline that mis-hears a passage cannot swing the choice alone.
+
+    Constructed so the FIRST baseline alone would pick wrong and the mean picks right — otherwise the
+    test would pass without the averaging ever mattering.
+    """
+    lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "solo")
+    lrclib.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "feat")]
+    # baseline 1 heard only the shared part (so it favours 'solo' — a subset match scores higher)
+    # baselines 2 and 3 heard the guest verse too
+    misheard = base(SHARED, rank=0, variant="whisper/vocals")
+    heard_a = base(ASR_OF_FEAT, rank=1, variant="whisper/mix")
+    heard_b = base(f"{SHARED} {GUEST_VERSE}", rank=2, variant="youtube auto-captions", source=SOURCE_CAPTIONS)
+
+    assert composite_score(lrclib, [misheard])[0] > composite_score(lrclib.alternates[0], [misheard])[0]
+    sel = select_by_baselines([lrclib, misheard, heard_a, heard_b])
+    assert sel.publish[0].variant == "feat"  # the mean overrules the single dissenting baseline
+    assert sel.choices[0].votes == 3
+
+
+def test_only_what_is_published_gets_aligned():
+    """Cost claim, pinned. Grading is free (token sets already in memory); alignment is not. A trustworthy
+    winner publishes exactly one text, so a run costs ONE alignment however many versions were judged."""
     lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "solo")
     lrclib.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "feat")]
 
-    resolved, _ = select_variants([lrclib, asr(ASR_OF_FEAT)])
+    sel = select_by_baselines([lrclib, base(ASR_OF_FEAT), base(ASR_OF_FEAT, rank=1, variant="whisper/mix")])
 
-    lrclib_texts = [t for t in resolved if t.text_source == SOURCE_LRCLIB]
-    assert len(lrclib_texts) == 1  # exactly one thing to align
-    assert lrclib_texts[0].alternates == []  # the choice is resolved, not deferred
-
-
-# ── falling back when the transcript cannot decide ────────────────────────────────────
+    assert len(sel.publish) == 1
+    assert sel.publish[0].alternates == []  # the choice is resolved, not deferred
 
 
-def test_with_no_ASR_tier_the_metadata_order_stands():
-    """No transcript, no comparison. Keeping the duration-ranked pick beats guessing."""
+# ── the two roles, kept apart ──────────────────────────────────────────────────────────
+
+
+def test_baselines_are_ordered_by_how_clean_their_evidence_is():
+    """Only consulted to pick a fallback to SHOW — never to weight the grading, where every baseline that
+    speaks gets one equal vote."""
+    caps = base("x", rank=2, variant="youtube auto-captions", source=SOURCE_CAPTIONS)
+    mix = base("y", rank=1, variant="whisper/mix")
+    vocals = base("z", rank=0, variant="whisper/vocals")
+    assert [b.variant for b in baselines_of([caps, mix, vocals])] == [
+        "whisper/vocals",
+        "whisper/mix",
+        "youtube auto-captions",
+    ]
+
+
+def test_a_baseline_is_never_a_candidate():
+    """The structural reason YouTube's automatic captions are safe here and were not safe as a source of
+    record: they cannot be chosen as the song's words while any authored claim exists."""
+    lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "lookup")
+    auto = base(FEAT_TEXT, rank=2, variant="youtube auto-captions", source=SOURCE_CAPTIONS)
+
+    assert candidates_of([lrclib, auto]) == [lrclib]
+    assert baselines_of([lrclib, auto]) == [auto]
+    # even though the auto track's text matches the audio PERFECTLY (it is the audio), the lookup wins
+    sel = select_by_baselines([lrclib, auto])
+    assert sel.publish[0] is lrclib
+    assert not sel.baseline_fallback
+
+
+def test_with_NO_candidate_the_tiering_system_picks_a_baseline_to_show():
+    """A song nobody has written lyrics for. The best available evidence becomes the answer, and says so."""
+    sel = select_by_baselines(
+        [
+            base(ASR_OF_FEAT, rank=1, variant="whisper/mix"),
+            base(ASR_OF_FEAT, rank=0, variant="whisper/vocals"),
+        ]
+    )
+    assert sel.baseline_fallback
+    assert [t.variant for t in sel.publish] == ["whisper/vocals"]  # best evidence, not first acquired
+    assert sel.winner_score is None
+
+
+def test_no_text_at_all_publishes_nothing():
+    sel = select_by_baselines([])
+    assert sel.publish == [] and sel.baseline_fallback
+
+
+# ── the absolute judgement, distinct from the comparative one ───────────────────────────
+
+
+def test_a_winner_that_disagrees_with_every_baseline_is_flagged_AND_gets_a_real_alternative():
+    """Selection is comparative and always returns a best; that says nothing about whether the best is any
+    good. When it is not, the room needs words that ARE about this audio — not just a warning label on
+    words that are not."""
+    wrong = text(SOURCE_LRCLIB, "never gonna give you up let down run around desert cry goodbye lie hurt", "wrong")
+    sel = select_by_baselines([wrong, base(ASR_OF_FEAT)])
+
+    assert sel.winner_suspect
+    assert len(sel.publish) == 2  # the suspect winner AND what was actually heard
+    assert sel.publish[1].role == ROLE_BASELINE
+
+
+def test_a_trustworthy_winner_publishes_alone():
+    """The baselines have done their job by grading it. Publishing one anyway would buy a whole extra
+    alignment pass to produce words nobody shows."""
+    sel = select_by_baselines([text(SOURCE_LRCLIB, FEAT_TEXT, "right"), base(ASR_OF_FEAT)])
+    assert not sel.winner_suspect
+    assert len(sel.publish) == 1
+
+
+# ── abstention: what makes a weak baseline safe to include ─────────────────────────────
+
+
+def test_a_thin_baseline_ABSTAINS_and_is_reported_as_abstaining():
+    """YouTube auto-captions on music collapse into [Music] markers (measured: 8 words on one upload).
+    Below MIN_TOKENS_TO_COMPARE it cannot vote — and the log has to say so, because a silent abstention
+    is indistinguishable from a baseline that agreed."""
+    thin = base("la la la", rank=2, variant="youtube auto-captions", source=SOURCE_CAPTIONS)
+    sel = select_by_baselines([text(SOURCE_LRCLIB, FEAT_TEXT, "v"), base(ASR_OF_FEAT), thin])
+
+    assert sel.choices == []  # one version, no choice to report
+    assert any("ABSTAINS" in n for n in sel.baseline_notes)
+    assert sel.winner_score is not None  # the baseline that COULD speak still judged it
+
+
+def test_with_no_baseline_able_to_judge_the_metadata_order_stands():
+    """An instrumental transcribes to almost nothing. 'Cannot tell' is not 'they differ', so the cheap
+    duration ranking survives rather than being overruled by an unusable signal."""
     lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "solo")
     lrclib.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "feat")]
 
-    resolved, choices = select_variants([lrclib])
+    sel = select_by_baselines([lrclib, base("mmm ooh yeah")])
 
-    assert resolved[0].variant == "solo"
-    assert choices[0].decided_by == "metadata"
-    assert choices[0].chosen_score is None
+    assert sel.publish[0].variant == "solo"
+    assert sel.choices[0].decided_by == "metadata"
+    assert sel.winner_score is None
+    assert not sel.winner_suspect  # unjudged must never read as "probably wrong"
 
 
-def test_an_instrumental_transcribing_to_nothing_does_not_condemn_a_candidate():
-    """An almost-empty transcript makes every comparison incomparable (below MIN_TOKENS_TO_COMPARE).
-    That is 'cannot tell', not 'they differ', so the metadata pick survives."""
+def test_no_baselines_at_all_still_yields_a_candidate():
     lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "solo")
     lrclib.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "feat")]
-
-    resolved, choices = select_variants([lrclib, asr("mmm ooh yeah")])
-
-    assert resolved[0].variant == "solo"
-    assert choices[0].decided_by == "metadata"
-
-
-def test_a_source_offering_one_version_is_reported_as_no_choice_at_all():
-    """No alternates → nothing to decide, and no log line claiming a decision was made."""
-    resolved, choices = select_variants([text(SOURCE_LRCLIB, SOLO_TEXT, "only"), asr(ASR_OF_FEAT)])
-    assert len(resolved) == 2
-    assert choices == []
+    sel = select_by_baselines([lrclib])
+    assert sel.publish[0].variant == "solo"
+    assert sel.winner_score is None
 
 
 def test_an_exact_tie_keeps_the_better_METADATA_match():
-    """Identical text on both records — the ASR signal cannot separate them, so the earlier (better
+    """Identical text on both records — the baselines cannot separate them, so the earlier (better
     duration match) must win rather than the later one displacing it arbitrarily."""
     first = text(SOURCE_LRCLIB, FEAT_TEXT, "closest-duration")
     first.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "further-away")]
 
-    resolved, _ = select_variants([first, asr(ASR_OF_FEAT)])
+    sel = select_by_baselines([first, base(ASR_OF_FEAT)])
 
-    assert resolved[0].variant == "closest-duration"
+    assert sel.publish[0].variant == "closest-duration"
 
 
-def test_every_source_with_variants_is_resolved_not_just_the_first():
-    """Selection is source-agnostic: captions can offer several authored tracks too, and 'which of these
-    matches what is being sung' has one answer whoever asked the question."""
+def test_the_best_candidate_ACROSS_sources_wins_not_merely_within_one():
+    """Two authored sources, each internally resolved, then compared to each other by the same ruler."""
     lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "lrclib-solo")
-    lrclib.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "lrclib-feat")]
-    caps = text(SOURCE_CAPTIONS, SOLO_TEXT, "caps-solo")
-    caps.alternates = [text(SOURCE_CAPTIONS, FEAT_TEXT, "caps-feat")]
+    caps = text(SOURCE_CAPTIONS, FEAT_TEXT, "caps-feat")
 
-    resolved, choices = select_variants([lrclib, caps, asr(ASR_OF_FEAT)])
+    sel = select_by_baselines([lrclib, caps, base(ASR_OF_FEAT)])
 
-    assert [t.variant for t in resolved if t.text_source != SOURCE_ASR] == ["lrclib-feat", "caps-feat"]
-    assert sorted(c.text_source for c in choices) == [SOURCE_CAPTIONS, SOURCE_LRCLIB]
-
-
-def test_the_ASR_tier_itself_is_never_reordered_against_its_own_transcript():
-    """Scoring ASR against itself would be a perfect 1.0 and meaningless. It carries no alternates, so
-    it must pass through untouched and unreported."""
-    a = asr(ASR_OF_FEAT)
-    resolved, choices = select_variants([text(SOURCE_LRCLIB, FEAT_TEXT, "v"), a])
-    assert resolved[1] is a
-    assert choices == []
+    assert sel.publish[0].variant == "caps-feat"
 
 
 def test_the_report_names_the_loser_and_its_score_for_the_log():
     """A decision nobody can read is a decision nobody can debug — the operator needs to see which
-    version lost and by how much."""
+    version lost, by how much, and on how many votes."""
     lrclib = text(SOURCE_LRCLIB, SOLO_TEXT, "solo")
     lrclib.alternates = [text(SOURCE_LRCLIB, FEAT_TEXT, "feat")]
 
-    _, choices = select_variants([lrclib, asr(ASR_OF_FEAT)])
+    sel = select_by_baselines([lrclib, base(ASR_OF_FEAT)])
 
-    report = choices[0]
+    report = sel.choices[0]
     assert report.chosen == "feat"
     assert [label for label, _ in report.rejected] == ["solo"]
     assert "solo" in report.summary() and "feat" in report.summary()
+    assert "1 baseline" in report.summary()
+
+
+# ── artifact keys: two baselines from one source must not overwrite each other ──────────
+
+
+def test_the_tag_keeps_same_source_texts_from_clobbering_each_other():
+    """Two baselines are both `asr` and two caption tiers are both `captions`. Without the tag the second
+    write of a pair silently destroys the first — and destroys exactly the independence that makes
+    averaging baselines worth doing."""
+    vocals = candidate_key("m1", SOURCE_ASR, TIMING_LINE, "vocals")
+    mix = candidate_key("m1", SOURCE_ASR, TIMING_LINE, "mix")
+    assert vocals != mix
+    manual = candidate_key("m1", SOURCE_CAPTIONS, TIMING_LINE, "manual")
+    auto = candidate_key("m1", SOURCE_CAPTIONS, TIMING_LINE, "auto")
+    assert manual != auto
+    # a source with no tag keeps its historical key shape
+    assert candidate_key("m1", SOURCE_LRCLIB, TIMING_LINE) == "derived/lyrics/m1-lrclib-line.json"
 
 
 # ── the search pool: what /api/search is asked, and how its records are ordered ────────
@@ -387,20 +498,47 @@ def test_captions_decline_when_the_upload_has_no_manual_track():
     assert CaptionsSource().fetch(LyricsRequest(media_id="m")) is None
 
 
-def test_captions_are_authoritative_because_auto_generated_ones_are_never_fetched():
-    """`high` confidence is only defensible because caption_argv cannot return an ASR track — see
-    test_captions.py. If that guarantee were ever relaxed, this grade would become a lie."""
+def test_authored_captions_are_a_CANDIDATE_and_authoritative():
+    """`high` confidence is defensible only because an automatic track cannot reach this tier — the two
+    arrive from separate fetches into separate directories. See test_captions.py."""
     got = CaptionsSource().fetch(
         LyricsRequest(media_id="m", caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}])
     )
     assert got is not None
+    assert got.role == ROLE_CANDIDATE
     assert got.text_source == SOURCE_CAPTIONS
     assert got.text_confidence == "high"
     assert got.timing == TIMING_LINE  # a cue bounds a LINE; word timings come from the aligner
+    assert got.tag == "manual"
+
+
+def test_automatic_captions_are_a_BASELINE_and_never_authoritative():
+    """The reversal the two-tier split earns. The same text that would be dangerous as a source of record
+    is useful as a third opinion on what is audible — and `low` keeps isAuthoritativeText() false, so even
+    when it is all that is left the TV labels it."""
+    got = AutoCaptionsSource().fetch(
+        LyricsRequest(media_id="m", auto_caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}])
+    )
+    assert got is not None
+    assert got.role == ROLE_BASELINE
+    assert got.text_confidence == "low"
+    assert got.tag == "auto"
+
+
+def test_the_two_caption_kinds_read_from_SEPARATE_inputs():
+    """Structural, not a filter: an authored track cannot arrive through the automatic door or vice versa,
+    because they are different fields fed by different yt-dlp fetches."""
+    only_auto = LyricsRequest(media_id="m", auto_caption_segments=[{"start": 0.0, "end": 2.0, "text": "hi there"}])
+    assert CaptionsSource().fetch(only_auto) is None
+    assert AutoCaptionsSource().fetch(only_auto) is not None
+
+    only_manual = LyricsRequest(media_id="m", caption_segments=[{"start": 0.0, "end": 2.0, "text": "hi there"}])
+    assert AutoCaptionsSource().fetch(only_manual) is None
+    assert CaptionsSource().fetch(only_manual) is not None
 
 
 def test_captions_cannot_be_about_a_different_version_of_the_song():
-    """Why this tier exists at all. It is attached to the exact upload being sung over, so unlike a
+    """Why the authored tier exists at all. It is attached to the exact upload being sung over, so unlike a
     database lookup it has no notion of 'another recording' to get wrong — hence no alternates."""
     got = CaptionsSource().fetch(
         LyricsRequest(media_id="m", caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello"}])

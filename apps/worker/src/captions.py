@@ -5,21 +5,26 @@ record for *a* recording of that song and hope it is the one you downloaded. Cap
 the EXACT upload being sung over, which makes them the only source that cannot be about a different
 version. For a song with two popular releases that is a strong signal, not a marginal one.
 
-WHY AUTO-GENERATED CAPTIONS ARE REFUSED OUTRIGHT. YouTube's automatic captions are ASR — the same
-class of guess the local Whisper tier already produces, and produced from the MIXED audio rather than
-from an isolated vocals stem, so they are strictly worse than what this worker computes for itself.
-Worse, they arrive wearing a caption's clothes: accepted as "captions" they would be treated as
-authoritative text and could outrank a correct database lookup. This is a documented trap — see
-`textConfidence` on LyricsCandidate in packages/shared/src/lyrics.ts, which exists precisely to demote
-them.
+TWO KINDS, OPPOSITE ROLES. An uploader-authored track is a CANDIDATE for the song's words. YouTube's
+automatic track is a BASELINE: evidence of what is audible, used to grade candidates, and barred from
+being the answer while any candidate is trustworthy.
 
-The refusal is STRUCTURAL rather than a check. `caption_argv` passes `--write-subs` and never
-`--write-auto-subs`, so yt-dlp will not produce an automatic track at all; there is no auto-generated
-file to accidentally read. A filename-based filter would be a second, weaker line of defence against a
-file that cannot exist, so there isn't one.
+That split is what makes the automatic track safe to use at all. Treated as authored text it is actively
+dangerous — it is ASR wearing a caption's clothes, produced from the MIXED audio (so worse than this
+worker's own transcription of an isolated vocals stem), and ranked as authoritative it could outrank a
+correct database lookup. As a baseline the same text is just a third opinion on what is audible, which is
+all it ever was. Measured across five uploads it is a WEAK opinion — YouTube's ASR suppresses sung vocals
+into [Music] markers and was absent or useless on three of the five (a-ha "Take On Me": 8 words plus 15
+music cues) — but a baseline that thin abstains rather than voting, so including it costs nothing.
+
+The two kinds are kept apart STRUCTURALLY, not by a filter: `caption_argv` requests exactly one kind per
+call (`--write-subs` xor `--write-auto-subs`) and the caller writes them into separate directories.
+yt-dlp names both identically, so any single-directory scheme would leave the distinction to a filename
+heuristic.
 
 PURE of network and subprocess by construction: parsing is a free function over text, argv is a list,
-and the one I/O class takes an injected runner — so the whole tier unit-tests with a fake.
+and the fetch runs through the align processor's own injected runner — so the whole tier unit-tests
+with a fake.
 """
 from __future__ import annotations
 
@@ -102,14 +107,23 @@ def parse_vtt(text: str) -> list[dict[str, Any]]:
 
 
 def caption_argv(
-    source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp", langs: str = DEFAULT_SUB_LANGS
+    source_uri: str,
+    out_template: str,
+    ytdlp_bin: str = "yt-dlp",
+    langs: str = DEFAULT_SUB_LANGS,
+    auto: bool = False,
 ) -> list[str]:
-    """yt-dlp argv fetching ONLY human-authored subtitle tracks, and no media.
+    """yt-dlp argv fetching ONE KIND of subtitle track, and no media.
 
-    `--write-subs` without `--write-auto-subs` is the whole guarantee of this tier: yt-dlp writes a
-    file only when the uploader supplied a real caption track, and an ASR track is never requested.
-    Adding `--write-auto-subs` here would silently turn an authoritative source into a second,
-    worse-quality ASR tier.
+    `auto=False` passes `--write-subs` and fetches only uploader-authored tracks. `auto=True` passes
+    `--write-auto-subs` and fetches only YouTube's machine-generated ones. Never both in one call, and
+    the caller writes them to SEPARATE directories — that separation is the whole guarantee that an
+    automatic track cannot be mistaken for an authored one downstream.
+
+    It matters because the two have opposite roles. An authored track is a CANDIDATE for the song's
+    words; a machine track is a BASELINE, evidence of what is audible, and is barred from ever being the
+    answer while a candidate is trustworthy. Requesting both into one directory would leave the
+    distinction to a filename heuristic, and yt-dlp names them identically.
 
     `--skip-download` keeps this cheap enough to attempt on every align job — it is a metadata request,
     not a second download of audio the worker already has.
@@ -117,7 +131,7 @@ def caption_argv(
     return [
         ytdlp_bin,
         "--skip-download",
-        "--write-subs",
+        "--write-auto-subs" if auto else "--write-subs",
         "--sub-langs",
         langs,
         "--sub-format",
@@ -132,17 +146,43 @@ def caption_argv(
     ]
 
 
+#: A TRANSLATED caption track. YouTube exposes machine translations of a caption track under the target
+#: language with a long opaque suffix ("en-nP7Qs3xK9dQ"), alongside the original which is either plain
+#: ("en") or explicitly marked ("en-orig"). Region variants ("en-GB", "pt-BR") are short and are NOT
+#: translations.
+_TRANSLATED_SUFFIX = re.compile(r"-[A-Za-z0-9_-]{8,}$")
+
+
+def is_translated_track(name: str) -> bool:
+    """Is this caption filename a machine TRANSLATION rather than the original language?
+
+    Load-bearing for correctness, not tidiness. A Spanish song's automatic captions can be offered
+    translated into English; as a baseline that text would be fluent, long enough to pass
+    MIN_TOKENS_TO_COMPARE, and about the right song in the WRONG language — so it would not abstain, it
+    would vote confidently against every correct candidate. That is worse than having no baseline.
+    """
+    stem = name.rsplit(".", 1)[0]  # drop .vtt / .srt
+    lang = stem.rsplit(".", 1)[-1] if "." in stem else stem
+    if lang.endswith("-orig"):
+        return False
+    return bool(_TRANSLATED_SUFFIX.search(lang))
+
+
 def find_caption_file(directory: str) -> str | None:
-    """The caption file yt-dlp wrote, or None. Prefers a plain `en` track over a regional variant
-    (`en-GB`, `en-US`) only to be deterministic; either is equally authoritative."""
+    """The caption file yt-dlp wrote, or None.
+
+    Machine translations are refused outright (see `is_translated_track`). Among what remains, an
+    original-language marker wins, then a plain code over a regional variant — purely so the choice is
+    deterministic and a re-cook cannot silently produce different lyrics.
+    """
     try:
         names = sorted(os.listdir(directory))
     except OSError:
         return None
-    subs = [n for n in names if n.endswith((".vtt", ".srt"))]
+    subs = [n for n in names if n.endswith((".vtt", ".srt")) and not is_translated_track(n)]
     if not subs:
         return None
-    subs.sort(key=lambda n: (0 if ".en." in n else 1, len(n), n))
+    subs.sort(key=lambda n: (0 if "-orig." in n else 1, 0 if ".en." in n else 1, len(n), n))
     return os.path.join(directory, subs[0])
 
 

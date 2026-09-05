@@ -380,34 +380,43 @@ async def test_THE_POINT_a_dead_lrclib_still_produces_lyrics_from_another_source
 
 
 @pytest.mark.asyncio
-async def test_multiple_sources_each_get_their_own_artifact_file(tmp_path):
-    lrc = FakeSource(SOURCE_LRCLIB, _text(SOURCE_LRCLIB, TIMING_LINE))
-    asr = FakeSource(SOURCE_ASR, _text(SOURCE_ASR, TIMING_WORD, conf="low"))
+async def test_a_suspect_winner_and_its_baseline_get_SEPARATE_artifact_files(tmp_path):
+    """No overwrite — the upgrade path depends on it. Two texts published in one run must land on
+    distinct keys, or the second write destroys the first and the room is left with only the words that
+    were already judged wrong."""
+    wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
+    lrc = FakeSource(SOURCE_LRCLIB, _candidate(wrong))
+    asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
-    events = await drain(proc, spec(tmp_path))
-    cands = [e for e in events if isinstance(e, CompleteResult)][0].artifacts["lyrics"]["candidates"]
+    cands = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0].artifacts["lyrics"][
+        "candidates"
+    ]
     refs = {c["textSource"]: c["ref"] for c in cands}
-    timings = {c["textSource"]: c["timing"] for c in cands}
-    assert refs[SOURCE_LRCLIB] == candidate_key("m1", SOURCE_LRCLIB, timings[SOURCE_LRCLIB])
-    assert refs[SOURCE_ASR] == candidate_key("m1", SOURCE_ASR, timings[SOURCE_ASR])
-    assert refs[SOURCE_LRCLIB] != refs[SOURCE_ASR]  # no overwrite — the upgrade path depends on this
+    assert set(refs) == {SOURCE_LRCLIB, SOURCE_ASR}
+    assert refs[SOURCE_LRCLIB] != refs[SOURCE_ASR]
     for c in cands:
         assert (tmp_path / c["ref"]).exists()
 
 
 @pytest.mark.asyncio
-async def test_the_worker_does_NOT_rank_candidates_the_core_does(tmp_path):
-    """Ranking lives in exactly one place: pickBestLyrics in packages/shared/src/lyrics.ts. The worker
-    reports every artifact it made and `uri` is merely the first, so there is no second copy of the tier
-    logic here to drift out of step with the TS one."""
-    lrc = FakeSource(SOURCE_LRCLIB, _text(SOURCE_LRCLIB, TIMING_LINE))
-    asr = FakeSource(SOURCE_ASR, _text(SOURCE_ASR, TIMING_WORD, conf="low"))
+async def test_the_worker_chooses_the_TEXT_but_does_not_implement_the_presentation_TIERING(tmp_path):
+    """Two different decisions, in two different places, and this pins the seam.
+
+    The worker DOES choose which text is the song's words — that is the two-tier grading, and it has to
+    happen here because this is the only place the candidate and the baselines exist in memory together.
+    What it does not do is rank what it published for display: `uri` is merely the first artifact, and
+    pickBestLyrics in packages/shared/src/lyrics.ts re-picks on every write and restore. So there is no
+    second copy of the presentation tier logic here to drift out of step with the TS one.
+    """
+    wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
+    lrc = FakeSource(SOURCE_LRCLIB, _candidate(wrong))
+    asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[asr, lrc])
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     cands = done.artifacts["lyrics"]["candidates"]
-    # uri is the FIRST produced candidate (asr here, since it was listed first) — not a ranked winner
+    # uri is the FIRST published artifact, not a ranked winner
     assert done.media_uri.endswith(cands[0]["ref"])
-    # and BOTH are reported, which is what lets the core choose
+    # and both are reported, which is what lets the core choose what to show
     assert {c["textSource"] for c in cands} == {SOURCE_LRCLIB, SOURCE_ASR}
 
 
@@ -531,7 +540,14 @@ async def test_DONE_WHEN_lrclib_dead_asr_still_yields_word_timed_lyrics(tmp_path
 
 
 @pytest.mark.asyncio
-async def test_both_tiers_produce_candidates_when_lrclib_also_answers(tmp_path):
+async def test_a_lookup_TOO_SHORT_to_judge_is_published_unjudged_not_condemned(tmp_path):
+    """The real chain end to end: LRCLIB answers, both local baselines transcribe, grading runs.
+
+    The canned lookup here carries only seven distinct words — under MIN_TOKENS_TO_COMPARE — so no
+    baseline can form an opinion about it. "Cannot tell" must not resolve to "wrong": the candidate is
+    published as the song's words with no score attached, and no baseline is published alongside, because
+    nothing was actually judged suspect.
+    """
     vocals = tmp_path / "derived" / "stems"
     vocals.mkdir(parents=True)
     (vocals / "m1-vocals.m4a").write_bytes(b"fake stem")
@@ -543,8 +559,9 @@ async def test_both_tiers_produce_candidates_when_lrclib_also_answers(tmp_path):
     )
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     cands = done.artifacts["lyrics"]["candidates"]
-    assert {c["textSource"] for c in cands} == {"lrclib", "asr"}
-    # uri is simply the first produced artifact; the core ranks (see the test above)
+    assert {c["textSource"] for c in cands} == {"lrclib"}
+    assert "agreement" not in cands[0]  # unjudged carries no score rather than a misleading zero
+    # uri is simply the first published artifact; the core ranks (see the seam test above)
     assert done.media_uri.endswith(cands[0]["ref"])
 
 
@@ -673,17 +690,28 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader():
             pass  # a non-reentrant lock never reaches here
 
 
-# ── the wrong-song guard (was built in C2 but never wired) ─────────────────────
-from src.lyrics_chain import agreement_score, score_against_asr, SUSPECT_AGREEMENT  # noqa: E402
+# ── the wrong-song guard, now graded against BASELINES ─────────────────────────
+from src.lyrics_chain import (  # noqa: E402
+    ROLE_BASELINE,
+    SUSPECT_AGREEMENT,
+    agreement_score,
+    composite_score,
+)
 
 _SUNG = "we could be heroes just for one day standing by the wall guns above our heads and we kissed"
 
 
-def _texts(lrclib_text, asr_text):
-    def mk(source, body, conf):
-        return LyricsText(text_source=source, timing=TIMING_LINE, text_confidence=conf,
-                          segments=[{"start": 0.0, "end": 4.0, "text": body}])
-    return [mk(SOURCE_LRCLIB, lrclib_text, "high"), mk(SOURCE_ASR, asr_text, "low")]
+def _baseline(body, rank=0, variant="whisper/vocals"):
+    """A BASELINE text — evidence of what is audible. Roles are explicit now: a fake that forgot to
+    declare itself a baseline would be graded as a claim about the words instead of grading them."""
+    return LyricsText(text_source=SOURCE_ASR, timing=TIMING_LINE, text_confidence="low",
+                      role=ROLE_BASELINE, baseline_rank=rank, variant=variant,
+                      segments=[{"start": 0.0, "end": 4.0, "text": body}])
+
+
+def _candidate(body, source=SOURCE_LRCLIB):
+    return LyricsText(text_source=source, timing=TIMING_LINE, text_confidence="high",
+                      segments=[{"start": 0.0, "end": 4.0, "text": body}])
 
 
 def test_agreement_score_matches_the_TS_semantics():
@@ -695,42 +723,52 @@ def test_agreement_score_matches_the_TS_semantics():
     assert agreement_score("la la la", _SUNG) is None
 
 
-def test_score_against_asr_reports_per_source_and_skips_asr_itself():
-    got = score_against_asr(_texts(_SUNG, _SUNG))
-    assert set(got) == {SOURCE_LRCLIB} and got[SOURCE_LRCLIB] == 1.0
+def test_composite_is_the_MEAN_over_baselines_that_can_speak():
+    """One baseline is one opinion; the composite averages independent ones."""
+    near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
+    score, votes = composite_score(_candidate(_SUNG), [_baseline(_SUNG), _baseline(near, rank=1)])
+    assert len(votes) == 2
+    assert score == pytest.approx(sum(votes) / 2)
 
 
-def test_no_asr_text_means_no_scores_rather_than_a_zero():
-    only = [LyricsText(text_source=SOURCE_LRCLIB, timing=TIMING_LINE, text_confidence="high",
-                       segments=[{"start": 0, "end": 1, "text": _SUNG}])]
-    assert score_against_asr(only) == {}
+def test_a_baseline_too_thin_to_judge_ABSTAINS_rather_than_voting_zero():
+    """The property that makes a weak baseline (YouTube auto-captions on music) safe to include: it
+    drops out of the mean instead of dragging it down."""
+    score, votes = composite_score(_candidate(_SUNG), [_baseline(_SUNG), _baseline("la la la", rank=2)])
+    assert len(votes) == 1  # the thin one abstained
+    assert score == 1.0  # ...and did not dilute the one that spoke
+
+
+def test_no_baseline_at_all_means_UNJUDGED_rather_than_a_zero():
+    assert composite_score(_candidate(_SUNG), []) == (None, [])
 
 
 @pytest.mark.asyncio
 async def test_A_WRONG_SONG_LOOKUP_IS_DEMOTED_not_shown_as_authoritative(tmp_path):
-    """LRCLIB's dangerous failure is a confident MISMATCH. When the looked-up text does not match what
-    is actually sung, it must lose its authority — which both re-ranks it below ASR and makes the TV
-    label it, with no separate 'suspect' concept anywhere downstream."""
+    """A lookup's dangerous failure is a confident MISMATCH. When the chosen text disagrees with every
+    baseline, it must lose its authority — which makes the TV label it — and what was actually HEARD is
+    published alongside, so the room gets real alternative words instead of only a warning."""
     wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
-    lrc = FakeSource(SOURCE_LRCLIB, LyricsText(text_source=SOURCE_LRCLIB, timing=TIMING_LINE,
-                     text_confidence="high", segments=[{"start": 0.0, "end": 4.0, "text": wrong}]))
-    asr = FakeSource(SOURCE_ASR, LyricsText(text_source=SOURCE_ASR, timing=TIMING_LINE,
-                     text_confidence="low", segments=[{"start": 0.0, "end": 4.0, "text": _SUNG}]))
+    lrc = FakeSource(SOURCE_LRCLIB, _candidate(wrong))
+    asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
-    bysrc = {c["textSource"]: c for c in done.artifacts["lyrics"]["candidates"]}
-    assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "low"       # demoted: no longer authoritative
+    cands = done.artifacts["lyrics"]["candidates"]
+    bysrc = {c["textSource"]: c for c in cands}
+    assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "low"        # demoted: no longer authoritative
     assert bysrc[SOURCE_LRCLIB]["agreement"] < SUSPECT_AGREEMENT  # and the evidence is recorded
+    assert SOURCE_ASR in bysrc  # the baseline was published as a real alternative
 
 
 @pytest.mark.asyncio
 async def test_an_AGREEING_lookup_keeps_its_authority_and_records_the_score(tmp_path):
-    lrc = FakeSource(SOURCE_LRCLIB, LyricsText(text_source=SOURCE_LRCLIB, timing=TIMING_LINE,
-                     text_confidence="high", segments=[{"start": 0.0, "end": 4.0, "text": _SUNG}]))
-    asr = FakeSource(SOURCE_ASR, LyricsText(text_source=SOURCE_ASR, timing=TIMING_LINE,
-                     text_confidence="low", segments=[{"start": 0.0, "end": 4.0, "text": _SUNG}]))
+    lrc = FakeSource(SOURCE_LRCLIB, _candidate(_SUNG))
+    asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
     proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     bysrc = {c["textSource"]: c for c in done.artifacts["lyrics"]["candidates"]}
     assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "high"
     assert bysrc[SOURCE_LRCLIB]["agreement"] == 1.0
+    # A trustworthy winner means the baselines have done their job by grading it — publishing one for its
+    # own sake would cost a whole extra alignment pass to produce words nobody shows.
+    assert SOURCE_ASR not in bysrc

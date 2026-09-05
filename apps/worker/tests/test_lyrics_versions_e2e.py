@@ -38,9 +38,12 @@ def fake_ytdlp_runner():
     async def run(argv):
         out = argv[argv.index("-o") + 1]
         os.makedirs(os.path.dirname(out), exist_ok=True)
-        # A caption fetch uses the same runner; it must not masquerade as the audio download.
+        # A caption fetch uses the same runner; neither kind may masquerade as the audio download.
         if "--write-subs" in argv:
-            yield "[info] no subtitles found"
+            yield "[info] no authored subtitles"
+            return
+        if "--write-auto-subs" in argv:
+            yield "[info] no automatic captions"
             return
         Path(out).write_bytes(b"FAKE_SOURCE_WAV")
         yield "[download] 100% of 1MiB"
@@ -184,9 +187,95 @@ async def test_the_agreement_score_is_published_so_the_core_can_rank_across_sour
 
 
 @pytest.mark.asyncio
+async def test_BOTH_local_baselines_run_and_a_silent_stem_does_not_lose_the_vote(tmp_path):
+    """Why there are two local transcriptions rather than one.
+
+    Separation demonstrably fails on this library — 2 of 9 vocals stems were digital silence and shipped
+    as `ready`. When that happens the stem baseline transcribes to nothing and abstains, and the MIX
+    baseline is the only evidence left. Here the stem yields nothing and the correct version is still
+    chosen, which is exactly the failure the mix baseline exists to cover.
+    """
+    class PerAudioTranscriber:
+        """Silence from the stem, real words from the mix — the silent-stem failure, reproduced."""
+
+        def transcribe(self, audio_path, language=None):
+            words = [] if "vocals" in audio_path else ASR_TEXT.split()
+            return {
+                "language": "en",
+                "segments": [{"start": float(i), "end": float(i + 1), "text": w} for i, w in enumerate(words)],
+            }
+
+    p = whisperx.WhisperXProcessor(
+        runner=fake_ytdlp_runner(),
+        lyrics_client=two_version_client(order=("solo", "feat")),
+        aligner=FakeAligner(),
+        transcriber=PerAudioTranscriber(),
+    )
+    doc, cand = published_lyrics(await run(p, spec(tmp_path)), tmp_path)
+    assert "coat" in " ".join(l["text"] for l in doc["lines"]).lower()  # a guest-verse word
+    assert cand["textConfidence"] == "high"
+
+
+@pytest.mark.asyncio
+async def test_youtube_AUTOMATIC_captions_grade_a_candidate_but_never_become_one(tmp_path):
+    """The third baseline, end to end. The machine track is fetched separately from any authored one, used
+    as evidence, and cannot itself be published while a candidate is trustworthy."""
+    def runner_with_auto_captions():
+        async def run_(argv):
+            out = argv[argv.index("-o") + 1]
+            os.makedirs(os.path.dirname(out), exist_ok=True)
+            if "--write-subs" in argv:  # no authored track on this upload
+                yield "[info] no authored subtitles"
+                return
+            if "--write-auto-subs" in argv:  # a MACHINE track that heard the guest verse
+                vtt = "WEBVTT\n\n" + "\n\n".join(
+                    f"00:00:{i:02d}.000 --> 00:00:{i + 1:02d}.000\n{w}" for i, w in enumerate(ASR_TEXT.split()[:45])
+                )
+                Path(out.replace("%(ext)s", "en.vtt")).write_text(vtt, encoding="utf-8")
+                yield "[info] writing automatic captions"
+                return
+            Path(out).write_bytes(b"FAKE_SOURCE_WAV")
+            yield "[download] 100% of 1MiB"
+
+        return run_
+
+    p = whisperx.WhisperXProcessor(
+        runner=runner_with_auto_captions(),
+        lyrics_client=two_version_client(order=("solo", "feat")),
+        aligner=FakeAligner(),
+        transcriber=FakeTranscriber(),
+    )
+    done = next(e for e in await run(p, spec(tmp_path)) if isinstance(e, CompleteResult))
+    sources = {c["textSource"] for c in done.artifacts["lyrics"]["candidates"]}
+    assert sources == {"lrclib"}  # the machine track graded the lookup; it did not become the answer
+    doc, _ = published_lyrics(await run(p, spec(tmp_path / "again")), tmp_path / "again")
+    assert "coat" in " ".join(l["text"] for l in doc["lines"]).lower()
+
+
+@pytest.mark.asyncio
+async def test_with_no_candidate_at_all_a_baseline_is_published_as_the_answer(tmp_path):
+    """A song nobody has written lyrics for. The tiering system picks the best available evidence, and the
+    `low` confidence rides along so the TV says the words are auto-transcribed."""
+    def no_lyrics(url, headers):
+        return 404, ""
+
+    p = whisperx.WhisperXProcessor(
+        runner=fake_ytdlp_runner(),
+        lyrics_client=LrclibClient(fetcher=no_lyrics),
+        aligner=FakeAligner(),
+        transcriber=FakeTranscriber(),
+    )
+    done = next(e for e in await run(p, spec(tmp_path)) if isinstance(e, CompleteResult))
+    cands = done.artifacts["lyrics"]["candidates"]
+    assert [c["textSource"] for c in cands] == ["asr"]
+    assert cands[0]["textConfidence"] == "low"
+    assert "agreement" not in cands[0]  # a baseline is the ruler; scoring it against itself is meaningless
+
+
+@pytest.mark.asyncio
 async def test_a_missing_caption_track_is_not_a_failure(tmp_path):
-    """The fake runner reports no subtitles, which is the common real case. The job must still complete
-    and still publish the LRCLIB tier."""
+    """The fake runner reports no subtitles of either kind, which is the common real case. The job must
+    still complete and still publish the LRCLIB tier."""
     events = await run(proc(two_version_client()), spec(tmp_path))
     done = next(e for e in events if isinstance(e, CompleteResult))
     sources = {c["textSource"] for c in done.artifacts["lyrics"]["candidates"]}
@@ -195,29 +284,42 @@ async def test_a_missing_caption_track_is_not_a_failure(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_an_uploader_caption_track_becomes_an_authoritative_candidate(tmp_path):
-    """When a human DID caption the upload, that tier appears alongside the lookup — and because it is
-    attached to this exact upload, it cannot be about a different recording."""
+async def test_authored_captions_can_WIN_over_a_lookup_when_they_match_the_audio_better(tmp_path):
+    """Both are CANDIDATES and the same ruler judges them, so the authored caption track is not
+    privileged — it wins here only because its words are what the baselines heard.
+
+    That is the point of grading across sources rather than ranking sources: captions are attached to the
+    exact upload, so they cannot be about a different recording, but "attached to this upload" is not the
+    same as "correct" and they still have to earn it.
+    """
     def runner_writing_captions():
         async def run_(argv):
             out = argv[argv.index("-o") + 1]
             os.makedirs(os.path.dirname(out), exist_ok=True)
-            if "--write-subs" in argv:
+            if "--write-subs" in argv:  # AUTHORED track — the candidate
                 vtt = "WEBVTT\n\n" + "\n\n".join(
-                    f"00:00:{i:02d}.000 --> 00:00:{i + 1:02d}.000\n{w}" for i, w in enumerate((SHARED + " " + GUEST).split()[:40])
+                    f"00:00:{i:02d}.000 --> 00:00:{i + 1:02d}.000\n{w}" for i, w in enumerate(ASR_TEXT.split()[:45])
                 )
                 Path(out.replace("%(ext)s", "en.vtt")).write_text(vtt, encoding="utf-8")
                 yield "[info] writing subtitles"
+                return
+            if "--write-auto-subs" in argv:  # no machine track on this upload
+                yield "[info] no automatic captions"
                 return
             Path(out).write_bytes(b"FAKE_SOURCE_WAV")
             yield "[download] 100% of 1MiB"
 
         return run_
 
+    # the lookup is the SOLO recording; the audio (and so the captions) carry the guest verse
     p = whisperx.WhisperXProcessor(
-        runner=runner_writing_captions(), lyrics_client=two_version_client(),
-        aligner=FakeAligner(), transcriber=FakeTranscriber(),
+        runner=runner_writing_captions(),
+        lyrics_client=two_version_client(order=("solo",)),
+        aligner=FakeAligner(),
+        transcriber=FakeTranscriber(),
     )
     done = next(e for e in await run(p, spec(tmp_path)) if isinstance(e, CompleteResult))
+    sources = {c["textSource"] for c in done.artifacts["lyrics"]["candidates"]}
+    assert sources == {"captions"}  # it won outright; the losing lookup is not published
     caps = next(c for c in done.artifacts["lyrics"]["candidates"] if c["textSource"] == "captions")
-    assert caps["textConfidence"] == "high"  # authored text, never auto-generated — see captions.py
+    assert caps["textConfidence"] == "high"  # authored text, never machine-made — see captions.py
