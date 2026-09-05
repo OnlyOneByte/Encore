@@ -226,6 +226,15 @@ export interface TvTelemetry {
 	status: string;
 	bufferedNextPct: number;
 	ended?: boolean;
+	/**
+	 * Which entry the TV was playing when this frame was produced. Optional for backward
+	 * compatibility with an older TV that omits it — when absent, `ended` keeps the legacy
+	 * unconditional advance. When present, an `ended` for an entry that is no longer
+	 * `state.playback.currentEntryId` is a stale/duplicate frame (a double send, a second TV,
+	 * or a reconnecting TV replaying its last frame) and is ignored, so one bad track can no
+	 * longer consume the next singer's turn as well (#70).
+	 */
+	entryId?: string;
 }
 
 /**
@@ -239,6 +248,11 @@ export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
 	if (!t || typeof t !== 'object') return;
 	const { state } = deps;
 	if (t.ended) {
+		// Advance ONLY when this `ended` is for the entry we are currently playing. A frame that
+		// names a stale entry (or a duplicate for the one that already ended) would otherwise
+		// advance a SECOND time and skip the next singer's turn without playing it (#70). A frame
+		// with no id keeps the legacy behaviour so an older TV still advances.
+		if (t.entryId !== undefined && t.entryId !== state.playback.currentEntryId) return;
 		advance(deps);
 		deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		emitNowPlaying(deps);

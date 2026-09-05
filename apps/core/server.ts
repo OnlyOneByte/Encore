@@ -286,7 +286,7 @@ const server = Bun.serve<SocketData>({
 					break;
 				case 'tv:telemetry':
 					handleTelemetry(
-						{ positionSec: evt.positionSec, durationSec: evt.durationSec, status: evt.status, bufferedNextPct: evt.bufferedNextPct, ended: evt.status === 'ended' },
+						{ positionSec: evt.positionSec, durationSec: evt.durationSec, status: evt.status, bufferedNextPct: evt.bufferedNextPct, ended: evt.status === 'ended', entryId: evt.entryId },
 						deps
 					);
 					break;
