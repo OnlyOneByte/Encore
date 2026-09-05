@@ -4,7 +4,8 @@ Status: **LIVING** · this file holds **what is left to build**. Everything ship
 [`archive/`](archive/) — go there for *why it is built this way*, never for *what to do next*.
 
 - [`archive/milestones-m0-m8.md`](archive/milestones-m0-m8.md) — M0–M8, all closed.
-- [`archive/backlog-shipped.md`](archive/backlog-shipped.md) — B-1, B-5, B-6, B-7, and B-3's shipped commits.
+- [`archive/backlog-shipped.md`](archive/backlog-shipped.md) — every shipped backlog item, under its
+  retired code. The 2026-09-05 section holds the five that were still carrying `[x]` in the open queue.
 
 ---
 
@@ -27,8 +28,8 @@ long-lived `encore-worker-live` container.
 
 **Verification gates — run all four on every item.**
 ```bash
-bun test                              # 479 (425 core + 54 shared) — runs from the REPO ROOT
-cd apps/worker && python3 -m pytest   # 142
+bun test                              # 1258 (core + shared) — runs from the REPO ROOT
+cd apps/worker && python3 -m pytest   # 536 passed, 1 skipped
 bun run typecheck && bun run build    # both workspaces
 ```
 `runMigrations()` locates `apps/core/drizzle` by walking up from `import.meta.dir`, so `bun test`
@@ -49,10 +50,8 @@ eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
   worker code.
 - YouTube autoplay-with-audio needs a user gesture in-browser.
 
-**Working order.** **B-8** (separator swap) →
-**B-3-C7p2b** (re-align on better text) → **B-4** → **M9-C1** → **M9-C3** → **B-2** last. B-2 is last
-because its only real acceptance test is audible and needs the owner in the room.
-(**B-9** image + stream-source hygiene is shipped and drops out of the order — see the open queue.)
+**Working order and task IDs** live in [Open tasks](#open-tasks) — one copy, not two. Read the
+numbering rule there before writing any commit message or comment that mentions a task.
 
 ---
 
@@ -63,9 +62,9 @@ vendoring, and copying with attribution are all open to us — no licence blocke
 
 | Project | Verdict | Why |
 |---|---|---|
-| [`python-audio-separator`](https://github.com/nomadkaraoke/python-audio-separator) | **Adopt as a dependency** | The separation engine under `karaoke-gen`, on PyPI. Wraps the UVR model family (MDX-Net, VR Arch, Demucs, MDXC/RoFormer). → **B-8** |
-| [`karaoke-lyrics-processor`](https://github.com/nomadkaraoke/karaoke-lyrics-processor) | **Adopt for half the job** | Length-bounds and cleans lyric lines. We keep its bounding/parens/punctuation and supply the boundary split it gets wrong. → **B-3-C8** (done) |
-| [`flacfetch`](https://github.com/nomadkaraoke/flacfetch) | **Borrow one idea** | Its provider+ranking pattern already landed independently as `lyrics_chain.acquire()` + `pickBestLyrics`. Its stream-quality heuristic has not. → **B-9** |
+| [`python-audio-separator`](https://github.com/nomadkaraoke/python-audio-separator) | **Adopt as a dependency** | The separation engine under `karaoke-gen`, on PyPI. Wraps the UVR model family (MDX-Net, VR Arch, Demucs, MDXC/RoFormer). → `T-11` |
+| [`karaoke-lyrics-processor`](https://github.com/nomadkaraoke/karaoke-lyrics-processor) | **Adopt for half the job** | Length-bounds and cleans lyric lines. We keep its bounding/parens/punctuation and supply the boundary split it gets wrong. → shipped |
+| [`flacfetch`](https://github.com/nomadkaraoke/flacfetch) | **Borrow one idea** | Its provider+ranking pattern already landed independently as `lyrics_chain.acquire()` + `pickBestLyrics`. Its stream-quality heuristic has not. → shipped |
 | [`karaoke-gen`](https://github.com/nomadkaraoke/karaoke-gen) | **Ideas only, no dependency** | Mostly scope we do not want (4K render, CDG packaging, YouTube/Dropbox upload). Its **human review stage** is the keeper. → **Deferred** |
 
 **Why the separator swap is the highest-value change.** Two independent wins from one dependency:
@@ -79,7 +78,7 @@ vendoring, and copying with attribution are all open to us — no licence blocke
 It also ships platform acceleration we would otherwise have to write: CUDA, Apple Silicon MPS/CoreML
 with per-model-type device mapping, DirectML, and an automatic CPU fallback for long inputs.
 
-**Why `karaoke-lyrics-processor` is only half adopted (B-3-C8).** It is a length-BOUNDER, not a
+**Why `karaoke-lyrics-processor` is only half adopted.** It is a length-BOUNDER, not a
 phrase-finder: `find_best_split_point` bisects an over-long span, preferring a comma near the MIDPOINT,
 then `" and "`, then the middle word. **MEASURED 2026-09-03** on a synthetic one-line blob at
 `max_line_length=36`, that glues the next line's leading conjunction onto the previous line's tail
@@ -115,7 +114,7 @@ imported in upstream's source and solely drags lxml. All of it serves `.doc`/`.r
 clipboard copy — features we never call, since our text arrives in memory. pip *did* resolve the full
 tree cleanly against the torch/whisperx set, so this is unused weight, not a version conflict.
 
-**Known cost, recorded honestly.** B-8 likely **supersedes `a76ab4a`** (the adaptive `-j` default,
+**Known cost, recorded honestly.** `T-11` likely **supersedes `a76ab4a`** (the adaptive `-j` default,
 measured 1.72× on 32 cores). Those numbers are `htdemucs`-specific and stop applying if the engine
 changes. Re-benchmark rather than assuming they carry over.
 
@@ -175,259 +174,179 @@ which is the argument for the "green suite is the floor, not the bar" rule in
 
 ---
 
-## Open queue
+## Open tasks
 
-- [x] **Queue order as a room setting** (shipped, branch `feat/queue-order-room-setting`) — the
-  ordering algorithm moved out of `rotation.ts` into a registry
-  (`packages/shared/src/queue-order.ts`) and onto `RoomSettings.queueOrder`: **Fair rotation** (the
-  default, byte-identical to the old hardcoded behaviour), **first come, first served**, a **stable
-  shuffle** (rank hashed from the entry id, so it is fixed once a song is in and identical on both
-  sides of the wire), and **whoever sang longest ago** (reads `Singer.lastSungAt`, stamped at song
-  start; with no history it IS fair). Design in `docs/ARCHITECTURE.md` §4 and
-  `docs/archive/specs/SPEC-queue-order-room-setting.md`.
+Task IDs are `T-<n>`, assigned once and never reused. **The hyphen is load-bearing:** bare `T1`
+already occurs 320 times in this codebase as timestamp constants (`T0`, `T1` in
+`play-log.test.ts`), so a bare-number scheme cannot be guarded. `T-<n>` and `ENC-<n>` both occur
+zero times.
 
-  Remaining open work here, deliberately not built:
-  - **A room-scoped away/skip interaction.** `least-recently-sung` orders by when someone last sang;
-    a singer who is present but away is a separate concept the presence lifecycle owns.
-  - **No per-singer song history.** The stamp records that someone sang and when, never what, to stay
-    inside the line `plays` draws (no `singer_id`, on purpose). Any future policy that wants "who has
-    sung this song" needs that decision revisited first, not worked around.
+> **A task ID may appear in a PR title, a PR body, a commit message, and files under `docs/`.
+> Nowhere else — not in source, not in comments, not in tests, not in fixture data.** A task number
+> is scheduling metadata with a lifetime of days; code outlives it and a stale reference sends the
+> next reader to a roadmap line that no longer exists. When code needs to explain *why*, it states
+> the reason or points at a durable doc section — never at a task number. `T-1` adds the guard that
+> makes this mechanical.
 
-- [ ] **B-8 · Swap the separator to `python-audio-separator`** — the fit is clean because
-  `demucs.py` is pure argv-plus-subprocess with **zero numeric imports**: the dial-home loop, job
-  ledger and progress reporting do not move.
+**Working order.** `T-1` → `T-2` → `T-3` → `T-8` (design only) → `T-4` → `T-5` → `T-6` → `T-7` →
+`T-9` → `T-10` → `T-11` → `T-12` → `T-13`. `T-14` whenever the owner is at the deploy box.
 
-  ### Decision re-opened and resolved, 2026-09-03: `audio-separator`, not `bs-roformer-infer`
+Two ordering constraints that are not preference:
 
-  The shipped `roformer` engine (`apps/worker/src/roformer.py`) shells `bs-roformer-infer`, chosen
-  over `python-audio-separator` for its `load/infer/release` session lifecycle, its sha256-verified
-  repointable checkpoint registry, and a device contract that raises instead of silently downgrading
-  to CPU. Those virtues are real. Measurement against the installed package retires the choice anyway:
-
-  - **The session lifecycle — the headline reason — is not being used.** `BSRoformerSession` does not
-    exist in 0.1.5, so `roformer.py` shells the CLI, which reloads the checkpoint per cook exactly
-    like the library it was chosen over. Measured reload cost is 1.3–8.0s against a cook of minutes:
-    immaterial either way.
-  - **It cannot reach the fast models.** `bs_roformer.utils.get_model_from_config` implements only
-    `model_type == 'bs_roformer'`; the package ships no mel-band module and its registry holds exactly
-    ten models, none mel-band. The four fastest checkpoints measured are all mel-band.
-  - **Its registry has no `ep_317_sdr_12.9755`** — the 2-stem checkpoint that was benchmarked and
-    quality-approved. Token `bs-roformer-1297` resolves to `BS-Rofo-SW-Fixed.ckpt` ("BS Roformer SW
-    by jarredou", category multi-stem): a different model, running in production under a label
-    claiming otherwise. `audio-separator` serves the approved checkpoint directly.
-  - **Token `mel-roformer-inst-v2` mapped to a slug absent from the registry** — a phone option no
-    worker could ever satisfy. Removed from both whitelists. The test that should have caught it
-    asserted only that the slug *started with* `"roformer-model-"`; it now asserts registry
-    membership against a checked-in slug set.
-  - **Neither tuning knob is reachable.** Its CLI exposes no overlap and no precision flag, and
-    `inference.py` contains no autocast. Overlap is reachable only by hand-writing a config YAML and
-    passing `--config_path`. `audio-separator` has `--mdxc_overlap` and `--mdxc_batch_size` as
-    first-class flags.
-
-  **Measured on the reference box** (32-core Graviton 3, CPU; realtime factor = wall-clock seconds per
-  second of song, at each checkpoint's own defaults):
-
-  | checkpoint | params | dim/depth | window | overlap | fp32 s/win | bf16 s/win | **rt** |
-  |---|---|---|---|---|---|---|---|
-  | htdemucs *(live default)* | 83M | conv | — | — | — | — | **0.29** |
-  | htdemucs_ft | 83M×4 | conv | — | — | — | — | 0.55 |
-  | mel instrumental_becruily | 228M | 384/6 | 8.0s | 2 | **5.14** | 7.09 | **1.28** |
-  | mel kim_ft_unwa | 228M | 384/6 | 11.0s | 8 | 15.49 | 7.23 | 11.27 → 1.31 @ ov2+bf16 |
-  | mel instrumental_gabox | 228M | 384/6 | 11.0s | 2 | 15.26 | 8.48 | 2.77 → 1.54 bf16 |
-  | mel instrumental_bleedless_v3 | 228M | 384/6 | 11.0s | 2 | 15.99 | 10.16 | 2.91 → 1.85 bf16 |
-  | mel ep_3005 *(classic)* | 252M | 384/12 | 8.0s | 4 | 7.92 | 14.52 | 3.96 → 1.98 fp32 ov2 |
-  | bs_roformer 1297 *(current roformer default)* | 160M | 512/12 | 8.0s | 4 | 26.59 | 16.55 | **13.29** |
-
-  A RoFormer-family instrumental cook goes from **43.8 min to 3.7 min on existing hardware** — 10.4×,
-  no GPU involved. Three results that must survive into the implementation:
-
-  1. **Wall-clock is linear in overlap.** 4→2 measured 1.83× on a 24s clip (253s→138s), per-window
-     cost unchanged. It is a redundancy multiplier, not an execution detail.
-  2. **Precision reverses per checkpoint.** bf16 is 1.6× faster on bs_roformer-1297 but 1.4–1.8×
-     *slower* on the 8s-window mel models. fp16 on CPU is 6.5× slower than fp32 (179s vs 27.7s per
-     window — no fp16 CPU kernels); fp16 is a GPU-only lever. There is no global dtype switch.
-  3. **Parameter count is anti-correlated with cost.** A 228M mel-band model beats the 160M
-     bs_roformer by 5.2× per window; `depth` and `dim` dominate. Never infer cost from file size.
-
-  Also measured and *not* worth pursuing: `batch_size` 1→4 gave 1.02× (cores already saturated at
-  batch 1); thread scaling 8→32 gave only 1.34× for 4× the cores, so this workload does not reward a
-  bigger CPU; attention already runs on `scaled_dot_product_attention`; `torch.compile` fails to build
-  in the worker image. Hardware ceilings are modest — the Arc A380 is 4.19 TFLOPS fp32 / 8.40 fp16
-  against this box's ~2.2, and its 186 GB/s is *below* Graviton 3's ~300 GB/s — so **no engine here
-  becomes live-tier by moving hardware**; RoFormer stays an upgrade tier and the goal is an upgrade
-  that lands within a song or two.
-
-  **What must carry over from `bs-roformer-infer`** — these were good reasons, and dropping the
-  package must not drop them: pin the checkpoint set rather than accepting arbitrary ids; verify
-  downloads by digest; and make an explicitly-requested-but-unavailable device raise at startup
-  instead of cooking 50× slower on CPU (`backends.py` already implements that contract).
-
-  **Done in this pass:** measured costs baked into `packages/shared/src/separators.ts`
-  (`SeparatorCost` + `estimateCookSeconds`, so the UI can say "about four minutes" instead of
-  "slow"), the unrunnable mel token removed from both whitelists, and the slug test strengthened.
-
-  Sub-commits:
-  - [x] **B-8-C1 · A/B spike, no production code.** Same source audio, `htdemucs` vs RoFormer.
-        *Result:* htdemucs 50s, htdemucs_ft 95s, BS-RoFormer 2629s on a 2:51 song; owner heard both
-        and ruled "RoFormer sounds better, htdemucs significantly faster → keep both, make it
-        selectable". **EYES-ON/AUDIO** — done.
-  - [ ] **B-8-C1b · listening test for the fast mel-band instrumental checkpoints.** Speed is
-        measured; **quality is not**. `bs_roformer-1297` is the only candidate with a published SDR
-        (12.9755) and the only one the owner has heard. Cook the same source with
-        `instrumental_becruily`, `instrumental_gabox` and `kim_ft_unwa` and compare by ear before any
-        of them is whitelisted. Checkpoints are cached in
-        `.kiro/autopilot/encore-b8-b9-b3c7/model-cache`, so this costs no re-download and ~15 min.
-        *Done-when:* the owner has ranked them. **EYES-ON/AUDIO** — a test cannot hear vocal bleed.
-  - [ ] **B-8-C2 · `SeparatorProcessor` behind the existing `Processor` protocol**, selected by
-        `ENCORE_SEPARATOR` (`demucs` default, so the swap is opt-in and reversible). Must pass the
-        per-checkpoint `overlap` and precision through as real flags, and keep the pinned-checkpoint
-        and raise-on-unavailable-device contracts above.
-        *Done-when:* a cook completes through the new processor and the TV plays its instrumental.
-        **AUTO** — argv/params construction, model selection, progress parsing, missing-model error.
-  - [ ] **B-8-C3 · re-benchmark and re-tune the parallelism knobs** for whichever engine wins;
-        supersede or delete the `htdemucs` numbers in `config.py` rather than leaving them to rot.
-        Note `batch_size` and extra threads measured as near-worthless here — do not re-derive them
-        from theory. *Done-when:* the committed defaults match a measurement taken on the engine in use.
-  - [ ] **B-8-C4 · device/acceleration config** mapped onto the library's backends. The device layer it
-        was going to replace is **already done**: there is no `ENCORE_DEMUCS_DEVICE` passthrough left, the
-        worker probes its accelerator via `torch.accelerator` plus a usability check and derives the
-        alignment device from the same decision, and `docs/deploy/Dockerfile.intel` has been deleted (the
-        `xpu` index carries the exact pinned versions, so IPEX is no longer required). What remains for
-        B-8 specifically is the **second accelerator axis** `python-audio-separator` introduces: it picks
-        an ONNX Runtime execution provider independently of the torch device, and its `[cpu]`/`[gpu]`/
-        `[dml]` extras swap the `onnxruntime` wheel rather than torch. So the probe in `capabilities.py`
-        must learn to report the ORT provider too, and the image matrix has to be decided for both axes
-        at once rather than revisited afterwards. Note the library **already auto-detects** (cuda → mps →
-        DirectML opt-in → cpu) with no explicit device argument, so the risk is two detection paths
-        disagreeing, not detection being absent. The host
-        still needs the Intel compute runtime and `/dev/dri`. **Superseded as the live target:** the
-        deploy box is now Windows + WSL2 + RTX 3080, where the equivalent is
-        `docs/deploy/docker-compose.cuda.yml` and `backends.py` already probes `cuda` first, so no
-        selection code changes at all. See `docs/deploy/WSL2.md`.
-
-- [x] **B-9 · Source-audio and image hygiene** — SHIPPED. Two small independent fixes, both landed:
-  - [x] **B-9-C1 · bake `yt-dlp` into the worker image.** `apps/worker/Dockerfile` pip-installs from
-        `requirements.txt` (which pins `yt-dlp`) and asserts `yt-dlp --version` **in the same layer**, so
-        a missing/wrong fetcher breaks the BUILD rather than a live cook. `deno` (the JS runtime yt-dlp's
-        player challenge needs) is baked too and version-verified in-layer, and `yt-dlp.conf` (which
-        enables the remote solver component) is copied to `/etc/`. A freshly recreated container resolves
-        `yt-dlp` on PATH with no manual step. **AUTO** — image build + resolve check.
-  - [x] **B-9-C2 · stream-selection heuristic** (idea from `flacfetch`). `apps/worker/src/acquisition/
-        stream_quality.py` prefers modern Opus over legacy AAC by POSITION in the format selector (not by
-        bitrate, which is what picks AAC), and scores official/"- Topic"/VEVO/"official audio" uploads
-        above the rest, with a `/best` last-resort so a bot-blocked egress serving only legacy muxed
-        format 18 still resolves. **AUTO** — pure ranking over recorded format lists; no network.
-
-- [x] **B-3-C7 (part 2a) · two-tier lyrics selection.** Text sources now split by ROLE rather than by
-  quality. **Candidates** are authored claims about the song's words (LRCLIB records, uploader-authored
-  captions); **baselines** are evidence of what is actually audible (local transcription of the vocals
-  stem, local transcription of the raw mix, YouTube's automatic captions). Every candidate is scored
-  against every baseline that can speak and the unweighted **mean** picks the winner. With no candidate at
-  all, the tiering system shows the best baseline instead.
-
-  LRCLIB is asked via `/api/search` (an ARRAY of records) rather than `/api/get` (one record, filtered to
-  ±2s of the duration), because filtering the query is what picked a version by fiat.
-
-  **Why selection, not a threshold.** Detection already existed and made things worse: an agreement below
-  `SUSPECT_AGREEMENT` demoted the lookup, dropping it beneath the transcript — so a wrong-version match was
-  answered with Whisper's guess when the correct record sat one row away. And the threshold cannot fire on
-  this case at all: measured, the WRONG version scores **0.548** against the vocals and the right one
-  **0.938**, both far above the 0.25 cutoff. Argmax needs no threshold, only a difference. The threshold
-  keeps its own separate job — is even the winner about this song — and when it says no, the best baseline
-  is published alongside so the room gets words that ARE about this audio.
-
-  Three findings worth keeping. A baseline too thin to reach `MIN_TOKENS_TO_COMPARE` **abstains** rather
-  than voting, which is what makes including a weak one safe (auto-captions were absent or useless on 3 of
-  5 uploads probed). The **mix** baseline exists because separation fails — 2 of 9 stems on this library
-  were digital silence shipped as `ready` — and it is then the only evidence left. And machine-**translated**
-  caption tracks are refused outright, since a fluent wrong-language track would not abstain; it would vote
-  confidently against every correct candidate.
-
-  Also fixed a latent ranking defect the design depends on: a text identified as another song now ranks
-  below every honest guess (`lyricsRank` tier 1). Demoting confidence alone left it tied with the baseline
-  that convicted it, and the tie-break preferred it — a suspect candidate carries a numeric agreement, a
-  baseline carries none.
-
-  Costs two transcriptions instead of one (~+13s/song on `base`/CPU) plus two cheap caption metadata
-  fetches. Only what is published gets aligned, so the common run is still exactly one alignment.
-
-- [ ] **B-3-C7 (part 2b) · re-align on better text.** The backfill covers "no lyrics yet"; this covers
-  "LRCLIB became reachable, or the text was corrected". *Done-when:* a song whose text improves gets
-  re-aligned **from retained audio** (no re-download, no re-separation) and can never regress from
-  word- to line-level timings. **AUTO** — upgrade-not-regress invariant, re-align trigger.
-
-- [ ] **B-4 · Hot-titles persistence** — the popularity tracker is in-memory (survives refresh, not
-  restart). Persist counts so "🔥 Popular tonight" survives a restart. **AUTO** — unit.
-
-- [ ] **M9-C1 · accounts** — an ephemeral singer can "claim" an account (OAuth or local).
-  *Done-when:* claiming works and **nothing about the join flow regresses**.
-
-- [ ] **M9-C2 · history + favorites** — *Done-when:* re-queue a saved karaoke instantly (skips the
-  worker). Largely covered by B-1's library; what is left is per-account history and favorites.
-
-- [ ] **M9-C3 · multi-room** — room codes, per-room topics. *Done-when:* two independent rooms run on
-  one core. Tag **v1.0.0**.
-
-- [x] **B-2 · pitch-shift (semitones)** — **SHIPPED, with its audible half unverified.** The fork is
-  resolved in favour of **(b) shift in the browser**: `apps/core/src/lib/tv/pitch-shift.ts` is a
-  hand-written, zero-dependency overlap-add shifter running in an AudioWorklet, so no per-key files
-  exist and every already-cooked song is transposable retroactively. `keyedMediaRef` and
-  `apps/worker/src/pitch.py` are **deleted** — the pre-rendered path would have cost 14 renders and
-  ~310 MB per song, and would have needed 14 more of each to shift the guiding-track stem too.
-  The browser path shifts the guide by the same amount instead of muting it, which the file path could
-  not do cheaply. Licence note: hand-rolled deliberately — `soundtouchjs` is LGPL and rubberband is
-  GPL/commercial.
-  **The one real risk lives here:** `TvPlayer` had no `AudioContext` before this, and an `AudioContext`
-  starts `suspended` until a user gesture that a set-and-forget TV may never receive. So at
-  `keyShift === 0` the audio path is byte-for-byte what it always was — no context, no
-  `MediaElementSource` — the graph is built lazily on the first non-zero shift and only after
-  `resume()` actually succeeds, and a context that cannot run degrades to **audible-unshifted, never
-  silence**. Note a `MediaElementSource` cannot be detached once attached; see the teardown comment.
-  *Still to verify:* that ±1 semitone **sounds** right. Only the ratio/framing/window maths is tested;
-  there is no audio hardware on the dev box, so the OLA quality, the suspended-context fallback and
-  the graph lifecycle need the RTX 3080 deploy box and a human in the room. **AUDIO/EYES-ON.**
-
-- [x] **Song profile (key + vocal range)** — shipped alongside B-2. The same `stems` job now emits a
-  third artifact from the raw separated WAVs it already has in scratch — detected key from the
-  instrumental (numpy chromagram vs 24 rotated Krumhansl-Schmuckler profiles), sung range from the
-  vocals stem — so it costs **no extra separation, no extra decode and no new job type**. Deliberately
-  not the old `score` job, whose disqualification was re-running the whole separation for vocals it
-  could have read off disk.
-  Stored as one nullable JSON column `song_profile` (edited into the single baseline migration, no new
-  migration file) plus the sidecar, and it **completes the `stems` cook gate**. The gate keys on the
-  RECORD being present, not on it containing data: a silent vocals stem yields all nulls and that song
-  is still finished, because the re-cook check reads `hasInstrumental` rather than the gate, so a
-  data-requiring gate would strand it permanently with no retry path.
-  Surfaced as a key line on the phone's now-playing with a collapsible vocal-range bar (voice-band
-  shading, whiskers for extremes, a time-weighted block for where the song lives), a key line in the
-  TV's lower-third, and a key chip on ready song rows. All accidentals are ASCII (`G#`/`Ab`) because
-  `icons.test.ts` bans 0x2600-0x27BF, which contains U+266F/U+266D — and because a stripped smart-TV
-  font drops the sharp sign for the same reason it drops emoji.
-  *Not built, and deliberately:* per-singer range calibration. The mic half exists (`detectF0`,
-  `MicPitch`) but `singers` has nowhere to store a range and accounts are M9. Without it the range is
-  absolute information, which is why it is drawn against named voice bands rather than against you.
-
-- [ ] **B-10-C7 · gate `/metrics` and the audit log** — the two internal surfaces shipped **ungated**,
-  by decision: Encore has no operator identity, and the only auth axis is anonymous vs any-singer,
-  which any LAN phone obtains by POSTing `/api/join`. A singer check would have been theatre. What is
-  exposed today: worker ids, resolved model/backend/device names, host details, and terminal error
-  strings — no singer identities and no media bytes. Two honest fixes, either is small:
-  `ENCORE_ADMIN_TOKEN` compared on the two endpoints, or binding those routes to a trusted interface.
-  The same gap already lets any joined phone `PUT /api/settings` (now including `asrModel` and
-  `syncMode`, i.e. which Whisper weights the fleet loads), so a real **host/operator concept** would
-  close both — that is the larger option, and it is a product decision, not a patch.
-  **AUTO** — the gate rejects an unauthenticated read; **EYES-ON** — the settings page still works.
-
-- [ ] **B-10-C8 · retention for the two append-only tables** — `job_attempts` and `plays` grow without
-  bound. Nothing prunes them and nothing should until there is a policy: attempt history is the only
-  record of how a song was made, so eviction is a real loss rather than a cache miss. Mirror
-  `ENCORE_MEDIA_MAX_GB`'s shape (a soft cap, oldest-first, unset = never delete). Not urgent — a row
-  is tens of bytes and a busy party writes a few hundred — but it should not be discovered later as a
-  surprise. **AUTO** — unit.
+- **`T-4` before `T-5`/`T-6`/`T-7`.** The rename touches ~1440 sites; every task that lands first
+  adds more sites to rename.
+- **`T-8`'s ruling before `T-7` starts.** Whether a media has versions decides what the library and
+  now-playing surfaces are *shaped* like, and that is the rewrite's core question, not a detail.
 
 ---
 
-## B-3 design notes (the part still worth reading)
+- [ ] **T-1 · Task-number hygiene, and the guard that keeps it** — five stale references exist
+  today, all comments: `apps/core/src/server/jobs/vocabulary-parity.test.ts:268` (`roadmap B-8`),
+  `apps/core/src/lib/components/SongRow.svelte:13` (`shipped in M6-C1`),
+  `apps/core/src/lib/stores/queue.ts:8` (`(M3)`), `apps/core/server.ts:61` (`/api/search (M4)`),
+  `apps/worker/src/separation/roformer.py:43` (`docs/ROADMAP.md (B-8)`). Rewrite each to say the
+  thing instead of citing the ticket — the `roformer.py` one should name the decision, not its
+  roadmap coordinates. Then add a guard that scans source, comments and tests for `\bT-[0-9]+\b`
+  and the retired `\bB-[0-9]+\b` / `\bM[0-9]-C[0-9]+\b` families, and fails with the offending
+  `path:line`. **AUTO** — the guard must be proven by planting a reference and watching it fail.
+
+- [ ] **T-2 · Retention for the two append-only tables** — `job_attempts` and `plays` grow without
+  bound. Nothing prunes them and nothing should until there is a policy: attempt history is the only
+  record of how a song was made, so eviction is a real loss rather than a cache miss. Mirror
+  `ENCORE_MEDIA_MAX_GB`'s shape — a soft cap, oldest-first, unset = never delete. Not urgent (a row
+  is tens of bytes) but it should not be discovered later as a surprise. Deletes rows, so no
+  migration. **AUTO** — unit.
+
+- [ ] **T-3 · Hot-titles persistence** — the popularity tracker is in-memory: it survives a refresh,
+  not a restart. Persist counts so "🔥 Popular tonight" survives a restart. Decide first *where* the
+  counts live — `plays` can already answer "how often" by aggregation, which may make a new column
+  unnecessary; a new table or column is a migration and needs saying out loud. **AUTO** — unit.
+
+- [ ] **T-4 · Comprehensive `cook` → `process` / `processing` rename** — reverses an earlier
+  decision that renamed only UI copy and deliberately left `cook` in code (`cookId` included). The
+  measured surface: **~1440 occurrences** — `apps/core/src/server` 675, `apps/core/src/routes` 250,
+  `apps/core/src/lib` 231, `packages/shared/src` 150, `apps/worker/src` 88,
+  `apps/worker/tests` 46 — plus **two DB columns** (`job_attempts.cook_id`, `plays.cook_id` and the
+  `job_attempts_cook_idx` index), the `cookId` wire field (51 uses), and the TS↔Python vocabulary
+  parity guard.
+
+  Three things make this a different shape of task from everything else here:
+  - **It must run solo.** A diff across ~1440 sites conflicts with every open branch and all ~36
+    live worktrees. Drain them first, or accept a mass rebase.
+  - **It crosses the wire and the schema at once.** `packages/shared` is the contract, so the TS and
+    Python sides must move in the same commit, and the column rename is a migration. Sidecars on
+    disk were checked and carry **no** `cookId`, so the media volume needs no rewrite — that is the
+    one piece of luck here.
+  - **`process` is an overloaded word.** The worker literally has OS processes, and
+    `apps/worker/src` already talks about them. Pick the noun deliberately (`processing` for the
+    activity, `run`/`attempt` for the instance) rather than a blind
+    `s/cook/process/`, or the code gets *less* readable. This is a naming decision to make before
+    the first edit, not during. **AUTO** — the parity guard plus a full suite; the risk is
+    silent partial rename, so the guard must reject a vocabulary that exists on one side only.
+
+- [ ] **T-5 · Finish the room work** — the storage layer is already multi-room and the runtime is
+  not. `rooms` (`id`, `code`, `created_at`) and `room_settings` exist, and the settings repository
+  is genuinely keyed per room (`getRoom('room-c')` resolves today). But `roomId` is threaded through
+  only **14 places**, and the four tables that carry a party's actual state —
+  `queue_entries`, `singers`, `playback_state`, `plays` — have **no `room_id` column at all**. So
+  "finish" means: thread the room key through those four, scope the WebSocket topics so two rooms
+  cannot see each other's queue, make join-by-code resolve a room, and decide what a singer who is
+  present in one room *is* in another. Carries the room-scoped **away/skip** interaction that the
+  queue-order work deliberately left open: `least-recently-sung` orders by when someone last sang,
+  and "present but away" is a different concept the presence lifecycle owns.
+  *Done-when:* two independent rooms run on one core without leaking state.
+  **AUTO** — rotation and scoping are unit-testable; **EYES-ON** — two phones in two rooms.
+
+- [ ] **T-6 · Duet management** — greenfield: `duet`, `coSinger` and `secondSinger` appear **nowhere**
+  in the repo. `queue_entries.singer_id` is a single non-null column and `singers` has no pairing, so
+  the modelling decision comes first and everything else follows from it: a second nullable
+  `singer_id`, a join table, or a "party" concept that a solo turn is just the degenerate case of.
+  The rotation is the hard part, not the schema — a duet consumes whose turn? Fair rotation currently
+  gives everyone their 1st pick before anyone's 2nd, and a two-singer entry either burns both slots
+  or burns one and lets a pair jump the queue. Decide that *before* the column. Also touches
+  `Singer.lastSungAt` (do both get stamped?) and the TV lower-third, which names one singer today.
+  **Serialize with `T-5`** — both migrate `queue_entries`.
+
+- [ ] **T-7 · Client-side UI rewrite** — design work plus general polish, across the phone remote and
+  the TV. Blocked on `T-8`'s ruling, because whether a media has selectable versions changes what a
+  library row and the now-playing sheet *are*, not just how they look. Constraints already
+  established and not up for re-litigation: every stage-look option stays pinned dark so lyrics
+  remain readable; there are no spectrum bars because the TV does not listen to the audio; icons are
+  vendored Lucide *path geometry* with no webfont and no emoji (a stripped smart-TV font drops both,
+  which is why accidentals are ASCII `G#`/`Ab`); touch targets are ≥44px. Frames land in
+  `docs/mocks/` as `<id>-<what>-eyeson.png`. **EYES-ON** — every surface, at 390/820/1440px and at
+  TV width; a green suite has never once caught a UI defect in this project.
+
+- [ ] **T-8 · Expose multiple versions of a media** — *design task; ruling needed before `T-7`.* This
+  splits into two halves that look alike and are not.
+
+  **The lyrics half is already modelled and merely hidden.** `Media.lyricsCandidates` holds *every*
+  lyrics artifact, one per text source, and `lyricsRef` points at whichever `pickBestLyrics` chose;
+  the rest are retained precisely so a better source can be re-aligned later and so a coarser late
+  arrival can never displace word timings. Provenance is read from the chosen candidate via
+  `chosenCandidate(media)`. So "expose multiple lyrics versions" needs **no schema work** — it needs
+  a selector surface, a way to override the automatic pick, and a decision about whether an override
+  is per-song, per-room, or sticky. That is buildable now.
+
+  **The quality/fidelity half re-opens a ratified withdrawal.** The Song/Version split was specced
+  and then deliberately cut, and the roadmap already records what that cost: *"source-fidelity
+  upgrades are no longer expressible. A better source is a different `sourceRef` and therefore a
+  different row, with no link to the old one, so 'reacquire from a better source, then re-cook'
+  cannot be modelled."* Reversing it means reversing the reasoning that killed it — grouping two
+  uploads is probabilistic, and merging on a weak signal collapses two different songs. `D4`
+  (refuse rather than guess) is the rule that would have to bend.
+  **Owner's ruling required:** ship the lyrics selector alone, or re-open the Song/Version split
+  with a hard non-probabilistic link (an explicit user action, not a matcher).
+
+- [ ] **T-9 · Re-align on better text** — the backfill covers "no lyrics yet"; this covers "LRCLIB
+  became reachable, or the text was corrected". *Done-when:* a song whose text improves gets
+  re-aligned **from retained audio** (no re-download, no re-separation) and can never regress from
+  word- to line-level timings. **AUTO** for the upgrade-not-regress invariant and the trigger, but
+  **NET-blocked on this box** — `lrclib.net` fails DNS here, so the end-to-end trigger cannot be
+  exercised locally. Implement, unit-cover, and flag.
+
+- [ ] **T-10 · Gate `/metrics` and the audit log** — *product decision, not a patch.* Both surfaces
+  shipped ungated by decision: Encore has no operator identity, and the only auth axis is anonymous
+  vs any-singer, which any LAN phone obtains by POSTing `/api/join` — a singer check would have been
+  theatre. Exposed today: worker ids, resolved model/backend/device names, host details, terminal
+  error strings. No singer identities, no media bytes. Three options, ascending:
+  `ENCORE_ADMIN_TOKEN` compared on the two endpoints; bind those routes to a trusted interface; or a
+  real **host/operator concept**. Only the third also closes the standing hole that lets any joined
+  phone `PUT /api/settings` — including `asrModel` and `syncMode`, i.e. which Whisper weights the
+  fleet loads. **AUTO** — the gate rejects an unauthenticated read; **EYES-ON** — settings still work.
+
+- [ ] **T-11 · Swap the separator to `python-audio-separator`** — the fit is clean because
+  `demucs.py` is pure argv-plus-subprocess with zero numeric imports: the dial-home loop, job ledger
+  and progress reporting do not move. Two wins from one dependency: instrumental quality (the
+  crash-cymbal artifacts are done by `htdemucs`' vocal mask, and no codec change reaches them), and
+  better lyrics for free (the ASR tier transcribes the vocals stem, so cleaner separation feeds a
+  better `agreement_score`). It also ships CUDA / MPS+CoreML / DirectML device mapping and a CPU
+  fallback for long inputs. Known cost, recorded honestly: it likely supersedes the adaptive `-j`
+  default whose 1.72×-on-32-cores measurement is `htdemucs`-specific — re-benchmark rather than
+  assume. *Done-when:* **the owner has ranked the candidate models by ear.**
+  **EYES-ON/AUDIO** — a test cannot hear vocal bleed. **AUTO** for argv/params construction, model
+  selection, progress parsing, and the missing-model error.
+
+- [ ] **T-12 · Accounts** — an ephemeral singer can "claim" an account (OAuth or local).
+  *Done-when:* claiming works and **nothing about the join flow regresses**. Also unblocks
+  per-singer vocal-range calibration, which is currently impossible for a concrete reason: the mic
+  half exists (`detectF0`, `MicPitch`) but `singers` has nowhere to store a range, which is why the
+  range is drawn against named voice bands rather than against you.
+
+- [ ] **T-13 · History and favorites** — *Done-when:* re-queue a saved karaoke instantly, skipping
+  the worker. Largely covered by the saved library already; what is left is per-account history and
+  favorites. Note the deliberate constraint it runs into: the play stamp records *that* someone sang
+  and *when*, never *what* — no `singer_id` in `plays`, on purpose. Any policy wanting "who has sung
+  this song" needs that decision revisited first, not worked around.
+
+- [ ] **T-14 · Verify the pitch shift audibly** — the numeric half is done and fixed (`c2c0e7b`,
+  "make the pitch shifter actually work at every shift"). What remains has never been heard: whether
+  ±1 semitone *sounds* right, whether the OLA quality holds, the suspended-`AudioContext` fallback,
+  and the graph lifecycle. Only the ratio/framing/window maths is tested. Needs the RTX 3080 deploy
+  box and a human in the room. **AUDIO.** Tag **v1.0.0** work behind this, not this behind it.
+---
+
+## Lyrics-chain design notes (the part still worth reading)
 
 The chain is built; this is the model it settled on, because it is easy to get wrong when extending it.
 
@@ -509,10 +428,17 @@ Parked deliberately. These return only if the owner says so.
 
 ## Conventions
 
-- Each checklist line is **one commit** — small, shippable, green before the next starts.
+- Each checklist line is **one commit** — small, shippable, green before the next starts. A task too
+  large for one commit (`T-4`, `T-5`, `T-7`) says so and names its own sub-steps.
 - **Done-when** is the merge gate: a test, a verified behavior, or an eyes-on.
 - **WIP = 1.** Finish a commit and its done-when before starting the next.
-- `[ ]` todo · `[~]` in progress · `[x]` done.
+- `[ ]` todo · `[~]` in progress · `[x]` done. **A `[x]` task leaves the open list** — it moves to
+  [`archive/backlog-shipped.md`](archive/backlog-shipped.md) in the same commit that closes it. If it
+  still carries an open obligation, that obligation gets its own `T-` number rather than living
+  inside a done checkbox; five entries had drifted that way before the 2026-09-05 reset.
+- **Task IDs are `T-<n>`, and they never appear outside a PR, a commit message, or `docs/`.** Not in
+  source, comments, tests, or fixture data. The hyphen is required — bare `T1` collides with 320
+  existing timestamp constants and cannot be guarded. IDs are never renumbered and never reused.
 - **Verify tags:** **AUTO** = a machine gate the loop runs itself. **EYES-ON / AUDIO / REAL-ML / NET**
   = the loop implements and unit-covers, then flags for the human.
 - Shared-contract changes stage `packages/shared` in the **same** commit.
