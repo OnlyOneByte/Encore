@@ -6,11 +6,38 @@
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import type { SongProfile } from '@encore/shared';
+	import ColourPicker from '$lib/components/ColourPicker.svelte';
+	import ProfileSheet from '$lib/components/ProfileSheet.svelte';
+	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
-	import { LYRICS_BALL_STYLES, LYRICS_HIGHLIGHTS, TV_VISUALIZERS } from '@encore/shared';
+	import {
+		LYRICS_BALL_STYLES,
+		LYRICS_HIGHLIGHTS,
+		SINGER_COLORS,
+		TV_VISUALIZERS,
+		TV_PROGRESS_STYLES
+	} from '@encore/shared';
+	import type { PublicSinger } from '@encore/shared';
+
+	/*
+	 * Fixture singer colours, taken from the shared palette by INDEX rather than retyped as hexes.
+	 * These are data (a guest's chosen accent), not theme tokens -- but the literals were byte-identical
+	 * to SINGER_COLORS[0..2], so a reorder of that array would have left the gallery demonstrating
+	 * colours the app can no longer produce. Named so each demo reads as a different singer.
+	 */
+	const VIOLET = SINGER_COLORS[0];
+	const PINK = SINGER_COLORS[1];
+	const GREEN = SINGER_COLORS[2];
+	const SKY = SINGER_COLORS[4];
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
+	import TvProgress from '$lib/tv/TvProgress.svelte';
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
+
+	// The dark stage backdrop every TV overlay demo sits on, as ONE constant so the wrappers cannot
+	// drift apart. It re-expresses the real stage glow (--stage-glow over --bg); tokens, not literals,
+	// so it tracks a theme change the way the real .stage does.
+	const stageBg = 'radial-gradient(120% 90% at 50% 20%, var(--stage-glow), var(--bg))';
 
 	// A tiny inline QR stand-in for the gallery — the real one is generated server-side per room.
 	const demoQr =
@@ -272,16 +299,33 @@
 		let raf = 0;
 		const loop = () => {
 			const elapsed = (performance.now() - t0) / 1000;
-			demoPos = elapsed % 18; // loop 0→18s across all six demo lines
+			demoPos = elapsed % 18; // loop 0-18s across all six demo lines
 			raf = requestAnimationFrame(loop);
 		};
 		raf = requestAnimationFrame(loop);
 		return () => cancelAnimationFrame(raf);
 	});
+
+	// FIXTURE: a stand-in singer for the profile sheet — this is DATA, not styling. The colour is a
+	// singer's chosen accent, deliberately a literal.
+	const demoSinger: PublicSinger = {
+		id: 'demo',
+		displayName: 'Dana',
+		color: PINK,
+		joinedAt: Date.now()
+	};
+
+	// The picker and both sheets are bindable/stateful. Keep the gallery interactive so their real
+	// behaviour (preset-vs-slider agreement, open/close, drag) can be exercised, not just posed. The
+	// sheets default CLOSED: ProfileSheet locks body scroll while open, so opening it by default would
+	// freeze the gallery's own scroll — the toggle buttons open each on demand instead.
+	let demoColour = $state(VIOLET);
+	let profileOpen = $state(false);
+	let queueOpen = $state(false);
 </script>
 
 <main style="padding:14px 16px 200px;">
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);">SongRow · the readiness axis</h2>
+	<h2 class="section">SongRow · the readiness axis</h2>
 	<!--
 		One row shape, three states. Thumbnails are the DERIVED i.ytimg mqdefault URL (see
 		ytThumbnailUrl), served through /api/thumb — so on a box with no route to the internet these
@@ -301,7 +345,7 @@
 	<SongRow title="The Killers - Mr. Brightside" artistCanonical="The Killers" artist="TheKillersMusic" readiness="unacquired" onmake={() => {}}
 		thumbnail="https://i.ytimg.com/vi/gGdGFtwCNBE/mqdefault.jpg" durationSec={228} viewCount={648760065} />
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">SongRow · telling one song's uploads apart</h2>
+	<h2 class="section">SongRow · telling one song's uploads apart</h2>
 	<!--
 		The reason this row exists, as real yt-dlp results for one query. Under the old one-line row all
 		six read as the same song: the version marker was truncated, there was no duration, and the
@@ -323,29 +367,31 @@
 	<!-- No thumbnail, no duration, no views — a local library file. Must degrade, not break. -->
 	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">QueueRow</h2>
-	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor="#33d6a6" up subtitle="now playing" />
-	<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor="#ff5cae" mine subtitle="after Liam" />
+	<h2 class="section">QueueRow</h2>
+	<!-- singerColor values here are FIXTURE data — each is a singer's chosen accent standing in for a
+	     person, not a theme token (some equal --accent2, but they mean "this singer's colour"). -->
+	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
+	<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
 	<QueueRow seq={4} title="Sweet Caroline" singerName="Liam" singerColor="#5cb8ff" />
-	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor="#ff5cae" mine pending />
+	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor={PINK} mine pending />
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">ProcessingCard</h2>
-	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor="#ff5cae" status="separating" pct={68} />
+	<h2 class="section">ProcessingCard</h2>
+	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
 
 	<!-- A cooking song is still a queue entry, so it carries the SAME controls as a ready row. Paired
-	     with the QueueRow below deliberately: the two ↑↓✕ groups must line up, so a song finishing its
-	     cook doesn't visually reshuffle its own buttons. -->
+	     with the QueueRow below deliberately: the two reorder/remove button groups must line up, so a
+	     song finishing its cook doesn't visually reshuffle its own buttons. -->
 	<ProcessingCard
-		seq={3} title="Toto - Africa (Lyrics)" singerName="You" singerColor="#ff5cae"
+		seq={3} title="Toto - Africa (Lyrics)" singerName="You" singerColor={PINK}
 		status="separating" pct={16}
 		reorderable canUp canDown onremove={() => {}} onup={() => {}} ondown={() => {}}
 	/>
 	<QueueRow
-		seq={4} title="Gwen Stefani - Rich Girl" singerName="You" singerColor="#ff5cae" mine
+		seq={4} title="Gwen Stefani - Rich Girl" singerName="You" singerColor={PINK} mine
 		subtitle="up next" removable reorderable canUp canDown
 	/>
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">GuidingTrack · every state</h2>
+	<h2 class="section">GuidingTrack · every state</h2>
 	<!-- Off (the shipped default), a faint guide, halfway, full sing-along, the pinned-override hint,
 	     and unavailable because the song has no isolated vocals stem. -->
 	<div style="display:grid;gap:14px;">
@@ -357,7 +403,7 @@
 		<GuidingTrack pct={0} available={false} />
 	</div>
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">RangeBar · every state</h2>
+	<h2 class="section">RangeBar · every state</h2>
 	<!--
 		The vocal-range bar in each state it must survive. Rendered on a card so the token colours match
 		the sheet body it lives in on the phone. Each is captioned with what it proves, because several
@@ -366,48 +412,91 @@
 	-->
 	<div style="display:grid;gap:16px;">
 		<div>
-			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Full range + histogram (chorus lives high)</p>
+			<p class="caption">Full range + histogram (chorus lives high)</p>
 			<RangeBar profile={profileFull} />
 		</div>
 		<div>
-			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Full range, NO histogram (flat block)</p>
+			<p class="caption">Full range, NO histogram (flat block)</p>
 			<RangeBar profile={profileNoHist} />
 		</div>
 		<div>
-			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Shifted +5 semitones (block + weight slide right)</p>
+			<p class="caption">Shifted +5 semitones (block + weight slide right)</p>
 			<RangeBar profile={profileFull} keyShift={5} />
 		</div>
 		<div>
-			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Shifted −5 semitones (slides left)</p>
+			<p class="caption">Shifted −5 semitones (slides left)</p>
 			<RangeBar profile={profileFull} keyShift={-5} />
 		</div>
 		<div>
-			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">Key only, no range: renders nothing (blank on purpose)</p>
+			<p class="caption">Key only, no range: renders nothing (blank on purpose)</p>
 			<RangeBar profile={profileKeyOnly} />
 		</div>
 		<div>
-			<p style="font-size:.7rem;color:var(--ink-dim);margin:0 0 4px;">No profile: renders nothing (blank on purpose)</p>
+			<p class="caption">No profile: renders nothing (blank on purpose)</p>
 			<RangeBar profile={null} />
 		</div>
 	</div>
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay (TV) · VERIFIED text</h2>
-	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+	<h2 class="section">ColourPicker · presets plus hue wheel</h2>
+	<!-- The identity picker, extracted from /join and reused by ProfileSheet. Bound to live state so
+	     the preset-vs-slider agreement (picking a swatch moves the wheel, and vice versa) can actually
+	     be exercised here, not just posed. The bound value IS a singer colour = fixture data. -->
+	<div style="max-width:420px;">
+		<ColourPicker bind:value={demoColour} label="Your color" hint="How you'll spot yourself in the queue and on the TV." />
+	</div>
+
+	<h2 class="section">ProfileSheet · name, colour, and the way out</h2>
+	<!-- The mid-party profile editor. The button opens it; leaveCost drives the destructive confirm's
+	     wording (it names how many queued songs a leave discards). onsave resolves null (success) and
+	     onleave resolves void so the demo exercises the happy paths without a backend. It renders its
+	     own scrim + fixed sheet, so it needs no wrapper box. -->
+	<button class="btn-accent" onclick={() => (profileOpen = true)}>Open ProfileSheet</button>
+	<ProfileSheet
+		me={demoSinger}
+		open={profileOpen}
+		leaveCost={{ queuedCount: 2, hasPlaying: true }}
+		onclose={() => (profileOpen = false)}
+		onsave={async () => null}
+		onleave={async () => {}}
+	/>
+
+	<h2 class="section">QueueSheet · docked now-playing, pullable to the rotation</h2>
+	<!-- The bottom-docked queue sheet. The button toggles it; open it to see the filled peek (song /
+	     singer / position / seek row) and the rotation body via the children snippet. It is
+	     position:fixed and pins itself to the bottom of the viewport. -->
+	<button class="btn-accent" onclick={() => (queueOpen = !queueOpen)}>Toggle QueueSheet</button>
+	<QueueSheet
+		open={queueOpen}
+		title="Bohemian Rhapsody"
+		sub="Maya is singing"
+		position="You're #3 · after Liam"
+		queueCount={3}
+		elapsedSec={82}
+		durationSec={358}
+		ontoggle={(v) => (queueOpen = v)}
+	>
+		<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
+		<QueueRow seq={2} title="Sweet Caroline" singerName="Liam" singerColor={SKY} />
+		<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
+	</QueueSheet>
+
+	<h2 class="section">LyricsOverlay (TV) · VERIFIED text</h2>
+	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
 		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible
 			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
 	</div>
 
 	<!-- The same doc, same perfect sweep, but the words are a GUESS. The pair is the point —
 	     without the caption these two are visually indistinguishable, which is exactly the problem. -->
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · AUTO-TRANSCRIBED</h2>
-	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+	<h2 class="section">LyricsOverlay · AUTO-TRANSCRIBED</h2>
+	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
 		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible
 			provenance={{ textSource: 'asr', textConfidence: 'low', timing: 'word' }} />
 	</div>
 
 	<!-- The FLOOR: authoritative words, line-level timing only. Whole-line highlight, no ball. -->
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · LINE-SYNC floor (no word timings)</h2>
-	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+	<h2 class="section">LyricsOverlay · LINE-SYNC floor (no word timings)</h2>
+	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
 		<LyricsOverlay doc={demoLineOnly} positionSec={demoPos} playing visible
 			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'line' }} />
 	</div>
@@ -418,27 +507,29 @@
 		line highlighting is what a patchy artifact does to each.
 
 		`playing={false}` and a fixed position are load-bearing, not laziness. The demo clock above loops
-		0→18s, so with it running each card renders a different moment and the variants are not comparable
-		— and a screenshot lands wherever the rAF happened to be. Pinned at 0.8s (+0.3s default lead =
-		1.1s) "the" is mid-word, so one frame shows all three word states at once: "Is"/"this" sung,
-		"the" current, "real"/"life" still ahead.
+		0-18s, so with it running each card renders a different moment and the variants are not comparable
+		— and a screenshot lands wherever the rAF happened to be. The frame is pinned by the CODE, not by
+		a default defined elsewhere: positionSec=0.8 and leadSec=0.3 are both passed here, so the
+		highlight sits at 1.1s where "the" is mid-word and one frame shows all three word states at once
+		("Is"/"this" sung, "the" current, "real"/"life" still ahead) regardless of what LYRICS_LEAD_SEC
+		defaults to.
 
 		These cards are TALLER than the ones above because the reel is 9.5em of a clamp()-scaled font —
 		around 470px here. At 280px the card clipped it and hid the centred current row, which is the row
 		these variants exist to show.
 	-->
 	{#each LYRICS_BALL_STYLES as s (s.id)}
-		<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · marker: {s.label}</h2>
-		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
-			<LyricsOverlay doc={demoLyrics} positionSec={0.8} playing={false} visible ball={s.id} highlight="word"
+		<h2 class="section">LyricsOverlay · marker: {s.label}</h2>
+		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:{stageBg};">
+			<LyricsOverlay doc={demoLyrics} positionSec={0.8} leadSec={0.3} playing={false} visible ball={s.id} highlight="word"
 				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
 		</div>
 	{/each}
 
 	{#each LYRICS_HIGHLIGHTS as h (h.id)}
-		<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · highlight: {h.label}</h2>
-		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
-			<LyricsOverlay doc={demoLyrics} positionSec={0.8} playing={false} visible ball="off" highlight={h.id}
+		<h2 class="section">LyricsOverlay · highlight: {h.label}</h2>
+		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:{stageBg};">
+			<LyricsOverlay doc={demoLyrics} positionSec={0.8} leadSec={0.3} playing={false} visible ball="off" highlight={h.id}
 				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
 		</div>
 	{/each}
@@ -470,8 +561,8 @@
 		{ what: 'rows 1 before / 4 after — asymmetric, current line sits high', props: { linesBefore: 1, linesAfter: 4 }, h: 820, short: true },
 		{ what: 'rows 3 before / 4 after — the maximum reel', props: { linesBefore: 3, linesAfter: 4 }, h: 1080, short: true }
 	] as c (c.what)}
-		<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">LyricsOverlay · {c.what}</h2>
-		<div style="position:relative;height:{c.h}px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+		<h2 class="section">LyricsOverlay · {c.what}</h2>
+		<div style="position:relative;height:{c.h}px;border-radius:16px;overflow:hidden;background:{stageBg};">
 			<!--
 				9.5s puts the current line at index 3 of 6, so there are three lines BEFORE it and two
 				after. Pinning at 0.8s (as the marker cards do) sits on line 0, where "2 lines before" has
@@ -482,7 +573,7 @@
 		</div>
 	{/each}
 
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">TV room states · lobby + corner join card</h2>
+	<h2 class="section">TV room states · lobby + corner join card</h2>
 	<!-- The three TV surfaces, scaled down. The point of the pair is that "nobody here" and "people
 	     here, nothing queued" are now DIFFERENT screens — they used to be the same one. -->
 	<div style="position:relative;height:300px;border-radius:16px;overflow:hidden;background:var(--bg);">
@@ -490,31 +581,86 @@
 			qrDataUrl={demoQr}
 			joinUrl="encore.local/join"
 			roster={[
-				{ id: 'a', displayName: 'Angelo', color: '#7c5cff', state: 'here' },
-				{ id: 'm', displayName: 'Maya', color: '#ff5cae', state: 'here' },
-				{ id: 'd', displayName: 'Devon', color: '#33d6a6', state: 'away' }
+				{ id: 'a', displayName: 'Angelo', color: VIOLET, state: 'here' },
+				{ id: 'm', displayName: 'Maya', color: PINK, state: 'here' },
+				{ id: 'd', displayName: 'Devon', color: GREEN, state: 'away' }
 			]}
 			overflow={2}
 		/>
+		<!-- roster colours above are FIXTURE data — each is a singer's chosen accent, not a theme token
+		     (violet/pink happen to equal --accent/--accent2 but here they stand in for a person). -->
 	</div>
-	<div style="position:relative;height:300px;margin-top:10px;border-radius:16px;overflow:hidden;background:radial-gradient(120% 90% at 50% 20%, #241a3d, #0b0b12);">
+	<div style="position:relative;height:300px;margin-top:10px;border-radius:16px;overflow:hidden;background:{stageBg};">
+		<!-- Faint decorative placeholder standing in for the paused music video behind the join badge;
+		     a low-opacity white with no matching semantic token, so left as a literal rgba. -->
 		<span style="position:absolute;inset:0;display:grid;place-items:center;font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.22);">music video</span>
 		<JoinBadge qrDataUrl={demoQr} joinUrl="encore.local/join" placement="corner" onlineCount={4} />
+	</div>
+
+	<!-- TvProgress · every room-selectable placement. A settings picker offers card / corner / edge /
+	     off, so each is rendered here on a stage backdrop. 'card' renders inline (the caller places it
+	     inside the now-singing card), so it gets a small dark card to sit in; the other two position
+	     themselves absolutely against the stage. 'off' renders nothing on purpose — shown so the picker
+	     option that means "no TV progress" is not a blank the gallery silently omits. -->
+	<h2 class="section">TvProgress (TV) · song progress placements</h2>
+	<div style="display:grid;gap:12px;">
+		{#each TV_PROGRESS_STYLES as p (p.id)}
+			<div>
+				<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;">{p.label}</div>
+				{#if p.id === 'card'}
+					<!-- Inline placement: a stand-in for the now-singing card. This surface CARRIES TEXT
+					     (the time readouts), so it uses --accent-strong + --on-accent, never --grad
+					     (decoration only, no text label). -->
+					<div style="padding:14px 18px;border-radius:16px;background:var(--accent-strong);color:var(--on-accent);">
+						<TvProgress style={p.id} elapsedSec={82} durationSec={358} />
+					</div>
+				{:else}
+					<div style="position:relative;height:150px;border-radius:16px;overflow:hidden;background:{stageBg};">
+						<TvProgress style={p.id} elapsedSec={82} durationSec={358} />
+					</div>
+				{/if}
+			</div>
+		{/each}
 	</div>
 
 	<!-- VisualizerStage · all four variants. Absent from the gallery until now, which is exactly why the
 	     "green tests, dead motion" bug survived: the renderers were unit-tested but the loop that drives
 	     them was never mounted anywhere a human could watch it move. Each tile mounts the REAL component
 	     (a live ~30fps rAF loop) so a still tile here is a real regression, not a fixture artefact. -->
-	<h2 style="font-size:.8rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-dim);margin-top:18px;">VisualizerStage (TV) · audio-paced backgrounds</h2>
+	<h2 class="section">VisualizerStage (TV) · audio-paced backgrounds</h2>
 	<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
 		{#each TV_VISUALIZERS as v (v.id)}
 			<div>
 				<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;">{v.label}</div>
-				<div style="position:relative;height:200px;border-radius:16px;overflow:hidden;background:#000;">
+				<div style="position:relative;height:200px;border-radius:16px;overflow:hidden;background:var(--bg);">
 					<VisualizerStage variant={v.id} hue={265} playing />
 				</div>
 			</div>
 		{/each}
 	</div>
 </main>
+
+<style>
+	/*
+	 * ONE header rule for the whole gallery, so ~30 hand-inlined <h2> styles cannot drift apart. Kept
+	 * LOCAL on purpose: a shared cross-file header primitive is scheduled separately, and this only
+	 * needs to make the gallery's own headers agree with each other.
+	 */
+	.section {
+		margin-top: 18px;
+		font-size: 0.8rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+	/*
+	 * The per-demo caption. Same reason as .section: the RangeBar block arrived with six identical
+	 * inline copies of this, and a state that deliberately renders NOTHING is only readable as
+	 * intentional if its caption says so -- so the captions have to stay legible and consistent.
+	 */
+	.caption {
+		margin: 0 0 4px;
+		font-size: 0.7rem;
+		color: var(--ink-dim);
+	}
+</style>
