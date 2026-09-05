@@ -20,6 +20,7 @@
 	import { playbackRef, isPlayable, type Media } from '@encore/shared';
 	import { guideCorrection } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
+	import { transportFor } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	interface Props {
 		media: Media | null;
@@ -124,34 +125,59 @@
 	// room would flip to `playing` off a stale signal or (before this split) off the hidden slot.
 	let prewarmedFired = $state(false);
 	let visibleReadyFired = $state(false);
-	// The src the <video> currently holds; the assign effect below writes the element ONLY when this
-	// changes (see that effect for why an unconditional binding restarts the song). Declared here with
-	// the other slot state so the reset effect can clear it.
-	let currentSrc = $state<string | null>(null);
+	// The src the element currently holds, tracked as the reactive signal the transport effect gates on
+	// (the authoritative copy is the element's own `src` attribute — see the assign effect). Declared here
+	// with the other slot state.
+	let currentSrc = $state<string>('');
+
+	// The song this slot has already reset for. A PLAIN variable, not `$state`: it is the guard's own
+	// bookkeeping and nothing renders off it.
+	let resetForId: string | null | undefined;
 
 	// A new song in this slot forgets the previous one's readiness. Without this a re-warmed slot never
-	// reports ready again and the gapless swap stalls on it. This effect reads only `media?.id`, and
-	// writes nothing it reads, so it cannot loop.
+	// reports ready again and the gapless swap stalls on it.
 	//
-	// It also drops `currentSrc` to null: the {#if} unmounts and remounts the <video> per song, so a
-	// fresh element starts with no src, and a stale `currentSrc` from the previous element would make
-	// the assign effect wrongly conclude "unchanged" and never write the new element's src.
+	// GUARDED ON THE ID *VALUE*, not on the `media` signal — this is the second half of the pause bug.
+	// `media` is a prop whose OBJECT IDENTITY churns constantly: any queue mutation anywhere in the room
+	// (including the `queue:patch` that a pause itself produces) makes the TV route rebuild its media
+	// catalog, so the slot receives a brand-new object with byte-identical fields for the song that is
+	// already playing. Svelte tracks the signal, so this effect re-ran on every one of those and reset a
+	// mid-song slot: readiness latches cleared (and `canplaythrough` will NOT fire again on an element
+	// that has already loaded, so `onready`/`onprewarmed` were spent forever), and the pitch-shift graphs
+	// torn down under a transposed song. Comparing the id STRING makes "same song, new object" a no-op,
+	// which is exactly the distinction `video-src.ts` exists to draw one layer down.
+	//
+	// The teardown is imperative rather than an effect cleanup for the same reason: Svelte runs a
+	// returned cleanup before EVERY re-run, so as a cleanup it fired on all that identity churn too. It
+	// is now reached only on a genuine song change, plus once on destroy from the effect below.
 	$effect(() => {
-		void media?.id;
+		const id = media?.id ?? null;
+		if (id === resetForId) return;
+		resetForId = id;
+		// Tear the pitch-shift graphs down PER SONG. A graph binds a PERMANENT
+		// MediaElementAudioSourceNode to the element that played THIS media; leaving it in place would
+		// let the shift-wiring effect below see `masterGraph` already set and post setShift() to a node
+		// wired to media that is no longer playing — silent on the transposed song.
+		masterGraph?.detach();
+		guideGraph?.detach();
+		masterGraph = undefined;
+		guideGraph = undefined;
 		masterReady = false;
 		guideSettled = false;
 		prewarmedFired = false;
 		visibleReadyFired = false;
-		currentSrc = null;
-		// FIX: tear the pitch-shift graphs down PER SONG, not just on component destroy. A graph binds a
-		// PERMANENT MediaElementAudioSourceNode to the <video>/<audio> the {#if} mounts for THIS media;
-		// when media changes the {#if} unmounts that element and mounts a fresh one, but a graph left in
-		// place is still wired to the destroyed element. The shift-wiring effect below would then see
-		// `masterGraph` already set (`!masterGraph` false) and post setShift() to a dead node — silent on
-		// the transposed song. Returning the teardown as this effect's cleanup runs it on the NEXT
-		// media?.id change, before the shift-wiring effect rebuilds, so the new element gets its own
-		// graph. This effect is registered before that one, so ordering is guaranteed. Component destroy
-		// runs the same cleanup, which is why the old destroy-only teardown is gone.
+		// NOTE: `currentSrc` is deliberately NOT cleared here. It used to be, to cover a slot whose
+		// element had been remounted (fresh element, no src, but a stale `currentSrc` claiming otherwise)
+		// — and that clearing is what reloaded the playing song on every identity change, because the
+		// assign effect then rewrote a byte-identical src and `HTMLMediaElement.src` reloads and resets
+		// currentTime to 0 even when the string is unchanged. The assign effect now compares against what
+		// the ELEMENT actually holds, so a remount is detected from the element itself and no shadow copy
+		// can go stale.
+	});
+
+	// Component destroy: release whatever is still wired. Its own effect, with no tracked dependencies,
+	// so it never re-runs and its cleanup means exactly "this slot is going away".
+	$effect(() => {
 		return () => {
 			masterGraph?.detach();
 			guideGraph?.detach();
@@ -191,19 +217,61 @@
 		return () => clearTimeout(t);
 	});
 
-	// keep <video> play/pause in sync with slot state AND the paused/playing command from the phone
+	/**
+	 * The transport for this slot — ONE decision, shared by the master and the guide.
+	 *
+	 * Shared deliberately: "the guide mirrors the master's transport exactly" is a claim two separate
+	 * copies of the same condition can only keep by luck, and the version of that claim which drifted is
+	 * how a silent master still produced an audible vocals-only mix. Derived, so both effects re-run on
+	 * the same inputs at the same time.
+	 *
+	 * `currentSrc` is the load-bearing input. See `transport.ts`: `play()` before the src is assigned is
+	 * undone by the assignment itself, so the transport must depend on the src having landed rather than
+	 * racing the effect that assigns it.
+	 */
+	const transport = $derived(
+		transportFor({
+			hasSrc: !!currentSrc,
+			playable: !!media && isPlayable(media),
+			active,
+			visible,
+			playing
+		})
+	);
+
+	// Keep the master's play/pause in sync with slot state AND the paused/playing command from the
+	// phone — but only once the element is actually HOLDING its media.
+	//
+	// THE BUG THIS CLOSES. The src is assigned from an effect declared BELOW this one, so this effect
+	// used to run first and call `play()` on an element with no src. The assignment then invoked the
+	// media load algorithm, which sets `paused` back to true and rejects the pending play() with
+	// AbortError — swallowed by the `.catch`. Nothing re-ran this effect afterwards, so the master
+	// stayed paused at 0 forever: no sound, no `ontimeupdate`, no telemetry, and a server position
+	// frozen at 0 that the phone and the lyrics both read as "the beginning" on every pause.
 	$effect(() => {
-		if (!master || !media || !isPlayable(media)) return;
-		if (active && visible && playing) master.play().catch(() => {});
-		else master.pause();
+		if (!master) return;
+		if (transport === 'idle') return;
+		if (transport === 'pause') {
+			master.pause();
+			return;
+		}
+		// An autoplay refusal must degrade to a silent room, never to a stalled song — but it must not
+		// degrade SILENTLY. Swallowing every rejection is what let the AbortError above go unseen through
+		// two rounds of diagnosis, so name the reason. AbortError here now means a genuine interruption
+		// (a real src change), not the self-inflicted one this effect used to cause.
+		master.play().catch((err: unknown) => {
+			const name = err instanceof Error ? err.name : String(err);
+			console.warn(`[tv] the instrumental refused to start (${name}) — the room will be silent`);
+		});
 	});
 
-	// The guide mirrors the master's transport exactly. A rejected play() is swallowed the same way the
+	// The guide mirrors the master's transport exactly — the SAME `transport` value, so it can never run
+	// ahead of an instrumental that is not playing. A rejected play() is swallowed the same way the
 	// master's is: an autoplay refusal on the guide must degrade to a silent guide, never to a stalled
 	// song.
 	$effect(() => {
 		if (!vocals || !master) return;
-		if (active && visible && playing) {
+		if (transport === 'play') {
 			// Line it up BEFORE starting, so the guide does not enter a couple of seconds behind and get
 			// dragged forward audibly by the first governor tick. A seek here is free — nothing is
 			// audible yet — which is exactly why the governor below does not use one.
@@ -300,13 +368,26 @@
 		// A slot with nothing playable resolves to '' and clears the element, matching the {#if} that
 		// previously unmounted the <video> for unplayable media.
 		const resolved = media && isPlayable(media) ? fileSrc(media) : '';
-		const decision = nextVideoSrc(currentSrc, resolved);
-		if (!decision.changed) return;
-		currentSrc = decision.src;
-		// Assigning '' would set the src to the document URL and trigger a spurious load/error; use
-		// removeAttribute to genuinely clear it, mirroring an unmounted element.
-		if (decision.src === '') master.removeAttribute('src');
-		else master.src = decision.src;
+		// Compare against what the ELEMENT ACTUALLY HOLDS, not a shadow copy of it. `nextVideoSrc` is
+		// documented in terms of "the string last assigned to the element", and the attribute IS that —
+		// authoritatively, and with no way to go stale. A shadow variable had two failure modes this does
+		// not: cleared while the element still held its src (which rewrote a byte-identical src and
+		// reloaded the playing song to 0 — the pause bug), or retained across a remount (which left a
+		// fresh, src-less element silent). `getAttribute` round-trips exactly because every src assigned
+		// here is the same root-relative string; `master.src` would return an absolutised URL and never
+		// compare equal.
+		const decision = nextVideoSrc(master.getAttribute('src') ?? '', resolved);
+		if (decision.changed) {
+			// Assigning '' would set the src to the document URL and trigger a spurious load/error; use
+			// removeAttribute to genuinely clear it, mirroring an unmounted element.
+			if (decision.src === '') master.removeAttribute('src');
+			else master.src = decision.src;
+		}
+		// The reactive signal the transport effect gates on: "the element is holding this". Assigned
+		// unconditionally so it is correct even when no write was needed (a remount that already carries
+		// the right src); a same-string assignment to a primitive `$state` notifies nobody, so this cannot
+		// loop through the transport effect and back.
+		currentSrc = resolved;
 	});
 
 	/**
