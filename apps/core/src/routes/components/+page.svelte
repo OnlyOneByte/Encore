@@ -14,8 +14,12 @@
 		LYRICS_HIGHLIGHTS,
 		SINGER_COLORS,
 		TV_VISUALIZERS,
-		TV_PROGRESS_STYLES
+		TV_PROGRESS_STYLES,
+		DEFAULT_GLOBAL_SETTINGS,
+		DEFAULT_ROOM_SETTINGS,
+		resolveLyricsPresentation
 	} from '@encore/shared';
+	import type { LyricsCandidate } from '@encore/shared';
 	import type { PublicSinger } from '@encore/shared';
 
 	/*
@@ -278,6 +282,38 @@
 		words: []
 	};
 	/*
+	 * THE LINE-ONLY SONG, as a candidate — the fixture the per-song clamp is judged against.
+	 *
+	 * `demoLineOnly` above is only half of a line-only song: it is the DOC, and the resolver never sees
+	 * a doc. What decides the treatment is the candidate's `timing`, so a card that renders the doc
+	 * while passing `highlight` by hand cannot exercise the clamp at all — which is why every card
+	 * below this one was blind to the defect. The doc and the candidate must agree, and they are stated
+	 * together here so they cannot drift.
+	 *
+	 * Both halves match what the real worker publishes, verified against the producer rather than
+	 * guessed: `apps/worker/src/lyrics/source.py:line_synced_lyrics` writes lines with an EMPTY
+	 * `words: []` (not an absent key), and `apps/worker/src/steps/lyrics.py:333` records
+	 * `"timing": "line"` on the candidate. Checking that is not optional ceremony — a fixture in this
+	 * repo once published `startSec`/`endSec` where the parser reads `start`/`end` and manufactured a
+	 * false CRITICAL against a working overlay (fixed in c544f46).
+	 */
+	const lineOnlyCandidate: LyricsCandidate = {
+		ref: 'derived/lyrics/demo.lrclib.line.json',
+		textSource: 'lrclib',
+		timing: 'line',
+		textConfidence: 'high',
+		createdAt: 0
+	};
+	/*
+	 * A stock deployment: the default word-level `syncMode` and the default word-level room treatment.
+	 * Held as the DEFAULTS rather than literals so this card keeps demonstrating what a fresh install
+	 * actually does after a defaults change, instead of a combination nobody ships.
+	 */
+	const wordLevelDeployment = { global: DEFAULT_GLOBAL_SETTINGS, room: DEFAULT_ROOM_SETTINGS };
+	// Ask the SAME resolver the TV asks. Passing `highlight`/`ball` by hand here would make the card a
+	// picture of a decision rather than a test of one, and the decision is the thing that was wrong.
+	const lineOnlyResolved = $derived(resolveLyricsPresentation(wordLevelDeployment, lineOnlyCandidate.timing));
+	/*
 	 * A SHORT-line variant, for the row-count cards only.
 	 *
 	 * The real demo lines wrap to two visual lines at gallery width, which doubles a row's height and
@@ -488,6 +524,40 @@
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
 		<LyricsOverlay doc={demoLineOnly} positionSec={demoPos} playing visible
 			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'line' }} />
+	</div>
+
+	<!--
+		A LINE-ONLY SONG ON A WORD-LEVEL DEPLOYMENT — the case the clamp exists for, and the one no card
+		here could show before.
+
+		The card above renders the same doc at the DEFAULT highlight, so it shows the floor looking
+		correct while never asking the resolver anything. This one takes the whole route: a stock
+		word-level deployment, a stock word-level room, and one song whose winning candidate is
+		line-only. What it paints is whatever `resolveLyricsPresentation` decides, so the frame is
+		evidence about the decision and not about this markup.
+
+		Pinned position, `playing={false}`: the current row's colour is the whole observable, and a
+		running clock makes two frames incomparable. Read the CURRENT (brightest) row —
+
+		  clamped correctly  → the accent colour, and no marker: line-level is what this song can honour
+		  clamp not firing   → plain white, no marker, no accent — visually identical to a room that
+		                        asked for NO highlight at all, which is the reported symptom. The word
+		                        treatment cannot draw itself here: the overlay only emits word spans for
+		                        a line that has words, so `hl-word` on an empty `words[]` silently
+		                        selects the plain-text branch and loses the one cue the room asked for.
+	-->
+	<h2 class="section">
+		LyricsOverlay · line-only song, word-level deployment · resolved: {lineOnlyResolved.highlight} / marker
+		{lineOnlyResolved.ball}{lineOnlyResolved.clamped ? ' (clamped)' : ''}
+	</h2>
+	<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:{stageBg};">
+		<LyricsOverlay doc={demoLineOnly} positionSec={0.8} leadSec={0.3} playing={false} visible
+			ball={lineOnlyResolved.ball} highlight={lineOnlyResolved.highlight}
+			provenance={{
+				textSource: lineOnlyCandidate.textSource,
+				textConfidence: lineOnlyCandidate.textConfidence,
+				timing: lineOnlyCandidate.timing
+			}} />
 	</div>
 
 	<!--

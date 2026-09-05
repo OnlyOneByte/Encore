@@ -60,6 +60,10 @@ import {
 	type LyricsHighlightId,
 	type SyncModeId
 } from './lyrics-engines';
+// TYPE-ONLY, so this adds no runtime edge: `lyrics.ts` is deliberately dependency-free and importing
+// a value from it here would be the first thing to compromise that. `LyricsTiming` is the per-song
+// granularity fact `resolveLyricsPresentation`'s inner bound reads.
+import type { LyricsTiming } from './lyrics';
 
 // ── settings scopes ─────────────────────────────────────────────────────────
 // Two layers, split by WHO A SETTING BELONGS TO:
@@ -581,29 +585,61 @@ export interface LyricsPresentation {
 	/** Seconds, because that is the unit the overlay and the position telemetry both work in. */
 	leadSec: number;
 	/**
-	 * True when the room asked for something the global sync mode cannot produce, so what is returned
+	 * True when the room asked for something the words on screen cannot support, so what is returned
 	 * is a degraded substitute. The Settings page says so rather than showing a picker whose value is
 	 * silently ignored — a control that does nothing is worse than one that is absent.
+	 *
+	 * TWO bounds can raise this (see `resolveLyricsPresentation`): the deployment's sync mode, and the
+	 * playing song's own timing granularity. The Settings page reads it for the FIRST only, because it
+	 * describes the deployment with no song in hand and so passes none.
 	 */
 	clamped: boolean;
 }
 
 /**
- * Resolve the room's lyrics presentation against what the deployment actually produces.
+ * Resolve the room's lyrics presentation against what can actually be drawn.
  *
  * The clamp is DOWNWARD-ONLY, the same shape as `resolveCookSeparator`'s quality ceiling and for the
- * same kind of reason: the global setting is bounded by what the worker fleet can do, so a room must
- * not be able to request something no cook produced. Here the bound is timing granularity — under
- * `syncMode: 'lines'` there are no per-word timestamps, so a word-level highlight has nothing to
- * light and a marker has no word to sit on.
+ * same kind of reason: a room must not be able to request something no cook produced. Here the bound
+ * is timing granularity — with no per-word timestamps a word-level highlight has nothing to light and
+ * a marker has no word to sit on.
+ *
+ * THERE ARE TWO BOUNDS, AND ONLY ONE OF THEM IS CONFIG.
+ *
+ *   OUTER — `global.syncMode`. What the worker fleet is configured to PRODUCE. A fleet-wide fact.
+ *   INNER — `songTiming`, this song's chosen candidate's `timing`. What this song actually HAS.
+ *
+ * The outer bound alone was wrong in one direction, and it is the direction that matters. `syncMode:
+ * 'lines'` does imply no word stamps anywhere, so that half held; but the converse does not follow —
+ * under the default word-level mode a song whose winning candidate came from a line-level source (a
+ * synced LRCLIB record that was never force-aligned, or an alignment that was refused as unusable and
+ * degraded to line sync) is still line-only. No clamp fired, so the TV drew the word treatment over a
+ * doc with an empty `words[]`: the current line lost the accent that says "sing this one" and painted
+ * plain white, indistinguishable from a line with no highlight configured at all.
+ *
+ * A PER-ITEM QUESTION MUST NOT BE ANSWERED FROM A GLOBAL SETTING, even when the global is right.
+ *
+ * `songTiming` absent or null means UNKNOWN, and unknown deliberately does NOT clamp: an artifact
+ * written before candidate tracking has no recorded granularity, and most such artifacts DO carry
+ * word timings because the aligner is what produced them. Clamping on unknown would strip working
+ * word highlighting off every legacy song to fix a case that is not theirs. This is the same stance
+ * `isAutoTranscribed` takes on unknown provenance — we do not assert either way — and the overlay
+ * still degrades per-line on its own, because it only renders word spans for a line that has words.
  *
  * Deliberately reads `needsWords`/`granularity` off the registries instead of testing style ids, so
  * adding a style is a registry entry and not an edit here.
  */
-export function resolveLyricsPresentation(settings: EffectiveSettings): LyricsPresentation {
+export function resolveLyricsPresentation(
+	settings: EffectiveSettings,
+	songTiming?: LyricsTiming | null
+): LyricsPresentation {
 	const { lyricsBall, lyricsHighlight, lyricsLeadMs } = settings.room;
 	const leadSec = lyricsLeadMs / 1000;
-	const wordsAvailable = getSyncMode(settings.global.syncMode)?.granularity === 'word';
+	const fleetProducesWords = getSyncMode(settings.global.syncMode)?.granularity === 'word';
+	// Unknown (absent/null) reads as "do not clamp" — see the note above. Every KNOWN value other
+	// than 'word' ('line', and 'none' which has nothing to sync at all) bounds the room downward.
+	const songHasWords = songTiming === undefined || songTiming === null || songTiming === 'word';
+	const wordsAvailable = fleetProducesWords && songHasWords;
 	if (wordsAvailable) return { ball: lyricsBall, highlight: lyricsHighlight, leadSec, clamped: false };
 
 	// Line-only timings: degrade rather than render a mark with no anchor.

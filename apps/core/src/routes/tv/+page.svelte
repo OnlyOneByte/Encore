@@ -44,8 +44,6 @@
 		settings = data.settings;
 	});
 	const songIntroMs = $derived(effectiveSongIntroMs(settings.room));
-	// Already clamped against the global sync mode — the TV renders what it is handed.
-	const lyricsStyle = $derived(resolveLyricsPresentation(settings));
 
 	let current = $state<QueueEntry | null>(null);
 	let upNext = $state<QueueEntry | null>(null);
@@ -445,6 +443,21 @@
 	 * trace, so a missing provenance renders exactly like verified text.
 	 */
 	const lyricsUnverified = $derived(isAutoTranscribed(lyricsProvenance));
+	/*
+	 * What the reel actually draws, clamped against BOTH bounds — see `resolveLyricsPresentation`.
+	 *
+	 * This lives HERE, below `lyricsProvenance`, because it now depends on it. It used to sit beside
+	 * `songIntroMs` at the top and read `settings` alone, which is the whole defect: the granularity of
+	 * ONE song was being answered from a fleet-wide setting, so a line-only song under the default
+	 * word-level `syncMode` got the word treatment and the current line painted plain white with no
+	 * accent and no marker.
+	 *
+	 * `?.timing` — not the candidate object — because that field IS the per-song granularity the worker
+	 * records, and passing the whole candidate would invite the resolver to start reading text
+	 * provenance too. Undefined when there is no candidate, which the resolver reads as UNKNOWN and
+	 * deliberately does not clamp on: a pre-candidate artifact usually does have word timings.
+	 */
+	const lyricsStyle = $derived(resolveLyricsPresentation(settings, lyricsProvenance?.timing));
 	/*
 	 * The join address without its scheme. Someone reading this off a wall types the host and the path;
 	 * "http://" is nine characters of noise on the least readable thing on the screen. The QR still
