@@ -25,8 +25,10 @@ from ..lyrics import (
     acquire,
     candidate_key,
     caption_argv,
+    fit_lrc_to_aligned,
     is_valid_lyrics,
     line_synced_lyrics,
+    line_starts,
     lrclib_to_segments,
     normalize_lyrics,
     build_sources,
@@ -290,6 +292,34 @@ class TimeTexts(Step):
                         continue  # nothing honest left to publish for this source
                     doc = line_synced_lyrics(text.segments, language=text.language or language)
                     timing, timing_confidence = TIMING_LINE, "low"
+
+            # IS THIS LRC EVEN FOR THIS RECORDING? Only askable here, and only for a source that brought
+            # its OWN line timings (a synced LRCLIB record) and then got force-aligned: that gives two
+            # independent time series over the same lines, which is exactly what the fit needs. A source
+            # with no timings of its own has nothing to compare, and in `lines` mode no alignment ran.
+            #
+            # `_time_one` names the failure: "an LRC written for another upload of the song is
+            # confidently wrong". The two-tier baseline grading is the primary defence — it scores the
+            # WORDS against what is audible — and this is a cheap independent second opinion on the
+            # TIMING, which catches the case where a different master shifts or stretches every line.
+            if timing == TIMING_WORD and text.timing == TIMING_LINE:
+                fit = fit_lrc_to_aligned(
+                    line_starts({"segments": text.segments}), line_starts(doc)
+                )
+                if fit.verdict == "different_version":
+                    ctx.note(
+                        f"{text.text_source}: its own line timings do NOT fit this recording "
+                        f"(median residual {fit.residual_sec:.1f}s over {fit.pairs} lines) — likely a "
+                        "different release. Published timings come from the aligner, so they are right "
+                        "for this audio; the WORDS may belong to another version."
+                    )
+                elif fit.outlier_lines:
+                    # same_version, so the LRC does match — these are the lines where ALIGNMENT slipped,
+                    # which is a different and much more actionable fault than a wrong LRC.
+                    ctx.note(
+                        f"{text.text_source}: matches this recording, but alignment slipped on "
+                        f"{len(fit.outlier_lines)} line(s) (index {fit.outlier_lines[:5]})"
+                    )
 
             ref = candidate_key(ctx.job.media_id, text.text_source, timing, text.tag)
             final = os.path.join(ctx.job.media_dir, ref)

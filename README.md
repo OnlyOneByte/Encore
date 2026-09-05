@@ -219,7 +219,7 @@ or you want to deliberately limit a box:
   does `cpu`/`cuda` and nothing else), `ENCORE_TORCH_THREADS`. `ENCORE_DEMUCS_DEVICE` is a deprecated
   alias of `ENCORE_DEVICE` and now sets the device for the whole worker
 - **Separation** — `ENCORE_DEMUCS_MODEL`, `ENCORE_DEMUCS_JOBS` (auto-derived from usable cores),
-  `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT`/`_SHIFTS`, `ENCORE_STEM_BITRATE` (`192k`), `ENCORE_FLAC_LEVEL`
+  `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT` (auto-derived from *free* accelerator memory)/`_SHIFTS`, `ENCORE_STEM_BITRATE` (`192k`), `ENCORE_FLAC_LEVEL`
   (`8`)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is
@@ -230,7 +230,10 @@ or you want to deliberately limit a box:
 What the worker measures for itself: the **accelerator** (CUDA / ROCm / Intel xpu / Apple MPS / CPU,
 via `torch.accelerator` then a per-device usability probe), **usable cores** (the tightest of
 `cpu_count`, scheduler affinity and the cgroup quota — a container throttled to 2 cores no longer
-sizes itself for the host's 32), **memory**, the **alignment device**, and its **capabilities**.
+sizes itself for the host's 32), **memory**, **free accelerator memory** (which is what a demucs
+segment has to fit inside — a 12 GB card with a display server and another cook on it can have under
+3 GB left, and a worker that sizes itself for 12 dies at the first chunk with an OOM the room sees as
+a failed song), the **alignment device**, and its **capabilities**.
 
 Two things that look like env vars but are **settings**, so they change with no restart: the **lyrics
 engines** (which Whisper checkpoint reads the words, and whether timings are per-word or per-line) are
