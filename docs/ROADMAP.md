@@ -512,6 +512,39 @@ Two ordering constraints that are not preference:
   Lowest severity of this group — it is cosmetic and self-corrects on unpause — but it is visible to
   the whole room during a pause, which is exactly when people are looking at the screen. **AUTO** —
   the purity property is testable without a browser; **EYES-ON** to confirm the pause/defocus cycle.
+
+- [ ] **T-21 · Repair the e2e harness — it is the loop's only pair of eyes, and it is blind** —
+  **do this before any other discovery work.** `bun run e2e/party.mjs` currently aborts at its FIRST
+  assertion against a freshly-started, genuinely empty server, and it misattributes the cause:
+
+  `party.mjs:104` decides the room is fresh with
+  `document.querySelector('.url') !== null`. That class **no longer exists** — `contract.ts:77`
+  records, in its own words, that `.url` rotted and was replaced, and a live `/tv` serves
+  `class="attract"` with no `.url` anywhere in the document. So the probe times out after 4s and the
+  script prints "This flow needs an empty room… restart the server", sending the reader after a
+  server that was already empty.
+
+  **The structural hole, which is the actual finding.** `contract.test.ts` guards selectors that come
+  *from* `contract.ts`, and 48 call sites correctly use `SEL.*`. Exactly **four** bypass it as
+  hardcoded literals, so the guard cannot see them and `bun test` stays green while the flow is dead:
+
+  | Site | Literal | State |
+  |---|---|---|
+  | `e2e/party.mjs:104` | `.url` | **rotted — breaks the run at step one** |
+  | `e2e/party.mjs:206` | `.proc` | unguarded |
+  | `e2e/capture.mjs:314` | `.qrow` | unguarded |
+  | `e2e/capture.mjs:319` | `.sheet` | unguarded |
+
+  This is the same failure the `party.mjs` header says was fixed structurally ("three selector
+  families had moved while `bun test` stayed green, because nothing in the suite ever looked at this
+  script"). It was fixed for the 48 and missed for the 4.
+
+  *Done-when:* all four literals are sourced from `contract.ts`; a guard fails on any selector literal
+  in `e2e/*.mjs` that does not come from the contract, **proven by planting one**; and
+  `bun run e2e/party.mjs` completes against a seeded ephemeral server. Also verify `e2e/seed-media.mjs`
+  against the server's index: seeding into `$MEDIA_DIR` and starting with that same `MEDIA_DIR` left
+  `/api/library` empty, so the seeder's write path and the demo-catalog filter may disagree — confirm
+  before assuming the seeder works. **AUTO** — the guard and the flow are both machine-checkable.
 ---
 
 ## Lyrics-chain design notes (the part still worth reading)
