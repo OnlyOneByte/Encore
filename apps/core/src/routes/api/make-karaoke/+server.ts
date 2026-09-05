@@ -5,7 +5,9 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
+import { completedStatusFor, mediaStatusFor } from '$server/jobs/media-status';
 import { cookState, requestMakeKaraoke, MAX_CONCURRENT_COOKS_PER_SINGER } from '$server/jobs/make-karaoke';
+import type { MediaStatus } from '@encore/shared';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
@@ -47,7 +49,24 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	// kick the dispatcher in case a worker is already connected + idle, and show the live bar now
 	app.workerHub.dispatch();
-	app.publish({ type: 'media:status', mediaId, status: job.status === 'ready' ? 'ready' : 'queued', pct: job.progressPct });
+	// Where the SONG is, not a hardcoded 'queued'. `enqueue` is idempotent and hands back the EXISTING
+	// live job when one is in flight (§6 dedup) — and `cookState` returns 'cooking' for that case
+	// without this route short-circuiting on it, so a second tap on a song already separating used to
+	// broadcast 'queued' TO THE WHOLE ROOM and snap every phone's progress strip back to the first chip.
+	// That is the same regression the cook chain itself had, arriving through the one producer that was
+	// still on a literal. Reuses the shared mapping so this endpoint cannot drift from the hub again.
+	app.publish({
+		type: 'media:status',
+		mediaId,
+		// A `ready` job goes through the same gate check the hub's completion path uses, so this endpoint
+		// cannot announce a singable song that its own gates disagree with either. (`enqueue` treats a
+		// completed job as live, so it really can hand one back — see requestMakeKaraoke.)
+		status:
+			job.status === 'ready'
+				? completedStatusFor(job, m)
+				: mediaStatusFor(job, (job.stage as MediaStatus) ?? undefined),
+		pct: job.progressPct
+	});
 
 	return json({ job: { id: job.id, mediaId, status: job.status } });
 };

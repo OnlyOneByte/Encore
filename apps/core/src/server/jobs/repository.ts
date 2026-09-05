@@ -99,6 +99,28 @@ export class JobRepository {
 		return this.#toJob(row);
 	}
 
+	/**
+	 * The step of this song's cook that is CURRENTLY outstanding — the first not-yet-finished job in
+	 * pipeline order, or null when nothing is in flight.
+	 *
+	 * Exists because /api/library used to answer "what is cooking right now?" by looking for a live
+	 * `stems` job and nothing else. A song mid-fetch or mid-align has no such job, so a phone that
+	 * reloaded during either step found none and fell back to a hardcoded 'queued' — the progress strip
+	 * jumping backwards on refresh, for the same reason the broadcasts did (see media-status.ts).
+	 *
+	 * `stems-upgrade` is excluded: it is background work on a finished song and is not a step the room
+	 * is waiting on.
+	 */
+	findOutstandingForMedia(mediaId: string): Job | null {
+		const chain: JobType[] = ['fetch', 'stems', 'align'];
+		for (const jobType of chain) {
+			const job = this.findLive(mediaId, jobType);
+			if (!job) continue; // never enqueued (a local file skips fetch) — look further down the chain
+			if (job.status !== 'ready') return job; // the step in flight or waiting
+		}
+		return null; // every enqueued step finished
+	}
+
 	/** All jobs in any of the given statuses — feeds dispatch (queued) and the reaper. */
 	listByStatus(...statuses: JobStatus[]): Job[] {
 		if (statuses.length === 0) return [];
