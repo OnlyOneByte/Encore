@@ -7,6 +7,7 @@ import { MediaRepository, hydrateMediaCatalog } from './repository';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
 import type { Media } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
 	id,
@@ -18,8 +19,17 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
+// A fully cooked song now carries a song profile too (the stems gate keys on its presence). EMPTY is
+// the "ran, found nothing" value and is enough to satisfy the gate; tests probing persistence pass a
+// populated profile explicitly.
 const cooked = (id: string, over: Partial<Media> = {}): Media =>
-	media(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey(id), ...over });
+	media(id, {
+		stemStatus: 'ready',
+		lyricsStatus: 'ready',
+		instrumentalRef: instrumentalKey(id),
+		songProfile: { ...EMPTY_SONG_PROFILE },
+		...over
+	});
 
 function repo(): MediaRepository {
 	const { db } = openDb(':memory:');
@@ -34,7 +44,17 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 			artist: 'A-ha',
 			thumbnail: 'https://i.ytimg.com/vi/x/hq.jpg',
 			lyricsRef: 'lyrics/m1-aligned.json',
-			durationSec: 225
+			durationSec: 225,
+			songProfile: {
+				keyTonic: 7,
+				keyMode: 'major',
+				keyConfidence: 0.82,
+				lowMidi: 48,
+				highMidi: 72,
+				p05Midi: 52,
+				p95Midi: 67,
+				histogram: [1, 2, 3]
+			}
 		})
 	);
 	const got = r.byId('m1')!;
@@ -46,6 +66,17 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 	expect(got.sourceRef).toBe('vid-m1'); // ORIGIN identity survives the cook (search dedupe key)
 	// the derived artifacts must survive too, or a library song replays with no lyrics
 	expect(got.lyricsRef).toBe('lyrics/m1-aligned.json');
+	// the key/range profile is the third derived artifact — it must survive the JSON round-trip intact
+	expect(got.songProfile).toEqual({
+		keyTonic: 7,
+		keyMode: 'major',
+		keyConfidence: 0.82,
+		lowMidi: 48,
+		highMidi: 72,
+		p05Midi: 52,
+		p95Midi: 67,
+		histogram: [1, 2, 3]
+	});
 	expect(r.byId('ghost')).toBeUndefined();
 });
 
@@ -57,6 +88,9 @@ test('absent optionals come back as undefined, not null (domain shape, not DB sh
 	expect(got.thumbnail).toBeUndefined();
 	expect(got.instrumentalRef).toBeUndefined();
 	expect(got.lyricsRef).toBeUndefined();
+	// A NULL song_profile column stays UNDEFINED, not EMPTY_SONG_PROFILE: "stems never ran" must stay
+	// distinct from "ran, found nothing", or the gate cannot tell a fresh row from a finished silent one.
+	expect(got.songProfile).toBeUndefined();
 });
 
 test('upsert is idempotent on id and updates in place (the cook flip overwrites the iframe row)', () => {

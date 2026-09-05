@@ -6,7 +6,7 @@
 // is no embed path and no raw-source path, so "what to play" and "is there anything to play" are the
 // same question — which is why isPlayable is defined in terms of playbackRef rather than beside it.
 import { test, expect } from 'bun:test';
-import { playbackRef, isPlayable, keyedMediaRef, type Media } from './index';
+import { playbackRef, isPlayable, type Media } from './index';
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -57,8 +57,3 @@ test('an instrumental without a ready status is not playable either', () => {
 	expect(playbackRef(m({ stemStatus: 'queued', instrumentalRef: 'stems/m1-instrumental.wav' }))).toBe('');
 });
 
-test('composes with keyedMediaRef: the ±key variant is derived from the INSTRUMENTAL', () => {
-	const cooked = m({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'stems/m1-instrumental.wav' });
-	expect(keyedMediaRef(playbackRef(cooked), 2)).toBe('stems/m1-instrumental.+2.wav');
-	expect(keyedMediaRef(playbackRef(cooked), 0)).toBe('stems/m1-instrumental.wav');
-});

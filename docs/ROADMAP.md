@@ -334,20 +334,44 @@ which is the argument for the "green suite is the floor, not the bar" rule in
 - [ ] **M9-C3 · multi-room** — room codes, per-room topics. *Done-when:* two independent rooms run on
   one core. Tag **v1.0.0**.
 
-- [ ] **B-2 · pitch-shift (semitones)** — ±key **no-ops on the TV**, and the reason is bigger than a
-  missing AudioWorklet: **there are two mutually exclusive designs and neither is finished.**
-  `keyedMediaRef` resolves a *pre-rendered* variant (`stems/<id>-instrumental.+2.flac`) and the worker
-  renderer for those — `apps/worker/src/pitch.py` — exists as unit-tested pure logic that
-  `processor.py` **never calls**, so no variant is ever produced. A browser-side shift needs no files
-  at all and would make `keyedMediaRef`/`pitch.py` dead code.
-  So B-2 is a fork first, implementation second: **(a)** finish the pre-rendered path (wire `pitch.py`
-  into `processor.py`, accept up to 14 extra renders per cook and the disk), or **(b)** shift in the
-  browser with an AudioWorklet phase-vocoder and delete the file-ref path.
-  Only *after* that does wiring `keyShift` into `TvPlayer` make sense — doing it today points
-  `<video>.src` at a 404 and hands the gapless controller a media failure mid-song, which is why the
-  TV deliberately still ignores the field (see the comment on `stageBg` in `tv/+page.svelte`).
-  *Done-when:* ±1 semitone audibly shifts pitch without changing tempo. **AUTO** — cents→ratio and
-  framing math; **EYES-ON/AUDIO** — the shift itself. Last in the order for exactly that reason.
+- [x] **B-2 · pitch-shift (semitones)** — **SHIPPED, with its audible half unverified.** The fork is
+  resolved in favour of **(b) shift in the browser**: `apps/core/src/lib/tv/pitch-shift.ts` is a
+  hand-written, zero-dependency overlap-add shifter running in an AudioWorklet, so no per-key files
+  exist and every already-cooked song is transposable retroactively. `keyedMediaRef` and
+  `apps/worker/src/pitch.py` are **deleted** — the pre-rendered path would have cost 14 renders and
+  ~310 MB per song, and would have needed 14 more of each to shift the guiding-track stem too.
+  The browser path shifts the guide by the same amount instead of muting it, which the file path could
+  not do cheaply. Licence note: hand-rolled deliberately — `soundtouchjs` is LGPL and rubberband is
+  GPL/commercial.
+  **The one real risk lives here:** `TvPlayer` had no `AudioContext` before this, and an `AudioContext`
+  starts `suspended` until a user gesture that a set-and-forget TV may never receive. So at
+  `keyShift === 0` the audio path is byte-for-byte what it always was — no context, no
+  `MediaElementSource` — the graph is built lazily on the first non-zero shift and only after
+  `resume()` actually succeeds, and a context that cannot run degrades to **audible-unshifted, never
+  silence**. Note a `MediaElementSource` cannot be detached once attached; see the teardown comment.
+  *Still to verify:* that ±1 semitone **sounds** right. Only the ratio/framing/window maths is tested;
+  there is no audio hardware on the dev box, so the OLA quality, the suspended-context fallback and
+  the graph lifecycle need the RTX 3080 deploy box and a human in the room. **AUDIO/EYES-ON.**
+
+- [x] **Song profile (key + vocal range)** — shipped alongside B-2. The same `stems` job now emits a
+  third artifact from the raw separated WAVs it already has in scratch — detected key from the
+  instrumental (numpy chromagram vs 24 rotated Krumhansl-Schmuckler profiles), sung range from the
+  vocals stem — so it costs **no extra separation, no extra decode and no new job type**. Deliberately
+  not the old `score` job, whose disqualification was re-running the whole separation for vocals it
+  could have read off disk.
+  Stored as one nullable JSON column `song_profile` (edited into the single baseline migration, no new
+  migration file) plus the sidecar, and it **completes the `stems` cook gate**. The gate keys on the
+  RECORD being present, not on it containing data: a silent vocals stem yields all nulls and that song
+  is still finished, because the re-cook check reads `hasInstrumental` rather than the gate, so a
+  data-requiring gate would strand it permanently with no retry path.
+  Surfaced as a key line on the phone's now-playing with a collapsible vocal-range bar (voice-band
+  shading, whiskers for extremes, a time-weighted block for where the song lives), a key line in the
+  TV's lower-third, and a key chip on ready song rows. All accidentals are ASCII (`G#`/`Ab`) because
+  `icons.test.ts` bans 0x2600-0x27BF, which contains U+266F/U+266D — and because a stripped smart-TV
+  font drops the sharp sign for the same reason it drops emoji.
+  *Not built, and deliberately:* per-singer range calibration. The mic half exists (`detectF0`,
+  `MicPitch`) but `singers` has nowhere to store a range and accounts are M9. Without it the range is
+  absolute information, which is why it is drawn against named voice bands rather than against you.
 
 - [ ] **B-10-C7 · gate `/metrics` and the audit log** — the two internal surfaces shipped **ungated**,
   by decision: Encore has no operator identity, and the only auth axis is anonymous vs any-singer,

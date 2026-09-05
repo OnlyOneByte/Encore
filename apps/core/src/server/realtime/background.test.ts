@@ -10,6 +10,7 @@ import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './player
 import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
 import type { ServerEvent, Media, QueueEntry } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const media = (id: string): Media => ({
 	id,
@@ -19,7 +20,8 @@ const media = (id: string): Media => ({
 	durationSec: 100,
 	stemStatus: 'ready',
 	lyricsStatus: 'ready',
-	instrumentalRef: 'derived/stems/i-instrumental.flac'
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
 });
 let _seq = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({

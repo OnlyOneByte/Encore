@@ -10,6 +10,7 @@ import { handlePlayerCommand, reconcileOnReady } from './player';
 import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
 import { type Media, type QueueEntry, type ServerEvent } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 let _s = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({
@@ -33,7 +34,8 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 const COOKED = {
 	stemStatus: 'ready' as const,
 	lyricsStatus: 'ready' as const,
-	instrumentalRef: 'derived/stems/m-instrumental.flac'
+	instrumentalRef: 'derived/stems/m-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
 };
 
 function harness() {

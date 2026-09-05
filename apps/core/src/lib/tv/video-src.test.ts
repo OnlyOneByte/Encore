@@ -1,11 +1,15 @@
 import { test, expect } from 'bun:test';
 import { nextVideoSrc } from './video-src';
-import { keyedMediaRef, playbackRef, type Media } from '@encore/shared';
+import { playbackRef, type Media } from '@encore/shared';
 
-// The exact resolution TvPlayer's fileSrc does: `/media/${keyedMediaRef(playbackRef(m), keyShift)}`.
+// The exact resolution TvPlayer's fileSrc does: `/media/${playbackRef(m)}`.
 // Kept here so the test proves the property that matters — that two DISTINCT Media objects with equal
 // fields resolve to the same string — rather than asserting a hand-written literal.
-const fileSrc = (m: Media, keyShift = 0): string => `/media/${keyedMediaRef(playbackRef(m), keyShift)}`;
+//
+// It takes NO key shift any more. It used to be `keyedMediaRef(playbackRef(m), keyShift)`, naming a
+// pre-rendered per-key file; transposition now happens in the browser, so the src is independent of
+// the key. That strengthens Bug A rather than weakening it — see the shift test below.
+const fileSrc = (m: Media): string => `/media/${playbackRef(m)}`;
 
 const m = (over: Partial<Media> = {}): Media => ({
 	id: 'm1',
@@ -38,12 +42,17 @@ test('a real instrumental change DOES reassign', () => {
 	expect(src).toBe('/media/stems/m1-instrumental.roformer.wav');
 });
 
-test('a real key-shift change DOES reassign (the keyed variant is a different file)', () => {
+test('a key shift does NOT reassign — the element must keep playing (browser pitch shift)', () => {
+	// The inverse of the old assertion, and a strict improvement to Bug A. When ±key named a
+	// pre-rendered FILE, changing key reassigned `src` and therefore RELOADED the element, restarting
+	// the song from 0 the moment a singer touched the key control. Shifting in the browser leaves the
+	// src alone, so a key change is now inaudible in the transport: same file, same currentTime, only
+	// the AudioWorklet's ratio moves.
 	const song = m();
-	const prev = fileSrc(song, 0);
-	const { src, changed } = nextVideoSrc(prev, fileSrc(song, 2));
-	expect(changed).toBe(true);
-	expect(src).toBe('/media/stems/m1-instrumental.+2.wav');
+	const prev = fileSrc(song);
+	const { src, changed } = nextVideoSrc(prev, fileSrc(song));
+	expect(changed).toBe(false);
+	expect(src).toBe('/media/stems/m1-instrumental.wav');
 });
 
 test('the first assignment (no previous src) always changes', () => {

@@ -4,7 +4,12 @@
 		DEFAULT_EFFECTIVE_SETTINGS,
 		queueOrderLabel,
 		reorderIsMeaningful,
-		singHistoryFrom
+		singHistoryFrom,
+		originalKeyLabel,
+		soundingKeyLabel,
+		rangeLabel,
+		rangeOctaves,
+		voiceBandSentence
 	} from '@encore/shared';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -17,6 +22,7 @@
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import ProfileSheet from '$lib/components/ProfileSheet.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
+	import RangeBar from '$lib/components/RangeBar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { cookAndQueue } from '$lib/cook-and-queue';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
@@ -309,7 +315,11 @@
 		artistCanonical: m.artistCanonical,
 		thumbnail: m.thumbnail,
 		durationSec: m.durationSec,
-		viewCount: m.viewCount
+		viewCount: m.viewCount,
+		// The original detected key, spelled and confidence-gated by the shared helper (null below the
+		// floor). Added to the FIXED rowMeta shape so it reaches every SongRow call site — SongRow itself
+		// only paints the chip on a ready row, so a null here (raw/cooking song, or no key) is harmless.
+		keyName: originalKeyLabel(m.songProfile) ?? undefined
 	});
 	/** Is this song already in MY part of the rotation? Turns ＋ Turn into a ✓ Queued confirmation. */
 	function inMyQueue(mediaId: string): boolean {
@@ -537,6 +547,38 @@
 	// key-shift is available only once a song's stems are separated — there is nothing to re-pitch before
 	const keyShiftEnabled = $derived(!!nowMedia && isPlayable(nowMedia));
 	const keyLabel = $derived(playback.keyShift === 0 ? 'Key' : `Key · ${playback.keyShift > 0 ? '+' : '−'}${Math.abs(playback.keyShift)}`);
+
+	// ── key line + vocal range readout ──────────────────────────────────
+	// The now-playing song's musical profile, derived once. All the music judgement lives in the shared
+	// pure helpers; this file only decides WHEN to show each string. Everything that takes keyShift is
+	// re-read reactively, so tapping ±semitone slides the sounding key, the range label, the band
+	// sentence AND the bar in lockstep.
+	const profile = $derived(nowMedia?.songProfile ?? null);
+	/*
+	 * The key line: ORIGINAL → SOUNDING, collapsing to just the original at shift 0. Both helpers
+	 * return null below the confidence floor / with no detected key, so `keyOriginal` being null is the
+	 * single gate that hides the whole line — a wrong key is worse than no key (see song-profile.ts).
+	 * The arrow MUST be <Icon name="arrow-right" />, never a U+2192 glyph: icons.test.ts bans that
+	 * codepoint from every client surface. The keys themselves are ASCII 'G#'/'Ab' from the helper.
+	 */
+	const keyOriginal = $derived(originalKeyLabel(profile));
+	const keySounding = $derived(soundingKeyLabel(profile, playback.keyShift));
+	// Show the arrow + sounding key only when a shift actually changed the sounding key from the
+	// original — at shift 0 they are equal and the arrow would be noise.
+	const keyShifted = $derived(playback.keyShift !== 0 && keySounding !== null && keySounding !== keyOriginal);
+
+	// The range readout, gated on a usable measured range (null helpers = nothing to show).
+	const rangeText = $derived(rangeLabel(profile, playback.keyShift));
+	const octaves = $derived(rangeOctaves(profile));
+	const bandSentence = $derived(voiceBandSentence(profile, playback.keyShift));
+	// Is there anything at all to disclose? The section header only renders when at least one fact exists.
+	const hasRange = $derived(rangeText !== null);
+	/*
+	 * Plain $state disclosure, mirroring the 'Browse' toggle idiom in this same file (a bare boolean +
+	 * aria-expanded + {#if} + a chevron-down/right Icon swap). There is no generic Disclosure component
+	 * and the task forbids inventing one, so this is intentionally the same three-line pattern.
+	 */
+	let rangeOpen = $state(false);
 
 	// ── guiding track ──────────────────────────────────────────────────
 	// How loud the original vocals sit under the instrumental. Available only for a song that actually
@@ -861,6 +903,27 @@
 		oncommit={onGuideCommit}
 	/>
 
+	<!--
+		KEY LINE. A head row ABOVE the ± buttons, NOT inline in `.key`: `.key` is a no-wrap flex with two
+		flex:1 buttons, so a third inline element crushes both below their 44px target at 480px. Modelled
+		on GuidingTrack's `.gt-head`. Shows the ORIGINAL key, then an arrow, then the SOUNDING key;
+		collapses to just the original at shift 0. Renders nothing when the key is undetected /
+		low-confidence (keyOriginal === null) — a wrong key is worse than none. The arrow is an Icon, not
+		a U+2192 glyph (icons.test.ts bans that codepoint); the key names are ASCII from the helper.
+	-->
+	{#if keyOriginal}
+		<div class="key-head" class:shifted={keyShifted}>
+			<span class="lab">Key</span>
+			<span class="key-vals">
+				<span class="key-orig">{keyOriginal}</span>
+				{#if keyShifted}
+					<span class="key-arrow"><Icon name="arrow-right" /></span>
+					<span class="key-sound">{keySounding}</span>
+				{/if}
+			</span>
+		</div>
+	{/if}
+
 	<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
 		<span class="lab">{keyLabel}</span>
 		<button class="key-btn" disabled={!keyShiftEnabled || playback.keyShift <= -7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}><Icon name="minus" /> semitone</button>
@@ -868,11 +931,72 @@
 	</div>
 
 	<!--
+		VOCAL RANGE, behind a disclosure. Same idiom as the 'Browse' toggle above: a plain $state
+		boolean, a real <button> carrying aria-expanded, a chevron-down/right Icon swap, and a 44px
+		target. Only rendered when there is a measured range to show (hasRange). Everything inside reacts
+		to playback.keyShift through the shared helpers, so the ± buttons slide the bar and can flip the
+		band sentence — which is what makes transposing feel like it means something.
+	-->
+	{#if hasRange}
+		<div class="range">
+			<button
+				class="range-toggle"
+				aria-expanded={rangeOpen}
+				onclick={() => (rangeOpen = !rangeOpen)}
+			>
+				<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
+				Vocal range
+				<span class="range-peek">{rangeText}</span>
+			</button>
+			{#if rangeOpen}
+				<div class="range-body">
+					<div class="range-facts">
+						<span class="range-label">{rangeText}</span>
+						{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
+					</div>
+					{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
+					<RangeBar {profile} keyShift={playback.keyShift} />
+				</div>
+			{/if}
+		</div>
+	{/if}
+
+	<!--
 		The TV stage look lives ONLY in room settings now. The per-song override that used to sit here
 		(a phone repainting the stage for the current song via sendPlayer 'background') was removed: the
 		stage is a room-wide decision, not a per-singer one, so a single writer in Settings is correct.
 		The server command, PlaybackState.background field and the TV resolver are deliberately kept —
 		with no writer the field simply stays null and the resolver already falls back to the room style.
+		VOCAL RANGE, behind a disclosure. Same idiom as the 'Browse' toggle above: a plain $state
+		boolean, a real <button> carrying aria-expanded, a chevron-down/right Icon swap, and a 44px
+		target. Only rendered when there is a measured range to show (hasRange). Everything inside reacts
+		to playback.keyShift through the shared helpers, so the ± buttons slide the bar and can flip the
+		band sentence — which is what makes transposing feel like it means something.
+	-->
+	{#if hasRange}
+		<div class="range">
+			<button
+				class="range-toggle"
+				aria-expanded={rangeOpen}
+				onclick={() => (rangeOpen = !rangeOpen)}
+			>
+				<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
+				Vocal range
+				<span class="range-peek">{rangeText}</span>
+			</button>
+			{#if rangeOpen}
+				<div class="range-body">
+					<div class="range-facts">
+						<span class="range-label">{rangeText}</span>
+						{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
+					</div>
+					{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
+					<RangeBar {profile} keyShift={playback.keyShift} />
+				</div>
+			{/if}
+		</div>
+	{/if}
+
 	-->
 
 	<div class="grouphead">Up next · {orderLabel}</div>
@@ -1079,6 +1203,65 @@
 	.key:not(.disabled) button:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
 	.key:not(.disabled) button:not(:disabled):active { transform: scale(0.95); }
 	.key button:disabled { cursor: default; }
+
+	/*
+	 * The key head line. Sits ABOVE the ± buttons (see the markup comment for why it cannot be inline).
+	 * Same label idiom as .gt-head / .key .lab. The original→sounding pair reads left to right; the
+	 * sounding key takes the warn colour to echo `.key.shifted .lab`, so "you have changed the key" is
+	 * signalled the same way in both places.
+	 */
+	.key-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 8px;
+		margin: 8px 0 0;
+	}
+	.key-head .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
+	.key-vals { display: inline-flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
+	.key-orig { font-size: 0.85rem; font-weight: 700; color: var(--ink); }
+	/* The arrow is an Icon (banned as a glyph); size it to the text and dim it so the keys read as the
+	   content and the arrow as mere connective tissue. */
+	.key-arrow { display: inline-grid; place-items: center; color: var(--ink-dim); font-size: 0.8rem; }
+	.key-sound { font-size: 0.85rem; font-weight: 700; color: var(--warn); }
+
+	/*
+	 * The vocal-range disclosure. Mirrors the .browse toggle: a 44px min-height button, an uppercase
+	 * label, a chevron that swaps down/right with the open state, and a peek of the range value on the
+	 * collapsed row so the section states its headline fact without being opened.
+	 */
+	.range { margin: 8px 0 2px; }
+	.range-toggle {
+		width: 100%;
+		min-height: 44px;
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		background: none;
+		border: 0;
+		padding: 0 2px;
+		cursor: pointer;
+		color: var(--ink-dim);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+	.range-toggle:hover { color: var(--ink); }
+	/* The collapsed-row peek of the range, pushed to the right. Not uppercase — it is data, not a label. */
+	.range-peek {
+		margin-left: auto;
+		color: var(--accent2);
+		text-transform: none;
+		letter-spacing: 0;
+		font-size: 0.8rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.range-body { padding: 2px 2px 4px; }
+	.range-facts { display: flex; align-items: baseline; gap: 10px; }
+	.range-label { font-size: 0.95rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+	.range-oct { font-size: 0.72rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+	.range-band { font-size: 0.72rem; color: var(--ink-dim); margin: 4px 0 0; }
 
 
 	.search-spinner {

@@ -4,7 +4,7 @@ import { test, expect } from 'bun:test';
 import { handlePlayerCommand } from './player';
 import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
-import { MAX_KEY_SHIFT, type Media, type QueueEntry, type ServerEvent } from '@encore/shared';
+import { MAX_KEY_SHIFT, type Media, type QueueEntry, type ServerEvent, EMPTY_SONG_PROFILE } from '@encore/shared';
 
 let _s = 0;
 const entry = (id: string, mediaId: string): QueueEntry => ({ id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_s });
@@ -20,7 +20,7 @@ function harness() {
 		publish: (e) => published.push(e),
 		// m-file is a cooked song; m-uncooked has no instrumental; m-cooking is still separating
 		mediaById: new Map<string, Media>([
-			['m-file', media('m-file', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/m-file-instrumental.wav' })],
+			['m-file', media('m-file', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/m-file-instrumental.wav', songProfile: EMPTY_SONG_PROFILE })],
 			['m-iframe', media('m-iframe')],
 			['m-cooking', media('m-cooking', { stemStatus: 'queued' })]
 		])

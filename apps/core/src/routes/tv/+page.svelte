@@ -2,7 +2,7 @@
 	import { onMount, untrack } from 'svelte';
 	import { invalidateAll } from '$app/navigation';
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
-	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay } from '@encore/shared';
+	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, soundingKeyLabel } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
@@ -75,6 +75,10 @@
 	const guideLevel = $derived(
 		effectiveGuideLevel({ guideLevel: guideOverride }, settings.room.guideLevelDefault)
 	);
+	// Current transpose in semitones (±), straight from playback:state. The TV now HONOURS this: the
+	// player shifts pitch in the browser (see pitch-shift.ts), so there is no pre-rendered variant to
+	// 404 on — which is why it was ignored before.
+	let keyShift = $state(0);
 	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
 
 	let ws: WebSocket | undefined;
@@ -252,17 +256,18 @@
 				if (nextOrigin !== data.joinOrigin) invalidateAll();
 			}
 			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
-			// pause/resume from the phone (playback:state.isPlaying) → drives the player slots
+			// pause/resume from the phone (playback:state.isPlaying) -> drives the player slots
 			if (e.type === 'playback:state') {
 				isPlaying = e.state.isPlaying;
 				seekSec = e.state.positionSec;
 				// Per-song background override; null hands the song back to the room default.
-				// NOTE: keyShift is deliberately NOT read here — see the comment on `stageBg`.
 				backgroundOverride = e.state.background;
 				guideOverride = e.state.guideLevel;
+				// keyShift is now honoured — the player transposes in the browser. See `keyShift` state.
+				keyShift = e.state.keyShift;
 			}
 			// live media catalog updates (cooking progress + ready flip) so the TV leaves WAITING
-			// promptly and resolves the ready song's instrumental (also mitigates the cook→play gap)
+			// promptly and resolves the ready song's instrumental (also mitigates the cook->play gap)
 			if (e.type === 'media:status') {
 				const m = mediaCatalog.get(e.mediaId);
 				if (m) {
@@ -347,13 +352,23 @@
 	 */
 	const currentSingerColor = $derived(current ? (singers.get(current.singerId)?.color ?? null) : null);
 	/*
-	 * The override wins over the room default when set; `null` means defer to the room.
+	 * The key line for the lower-third: what the room is HEARING, plus the shift if any.
 	 *
-	 * Deliberately NOT wiring `keyShift` here while in the same handler, even though the TV ignores it
-	 * today: `keyedMediaRef` resolves a PRE-RENDERED variant that nothing produces (apps/worker's
-	 * pitch.py is never called from processor.py), so passing a non-zero shift to TvPlayer would point
-	 * <video>.src at a 404 and hand the gapless controller a media failure mid-song. That belongs to
-	 * B-2, which first has to choose between rendering those variants and shifting in the browser.
+	 * `soundingKeyLabel` already moves the detected key by `keyShift` and returns null when there is no
+	 * trustworthy key — so a song with no detected key shows nothing rather than a guess. The shifted
+	 * key is the honest label (a +2 song in G is heard in A), and the "· +2" suffix tells the singer HOW
+	 * FAR they have moved from the original. At 0 there is no suffix. The sign is written with ASCII
+	 * `+`/`-` and the separator is a Latin-1 middot — a typographic sharp/flat/arrow would trip the
+	 * icons.test.ts codepoint guard (musical sharp U+266F / flat U+266D are in its banned range); the
+	 * shared helper already spells accidentals as ASCII 'G#'/'Ab'.
+	 */
+	const keyLine = $derived.by(() => {
+		const label = soundingKeyLabel(mediaOf(current)?.songProfile, keyShift);
+		if (!label) return null;
+		return keyShift === 0 ? label : `${label} · ${keyShift > 0 ? '+' : ''}${keyShift}`;
+	});
+	/*
+	 * The override wins over the room default when set; `null` means defer to the room.
 	 */
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
 	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundHue, currentSingerColor));
@@ -412,6 +427,7 @@
 		active={visible === 'A'}
 		playing={isPlaying}
 		seekSec={seekSec}
+		{keyShift}
 		{guideLevel}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; onFirstSongReady(); }}
 		onended={onVisibleEnded}
@@ -424,6 +440,7 @@
 		active={visible === 'B'}
 		playing={isPlaying}
 		seekSec={seekSec}
+		{keyShift}
 		{guideLevel}
 		onready={() => { ctl.onVisibleReady(); ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; onFirstSongReady(); }}
 		onended={onVisibleEnded}
@@ -482,6 +499,17 @@
 			<span class="ls-song">{nowPlayingDisplay.title}</span>
 			<!-- Artist only when a confident parse produced one — never the uploader. -->
 			{#if nowPlayingDisplay.artist}<span class="ls-artist">{nowPlayingDisplay.artist}</span>{/if}
+			<!-- The sounding key + how far it is transposed. Only rendered when the cook found a
+			     trustworthy key; muted like the eyebrow so it reads as metadata, not a heading. It lives in
+			     the card because all four screen corners are already occupied (brand top-left, status
+			     top-right, score/lyrics centre, join QR bottom-right) — the card is the only free space, and
+			     it is capped at 46vw so this extra line cannot grow it into the QR.
+			     NOTE the card can now reach five lines (eyebrow, singer, two-line title, artist, key). It is
+			     bottom-anchored and grows UPWARD, so it cannot reach the QR, but a fixed bottom band is
+			     being reserved for these cards — worth an eyes-on at 1080p before trusting the worst case. -->
+			{#if keyLine}
+				<span class="ls-key">{keyLine}</span>
+			{/if}
 			{#if tvProgressStyle === 'card'}
 				<TvProgress style="card" elapsedSec={positionSec} {durationSec} />
 			{/if}
@@ -564,7 +592,7 @@
 	}
 	/*
 	 * Fades in and out on the same 0.25s opacity curve the player slots use (TvPlayer `.slot`), so the
-	 * lobby→stage handover matches the crossfade already in the gapless swap instead of hard-cutting.
+	 * lobby->stage handover matches the crossfade already in the gapless swap instead of hard-cutting.
 	 */
 	.stage-bg {
 		position: absolute;
@@ -627,6 +655,8 @@
 		font-size: var(--tv-body); color: var(--ink-dim);
 		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 	}
+	/* Metadata, not a heading: sized and dimmed like the eyebrow so it sits under the title quietly. */
+	.ls-key { font-size: var(--tv-label); letter-spacing: 0.04em; opacity: 0.82; margin-top: 2px; }
 	.interstitial {
 		position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center;
 		justify-content: center; gap: 12px; background: rgba(11, 11, 18, 0.94);

@@ -216,12 +216,14 @@ M5 gapless TV · M6 hardening → **v0.1.0** · M7 make-karaoke (Demucs stems) �
 M8 word-timed lyrics. Then backlog: **B-1** library · **B-5** readiness search ·
 **B-6** TV room states + presence · **B-7** media storage classes + browse + retention ·
 **B-3** tiered lyrics source chain (LRCLIB → captions → ASR, with provenance labelling) ·
-**B-10** stats + audit dashboards (per-attempt job ledger, per-play log, measured model costs).
+**B-10** stats + audit dashboards (per-attempt job ledger, per-play log, measured model costs) ·
+**B-2** browser pitch-shift, so ±key actually transposes · **song profile** (detected key + the vocal
+range a song demands, shown on all three surfaces).
 
 **Next:** **B-8** swap stem separation to `python-audio-separator` (better models than `htdemucs`;
 also improves the ASR lyrics tier, which reads the vocals stem) · **B-9** bake in `yt-dlp` + a
-smarter audio-stream pick · **B-4** hot-titles persistence · **M9** accounts + multi-room ·
-**B-2** WebAudio pitch-shift (±key is a no-op on the TV today). Open work only:
+smarter audio-stream pick · **B-4** hot-titles persistence · **M9** accounts + multi-room.
+Open work only:
 [`docs/ROADMAP.md`](docs/ROADMAP.md) — shipped history is in [`docs/archive/`](docs/archive/).
 Agent/human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 

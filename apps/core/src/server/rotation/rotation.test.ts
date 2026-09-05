@@ -3,13 +3,14 @@
 import { test, expect } from 'bun:test';
 import { reseq, nextPlayable, upNextAfter, isEntryReady } from './index';
 import type { QueueEntry, Media } from '@encore/shared';
+import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const e = (id: string, singerId: string, addedAt: number, mediaId = 'm-' + id): QueueEntry => ({
 	id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt
 });
 const m = (id: string, over: Partial<Media> = {}): Media => ({
 	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', ...over
+	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE, ...over
 });
 
 test('reseq: three singers interleave fairly', () => {

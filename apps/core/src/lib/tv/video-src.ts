@@ -8,9 +8,14 @@
 // markup binding `src={fileSrc(media)}` re-evaluated and reassigned the identical string — restarting
 // the playing song from 0.
 //
-// `fileSrc`/`playbackRef`/`keyedMediaRef` are pure in the media's fields, so two DISTINCT Media
+// `fileSrc`/`playbackRef` are pure in the media's fields, so two DISTINCT Media
 // objects with equal fields resolve to the same string and this must report `changed: false`. A real
-// instrumental swap or key-shift resolves to a different string and must report `changed: true`.
+// instrumental swap resolves to a different string and must report `changed: true`.
+//
+// A KEY SHIFT NO LONGER AFFECTS THE SRC. It once selected a pre-rendered per-key file, so changing key
+// reassigned the element and restarted the song from 0; transposition now happens in the browser
+// (see `pitch-shift.ts`), so the same file keeps playing and only the worklet's ratio moves. That
+// removes a whole class of this bug rather than adding one.
 //
 // Pure and string-based (no DOM) so the decision is unit-testable without a real media element.
 

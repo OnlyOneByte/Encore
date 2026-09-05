@@ -4,6 +4,7 @@
 import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
 import type { LyricsCandidate } from './lyrics';
+import type { SongProfile } from './song-profile';
 import type { EffectiveSettings, TvBackgroundStyle } from './settings';
 
 export const ROOM_TOPIC = 'room:main'; // single room for MVP; Bun.serve pub/sub topic
@@ -204,6 +205,25 @@ export type WorkerCommand =
 
 export interface JobArtifacts {
   stems?: { instrumental?: string; vocals?: string };
+  /**
+   * What the separation LEARNED about the music — detected key and sung range. A SIBLING of `stems`,
+   * not a member of it, because `stems` holds MediaStore keys for files and this is an analysis result
+   * with no file behind it.
+   *
+   * That placement is declared here deliberately. It was previously undeclared and the core read it
+   * structurally as `artifacts.stems.songProfile` while the worker published it as
+   * `artifacts.songProfile` — so it silently arrived `undefined` on every cook. Both sides' unit tests
+   * passed, because each mocked its own shape; and because the `stems` cook gate requires the profile
+   * to be PRESENT, the effect was that every separated song sat at "Separating vocals" forever with no
+   * way out. Declaring the field is what makes that class of drift a type error instead of a
+   * production stall.
+   *
+   * Every inner field is nullable and the record is published even when analysis found nothing — see
+   * `SongProfile`, whose doc comment explains why "ran but found nothing" must be representable.
+   * Still normalized with `normalizeSongProfile` at the boundary: a declared type is not a validated
+   * one, and this frame is untrusted.
+   */
+  songProfile?: SongProfile;
   /**
    * What a `fetch` job identified this song AS, when MusicBrainz agreed. Absent when annotation was
    * declined — which is the normal outcome for anything the normalizer could not name confidently, a
