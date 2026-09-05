@@ -18,6 +18,10 @@
 # server.ts owns both in one process, and vite only runs the SvelteKit half. A song will never cook
 # and the queue will never move under --ui. Use it for pure styling work, nothing else.
 set -eo pipefail
+# Job control ON in a non-interactive script, deliberately: it makes every `&` job a process-group
+# LEADER, which is what lets cleanup below signal a whole tree instead of just the parent. Without it
+# the worker's demucs/yt-dlp children and core's nested `bun run ./server.ts` outlive ctrl-c.
+set -m
 cd "$(dirname "$0")"
 ROOT="$PWD"
 
@@ -67,6 +71,24 @@ echo "bun     $(bun --version)"
 echo "ffmpeg  $(ffmpeg -version 2>/dev/null | head -1 | cut -d' ' -f3)"
 echo "media   $MEDIA_DIR"
 echo "data    $DATA_DIR"
+
+# Refuse to start alongside a previous run. A leftover worker is not harmless: it reconnects every 3s,
+# the core hands it jobs, and two workers cooking the same media race each other on the same paths.
+# Refusing (rather than killing something we did not start) keeps this script from being a surprise.
+STALE="$(pgrep -f 'src\.dial_home|bun run \./server\.ts' 2>/dev/null || true)"
+if [ -n "$STALE" ]; then
+	echo
+	echo "refusing to start — an earlier core/worker is still running:" >&2
+	pgrep -fl 'src\.dial_home|bun run \./server\.ts' >&2
+	echo >&2
+	echo "stop it first:  pkill -f 'src.dial_home'; pkill -f 'bun run ./server.ts'" >&2
+	exit 1
+fi
+if lsof -ti:3000 >/dev/null 2>&1; then
+	echo
+	echo "refusing to start — port 3000 is already in use by pid(s): $(lsof -ti:3000 | tr '\n' ' ')" >&2
+	exit 1
+fi
 
 # ── pull ─────────────────────────────────────────────────────────────────────────────
 if [ "$DO_PULL" = 1 ]; then
@@ -150,12 +172,60 @@ fi
 
 # ── run ──────────────────────────────────────────────────────────────────────────────
 CORE_PID="" WORKER_PID=""
+
+# Stop one job and EVERYTHING it spawned, then verify it is actually gone.
+#
+# `kill -- -PID` signals the process GROUP. Both halves of that matter and both were bugs here:
+#   * the group, because a cook shells out to demucs/yt-dlp and core runs a nested bun — signalling
+#     only the leader reparents those to init and they keep going (a stranded demucs keeps a GPU busy);
+#   * and a real PID, because `( ... ) & $!` yields the SUBSHELL's pid, not the command's. That is why
+#     the first version of this script left `python -m src.dial_home` running after ctrl-c, reconnecting
+#     every 3s forever. The launch below uses `exec` so the subshell IS the process.
+# TERM first because the worker installs no signal handlers and exits cleanly on it; KILL only if it
+# refuses, and say so rather than escalating silently.
+stop_tree() {
+	local pid="$1" name="$2" i
+	[ -n "$pid" ] || return 0
+	kill -0 "$pid" 2>/dev/null || return 0
+	kill -TERM -- "-$pid" 2>/dev/null || kill -TERM "$pid" 2>/dev/null || true
+	for i in $(seq 1 20); do
+		kill -0 "$pid" 2>/dev/null || return 0
+		sleep 0.25
+	done
+	echo "  $name ignored TERM — sending KILL"
+	kill -KILL -- "-$pid" 2>/dev/null || kill -KILL "$pid" 2>/dev/null || true
+}
+
 cleanup() {
 	trap - EXIT INT TERM
-	[ -n "$WORKER_PID" ] && kill "$WORKER_PID" 2>/dev/null || true
-	[ -n "$CORE_PID" ] && kill "$CORE_PID" 2>/dev/null || true
+	set +m  # stop bash announcing "Terminated: 15" for each job as we take it down
+	printf '\nstopping...\n'
+	stop_tree "$WORKER_PID" worker
+	stop_tree "$CORE_PID" core
 	wait 2>/dev/null || true
-	printf '\nstopped.\n'
+
+	# Prove it, because a silent "stopped." that actually left a worker reconnecting every 3s is worse
+	# than no message at all — the next run then fights an invisible second worker for the same jobs.
+	#
+	# Checked by PID and PORT, deliberately NOT by `pgrep -f <pattern>`: a pattern broad enough to catch
+	# the worker also matches this script's own forks (command substitutions inherit its argv), so the
+	# first version of this check reported a phantom straggler on every clean shutdown. Our own pids and
+	# the listening socket are the two things that cannot lie.
+	local left="" i
+	for i in $(seq 1 12); do
+		left=""
+		[ -n "$WORKER_PID" ] && kill -0 "$WORKER_PID" 2>/dev/null && left="$left worker($WORKER_PID)"
+		[ -n "$CORE_PID" ] && kill -0 "$CORE_PID" 2>/dev/null && left="$left core($CORE_PID)"
+		lsof -ti:3000 >/dev/null 2>&1 && left="$left port-3000-still-bound"
+		[ -z "$left" ] && break
+		sleep 0.25
+	done
+	if [ -n "$left" ]; then
+		echo "WARNING: still running after cleanup —$left"
+		echo "  kill with: pkill -f 'src.dial_home'; pkill -f 'bun run ./server.ts'"
+	else
+		echo "stopped — core and worker both gone, port 3000 released."
+	fi
 }
 trap cleanup EXIT INT TERM
 
@@ -182,11 +252,14 @@ if [ "$CORE_ONLY" != 1 ]; then
 	# PATH must carry the venv bin: the worker shells out to demucs / yt-dlp BY NAME, and
 	# capabilities.py proves a capability with shutil.which() — so a capability whose tool is only
 	# importable, not on PATH, gets reported differently. See its "venv-vs-system-python" note.
+	# `exec` is load-bearing: it REPLACES the subshell with python, so $! is python's own pid. Without
+	# it $! is the subshell and cleanup kills a shell that has already forked, leaving the worker alive.
 	(
 		cd "$ROOT/apps/worker"
-		PATH="$VENV/bin:$PATH" \
-		ENCORE_CORE_WS="ws://localhost:3000/ws?role=worker" \
-		MEDIA_DIR="$MEDIA_DIR" \
+		exec env \
+			PATH="$VENV/bin:$PATH" \
+			ENCORE_CORE_WS="ws://localhost:3000/ws?role=worker" \
+			MEDIA_DIR="$MEDIA_DIR" \
 			"$VENV/bin/python" -m src.dial_home
 	) & WORKER_PID=$!
 fi
