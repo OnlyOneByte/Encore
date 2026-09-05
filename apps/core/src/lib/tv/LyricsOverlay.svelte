@@ -12,6 +12,7 @@
 		type LyricsDoc,
 		type LyricsProvenance
 	} from './lyrics';
+	import { drawPosition } from './lyrics-position';
 	import {
 		DEFAULT_LYRICS_BALL,
 		DEFAULT_LYRICS_CASE,
@@ -82,18 +83,28 @@
 
 	let fetched = $state<LyricsDoc | null>(null);
 	let loadedRef: string | undefined;
-	let displayPos = $state(0);
 	// pre-parsed doc wins (gallery/tests); otherwise use whatever the fetch produced
 	const doc = $derived(docProp ?? fetched);
 
-	// Interpolation anchors (plain locals — not reactive; the rAF loop reads them each frame).
-	let basePos = 0;
-	let baseWall = 0;
+	// Wall-clock ANCHOR: the moment `positionSec` last ticked in. `now` is a reactive clock the rAF
+	// loop below advances for a smooth sweep. Crucially neither is the drawn position — the position is
+	// DERIVED from them by `drawPosition`, which ignores the clock entirely while paused. So a
+	// backgrounded tab (throttled/stopped rAF) has no accumulated position to lose: see lyrics-position.ts
+	// (issue #54). `anchoredAt` is a plain local re-set on each authoritative tick; `now` is $state so
+	// the derived position tracks it while playing.
+	let anchoredAt = 0;
+	let now = $state(0);
 	$effect(() => {
 		// Re-anchor whenever the authoritative position ticks in, so the sweep never drifts far.
-		basePos = positionSec;
-		baseWall = performance.now();
+		void positionSec;
+		anchoredAt = performance.now();
+		now = anchoredAt;
 	});
+	// The position the reel and highlight are drawn at — a PURE function of `positionSec` (plus the
+	// clock only while playing). Paused → exactly `positionSec`; no rAF state backs it.
+	const displayPos = $derived(
+		drawPosition({ positionSec, playing, anchoredAtMs: anchoredAt, nowMs: now })
+	);
 
 	// Fetch + parse the lyrics artifact when the ref changes (once per song). Skipped if a doc prop
 	// was supplied directly (dev gallery / tests).
@@ -121,11 +132,16 @@
 		};
 	});
 
-	// Smoothly advance the shown position between authoritative ticks.
+	// Smoothly advance the shown position between authoritative ticks by ticking the reactive CLOCK,
+	// not the position. `displayPos` is derived from `now` (above), and `drawPosition` reads the clock
+	// only while playing — so if this loop is throttled or stopped (a backgrounded tab), the paused
+	// reel is unaffected because its position does not depend on `now` at all. There is no accumulator
+	// here to drift back to 0. Runs only while playing; paused needs no frames.
 	$effect(() => {
+		if (!playing) return;
 		let raf = 0;
 		const tick = () => {
-			displayPos = playing ? basePos + (performance.now() - baseWall) / 1000 : basePos;
+			now = performance.now();
 			raf = requestAnimationFrame(tick);
 		};
 		raf = requestAnimationFrame(tick);
