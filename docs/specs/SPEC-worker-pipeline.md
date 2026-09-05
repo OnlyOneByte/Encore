@@ -211,14 +211,17 @@ class Step(ABC):
         return True
 
     @abstractmethod
-    def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent]: ...
+    def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]: ...
 ```
 
-Steps are **classes, not functions**, so one class can fill two plan slots with different
-construction (`FetchCaptions(AUTHORED)` and `FetchCaptions(MACHINE)`).
+Steps are **classes, not functions**, so one class can fill two plan slots with different construction
+(`FetchCaptions(AUTHORED)` and `FetchCaptions(MACHINE)`).
 
 `applies(ctx)` absorbs the guards currently scattered inline as `if job.source_uri and not is_local:`.
 The local-source skip becomes a declared property of the step, testable without a processor.
+
+A step yields progress events and may finally yield one `StepResult` (§5.2b). Yielding none means
+`CONTINUE` — so only the one step that can terminate a job early has to think about it.
 
 ### 4.3 Runner
 
@@ -227,21 +230,30 @@ class PlanRunner:
     """The ONLY thing that executes a plan. One implementation, four actions."""
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
         ctx = Ctx(job=job, work=scratch_for(job), engines=resolve_engines(job.params))
-        for step in PLANS[Action(job.job_type)]:
+        plan = plan_for(job, ctx.engines)          # divergence resolves HERE — see §5.2c
+        step = plan.first()
+        while step is not None:
             if not step.applies(ctx):
                 ctx.out.notes.append(f"{step.name}: skipped")
+                step = plan.after(step, StepResult(), ctx)
                 continue
+            result = StepResult()
             with timed(ctx, step.name):
                 async for ev in step.run(ctx):
-                    yield ev
+                    if isinstance(ev, StepResult):
+                        result = ev
+                    else:
+                        yield ev
+            step = plan.after(step, result, ctx)   # the one seam a state machine would replace
         yield CompleteResult(media_uri=..., artifacts=ctx.out.artifacts, facts=ctx.out.facts)
 ```
 
-The runner owns everything each processor currently reimplements: the scratch dir, one `_run_stage`,
-the `_run_blocking` keepalive, per-step timing, `CompleteResult` assembly.
+The runner owns everything each processor currently reimplements: the scratch dir, one `_run_stage`, the
+`_run_blocking` keepalive, per-step timing, `CompleteResult` assembly.
 
-`RoutingProcessor` and `EngineRouter` survive unchanged — `EngineRouter` becomes a strategy pick
-*before* the plan runs, resolving into `ctx.engines`, rather than a second dispatch layer.
+`plan.after()` is deliberately the only place iteration order is decided (§5.2). `RoutingProcessor`
+survives unchanged; `EngineRouter` collapses into `resolve_engines` + `plan_for`, becoming a strategy
+resolution before the plan runs rather than a second dispatch layer.
 
 ---
 
@@ -261,16 +273,16 @@ PLANS: dict[Action, list[Step]] = {
         DecodeToWav(),
         Separate(),
         ProbeSilence(),
-        KeyAndRange(),                # song profile — currently buried in demucs stage 3
+        KeyAndRange(),
         PublishStems(),
     ],
-    Action.STEMS_UPGRADE: [           # same shape; refuses unless it outranks what is published
+    Action.STEMS_UPGRADE: [
         AcquireAudio(),
         DecodeToWav(),
         Separate(),
         ProbeSilence(),
         KeyAndRange(),
-        PublishStemsIfBetter(),
+        PublishStemsIfBetter(),      # refuses unless it outranks what is already published
     ],
     Action.ALIGN: [
         AcquireAudio(),
@@ -284,6 +296,24 @@ PLANS: dict[Action, list[Step]] = {
     ],
 }
 ```
+
+`STEMS_UPGRADE` gets its own plan rather than sharing `STEMS` with a swapped publish step. The two
+differ in the step that matters most — one publishes unconditionally, one refuses unless it outranks —
+and sharing would push that difference into a conditional inside `PublishStems`, which is exactly the
+kind of hidden branch this design exists to make visible. Five duplicated entries is a cheaper price
+than one step that behaves differently depending on which plan invoked it. The duplication is also
+inert: `validate_plan` (§7 E1) checks both, and the generated doc shows both.
+
+`ProbeSilence` is a step even though its only effect is to *withhold* one artifact. Separation can
+succeed and write digital silence — it has happened twice in this library, both stems pinned at the
+16-bit floor — and a silent guiding track is worse than a missing one because it looks like it works.
+As a step, the probe's cost is visible in `/metrics`, its skip is visible in the log, and it is
+testable against a `Ctx` with no ffmpeg. Note what it is *not*: a branch. A conditional **write** inside
+a step is not divergence, and §5.2 turns on that distinction.
+
+`KeyAndRange` becomes an explicit step in both separation plans. Today `build_song_profile` is called
+inline from `demucs.py:491` and `roformer.py:257` — two call sites, two injectable `profiler`
+parameters, and no visibility into what it costs. As a step it is measured for the first time.
 
 ### 5.1 Why one level and not two
 
@@ -302,19 +332,111 @@ so a nested plan invites someone to add ordering semantics that do not exist. `a
 fans out over a source list and `select_by_baselines()` folds — that stays exactly as it is. The
 five sequential lyrics operations become five **siblings** in the align plan.
 
-### 5.2 Why a plan and not a state machine
+### 5.2 Control flow: three kinds of "branching", and where each belongs
 
-A state machine buys branching and cycles. Neither is present:
+The instinct that this wants a state machine is worth taking seriously, so this section separates three
+things that all get called branching and shows which mechanism each needs. The conclusion is not "a plan
+is enough because the worker is simple" — it is that **every divergence found in this codebase resolves
+before the first step runs**, which is a different and stronger claim.
 
-- "skip download when the source is local" → a per-step guard, not a branch
-- "which separator engine" → a strategy pick before the plan runs
-- "word timing failed, degrade to line" → a return value inside one step
-- retries → the core's job ledger
+#### (a) Conditional skip — a step does not apply
 
-**Upgrade trigger, recorded so the decision stays deliberate:** the first time a step's *successor*
-depends on its outcome — e.g. "if LRCLIB was unreachable, branch to a deferred-retry path instead of
-continuing" — a plan becomes a graph and this decision should be revisited. Until then a state machine
-is machinery to maintain and never use, and it makes the plan unreadable as a list.
+"Skip the download when the source is declared local." "Skip the caption fetch when there is no upload
+to ask." Handled by `Step.applies(ctx)`. Not a branch: the sequence is unchanged, one entry is inert.
+Today these are `if` statements buried mid-method; as declared guards they appear in the generated doc
+and in the log.
+
+A **conditional write** is the same category. `ProbeSilence` withholding the vocals artifact, and
+`GradeAndSelect` publishing a baseline only when the winner is suspect, both change *what is in the
+context* — not *what runs next*.
+
+#### (b) Early termination — nothing left to do
+
+This exists today, and §4 under-specified it. `whisperx.py:451` yields
+`CompleteResult(media_uri="", artifacts={})` when no source produced any text: a genuine instrumental
+has no words, and the remaining four steps have nothing to operate on. It is the only early return in
+the worker.
+
+A linear plan needs exactly one extra concept for it, not a state machine:
+
+```python
+class Outcome(Enum):
+    CONTINUE = auto()   # proceed to the next step
+    STOP = auto()       # the job is done; complete with what the context holds
+
+@dataclass
+class StepResult:
+    outcome: Outcome = Outcome.CONTINUE
+    reason: str = ""    # appended to out.notes, so a STOP is never silent
+```
+
+`AcquireTexts` returns `STOP` with `reason="no text from any source (instrumental?)"`. The runner
+records it and completes. A short-circuit, not a transition table: there is one exit and it is always
+"finish".
+
+#### (c) Genuine divergence — a different sequence of work
+
+This is what a state machine is for, so the question is whether it occurs. Every candidate, including
+the ones on the roadmap:
+
+| candidate | resolves where | why not mid-plan |
+|---|---|---|
+| separator engine (demucs / roformer / ensemble) | job params, before step 1 | `EngineRouter` already resolves it; ensemble is fan-out inside one step |
+| `stems` vs `stems-upgrade` | core `followUps`, separate job | different action, own plan (§5) |
+| lead-vs-backing split (4 stems vs 2) | resolved engine, before step 1 | selects a different publish step, known up front |
+| scoring Tier 1 vs Tier 2 (if revived) | room setting, before step 1 | selects a different analysis step |
+| silent stem → retry with another engine | **core**, as a new job | see below |
+| `Requested format is not available` → relax the selector | **core**, as a retry | see below |
+| LRCLIB became reachable → re-align | **core**, `followUps` / backfill | already a separate job |
+
+The first four are **plan selection**, not branching: the answer is known from job params, settings or
+the resolved engine before any step executes. So the amendment to §4.3 is that the runner asks for a
+plan rather than indexing a table:
+
+```python
+def plan_for(job: JobSpec, engines: ResolvedEngines) -> Plan:
+    """Divergence lives HERE — computed once, before execution, from inputs already known."""
+```
+
+**Static plan execution, dynamic plan selection.** That covers every divergence found without a single
+mid-plan branch, and it keeps a plan scannable top-to-bottom — which is most of why a list beats a
+transition table for reading.
+
+The last three are retry loops, and they belong to the core for a specific reason: **the core owns the
+job ledger and the per-attempt audit.** B-10 added an append-only `job_attempts` table, and
+`/metrics/<mediaId>` shows every cook, every retry, which model ran it and why it failed. A
+worker-internal retry loop would make one job row hide three attempts, so the audit page would report
+one failed cook where three engines were actually tried. The retry is not merely easier core-side, it is
+*only correct* core-side.
+
+#### Why not a state machine, stated as a cost
+
+A transition table buys arbitrary branching and cycles. Against that: a plan stops being readable as a
+list, `validate_plan` must walk every path instead of one sequence, and the generated doc becomes a
+graph rather than a table. Those costs are worth paying when divergence is real. On the evidence above
+it is not — and paying them speculatively is how a mechanism gets built, goes unused, and is eventually
+bypassed, which §1.2 shows is this codebase's characteristic failure mode.
+
+#### Making the decision genuinely deferrable
+
+Rather than argue it closed, the runner's iteration goes through one seam:
+
+```python
+class Plan(Protocol):
+    def first(self) -> Step | None: ...
+    def after(self, step: Step, result: StepResult, ctx: Ctx) -> Step | None: ...
+```
+
+`LinearPlan.after` is "the next entry, or None when the result said STOP". A future `GraphPlan`
+implements it as a transition table. **Steps, `Ctx`, the reads/writes declarations, all eight
+enforcement tests and the doc generator are identical either way** — only `after()` changes. The
+state-machine decision therefore costs one class to revisit, and can be made when there is a real branch
+to point at rather than an anticipated one.
+
+**Revisit trigger, written down so this stays deliberate:** the first divergence that *cannot* be
+resolved by `plan_for` before the first step runs — one where a step's outcome selects genuinely
+different downstream work within the same job, and moving it to the core would be wrong rather than
+merely inconvenient. `validate_plan` growing a special case is the smell that this has happened.
 
 ### 5.3 Rejected: a generic DAG engine with parallel steps
 
@@ -396,10 +518,23 @@ that would have caught all three instances in §1.2.
 **E4 — `STAGE_PLANS` is derived, not written.** `stages_for(action)` becomes
 `dedupe(s.stage for s in PLANS[action])`. The parallel table stops existing, so it cannot drift.
 
-**E5 — the doc is generated.** `python -m src.runtime.plans --doc` emits the step table and a Mermaid
-diagram per action; `docs/worker-pipeline.md` is the committed output and a test asserts the file
-matches regeneration. Given the `resolve_source_audio` docstring is currently false, hand-maintained
-architecture prose is a demonstrated liability here.
+**E5 — the doc is generated, and it lives where people already look.**
+`python -m src.runtime.plans --doc` emits the step table and a Mermaid diagram per action. The output is
+written **into `docs/ARCHITECTURE.md`** between markers:
+
+```markdown
+<!-- BEGIN generated:worker-pipeline -->
+...tables and diagrams...
+<!-- END generated:worker-pipeline -->
+```
+
+A test asserts the region matches regeneration, so the doc cannot drift. Writing into `ARCHITECTURE.md`
+rather than a new file keeps `docs/` root at exactly three files (the convention in
+`docs/specs/README.md`) and puts the pipeline where a reader is already looking, instead of in a
+reference file they have to be told about. Everything outside the markers stays hand-written.
+
+Given `fetch.py`'s docstring is currently false (§1.2), hand-maintained architecture prose about this
+worker is a demonstrated liability.
 
 **E6 — acquisition has one caller path.** Assert no module outside `acquisition/` imports
 `job_fetcher` or `local_source_path`. Directly closes §1.2's first instance.
@@ -428,16 +563,19 @@ domain so review is mechanical.
 **S1 — dissolve `whisperx.py`.** Extract `lyrics/artifact.py`, `lyrics/sources/asr.py`,
 `lyrics/timing/aligner.py`. What remains is the orchestration, temporarily still a processor.
 
-**S2 — runtime, align only.** Add `Ctx`, `Step`, `PlanRunner`, `PLANS[ALIGN]`, and E1/E2. Port the
-257-line method into eight steps. `RoutingProcessor` already tolerates mixed processor styles, so
-demucs/roformer/fetch keep working untouched. **This stage also fixes the concurrency bug** by moving
-engine resolution onto `Ctx`.
+**S2 — runtime, align only.** Add `Ctx`, `Step`, `StepResult`, `LinearPlan`, `plan_for`, `PlanRunner`,
+`PLANS[ALIGN]`, and E1/E2. Port the 257-line method into eight steps, including the `STOP` path that is
+currently the early return at `whisperx.py:451`. `RoutingProcessor` already tolerates mixed processor
+styles, so demucs/roformer/fetch keep working untouched. **This stage also fixes the concurrency bug** by
+moving engine resolution onto `Ctx`.
 
-**S3 — port stems, stems-upgrade, fetch.** Delete the duplicated `_run_stage`; `roformer.py` stops
-importing `demucs`; acquisition gets one path. Add E3 and E6.
+**S3 — port stems, stems-upgrade, fetch.** Both separation plans, `ProbeSilence` and `KeyAndRange` as
+steps, `analysis/` split out of `separation/`. Delete the duplicated `_run_stage`; `roformer.py` stops
+importing `demucs`; acquisition gets one path. Add E3, E6 and E8.
 
-**S4 — derive and generate.** E4 and E5: `STAGE_PLANS` from `PLANS`, `docs/worker-pipeline.md`
-generated, per-step timing into `facts` so `/metrics` gains real resolution.
+**S4 — derive and generate.** E4 and E5: `STAGE_PLANS` derived from `PLANS`, the generated region
+written into `docs/ARCHITECTURE.md` with a freshness test, per-step timing into `facts` so `/metrics`
+gains real resolution.
 
 **S5 — layering guard.** Add E7, fix whatever it catches.
 
@@ -454,13 +592,19 @@ stage that changes behaviour and could ship separately or not at all.
 |---|---|---|---|
 | Levels of pipeline | one, flat, per action | nested cook→step→substep | the cook level is core-side and already built; nesting would duplicate the job ledger |
 | Fan-out (sources, engines) | registry + fold | sub-pipeline | the members have no ordering relationship; a nested plan invites invented semantics |
-| Control flow | linear list + per-step guard | state machine | no cycles and no real branch points; §5.2 records the upgrade trigger |
+| Divergence | **plan selection** via `plan_for`, before step 1 | mid-plan branching | every candidate found resolves from params/settings/engine up front (§5.2c) |
+| Early termination | `StepResult(STOP, reason)` | an exception, or `applies` on four later steps | one real case exists (`whisperx.py:451`); a reason string keeps it out of the silent-failure class |
+| Retry loops | the **core's** job ledger | a loop inside the worker | `job_attempts` + `/metrics/<mediaId>` audit every attempt; an internal loop would report 1 attempt where 3 ran |
+| Control flow | linear, behind a `Plan.after()` seam | a transition table now | no divergence to point at; the seam makes it one class to revisit (§5.2) |
 | Execution | sequential | DAG with parallel steps | concurrency is per-job; steps are genuinely sequential |
+| `stems-upgrade` | its own plan | `STEMS` with a swapped publish step | the difference is the publish rule itself; sharing hides it in a conditional |
+| `ProbeSilence` | its own step | inside `Separate` | measurable in `/metrics`, visible skip, testable with no ffmpeg |
+| Song profile | own `analysis/` domain + `KeyAndRange` step | inside `separation/` | key detection and vocal range are analysis, not separation; today called from two engines inline |
 | Context | typed dataclass, namespaced | `dict[str, Any]` | the typing is what makes reads/writes checkable; a dict makes the idea decoration |
 | Step unit | class with `__init__` params | plain function | one class fills two plan slots (`FetchCaptions(kind)`) |
 | Step reuse | helpers + composition | a `BaseFetchStep` hierarchy | shallow-ABC-only; an inheritance tree among steps is how this becomes unreadable |
 | Seams | `Protocol` (structural) | ABCs everywhere | matches the existing style (`Transcriber`, `Aligner`, `LyricsSource`) |
-| Docs | generated + freshness test | hand-written prose | the `resolve_source_audio` docstring is currently false |
+| Generated doc | a marked region inside `ARCHITECTURE.md` | a new `docs/` root file, or `docs/reference/` | keeps the root at three files and puts it where readers already are |
 
 ---
 
@@ -487,18 +631,21 @@ If a step wants to change what the cook does, that is a different spec.
 
 ## 11. Open questions
 
-1. **Does `stems-upgrade` deserve its own plan, or is it `STEMS` plus a different publish step?** As
-   drafted it is the latter with one step swapped. If a real difference emerges, splitting is cheap.
-2. **Should `ProbeSilence` be a step or stay inside `Separate`?** As a step it is independently
-   testable and its skip is visible in the log; inside `Separate` it is closer to the encoder that
-   produced the file. Leaning step.
-3. **Does `vocal_range.py` belong under `separation/` or its own `analysis/` domain?** It carries key
-   detection, chroma and the pure-numpy pitch tracker, and it runs inside the stems job's third stage
-   rather than as a step of its own. Leaning `analysis/` with `KeyAndRange()` as an explicit step in
-   `PLANS[STEMS]`, which would make its cost visible in `/metrics` for the first time.
-4. **Does the generated doc live at `docs/worker-pipeline.md` or under `docs/specs/`?** Convention
-   says `docs/` root holds three files, so it wants a subfolder — but it is reference, not a spec.
-   Suggest `docs/reference/worker-pipeline.md` and a new `docs/reference/` folder.
+The four questions this spec opened were answered by the owner and are folded into §5, §7 and §9:
+`stems-upgrade` gets its own plan, `ProbeSilence` is a step, song-profile analysis gets its own
+`analysis/` domain, and the generated doc goes into `ARCHITECTURE.md` rather than a new root file.
+
+What remains genuinely open:
+
+1. **Should a silent stem fail the job so the core can retry on another engine?** Today it silently
+   omits the vocals artifact and the song stays playable with no guide — an honest outcome, but 2 of 9
+   stems in this library hit it, so 22% of songs have no guiding track and nothing says so. §5.2c argues
+   the retry belongs core-side; whether to *ask* for one is a product decision, not an architectural one.
+2. **Does `Annotate` want to be a step in `ALIGN` too?** It is `FETCH`-only today. A song whose metadata
+   improved after its fetch never re-annotates, which is one reason a lookup can miss on artist+track.
+3. **Does `plan_for` need settings, or only job params?** Params carry the engine and lyrics settings
+   the core already sends. If a future plan choice depends on something the core does not send, that is a
+   protocol change and should be treated as one.
 
 ---
 
