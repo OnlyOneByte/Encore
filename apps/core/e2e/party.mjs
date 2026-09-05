@@ -4,6 +4,14 @@
  *   bun run e2e/party.mjs            # discovers a Chromium and starts one
  *   EPORT=3000 bun run e2e/party.mjs # against an already-running server
  *
+ * The server it runs against must have an EMPTY room and a ROUTABLE advertised join address — the
+ * attract screen the first three checks measure exists only under both. A loopback origin makes the TV
+ * show its "Join QR unavailable" alert instead, which is correct but renders none of the type this
+ * flow reads, so start the server with one:
+ *
+ *   ENCORE_EPHEMERAL=1 HOST=127.0.0.1 PORT=5181 MEDIA_DIR=<seeded> \
+ *     ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:5181 bun run server.ts
+ *
  * WHAT CHANGED AND WHY. The previous version of this file rotted silently. It clicked a `Library` tab
  * that was deleted when search was unified around readiness, picked a colour by an aria-label of
  * `color #ff5cae` after the real label became `violet swatch`, and read rows from `.result` after the
@@ -31,6 +39,12 @@ import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9333);
+/*
+ * How long to let the TV's `hello`→`queue:sync` round trip land after the socket opens, before trusting
+ * what the screen says about the room. See the precondition block below for why the first render is not
+ * an answer to "is the room empty".
+ */
+const SYNC_SETTLE_MS = Number(process.env.SYNC_SETTLE_MS ?? 800);
 
 const checks = [];
 function check(name, ok, detail = '') {
@@ -83,45 +97,117 @@ try {
 	browser = await connect(CDP_PORT);
 
 	// ── the TV, BEFORE anyone joins ───────────────────────────────────────────
-	// Order matters. `.url` and the attract layout only exist while the room is EMPTY, so asserting them
-	// after two guests join reads the lobby instead, finds nothing, and reports 0px — which is exactly
-	// what the first run of this rewrite did. The stage scale and safe area are stage 3's whole point, so
-	// they are asserted on the RENDERED result: a token can be declared correctly and still not reach
-	// the element it was meant for.
+	// Order matters. The attract layout only exists while the room is EMPTY, so asserting on it after two
+	// guests join reads the lobby instead, finds nothing, and reports 0px — which is exactly what the
+	// first run of this rewrite did. The stage scale and safe area are stage 3's whole point, so they are
+	// asserted on the RENDERED result: a token can be declared correctly and still not reach the element
+	// it was meant for.
 	const tv = await browser.newPage();
 	await tv.goto(`${base}/tv`);
 
 	/*
-	 * This flow needs an EMPTY room, and says so rather than failing misleadingly.
+	 * TWO preconditions, reported SEPARATELY, because conflating them is what broke this flow.
 	 *
-	 * The attract screen — and `.url` with it — only exists while nobody has joined. An earlier version
-	 * asserted on it unconditionally and passed on a fresh server, then reported "the join URL is 0px" on
-	 * the second run against the same one, because its own guests from the first run were still in the
-	 * room. The server is ephemeral but it is not per-run. A false failure that looks like a real
-	 * regression is worse than no test, so this exits as an environment problem, the same way a missing
-	 * Chromium does.
+	 * (1) The room must be EMPTY. The attract screen only renders before anyone joins, and the server is
+	 *     ephemeral but not per-run, so a previous run's guests are still in it.
+	 *
+	 * (2) The advertised join address must be ROUTABLE. When it is loopback or a bare hostname the TV
+	 *     deliberately replaces the QR block — and `.idle-url`/`.idle-head` with it — with a `.badqr`
+	 *     alert, because a QR pointing at an unreachable address is a working-looking dead end. That is
+	 *     correct behaviour, and it is also the default when you start the server on 127.0.0.1, so the
+	 *     flow has to make it an explicit environment requirement instead of measuring 0px and calling
+	 *     the type illegible. It cannot fix this itself: `PUT /api/settings` requires a joined singer,
+	 *     and joining is precisely what destroys precondition (1).
+	 *
+	 * The previous version gated on `.url` for (1) and had no notion of (2) at all. `.url` is the
+	 * LOBBY's typed address (TvLobby.svelte) — it appears only once somebody HAS joined — so the gate
+	 * was inverted: it could never pass on the fresh empty room it demanded, and its message told the
+	 * operator to restart the server, which produces the state it was already in. Distinguishing the two
+	 * is the difference between an actionable message and a false regression report.
+	 *
+	 * AND THE FIRST RENDER CANNOT BE TRUSTED FOR (1). `online`/`away` start empty on the client and are
+	 * filled only by the socket's `queue:sync`, so the server renders the ATTRACT screen for every room
+	 * — verified by fetching /tv on a server holding a leftover guest: the document contains `attract`,
+	 * `idle-url` and "Nobody here yet", and no `.lobby` at all. Only the sync corrects it. Reading
+	 * `.attract` straight after load therefore answers "has the socket synced yet", not "is the room
+	 * empty", and on a leftover-guest server it can pass and then have `.idle-url` unmount mid-flight —
+	 * reporting `computed 0px`, which is the ORIGINAL false-failure symptom wearing a different hat. So
+	 * wait for the socket, let the sync land, and re-check the screen at the moment of measurement.
 	 */
-	const fresh = await tv.waitFor(`document.querySelector('.url') !== null`, { timeout: 4000 }).catch(() => false);
-	if (!fresh) {
+	const socketUp = await tv
+		.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 8000 })
+		.catch(() => false);
+	if (!socketUp) {
+		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
+		browser.close();
+		proc.kill();
+		process.exit(2);
+	}
+	// `connected` flips on `onopen`, and the roster arrives one `hello`→`queue:sync` round trip later, so
+	// the socket being up is necessary and not sufficient. This settle covers that round trip; it is
+	// deliberately generous against a loopback RTT of single-digit ms because the alternative is a
+	// flake that reads as a product defect.
+	await sleep(SYNC_SETTLE_MS);
+
+	const onAttract = await tv
+		.waitFor(`document.querySelector(${JSON.stringify(SEL.attract)}) !== null`, { timeout: 4000 })
+		.catch(() => false);
+	if (!onAttract) {
 		console.error(
 			'\nThis flow needs an empty room — the attract screen only renders before anyone joins,\n' +
 				'and a previous run leaves its guests behind. Restart the server and re-run:\n' +
-				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> bun run start`
+				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start`
+		);
+		browser.close();
+		proc.kill();
+		process.exit(2);
+	}
+	const unreachableOrigin = (await tv.count(SEL.badQr)) > 0;
+	if (unreachableOrigin) {
+		console.error(
+			'\nThe TV is advertising a join address phones cannot reach, so it is showing the\n' +
+				'"Join QR unavailable" alert instead of the QR — correct behaviour, but it means the attract\n' +
+				'screen renders no join address or headline for this flow to measure. Give the server a\n' +
+				'routable origin and re-run:\n' +
+				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start`
 		);
 		browser.close();
 		proc.kill();
 		process.exit(2);
 	}
 
-	const urlSize = parseFloat((await tv.css('.url', 'font-size')) ?? '0');
+	/*
+	 * All three measurements are taken FIRST, then the screen is re-checked ONCE, and only then are the
+	 * assertions run. The order is the point: a late `queue:sync` that swaps attract for the lobby must be
+	 * reported as the environment problem it is, for every value, rather than as illegible type. Reading
+	 * and asserting one value at a time delivered that guarantee for the join address and silently not for
+	 * the other two — and each fails differently on the lobby, which is what makes it a trap: `.idle-head`
+	 * unmounts (so `null` → 0px), while `.brand` still EXISTS on the lobby but in-flow, so its `left`
+	 * computes to `auto` → `NaN`, and `NaN >= 48` reads exactly like a real layout regression.
+	 */
+	const urlSize = parseFloat((await tv.css(SEL.joinAddress, 'font-size')) ?? '0');
+	const headlineSize = parseFloat((await tv.css(SEL.stageHeadline, 'font-size')) ?? '0');
+	const brandLeft = parseFloat((await tv.css(SEL.stageBrand, 'left')) ?? '0');
+	if ((await tv.count(SEL.attract)) === 0) {
+		console.error(
+			'\nThe TV left the attract screen while this flow was measuring it, which means the room was\n' +
+				'not empty after all — a previous run\'s guests arrived over the socket. Restart the server\n' +
+				'and re-run.'
+		);
+		browser.close();
+		proc.kill();
+		process.exit(2);
+	}
 	check(
 		'the join URL is legible at ten feet',
 		urlSize >= 26,
 		`computed ${urlSize}px — the ten-foot floor is 26px, and this was 22.4px before`
 	);
-	const hintSize = parseFloat((await tv.css('.hint', 'font-size')) ?? '0');
-	check('stage hint text clears the ten-foot floor', hintSize >= 26, `computed ${hintSize}px`);
-	const brandLeft = parseFloat((await tv.css('.brand', 'left')) ?? '0');
+	// The attract screen's instruction ("Scan to join the party"). This used to read `.hint`, a class the
+	// TV does not render anywhere — it lives on the phone's queue sheet, the settings page and the charts
+	// — so the assertion measured nothing, defaulted to 0px, and would have failed the moment the flow
+	// got far enough to run it.
+	check('stage headline clears the ten-foot floor', headlineSize >= 26, `computed ${headlineSize}px`);
 	check(
 		'stage chrome sits inside the overscan-safe margin',
 		brandLeft >= 48,
@@ -203,16 +289,16 @@ try {
 		// server confirmation and the socket echo land on their own schedule.
 		await maya
 			.waitFor(
-				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length + document.querySelectorAll('.proc').length`,
+				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length + document.querySelectorAll(${JSON.stringify(SEL.processing)}).length`,
 				{ timeout: 10_000 }
 			)
 			.catch(() => 0);
 		const queued = await maya.count(SEL.queueRow);
-		const processing = await maya.count('.proc');
+		const processing = await maya.count(SEL.processing);
 		check(
 			'queueing puts the singer in the rotation',
 			queued + processing > 0,
-			`${queued} ${SEL.queueRow} + ${processing} cooking cards — a cooking song HOLDS its slot, which is why either counts`
+			`${queued} ${SEL.queueRow} (of which ${processing} cooking — ProcessingCard carries both classes) — a cooking song HOLDS its slot, which is why either counts`
 		);
 
 		// ── cross-client sync ───────────────────────────────────────────────
@@ -260,7 +346,7 @@ try {
 			 * outcome would freeze a wording bug in place. Flagged instead of encoded.
 			 */
 			const stale = await tv.count(SEL.lowerThird);
-			const explains = (await tv.text('body')).length > 20;
+			const explains = (await tv.text(SEL.pageBody)).length > 20;
 			check(
 				'with nothing playable, the TV explains itself instead of going blank',
 				stale === 0 && explains,
