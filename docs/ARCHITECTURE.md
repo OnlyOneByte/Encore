@@ -548,29 +548,33 @@ Both layers are authoritative server state. A write to either broadcasts `settin
 the combined payload, and `queue:sync` includes both for mid-party joiners — a client never merges
 two events to learn the effective state.
 
-### The third lifetime: an ephemeral per-song override (field retained, no writer)
+### The third lifetime: ephemeral per-song overrides
 
-`global` and `room` are both *persistent*. The TV stage background field, `PlaybackState.background`,
-was designed as a third lifetime that is neither: it overrode the room's choice for the **current song
-only**, with `null` — the resting value — meaning "defer to the room". The TV still resolves
-`playback.background ?? room.tvBackgroundStyle`.
+`global` and `room` are both *persistent*. Three fields on `PlaybackState` are a third lifetime that is
+neither — they override the room's choice for the **current song only**, with `null` (or `0` for
+`keyShift`) as the resting value meaning "defer to the room": `keyShift`, `background` and `guideLevel`.
 
-**No surface drives this field any more.** The phone now-playing drawer used to write it via a
-`player:command` (`{ cmd: 'background' }`), but the stage look is a room-wide decision, so that control
-was removed and the stage is now set **only in room settings**. The command handler, the wire message
-and the column are deliberately kept — removing them would force a `playback_state` schema migration
-for no user-visible gain — so with no writer the field simply stays `null` and the resolver above falls
-straight through to `room.tvBackgroundStyle`.
+- **`keyShift`** — ± semitone transpose for the current song, written by the `key` command handler in
+  `realtime/player.ts`, gated on the song's stems being ready (there is nothing to re-pitch before
+  separation) and clamped to ±`MAX_KEY_SHIFT`. Covered by `keyshift.test.ts`.
+- **`background`** — the TV stage look for the current song, written by the `background` command handler
+  (`realtime/player.ts`, `state.setPlayback({ background: cmd.style })`). The style is whitelisted
+  (`isTvBackgroundStyle`), with `null` accepted explicitly as "hand the song back to the room default"
+  and any other value ignored rather than rejected, because it is a cosmetic control and a malformed
+  frame must not tear down the socket. The TV resolves `playback.background ?? room.tvBackgroundStyle`.
+  Covered by the dedicated `background.test.ts` suite.
+- **`guideLevel`** — the per-song guiding-track (retained-vocals) level, written by the `guide` command
+  handler, gated on `hasGuidingTrack` (a song with no vocals stem has nothing to turn up) and clamped,
+  with `null` again meaning "defer to the room".
 
-The field still rides `playback:state` and is still cleared per song, which keeps the clearing
-mechanism below live for the fields that do have writers.
-
-**That clearing is the trap.** `PlaybackState` is a long-lived singleton — nothing rebuilds it per
-song — so every ephemeral field is cleared by being *named* at each of three `setPlayback` sites in
-`realtime/player.ts` (song advance, play-from-idle, `reconcileOnReady`). A field missed at any one of
-them silently leaks the previous singer's choice into the next turn, and the type checker cannot catch
-it. `keyShift` is the field that still carries a writer with this shape; `background` is named at the
-same sites and stays `null` because nothing sets it.
+Each field rides `playback:state`, and each is cleared per song. **That clearing is the trap.**
+`PlaybackState` is a long-lived singleton — nothing rebuilds it per song — so every ephemeral field is
+cleared by being *named* at each of three `setPlayback` sites in `realtime/player.ts` (song advance,
+play-from-idle, `reconcileOnReady`). A field missed at any one of them silently leaks the previous
+singer's choice into the next turn, and the type checker cannot catch it. All three fields are named at
+all three sites; the two nullable ones reset to `null` (INHERIT, the room default) rather than to a
+concrete value, so a room that wants a permanent faint guide does not lose it at every song boundary.
+Adding a new ephemeral field means editing all three sites.
 
 ### Quality ladder and upgrades
 

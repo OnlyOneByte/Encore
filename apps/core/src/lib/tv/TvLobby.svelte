@@ -12,6 +12,7 @@
 <script lang="ts">
 	import JoinBadge from './JoinBadge.svelte';
 	import type { RosterMember } from './screen';
+	import { cookStageLabel } from '$lib/cook-phrasing';
 
 	interface Props {
 		qrDataUrl: string;
@@ -40,11 +41,16 @@
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
 	const cooking = $derived(pendingCount > 0);
 
+	// The cook line comes from cook-phrasing — the ONE guest-facing cook vocabulary, shared with the
+	// phone — so the lobby and the phone say the same thing. The TV knows only a coarse "something is
+	// cooking" state, so it passes the least-committal in-flight value 'queued' (which resolves to
+	// "Making karaoke…") rather than naming a worker step it cannot know. The "· N in line" count is a
+	// lobby-only addition the phone has no equivalent for, so it stays here.
 	const headline = $derived(
 		cooking
 			? pendingCount === 1
-				? 'Making the karaoke…'
-				: `Making the karaoke · ${pendingCount} in line`
+				? cookStageLabel('queued')
+				: `${cookStageLabel('queued')} · ${pendingCount} in line`
 			: 'Waiting for someone to pick a song…'
 	);
 
@@ -53,10 +59,11 @@
 	const sub = $derived(
 		cooking
 			? // Do NOT tell them to pick a song here: they already did, and the honest answer is that the
-				// wait is the vocal separation, not them.
+				// wait is the karaoke being made, not them. "karaoke", not "the vocals"/"separation" — the
+				// guest word, matching cook-phrasing and the phone.
 				count > 0
-				? `${count} in the room · stripping the vocals, this takes a minute`
-				: 'Stripping the vocals — this takes a minute'
+				? `${count} in the room · making the karaoke, this takes a minute`
+				: 'Making the karaoke — this takes a minute'
 			: count > 0
 				? `${count} in the room · search on your phone and tap Turn`
 				: 'Scan to join, then search on your phone and tap Turn'
@@ -65,7 +72,7 @@
 
 <div class="lobby">
 	<div class="stack">
-		<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size={238} {unreachable} />
+		<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size="var(--tv-qr)" {unreachable} />
 		{#if !unreachable}
 			<div class="copy">
 				<h1>{headline}</h1>

@@ -85,13 +85,46 @@ export function synthesisHop(grainSize: number, overlap: number): number {
 }
 
 /**
- * The analysis hop: how far to advance the READ pointer per grain so that after resampling by
- * `ratio` the tempo is preserved. analysisHop = synthesisHop × ratio. Reading faster (ratio > 1,
- * pitch up) consumes more input per output grain, so more grains overlap onto the same output span —
- * which stretches time back to normal after the pitch has been raised.
+ * How far AHEAD of the grain's start the resampling read reaches, in input samples.
+ *
+ * This is the quantity the ring buffer and the read-pointer lag must both respect: a grain that starts
+ * at input position `p` reads `p + k × ratio` for k in [0, grainSize), so it needs input out to
+ * `p + grainSize × ratio` to exist before it can be laid down.
+ *
+ * It replaces an `analysisHop(hop, ratio) = hop × ratio` helper that was WRONG for this design, and
+ * whose formula was the shipped bug. `hop × ratio` is the correct analysis hop when resampling is a
+ * SEPARATE stage applied after time-stretching. Here the resample is fused into the grain read, so the
+ * grain itself already consumes `grainSize × ratio` input per `grainSize` output — scaling the hop by
+ * `ratio` as well applied the tempo correction TWICE, which is why the read pointer advanced `ratio`×
+ * faster than the write pointer and diverged without bound (silence going up, aliased noise going
+ * down). In this design the analysis hop simply EQUALS the synthesis hop; the pitch change lives
+ * entirely in the intra-grain stride.
  */
-export function analysisHop(synthesisHopSamples: number, ratio: number): number {
-	return synthesisHopSamples * ratio;
+export function grainLookahead(grainSize: number, ratio: number): number {
+	return Math.ceil(grainSize * ratio);
+}
+
+/**
+ * How far the SOLA alignment search may move the read point, in input samples.
+ *
+ * The search is what stops overlapping grains cancelling each other. Without it, at one output instant
+ * grain g and grain g+1 come from input positions `hop × (1 − ratio)` apart, so a steady tone can
+ * arrive in antiphase: measured output on a unit sine swung between 0.055 and 0.695 purely on
+ * frequency and ratio. `search` must cover one period of the lowest tone worth aligning — 256 samples
+ * reaches ~94 Hz at 48 kHz.
+ */
+export const ALIGN_SEARCH = 256;
+
+/**
+ * The steady-state lag to hold the read pointer behind the write pointer, in input samples.
+ *
+ * Enough for the grain's whole resampled span, the alignment search, and one hop of slack, so neither
+ * an ordinary block boundary nor the search itself ever reads past the newest input. This is the
+ * shifter's added latency: ~40 ms at 48 kHz for the largest shift the UI allows, inaudible under a
+ * live vocal.
+ */
+export function readLag(grainSize: number, synthesisHopSamples: number, ratio: number): number {
+	return grainLookahead(grainSize, ratio) + ALIGN_SEARCH + synthesisHopSamples;
 }
 
 /** Linear-interpolated sample read at a fractional index into `buf`; 0 outside the buffer. */
@@ -119,6 +152,22 @@ export const PITCH_WORKLET_SOURCE = /* js */ `
 const GRAIN = 1024;         // grain size in samples
 const OVERLAP = 4;          // 75% overlap -> windows^2 sum to a constant
 const SYNTH_HOP = GRAIN / OVERLAP;
+// The UI clamps the shift to +/-7 semitones, so the fastest read is 2^(7/12) ~= 1.4983. The history
+// ring is sized from that bound rather than a round number, so a future widening of the clamp trips
+// the assertion below instead of silently reading past the ring and aliasing.
+const MAX_RATIO = 1.5;
+// How far the SOLA alignment search may move the read point, and how many samples it correlates over.
+// SEARCH covers one period down to ~94 Hz at 48 kHz, which is the musically useful range for a backing
+// track; CORR_LEN is the overlap region the new grain must agree with. The search runs coarse (stride
+// CORR_STEP) then fine around the winner, so it costs ~80 candidate offsets instead of 2*SEARCH+1.
+const SEARCH = 256;
+const CORR_LEN = 200;
+const CORR_STEP = 8;
+// Must hold the whole resampled span of a grain (GRAIN * MAX_RATIO), the alignment search range, the
+// lag we keep behind the write head, and a render block, with room to spare so a wrap never overwrites
+// a sample still to be read.
+const HIST = 4096;
+if (HIST < GRAIN * MAX_RATIO + SEARCH + 2 * SYNTH_HOP) throw new Error('pitch-shift: HIST too small');
 
 function hann(n) {
 	const w = new Float32Array(n);
@@ -135,7 +184,13 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 		this.chan = [];
 		this.port.onmessage = (e) => {
 			if (e.data && typeof e.data.ratio === 'number' && isFinite(e.data.ratio)) {
-				this.ratio = e.data.ratio <= 0 ? 1 : e.data.ratio;
+				const r = e.data.ratio <= 0 ? 1 : Math.min(e.data.ratio, MAX_RATIO);
+				if (r !== this.ratio) {
+					this.ratio = r;
+					// The required lag depends on the ratio, so a change invalidates the current anchor.
+					// Re-anchor on the next grain rather than reading past the write head for one grain.
+					for (let i = 0; i < this.chan.length; i++) this.chan[i].anchored = false;
+				}
 			}
 		};
 	}
@@ -143,12 +198,13 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 	ensure(ch) {
 		while (this.chan.length < ch) {
 			this.chan.push({
-				// input history ring, long enough to look back one full grain at the fastest read rate
-				hist: new Float32Array(GRAIN * 4),
-				histFill: 0,
-				readPos: 0,      // fractional read pointer into the continuous input timeline
+				hist: new Float32Array(HIST),
+				readPos: 0,      // fractional read pointer on the continuous input timeline
 				writePos: 0,     // absolute input samples written so far
-				// output accumulator + its normalisation (sum of squared windows) for the block edge
+				anchored: false, // has readPos been tied to writePos yet?
+				// output accumulator + its normalisation (sum of WINDOW, not WINDOW^2: with SOLA the grains
+				// reinforce, so dividing by sum(w) is unity gain. sum(w^2) is the incoherent-overlap form and
+				// over-shot by sum(w)/sum(w^2) = 2.0/1.5 = 1.33x, which would clip loud material.
 				outAcc: new Float32Array(GRAIN * 2),
 				outNorm: new Float32Array(GRAIN * 2),
 				outHead: 0,      // how many finished output samples are queued in outAcc
@@ -173,8 +229,7 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 
 			// Push this block's input into the history ring.
 			for (let i = 0; i < frames; i++) {
-				s.hist[s.histFill % s.hist.length] = inCh ? inCh[i] : 0;
-				s.histFill++;
+				s.hist[s.writePos % HIST] = inCh ? inCh[i] : 0;
 				s.writePos++;
 			}
 
@@ -183,27 +238,67 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 			if (this.ratio === 1) {
 				if (inCh) out.set(inCh);
 				else out.fill(0);
+				s.anchored = false; // a later shift must re-anchor rather than resume a stale pointer
 				continue;
 			}
 
-			// OLA synthesis for this output block.
+			// The lag the read pointer must keep behind the write head: the grain's whole resampled
+			// span, the alignment search range, plus one hop of slack.
+			const lookahead = Math.ceil(GRAIN * this.ratio);
+			const need = lookahead + SEARCH + SYNTH_HOP;
+
 			for (let i = 0; i < frames; i++) {
 				// Lay down a new grain every SYNTH_HOP output samples.
 				if (s.sinceGrain <= 0) {
-					const base = s.readPos;
+					// ANCHOR THE READ POINTER TO THE WRITE HEAD. readPos used to free-run at
+					// SYNTH_HOP * ratio per grain while writePos advanced SYNTH_HOP (output and input run
+					// 1:1 through this node), so the two diverged by |1 - ratio| * frameRate every second,
+					// without bound: reading up, every index landed past writePos and histSample returned
+					// 0 -> SILENCE; reading down, indices fell so far behind that absIdx % HIST wrapped
+					// onto unrelated recent audio -> ALIASED NOISE. Both got worse the longer a song ran.
+					//
+					// The pitch shift does NOT come from the hop: it comes from the intra-grain stride
+					// (k * ratio below). So the analysis hop equals the synthesis hop, and the pointer
+					// stays a fixed distance behind the newest input. The band keeps a normal block
+					// boundary from re-anchoring (which would break grain-to-grain continuity and click);
+					// it only snaps on startup, a ratio change, or after a dropped block.
+					const lag = s.writePos - s.readPos;
+					if (!s.anchored || lag < need || lag > need + GRAIN) {
+						s.readPos = s.writePos - need;
+						s.anchored = true;
+					}
+
+					// SOLA: pick the read offset whose content best CONTINUES what is already in the
+					// output accumulator. Fixing the pointer drift alone still left tonal material
+					// comb-filtering itself: at the same output instant, grain g and grain g+1 come from
+					// input positions SYNTH_HOP * (1 - ratio) apart, so for a steady tone they can arrive
+					// in antiphase and cancel. Measured on a 1-unit sine, output RMS swung between 0.055
+					// and 0.695 purely on frequency and ratio — some notes of a song would have nearly
+					// vanished while others played at full level, and which ones would change with the
+					// key. Correlating against the existing overlap and shifting the read by up to
+					// +/-SEARCH removes that: the grain is placed where it reinforces instead of cancels.
+					// Coarse-then-fine so the search costs ~80 offsets rather than 2*SEARCH+1.
+					let best = 0;
+					if (s.outHead > GRAIN) {
+						best = this.align(s, CORR_STEP);
+						best = this.align(s, 1, best);
+					}
+					const base = s.readPos + best;
+
 					for (let k = 0; k < GRAIN; k++) {
-						const rp = base + k * this.ratio;      // resample: read faster/slower by ratio
+						const rp = base + k * this.ratio;      // resample: this is where the pitch changes
 						const idx = Math.floor(rp);
 						const frac = rp - idx;
-						// Read from history relative to writePos; clamp to available samples.
 						const a = this.histSample(s, idx);
 						const b = this.histSample(s, idx + 1);
 						const v = (a * (1 - frac) + b * frac) * WINDOW[k];
 						const oi = (s.outHead + k) % s.outAcc.length;
 						s.outAcc[oi] += v;
-						s.outNorm[oi] += WINDOW[k] * WINDOW[k];
+						s.outNorm[oi] += WINDOW[k];
 					}
-					s.readPos += SYNTH_HOP * this.ratio;       // analysis hop = synth hop × ratio
+					// Advance from the CHOSEN base, so the alignment offset is absorbed rather than
+					// re-applied every grain; the anchor band above bounds the resulting drift.
+					s.readPos = base + SYNTH_HOP;              // analysis hop == synthesis hop
 					s.sinceGrain += SYNTH_HOP;
 				}
 				// Emit one normalised output sample.
@@ -219,11 +314,49 @@ class PitchShiftProcessor extends AudioWorkletProcessor {
 		return true;
 	}
 
-	// Read a sample from the input history by ABSOLUTE input index, mapped into the ring.
+	// Best read offset in [-SEARCH, +SEARCH] by normalised cross-correlation between what the candidate
+	// grain would contribute and what the output accumulator already holds over the overlap region.
+	// \`stride\` walks the candidates; \`around\` narrows a second pass to +/-stride*? of a coarse winner.
+	// Normalised (divided by the candidate's energy) so a loud candidate cannot win on level alone.
+	align(s, stride, around) {
+		const lo = around === undefined ? -SEARCH : Math.max(-SEARCH, around - CORR_STEP);
+		const hi = around === undefined ? SEARCH : Math.min(SEARCH, around + CORR_STEP);
+		let bestOff = around === undefined ? 0 : around;
+		let bestScore = -Infinity;
+		for (let off = lo; off <= hi; off += stride) {
+			let dot = 0;
+			let energy = 0;
+			for (let k = 0; k < CORR_LEN; k += 2) {   // every other sample: same winner, half the work
+				const oi = (s.outHead + k) % s.outAcc.length;
+				const n = s.outNorm[oi];
+				if (n <= 1e-6) continue;
+				const have = s.outAcc[oi] / n;
+				const rp = s.readPos + off + k * this.ratio;
+				const idx = Math.floor(rp);
+				const frac = rp - idx;
+				const cand =
+					this.histSample(s, idx) * (1 - frac) + this.histSample(s, idx + 1) * frac;
+				dot += have * cand;
+				energy += cand * cand;
+			}
+			const score = energy > 1e-9 ? dot / Math.sqrt(energy) : 0;
+			if (score > bestScore) {
+				bestScore = score;
+				bestOff = off;
+			}
+		}
+		return bestOff;
+	}
+
+	// Read a sample from the input history by ABSOLUTE input index, mapped into the ring. Out-of-range
+	// reads return 0 rather than a wrapped neighbour: a wrapped read is unrelated audio, which is the
+	// aliasing the old free-running pointer produced. With the anchor above these bounds are not
+	// reached in steady state; they remain as the startup and dropped-block guard.
 	histSample(s, absIdx) {
 		if (absIdx < 0) return 0;
 		if (absIdx >= s.writePos) return 0;
-		return s.hist[absIdx % s.hist.length];
+		if (absIdx < s.writePos - HIST) return 0;
+		return s.hist[absIdx % HIST];
 	}
 }
 

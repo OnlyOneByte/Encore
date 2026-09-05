@@ -188,7 +188,14 @@
 							nm.set(e.mediaId, {
 								...m,
 								stemStatus:
-									e.status === 'ready' ? 'ready' : e.status === 'failed' ? m.stemStatus : 'queued'
+									// A failed OR canceled cook settles back to un-cooked server-side (settleStemsGate),
+									// so the optimistic copy follows it. This used to preserve the mid-flight status,
+									// which is what kept the row reading as cooking after the job had already died.
+									e.status === 'ready'
+										? 'ready'
+										: e.status === 'failed' || e.status === 'canceled'
+											? 'none'
+											: 'queued'
 							});
 							mediaCatalog = nm;
 						}
@@ -301,7 +308,13 @@
 	 */
 	const cookingRows = $derived.by(() => {
 		const ids = new Set<string>();
-		for (const [id, s] of mediaStatus) if (s.status !== 'ready' && s.status !== 'failed') ids.add(id);
+		// `failed` is INCLUDED, deliberately. It used to be filtered out, which meant a dead cook lost
+		// its row entirely: the song settled back to un-cooked, dropped out of this group, and the
+		// singer's only trace of it was a four-second toast. This is the one group guaranteed to be
+		// visible regardless of the search box, so it is the only place a failure can reliably be seen —
+		// and the row carries its own red chip plus a Sing button to retry. `canceled` is NOT included:
+		// the guest removed that song on purpose and needs no report of their own action.
+		for (const [id, s] of mediaStatus) if (s.status !== 'ready' && s.status !== 'canceled') ids.add(id);
 		for (const [id, m] of mediaCatalog) if (readinessFor(m) === 'cooking') ids.add(id);
 		return [...ids]
 			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
@@ -482,6 +495,55 @@
 	const myPicks = $derived(queued.filter((e) => e.singerId === me?.id));
 	// the Ready chip's count reflects what that chip would actually show for the current query
 	const libraryCount = $derived(searchActive ? readyResults.length : library.length);
+
+	/*
+	 * Screen-reader announcements for the two changes that most often happen UNDER the user's hands and
+	 * are otherwise silent: another guest queueing a song, and a rotation reorder (both arrive as a
+	 * queue:patch, never a focus change, so a screen reader would say nothing). A single polite region
+	 * — never assertive: this is ambient party activity, not something the user must act on now.
+	 *
+	 * The guard against spam is the DIFF, not a timer: we announce only when the meaningful shape of
+	 * the queue changed relative to the last announced state. Position telemetry (~4×/sec) does not
+	 * change `queued`, so it produces no announcement. A NEW id from someone else = "X queued Y"; the
+	 * SAME id set in a DIFFERENT order = "Queue reordered". My own adds are silent (I just did it, and
+	 * they render optimistically this frame). The first population after load seeds the baseline
+	 * without announcing, so joining a busy room does not read the whole queue aloud.
+	 */
+	let liveMsg = $state('');
+	let announceReady = false; // suppress the initial sync; only later deltas are news
+	let lastQueueIds: string[] = [];
+	$effect(() => {
+		const ids = queued.map((e) => e.id);
+		const prev = lastQueueIds;
+		if (!announceReady) {
+			// baseline: remember what was already there so the first sync is not announced
+			lastQueueIds = ids;
+			announceReady = true;
+			return;
+		}
+		const prevSet = new Set(prev);
+		const added = queued.filter((e) => !prevSet.has(e.id));
+		if (added.length) {
+			// Announce only OTHERS' adds — mine are self-initiated and already visible. One line even if
+			// several landed at once (a resync catch-up), naming the count rather than reading each.
+			const mine = added.every((e) => e.singerId === me?.id);
+			if (!mine) {
+				const others = added.filter((e) => e.singerId !== me?.id);
+				if (others.length === 1) {
+					const e = others[0]!;
+					const who = singers.get(e.singerId)?.displayName ?? 'Someone';
+					liveMsg = `${who} queued ${mediaTitle(e.mediaId)}`;
+				} else {
+					liveMsg = `${others.length} songs added to the queue`;
+				}
+			}
+		} else if (ids.length === prev.length && ids.some((id, i) => id !== prev[i])) {
+			// same songs, new order → a rotation reorder moved things under the user
+			liveMsg = 'Queue reordered';
+		}
+		lastQueueIds = ids;
+	});
+
 	function myIdx(id: string): number {
 		return myPicks.findIndex((e) => e.id === id);
 	}
@@ -494,7 +556,7 @@
 	/** Live processing state for an entry's media, or null if it isn't cooking. */
 	function cooking(mediaId: string): { status: MediaStatus; pct: number; etaSec?: number } | null {
 		const s = mediaStatus.get(mediaId);
-		return s && s.status !== 'ready' && s.status !== 'failed' ? s : null;
+		return s && s.status !== 'ready' && s.status !== 'failed' && s.status !== 'canceled' ? s : null;
 	}
 	// The entry that will ACTUALLY play next (skipping any still cooking), matching the server's
 	// nextPlayable(). Pure + unit-tested in $lib/readiness.
@@ -631,7 +693,7 @@
 </script>
 
 <header class="topbar">
-	<div class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></div>
+	<h1 class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></h1>
 	<!--
 	  `connected` used to be assigned `true` once and never read or reset, so a phone whose socket had
 	  died looked identical to a live one while its taps piled up in the pending queue. The store keeps
@@ -742,11 +804,11 @@
 		{#if readyList.length}
 			{@const facetHead = browseFilter && !searchActive}
 			{#if showGroupHeads || facetHead}
-				<div class="grouphead ok">
+				<h2 class="grouphead ok">
 					{facetHead
 						? `${browseFilter?.artist ?? browseFilter?.genre} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
 						: 'Ready to sing · no wait'}
-				</div>
+				</h2>
 			{/if}
 			{#each readyList as m (m.id)}
 				<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
@@ -757,15 +819,27 @@
 	{#if showCooking && cookingRows.length}
 		<!-- Queue it anyway: rotation HOLDS a cooking song's slot, so it keeps its fair
 		     position and plays when the stems land. Cooking is not a blocked state. -->
-		{#if showGroupHeads}<div class="grouphead warn">Cooking · queue it anyway</div>{/if}
+		{#if showGroupHeads}
+			<!-- "Queue it anyway" is true of a cooking song — rotation HOLDS its slot, so it keeps its fair
+			     position and plays when the stems land. It is NOT true of a failed one, so the head stops
+			     saying it as soon as the group contains a dead cook rather than inviting a guest to queue
+			     a song that will never play. -->
+			<h2 class="grouphead warn">
+				{cookingRows.some((c) => liveOf(c.id)?.status === 'failed')
+					? 'Cooking · one didn’t work — tap Sing to try again'
+					: 'Cooking · queue it anyway'}
+			</h2>
+		{/if}
 		{#each cookingRows as c (c.id)}
+			{@const r = displayReadiness(c.media, liveOf(c.id))}
 			<SongRow
 				{...rowMeta(c.media)}
-				readiness="cooking"
+				readiness={r}
 				pct={c.pct}
 				etaSec={c.etaSec}
 				inQueue={inMyQueue(c.id)}
 				onadd={() => addSong(c.id)}
+				onmake={canCook(r) ? () => singThis(c.id) : undefined}
 			/>
 		{/each}
 	{/if}
@@ -784,7 +858,7 @@
 			{/if}
 			{@const rawRows = unaccounted(rawResults)}
 			{#if rawRows.length}
-				<div class="grouphead">Needs karaoke · has vocals</div>
+				<h2 class="grouphead">Needs karaoke · has vocals</h2>
 				{#each rawRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow
@@ -804,7 +878,7 @@
 			{@const popularRows = unaccounted(popular)}
 			{@const recentRows = unaccounted(recent)}
 			{#if popularRows.length}
-				<div class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</div>
+				<h2 class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</h2>
 				{#each popularRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow {...rowMeta(m)} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
@@ -813,7 +887,7 @@
 				{/each}
 			{/if}
 			{#if recentRows.length}
-				<div class="grouphead grouphead-mark"><Icon name="clock" /> Recently queued</div>
+				<h2 class="grouphead grouphead-mark"><Icon name="clock" /> Recently queued</h2>
 				{#each recentRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow {...rowMeta(m)} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
@@ -1002,7 +1076,7 @@
 		</div>
 	{/if}
 
-	<div class="grouphead">Up next · {orderLabel}</div>
+	<h2 class="grouphead">Up next · {orderLabel}</h2>
 	{#if queued.length === 0}
 		<p class="empty">Queue's empty — add a song to start the party.</p>
 	{:else}
@@ -1063,16 +1137,35 @@
 	<div class="error-toast" role="alert">{errorMsg}</div>
 {/if}
 
+<!--
+	Polite live region for ambient queue activity a screen reader would otherwise miss (a guest's add,
+	a rotation reorder). Visually hidden — it carries no visual design, so it changes no screenshot —
+	but present in the DOM from first render so the assistive tech is already observing it when the
+	first announcement lands. See the `liveMsg` effect for what is (and is not) announced.
+-->
+<div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
+
 <style>
 	/* the sheet's peek is docked, so the page must be able to scroll clear of it */
 	main { flex: 1; padding: 6px 18px calc(var(--peek-h) + 28px); }
+
+	/* Visually-hidden live region: announced by assistive tech, painted nowhere (so it is
+	   screenshot-neutral). The standard clip-rect idiom, not display:none — a display:none region is
+	   not announced by most screen readers. */
+	.sr-live {
+		position: absolute;
+		width: 1px; height: 1px;
+		margin: -1px; padding: 0; border: 0;
+		overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+		white-space: nowrap;
+	}
 
 	/*
 	 * The wordmark. The mic was 🎤 — a different drawing on every platform, and a tofu box on a browser
 	 * with no emoji font, which is not something a brand mark can be. The gradient stays on the TEXT
 	 * (background-clip), where it is the glyph fill against the page and carries no label of its own.
 	 */
-	.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.25rem; }
+	.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.25rem; margin: 0; line-height: inherit; }
 	.wordmark {
 		background: var(--grad);
 		-webkit-background-clip: text;
@@ -1303,8 +1396,14 @@
 		padding: 12px 16px; box-shadow: var(--shadow); font-size: 0.9rem; max-width: 90vw;
 	}
 	.undo-toast button {
+		/* The only interactive control on the phone that fell under the app's own 44px floor — and the
+		   one on a 5-second timer, so the hardest to hit in time. Raised to 44px via min-height (the
+		   row is align-items:center, so it grows to fit and nothing else shifts); the padding-only box
+		   it had (6px 12px) slipped past the generic touch-target guard, which only flags an explicit
+		   height. touch-targets.test.ts now covers padding-only controls too. */
+		display: inline-flex; align-items: center; justify-content: center; min-height: 44px;
 		border: 0; background: var(--accent-strong); color: var(--on-accent); font-weight: 700;
-		border-radius: 8px; padding: 6px 12px; cursor: pointer;
+		border-radius: 8px; padding: 6px 14px; cursor: pointer;
 	}
 	.error-toast {
 		/* Offset above the undo toast: both sat at the same bottom and z-index, so one drew over the

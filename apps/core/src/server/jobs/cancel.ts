@@ -12,8 +12,9 @@
 // purpose, because a cooked instrumental is a durable library asset anyone can reuse, whereas an
 // explicit remove is a person saying "stop this one now". Two different acts, kept different.
 
-import { isTerminalJob, type JobType, type QueueEntry, type WorkerCommand } from '@encore/shared';
+import { isTerminalJob, type JobType, type QueueEntry, type WorkerCommand, type ServerEvent, type Media } from '@encore/shared';
 import type { JobRepository } from './repository';
+import { settleStemsGate } from './make-karaoke';
 
 // The full pipeline. A cook can be live at ANY of these stages — `fetch` (downloading), `stems`
 // (separating), `align` (timing lyrics), or a background `stems-upgrade` — and a remove should stop
@@ -32,6 +33,20 @@ export interface CancelJobsDeps {
 	 */
 	remainingEntries: QueueEntry[];
 	now: () => number;
+	/**
+	 * The runtime catalog + room broadcast sink, so a cancel can un-strand the song the way a
+	 * terminal FAILURE already does. Optional so the pure job-ledger tests (and any caller that only
+	 * cares about the ledger) stay bare; server.ts wires both.
+	 *
+	 * WHY this exists: cancelling the JOB (below) is only half the story. `requestMakeKaraoke` set
+	 * `media.stemStatus = 'queued'` before the cook started, and nothing here reset it — so after the
+	 * row vanished the media still read as cooking on every surface FOREVER, and `cookState` answered
+	 * 'cooking' and refused a re-cook. That is the exact stranding `settleStemsGate` was added to fix
+	 * for the failure path; the cancel path had the identical hole. We reuse that helper and emit a
+	 * `media:status` so phones drop the stale "Making karaoke…" line.
+	 */
+	mediaById?: Map<string, Media>;
+	broadcast?: (event: ServerEvent) => void;
 }
 
 export interface CancelResult {
@@ -75,6 +90,26 @@ export function cancelJobsForMedia(mediaId: string, deps: CancelJobsDeps): Cance
 
 		deps.jobs.cancel(job.id, deps.now());
 		result.canceled.push(job.id);
+	}
+
+	// The job ledger is now clear, but the MEDIA still reads as cooking: requestMakeKaraoke flipped
+	// stemStatus to 'queued' before the cook, and the loop above never touched it. Settle it back to
+	// un-cooked (the same remedy the terminal-failure path uses) and tell the room, so the phone drops
+	// the stale progress line and the Sing button comes back. Only when we actually cancelled a cook:
+	// a no-op cancel (nothing live, or a shared cook that lived on via the edge-(a) return) must not
+	// walk an unrelated media's status, and settleStemsGate already refuses to touch a finished cook.
+	if (result.canceled.length > 0 && deps.mediaById) {
+		const settled = settleStemsGate(mediaId, deps.mediaById);
+		if (settled) {
+			// `MediaStatus` has a dedicated 'canceled' precisely so this is not a lie. The two statuses a
+			// client settles as terminal are 'ready' and 'failed'; every OTHER mid-flight value is written
+			// back as 'queued' by the phone and reads as cooking, i.e. it would re-strand the row we just
+			// freed. 'failed' would settle it correctly but makes the phone say "Couldn't make karaoke"
+			// to the guest who deliberately removed the song. 'canceled' settles the same way and says
+			// nothing. The removed row itself is already gone via queue:patch; this only tells a surface
+			// still keyed on the live-status map (a search row) to stop showing the song as cooking.
+			deps.broadcast?.({ type: 'media:status', mediaId, status: 'canceled', pct: 0 });
+		}
 	}
 
 	return result;

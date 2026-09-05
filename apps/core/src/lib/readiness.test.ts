@@ -57,12 +57,29 @@ test('a live media:status wins over the catalog copy (the row responds to the ta
 	expect(displayReadiness(fresh, { status: 'ready' })).toBe('ready');
 });
 
-test('a failed cook falls back to the catalog, so the song reads as still needing one', () => {
-	expect(displayReadiness(m(), { status: 'failed' })).toBe('unacquired');
+test('a failed cook READS as failed, so the singer learns the cook died', () => {
+	// This used to fall through to the catalog and report 'unacquired' — or, while stemStatus was still
+	// mid-flight, 'cooking', which is what made a dead cook read "Making karaoke… 0%" forever. The only
+	// failure signal was a four-second toast; look away and the information was gone for good.
+	expect(displayReadiness(m(), { status: 'failed' })).toBe('failed');
 });
 
-test('only an unacquired song can be cooked', () => {
+test('a failed cook on an already-singable song is not a failure the guest needs', () => {
+	// A dead lyrics upgrade on a cooked song: still fully singable, so reporting failure would be
+	// alarming and wrong. The gates decide singability, as everywhere else.
+	const cooked = m({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'ready'
+	});
+	expect(displayReadiness(cooked, { status: 'failed' })).toBe('ready');
+});
+
+test('an unacquired or FAILED song can be cooked; one in flight or done cannot', () => {
 	expect(canCook('unacquired')).toBe(true);
+	// The retry path. A failed cook settles back to un-cooked server-side, so offering Sing again is a
+	// real action rather than a button that answers "already cooked".
+	expect(canCook('failed')).toBe(true);
 	expect(canCook('ready')).toBe(false);
 	expect(canCook('cooking')).toBe(false);
 });
@@ -161,4 +178,29 @@ test('nothing playable → no up-next (the whole queue is cooking)', () => {
 	const byId = new Map([[cook.id, cook]]);
 	const queued = [entry('e1', 'cooking'), entry('e2', 'cooking')];
 	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBeNull();
+});
+
+// ── a cancel is not a failure ──────────────────────────────────────────────────────────────────
+// Removing a cooking song settles it back to un-cooked exactly like a terminal failure, so the two
+// need the SAME store effect and OPPOSITE copy. Reusing 'failed' for a cancel made the phone tell a
+// guest who deliberately removed a song "Couldn't make karaoke" — a lie about their own action.
+
+test('a canceled cook reads from the catalog, not as a failure', () => {
+	expect(displayReadiness(m(), { status: 'canceled' })).toBe('unacquired');
+	// The distinction that matters: same input shape, different verdict.
+	expect(displayReadiness(m(), { status: 'failed' })).toBe('failed');
+});
+
+test('a canceled cook offers Sing again rather than a failure chip', () => {
+	expect(canCook(displayReadiness(m(), { status: 'canceled' }))).toBe(true);
+});
+
+test('a canceled status leaves playability to the catalog, like failed', () => {
+	const cooked = m({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'ready'
+	});
+	expect(entryPlayable(cooked, { status: 'canceled' })).toBe(true);
+	expect(entryPlayable(m(), { status: 'canceled' })).toBe(false);
 });

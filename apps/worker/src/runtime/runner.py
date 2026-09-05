@@ -104,19 +104,34 @@ class PlanRunner:
     # ── the two things a step cannot do for itself ─────────────────────────────────
 
     async def run_stage(self, ctx: Ctx, stage: Any, argv: list[str], parse: Any) -> AsyncIterator[ProgressEvent]:
-        """Run a CLI, translating its output into progress for one stage.
+        """Deprecated shim: delegates to the module-level `run_stage`. Kept so an existing caller that
+        already holds a PlanRunner needs no change; a Step should call the free function instead, since
+        it is handed only a `ctx` and never the runner that drives it."""
+        async for ev in run_stage(self._runner, stage, argv, parse):
+            yield ev
 
-        Was duplicated in demucs.py and whisperx.py, with roformer.py importing demucs to borrow it.
-        """
-        yield ProgressEvent(stage=stage, pct=0)
-        last = -1
-        async for line in self._runner(argv):
-            pct = parse(line)
-            if pct is not None and pct != last:
-                last = pct
-                yield ProgressEvent(stage=stage, pct=pct)
-        if last < 100:
-            yield ProgressEvent(stage=stage, pct=100)
+
+async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> AsyncIterator[ProgressEvent]:
+    """Run a CLI, translating its output into progress for one stage.
+
+    A free function, not a PlanRunner method, because the only thing it needs is the runner callable —
+    and a `Step.run(ctx)` is handed `ctx` alone, never the PlanRunner driving it. As a method, the three
+    steps that wanted it had to construct a throwaway `PlanRunner(runner=ctx.runner)` to borrow it.
+
+    Was duplicated in demucs.py and whisperx.py, with roformer.py importing demucs to borrow it. The
+    S0-S6 refactor left this with no callers and the copies drifted apart again — one step emitted an
+    UNCONDITIONAL final 100, double-firing the stage's completion event. The `last < 100` guard below is
+    the behaviour that divergence lost.
+    """
+    yield ProgressEvent(stage=stage, pct=0)
+    last = -1
+    async for line in runner(argv):
+        pct = parse(line)
+        if pct is not None and pct != last:
+            last = pct
+            yield ProgressEvent(stage=stage, pct=pct)
+    if last < 100:
+        yield ProgressEvent(stage=stage, pct=100)
 
 
 async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIterator[tuple[str, Any]]:
@@ -135,14 +150,47 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
          slightly slower song fails permanently after minutes of CPU.
 
     Demucs never hit this because it is a subprocess awaited through asyncio; in-process ML is not.
+
+    ON UNWIND we do NOT abandon the thread. When the consuming job is cancelled (dial_home._on_cancel
+    calls task.cancel()), a GeneratorExit / CancelledError is thrown into the `yield` below and this
+    generator unwinds. Without the `finally` the `to_thread` future was simply dropped: the worker's
+    slot was freed by _run_job's finally while the native ML call kept running, so the box believed it
+    had a capacity it did not — a cancelled cook went on burning CPU/VRAM and a concurrency>1 worker
+    over-committed.
+
+    A thread executing native torch code CANNOT be forcibly killed — Python has no such primitive, and
+    cancelling the to_thread future does NOT stop the thread, it only detaches our handle so the work
+    keeps running unobserved (worse, not better). So the honest fix is not to pretend we killed it: we
+    AWAIT the still-running future on the way out, shielded from the very cancellation that is unwinding
+    us, so this generator does not finish until the thread genuinely has. The caller frees its slot only
+    when run_blocking returns, so the slot now stays held for exactly as long as real work is in flight.
+    The cost is that a cancelled ML cook does not free its slot instantly — it frees it when the current
+    pass ends — which is the truthful behaviour, not the lie that capacity is already back.
     """
     task = asyncio.ensure_future(asyncio.to_thread(fn))
-    while True:
-        done, _ = await asyncio.wait({task}, timeout=LEASE_KEEPALIVE_SEC)
-        if task in done:
-            yield ("result", task.result())  # raises here if fn raised — same as a direct call
-            return
-        yield ("progress", ProgressEvent(stage=stage, pct=pct))
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=LEASE_KEEPALIVE_SEC)
+            if task in done:
+                yield ("result", task.result())  # raises here if fn raised — same as a direct call
+                return
+            yield ("progress", ProgressEvent(stage=stage, pct=pct))
+    finally:
+        # Reached on the normal `return` (task already done — cheap no-op) and on the cancel/exception
+        # unwind (thread may still be running). Block until it truly finishes so the slot the caller is
+        # about to free is not still occupied by a live thread. shield() because the unwinding
+        # CancelledError would otherwise cut this await short and re-detach the thread we are waiting on.
+        if not task.done():
+            try:
+                await asyncio.shield(asyncio.wait({task}))
+            except asyncio.CancelledError:
+                # The unwinding cancellation reached us through the shield. The inner wait was still
+                # driven to completion, so by here the thread has finished and is no longer unaccounted.
+                pass
+        # Retrieve any exception the abandoned run raised so it is not reported as "exception never
+        # retrieved"; we are unwinding an already-decided outcome and its value is not wanted here.
+        if task.done() and not task.cancelled():
+            _ = task.exception()
 
 
 def scratch_for(job: JobSpec) -> str:

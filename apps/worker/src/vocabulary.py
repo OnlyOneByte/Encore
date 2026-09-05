@@ -105,6 +105,35 @@ class SyncMode(_StrEnum):
     LINES = "lines"
 
 
+class TextSource(_StrEnum):
+    """Where a lyrics candidate's TEXT came from. Mirrors LyricsTextSource in
+    packages/shared/src/lyrics.ts — that union is the authority; keep the two in step.
+
+    These were plain module string constants in lyrics/chain.py (SOURCE_LRCLIB and friends) guarded only
+    by a `# must match LyricsTextSource` comment, while the five sibling enums here got a real bilateral
+    parity check. Promoted so the same guard covers them: a value added or renamed on either side now
+    reds vocabulary-parity.test.ts instead of drifting silently. chain.py re-exports these under the old
+    SOURCE_* names, so its importers are unchanged.
+    """
+
+    LRCLIB = "lrclib"
+    CAPTIONS = "captions"
+    ASR = "asr"
+    MANUAL = "manual"
+
+
+class Timing(_StrEnum):
+    """Timing fidelity a lyrics source supplies UNAIDED. Mirrors LyricsTiming in the same TS module.
+
+    `line` is the floor (stanza scroll); `word` is the karaoke ideal; `none` needs the aligner. Promoted
+    from chain.py's TIMING_* constants for the same reason as TextSource — a comment cannot fail a build.
+    """
+
+    WORD = "word"
+    LINE = "line"
+    NONE = "none"
+
+
 class Backend(_StrEnum):
     """HOW an engine executes on this particular worker.
 

@@ -13,7 +13,12 @@ export type Readiness =
 	| 'unacquired'; // no instrumental yet, so nothing to play — a candidate to cook, not a song to sing
 
 export function readinessOf(m: Media): Readiness {
-	// Gate-driven, and MUST stay byte-identical to the client's copy (apps/core/src/lib/readiness.ts).
+	// Gate-driven, and this FUNCTION must agree with the client's copy (apps/core/src/lib/readiness.ts)
+	// for every catalog media — asserted by the parity test there. The client's Readiness union carries
+	// one extra member, 'failed', which is deliberately absent here: nothing in the catalog records a
+	// failure (a dead cook settles back to un-cooked via settleStemsGate), so 'failed' arrives only from
+	// a live media:status event and lives in the client's displayReadiness. Adding it here would create
+	// a value this function can never return.
 	// `isCooking` reads the cook gates rather than a single `stemStatus === 'queued'` check, so a song
 	// mid-align (stems ready, lyrics queued) reads as cooking instead of falling through to unacquired.
 	if (readyToSing(m)) return 'ready';

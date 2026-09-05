@@ -8,7 +8,9 @@ import {
 	needsShift,
 	hannWindow,
 	synthesisHop,
-	analysisHop,
+	grainLookahead,
+	readLag,
+	ALIGN_SEARCH,
 	sampleAt
 } from './pitch-shift';
 
@@ -81,12 +83,31 @@ test('synthesisHop: grain/overlap, floored, never below 1', () => {
 	expect(synthesisHop(2, 8)).toBe(1); // clamps up from 0
 });
 
-test('analysisHop: synth hop scaled by ratio (the time-stretch that cancels the resample)', () => {
-	// Pitch up (ratio > 1) reads MORE input per output grain -> more grains overlap onto the same span
-	// -> time is stretched back to normal after the pitch rose.
-	expect(analysisHop(256, 1)).toBe(256);
-	expect(analysisHop(256, 2)).toBe(512);
-	expect(analysisHop(256, 0.5)).toBe(128);
+test('grainLookahead / readLag: the read pointer must lag the write head, and by how much', () => {
+	// REPLACES a test that asserted `analysisHop(256, 2) === 512`. That formula WAS the shipped bug:
+	// it is the analysis hop for a design where resampling is a separate stage after time-stretching,
+	// but here the resample is fused into the grain read, so scaling the hop by ratio applied the tempo
+	// correction twice and the read pointer ran away from the write pointer without bound.
+	// A slow read needs LESS lookahead, not more: at ratio 0.5 a 1024-sample grain spans 512 input.
+	expect(grainLookahead(1024, 1)).toBe(1024);
+	expect(grainLookahead(1024, 2)).toBe(2048);
+	expect(grainLookahead(1024, 0.5)).toBe(512);
+	// The lag adds the alignment search and one hop, so neither a block edge nor the SOLA search can
+	// read past the newest input.
+	expect(readLag(1024, 256, 1)).toBe(1024 + ALIGN_SEARCH + 256);
+	expect(readLag(1024, 256, 1.5)).toBe(1536 + ALIGN_SEARCH + 256);
+});
+
+test('sampleAt: the LAST cell interpolates against nothing rather than reading past the end', () => {
+	// Mutation-proven gap: loosening the `i >= buf.length - 1` guard to `i >= buf.length` survived the
+	// whole suite, because the tests probed only far-out indices (-5, 99) and never the boundary. Past
+	// the last cell there is no neighbour to interpolate with, and reading one would be NaN.
+	const buf = new Float32Array([0, 1, 2, 3]);
+	expect(sampleAt(buf, 2.5)).toBeCloseTo(2.5, 6); // interpolates normally below the boundary
+	expect(sampleAt(buf, 3)).toBe(3); // exactly the last cell
+	expect(sampleAt(buf, 3.5)).toBe(3); // inside the last cell: clamp, never read buf[4]
+	expect(Number.isNaN(sampleAt(buf, 3.5))).toBe(false);
+	expect(Number.isNaN(sampleAt(buf, 3.999))).toBe(false);
 });
 
 test('sampleAt: linear interpolation between neighbours, clamped at the edges', () => {

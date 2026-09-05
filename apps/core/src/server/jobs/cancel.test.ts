@@ -12,7 +12,7 @@ import { handleQueueCommand, type HubDeps } from '../realtime/hub';
 import { AuthoritativeState } from '../state/store';
 import { WorkerHub } from './worker-hub';
 import { WorkerRegistry } from './registry';
-import type { WorkerCommand, QueueEntry, Media, ClientCommand } from '@encore/shared';
+import type { WorkerCommand, QueueEntry, Media, ClientCommand, ServerEvent } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 
@@ -22,16 +22,31 @@ function makeRepo() {
 	return new JobRepository(db);
 }
 
-/** A capturing toWorker sink + the deps the helper needs, with an empty post-remove queue by default. */
-function cancelDeps(jobs: JobRepository, remainingEntries: QueueEntry[] = []) {
+const cookingMedia = (id: string): Media => ({
+	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 100, stemStatus: 'queued'
+});
+
+/** A capturing toWorker sink + the deps the helper needs, with an empty post-remove queue by default.
+ *  Also wires a media catalog + a broadcast sink so the settle-and-notify half of a cancel can be
+ *  asserted; the mediaById defaults to one cooking entry for `m1`. */
+function cancelDeps(
+	jobs: JobRepository,
+	remainingEntries: QueueEntry[] = [],
+	mediaById: Map<string, Media> = new Map([['m1', cookingMedia('m1')]])
+) {
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
+	const broadcasts: ServerEvent[] = [];
 	return {
 		sent,
+		broadcasts,
+		mediaById,
 		deps: {
 			jobs,
 			toWorker: (workerId: string, cmd: WorkerCommand) => sent.push({ workerId, cmd }),
 			remainingEntries,
-			now: () => T0 + 1000
+			now: () => T0 + 1000,
+			mediaById,
+			broadcast: (e: ServerEvent) => broadcasts.push(e)
 		}
 	};
 }
@@ -133,6 +148,52 @@ test('no live cook for the media: a plain (never-cooked) remove is a harmless no
 	const { deps } = cancelDeps(jobs);
 	const res = cancelJobsForMedia('m-never-cooked', deps);
 	expect(res).toEqual({ canceled: [], notifiedWorkers: [] });
+});
+
+// ── FIX 1: a cancel must un-strand the MEDIA, not just clear the job ledger ───────────────────────
+// requestMakeKaraoke flips stemStatus to 'queued' BEFORE the cook. Cancelling the job left that flag
+// mid-flight, so the song read as cooking forever on every surface and cookState refused a re-cook —
+// the identical stranding settleStemsGate already fixes on the FAILURE path.
+
+test('cancelling a live cook settles the media back to un-cooked and broadcasts it', () => {
+	const jobs = makeRepo();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
+	jobs.accept(job.id, T0 + 30_000, T0 + 2); // running, cooking
+	const { deps, mediaById, broadcasts } = cancelDeps(jobs);
+	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // in flight before
+
+	cancelJobsForMedia('m1', deps);
+
+	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // settled → cookable + Sing button back
+	// The one signal the phone treats as "settle to un-cooked" is 'failed' (see cancel.ts) — every
+	// other value would be written back as mid-flight 'queued' and re-strand the row.
+	const statuses = broadcasts.filter((e) => e.type === 'media:status');
+	// 'canceled', not 'failed': it settles the row the same way but never makes the phone tell the
+	// guest who removed the song that the cook broke.
+	expect(statuses.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'canceled', pct: 0 });
+});
+
+test('a SHARED cook (edge a) neither settles the media nor broadcasts — another singer still wants it', () => {
+	const jobs = makeRepo();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
+	jobs.accept(job.id, T0 + 30_000, T0 + 2);
+	const survivor: QueueEntry = { id: 'q-other', mediaId: 'm1', singerId: 's2', status: 'queued', rotationSeq: 0, addedAt: T0 };
+	const { deps, mediaById, broadcasts } = cancelDeps(jobs, [survivor]);
+
+	cancelJobsForMedia('m1', deps);
+
+	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // the shared cook lives on, so does the flag
+	expect(broadcasts).toHaveLength(0);
+});
+
+test('a no-op cancel (nothing live) does not touch the media or broadcast', () => {
+	const jobs = makeRepo();
+	const { deps, mediaById, broadcasts } = cancelDeps(jobs);
+	cancelJobsForMedia('m1', deps); // no live job for m1
+	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // unchanged — we cancelled nothing
+	expect(broadcasts).toHaveLength(0);
 });
 
 // ── through the real remove path (handleQueueCommand), the way server.ts composes it ──────────────

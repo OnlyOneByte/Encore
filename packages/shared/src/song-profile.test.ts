@@ -270,6 +270,20 @@ describe('wire normalization', () => {
     expect(rangeBad.keyTonic).toBe(7);
   });
 
+  test('the key tonic is a pitch class: 0..11 accepted, either side rejected at the boundary', () => {
+    // The tonic is semitones above C, so 0 (C) and 11 (B) are the two ENDS of the valid set and 12 is
+    // the first invalid value — it would be C an octave up, which is pitch class 0, not a 13th class.
+    // Every existing key test probes 99 (absurd) or values well inside the range, so loosening the
+    // bound to `<= 12` survives them all. These four pin the edges so it cannot.
+    expect(normalizeSongProfile(profile({ keyTonic: 11 })).keyTonic).toBe(11); // B, the top class — valid
+    expect(normalizeSongProfile(profile({ keyTonic: 0 })).keyTonic).toBe(0); // C, the bottom class — valid
+    expect(normalizeSongProfile(profile({ keyTonic: 12 })).keyTonic).toBeNull(); // one past B — rejected
+    expect(normalizeSongProfile(profile({ keyTonic: -1 })).keyTonic).toBeNull(); // one below C — rejected
+    // A rejected tonic clears the whole key (mode too) rather than half-storing it.
+    expect(normalizeSongProfile(profile({ keyTonic: 12 })).keyMode).toBeNull();
+    expect(normalizeSongProfile(profile({ keyTonic: -1 })).keyMode).toBeNull();
+  });
+
   test('an out-of-order range is discarded whole rather than rendered backwards', () => {
     const inverted = normalizeSongProfile(profile({ p05Midi: 69, p95Midi: 50 }));
     expect(hasVocalRange(inverted)).toBe(false);
