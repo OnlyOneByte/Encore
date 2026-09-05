@@ -315,26 +315,38 @@ which is the argument for the "green suite is the floor, not the bar" rule in
         *Done-when:* for a title with both, the Opus stream is chosen. **AUTO** — pure ranking over
         recorded format lists; no network in the test.
 
-- [x] **B-3-C7 (part 2a) · captions tier + version selection.** Two changes that turned out to be one
-  feature. LRCLIB is now asked via `/api/search` (an ARRAY of records) instead of `/api/get` (one
-  record, duration-filtered ±2s), and the resulting pool is resolved against the ASR transcript. The
-  captions tier joins as a third text source, restricted to **uploader-authored** tracks — the argv
-  passes `--write-subs` and never `--write-auto-subs`, so an auto-generated (ASR) track cannot arrive
-  and be mistaken for authoritative text. Earlier probing found one library video with no captions and
-  one with only an automatic track, so treat this as an *occasional* tier — but when it fires it is the
-  only source that cannot be about a different recording, because it is attached to the exact upload.
+- [x] **B-3-C7 (part 2a) · two-tier lyrics selection.** Text sources now split by ROLE rather than by
+  quality. **Candidates** are authored claims about the song's words (LRCLIB records, uploader-authored
+  captions); **baselines** are evidence of what is actually audible (local transcription of the vocals
+  stem, local transcription of the raw mix, YouTube's automatic captions). Every candidate is scored
+  against every baseline that can speak and the unweighted **mean** picks the winner. With no candidate at
+  all, the tiering system shows the best baseline instead.
 
-  **Why selection, not a threshold.** Detection already existed and made things worse: an agreement
-  below `SUSPECT_AGREEMENT` demoted the lookup to `low`, dropping it beneath ASR — so a wrong-version
-  match was answered with Whisper's guess at sung words rather than with the correct record sitting one
-  row away. And the threshold cannot fire here at all: measured on the two-version fixture, the WRONG
-  version scores **0.548** against the vocals (the right one 0.938) — far above the 0.25 wrong-song
-  cutoff. Argmax needs no threshold, only a difference, which is why the fix is comparative. The
-  absolute check keeps its own job: judging whether the *winner* is trustworthy.
+  LRCLIB is asked via `/api/search` (an ARRAY of records) rather than `/api/get` (one record, filtered to
+  ±2s of the duration), because filtering the query is what picked a version by fiat.
 
-  Costs no extra alignment — the choice is made on text already in memory, so only the winner is
-  aligned. Depends on the ASR tier, hence on a vocals stem; a song aligned without one degrades to
-  duration-ranked selection.
+  **Why selection, not a threshold.** Detection already existed and made things worse: an agreement below
+  `SUSPECT_AGREEMENT` demoted the lookup, dropping it beneath the transcript — so a wrong-version match was
+  answered with Whisper's guess when the correct record sat one row away. And the threshold cannot fire on
+  this case at all: measured, the WRONG version scores **0.548** against the vocals and the right one
+  **0.938**, both far above the 0.25 cutoff. Argmax needs no threshold, only a difference. The threshold
+  keeps its own separate job — is even the winner about this song — and when it says no, the best baseline
+  is published alongside so the room gets words that ARE about this audio.
+
+  Three findings worth keeping. A baseline too thin to reach `MIN_TOKENS_TO_COMPARE` **abstains** rather
+  than voting, which is what makes including a weak one safe (auto-captions were absent or useless on 3 of
+  5 uploads probed). The **mix** baseline exists because separation fails — 2 of 9 stems on this library
+  were digital silence shipped as `ready` — and it is then the only evidence left. And machine-**translated**
+  caption tracks are refused outright, since a fluent wrong-language track would not abstain; it would vote
+  confidently against every correct candidate.
+
+  Also fixed a latent ranking defect the design depends on: a text identified as another song now ranks
+  below every honest guess (`lyricsRank` tier 1). Demoting confidence alone left it tied with the baseline
+  that convicted it, and the tie-break preferred it — a suspect candidate carries a numeric agreement, a
+  baseline carries none.
+
+  Costs two transcriptions instead of one (~+13s/song on `base`/CPU) plus two cheap caption metadata
+  fetches. Only what is published gets aligned, so the common run is still exactly one alignment.
 
 - [ ] **B-3-C7 (part 2b) · re-align on better text.** The backfill covers "no lyrics yet"; this covers
   "LRCLIB became reachable, or the text was corrected". *Done-when:* a song whose text improves gets

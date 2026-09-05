@@ -7,7 +7,7 @@ a lie and an ASR track can outrank a correct database lookup.
 """
 from __future__ import annotations
 
-from src.captions import caption_argv, find_caption_file, parse_vtt, read_captions
+from src.captions import caption_argv, find_caption_file, is_translated_track, parse_vtt, read_captions
 
 # A real-shaped WebVTT track: header, a NOTE block, cue identifiers, cue settings, inline markup,
 # an annotation-only cue, and a line held on screen across two cues.
@@ -39,24 +39,31 @@ You called, I can't hear a thing
 """
 
 
-def test_the_argv_never_requests_auto_generated_captions():
-    """THE GUARANTEE. `--write-subs` fetches only uploader-authored tracks; `--write-auto-subs` would
-    fetch YouTube's ASR, which is a guess at sung words made from the MIXED audio — strictly worse than
-    the local Whisper tier, which at least reads an isolated vocals stem.
+def test_the_two_caption_kinds_are_requested_SEPARATELY_never_together():
+    """THE GUARANTEE. One call fetches authored tracks, the other fetches YouTube's machine-generated
+    ones, and never both — because the two have opposite roles. An authored track is a CANDIDATE for the
+    song's words; a machine track is a BASELINE, evidence of what is audible, barred from being the answer
+    while a candidate is trustworthy.
 
-    Accepted as 'captions' it would be treated as authoritative and could outrank a correct lookup. The
-    refusal is structural precisely so no runtime check can be forgotten.
+    yt-dlp names both kinds identically, so requesting them together would leave "authored or machine-made"
+    to a filename heuristic. Getting that wrong would rank YouTube's ASR — made from the MIXED audio, so
+    worse than this worker's own transcription of an isolated vocals stem — as authoritative text able to
+    outrank a correct database lookup.
     """
-    argv = caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s")
-    assert "--write-subs" in argv
-    assert "--write-auto-subs" not in argv
-    assert not any("auto" in a for a in argv)
+    authored = caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s")
+    assert "--write-subs" in authored
+    assert "--write-auto-subs" not in authored
+
+    machine = caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s", auto=True)
+    assert "--write-auto-subs" in machine
+    assert "--write-subs" not in machine
 
 
 def test_the_argv_downloads_no_media():
     """This runs on every align job, including for a song whose audio is already on disk. It must be a
     metadata request, not a second download."""
-    assert "--skip-download" in caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s")
+    for auto in (False, True):
+        assert "--skip-download" in caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s", auto=auto)
 
 
 def test_cues_become_timed_segments():
@@ -141,3 +148,37 @@ def test_track_choice_is_deterministic_when_several_languages_land(tmp_path):
     (tmp_path / "captions.de.vtt").write_text(SAMPLE_VTT, encoding="utf-8")
     chosen = find_caption_file(str(tmp_path))
     assert chosen is not None and chosen.endswith("captions.en.vtt")
+
+
+# ── the translation trap ───────────────────────────────────────────────────────────────
+
+
+def test_a_MACHINE_TRANSLATED_track_is_recognised_as_such():
+    """YouTube offers machine translations of a caption track under the target language with a long opaque
+    suffix, alongside the original (plain, or explicitly '-orig'). Short region variants are NOT
+    translations."""
+    assert is_translated_track("captions.en-nP7Qs3xK9dQ.vtt")
+    assert not is_translated_track("captions.en.vtt")
+    assert not is_translated_track("captions.en-orig.vtt")
+    assert not is_translated_track("captions.en-GB.vtt")
+    assert not is_translated_track("captions.pt-BR.vtt")
+
+
+def test_a_translated_track_is_REFUSED_rather_than_ranked_last(tmp_path):
+    """Load-bearing for correctness, not tidiness.
+
+    A Spanish song's captions can be offered translated into English. As a baseline that text would be
+    fluent, long enough to clear MIN_TOKENS_TO_COMPARE, and about the right song in the WRONG language —
+    so it would not abstain, it would vote confidently against every correct candidate. Worse than having
+    no baseline at all. Ranking it last is not enough when it is the only file present.
+    """
+    (tmp_path / "captions.en-nP7Qs3xK9dQ.vtt").write_text(SAMPLE_VTT, encoding="utf-8")
+    assert find_caption_file(str(tmp_path)) is None
+    assert read_captions(str(tmp_path)) == []
+
+
+def test_the_original_language_track_wins_over_a_translation(tmp_path):
+    (tmp_path / "captions.en-nP7Qs3xK9dQ.vtt").write_text(SAMPLE_VTT, encoding="utf-8")
+    (tmp_path / "captions.es-orig.vtt").write_text(SAMPLE_VTT, encoding="utf-8")
+    chosen = find_caption_file(str(tmp_path))
+    assert chosen is not None and chosen.endswith("captions.es-orig.vtt")

@@ -578,37 +578,55 @@ known-good artifact.
 
 Lyrics separate **text acquisition** from **timing**:
 
-- Text sources: LRCLIB, captions, ASR, reserved manual tier.
-- **Captions are uploader-authored only.** The yt-dlp argv passes `--write-subs` and never
-  `--write-auto-subs`, so an automatic (ASR) track cannot arrive. The refusal is structural rather than
-  a filter: accepted as "captions", YouTube's ASR — made from the *mixed* audio, so worse than the
-  local tier, which reads an isolated vocals stem — would be treated as authoritative and could outrank
-  a correct lookup. Uniquely, captions are attached to the exact upload, so they cannot be about a
-  different recording of the song.
+- Text sources split by ROLE, not by quality. A **candidate** is authored text claiming to be the song's
+  words — trustworthy about words, untrustworthy about *which recording*, because a lyrics database holds
+  one record per release and they all match the same artist+track. A **baseline** is evidence of what is
+  actually audible in this audio: never authoritative, but about the right recording by construction,
+  which is the one property every authored source lacks.
+  - Candidates: LRCLIB records, uploader-authored captions, reserved manual tier.
+  - Baselines: local transcription of the vocals stem, local transcription of the raw mix, YouTube's
+    automatic captions.
+- **The mean of the baselines picks the winner.** Every candidate — and every alternate version of it — is
+  scored against every baseline that can speak, and the composite is the unweighted mean. One baseline is
+  a single opinion with its own blind spots; three with independent failure modes make a steadier ruler.
+  Weighting is deliberately absent: nobody has measured a per-baseline coefficient.
+- **Abstention, not zero, is what makes a weak baseline safe.** Agreement is `null` below
+  `MIN_TOKENS_TO_COMPARE`, so a baseline that transcribed to almost nothing simply does not vote. That
+  covers the two measured failures: a silent vocals stem (2 of 9 on this library shipped as `ready`), and
+  YouTube's automatic captions collapsing a song into `[Music]` markers (absent or useless on 3 of 5
+  uploads probed).
+- **Two local transcriptions, not one.** The stem gives better words when separation worked; the mix is
+  the only baseline that still speaks when it did not. Their errors are largely independent, which is what
+  makes averaging them worth the second pass.
+- **Machine-translated caption tracks are refused outright.** A Spanish song's captions can be offered
+  translated into English: as a baseline that text is fluent, long enough to clear the compare floor, and
+  about the right song in the wrong language — so it would not abstain, it would vote confidently against
+  every correct candidate. Ranking it last is not enough when it is the only track present.
+- **Automatic captions are a baseline and never a candidate.** As a source of record they are dangerous —
+  ASR wearing a caption's clothes, made from the mixed audio, worse than this worker's own transcription of
+  an isolated stem, and rankable as authoritative. As a baseline the same text is just a third opinion. The
+  two kinds arrive from separate yt-dlp fetches into separate directories, because yt-dlp names them
+  identically and a single directory would leave the distinction to a filename guess.
+- **Selection is comparative; the threshold is absolute; both run.** Argmax needs no threshold, which is
+  why it separates two versions that both score far above the wrong-song cutoff (measured: 0.548 for the
+  wrong version against 0.938 for the right one, cutoff 0.25). The threshold then answers a different
+  question — is even the winner about this song — and when it says no, the best baseline is published
+  alongside so the room gets words that ARE about this audio rather than only a warning on words that are
+  not.
 - Timing source: one WhisperX force-alignment layer for any text source.
 - ASR transcription yields segment/line bounds, **not word timings**; `align()` supplies words.
-- ASR always runs because it is both a fallback and a validation signal against confident wrong
-  lookups, and it identifies language.
-- **Which VERSION a source found is chosen against the ASR transcript.** A provider holds one record
-  per recording and they all match artist+track, so `/api/get` (a single duration-filtered record) picked
-  one by fiat — a song with a guest verse got whichever came back. LRCLIB is searched instead, the pool
-  is ranked cheaply (lyrics present, duration proximity, then artist-credit overlap), and the ASR
-  transcript decides among them.
-
-  The decision is **comparative, not thresholded**, and the two are complementary rather than
-  alternatives. Selection asks *which candidate agrees most* — no cutoff, which is the point: two
-  versions of one song share most of their words, and measured on the reference fixture the WRONG version
-  scores 0.548 against the vocals versus 0.938 for the right one, both far above the 0.25 wrong-song
-  threshold. The threshold then does its own separate job: judging whether the winner is trustworthy at
-  all, demoting it below ASR if not.
-
-  Costs no extra alignment — the choice is made on text already in memory, so only the winner is timed.
-  It depends on the ASR tier and therefore on a vocals stem, which is why `align` is chained *after*
-  `stems`; a song aligned without a stem falls back to duration-ranked selection.
+- Only what is PUBLISHED gets aligned. Grading five candidates against three baselines costs fifteen
+  token-set intersections and no alignment; a trustworthy winner publishes alone, so the common run costs
+  exactly one alignment.
 - Candidates are retained with source, timing fidelity, confidence, language and creation time;
-  `pickBestLyrics()` chooses without destroying upgrade paths. Agreement is published per candidate, so
-  an equal-rank tie between two sources also breaks toward the one matching the vocals.
-- Authoritative text + line timing ranks above ASR text + word timing: correct words with coarse
+  `pickBestLyrics()` chooses without destroying upgrade paths. The artifact key carries a **tag** as well
+  as source and timing, because a source is no longer one text — two baselines are both `asr` and two
+  caption tiers are both `captions`, and without it the second write of a pair destroys the first.
+- **A text identified as another song ranks below every honest guess** (`lyricsRank` tier 1). Demoting its
+  confidence alone left it tied with the baseline that convicted it, and the tie-break then preferred it,
+  because a suspect candidate carries a numeric agreement while a baseline carries none. Publishing the
+  baseline is only worth something because the suspect now loses to it.
+- Authoritative text + line timing still ranks above a baseline + word timing: correct words with coarse
   highlighting beat wrong words with polished animation.
 - Provenance is visible: auto-transcribed lyrics must not masquerade as authoritative.
 
