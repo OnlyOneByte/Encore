@@ -259,24 +259,35 @@ export const HOOKS: Hook[] = [
 	// per-song stage background hook removed: the stage look now lives only in room settings, so the
 	// phone route no longer renders a .bg-pick override control for the contract to anchor to.
 
-	// profile sheet (phone header → name / colour / leave)
+	// identity (phone header → /settings?tab=you → name / colour / leave)
+	//
+	// These three used to anchor into ProfileSheet.svelte. That sheet was retired when the settings page
+	// was split into You / Party / Server scopes: a name editable in two places is two save paths that
+	// can disagree, so the sheet's contents moved onto the You tab and the header button became a link
+	// to it. The hooks follow the controls.
 	{
 		id: 'profileOpen',
 		file: 'src/routes/+page.svelte',
 		anchor: 'aria-label="Your profile"',
-		why: 'the flow opens the profile sheet from the header me-button'
+		why: 'the flow reaches identity from the header me-button, which links to the settings You tab'
 	},
 	{
 		id: 'profileName',
-		file: 'src/lib/components/ProfileSheet.svelte',
+		file: 'src/routes/settings/+page.svelte',
 		anchor: 'id="profile-name"',
-		why: 'the flow edits the singer name in the profile sheet through this field'
+		why: 'the flow edits the singer name in the settings You tab through this field'
 	},
 	{
 		id: 'profileLeave',
-		file: 'src/lib/components/ProfileSheet.svelte',
+		file: 'src/routes/settings/+page.svelte',
 		anchor: 'Leave the room',
 		why: 'the flow reaches the destructive leave-the-room action by this label'
+	},
+	{
+		id: 'settingsScopes',
+		file: 'src/routes/settings/+page.svelte',
+		anchor: 'aria-label="Settings scope"',
+		why: 'the three scope tabs are how every other settings control is reached at all'
 	},
 
 	// away / presence indicator (queue row)

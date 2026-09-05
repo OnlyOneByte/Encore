@@ -118,6 +118,20 @@ async function setSetting(page, id, value, settleMs = 700) {
 }
 
 /*
+ * Select one of the settings page's three scopes, and WAIT for it rather than sleeping at it.
+ *
+ * Driven through the real tab (not by navigating to `?tab=`) so the control that gates every setting
+ * below is itself exercised on every run. The wait is on `aria-selected`, because that attribute is
+ * both the thing a screen reader reads and the thing that flips only once the panel has actually
+ * swapped — a fixed sleep here is how a frame ends up shot against the outgoing tab.
+ */
+async function scope(page, id) {
+	await page.click(`#tab-${id}`);
+	await page.waitFor(`document.querySelector('#tab-${id}')?.getAttribute('aria-selected') === 'true'`);
+	await sleep(350);
+}
+
+/*
  * Size the viewport to the page's own content, so a short page is not mostly empty background.
  *
  * The desktop pages (/stats, /metrics, the gallery) vary enormously in height with how much data the
@@ -392,15 +406,28 @@ try {
 	 * Reuse ADA's page rather than opening a new one. Every browser.newPage() is an isolated context
 	 * with its own cookie jar, so a fresh page has no session and /settings redirects it straight to
 	 * /join — which an earlier run captured and mislabelled as a settings screenshot.
+	 *
+	 * The page is three SCOPES now (You / Party / Server) and only one is rendered at a time, so a
+	 * control on an unselected tab is not in the DOM at all. Every frame and every flip below therefore
+	 * declares the scope that owns its control. This is the step that broke on the split: `sync-mode`
+	 * and `lyrics-ball` used to be flippable back to back, and now they live on different tabs.
 	 */
 	await ada.goto(`${base}/settings`);
 	await ada.waitFor(`location.pathname === '/settings'`);
 	await sleep(700);
-	await frame('settings-global', () =>
-		shoot(ada, 'settings-global', 'global vs room scope, stated rather than implied')
-	);
+
+	await frame('settings-you', async () => {
+		await scope(ada, 'you');
+		await shoot(ada, 'settings-you', 'who you are — the name and colour that used to live in a sheet');
+	});
+
+	await frame('settings-server', async () => {
+		await scope(ada, 'server');
+		await shoot(ada, 'settings-server', 'the deployment scope: splitter, lyrics engine, joining');
+	});
 
 	await frame('settings-room', async () => {
+		await scope(ada, 'party');
 		await ada.evaluate(
 			`document.querySelector(${JSON.stringify(SEL.setting('queue-order'))})?.scrollIntoView({ block: 'center' })`
 		);
@@ -409,6 +436,7 @@ try {
 	});
 
 	await frame('settings-lyrics', async () => {
+		await scope(ada, 'party');
 		await ada.evaluate(
 			`document.querySelector(${JSON.stringify(SEL.setting('lyrics-highlight'))})?.scrollIntoView({ block: 'center' })`
 		);
@@ -417,6 +445,8 @@ try {
 	});
 
 	await frame('settings-advanced', async () => {
+		// The one disclosure left, and it is on the server scope — the upgrade chain is a fleet property.
+		await scope(ada, 'server');
 		await ada.clickByText('Advanced');
 		await sleep(500);
 		await shoot(ada, 'settings-advanced', 'the advanced disclosure open — the progressive upgrade chain');
@@ -425,14 +455,19 @@ try {
 	/*
 	 * The clamp notice, which is the one settings warning worth a frame.
 	 *
-	 * Global timing decides whether per-word timings EXIST; the room only decides how they are drawn.
+	 * Server timing decides whether per-word timings EXIST; the room only decides how they are drawn.
 	 * So asking for a word-level marker while the deployment is on line-sync is a request the room
 	 * cannot honour — and rather than silently ignoring the picker, the page says which treatment it
-	 * substituted and which global setting to change to get the other one back. Without this frame that
+	 * substituted and which setting to change to get the other one back. Without this frame that
 	 * interaction is invisible until someone hits it and assumes their setting is broken.
+	 *
+	 * Two scopes, in order: the cause lives on Server, the effect is drawn on Party. That crossing is
+	 * the whole point of the notice, and it is why this frame switches tabs mid-way.
 	 */
 	await frame('settings-lyrics-clamped', async () => {
+		await scope(ada, 'server');
 		await setSetting(ada, 'sync-mode', 'lines');
+		await scope(ada, 'party');
 		await setSetting(ada, 'lyrics-highlight', 'word');
 		await setSetting(ada, 'lyrics-ball', 'bounce');
 		await ada.evaluate(
@@ -440,6 +475,7 @@ try {
 		);
 		await sleep(500);
 		await shoot(ada, 'settings-lyrics-clamped', 'a room asking for word timings a line-sync deployment cannot give');
+		await scope(ada, 'server');
 		await setSetting(ada, 'sync-mode', 'forced'); // put the deployment back
 	});
 
@@ -452,6 +488,8 @@ try {
 	 * the setting that fixes it, and that is the thing people need to recognise.
 	 */
 	await frame('tv-join-unreachable', async () => {
+		// The join address is a server-scope setting, so select that tab before reaching for the control.
+		await scope(ada, 'server');
 		// read the control's OWN value, not the TV's short display text, so the restore is exact
 		const was = await ada.evaluate(
 			`document.querySelector(${JSON.stringify(SEL.setting('join-origin'))})?.value ?? ''`

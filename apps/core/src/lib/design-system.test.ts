@@ -144,13 +144,13 @@ test('the colour picker has exactly one name per shared preset colour', () => {
 });
 
 test('every bottom-docked sheet caps its height in dvh, not vh', () => {
-	// `.sheet-surface` in app.css deliberately does NOT default a max-height, because the two sheets
-	// genuinely want different caps (88dvh modal, 82dvh dock) and a default neither uses is dead code
-	// pretending to be a policy. But the UNIT is not a preference: on iOS `vh` resolves to the LARGE
-	// viewport, so a sheet capped in vh overflows the visible area whenever the URL bar is showing and
-	// hides its own footer -- the Save button on one, the rotation's last row on the other. So the cap
-	// stays with each sheet and the unit is asserted here.
-	for (const f of ['lib/components/QueueSheet.svelte', 'lib/components/ProfileSheet.svelte']) {
+	// `.sheet-surface` in app.css deliberately does NOT default a max-height, because a sheet's cap is
+	// its own business. But the UNIT is not a preference: on iOS `vh` resolves to the LARGE viewport, so
+	// a sheet capped in vh overflows the visible area whenever the URL bar is showing and hides its own
+	// footer -- which was the rotation's last row here, and the Save button on the profile sheet before
+	// identity moved to /settings and that sheet was retired. The cap stays with each sheet and the unit
+	// is asserted here. One entry in this list today; it is a list because the next sheet must comply.
+	for (const f of ['lib/components/QueueSheet.svelte']) {
 		const src = stripComments(readFileSync(join(SRC, f), 'utf8'));
 		const caps = [...src.matchAll(/max-height:\s*([0-9.]+)(dvh|svh|vh)\b/g)];
 		expect(caps.length).toBeGreaterThan(0);
