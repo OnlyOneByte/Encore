@@ -148,3 +148,82 @@ describe('separators', () => {
 		expect(p.title).toBe('The Story of O.J.');
 	});
 });
+
+describe('a guest credit inside the TITLE belongs to the billing', () => {
+	// The live regression: this title cleans to one with no separator left in it (the trailing
+	// "| Worlds 2017 - League of Legends" tag is stripped), so the parser falls back to the uploader —
+	// which here is genuinely the credited artist. MusicBrainz calls the recording "Legends Never Die"
+	// and returns ZERO results for the name with "(ft. …)" still attached, so leaving the credit in the
+	// title is what made the annotation unreachable and left the raw upload string on the TV.
+	it('lifts "(ft. …)" out of the song name and into the credit', () => {
+		const p = parseTrackTitle(
+			'Legends Never Die (ft. Against The Current) [OFFICIAL AUDIO] | Worlds 2017 - League of Legends',
+			'League of Legends'
+		);
+		expect(p.title).toBe('Legends Never Die');
+		expect(p.artist).toBe('League of Legends');
+		expect(p.artistFull).toBe('League of Legends feat. Against The Current');
+		expect(p.by).toBe('uploader-fallback');
+	});
+
+	it('lifts it from a plain artist - title split too, leaving the primary alone', () => {
+		// Also a REVERSAL fix. Before the lift ran first, COLLAB_RE saw "feat" on the right side only and
+		// fired collab-marker-flip, so this stored artist "Telephone (" and title "Lady Gaga" — at
+		// `medium`, which is confident enough to become a browse heading.
+		const p = parseTrackTitle('Lady Gaga - Telephone (feat. Beyoncé)', 'LadyGagaVEVO');
+		expect(p.title).toBe('Telephone');
+		expect(p.artist).toBe('Lady Gaga');
+		expect(p.artistFull).toBe('Lady Gaga feat. Beyoncé');
+		expect(p.by).toBe('title-split');
+	});
+
+	it('lifts it from the ARTIST side too', () => {
+		const p = parseTrackTitle('Lady Gaga (feat. Beyoncé) - Telephone', 'LadyGagaVEVO');
+		expect(p.title).toBe('Telephone');
+		expect(p.artist).toBe('Lady Gaga');
+		expect(p.artistFull).toBe('Lady Gaga feat. Beyoncé');
+	});
+
+	it('still flips a BARE collaboration marker — that rule is untouched', () => {
+		// "Ain't No Mountain High Enough - Marvin Gaye x Tammi Terrell": the marker is unbracketed, so it
+		// really is the signal that the sides are reversed.
+		const p = parseTrackTitle("Ain't No Mountain High Enough - Marvin Gaye x Tammi Terrell", 'Musictainment TV');
+		expect(p.by).toBe('collab-marker-flip');
+		expect(p.artist).toBe('Marvin Gaye');
+		expect(p.title).toBe("Ain't No Mountain High Enough");
+	});
+
+	it('accepts [feat. …] and (featuring …) as the same thing', () => {
+		expect(parseTrackTitle('A - T [feat. B]', 'A').artistFull).toBe('A feat. B');
+		expect(parseTrackTitle('A - T (featuring B)', 'A').artistFull).toBe('A feat. B');
+	});
+
+	it('does NOT lift "(with …)" — "(with subtitles)" is not an artist', () => {
+		const p = parseTrackTitle('A - T (with subtitles)', 'A');
+		expect(p.artistFull).toBe('A');
+		expect(p.title).toBe('T (with subtitles)');
+	});
+
+	it('leaves a title that is ONLY a credit alone rather than emptying it', () => {
+		// An empty song name is worse than a noisy one: it would render as a blank lower third.
+		const p = parseTrackTitle('(feat. Someone)', 'Uploader');
+		expect(p.title).toBe('(feat. Someone)');
+		expect(p.artistFull).toBe('Uploader');
+	});
+
+	it('drops the guest when there is no artist to bill it to, rather than promoting it', () => {
+		// `unparsed` means we could not name the artist. A featured guest is still not the artist, so
+		// publishing it would be a known-wrong value — the bug this whole module exists to avoid.
+		const p = parseTrackTitle('Some Song (feat. Guest)', '7clouds');
+		expect(p.by).toBe('unparsed');
+		expect(p.artist).toBeNull();
+		expect(p.artistFull).toBeNull();
+		expect(p.title).toBe('Some Song');
+	});
+
+	it('does not disturb a recording qualifier that identifies a DIFFERENT take', () => {
+		// (Live), (Remix), (Instrumental) name another recording; dropping them would merge two songs.
+		expect(parseTrackTitle('A - T (Live)', 'A').title).toBe('T (Live)');
+		expect(parseTrackTitle('A - T (Instrumental)', 'A').title).toBe('T (Instrumental)');
+	});
+});
