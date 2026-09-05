@@ -512,6 +512,111 @@ Two ordering constraints that are not preference:
   Lowest severity of this group — it is cosmetic and self-corrects on unpause — but it is visible to
   the whole room during a pause, which is exactly when people are looking at the screen. **AUTO** —
   the purity property is testable without a browser; **EYES-ON** to confirm the pause/defocus cycle.
+
+- [ ] **T-21 · Repair the e2e harness — it is the loop's only pair of eyes, and it is blind** —
+  **do this before any other discovery work.** `bun run e2e/party.mjs` currently aborts at its FIRST
+  assertion against a freshly-started, genuinely empty server, and it misattributes the cause:
+
+  `party.mjs:104` decides the room is fresh with
+  `document.querySelector('.url') !== null`. That class **no longer exists** — `contract.ts:77`
+  records, in its own words, that `.url` rotted and was replaced, and a live `/tv` serves
+  `class="attract"` with no `.url` anywhere in the document. So the probe times out after 4s and the
+  script prints "This flow needs an empty room… restart the server", sending the reader after a
+  server that was already empty.
+
+  **The structural hole, which is the actual finding.** `contract.test.ts` guards selectors that come
+  *from* `contract.ts`, and 48 call sites correctly use `SEL.*`. Exactly **four** bypass it as
+  hardcoded literals, so the guard cannot see them and `bun test` stays green while the flow is dead:
+
+  | Site | Literal | State |
+  |---|---|---|
+  | `e2e/party.mjs:104` | `.url` | **rotted — breaks the run at step one** |
+  | `e2e/party.mjs:206` | `.proc` | unguarded |
+  | `e2e/capture.mjs:314` | `.qrow` | unguarded |
+  | `e2e/capture.mjs:319` | `.sheet` | unguarded |
+
+  This is the same failure the `party.mjs` header says was fixed structurally ("three selector
+  families had moved while `bun test` stayed green, because nothing in the suite ever looked at this
+  script"). It was fixed for the 48 and missed for the 4.
+
+  *Done-when:* all four literals are sourced from `contract.ts`; a guard fails on any selector literal
+  in `e2e/*.mjs` that does not come from the contract, **proven by planting one**; and
+  `bun run e2e/party.mjs` completes against a seeded ephemeral server. Also verify `e2e/seed-media.mjs`
+  against the server's index: seeding into `$MEDIA_DIR` and starting with that same `MEDIA_DIR` left
+  `/api/library` empty, so the seeder's write path and the demo-catalog filter may disagree — confirm
+  before assuming the seeder works. **AUTO** — the guard and the flow are both machine-checkable.
+
+- [ ] **T-22 · Rebase the lyrics text-size scale, and let it go much further** — today's **80%** should
+  become the new **100%**, and the range should allow a far bigger change than it does.
+
+  Today: `DEFAULT_LYRICS_SCALE_PCT = 100`, `MIN = 80`, `MAX = 160`
+  (`packages/shared/src/lyrics-engines.ts:420-422`), the Settings slider is bound to those constants at
+  `step="5"`, and it is applied as `--lyrics-scale: ${scalePct / 100}` at
+  `LyricsOverlay.svelte:211`. The value is a **percent of the TV's own distance-derived size**, not a
+  size — that framing is deliberate and should survive the change.
+
+  **Rebasing means folding 0.8 into the neutral point**, so the number shown reads `100` while
+  rendering what `80` renders today. Two consequences to decide out loud rather than discover:
+
+  - **Stored room values change meaning.** A room sitting at `120` renders `1.2×` today and `0.96×`
+    afterwards. Not a schema migration — the column keeps its type — but a *semantic* one. Either
+    leave the values (every room's lyrics get 20% smaller, which is presumably the intent) or rescale
+    them by `1.25` on read to preserve the rendered size. Pick one and say which.
+  - **"Massively" collides with a guard that already exists.** `LyricsOverlay.svelte:395` records that
+    at max `scalePct` with max `linesBefore + linesAfter`, the derived height can exceed what remains
+    inside the safe area. Scale and row count compete for a fixed height, so raising `MAX` a lot means
+    one of them has to yield: clamp rows down as scale rises (there is precedent — the lyrics
+    presentation resolver already clamps downward-only), or let the overlay shrink to fit and accept
+    that the setting becomes a *request*. The second makes the displayed number a lie, which this
+    repo's settings copy deliberately avoids elsewhere, so prefer the first.
+
+  **AUTO** — the clamp and the derived height are pure; **EYES-ON** at TV width and at the new extremes,
+  because the failure mode is text leaving the safe area.
+
+- [ ] **T-23 · Run every text tier through the length bounder; keep the semantic splitter for ASR and
+  captions only** — *the answer to "is candidate text going through `karaoke-lyrics-processor`?" is
+  **no**, and that is the likeliest cause of the long lines on screen.*
+
+  `apps/worker/src/lyrics/presplit.py:356` is:
+
+  ```python
+  t if is_authoritative_text(t.text_source, t.text_confidence)
+    else split_blob_text(t, max_chars=max_chars, bounder=bounder)
+  ```
+
+  The upstream bounder is reachable **only** through the `else` branch, so an authoritative tier —
+  LRCLIB `syncedLyrics` via `parse_lrc`, LRCLIB `plainLyrics` via `plain_lyrics_to_segments` — is
+  passed through with **no length bounding at all**. The only thing then catching an over-long
+  authoritative line is the display-time fallback `LINE_MAX_CHARS = 42`
+  (`apps/core/src/lib/tv/lyrics.ts:104`) — a char-count split that `presplit.py`'s own header dismisses
+  as "no better than the char-count fallback the TV overlay already had".
+
+  **One gate is doing two jobs.** The header's stated reason — "running a splitter over human-authored
+  text can only damage it" — is a correct argument about the **semantic repacker** (the comma repack and
+  capitalised-opener rules, which *rewrite* line structure). It is not an argument about the **length
+  bounder**, and the same header already says why: *"Upstream only ever splits, never joins, so feeding
+  it pre-broken lines is safe: it intervenes only on the pieces still too long."* That property holds
+  just as well for a human-authored line that happens to be too long.
+
+  So split the one gate into two:
+  - **length bounding → every tier**, authoritative included;
+  - **semantic re-lineation → ASR and auto-captions only**, which is exactly what
+    `is_authoritative_text` already selects (auto-generated caption tracks are demoted to `low`
+    confidence precisely so they land on that side of the fence).
+
+  **The one real risk, to decide before coding:** upstream's pass is not only length bounding — it also
+  does stack-matched parenthesis isolation and punctuation / Unicode-space cleanup. On human-authored
+  text that cleanup *edits text a human wrote*. Decide whether to take the whole upstream pass on
+  authoritative tiers or to invoke only its length bounding.
+
+  Also: `max_chars` must agree with the TV's row budget, and therefore with `T-22`, which changes how
+  much text a row holds — **do `T-22` first**. Once every tier is bounded at cook time, the display
+  fallback should become a genuine last resort rather than the primary bound for a whole tier.
+
+  *Done-when:* no tier reaches the TV with a line over the budget; a line-level LRCLIB record carrying
+  an over-long line is bounded at cook time; and a guard proves the semantic splitter does **not** run
+  on authoritative text. **AUTO** — `presplit` is pure and there is already a measured corpus to check
+  against (the 171 over-long lines in this repo's own ASR artifacts).
 ---
 
 ## Lyrics-chain design notes (the part still worth reading)
