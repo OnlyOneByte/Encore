@@ -24,7 +24,7 @@ concerns and splits into `model` / `grade` / `sources/*` in a later stage. This 
 from __future__ import annotations
 
 from .artifact import is_valid_lyrics, lrclib_to_segments, lyrics_key, normalize_lyrics
-from .asr import DEFAULT_MODEL, Transcriber, WhisperxTranscriber
+from .asr import DEFAULT_MODEL, Transcriber, WhisperxTranscriber, transcriber_for
 from .captions import caption_argv, is_translated_track, parse_vtt, read_captions
 from .chain import (
     MIN_TOKENS_TO_COMPARE,
@@ -70,7 +70,7 @@ from .source import (
     plain_lyrics_to_segments,
     rank_lrclib_candidates,
 )
-from .timing import ML_LOCK, Aligner, WhisperxForcedAligner
+from .timing import ML_LOCK, Aligner, WhisperxForcedAligner, aligner_for
 from .validate import validate_timing
 
 __all__ = [
@@ -131,6 +131,8 @@ __all__ = [
     "Transcriber",
     "WhisperxForcedAligner",
     "WhisperxTranscriber",
+    "aligner_for",
+    "transcriber_for",
     # captions
     "caption_argv",
     "is_translated_track",

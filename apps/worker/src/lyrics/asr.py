@@ -70,3 +70,29 @@ class WhisperxTranscriber:
         if language and not out.get("language"):
             out["language"] = language
         return out
+
+
+# ── the model cache ────────────────────────────────────────────────────────────────
+#
+# Keyed by (device, model) at MODULE level, not held on a processor instance.
+#
+# The old design cached one loaded model on the single WhisperXProcessor and nulled it whenever a job
+# asked for a different checkpoint. That is what made engine adoption mutate shared state, and with
+# ENCORE_WORKER_CONCURRENCY > 1 two jobs could invalidate each other's cache mid-run. Dropping the cache
+# entirely would be worse than the race: every align job would re-read multi-GB weights.
+#
+# Keying by configuration gets both. Two concurrent jobs on the same checkpoint SHARE the loaded model,
+# two on different checkpoints each keep theirs, and no job can evict another's. Loading is under ML_LOCK
+# because the lazy loader had a check-then-set race that could load the same model twice and double the
+# memory.
+_TRANSCRIBERS: dict[tuple[str, str], "WhisperxTranscriber"] = {}
+
+
+def transcriber_for(device: str, model: str) -> "WhisperxTranscriber":
+    """The transcriber for this (device, model), loading its weights at most once per worker."""
+    key = (device, model)
+    with ML_LOCK:
+        got = _TRANSCRIBERS.get(key)
+        if got is None:
+            got = _TRANSCRIBERS[key] = WhisperxTranscriber(device=device, model=model)
+        return got

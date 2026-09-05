@@ -1,6 +1,12 @@
-"""WhisperX align pipeline — PURE shape transform (raw WhisperX → normalized word-timed lyrics) +
-the I/O processor flow driven by a fake runner (canned transcript, no torch). Real ML alignment
-defers to a GPU box."""
+"""The ALIGN plan, end to end.
+
+Was test_whisperx.py, when align was one 257-line method on a WhisperXProcessor. The subject is now eight
+declared steps over a typed context (docs/specs/SPEC-worker-pipeline.md S2), so the file is named for the
+plan rather than for a module that no longer exists.
+
+Every seam stays injectable for the reason it always was: the real WhisperX, the real LRCLIB and the real
+yt-dlp only run on a worker box, so the whole flow has to be exercisable without any of them.
+"""
 import asyncio
 import json
 import os
@@ -12,7 +18,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import whisperx  # noqa: E402
+from src import plans  # noqa: E402
+from src.runtime import runner as runner_mod  # noqa: E402
 from src import lyrics as lyrics_pkg  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
@@ -26,17 +33,17 @@ def test_lyrics_key():
 
 def test_lrclib_to_segments_prefers_synced_then_plain_then_empty():
     synced = LrclibResult(id=1, instrumental=False, synced_lyrics="[00:01.00]a\n[00:03.00]b", plain_lyrics="a\nb")
-    segs = whisperx.lrclib_to_segments(synced, total_duration=5.0)
+    segs = lyrics_pkg.lrclib_to_segments(synced, total_duration=5.0)
     assert [s["text"] for s in segs] == ["a", "b"]
     assert segs[0] == {"start": 1.0, "end": 3.0, "text": "a"}  # line end = next line start
 
     plain = LrclibResult(id=2, instrumental=False, synced_lyrics=None, plain_lyrics="one\ntwo")
-    psegs = whisperx.lrclib_to_segments(plain, total_duration=4.0)
+    psegs = lyrics_pkg.lrclib_to_segments(plain, total_duration=4.0)
     assert [s["text"] for s in psegs] == ["one", "two"]  # evenly distributed
 
     # instrumental / None / no-lyrics → empty
-    assert whisperx.lrclib_to_segments(LrclibResult(3, True, None, None), 5.0) == []
-    assert whisperx.lrclib_to_segments(None, 5.0) == []
+    assert lyrics_pkg.lrclib_to_segments(LrclibResult(3, True, None, None), 5.0) == []
+    assert lyrics_pkg.lrclib_to_segments(None, 5.0) == []
 
 
 RAW = {
@@ -66,7 +73,7 @@ RAW = {
 
 
 def test_normalize_lyrics_shape_has_lines_and_flat_words_with_timestamps():
-    doc = whisperx.normalize_lyrics(RAW)
+    doc = lyrics_pkg.normalize_lyrics(RAW)
     assert doc["language"] == "en"
     assert len(doc["lines"]) == 2
     first = doc["lines"][0]
@@ -96,7 +103,7 @@ def test_normalize_drops_untimed_words_and_derives_line_bounds():
             }
         ]
     }
-    doc = whisperx.normalize_lyrics(raw)
+    doc = lyrics_pkg.normalize_lyrics(raw)
     assert len(doc["lines"]) == 1
     line = doc["lines"][0]
     assert [w["word"] for w in line["words"]] == ["hello"]  # only the timed, non-blank word
@@ -106,7 +113,7 @@ def test_normalize_drops_untimed_words_and_derives_line_bounds():
 
 def test_normalize_skips_empty_segments_and_handles_garbage():
     raw = {"segments": [{"text": "", "words": []}, "not-a-dict", {"words": [{"word": "x", "start": 0, "end": 0.5}]}]}
-    doc = whisperx.normalize_lyrics(raw)
+    doc = lyrics_pkg.normalize_lyrics(raw)
     # empty-text seg with no words → skipped; garbage → skipped; the last derives text from its word
     assert len(doc["lines"]) == 1
     assert doc["lines"][0]["text"] == "x"
@@ -117,15 +124,15 @@ def test_normalize_rejects_nan_inf_timestamps():
         {"word": "a", "start": float("nan"), "end": 1.0},
         {"word": "b", "start": 1.0, "end": float("inf")},
     ]}]}
-    doc = whisperx.normalize_lyrics(raw)
+    doc = lyrics_pkg.normalize_lyrics(raw)
     assert doc["lines"] == []  # both words un-timed (NaN/inf) → no usable line
 
 
 def test_is_valid_lyrics():
-    assert whisperx.is_valid_lyrics(whisperx.normalize_lyrics(RAW)) is True
-    assert whisperx.is_valid_lyrics({"lines": []}) is False
-    assert whisperx.is_valid_lyrics({"lines": [{"text": "x", "words": []}]}) is False  # no timed words
-    assert whisperx.is_valid_lyrics({}) is False
+    assert lyrics_pkg.is_valid_lyrics(lyrics_pkg.normalize_lyrics(RAW)) is True
+    assert lyrics_pkg.is_valid_lyrics({"lines": []}) is False
+    assert lyrics_pkg.is_valid_lyrics({"lines": [{"text": "x", "words": []}]}) is False  # no timed words
+    assert lyrics_pkg.is_valid_lyrics({}) is False
 
 
 # ── I/O forced-alignment flow: fake LRCLIB client + fake aligner (NO network, NO torch) ─────
@@ -189,7 +196,7 @@ async def drain(proc, job):
 @pytest.mark.asyncio
 async def test_hybrid_flow_download_lrclib_forcealign_writes_word_timed_lyrics(tmp_path):
     aligner = FakeAligner()
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=aligner)
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=aligner)
     events = await drain(proc, spec(tmp_path))
 
     stages = [(e.stage, e.pct) for e in events if isinstance(e, ProgressEvent)]
@@ -203,7 +210,7 @@ async def test_hybrid_flow_download_lrclib_forcealign_writes_word_timed_lyrics(t
     assert uri.endswith("lyrics/m1-lrclib-word.json")  # per (source, timing) key — candidates coexist
     doc = json.loads(Path(uri).read_text())
     # WORD-timed on the correct text (the whole hybrid point)
-    assert whisperx.is_valid_lyrics(doc)
+    assert lyrics_pkg.is_valid_lyrics(doc)
     assert [l["text"] for l in doc["lines"]] == ["Is this the real life", "Is this just fantasy"]
     # line "Is this the real life" (5 words) spans [1.0,3.0] → span 0.4 → first word [1.0,1.4]
     assert doc["words"][0] == {"word": "Is", "start": 1.0, "end": 1.4}
@@ -215,7 +222,7 @@ async def test_local_source_skips_download(tmp_path):
     local = tmp_path / "lib" / "song.wav"
     local.parent.mkdir(parents=True)
     local.write_bytes(b"x")
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner())
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner())
     stages = {e.stage for e in await drain(proc, spec(tmp_path, source_uri=str(local), fetcher="local")) if isinstance(e, ProgressEvent)}
     assert "downloading" not in stages  # DECLARED local → no fetch, regardless of the uri shape
     assert "aligning" in stages
@@ -224,14 +231,14 @@ async def test_local_source_skips_download(tmp_path):
 @pytest.mark.asyncio
 async def test_aligner_failure_falls_back_to_line_sync(tmp_path):
     # the aligner blows up → we DON'T fail; ship LRCLIB's line-level sync (whole-line highlight)
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner(fail=True))
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner(fail=True))
     events = await drain(proc, spec(tmp_path))
     doc = json.loads(Path([e for e in events if isinstance(e, CompleteResult)][0].media_uri).read_text())
     # line-synced fallback: lines with bounds + text, but NO word timings
     assert [l["text"] for l in doc["lines"]] == ["Is this the real life", "Is this just fantasy"]
     assert doc["lines"][0]["start"] == 1.0
     assert all(l["words"] == [] for l in doc["lines"])
-    assert whisperx.is_valid_lyrics(doc) is False  # no word timings — but still shipped line-sync
+    assert lyrics_pkg.is_valid_lyrics(doc) is False  # no word timings — but still shipped line-sync
 
 
 # "This song has no words" is a RESULT, not an error. These three used to assert a raise, which was
@@ -249,7 +256,7 @@ async def _completes_with_no_lyrics(proc, job) -> None:
 
 @pytest.mark.asyncio
 async def test_no_lyrics_found_COMPLETES_with_no_lyrics(tmp_path):
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(found=False), aligner=FakeAligner())
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(found=False), aligner=FakeAligner())
     await _completes_with_no_lyrics(proc, spec(tmp_path))
 
 
@@ -257,7 +264,7 @@ async def test_no_lyrics_found_COMPLETES_with_no_lyrics(tmp_path):
 async def test_an_instrumental_COMPLETES_rather_than_being_stuck_forever(tmp_path):
     # The load-bearing case: an instrumental has no lyrics BY NATURE. Failing it would make the song
     # permanently unsingable via the readiness gate.
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(instrumental=True), aligner=FakeAligner())
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(instrumental=True), aligner=FakeAligner())
     await _completes_with_no_lyrics(proc, spec(tmp_path))
 
 
@@ -267,7 +274,7 @@ async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(
     DECLINES (it never asks for a guessed title); the job then completes with nothing to time. It is not
     an assertion about params, which is what let "no LRCLIB" mean "no lyrics"."""
     client = fake_client()
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=client, aligner=FakeAligner())
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=client, aligner=FakeAligner())
     job = JobSpec(job_id="j", media_id="m1", job_type="align", source_uri="/tmp/a.wav", params={}, media_dir=str(tmp_path))
     await _completes_with_no_lyrics(proc, job)
 
@@ -342,7 +349,7 @@ def test_acquire_drops_empty_text():
 
 def test_lrclib_source_declines_without_confident_metadata_and_never_queries():
     client = fake_client()
-    src = LrclibSource(client, whisperx.lrclib_to_segments)
+    src = LrclibSource(client, lyrics_pkg.lrclib_to_segments)
     assert src.fetch(LyricsRequest(media_id="m1", artist=None, track="x")) is None
     assert src.fetch(LyricsRequest(media_id="m1", artist="x", track=None)) is None
 
@@ -352,14 +359,14 @@ def test_lrclib_source_declines_when_the_network_is_dead_rather_than_raising():
         def get(self, *a, **k):
             raise RuntimeError("DNS sinkhole / CERTIFICATE_VERIFY_FAILED")
 
-    src = LrclibSource(Dead(), whisperx.lrclib_to_segments)
+    src = LrclibSource(Dead(), lyrics_pkg.lrclib_to_segments)
     assert src.fetch(LyricsRequest(media_id="m1", artist="a", track="b")) is None
 
 
 def test_plain_lyrics_are_NOT_reported_as_line_timed():
     """plainLyrics get evenly-spaced synthetic bounds. That is not sync and must not be presented as
     the line-level floor — otherwise the TV would scroll confidently at the wrong times."""
-    src = LrclibSource(fake_client(synced=False), whisperx.lrclib_to_segments)
+    src = LrclibSource(fake_client(synced=False), lyrics_pkg.lrclib_to_segments)
     got = src.fetch(LyricsRequest(media_id="m1", artist="a", track="b", duration=100.0))
     assert got is not None and got.timing == TIMING_NONE
 
@@ -370,7 +377,7 @@ async def test_THE_POINT_a_dead_lrclib_still_produces_lyrics_from_another_source
     timings. Under the old hardwired stage 2 this raised."""
     dead = FakeSource(SOURCE_LRCLIB, None)
     asr = FakeSource(SOURCE_ASR, _text(SOURCE_ASR, TIMING_WORD, conf="low"))
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[dead, asr])
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[dead, asr])
     events = await drain(proc, spec(tmp_path))
     done = [e for e in events if isinstance(e, CompleteResult)][0]
     cands = done.artifacts["lyrics"]["candidates"]
@@ -388,7 +395,7 @@ async def test_a_suspect_winner_and_its_baseline_get_SEPARATE_artifact_files(tmp
     wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
     lrc = FakeSource(SOURCE_LRCLIB, _candidate(wrong))
     asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
     cands = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0].artifacts["lyrics"][
         "candidates"
     ]
@@ -412,7 +419,7 @@ async def test_the_worker_chooses_the_TEXT_but_does_not_implement_the_presentati
     wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
     lrc = FakeSource(SOURCE_LRCLIB, _candidate(wrong))
     asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[asr, lrc])
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[asr, lrc])
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     cands = done.artifacts["lyrics"]["candidates"]
     # uri is the FIRST published artifact, not a ranked winner
@@ -428,7 +435,7 @@ async def test_aligner_failure_degrades_that_candidate_to_LINE_sync(tmp_path):
             raise RuntimeError("no wav2vec2 model")
 
     lrc = FakeSource(SOURCE_LRCLIB, _text(SOURCE_LRCLIB, TIMING_LINE))
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=Broken(), sources=[lrc])
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=Broken(), sources=[lrc])
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     cands = done.artifacts["lyrics"]["candidates"]
     assert cands[0]["timing"] == TIMING_LINE  # the floor, not a failure
@@ -443,7 +450,7 @@ async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynce
             raise RuntimeError("no model")
 
     untimed = LyricsText(text_source=SOURCE_LRCLIB, segments=[{"text": "some words"}], timing=TIMING_NONE)
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=Broken(),
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=Broken(),
                                       sources=[FakeSource(SOURCE_LRCLIB, untimed)])
     with pytest.raises(RuntimeError, match="nothing could be timed"):
         await drain(proc, spec(tmp_path))
@@ -479,7 +486,7 @@ ASR_RAW = {
 
 def test_asr_source_reads_the_VOCALS_stem_and_lets_whisper_detect_language():
     t = FakeTranscriber(ASR_RAW)
-    got = AsrSource(t, whisperx.normalize_lyrics).fetch(
+    got = AsrSource(t, lyrics_pkg.normalize_lyrics).fetch(
         LyricsRequest(media_id="m1", audio_path="/mix.wav", vocals_path="/vocals.m4a")
     )
     assert t.calls == [("/vocals.m4a", None)]  # the STEM, not the mix; language auto-detected
@@ -495,21 +502,21 @@ def test_asr_source_declines_when_the_vocals_stem_is_not_cooked_yet():
     """It does NOT fall back to the mixed audio: quietly producing worse words would be
     indistinguishable from producing good ones."""
     t = FakeTranscriber(ASR_RAW)
-    assert AsrSource(t, whisperx.normalize_lyrics).fetch(
+    assert AsrSource(t, lyrics_pkg.normalize_lyrics).fetch(
         LyricsRequest(media_id="m1", audio_path="/mix.wav", vocals_path=None)
     ) is None
     assert t.calls == []  # never even attempted
 
 
 def test_asr_source_declines_when_the_model_is_unavailable():
-    got = AsrSource(FakeTranscriber(boom=True), whisperx.normalize_lyrics).fetch(
+    got = AsrSource(FakeTranscriber(boom=True), lyrics_pkg.normalize_lyrics).fetch(
         LyricsRequest(media_id="m1", vocals_path="/vocals.m4a")
     )
     assert got is None  # a miss, not a job failure
 
 
 def test_asr_source_declines_on_an_empty_transcript_an_instrumental():
-    got = AsrSource(FakeTranscriber({"language": "en", "segments": []}), whisperx.normalize_lyrics).fetch(
+    got = AsrSource(FakeTranscriber({"language": "en", "segments": []}), lyrics_pkg.normalize_lyrics).fetch(
         LyricsRequest(media_id="m1", vocals_path="/vocals.m4a")
     )
     assert got is None
@@ -527,7 +534,7 @@ async def test_DONE_WHEN_lrclib_dead_asr_still_yields_word_timed_lyrics(tmp_path
         def get(self, *a, **k):
             raise RuntimeError("DNS sinkhole")
 
-    proc = whisperx.WhisperXProcessor(
+    proc = plans.align_runner(
         runner=fake_ytdlp_runner(),
         lyrics_client=DeadLrclib(),
         aligner=FakeAligner(),
@@ -552,7 +559,7 @@ async def test_a_lookup_TOO_SHORT_to_judge_is_published_unjudged_not_condemned(t
     vocals = tmp_path / "derived" / "stems"
     vocals.mkdir(parents=True)
     (vocals / "m1-vocals.m4a").write_bytes(b"fake stem")
-    proc = whisperx.WhisperXProcessor(
+    proc = plans.align_runner(
         runner=fake_ytdlp_runner(),
         lyrics_client=fake_client(),
         aligner=FakeAligner(),
@@ -572,7 +579,7 @@ def test_asr_KEEPS_word_timings_if_a_transcriber_ever_supplies_them():
     raw = {"language": "en", "segments": [
         {"start": 0.0, "end": 1.0, "text": "hello there",
          "words": [{"word": "hello", "start": 0.0, "end": 0.5}, {"word": "there", "start": 0.5, "end": 1.0}]}]}
-    got = AsrSource(FakeTranscriber(raw), whisperx.normalize_lyrics).fetch(
+    got = AsrSource(FakeTranscriber(raw), lyrics_pkg.normalize_lyrics).fetch(
         LyricsRequest(media_id="m1", vocals_path="/v.m4a"))
     assert got is not None and got.timing == TIMING_WORD
 
@@ -590,7 +597,7 @@ async def test_asr_text_is_FORCE_ALIGNED_to_get_word_timings(tmp_path):
         def get(self, *a, **k):
             raise RuntimeError("dead")
 
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=DeadLrclib(),
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=DeadLrclib(),
                                       aligner=aligner, transcriber=FakeTranscriber(ASR_RAW))
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     assert aligner.calls, "the ASR text must be handed to the aligner"
@@ -603,7 +610,7 @@ async def test_blocking_ML_does_not_freeze_the_event_loop(tmp_path, monkeypatch)
     """Observed live: sync torch calls inline froze the loop, so the worker missed the websocket
     keepalive ping (disconnect) AND could not send job:progress, so the core's 30s progress lease
     expired and the reaper requeued a healthy job (attempts=1). This proves other tasks still run."""
-    monkeypatch.setattr(whisperx, "LEASE_KEEPALIVE_SEC", 0.02)
+    monkeypatch.setattr(runner_mod, "LEASE_KEEPALIVE_SEC", 0.02)
     ticks = 0
 
     async def heartbeat():
@@ -620,7 +627,7 @@ async def test_blocking_ML_does_not_freeze_the_event_loop(tmp_path, monkeypatch)
 
     beat = asyncio.ensure_future(heartbeat())
     try:
-        proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(),
+        proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(),
                                          aligner=SlowAligner())
         await drain(proc, spec(tmp_path))
     finally:
@@ -632,7 +639,7 @@ async def test_blocking_ML_does_not_freeze_the_event_loop(tmp_path, monkeypatch)
 async def test_keepalive_progress_is_emitted_while_ML_runs(tmp_path, monkeypatch):
     """Each keepalive refreshes the core's progress lease, which is what stops the reaper from
     requeueing a job that is running fine."""
-    monkeypatch.setattr(whisperx, "LEASE_KEEPALIVE_SEC", 0.02)
+    monkeypatch.setattr(runner_mod, "LEASE_KEEPALIVE_SEC", 0.02)
 
     class SlowAligner:
         def align(self, segments, audio_path, language):
@@ -640,7 +647,7 @@ async def test_keepalive_progress_is_emitted_while_ML_runs(tmp_path, monkeypatch
             return {"language": language, "segments": [
                 {"start": 0.0, "end": 1.0, "text": "x", "words": [{"word": "x", "start": 0.0, "end": 1.0}]}]}
 
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(),
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(),
                                       aligner=SlowAligner())
     events = await drain(proc, spec(tmp_path))
     aligning = [e for e in events if isinstance(e, ProgressEvent) and e.stage == "aligning"]
@@ -654,7 +661,7 @@ async def test_a_raising_aligner_still_propagates_through_the_thread_wrapper(tmp
         def align(self, *a, **k):
             raise RuntimeError("no model")
 
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=Broken())
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=Broken())
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     assert done.artifacts["lyrics"]["candidates"][0]["timing"] == TIMING_LINE
 
@@ -752,7 +759,7 @@ async def test_A_WRONG_SONG_LOOKUP_IS_DEMOTED_not_shown_as_authoritative(tmp_pat
     wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
     lrc = FakeSource(SOURCE_LRCLIB, _candidate(wrong))
     asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     cands = done.artifacts["lyrics"]["candidates"]
     bysrc = {c["textSource"]: c for c in cands}
@@ -765,7 +772,7 @@ async def test_A_WRONG_SONG_LOOKUP_IS_DEMOTED_not_shown_as_authoritative(tmp_pat
 async def test_an_AGREEING_lookup_keeps_its_authority_and_records_the_score(tmp_path):
     lrc = FakeSource(SOURCE_LRCLIB, _candidate(_SUNG))
     asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
-    proc = whisperx.WhisperXProcessor(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     bysrc = {c["textSource"]: c for c in done.artifacts["lyrics"]["candidates"]}
     assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "high"

@@ -204,7 +204,7 @@ def test_build_processor_routes_by_capability(monkeypatch):
     # all three.
     from src.processor import RoutingProcessor
     from src.separation.demucs import DemucsProcessor
-    from src.whisperx import WhisperXProcessor
+    from src.runtime.runner import PlanRunner
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
     # There is no longer a DEFAULT capability string to lean on: from_env leaves the set unresolved and
@@ -223,7 +223,7 @@ def test_build_processor_routes_by_capability(monkeypatch):
     assert isinstance(by_type["stems"], EngineRouter)
     assert isinstance(by_type["stems"]._by_engine["demucs"], DemucsProcessor)
     assert "roformer" not in by_type["stems"]._by_engine  # not built without the stems:roformer cap
-    assert isinstance(by_type["align"], WhisperXProcessor)  # part of the full cook
+    assert isinstance(by_type["align"], PlanRunner)  # part of the full cook
     assert "fetch" in by_type  # acquisition rides its own capability (fetch:ytdlp)
 
     # A stems-ONLY worker is still expressible — it just has to say so explicitly.
@@ -243,7 +243,7 @@ def test_build_processor_routes_by_capability(monkeypatch):
     from src.config import WorkerConfig
 
     p2 = _build_processor(WorkerConfig(capabilities=("stems", "align")))
-    assert isinstance(p2._by_type["align"], WhisperXProcessor)
+    assert isinstance(p2._by_type["align"], PlanRunner)
 
 
 @pytest.mark.asyncio
