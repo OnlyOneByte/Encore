@@ -1046,35 +1046,7 @@
 		stage is a room-wide decision, not a per-singer one, so a single writer in Settings is correct.
 		The server command, PlaybackState.background field and the TV resolver are deliberately kept —
 		with no writer the field simply stays null and the resolver already falls back to the room style.
-		VOCAL RANGE, behind a disclosure. Same idiom as the 'Browse' toggle above: a plain $state
-		boolean, a real <button> carrying aria-expanded, a chevron-down/right Icon swap, and a 44px
-		target. Only rendered when there is a measured range to show (hasRange). Everything inside reacts
-		to playback.keyShift through the shared helpers, so the ± buttons slide the bar and can flip the
-		band sentence — which is what makes transposing feel like it means something.
 	-->
-	{#if hasRange}
-		<div class="range">
-			<button
-				class="range-toggle"
-				aria-expanded={rangeOpen}
-				onclick={() => (rangeOpen = !rangeOpen)}
-			>
-				<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
-				Vocal range
-				<span class="range-peek">{rangeText}</span>
-			</button>
-			{#if rangeOpen}
-				<div class="range-body">
-					<div class="range-facts">
-						<span class="range-label">{rangeText}</span>
-						{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
-					</div>
-					{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
-					<RangeBar {profile} keyShift={playback.keyShift} />
-				</div>
-			{/if}
-		</div>
-	{/if}
 
 	<h2 class="grouphead">Up next · {orderLabel}</h2>
 	{#if queued.length === 0}
