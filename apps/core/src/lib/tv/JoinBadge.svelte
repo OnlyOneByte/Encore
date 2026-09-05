@@ -66,6 +66,8 @@
 <style>
 	.qr {
 		padding: 16px;
+		/* The QR needs a white quiet zone to scan reliably — this is scannability-critical, not a
+		   themeable surface. Legitimate white literal, kept per the token sweep. */
 		background: #fff;
 		border-radius: 22px;
 		box-shadow: var(--shadow);
@@ -108,7 +110,8 @@
 		gap: 14px;
 		padding: 12px 18px 12px 12px;
 		border-radius: var(--radius);
-		background: rgba(18, 18, 29, 0.82);
+		/* rgba(18,18,29,0.82) was --bg2 at 82%. */
+		background: color-mix(in srgb, var(--bg2) 82%, transparent);
 		border: 1px solid var(--line);
 		box-shadow: var(--shadow);
 		backdrop-filter: blur(6px);
@@ -143,7 +146,8 @@
 	 */
 	.badqr {
 		border-radius: var(--radius);
-		background: rgba(42, 27, 34, 0.95);
+		/* rgba(42,27,34,0.95) was --danger-bg at 95%. */
+		background: color-mix(in srgb, var(--danger-bg) 95%, transparent);
 		border: 1px solid var(--danger);
 		box-shadow: var(--shadow);
 	}
