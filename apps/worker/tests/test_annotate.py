@@ -343,3 +343,82 @@ def test_a_genuinely_closer_duration_still_beats_an_older_release():
     ]}
     got = ann.pick_best(ann.parse_recordings(body), "A", "T", 200.0)
     assert got is not None and got.mbid == "right"
+
+
+# ── collaborations: the primary agrees, the full billing does not ─────────────────
+#: Captured live 2026-09-05 from `artist:"League of Legends" AND recording:"Legends Never Die"`.
+#: MusicBrainz publishes the collaboration as ONE joined credit, which is why comparing the joined
+#: string against a caller's single primary artist rejected the exact match sitting at score 100.
+COLLAB_BODY = {
+    "recordings": [
+        {
+            "id": "8a5ceed8-dec8-4e48-b2b0-205768bf7751",
+            "score": 100,
+            "title": "Legends Never Die",
+            "length": 179000,
+            "artist-credit": [
+                {"name": "League of Legends", "joinphrase": " feat. "},
+                {"name": "Against the Current"},
+            ],
+        },
+        {
+            "id": "instrumental",
+            "score": 93,
+            "title": "Legends Never Die (Instrumental)",
+            "length": 235000,
+            "artist-credit": [
+                {"name": "League of Legends", "joinphrase": " feat. "},
+                {"name": "Against the Current"},
+            ],
+        },
+    ]
+}
+
+
+def test_the_primary_credit_is_parsed_beside_the_joined_one():
+    rec = ann.parse_recordings(COLLAB_BODY)[0]
+    assert rec.artist == "League of Legends feat. Against the Current"
+    assert rec.artist_primary == "League of Legends"
+
+
+def test_a_collaboration_matches_on_the_PRIMARY_artist():
+    # THE REGRESSION. The caller's normalizer can only ever produce a primary artist, so requiring the
+    # joined billing to agree meant no song with a guest on it could EVER be annotated -- this exact
+    # recording came back at score 100 with the duration matching to the millisecond and was discarded.
+    got = ann.pick_best(ann.parse_recordings(COLLAB_BODY), "League of Legends", "Legends Never Die", 179.0)
+    assert got is not None, "a guest credit must not make an exact match unreachable"
+    assert got.mbid == "8a5ceed8-dec8-4e48-b2b0-205768bf7751"
+    assert got.confidence == ann.CONFIDENCE_HIGH
+
+
+def test_what_gets_published_is_the_FULL_billing_not_the_key_that_matched():
+    # The singer wants to read who is actually on the track; the primary was only the lookup key.
+    got = ann.pick_best(ann.parse_recordings(COLLAB_BODY), "League of Legends", "Legends Never Die", 179.0)
+    assert got is not None
+    assert got.artist == "League of Legends feat. Against the Current"
+
+
+def test_an_exact_full_credit_agreement_still_OUTRANKS_a_primary_only_one():
+    # Relaxing the gate must not make the stronger evidence lose. Same title, same duration: the
+    # recording whose whole billing agrees is the better identification.
+    body = {"recordings": [
+        {"id": "primary-only", "score": 100, "title": "T", "length": 200000,
+         "artist-credit": [{"name": "A", "joinphrase": " feat. "}, {"name": "Guest"}]},
+        {"id": "exact", "score": 100, "title": "T", "length": 200000,
+         "artist-credit": [{"name": "A"}]},
+    ]}
+    got = ann.pick_best(ann.parse_recordings(body), "A", "T", 200.0)
+    assert got is not None and got.mbid == "exact"
+
+
+def test_a_different_primary_artist_is_still_refused():
+    # The relaxation is about the guests, not about the artist. A wrong primary writes nothing.
+    got = ann.pick_best(ann.parse_recordings(COLLAB_BODY), "Against the Current", "Legends Never Die", 179.0)
+    assert got is None
+
+
+def test_a_recording_with_no_credit_list_cannot_agree_with_anything():
+    # normalize_for_match("") is "", so an empty primary must not collide with an empty want -- the
+    # caller-side guard already refuses an empty key, and this is the other half of that pair.
+    body = {"recordings": [{"id": "x", "score": 100, "title": "T", "length": 200000}]}
+    assert ann.pick_best(ann.parse_recordings(body), "A", "T", 200.0) is None

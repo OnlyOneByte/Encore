@@ -127,6 +127,11 @@ class Recording:
     score: int
     album: str | None = None
     year: int | None = None
+    #: The FIRST credited artist on its own ("League of Legends" out of "League of Legends feat.
+    #: Against the Current"). Kept beside the joined credit because they are used for different jobs:
+    #: the joined string is what gets PUBLISHED and read on the TV, the primary is what a caller's
+    #: normalizer-derived guess can actually be compared against — see pick_best.
+    artist_primary: str = ""
 
 
 def _artist_credit(rec: dict[str, Any]) -> str:
@@ -141,6 +146,17 @@ def _artist_credit(rec: dict[str, Any]) -> str:
         if credit.get("joinphrase"):
             parts.append(str(credit["joinphrase"]))
     return "".join(parts).strip() or ""
+
+
+def _primary_credit(rec: dict[str, Any]) -> str:
+    """The first credited artist alone, with no join phrase and no guests."""
+    for credit in rec.get("artist-credit") or []:
+        if not isinstance(credit, dict):
+            continue
+        name = credit.get("name") or (credit.get("artist") or {}).get("name")
+        if name:
+            return str(name).strip()
+    return ""
 
 
 def _best_release(rec: dict[str, Any]) -> tuple[str | None, int | None]:
@@ -192,6 +208,7 @@ def parse_recordings(body: str | dict[str, Any]) -> list[Recording]:
                 score=int(rec.get("score") or 0),
                 album=album,
                 year=year,
+                artist_primary=_primary_credit(rec),
             )
         )
     return out
@@ -257,19 +274,35 @@ def pick_best(
     Name agreement is required rather than scored: MusicBrainz will happily return a different song by
     the same artist with a high lexical score, and writing that as fact is the failure this refuses.
 
-    Among genuine agreements the sort is: closest duration, then EARLIEST release, then MusicBrainz's
-    own score. The year tie-break is not cosmetic — measured on real queries, duration alone left several
-    recordings tied and picked a 1989 live-tour cut for "Take On Me" and an "Artist Karaoke Series"
-    compilation for "Bohemian Rhapsody". Both are legitimate recordings of the right song, but the
-    earliest release is the one a singer recognises and the one library browse should group under.
+    ARTIST AGREEMENT MEANS THE PRIMARY, NOT THE WHOLE BILLING. MusicBrainz publishes a collaboration as
+    one joined credit ("League of Legends feat. Against the Current") while the caller's key is a single
+    primary artist, so comparing the joined string rejected EVERY song with a guest on it — measured
+    live, "Legends Never Die" came back score 100 with the duration matching to the millisecond and was
+    still discarded. A full-credit agreement is stronger evidence, so it still WINS the sort; it is just
+    no longer the price of admission.
+
+    Among genuine agreements the sort is: exact-credit before primary-only, then closest duration, then
+    EARLIEST release, then MusicBrainz's own score. The year tie-break is not cosmetic — measured on real
+    queries, duration alone left several recordings tied and picked a 1989 live-tour cut for "Take On
+    Me" and an "Artist Karaoke Series" compilation for "Bohemian Rhapsody". Both are legitimate
+    recordings of the right song, but the earliest release is the one a singer recognises and the one
+    library browse should group under.
+
+    What gets PUBLISHED is always the full credit, whichever way the match was made: "League of Legends
+    feat. Against the Current" is what a singer wants to read, and it is the strictly more informative
+    of the two.
     """
     want_artist, want_track = normalize_for_match(artist), normalize_for_match(track)
     if not want_artist or not want_track:
         return None  # nothing confident to match against; the caller keeps the normalizer's values
 
-    scored: list[tuple[float, int, int, Recording, str]] = []
+    scored: list[tuple[int, float, int, int, Recording, str]] = []
     for rec in candidates:
-        if normalize_for_match(rec.artist) != want_artist:
+        exact_credit = normalize_for_match(rec.artist) == want_artist
+        # Fall back to the primary only. `artist_primary` is empty for a recording with no credit list,
+        # and normalize_for_match("") is "", so this cannot accidentally agree with a real name.
+        primary_credit = bool(rec.artist_primary) and normalize_for_match(rec.artist_primary) == want_artist
+        if not exact_credit and not primary_credit:
             continue
         if normalize_for_match(rec.title) != want_track:
             continue
@@ -283,12 +316,12 @@ def pick_best(
         )
         # Round the gap so near-identical lengths genuinely tie and the year can decide, rather than a
         # 40ms difference silently outranking "this is the original release".
-        scored.append((round(gap, 1), rec.year or 9999, -rec.score, rec, conf))
+        scored.append((0 if exact_credit else 1, round(gap, 1), rec.year or 9999, -rec.score, rec, conf))
 
     if not scored:
         return None
-    scored.sort(key=lambda t: (t[0], t[1], t[2]))
-    _, _, _, best, conf = scored[0]
+    scored.sort(key=lambda t: (t[0], t[1], t[2], t[3]))
+    *_, best, conf = scored[0]
     return Annotation(
         mbid=best.mbid, artist=best.artist, title=best.title, confidence=conf, album=best.album, year=best.year
     )
