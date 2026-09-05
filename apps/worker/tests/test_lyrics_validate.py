@@ -3,7 +3,7 @@
 The numbers here are the shapes six REAL artifacts exhibited on the reference box while passing the
 old `is_valid_lyrics` check, so each test names a defect that actually shipped.
 """
-from src.lyrics_validate import (
+from src.lyrics.validate import (
     LONG_GAP_SEC,
     MIN_COVERAGE,
     SUSPECT_RESIDUAL_SEC,

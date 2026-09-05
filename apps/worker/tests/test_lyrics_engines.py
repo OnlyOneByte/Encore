@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.lyrics_chain import (
+from src.lyrics.chain import (
     SOURCE_ASR,
     SOURCE_LRCLIB,
     TIMING_LINE,

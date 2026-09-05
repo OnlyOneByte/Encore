@@ -10,8 +10,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import lyrics_presplit as lp  # noqa: E402
-from src.lyrics_chain import (  # noqa: E402
+from src.lyrics import presplit as lp  # noqa: E402
+from src.lyrics.chain import (  # noqa: E402
     SOURCE_ASR,
     SOURCE_CAPTIONS,
     SOURCE_LRCLIB,
