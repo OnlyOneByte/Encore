@@ -344,6 +344,81 @@ Two ordering constraints that are not preference:
   ±1 semitone *sounds* right, whether the OLA quality holds, the suspended-`AudioContext` fallback,
   and the graph lifecycle. Only the ratio/framing/window maths is tested. Needs the RTX 3080 deploy
   box and a human in the room. **AUDIO.** Tag **v1.0.0** work behind this, not this behind it.
+
+- [ ] **T-15 · The processing progress bar completes before the song is playable** — the bar fills
+  solid and the readout says `100%` while three of the five milestones have not started. Observed on
+  the phone remote with the chip strip reading `✓ Queued · • Fetched · Making karaoke · Adding
+  lyrics · Ready` underneath a full bar.
+
+  **Root cause: `pct` is the current STEP's own 0–100, not overall cook completion.**
+  `apps/core/src/server/jobs/worker-hub.ts:182` writes the worker's per-step `job:progress.pct`
+  straight into `jobs.progressPct`, and `apps/core/src/lib/components/ProcessingCard.svelte:78`
+  scales the entire bar by it (`transform:scaleX({pct / 100})`) with the same number printed at
+  `:79`. So *every* step reaching 100% fills the bar.
+
+  Two things this is **not**, both worth stating so they are not re-investigated:
+  - **Not a label bug.** `cookStageLabel` deliberately returns one guest-facing phrase
+    ("Making karaoke…") for every in-flight status, so the line agreeing with none of the chips is
+    by design — the percentage and ETA are the caller's job and the helper owns only the words.
+  - **Not the strip bug already fixed.** `69bc5dc` made the *chips* monotonic and moved their order
+    onto the shared list; it never touched the bar's scale.
+
+  **The primitive already exists.** That same fix added `MEDIA_STAGES` and `mediaStagePosition` to
+  `packages/shared`, so overall progress can be a band per stage with the intra-step pct scaled
+  inside its band — no second hand-written order list, which is what drifted last time. Choose the
+  bands deliberately: separation dominates wall-clock at ~1–2 min/song on CPU, so equal fifths would
+  make the bar lie in the other direction.
+
+  *Done-when:* **the bar and the readout reach 100% if and only if `status === 'ready'`**, and never
+  move backwards across a stage change. `repository.ts:172` already sets `progressPct: 100` on the
+  transition to `ready`, so that invariant is expressible exactly rather than approximated.
+  **AUTO** — the iff and the monotonicity are unit-testable from a stage sequence; **EYES-ON** — the
+  bar mid-cook on the phone.
+
+- [ ] **T-16 · Loudness normalization, so the room stops reaching for the volume knob** — songs
+  arrive from YouTube mastered at wildly different levels, and the instrumental is quieter again than
+  the mix it came from because separation removes energy. Two terms, and the second is probably the
+  one being felt: a per-song spread *and* a systematic instrumental-vs-original offset.
+
+  **The shape that fits this codebase: measure at cook time, apply at playback.** The ReplayGain
+  model — non-destructive, retroactive over the existing library through a backfill (the lyrics and
+  guiding-track backfills are the precedent), and re-tunable later without re-encoding anything. This
+  is the same argument that settled the pitch shift in favour of the browser: no per-variant files, and
+  every already-cooked song benefits.
+
+  Four things that are decided by what is already here, not by preference:
+
+  - **Measure integrated loudness, not peak.** `apps/core/src/server/media/loudness.ts` and the
+    worker's `volumedetect_argv` already shell to ffmpeg and parse a level, but they report mean/max
+    **dBFS** for the digital-silence check (`SILENCE_FLOOR_DB`, and `app.ts:261` uses it to avoid
+    advertising a silent guiding track). Peak is not perceived loudness — normalising by it gets a
+    dense master and a sparse one wrong in opposite directions. What is needed is EBU R128 integrated
+    LUFS plus true peak: `-af loudnorm=print_format=json` reports `input_i` and `input_tp`. Reuse the
+    parse-a-number-from-stderr shape, not the number itself.
+  - **Measure inside the `stems` step, where the decoded WAVs already sit in scratch.** Exactly the
+    argument that got key and vocal range in for no extra decode and no new job type — and that step
+    already probes the stems for silence, so it is the same pass.
+  - **Store it in `songProfile`.** It is already the nullable JSON record of what the cook *learned*
+    about the music, it already holds individually-nullable fields, and its gate keys on the record
+    being present rather than populated — so a track whose loudness could not be measured completes
+    like any other. No new column, no migration.
+  - **Apply it with `HTMLMediaElement.volume`, not a `GainNode`.** This is the point worth
+    understanding before any code: `.volume` is plain linear attenuation and needs **no
+    `AudioContext`**, so it side-steps the whole suspended-context problem `T-14` documents — a
+    set-and-forget TV may never receive the user gesture an `AudioContext` needs to `resume()`. The
+    cost is that `.volume` is capped at `1.0`, so it can only turn things **down**: the target has to
+    sit at or below the quietest track worth playing, or quiet songs stay quiet. Boosting means a
+    `GainNode` and taking the context bet, which is a separate decision.
+
+  **The trap:** the guiding track is a *second* media element mixed under the instrumental, so the
+  per-song gain must apply to both while preserving the guide ratio. Scale only the instrumental and
+  turning the guide on changes the perceived level of the whole song.
+
+  *Done-when:* two songs known to differ by a wide margin play at a matched perceived level with no
+  manual change, the guide ratio is unchanged by normalization, and an unmeasured song plays at
+  today's level rather than silent. **AUTO** — the gain computation, the clamp, and the
+  both-elements invariant are pure and unit-testable; **AUDIO** — that it actually sounds level needs
+  the owner and real speakers.
 ---
 
 ## Lyrics-chain design notes (the part still worth reading)
