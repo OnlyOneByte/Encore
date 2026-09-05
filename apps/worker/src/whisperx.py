@@ -21,7 +21,7 @@ from typing import Any, AsyncIterator, Callable, Protocol
 from .demucs import Runner, download_argv, parse_ytdlp_progress, subprocess_runner
 from .fetch import job_fetcher, local_source_path
 from .vocabulary import AsrModel, Fetcher, SyncMode, parse_asr_model, parse_sync_mode
-from .lyrics_source import (
+from .lyrics import (
     LRCLIB_BASE,
     LrclibClient,
     entries_to_segments,
@@ -30,7 +30,7 @@ from .lyrics_source import (
     parse_lrc,
     plain_lyrics_to_segments,
 )
-from .lyrics_chain import (
+from .lyrics import (
     SOURCE_ASR,
     SUSPECT_AGREEMENT,
     TIMING_LINE,
@@ -46,9 +46,9 @@ from .lyrics_chain import (
     candidate_key,
     select_by_baselines,
 )
-from .captions import caption_argv, read_captions
-from .lyrics_presplit import presplit_texts
-from .lyrics_validate import validate_timing
+from .lyrics import caption_argv, read_captions
+from .lyrics import presplit_texts
+from .lyrics import validate_timing
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
 
 DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2

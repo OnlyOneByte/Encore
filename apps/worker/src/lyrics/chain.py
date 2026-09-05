@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from .lyrics_source import MAX_VARIANTS, rank_lrclib_candidates
+from .source import MAX_VARIANTS, rank_lrclib_candidates
 
 # Text-source ids — must match LyricsTextSource in packages/shared/src/lyrics.ts.
 SOURCE_LRCLIB = "lrclib"

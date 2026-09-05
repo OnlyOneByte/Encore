@@ -16,7 +16,7 @@ from src import whisperx  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
-from src.lyrics_source import LrclibResult  # noqa: E402
+from src.lyrics.source import LrclibResult  # noqa: E402
 
 
 def test_lyrics_key():
@@ -128,7 +128,7 @@ def test_is_valid_lyrics():
 
 
 # ── I/O forced-alignment flow: fake LRCLIB client + fake aligner (NO network, NO torch) ─────
-from src.lyrics_source import LrclibClient  # noqa: E402
+from src.lyrics.source import LrclibClient  # noqa: E402
 
 
 def fake_ytdlp_runner(*, progress=("[download]  50.0% of 1MiB", "[download] 100% of 1MiB")):
@@ -274,7 +274,7 @@ async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(
 # ── acquisition is SEPARATE from timing ────────────────────────────────
 # The bug this closes: stage 2 was hardwired to LrclibClient.get() and raised when it returned
 # nothing, so an unreachable LRCLIB meant "no lyrics" rather than "no AUTHORITATIVE lyrics".
-from src.lyrics_chain import (  # noqa: E402
+from src.lyrics.chain import (  # noqa: E402
     SOURCE_ASR,
     SOURCE_LRCLIB,
     TIMING_LINE,
@@ -449,7 +449,7 @@ async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynce
 
 
 # ── the ASR tier ───────────────────────────────────────────────────────
-from src.lyrics_chain import AsrSource  # noqa: E402
+from src.lyrics.chain import AsrSource  # noqa: E402
 
 
 class FakeTranscriber:
@@ -691,7 +691,7 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader():
 
 
 # ── the wrong-song guard, now graded against BASELINES ─────────────────────────
-from src.lyrics_chain import (  # noqa: E402
+from src.lyrics.chain import (  # noqa: E402
     ROLE_BASELINE,
     SUSPECT_AGREEMENT,
     agreement_score,

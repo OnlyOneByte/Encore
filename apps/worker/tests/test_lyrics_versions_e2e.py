@@ -19,7 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import whisperx  # noqa: E402
-from src.lyrics_source import LrclibClient  # noqa: E402
+from src.lyrics.source import LrclibClient  # noqa: E402
 from src.processor import CompleteResult, JobSpec, vocals_path  # noqa: E402
 
 # Two recordings of one song. The SOLO record is deliberately returned FIRST by the fake provider, so a

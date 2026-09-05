@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import pytest
 
-from src.lyrics_chain import (
+from src.lyrics.chain import (
     ROLE_BASELINE,
     ROLE_CANDIDATE,
     SOURCE_ASR,
@@ -35,7 +35,7 @@ from src.lyrics_chain import (
     composite_score,
     select_by_baselines,
 )
-from src.lyrics_source import (
+from src.lyrics.source import (
     DURATION_TOLERANCE_SEC,
     LrclibResult,
     candidate_sort_key,
@@ -104,7 +104,7 @@ def test_the_wrong_version_scores_ABOVE_the_wrong_song_threshold_so_a_threshold_
     this case and none of this code would be needed. It does not: two versions of one song share most of
     their words. This test fails the moment someone 'simplifies' selection into a threshold.
     """
-    from src.lyrics_chain import SUSPECT_AGREEMENT, agreement_score
+    from src.lyrics.chain import SUSPECT_AGREEMENT, agreement_score
 
     wrong = agreement_score(SOLO_TEXT, ASR_OF_FEAT)
     right = agreement_score(FEAT_TEXT, ASR_OF_FEAT)
