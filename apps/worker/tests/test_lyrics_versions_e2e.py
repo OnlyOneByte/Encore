@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import whisperx  # noqa: E402
+from src import plans  # noqa: E402
 from src.lyrics.source import LrclibClient  # noqa: E402
 from src.processor import CompleteResult, JobSpec, vocals_path  # noqa: E402
 
@@ -92,7 +92,7 @@ class FakeTranscriber:
 
 
 def proc(client):
-    return whisperx.WhisperXProcessor(
+    return plans.align_runner(
         runner=fake_ytdlp_runner(), lyrics_client=client, aligner=FakeAligner(), transcriber=FakeTranscriber()
     )
 
@@ -205,7 +205,7 @@ async def test_BOTH_local_baselines_run_and_a_silent_stem_does_not_lose_the_vote
                 "segments": [{"start": float(i), "end": float(i + 1), "text": w} for i, w in enumerate(words)],
             }
 
-    p = whisperx.WhisperXProcessor(
+    p = plans.align_runner(
         runner=fake_ytdlp_runner(),
         lyrics_client=two_version_client(order=("solo", "feat")),
         aligner=FakeAligner(),
@@ -239,7 +239,7 @@ async def test_youtube_AUTOMATIC_captions_grade_a_candidate_but_never_become_one
 
         return run_
 
-    p = whisperx.WhisperXProcessor(
+    p = plans.align_runner(
         runner=runner_with_auto_captions(),
         lyrics_client=two_version_client(order=("solo", "feat")),
         aligner=FakeAligner(),
@@ -259,7 +259,7 @@ async def test_with_no_candidate_at_all_a_baseline_is_published_as_the_answer(tm
     def no_lyrics(url, headers):
         return 404, ""
 
-    p = whisperx.WhisperXProcessor(
+    p = plans.align_runner(
         runner=fake_ytdlp_runner(),
         lyrics_client=LrclibClient(fetcher=no_lyrics),
         aligner=FakeAligner(),
@@ -312,7 +312,7 @@ async def test_authored_captions_can_WIN_over_a_lookup_when_they_match_the_audio
         return run_
 
     # the lookup is the SOLO recording; the audio (and so the captions) carry the guest verse
-    p = whisperx.WhisperXProcessor(
+    p = plans.align_runner(
         runner=runner_writing_captions(),
         lyrics_client=two_version_client(order=("solo",)),
         aligner=FakeAligner(),

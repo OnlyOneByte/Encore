@@ -328,15 +328,21 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         by_type["stems-upgrade"] = router  # an upgrade is a separation job like any other
     if "align" in cfg.capabilities:
         from .config import whisperx_device_for
-        from .whisperx import WhisperXProcessor
+        from .lyrics import LrclibClient
+        from .plans import align_runner
+        from .separation.demucs import subprocess_runner
 
         # Follows the same device decision as separation, mapped through whisperx_device_for because
         # CTranslate2 has only cuda and cpu backends — an xpu or mps box separates on its accelerator
         # and still aligns on the CPU, which is a real constraint rather than a missed optimisation.
-        by_type["align"] = WhisperXProcessor(
+        #
+        # A PlanRunner over the declared align plan, not a bespoke processor: eight named steps rather
+        # than one 257-line method, and engines resolved per JOB rather than mutated on this instance.
+        # See docs/specs/SPEC-worker-pipeline.md S2.
+        by_type["align"] = align_runner(
+            runner=subprocess_runner,
+            lyrics_client=LrclibClient(base_url=cfg.lrclib_base),
             device=cfg.whisperx_device or whisperx_device_for(device),
-            ytdlp_bin=cfg.ytdlp_bin,
-            lrclib_base=cfg.lrclib_base,
             model=cfg.asr_model,
             sync_mode=cfg.sync_mode,
         )
