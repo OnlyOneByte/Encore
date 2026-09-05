@@ -15,7 +15,12 @@ export type MediaStatus =
   | 'separating'
   | 'aligning'
   | 'ready'
-  | 'failed';
+  | 'failed'
+  // A cook that STOPPED because someone removed the song, not because anything went wrong. It exists
+  // because 'failed' is the only other status a client settles as terminal, and reusing it made the
+  // phone tell a guest who deliberately removed a song "Couldn't make karaoke" — a lie about their own
+  // action. Every other value reads as mid-flight and would re-strand the row we just freed.
+  | 'canceled';
 
 // A singer safe to broadcast (no sessionToken).
 export type PublicSinger = Omit<Singer, 'sessionToken'>;

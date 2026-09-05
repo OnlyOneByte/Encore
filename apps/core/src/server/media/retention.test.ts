@@ -156,6 +156,25 @@ describe('planEviction', () => {
 		const out = planEviction([c('empty', 0, 1), c('big', 1000, 2)], 100);
 		expect(out).toEqual(['big']);
 	});
+
+	it('NEVER evicts a protected id — the playing or queued song survives even as the LRU candidate', () => {
+		// 'old' is the least-recently-used and would be evicted first, but it is the currently-playing
+		// (or queued) song. A pure-LRU plan would strip it mid-party — reset stemStatus to 'none' and
+		// delete its stems out from under a live entry. The exclusion is enforced HERE so no caller can
+		// forget it. It falls through to 'mid' instead to make the same room.
+		const out = planEviction(
+			[c('new', 100, 300), c('mid', 100, 200), c('old', 100, 100)],
+			150,
+			new Set(['old'])
+		);
+		expect(out).not.toContain('old'); // protected, though it is the oldest
+		expect(out).toEqual(['mid', 'new']); // freed 200 ≥ the 150 needed, oldest-first among the rest
+	});
+
+	it('does not evict a protected id even when nothing else can be freed', () => {
+		// Only 'live' has bytes and it is protected — the plan reclaims nothing rather than touching it.
+		expect(planEviction([c('live', 1000, 1)], 100, new Set(['live']))).toEqual([]);
+	});
 });
 
 describe('evictDerived', () => {

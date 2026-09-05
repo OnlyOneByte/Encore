@@ -5,7 +5,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
-import { cookState, requestMakeKaraoke } from '$server/jobs/make-karaoke';
+import { cookState, requestMakeKaraoke, MAX_CONCURRENT_COOKS_PER_SINGER } from '$server/jobs/make-karaoke';
 
 export const POST: RequestHandler = async ({ request, cookies }) => {
 	const app = getApp();
@@ -18,15 +18,26 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	// With a durable catalog, "already cooked" is the common happy path (a song separated on a
 	// previous night), not an error — answer 200 so the phone shows "ready" instead of a red toast.
-	const state = cookState(mediaId, { mediaById: app.mediaById, state: app.state });
+	const state = cookState(mediaId, { mediaById: app.mediaById, state: app.state }, singer.id);
 	if (state === 'ready') {
 		app.publish({ type: 'media:status', mediaId, status: 'ready', pct: 100 });
 		return json({ alreadyReady: true, job: null });
 	}
 	if (state === 'unknown') return json({ error: 'unknown media' }, { status: 409 });
 	if (state === 'playing') return json({ error: 'that song is playing right now' }, { status: 409 });
+	// This singer is already at their concurrent-cook cap. Answer with a real reason the phone can
+	// show, and 429 (Too Many Requests) so the surface can tell a limit apart from a generic refusal.
+	if (state === 'over-limit') {
+		return json(
+			{
+				error: `you already have ${MAX_CONCURRENT_COOKS_PER_SINGER} songs cooking — wait for one to finish`,
+				reason: 'over-limit'
+			},
+			{ status: 429 }
+		);
+	}
 
-	const job = requestMakeKaraoke(mediaId, { jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now });
+	const job = requestMakeKaraoke(mediaId, { jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now }, singer.id);
 	if (!job) return json({ error: 'could not start make-karaoke' }, { status: 409 });
 
 	// The media just flipped to a cooking file — persist it so a restart mid-cook still knows this

@@ -17,6 +17,9 @@ import type { MediaStatus } from '@encore/shared';
 export function cookStageLabel(status: MediaStatus, opts: { pct?: number; etaSec?: number } = {}): string {
 	if (status === 'ready') return 'Karaoke ready';
 	if (status === 'failed') return "Couldn't make karaoke";
+	// A cancel is not a failure and gets no line: the song went back to un-cooked and the row shows the
+	// Sing button again, so saying anything here would narrate the guest's own removal back at them.
+	if (status === 'canceled') return '';
 	const eta = opts.etaSec && opts.etaSec > 0 ? ` · ~${Math.max(1, Math.round(opts.etaSec / 60))} min left` : '';
 	const pct = typeof opts.pct === 'number' ? ` ${opts.pct}%` : '';
 	return `Making karaoke…${pct}${eta}`;
@@ -41,5 +44,7 @@ export function cookStageChipLabel(status: MediaStatus): string {
 			return 'Ready';
 		case 'failed':
 			return 'Failed';
+		case 'canceled':
+			return 'Stopped';
 	}
 }

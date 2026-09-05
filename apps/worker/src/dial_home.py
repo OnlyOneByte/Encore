@@ -44,13 +44,22 @@ class WorkerClient:
 
     def __init__(self, send, processor: Processor, *, worker_id: str = WORKER_ID,
                  capabilities: list[str] | None = None, concurrency: int = CONCURRENCY,
-                 media_dir: str = MEDIA_DIR, version: str = VERSION) -> None:
+                 media_dir: str = MEDIA_DIR, version: str = VERSION,
+                 can_publish_object: bool = False) -> None:
         self._send = send
         self._processor = processor
         self._media_dir = media_dir
         self._version = version
         # MediaStore config arrives in worker:welcome; local until then.
         self.media_store = MediaStoreConfig(kind="local")
+        # Whether this worker can actually PUT artifacts into an object store. The S3 upload path
+        # (mediastore.make_publisher's object branch) exists as a seam but is not wired by
+        # _build_processor, so the shipping worker cannot honour object mode: every step writes a
+        # local path and reports it. This flag is the honest record of that gap. When the core hands
+        # this worker object-mode config but this is False, _on_assign REFUSES the jobs it cannot
+        # honour rather than completing them with local paths the core will try to serve from S3 —
+        # turning a silent data-integrity trap into a job-scoped reject the operator can see.
+        self._can_publish_object = can_publish_object
         self.state = protocol.WorkerState(
             worker_id=worker_id,
             capabilities=list(capabilities or CAPABILITIES),
@@ -81,6 +90,18 @@ class WorkerClient:
         if t == protocol.WELCOME:
             # config handshake: record where to read source / write stems (local volume vs S3/MinIO)
             self.media_store = parse_media_store(msg)
+            # Surface the object-mode gap at handshake time, not only when the first job is rejected:
+            # an operator who set MEDIA_STORE=object on the core should learn immediately that this
+            # worker cannot honour it (see _on_assign — every such job is refused, not silently
+            # completed with a local path).
+            if self.media_store.is_object and not self._can_publish_object:
+                print(
+                    f"[worker] WARNING: core announced object MediaStore (bucket="
+                    f"{self.media_store.bucket!r}) but no S3 uploader is wired; this worker will "
+                    "REJECT every job until it runs with MEDIA_STORE=local against a shared MEDIA_DIR "
+                    "or a build with the object uploader wired",
+                    flush=True,
+                )
             return
         if t == protocol.PING:
             return await self.send_heartbeat()
@@ -106,6 +127,24 @@ class WorkerClient:
         if not isinstance(job_type, str) or not job_type or not isinstance(media_id, str) or not media_id:
             print(f"[worker] rejecting malformed job:assign {job_id!r} (missing jobType/mediaId)", flush=True)
             await self._send(protocol.reject(self.state.worker_id, job_id, "malformed assign: missing jobType/mediaId"))
+            return
+        # HONESTY over object mode. If the core told us stems live in an object store (worker:welcome
+        # carried a usable bucket) but this worker has no uploader wired, every step would still write
+        # a LOCAL path and report it — the core would then mark the song ready and try to serve it from
+        # S3, where nothing was ever put. Refuse loudly instead of silently completing: a job-scoped
+        # reject is visible to the operator, and it names the gap and the fix. This does NOT fall back
+        # to local the way the core does for a MISSING bucket (README: "A missing bucket falls back to
+        # local") — that fallback is safe because the core then serves from local too; here the core
+        # has already committed to serving from S3, so falling back would be the trap, not the fix.
+        if self.media_store.is_object and not self._can_publish_object:
+            reason = (
+                "object MediaStore requested but this worker has no S3 uploader wired "
+                f"(bucket={self.media_store.bucket!r}); it can only write local paths. "
+                "Run this worker against a shared MEDIA_DIR with MEDIA_STORE=local, or deploy a "
+                "build with the object uploader wired"
+            )
+            print(f"[worker] rejecting {job_type} job {job_id!r}: {reason}", flush=True)
+            await self._send(protocol.reject(self.state.worker_id, job_id, reason))
             return
         ok, reason = self.state.can_accept(job_type)
         if not ok:
@@ -181,10 +220,26 @@ class WorkerClient:
             return  # the task's finally frees the slot; do not double-finish
         self.state.finish(job_id)
 
-    async def drain(self) -> None:
-        """Await any in-flight job tasks (graceful shutdown / test settling)."""
-        if self._tasks:
-            await asyncio.gather(*list(self._tasks.values()), return_exceptions=True)
+    async def drain(self, *, cancel: bool = False) -> None:
+        """Settle this client's in-flight job tasks so none outlive the client.
+
+        `cancel=False` (default) just AWAITS the tasks — graceful shutdown, and the settle a test
+        needs after `handle(assign())` so the concurrent job task actually runs.
+
+        `cancel=True` first CANCELS them, which is what the reconnect path needs on a socket drop.
+        A dropped socket abandons this client and its `_tasks`; without a cancel the orphaned cook
+        runs to completion against a closed socket, its `job:complete` is lost, and the core's reaper
+        has meanwhile requeued the same job onto a fresh connection — duplicate GPU work for one song.
+        Cancelling propagates GeneratorExit into the processor (subprocess_runner kills the child), so
+        the abandoned cook stops instead of racing its own retry. `return_exceptions=True` so the
+        CancelledError each task raises is collected here rather than escaping the reconnect handler."""
+        if not self._tasks:
+            return
+        tasks = list(self._tasks.values())
+        if cancel:
+            for task in tasks:
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 def _is_retryable(exc: Exception) -> bool:
@@ -385,6 +440,7 @@ async def _run_forever() -> None:
 
     processor: Processor = _build_processor(cfg)
     while True:
+        client: WorkerClient | None = None
         try:
             # Attach the worker token (if configured) only to the CONNECT url — never to the log line
             # below, which prints the token-free cfg.core_ws so the secret never lands in the log.
@@ -410,6 +466,13 @@ async def _run_forever() -> None:
         except Exception as exc:  # noqa: BLE001 — connection dropped; back off and redial
             print(f"[worker] disconnected ({exc!r}); reconnecting in {RECONNECT_BACKOFF_SEC}s")
             await asyncio.sleep(RECONNECT_BACKOFF_SEC)
+        finally:
+            # The next loop builds a BRAND NEW client, so this one's in-flight tasks are about to be
+            # abandoned. Cancel them rather than let them run to completion against a socket that is
+            # already closed: an orphaned cook loses its result AND races the core's reaper, which has
+            # requeued the same job — cancelling is what stops the duplicate GPU work for one song.
+            if client is not None:
+                await client.drain(cancel=True)
 
 
 if __name__ == "__main__":
