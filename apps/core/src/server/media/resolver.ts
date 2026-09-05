@@ -45,6 +45,10 @@ export function resultToMedia(id: string, r: SearchResult): Media {
 		title: r.title,
 		artist: r.artist,
 		artistCanonical: confidence && parsed.artist ? parsed.artist : undefined,
+		// Gated the same way, and additionally only kept when it says something the primary does not:
+		// storing a credit identical to `artistCanonical` would add a column with no signal in it.
+		artistCredit:
+			confidence && parsed.artistFull && parsed.artistFull !== parsed.artist ? parsed.artistFull : undefined,
 		titleCanonical: confidence ? parsed.title : undefined,
 		// Provenance is only claimed when there is actually a canonical artist to stand behind: the
 		// parser can be confident about a TITLE while genuinely unable to name the artist, and recording

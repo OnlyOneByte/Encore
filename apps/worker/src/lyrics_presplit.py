@@ -53,6 +53,7 @@ import logging
 import re
 import sys
 import types
+from dataclasses import replace
 from typing import Any, Callable
 
 from .lyrics_chain import LyricsText, is_authoritative_text
@@ -341,13 +342,11 @@ def split_blob_text(
             segments.append(seg)
             continue
         segments.extend(_subdivide(seg, pieces))
-    return LyricsText(
-        text_source=text.text_source,
-        segments=segments,
-        timing=text.timing,
-        text_confidence=text.text_confidence,
-        language=text.language,
-    )
+    # Copy-with-replacement rather than a hand-listed constructor. Re-lineating changes SEGMENTS and
+    # nothing else, so every other field must survive verbatim — and a hand-written list silently drops
+    # whatever is added to LyricsText later. It already did: `role` was lost here, which turned a BASELINE
+    # into a candidate on its way through and left the grader with nothing to grade against.
+    return replace(text, segments=segments)
 
 
 def presplit_texts(

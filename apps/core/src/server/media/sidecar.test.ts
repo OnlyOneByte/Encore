@@ -261,6 +261,31 @@ describe('sidecar I/O and index rebuild', () => {
 });
 
 describe('annotation persistence', () => {
+	it('the artist CREDIT survives a sidecar round trip', () => {
+		// The sidecar is authoritative — the DB is rebuilt from it. A credit that lived only in a column
+		// would be lost on a rebuild, and the align job would silently go back to being unable to tell
+		// two recordings of a song apart.
+		const m = media({ title: 'Lady Gaga ft. Beyoncé - Telephone (Lyrics)', artist: 'Lady Gaga' });
+		const side = sidecarFromMedia(m, NOW);
+		expect(side.canonical.artistCredit).toBe('Lady Gaga ft. Beyoncé');
+		expect(mediaFromSidecar(side).artistCredit).toBe('Lady Gaga ft. Beyoncé');
+	});
+
+	it('a MusicBrainz citation does not overwrite the credit with a narrower one', () => {
+		// The annotator returns a PRIMARY artist, so letting a citation write here would replace a real
+		// two-artist billing with one name — losing exactly the signal that distinguishes the versions.
+		const m = media({
+			title: 'Lady Gaga ft. Beyoncé - Telephone (Lyrics)',
+			artist: 'Lady Gaga',
+			mbid: 'mb-9',
+			artistCanonical: 'Lady Gaga',
+			annotation: { source: 'musicbrainz', confidence: 'high' }
+		});
+		const side = sidecarFromMedia(m, NOW);
+		expect(side.canonical.artist).toBe('Lady Gaga'); // the citation owns this
+		expect(side.canonical.artistCredit).toBe('Lady Gaga ft. Beyoncé'); // ...but not this
+	});
+
 	it('a MusicBrainz citation survives a sidecar round trip', () => {
 		// REGRESSION: mbid and annotation were runtime-only — no columns, not in the sidecar — so a
 		// restart forgot that an artist had been CITED, and the never-regress rule then had nothing to

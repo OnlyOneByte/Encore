@@ -17,7 +17,13 @@ gapless TV, and live "make-karaoke" stem separation on the roadmap.
 - **🎛️ Make-karaoke** — tap Karaoke on any search result and a Demucs worker strips the vocals;
   the singer keeps their rotation slot while it cooks (~1–2 min/song on CPU).
 - **🎤 Word-timed lyrics** — WhisperX timings drive a bouncing-ball overlay, with the ball and
-  highlight style configurable per room.
+  highlight style configurable per room. Words are chosen in two tiers: **candidates** claim to be the
+  song's words (LRCLIB, the uploader's own captions) and **baselines** are evidence of what is actually
+  audible (a local transcript of the vocals stem, one of the raw mix, and YouTube's automatic captions).
+  Every candidate is graded against the baselines and the average decides, so when a song has two popular
+  releases the version whose words match **what is actually being sung** wins — and "Telephone
+  (feat. Beyoncé)" stops singing the lyrics of "Telephone". When nothing authored can be found, the best
+  baseline is shown and labelled as auto-transcribed.
 - **📚 Karaoke library** — cooked songs persist in a self-describing media volume and are
   browsable by artist and genre.
 - **📊 Stats + audit** — `/stats` is a public page (library size, most-sung, top artists, sings per

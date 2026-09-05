@@ -95,6 +95,10 @@ function lookupKeys(media: Media | undefined): Partial<JobParams> {
 	const out: Partial<JobParams> = {};
 	if (media?.artistCanonical) out.artist = media.artistCanonical;
 	if (media?.titleCanonical) out.track = media.titleCanonical;
+	// The full billing, when the upload credited more than the primary artist. NOT a lookup key — it
+	// rides along so the worker can RANK several records of the same song, the version with the guest
+	// verse against the version without. Absent unless it says something `artist` does not.
+	if (media?.artistCredit && media.artistCredit !== media.artistCanonical) out.artistCredit = media.artistCredit;
 	if (media && Number.isFinite(media.durationSec) && media.durationSec > 0) {
 		out.durationSec = media.durationSec;
 	}

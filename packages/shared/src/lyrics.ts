@@ -69,22 +69,33 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
 /**
  * Presentation rank — HIGHER IS BETTER, 0 means "do not show this".
  *
- *   4  authoritative text + word timings   ← the ideal
- *   3  authoritative text + line timings   ← the floor, and still preferred over 2
- *   2  unauthoritative text + word timings (ASR: label it)
- *   1  unauthoritative text + line timings
+ *   5  authoritative text + word timings   ← the ideal
+ *   4  authoritative text + line timings   ← the floor for real words, still preferred over 3
+ *   3  unauthoritative text + word timings (a baseline: label it)
+ *   2  unauthoritative text + line timings
+ *   1  text positively identified as ANOTHER SONG, whatever its timings
  *   0  no usable timing — nothing to sync against
  *
- * 3 OUTRANKS 2 deliberately. Wrong words are a FAILURE — you cannot sing them — whereas correct
+ * 4 OUTRANKS 3 deliberately. Wrong words are a FAILURE — you cannot sing them — whereas correct
  * words with coarse highlighting is the accepted minimum. A bouncing ball over invented lyrics looks
  * more finished and is worth less.
+ *
+ * TIER 1 IS THE ONE THAT IS EASY TO GET WRONG. A candidate whose agreement is below SUSPECT_AGREEMENT
+ * has been measured against transcripts of this actual audio and found to be a different song.
+ * Demoting its `textConfidence` alone is NOT enough: that only drops it to the same rank as the
+ * baseline it was measured against, and `breaksTie` then PREFERS it, because it carries a numeric
+ * agreement while a baseline carries none (a baseline is the ruler, so it has no score). The room
+ * would keep seeing words already proven wrong while the words actually heard sat unshown beside
+ * them. Ranking a suspect text below every honest guess is what makes publishing that baseline
+ * alongside it worth anything.
  */
 export function lyricsRank(c: LyricsCandidate): number {
   if (!hasUsableTiming(c)) return 0;
+  if (isLikelyWrongSong(c.agreement)) return 1;
   const authoritative = isAuthoritativeText(c);
   const word = c.timing === 'word';
-  if (authoritative) return word ? 4 : 3;
-  return word ? 2 : 1;
+  if (authoritative) return word ? 5 : 4;
+  return word ? 3 : 2;
 }
 
 /**

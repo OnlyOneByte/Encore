@@ -50,16 +50,45 @@ test('LRCLIB and manual text are authoritative', () => {
 });
 
 // ── rank ────────────────────────────────────────────────────────────────────
-test('rank orders the four tiers, and none-timing is 0 (unshowable)', () => {
-	expect(lyricsRank(cand('lrclib', 'word'))).toBe(4);
-	expect(lyricsRank(cand('lrclib', 'line'))).toBe(3);
-	expect(lyricsRank(cand('asr', 'word'))).toBe(2);
-	expect(lyricsRank(cand('asr', 'line'))).toBe(1);
+test('rank orders the tiers, and none-timing is 0 (unshowable)', () => {
+	expect(lyricsRank(cand('lrclib', 'word'))).toBe(5);
+	expect(lyricsRank(cand('lrclib', 'line'))).toBe(4);
+	expect(lyricsRank(cand('asr', 'word'))).toBe(3);
+	expect(lyricsRank(cand('asr', 'line'))).toBe(2);
 	expect(lyricsRank(cand('lrclib', 'none'))).toBe(0);
 });
 
-test('THE OWNER CALL: authoritative+line (3) outranks asr+word (2)', () => {
+test('THE OWNER CALL: authoritative+line outranks a baseline+word', () => {
 	expect(lyricsRank(cand('lrclib', 'line'))).toBeGreaterThan(lyricsRank(cand('asr', 'word')));
+});
+
+test('a text identified as ANOTHER SONG ranks below every honest guess', () => {
+	// Measured against transcripts of this actual audio and found to be a different song. Demoting
+	// textConfidence alone left it TIED with the baseline that convicted it, and breaksTie then
+	// preferred it — it has a numeric agreement, a baseline has none. So the room kept seeing words
+	// already proven wrong while the words actually heard sat unshown beside them.
+	const suspect = { ...cand('lrclib', 'word'), textConfidence: 'low' as const, agreement: 0.08 };
+	const baseline = cand('asr', 'word'); // a baseline is the ruler, so it carries no score
+	expect(lyricsRank(suspect)).toBe(1);
+	expect(lyricsRank(suspect)).toBeLessThan(lyricsRank(baseline));
+	expect(pickBestLyrics([suspect, baseline])).toBe(baseline);
+});
+
+test('a suspect text is still shown when it is the only thing there', () => {
+	// Rank 1, not 0. Wrong words beat a blank screen when there is no alternative, and the TV labels it.
+	const suspect = { ...cand('lrclib', 'word'), textConfidence: 'low' as const, agreement: 0.05 };
+	expect(pickBestLyrics([suspect])).toBe(suspect);
+});
+
+test('a high agreement does not trip the suspect tier', () => {
+	const good = { ...cand('lrclib', 'word'), agreement: 0.94 };
+	expect(lyricsRank(good)).toBe(5);
+});
+
+test('an UNJUDGED candidate is not treated as suspect', () => {
+	// No baseline could compare it (an instrumental, or text too short). "Cannot tell" must not demote.
+	expect(lyricsRank(cand('lrclib', 'word'))).toBe(5);
+	expect(lyricsRank({ ...cand('lrclib', 'word'), agreement: undefined })).toBe(5);
 });
 
 // ── pickBestLyrics ────────────────────────────────────────────────────────────
