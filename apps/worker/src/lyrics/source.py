@@ -218,7 +218,7 @@ def parse_lrclib_response(d: dict[str, Any]) -> LrclibResult:
 #
 # This orders the pool CHEAPLY, before any model runs. It does not attempt to identify the right
 # version — it cannot, because the only evidence that settles it is the words actually being sung, and
-# that lives in the ASR transcript (see select_variants in lyrics_chain.py). What this buys is a
+# that lives in the ASR transcript (see select_by_baselines in lyrics/chain.py). What this buys is a
 # sensible order for the case where the transcript cannot decide: ties, an instrumental that
 # transcribes to nothing, or a box with no ASR tier at all.
 

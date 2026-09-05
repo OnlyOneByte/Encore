@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import annotate as ann  # noqa: E402
+from src.metadata import annotate as ann  # noqa: E402
 
 # Trimmed from a real response. Note the U+2010 in every artist name.
 REAL_BODY = {

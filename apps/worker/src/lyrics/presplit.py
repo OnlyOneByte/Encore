@@ -56,7 +56,7 @@ import types
 from dataclasses import replace
 from typing import Any, Callable
 
-from .lyrics_chain import LyricsText, is_authoritative_text
+from .chain import LyricsText, is_authoritative_text
 
 #: Mirror of `LINE_MAX_CHARS` in apps/core/src/lib/tv/lyrics.ts — the width of one TV reel row.
 #: NOT upstream's default of 36: 42 is measured against the actual row, and upstream's bisection
@@ -320,7 +320,7 @@ def split_blob_text(
 
     A segment that already carries WORD timings is passed through whole. Splitting its text would
     orphan those timings from the words they belong to, and the case does not arise in practice
-    anyway — MEASURED (lyrics_chain.AsrSource): whisper `transcribe()` returns segment bounds and no
+    anyway — MEASURED (lyrics/chain.py AsrSource): whisper `transcribe()` returns segment bounds and no
     word timings, so the blob tier is line-timed and the aligner is what produces words. Skipping
     rather than attempting a partition keeps a whole class of timing corruption out of reach.
 

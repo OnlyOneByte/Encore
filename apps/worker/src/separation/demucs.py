@@ -18,7 +18,7 @@ import shutil
 from collections import deque
 from typing import AsyncIterator, Awaitable, Callable
 
-from .processor import (
+from ..processor import (
     CompleteResult,
     JobSpec,
     ProgressEvent,
@@ -29,10 +29,9 @@ from .processor import (
     parse_max_volume_db,
     is_silent,
 )
-from .fetch import job_fetcher, local_source_path
-from .vocabulary import Fetcher
-from .stream_quality import FORMAT_SELECTOR
-from .song_profile import build_song_profile
+from ..vocabulary import Fetcher
+from ..acquisition.stream_quality import FORMAT_SELECTOR
+from ..analysis import build_song_profile
 
 # The analysis step: (instrumental_wav, vocals_wav, media_id) -> songProfile dict. Injectable so the
 # subprocess-fake tests (whose "WAV" files hold placeholder bytes, not real PCM) can pass a no-op and
@@ -147,20 +146,6 @@ def encode_stem_argv(input_wav: str, out_path: str, bitrate: str = STEM_BITRATE,
     ]
 
 
-def find_downloaded(directory: str, media_id: str) -> str | None:
-    """The file yt-dlp actually produced for this media id, whatever extension it chose.
-
-    Returns None if nothing landed. Ignores yt-dlp's `.part` fragments so an interrupted download is
-    never mistaken for a finished one.
-    """
-    try:
-        names = sorted(os.listdir(directory))
-    except OSError:
-        return None
-    for name in names:
-        if name.startswith(f"{media_id}.") and not name.endswith((".part", ".ytdl", ".temp")):
-            return os.path.join(directory, name)
-    return None
 
 
 def demucs_argv(
@@ -356,183 +341,3 @@ async def subprocess_runner(argv: list[str]) -> AsyncIterator[str]:
         # GeneratorExit: this is the path that stops the orphaned child.
         await _terminate(proc)
 
-
-class DemucsProcessor:
-    """Production processor. For a `stems` job: fetch the source audio (yt-dlp, unless the source is
-    already a local file), run Demucs htdemucs two-stem separation, and move the resulting
-    `no_vocals.wav` to the deterministic MediaStore instrumental path. Emits per-stage progress
-    (downloading → separating) for the live phone bar."""
-
-    def __init__(
-        self,
-        *,
-        model: str = DEFAULT_MODEL,
-        runner: Runner = subprocess_runner,
-        ytdlp_bin: str = "yt-dlp",
-        demucs_bin: str = "demucs",
-        ffmpeg_bin: str = "ffmpeg",
-        bitrate: str = STEM_BITRATE,
-        flac_level: int = 8,
-        device: str | None = None,
-        jobs: int = 1,
-        overlap: float | None = None,
-        segment: int | None = None,
-        shifts: int | None = None,
-        mover: Callable[[str, str], None] = shutil.move,
-        profiler: "Profiler" = build_song_profile,
-    ) -> None:
-        self._model = model
-        self._runner = runner
-        self._ytdlp_bin = ytdlp_bin
-        self._demucs_bin = demucs_bin
-        self._ffmpeg_bin = ffmpeg_bin
-        self._bitrate = bitrate
-        self._flac_level = flac_level
-        # Separation performance knobs — see demucs_argv. All optional; unset means demucs' default.
-        self._device = device
-        self._jobs = jobs
-        self._overlap = overlap
-        self._segment = segment
-        self._shifts = shifts
-        self._move = mover
-        self._profiler = profiler
-
-    async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
-        work = os.path.join(job.media_dir, "work", job.job_id)
-        os.makedirs(work, exist_ok=True)
-
-        # The checkpoint is per-JOB (the room's chosen model rides in job.params.model), not a fixed
-        # worker constant. `self._model` is only the fallback, so a raise here means the room asked
-        # for a model this build does not carry.
-        model = resolve_demucs_model(job.params, self._model)
-
-        # ── stage 1: obtain the source audio ──────────────────────────────────────
-        # Lands in the `audio/` storage class in its NATIVE container, NOT as WAV in scratch. Raw
-        # audio is the one asset that cannot be regenerated (needs network, disappears with the
-        # upload), and transcoding lossy YouTube audio to WAV costs ~12x the bytes for zero fidelity.
-        # Reused: an existing file means a later align job skips the download.
-        if job_fetcher(job) is Fetcher.LOCAL:
-            input_path = local_source_path(job)
-        else:
-            audio_dir = os.path.dirname(source_audio_path(job.media_dir, job.media_id))
-            os.makedirs(audio_dir, exist_ok=True)
-            input_path = find_downloaded(audio_dir, job.media_id)
-            if input_path is None:
-                template = os.path.join(audio_dir, f"{job.media_id}.%(ext)s")
-                async for ev in self._run_stage("downloading", download_argv(job.source_uri, template, self._ytdlp_bin), parse_ytdlp_progress):
-                    yield ev
-                input_path = find_downloaded(audio_dir, job.media_id)
-                if input_path is None:
-                    raise RuntimeError(f"download produced no audio for {job.media_id}")
-            else:
-                yield ProgressEvent(stage="downloading", pct=100)  # already on disk
-
-        # ── stage 1b: decode to the WAV Demucs wants (TRANSIENT — dies with the scratch dir) ──
-        sep_input = os.path.join(work, "input.wav")
-        await self._run_quiet(decode_argv(input_path, sep_input, self._ffmpeg_bin))
-
-        # ── stage 2: separate vocals (Demucs htdemucs) ────────────────────────────
-        sep_out = os.path.join(work, "separated")
-        demucs_cmd = demucs_argv(
-            sep_input,
-            sep_out,
-            model,
-            self._demucs_bin,
-            device=self._device,
-            jobs=self._jobs,
-            overlap=self._overlap,
-            segment=self._segment,
-            shifts=self._shifts,
-        )
-        async for ev in self._run_stage("separating", demucs_cmd, parse_demucs_progress):
-            yield ev
-
-        # ── stage 3: encode + publish the stems to the MediaStore ──────────────────
-        # The instrumental goes to LOSSLESS FLAC: it is the file that plays at volume, and a second
-        # lossy generation is audible on high-frequency transients (crash cymbals especially). The
-        # vocals stem stays lossy below — nothing plays it aloud.
-        produced = demucs_no_vocals_path(sep_out, model)
-        if not os.path.exists(produced):
-            raise RuntimeError(f"demucs produced no instrumental at {produced}")
-        final = instrumental_path(job.media_dir, job.media_id)
-        os.makedirs(os.path.dirname(final), exist_ok=True)
-        await self._run_quiet(encode_flac_argv(produced, final, self._ffmpeg_bin, self._flac_level))
-
-        stems: dict[str, str] = {"instrumental": final}
-        # Also publish the ISOLATED VOCALS stem — `--two-stems=vocals` already produced it. It unblocks
-        # pitch extraction and the vocal-guide mix. BEST-EFFORT: a missing or unencodable vocals file
-        # must not fail the load-bearing instrumental (the vocals stem is an enhancement).
-        vocals_src = demucs_vocals_path(sep_out, model)
-        if os.path.exists(vocals_src):
-            vocals_final = vocals_path(job.media_dir, job.media_id)
-            try:
-                await self._run_quiet(encode_stem_argv(vocals_src, vocals_final, self._bitrate, self._ffmpeg_bin))
-                # Measure it before reporting it. Separation can succeed and still write silence, and a
-                # SILENT guiding track is worse than none — it looks like it works. Reporting no
-                # artifact leaves the song playable with no guide, which is the honest outcome.
-                if await self._is_silent(vocals_final):
-                    print(
-                        f"[worker] vocals stem for {job.media_id} is digital silence — not reporting it",
-                        flush=True,
-                    )
-                else:
-                    stems["vocals"] = vocals_final
-            except Exception:  # noqa: BLE001 — an enhancement must never fail the job
-                pass
-
-        # ── songProfile: key (from the INSTRUMENTAL) + vocal range (from the VOCALS) ──────
-        # Analysed from the RAW separated WAVs that still exist in scratch here — `produced` and
-        # `vocals_src` — so this costs NO extra separation and NO extra decode. The vocals WAV is used
-        # even when it measured as digital silence above (so it was NOT published as a stem): the
-        # summarizer then finds no voiced frames and returns nulls, which is exactly the "present but
-        # empty" profile core needs to see so a silent-vocals song reads as cooked, not stuck.
-        # ALWAYS published, even on total analysis failure (nulls) — an ABSENT profile means "still
-        # cooking" to core, so omitting it would strand the song forever.
-        song_profile = self._profiler(
-            produced if os.path.exists(produced) else None,
-            vocals_src if os.path.exists(vocals_src) else None,
-            job.media_id,
-        )
-
-        # Report the model THIS RUN resolved, not the one the core asked for: resolve_demucs_model
-        # applies its own default when params carry none, so the two can differ and only the worker
-        # knows which weights were actually loaded.
-        yield CompleteResult(
-            media_uri=final,
-            artifacts={"stems": stems, "songProfile": song_profile},
-            facts={"engine": "demucs", "model": model, "backend": "torch"},
-        )
-
-    async def _run_quiet(self, argv: list[str]) -> None:
-        """Run a CLI that emits no useful progress (ffmpeg at loglevel=error), draining its output."""
-        async for _ in self._runner(argv):
-            pass
-
-    async def _is_silent(self, path: str) -> bool:
-        """Does this encoded stem measure as digital silence?
-
-        Unmeasurable (ffmpeg absent, or output we cannot parse) counts as NOT silent: see
-        processor.is_silent. Any failure here also degrades to "not silent" so a probe problem can
-        never cost the room a working guide.
-        """
-        try:
-            out: list[str] = []
-            async for line in self._runner(volumedetect_argv(path, self._ffmpeg_bin)):
-                out.append(line)
-            return is_silent(parse_max_volume_db("\n".join(out)))
-        except Exception:  # noqa: BLE001 — a failed probe must not fail the job or drop a good stem
-            return False
-
-    async def _run_stage(
-        self, stage: str, argv: list[str], parse: Callable[[str], int | None]
-    ) -> AsyncIterator[ProgressEvent]:
-        """Run one CLI, translating its progress lines into deduped per-stage ProgressEvents."""
-        yield ProgressEvent(stage=stage, pct=0)
-        last = -1
-        async for line in self._runner(argv):
-            pct = parse(line)
-            if pct is not None and pct != last:
-                last = pct
-                yield ProgressEvent(stage=stage, pct=pct)
-        if last < 100:
-            yield ProgressEvent(stage=stage, pct=100)  # stage finished cleanly

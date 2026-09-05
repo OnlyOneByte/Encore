@@ -3,7 +3,24 @@
 Restructure the Python worker around a declared, one-level **plan of steps** per action, executed by a
 generic runner over a typed per-job **context**.
 
-Status: **proposed**, nothing built. Decision record — what was chosen, what was rejected, and why.
+Status: **built**, S0–S6. Decision record — what was chosen, what was rejected, and why.
+
+Shipped: the domain packages, the runtime (`Ctx` / `Step` / `LinearPlan` / `PlanRunner`), all four actions
+on declared plans, the lyrics source registry, and enforcement E1–E8.
+
+Four things the build changed from what is written below, each recorded where it matters.
+`PublishStemsIfBetter` does not exist (§5) — the outranking refusal is core-side, so the two separation
+plans coincide today and inventing a step would have been worker behaviour the code does not have.
+`resolve_source_audio` was deleted rather than fixed (§7 E6) — keeping a second implementation of "where
+are the bytes" would have recreated the duplication the guard exists to stop, and the surviving one was
+the WRONG one (it assumed a `.wav` extension yt-dlp never wrote). The generated doc landed in
+`ARCHITECTURE.md` §7.1 rather than a new file (§7 E5). And `lyrics/sources/` stayed flat — `registry.py`
+beside `chain.py` — because a subpackage holding one module while its siblings live elsewhere is the
+half-built shape §1.2 is about.
+
+Two bugs were fixed by construction rather than by intent: only demucs probed the vocals stem for digital
+silence, and `songProfile` had two writers hand-assembling the same dict. Both stopped being possible when
+the work became a step.
 
 ---
 
