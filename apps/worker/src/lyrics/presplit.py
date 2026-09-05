@@ -320,7 +320,7 @@ def split_blob_text(
 
     A segment that already carries WORD timings is passed through whole. Splitting its text would
     orphan those timings from the words they belong to, and the case does not arise in practice
-    anyway — MEASURED (lyrics_chain.AsrSource): whisper `transcribe()` returns segment bounds and no
+    anyway — MEASURED (lyrics/chain.py AsrSource): whisper `transcribe()` returns segment bounds and no
     word timings, so the blob tier is line-timed and the aligner is what produces words. Skipping
     rather than attempting a partition keeps a whole class of timing corruption out of reach.
 

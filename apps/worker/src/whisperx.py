@@ -287,7 +287,7 @@ class WhisperXProcessor:
         """The acquisition chain, in two tiers.
 
         CANDIDATES claim to be the song's words and get graded. BASELINES are evidence of what is audible
-        and do the grading — see the role constants in lyrics_chain. `acquire` runs them ALL, then
+        and do the grading — see the role constants in lyrics/chain.py. `acquire` runs them ALL, then
         `select_by_baselines` grades every candidate against the mean of the baselines.
 
         Three baselines by design, with independent failure modes: the vocals stem gives the cleanest
@@ -374,7 +374,7 @@ class WhisperXProcessor:
         # TWO fetches into TWO directories, never one. yt-dlp names both kinds identically, so a single
         # directory would leave "authored or machine-made" to a filename guess — and the two have
         # opposite roles: authored text is a CANDIDATE for the words, a machine track is only a BASELINE
-        # for grading. See captions.py.
+        # for grading. See lyrics/captions.py.
         #
         # Runs through the SAME injected runner as the audio download, so both are faked wherever that is.
         # Never fatal: yt-dlp exits non-zero when a video simply has no track of the kind asked for, which
@@ -452,7 +452,7 @@ class WhisperXProcessor:
             return
 
         # Re-lineate the AUTO-TRANSCRIBED texts only (a whisper segment is a ~30s VAD blob of several
-        # lyric lines; authored tiers already arrive line-broken). See lyrics_presplit.
+        # lyric lines; authored tiers already arrive line-broken). See lyrics/presplit.py.
         #
         # Done BEFORE grading on purpose: the demotion later sets text_confidence='low' on a suspect
         # winner, which would flip it non-authoritative and hand human-authored lines to a splitter that
