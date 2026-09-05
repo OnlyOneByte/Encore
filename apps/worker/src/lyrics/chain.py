@@ -11,8 +11,8 @@ run INDEPENDENTLY — not first-hit — because text quality and timing fidelity
 ASR runs on every cook regardless (it is also the only signal that catches a confidently WRONG
 LRCLIB match; see agreementScore in packages/shared/src/lyrics.ts).
 
-New module rather than an addition to lyrics_source.py: the LRCLIB adapter needs
-`whisperx.lrclib_to_segments`, and whisperx.py already imports lyrics_source — putting the adapter
+New module rather than an addition to lyrics/source.py: the LRCLIB adapter needs
+`whisperx.lrclib_to_segments`, and whisperx.py already imports the lyrics package — putting the adapter
 there would close an import cycle.
 
 PURE of network/ML by construction: every source is injectable, so the whole chain tests with fakes.
@@ -81,7 +81,7 @@ def is_authoritative_text(text_source: str, text_confidence: str) -> bool:
     Mirrored rather than re-derived because it is now load-bearing on BOTH sides of the seam: the TV
     uses it to decide whether to caption the overlay "auto-transcribed", and the worker uses the same
     predicate to decide whether text arrived as human-authored LINES or as an ASR blob that needs
-    re-lineating (see lyrics_presplit.py). One definition, two consumers — a second, drifting notion of
+    re-lineating (see lyrics/presplit.py). One definition, two consumers — a second, drifting notion of
     "authoritative" would silently split the wrong tier.
     """
     return text_source != SOURCE_ASR and text_confidence != "low"
@@ -143,7 +143,7 @@ class LyricsText:
     #: Held on the winner rather than returned alongside it because only ONE of them may ever be
     #: published: the artifact key is (media, source, timing), so two LRCLIB candidates would collide
     #: on disk and in the candidate set. These are the losers of a choice that has not been made yet —
-    #: `select_variants` makes it once the ASR transcript exists to decide with.
+    #: `select_by_baselines` makes it once the ASR transcript exists to decide with.
     alternates: list["LyricsText"] = field(default_factory=list)
 
     @property
@@ -175,7 +175,7 @@ class LrclibSource:
     lyrics of "Telephone": both records match artist+track, /api/get picks whichever satisfies its ±2s
     duration filter first, and nothing downstream ever learns there was a choice. This tier therefore
     returns the metadata-best record with the rest attached as `alternates`, and defers the real
-    decision to `select_variants`, which has the ASR transcript to settle it with.
+    decision to `select_by_baselines`, which has the ASR transcript to settle it with.
 
     Falls back to `get()` when the search finds nothing: a record reachable by exact match but absent
     from search results is unlikely but costs one request to rule out, and a regression from
@@ -249,7 +249,7 @@ class CaptionsSource:
 
     Distinct from AutoCaptionsSource, which is a BASELINE. The two arrive from separate yt-dlp fetches
     into separate directories precisely so that this distinction cannot blur: the guarantee that no
-    machine-generated track reaches this tier is structural, not a filter. See captions.py.
+    machine-generated track reaches this tier is structural, not a filter. See lyrics/captions.py.
 
     Timing is LINE and stays line: a caption cue bounds a whole line, and any word timing comes from the
     same forced aligner every other tier goes through.

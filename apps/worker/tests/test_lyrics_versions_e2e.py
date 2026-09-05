@@ -322,4 +322,4 @@ async def test_authored_captions_can_WIN_over_a_lookup_when_they_match_the_audio
     sources = {c["textSource"] for c in done.artifacts["lyrics"]["candidates"]}
     assert sources == {"captions"}  # it won outright; the losing lookup is not published
     caps = next(c for c in done.artifacts["lyrics"]["candidates"] if c["textSource"] == "captions")
-    assert caps["textConfidence"] == "high"  # authored text, never machine-made — see captions.py
+    assert caps["textConfidence"] == "high"  # authored text, never machine-made — see lyrics/captions.py
