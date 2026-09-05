@@ -70,9 +70,59 @@ test('a fetch carries the LOOKUP KEYS too — annotation runs as its final step'
 	expect(p.durationSec).toBe(225);
 });
 
-test('an unconfident parse sends NO lookup keys, so the worker declines instead of guessing', () => {
-	const p = assignParams('fetch', media(), settings()); // no canonicals set
+test('an unconfident parse sends NO lookup keys to ALIGN, so the worker declines instead of guessing', () => {
+	const p = assignParams('align', media(), settings()); // no canonicals set
 	expect(p.artist).toBeUndefined();
 	expect(p.track).toBeUndefined();
 	expect(p.fetcher).toBe('ytdlp'); // the fetcher is still declared — that is not a lookup key
+});
+
+test('a fetch DOES send the unconfident guess — MusicBrainz is the gate, not the parser', () => {
+	// The regression this fixes, verbatim from the live library. `cleanTitleNoise` strips the trailing
+	// "| Worlds 2017 - League of Legends" tag, which leaves a title with no separator in it, so the
+	// parser falls back to the uploader and marks itself `low` — and `resultToMedia` then stores no
+	// canonicals. Under the old shared gate that meant no keys, no MusicBrainz call, and a TV rendering
+	// the entire upload string. The uploader IS the credited artist here, and MusicBrainz confirms the
+	// pair exactly.
+	const yt = media({
+		title: 'Legends Never Die (ft. Against The Current) [OFFICIAL AUDIO] | Worlds 2017 - League of Legends',
+		artist: 'League of Legends',
+		durationSec: 179
+	});
+	const p = assignParams('fetch', yt, settings());
+	expect(p.artist).toBe('League of Legends');
+	// The guest credit is lifted OUT of the song name: MusicBrainz calls the recording "Legends Never
+	// Die" and returns zero results for the title with "(ft. …)" still in it.
+	expect(p.track).toBe('Legends Never Die');
+	expect(p.durationSec).toBe(179);
+	// No `artistCredit`: only the align step reads it (to rank lyrics records), and the annotate step
+	// takes artist/track/durationSec alone. MusicBrainz returns the full billing itself.
+	expect(p.artistCredit).toBeUndefined();
+	// ...and align still refuses to guess for the same media: LRCLIB would answer with its nearest
+	// record rather than declining, and that is another song's words.
+	expect(assignParams('align', yt, settings()).artist).toBeUndefined();
+});
+
+test('a fetch does NOT guess from an aggregator uploader — "7clouds" is not an artist', () => {
+	// The parser returns `unparsed` for a lyrics channel with no separator to split on, so there is
+	// nothing to send. Asking MusicBrainz about a channel name is a wasted paced request.
+	const p = assignParams('fetch', media({ title: 'Wake Me Up', artist: '7clouds' }), settings());
+	expect(p.artist).toBeUndefined();
+	expect(p.track).toBeUndefined();
+});
+
+test('a fetch sends no track without an artist — the worker needs both or it declines', () => {
+	const p = assignParams('fetch', media(), settings()); // 'Take On Me', no uploader → unparsed
+	expect(p.artist).toBeUndefined();
+	expect(p.track).toBeUndefined();
+});
+
+test('a CONFIDENT canonical is never overwritten by the guess', () => {
+	const p = assignParams(
+		'fetch',
+		media({ title: 'a-ha - Take On Me (Official Video)', artist: 'SomeChannel', artistCanonical: 'a-ha', titleCanonical: 'Take On Me' }),
+		settings()
+	);
+	expect(p.artist).toBe('a-ha');
+	expect(p.track).toBe('Take On Me');
 });

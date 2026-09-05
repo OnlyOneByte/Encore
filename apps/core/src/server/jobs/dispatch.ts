@@ -6,6 +6,7 @@
 import type { Job, JobParams, JobType, Media, GlobalSettings } from '@encore/shared';
 import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_GLOBAL_SETTINGS, DEFAULT_FETCHER, DEFAULT_ASR_MODEL, DEFAULT_SYNC_MODE, getEngine, getFetcher, fetcherFor, isQualityUpgrade } from '@encore/shared';
 import type { WorkerSession } from './registry';
+import { parseTrackTitle } from '../media/track-title';
 
 /**
  * The jobs a just-COMPLETED job should enqueue next — the cook pipeline. PURE.
@@ -44,7 +45,9 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
  * An align job gets the CANONICAL artist/title only when the normalizer was confident: a lookup on a
  * guessed title returns nothing or another song's words, so omitting keys is how the worker learns
  * "no authoritative lookup is possible" and transcribes instead — meaningfully different from sending
- * the raw uploader string. `durationSec` is always safe: it narrows an LRCLIB match and bounds the
+ * the raw uploader string. A fetch job is the deliberate exception and takes the guess too, because
+ * MusicBrainz refuses a disagreement rather than answering with the nearest thing it has
+ * (annotationKeys). `durationSec` is always safe: it narrows an LRCLIB match and bounds the
  * line-sync fallback's synthetic timings.
  */
 export function assignParams(jobType: JobType, media: Media | undefined, settings?: GlobalSettings): JobParams {
@@ -52,10 +55,10 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 	// boundary instead of testing the URI for an `http` prefix, which is what used to misclassify any
 	// scheme that was neither a watch URL nor a bare file key.
 	const fetcher = media ? fetcherFor(media.source, settings?.defaultFetcher) : DEFAULT_FETCHER;
-	// A fetch carries the lookup keys too: annotation runs as its final step, and it needs the same
-	// confidence-gated canonicals an align job gets. Omitting them is how the worker learns "no
-	// authoritative identification is possible" and declines rather than searching on a guess.
-	if (jobType === 'fetch') return { fetcher, ...lookupKeys(media) };
+	// A fetch carries the lookup keys too: annotation runs as its final step. Unlike align it gets the
+	// UNCONFIDENT parse as well, because MusicBrainz is the one consumer that can safely be handed a
+	// guess — see annotationKeys.
+	if (jobType === 'fetch') return { fetcher, ...annotationKeys(media) };
 	// stems carries the room's engine+model, the upgrade its upgrade engine+model. Both fall back to
 	// shared defaults when no settings are provided (e.g. a unit test), so the worker still gets a
 	// valid pairing.
@@ -87,9 +90,9 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
  * The confidence-gated lookup keys a metadata call needs: canonical artist/title only when the parse
  * was confident, plus duration whenever it is real.
  *
- * Shared by `align` (LRCLIB) and `fetch` (MusicBrainz) because both face the same trap — a lookup on a
- * guessed title returns nothing, or another song's data, and the second is worse. An absent key is the
- * signal to decline; a raw uploader string would look like an answer.
+ * Used by `align` (LRCLIB), whose trap is that a lookup on a guessed title returns nothing, or another
+ * song's words, and the second is worse. An absent key is the signal to decline; a raw uploader string
+ * would look like an answer. `fetch` starts from these and then goes further — see annotationKeys.
  */
 function lookupKeys(media: Media | undefined): Partial<JobParams> {
 	const out: Partial<JobParams> = {};
@@ -102,6 +105,43 @@ function lookupKeys(media: Media | undefined): Partial<JobParams> {
 	if (media && Number.isFinite(media.durationSec) && media.durationSec > 0) {
 		out.durationSec = media.durationSec;
 	}
+	return out;
+}
+
+/**
+ * The keys a `fetch` job's MusicBrainz step searches with: the confident canonicals when they exist,
+ * and otherwise the normalizer's UNCONFIDENT guess.
+ *
+ * WHY THIS IS NOT THE SAME GATE AS ALIGN. Annotation is the mechanism that turns a bad title parse
+ * into a citation, so gating it on a good title parse made it unreachable in exactly the case it was
+ * built for. The live library showed this: "Legends Never Die (ft. Against The Current) [OFFICIAL
+ * AUDIO] | Worlds 2017 - League of Legends" cleans to a title with no separator left in it, so the
+ * parser fell back to the uploader and marked itself `low`, both canonicals were dropped, no keys were
+ * sent, MusicBrainz was never asked — and the TV rendered the whole raw upload string. Asked, it
+ * answers exactly: artist "League of Legends", recording "Legends Never Die", score 100.
+ *
+ * A GUESS IS SAFE HERE AND ONLY HERE, because of what the two consumers do with a key that is wrong.
+ * MusicBrainz's `pick_best` requires the returned recording to AGREE on artist AND title after
+ * normalisation and to be within 5s on length, so a wrong guess produces no match and writes nothing —
+ * the identical outcome to not asking. LRCLIB returns the closest record it has, which for a wrong key
+ * is another song's words, and `applyAnnotation`'s no-regress rule cannot help there. So the cost of
+ * guessing is zero on one path and a wrong-song candidate on the other.
+ *
+ * The parse is redone here rather than stored: `resultToMedia` deliberately persists canonicals only
+ * when confident (browse headings and the align gate both read them), and a second nullable column
+ * holding the same function's low-confidence output would be a trap for the next reader. The parser is
+ * pure, so re-running it keeps this function pure too.
+ */
+function annotationKeys(media: Media | undefined): Partial<JobParams> {
+	const out = lookupKeys(media);
+	if (!media || (out.artist && out.track)) return out;
+	// `media.artist` is the UPLOADER — which is what the fallback rule is for, and for "League of
+	// Legends" it is also the right answer. An aggregator channel ("7clouds") yields a null artist
+	// instead, so this never asks MusicBrainz about a lyrics channel.
+	const guess = parseTrackTitle(media.title, media.artist);
+	if (!out.artist && guess.artist) out.artist = guess.artist;
+	// Only worth sending alongside an artist: the worker declines unless it has both.
+	if (!out.track && out.artist) out.track = guess.title;
 	return out;
 }
 
