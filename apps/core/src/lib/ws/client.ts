@@ -6,6 +6,7 @@
 // drop/restore without a real server. In the browser, the default factory uses global WebSocket.
 
 import type { ServerEvent, ClientEvent } from '@encore/shared';
+import { trySend } from './send';
 
 export interface MinimalSocket {
 	send(data: string): void;
@@ -91,8 +92,24 @@ export class WsClient {
 		this.#setConnected(false);
 	}
 
-	send(e: ClientEvent): void {
-		this.#sock?.send(JSON.stringify(e));
+	/**
+	 * Send a client event. Returns whether it actually went out.
+	 *
+	 * `#sock?.send(...)` was not a guard: optional chaining covers an ABSENT socket, not a CONNECTING,
+	 * CLOSING or CLOSED one, and `WebSocket.send()` throws `InvalidStateError` on all three. Every phone
+	 * command — pause, skip, ±key, guide level, and every queue op — went through this line, so a tap
+	 * during a reconnect threw instead of being dropped cleanly.
+	 *
+	 * A dropped COMMAND is warned about rather than swallowed. It is user-initiated and low-rate, so the
+	 * log costs nothing, and the alternative is a tap that silently does nothing with no trace. This is
+	 * deliberately not a retry queue: replaying a queued `pause` after a reconnect could act on a
+	 * different song than the one the user was looking at, so the honest failure is to drop it and say
+	 * so. The reconnect path already resyncs authoritative state, which is what corrects the phone.
+	 */
+	send(e: ClientEvent): boolean {
+		const sent = trySend(this.#sock, JSON.stringify(e));
+		if (!sent) console.warn(`[ws] dropped ${e.type} — socket not open`);
+		return sent;
 	}
 
 	/**
