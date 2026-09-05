@@ -1,5 +1,10 @@
 # Archive — Milestones M0–M8 (all shipped)
 
+> **Frame citations in this document are historical.** The `<id>-…-eyeson.png` files it names were
+> retired when `docs/mocks/` was reduced to the one regenerable set (`tour-…`); the verification
+> they record still happened, the image no longer ships. See
+> [`docs/mocks/README.md`](../mocks/README.md).
+
 > **Historical record. Nothing here is actionable.** These milestones are closed; the commit-level
 > detail is kept so a "why is it built this way?" question has an answer, not because any of it is
 > still work. Live, open work is in [`../ROADMAP.md`](../ROADMAP.md).

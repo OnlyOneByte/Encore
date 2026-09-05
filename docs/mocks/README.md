@@ -1,14 +1,23 @@
 # UI frames
 
-Eyes-on evidence. `<id>-<what>-eyeson.png`, where the id names the work that produced the frame —
-`m0c5-`, `b7c4-`, `b8-`, `ds-` for the design-system pass, and **`tour-` for the current full-surface
-set**. The `tour-` frames are the ones the README links and the ones to regenerate; the older ids are
-kept as the record of the work that first produced them, and show the UI as it was at that time.
+**One set, stable filenames, regenerated in place.** Every frame here is `tour-<what>-eyeson.png`, and
+the name is a *slot* rather than a snapshot: regenerate the set and every reference — the root README,
+any doc, a PR body — picks up the new image without an edit. Nothing else lives in this folder.
 
-The `tour-` and `ds-` frames are **generated, not hand-taken**: each one is the real app driven into
-that state through its real controls by `apps/core/e2e/capture.mjs`. That matters because the states
-worth looking at are the ones a guest actually hits — a song cooking in the rotation, the sheet pulled
-up, the ball sitting on the word being sung — and none of them are reachable by opening a URL.
+That is a deliberate change. This directory used to carry 130 frames across a dozen id prefixes
+(`m0c5-`, `m3c2-`, `b6-`, `b7c4-`, `b8-`, `ds-`, and sixteen stale `tour-` frames from earlier versions
+of the capture), one family per piece of work that happened to take a screenshot. None of them were
+regenerable — each was a frozen record of the UI on the day it was taken — so the folder grew
+monotonically while only the `tour-` set ever told you what the app looks like *now*. The historical
+frames were retired; the archive docs that cited them carry a note saying so.
+
+The frames are **generated, not hand-taken**: each one is the real app driven into that state through
+its real controls by `apps/core/e2e/capture.mjs`. That matters because the states worth looking at are
+the ones a guest actually hits — a song cooking in the rotation, the sheet pulled up, the ball sitting
+on the word being sung — and none of them are reachable by opening a URL.
+
+`phone-ui-mock.html` stays: it is the original hand-drawn token source `app.css` was ported from, not a
+captured frame.
 
 ## Regenerate
 
@@ -18,8 +27,10 @@ ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=./media bun run start
 EPORT=3500 bun run e2e/capture.mjs                   # writes here by default
 ```
 
-The capture applies the `<id>-<what>-eyeson` naming itself, so a regenerated set cannot drift out of
-the convention. `CAPTURE_ID` overrides the id.
+The capture applies the `tour-<what>-eyeson` naming itself, so a regenerated set cannot drift out of
+the convention, and the file list here should be exactly what the capture emits — if it is not, either
+a frame was added without regenerating or a stale one is lingering. `CAPTURE_ID` overrides the id
+prefix; leave it alone unless you are deliberately producing a set that is *not* the current one.
 
 **Two things decide whether the interesting half of the set is real, and both fail quietly.**
 
