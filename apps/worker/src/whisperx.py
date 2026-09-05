@@ -36,14 +36,17 @@ from .lyrics_chain import (
     TIMING_LINE,
     TIMING_WORD,
     AsrSource,
+    AutoCaptionsSource,
+    CaptionsSource,
     LrclibSource,
     LyricsRequest,
     LyricsSource,
     LyricsText,
     acquire,
     candidate_key,
-    score_against_asr,
+    select_by_baselines,
 )
+from .captions import caption_argv, read_captions
 from .lyrics_presplit import presplit_texts
 from .lyrics_validate import validate_timing
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
@@ -281,12 +284,26 @@ class WhisperXProcessor:
         return self._lyrics_client
 
     def _get_sources(self) -> list[LyricsSource]:
-        """The acquisition chain. Order is informational only — `acquire` runs them ALL and
-        `pickBestLyrics` (TS) decides what the TV shows."""
+        """The acquisition chain, in two tiers.
+
+        CANDIDATES claim to be the song's words and get graded. BASELINES are evidence of what is audible
+        and do the grading — see the role constants in lyrics_chain. `acquire` runs them ALL, then
+        `select_by_baselines` grades every candidate against the mean of the baselines.
+
+        Three baselines by design, with independent failure modes: the vocals stem gives the cleanest
+        words, the mix is the only one that still speaks when separation produced silence (measured: 2 of
+        9 stems on this library), and YouTube's automatic captions are a weak third opinion that abstains
+        when too thin to judge with.
+        """
         if self._sources is None:
             self._sources = [
+                # candidates
                 LrclibSource(self._client(), lrclib_to_segments),
-                AsrSource(self._get_transcriber(), normalize_lyrics),
+                CaptionsSource(),
+                # baselines
+                AsrSource(self._get_transcriber(), normalize_lyrics, audio=AsrSource.AUDIO_VOCALS),
+                AsrSource(self._get_transcriber(), normalize_lyrics, audio=AsrSource.AUDIO_MIX),
+                AutoCaptionsSource(),
             ]
         return self._sources
 
@@ -341,7 +358,8 @@ class WhisperXProcessor:
         # ── stage 1: obtain the source audio ──────────────────────────────────────
         # Reuse the retained raw original if a stems job already fetched it — an align job for a
         # cooked song then costs no network.
-        if job_fetcher(job) is Fetcher.LOCAL:
+        is_local = job_fetcher(job) is Fetcher.LOCAL
+        if is_local:
             audio = local_source_path(job)
         else:
             audio = source_audio_path(job.media_dir, job.media_id)
@@ -352,6 +370,47 @@ class WhisperXProcessor:
             else:
                 yield ProgressEvent(stage="downloading", pct=100)
 
+        # ── stage 1b: the upload's caption tracks, authored and automatic ────────
+        # TWO fetches into TWO directories, never one. yt-dlp names both kinds identically, so a single
+        # directory would leave "authored or machine-made" to a filename guess — and the two have
+        # opposite roles: authored text is a CANDIDATE for the words, a machine track is only a BASELINE
+        # for grading. See captions.py.
+        #
+        # Runs through the SAME injected runner as the audio download, so both are faked wherever that is.
+        # Never fatal: yt-dlp exits non-zero when a video simply has no track of the kind asked for, which
+        # is the common case and not a failure.
+        #
+        # Skipped for a DECLARED-LOCAL source, on the same rule as the audio above: a library file has no
+        # upload to ask, so there is nothing to fetch and no reason to touch the network.
+        caption_segments: list[dict[str, Any]] = []
+        auto_caption_segments: list[dict[str, Any]] = []
+        if job.source_uri and not is_local:
+            for kind, auto in (("captions", False), ("auto-captions", True)):
+                out_dir = os.path.join(work, kind)
+                os.makedirs(out_dir, exist_ok=True)
+                try:
+                    async for ev in self._run_stage(
+                        "downloading",
+                        caption_argv(
+                            job.source_uri, os.path.join(out_dir, "captions.%(ext)s"), self._ytdlp_bin, auto=auto
+                        ),
+                        parse_ytdlp_progress,
+                    ):
+                        yield ev
+                except Exception as exc:  # noqa: BLE001 — no track / no yt-dlp / no network: all a miss
+                    print(f"[worker] align: no {kind} for {job.media_id} ({exc})", flush=True)
+                got = read_captions(out_dir)
+                if auto:
+                    auto_caption_segments = got
+                else:
+                    caption_segments = got
+                if got:
+                    role = "a BASELINE for grading" if auto else "an authoritative CANDIDATE"
+                    print(
+                        f"[worker] align: {job.media_id} has {len(got)} lines of {kind} — using as {role}",
+                        flush=True,
+                    )
+
         # ── stage 2: ACQUIRE text from every source ──────────────────────
         # Independently, not first-hit: authoritative text and ASR are complements (the ideal
         # artifact is authoritative text force-aligned), and a dead LRCLIB must degrade the RESULT,
@@ -360,9 +419,12 @@ class WhisperXProcessor:
             media_id=job.media_id,
             artist=artist or None,
             track=track or None,
+            artist_credit=str(params.get("artistCredit") or "").strip() or None,
             duration=duration,
             audio_path=audio,
             vocals_path=self._vocals_path(job),
+            caption_segments=caption_segments,
+            auto_caption_segments=auto_caption_segments,
         )
         texts: list[LyricsText] = []
         async for kind, val in self._run_blocking(lambda: acquire(self._get_sources(), req), "aligning", 0):
@@ -390,32 +452,49 @@ class WhisperXProcessor:
             return
 
         # Re-lineate the AUTO-TRANSCRIBED texts only (a whisper segment is a ~30s VAD blob of several
-        # lyric lines; authoritative tiers already arrive line-broken). See lyrics_presplit.
+        # lyric lines; authored tiers already arrive line-broken). See lyrics_presplit.
         #
-        # Done BEFORE agreement scoring on purpose: the demotion below sets text_confidence='low' on a
-        # suspect lookup, which would flip it non-authoritative and hand human-authored lines to a
-        # splitter that can only damage them. (Scoring itself compares token SETS, which splitting
-        # cannot change.)
+        # Done BEFORE grading on purpose: the demotion later sets text_confidence='low' on a suspect
+        # winner, which would flip it non-authoritative and hand human-authored lines to a splitter that
+        # can only damage them. (Grading itself compares token SETS, which splitting cannot change.)
         texts = presplit_texts(texts)
+
+        # ── stage 2b: GRADE the candidates against the baselines ──────────────────
+        # The two-tier decision, made BEFORE anything is aligned — so grading five candidates against
+        # three baselines costs fifteen token-set intersections and no alignment at all.
+        #
+        # Only what `select_by_baselines` returns gets published and therefore aligned: the winning
+        # candidate, plus the best baseline when the winner cannot be trusted (no candidate existed, or the
+        # winner scored below SUSPECT_AGREEMENT and is probably a different song). A baseline published for
+        # its own sake would cost a whole alignment pass to produce words nobody shows.
+        sel = select_by_baselines(texts)
+        for note in sel.baseline_notes:
+            print(f"[worker] align: {job.media_id} baseline — {note}", flush=True)
+        for choice in sel.choices:
+            print(f"[worker] align: {job.media_id} lyrics version — {choice.summary()}", flush=True)
+        if sel.baseline_fallback:
+            print(
+                f"[worker] align: {job.media_id} has NO authored lyrics candidate — falling back to the "
+                f"best baseline ({sel.publish[0].variant if sel.publish else 'none'})",
+                flush=True,
+            )
+
+        # THE ABSOLUTE JUDGEMENT, distinct from the comparative selection above. Argmax found the best
+        # candidate; this asks whether even that one is about this song. Demoting to `low` makes
+        # isAuthoritativeText() false in shared/lyrics.ts, so the TV labels it — and the baseline published
+        # alongside gives the room real alternative words rather than only a warning on the wrong ones.
+        if sel.winner_suspect:
+            print(
+                f"[worker] align: {job.media_id} best lyrics disagree with every baseline "
+                f"(composite {sel.winner_score:.2f} < {SUSPECT_AGREEMENT}) — probably the WRONG SONG; "
+                "demoting it and publishing what was actually heard alongside",
+                flush=True,
+            )
+            sel.publish[0].text_confidence = "low"
+        texts = sel.publish
 
         # ── stage 3: TIMING — force-align each text; degrade to its own line sync ─
         yield ProgressEvent(stage="aligning", pct=0)
-        # Score every authoritative text against the ASR transcript BEFORE timing: a lookup that
-        # disagrees with what is sung is probably a different song and must not be presented as
-        # authoritative. Demoting confidence to `low` makes isAuthoritativeText() false in
-        # shared/lyrics.ts, dropping it below ASR and making the TV label it — no separate "suspect"
-        # concept needed downstream.
-        agreements = score_against_asr(texts)
-        for text in texts:
-            score = agreements.get(text.text_source)
-            if score is not None and score < SUSPECT_AGREEMENT:
-                print(
-                    f"[worker] lyrics from {text.text_source} disagree with the vocals "
-                    f"(agreement {score:.2f} < {SUSPECT_AGREEMENT}) — probably the WRONG SONG; "
-                    "demoting it to unverified",
-                    flush=True,
-                )
-                text.text_confidence = "low"
         # THE AUDIO THE ALIGNER GETS. Prefer the isolated vocals stem; fall back to the mix only when
         # no stem exists (a song cooked before stems were retained).
         #
@@ -475,7 +554,7 @@ class WhisperXProcessor:
                         continue  # nothing honest left to publish for this source
                     doc = line_synced_lyrics(text.segments, language=text.language or language)
                     timing, timing_confidence = TIMING_LINE, "low"
-            ref = candidate_key(job.media_id, text.text_source, timing)
+            ref = candidate_key(job.media_id, text.text_source, timing, text.tag)
             final = os.path.join(job.media_dir, ref)
             os.makedirs(os.path.dirname(final), exist_ok=True)
             with open(final, "w", encoding="utf-8") as f:
@@ -489,7 +568,13 @@ class WhisperXProcessor:
                     "timingConfidence": timing_confidence,
                     "language": doc.get("language") or text.language or language,
                     "createdAt": int(time.time() * 1000),
-                    **({"agreement": agreements[text.text_source]} if text.text_source in agreements else {}),
+                    # The COMPOSITE score, and only on the graded candidate. A baseline carries none by
+                    # construction: it is the ruler, so scoring it would mean measuring it against itself.
+                    **(
+                        {"agreement": sel.winner_score}
+                        if (text is sel.publish[0] and sel.winner_score is not None)
+                        else {}
+                    ),
                 }
             )
         if not candidates:

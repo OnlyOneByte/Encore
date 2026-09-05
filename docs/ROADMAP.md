@@ -50,9 +50,9 @@ eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
   worker code.
 - YouTube autoplay-with-audio needs a user gesture in-browser.
 
-**Working order.** **B-8** (separator swap) → **B-9** (image + stream-source hygiene) → **B-3-C7p2**
-(captions) → **B-4** → **M9-C1** → **M9-C3** → **B-2** last. B-2 is last because its only real
-acceptance test is audible and needs the owner in the room.
+**Working order.** **B-8** (separator swap) → **B-9** (image + stream-source hygiene) →
+**B-3-C7p2b** (re-align on better text) → **B-4** → **M9-C1** → **M9-C3** → **B-2** last. B-2 is last
+because its only real acceptance test is audible and needs the owner in the room.
 
 ---
 
@@ -315,12 +315,43 @@ which is the argument for the "green suite is the floor, not the bar" rule in
         *Done-when:* for a title with both, the Opus stream is chosen. **AUTO** — pure ranking over
         recorded format lists; no network in the test.
 
-- [ ] **B-3-C7 (part 2) · captions tier + re-align on better text.** The backfill covers "no lyrics
-  yet"; this covers "LRCLIB became reachable, or the text was corrected". Captions were probed on two
-  library videos: one had none, the other only auto-generated — so this is a **middle** tier, not an
-  authoritative one. *Done-when:* a song whose text improves gets re-aligned **from retained audio**
-  (no re-download, no re-separation) and can never regress from word- to line-level timings.
-  **AUTO** — tier ordering, upgrade-not-regress invariant, re-align trigger.
+- [x] **B-3-C7 (part 2a) · two-tier lyrics selection.** Text sources now split by ROLE rather than by
+  quality. **Candidates** are authored claims about the song's words (LRCLIB records, uploader-authored
+  captions); **baselines** are evidence of what is actually audible (local transcription of the vocals
+  stem, local transcription of the raw mix, YouTube's automatic captions). Every candidate is scored
+  against every baseline that can speak and the unweighted **mean** picks the winner. With no candidate at
+  all, the tiering system shows the best baseline instead.
+
+  LRCLIB is asked via `/api/search` (an ARRAY of records) rather than `/api/get` (one record, filtered to
+  ±2s of the duration), because filtering the query is what picked a version by fiat.
+
+  **Why selection, not a threshold.** Detection already existed and made things worse: an agreement below
+  `SUSPECT_AGREEMENT` demoted the lookup, dropping it beneath the transcript — so a wrong-version match was
+  answered with Whisper's guess when the correct record sat one row away. And the threshold cannot fire on
+  this case at all: measured, the WRONG version scores **0.548** against the vocals and the right one
+  **0.938**, both far above the 0.25 cutoff. Argmax needs no threshold, only a difference. The threshold
+  keeps its own separate job — is even the winner about this song — and when it says no, the best baseline
+  is published alongside so the room gets words that ARE about this audio.
+
+  Three findings worth keeping. A baseline too thin to reach `MIN_TOKENS_TO_COMPARE` **abstains** rather
+  than voting, which is what makes including a weak one safe (auto-captions were absent or useless on 3 of
+  5 uploads probed). The **mix** baseline exists because separation fails — 2 of 9 stems on this library
+  were digital silence shipped as `ready` — and it is then the only evidence left. And machine-**translated**
+  caption tracks are refused outright, since a fluent wrong-language track would not abstain; it would vote
+  confidently against every correct candidate.
+
+  Also fixed a latent ranking defect the design depends on: a text identified as another song now ranks
+  below every honest guess (`lyricsRank` tier 1). Demoting confidence alone left it tied with the baseline
+  that convicted it, and the tie-break preferred it — a suspect candidate carries a numeric agreement, a
+  baseline carries none.
+
+  Costs two transcriptions instead of one (~+13s/song on `base`/CPU) plus two cheap caption metadata
+  fetches. Only what is published gets aligned, so the common run is still exactly one alignment.
+
+- [ ] **B-3-C7 (part 2b) · re-align on better text.** The backfill covers "no lyrics yet"; this covers
+  "LRCLIB became reachable, or the text was corrected". *Done-when:* a song whose text improves gets
+  re-aligned **from retained audio** (no re-download, no re-separation) and can never regress from
+  word- to line-level timings. **AUTO** — upgrade-not-regress invariant, re-align trigger.
 
 - [ ] **B-4 · Hot-titles persistence** — the popularity tracker is in-memory (survives refresh, not
   restart). Persist counts so "🔥 Popular tonight" survives a restart. **AUTO** — unit.

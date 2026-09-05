@@ -182,6 +182,13 @@ export interface JobParams {
   targetKey?: string; // requested key shift, if a job ever pre-renders one
   artist?: string; // canonical artist for a lyrics lookup; absent when the parse wasn't confident
   track?: string; // canonical title for a lyrics lookup; absent when the parse wasn't confident
+  /**
+   * The full artist billing ("Lady Gaga feat. Beyoncé") when the upload credited more than the primary.
+   * NOT a lookup key — querying it would miss every record filed under the primary alone. It RANKS the
+   * records a search returns, which is how the version with a guest verse is told apart from the one
+   * without. Absent when it would only repeat `artist`.
+   */
+  artistCredit?: string;
   album?: string;
   durationSec?: number; // narrows an LRCLIB match and bounds line-sync fallback timings
   /**

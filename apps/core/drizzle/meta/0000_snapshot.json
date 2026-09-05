@@ -537,6 +537,13 @@
           "notNull": false,
           "autoincrement": false
         },
+        "artist_credit": {
+          "name": "artist_credit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "title_canonical": {
           "name": "title_canonical",
           "type": "text",

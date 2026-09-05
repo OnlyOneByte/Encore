@@ -48,6 +48,16 @@ export interface MediaSidecar {
 		/** MusicBrainz recording id, when an annotation cited this song. Null when only parsed. */
 		mbid?: string | null;
 		artist: string | null;
+		/**
+		 * The full artist billing as written ("Lady Gaga feat. Beyoncé"), where `artist` is the primary
+		 * alone. Distinguishes two RECORDINGS of one song, which is why it is kept: a lyrics provider
+		 * holds a record per version and the primary artist matches all of them equally.
+		 *
+		 * Always from the upload's own parse, never from a MusicBrainz citation — the annotator returns
+		 * a primary artist, so letting a citation write here would replace a real credit with a
+		 * narrower one.
+		 */
+		artistCredit?: string | null;
 		title: string;
 		album: string | null;
 		year: number | null;
@@ -123,6 +133,10 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 		canonical: {
 			mbid: m.mbid ?? prev?.canonical.mbid ?? null,
 			artist: cited ? (m.artistCanonical ?? parsed.artist) : keepCited('artist') ? prev!.canonical.artist : parsed.artist,
+			// Not subject to `cited`/`keepCited`: the credit describes the UPLOAD's billing, which a
+			// recording-level citation has no better answer for. Preserved across writes so a
+			// re-annotated song does not lose it.
+			artistCredit: parsed.artistFull ?? prev?.canonical.artistCredit ?? null,
 			title: cited ? (m.titleCanonical ?? parsed.title) : keepCited('title') ? prev!.canonical.title : parsed.title,
 			album: prev?.canonical.album ?? null,
 			year: prev?.canonical.year ?? null,
@@ -219,6 +233,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		// sync pass mirrors these into the index too, but an align job dispatched before it ran would
 		// otherwise look up the raw title and miss.
 		artistCanonical: browseArtist(s) ?? undefined,
+		artistCredit: s.canonical.artistCredit ?? undefined,
 		titleCanonical: lookupTitle(s) ?? undefined
 	};
 }
