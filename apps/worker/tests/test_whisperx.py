@@ -13,6 +13,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src import whisperx  # noqa: E402
+from src import lyrics as lyrics_pkg  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
@@ -20,7 +21,7 @@ from src.lyrics.source import LrclibResult  # noqa: E402
 
 
 def test_lyrics_key():
-    assert whisperx.lyrics_key("m1") == "derived/lyrics/m1.json"
+    assert lyrics_pkg.lyrics_key("m1") == "derived/lyrics/m1.json"
 
 
 def test_lrclib_to_segments_prefers_synced_then_plain_then_empty():
@@ -668,7 +669,7 @@ def test_concurrent_ML_calls_are_serialized_on_the_shared_model():
     inside = []
 
     def body():
-        with whisperx._ML_LOCK:
+        with lyrics_pkg.ML_LOCK:
             inside.append(1)
             overlaps.append(len(inside))
             time.sleep(0.05)
@@ -685,8 +686,8 @@ def test_concurrent_ML_calls_are_serialized_on_the_shared_model():
 def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader():
     """transcribe() takes the lock and then calls _load(), which takes it again — a plain Lock would
     deadlock the worker on the first real transcription."""
-    with whisperx._ML_LOCK:
-        with whisperx._ML_LOCK:
+    with lyrics_pkg.ML_LOCK:
+        with lyrics_pkg.ML_LOCK:
             pass  # a non-reentrant lock never reaches here
 
 

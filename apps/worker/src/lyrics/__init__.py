@@ -23,6 +23,8 @@ concerns and splits into `model` / `grade` / `sources/*` in a later stage. This 
 """
 from __future__ import annotations
 
+from .artifact import is_valid_lyrics, lrclib_to_segments, lyrics_key, normalize_lyrics
+from .asr import DEFAULT_MODEL, Transcriber, WhisperxTranscriber
 from .captions import caption_argv, is_translated_track, parse_vtt, read_captions
 from .chain import (
     MIN_TOKENS_TO_COMPARE,
@@ -68,6 +70,7 @@ from .source import (
     plain_lyrics_to_segments,
     rank_lrclib_candidates,
 )
+from .timing import ML_LOCK, Aligner, WhisperxForcedAligner
 from .validate import validate_timing
 
 __all__ = [
@@ -112,11 +115,22 @@ __all__ = [
     "candidate_key",
     "entries_to_segments",
     "is_line_synced",
+    "is_valid_lyrics",
     "line_synced_lyrics",
+    "lrclib_to_segments",
+    "lyrics_key",
+    "normalize_lyrics",
     "parse_lrc",
     "plain_lyrics_to_segments",
     "presplit_texts",
     "validate_timing",
+    # transcription + timing (the two ML seams)
+    "DEFAULT_MODEL",
+    "ML_LOCK",
+    "Aligner",
+    "Transcriber",
+    "WhisperxForcedAligner",
+    "WhisperxTranscriber",
     # captions
     "caption_argv",
     "is_translated_track",

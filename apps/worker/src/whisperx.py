@@ -1,20 +1,27 @@
-"""Word-aligned lyrics pipeline (HYBRID): yt-dlp (fetch) → LRCLIB (known lyrics text) →
-WhisperX FORCED-ALIGNMENT (word timings on the correct text) → normalized lyrics JSON.
+"""The ALIGN action: orchestration only.
 
-Why hybrid: transcribing sung vocals from scratch is the unreliable ASR path. Instead we pull
-HUMAN-authored lyrics from LRCLIB and use wav2vec2 `align()` to place WORD timestamps on that KNOWN
-text. If the aligner is unavailable (no model / aarch64 torchcodec gap / a raised error) we FALL
-BACK to LRCLIB's line-level sync, so lyrics still ship.
+Runs the align job end to end — obtain audio, fetch both caption kinds, acquire text from every
+source, grade the candidates against the baselines, time the winner, publish. What it does NOT contain
+any more, because none of it was orchestration:
 
-The PURE half is unit-tested via an INJECTABLE Aligner seam + a fake fetcher; the real WhisperX +
-LRCLIB fetch run only on a worker box.
+    lyrics/artifact.py   the artifact shape and its key
+    lyrics/asr.py        the Transcriber seam and faster-whisper behind it
+    lyrics/timing.py     the Aligner seam, wav2vec2 behind it, and the shared ML lock
+    lyrics/chain.py      the roles, the sources, the grading, the selection
+
+Those five concerns lived here in one 690-line file, which is why the align pipeline was a 257-line
+method with six inline numbered stages. This file is the next thing to go:
+`docs/specs/SPEC-worker-pipeline.md` S2 turns that method into eight declared steps over a typed
+context, and then there is no align "processor" left to be a file at all.
+
+The PURE half is unit-tested via the injectable Aligner and Transcriber seams plus a fake fetcher; the
+real WhisperX and the real LRCLIB fetch only ever run on a worker box.
 """
 from __future__ import annotations
 
 import asyncio
 import json
 import os
-import threading
 import time
 from typing import Any, AsyncIterator, Callable, Protocol
 
@@ -49,196 +56,22 @@ from .lyrics import (
 from .lyrics import caption_argv, read_captions
 from .lyrics import presplit_texts
 from .lyrics import validate_timing
+from .lyrics import (
+    DEFAULT_MODEL,
+    Aligner,
+    Transcriber,
+    WhisperxForcedAligner,
+    WhisperxTranscriber,
+    is_valid_lyrics,
+    lrclib_to_segments,
+    normalize_lyrics,
+)
 from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path, vocals_path
 
-DEFAULT_MODEL = "base"  # kept for back-compat / the ASR-fallback path; alignment uses wav2vec2
 
 # How often to emit a keepalive ProgressEvent while a blocking ML call runs. MUST stay comfortably
 # under the core's progressLeaseMs (30 s, leases.ts) or the reaper requeues a healthy job.
 LEASE_KEEPALIVE_SEC = 10.0
-
-# ONE in-process RLock guarding every real ML call (transcribe + align). A single WhisperXProcessor
-# serves every align job and caches ONE whisper model and ONE align model; with
-# ENCORE_WORKER_CONCURRENCY>1 two align jobs run at once on threads sharing that model, and
-# faster-whisper / whisperx models are not thread-safe. The lazy loaders also had a check-then-set
-# race that could load the model twice and double the memory.
-#
-# Shared between transcribe and align rather than one lock each, deliberately: both are CPU-bound on
-# the same cores, so serialising them costs no throughput and avoids two ML passes oversubscribing
-# the box. RLock because the public methods call the lazy loader while already holding it.
-_ML_LOCK = threading.RLock()
-
-
-def lyrics_key(media_id: str) -> str:
-    """Deterministic MediaStore key (Media-relative) for a media's aligned-lyrics artifact."""
-    return f"derived/lyrics/{media_id}.json"
-
-
-def _round_ms(x: Any) -> float | None:
-    """Coerce a timestamp to a number rounded to ms, or None if it isn't a finite number."""
-    try:
-        v = float(x)
-    except (TypeError, ValueError):
-        return None
-    if v != v or v in (float("inf"), float("-inf")):  # NaN / inf
-        return None
-    return round(v, 3)
-
-
-def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
-    """Transform WhisperX (transcribe OR align) output into the artifact the TV overlay consumes.
-
-    Input:  { language?, segments: [{ start, end, text, words: [{word,start,end,score}] }] }.
-    Output: { language, lines: [{ start, end, text, words: [{word,start,end}] }], words: [flat] }.
-    Defensive because model output is UNTRUSTED: drops words missing usable start/end (whisperx align
-    leaves some tokens un-timed), derives a line's [start,end] from its words when segment bounds are
-    absent, and drops a segment with neither timed words nor line bounds.
-    """
-    language = raw.get("language") if isinstance(raw.get("language"), str) else None
-    lines: list[dict[str, Any]] = []
-    flat_words: list[dict[str, Any]] = []
-
-    for seg in raw.get("segments") or []:
-        if not isinstance(seg, dict):
-            continue
-        words: list[dict[str, Any]] = []
-        for w in seg.get("words") or []:
-            if not isinstance(w, dict):
-                continue
-            text = w.get("word")
-            start, end = _round_ms(w.get("start")), _round_ms(w.get("end"))
-            if not isinstance(text, str) or not text.strip() or start is None or end is None:
-                continue  # un-timed / empty token → drop (can't drive a bouncing ball)
-            word = {"word": text.strip(), "start": start, "end": end}
-            words.append(word)
-            flat_words.append(word)
-
-        text = seg.get("text")
-        line_text = text.strip() if isinstance(text, str) else " ".join(w["word"] for w in words)
-        if not line_text:
-            continue
-        l_start = _round_ms(seg.get("start"))
-        l_end = _round_ms(seg.get("end"))
-        if l_start is None and words:
-            l_start = words[0]["start"]
-        if l_end is None and words:
-            l_end = words[-1]["end"]
-        if not words and (l_start is None or l_end is None):
-            continue
-        lines.append({"start": l_start, "end": l_end, "text": line_text, "words": words})
-
-    return {"language": language, "lines": lines, "words": flat_words}
-
-
-def is_valid_lyrics(doc: dict[str, Any]) -> bool:
-    """A WORD-timed artifact: ≥1 line with ≥1 timed word (the forced-alignment success bar)."""
-    lines = doc.get("lines")
-    if not isinstance(lines, list) or not lines:
-        return False
-    return any(isinstance(l, dict) and l.get("words") for l in lines)
-
-
-def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str, Any]]:
-    """Turn an LrclibResult into the [{start,end,text}] transcript the aligner consumes: prefer the
-    line-timed syncedLyrics (LRC), else evenly distribute plainLyrics across the track. Empty if the
-    track is instrumental / has no usable lyrics."""
-    if res is None or getattr(res, "instrumental", False):
-        return []
-    if getattr(res, "has_synced", False):
-        return entries_to_segments(parse_lrc(res.synced_lyrics), total_duration)
-    if getattr(res, "has_plain", False):
-        return plain_lyrics_to_segments(res.plain_lyrics, total_duration)
-    return []
-
-
-class Transcriber(Protocol):
-    """ASR: invent the text from audio. Injectable; raising means "this tier missed", not "the job
-    failed".
-
-    Distinct from the aligner on purpose. Alignment places timings on text we already trust; ASR
-    GUESSES the words, so its output is never authoritative however confident the model sounds. It
-    earns its place because it needs nothing external and comparing its transcript against an
-    authoritative lookup is the only signal that catches a confidently wrong LRCLIB match (see
-    agreementScore in shared/lyrics.ts).
-    """
-
-    def transcribe(self, audio_path: str, language: str | None = None) -> dict[str, Any]: ...
-
-
-class WhisperxTranscriber:
-    """Real ASR via faster-whisper through whisperx.load_model().transcribe().
-
-    Runs on the VOCALS STEM, not the mix (see AsrSource). `language=None` lets whisper DETECT the
-    language: nothing populates the sidecar's language field today, so the alternative is a
-    hardcoded 'en'.
-    """
-
-    def __init__(self, device: str = "cpu", model: str = DEFAULT_MODEL, compute_type: str | None = None) -> None:
-        self._device = device
-        self._model_name = model
-        # int8 on CPU: float16 is a GPU format and faster-whisper refuses it on CPU.
-        self._compute_type = compute_type or ("float16" if device.startswith("cuda") else "int8")
-        self._model: Any = None
-
-    def _load(self) -> Any:
-        with _ML_LOCK:
-            if self._model is None:
-                import whisperx  # lazy: multi-GB torch stays off the import path until this tier runs
-
-                self._model = whisperx.load_model(
-                    self._model_name, self._device, compute_type=self._compute_type
-                )
-            return self._model
-
-    def transcribe(self, audio_path: str, language: str | None = None) -> dict[str, Any]:
-        import whisperx
-
-        audio = whisperx.load_audio(audio_path)
-        with _ML_LOCK:  # one model, possibly two concurrent align jobs — see _ML_LOCK
-            out = self._load().transcribe(audio, language=language)
-        if language and not out.get("language"):
-            out["language"] = language
-        return out
-
-
-class Aligner(Protocol):
-    """Force-align KNOWN text to audio. Given [{start,end,text}] segments + an audio path, return a
-    WhisperX-shaped {language?, segments:[{start,end,text,words:[{word,start,end}]}]} with word
-    timings. The real impl (WhisperxForcedAligner) wraps whisperx.load_align_model + whisperx.align;
-    tests pass a fake. Raising signals the caller to fall back to line-sync."""
-
-    def align(self, segments: list[dict[str, Any]], audio_path: str, language: str) -> dict[str, Any]: ...
-
-
-class WhisperxForcedAligner:
-    """Real forced aligner: loads the wav2vec2 align model for `language` and runs whisperx.align on
-    the provided (known-text) segments. Lazy-imports whisperx so torch never loads unless used."""
-
-    def __init__(self, device: str = "cpu") -> None:
-        self._device = device
-        self._cache: dict[str, tuple[Any, Any]] = {}
-
-    def _model(self, language: str) -> tuple[Any, Any]:
-        with _ML_LOCK:
-            if language not in self._cache:
-                import whisperx  # lazy: multi-GB torch
-
-                self._cache[language] = whisperx.load_align_model(language_code=language, device=self._device)
-            return self._cache[language]
-
-    def align(self, segments: list[dict[str, Any]], audio_path: str, language: str) -> dict[str, Any]:
-        import whisperx
-
-        audio = whisperx.load_audio(audio_path)
-        with _ML_LOCK:  # shared model across concurrent align jobs — see _ML_LOCK
-            model, meta = self._model(language)
-            # return_char_alignments=False → word-level only (what the overlay needs)
-            out = whisperx.align(segments, model, meta, audio, self._device, return_char_alignments=False)
-        out.setdefault("language", language)
-        return out
-
-
-LyricsClientFactory = Callable[[], LrclibClient]
 
 
 class WhisperXProcessor:
