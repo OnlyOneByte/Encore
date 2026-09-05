@@ -44,6 +44,22 @@
 	--line-tint: #3a2f55;
 	/* A line that must read as an edge rather than a hairline (grips, dashed affordances). */
 	--line-strong: #3a3a55;
+	/*
+	 * STATUS SURFACES. A tinted background + border pair per status colour, for a chip or banner that
+	 * must read as "good" / "warning" on its own. Tokens because these exact four hexes were pasted
+	 * into SongRow's chips as literals - and /metrics referenced a `--warn-bg` that had never been
+	 * defined, so its "no worker connected" banner silently painted `transparent`: the single most
+	 * important state on the operator page rendered as bare text.
+	 *
+	 * Paired with --ok / --warn as the ink, so a surface can never drift from the colour it tints.
+	 */
+	--ok-bg: #14322a;
+	--ok-line: #1d5344;
+	--warn-bg: #33260f;
+	--warn-line: #5a441a;
+	/* Accent as INK, lightened until it clears AA on a card. --accent itself is too dark to read at
+	   0.65rem, which is why a one-off #c4a9ff kept reappearing wherever accent-coloured text was wanted. */
+	--accent-ink: #c4a9ff;
 	/* The inner stop of the stage's radial background. */
 	--stage-glow: #1b1430;
 	/* An inert track behind a progress fill. */
@@ -56,17 +72,34 @@
 	--danger-line: #5a2b39;
 	/* Focus. One token so every surface rings identically, and bright enough to see on the dark theme. */
 	--focus: #9d7cff;
-	/* Score bands. Semantic rather than decorative: each names a level of performance, and the TV badge
-	   is the one place a colour carries meaning on its own. */
-	--score-perfect: #ffd23f;
-	--score-great: var(--ok);
-	--score-good: #5cb8ff;
-	--score-low: var(--accent2);
+
+	/*
+	 * SCRIMS. A black wash used to lift text off a photo or video, and to dim the page behind a sheet.
+	 * Two steps only, because the tree had grown FIVE different alphas (0.35 / 0.45 / 0.5 / 0.84 / 0.85)
+	 * for what is conceptually one effect, spelled differently in every file that wanted it.
+	 */
+	--scrim: rgba(0, 0, 0, 0.45);
+	--scrim-strong: rgba(0, 0, 0, 0.85);
 
 	/* shape + depth */
 	--radius: 18px;
 	--radius-sm: 12px;
+	/*
+	 * The rest of the radius scale. These four values were already in use as bare literals - 999px 12
+	 * times, 16px 12 times, 10px 7 times, 4px 10 times - so this names what the codebase had already
+	 * standardised on by accident. A fifth value is a bug, not a design decision.
+	 */
+	--radius-md: 16px;
+	--radius-btn: 10px;
+	--radius-xs: 4px;
+	--radius-pill: 999px;
 	--shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+
+	/*
+	 * Minimum touch target. One token so a control can declare the standard instead of restating 44px,
+	 * and so the guard test and the components read the same number from the same place.
+	 */
+	--tap: 44px;
 
 	/* layout */
 	--max-w: 480px;

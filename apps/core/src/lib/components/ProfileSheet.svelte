@@ -39,6 +39,12 @@
 	let confirmingLeave = $state(false);
 	let leaving = $state(false);
 
+	// The dialog element, so focus management can query the focusables inside it and trap Tab there.
+	let sheetEl = $state<HTMLDivElement | null>(null);
+	// The name input, so open can move focus INTO the sheet rather than leaving it on the trigger
+	// behind the scrim — a modal whose focus is still on the page behind it is not modal to a keyboard.
+	let nameEl = $state<HTMLInputElement | null>(null);
+
 	// Re-seed whenever the sheet opens, so a cancelled edit does not persist as a stale draft into the
 	// next open — and so a rename that landed on another device shows up rather than being overwritten.
 	$effect(() => {
@@ -48,6 +54,89 @@
 			error = '';
 			confirmingLeave = false;
 		}
+	});
+
+	// Focus management. A `role="dialog" aria-modal="true"` sheet with no focus handling was modal in
+	// name only: focus never entered it on open, never returned to the trigger on close, Escape did
+	// nothing (the scrim is a <button>, and Escape on a button is not a click — the old scrim comment
+	// claiming otherwise was wrong), and Tab walked straight out into the queue behind. Each defect is
+	// closed here, and the effect tears down its own listener on close like every other effect in this
+	// file.
+	$effect(() => {
+		if (!open) return;
+
+		// Who to hand focus back to when we close — captured at open, restored in cleanup.
+		const returnTo = document.activeElement as HTMLElement | null;
+		// Move focus into the sheet after it has mounted, so the first Tab starts inside.
+		nameEl?.focus();
+
+		function onKeydown(e: KeyboardEvent) {
+			if (e.key === 'Escape') {
+				e.preventDefault();
+				onclose();
+				return;
+			}
+			if (e.key !== 'Tab' || !sheetEl) return;
+			// Trap Tab within the sheet: wrap from last back to first (and first back to last on
+			// Shift+Tab) so focus cannot reach the page behind the modal.
+			const focusables = sheetEl.querySelectorAll<HTMLElement>(
+				'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+			);
+			if (focusables.length === 0) return;
+			const first = focusables[0];
+			const last = focusables[focusables.length - 1];
+			const active = document.activeElement;
+			if (e.shiftKey && active === first) {
+				e.preventDefault();
+				last.focus();
+			} else if (!e.shiftKey && active === last) {
+				e.preventDefault();
+				first.focus();
+			}
+		}
+		document.addEventListener('keydown', onKeydown);
+
+		return () => {
+			document.removeEventListener('keydown', onKeydown);
+			// Restore focus to whatever opened the sheet, so a keyboard user is not dumped at the top
+			// of the page.
+			returnTo?.focus?.();
+		};
+	});
+
+	// Body scroll-lock. The sheet is `position: fixed` but nothing pinned the page behind it, so on
+	// iOS a touch-drag on the scrim or an overscroll scrolled the queue underneath the modal. Locking
+	// via `position: fixed` on <body> (rather than `overflow: hidden`, which iOS Safari ignores)
+	// requires holding the scroll offset and restoring it in cleanup — otherwise the page jumps to the
+	// top when the sheet closes.
+	$effect(() => {
+		if (!open) return;
+
+		const { body } = document;
+		const scrollY = window.scrollY;
+		const prev = {
+			position: body.style.position,
+			top: body.style.top,
+			left: body.style.left,
+			right: body.style.right,
+			width: body.style.width
+		};
+
+		body.style.position = 'fixed';
+		body.style.top = `-${scrollY}px`;
+		body.style.left = '0';
+		body.style.right = '0';
+		body.style.width = '100%';
+
+		return () => {
+			body.style.position = prev.position;
+			body.style.top = prev.top;
+			body.style.left = prev.left;
+			body.style.right = prev.right;
+			body.style.width = prev.width;
+			// Return to exactly where the page was, so closing the sheet does not scroll the room away.
+			window.scrollTo(0, scrollY);
+		};
 	});
 
 	const dirty = $derived(name.trim() !== me.displayName || color !== me.color);
@@ -78,11 +167,12 @@
 </script>
 
 {#if open}
-	<!-- The scrim is a button so a tap outside closes, and Escape works, without a keydown handler on a div. -->
+	<!-- The scrim is a button so a tap outside closes it. Escape is handled by the keydown listener in
+	     the focus-management effect, not here — Escape on a <button> does not fire a click. -->
 	<button class="scrim" aria-label="Close profile" onclick={onclose}></button>
-	<div class="sheet" role="dialog" aria-modal="true" aria-label="Your profile">
+	<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="profile-title" bind:this={sheetEl}>
 		<div class="head">
-			<h2>You</h2>
+			<h2 id="profile-title">You</h2>
 			<button class="x" aria-label="Close" onclick={onclose}><Icon name="close" /></button>
 		</div>
 
@@ -92,8 +182,10 @@
 			type="text"
 			maxlength="32"
 			bind:value={name}
+			bind:this={nameEl}
 			placeholder="e.g. Dana"
 			autocomplete="off"
+			onfocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
 		/>
 
 		<ColourPicker bind:value={color} label="Your color" hint="How you'll spot yourself in the queue and on the TV." />
@@ -123,7 +215,7 @@
 <style>
 	.scrim {
 		position: fixed; inset: 0; z-index: 40; border: 0; padding: 0;
-		background: rgba(6, 6, 12, 0.62); backdrop-filter: blur(2px);
+		background: var(--scrim); backdrop-filter: blur(2px);
 	}
 	.sheet {
 		position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
@@ -132,7 +224,9 @@
 		padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
 		background: var(--card); border: 1px solid var(--line);
 		border-radius: 20px 20px 0 0; box-shadow: var(--shadow);
-		max-height: 88vh; overflow-y: auto;
+		/* dvh, not vh: on iOS vh is the LARGE viewport, so a bottom-pinned sheet's Save/Leave hid under
+		   the browser chrome. dvh tracks the visible viewport and keeps them reachable. */
+		max-height: 88dvh; overflow-y: auto;
 		animation: rise 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1);
 	}
 	@keyframes rise { from { transform: translateY(14px); opacity: 0.6; } to { transform: none; opacity: 1; } }
@@ -140,9 +234,9 @@
 
 	.head { display: flex; align-items: center; justify-content: space-between; }
 	h2 { margin: 0; font-size: 1.15rem; }
-	/* 44px: the same tap standard the rest of the phone holds itself to. */
+	/* 44px: the same tap standard the rest of the phone holds itself to, named via the token. */
 	.x {
-		width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+		width: var(--tap); height: var(--tap); border-radius: var(--radius-sm); border: 1px solid var(--line);
 		background: var(--card2); color: var(--ink-dim); cursor: pointer;
 		display: grid; place-items: center;
 	}
