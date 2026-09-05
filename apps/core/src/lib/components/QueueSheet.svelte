@@ -91,10 +91,10 @@
 
 {#if open}
 	<!-- click-outside to dismiss; aria-hidden because Escape + the toggle already expose the action -->
-	<div class="backdrop" onclick={() => ontoggle?.(false)} aria-hidden="true"></div>
+	<div class="sheet-scrim backdrop" onclick={() => ontoggle?.(false)} aria-hidden="true"></div>
 {/if}
 
-<section class="sheet" class:open class:dragging style="--drag:{dragDy}px" aria-label="Queue">
+<section class="sheet-surface sheet" class:open class:dragging style="--drag:{dragDy}px" aria-label="Queue">
 	<div
 		class="peek"
 		bind:clientHeight={peekH}
@@ -149,13 +149,11 @@
 </section>
 
 <style>
-	.backdrop { position: fixed; inset: 0; background: var(--scrim); z-index: 9; }
+	/* Geometry and surface come from .sheet-scrim / .sheet-surface in app.css. */
+	.backdrop { z-index: 9; }
 	.sheet {
-		position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
-		max-width: var(--max-w); margin: 0 auto;
-		background: var(--card2); border: 1px solid var(--line); border-top-left-radius: 20px;
-		border-top-right-radius: 20px; box-shadow: var(--shadow);
-		display: flex; flex-direction: column;
+		z-index: 10;
+		background: var(--card2);
 		/* collapsed: only the peek shows. Expanded: most of the screen, body scrolls. */
 		/* dvh, not vh: on iOS Safari vh resolves to the LARGE viewport (URL bar hidden), so with the
 		   bar showing the expanded sheet overflows the visible area and its footer hides under browser

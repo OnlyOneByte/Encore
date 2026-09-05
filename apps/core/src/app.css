@@ -263,6 +263,89 @@ body {
 	transform: scale(0.96);
 }
 
+/*
+ * A ROW in one of the phone's three lists (a search result, a rotation entry, a cook in progress).
+ *
+ * These had drifted by a pixel each: the search row was gap 11 / padding 10, the two queue rows gap
+ * 12 / padding 11px 12px. Nobody chose that -- it is what three files editing the same shape
+ * separately produces -- and it shows when a cooking card sits directly above a ready row. Compose it
+ * as `class="card list-row"`; a row that genuinely needs to differ overrides in its own scoped style,
+ * which outranks this by specificity.
+ */
+.list-row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 11px 12px;
+	margin-bottom: 8px;
+}
+
+/*
+ * The square icon button that ends a list row.
+ *
+ * QueueRow and ProcessingCard had byte-identical copies of this, each carrying its own copy of the
+ * same six-line comment explaining the same history -- and they had already begun to drift, one
+ * reading var(--tap) while the other still said 44px. The history worth keeping: these were 30px with
+ * 6px gaps, under the reliable-tap threshold; `display: grid` + `place-items` is load-bearing because
+ * the Icon renders as a block and without a centring context the mark sits off-centre (the reported
+ * off-centre X); and font-size sizes the 1em glyph explicitly, since a bare 0.85rem left it ~13.6px.
+ *
+ * NOT the transport buttons. Those are round, sit on --card, and carry --ink -- a different control
+ * with a different job, and folding them in here would only be tidiness pretending to be reuse.
+ */
+.icon-btn {
+	width: var(--tap);
+	height: var(--tap);
+	border-radius: var(--radius-sm);
+	border: 1px solid var(--line);
+	background: var(--card2);
+	color: var(--ink-dim);
+	font-size: 20px;
+	cursor: pointer;
+	display: grid;
+	place-items: center;
+}
+.icon-btn:disabled {
+	opacity: 0.35;
+	cursor: default;
+}
+
+/*
+ * SHEET CHROME, shared by the queue sheet and the profile sheet.
+ *
+ * Only the CHROME is shared, deliberately -- there is no <Sheet> wrapper component, because the two
+ * sheets are not variants of one thing. The queue sheet is a persistent dock: its peek is always on
+ * screen, it drags, and the page behind it stays interactive. The profile sheet is a true modal: it is
+ * absent when closed, and it traps focus and locks the page. A wrapper taking `modal={true|false}`
+ * would be a props-driven if/else over two different behaviours -- and it would have to make the
+ * focus trap conditional, which is exactly the mistake that leaves a dock trapping the page's focus.
+ * So the surface is shared here, and the modal BEHAVIOUR is shared in lib/ui/modal.ts instead.
+ *
+ * Background, max-height and z-index stay with each sheet: they genuinely differ today (--card vs
+ * --card2, 88dvh vs 82dvh, 41 vs 10), and folding them in would be a design decision dressed up as a
+ * refactor. The dvh part is load-bearing rather than cosmetic, so design-system.test.ts asserts both
+ * sheets cap in dvh instead of this file quietly defaulting it where neither would use the default.
+ */
+.sheet-scrim {
+	position: fixed;
+	inset: 0;
+	background: var(--scrim);
+}
+.sheet-surface {
+	position: fixed;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	max-width: var(--max-w);
+	margin: 0 auto;
+	display: flex;
+	flex-direction: column;
+	border: 1px solid var(--line);
+	border-top-left-radius: 20px;
+	border-top-right-radius: 20px;
+	box-shadow: var(--shadow);
+}
+
 /* GPU-composited motion only (transform/opacity) — never animate layout props. */
 @media (prefers-reduced-motion: no-preference) {
 	.pop-in {
