@@ -284,25 +284,34 @@ test('the route drives onVisibleReady from onready and onHiddenReady from onprew
 });
 
 /*
- * FIX 2 — the pitch-shift graphs are torn down per song, not only on component destroy.
+ * FIX 2 — the pitch-shift graphs are torn down per SONG, and specifically NOT on mere identity churn.
  *
- * A graph binds a PERMANENT MediaElementAudioSourceNode to the <video> the {#if} mounts for one media.
- * When media changes the element is unmounted and a new one mounted, but a graph left in place still
- * points at the destroyed element, and the shift-wiring effect then posts setShift() to a dead node —
- * silent on the transposed song. The teardown must run on media change; the guard asserts the effect
- * that detaches the graphs reads media?.id (so it re-runs per song) rather than nothing (destroy-only).
+ * A graph binds a PERMANENT MediaElementAudioSourceNode to the element that plays one media. If media
+ * changes and a graph is left in place it still points at the old element, and the shift-wiring effect
+ * then posts setShift() to a dead node — silent on the transposed song. So the teardown must run on a
+ * song change.
+ *
+ * But it must ALSO not run on anything less than one. `media` is a prop whose object identity churns on
+ * every queue mutation in the room — the TV route rebuilds its catalog and hands the slot a new object
+ * with identical fields for the song already playing. Keying the teardown on the `media` SIGNAL (which
+ * `void media?.id;` did, and which an effect cleanup made worse by firing before every re-run) tore down
+ * a live graph mid-song and cleared the readiness latches with it. The guard therefore requires the
+ * effect to read the id and to gate on its VALUE.
  */
-test('the pitch-shift graph teardown runs per media change, not only on destroy', () => {
+test('the pitch-shift graph teardown runs per song change — and not on media identity churn', () => {
 	// Strip BOTH block and line comments — a `// media?.id` in prose must not satisfy this guard, which
 	// is exactly the vacuous pass the codebase's comment-lies defect produces.
 	const raw = readFileSync(join(SRC, 'lib', 'tv', 'TvPlayer.svelte'), 'utf8');
 	const player = stripComments(raw).replace(/\/\/[^\n]*/g, '');
-	// find the effect body that detaches both graphs
-	const teardown = /\$effect\(\(\)\s*=>\s*\{([\s\S]*?masterGraph\?\.detach\(\)[\s\S]*?)\}\s*\);/.exec(player)?.[1] ?? '';
+	// The teardown effect is the one that detaches both graphs AND reads the media id; the destroy-only
+	// effect also detaches, so pick by the id read rather than by position.
+	const bodies = [...player.matchAll(/\$effect\(\(\)\s*=>\s*\{([\s\S]*?)\n\t\}\);/g)].map((m) => m[1]);
+	const teardown = bodies.find((b) => b.includes('masterGraph?.detach()') && /media\?\.id/.test(b)) ?? '';
 	expect(teardown).not.toBe('');
-	// it must READ media?.id as an executable statement (the `void media?.id;` trip that makes the
-	// effect re-run, and its cleanup fire, per song) — not merely mention it.
-	expect(/void\s+media\?\.id\s*;/.test(teardown)).toBe(true);
+	// It must READ the id as an executable statement, so the effect re-runs per song.
+	expect(/media\?\.id/.test(teardown)).toBe(true);
+	// And it must EARLY-RETURN when the id is unchanged, so a new object for the same song is a no-op.
+	expect(/if\s*\(\s*id\s*===\s*resetForId\s*\)\s*return;/.test(teardown)).toBe(true);
 });
 
 /*
