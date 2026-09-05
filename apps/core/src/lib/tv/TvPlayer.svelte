@@ -1,6 +1,15 @@
 <script lang="ts">
-	// One media surface (slot A or B). Renders the separated instrumental in a <video>.
+	// One media surface (slot A or B). Plays the separated instrumental through an <audio>.
 	// Reports ready/ended up so the GaplessController can orchestrate the swap.
+	//
+	// WHY <audio> AND NOT <video>. There is no picture to show. `playbackRef` resolves to exactly one
+	// thing — the separated instrumental — so this element has never had a video track to render, and
+	// the <video> it used to be existed only to be neutralised with CSS (letterboxed by
+	// `object-fit: contain`, then forced transparent so its default black background stopped covering
+	// the room's stage). A <video> is also the stricter element for codec support: browsers gate
+	// container/codec pairs differently there than in <audio>, and WebKit in particular documents FLAC
+	// for <audio>. Playing an audio-only stream through the audio element removes a whole class of
+	// "decodes, advances, makes no sound" from the picture.
 	//
 	// THE GUIDING TRACK. A second, secondary <audio> carries the isolated vocals and FOLLOWS the
 	// instrumental, with its volume set to the guide level. The instrumental stays the master: it keeps
@@ -48,7 +57,7 @@
 		onposition
 	}: Props = $props();
 
-	let video: HTMLVideoElement | undefined = $state();
+	let master: HTMLAudioElement | undefined = $state();
 	let vocals: HTMLAudioElement | undefined = $state();
 
 	// Lazily-built pitch-shift graphs, one per element (master instrumental + optional guide vocals).
@@ -184,22 +193,22 @@
 
 	// keep <video> play/pause in sync with slot state AND the paused/playing command from the phone
 	$effect(() => {
-		if (!video || !media || !isPlayable(media)) return;
-		if (active && visible && playing) video.play().catch(() => {});
-		else video.pause();
+		if (!master || !media || !isPlayable(media)) return;
+		if (active && visible && playing) master.play().catch(() => {});
+		else master.pause();
 	});
 
 	// The guide mirrors the master's transport exactly. A rejected play() is swallowed the same way the
 	// master's is: an autoplay refusal on the guide must degrade to a silent guide, never to a stalled
 	// song.
 	$effect(() => {
-		if (!vocals || !video) return;
+		if (!vocals || !master) return;
 		if (active && visible && playing) {
 			// Line it up BEFORE starting, so the guide does not enter a couple of seconds behind and get
 			// dragged forward audibly by the first governor tick. A seek here is free — nothing is
 			// audible yet — which is exactly why the governor below does not use one.
-			if (Math.abs(vocals.currentTime - video.currentTime) > GUIDE_PREROLL_ALIGN_SEC) {
-				vocals.currentTime = video.currentTime;
+			if (Math.abs(vocals.currentTime - master.currentTime) > GUIDE_PREROLL_ALIGN_SEC) {
+				vocals.currentTime = master.currentTime;
 			}
 			// Start from neutral; the governor re-derives any trim it still needs from real drift.
 			vocals.playbackRate = 1;
@@ -225,8 +234,8 @@
 	// so the ~4Hz position telemetry and pause/resume (which carry the current position) don't
 	// fight the playhead. Guarded to the active playable slot.
 	$effect(() => {
-		if (!video || !media || !isPlayable(media) || seekSec === undefined) return;
-		if (active && Math.abs(video.currentTime - seekSec) > 1.5) video.currentTime = seekSec;
+		if (!master || !media || !isPlayable(media) || seekSec === undefined) return;
+		if (active && Math.abs(master.currentTime - seekSec) > 1.5) master.currentTime = seekSec;
 	});
 
 	// ── pitch shift (the ± semitone transpose, made audible) ─────────────────────────────────────────
@@ -250,7 +259,7 @@
 	$effect(() => {
 		// Read reactive deps up front so the effect re-runs when any of them change.
 		const shift = active ? keyShift : 0;
-		const v = video;
+		const v = master;
 		const g = vocals;
 		if (!v) return;
 		// Master. Only ever build the graph once there is a real shift to apply; setShift(0) on an
@@ -287,7 +296,7 @@
 	 * element; this effect only applies it.
 	 */
 	$effect(() => {
-		if (!video) return;
+		if (!master) return;
 		// A slot with nothing playable resolves to '' and clears the element, matching the {#if} that
 		// previously unmounted the <video> for unplayable media.
 		const resolved = media && isPlayable(media) ? fileSrc(media) : '';
@@ -296,8 +305,8 @@
 		currentSrc = decision.src;
 		// Assigning '' would set the src to the document URL and trigger a spurious load/error; use
 		// removeAttribute to genuinely clear it, mirroring an unmounted element.
-		if (decision.src === '') video.removeAttribute('src');
-		else video.src = decision.src;
+		if (decision.src === '') master.removeAttribute('src');
+		else master.src = decision.src;
 	});
 
 	/**
@@ -308,9 +317,9 @@
 	 * what made the guide crackle.
 	 */
 	function syncGuide(): void {
-		if (!vocals || !video || vocals.seeking) return;
-		const correction = guideCorrection(vocals.currentTime, video.currentTime);
-		if (correction.kind === 'reseek') vocals.currentTime = video.currentTime;
+		if (!vocals || !master || vocals.seeking) return;
+		const correction = guideCorrection(vocals.currentTime, master.currentTime);
+		if (correction.kind === 'reseek') vocals.currentTime = master.currentTime;
 		// Assign only on a real change: writing playbackRate is not free on every element.
 		if (vocals.playbackRate !== correction.rate) vocals.playbackRate = correction.rate;
 	}
@@ -318,18 +327,22 @@
 
 <div class="slot" class:visible style="z-index:{visible ? 2 : 1}">
 	{#if media && isPlayable(media)}
-		<!-- svelte-ignore a11y_media_has_caption -->
-		<video
-			bind:this={video}
+		<!--
+			THE MASTER. An <audio>, not a <video> — see the note at the top of this file. It owns the clock:
+			play/pause, currentTime, `ended`, and the position telemetry that the lyrics overlay and the
+			room's progress bar both run on.
+		-->
+		<audio
+			bind:this={master}
 			preload="auto"
 			oncanplaythrough={() => (masterReady = true)}
 			onended={() => onended?.()}
 			onerror={() => active && visible && onerror?.()}
 			ontimeupdate={() => {
-				if (video) onposition?.(video.currentTime, video.duration);
+				if (master) onposition?.(master.currentTime, master.duration);
 				syncGuide();
 			}}
-		></video>
+		></audio>
 		{#if wantsGuide && guideRef}
 			<!-- The guiding track: the isolated vocals, following the master. Never the position source
 			     for anything — telemetry, lyrics and progress all read the instrumental. -->
@@ -355,17 +368,16 @@
 	.slot.visible {
 		opacity: 1;
 	}
-	video {
-		width: 100%;
-		height: 100%;
-		border: 0;
-		object-fit: contain;
-		/*
-		 * TRANSPARENT, not #000. `object-fit: contain` letterboxes, and a make-karaoke song plays an
-		 * instrumental with no video track at all — so this element's own background used to paint the
-		 * whole screen black and would completely hide the room's stage background beneath it. The floor
-		 * is `.tv`'s black on the TV page, so nothing regresses when a room chooses `off`.
-		 */
-		background: transparent;
+	/*
+	 * The master carries no picture, so it is hidden outright rather than sized and letterboxed.
+	 *
+	 * `display: none` on an <audio> element does NOT stop it playing — unlike a <video>, there is no
+	 * render surface for the compositor to skip. This replaces a `width/height/object-fit/background`
+	 * block whose whole job was damage control: `object-fit: contain` letterboxed a stream with no video
+	 * track, and the element's default background painted the entire screen black, hiding the room's
+	 * stage background until it was forced transparent. None of that has anything to answer now.
+	 */
+	audio {
+		display: none;
 	}
 </style>
