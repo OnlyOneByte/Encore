@@ -1,11 +1,12 @@
 <script lang="ts">
 	// A row in the rotation queue. Ported from docs/mocks.
+	import { SINGER_COLORS } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	interface Props {
 		seq: number; // 1-based display position
 		title: string;
 		singerName: string;
-		singerColor: string;
+		singerColor?: string;
 		mine?: boolean;
 		up?: boolean; // currently playing / next up (accent the seq bubble)
 		/**
@@ -26,7 +27,12 @@
 		ondown?: () => void;
 	}
 	let {
-		seq, title, singerName, singerColor, mine = false, up = false, singerAway = false,
+		seq, title, singerName,
+		// Defaulted to match sibling ProcessingCard: without a fallback, `--singer:{singerColor}`
+		// resolves against `undefined`, `background: var(--singer)` has no value, and the singer
+		// identity dot renders invisible. SINGER_COLORS[0] is the shared canonical fallback.
+		singerColor = SINGER_COLORS[0],
+		mine = false, up = false, singerAway = false,
 		subtitle = '', pending = false, removable = false,
 		reorderable = false, canUp = false, canDown = false, onremove, onup, ondown
 	}: Props = $props();
@@ -49,9 +55,15 @@
 			{/if}
 			{#if removable}
 				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}><Icon name="close" /></button>
-			{:else if !reorderable}
-				<div class="grip" aria-hidden="true"><Icon name="grip" /></div>
 			{/if}
+			<!--
+				No grip here. The grip previously rendered ONLY on rows that were neither removable nor
+				reorderable (another guest's song), where it was the sole affordance — a cursor:grab
+				handle promising a drag-to-reorder that does not exist and that this row has no reorder
+				path to fall back on. An affordance that implies an interaction the code never delivers
+				is exactly the failure this pass exists to remove. Reorderable rows expose a real path
+				(the up/down buttons above); non-reorderable rows correctly expose none.
+			-->
 		</div>
 	{/if}
 </div>
@@ -79,15 +91,15 @@
 	.who i.dim { opacity: 0.5; }
 	.away { color: var(--warn); margin-left: 0.35em; }
 	.adding { color: var(--warn); }
-	.grip { margin-left: auto; color: var(--line-strong); display: grid; place-items: center; font-size: 1.1rem; cursor: grab; }
 	.actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 	.act, .remove {
-		/* 44px: these were 30px with 6px gaps, below the reliable-tap threshold. grid + place-items
-		   centres the block-display Icon; without a centring context the mark landed off-centre inside
-		   the default inline-block button (the reported off-centre X). --radius-sm (12px) is the shared
-		   square-icon-button radius; these had a stray 10px. font-size sets the 1em glyph to an explicit
-		   20px, matching SongRow's action marks (was an unused 0.85rem leaving it ~13.6px). */
-		width: 44px; height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+		/* --tap (44px): these were 30px with 6px gaps, below the reliable-tap threshold. grid +
+		   place-items centres the block-display Icon; without a centring context the mark landed
+		   off-centre inside the default inline-block button (the reported off-centre X). --radius-sm
+		   (12px) is the shared square-icon-button radius; these had a stray 10px. font-size sets the
+		   1em glyph to an explicit 20px, matching SongRow's action marks (was an unused 0.85rem
+		   leaving it ~13.6px). */
+		width: var(--tap); height: var(--tap); border-radius: var(--radius-sm); border: 1px solid var(--line);
 		background: var(--card2); color: var(--ink-dim); font-size: 20px; cursor: pointer;
 		display: grid; place-items: center;
 	}

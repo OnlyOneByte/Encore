@@ -467,7 +467,7 @@
 			The hue colours BOTH the `solid` stage and the visualizer, so the slider reveals for either.
 		-->
 		{#if settings.room.tvBackgroundStyle === 'solid' || settings.room.tvBackgroundStyle === 'visualizer'}
-			<label class="field" for="tv-background-hue">
+			<label class="field field-swatch" for="tv-background-hue">
 				Background colour
 				<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
 			</label>
@@ -746,7 +746,8 @@
 		color: var(--ink-dim);
 		text-decoration: none;
 		font-size: 1.2rem;
-		/* 44px, matching the rest of the app — this was a ~26px box around a bare ← glyph. */
+		/* 44px, matching the rest of the app — this was a ~26px box around a bare back glyph. Kept as a
+		   44px literal, not var(--tap): touch-targets.test.ts pins this control by the literal string. */
 		display: grid;
 		place-items: center;
 		min-width: 44px;
@@ -755,7 +756,9 @@
 		border-radius: 8px;
 	}
 	.back:focus-visible {
-		outline: 2px solid var(--accent, currentColor);
+		/* --focus, not --accent: app.css defines a global :focus-visible ring in --focus and this control
+		   is inside its selector list, so ringing in --accent here would contradict every other control. */
+		outline: 2px solid var(--focus);
 	}
 	h1 {
 		margin: 0;
@@ -830,6 +833,13 @@
 	.field.dim {
 		opacity: 0.5;
 	}
+	/* A trailing 1em swatch after flowing text can wrap onto its own line at 320px, reading as an orphan
+	   dot. A flex row keeps text and swatch together and lets them wrap as a unit if ever needed. */
+	.field-swatch {
+		display: flex;
+		flex-wrap: wrap;
+		align-items: center;
+	}
 	select,
 	.text,
 	input[type='range'] {
@@ -840,17 +850,23 @@
 	select,
 	.text {
 		padding: 9px 10px;
-		border-radius: 10px;
+		border-radius: var(--radius-btn);
 		border: 1px solid var(--line);
 		background: var(--card);
 		color: var(--ink);
-		font-size: 0.9rem;
+		/* 16px, not 0.9rem (14.4px): iOS Safari auto-zooms on focusing any control under 16px and never
+		   zooms back out, leaving the operator stuck at 1.3x for the rest of the session. */
+		font-size: 1rem;
 	}
 	/* A LAN address is read character by character to check it, so keep the digits monospaced and stop
 	   iOS from title-casing what the user types. */
 	.text {
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-		font-size: 0.86rem;
+		/* 16px like every other control, for the same iOS auto-zoom reason — this was 0.86rem (13.76px),
+		   the smallest control on the page and the surest zoom trigger. Kept compact via padding, not a
+		   sub-16px size. */
+		font-size: 1rem;
+		padding: 7px 10px;
 	}
 	.text[aria-invalid='true'] {
 		border-color: var(--warn);
@@ -870,7 +886,7 @@
 		width: 1em;
 		height: 1em;
 		margin-left: 0.5em;
-		border-radius: 4px;
+		border-radius: var(--radius-xs);
 		border: 1px solid var(--line);
 		vertical-align: -0.15em;
 	}
@@ -884,7 +900,7 @@
 		-webkit-appearance: none;
 		appearance: none;
 		height: 22px;
-		border-radius: 999px;
+		border-radius: var(--radius-pill);
 		border: 1px solid var(--line);
 		background: var(--track);
 	}
@@ -906,6 +922,52 @@
 		border: 3px solid var(--ink);
 		cursor: pointer;
 	}
+	/*
+	 * Every OTHER range (intro, grace, lead, scale, lines, guide) had no thumb sizing, so the browser
+	 * drew its native ~12px thumb — ungrabbable with a thumb on a phone. Follow the .hue pattern: a
+	 * 28px visible thumb, and a --tap (44px) tall control so the whole hit area clears the touch-target
+	 * minimum. Both vendor pseudo-elements, because a rule that fails to parse in one engine drops the
+	 * whole selector in that engine. Scoped :not(.hue) so the hue slider keeps its own full-height
+	 * gradient track and coloured thumb, which it paints differently. A painted track is required once
+	 * appearance is none, or WebKit would leave the track invisible.
+	 */
+	input[type='range']:not(.hue) {
+		-webkit-appearance: none;
+		appearance: none;
+		height: var(--tap);
+		background: transparent;
+		cursor: pointer;
+	}
+	input[type='range']:not(.hue)::-webkit-slider-runnable-track {
+		height: 6px;
+		border-radius: var(--radius-pill);
+		background: var(--track-bg);
+	}
+	input[type='range']:not(.hue)::-moz-range-track {
+		height: 6px;
+		border-radius: var(--radius-pill);
+		background: var(--track-bg);
+	}
+	input[type='range']:not(.hue)::-webkit-slider-thumb {
+		-webkit-appearance: none;
+		appearance: none;
+		width: 28px;
+		height: 28px;
+		/* Centre the 28px thumb on the 6px track — WebKit anchors the thumb to the track top otherwise. */
+		margin-top: -11px;
+		border-radius: 50%;
+		background: var(--accent-strong);
+		border: 3px solid var(--ink);
+		cursor: pointer;
+	}
+	input[type='range']:not(.hue)::-moz-range-thumb {
+		width: 28px;
+		height: 28px;
+		border-radius: 50%;
+		background: var(--accent-strong);
+		border: 3px solid var(--ink);
+		cursor: pointer;
+	}
 	.warn {
 		margin: 6px 0 0;
 		font-size: 0.76rem;
@@ -922,6 +984,11 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
+	}
+	/* Was unringed while .back was ringed — a keyboard user tabbing to Advanced had no idea where focus
+	   sat. Same --focus ring as .back and the global standard. */
+	.disclose:focus-visible {
+		outline: 2px solid var(--focus);
 	}
 	.advanced {
 		margin-top: 4px;
@@ -952,7 +1019,7 @@
 		margin-top: 28px;
 		padding: 12px;
 		border: 1px solid var(--line);
-		border-radius: 12px;
+		border-radius: var(--radius-sm);
 		background: var(--card);
 		color: var(--ink);
 		font-size: 0.95rem;

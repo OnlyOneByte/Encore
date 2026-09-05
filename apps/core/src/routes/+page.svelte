@@ -663,7 +663,7 @@
 	);
 </script>
 
-<header class="topbar" style="display:flex;align-items:center;gap:10px;">
+<header class="topbar">
 	<div class="brand"><Icon name="mic" /> <span class="wordmark">Encore</span></div>
 	<!--
 	  `connected` used to be assigned `true` once and never read or reset, so a phone whose socket had
@@ -676,7 +676,7 @@
 		</span>
 	{/if}
 	{#if me}
-		<div style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:.85rem;color:var(--ink-dim);">
+		<div class="me-cluster">
 			<!--
 			  The name + dot were inert text. They are the one place a guest already looks to check who the
 			  room thinks they are, so they are also where fixing it belongs — and a 44px target, since the
@@ -861,7 +861,7 @@
 			<p class="empty">{empty.message}</p>
 			{#if empty.showAllCount !== null}
 				<!-- the way back: the library is one tap away, not gone -->
-				<div style="display:flex;justify-content:center;padding:0 0 8px;">
+				<div class="showall-row">
 					<button class="chip ok chip-icon" onclick={clearSearch}><Icon name="mic" /> Show all {empty.showAllCount}</button>
 				</div>
 			{/if}
@@ -873,11 +873,22 @@
 
 <!-- The rotation lives in a pull-up sheet: at a party you are either browsing or checking the queue,
      so the two should not fight over one scroll. The peek carries "when am I up?" — the question
-     that used to sit in a card above the search box and scroll out of sight. -->
+     that used to sit in a card above the search box and scroll out of sight.
+
+     The "queue a song" prompt is conditional on the queue ACTUALLY being empty. It used to be the
+     else-branch of a plain `nowEntry` ternary, so a room with a song queued-but-still-cooking was
+     told to go and queue a song — an instruction to do the thing the singer had just done, printed
+     directly above their own song. The queued case adds no line on purpose: the title already says
+     "Nothing playing", the position line says when you are up, and the peek's hint renders
+     "N waiting", so a fourth line would only repeat one of them. -->
 <QueueSheet
 	open={sheetOpen}
 	title={nowEntry ? mediaTitle(nowEntry.mediaId) : 'Nothing playing'}
-	sub={nowEntry ? `${singerOf(nowEntry.singerId)?.displayName ?? 'Someone'} is singing` : 'Queue a song to start the party'}
+	sub={nowEntry
+		? `${singerOf(nowEntry.singerId)?.displayName ?? 'Someone'} is singing`
+		: queued.length === 0
+			? 'Queue a song to start the party'
+			: undefined}
 	position={myPositionLabel}
 	queueCount={queued.length}
 	elapsedSec={displayPos}
@@ -885,11 +896,33 @@
 	ontoggle={(v) => (sheetOpen = v)}
 >
 	{#snippet controls()}
-		<button class="ic no-drag" aria-label="restart" onclick={() => sendPlayer({ cmd: 'restart' })}><Icon name="prev" /></button>
-		<button class="ic play no-drag" aria-label="play/pause" onclick={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}>
+		<!--
+			The transport is disabled when there is nothing for it to act on. It used to be
+			unconditionally enabled, so an empty room showed a full-weight primary play button plus
+			restart and skip, all three dispatching commands the server could only ignore -- the same
+			shape of defect as the old cook/queue button pair, where primary weight sat on an action
+			that led nowhere. Restart and skip need a song that is PLAYING; play additionally accepts a
+			queue that has something in it, because "start when it is ready" is a real intent and the
+			server, not the phone, decides when that is.
+		-->
+		<button
+			class="ic no-drag"
+			aria-label="restart"
+			disabled={!nowEntry}
+			onclick={() => sendPlayer({ cmd: 'restart' })}><Icon name="prev" /></button>
+		<button
+			class="ic play no-drag"
+			aria-label="play/pause"
+			disabled={!nowEntry && queued.length === 0}
+			onclick={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
+		>
 			<Icon name={playback.isPlaying ? 'pause' : 'play'} />
 		</button>
-		<button class="ic no-drag" aria-label="skip" onclick={() => sendPlayer({ cmd: 'skip' })}><Icon name="next" /></button>
+		<button
+			class="ic no-drag"
+			aria-label="skip"
+			disabled={!nowEntry}
+			onclick={() => sendPlayer({ cmd: 'skip' })}><Icon name="next" /></button>
 	{/snippet}
 
 	<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
@@ -1186,17 +1219,23 @@
 	.grouphead.warn { color: var(--warn); }
 	.empty { color: var(--ink-dim); padding: 0 4px; font-size: 0.9rem; }
 
-	/* playback controls, rendered into the sheet's peek */	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
+	/* playback controls, rendered into the sheet's peek */
+	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
 	/* The one filled transport control. Solid accent + paired ink, because in stage 1 the glyph became
 	   an SVG drawn with currentColor — on --grad that mark sat at 2.84:1, under the 3:1 non-text floor. */
 	.ic.play { background: var(--accent-strong); color: var(--on-accent); border-color: transparent; width: 44px; height: 44px; }
 	.ic:active { transform: scale(0.92); }
+	/* Reads as unavailable rather than merely dim: a 44px target that still looks pressable but does
+	   nothing is worse than one that plainly cannot be pressed. The cursor changes too, since this
+	   surface is also opened on a laptop. */
+	.ic:disabled { opacity: 0.4; cursor: not-allowed; }
+	.ic:disabled:active { transform: none; }
 
 	.key { display: flex; gap: 6px; margin: 6px 0 2px; align-items: center; }
 	.key.disabled { opacity: 0.5; }
 	.key .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
 	.key.shifted .lab { color: var(--warn); }
-	.key button { flex: 1; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: 10px; padding: 6px; font-size: 0.8rem; cursor: pointer; min-height: 44px; }
+	.key button { flex: 1; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: var(--radius-btn); padding: 6px; font-size: 0.8rem; cursor: pointer; min-height: 44px; }
 	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
 	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
 	.key-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
@@ -1274,7 +1313,7 @@
 		display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 8px;
 		border-radius: 14px; background: var(--card); border: 1px solid var(--line);
 	}
-	.skel-thumb { width: 44px; height: 44px; flex: none; border-radius: 10px; }
+	.skel-thumb { width: 44px; height: 44px; flex: none; border-radius: var(--radius-btn); }
 	.skel-text { flex: 1; display: flex; flex-direction: column; gap: 8px; }
 	.skel-line { height: 12px; border-radius: 6px; }
 	.skel-line.short { width: 55%; }
@@ -1283,8 +1322,23 @@
 		background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite;
 	}
 	@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+	/*
+	 * Docked-toast stacking, measured UP from the queue sheet's peek. --peek-h is bound to the peek's
+	 * clientHeight, and the peek's own padding already includes env(safe-area-inset-bottom), so the
+	 * inset arrives THROUGH --peek-h — do NOT add another env() term here or the gap doubles.
+	 *
+	 * The offsets were hand-tuned constants (14 / 70) stacking one element above the other above a
+	 * measured value, so they overlapped the instant either toast changed height. Named as scoped
+	 * tokens the stacking order is explicit: undo sits just above the peek; the error toast clears the
+	 * undo toast so the two never draw over each other at one bottom/z-index (the bug --error-dock
+	 * fixed). Adjust these together, not in isolation.
+	 */
+	:root {
+		--undo-dock: calc(var(--peek-h) + 14px);
+		--error-dock: calc(var(--peek-h) + 70px);
+	}
 	.undo-toast {
-		position: fixed; left: 50%; bottom: calc(var(--peek-h) + 14px); transform: translateX(-50%);
+		position: fixed; left: 50%; bottom: var(--undo-dock); transform: translateX(-50%);
 		display: flex; align-items: center; gap: 14px; z-index: 30;
 		background: var(--card2); border: 1px solid var(--line); border-radius: 14px;
 		padding: 12px 16px; box-shadow: var(--shadow); font-size: 0.9rem; max-width: 90vw;
@@ -1296,13 +1350,11 @@
 	.error-toast {
 		/* Offset above the undo toast: both sat at the same bottom and z-index, so one drew over the
 		   other and a guest saw only whichever rendered last. */
-		position: fixed; left: 50%; bottom: calc(var(--peek-h) + 70px); transform: translateX(-50%); z-index: 30;
+		position: fixed; left: 50%; bottom: var(--error-dock); transform: translateX(-50%); z-index: 30;
 		background: var(--danger-bg); color: var(--danger-ink); border: 1px solid var(--danger-line);
-		padding: 11px 16px; border-radius: 12px; font-size: 0.88rem; max-width: 90vw;
+		padding: 11px 16px; border-radius: var(--radius-sm); font-size: 0.88rem; max-width: 90vw;
 	}
 
-	/* --warn, not --danger: a dropped socket is a transient degraded state that self-heals on the next
-	   backoff tick, not a failure the guest has to act on. */
 	/* Matches the gear beside it: a real 44px target, not text that happens to be tappable. */
 	.me-btn {
 		display: inline-flex; align-items: center; gap: 8px;
@@ -1312,15 +1364,24 @@
 	}
 	.me-btn:active { opacity: 0.7; }
 
+	/* --warn, not --danger: a dropped socket is a transient degraded state that self-heals on the next
+	   backoff tick, not a failure the guest has to act on. */
 	.offline-pill {
 		display: inline-flex; align-items: center; gap: 6px;
-		color: var(--warn); border: 1px solid var(--line-strong); border-radius: 999px;
+		color: var(--warn); border: 1px solid var(--line-strong); border-radius: var(--radius-pill);
 		padding: 4px 10px; font-size: 0.78rem; white-space: nowrap;
 	}
 
 	/* Base header padding, declared here (not inline) so the short-viewport rule below can shrink it —
-	   an inline style would outrank the media query and silently defeat it. */
-	.topbar { padding: 16px 18px 8px; }
+	   an inline style would outrank the media query and silently defeat it. The flex layout lives here
+	   too, off the inline style, so the header joins the token layer instead of pinning raw px. */
+	.topbar { display: flex; align-items: center; gap: 10px; padding: 16px 18px 8px; }
+	/* The name + gear cluster, pushed to the trailing edge. Static styling classed (not inline) so it
+	   inherits the responsive layer rather than freezing raw px. */
+	.me-cluster { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-dim); }
+	/* Centres the "Show all" way-back button under an empty Ready filter. Classed, not inline, so the
+	   one-off row is not stranded outside the responsive rules with hard px. */
+	.showall-row { display: flex; justify-content: center; padding: 0 0 8px; }
 
 	/*
 	 * Respect a reduced-motion preference. Both remaining animations otherwise run unguarded and
