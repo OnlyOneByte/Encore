@@ -185,16 +185,21 @@ export class MediaRepository {
 			.run();
 	}
 
-	/** Replace all tags of one kind for a media (genre/tag/mood). Idempotent. */
+	/** Replace all tags of one kind for a media (genre/tag/mood). Idempotent.
+	 *  The delete and the re-insert run in ONE transaction: a throw or crash between them would
+	 *  otherwise leave the media with every tag of this kind deleted and none re-inserted — silent,
+	 *  unbounded tag loss for no reason. bun:sqlite makes the transaction synchronous, so either both
+	 *  statements land or neither does. */
 	setTags(mediaId: string, kind: 'genre' | 'tag' | 'mood', values: string[]): void {
-		this.#db.delete(mediaTags).where(and(eq(mediaTags.mediaId, mediaId), eq(mediaTags.kind, kind))).run();
 		const clean = [...new Set(values.map((v) => v.trim().toLowerCase()).filter(Boolean))];
-		if (clean.length === 0) return;
-		this.#db
-			.insert(mediaTags)
-			.values(clean.map((value) => ({ mediaId, kind, value })))
-			.onConflictDoNothing()
-			.run();
+		this.#db.transaction((tx) => {
+			tx.delete(mediaTags).where(and(eq(mediaTags.mediaId, mediaId), eq(mediaTags.kind, kind))).run();
+			if (clean.length === 0) return;
+			tx.insert(mediaTags)
+				.values(clean.map((value) => ({ mediaId, kind, value })))
+				.onConflictDoNothing()
+				.run();
+		});
 	}
 
 	/** Every tag of one kind for a media. */

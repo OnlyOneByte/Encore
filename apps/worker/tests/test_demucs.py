@@ -97,6 +97,12 @@ def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, e
             out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
             os.makedirs(os.path.dirname(out), exist_ok=True)
             Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
+        elif binary == "ffmpeg" and "volumedetect" in argv:
+            # A measuring call, not a writing one: it ends in `-f null -`, so there is no output file.
+            # Treating it like an encode wrote to dirname("-") == "" and raised, which the probe's
+            # try/except then swallowed — so these tests never actually exercised the silence probe.
+            yield "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
+            return
         elif binary == "ffmpeg":
             out = argv[-1]
             os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -150,6 +156,25 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     vocals = completes[0].artifacts["stems"]["vocals"]
     assert vocals.endswith("m1-vocals.m4a")
     assert Path(vocals).exists()
+
+
+@pytest.mark.asyncio
+async def test_separating_reaches_100_exactly_once_when_the_parser_already_did(tmp_path):
+    """The Separate step used to emit an UNCONDITIONAL final pct=100 on top of whatever the parser
+    yielded, so a separator whose last progress line was `100%` produced TWO ('separating', 100) events.
+    Routing the step through the runner's run_stage — the single loop, which guards the tail with
+    `if last < 100` — collapses that to one. Non-vacuous: on the old inline loop this asserts 2.
+    """
+    runner = fake_runner({
+        "yt-dlp": ["[download] 100% of 4MiB"],
+        "demucs": [" 50%|███   | 1/2", "100%|██████| 2/2"],  # parser reaches 100 on the last line
+    })
+    proc = plans.stems_runner(runner=runner)
+    events = await drain(proc, spec(tmp_path))
+    separating_hundreds = [
+        e for e in events if isinstance(e, ProgressEvent) and e.stage == "separating" and e.pct == 100
+    ]
+    assert len(separating_hundreds) == 1
 
 
 @pytest.mark.asyncio

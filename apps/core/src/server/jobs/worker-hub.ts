@@ -15,9 +15,10 @@ import type {
 	Job,
 	JobType,
 	MediaStoreConfig,
-	GlobalSettings
+	GlobalSettings,
+	EffectiveSettings
 } from '@encore/shared';
-import { sourceUriFor } from '@encore/shared';
+import { sourceUriFor, resolveCookSeparator } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
@@ -29,6 +30,7 @@ import {
 	setMediaSongProfile,
 	applyAnnotation,
 	settleLyricsGate,
+	settleStemsGate,
 	markLyricsQueued
 } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
@@ -62,9 +64,11 @@ export interface WorkerHubDeps {
 	/** Persist a media after its artifacts change (durable catalog). Optional so the hub still
 	 *  unit-tests with no DB; app.ts wires it to MediaRepository.upsert. */
 	persistMedia?: (mediaId: string) => void;
-	/** Room-level separator settings: supplies the engine+model a stems/upgrade job carries.
-	 *  Optional so the hub still unit-tests without settings (assignParams falls back to defaults). */
-	getSettings?: () => GlobalSettings;
+	/** Room+global separator settings, read live at assign time. EFFECTIVE, not just global: the room
+	 *  can lower the cook quality below the global default (a downward-only ceiling), and that ceiling
+	 *  has to reach the engine a stems job is dispatched with AND the capability it is routed by.
+	 *  Optional so the hub still unit-tests without settings (dispatch falls back to shared defaults). */
+	getSettings?: () => EffectiveSettings;
 	now: () => number;
 	config?: LeaseConfig;
 	mediaStore?: MediaStoreConfig;
@@ -81,6 +85,30 @@ export class WorkerHub {
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
+	}
+
+	/**
+	 * The GlobalSettings the pure dispatch layer should see, with the ROOM'S downward-only quality
+	 * ceiling folded into the default stems pairing.
+	 *
+	 * `dispatch.ts` reasons in terms of `GlobalSettings.defaultEngine/defaultModel` for a stems cook —
+	 * its assignParams, separatorFor, and (crucially) requiredCapability all read those two fields. The
+	 * room's cap does not live there, so before this the ceiling `resolveCookSeparator` computes was
+	 * built, tested, and never called: a room set to a lower quality was ignored, and the box always
+	 * cooked at the global default. We resolve the effective pairing HERE and hand dispatch a global
+	 * whose defaults ARE that pairing, so the lowered engine flows through the params the worker gets
+	 * AND the capability it is routed by (a demucs-capped cook must not be sent to a roformer worker).
+	 *
+	 * ONLY the default (stems) pairing is rewritten. The upgrade axis, fetcher, and lyrics engines are
+	 * left as the global set them — the room ceiling is a floor-lowering on the base cook, nothing else.
+	 * Returns undefined when no settings are wired (unit tests), so dispatch keeps its shared-default
+	 * behaviour unchanged.
+	 */
+	#cookSettings(): GlobalSettings | undefined {
+		const effective = this.#d.getSettings?.();
+		if (!effective) return undefined;
+		const { engine, model } = resolveCookSeparator(effective);
+		return { ...effective.global, defaultEngine: engine, defaultModel: model };
 	}
 
 	/** Handle one inbound worker message. Returns nothing — effects go through the injected sinks. */
@@ -170,7 +198,7 @@ export class WorkerHub {
 			stages: msg.stages?.length ? JSON.stringify(msg.stages) : undefined
 		});
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
-		const settings = this.#d.getSettings?.();
+		const settings = this.#cookSettings();
 		// Flip the media to ready (instrumentalRef→what the worker wrote, stemStatus→
 		// ready) so rotation's isEntryReady returns true and the held entry becomes playable.
 		// Separation jobs report WHICH engine+model produced the artifact, so an upgrade can be refused
@@ -180,25 +208,33 @@ export class WorkerHub {
 		// markMediaReady derives the key when the worker reports none — so calling it here marked the
 		// media ready with a key for a file that does not exist.
 		if (publishesInstrumental(job.jobType)) {
-			markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
-			// The same separation also isolated the vocals — the guiding track. This artifact was
-			// arriving on the wire and being dropped, which is why a cooked song had no guide even
-			// though the file was sitting on disk next to the instrumental. Additive and independent:
-			// a worker that could not encode vocals, or measured them as silence, reports none and the
-			// song simply offers no guide.
-			setMediaVocals(job.mediaId, msg.artifacts?.stems?.vocals, this.#d.mediaById);
-			// The SAME separation also analysed the two stems for key + range and reported it as a third
-			// artifact, a SIBLING of `stems` rather than a member of it (a profile is not a file). Persisted
-			// here, at the boundary, because its PRESENCE completes the stems cook gate (gates.ts) — so
-			// unlike the vocals ref this is written even when the worker found nothing, and
-			// setMediaSongProfile normalizes the untrusted frame to a valid profile.
-			//
-			// Read through the DECLARED wire field, not structurally. This line previously reached into
-			// `artifacts.stems.songProfile` while the worker published `artifacts.songProfile`, so the
-			// value was always undefined — and with the gate requiring it, every separated song stalled at
-			// "Separating vocals" permanently. Unit tests on both sides passed throughout, because each
-			// mocked its own shape.
-			setMediaSongProfile(job.mediaId, msg.artifacts?.songProfile, this.#d.mediaById);
+			// markMediaReady REFUSES (returns false) when this is a stems-upgrade whose separator does
+			// not outrank the published one. On a refusal NOTHING about the song should change — but the
+			// two setters below were called unconditionally, and setMediaSongProfile normalizes an absent
+			// profile to EMPTY_SONG_PROFILE, so a refused upgrade WIPED the detected key + vocal range off
+			// a song that already had them (and could replace a good vocals ref with a worse one). Guard
+			// both on the accept: a refused upgrade is a no-op, exactly as its name promises.
+			const accepted = markMediaReady(job.mediaId, this.#d.mediaById, msg.artifacts?.stems?.instrumental, separator);
+			if (accepted) {
+				// The same separation also isolated the vocals — the guiding track. This artifact was
+				// arriving on the wire and being dropped, which is why a cooked song had no guide even
+				// though the file was sitting on disk next to the instrumental. Additive and independent:
+				// a worker that could not encode vocals, or measured them as silence, reports none and the
+				// song simply offers no guide.
+				setMediaVocals(job.mediaId, msg.artifacts?.stems?.vocals, this.#d.mediaById);
+				// The SAME separation also analysed the two stems for key + range and reported it as a third
+				// artifact, a SIBLING of `stems` rather than a member of it (a profile is not a file). Persisted
+				// here, at the boundary, because its PRESENCE completes the stems cook gate (gates.ts) — so
+				// unlike the vocals ref this is written even when the worker found nothing, and
+				// setMediaSongProfile normalizes the untrusted frame to a valid profile.
+				//
+				// Read through the DECLARED wire field, not structurally. This line previously reached into
+				// `artifacts.stems.songProfile` while the worker published `artifacts.songProfile`, so the
+				// value was always undefined — and with the gate requiring it, every separated song stalled at
+				// "Separating vocals" permanently. Unit tests on both sides passed throughout, because each
+				// mocked its own shape.
+				setMediaSongProfile(job.mediaId, msg.artifacts?.songProfile, this.#d.mediaById);
+			}
 		}
 		// A fetch may have identified the song. Applied under a never-regress rule so a later `medium`
 		// cannot downgrade an existing `high` citation. Declined annotation leaves the normalizer's
@@ -255,6 +291,19 @@ export class WorkerHub {
 			// DB edit. We tried, we are done waiting: settle the gate and let the party continue with no
 			// words on screen. The line logged just below is the record of why.
 			if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
+			// The same argument for the OTHER gate. A dead separation used to leave stemStatus mid-flight,
+			// so isCooking stayed true and the song read as "Making karaoke…" forever while cookState
+			// answered 'cooking' and refused a retry. Settle it back to un-cooked so the guest can try
+			// again; the failure reaches them via #emitStatus below.
+			//
+			// 'fetch' counts, and that is the common case rather than an edge one: requestMakeKaraoke
+			// marks the media cooking BEFORE the download, so a dead fetch (bad URL, no deno, yt-dlp
+			// broken) strands it exactly like a dead separation. 'align' is excluded because that song
+			// already plays — settleLyricsGate above is its remedy — and 'stems-upgrade' because the
+			// song still has its working instrumental, which settleStemsGate refuses to walk back.
+			if (job.jobType === 'fetch' || job.jobType === 'stems') {
+				settleStemsGate(job.mediaId, this.#d.mediaById);
+			}
 			// LOG a terminal failure. A dead `align` job is otherwise completely silent — the song still
 			// plays, it just never gets lyrics and nothing anywhere says why. The operator needs one line
 			// naming the media and the reason, since the jobs table is the only other record.
@@ -278,8 +327,9 @@ export class WorkerHub {
 		const now = this.#d.now();
 
 		// A job's required capability is engine-derived (a roformer cook needs stems:roformer),
-		// so route by the SETTINGS-resolved capability, not the bare job type.
-		const settings = this.#d.getSettings?.();
+		// so route by the SETTINGS-resolved capability, not the bare job type. Uses the room-capped
+		// settings so a lowered cook quality routes to the matching (lower) engine's workers.
+		const settings = this.#cookSettings();
 		const capabilityFor = (j: { jobType: JobType }) => requiredCapability(j.jobType, settings);
 
 		// Separate "waiting for a free slot" from "no connected worker can EVER run this". Both leave
@@ -337,7 +387,7 @@ export class WorkerHub {
 			const pending = this.#d.jobs.byId(jobId);
 			if (!pending) continue; // vanished between planning and dispatch
 			const media = this.#d.mediaById.get(pending.mediaId);
-			const params = assignParams(pending.jobType, media, this.#d.getSettings?.());
+			const params = assignParams(pending.jobType, media, settings);
 			// Record WHAT WAS DISPATCHED onto the attempt, alongside the song's length so the cost can be
 			// reported as a rate rather than raw seconds. These are the request, not yet the truth: a
 			// worker that reports its own resolved model overwrites them (AttemptLedger.reportFacts).
@@ -354,7 +404,7 @@ export class WorkerHub {
 				jobId: job.id,
 				mediaId: job.mediaId,
 				jobType: job.jobType,
-				sourceUri: media ? sourceUriFor(media, this.#d.getSettings?.()?.defaultFetcher) : '',
+				sourceUri: media ? sourceUriFor(media, this.#d.getSettings?.()?.global.defaultFetcher) : '',
 				params
 			});
 		}

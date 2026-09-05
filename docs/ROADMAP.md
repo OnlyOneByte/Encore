@@ -45,14 +45,14 @@ eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
 - Demucs/WhisperX run in the worker container, ~1–2 min/song on CPU.
 - Host ffmpeg (`/home/angryang/ffmpeg/ffmpeg`) is a **stripped 7.1.1 build**: no AAC encoder, no mp4
   muxer, no `ffprobe`. Use the **container's** ffmpeg (`docker exec`) for probing and transcoding.
-- `yt-dlp` is **not baked into the worker image** — a `docker rm` loses it. See B-9.
 - A long-lived Python process does **not** reload bind-mounted source; `docker restart` after editing
   worker code.
 - YouTube autoplay-with-audio needs a user gesture in-browser.
 
-**Working order.** **B-8** (separator swap) → **B-9** (image + stream-source hygiene) →
+**Working order.** **B-8** (separator swap) →
 **B-3-C7p2b** (re-align on better text) → **B-4** → **M9-C1** → **M9-C3** → **B-2** last. B-2 is last
 because its only real acceptance test is audible and needs the owner in the room.
+(**B-9** image + stream-source hygiene is shipped and drops out of the order — see the open queue.)
 
 ---
 
@@ -305,15 +305,18 @@ which is the argument for the "green suite is the floor, not the bar" rule in
         `docs/deploy/docker-compose.cuda.yml` and `backends.py` already probes `cuda` first, so no
         selection code changes at all. See `docs/deploy/WSL2.md`.
 
-- [ ] **B-9 · Source-audio and image hygiene** — two small independent fixes:
-  - [ ] **B-9-C1 · bake `yt-dlp` into the worker image.** It is currently pip-installed at runtime,
-        so any `docker rm` silently breaks downloads. *Done-when:* a freshly recreated container
-        resolves `yt-dlp` on PATH with no manual step. **AUTO** — image build + a resolve check.
-  - [ ] **B-9-C2 · stream-selection heuristic** (idea from `flacfetch`). We take whatever
-        `-f bestaudio` returns, which on an old upload can be legacy AAC when a better stream exists.
-        Prefer newer Opus over legacy AAC, and prefer official/"Topic"/"Official Audio" uploads.
-        *Done-when:* for a title with both, the Opus stream is chosen. **AUTO** — pure ranking over
-        recorded format lists; no network in the test.
+- [x] **B-9 · Source-audio and image hygiene** — SHIPPED. Two small independent fixes, both landed:
+  - [x] **B-9-C1 · bake `yt-dlp` into the worker image.** `apps/worker/Dockerfile` pip-installs from
+        `requirements.txt` (which pins `yt-dlp`) and asserts `yt-dlp --version` **in the same layer**, so
+        a missing/wrong fetcher breaks the BUILD rather than a live cook. `deno` (the JS runtime yt-dlp's
+        player challenge needs) is baked too and version-verified in-layer, and `yt-dlp.conf` (which
+        enables the remote solver component) is copied to `/etc/`. A freshly recreated container resolves
+        `yt-dlp` on PATH with no manual step. **AUTO** — image build + resolve check.
+  - [x] **B-9-C2 · stream-selection heuristic** (idea from `flacfetch`). `apps/worker/src/acquisition/
+        stream_quality.py` prefers modern Opus over legacy AAC by POSITION in the format selector (not by
+        bitrate, which is what picks AAC), and scores official/"- Topic"/VEVO/"official audio" uploads
+        above the rest, with a `/best` last-resort so a bot-blocked egress serving only legacy muxed
+        format 18 still resolves. **AUTO** — pure ranking over recorded format lists; no network.
 
 - [x] **B-3-C7 (part 2a) · two-tier lyrics selection.** Text sources now split by ROLE rather than by
   quality. **Candidates** are authored claims about the song's words (LRCLIB records, uploader-authored

@@ -39,9 +39,9 @@
 </script>
 
 <header class="join-head">
-	<div class="brand">
+	<h1 class="brand">
 		<Icon name="mic" /> <span class="wordmark">Encore</span>
-	</div>
+	</h1>
 	<p class="lede">Pick a name and color to start singing.</p>
 </header>
 
@@ -81,7 +81,7 @@
 	   attributes and this block. */
 	.join-head { padding: 26px 20px 8px; text-align: center; }
 	/* The mic was 🎤 — platform-dependent art, and a tofu box with no emoji font. */
-	.brand { display: inline-flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; }
+	.brand { display: inline-flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; margin: 0; line-height: inherit; }
 	.wordmark {
 		background: var(--grad);
 		-webkit-background-clip: text;

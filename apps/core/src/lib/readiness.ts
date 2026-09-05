@@ -3,12 +3,17 @@
 // view concern — but the classification MUST agree with the server's, so it is unit-tested here too.
 import { isCooking, isPlayable, readyToSing, type Media, type MediaStatus } from '@encore/shared';
 
-export type Readiness = 'ready' | 'cooking' | 'unacquired';
+export type Readiness = 'ready' | 'cooking' | 'failed' | 'unacquired';
 
 export function readinessOf(m: Media): Readiness {
 	// Gate-driven, and MUST stay byte-identical to the client's copy (apps/core/src/lib/readiness.ts).
 	// `isCooking` reads the cook gates rather than a single `stemStatus === 'queued'` check, so a song
 	// mid-align (stems ready, lyrics queued) reads as cooking instead of falling through to unacquired.
+	//
+	// 'failed' is deliberately absent here: nothing in the catalog Media records a failure, and it
+	// should not — a dead cook settles the status back to un-cooked (settleStemsGate), so the catalog's
+	// honest answer for a failed song is 'unacquired'. Failure is a LIVE event, and displayReadiness
+	// is where it belongs.
 	if (readyToSing(m)) return 'ready';
 	if (isCooking(m)) return 'cooking';
 	return 'unacquired';
@@ -18,18 +23,35 @@ export function readinessOf(m: Media): Readiness {
  * Readiness for display, letting a LIVE media:status override the catalog. A `media:status` arrives
  * before the catalog copy is refreshed, so a song the singer just tapped "✨ Karaoke" on must read as
  * cooking immediately — otherwise the row visibly fails to respond to the tap.
+ *
+ * A `failed` status is surfaced rather than swallowed. It used to fall through to the catalog, where a
+ * mid-flight `stemStatus` still read as cooking — so a dead cook went on saying "Making karaoke… 0%"
+ * forever and the singer's only clue was a four-second toast. Reported only when the song is not
+ * actually singable: a failed lyrics upgrade on an already-cooked song is not a failure the guest
+ * needs, because they can still sing it.
  */
 export function displayReadiness(m: Media, live?: { status: MediaStatus }): Readiness {
 	if (live) {
 		if (live.status === 'ready') return 'ready';
-		if (live.status !== 'failed') return 'cooking';
+		if (live.status === 'failed') return readyToSing(m) ? 'ready' : 'failed';
+		// A cancel is terminal but is NOT a failure — the catalog answers. settleStemsGate has already
+		// put the media back to un-cooked, so this reads as 'unacquired' and the row offers Sing again.
+		// Reporting 'failed' here would tell a guest who removed a song that the cook broke.
+		if (live.status === 'canceled') return readinessOf(m);
+		return 'cooking';
 	}
 	return readinessOf(m);
 }
 
-/** Whether offering "make karaoke" makes sense: only for a song that is neither done nor in flight. */
+/**
+ * Whether offering "make karaoke" makes sense: only for a song that is neither done nor in flight.
+ *
+ * A FAILED song qualifies — that is the point of showing the state. The cook settled back to
+ * un-cooked server-side, so a retry is a real action rather than a button that answers "already
+ * cooked".
+ */
 export function canCook(r: Readiness): boolean {
-	return r === 'unacquired';
+	return r === 'unacquired' || r === 'failed';
 }
 
 /**
@@ -91,10 +113,10 @@ export function entryPlayable(
 	live?: { status: MediaStatus }
 ): boolean {
 	// A live status decides in both directions: `ready` means the cook just landed and the catalog
-	// copy hasn't caught up; anything else mid-flight means still cooking. `failed` says nothing about
-	// playability, so the catalog answers.
+	// copy hasn't caught up; anything else mid-flight means still cooking. `failed` and `canceled` are
+	// terminal and say nothing about playability, so the catalog answers for both.
 	if (live && live.status === 'ready') return true;
-	if (live && live.status !== 'failed') return false; // queued/downloading/separating/aligning
+	if (live && live.status !== 'failed' && live.status !== 'canceled') return false; // still cooking
 	if (!media) return false;
 	return readyToSing(media);
 }

@@ -131,6 +131,34 @@ describe('TS↔Python vocabulary parity', () => {
 		expect(pyEnumValues(vocabulary, 'Fetcher').sort()).toEqual(FETCHERS.map((f) => f.id).sort());
 	});
 
+	// vocabulary.py is read once at module load; if it ever moves, that read throws a bare ENOENT and
+	// every parity test above fails for the wrong reason. Assert its presence loudly, the same way the
+	// artifact-envelope block guards its per-file reads, so a moved file names itself.
+	test('vocabulary.py is where the parity reads expect it', () => {
+		const path = join(WORKER_SRC, 'vocabulary.py');
+		expect(existsSync(path), `vocabulary.py not found under ${WORKER_SRC} — did the module move?`).toBe(
+			true
+		);
+	});
+
+	test('lyrics text sources match the worker TextSource enum', () => {
+		// LyricsTextSource is a bare union with no runtime value to import, so — exactly like JobType
+		// above — the members are listed explicitly and TypeScript checks the list IS the union, so it
+		// cannot silently fall behind. The Python side is TextSource, promoted from chain.py's SOURCE_*
+		// string constants precisely so this guard can cover it.
+		const tsTextSources = ['lrclib', 'captions', 'asr', 'manual'] as const;
+		const _exhaustive: readonly import('@encore/shared').LyricsTextSource[] = tsTextSources;
+		void _exhaustive;
+		expect(pyEnumValues(vocabulary, 'TextSource').sort()).toEqual([...tsTextSources].sort());
+	});
+
+	test('lyrics timing tiers match the worker Timing enum', () => {
+		const tsTimings = ['word', 'line', 'none'] as const;
+		const _exhaustive: readonly import('@encore/shared').LyricsTiming[] = tsTimings;
+		void _exhaustive;
+		expect(pyEnumValues(vocabulary, 'Timing').sort()).toEqual([...tsTimings].sort());
+	});
+
 	test('every engine capability string is one the worker can advertise', () => {
 		// This is the pairing dispatch.ts compares with raw `capabilities.includes(cap)`, so a typo on
 		// either side parks the job forever rather than failing loudly.

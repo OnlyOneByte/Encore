@@ -12,6 +12,7 @@ from typing import AsyncIterator
 
 from ..processor import ProgressEvent, source_audio_path
 from ..runtime.ctx import Ctx
+from ..runtime.runner import run_stage
 from ..runtime.step import Step, StepResult
 from ..acquisition.fetch import find_downloaded, job_fetcher, local_source_path
 from ..separation.demucs import download_argv, parse_ytdlp_progress
@@ -77,15 +78,9 @@ class AcquireAudio(Step):
 
         template = os.path.join(audio_dir, f"{job.media_id}.%(ext)s")
         argv = download_argv(job.source_uri, template, _ytdlp_bin(ctx))
-        yield ProgressEvent(stage=self.stage, pct=0)
-        last = -1
-        async for line in ctx.runner(argv):
-            pct = parse_ytdlp_progress(line)
-            if pct is not None and pct != last:
-                last = pct
-                yield ProgressEvent(stage=self.stage, pct=pct)
-        if last < 100:
-            yield ProgressEvent(stage=self.stage, pct=100)
+        # The single subprocess-with-progress loop, shared with the other steps that shell out.
+        async for ev in run_stage(ctx.runner, self.stage, argv, parse_ytdlp_progress):
+            yield ev
 
         ctx.audio.path = find_downloaded(audio_dir, job.media_id)
         if ctx.audio.path is None:

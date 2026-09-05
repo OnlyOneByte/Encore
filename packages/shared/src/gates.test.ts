@@ -15,11 +15,10 @@ const m = (over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-// A stems-complete song now needs THREE things: status, the instrumental ref, AND a song profile
-// (all produced by the one stems job). The profile defaults to EMPTY here — the all-nulls "analysis
-// ran, found nothing" value — because the stems gate keys on the profile's PRESENCE, not its data, so
-// an empty profile is a fully cooked stems step. Tests that probe the missing-profile boundary pass
-// `songProfile: undefined` explicitly.
+// A stems-complete song needs the status and the instrumental ref (both produced by the one stems job).
+// The profile defaults to EMPTY here — the all-nulls "analysis ran, found nothing" value — so the
+// fixture matches what a real cook on this code produces. Tests that probe the pre-profile-era
+// boundary pass `songProfile: undefined` explicitly.
 const cooked = (over: Partial<Media> = {}): Media =>
 	m({
 		stemStatus: 'ready',
@@ -40,13 +39,28 @@ test('separation needs the artifact, not just the status', () => {
 	expect(readyToSing(m({ stemStatus: 'ready', lyricsStatus: 'ready' }))).toBe(false);
 });
 
-test('separation also needs the song profile RECORD — the third stems artifact', () => {
-	// The stems job produces the instrumental, the vocals, AND the key/range profile. A song with the
-	// status and ref but no profile has a stems step that has not finished, so it is not ready to sing.
+test('a song cooked BEFORE song profiles existed is not retroactively unsingable', () => {
+	// This is the stems twin of the lyrics test below, and it was the bug: the gate used to require the
+	// profile RECORD, which no pre-profile row has. Such a song went readyToSing=false (out of the
+	// rotation, out of listReady) while isPlayable/isCooked stayed TRUE, so requestMakeKaraoke answered
+	// "already cooked" and refused to re-cook it. Unsingable forever, with no way out, for every song
+	// cooked on a previous night.
+	//
+	// It is safe to treat these as done because worker-hub writes the profile unconditionally beside
+	// markMediaReady, so a 'ready' status with an instrumental is itself proof the analysis ran for
+	// anything this code cooked.
 	const noProfile = cooked({ songProfile: undefined, lyricsStatus: 'ready' });
 	expect(noProfile.songProfile).toBeUndefined();
-	expect(readyToSing(noProfile)).toBe(false);
-	expect(pendingGates(noProfile).map((g) => g.id)).toEqual(['stems']);
+	expect(isPlayable(noProfile)).toBe(true); // the half that always worked — hence the deadlock
+	expect(readyToSing(noProfile)).toBe(true);
+	expect(pendingGates(noProfile)).toEqual([]);
+});
+
+test('a stems step still needs its status and ref, profile or not', () => {
+	// Dropping the profile requirement must not make a half-cooked song look finished: the status and
+	// the instrumental ref are still both mandatory.
+	expect(readyToSing(cooked({ stemStatus: 'queued', lyricsStatus: 'ready' }))).toBe(false);
+	expect(readyToSing(cooked({ instrumentalRef: undefined, lyricsStatus: 'ready' }))).toBe(false);
 });
 
 test('an ALL-NULLS profile still finishes the stems gate — the silent-vocal trap', () => {

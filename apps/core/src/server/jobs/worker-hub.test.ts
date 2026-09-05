@@ -8,7 +8,7 @@ import { JobRepository } from './repository';
 import { AttemptLedger } from './attempts';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
-import { attemptStages, realtimeFactor, type WorkerCommand, type ServerEvent, type Media } from '@encore/shared';
+import { attemptStages, realtimeFactor, DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings, type WorkerCommand, type ServerEvent, type Media } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 
@@ -331,4 +331,184 @@ test('an older worker that reports no facts still gets a sealed, timed attempt',
 	expect(a.finishedAt! - a.startedAt!).toBe(30_000);
 	expect(attemptStages(a)).toEqual([]); // no breakdown, honestly empty
 	expect(a.model).toBe('htdemucs'); // what dispatch asked for still stands
+});
+
+test('a terminally failed stems job settles the media back to un-cooked and says so', () => {
+	// The phantom cook: #onFailed used to leave stemStatus mid-flight, so isCooking stayed true, the
+	// phone row read "Making karaoke… 0%" forever and cookState refused a retry. One worker OOM made
+	// the song permanently unsingable with no way out but a DB edit.
+	const { hub, jobs, mediaById, broadcasts } = harness();
+	// enqueue alone does not touch the media; requestMakeKaraoke is what marks it in flight, so set the
+	// state that a real cook would have left behind.
+	mediaById.set('m1', media('m1', { stemStatus: 'queued' }));
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // in flight
+
+	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: job.id, error: 'CUDA OOM', retryable: false });
+
+	expect(jobs.byId(job.id)!.status).toBe('failed');
+	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // settled — retryable again
+	// And the phone is told, so the row can render the failure rather than a stalled progress line.
+	const statuses = broadcasts.filter((e) => e.type === 'media:status');
+	expect(statuses.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'failed' });
+});
+
+test('a failed ALIGN leaves a separated song singable — it does not settle the stems side', () => {
+	// The asymmetry is deliberate: a dead lyrics step must not throw away a good instrumental.
+	const { hub, jobs, mediaById } = harness();
+	mediaById.set('m1', media('m1', { stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac' }));
+	const job = jobs.enqueue('m1', 'align', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: job.id, error: 'model would not load', retryable: false });
+
+	expect(mediaById.get('m1')!.stemStatus).toBe('ready'); // instrumental preserved
+	expect(mediaById.get('m1')!.lyricsStatus).toBe('ready'); // lyrics gate settled instead
+});
+
+test('a terminally failed FETCH also settles the media — the common stranding case', () => {
+	// requestMakeKaraoke marks the media cooking BEFORE the download, so a dead fetch stranded it
+	// exactly like a dead separation. This was the more likely of the two in practice: a missing deno
+	// or a broken yt-dlp fails every fetch on the box.
+	const { hub, jobs, mediaById } = harness();
+	mediaById.set('m1', media('m1', { stemStatus: 'queued' }));
+	const job = jobs.enqueue('m1', 'fetch', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['fetch:ytdlp'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: job.id, error: 'Requested format is not available', retryable: false });
+
+	expect(mediaById.get('m1')!.stemStatus).toBe('none');
+});
+
+// ── FIX 3: a REFUSED stems-upgrade must change NOTHING on the song ────────────────────────────────
+// markMediaReady refuses (returns false) an upgrade whose separator does not outrank the published
+// one. The two artifact setters were called unconditionally regardless, and setMediaSongProfile
+// normalizes an absent profile to EMPTY_SONG_PROFILE — so a refused upgrade WIPED the detected key
+// and vocal range off a song that already had them. The fix guards both setters on the accept.
+test('a refused stems-upgrade leaves the key, range, vocals and instrumental untouched', () => {
+	const { hub, jobs, mediaById } = harness();
+	// A song already cooked at the TOP of the quality ladder (ensemble, rank 45), with a real key +
+	// range profile and a guiding-vocals ref.
+	const profile = {
+		keyTonic: 3, keyMode: 'major', keyConfidence: 0.9,
+		lowMidi: 50, highMidi: 72, p05Midi: 55, p95Midi: 67, histogram: [1, 2, 3]
+	};
+	mediaById.set('m1', media('m1', {
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		separator: { engine: 'ensemble', model: 'instrumental_clean' }, // rank 45
+		vocalsRef: 'derived/stems/m1-vocals.flac',
+		songProfile: profile as unknown as Media['songProfile']
+	}));
+	// A stems-upgrade completes. With no settings the harness resolves the upgrade to the default
+	// roformer:bs-roformer-1297 (rank 35), which does NOT outrank the published ensemble — so
+	// markMediaReady refuses it.
+	const job = jobs.enqueue('m1', 'stems-upgrade', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems:roformer'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId: job.id,
+		mediaUri: 'x',
+		artifacts: {
+			stems: { instrumental: 'derived/stems/m1-instrumental-UPGRADE.flac', vocals: 'derived/stems/m1-vocals-UPGRADE.flac' }
+			// no songProfile on this frame — the exact condition that used to normalize to EMPTY and wipe
+		}
+	});
+
+	const m = mediaById.get('m1')!;
+	// The refusal is a no-op: none of the artifacts moved.
+	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.flac'); // NOT the UPGRADE key
+	expect(m.vocalsRef).toBe('derived/stems/m1-vocals.flac'); // NOT the UPGRADE vocals
+	expect(m.songProfile).toEqual(profile as unknown as Media['songProfile']); // key + range preserved
+	expect(m.separator).toEqual({ engine: 'ensemble', model: 'instrumental_clean' }); // still the better one
+});
+
+test('an ACCEPTED stems-upgrade DOES swap the artifacts (the guard is not over-eager)', () => {
+	const { hub, jobs, mediaById } = harness();
+	// Published at the BOTTOM of the ladder (demucs htdemucs, rank 10); the default upgrade (roformer,
+	// rank 35) outranks it, so markMediaReady accepts and the setters run.
+	mediaById.set('m1', media('m1', {
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		separator: { engine: 'demucs', model: 'htdemucs' } // rank 10
+	}));
+	const job = jobs.enqueue('m1', 'stems-upgrade', 0, T0);
+	// The default upgrade engine is roformer, so the job routes to a stems:roformer worker.
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems:roformer'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+	hub.handle({
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId: job.id,
+		mediaUri: 'x',
+		artifacts: { stems: { instrumental: 'derived/stems/m1-instrumental-UPGRADE.flac' } }
+	});
+
+	const m = mediaById.get('m1')!;
+	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental-UPGRADE.flac'); // upgraded
+	expect(m.separator).toEqual({ engine: 'roformer', model: 'bs-roformer-1297' }); // and recorded
+});
+
+// ── FIX 4: the room's downward-only quality ceiling must reach dispatch ───────────────────────────
+// resolveCookSeparator was complete, tested, and had ZERO non-test callers: dispatch read
+// global.defaultEngine/defaultModel directly, so a room set to a lower quality was ignored. The hub
+// now folds resolveCookSeparator over the effective settings before handing them to dispatch, which
+// must lower BOTH the assigned engine/model AND the capability the stems job is routed by.
+
+function hubWithSettings(getSettings: () => EffectiveSettings) {
+	const { db } = openDb(':memory:');
+	runMigrations(db);
+	const jobs = new JobRepository(db);
+	const registry = new WorkerRegistry();
+	const mediaById = new Map<string, Media>([['m1', media('m1')]]);
+	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
+	const hub = new WorkerHub({
+		jobs, registry, mediaById,
+		toWorker: (workerId, cmd) => sent.push({ workerId, cmd }),
+		broadcast: () => {},
+		getSettings,
+		now: () => T0
+	});
+	return { hub, jobs, sent };
+}
+
+const assignOf = (sent: { cmd: WorkerCommand }[]) =>
+	sent.filter((s) => s.cmd.type === 'job:assign').map((s) => s.cmd)[0] as Extract<WorkerCommand, { type: 'job:assign' }>;
+
+test('a room quality ceiling LOWERS the stems engine, model, and routing capability', () => {
+	// Global default is a high-tier roformer cook; the room caps quality down to the demucs tier.
+	const effective: EffectiveSettings = {
+		global: { ...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' }, // rank 35
+		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: 10 } // cap at the demucs:htdemucs tier
+	};
+	const { hub, jobs, sent } = hubWithSettings(() => effective);
+	jobs.enqueue('m1', 'stems', 0, T0);
+	// A demucs-only worker: it could NOT serve a roformer cook, so the fact it gets the job proves the
+	// capability was lowered to 'stems' (demucs), not left at 'stems:roformer'.
+	hub.handle({ type: 'worker:hello', workerId: 'w-demucs', capabilities: ['stems'], concurrency: 1, version: '1' });
+
+	const assign = assignOf(sent);
+	expect(assign).toBeTruthy(); // routed to the demucs worker → capability was lowered
+	expect(assign.params.engine).toBe('demucs'); // engine lowered
+	expect(assign.params.model).toBe('htdemucs'); // model lowered to the capped tier
+});
+
+test('with NO room cap, dispatch uses the global default unchanged (ceiling is downward-only)', () => {
+	const effective: EffectiveSettings = {
+		global: { ...DEFAULT_EFFECTIVE_SETTINGS.global, defaultEngine: 'roformer', defaultModel: 'bs-roformer-1297' },
+		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, maxQualityRank: null } // no cap
+	};
+	const { hub, jobs, sent } = hubWithSettings(() => effective);
+	jobs.enqueue('m1', 'stems', 0, T0);
+	// The roformer worker is required now: an uncapped high-tier cook must route to 'stems:roformer'.
+	hub.handle({ type: 'worker:hello', workerId: 'w-rof', capabilities: ['stems:roformer'], concurrency: 1, version: '1' });
+
+	const assign = assignOf(sent);
+	expect(assign).toBeTruthy();
+	expect(assign.params.engine).toBe('roformer'); // global default preserved, never raised or altered
+	expect(assign.params.model).toBe('bs-roformer-1297');
 });

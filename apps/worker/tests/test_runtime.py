@@ -258,3 +258,46 @@ def test_an_unknown_action_has_no_plan_and_says_which(tmp_path):
     with pytest.raises(Exception) as exc:
         plan_for(job(tmp_path, job_type="not-an-action"), None)  # type: ignore[arg-type]
     assert "not-an-action" in str(exc.value)
+
+
+# ── run_blocking: cancellation must not abandon the in-flight thread ──────────────
+
+
+@pytest.mark.asyncio
+async def test_run_blocking_awaits_its_thread_before_the_generator_finishes(tmp_path, monkeypatch):
+    """A cancelled ML cook must not free its concurrency slot while the thread is still running.
+
+    run_blocking offloads a synchronous ML call to a thread and yields keepalives. When the job is
+    cancelled, dial_home cancels the consuming task, which throws GeneratorExit into this generator's
+    suspended `yield`. The slot is freed the instant run_blocking returns (_run_job's finally). If the
+    generator returned while the thread was still executing, the worker would advertise capacity it did
+    not have and a cancelled cook would keep burning CPU/VRAM off the books.
+
+    The thread here cannot be killed — it sleeps a fixed span and sets `finished` only when it truly
+    ends. We consume one keepalive, then `aclose()` the generator (the GeneratorExit path). With the
+    fix, aclose() must not return until `finished` is set. On the pre-fix code (the `to_thread` future
+    dropped on unwind) aclose() returns with `finished` still False.
+    """
+    import threading
+    import time as _time
+
+    # A keepalive interval far shorter than the work, so the first __anext__ yields a keepalive while
+    # the thread is still running rather than the final result.
+    monkeypatch.setattr(runner_mod, "LEASE_KEEPALIVE_SEC", 0.02)
+
+    finished = threading.Event()
+
+    def slow_ml() -> str:
+        _time.sleep(0.4)
+        finished.set()
+        return "done"
+
+    gen = runner_mod.run_blocking(slow_ml, Stage.ALIGNING, 0)
+    kind, _val = await gen.__anext__()
+    assert kind == "progress", "expected a keepalive while the thread is still running"
+    assert not finished.is_set(), "thread should not have finished yet — test setup is wrong"
+    await gen.aclose()  # throws GeneratorExit at the suspended yield
+    assert finished.is_set(), (
+        "run_blocking returned before its thread finished — the slot would be freed while native ML "
+        "work is still in flight"
+    )

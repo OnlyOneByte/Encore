@@ -16,8 +16,15 @@
 		joinUrl: string;
 		placement?: 'hero' | 'corner';
 		/** How many singers are in the room right now; shown on the corner card. Hidden when 0. */
-		onlineCount?: number;		/** Pixel size of the QR image itself. */
-		size?: number;
+		onlineCount?: number;
+		/**
+		 * The rendered QR size. A NUMBER is pixels (back-compat, and correct for the fixed-geometry
+		 * corner card). A STRING is any CSS length used verbatim — the TV hero passes a `vmin` token so
+		 * the code grows with the panel on a 4K wall instead of dead-ending at a pixel cap while the
+		 * canvas around it keeps scaling up. The `<img>` intrinsic width/height stay a plain number
+		 * (`intrinsicPx`) for a sensible pre-CSS layout box; the CSS `--qr` governs the painted size.
+		 */
+		size?: number | string;
 		/**
 		 * The advertised join address is one no phone can reach (loopback / bare hostname). Render an
 		 * operator notice naming the fix instead of a QR that looks fine but every scan fails silently.
@@ -27,6 +34,12 @@
 
 	let { qrDataUrl, joinUrl, placement = 'hero', onlineCount = 0, size = placement === 'corner' ? 88 : 238, unreachable = false }: Props =
 		$props();
+
+	// A number is pixels; a string is a raw CSS length. This is what --qr is set to.
+	const qrLength = $derived(typeof size === 'number' ? `${size}px` : size);
+	// The <img>'s intrinsic attribute box. It must be a number, and CSS --qr overrides the painted
+	// size regardless — so for a CSS-length size we hand it a reasonable placeholder rather than 0.
+	const intrinsicPx = $derived(typeof size === 'number' ? size : placement === 'corner' ? 88 : 320);
 
 	// The full URL is too long to read across a room in the corner treatment; the path is enough
 	// once the QR carries the real target.
@@ -48,7 +61,7 @@
 	</div>
 {:else if placement === 'corner'}
 	<div class="corner" aria-label="Scan to join Encore">
-		<div class="qr" style="--qr: {size}px"><img src={qrDataUrl} alt="QR code to join Encore" width={size} height={size} /></div>
+		<div class="qr" style="--qr: {qrLength}"><img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} /></div>
 		<div class="meta">
 			<div class="t">Scan to join</div>
 			<div class="u">{shortUrl}</div>
@@ -59,7 +72,7 @@
 	</div>
 {:else}
 	<div class="hero">
-		<div class="qr" style="--qr: {size}px"><img src={qrDataUrl} alt="QR code to join Encore" width={size} height={size} /></div>
+		<div class="qr" style="--qr: {qrLength}"><img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} /></div>
 	</div>
 {/if}
 

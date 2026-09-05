@@ -15,6 +15,7 @@ import asyncio
 import os
 import re
 import shutil
+import signal
 from collections import deque
 from typing import AsyncIterator, Awaitable, Callable
 
@@ -293,14 +294,35 @@ async def _iter_lines(stream: asyncio.StreamReader) -> AsyncIterator[str]:
 
 
 async def _terminate(proc: "asyncio.subprocess.Process") -> None:
-    """Kill the child if it is still running, then AWAIT it so it is reaped (no zombie, no leaked
-    handle). SIGKILL rather than SIGTERM because these CLIs ignore polite signals mid-work, and by the
-    time we terminate we have already decided the process must not survive this generator."""
+    """Kill the child AND ITS CHILDREN if still running, then AWAIT it so it is reaped (no zombie, no
+    leaked handle). SIGKILL rather than SIGTERM because these CLIs ignore polite signals mid-work, and by
+    the time we terminate we have already decided the process must not survive this generator.
+
+    The kill goes to the whole PROCESS GROUP, which is why the spawn sets start_new_session. `proc.kill()`
+    alone signals only the CLI we launched — and demucs with `-j N` forks N worker processes holding a
+    model each (~2 GiB). Killing just the parent left every one of them alive and unreachable, so a
+    cancelled cook kept its memory forever and a box running ENCORE_WORKER_CONCURRENCY>1 OOMed after a
+    few cancels.
+
+    The pgid comparison is load-bearing, not defensive noise: if the child ever shares OUR group (the
+    spawn flag removed, or a platform without process groups) then `killpg` would SIGKILL this worker
+    process too. So we only ever signal a group we know we created, and otherwise fall back to killing
+    the direct child — a leaked grandchild is bad, killing the worker mid-cook is worse.
+    """
     if proc.returncode is None:
+        killed = False
         try:
-            proc.kill()
-        except ProcessLookupError:
-            pass  # it exited between the check and the kill — nothing to reap beyond the wait
+            pgid = os.getpgid(proc.pid)
+            if pgid != os.getpgid(0):
+                os.killpg(pgid, signal.SIGKILL)
+                killed = True
+        except (ProcessLookupError, PermissionError, AttributeError, OSError):
+            pass  # gone between the check and the kill, or no process groups on this platform
+        if not killed:
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass  # it exited between the check and the kill — nothing to reap beyond the wait
     try:
         await proc.wait()
     except Exception:  # noqa: BLE001 — reaping must never mask the original unwind
@@ -318,7 +340,12 @@ async def subprocess_runner(argv: list[str]) -> AsyncIterator[str]:
     child that has gone silent, so a wedged process cannot hold its slot forever.
     """
     proc = await asyncio.create_subprocess_exec(
-        *argv, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.STDOUT
+        *argv,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.STDOUT,
+        # Own process group, so _terminate can signal the CLI's forked workers too. Without this,
+        # killing demucs left its `-j N` model-holding children alive at ~2 GiB each.
+        start_new_session=True,
     )
     assert proc.stdout is not None
     tail: deque[str] = deque(maxlen=30)

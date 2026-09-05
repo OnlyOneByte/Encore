@@ -441,8 +441,10 @@ export function getApp(): EncoreApp {
 		broadcast: (e) => app.publish(e),
 		// remote workers pull source / push stems via this store config (local volume or S3/MinIO)
 		mediaStore: mediaStoreConfig,
-		// A stems/upgrade job carries the room's chosen engine+model, read live at assign time.
-		getSettings: () => app.settings.getGlobal(),
+		// A stems/upgrade job carries the room's chosen engine+model, read live at assign time. EFFECTIVE
+		// (global+room) so the room's downward-only quality ceiling actually reaches dispatch — the hub
+		// folds resolveCookSeparator over this before handing the pure dispatch layer its settings.
+		getSettings: () => app.settings.getEffective(),
 		// A cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
 		// so the next boot lists it in the karaoke library instead of re-cooking it.
 		persistMedia: (mediaId) => {

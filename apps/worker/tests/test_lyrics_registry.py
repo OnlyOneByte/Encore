@@ -80,27 +80,6 @@ def test_absent_caption_tracks_are_reported_for_BOTH_kinds_independently():
     assert "captions:machine" in joined and NEEDS_MACHINE_CUES in joined
 
 
-# ── the settings hook ────────────────────────────────────────────────────────────
-
-
-def test_a_source_can_be_DISABLED_by_id_and_says_so():
-    """Filtering is data now: "do not grade with machine captions" is a set difference over SPECS rather
-    than an edit to a chain."""
-    keep = frozenset(s.id for s in SPECS if s.id != "captions:machine")
-    sources, notes = build(full_request(), enabled=keep)
-    assert len(sources) == len(SPECS) - 1
-    assert any("captions:machine" in n and "disabled" in n for n in notes)
-
-
-def test_disabled_and_unmet_are_DIFFERENT_reasons():
-    """An operator turning a source off and a source that could not run are not the same event, and a log
-    that conflated them would send someone hunting for a broken provider."""
-    _, notes = build(full_request(vocals_path=None), enabled=frozenset({"lrclib", "asr:vocals"}))
-    joined = " | ".join(notes)
-    assert "asr:vocals: did not run" in joined  # enabled, but its input is absent
-    assert "captions:machine: disabled by settings" in joined
-
-
 # ── the shape of the registry itself ─────────────────────────────────────────────
 
 

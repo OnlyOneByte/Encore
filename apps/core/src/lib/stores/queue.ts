@@ -150,8 +150,27 @@ export class QueueStore {
 			case 'op:reject':
 				this.#onReject(e);
 				break;
-			// playback/media/nowplaying handled by other stores
+			case 'playback:state':
+				this.#noteRev(e.rev);
+				break;
+			// media/nowplaying handled by other stores
 		}
+	}
+
+	/**
+	 * Follow the shared server `#rev` when it is bumped by a non-queue event — today only
+	 * `playback:state` (pause/seek/key/guide/skip all advance the ONE server counter). The state
+	 * itself belongs to another store; this store tracks rev ONLY because the WS gap detector reads
+	 * it (getLastRev) to decide whether the NEXT `queue:patch` skipped a rev. Without this, every
+	 * playback change left our rev behind the server's, so the next queue op looked gapped and forced
+	 * a full snapshot to every phone — the resync storm (worst-case: one per playback change × N phones).
+	 *
+	 * Advance-only (never rewind): a `playback:state` can arrive out of order behind a `queue:patch`
+	 * that already carried a higher rev, and rewinding would manufacture the very gap this closes.
+	 * Touches no entries and emits nothing — rev is the only thing that moved.
+	 */
+	#noteRev(rev: number): void {
+		if (rev > this.#rev) this.#rev = rev;
 	}
 
 	#onPatch(e: Extract<ServerEvent, { type: 'queue:patch' }>): void {

@@ -101,6 +101,10 @@ def _demucs_fake_runner(tmp_path):
             out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
             os.makedirs(os.path.dirname(out), exist_ok=True)
             Path(out).write_bytes(b"FAKE")
+        elif binary == "ffmpeg" and "volumedetect" in argv:
+            # See test_demucs.fake_runner: a volumedetect call measures and writes nothing.
+            yield "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
+            return
         elif binary == "ffmpeg":
             out = argv[-1]
             os.makedirs(os.path.dirname(out), exist_ok=True)

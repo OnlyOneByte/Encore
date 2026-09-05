@@ -24,6 +24,7 @@ from ..processor import (
     volumedetect_argv,
 )
 from ..runtime.ctx import Ctx
+from ..runtime.runner import run_stage
 from ..runtime.step import Step, StepResult
 from ..separation.demucs import STEM_BITRATE, decode_argv, encode_flac_argv, encode_stem_argv
 from ..separation.engines import SeparatorEngine, engine_for
@@ -80,14 +81,13 @@ class Separate(Step):
         out_dir = os.path.join(ctx.work, "separated")
         os.makedirs(out_dir, exist_ok=True)
 
-        yield ProgressEvent(stage=self.stage, pct=0)
-        last = -1
-        async for line in ctx.runner(engine.separate_argv(ctx.audio.decoded_wav or "", out_dir, model)):
-            pct = engine.parse_progress(line)
-            if pct is not None and pct != last:
-                last = pct
-                yield ProgressEvent(stage=self.stage, pct=pct)
-        yield ProgressEvent(stage=self.stage, pct=100)
+        argv = engine.separate_argv(ctx.audio.decoded_wav or "", out_dir, model)
+        # The ONE subprocess-with-progress loop, shared by every step that shells out. Its docstring
+        # records that it was written to kill exactly this copy (demucs/whisperx each had one; roformer
+        # borrowed it) — and the local copy this replaces had drifted back, emitting an UNCONDITIONAL
+        # final pct=100 that double-fired whenever a parser already reached 100. run_stage guards it.
+        async for ev in run_stage(ctx.runner, self.stage, argv, engine.parse_progress):
+            yield ev
 
         found = engine.find_outputs(out_dir, model)
         if not found.get("instrumental"):
@@ -97,7 +97,7 @@ class Separate(Step):
 
 
 class ProbeSilence(Step):
-    """Measure whether the vocals stem is digital silence, before paying to encode it.
+    """Measure whether either separated stem is digital silence, before paying to encode it.
 
     Applies to BOTH engines now. Only demucs used to check, so a roformer cook could publish a silent
     guiding track — the failure the probe exists to catch.
@@ -106,9 +106,18 @@ class ProbeSilence(Step):
     answer — encoding silence yields silence, and an encode that fails raises rather than emptying a file
     — and it saves the encode entirely when the stem is silent.
 
-    A stem measured silent is NOT deleted: the profile analysis in the next step reads the raw vocals WAV
-    regardless, so a silent-vocals song still gets a present-but-empty songProfile and reads as cooked
-    rather than stuck. This step only records the verdict.
+    The two stems fail DIFFERENTLY, which is why one verdict is recorded and the other raises:
+
+    * A silent VOCALS stem costs the room a guide track nobody hears at volume. Recorded, not fatal, and
+      the stem is NOT deleted: the profile analysis in the next step reads the raw vocals WAV regardless,
+      so a silent-vocals song still gets a present-but-empty songProfile and reads as cooked rather
+      than stuck.
+    * A silent INSTRUMENTAL is the file that plays at volume, so publishing it means the room plays
+      four minutes of nothing while every surface says Ready and the TV reports advancing telemetry.
+      There is no honest way to serve that, so it fails the job like any other unusable separation
+      (compare Separate.run, which raises when no instrumental is produced at all). Failing puts the
+      song in the operator's ledger and leaves it re-cookable — possibly on the other engine — instead
+      of silently poisoning the rotation.
     """
 
     name = "probe-silence"
@@ -120,20 +129,36 @@ class ProbeSilence(Step):
         self._ffmpeg = ffmpeg_bin
 
     def applies(self, ctx: Ctx) -> bool:
-        return bool(ctx.stems.raw.get("vocals"))
+        # Either stem is worth probing. Gating on vocals alone skipped the whole step for a cook that
+        # produced only an instrumental — the one stem whose silence is fatal.
+        return bool(ctx.stems.raw.get("vocals") or ctx.stems.raw.get("instrumental"))
+
+    async def _is_silent(self, ctx: Ctx, path: str) -> bool:
+        lines: list[str] = []
+        async for line in ctx.runner(volumedetect_argv(path, self._ffmpeg)):
+            lines.append(line)
+        return is_silent(parse_max_volume_db("\n".join(lines)))
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
-        path = ctx.stems.raw["vocals"]
-        try:
-            lines: list[str] = []
-            async for line in ctx.runner(volumedetect_argv(path, self._ffmpeg)):
-                lines.append(line)
-            silent = is_silent(parse_max_volume_db("\n".join(lines)))
-        except Exception:  # noqa: BLE001 — a failed probe must never cost the room a working guide
-            silent = False
-        ctx.stems.vocals_silent = silent
-        if silent:
-            ctx.note("vocals stem is digital silence — it will not be published")
+        instrumental = ctx.stems.raw.get("instrumental")
+        if instrumental:
+            # No try/except: unlike the guide, a probe that cannot answer must not be read as "fine".
+            # An ffmpeg that fails here would fail the encode in PublishStems anyway.
+            if await self._is_silent(ctx, instrumental):
+                raise RuntimeError(
+                    "instrumental stem is digital silence — refusing to publish a song that would "
+                    "play as four minutes of nothing"
+                )
+
+        vocals = ctx.stems.raw.get("vocals")
+        if vocals:
+            try:
+                silent = await self._is_silent(ctx, vocals)
+            except Exception:  # noqa: BLE001 — a failed probe must never cost the room a working guide
+                silent = False
+            ctx.stems.vocals_silent = silent
+            if silent:
+                ctx.note("vocals stem is digital silence — it will not be published")
         return
         yield  # pragma: no cover - makes this an async generator
 

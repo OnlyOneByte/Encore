@@ -248,8 +248,10 @@ audible baselines) · **B-10** stats + audit dashboards · **B-2** browser pitch
 transposes · **song profile** (detected key + the vocal range a song demands, on all three surfaces).
 
 **Next:** **B-8** swap stem separation to `python-audio-separator` (better models than `htdemucs`; also
-improves the ASR lyrics tier, which reads the vocals stem) · **B-9** a smarter audio-stream pick ·
-**B-4** hot-titles persistence · **M9** accounts + multi-room. Open work only in
+improves the ASR lyrics tier, which reads the vocals stem) ·
+**B-4** hot-titles persistence · **M9** accounts + multi-room. **B-9** (yt-dlp + deno baked into the
+worker image, and a smarter audio-stream pick that prefers Opus over legacy AAC) is shipped. Open work
+only in
 [`docs/ROADMAP.md`](docs/ROADMAP.md); shipped history in [`docs/archive/`](docs/archive/). Agent and
 human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 

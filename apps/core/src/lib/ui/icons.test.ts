@@ -60,8 +60,17 @@ const FE0F = '\uFE0F';
  */
 const EMOJI_RANGES = [
 	[0x1f000, 0x1faff], // pictographs, symbols, transport & map, supplemental
+	[0x2190, 0x21ff], // ARROWS. Not emoji, but the exact glyphs the SVG marks replaced (arrow-left/right/
+	// up/down, and ↩ U+21A9 as a "return" control). A bare arrow in copy is the same regression as a
+	// bare ▶ was: a functional direction cue whose drawing the platform picks. No live source uses one
+	// — every → and ↩ under src/ sits in a comment, which this scan strips before reading.
 	[0x2600, 0x27bf], // misc symbols + dingbats (☀ ✨ ✅ ➡)
 	[0x2b00, 0x2bff], // misc symbols and arrows
+	// The two single-angle quotation marks, ‹ (U+2039) and › (U+203A). General Punctuation is otherwise
+	// legitimate typography here (— … “ ” live in copy), so this is a two-codepoint window, not the
+	// block: these two are the ones that get pressed into service as nav chevrons, a job chevron-left/
+	// chevron-right own as marks. Neither appears in live source today.
+	[0x2039, 0x203a],
 	[0xfe0f, 0xfe0f] // the emoji-presentation selector itself
 ] as const;
 

@@ -231,10 +231,19 @@ const server = Bun.serve<SocketData>({
 				onSang: (singerId) => app.singers.markSang(singerId, app.now()),
 				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
 				// An explicit remove of a cooking song stops the cook (subprocess kill + slot release +
-				// dedup-slot free), where before the row vanished but the worker kept cooking. The helper
-				// no-ops when a shared cook is still needed by another queue entry. See jobs/cancel.ts.
+				// dedup-slot free), where before the row vanished but the worker kept cooking. It also
+				// settles the media back to un-cooked and tells the room, so a search row stops showing a
+				// cook that is no longer running. The helper no-ops when a shared cook is still needed by
+				// another queue entry. See jobs/cancel.ts.
 				onEntryRemoved: (mediaId, remainingEntries) =>
-					cancelJobsForMedia(mediaId, { jobs: app.jobs, toWorker: app.toWorker, remainingEntries, now: app.now }),
+					cancelJobsForMedia(mediaId, {
+						jobs: app.jobs,
+						toWorker: app.toWorker,
+						remainingEntries,
+						now: app.now,
+						mediaById: app.mediaById,
+						broadcast: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e))
+					}),
 				actorSingerId: ws.data.singerId,
 				seenOp: (id) => {
 					if (seenOps.has(id)) return true;

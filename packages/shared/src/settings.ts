@@ -227,50 +227,19 @@ export function isTvProgressStyle(v: unknown): v is TvProgressStyle {
 }
 
 /**
- * What the TV paints BEHIND the video.
- *
- * Worth knowing why this matters more than it sounds: a make-karaoke song plays a separated
- * instrumental, which has no video track, so the `<video>` renders nothing and this background is
- * the ENTIRE visual field for the song — sitting directly behind the word-timed lyric reel. It is
- * not decoration around letterbox bars.
- *
- * A registry rather than a bare union, for the same reason as TV_PROGRESS_STYLES: the phone renders
- * the picker from one source and a new style cannot be added without a label.
- *
- * ONE axis, not two. These do not compose — "one colour" and "the singer's colour" are two answers
- * to the same question, so a second axis would only manufacture invalid combinations.
+ * What the TV paints behind the song. Its type, registry and guards live in `./tv-background` — a
+ * leaf module — because `PlaybackState` in types.ts also references the type, and keeping it here made
+ * types.ts import UP from the config layer and closed a dependency cycle (see tv-background.ts). It is
+ * re-exported so `./settings` consumers (e.g. events.ts) still import these names from here unchanged;
+ * the type and guard are also imported locally, because a re-export does not bind them in this module.
  */
-export const TV_BACKGROUND_STYLES = [
-	{ id: 'off', label: 'Black', note: 'Plain black behind the song. What the TV has always done.' },
-	{
-		id: 'gradient',
-		label: 'Room glow',
-		note: 'The same glow the join and lobby screens use, kept up while a song plays.'
-	},
-	{
-		id: 'singer',
-		label: "Singer's colour",
-		note: 'The stage takes the colour of whoever is up, and changes with each turn.'
-	},
-	{ id: 'solid', label: 'One colour', note: 'A single colour you pick below. Stays put all night.' },
-	{
-		id: 'visualizer',
-		label: 'Audio visualizer',
-		note: 'Moving light behind the words, like an old media player. Pick which one below.'
-	}
-] as const;
-
-export type TvBackgroundStyle = (typeof TV_BACKGROUND_STYLES)[number]['id'];
-
-const tvBackgroundRegistry = makeRegistry(TV_BACKGROUND_STYLES);
-
-export function getTvBackgroundStyle(id: string): (typeof TV_BACKGROUND_STYLES)[number] | undefined {
-	return tvBackgroundRegistry.get(id);
-}
-
-export function isTvBackgroundStyle(v: unknown): v is TvBackgroundStyle {
-	return tvBackgroundRegistry.isValid(v);
-}
+import { isTvBackgroundStyle, type TvBackgroundStyle } from './tv-background';
+export {
+	TV_BACKGROUND_STYLES,
+	getTvBackgroundStyle,
+	isTvBackgroundStyle,
+	type TvBackgroundStyle
+} from './tv-background';
 
 /**
  * Which visualizer the `visualizer` background runs. Read only when
