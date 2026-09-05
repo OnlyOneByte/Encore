@@ -1,14 +1,25 @@
 /*
  * Capture every UI surface, driven into each state rather than photographed as it happens to load.
  *
- *   bun run e2e:seed
- *   ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=<seeded> bun run start
+ *   bun run e2e:seed                                   # or point MEDIA_DIR at a real cooked library
+ *   ENCORE_EPHEMERAL=1 PORT=3500 MEDIA_DIR=<media> bun run start
  *   EPORT=3500 bun run e2e/capture.mjs [outDir]
  *
- * This exists because a screenshot of a default page proves almost nothing: the states worth looking at
- * are the ones a guest actually hits — a queue with a song cooking in it, the sheet pulled up, the TV
- * once someone has joined. Each frame below is reached by driving the real app through the real
- * controls, so what you see is what a guest would see.
+ * This exists because a screenshot of a default page proves almost nothing: the states worth looking
+ * at are the ones a guest actually hits — a queue with a song cooking in it, the sheet pulled up, the
+ * TV once someone has joined, the words moving under the ball. Each frame below is reached by driving
+ * the real app through the real controls, so what you see is what a guest would see.
+ *
+ * TWO THINGS THAT MAKE THE INTERESTING FRAMES POSSIBLE, both easy to lose:
+ *
+ *   1. `--autoplay-policy=no-user-gesture-required`. Without it the <video> never starts, so every
+ *      playing-state frame silently degrades to the lobby and the whole lyrics section captures
+ *      nothing. There is no error — you just get the wrong screen 20 times.
+ *   2. A media volume with REAL cooked songs (stems + lyrics + songProfile). `e2e:seed` writes
+ *      undecodable placeholders, which is enough for search/queue/rotation but NOT for playback: the
+ *      song will queue, fail to decode, and the TV will correctly show its cannot-play state. Point
+ *      MEDIA_DIR at a genuinely cooked library for the playing frames, and expect this script to skip
+ *      them (loudly) when nothing is ready to sing.
  *
  * The TV is captured at 1920x1080 because its type scale is vh-relative: a frame taken at the wrong
  * height is measuring a different design.
@@ -24,6 +35,11 @@ const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
 const OUT = process.argv[2] ?? join(import.meta.dir, '..', '..', '..', 'docs', 'mocks');
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9500);
+/*
+ * The id half of `<id>-<what>-eyeson.png`. `tour` = this full-surface tour, as opposed to the older
+ * per-milestone ids (m0c5-, b7c4-, ds-…) that record the work which first produced a frame.
+ */
+const ID = process.env.CAPTURE_ID ?? 'tour';
 
 const PHONE = [430, 860];
 const TV = [1920, 1080];
@@ -52,6 +68,8 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 
 mkdirSync(OUT, { recursive: true });
 const shots = [];
+const skipped = [];
+
 const proc = spawn(
 	chromium,
 	[
@@ -59,6 +77,9 @@ const proc = spawn(
 		'--no-sandbox',
 		'--disable-gpu',
 		'--hide-scrollbars',
+		// see the header note — without these the playing frames capture the lobby instead
+		'--autoplay-policy=no-user-gesture-required',
+		'--mute-audio',
 		`--remote-debugging-port=${CDP_PORT}`,
 		'--remote-allow-origins=*',
 		'about:blank'
@@ -66,78 +87,186 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
-/*
- * Frame names follow the repo's existing convention for eyes-on evidence: <id>-<what>-eyeson.png,
- * alongside the m0c5-/b7c4-/b8- frames already in docs/mocks. `ds` is this branch's id (design
- * system). The suffix is applied here rather than by hand so a regenerated set cannot drift out of
- * the convention.
- */
 async function shoot(page, name, note) {
-	const path = join(OUT, `ds-${name}-eyeson.png`);
+	const path = join(OUT, `${ID}-${name}-eyeson.png`);
 	await page.screenshot(path);
-	shots.push({ name, note, path });
-	console.log(`  ${name}.png — ${note}`);
+	shots.push({ name, note });
+	console.log(`  ✓ ${name} — ${note}`);
+}
+
+/*
+ * One frame must not be able to cost the other forty.
+ *
+ * A capture run is a long chain of stateful steps, and the failure that actually happens is a single
+ * control moving — which used to abort the run and leave the whole set half-regenerated and silently
+ * mixed between old and new. Each frame is therefore attempted independently and a failure is
+ * recorded and reported at the end, so one broken step yields one missing frame plus a named reason.
+ */
+async function frame(name, fn) {
+	try {
+		await fn();
+	} catch (err) {
+		skipped.push({ name, why: String(err).split('\n')[0] });
+		console.log(`  ✗ ${name} — SKIPPED: ${String(err).split('\n')[0]}`);
+	}
+}
+
+/** Change a room/global setting through its real <select>, then let the socket carry it to the TV. */
+async function setSetting(page, id, value, settleMs = 700) {
+	await page.fill(SEL.setting(id), value);
+	await sleep(settleMs);
+}
+
+/*
+ * Size the viewport to the page's own content, so a short page is not mostly empty background.
+ *
+ * The desktop pages (/stats, /metrics, the gallery) vary enormously in height with how much data the
+ * instance has, and a fixed tall viewport turns a 660px page into a frame that is two thirds black —
+ * which reads as a rendering bug rather than a small library. Capped at 2000px because a frame past
+ * that cannot be read back by the agent tooling that reviews these (see docs/mocks/README.md).
+ */
+async function fitViewport(page, width, { min = 600, max = 2000, pad = 40 } = {}) {
+	await page.viewport(width, min, 1);
+	await sleep(300);
+	const h = await page.evaluate(
+		`Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)`
+	);
+	const height = Math.max(min, Math.min(max, Math.ceil(h) + pad));
+	await page.viewport(width, height, 1);
+	await sleep(250);
+	return height;
+}
+
+/*
+ * Start the TV's media element by hand.
+ *
+ * NOT a shortcut around the app: the phone has already sent the real play command and the room is in
+ * its playing state by the time this runs. This exists purely because headless Chromium refuses to
+ * start an UNMUTED element without a user gesture, so `TvPlayer`'s own `play()` is rejected and the
+ * <video> sits at 0 while the room believes it is playing. That is a uniquely nasty failure to debug
+ * from screenshots, because every frame still looks plausible — the lower third is up, the lyrics are
+ * rendered — and only the position gives it away: the reel is frozen on the song's FIRST line in
+ * every single frame. `--autoplay-policy=no-user-gesture-required` is necessary but not sufficient.
+ *
+ * The lyrics reel is driven by the element's own timeupdate (via TvPlayer's onposition telemetry),
+ * so nothing about the words moves until this succeeds.
+ */
+async function kickPlayback(tv) {
+	const report = await tv.evaluate(`(async () => {
+    const out = [];
+    for (const v of document.querySelectorAll('video, audio')) {
+      if (!v.currentSrc) continue;
+      try { await v.play(); out.push('started'); } catch (e) { out.push('rejected:' + e.name); }
+    }
+    return out.join(',') || 'no media element with a src';
+  })()`);
+	return report;
+}
+
+/** Is the TV's media actually moving? The only trustworthy answer is: look twice. */async function positionAdvancing(tv, overMs = 1600) {
+	const read = () =>
+		tv.evaluate(`(() => { const v = document.querySelector('video'); return v ? v.currentTime : -1; })()`);
+	const a = await read();
+	await sleep(overMs);
+	const b = await read();
+	return b > a + 0.2;
+}
+
+/*
+ * Get the room genuinely singing, and PROVE it rather than assume it.
+ *
+ * The bug this replaces: the capture clicked play/pause exactly once and treated the lower third
+ * appearing as success. But the lower third only means a song is CURRENT, not that it is moving — and
+ * because the room starts the song itself when one is queued with a TV attached, that single click was
+ * landing on an already-playing room and PAUSING it. Every downstream frame then showed a reel frozen
+ * on line one, silently, including all twenty style variants. So: toggle, kick the element past the
+ * headless autoplay block, and only accept it once the position has actually moved.
+ */
+async function ensurePlaying(tv, phone, { attempts = 3 } = {}) {
+	for (let i = 0; i < attempts; i++) {
+		await kickPlayback(tv);
+		if (await positionAdvancing(tv)) return true;
+		await phone.clickByLabel(SEL.play.name);
+		await sleep(600);
+		await kickPlayback(tv);
+		if (await positionAdvancing(tv)) return true;
+	}
+	return false;
 }
 
 let browser;
 try {
 	browser = await connect(CDP_PORT);
 
-	// ── TV first: attract only exists while the room is empty ────────────────
+	// ── TV first: attract only exists while the room is empty ─────────────────
 	const tv = await browser.newPage();
 	await tv.viewport(...TV, 1);
 	await tv.goto(`${base}/tv`);
-	await tv.waitFor(`document.querySelector('.url') !== null`);
-	await shoot(tv, 'tv-attract', 'nobody here yet — the QR owns the screen');
+	/*
+	 * Wait on the QR's ALT TEXT, not a class. The previous version of this script waited for `.url`,
+	 * which no longer exists (the short URL is `.u` inside `.hero`/`.corner` now) — so the very first
+	 * step timed out and took the whole run with it. The alt text is the thing a user is promised;
+	 * it moves far less often than the presentational class beside it. It is also registered in
+	 * contract.ts, so if it does move, `bun test` says so before a capture run does.
+	 */
+	await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.qrImage)}) !== null`);
+	await frame('tv-attract', () => shoot(tv, 'tv-attract', 'nobody here yet — the QR owns the screen'));
 
 	// ── join, both ways of picking a colour ──────────────────────────────────
 	const maya = await browser.newPage();
 	await maya.viewport(...PHONE);
 	await maya.goto(`${base}/join`);
-	await shoot(maya, 'join-presets', 'presets, with the violet default selected');
+	await frame('join-presets', () => shoot(maya, 'join-presets', 'presets, with the violet default selected'));
 
-	await maya.setRange(SEL.hueSlider, 150);
-	await sleep(300);
-	await shoot(maya, 'join-hue-wheel', 'a hue picked off the wheel — lightness and chroma stay pinned');
+	await frame('join-hue-wheel', async () => {
+		await maya.setRange(SEL.hueSlider, 150);
+		await sleep(300);
+		await shoot(maya, 'join-hue-wheel', 'a hue picked off the wheel — lightness and chroma stay pinned');
+	});
 
 	await maya.fill(SEL.nameInput, 'Maya');
 	await maya.clickByLabel(SEL.swatch(PRESET_COLOUR_NAMES[1]).name); // pink
 	await sleep(250);
-	await shoot(maya, 'join-ready', 'name entered and a preset chosen, submit enabled');
+	await frame('join-ready', () => shoot(maya, 'join-ready', 'name entered and a preset chosen, submit enabled'));
 	await maya.clickByText('Start singing');
 	await maya.waitFor(`location.pathname === '/'`);
 	await maya.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+	await sleep(700);
 
-	// ── phone remote ─────────────────────────────────────────────────────────
-	await sleep(600);
-	await shoot(maya, 'phone-empty', 'first run: nothing cooked yet, so the library is empty');
+	// ── phone remote: the library, then search ───────────────────────────────
+	await frame('phone-library', () =>
+		shoot(maya, 'phone-library', 'the library as it opens — cooked songs, newest first')
+	);
 
-	await maya.fill(SEL.search, 'caroline');
-	await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, { timeout: 15_000 });
-	await sleep(400);
-	await shoot(maya, 'phone-search', 'unified search — one row shape, one action per row');
-
-	// queue whichever action is offered; a fresh install has only raw results
-	const action = (await maya.count(SEL.addTurn)) > 0 ? SEL.addTurn : SEL.sing;
-	await maya.click(action);
-	await maya
-		.waitFor(`document.querySelectorAll('.qrow').length + document.querySelectorAll('.proc').length`, {
-			timeout: 10_000
-		})
-		.catch(() => 0);
-	await sleep(900);
-	await shoot(maya, 'phone-cooking', 'the song is cooking and HOLDS its rotation slot');
-
-	// The peek is a div with role=button driven by pointer + keydown handlers, not onclick, so a click
-	// does nothing at all. ArrowUp is its documented open gesture.
-	await maya.pressKey('.peek', 'ArrowUp');
-	await maya.waitFor(`document.querySelector('.sheet')?.classList.contains('open') === true`, {
-		timeout: 5000
+	await frame('phone-browse', async () => {
+		await maya.click(SEL.browseToggle);
+		await sleep(500);
+		await shoot(maya, 'phone-browse', 'browse behind its disclosure: artist and genre facets');
+		await maya.click(SEL.browseToggle); // close it again so it does not shadow later frames
+		await sleep(300);
 	});
-	await sleep(600);
-	await shoot(maya, 'phone-queue-sheet', 'the pull-up sheet: rotation plus the transport');
 
-	// second guest, so the roster and cross-client sync are visible
+	// Find something actually singable. Everything downstream of here needs one.
+	const READY_QUERIES = ['brightside', 'africa', 'take on me', 'zombie'];
+	let readyQuery = null;
+	for (const q of READY_QUERIES) {
+		const res = await fetch(`${base}/api/search?q=${encodeURIComponent(q)}`).then((r) => r.json());
+		if (res.ready?.length) {
+			readyQuery = q;
+			break;
+		}
+	}
+
+	await frame('phone-search', async () => {
+		await maya.fill(SEL.search, readyQuery ?? 'caroline');
+		await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, {
+			timeout: 15_000
+		});
+		await sleep(500);
+		await shoot(maya, 'phone-search', 'unified search — one row shape, one action per row, readiness first');
+	});
+
+	// ── a second guest, so the roster and cross-client sync are visible ──────
 	const ada = await browser.newPage();
 	await ada.viewport(...PHONE);
 	await ada.goto(`${base}/join`);
@@ -145,34 +274,304 @@ try {
 	await ada.setRange(SEL.hueSlider, 210);
 	await ada.clickByText('Start singing');
 	await ada.waitFor(`location.pathname === '/'`);
-	await sleep(900);
-	await shoot(ada, 'phone-second-guest', "Ada's view — the same rotation, synced over the socket");
+	await sleep(800);
 
-	// ── settings ─────────────────────────────────────────────────────────────
+	// ── queue it, and start singing ──────────────────────────────────────────
+	let playing = false;
+	if (readyQuery) {
+		await frame('queue+play', async () => {
+			await maya.click(SEL.addTurn);
+			await maya
+				.waitFor(`document.querySelectorAll('.qrow').length > 0`, { timeout: 10_000 })
+				.catch(() => 0);
+			await sleep(600);
+			// the transport lives in the sheet's peek; ArrowUp is the peek's documented open gesture
+			await maya.pressKey('.peek', 'ArrowUp');
+			await maya.waitFor(`document.querySelector('.sheet')?.classList.contains('open') === true`, {
+				timeout: 5000
+			});
+			await sleep(400);
+			await maya.clickByLabel(SEL.play.name);
+			// the TV naming a singer means a song is CURRENT — not that it is moving
+			await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.lowerThird)}) !== null`, {
+				timeout: 25_000
+			});
+			const moving = await ensurePlaying(tv, maya);
+			console.log(`    playback: ${moving ? 'advancing' : 'NOT ADVANCING — playing frames will be wrong'}`);
+			playing = moving;
+		});
+	} else {
+		skipped.push({ name: '(playback)', why: 'no song is ready to sing in this media volume' });
+		console.log('  ! nothing ready to sing — every playing/lyrics frame will be skipped');
+	}
+
+	await frame('phone-queue-sheet', async () => {
+		await maya.pressKey('.peek', 'ArrowUp');
+		await sleep(500);
+		await shoot(maya, 'phone-queue-sheet', 'the pull-up sheet: rotation, transport, key and guiding track');
+	});
+
+	await frame('phone-now-playing', async () => {
+		await sleep(400);
+		await shoot(maya, 'phone-now-playing', 'now playing — key control, guiding track, the range the song asks for');
+	});
+
+	await frame('phone-second-guest', () =>
+		shoot(ada, 'phone-second-guest', "Ada's view — the same rotation, synced over the socket")
+	);
+
+	await frame('phone-profile', async () => {
+		await ada.clickByLabel('Your profile');
+		await sleep(500);
+		await shoot(ada, 'phone-profile', 'the profile sheet: name, colour, and the way out');
+	});
+
+	// ── the TV, now that someone is singing ──────────────────────────────────
+	if (playing) {
+		/*
+		 * Wait for the ball to land on a word BEFORE shooting anything here. Songs open with an
+		 * instrumental intro — Mr. Brightside's first line arrives around 8s — so a frame taken the
+		 * moment the lower third appears catches a reel parked on line one, which is exactly what a
+		 * frozen-playback bug also looks like. Waiting for `.word.active` proves the words are moving.
+		 */
+		await frame('tv-lyrics-word', async () => {
+			await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.activeWord)}) !== null`, {
+				timeout: 60_000
+			});
+			await shoot(tv, 'tv-lyrics-word', 'word-timed lyrics: the ball sits on the word being sung');
+		});
+
+		await frame('tv-playing', async () => {
+			await sleep(1200);
+			await shoot(tv, 'tv-playing', 'now singing — the lower third names who has the mic');
+		});
+
+		/*
+		 * The key shift goes AFTER the lyrics frames, deliberately.
+		 *
+		 * Shifting re-routes the audio through the browser pitch shifter's AudioWorklet graph, and in
+		 * headless Chromium that leaves the media element paused — so every lyrics frame taken after a
+		 * shift shows a reel frozen on the song's first line while still looking otherwise correct. The
+		 * ± control is genuinely worth a frame, so it is captured here and the variant sweep below
+		 * re-kicks playback rather than trusting it survived.
+		 */
+		await frame('phone-key-shifted', async () => {
+			await maya.clickByText('semitone'); // the first ± button
+			await sleep(700);
+			await shoot(maya, 'phone-key-shifted', 'the key shifted — the sounding key and range move with it');
+		});
+	}
+
+	// ── settings, and the room variants it drives ────────────────────────────
 	/*
-	 * Reuse ADA's page rather than opening a new one. Every browser.newPage() is an isolated context with
-	 * its own cookie jar, so a fresh page has no session and /settings redirects it straight to /join —
-	 * which is what the first run captured and mislabelled as a settings screenshot.
+	 * Reuse ADA's page rather than opening a new one. Every browser.newPage() is an isolated context
+	 * with its own cookie jar, so a fresh page has no session and /settings redirects it straight to
+	 * /join — which an earlier run captured and mislabelled as a settings screenshot.
 	 */
 	await ada.goto(`${base}/settings`);
 	await ada.waitFor(`location.pathname === '/settings'`);
-	await sleep(600);
-	await shoot(ada, 'settings', 'global vs room scope, stated rather than implied');
-	await ada.clickByText('Advanced');
-	await sleep(400);
-	await shoot(ada, 'settings-advanced', 'the advanced disclosure open');
+	await sleep(700);
+	await frame('settings-global', () =>
+		shoot(ada, 'settings-global', 'global vs room scope, stated rather than implied')
+	);
 
-	// ── TV again, now that the room has people and a queue ───────────────────
-	await tv.goto(`${base}/tv`);
-	await sleep(1500);
-	await shoot(tv, 'tv-lobby-cooking', 'a song is cooking — the headline says so instead of asking for another pick');
+	await frame('settings-room', async () => {
+		await ada.evaluate(
+			`document.querySelector(${JSON.stringify(SEL.setting('queue-order'))})?.scrollIntoView({ block: 'center' })`
+		);
+		await sleep(400);
+		await shoot(ada, 'settings-room', 'this room: house rule, TV progress and stage look');
+	});
+
+	await frame('settings-lyrics', async () => {
+		await ada.evaluate(
+			`document.querySelector(${JSON.stringify(SEL.setting('lyrics-highlight'))})?.scrollIntoView({ block: 'center' })`
+		);
+		await sleep(400);
+		await shoot(ada, 'settings-lyrics', 'lyrics on the TV: marker, highlight, lead, size, font, case, rows');
+	});
+
+	await frame('settings-advanced', async () => {
+		await ada.clickByText('Advanced');
+		await sleep(500);
+		await shoot(ada, 'settings-advanced', 'the advanced disclosure open — the progressive upgrade chain');
+	});
+
+	/*
+	 * The misconfigured-QR screen, driven through the real setting rather than staged.
+	 *
+	 * Worth a frame because it is the single most common first-run failure — the TV advertises an
+	 * address phones cannot reach (a loopback bind, a WSL2 NAT, a proxy that forwards no
+	 * X-Forwarded-*) and the room looks broken with no clue why. The screen names the bad address and
+	 * the setting that fixes it, and that is the thing people need to recognise.
+	 */
+	await frame('tv-join-unreachable', async () => {
+		// read the control's OWN value, not the TV's short display text, so the restore is exact
+		const was = await ada.evaluate(
+			`document.querySelector(${JSON.stringify(SEL.setting('join-origin'))})?.value ?? ''`
+		);
+		await ada.fill(SEL.setting('join-origin'), 'http://127.0.0.1:3500');
+		await sleep(1200);
+		await shoot(tv, 'tv-join-unreachable', 'the QR a phone cannot reach — named, with the fix');
+		await ada.fill(SEL.setting('join-origin'), was);
+		await sleep(900);
+	});
+
+	// Only meaningful while something is on screen to restyle.
+	if (playing) {
+		/*
+		 * The variant sweep below is ~20 settings changes long. If the song ran out during the settings
+		 * frames the room has moved to its next/waiting screen and every remaining frame would quietly
+		 * capture the wrong surface, so nudge the media back into playing first and say so if it will
+		 * not go.
+		 */
+		const still = await positionAdvancing(tv);
+		if (!still) {
+			const ok = await ensurePlaying(tv, maya);
+			console.log(`    re-started for the variant sweep: ${ok ? 'advancing' : 'STILL STUCK'}`);
+		}
+
+		// ── lyrics variants ──────────────────────────────────────────────────
+		for (const [val, note] of [
+			['steady', 'a steady marker instead of a bounce'],
+			['underline', 'the marker as an underline'],
+			['off', 'no marker at all — highlight carries it']
+		]) {
+			await frame(`tv-lyrics-ball-${val}`, async () => {
+				await setSetting(ada, 'lyrics-ball', val);
+				await shoot(tv, `tv-lyrics-ball-${val}`, note);
+			});
+		}
+		await setSetting(ada, 'lyrics-ball', 'bounce');
+
+		for (const [val, note] of [
+			['line', 'the whole line lights instead of the word — honest when timings are patchy'],
+			['off', 'no highlight: plain text on the reel']
+		]) {
+			await frame(`tv-lyrics-highlight-${val}`, async () => {
+				await setSetting(ada, 'lyrics-highlight', val);
+				await shoot(tv, `tv-lyrics-highlight-${val}`, note);
+			});
+		}
+		await setSetting(ada, 'lyrics-highlight', 'word');
+
+		await frame('tv-lyrics-upper', async () => {
+			await setSetting(ada, 'lyrics-case', 'upper');
+			await shoot(tv, 'tv-lyrics-upper', 'the words set upper case');
+		});
+		await setSetting(ada, 'lyrics-case', 'natural');
+
+		await frame('tv-lyrics-serif', async () => {
+			await setSetting(ada, 'lyrics-font', 'serif');
+			await shoot(tv, 'tv-lyrics-serif', 'a serif face for the reel');
+		});
+		await setSetting(ada, 'lyrics-font', 'system');
+
+		// ── progress placements ──────────────────────────────────────────────
+		for (const [val, note] of [
+			['card', 'progress inside the now-singing card'],
+			['corner', 'a thin bar and a time-remaining pill'],
+			['edge', 'a full-width bar on the bottom edge, no numbers'],
+			['off', 'no progress on the TV — the phone still has it']
+		]) {
+			await frame(`tv-progress-${val}`, async () => {
+				await setSetting(ada, 'tv-progress', val);
+				await shoot(tv, `tv-progress-${val}`, note);
+			});
+		}
+		await setSetting(ada, 'tv-progress', 'card');
+
+		// ── stage look ───────────────────────────────────────────────────────
+		for (const [val, note] of [
+			['off', 'black behind the song — what the TV has always done'],
+			['gradient', "the room's own glow"],
+			['singer', "the singer's colour"],
+			['solid', 'one colour, picked and left alone']
+		]) {
+			await frame(`tv-bg-${val}`, async () => {
+				await setSetting(ada, 'tv-background', val);
+				await shoot(tv, `tv-bg-${val}`, note);
+			});
+		}
+
+		// ── the visualizers ──────────────────────────────────────────────────
+		await setSetting(ada, 'tv-background', 'visualizer');
+		for (const [val, note] of [
+			['plasma', 'plasma — time-driven, not signal-driven'],
+			['starfield', 'starfield'],
+			['moire', 'ripples: concentric rings interfering'],
+			['lissajous', 'phase curves drawing and redrawing']
+		]) {
+			await frame(`tv-vis-${val}`, async () => {
+				await setSetting(ada, 'tv-visualizer', val, 1200);
+				await shoot(tv, `tv-vis-${val}`, note);
+			});
+		}
+		await setSetting(ada, 'tv-background', 'off');
+	}
+
+	// ── cook something raw, for the cooking state and the job ledger ─────────
+	/*
+	 * Deliberately AFTER the playing frames. Cooking is what a fresh install actually does first, and
+	 * it is also the only way `/metrics` and the per-song audit page have anything to show: those read
+	 * the append-only job_attempts ledger, which only gets rows when a job is really assigned to a
+	 * worker. No worker connected means both pages are structurally empty and their frames are skipped.
+	 */
+	await frame('phone-cooking', async () => {
+		await maya.goto(`${base}/`);
+		await maya.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+		await maya.fill(SEL.search, 'believin');
+		/*
+		 * Wait for the COOK ACTION, not for `.row`. The library is already on screen when the search box
+		 * is typed into, so `.row` matches instantly against rows that are not the search results yet —
+		 * and the count of `.sing` a moment later is then 0 for timing reasons rather than because
+		 * nothing is cookable. Waiting on the thing about to be clicked removes the race.
+		 */
+		await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.sing)}).length > 0`, {
+			timeout: 20_000
+		});
+		await sleep(300);
+		await maya.click(SEL.sing);
+		await sleep(2500);
+		await shoot(maya, 'phone-cooking', 'the song is cooking and HOLDS its rotation slot');
+	});
+
+	// ── the dashboards ───────────────────────────────────────────────────────
+	await frame('stats-public', async () => {
+		await ada.goto(`${base}/stats`);
+		await ada.waitFor(`document.querySelector('h1') !== null`);
+		await sleep(900);
+		await fitViewport(ada, 1280);
+		await shoot(ada, 'stats-public', 'the public page: library size, most-sung, top artists, sings per day');
+	});
+
+	await frame('metrics-internal', async () => {
+		await ada.goto(`${base}/metrics`);
+		await ada.waitFor(`document.querySelector('h1') !== null`);
+		await sleep(900);
+		await fitViewport(ada, 1280);
+		await shoot(ada, 'metrics-internal', 'the internal page: time per step, cost per model against its own claim');
+	});
+
+	await frame('metrics-per-song', async () => {
+		const first = await ada.evaluate(
+			`(document.querySelector('a[href^="/metrics/"]')?.getAttribute('href') ?? '')`
+		);
+		if (!first) throw new Error('no per-song audit link on /metrics (no cooks recorded yet)');
+		await ada.goto(`${base}${first}`);
+		await sleep(800);
+		await fitViewport(ada, 1280);
+		await shoot(ada, 'metrics-per-song', 'one song audited: every cook, every retry, which model, why it failed');
+	});
 
 	// ── the component gallery ────────────────────────────────────────────────
-	const gallery = await browser.newPage();
-	await gallery.viewport(1280, 1400, 1);
-	await gallery.goto(`${base}/components`);
-	await sleep(1200);
-	await shoot(gallery, 'gallery', 'every component in one place, including the TV pieces');
+	await frame('gallery', async () => {
+		const gallery = await browser.newPage();
+		await gallery.goto(`${base}/components`);
+		await sleep(1400);
+		await fitViewport(gallery, 1280);
+		await shoot(gallery, 'gallery', 'every component in one place, including the TV pieces');
+	});
 } catch (err) {
 	console.error('capture failed:', err);
 	process.exitCode = 1;
@@ -182,3 +581,7 @@ try {
 }
 
 console.log(`\n${shots.length} frames written to ${OUT}`);
+if (skipped.length) {
+	console.log(`${skipped.length} skipped:`);
+	for (const s of skipped) console.log(`  - ${s.name}: ${s.why}`);
+}
