@@ -1,8 +1,9 @@
 """Job processor seam — the pluggable unit that turns a source into stems/lyrics.
 
 The STUB processor walks the job's stage plan, yields a progress event per stage, and writes a
-placeholder artifact. The real Demucs pipeline swaps in behind the SAME interface (an async
-generator of ProgressEvent ending with a CompleteResult), so the dial-home loop never changes.
+placeholder artifact. The real implementation is `runtime.runner.PlanRunner`, which swaps in behind
+the SAME interface (an async generator of ProgressEvent ending with a CompleteResult) — so the
+dial-home loop never changes, and one runner serves all four actions rather than a class per action.
 """
 from __future__ import annotations
 
@@ -177,8 +178,12 @@ def is_silent(max_volume_db: float | None) -> bool:
 
 
 class RoutingProcessor:
-    """Dispatch a job to the right sub-processor by job_type (stems→Demucs, align→WhisperX).
-    Unknown types raise (the dial-home loop reports a failure)."""
+    """Dispatch a job to the right sub-processor by job_type.
+
+    Each entry is a `PlanRunner` carrying the declared plan for one action (fetch, stems,
+    stems-upgrade, align) — `dial_home._build_processor` registers only the ones this worker's
+    capabilities allow. Unknown types raise (the dial-home loop reports a failure).
+    """
 
     def __init__(self, by_type: dict[str, Processor]) -> None:
         self._by_type = by_type

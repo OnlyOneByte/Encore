@@ -47,11 +47,13 @@ def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
 
 
 def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
-    """ffmpeg argv: decode any container to the 44.1kHz stereo WAV that Demucs wants.
+    """ffmpeg argv: decode any container to the stereo 16-bit PCM WAV that Demucs wants, at the
+    SOURCE sample rate.
 
     WAV is a WORKING format, never a stored one: this lands in `work/<jobId>/` and dies with the
-    scratch dir. Forcing stereo/44.1k also normalizes the input so separation behaves identically
-    whether the source arrived as Opus-in-webm or AAC-in-m4a.
+    scratch dir. Forcing stereo normalizes the channel layout so separation behaves identically
+    whether the source arrived as Opus-in-webm or AAC-in-m4a; the sample rate is deliberately left
+    alone -- see the `-ar` note in the argv below before adding one back.
     """
     return [
         ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",

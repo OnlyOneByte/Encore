@@ -28,7 +28,6 @@ from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubPr
 # at startup, which is why this is the raw config and not the effective one.
 CONFIG = WorkerConfig.from_env()
 
-CORE_URL = CONFIG.core_ws
 WORKER_ID = CONFIG.worker_id
 CONCURRENCY = CONFIG.concurrency
 CAPABILITIES = list(CONFIG.capabilities)
@@ -366,6 +365,25 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         # Roformer's ~700MB checkpoint machinery is still only reachable when the capability was granted:
         # engine_for imports it lazily, and the CORE only routes a roformer cook to a worker advertising
         # stems:roformer.
+        # Segment: an explicit ENCORE_DEMUCS_SEGMENT always wins; otherwise size it to the memory the
+        # card actually has FREE right now. Measured here rather than in `WorkerConfig.from_env` on
+        # purpose — reading free VRAM imports torch, and config is built at module import, so deriving
+        # it there would pull the ML stack into every worker process including one that only fetches.
+        segment = cfg.demucs_segment
+        if segment is None:
+            from .config import auto_demucs_segment
+            from .hardware import free_vram_bytes
+
+            free = free_vram_bytes()
+            segment = auto_demucs_segment(free)
+            if segment is not None:
+                print(
+                    f"[worker] demucs segment: {segment}s — derived from "
+                    f"{free / (1024**3):.1f}GiB free accelerator memory "
+                    f"(set ENCORE_DEMUCS_SEGMENT to override)",
+                    flush=True,
+                )
+
         runner = stems_runner(
             runner=subprocess_runner,
             demucs_model=cfg.demucs_model,
@@ -376,7 +394,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             device=device,
             jobs=cfg.demucs_jobs,
             overlap=cfg.demucs_overlap,
-            segment=cfg.demucs_segment,
+            segment=segment,
             shifts=cfg.demucs_shifts,
         )
         by_type["stems"] = runner

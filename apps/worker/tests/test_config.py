@@ -246,3 +246,51 @@ def test_describe_shows_token_presence_not_value():
     assert "worker_token=set" in d
     assert "TOP-SECRET-VALUE" not in d
     assert WorkerConfig.from_env({}).describe().count("worker_token=unset") == 1
+
+
+# ── segment sizing from FREE accelerator memory ───────────────────────────────────
+
+
+def test_no_measurement_means_demucs_chooses():
+    """CPU boxes and unmeasurable cards must not get a guessed flag: demucs' own default is better
+    informed than a number invented here."""
+    from src.config import auto_demucs_segment
+
+    assert auto_demucs_segment(None) is None
+
+
+def test_a_roomy_card_gets_no_segment_flag():
+    """htdemucs cannot be given a segment longer than it was trained on, so there is nothing to win by
+    passing one when memory is plentiful — only a constraint to accidentally impose."""
+    from src.config import auto_demucs_segment
+
+    assert auto_demucs_segment(11 * 1024**3) is None
+
+
+def test_segment_shrinks_as_free_memory_shrinks():
+    """The property that matters, asserted as monotonicity rather than by pinning each band: less free
+    memory must never yield a LARGER chunk."""
+    from src.config import auto_demucs_segment
+
+    sizes = [auto_demucs_segment(int(g * 1024**3)) or 99 for g in (11, 5, 3.5, 1.5)]
+    assert sizes == sorted(sizes, reverse=True), sizes
+
+
+def test_a_nearly_full_card_still_gets_a_workable_chunk():
+    """The case this exists for: a 12GiB card with a display server and another cook on it. A slow cook
+    beats a CUDA OOM reported to the room as a failed song."""
+    from src.config import auto_demucs_segment
+
+    seg = auto_demucs_segment(int(1.2 * 1024**3))
+    assert seg is not None and 1 <= seg <= 4
+
+
+def test_free_memory_is_what_is_measured_not_physical_capacity():
+    """The distinction the whole helper turns on. A card whose PHYSICAL size is large but which is
+    mostly occupied must be sized for what is left."""
+    from src.config import auto_demucs_segment
+
+    assert auto_demucs_segment(int(2.0 * 1024**3)) == auto_demucs_segment(int(2.0 * 1024**3))
+    # a 12GiB card with 2GiB free is sized like a small card, not like a 12GiB one
+    assert auto_demucs_segment(int(2.0 * 1024**3)) is not None
+    assert auto_demucs_segment(int(12.0 * 1024**3)) is None

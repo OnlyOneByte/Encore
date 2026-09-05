@@ -72,9 +72,12 @@ from .source import (
     rank_lrclib_candidates,
 )
 from .timing import ML_LOCK, Aligner, WhisperxForcedAligner, aligner_for
-from .validate import validate_timing
+from .validate import LrcFit, fit_lrc_to_aligned, line_starts, validate_timing
 
 __all__ = [
+    "LrcFit",
+    "fit_lrc_to_aligned",
+    "line_starts",
     # roles + vocabulary
     "ROLE_BASELINE",
     "ROLE_CANDIDATE",

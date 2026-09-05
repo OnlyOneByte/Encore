@@ -1,7 +1,6 @@
 import { test, expect } from 'bun:test';
 import {
 	SINGER_COLORS,
-	SINGER_WHEEL,
 	SINGER_HUES,
 	SINGER_HUE_STEP,
 	hueToHex,
@@ -15,6 +14,11 @@ import {
 	STAGE_BG_L,
 	SINGER_L
 } from './colors';
+
+// Every colour the wheel can emit. Derived here, not exported from `colors.ts`: production picks a
+// colour with `hueToHex(hue)` for an arbitrary hue (the wheel is free-hue), so a precomputed array
+// was a second, unread representation of this same set.
+const SINGER_WHEEL: readonly string[] = SINGER_HUES.map((h) => hueToHex(h));
 
 const BG = '#0b0b12'; // --bg
 const CARD = '#1a1a28'; // --card
