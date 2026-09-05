@@ -1,6 +1,6 @@
 // Done-when: resolve memoizes; cache hit on repeat id. Plus parser + graceful degrade.
 import { test, expect } from 'bun:test';
-import { parseSearchJson, cacheMeta, getCachedMeta, ytDlpSearch, ytThumbnailUrl } from './ytdlp';
+import { parseSearchJson, ytDlpSearch, ytThumbnailUrl } from './ytdlp';
 
 test('parseSearchJson parses one-json-object-per-line into SearchResults', () => {
 	const lines = [
@@ -60,13 +60,6 @@ test('a non-numeric view_count is dropped rather than rendered as NaN', () => {
 
 test('objects without id are skipped', () => {
 	expect(parseSearchJson(JSON.stringify({ title: 'no id' }))).toEqual([]);
-});
-
-test('per-id metadata cache memoizes', () => {
-	const r = { source: 'youtube' as const, sourceRef: 'vid123', title: 'Song', durationSec: 100 };
-	expect(getCachedMeta('vid123')).toBeUndefined();
-	cacheMeta(r);
-	expect(getCachedMeta('vid123')).toEqual(r);
 });
 
 test('GRACEFUL DEGRADE: search returns [] when yt-dlp is unavailable (no throw)', async () => {

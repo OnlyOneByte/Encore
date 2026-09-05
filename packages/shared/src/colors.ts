@@ -146,9 +146,6 @@ export const SINGER_HUES: readonly number[] = Array.from(
 	(_, i) => i * SINGER_HUE_STEP
 );
 
-/** Every colour the wheel can emit. */
-export const SINGER_WHEEL: readonly string[] = SINGER_HUES.map((h) => hueToHex(h));
-
 // ── stage tier ─────────────────────────────────────────────────────────────
 //
 // The TV stage background is a DIFFERENT tier from the singer dot palette above, and the difference
