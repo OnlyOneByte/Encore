@@ -41,18 +41,28 @@ const FILES = TV_DIRS.flatMap(svelteFiles);
  * phone scale leaking back in; the --tv-* tokens exist so it does not have to.
  */
 const MIN_TV_REM = 1.5;
+const MIN_TV_PX = MIN_TV_REM * 16;
 
-test('no TV type is sized below the ten-foot floor with a literal rem', () => {
+test('no TV type is sized below the ten-foot floor with a literal size', () => {
+	// px is checked alongside rem because the two are interchangeable to whoever writes them but were
+	// not to this guard: it only ever matched `rem`, so `font-size: 14px` on the stage -- the exact
+	// defect the ten-foot floor exists to stop -- would have sailed through.
+	//
+	// `em` is deliberately NOT checked. It is relative to its PARENT, so a factor below 1 is the normal
+	// way to size a decorative child rather than a leak of the phone scale: the bouncing-ball dot is
+	// `font-size: 0.5em` of the lyric it tracks, which is correct and must stay. Flagging it would have
+	// made this guard punish the right answer, so it is out of scope rather than annotated around.
 	const offenders: string[] = [];
 	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
-		for (const m of src.matchAll(/font-size:\s*([0-9.]+)rem/g)) {
-			const rem = Number(m[1]);
-			if (rem < MIN_TV_REM) {
-				offenders.push(
-					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${rem}rem (${rem * 16}px) — use var(--tv-label|body|name|hero)`
-				);
-			}
+		for (const m of src.matchAll(/font-size:\s*([0-9.]+)(rem|px)/g)) {
+			const n = Number(m[1]);
+			const unit = m[2]!;
+			const px = unit === 'px' ? n : n * 16;
+			if (px >= MIN_TV_PX) continue;
+			offenders.push(
+				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${n}${unit} (${px}px) — use var(--tv-label|body|name|hero)`
+			);
 		}
 	}
 	expect(offenders).toEqual([]);

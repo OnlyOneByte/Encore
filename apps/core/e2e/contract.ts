@@ -34,7 +34,18 @@ export const SEL = {
 	// ── join ──────────────────────────────────────────────────────────────
 	nameInput: 'input[placeholder^="e.g."]',
 	/** Presets are a radiogroup; the accessible name is the colour's NAME, not its hex. */
-	swatch: (colourName: string) => ({ role: 'radio' as const, name: `${colourName} swatch` }),
+	/*
+	 * The preset swatch, addressed by the radio's accessible name.
+	 *
+	 * That name is the BARE colour name ("pink"), not "pink swatch": the element already has
+	 * role=radio, so announcing "swatch" was noise a screen reader had to sit through on all eight.
+	 * This helper is where the format lives, and it has now drifted in BOTH directions -- the header
+	 * note above records the driver still asking for `color #ff5cae` after the label became
+	 * "violet swatch", and then this file asking for "violet swatch" after the label became "violet".
+	 * The name LIST is asserted against the component in contract.test.ts; so is this FORMAT, because
+	 * matching lists cannot tell you the wrapper around each entry is still right.
+	 */
+	swatch: (colourName: string) => ({ role: 'radio' as const, name: colourName }),
 	hueSlider: 'input[type="range"]',
 	submit: /Start singing/,
 

@@ -10,6 +10,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import Icon from '$lib/ui/Icon.svelte';
+	import { dur, stepLabel, stageLabel } from '$lib/metrics-format';
 
 	interface AuditAttempt {
 		id: string;
@@ -60,29 +61,13 @@
 		}
 	});
 
-	function dur(ms: number | null): string {
-		if (ms === null) return '—';
-		if (ms < 1000) return `${Math.round(ms)}ms`;
-		if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-		return `${Math.floor(ms / 60_000)}m ${Math.round((ms % 60_000) / 1000)}s`;
-	}
+	// dur() moved to $lib/metrics-format — it had drifted from /metrics's copy, so a new job type
+	// taught to one page silently showed its raw DB name on the other.
 	const stamp = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
 	/** Only the model fields this step actually carries — a null is "not applicable", not "unknown". */
 	const usedModels = (m: Record<string, string | null>) => Object.entries(m).filter(([, v]) => v);
 
-	/**
-	 * Plain wording for the internal vocabulary. The database stores `fetch`/`stems`/`align` and
-	 * `abandoned`, which describe the implementation rather than what happened, and "abandoned" in
-	 * particular reads as a decision someone made rather than a step that was given up on and retried.
-	 */
-	const STEP_LABELS: Record<string, string> = {
-		fetch: 'download',
-		stems: 'remove vocals',
-		align: 'time lyrics',
-		score: 'pitch track',
-		'stems-upgrade': 'redo vocals'
-	};
-	const stepLabel = (jobType: string) => STEP_LABELS[jobType] ?? jobType;
+	// STEP_LABELS/stepLabel moved to $lib/metrics-format (shared with /metrics).
 
 	const OUTCOME_LABELS: Record<string, string> = {
 		ready: 'done',
@@ -104,13 +89,7 @@
 	};
 	const factLabel = (k: string) => FACT_LABELS[k] ?? k;
 
-	/** The worker's own sub-step names. `separating`/`aligning` describe the code, not the work. */
-	const STAGE_LABELS: Record<string, string> = {
-		downloading: 'downloading',
-		separating: 'removing vocals',
-		aligning: 'timing lyrics'
-	};
-	const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage;
+	// STAGE_LABELS/stageLabel moved to $lib/metrics-format (shared with /metrics).
 
 	/** A song length reads as 4:14, not 254s. */
 	function songLength(sec: number): string {
@@ -228,6 +207,8 @@
 	h1 {
 		font-size: 1.25rem;
 		margin: 0;
+		/* A title-less song falls back to its raw media id; an unbroken id would push past 320px. */
+		overflow-wrap: anywhere;
 	}
 	/* The cook owns the attempts beneath it, so its header takes full ink and a dividing rule. At
 	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
