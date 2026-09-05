@@ -156,6 +156,27 @@ export function settleLyricsGate(mediaId: string, mediaById: Map<string, Media>)
 	return true;
 }
 
+/**
+ * Settle the STEMS side after a separation has permanently failed: put the song back to un-cooked.
+ *
+ * The twin of `settleLyricsGate`, and it was missing. A terminal stems failure left `stemStatus` at
+ * whatever it was mid-flight, and `isCooking` reads `stemStatus === 'queued'` — so the song read as
+ * cooking FOREVER on every surface, the phone row sat at "Making karaoke… 0%" with no way out, and
+ * `cookState` answered 'cooking' and refused to re-cook it. One worker OOM made a song permanently
+ * un-singable and un-retryable, which is exactly the trap the align branch above describes.
+ *
+ * Back to 'none' rather than a 'failed' status because that is the truth: nothing was separated, so
+ * the song is a fresh candidate. The guest gets the Sing button back and the failure itself is
+ * carried to the phone by the `media:status` event, which is ephemeral by design — the row should
+ * say WHY it reverted, not wear a permanent scar.
+ */
+export function settleStemsGate(mediaId: string, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media || media.stemStatus === 'ready') return false; // never walk a finished cook backwards
+	media.stemStatus = 'none';
+	return true;
+}
+
 /** Mark the lyrics gate as IN FLIGHT, so the phone can name the step a song is waiting on. */
 export function markLyricsQueued(mediaId: string, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);

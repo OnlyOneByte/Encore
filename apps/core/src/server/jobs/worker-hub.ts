@@ -29,6 +29,7 @@ import {
 	setMediaSongProfile,
 	applyAnnotation,
 	settleLyricsGate,
+	settleStemsGate,
 	markLyricsQueued
 } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
@@ -255,6 +256,19 @@ export class WorkerHub {
 			// DB edit. We tried, we are done waiting: settle the gate and let the party continue with no
 			// words on screen. The line logged just below is the record of why.
 			if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
+			// The same argument for the OTHER gate. A dead separation used to leave stemStatus mid-flight,
+			// so isCooking stayed true and the song read as "Making karaoke…" forever while cookState
+			// answered 'cooking' and refused a retry. Settle it back to un-cooked so the guest can try
+			// again; the failure reaches them via #emitStatus below.
+			//
+			// 'fetch' counts, and that is the common case rather than an edge one: requestMakeKaraoke
+			// marks the media cooking BEFORE the download, so a dead fetch (bad URL, no deno, yt-dlp
+			// broken) strands it exactly like a dead separation. 'align' is excluded because that song
+			// already plays — settleLyricsGate above is its remedy — and 'stems-upgrade' because the
+			// song still has its working instrumental, which settleStemsGate refuses to walk back.
+			if (job.jobType === 'fetch' || job.jobType === 'stems') {
+				settleStemsGate(job.mediaId, this.#d.mediaById);
+			}
 			// LOG a terminal failure. A dead `align` job is otherwise completely silent — the song still
 			// plays, it just never gets lyrics and nothing anywhere says why. The operator needs one line
 			// naming the media and the reason, since the jobs table is the only other record.

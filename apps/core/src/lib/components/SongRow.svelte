@@ -155,11 +155,16 @@
 	 */
 	const stateChip = $derived.by(() => {
 		if (readiness === 'ready') return cookStageLabel('ready');
-		// SongRow only ever has a 3-value `readiness`, never the worker sub-status. cookStageLabel is
-		// coarse for exactly this reason — every in-flight status collapses to one "Making karaoke…"
-		// line — so this passes 'queued' as the least-committal in-flight value rather than naming a
-		// specific step (e.g. 'separating') the row has no way to know. Naming a step here would print
-		// a guess as fact: an aligning song would read as if it were still separating.
+		// A dead cook says so. This branch is why `readiness` grew a fourth value: the row had three
+		// states and none of them could mean "failed", so a died cook kept rendering the in-flight line
+		// below — "Making karaoke… 0%", forever, on a job that had stopped. cookStageLabel already owned
+		// the wording; nothing reached it.
+		if (readiness === 'failed') return cookStageLabel('failed');
+		// The row still has no worker sub-status, so cookStageLabel is coarse for exactly that reason —
+		// every in-flight status collapses to one "Making karaoke…" line. This passes 'queued' as the
+		// least-committal in-flight value rather than naming a specific step (e.g. 'separating') the row
+		// has no way to know. Naming a step here would print a guess as fact: an aligning song would
+		// read as if it were still separating.
 		if (readiness === 'cooking') return cookStageLabel('queued', { pct, etaSec });
 		return null;
 	});
@@ -205,7 +210,13 @@
 		{#if kindLabel || stateChip || views || durationNote || showKey}
 			<div class="chips">
 				{#if stateChip}
-					<span class="chip state" class:ok={readiness === 'ready'} class:warn={readiness === 'cooking'} aria-live="polite">{stateChip}</span>
+					<span
+						class="chip state"
+						class:ok={readiness === 'ready'}
+						class:warn={readiness === 'cooking'}
+						class:bad={readiness === 'failed'}
+						aria-live="polite">{stateChip}</span
+					>
 				{/if}
 				{#if kindLabel}<span class="chip kind {kind}">{kindLabel}</span>{/if}
 				<!-- The detected key. A bare chip (no colour family) — it is a neutral musical fact, not a
@@ -341,6 +352,9 @@
 	.chip.state { white-space: normal; }
 	.chip.state.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
 	.chip.state.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
+	/* A dead cook, not a slow one. `warn` already means "in flight" on this chip, so reusing it would
+	   have made a failure look like progress — the whole defect this state exists to end. */
+	.chip.state.bad { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
 	/*
 	 * One colour per kind, and they are semantic rather than decorative: green = the studio recording
 	 * you probably want, purple = a lyric video, amber = a different recording (live), red = probably

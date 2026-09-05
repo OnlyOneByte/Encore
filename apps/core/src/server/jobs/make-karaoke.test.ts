@@ -2,7 +2,7 @@
 // a stems job at need-priority, dedups repeats, and refuses to disrupt the live song. markMediaReady
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
-import { requestMakeKaraoke, markMediaReady, setMediaLyrics, instrumentalKey, soonestSeqFor, isCooked, cookState, type MakeKaraokeDeps } from './make-karaoke';
+import { requestMakeKaraoke, markMediaReady, setMediaLyrics, instrumentalKey, soonestSeqFor, isCooked, cookState, settleStemsGate, type MakeKaraokeDeps } from './make-karaoke';
 import { pendingGates, EMPTY_SONG_PROFILE } from '@encore/shared';
 import { JobRepository } from './repository';
 import { AuthoritativeState } from '../state/store';
@@ -227,4 +227,36 @@ test('a reused ALREADY-READY job reconciles the media instead of deadlocking rot
 	expect(pendingGates(m).map((g) => g.id)).toEqual(['lyrics']);
 	m.lyricsStatus = 'ready';
 	expect(isEntryReady(entry('q', 'm1'), d.mediaById)).toBe(true); // playable, not held forever
+});
+
+// ── settleStemsGate: a dead separation must not leave the song reading as in-flight ──────────────
+// The twin of settleLyricsGate, and it was missing. A terminal stems failure left stemStatus at its
+// mid-flight value, so isCooking stayed true and cookState answered 'cooking' — the song read as
+// "Making karaoke…" forever AND refused a retry. One worker OOM, permanently unsingable.
+
+test('a permanently failed separation settles back to un-cooked, so it can be retried', () => {
+	const d = deps();
+	d.mediaById.set('m1', media('m1', { stemStatus: 'queued' }));
+
+	// Before: stuck cooking, and requestMakeKaraoke dedupes to the phantom cook rather than retrying.
+	expect(cookState('m1', d)).toBe('cooking');
+
+	expect(settleStemsGate('m1', d.mediaById)).toBe(true);
+	expect(d.mediaById.get('m1')!.stemStatus).toBe('none');
+	expect(cookState('m1', d)).toBe('cookable');
+	expect(requestMakeKaraoke('m1', d)).not.toBeNull(); // the retry is a real action
+});
+
+test('settling never walks a FINISHED cook backwards', () => {
+	const d = deps();
+	// A failed lyrics upgrade on an already-separated song must not throw away the instrumental.
+	d.mediaById.set('m1', media('m1', { stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac' }));
+	expect(settleStemsGate('m1', d.mediaById)).toBe(false);
+	expect(d.mediaById.get('m1')!.stemStatus).toBe('ready');
+	expect(isCooked(d.mediaById.get('m1')!)).toBe(true);
+});
+
+test('settling an unknown media is a no-op, not a crash', () => {
+	const d = deps();
+	expect(settleStemsGate('nope', d.mediaById)).toBe(false);
 });
