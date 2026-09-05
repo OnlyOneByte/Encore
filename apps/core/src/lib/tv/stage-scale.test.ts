@@ -304,3 +304,71 @@ test('the pitch-shift graph teardown runs per media change, not only on destroy'
 	// effect re-run, and its cleanup fire, per song) — not merely mention it.
 	expect(/void\s+media\?\.id\s*;/.test(teardown)).toBe(true);
 });
+
+/*
+ * FIX — the reel's four colour states stay one variable each, so provenance and highlight cannot
+ * silently cancel each other out.
+ *
+ * THE BUG THIS EXISTS FOR (both directions, from one commit):
+ *
+ *   1. The amber provenance tint was written as `.lyrics.unverified .row.current .word`, `.word.done`
+ *      and `.word.active` — selectors chosen specifically to out-specify the word ladder. They did:
+ *      measured in a real browser, a sung word and an unsung word on an auto-transcribed line were
+ *      BOTH rgb(255,230,184). Word-by-word highlighting had stopped existing on every ASR song, and
+ *      `.word.active` was recoloured white while the marker directly above it stayed pink, so the two
+ *      cues for "sing this now" disagreed.
+ *   2. The same tint LOST to `.hl-line`/`.hl-off .row.current` purely on source order (equal
+ *      specificity), so a room on either of those treatments got no provenance tint at all.
+ *
+ * Neither is visible to a unit test and both look fine in a still frame of a verified song, which is
+ * why the guard is structural: one variable per state, set on the root, read by the rules. A future
+ * edit that reaches for a deeper selector instead of an override trips this.
+ */
+const LYRICS_OVERLAY = stripComments(
+	readFileSync(join(SRC, 'lib', 'tv', 'LyricsOverlay.svelte'), 'utf8')
+);
+const REEL_STATE_VARS = [
+	'--reel-current',
+	'--reel-ahead',
+	'--reel-done',
+	'--reel-line',
+	'--reel-now'
+] as const;
+
+test('every reel colour state is declared once as a variable and consumed through it', () => {
+	const root = /\.lyrics\s*\{([^}]*)\}/.exec(LYRICS_OVERLAY)?.[1] ?? '';
+	expect(root).not.toBe('');
+	// The root defines all of them, so an override only has to name the ones provenance changes.
+	for (const v of REEL_STATE_VARS) expect(root).toContain(`${v}:`);
+	// And the rules that paint text read them rather than repeating a literal.
+	for (const [selector, v] of [
+		['.row.current', '--reel-current'],
+		['.lyrics.hl-line .row.current', '--reel-line'],
+		['.word', '--reel-ahead'],
+		['.word.done', '--reel-done'],
+		['.word.active', '--reel-now']
+	] as const) {
+		const pattern = selector.replace(/\./g, '\\.').replace(/ /g, '\\s+');
+		const block = new RegExp(`${pattern}\\s*\\{([^}]*)\\}`).exec(LYRICS_OVERLAY)?.[1] ?? '';
+		expect(block).toContain(`color: var(${v})`);
+	}
+});
+
+test('the unverified tint overrides variables only — it never re-selects a word state', () => {
+	const block = /\.lyrics\.unverified\s*\{([^}]*)\}/.exec(LYRICS_OVERLAY)?.[1] ?? '';
+	expect(block).not.toBe('');
+	// It recolours every state that describes the WORDS — including the whole-line one, or the `line`
+	// treatment would keep painting an ASR lyric in the confident accent and show no provenance.
+	for (const v of ['--reel-current', '--reel-ahead', '--reel-done', '--reel-line'] as const) {
+		expect(block).toContain(`${v}:`);
+	}
+	// ...but NOT the now-cue: pink means "sing this word" on every song, and the marker above the word
+	// is --accent2 regardless of provenance. Overriding it is what made the word and its dot disagree.
+	expect(block).not.toContain('--reel-now:');
+	// No descendant selector may carry the tint. That is the shape that out-specified the word ladder
+	// and flattened sung/unsung to one colour.
+	const descendants = [...LYRICS_OVERLAY.matchAll(/\.lyrics\.unverified\s+[^{]+\{/g)].map((m) =>
+		m[0].trim()
+	);
+	expect(descendants).toEqual([]);
+});

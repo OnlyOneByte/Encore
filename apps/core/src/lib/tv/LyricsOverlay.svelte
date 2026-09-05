@@ -287,6 +287,32 @@
 		   for this one effect, and this was one of them. Not a legibility risk — it darkens BEHIND the
 		   glyphs, it does not touch the pure-white ink itself. */
 		text-shadow: 0 2px 18px var(--scrim-strong);
+		/*
+		 * THE FOUR COLOURS THE REEL CAN PAINT, as variables — because provenance and highlight are two
+		 * independent axes, and competing selectors are a bad way to combine two axes.
+		 *
+		 * Both were written as rules of equal specificity, and both broke, in opposite directions. The
+		 * amber provenance tint listed `.word` / `.word.done` / `.word.active` specifically to
+		 * out-specify the word ladder, and it did: measured in a browser, a sung and an unsung word on
+		 * an auto-transcribed line were BOTH rgb(255,230,184), so word-by-word highlighting had stopped
+		 * existing on every ASR song — while `.word.active` went white under a marker that stayed pink,
+		 * so the two cues for "sing this now" disagreed. Meanwhile that same tint LOST to
+		 * `.hl-line`/`.hl-off .row.current` on nothing but source order, so those two treatments showed
+		 * no provenance tint at all.
+		 *
+		 * As variables there is nothing to out-specify: provenance sets WHICH colours, the rules below
+		 * say WHERE they go, and neither can silently erase the other. Adding a provenance state is one
+		 * override block; adding a treatment is one rule that reads these.
+		 *
+		 * Pure white and the 0.66 alpha stay LITERAL on purpose: white is the maximum-contrast state
+		 * over video and has no token (--ink is #f3f3fb, deliberately not pure white, so swapping to it
+		 * would REDUCE contrast at three metres), and the alpha IS the "not yet" cue.
+		 */
+		--reel-current: #fff;
+		--reel-ahead: rgba(255, 255, 255, 0.66);
+		--reel-done: #fff;
+		--reel-line: var(--accent2);
+		--reel-now: var(--accent2);
 	}
 	/*
 	 * Unverified text is tinted WARM AMBER rather than set in italic.
@@ -300,19 +326,25 @@
 	 *
 	 * Deliberately NOT dimmed: these are still the words to sing from, so making them harder to read
 	 * would punish the singer for a provenance problem. Amber is legible on the dark stage (#ffe6b8 on
-	 * #0b0b12 measures well past 4.5:1) and is the palette's existing caution family.
+	 * #0b0b12 measures well past 4.5:1) and is the palette's existing caution family; the dim state
+	 * mirrors the white ladder's own 0.66 alpha, which lands ~7:1 on the stage, so "not yet" is still
+	 * comfortably readable rather than merely sensed.
 	 *
-	 * The `.word` selectors are listed too because under the `word` highlight the row's colour is set
-	 * per-span, so tinting only the row would be overridden on every word.
+	 * `--reel-now` is deliberately NOT overridden. Pink means "sing this word now" on every song, and
+	 * the marker sitting directly above the word is `--accent2` regardless of provenance — recolouring
+	 * the word white here left a pink dot over a white word and made the two cues disagree. Amber
+	 * carries the doubt; pink carries the position. They are different questions.
+	 *
+	 * `--reel-line` IS overridden, for the mirror-image reason: it colours the WHOLE current lyric, so
+	 * leaving it pink would mean the `line` treatment shows no provenance at all — which is what the
+	 * cascade was silently doing before. Under amber the current line is still unmistakably the current
+	 * line (the rows around it are dim white), so nothing is lost by tinting it.
 	 */
-	.lyrics.unverified .row.current,
-	.lyrics.unverified .row.current .word,
-	.lyrics.unverified .row.current .word.done {
-		color: var(--lyrics-unverified, #ffe6b8);
-	}
-	/* the sung word still marks itself, in the same family so the row stays one colour story */
-	.lyrics.unverified .row.current .word.active {
-		color: #fff;
+	.lyrics.unverified {
+		--reel-current: #ffe6b8;
+		--reel-ahead: rgba(255, 230, 184, 0.66);
+		--reel-done: #ffe6b8;
+		--reel-line: #ffe6b8;
 	}
 	/*
 	 * Uniform row size, differentiated by COLOUR not scale. Growing the current line would reflow the
@@ -418,35 +450,39 @@
 		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
 	}
 	/*
+	 * The current line, when it is rendered as ONE text node rather than word spans.
+	 *
+	 * That happens under `line`/`off`, and it also happens under `word` when the current line carries
+	 * no timed words (`normalize_lyrics` drops words the aligner left un-timed, so a poorly-aligned
+	 * line can reach the reel with an empty `words[]`). Without this rule that case inherited `.row`'s
+	 * 0.62 dim and the line being sung was indistinguishable from the ones coming up.
+	 */
+	.row.current {
+		color: var(--reel-current);
+	}
+	/*
 	 * LINE-LEVEL treatment. The `line` room setting lights the whole current lyric in the accent and
 	 * says nothing about position within it — which is the honest reading when word timings are patchy
 	 * (measured coverage runs 87-93% with real holes, and a stale word held for five seconds reads as
 	 * broken where a stale line does not).
 	 *
-	 * `off` deliberately gets NO accent: the reel's own contrast ladder — 0.62 upcoming, white current,
-	 * 0.2 past — is what shows position, and PR #8 raised those dim states specifically so they can be
-	 * read rather than merely sensed. That is what makes a no-highlight read-along viable at all.
+	 * `off` deliberately gets NO accent: the reel's own contrast ladder — 0.62 upcoming, current at
+	 * full strength, 0.2 past — is what shows position, and PR #8 raised those dim states specifically
+	 * so they can be read rather than merely sensed. That is what makes a no-highlight read-along
+	 * viable at all, and it is why `off` needs no rule of its own now that `.row.current` carries the
+	 * current line's colour.
 	 */
 	.lyrics.hl-line .row.current {
-		color: var(--accent2);
-	}
-	.lyrics.hl-off .row.current {
-		/* KEPT AS A LITERAL FOR LEGIBILITY. Pure white is the maximum-contrast state over video and is
-		   the whole point of the current line — there is no token for it (--ink is #f3f3fb, deliberately
-		   NOT pure white, so swapping to it would REDUCE contrast at three metres). Legibility outranks
-		   token purity here. */
-		color: #fff;
+		color: var(--reel-line);
 	}
 	.word {
 		position: relative;
 		display: inline-block;
-		/* Part of the reel's deliberate white-over-video contrast ladder (0.66 not-yet / #fff sung); the
-		   alpha IS the cue, and there is no pure-white token to reference. Kept literal on purpose. */
-		color: rgba(255, 255, 255, 0.66); /* not yet sung */
+		color: var(--reel-ahead); /* not yet sung */
 		transition: color 0.12s linear;
 	}
 	.word.done {
-		color: #fff; /* sung — pure white kept as a literal for max legibility over video (no white token) */
+		color: var(--reel-done); /* sung */
 	}
 	/*
 	 * WHOLE-WORD highlight, not a left-to-right fill.
@@ -460,7 +496,7 @@
 	 * white = done.
 	 */
 	.word.active {
-		color: var(--accent2);
+		color: var(--reel-now);
 	}
 	/*
 	 * THE MARKER. One absolutely-positioned element per variant, so switching style never changes the
