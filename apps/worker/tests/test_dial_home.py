@@ -203,7 +203,7 @@ def test_build_processor_routes_by_capability(monkeypatch):
     # The DEFAULT is now the whole cook (fetch:ytdlp,stems,align), so the default routing table carries
     # all three.
     from src.processor import RoutingProcessor
-    from src.demucs import DemucsProcessor
+    from src.separation.demucs import DemucsProcessor
     from src.whisperx import WhisperXProcessor
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
@@ -233,7 +233,7 @@ def test_build_processor_routes_by_capability(monkeypatch):
     # A fetch-ONLY worker is legitimate: it downloads and cannot separate. That asymmetry is why
     # acquisition routes on its own capability instead of riding along with stems.
     from src.config import WorkerConfig
-    from src.fetch import FetchProcessor
+    from src.acquisition.fetch import FetchProcessor
 
     pf = _build_processor(WorkerConfig(capabilities=("fetch:ytdlp",)))
     assert isinstance(pf._by_type["fetch"], FetchProcessor)
@@ -261,7 +261,7 @@ async def test_routing_processor_dispatches_by_job_type(tmp_path):
 
 
 def test_is_retryable_prefers_structured_flag():
-    from src.demucs import ProcessError
+    from src.separation.demucs import ProcessError
 
     # structured .retryable wins over the string heuristic
     assert _is_retryable(ProcessError(["demucs"], 1, "CUDA out of memory")) is True

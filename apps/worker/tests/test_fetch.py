@@ -18,7 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import fetch as fetch_mod  # noqa: E402
+from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.vocabulary import Fetcher  # noqa: E402
 
@@ -142,7 +142,7 @@ class FakeAnnotator:
     def search(self, artist, track, limit=10):
         if self._boom:
             raise RuntimeError("musicbrainz is down")
-        from src.annotate import parse_recordings
+        from src.metadata.annotate import parse_recordings
 
         return parse_recordings({"recordings": self._recs})
 

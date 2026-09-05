@@ -11,7 +11,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import roformer  # noqa: E402
+from src.separation import roformer  # noqa: E402
 from src.processor import EngineRouter, JobSpec, ProgressEvent, CompleteResult  # noqa: E402
 
 

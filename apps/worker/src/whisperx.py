@@ -18,8 +18,8 @@ import threading
 import time
 from typing import Any, AsyncIterator, Callable, Protocol
 
-from .demucs import Runner, download_argv, parse_ytdlp_progress, subprocess_runner
-from .fetch import job_fetcher, local_source_path
+from .separation.demucs import Runner, download_argv, parse_ytdlp_progress, subprocess_runner
+from .acquisition.fetch import job_fetcher, local_source_path
 from .vocabulary import AsrModel, Fetcher, SyncMode, parse_asr_model, parse_sync_mode
 from .lyrics import (
     LRCLIB_BASE,

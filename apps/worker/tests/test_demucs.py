@@ -9,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import demucs  # noqa: E402
+from src.separation import demucs  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
@@ -18,7 +18,7 @@ def test_acquisition_is_DECLARED_not_inferred_from_the_uri_shape():
     """The bug this replaces: acquisition was guessed from an http(s) prefix, so any other scheme was
     silently treated as a local path and failed later inside ffmpeg. A declared value fails at the
     boundary instead, and the URI's shape no longer decides anything."""
-    from src.fetch import job_fetcher
+    from src.acquisition.fetch import job_fetcher
     from src.vocabulary import Fetcher
 
     def spec(params):

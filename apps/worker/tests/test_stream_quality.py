@@ -15,8 +15,8 @@ process, no fixtures that rot when YouTube changes.
 """
 from __future__ import annotations
 
-from src import demucs
-from src.stream_quality import (
+from src.separation import demucs
+from src.acquisition.stream_quality import (
     FORMAT_SELECTOR,
     officiality_score,
     rank_search_candidates,

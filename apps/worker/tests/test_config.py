@@ -9,7 +9,7 @@ fails loudly, fails silently, or keeps working:
     than config that is refused.
 """
 from src.config import WorkerConfig, auto_demucs_jobs, auto_torch_threads
-from src import demucs
+from src.separation import demucs
 
 
 def test_defaults_are_the_shipped_behaviour():

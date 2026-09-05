@@ -30,8 +30,8 @@ from __future__ import annotations
 import os
 from typing import AsyncIterator
 
-from .processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path
-from .vocabulary import Fetcher, Stage, parse_fetcher
+from ..processor import CompleteResult, JobSpec, ProgressEvent, source_audio_path
+from ..vocabulary import Fetcher, Stage, parse_fetcher
 
 
 def job_fetcher(job: JobSpec) -> Fetcher:
@@ -95,7 +95,7 @@ class FetchProcessor:
     """
 
     def __init__(self, runner=None, ytdlp_bin: str = "yt-dlp", annotator=None) -> None:
-        from .demucs import subprocess_runner
+        from ..separation.demucs import subprocess_runner
 
         self._runner = runner or subprocess_runner
         self._ytdlp_bin = ytdlp_bin
@@ -104,7 +104,7 @@ class FetchProcessor:
         self._annotator = annotator
 
     async def _download(self, source_uri: str, out_path: str) -> AsyncIterator[ProgressEvent]:
-        from .demucs import download_argv, parse_ytdlp_progress
+        from ..separation.demucs import download_argv, parse_ytdlp_progress
 
         yield ProgressEvent(stage=Stage.DOWNLOADING, pct=0)
         last = -1
@@ -144,7 +144,7 @@ class FetchProcessor:
             return None
         import asyncio
 
-        from .annotate import annotate
+        from ..metadata.annotate import annotate
 
         params = job.params or {}
 
