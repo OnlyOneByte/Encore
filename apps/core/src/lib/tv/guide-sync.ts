@@ -26,6 +26,67 @@ export const GUIDE_MAX_RATE_TRIM = 0.02;
 /** Scaled so drift at the reseek threshold asks for exactly the maximum trim. */
 export const GUIDE_RATE_GAIN = GUIDE_MAX_RATE_TRIM / GUIDE_RESEEK_SEC;
 
+/**
+ * Pre-roll and discontinuity alignment tolerance — how close the guide has to be to the instrumental
+ * before a seek is not worth its decoder flush.
+ *
+ * Lives here rather than in the component because TWO paths need the same answer: the pre-roll
+ * alignment before the guide starts, and the re-alignment after a jump. Two copies of one tolerance is
+ * this repo's oldest habit and the reason the guide's transport once drifted from the master's.
+ */
+export const GUIDE_PREROLL_ALIGN_SEC = 0.04;
+
+/**
+ * How far the room's reported position must sit from the playhead before it counts as a JUMP rather
+ * than as telemetry.
+ *
+ * The ~4Hz position feed and every pause/resume carry a position, so the incoming value changes
+ * constantly by small amounts. Acting on those would fight the playhead continuously; the threshold is
+ * what separates "the phone scrubbed" from "the phone is reporting where we already are".
+ */
+export const SEEK_JUMP_SEC = 1.5;
+
+/** Which elements a jump has to move. Both are answered together — see `seekPlan`. */
+export interface SeekPlan {
+	/** Reposition the instrumental (the master clock). */
+	master: boolean;
+	/** Reposition the guiding track. Never true unless `master` is: see `seekPlan`. */
+	guide: boolean;
+}
+
+/**
+ * Where a reported position leaves the two elements — the DISCONTINUITY half of guide sync.
+ *
+ * `guideCorrection` above owns continuous drift and deliberately prefers a tempo trim to a seam. That
+ * is the right policy for drift and the wrong one for a jump: a 2% trim takes minutes to absorb a
+ * restart, and any residual that lands back inside the trim band never hard-resyncs at all. So a jump
+ * is corrected the way the pre-roll is — with a seek, on both elements, at the same moment. There is
+ * already a seam on the master; the guide's costs nothing extra.
+ *
+ * `guide` IS GATED ON `master`, and that gating is load-bearing rather than tidiness. A guide that
+ * evaluated the tolerance independently would chase every sub-threshold telemetry frame, seeking away
+ * from a master that never moved — manufacturing the desync this function exists to prevent, and
+ * flushing the decoder ~4 times a second while doing it.
+ *
+ * @param masterSec the instrumental's playhead
+ * @param guideSec  the guiding track's playhead (`NaN` when no guide is mounted — it is then ignored)
+ * @param targetSec the position the room reported
+ */
+export function seekPlan(masterSec: number, guideSec: number, targetSec: number): SeekPlan {
+	// Never seek on a guess, and never hand a non-finite value to `currentTime`. Matches
+	// `guideCorrection`'s policy above; a NaN target reaching the element throws.
+	if (!Number.isFinite(masterSec) || !Number.isFinite(targetSec)) return { master: false, guide: false };
+
+	const master = Math.abs(masterSec - targetSec) > SEEK_JUMP_SEC;
+	if (!master) return { master: false, guide: false };
+
+	// A guide already at the target needs no flush. A non-finite guide playhead cannot be compared, so
+	// it is treated as needing the seek — the element is about to be told where the master went, which
+	// is the safe direction for a value we cannot reason about.
+	const guide = !(Number.isFinite(guideSec) && Math.abs(guideSec - targetSec) <= GUIDE_PREROLL_ALIGN_SEC);
+	return { master, guide };
+}
+
 export type GuideCorrection =
 	/** Within the deadband: hold neutral, touch nothing. */
 	| { kind: 'hold'; rate: 1 }

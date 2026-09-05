@@ -18,7 +18,8 @@
 	// reason this is two media elements rather than a WebAudio graph — a graph buys sample-exact lock
 	// and effects at the cost of rebuilding the part that already works.
 	import { playbackRef, isPlayable, type Media } from '@encore/shared';
-	import { guideCorrection } from './guide-sync';
+	import { untrack } from 'svelte';
+	import { GUIDE_PREROLL_ALIGN_SEC, guideCorrection, seekPlan } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
 	import { transportFor } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
@@ -81,8 +82,11 @@
 	 * real media elements. This component only applies the answer.
 	 */
 
-	/** Pre-roll alignment only. Before the guide is playing a seek costs nothing, so it stays a seek. */
-	const GUIDE_PREROLL_ALIGN_SEC = 0.04;
+	/**
+	 * Pre-roll alignment only. Before the guide is playing a seek costs nothing, so it stays a seek.
+	 * The tolerance itself lives in `guide-sync.ts` — the same one the jump path re-aligns to, so the
+	 * two cannot drift apart.
+	 */
 
 	/**
 	 * How long to wait for the guide to become playable before giving up on it for this slot.
@@ -298,12 +302,40 @@
 		guideGraph?.setGain(effectiveGuide);
 	});
 
-	// seek the <video> when the phone scrubs. Only a real JUMP (>1.5s from where we are) seeks —
-	// so the ~4Hz position telemetry and pause/resume (which carry the current position) don't
-	// fight the playhead. Guarded to the active playable slot.
+	// Reposition on a real JUMP — a restart, a scrub, a skip, or a reconnect whose position has moved
+	// on. Only a jump (> SEEK_JUMP_SEC from where we are) acts, so the ~4Hz position telemetry and
+	// pause/resume (which carry the current position) don't fight the playhead. Guarded to the active
+	// playable slot.
+	//
+	// BOTH ELEMENTS MOVE, FROM ONE PLAN. This effect used to reposition the master alone. The guide then
+	// kept playing from wherever it already was, and recovery fell to `syncGuide`'s governor below —
+	// which is built for continuous drift and deliberately prefers a tempo trim to a seam, so it closed
+	// a whole-song discontinuity at 2% (a crawl) and never hard-resynced at all once the residual landed
+	// back inside the trim band. A jump is not drift: it is corrected the way the pre-roll is, with a
+	// seek on both elements at the same moment. The master already has a seam here, so the guide's costs
+	// nothing extra. `seekPlan` owns the two thresholds and the reason `guide` is gated on `master`.
 	$effect(() => {
 		if (!master || !media || !isPlayable(media) || seekSec === undefined) return;
-		if (active && Math.abs(master.currentTime - seekSec) > 1.5) master.currentTime = seekSec;
+		if (!active) return;
+		// `untrack` so this effect's DEPENDENCIES are unchanged by the fix — it still re-runs on a new
+		// reported position and nothing else. Reading `vocals` (a `$state` holding the element) as a
+		// tracked dependency would make the guide MOUNTING re-run the effect, and a mount that coincided
+		// with a stale `seekSec` would then yank the MASTER to that stale position. The guide's playhead
+		// is an input to the decision, never a reason to re-take it.
+		//
+		// A guide that is not mounted has no playhead to compare; NaN reads as "needs the seek" and is
+		// then skipped by the `vocals` guard below, so the master's half of the plan is unaffected.
+		const guideEl = untrack(() => vocals);
+		const plan = seekPlan(master.currentTime, guideEl ? guideEl.currentTime : NaN, seekSec);
+		if (!plan.master) return;
+		master.currentTime = seekSec;
+		if (guideEl) {
+			if (plan.guide) guideEl.currentTime = seekSec;
+			// Back to neutral tempo. Any trim still on the element was derived from the drift that
+			// existed BEFORE the jump, so carrying it across corrects a drift that no longer exists; the
+			// governor re-derives whatever it needs from real drift on its next tick.
+			guideEl.playbackRate = 1;
+		}
 	});
 
 	// ── pitch shift (the ± semitone transpose, made audible) ─────────────────────────────────────────
