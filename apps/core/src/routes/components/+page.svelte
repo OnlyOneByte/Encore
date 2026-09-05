@@ -376,6 +376,11 @@
 	<h2 class="section">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
 
+	<!-- The T-15 bug state: an early stage (downloading) at pct=100. Old code filled the bar solid and
+	     read 100%; overallCookPct maps it to the downloading band top (20%), so this card is the one that
+	     makes the fix self-evident to a human eyes-on. -->
+	<ProcessingCard seq={2} title="Africa (downloading complete)" singerName="You" singerColor={PINK} status="downloading" pct={100} />
+
 	<!-- A cooking song is still a queue entry, so it carries the SAME controls as a ready row. Paired
 	     with the QueueRow below deliberately: the two reorder/remove button groups must line up, so a
 	     song finishing its cook doesn't visually reshuffle its own buttons. -->

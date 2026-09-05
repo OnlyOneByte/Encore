@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { MEDIA_STAGES, mediaStagePosition, SINGER_COLORS } from '@encore/shared';
+	import { MEDIA_STAGES, mediaStagePosition, overallCookPct, SINGER_COLORS } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
@@ -55,6 +55,12 @@
 	}
 	// pct is shown separately in the .stage row, so the line itself omits it.
 	const stageLabel = $derived(cookStageLabel(status));
+	// `pct` is the WORKER'S per-step 0-100. The bar shows OVERALL cook completion, not the current
+	// step's own progress — otherwise every step reaching 100% filled the whole bar while three of
+	// five milestones had not started (T-15). overallCookPct maps the per-step pct into a per-stage
+	// band over the shared MEDIA_STAGES, reaching 100 iff status === 'ready'. Rounded for the readout;
+	// the bar uses the unrounded fraction so its transition stays smooth.
+	const overall = $derived(overallCookPct(status, pct));
 </script>
 
 <div class="qrow proc card list-row">
@@ -75,8 +81,8 @@
 						class="away">· away</span>{/if}
 			</div>
 		{/if}
-		<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
-		<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{pct}%</span></div>
+		<div class="bar"><i style="transform:scaleX({overall / 100})"></i></div>
+		<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
 		<div class="chips">
 			{#each STAGES as s}
 				<span class="chip {state(s.key)}">
