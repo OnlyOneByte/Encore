@@ -196,7 +196,10 @@ with the selected policy's `note` under it as the consequence line — same shap
 and lyrics pickers — plus a line stating that a change re-orders the pending queue immediately and
 does not interrupt the current song.
 
-![settings picker](mocks/settings-queue-order-eyeson.png)
+> The eyes-on frames this section embedded (`settings-queue-order`, `queue-order-fair`,
+> `queue-order-shuffle`) were retired with the rest of the per-milestone frames — see
+> [`docs/mocks/README.md`](../../mocks/README.md). The picker they showed is in
+> `tour-settings-room-eyeson.png` in the current set.
 
 Driving it found two defects a green suite could not see, both now fixed and test-pinned:
 
@@ -209,7 +212,7 @@ Driving it found two defects a green suite could not see, both now fixed and tes
 
 | Fair rotation (default) | Shuffle |
 |---|---|
-| ![fair](mocks/queue-order-fair-eyeson.png) | ![shuffle](mocks/queue-order-shuffle-eyeson.png) |
+| _(frame retired)_ | _(frame retired)_ |
 
 Both frames are the SAME already-open phone: the room was flipped from a second tab and the queue
 re-ordered live, with no reload — the `queue:patch` from the settings PUT. Note "You're #2 · after

@@ -144,11 +144,14 @@ describe('SettingsRepository — invalid writes preserve prior choices', () => {
 });
 
 describe('SettingsRepository room scope: tv progress style', () => {
-	it('defaults to the in-card treatment and round-trips a choice', () => {
+	it('defaults to the bottom-edge hairline and round-trips a choice', () => {
 		const repo = freshRepo();
-		expect(repo.getRoom().tvProgressStyle).toBe('card');
-		expect(repo.setRoom({ tvProgressStyle: 'edge' }).tvProgressStyle).toBe('edge');
+		// `edge`, not `card`: the now-singing block is plain text on the backdrop now, so there is no
+		// card for the in-card treatment to live in. `card` is still a legal choice and still renders
+		// its clock row inline — the setting kept its meaning — it just is not the default any more.
 		expect(repo.getRoom().tvProgressStyle).toBe('edge');
+		expect(repo.setRoom({ tvProgressStyle: 'card' }).tvProgressStyle).toBe('card');
+		expect(repo.getRoom().tvProgressStyle).toBe('card');
 	});
 
 	it('falls back to the CURRENT style, not the default, when a write is invalid', () => {
