@@ -126,8 +126,10 @@ async function setSetting(page, id, value, settleMs = 700) {
  * swapped — a fixed sleep here is how a frame ends up shot against the outgoing tab.
  */
 async function scope(page, id) {
-	await page.click(`#tab-${id}`);
-	await page.waitFor(`document.querySelector('#tab-${id}')?.getAttribute('aria-selected') === 'true'`);
+	await page.click(SEL.settingsTab(id));
+	await page.waitFor(
+		`document.querySelector(${JSON.stringify(SEL.settingsTab(id))})?.getAttribute('aria-selected') === 'true'`
+	);
 	await sleep(350);
 }
 
@@ -168,7 +170,7 @@ async function fitViewport(page, width, { min = 600, max = 2000, pad = 40 } = {}
 async function kickPlayback(tv) {
 	const report = await tv.evaluate(`(async () => {
     const out = [];
-    for (const v of document.querySelectorAll('video, audio')) {
+    for (const v of document.querySelectorAll(${JSON.stringify(SEL.mediaEl)})) {
       if (!v.currentSrc) continue;
       try { await v.play(); out.push('started'); } catch (e) { out.push('rejected:' + e.name); }
     }
@@ -182,7 +184,7 @@ async function kickPlayback(tv) {
 		// `video, audio` — the master is an <audio> (TvPlayer plays an instrumental, which has no picture).
 		// Pinned to a bare 'video' this read returned -1 forever, which reads as "not advancing" and would
 		// quietly cost every playing-state frame in the gallery.
-		tv.evaluate(`(() => { const v = document.querySelector('video, audio'); return v ? v.currentTime : -1; })()`);
+		tv.evaluate(`(() => { const v = document.querySelector(${JSON.stringify(SEL.mediaEl)}); return v ? v.currentTime : -1; })()`);
 	const a = await read();
 	await sleep(overMs);
 	const b = await read();
@@ -311,12 +313,12 @@ try {
 		await frame('queue+play', async () => {
 			await maya.click(SEL.addTurn);
 			await maya
-				.waitFor(`document.querySelectorAll('.qrow').length > 0`, { timeout: 10_000 })
+				.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`, { timeout: 10_000 })
 				.catch(() => 0);
 			await sleep(600);
 			// the transport lives in the sheet's peek; ArrowUp is the peek's documented open gesture
-			await maya.pressKey('.peek', 'ArrowUp');
-			await maya.waitFor(`document.querySelector('.sheet')?.classList.contains('open') === true`, {
+			await maya.pressKey(SEL.peek, 'ArrowUp');
+			await maya.waitFor(`document.querySelector(${JSON.stringify(SEL.sheet)})?.classList.contains('open') === true`, {
 				timeout: 5000
 			});
 			await sleep(400);
@@ -348,7 +350,7 @@ try {
 	}
 
 	await frame('phone-queue-sheet', async () => {
-		await maya.pressKey('.peek', 'ArrowUp');
+		await maya.pressKey(SEL.peek, 'ArrowUp');
 		await sleep(500);
 		await shoot(maya, 'phone-queue-sheet', 'the pull-up sheet: rotation, transport, key and guiding track');
 	});
@@ -626,7 +628,7 @@ try {
 	// ── the dashboards ───────────────────────────────────────────────────────
 	await frame('stats-public', async () => {
 		await ada.goto(`${base}/stats`);
-		await ada.waitFor(`document.querySelector('h1') !== null`);
+		await ada.waitFor(`document.querySelector(${JSON.stringify(SEL.pageHeading)}) !== null`);
 		await sleep(900);
 		await fitViewport(ada, 1280);
 		await shoot(ada, 'stats-public', 'the public page: library size, most-sung, top artists, sings per day');
@@ -634,7 +636,7 @@ try {
 
 	await frame('metrics-internal', async () => {
 		await ada.goto(`${base}/metrics`);
-		await ada.waitFor(`document.querySelector('h1') !== null`);
+		await ada.waitFor(`document.querySelector(${JSON.stringify(SEL.pageHeading)}) !== null`);
 		await sleep(900);
 		await fitViewport(ada, 1280);
 		await shoot(ada, 'metrics-internal', 'the internal page: time per step, cost per model against its own claim');

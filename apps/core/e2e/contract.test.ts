@@ -164,6 +164,21 @@ function classPresent(src: string, token: string): boolean {
  * than silently pass it.
  */
 function selectorResolves(selector: string, sources: string[]): boolean | null {
+	/*
+	 * A comma-separated list is a UNION, so at least one branch has to exist — not all of them. The
+	 * driver's `video, audio` is exactly this case and is deliberately written to cover both: the TV
+	 * plays an instrumental through an <audio>, and pinning the read to a bare `video` once returned -1
+	 * forever and silently cost every playing frame in the gallery. Requiring both would fail on a
+	 * correct selector; requiring one proves the read can land.
+	 */
+	if (selector.includes(',')) {
+		const branches = selector.split(',').map((s) => s.trim()).filter(Boolean);
+		if (branches.length === 0) return null;
+		const resolved = branches.map((b) => selectorResolves(b, sources));
+		if (resolved.some((r) => r === true)) return true;
+		// Only report unmodelled if NO branch was even modellable; otherwise it is a genuine miss.
+		return resolved.every((r) => r === null) ? null : false;
+	}
 	// `tag[attr="v"]` / `tag[attr^="v"]` — an attribute selector.
 	const attr = /\[([a-zA-Z-]+)(\^?)=["']([^"']+)["']\]/.exec(selector);
 	if (attr) {
@@ -184,6 +199,15 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 		if (tokens.length === 0) return null;
 		return tokens.every((tok) => sources.some((s) => classPresent(s, tok)));
 	}
+	/*
+	 * A bare TAG selector. `body` and `html` are guaranteed by HTML itself and appear in no component,
+	 * so they need no source anchor; any other tag must actually be rendered somewhere, or the read is
+	 * aimed at an element the app does not produce.
+	 */
+	if (/^[a-z][a-z0-9]*$/.test(selector)) {
+		if (selector === 'body' || selector === 'html') return true;
+		return sources.some((s) => new RegExp(`<${selector}\\b`).test(s));
+	}
 	return null;
 }
 
@@ -201,6 +225,8 @@ test('every SEL selector resolves to an anchor in the source (the guard, non-vac
 		swatch:
 			'a (name) => {role,name} helper; its FORMAT is asserted against ColourPicker in the swatch test above, and the aria-label anchor is a HOOK',
 		setting: 'a (id) => `#${id}` helper; each concrete id is checked via SETTING_IDS below',
+		settingsTab:
+			'a (id) => `#tab-${id}` helper; the page interpolates the id (`id="tab-{t.id}"`) so no grep can resolve it — its FORMAT is asserted against that attribute below, and settings-scopes.test.ts pins the ids to the TABS registry',
 		// DATA, not a selector.
 		SETTING_IDS: 'the raw id list, resolved element-by-element in the SETTING_IDS assertion below'
 	};
@@ -250,4 +276,129 @@ test('every settings id the flow drives exists as an element id', () => {
 	const sources = allSvelte(join(CORE, 'src')).map((f) => readFileSync(f, 'utf8'));
 	const missing = SEL.SETTING_IDS.filter((id) => !sources.some((s) => s.includes(`id="${id}"`)));
 	expect(missing).toEqual([]);
+});
+
+test('the scope-tab selector matches the id the settings page actually interpolates', () => {
+	// SEL.settingsTab builds `#tab-<id>`, and the page writes that id as `id="tab-{t.id}"` — a template,
+	// so `id="tab-you"` appears nowhere and a source grep cannot resolve it. This is therefore a FORMAT
+	// assertion, the same shape as the swatch test above and for the same reason: the two sides can only
+	// drift in the wrapper around the id, not in the id itself (settings-scopes.test.ts already pins the
+	// ids to the TABS registry). Keeping a copy of that registry here would be one more hand-maintained
+	// duplicate of the same vocabulary, which is the habit this repo keeps paying for.
+	const src = readFileSync(join(CORE, 'src/routes/settings/+page.svelte'), 'utf8');
+	const interpolated = /id="tab-\{([a-zA-Z.]+)\}"/.exec(src);
+	expect(interpolated, 'the settings page no longer interpolates a tab id into id="tab-{...}"').not.toBeNull();
+	// The helper must produce exactly that prefix and append nothing else.
+	expect(SEL.settingsTab('you')).toBe('#tab-you');
+});
+
+/*
+ * THE LITERAL BAN — the guard that would have caught the rot the guard above missed.
+ *
+ * Everything before this point checks selectors the drivers reach THROUGH the contract. It says nothing
+ * about a selector a driver spells out for itself, and a literal is invisible to every check here by
+ * construction: it is not in SEL, so the resolver never sees it, and it is not in HOOKS, so the anchor
+ * check never sees it either. That is not a hypothetical hole. It is how `party.mjs` came to wait on
+ * `.url` — the LOBBY's address — as its test for an EMPTY room, fail on every fresh server it demanded,
+ * and blame leftover guests for it, while 48 sibling selectors went through the contract and stayed
+ * honest. `.hint` was there too, asserting a ten-foot floor against an element the TV does not render
+ * at all.
+ *
+ * So: a selector-shaped string literal anywhere in a driver is a failure, and the fix is to put it in
+ * SEL where both halves of this file can see it.
+ */
+const DRIVERS = ['party.mjs', 'capture.mjs'];
+
+/**
+ * Literals that are selector-SHAPED but are not selectors. Each needs a reason: an unexplained
+ * exemption is a hole with a comment on it.
+ *
+ * Only the FIRST rule below (the shape rule) consults this map, and only for a literal with no
+ * interpolation — `` `.png${i}` `` head-stripping to `.png` and being waved through would be an
+ * exemption swallowing a real class selector.
+ */
+const NOT_A_SELECTOR: Record<string, string> = {
+	'.cache': 'a filesystem path segment — join(homedir(), ".cache", "ms-playwright") finds Chromium'
+};
+
+/**
+ * Functions whose first argument IS a selector, by definition — the DOM's own query methods plus the
+ * driver methods in cdp.mjs that forward to them.
+ *
+ * This is the rule that carries the invariant, and it is deliberately a CALL-SITE rule rather than a
+ * syntax rule. A shape rule has to guess what a selector looks like, and every guess is a hole: the
+ * first version of this guard required a literal to START with `.` or `#`, which let
+ * `querySelectorAll('video, audio')` — a tag-led, comma-separated selector that had ALREADY rotted once
+ * from a bare `video` — sit unguarded in capture.mjs while the test claimed no driver spelled a selector
+ * out for itself. Compound descendant selectors (`.row .t`) are the dominant style in SEL, so
+ * `'.sheet .peek'` would have escaped too. Asking "what is this string being USED as" needs no such
+ * guess.
+ *
+ * Deliberately NOT listed: clickByText and clickByLabel, whose argument is visible text or an
+ * accessible name, not a selector.
+ */
+const SELECTOR_TAKING = [
+	'querySelector',
+	'querySelectorAll',
+	// The getElement* family takes an id/class/tag/name as its only argument, which is a selector by
+	// any other name. Listed because `getElementById` is the NATURAL api for the `id="tab-…"` elements
+	// the contract now drives, so it is the likeliest next literal — and neither the shape rule nor a
+	// querySelector-only call-site rule can see it.
+	'getElementById',
+	'getElementsByClassName',
+	'getElementsByTagName',
+	'getElementsByName',
+	'closest',
+	'matches',
+	'click',
+	'fill',
+	'count',
+	'css',
+	'text',
+	'texts',
+	'pressKey',
+	'setRange'
+];
+
+test('no driver spells a selector out for itself — every one comes from the contract', () => {
+	const offenders: string[] = [];
+	const callSite = new RegExp(`\\.?\\b(${SELECTOR_TAKING.join('|')})\\(\\s*(['"\`])([^'"\`]*)\\2`, 'g');
+
+	for (const name of DRIVERS) {
+		const src = stripComments(readFileSync(join(import.meta.dir, name), 'utf8'));
+		src.split('\n').forEach((line, i) => {
+			/*
+			 * RULE 1 — shape. A quoted string that begins with `.` or `#` and then an identifier
+			 * character, or that is an attribute selector. Template placeholders count: a `#tab-${id}`
+			 * inside backticks is exactly as unguarded as a plain string, and was one of the eight found
+			 * here.
+			 */
+			for (const m of line.matchAll(/(['"`])((?:[.#][A-Za-z][\w$.{}\-]*)|(?:\[[a-zA-Z-]+\^?=[^'"`\]]*\]))\1/g)) {
+				const literal = m[2]!;
+				const interpolated = /\$\{/.test(literal);
+				if (!interpolated && literal in NOT_A_SELECTOR) continue;
+				offenders.push(`${name}:${i + 1} — ${m[0]} (selector-shaped literal)`);
+			}
+			/*
+			 * RULE 2 — call site. Any selector-taking function invoked with a string LITERAL, whatever
+			 * that literal's shape. This is what catches a tag-led or compound selector, which rule 1
+			 * cannot see.
+			 */
+			for (const m of line.matchAll(callSite)) {
+				const fn = m[1]!;
+				const literal = m[3]!;
+				if (/\$\{/.test(literal)) {
+					// An interpolated argument still has to come from the contract, but its static head is
+					// not the whole selector, so report it by the call rather than by the token.
+					offenders.push(`${name}:${i + 1} — ${fn}(\`${literal}\`) (interpolated selector literal)`);
+					continue;
+				}
+				offenders.push(`${name}:${i + 1} — ${fn}('${literal}') (literal in a selector position)`);
+			}
+		});
+	}
+
+	// Deduplicate: a literal can be caught by both rules, and one line reported twice reads as two bugs.
+	const unique = [...new Set(offenders)].sort();
+	expect(unique).toEqual([]);
 });
