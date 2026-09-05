@@ -118,8 +118,23 @@ ws.onmessage = async (ev) => {
 			const artifacts = { stems: { instrumental: insRef, vocals: vocRef } };
 			// songProfile is a SIBLING of stems, never a member — the shape drift that once stalled
 			// every cook at "Separating vocals" forever. Publishing it correctly here is the point.
+			//
+			// The FIELD NAMES matter as much as the placement. An earlier version of this file invented
+			// `{key, lowHz, highHz, medianHz}`, which `normalizeSongProfile` silently discarded down to
+			// keyTonic:null — so `keySounding` was null, the TV's key line never rendered, and a probe
+			// reasonably read that as a defect in the key-shift feature. Match the real shape:
+			// keyTonic is a PitchClass (0=C … 9=A) and the range is in MIDI note numbers, not hertz.
 			if (!process.env.FAKE_NO_PROFILE) {
-				artifacts.songProfile = { key: 'A minor', keyConfidence: 0.82, lowHz: 146.83, highHz: 440.0, medianHz: 233.08 };
+				artifacts.songProfile = {
+					keyTonic: 9, // A
+					keyMode: 'minor', // the fixture chord is A/C#/E-ish — call it A minor
+					keyConfidence: 0.82,
+					lowMidi: 50,
+					highMidi: 69, // the vocals fixture is a 440 Hz tone = A4 = MIDI 69
+					p05Midi: 55,
+					p95Midi: 67,
+					histogram: Array.from({ length: 20 }, (_, i) => Math.round(Math.sin((i / 19) * Math.PI) * 40) / 10)
+				};
 			}
 			return send({
 				type: 'job:complete',
@@ -137,18 +152,20 @@ ws.onmessage = async (ev) => {
 			const ref = `derived/lyrics/${mediaId}.json`;
 			// Word-level timings inside the fixture's 8 seconds, so the overlay has something real to
 			// bounce a ball along and a reviewer can see whether the highlight tracks the clock.
+			//
+			// FIELD NAMES ARE LOAD-BEARING. The TV's parser (src/lib/tv/lyrics.ts) reads `start`, `end`
+			// and — inside `words` — `word`. An earlier version of this file wrote `startSec`, `endSec`
+			// and `text`, which parsed to an empty reel: no active word ever appeared, and a probe read
+			// that as the overlay being broken when the app was fine and the FIXTURE was wrong. Keep
+			// these names identical to what apps/worker publishes.
 			const words = ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
-			const lyrics = {
-				source: 'fake-asr',
-				provenance: 'transcribed',
-				language: 'en',
-				lines: words.map((w, i) => ({
-					startSec: i * 0.8,
-					endSec: i * 0.8 + 0.7,
-					text: w,
-					words: [{ startSec: i * 0.8, endSec: i * 0.8 + 0.7, text: w }]
-				}))
-			};
+			const lines = words.map((w, i) => ({
+				start: i * 0.8,
+				end: i * 0.8 + 0.7,
+				text: w,
+				words: [{ word: w, start: i * 0.8, end: i * 0.8 + 0.7 }]
+			}));
+			const lyrics = { source: 'fake-asr', provenance: 'transcribed', language: 'en', lines };
 			if (!process.env.FAKE_SKIP_WRITE) writeRef(ref, Buffer.from(JSON.stringify(lyrics, null, 1)));
 			await progress('aligning', 100);
 			return send({
@@ -156,7 +173,30 @@ ws.onmessage = async (ev) => {
 				workerId,
 				jobId,
 				mediaUri: ref,
-				artifacts: { lyrics: { uri: ref } },
+				// `candidates` is what makes provenance work. The core picks `chosen` from this set, and
+				// the TV decides whether to show the "Auto-Transcribed" label and the amber unverified
+				// tint from the chosen candidate — so publishing only `uri` leaves chosenCandidate()
+				// null and the honesty labelling untestable. asr + low confidence is what an
+				// auto-transcription actually is, and it is exactly the case the label exists for.
+				artifacts: {
+					lyrics: {
+						uri: ref,
+						candidates: [
+							{
+								// `ref`, not `uri` — LyricsCandidate names the MediaStore key `ref`, and a
+								// candidate carrying the wrong key name is dropped, which leaves
+								// chosenCandidate() null and the provenance label silently absent.
+								ref,
+								textSource: 'asr',
+								textConfidence: 'low',
+								timing: 'word',
+								timingConfidence: 'medium',
+								language: 'en',
+								createdAt: Date.now()
+							}
+						]
+					}
+				},
 				facts: { asrModel: params?.asrModel ?? 'base', syncMode: params?.syncMode ?? 'forced' },
 				stages: [{ stage: 'align', ms: slowMs }]
 			});
