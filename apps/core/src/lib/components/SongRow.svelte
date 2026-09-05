@@ -181,7 +181,7 @@
 	which announced one control to a screen reader while offering three, and let a keyboard user add the
 	same song twice (Enter on the row, then Tab-Enter on the button). The two buttons carry the actions.
 -->
-<div class="row card" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}>
+<div class="row card list-row" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}>
 	<div class="thumb">
 		{#if thumbSrc}
 			<!--
@@ -256,10 +256,9 @@
 </div>
 
 <style>
-	.row {
-		display: flex; align-items: center; gap: 11px; padding: 10px; margin-bottom: 8px;
-		transition: background 0.12s ease;
-	}
+	/* Geometry comes from .list-row in app.css, shared with the two queue rows -- this row had drifted
+	   to gap 11 / padding 10 against their 12 / 11px 12px. */
+	.row { transition: background 0.12s ease; }
 	/* readiness is legible at a glance from the border alone, before any text is read */
 	.row.ready { border-color: var(--ok); }
 	.row.cooking { background: linear-gradient(var(--card), var(--card-tint)); border-color: var(--line-tint); }

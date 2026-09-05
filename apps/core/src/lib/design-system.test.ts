@@ -143,6 +143,57 @@ test('the colour picker has exactly one name per shared preset colour', () => {
 	expect(nameCount).toBe(colourCount);
 });
 
+test('every bottom-docked sheet caps its height in dvh, not vh', () => {
+	// `.sheet-surface` in app.css deliberately does NOT default a max-height, because the two sheets
+	// genuinely want different caps (88dvh modal, 82dvh dock) and a default neither uses is dead code
+	// pretending to be a policy. But the UNIT is not a preference: on iOS `vh` resolves to the LARGE
+	// viewport, so a sheet capped in vh overflows the visible area whenever the URL bar is showing and
+	// hides its own footer -- the Save button on one, the rotation's last row on the other. So the cap
+	// stays with each sheet and the unit is asserted here.
+	for (const f of ['lib/components/QueueSheet.svelte', 'lib/components/ProfileSheet.svelte']) {
+		const src = stripComments(readFileSync(join(SRC, f), 'utf8'));
+		const caps = [...src.matchAll(/max-height:\s*([0-9.]+)(dvh|svh|vh)\b/g)];
+		expect(caps.length).toBeGreaterThan(0);
+		for (const c of caps) {
+			expect(c[2], `${f}: max-height ${c[1]}${c[2]} must be dvh/svh, not vh`).not.toBe('vh');
+		}
+	}
+});
+
+test('no component leaks a stray comment terminator into the page', () => {
+	// THE BUG THIS EXISTS FOR. A rebase auto-merge left a bare `-->` in the phone route with no `<!--`
+	// opening it. Svelte treats an unmatched terminator as ordinary TEXT, so it rendered "-->" on
+	// screen between the key controls and the rotation -- and nothing caught it: svelte-check reports
+	// 0 errors, every unit test passed, and the e2e drove straight past it because no selector cares.
+	// Only looking at the running app found it, which is exactly the class of defect a cheap source
+	// scan should own instead.
+	const offences: string[] = [];
+
+	for (const f of svelteFiles(SRC)) {
+		const src = readFileSync(f, 'utf8');
+		let depth = 0;
+		let line = 1;
+		for (let i = 0; i < src.length; ) {
+			if (src.startsWith('<!--', i)) {
+				depth++;
+				i += 4;
+				continue;
+			}
+			if (src.startsWith('-->', i)) {
+				if (depth === 0) offences.push(`${f.replace(SRC, 'src')}:${line}: stray --> renders as text`);
+				else depth--;
+				i += 3;
+				continue;
+			}
+			if (src[i] === '\n') line++;
+			i++;
+		}
+		if (depth > 0) offences.push(`${f.replace(SRC, 'src')}: ${depth} unclosed <!-- comment(s)`);
+	}
+
+	expect(offences).toEqual([]);
+});
+
 test('form controls never sit below the 16px iOS zoom threshold', () => {
 	// THE BUG: iOS Safari zooms the page in when a focused input computes under 16px, and does not
 	// zoom back out. The settings page shipped `select, .text { font-size: 0.9rem }` (14.4px) and a

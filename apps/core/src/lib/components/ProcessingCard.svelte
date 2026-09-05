@@ -52,7 +52,7 @@
 	const stageLabel = $derived(cookStageLabel(status));
 </script>
 
-<div class="qrow proc card">
+<div class="qrow proc card list-row">
 	<div class="seq">{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}</div>
 	<div class="meta">
 		<div class="t">{title}<span class="sparkle"><Icon name="sparkle" /></span></div>
@@ -83,18 +83,21 @@
 	{#if onremove || reorderable}
 		<div class="actions">
 			{#if reorderable}
-				<button class="act" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}><Icon name="arrow-up" /></button>
-				<button class="act" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}><Icon name="arrow-down" /></button>
+				<button class="act icon-btn" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}><Icon name="arrow-up" /></button>
+				<button class="act icon-btn" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}><Icon name="arrow-down" /></button>
 			{/if}
 			{#if onremove}
-				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}><Icon name="close" /></button>
+				<button class="remove icon-btn" aria-label="remove from queue" onclick={() => onremove?.()}><Icon name="close" /></button>
 			{/if}
 		</div>
 	{/if}
 </div>
 
 <style>
-	.qrow { display: flex; align-items: flex-start; gap: 12px; padding: 11px 12px; margin-bottom: 8px; }
+	/* Geometry comes from .list-row in app.css. align-items is the one deliberate override: this card
+	   is taller than a plain row, so its seq bubble and actions anchor to the top rather than floating
+	   at the vertical centre. */
+	.qrow { align-items: flex-start; }
 	.proc { background: linear-gradient(var(--card), var(--card-tint)); border-color: var(--line-tint); }
 	.seq { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 0.8rem; font-weight: 700; background: var(--card2); color: var(--ink-dim); flex: 0 0 auto; }
 	.meta { flex: 1; min-width: 0; }
@@ -115,15 +118,7 @@
 	   to the title line (flex-start) rather than the card's centre — its own comment already claimed
 	   this, but align-items:center floated the buttons mid-card. */
 	.actions { display: flex; align-items: flex-start; gap: 8px; flex: 0 0 auto; }
-	.act, .remove {
-		/* 44px: these were 30px with 6px gaps, below the reliable-tap threshold. grid + place-items
-		   centres the block-display Icon (without it the mark landed off-centre). --radius-sm (12px) is
-		   the shared square-icon-button radius; these had a stray 10px. font-size sets the 1em glyph to
-		   an explicit 20px, matching SongRow (was an unused 0.85rem leaving it ~13.6px). */
-		width: 44px; height: 44px; border-radius: var(--radius-sm); border: 1px solid var(--line);
-		background: var(--card2); color: var(--ink-dim); font-size: 20px; cursor: pointer;
-		display: grid; place-items: center;
-	}
+	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css. */
 	.act:disabled { opacity: 0.35; cursor: default; }
 	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }
 	.remove:active { transform: scale(0.9); color: var(--accent2); }

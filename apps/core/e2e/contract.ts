@@ -144,7 +144,11 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'songRow',
 		file: 'src/lib/components/SongRow.svelte',
-		anchor: 'class="row card"',
+		// Anchored on `class="row ` WITHOUT a closing quote: the flow queries `.row`, and the class list
+		// beside it is presentational and will keep changing (it just gained the shared `list-row`
+		// primitive, which broke a full-string anchor while `.row` itself never moved). The open-ended
+		// form still proves the element the flow drives exists, without pinning the classes next to it.
+		anchor: 'class="row ',
 		why: 'search results are read from .row — the old flow read .result and found nothing'
 	},
 	{

@@ -1030,8 +1030,6 @@
 		</div>
 	{/if}
 
-	-->
-
 	<div class="grouphead">Up next · {orderLabel}</div>
 	{#if queued.length === 0}
 		<p class="empty">Queue's empty — add a song to start the party.</p>

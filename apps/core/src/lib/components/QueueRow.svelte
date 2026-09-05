@@ -38,23 +38,27 @@
 	}: Props = $props();
 </script>
 
-<div class="qrow card" class:mine class:up class:pending>
+<div class="qrow card list-row" class:mine class:up class:pending>
 	<div class="seq">{seq}</div>
 	<div class="meta">
 		<div class="t">{title}</div>
 		<div class="who">
+			<!-- The separators are {' · '} expressions, not literal " · " text: Svelte trims the leading
+			     whitespace of a text node that opens a block, so the plain form rendered "Sam· now
+			     playing" with the dot welded to the name. The `away` span stays literal on purpose -- it
+			     carries a margin-left of its own, so adding a space there would double the gap. -->
 			<i class:dim={singerAway} style="--singer:{singerColor}"></i>
-			{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if subtitle} · {subtitle}{/if}{#if pending} · <span class="adding">adding…</span>{/if}
+			{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">adding…</span>{/if}
 		</div>
 	</div>
 	{#if !pending}
 		<div class="actions">
 			{#if reorderable}
-				<button class="act" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}><Icon name="arrow-up" /></button>
-				<button class="act" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}><Icon name="arrow-down" /></button>
+				<button class="act icon-btn" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}><Icon name="arrow-up" /></button>
+				<button class="act icon-btn" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}><Icon name="arrow-down" /></button>
 			{/if}
 			{#if removable}
-				<button class="remove" aria-label="remove from queue" onclick={() => onremove?.()}><Icon name="close" /></button>
+				<button class="remove icon-btn" aria-label="remove from queue" onclick={() => onremove?.()}><Icon name="close" /></button>
 			{/if}
 			<!--
 				No grip here. The grip previously rendered ONLY on rows that were neither removable nor
@@ -69,10 +73,8 @@
 </div>
 
 <style>
-	.qrow {
-		display: flex; align-items: center; gap: 12px; padding: 11px 12px; margin-bottom: 8px;
-		animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3);
-	}
+	/* Geometry comes from .list-row in app.css, shared with the search row and the cooking card. */
+	.qrow { animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
 	@keyframes pop { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
 	.mine { border-color: var(--line-tint); background: linear-gradient(var(--card), var(--card-tint)); }
 	.pending { opacity: 0.55; }
@@ -92,17 +94,8 @@
 	.away { color: var(--warn); margin-left: 0.35em; }
 	.adding { color: var(--warn); }
 	.actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-	.act, .remove {
-		/* --tap (44px): these were 30px with 6px gaps, below the reliable-tap threshold. grid +
-		   place-items centres the block-display Icon; without a centring context the mark landed
-		   off-centre inside the default inline-block button (the reported off-centre X). --radius-sm
-		   (12px) is the shared square-icon-button radius; these had a stray 10px. font-size sets the
-		   1em glyph to an explicit 20px, matching SongRow's action marks (was an unused 0.85rem
-		   leaving it ~13.6px). */
-		width: var(--tap); height: var(--tap); border-radius: var(--radius-sm); border: 1px solid var(--line);
-		background: var(--card2); color: var(--ink-dim); font-size: 20px; cursor: pointer;
-		display: grid; place-items: center;
-	}
+	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css -- this block and
+	   ProcessingCard's were byte-identical, each with its own copy of the same rationale. */
 	.act:disabled { opacity: 0.35; cursor: default; }
 	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }
 	.remove:active { transform: scale(0.9); color: var(--accent2); }
