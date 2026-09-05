@@ -390,14 +390,14 @@
 	/>
 
 	<h2 class="section">GuidingTrack · every state</h2>
-	<!-- Off (the shipped default), a faint guide, halfway, full sing-along, the pinned-override hint,
-	     and unavailable because the song has no isolated vocals stem. -->
+	<!-- Off (the shipped default), a faint guide, halfway, full sing-along, and unavailable because the
+	     song has no isolated vocals stem. There is no longer a pinned-override variant: the
+	     override-vs-room-default hint was removed, so that card rendered identically to `pct={40}`. -->
 	<div style="display:grid;gap:14px;">
 		<GuidingTrack pct={0} available={true} />
 		<GuidingTrack pct={15} available={true} />
 		<GuidingTrack pct={60} available={true} />
 		<GuidingTrack pct={100} available={true} />
-		<GuidingTrack pct={40} available={true} pinned={true} roomDefaultPct={15} />
 		<GuidingTrack pct={0} available={false} />
 	</div>
 
