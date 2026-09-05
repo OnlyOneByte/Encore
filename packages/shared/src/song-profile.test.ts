@@ -160,10 +160,15 @@ describe('range labels', () => {
 
 describe('voice bands', () => {
   test('the registry is ordered low to high and every id guards', () => {
-    for (let i = 1; i < VOICE_BANDS.length; i++) {
-      expect(VOICE_BANDS[i].lowMidi).toBeGreaterThan(VOICE_BANDS[i - 1].lowMidi);
-      expect(VOICE_BANDS[i].highMidi).toBeGreaterThan(VOICE_BANDS[i - 1].highMidi);
-    }
+    // Folded over ADJACENT PAIRS rather than indexed, because `noUncheckedIndexedAccess` makes
+    // `VOICE_BANDS[i]` possibly-undefined and the intent here is a pairwise walk, not an index
+    // lookup. `reduce` with no seed hands the callback two definite `VoiceBand`s — and throws
+    // outright on an empty registry, so this cannot start passing vacuously.
+    VOICE_BANDS.reduce((prev, band) => {
+      expect(band.lowMidi).toBeGreaterThan(prev.lowMidi);
+      expect(band.highMidi).toBeGreaterThan(prev.highMidi);
+      return band;
+    });
     for (const b of VOICE_BANDS) expect(isVoiceBandId(b.id)).toBe(true);
     expect(isVoiceBandId('countertenor')).toBe(false);
     expect(isVoiceBandId(undefined)).toBe(false);
@@ -178,12 +183,20 @@ describe('voice bands', () => {
 
   test('display zones tile the axis exactly once, with no gap and no overlap', () => {
     const zones = voiceBandZones();
-    expect(zones[0].lowMidi).toBe(AXIS_LOW_MIDI);
-    expect(zones[zones.length - 1].highMidi).toBe(AXIS_HIGH_MIDI);
-    for (let i = 1; i < zones.length; i++) {
-      expect(zones[i].lowMidi).toBe(zones[i - 1].highMidi);
-    }
-    for (const z of zones) expect(z.highMidi).toBeGreaterThan(z.lowMidi);
+    // One zone per band. Asserted because the fold below seeds `reduce`, and a seeded `reduce` over
+    // an empty list returns the seed instead of throwing — without this the tiling check could pass
+    // on no zones at all.
+    expect(zones.length).toBe(VOICE_BANDS.length);
+    // Walked as a CHAIN rather than by index, which is what `noUncheckedIndexedAccess` was objecting
+    // to. Every claim the indexed version made survives: the AXIS_LOW_MIDI seed pins the first zone's
+    // start, each step is the same no-gap/no-overlap check the pairwise loop made, the width check
+    // runs on every zone, and the value the fold returns is the last zone's end.
+    const end = zones.reduce((expectedLow, z) => {
+      expect(z.lowMidi).toBe(expectedLow);
+      expect(z.highMidi).toBeGreaterThan(z.lowMidi);
+      return z.highMidi;
+    }, AXIS_LOW_MIDI);
+    expect(end).toBe(AXIS_HIGH_MIDI);
   });
 
   test('classifies a song by where it lives', () => {
