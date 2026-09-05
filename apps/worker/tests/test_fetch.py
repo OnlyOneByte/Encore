@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
-from src.vocabulary import Fetcher  # noqa: E402
+from src.vocabulary import Fetcher, Stage  # noqa: E402
 
 
 def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):
@@ -69,6 +69,58 @@ def test_local_paths_resolve_against_the_media_volume(tmp_path):
     # an absolute path is honoured as-is, so a library mounted outside MEDIA_DIR still works
     absolute = spec(tmp_path, source_uri="/mnt/music/song.wav", fetcher="local")
     assert fetch_mod.local_source_path(absolute) == "/mnt/music/song.wav"
+
+
+@pytest.mark.asyncio
+async def test_the_download_TEMPLATE_carries_ext_so_the_file_is_not_mislabelled(tmp_path):
+    """The bug this unification fixed, pinned at the boundary.
+
+    `download_argv`'s docstring is explicit: the template "must carry `%(ext)s` — the extension is
+    whatever YouTube served (m4a or webm), so the caller discovers the real filename with
+    `find_downloaded` rather than assuming one." Two of the four call sites passed a literal
+    `audio/<id>.wav` instead, so yt-dlp wrote m4a or webm bytes into a file named `.wav`.
+
+    Nothing broke, because ffmpeg sniffs content and ignores the extension — which is exactly why it went
+    unnoticed, and why it needs a test rather than a reader's attention.
+    """
+    seen: list[str] = []
+
+    async def spy_download(uri, template):
+        seen.append(template)
+        Path(str(tmp_path) + "/audio/" + "m1.m4a").parent.mkdir(parents=True, exist_ok=True)
+        Path(str(tmp_path) + "/audio/m1.m4a").write_bytes(b"OPUS")
+        yield ProgressEvent(stage=Stage.DOWNLOADING, pct=100)
+
+    job = JobSpec(
+        job_id="j", media_id="m1", job_type="fetch", source_uri="https://yt/x",
+        params={"fetcher": "ytdlp"}, media_dir=str(tmp_path),
+    )
+
+    got = [item async for item in fetch_mod.resolve_source_audio(job, spy_download)]
+    assert seen and seen[0].endswith("m1.%(ext)s"), f"template must carry %(ext)s, got {seen}"
+    # ...and the path yielded is the file that ACTUALLY landed, not the one that was assumed.
+    assert str(got[-1]).endswith("m1.m4a")
+
+
+async def test_a_legacy_mislabelled_wav_is_still_found(tmp_path):
+    """Backward compatibility, and the reason `find_downloaded` semantics were the right choice rather
+    than simply correcting the extension. A live volume already holds `audio/<id>.wav` files containing
+    m4a bytes; they must keep being reused rather than re-downloaded."""
+    audio = tmp_path / "audio"
+    audio.mkdir()
+    (audio / "m1.wav").write_bytes(b"actually m4a")
+
+    async def never_download(uri, template):  # pragma: no cover - must not be reached
+        raise AssertionError("re-downloaded a file that was already on the volume")
+        yield
+
+    job = JobSpec(
+        job_id="j", media_id="m1", job_type="fetch", source_uri="https://yt/x",
+        params={"fetcher": "ytdlp"}, media_dir=str(tmp_path),
+    )
+
+    got = [item async for item in fetch_mod.resolve_source_audio(job, never_download)]
+    assert str(got[-1]).endswith("m1.wav")
 
 
 @pytest.mark.asyncio

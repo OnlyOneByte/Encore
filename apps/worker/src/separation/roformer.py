@@ -23,7 +23,7 @@ from __future__ import annotations
 import os
 from typing import AsyncIterator
 
-from ..acquisition.fetch import job_fetcher, local_source_path
+from ..acquisition.fetch import find_downloaded, job_fetcher, local_source_path
 from ..vocabulary import Fetcher
 from ..analysis import build_song_profile
 from ..processor import (
@@ -209,7 +209,7 @@ class RoformerProcessor:
 				pct = d.parse_ytdlp_progress(line)
 				if pct is not None:
 					yield ProgressEvent(stage="downloading", pct=pct)
-			input_path = d.find_downloaded(audio_dir, job.media_id)
+			input_path = find_downloaded(audio_dir, job.media_id)
 			if input_path is None:
 				raise RuntimeError(f"download produced no audio for {job.media_id}")
 		# bs-roformer-infer separates every WAV in --input_folder, so the decoded input is the only
