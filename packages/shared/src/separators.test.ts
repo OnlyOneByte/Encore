@@ -46,6 +46,7 @@ import {
 	MAX_LYRICS_LINES_BEFORE,
 	MAX_LYRICS_LINES_AFTER
 } from './lyrics-engines';
+import type { LyricsCandidate } from './lyrics';
 
 describe('separator registry', () => {
 	it('the live default is a real, live-selectable pairing', () => {
@@ -412,6 +413,120 @@ describe('resolveLyricsPresentation', () => {
 	it('passes the lead through as seconds regardless of clamping', () => {
 		expect(resolveLyricsPresentation(settings('forced', { lyricsLeadMs: 0 })).leadSec).toBe(0);
 		expect(resolveLyricsPresentation(settings('lines', { lyricsLeadMs: 1200 })).leadSec).toBe(1.2);
+	});
+});
+
+/*
+ * THE INNER BOUND — the per-song half of the clamp.
+ *
+ * The tests above could not express this issue's failing case. Every one of them varies `syncMode`,
+ * a FLEET-WIDE setting, so the only line-only case they can state is "the whole deployment produces
+ * line timings" — which always clamped correctly. The case that shipped broken is a word-level fleet
+ * playing ONE line-only song, and the resolver had no parameter that could say so. A gap in what a
+ * signature can express is not covered by adding more cases at that signature.
+ *
+ * The two bounds are enumerated as a matrix rather than as prose, because the documented failure mode
+ * here is fixing one branch of a resolution chain and leaving its siblings wrong.
+ */
+describe('resolveLyricsPresentation — the per-song inner bound', () => {
+	const wordRoom = { lyricsBall: 'bounce', lyricsHighlight: 'word' } as const;
+	const settings = (syncMode: 'forced' | 'lines', room: Partial<RoomSettings> = {}) => ({
+		global: { ...DEFAULT_GLOBAL_SETTINGS, syncMode },
+		room: { ...DEFAULT_ROOM_SETTINGS, ...room }
+	});
+
+	/**
+	 * A LINE-ONLY SONG, in the shape the real worker publishes.
+	 *
+	 * Verified against `apps/worker/src/lyrics/source.py:line_synced_lyrics` (the doc) and
+	 * `apps/worker/src/steps/lyrics.py:333` (the candidate): a refused or skipped alignment publishes
+	 * `{"lines":[{start,end,text,"words":[]}],"words":[]}` and records `"timing": "line"`. The
+	 * candidate's `timing` is the ONLY per-song granularity signal a pure resolver can read — it has
+	 * no doc and no filesystem — so it is the field the inner bound must key on.
+	 *
+	 * Stated as a real candidate rather than a bare string so the field name and its value are both
+	 * pinned to `LyricsCandidate`. A fixture that invents field names manufactured a false CRITICAL
+	 * against a working overlay once already in this repo (`c544f46`), and the way it did it was by
+	 * being a plausible shape nobody had checked against the producer.
+	 */
+	const lineOnlySong: LyricsCandidate = {
+		ref: 'derived/lyrics/song.lrclib.line.json',
+		textSource: 'lrclib',
+		timing: 'line',
+		textConfidence: 'high',
+		createdAt: 1
+	};
+	const wordSong: LyricsCandidate = { ...lineOnlySong, timing: 'word' };
+
+	it('THE BUG: a word-level fleet playing a LINE-ONLY song still clamps the room down', () => {
+		// The reported symptom. `syncMode: 'forced'` is the default, so this is what a stock
+		// deployment does the first time an LRC lands without a usable alignment.
+		const r = resolveLyricsPresentation(settings('forced', wordRoom), lineOnlySong.timing);
+		expect(r.highlight).toBe('line'); // was 'word' — the reel painted plain white
+		expect(r.ball).toBe('off'); // was 'bounce' — a marker with no word to sit on
+		expect(r.clamped).toBe(true);
+	});
+
+	it('a word-level fleet playing a word-timed song is untouched', () => {
+		// The case that always worked, pinned so the inner bound cannot over-clamp into it. This is
+		// the branch the pre-existing e2e coverage exercised — and the only one.
+		const r = resolveLyricsPresentation(settings('forced', wordRoom), wordSong.timing);
+		expect(r).toEqual({ ball: 'bounce', highlight: 'word', leadSec: 0.3, clamped: false });
+	});
+
+	it("a song with NO usable timing clamps too — 'none' is not 'word'", () => {
+		// Unreachable through `pickBestLyrics` today (lyricsRank returns 0, so it is never chosen),
+		// which is exactly why it is asserted: the bound must fail CLOSED on any known non-word
+		// value, not enumerate the one value that happens to be reachable this month.
+		const r = resolveLyricsPresentation(settings('forced', wordRoom), 'none');
+		expect(r.highlight).toBe('line');
+		expect(r.clamped).toBe(true);
+	});
+
+	it('UNKNOWN granularity does NOT clamp — absent and null both mean "we cannot say"', () => {
+		// A pre-candidate-tracking artifact has no recorded timing, and most such artifacts DO carry
+		// word timings (the aligner is what wrote them). Clamping here would silently strip working
+		// word highlighting off every legacy song. Both spellings of unknown must behave identically:
+		// `chosenCandidate()` returns null, and the Settings page passes no argument at all.
+		const absent = resolveLyricsPresentation(settings('forced', wordRoom));
+		const explicitNull = resolveLyricsPresentation(settings('forced', wordRoom), null);
+		expect(absent).toEqual({ ball: 'bounce', highlight: 'word', leadSec: 0.3, clamped: false });
+		expect(explicitNull).toEqual(absent);
+	});
+
+	it('the OUTER bound still dominates: a line-only fleet clamps whatever the song claims', () => {
+		// The sibling that must not regress. A song row can claim word timings that no cook in a
+		// `lines` deployment could have produced (a stale candidate from before the mode changed),
+		// and the fleet bound has to win — the two bounds are an AND, not a replacement.
+		for (const timing of ['word', 'line', 'none', null] as const) {
+			const r = resolveLyricsPresentation(settings('lines', wordRoom), timing);
+			expect(r.highlight).toBe('line');
+			expect(r.ball).toBe('off');
+			expect(r.clamped).toBe(true);
+		}
+	});
+
+	it('a room asking for line-level is never reported as clamped, by either bound', () => {
+		// `clamped` drives a "your choice is being overridden" notice. A room that asked for the thing
+		// it is getting has not been overridden, and saying so would train the operator to ignore it.
+		const asked = { lyricsBall: 'off', lyricsHighlight: 'line' } as const;
+		expect(resolveLyricsPresentation(settings('forced', asked), 'line').clamped).toBe(false);
+		expect(resolveLyricsPresentation(settings('forced', asked), 'none').clamped).toBe(false);
+		expect(resolveLyricsPresentation(settings('lines', asked), 'word').clamped).toBe(false);
+	});
+
+	it('the inner bound reads the candidate FIELD, not a hand-copied granularity', () => {
+		// Guards the wire-shape hole this repo has been bitten by: a resolver keyed on a second,
+		// hand-maintained notion of granularity would drift from what the worker writes. Driving the
+		// resolver straight off `LyricsCandidate.timing` is what keeps one vocabulary.
+		const fromCandidate = resolveLyricsPresentation(settings('forced', wordRoom), lineOnlySong.timing);
+		const fromLiteral = resolveLyricsPresentation(settings('forced', wordRoom), 'line');
+		expect(fromCandidate).toEqual(fromLiteral);
+		// And the producer's vocabulary is the one being read: every value the worker can write for
+		// this field must resolve to a decision, with no silent default.
+		for (const timing of ['word', 'line', 'none'] as const) {
+			expect(resolveLyricsPresentation(settings('forced', wordRoom), timing).clamped).toBe(timing !== 'word');
+		}
 	});
 });
 
