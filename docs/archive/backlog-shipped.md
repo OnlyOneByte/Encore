@@ -1,5 +1,10 @@
 # Archive — Shipped backlog items (B-1, B-5, B-6, B-7, and B-3's shipped commits)
 
+> **Frame citations in this document are historical.** The `<id>-…-eyeson.png` files it names were
+> retired when `docs/mocks/` was reduced to the one regenerable set (`tour-…`); the verification
+> they record still happened, the image no longer ships. See
+> [`docs/mocks/README.md`](../mocks/README.md).
+
 > **Historical record. Nothing here is actionable.** Kept for the rationale — several of these
 > entries record *why* a design went the way it did (storage split by replaceability, sidecar
 > authority, the lyrics acquisition/timing split). Open work is in [`../ROADMAP.md`](../ROADMAP.md).

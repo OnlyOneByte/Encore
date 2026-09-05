@@ -7,7 +7,6 @@
 		parseLyricsDoc,
 		activeLineIndex,
 		activeWordIndex,
-		lyricsNotice,
 		isAutoTranscribed,
 		LYRICS_LEAD_SEC,
 		type LyricsDoc,
@@ -143,7 +142,6 @@
 	);
 	const ballWord = $derived(curLine ? activeWordIndex(curLine, cuePos) : -1);
 	const show = $derived(visible && !!curLine);
-	const notice = $derived(lyricsNotice(provenance));
 	// Reel scrolling: measure where the current row sits and place it. Measured (not row*height) so a
 	// wrapped line cannot drift the whole column out of alignment.
 	let viewportEl = $state<HTMLElement | null>(null);
@@ -252,11 +250,6 @@
 				{/each}
 			</div>
 		</div>
-		{#if notice}
-			<!-- Small and permanent rather than a one-off toast: a singer who glances up mid-song still
-			     needs to know these words are a guess. -->
-			<div class="notice">{notice}</div>
-		{/if}
 	</div>
 {/if}
 
@@ -295,38 +288,31 @@
 		   glyphs, it does not touch the pure-white ink itself. */
 		text-shadow: 0 2px 18px var(--scrim-strong);
 	}
-	/* Unverified text is set in italic — a persistent, glanceable signal that costs no space and does
-	   not compete with the sweep. Deliberately NOT dimmed: these are still the words to sing from, so
-	   making them harder to read would punish the singer for a provenance problem. */
-	.lyrics.unverified .row.current { font-style: italic; }
 	/*
-	 * Rides with the reel box, NOT the screen edge, and sized in rem.
+	 * Unverified text is tinted WARM AMBER rather than set in italic.
 	 *
-	 * It was `0.30em` sitting directly under the lyrics, and em here resolves against .lyrics (1rem),
-	 * NOT the 3.6rem lyric — so it rendered at ~5px and was genuinely unreadable on a TV across a room.
-	 * A warning nobody can read is worse than none: it looks like diligence while informing no one.
-	 * Bottom-centre is deliberate — the lower-third owns bottom-left and the join card bottom-right, so
-	 * this is the one free edge, and it keeps the notice out of the sung text's way.
+	 * The tint is what actually tells the singer these words are a machine's guess: they read the line
+	 * and simultaneously see it does not look like the confident white of every other song, so the
+	 * meaning arrives without a warning line to ignore. The old standalone `.notice` strip — one ~880px
+	 * letter-spaced sentence pinned centre-bottom — is gone; it landed in the gutter between the two
+	 * bottom cards and read as debris, and the route now carries a short `Auto-Transcribed lyrics` label
+	 * in the song block, which is what that string is ABOUT.
 	 *
-	 * Anchored at the BOTTOM of the .lyrics box (`bottom: 0`), which now stops at the top of the
-	 * reserved chrome band. It used to sit at `bottom: var(--tv-safe-y)` measured from the SCREEN edge,
-	 * which after reserving the band would land INSIDE it and be painted over by the cards. Since the
-	 * .lyrics box itself is already held out of the overscan region by the band (built from
-	 * --tv-safe-y), `bottom: 0` here is a box-relative anchor, not a bare screen-edge px offset.
+	 * Deliberately NOT dimmed: these are still the words to sing from, so making them harder to read
+	 * would punish the singer for a provenance problem. Amber is legible on the dark stage (#ffe6b8 on
+	 * #0b0b12 measures well past 4.5:1) and is the palette's existing caution family.
+	 *
+	 * The `.word` selectors are listed too because under the `word` highlight the row's colour is set
+	 * per-span, so tinting only the row would be overridden on every word.
 	 */
-	.notice {
-		position: absolute;
-		bottom: 0;
-		left: 0;
-		right: 0;
-		font-size: var(--tv-label);
-		font-weight: 600;
-		letter-spacing: 0.16em;
-		text-transform: uppercase;
-		/* Dimmed white over video, same white-over-video family as the reel ladder — the alpha is the
-		   dim, and there is no pure-white token to reference. Kept literal on purpose. */
-		color: rgba(255, 255, 255, 0.72);
-		font-style: normal;
+	.lyrics.unverified .row.current,
+	.lyrics.unverified .row.current .word,
+	.lyrics.unverified .row.current .word.done {
+		color: var(--lyrics-unverified, #ffe6b8);
+	}
+	/* the sung word still marks itself, in the same family so the row stays one colour story */
+	.lyrics.unverified .row.current .word.active {
+		color: #fff;
 	}
 	/*
 	 * Uniform row size, differentiated by COLOUR not scale. Growing the current line would reflow the
@@ -335,13 +321,18 @@
 	 */
 	.viewport {
 		/*
-		 * The distance-based scale from the TV type work, times the room's preference.
+		 * The reel's own tier, times the room's preference.
 		 *
-		 * A MULTIPLIER, not a replacement: the clamp is what makes the reel adapt to the screen, so a
+		 * A MULTIPLIER, not a replacement: the token is what makes the reel adapt to the screen, so a
 		 * stored pixel size would render wrong the moment the TV's resolution changed. `--lyrics-scale`
 		 * is bounded well away from 0 in @encore/shared for the same reason.
+		 *
+		 * --tv-lyric replaced an inline clamp(3.1rem, 6.4vh, 6rem) here. The reel and the corner chrome
+		 * now sit on separate ladders (see app.css): at 6.4vh the sung line wrapped to three rows on a
+		 * long lyric, which pushed the marked word off the optical centre — the thing the marker exists
+		 * to locate.
 		 */
-		font-size: calc(clamp(3.1rem, 6.4vh, 6rem) * var(--lyrics-scale, 1));
+		font-size: calc(var(--tv-lyric) * var(--lyrics-scale, 1));
 		font-weight: 800;
 		font-family: var(--lyrics-font, inherit);
 		text-transform: var(--lyrics-case, none);

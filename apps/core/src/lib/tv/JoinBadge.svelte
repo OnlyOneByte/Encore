@@ -121,13 +121,16 @@
 		display: flex;
 		align-items: center;
 		gap: 14px;
-		padding: 12px 18px 12px 12px;
-		border-radius: var(--radius);
-		/* rgba(18,18,29,0.82) was --bg2 at 82%. */
-		background: color-mix(in srgb, var(--bg2) 82%, transparent);
-		border: 1px solid var(--line);
-		box-shadow: var(--shadow);
-		backdrop-filter: blur(6px);
+		/*
+		 * NO PANEL. This was a bordered, blurred, near-opaque card — the last piece of furniture left on
+		 * the stage after the now-singing card became plain text, and side by side the mismatch was the
+		 * first thing an eyes-on frame showed: everything else had shed its surface and this had not.
+		 *
+		 * The QR keeps its own white tile because that is not decoration — a quiet zone is what makes a
+		 * code scannable — and the text beside it gets the same text-shadow the rest of the stage uses,
+		 * which works on TV browsers where `backdrop-filter` may never run at all.
+		 */
+		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
 	}
 	.corner .qr {
 		padding: 7px;

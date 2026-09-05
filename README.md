@@ -8,7 +8,7 @@ rotation fair. One container to run it; a second if you want it making karaoke t
 |---|---|
 | ![the phone remote, searching](docs/mocks/tour-phone-search-eyeson.png) | ![the TV mid-song with word-timed lyrics](docs/mocks/tour-tv-lyrics-word-eyeson.png) |
 
-Every surface has a frame in [`docs/mocks/`](docs/mocks/) — 46 of them, each one the real app driven
+Every surface has a frame in [`docs/mocks/`](docs/mocks/) — 30 of them, each one the real app driven
 into that state. Design and rationale live in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quickstart
@@ -278,6 +278,7 @@ cd apps/worker && pytest   # 450 worker tests — needs `pip install pytest pyte
 - `apps/core/e2e/capture.mjs` — regenerates every frame in `docs/mocks/`. See
   [`docs/mocks/README.md`](docs/mocks/README.md) for how to run it and the two things that make the
   playing-state frames possible.
-- Every UI surface is eyes-on verified; frames live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
+- Every UI surface is eyes-on verified; frames live in `docs/mocks/` as `tour-<what>-eyeson.png` —
+  one regenerable set with stable filenames, so refreshing a frame updates every reference to it.
 - A green suite is the floor, not the bar — several real defects here were invisible to passing tests
   and only surfaced by driving the app. See [`docs/HANDOFF.md`](docs/HANDOFF.md) §8.

@@ -11,6 +11,7 @@
 -->
 <script lang="ts">
 	import JoinBadge from './JoinBadge.svelte';
+	import Icon from '$lib/ui/Icon.svelte';
 	import type { RosterMember } from './screen';
 	import { cookStageLabel } from '$lib/cook-phrasing';
 
@@ -38,6 +39,8 @@
 	let { qrDataUrl, joinUrl, roster, overflow = 0, pendingCount = 0, unreachable = false }: Props = $props();
 
 	const count = $derived(roster.length + overflow);
+	/* Scheme-less, matching attract: nobody types "http://" off a wall. The QR carries the full URL. */
+	const joinShort = $derived(joinUrl.replace(/^https?:\/\//, ''));
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
 	const cooking = $derived(pendingCount > 0);
 
@@ -72,19 +75,29 @@
 
 <div class="lobby">
 	<div class="stack">
-		<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size="var(--tv-qr)" {unreachable} />
-		{#if !unreachable}
+		{#if unreachable}
+			<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size="var(--tv-qr)" unreachable={true} />
+		{:else}
+			<!--
+				ORDER: instruction, then the QR, then the typed address beneath it.
+				The QR used to come first with the copy underneath, which read as "here is a code, and
+				some text about it". Leading with the instruction and captioning the code with its own
+				address makes the pair one object — and it is the same object, at a smaller scale, that
+				sits in the corner during a song, so a guest recognises it across states.
+			-->
+			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
 			<div class="copy">
 				<h1>{headline}</h1>
 				<p class="sub">{sub}</p>
-				<!--
-					The address in text as well as in the QR. The attract screen prints it and this screen did
-					not, which left the lobby — the state a latecomer actually walks in on — with no way to join
-					when a camera will not scan the code. Same treatment as attract so the two screens do not
-					disagree about what the address looks like.
-				-->
-				<p class="url">{joinUrl}</p>
 			</div>
+			<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size="var(--tv-qr)" unreachable={false} />
+			<!--
+				The address in text as well as in the QR. The attract screen prints it and this screen did
+				not, which left the lobby — the state a latecomer actually walks in on — with no way to join
+				when a camera will not scan the code. Same treatment as attract so the two screens do not
+				disagree about what the address looks like.
+			-->
+			<p class="url">{joinShort}</p>
 		{/if}
 	</div>
 
@@ -96,15 +109,15 @@
 				  An away singer is GREYED, not removed. Before this the roster was pure socket count, so a
 				  locked phone erased its owner from the screen — the one place a guest confirms the room
 				  saw them join. "away" is spelled out rather than implied by opacity alone: dimming is not
-				  a legible signal across a room, and it is invisible to anyone reading the chip aloud.
+				  a legible signal across a room, and it is invisible to anyone reading the name aloud.
 				-->
-				<span class="chip" class:away={member.state === 'away'}>
+				<span class="person" class:away={member.state === 'away'}>
 					<span class="swatch" style="--singer: {member.color}"></span>{member.displayName}
 					{#if member.state === 'away'}<span class="tag">away</span>{/if}
 				</span>
 			{/each}
 			{#if overflow > 0}
-				<span class="chip more">+{overflow} more</span>
+				<span class="person more">+{overflow} more</span>
 			{/if}
 		</div>
 	{/if}
@@ -124,25 +137,61 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		gap: 34px;
+		/*
+		 * No flex `gap`. The rhythm is deliberately uneven — instruction, a beat, the QR, a smaller beat,
+		 * its address — and one gap would force all three intervals equal. Per-child margins in vh, so
+		 * the proportions hold at 720p and 4K rather than being right at one size. Mirrors the attract
+		 * screen's stack, because the two idles are meant to be the same screen with a different
+		 * instruction and a different bottom strip.
+		 */
+	}
+	/* In flow at the head of the stack, exactly as on attract — the two idles are meant to be the same
+	   screen. It used to be pinned top-left by the route while attract centred it, which is the kind of
+	   mismatch only a side-by-side frame reveals. */
+	.brand {
+		font-weight: 800;
+		font-size: var(--tv-name);
+		display: inline-flex;
+		align-items: center;
+		gap: 12px;
+		margin-bottom: 5.2vh;
+	}
+	.grad {
+		background: var(--grad);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
 	}
 	.copy {
 		text-align: center;
 	}
 	h1 {
-		font-size: var(--tv-name);
+		/*
+		 * --tv-hero, not --tv-name. This is an instruction read once, not a lyric sung along to, so it
+		 * does not belong on the reel's ladder — and taking it off the name tier is what pays for the
+		 * space above the QR.
+		 */
+		font-size: var(--tv-hero);
+		font-weight: 900;
+		line-height: 1.04;
 		margin: 0;
+		max-width: 26ch;
 	}
 	.sub {
 		font-size: var(--tv-label);
 		color: var(--ink-dim);
-		margin: 6px 0 0;
+		margin: 1.4vh 0 0;
 	}
-	/* Matches the attract screen's treatment of the same string. */
+	.stack :global(.hero) {
+		margin-top: 6.2vh;
+	}
+	/* Matches the attract screen's treatment of the same string: primary content here, so it takes the
+	   join-URL tier rather than the corner-chrome one. */
 	.url {
-		font-size: var(--tv-body);
-		color: var(--accent2);
-		margin: 10px 0 0;
+		font-size: var(--tv-joinurl);
+		font-weight: 800;
+		color: var(--ink);
+		margin: 3vh 0 0;
 		overflow-wrap: anywhere;
 	}
 
@@ -168,59 +217,66 @@
 		flex-wrap: wrap;
 	}
 	.label {
-		font-size: var(--tv-label);
-		letter-spacing: 0.16em;
+		font-size: var(--tv-eyebrow);
+		letter-spacing: 0.2em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
+		font-weight: 700;
 	}
-	.chip {
+	/*
+	 * A NAME AND A DOT, not a pill.
+	 *
+	 * Each roster entry used to be a bordered, filled chip. Five of them made the bottom of the screen
+	 * read as a row of buttons on a surface that has no input at all — and the pill's surface was doing
+	 * no work the dot and the name were not already doing. Dropping it removes furniture from the one
+	 * screen whose job is to feel like an invitation, and the singer's own hue still separates one
+	 * person from the next.
+	 */
+	.person {
 		display: inline-flex;
 		align-items: center;
-		gap: 10px;
-		padding: 10px 18px 10px 12px;
-		border-radius: 999px;
-		background: var(--card);
-		border: 1px solid var(--line);
+		gap: 0.42em;
 		font-size: var(--tv-body);
-		font-weight: 600;
+		font-weight: 700;
 	}
-	.chip.more {
-		padding: 10px 18px;
+	.person.more {
 		color: var(--ink-dim);
+		font-weight: 600;
 	}
 	/*
 	 * Away: recessed, never hidden. The dot keeps its hue (that is the singer's identity, and fading it
-	 * would read as a different person) while the surface and name recede, so a glance separates "here
-	 * now" from "still in the room" without having to read every chip.
+	 * would read as a different person) while the name recedes, so a glance separates "here now" from
+	 * "still in the room" without having to read every entry.
 	 */
-	.chip.away {
-		background: transparent;
+	.person.away {
 		color: var(--ink-dim);
 		font-weight: 500;
 	}
-	.chip.away .swatch {
+	.person.away .swatch {
 		opacity: 0.55;
 	}
 	.tag {
-		font-size: var(--tv-label);
+		font-size: var(--tv-eyebrow);
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
 		opacity: 0.8;
 	}
 	.swatch {
-		width: 22px;
-		height: 22px;
+		width: 0.62em;
+		height: 0.62em;
 		border-radius: 50%;
 		flex: none;
 		background: var(--singer);
 		/*
-		 * A hairline ring so a dot never dissolves into the chip. Guests choose their own hue now, and
-		 * although the picker's pinned lightness guarantees at least 3:1 against the surfaces, this dot
-		 * is the ONLY thing distinguishing one singer from another on a screen read from across a room —
-		 * so it gets a defined edge rather than relying on fill contrast alone.
+		 * A hairline ring so a dot never dissolves into the background. Guests choose their own hue now,
+		 * and although the picker's pinned lightness guarantees at least 3:1 against the surfaces, this
+		 * dot is the ONLY thing distinguishing one singer from another on a screen read from across a
+		 * room — so it gets a defined edge rather than relying on fill contrast alone.
+		 *
+		 * Sized in `em` now that it rides beside the name rather than inside a fixed-height pill, so it
+		 * tracks the name at every resolution instead of being a 22px dot next to 4K type.
 		 */
-		/* rgba(255,255,255,0.25) was a translucent-white ring; --ink is the theme's near-white. */
 		box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--ink) 25%, transparent);
 	}
 </style>
