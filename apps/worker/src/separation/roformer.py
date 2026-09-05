@@ -40,7 +40,7 @@ import os
 #: among them, so this token cannot currently be pointed at the approved model through this package.
 #: Deliberately NOT silently repointed to some other slug: swapping the cooked model without a
 #: listening test is the failure this comment exists to prevent. Tracked with the engine-package
-#: decision in docs/ROADMAP.md (B-8).
+#: decision recorded in docs/ROADMAP.md.
 #:
 #: The former `mel-roformer-inst-v2` token is GONE. It mapped to
 #: `roformer-model-bs-roformer-fno-instrumental-by-pcunwa`, which is absent from the registry, and

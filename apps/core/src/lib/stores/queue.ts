@@ -5,7 +5,7 @@
 // rejects roll back via the recorded inverse; resync rebases still-pending ops onto truth.
 //
 // Framework-agnostic (plain class + subscribe callback) so it unit-tests without a DOM; the
-// Svelte component (M3) wraps this in a $state rune.
+// Svelte component wraps this in a $state rune.
 
 import {
 	applyOp,
