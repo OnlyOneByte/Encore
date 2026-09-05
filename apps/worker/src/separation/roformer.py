@@ -23,10 +23,9 @@ from __future__ import annotations
 import os
 from typing import AsyncIterator
 
-from .fetch import job_fetcher, local_source_path
-from .vocabulary import Fetcher
-from .song_profile import build_song_profile
-from .processor import (
+from ..vocabulary import Fetcher
+from ..analysis import build_song_profile
+from ..processor import (
 	CompleteResult,
 	JobSpec,
 	ProgressEvent,
@@ -165,102 +164,3 @@ def roformer_argv(
 	if models_dir:
 		argv += ["--models_dir", models_dir]
 	return argv
-
-
-
-# ── IO: the processor (subprocess CLI; matches the demucs pattern, torch off dial-home) ───────────
-class RoformerProcessor:
-	"""Stems processor for engine='roformer'. Fetch source (yt-dlp/ffmpeg, reusing the demucs argv
-	builders) → shell `bs-roformer-infer --model <slug>` (it auto-downloads + sha256-verifies the
-	checkpoint on first use) → encode instrumental to FLAC and vocals to AAC at the same MediaStore
-	paths the demucs engine uses, so playbackRef is engine-agnostic. Same async-generator contract as
-	DemucsProcessor; the CLI runs as a subprocess so bs_roformer never imports into this process.
-
-	⚠️ NOT yet verified end to end here — a ~45-min CPU cook plus the ~700MB first-run download are
-	needed to confirm the exact output-stem filenames and the token→slug mapping. The plumbing mirrors
-	DemucsProcessor and the CLI flags are confirmed against bs-roformer-infer 0.1.5 --help."""
-
-	def __init__(self, *, device: str | None = None, flac_level: int = 8, roformer_bin: str = "bs-roformer-infer", profiler=build_song_profile) -> None:
-		self._device = device
-		self._flac_level = flac_level
-		self._roformer_bin = roformer_bin
-		# Injectable analysis step (instrumental_wav, vocals_wav, media_id) -> songProfile. Defaults to
-		# the real builder; tests driving the fake subprocess runner pass a no-op (its "WAV" files are
-		# placeholder bytes). See DemucsProcessor.Profiler for the rationale.
-		self._profiler = profiler
-
-	async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
-		from . import demucs as d  # reuse fetch/encode argv builders + the subprocess runner
-
-		slug = resolve_roformer_slug(job.params)  # raises on an unknown token (non-retryable)
-		work = os.path.join(job.media_dir, "work", job.job_id)
-		in_dir = os.path.join(work, "roformer_in")
-		os.makedirs(in_dir, exist_ok=True)
-
-		# ── stage 1: obtain + decode the source (identical to the demucs path) ──
-		if job_fetcher(job) is Fetcher.LOCAL:
-			input_path = local_source_path(job)
-			yield ProgressEvent(stage="downloading", pct=100)
-		else:
-			audio_dir = os.path.dirname(source_audio_path(job.media_dir, job.media_id))
-			os.makedirs(audio_dir, exist_ok=True)
-			out_tmpl = os.path.join(audio_dir, f"{job.media_id}.%(ext)s")
-			async for line in d.subprocess_runner(d.download_argv(job.source_uri, out_tmpl, "yt-dlp")):
-				pct = d.parse_ytdlp_progress(line)
-				if pct is not None:
-					yield ProgressEvent(stage="downloading", pct=pct)
-			input_path = d.find_downloaded(audio_dir, job.media_id)
-			if input_path is None:
-				raise RuntimeError(f"download produced no audio for {job.media_id}")
-		# bs-roformer-infer separates every WAV in --input_folder, so the decoded input is the only
-		# file in its own dir (not the shared work/ dir, which holds the store output too).
-		sep_input = os.path.join(in_dir, "input.wav")
-		async for _ in d.subprocess_runner(d.decode_argv(input_path, sep_input)):
-			pass
-
-		# ── stage 2: separate (bs-roformer-infer CLI — subprocess, streams progress) ──
-		store = os.path.join(work, "separated")
-		os.makedirs(store, exist_ok=True)
-		yield ProgressEvent(stage="separating", pct=0)
-		async for _line in d.subprocess_runner(
-			roformer_argv(in_dir, store, slug, device=self._device, bin=self._roformer_bin)
-		):
-			pass  # bs-roformer-infer's tqdm output is not a stable pct source; coarse 0→100 for now
-		yield ProgressEvent(stage="separating", pct=100)
-
-		# ── stage 3: encode + publish (FLAC instrumental, AAC vocals) ──
-		produced = find_roformer_instrumental(store)
-		if produced is None:
-			raise RuntimeError(f"roformer produced no instrumental in {store}")
-		final = instrumental_path(job.media_dir, job.media_id)
-		os.makedirs(os.path.dirname(final), exist_ok=True)
-		async for _ in d.subprocess_runner(d.encode_flac_argv(produced, final, level=self._flac_level)):
-			pass
-
-		stems = {"instrumental": final}
-		vocals_src = find_roformer_vocals(store)
-		if vocals_src is not None:
-			try:
-				vocals_final = vocals_path(job.media_dir, job.media_id)
-				async for _ in d.subprocess_runner(d.encode_stem_argv(vocals_src, vocals_final)):
-					pass
-				stems["vocals"] = vocals_final
-			except Exception as exc:  # noqa: BLE001 — vocals is an enhancement, never fail the cook for it
-				print(f"[worker] roformer vocals encode failed (non-fatal): {type(exc).__name__}", flush=True)
-
-		# ── songProfile: key (INSTRUMENTAL) + vocal range (VOCALS) ──────────────────────
-		# Analysed from the raw separated files bs-roformer wrote into `store` (`produced` /
-		# `vocals_src`) — no extra separation, no extra decode. ALWAYS published, with null inner
-		# fields on any analysis failure: core reads a PRESENT profile as "the step ran" and an ABSENT
-		# one as "still cooking", so omitting it would strand the song. Mirrors the demucs engine so the
-		# artifact is engine-agnostic.
-		song_profile = self._profiler(produced, vocals_src, job.media_id)
-
-		# The RESOLVED checkpoint, not the token the core sent. This distinction is the whole reason the
-		# field exists here: a token was found to resolve to a different model than the one benchmarked
-		# under that name, and nothing in the ledger would have shown it.
-		yield CompleteResult(
-			media_uri=final,
-			artifacts={"stems": stems, "songProfile": song_profile},
-			facts={"engine": "roformer", "model": slug, "backend": "bs-roformer-infer"},
-		)

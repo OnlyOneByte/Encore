@@ -7,7 +7,7 @@ a lie and an ASR track can outrank a correct database lookup.
 """
 from __future__ import annotations
 
-from src.captions import caption_argv, find_caption_file, is_translated_track, parse_vtt, read_captions
+from src.lyrics.captions import caption_argv, find_caption_file, is_translated_track, parse_vtt, read_captions
 
 # A real-shaped WebVTT track: header, a NOTE block, cue identifiers, cue settings, inline markup,
 # an annotation-only cue, and a line held on screen across two cues.

@@ -189,20 +189,3 @@ class RoutingProcessor:
             raise RuntimeError(f"no processor for job type: {job.job_type}")
         return proc.process(job)
 
-
-class EngineRouter:
-    """Route a SEPARATION job (stems / stems-upgrade) to the engine named by params.engine:
-    'demucs' → DemucsProcessor, 'roformer' → RoformerProcessor. Defaults to 'demucs' when absent, so
-    a job from an older core (no engine) still separates. An engine this worker was not built with
-    raises — but the CORE only routes a roformer cook to a worker advertising `stems:roformer`."""
-
-    def __init__(self, by_engine: dict[str, "Processor"], default: str = "demucs") -> None:
-        self._by_engine = by_engine
-        self._default = default
-
-    def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
-        engine = job.params.get("engine") or self._default
-        proc = self._by_engine.get(engine)
-        if proc is None:
-            raise RuntimeError(f"no processor for separator engine: {engine}")
-        return proc.process(job)

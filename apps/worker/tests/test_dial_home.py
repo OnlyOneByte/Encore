@@ -203,8 +203,8 @@ def test_build_processor_routes_by_capability(monkeypatch):
     # The DEFAULT is now the whole cook (fetch:ytdlp,stems,align), so the default routing table carries
     # all three.
     from src.processor import RoutingProcessor
-    from src.demucs import DemucsProcessor
-    from src.whisperx import WhisperXProcessor
+    from src.runtime.runner import PlanRunner
+    from src.runtime.runner import PlanRunner
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
     # There is no longer a DEFAULT capability string to lean on: from_env leaves the set unresolved and
@@ -217,13 +217,11 @@ def test_build_processor_routes_by_capability(monkeypatch):
     p = _build_processor(full_cook)
     assert isinstance(p, RoutingProcessor)
     by_type = p._by_type  # introspect the routing table
-    # stems now routes through an EngineRouter (engine chosen per-job); demucs is its default.
-    from src.processor import EngineRouter
-
-    assert isinstance(by_type["stems"], EngineRouter)
-    assert isinstance(by_type["stems"]._by_engine["demucs"], DemucsProcessor)
-    assert "roformer" not in by_type["stems"]._by_engine  # not built without the stems:roformer cap
-    assert isinstance(by_type["align"], WhisperXProcessor)  # part of the full cook
+    # stems is a PlanRunner too: the engine is resolved per JOB into ctx.engines before the first step
+    # runs, so EngineRouter's second dispatch layer is gone (see the spec §5.2c).
+    assert isinstance(by_type["stems"], PlanRunner)
+    assert by_type["stems"] is by_type["stems-upgrade"], "an upgrade is a separation job like any other"
+    assert isinstance(by_type["align"], PlanRunner)  # part of the full cook
     assert "fetch" in by_type  # acquisition rides its own capability (fetch:ytdlp)
 
     # A stems-ONLY worker is still expressible — it just has to say so explicitly.
@@ -233,17 +231,17 @@ def test_build_processor_routes_by_capability(monkeypatch):
     # A fetch-ONLY worker is legitimate: it downloads and cannot separate. That asymmetry is why
     # acquisition routes on its own capability instead of riding along with stems.
     from src.config import WorkerConfig
-    from src.fetch import FetchProcessor
+
 
     pf = _build_processor(WorkerConfig(capabilities=("fetch:ytdlp",)))
-    assert isinstance(pf._by_type["fetch"], FetchProcessor)
+    assert isinstance(pf._by_type["fetch"], PlanRunner)
     assert "stems" not in pf._by_type
 
     # Capabilities come from the CONFIG seam, not a mutable module global — pass one explicitly.
     from src.config import WorkerConfig
 
     p2 = _build_processor(WorkerConfig(capabilities=("stems", "align")))
-    assert isinstance(p2._by_type["align"], WhisperXProcessor)
+    assert isinstance(p2._by_type["align"], PlanRunner)
 
 
 @pytest.mark.asyncio
@@ -261,7 +259,7 @@ async def test_routing_processor_dispatches_by_job_type(tmp_path):
 
 
 def test_is_retryable_prefers_structured_flag():
-    from src.demucs import ProcessError
+    from src.separation.demucs import ProcessError
 
     # structured .retryable wins over the string heuristic
     assert _is_retryable(ProcessError(["demucs"], 1, "CUDA out of memory")) is True
@@ -484,3 +482,22 @@ async def test_unknown_message_type_is_logged(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "unhandled message type" in out
     assert "some:future:message" in out
+
+
+def test_building_a_stems_runner_pulls_NO_ml_framework():
+    """What the old `_by_engine` assertion was really protecting.
+
+    It checked that roformer was not CONSTRUCTED without the `stems:roformer` capability, because the point
+    was keeping a demucs-only box from paying for roformer's machinery. With engines resolved per job that
+    assertion has nothing to hold, so this states the underlying invariant directly and for both engines:
+    building the runner must not import torch or bs_roformer. Both separators shell out to a CLI, so the
+    multi-GB frameworks belong to the subprocess, not to this process.
+    """
+    import sys
+
+    from src import plans
+
+    plans.stems_runner(runner=None)
+    loaded = {m.split(".")[0] for m in sys.modules}
+    assert "torch" not in loaded
+    assert "bs_roformer" not in loaded

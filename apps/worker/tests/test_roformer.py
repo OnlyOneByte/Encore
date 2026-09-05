@@ -1,6 +1,6 @@
 """Roformer engine pure helpers + engine routing. The real BSRoformerSession cook is
 REAL-ML/NET and unverified in this environment (see roformer.py's module warning), so these cover the
-argv-free logic: model-token→slug resolution, output-stem discovery, and the EngineRouter dispatch.
+argv-free logic: model-token→slug resolution, output-stem discovery, and engine selection.
 """
 import asyncio
 import os
@@ -11,8 +11,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import roformer  # noqa: E402
-from src.processor import EngineRouter, JobSpec, ProgressEvent, CompleteResult  # noqa: E402
+from src.separation import roformer  # noqa: E402
+from src.processor import JobSpec, ProgressEvent, CompleteResult  # noqa: E402
 
 
 def test_every_whitelist_token_resolves_to_a_real_registry_slug():
@@ -81,35 +81,40 @@ def test_roformer_argv_omits_device_when_unset():
     assert "--device" not in argv  # let the CLI's own 'auto' default apply
 
 
-# ── EngineRouter ──────────────────────────────────────────────────────────────────
-class _StubEngine:
-    def __init__(self, tag):
-        self.tag = tag
-
-    async def process(self, job):
-        yield ProgressEvent(stage=self.tag, pct=100)
-        yield CompleteResult(media_uri=self.tag, artifacts={})
+# ── engine selection ──────────────────────────────────────────────────────────────
+#
+# Was EngineRouter, a second dispatch layer that picked a whole processor per engine. Choosing a separator
+# is plan SELECTION now (docs/specs/SPEC-worker-pipeline.md §5.2c): `engine_for` resolves it before the
+# first step runs, and one Separate step asks whichever engine won the same four questions.
 
 
-def _job(engine=None):
-    params = {} if engine is None else {"engine": engine}
-    return JobSpec(job_id="j", media_id="m", job_type="stems", source_uri="u", params=params, media_dir="/tmp")
+def test_engine_selection_reads_the_job_param_and_defaults_to_demucs():
+    from src.plans import resolve_engines
+    from src.runtime.ctx import ResolvedEngines
+    from src.separation.engines import engine_for
 
-
-async def _first_stage(proc, job):
-    async for ev in proc.process(job):
-        return ev.stage if isinstance(ev, ProgressEvent) else None
-
-
-def test_engine_router_selects_by_param_and_defaults_to_demucs():
-    router = EngineRouter({"demucs": _StubEngine("demucs"), "roformer": _StubEngine("roformer")})
-    assert asyncio.run(_first_stage(router, _job("roformer"))) == "roformer"
-    assert asyncio.run(_first_stage(router, _job("demucs"))) == "demucs"
+    assert engine_for(resolve_engines({"engine": "roformer"}, ResolvedEngines()).separator).id == "roformer"
+    assert engine_for(resolve_engines({"engine": "demucs"}, ResolvedEngines()).separator).id == "demucs"
     # a job from an older core with no engine param → demucs
-    assert asyncio.run(_first_stage(router, _job(None))) == "demucs"
+    assert engine_for(resolve_engines({}, ResolvedEngines()).separator).id == "demucs"
 
 
-def test_engine_router_raises_for_an_engine_this_worker_lacks():
-    router = EngineRouter({"demucs": _StubEngine("demucs")})  # no roformer installed
-    with pytest.raises(RuntimeError, match="no processor for separator engine"):
-        asyncio.run(_first_stage(router, _job("roformer")))
+def test_engine_selection_raises_for_an_engine_that_does_not_exist():
+    """The CORE only routes a roformer cook to a worker advertising `stems:roformer`, so an unknown engine
+    here is a routing bug rather than a user choice — it should be loud."""
+    from src.separation.engines import engine_for
+
+    with pytest.raises(RuntimeError, match="no separator engine"):
+        engine_for("spleeter")
+
+
+def test_a_None_config_value_does_not_override_an_engine_default():
+    """`stems_runner` passes every separator knob through, and a worker with no opinion passes None.
+    Forwarding it would replace the engine's own default with nothing — and for the model that means
+    resolve_*_model() gets None as its fallback and fails on a job that carried no model."""
+    from src.separation.engines import engine_for
+
+    from src.separation.demucs import DEFAULT_MODEL
+
+    eng = engine_for("demucs", default_model=None, jobs=None, device=None)
+    assert eng.resolve_model({}) == DEFAULT_MODEL
