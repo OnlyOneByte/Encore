@@ -976,23 +976,23 @@
 	<GuidingTrack
 		pct={guidePct}
 		available={guideEnabled}
-		roomDefaultPct={Math.round(roomGuideDefault * 100)}
-		pinned={playback.guideLevel !== null}
 		oninput={onGuideInput}
 		oncommit={onGuideCommit}
 	/>
 
 	<!--
-		KEY LINE. A head row ABOVE the ± buttons, NOT inline in `.key`: `.key` is a no-wrap flex with two
-		flex:1 buttons, so a third inline element crushes both below their 44px target at 480px. Modelled
-		on GuidingTrack's `.gt-head`. Shows the ORIGINAL key, then an arrow, then the SOUNDING key;
-		collapses to just the original at shift 0. Renders nothing when the key is undetected /
-		low-confidence (keyOriginal === null) — a wrong key is worse than none. The arrow is an Icon, not
-		a U+2192 glyph (icons.test.ts bans that codepoint); the key names are ASCII from the helper.
+		KEY LINE. A value row ABOVE the ± buttons, NOT inline in `.key`: `.key` is a no-wrap flex with two
+		flex:1 buttons, so a third inline element crushes both below their 44px target at 480px. It
+		carries NO label of its own — `.key` already says "Key" beside the buttons it belongs to, and two
+		"KEY" labels stacked two rows apart read as two different controls. So this row is the value
+		only, right-aligned to sit over the buttons. Shows the ORIGINAL key, then an arrow, then the
+		SOUNDING key; collapses to just the original at shift 0. Renders nothing when the key is
+		undetected / low-confidence (keyOriginal === null) — a wrong key is worse than none. The arrow is
+		an Icon, not a U+2192 glyph (icons.test.ts bans that codepoint); the key names are ASCII from the
+		helper.
 	-->
 	{#if keyOriginal}
 		<div class="key-head" class:shifted={keyShifted}>
-			<span class="lab">Key</span>
 			<span class="key-vals">
 				<span class="key-orig">{keyOriginal}</span>
 				{#if keyShifted}
@@ -1276,11 +1276,12 @@
 	.key-head {
 		display: flex;
 		align-items: baseline;
-		justify-content: space-between;
+		/* flex-end, not space-between: with the row's own label removed there is a single child, and
+		   space-between would push it to the START. The value belongs over the buttons on the right. */
+		justify-content: flex-end;
 		gap: 8px;
 		margin: 8px 0 0;
 	}
-	.key-head .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
 	.key-vals { display: inline-flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
 	.key-orig { font-size: 0.85rem; font-weight: 700; color: var(--ink); }
 	/* The arrow is an Icon (banned as a glyph); size it to the text and dim it so the keys read as the
