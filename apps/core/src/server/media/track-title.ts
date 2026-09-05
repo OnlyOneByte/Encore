@@ -144,6 +144,48 @@ export function primaryArtist(credit: string): string {
 	return collapseWs(head).replace(/[\s,&]+$/, '') || collapseWs(credit);
 }
 
+/**
+ * A bracketed guest credit inside a TITLE — "(ft. Against The Current)", "[feat. Beyoncé]".
+ *
+ * Only the unambiguous markers. "with" is deliberately absent: "(with lyrics)" is upload noise and
+ * "(with subtitles)" is neither a credit nor in NOISE_TERMS, so accepting it would invent an artist.
+ */
+const FEATURED_GROUP_RE = /[([{]\s*(?:ft|feat|featuring)\b\.?\s*([^)\]}]+)[)\]}]/i;
+
+/**
+ * Lift a guest credit OUT of a song title.
+ *
+ * WHY. "(ft. Against The Current)" is billing, not part of the song's name — MusicBrainz stores it in
+ * `artist-credit` and calls the recording "Legends Never Die". Leaving it in the title key made the
+ * MusicBrainz query return ZERO results for a song the service knows perfectly well, so the annotation
+ * silently declined and the TV kept rendering the raw upload title. It is also simply wrong on screen:
+ * the song is called "Legends Never Die".
+ *
+ * Runs BEFORE the artist/title split, because a bracketed credit is not a hint about which side names
+ * the artists — and putting it in front of `COLLAB_RE` made it one, flipping "Lady Gaga - Telephone
+ * (feat. Beyoncé)" into artist "Telephone (" / title "Lady Gaga". Bare markers ("A - B x C") are left
+ * alone, so the flip rule keeps working for the case it was written for.
+ *
+ * Returns the input unchanged when the credit is all there is ("(feat. X)" alone) — an empty song name
+ * would render as a blank lower third, which is worse than a noisy one.
+ */
+export function splitFeaturedCredit(title: string): { title: string; featured: string | null } {
+	const m = FEATURED_GROUP_RE.exec(title);
+	if (!m) return { title, featured: null };
+	const featured = collapseWs(m[1]).replace(/[\s,&]+$/, '');
+	const stripped = collapseWs(`${title.slice(0, m.index)} ${title.slice(m.index + m[0].length)}`).replace(
+		/^[\s\-–—|:·]+|[\s\-–—|:·,]+$/g,
+		''
+	);
+	if (!stripped || !featured) return { title, featured: null };
+	return { title: stripped, featured };
+}
+
+/** Join a primary billing with a lifted guest credit, in MusicBrainz's own phrasing. */
+function withFeatured(artistFull: string, featured: string | null): string {
+	return featured ? `${artistFull} feat. ${featured}` : artistFull;
+}
+
 /** Normalize for comparison: case-fold, drop emoji/punctuation, collapse space. */
 function comparable(s: string): string {
 	return collapseWs(stripEmoji(s).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' '));
@@ -184,9 +226,32 @@ function splitSides(s: string): [string, string] | null {
 export function parseTrackTitle(rawTitle: string, uploader?: string | null): ParsedTrack {
 	const cleaned = cleanTitleNoise(rawTitle ?? '');
 	const up = collapseWs(uploader ?? '');
-	const fallbackTitle = cleaned || collapseWs(stripEmoji(rawTitle ?? '')) || 'Unknown';
+	// Lift a bracketed guest credit BEFORE anything looks for a separator. It is billing, not a hint
+	// about which side names the artists — and leaving it in front of `COLLAB_RE` was an active bug:
+	// "Lady Gaga - Telephone (feat. Beyoncé)" fired collab-marker-flip on the parenthetical and came
+	// back with artist "Telephone (" and title "Lady Gaga", stored at `medium` and rendered as a browse
+	// heading. Only BRACKETED markers are lifted, so a bare "A - B x C" still flips as it should.
+	const lifted = splitFeaturedCredit(cleaned);
+	const featured = lifted.featured;
+	const body = lifted.title;
+	const fallbackTitle = body || collapseWs(stripEmoji(rawTitle ?? '')) || 'Unknown';
 
-	const sides = splitSides(cleaned);
+	const sides = splitSides(body);
+
+	// Each rule below names one side the artist; the lifted guest is added to that side's billing and
+	// never to `artist`, which stays the PRIMARY a metadata lookup keys on.
+	const resolve = (
+		artistSide: string,
+		titleSide: string,
+		by: TrackParseRule,
+		confidence: ParsedTrack['confidence']
+	): ParsedTrack => ({
+		artist: primaryArtist(artistSide),
+		artistFull: withFeatured(artistSide, featured),
+		title: titleSide,
+		by,
+		confidence
+	});
 
 	if (sides) {
 		const [left, right] = sides;
@@ -198,25 +263,27 @@ export function parseTrackTitle(rawTitle: string, uploader?: string | null): Par
 			const r = comparable(right);
 			// containment (not equality): "Daft Punk" vs uploader "DaftPunkVEVO" / "Daft Punk Official"
 			if (u && l && (u.includes(l) || l.includes(u))) {
-				return { artist: primaryArtist(left), artistFull: left, title: right, by: 'uploader-confirmed', confidence: 'high' };
+				return resolve(left, right, 'uploader-confirmed', 'high');
 			}
 			if (u && r && (u.includes(r) || r.includes(u))) {
-				return { artist: primaryArtist(right), artistFull: right, title: left, by: 'uploader-confirmed', confidence: 'high' };
+				return resolve(right, left, 'uploader-confirmed', 'high');
 			}
 		}
 
 		// 2. collaboration marker on the right ONLY → the sides are reversed
 		if (COLLAB_RE.test(right) && !COLLAB_RE.test(left)) {
-			return { artist: primaryArtist(right), artistFull: right, title: left, by: 'collab-marker-flip', confidence: 'medium' };
+			return resolve(right, left, 'collab-marker-flip', 'medium');
 		}
 
 		// 3. the dominant convention
-		return { artist: primaryArtist(left), artistFull: left, title: right, by: 'title-split', confidence: 'medium' };
+		return resolve(left, right, 'title-split', 'medium');
 	}
 
 	// 4/5. no separator to work with
 	if (up && !looksLikeAggregator(up)) {
-		return { artist: primaryArtist(up), artistFull: up, title: fallbackTitle, by: 'uploader-fallback', confidence: 'low' };
+		return resolve(up, fallbackTitle, 'uploader-fallback', 'low');
 	}
+	// Nothing to stand behind as an artist, so the guest credit is DROPPED rather than promoted: "(ft.
+	// X)" names a guest, and publishing it as the artist would be a known-wrong value.
 	return { artist: null, artistFull: null, title: fallbackTitle, by: 'unparsed', confidence: 'low' };
 }
