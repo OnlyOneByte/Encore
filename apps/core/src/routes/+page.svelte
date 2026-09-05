@@ -17,10 +17,9 @@
 	import { QueueStore } from '$lib/stores/queue';
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
-	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
-	import ProfileSheet from '$lib/components/ProfileSheet.svelte';
+	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -53,45 +52,13 @@
 	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
 	let sheetOpen = $state(false);
-	let profileOpen = $state(false);
-	/** What a leave would cost, fetched when the sheet opens so the confirm can state it in numbers. */
-	let leaveCost = $state<{ queuedCount: number; hasPlaying: boolean } | null>(null);
 
-	async function openProfile() {
-		profileOpen = true;
-		// Best-effort: the sheet still opens if this fails, and its confirm falls back to the no-songs
-		// wording rather than blocking on a count.
-		try {
-			const res = await fetch('/api/leave');
-			if (res.ok) leaveCost = await res.json();
-		} catch {
-			leaveCost = null;
-		}
-	}
-
-	/** Returns an error string for the sheet to show, or null once the change has landed. */
-	async function saveProfile(patch: { displayName: string; color: string }): Promise<string | null> {
-		const res = await fetch('/api/me', {
-			method: 'PATCH',
-			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify(patch)
-		});
-		const body = await res.json().catch(() => ({}));
-		if (!res.ok) return body.error ?? 'Could not save that';
-		// Adopt the server's canonical values rather than the typed ones: the name is trimmed and capped
-		// and the colour canonicalised server-side, so echoing the input would briefly show something the
-		// room is not seeing.
-		me = body.singer;
-		singers = new Map(singers).set(body.singer.id, body.singer);
-		return null;
-	}
-
-	async function leaveRoom() {
-		await fetch('/api/leave', { method: 'POST' });
-		// The cookie is gone, so /join is the only honest destination — and a reload here would 401 into
-		// the same place with a flash of an empty remote on the way.
-		await goto('/join');
-	}
+	/*
+	 * Editing your name and colour, and leaving the room, used to live in a sheet mounted here. They now
+	 * live on /settings?tab=you — one editor instead of two that could disagree — so the fetches that
+	 * backed them (`PATCH /api/me`, `GET|POST /api/leave`) moved with them. The header's name button is
+	 * a link to that tab.
+	 */
 
 	// The room's settings, seeded from queue:sync and kept live by settings:changed — the SAME two
 	// events /tv listens to. The phone needs them for one reason beyond display: `room.queueOrder` is
@@ -681,11 +648,16 @@
 			  The name + dot were inert text. They are the one place a guest already looks to check who the
 			  room thinks they are, so they are also where fixing it belongs — and a 44px target, since the
 			  gear next to it was fixed for exactly that reason.
+
+			  A LINK to the settings page, not a button opening a sheet. Identity used to be editable in
+			  two places (this sheet and, after the redesign, the settings page), which is two save paths
+			  that can disagree about what your name is. One editor, reached from both entry points: the
+			  gear opens the room scope, this opens `?tab=you`.
 			-->
-			<button class="me-btn" onclick={openProfile} aria-label="Your profile">
+			<a class="me-btn" href="/settings?tab=you" aria-label="Your profile">
 				<span>{me.displayName}</span>
 				<span class="me-dot" style="--singer:{me.color};"></span>
-			</button>
+			</a>
 			<!--
 			  Was a bare ⚙️ at font-size 1.05rem in ~18px of padding: a forced-colour-emoji glyph (the
 			  trailing U+FE0F requests emoji presentation outright) in a target under even the 24px WCAG
@@ -1087,17 +1059,6 @@
 	</div>
 {/if}
 
-{#if me}
-	<ProfileSheet
-		{me}
-		open={profileOpen}
-		{leaveCost}
-		onclose={() => (profileOpen = false)}
-		onsave={saveProfile}
-		onleave={leaveRoom}
-	/>
-{/if}
-
 {#if errorMsg}
 	<div class="error-toast" role="alert">{errorMsg}</div>
 {/if}
@@ -1353,12 +1314,14 @@
 		padding: 11px 16px; border-radius: var(--radius-sm); font-size: 0.88rem; max-width: 90vw;
 	}
 
-	/* Matches the gear beside it: a real 44px target, not text that happens to be tappable. */
+	/* Matches the gear beside it: a real 44px target, not text that happens to be tappable. An anchor
+	   now (it navigates to /settings?tab=you), so the underline a link would default to is dropped —
+	   the tappable affordance here is the 44px box and the colour dot, as it was as a button. */
 	.me-btn {
 		display: inline-flex; align-items: center; gap: 8px;
 		min-height: 44px; padding: 0 6px;
 		background: none; border: 0; cursor: pointer;
-		color: inherit; font: inherit;
+		color: inherit; font: inherit; text-decoration: none;
 	}
 	.me-btn:active { opacity: 0.7; }
 

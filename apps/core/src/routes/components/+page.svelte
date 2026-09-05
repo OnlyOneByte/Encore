@@ -7,7 +7,6 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import type { SongProfile } from '@encore/shared';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
-	import ProfileSheet from '$lib/components/ProfileSheet.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import {
@@ -315,12 +314,11 @@
 		joinedAt: Date.now()
 	};
 
-	// The picker and both sheets are bindable/stateful. Keep the gallery interactive so their real
+	// The picker and the sheet are bindable/stateful. Keep the gallery interactive so their real
 	// behaviour (preset-vs-slider agreement, open/close, drag) can be exercised, not just posed. The
-	// sheets default CLOSED: ProfileSheet locks body scroll while open, so opening it by default would
-	// freeze the gallery's own scroll — the toggle buttons open each on demand instead.
+	// sheet defaults CLOSED so it does not cover the gallery it is being reviewed in — the toggle
+	// button opens it on demand instead.
 	let demoColour = $state(VIOLET);
-	let profileOpen = $state(false);
 	let queueOpen = $state(false);
 </script>
 
@@ -438,27 +436,18 @@
 	</div>
 
 	<h2 class="section">ColourPicker · presets plus hue wheel</h2>
-	<!-- The identity picker, extracted from /join and reused by ProfileSheet. Bound to live state so
-	     the preset-vs-slider agreement (picking a swatch moves the wheel, and vice versa) can actually
-	     be exercised here, not just posed. The bound value IS a singer colour = fixture data. -->
+	<!-- The identity picker, extracted from /join and reused by the settings You tab. Bound to live
+	     state so the preset-vs-slider agreement (picking a swatch moves the wheel, and vice versa) can
+	     actually be exercised here, not just posed. The bound value IS a singer colour = fixture data. -->
 	<div style="max-width:420px;">
 		<ColourPicker bind:value={demoColour} label="Your color" hint="How you'll spot yourself in the queue and on the TV." />
 	</div>
 
-	<h2 class="section">ProfileSheet · name, colour, and the way out</h2>
-	<!-- The mid-party profile editor. The button opens it; leaveCost drives the destructive confirm's
-	     wording (it names how many queued songs a leave discards). onsave resolves null (success) and
-	     onleave resolves void so the demo exercises the happy paths without a backend. It renders its
-	     own scrim + fixed sheet, so it needs no wrapper box. -->
-	<button class="btn-accent" onclick={() => (profileOpen = true)}>Open ProfileSheet</button>
-	<ProfileSheet
-		me={demoSinger}
-		open={profileOpen}
-		leaveCost={{ queuedCount: 2, hasPlaying: true }}
-		onclose={() => (profileOpen = false)}
-		onsave={async () => null}
-		onleave={async () => {}}
-	/>
+	<!--
+		ProfileSheet's demo lived here. The sheet was retired when /settings split into You / Party /
+		Server scopes — its name field, this picker and the leave-the-room confirm are now the You tab, so
+		the surface to review is that route rather than a component in isolation.
+	-->
 
 	<h2 class="section">QueueSheet · docked now-playing, pullable to the rotation</h2>
 	<!-- The bottom-docked queue sheet. The button toggles it; open it to see the filled peek (song /
