@@ -45,7 +45,6 @@ eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
 - Demucs/WhisperX run in the worker container, ~1–2 min/song on CPU.
 - Host ffmpeg (`/home/angryang/ffmpeg/ffmpeg`) is a **stripped 7.1.1 build**: no AAC encoder, no mp4
   muxer, no `ffprobe`. Use the **container's** ffmpeg (`docker exec`) for probing and transcoding.
-- `yt-dlp` is **not baked into the worker image** — a `docker rm` loses it. See B-9.
 - A long-lived Python process does **not** reload bind-mounted source; `docker restart` after editing
   worker code.
 - YouTube autoplay-with-audio needs a user gesture in-browser.
