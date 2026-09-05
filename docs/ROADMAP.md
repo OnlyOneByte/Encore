@@ -28,8 +28,8 @@ long-lived `encore-worker-live` container.
 
 **Verification gates — run all four on every item.**
 ```bash
-bun test                              # 1258 (core + shared) — runs from the REPO ROOT
-cd apps/worker && python3 -m pytest   # 536 passed, 1 skipped
+bun test                              # 1307 (core + shared) — runs from the REPO ROOT
+cd apps/worker && python3 -m pytest   # 542 passed, 1 skipped
 bun run typecheck && bun run build    # both workspaces
 ```
 `runMigrations()` locates `apps/core/drizzle` by walking up from `import.meta.dir`, so `bun test`
