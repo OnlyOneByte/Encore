@@ -33,6 +33,7 @@ from ..lyrics import (
     line_synced_lyrics,
     lrclib_to_segments,
     normalize_lyrics,
+    build_sources,
     presplit_texts,
     read_captions,
     select_by_baselines,
@@ -121,24 +122,31 @@ class AcquireTexts(Step):
         self._client = lyrics_client
         self._transcriber = transcriber
 
-    def _build_sources(self, ctx: Ctx) -> list[Any]:
-        """The chain: two candidates, three baselines.
+    def _build_sources(self, ctx: Ctx, req: LyricsRequest) -> list[Any]:
+        """The sources that can run for this request, from the declared registry.
 
-        Three baselines with independent failure modes — the stem gives the cleanest words, the mix is the
-        only one that still speaks when separation produced silence (2 of 9 stems on this library did),
-        and YouTube's machine track is a weak third opinion that abstains when too thin to judge with.
+        Two candidates and three baselines, the latter with independent failure modes — the stem gives the
+        cleanest words, the mix is the only one that still speaks when separation produced silence (2 of 9
+        stems on this library did), and YouTube's machine track is a weak third opinion that abstains when
+        too thin to judge with.
+
+        Goes through `lyrics/registry.py` rather than a hardcoded list so a source that CANNOT run says
+        which input was missing. That is the gap behind the LRCLIB sinkhole: the provider had been failing
+        100% for a month and it looked exactly like songs without lyrics, because a bare `return None` and
+        "this song is an instrumental" are the same observation.
         """
         if self._sources is not None:
             return self._sources
-        client = self._client or LrclibClient()
-        transcriber = self._transcriber or _default_transcriber(ctx)
-        return [
-            LrclibSource(client, lrclib_to_segments),
-            CaptionsSource(),
-            AsrSource(transcriber, normalize_lyrics, audio=AsrSource.AUDIO_VOCALS),
-            AsrSource(transcriber, normalize_lyrics, audio=AsrSource.AUDIO_MIX),
-            AutoCaptionsSource(),
-        ]
+        sources, notes = build_sources(
+            req,
+            client=self._client or LrclibClient(),
+            to_segments=lrclib_to_segments,
+            transcriber=self._transcriber or _default_transcriber(ctx),
+            normalize=normalize_lyrics,
+        )
+        for note in notes:
+            ctx.note(note)
+        return sources
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         req = LyricsRequest(
@@ -152,7 +160,7 @@ class AcquireTexts(Step):
             caption_segments=ctx.lyrics.authored_cues,
             auto_caption_segments=ctx.lyrics.machine_cues,
         )
-        sources = self._build_sources(ctx)
+        sources = self._build_sources(ctx, req)
         texts: list[LyricsText] = []
         async for kind, val in run_blocking(lambda: acquire(sources, req), self.stage, 0):
             if kind == "progress":

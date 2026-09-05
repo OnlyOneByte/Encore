@@ -58,6 +58,7 @@ from .chain import (
     select_by_baselines,
 )
 from .presplit import presplit_texts
+from .registry import SPECS, SourceSpec, build_sources, unmet
 from .source import (
     LRCLIB_BASE,
     LrclibClient,
@@ -101,7 +102,11 @@ __all__ = [
     "LrclibResult",
     "LyricsFetchError",
     "acquire",
+    "build_sources",
     "rank_lrclib_candidates",
+    "SPECS",
+    "SourceSpec",
+    "unmet",
     # grading + selection
     "MIN_TOKENS_TO_COMPARE",
     "SUSPECT_AGREEMENT",
