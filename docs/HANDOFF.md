@@ -44,7 +44,7 @@ The case for Bun was made and accepted. Do not propose Node/Deno swaps.
 Encore/
 ├─ docker-compose.yml     # core (always) + worker (profile: stems)
 ├─ push.sh                # how you push — see Gotcha 7
-├─ docs/                  # ARCHITECTURE, ROADMAP, HANDOFF; deploy/, benchmarks/, mocks/, archive/
+├─ docs/                  # ARCHITECTURE, ROADMAP, HANDOFF; deploy/, benchmarks/, mocks/, research/, archive/
 ├─ packages/shared/       # @encore/shared — types, ops, rotation reducer, events, ulid, colors
 └─ apps/
     ├─ core/              # @encore/core — SvelteKit app + server
