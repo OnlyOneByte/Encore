@@ -210,3 +210,121 @@ The B-3 design rationale and its OPEN items live in the live roadmap; this is th
         dedup on `(mediaId, jobType)` makes restarts idempotent. `ENCORE_LYRICS_BACKFILL=0` skips it.
         Skips songs already at word timings (an ML pass could not rank higher) and bare schema-1
         `lyricsRef` records (may already be word-timed). **VERIFIED live:** boot queued exactly 10.
+
+---
+
+## Moved out of the open queue on 2026-09-05 (roadmap reset to T-numbering)
+
+Five entries were carrying `[x]` in the open queue. Text below is verbatim from `ROADMAP.md`
+before the reset; the open obligations they still carried were re-cut as `T-` tasks and are named
+under each.
+
+- [x] **Queue order as a room setting** (shipped, branch `feat/queue-order-room-setting`) — the
+  ordering algorithm moved out of `rotation.ts` into a registry
+  (`packages/shared/src/queue-order.ts`) and onto `RoomSettings.queueOrder`: **Fair rotation** (the
+  default, byte-identical to the old hardcoded behaviour), **first come, first served**, a **stable
+  shuffle** (rank hashed from the entry id, so it is fixed once a song is in and identical on both
+  sides of the wire), and **whoever sang longest ago** (reads `Singer.lastSungAt`, stamped at song
+  start; with no history it IS fair). Design in `docs/ARCHITECTURE.md` §4 and
+  `docs/archive/specs/SPEC-queue-order-room-setting.md`.
+
+  Remaining open work here, deliberately not built:
+  - **A room-scoped away/skip interaction.** `least-recently-sung` orders by when someone last sang;
+    a singer who is present but away is a separate concept the presence lifecycle owns.
+  - **No per-singer song history.** The stamp records that someone sang and when, never what, to stay
+    inside the line `plays` draws (no `singer_id`, on purpose). Any future policy that wants "who has
+    sung this song" needs that decision revisited first, not worked around.
+
+> **Still open, re-cut as `T-5` (rooms) and `T-6` (duets):** the room-scoped away/skip
+> interaction, and the deliberate absence of per-singer song history.
+
+- [x] **B-9 · Source-audio and image hygiene** — SHIPPED. Two small independent fixes, both landed:
+  - [x] **B-9-C1 · bake `yt-dlp` into the worker image.** `apps/worker/Dockerfile` pip-installs from
+        `requirements.txt` (which pins `yt-dlp`) and asserts `yt-dlp --version` **in the same layer**, so
+        a missing/wrong fetcher breaks the BUILD rather than a live cook. `deno` (the JS runtime yt-dlp's
+        player challenge needs) is baked too and version-verified in-layer, and `yt-dlp.conf` (which
+        enables the remote solver component) is copied to `/etc/`. A freshly recreated container resolves
+        `yt-dlp` on PATH with no manual step. **AUTO** — image build + resolve check.
+  - [x] **B-9-C2 · stream-selection heuristic** (idea from `flacfetch`). `apps/worker/src/acquisition/
+        stream_quality.py` prefers modern Opus over legacy AAC by POSITION in the format selector (not by
+        bitrate, which is what picks AAC), and scores official/"- Topic"/VEVO/"official audio" uploads
+        above the rest, with a `/best` last-resort so a bot-blocked egress serving only legacy muxed
+        format 18 still resolves. **AUTO** — pure ranking over recorded format lists; no network.
+
+- [x] **B-3-C7 (part 2a) · two-tier lyrics selection.** Text sources now split by ROLE rather than by
+  quality. **Candidates** are authored claims about the song's words (LRCLIB records, uploader-authored
+  captions); **baselines** are evidence of what is actually audible (local transcription of the vocals
+  stem, local transcription of the raw mix, YouTube's automatic captions). Every candidate is scored
+  against every baseline that can speak and the unweighted **mean** picks the winner. With no candidate at
+  all, the tiering system shows the best baseline instead.
+
+  LRCLIB is asked via `/api/search` (an ARRAY of records) rather than `/api/get` (one record, filtered to
+  ±2s of the duration), because filtering the query is what picked a version by fiat.
+
+  **Why selection, not a threshold.** Detection already existed and made things worse: an agreement below
+  `SUSPECT_AGREEMENT` demoted the lookup, dropping it beneath the transcript — so a wrong-version match was
+  answered with Whisper's guess when the correct record sat one row away. And the threshold cannot fire on
+  this case at all: measured, the WRONG version scores **0.548** against the vocals and the right one
+  **0.938**, both far above the 0.25 cutoff. Argmax needs no threshold, only a difference. The threshold
+  keeps its own separate job — is even the winner about this song — and when it says no, the best baseline
+  is published alongside so the room gets words that ARE about this audio.
+
+  Three findings worth keeping. A baseline too thin to reach `MIN_TOKENS_TO_COMPARE` **abstains** rather
+  than voting, which is what makes including a weak one safe (auto-captions were absent or useless on 3 of
+  5 uploads probed). The **mix** baseline exists because separation fails — 2 of 9 stems on this library
+  were digital silence shipped as `ready` — and it is then the only evidence left. And machine-**translated**
+  caption tracks are refused outright, since a fluent wrong-language track would not abstain; it would vote
+  confidently against every correct candidate.
+
+  Also fixed a latent ranking defect the design depends on: a text identified as another song now ranks
+  below every honest guess (`lyricsRank` tier 1). Demoting confidence alone left it tied with the baseline
+  that convicted it, and the tie-break preferred it — a suspect candidate carries a numeric agreement, a
+  baseline carries none.
+
+  Costs two transcriptions instead of one (~+13s/song on `base`/CPU) plus two cheap caption metadata
+  fetches. Only what is published gets aligned, so the common run is still exactly one alignment.
+
+- [x] **B-2 · pitch-shift (semitones)** — **SHIPPED, with its audible half unverified.** The fork is
+  resolved in favour of **(b) shift in the browser**: `apps/core/src/lib/tv/pitch-shift.ts` is a
+  hand-written, zero-dependency overlap-add shifter running in an AudioWorklet, so no per-key files
+  exist and every already-cooked song is transposable retroactively. `keyedMediaRef` and
+  `apps/worker/src/pitch.py` are **deleted** — the pre-rendered path would have cost 14 renders and
+  ~310 MB per song, and would have needed 14 more of each to shift the guiding-track stem too.
+  The browser path shifts the guide by the same amount instead of muting it, which the file path could
+  not do cheaply. Licence note: hand-rolled deliberately — `soundtouchjs` is LGPL and rubberband is
+  GPL/commercial.
+  **The one real risk lives here:** `TvPlayer` had no `AudioContext` before this, and an `AudioContext`
+  starts `suspended` until a user gesture that a set-and-forget TV may never receive. So at
+  `keyShift === 0` the audio path is byte-for-byte what it always was — no context, no
+  `MediaElementSource` — the graph is built lazily on the first non-zero shift and only after
+  `resume()` actually succeeds, and a context that cannot run degrades to **audible-unshifted, never
+  silence**. Note a `MediaElementSource` cannot be detached once attached; see the teardown comment.
+  *Still to verify:* that ±1 semitone **sounds** right. Only the ratio/framing/window maths is tested;
+  there is no audio hardware on the dev box, so the OLA quality, the suspended-context fallback and
+  the graph lifecycle need the RTX 3080 deploy box and a human in the room. **AUDIO/EYES-ON.**
+
+> **Still open, re-cut as `T-14`:** the audible half. The numeric half was fixed by `c2c0e7b`.
+
+- [x] **Song profile (key + vocal range)** — shipped alongside B-2. The same `stems` job now emits a
+  third artifact from the raw separated WAVs it already has in scratch — detected key from the
+  instrumental (numpy chromagram vs 24 rotated Krumhansl-Schmuckler profiles), sung range from the
+  vocals stem — so it costs **no extra separation, no extra decode and no new job type**. Deliberately
+  not the old `score` job, whose disqualification was re-running the whole separation for vocals it
+  could have read off disk.
+  Stored as one nullable JSON column `song_profile` (edited into the single baseline migration, no new
+  migration file) plus the sidecar, and it **completes the `stems` cook gate**. The gate keys on the
+  RECORD being present, not on it containing data: a silent vocals stem yields all nulls and that song
+  is still finished, because the re-cook check reads `hasInstrumental` rather than the gate, so a
+  data-requiring gate would strand it permanently with no retry path.
+  Surfaced as a key line on the phone's now-playing with a collapsible vocal-range bar (voice-band
+  shading, whiskers for extremes, a time-weighted block for where the song lives), a key line in the
+  TV's lower-third, and a key chip on ready song rows. All accidentals are ASCII (`G#`/`Ab`) because
+  `icons.test.ts` bans 0x2600-0x27BF, which contains U+266F/U+266D — and because a stripped smart-TV
+  font drops the sharp sign for the same reason it drops emoji.
+  *Not built, and deliberately:* per-singer range calibration. The mic half exists (`detectF0`,
+  `MicPitch`) but `singers` has nowhere to store a range and accounts are M9. Without it the range is
+  absolute information, which is why it is drawn against named voice bands rather than against you.
+
+> **Still open, folded into `T-12` (accounts):** per-singer range calibration, which has nowhere
+> to store a range until accounts exist.
+
