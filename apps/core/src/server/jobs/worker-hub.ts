@@ -35,7 +35,7 @@ import {
 } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
 import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
-import { mediaStatusFor } from './media-status';
+import { completedStatusFor, mediaStatusFor, shouldBroadcastCook } from './media-status';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
 export type Broadcast = (event: ServerEvent) => void;
@@ -410,11 +410,25 @@ export class WorkerHub {
 		}
 	}
 
+	/**
+	 * Broadcast where the SONG is, for a job that just changed state.
+	 *
+	 * `status` is deliberately not the job's own status: a cook is three jobs walking one five-stop
+	 * line the phone renders, and forwarding each job's private view of itself is what made the strip
+	 * jump backwards twice per cook. media-status.ts owns that translation and carries the full account.
+	 *
+	 * A terminal completion passes through `completedStatusFor`, which asks the MEDIA's cook gates
+	 * whether the song is finished — the only thing entitled to say 'ready'.
+	 */
 	#emitStatus(job: Job, stage?: MediaStatus): void {
+		const media = this.#d.mediaById.get(job.mediaId);
+		// A background upgrade on an already-singable song says nothing to the room; broadcasting would
+		// flip every ready row back to "Making karaoke" for the length of the re-separation.
+		if (!shouldBroadcastCook(job, media)) return;
 		this.#d.broadcast({
 			type: 'media:status',
 			mediaId: job.mediaId,
-			status: mediaStatusFor(job, stage),
+			status: job.status === 'ready' ? completedStatusFor(job, media) : mediaStatusFor(job, stage),
 			pct: job.progressPct,
 			etaSec: job.etaSec ?? undefined
 		});

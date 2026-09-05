@@ -14,12 +14,24 @@
 // entry to GATES. Nothing else moves: every consumer already asks `readyToSing` / `pendingGates`.
 
 import type { Media } from './types';
+import type { MediaStage } from './events';
 
 export interface CookGate {
 	/** Stable id — matches the job type that satisfies it, so a log line reads the same on both sides. */
 	readonly id: 'stems' | 'lyrics';
 	/** What the phone says while this step is outstanding. */
 	readonly pendingLabel: string;
+	/**
+	 * The stop on `MEDIA_STAGES` a song sits at while this step is outstanding — the progress-bar half
+	 * of `pendingLabel`, declared beside it for the same reason.
+	 *
+	 * It lives HERE rather than in a lookup table next to its one consumer because of the promise this
+	 * file opens with: adding a step is one entry in GATES and nothing else moves. A separate
+	 * gate-id → stage map (the core's jobs/media-status.ts had one) quietly made that false — a new
+	 * gate would need registering in two places, and the one that reports progress is the one a author
+	 * adding a "loudness pass" would never think to look for.
+	 */
+	readonly stage: MediaStage;
 	/**
 	 * Is this step FINISHED for this song?
 	 *
@@ -50,6 +62,7 @@ export const GATES: readonly CookGate[] = [
 	{
 		id: 'stems',
 		pendingLabel: 'Separating vocals',
+		stage: 'separating',
 		// Status AND artifact — both from the ONE stems job, so this stays a single gate under a single
 		// id (the id names the JOB TYPE that satisfies it, and there is no 'key' job). Done means the
 		// analysis RAN, not that it found anything: a silent vocal stem yields a profile of all nulls
@@ -74,6 +87,7 @@ export const GATES: readonly CookGate[] = [
 	{
 		id: 'lyrics',
 		pendingLabel: 'Timing lyrics',
+		stage: 'aligning',
 		// Ran, not "produced words". `lyricsRef` is absent for a genuine instrumental and that song is
 		// still finished. Media cooked before this gate existed carry no lyricsStatus at all; they are
 		// treated as done when they already have a lyrics artifact, so an existing library does not
