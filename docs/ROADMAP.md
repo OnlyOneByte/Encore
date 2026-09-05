@@ -419,6 +419,99 @@ Two ordering constraints that are not preference:
   today's level rather than silent. **AUTO** — the gain computation, the clamp, and the
   both-elements invariant are pure and unit-testable; **AUDIO** — that it actually sounds level needs
   the owner and real speakers.
+
+- [ ] **T-17 · The ± semitone buttons do not change the pitch** — *investigation, and the one to be
+  most careful with.* Reported after PRs #40/#44, both of which touched the very element the shift
+  graph attaches to, so suspecting them is reasonable — but the wiring reads intact end to end: the
+  phone stores `PlaybackState.keyShift`, `routes/tv/+page.svelte:277` assigns it from
+  `playback:state`, and `TvPlayer.svelte`'s effect (~`:328`) builds a `PitchShiftGraph` lazily on the
+  first non-zero shift and calls `setShift` on every change. The `<video>`→`<audio>` rename carried
+  through by binding.
+
+  **Ruled out already:** a missing worklet asset. `pitch-shift.ts:445` builds the worklet from an
+  inline source string via a Blob URL rather than a separate build chunk, so there is no
+  404-on-a-chunk failure mode. (A CSP forbidding `blob:` would still break it; this app sets none.)
+
+  **Ranked hypotheses, most likely first:**
+  1. **The `AudioContext` never resumes, and this is the documented degradation rather than a
+     regression.** `pitch-shift.ts` states the contract: a context that cannot run leaves the audio
+     **audible-but-unshifted, never silent**. And the Deferred section already records that **`/tv`
+     has no gesture handler** — a set-and-forget TV may never receive the user gesture `resume()`
+     requires. That produces precisely the reported symptom: sound plays, buttons do nothing.
+  2. `active` is false for the audible slot, so `const shift = active ? keyShift : 0` pins it to 0.
+  3. The graph builds but `setShift` is not reaching the worklet's ratio.
+
+  **Run the diagnostic before changing any code:** on the TV, check whether an `AudioContext` exists
+  and what its `state` is. `suspended` confirms (1), and then the fix is a gesture affordance on
+  `/tv`, *not* a change to the shifter — which also unblocks the deferred FFT visualizer work, which
+  needs the same context.
+
+  **The invariant any fix must not break** (this is the regression risk worth being careful about):
+  at `keyShift === 0` there is **no `AudioContext` and no `MediaElementSource`**, so the audio path is
+  byte-for-byte what it always was. A `MediaElementSource` is a **permanent** capture of the element
+  once created — so a fix that eagerly wraps the element commits all room audio to WebAudio forever.
+  A broken shift is bad; silent room audio is catastrophic. **AUDIO/EYES-ON.**
+
+- [ ] **T-18 · Word-by-word highlight does nothing on some songs** — *root-caused.* Distinct from
+  `400cd44`, which fixed the amber provenance tint erasing the highlight — same symptom, different
+  cause, which is why it "still isn't working despite other fixes".
+
+  **`resolveLyricsPresentation` clamps on fleet CONFIG, not on the playing song's DATA.**
+  `packages/shared/src/settings.ts:603` computes
+  `wordsAvailable = getSyncMode(settings.global.syncMode)?.granularity === 'word'` — a global value.
+  Its comment is correct in one direction (under `syncMode: 'lines'` there are no per-word stamps)
+  and the code assumes the converse, which does not hold: under a word-level `syncMode` — `forced`,
+  the default — an individual song can still be **line-only**, because its chosen lyrics candidate
+  came from a line-level source. LRCLIB records carry per-line stamps, not per-word.
+
+  So `wordsAvailable` is true, no clamp fires, and the overlay is told to draw word-level highlighting
+  against segments that have no `words` to light — rendering the current line uniformly in one colour.
+  That matches the report exactly: current line fully white, no distinct current word, with Settings
+  still showing "Word by word" as if it were in effect.
+
+  **Fix direction:** keep the global clamp as the OUTER bound (the fleet cannot produce what it cannot
+  produce) and add a per-song INNER bound from the chosen candidate's granularity — `chosenCandidate(media)`
+  already resolves it, and provenance is already read from there. *Diagnostic:* check whether the
+  playing song's lyrics JSON segments carry a `words` array; this could not be run on the loop box,
+  which has no `media/`. **AUTO** — the resolver is pure, so per-song clamping is directly
+  unit-testable including the case that fails today; **EYES-ON** on the TV.
+
+- [ ] **T-19 · Restarting a song desyncs the guiding track from the instrumental** — *root-caused.*
+  The seek path repositions **only the master**: `TvPlayer.svelte:306` is
+  `if (active && Math.abs(master.currentTime - seekSec) > 1.5) master.currentTime = seekSec;` with no
+  companion assignment for `vocals`. So a back-button restart moves the instrumental to 0 and leaves
+  the guide wherever it was.
+
+  Recovery is then left to the drift governor (`guideCorrection`, ~`:402`), which by deliberate design
+  prefers a `playbackRate` trim over a reseek — the comment at `:74` says assigning
+  `vocals.currentTime` "is the wrong tool at this scale". That is right for continuous drift of a few
+  tens of milliseconds and wrong for a discontinuity, so the guide either crawls back over many
+  seconds or, if the residual sits under the reseek threshold, never hard-resyncs at all. Hence
+  "slightly desync'd" rather than wildly.
+
+  Note the play path at `:278` already does the right thing — it hard-aligns `vocals.currentTime` to
+  `master.currentTime` when they differ by more than `GUIDE_PREROLL_ALIGN_SEC` (0.04s). The seek path
+  simply has no equivalent. Also worth checking: that `> 1.5` guard means a restart from a position
+  already under 1.5s may not move the master at all.
+
+  *Done-when:* a restart leaves both elements within the preroll tolerance immediately, not
+  eventually. **AUTO** — the decision "a seek must realign the guide" is pure and testable against
+  two fake elements; **AUDIO** — that no flam is audible needs the owner.
+
+- [ ] **T-20 · TV lyrics jump to the top when the tab is defocused while paused** — *investigation.*
+  Defocus the TV while paused and the text scrolls back to the first line; unpausing resumes at the
+  correct place. So the *rendered* scroll offset is not a pure function of `currentTime` — it is
+  loop-carried state in an animation frame callback, and a backgrounded tab has its `rAF` throttled
+  or stopped, which drops whatever was accumulating the offset back to its initial value.
+
+  **Fix direction is the shape, not the symptom:** make the drawn offset a pure function of
+  `currentTime` plus the presentation settings, so a stopped `rAF` has no state to lose and
+  `visibilitychange` needs no special case. Re-deriving on visibility change alone would paper over
+  it while leaving the accumulator in place.
+
+  Lowest severity of this group — it is cosmetic and self-corrects on unpause — but it is visible to
+  the whole room during a pause, which is exactly when people are looking at the screen. **AUTO** —
+  the purity property is testable without a browser; **EYES-ON** to confirm the pause/defocus cycle.
 ---
 
 ## Lyrics-chain design notes (the part still worth reading)
