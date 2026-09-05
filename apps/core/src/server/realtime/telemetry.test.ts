@@ -104,3 +104,43 @@ test('reconcileOnReady: something already playing → only re-emits nowplaying (
 	expect(published.every((e) => e.type !== 'playback:state')).toBe(true);
 	expect(published.some((e) => e.type === 'nowplaying:changed')).toBe(true);
 });
+
+test('two ended frames do not double-advance: the stale ended for a no-longer-current entry is ignored (#70)', () => {
+	// Queue Alice, Bob, Cara. Alice plays, ends. A SECOND `ended` (a duplicate send, a second TV,
+	// or a reconnecting TV replaying its last frame) must not consume Bob's turn too.
+	const { state, deps } = harness();
+	deps.mediaById.set('m3', media('m3'));
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') }); // Alice
+	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') }); // Bob
+	state.applyQueueOp({ op: 'add', entry: entry('q3', 'm3') }); // Cara
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	expect(state.playback.currentEntryId).toBe('q1');
+
+	// First ended carries Alice's id (the entry that actually ended on screen). Advances to Bob.
+	handleTelemetry({ entryId: 'q1', positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	expect(state.playback.currentEntryId).toBe('q2');
+
+	// Second (stale/duplicate) ended still names Alice (q1) — no longer current. It must be IGNORED.
+	handleTelemetry({ entryId: 'q1', positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	expect(state.playback.currentEntryId).toBe('q2'); // still Bob, NOT Cara
+	expect(state.entries.find((e) => e.id === 'q2')!.status).toBe('playing'); // Bob's turn survives
+	expect(state.entries.find((e) => e.id === 'q3')).toBeDefined(); // Cara still queued, not skipped
+});
+
+test('a genuine ended whose id matches the current entry advances as before (#70)', () => {
+	const { state, deps } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	expect(state.playback.currentEntryId).toBe('q2');
+});
+
+test('an ended with no entry id keeps legacy behaviour (backward compatible with an older TV) (#70)', () => {
+	const { state, deps } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	handleTelemetry({ positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	expect(state.playback.currentEntryId).toBe('q2');
+});
