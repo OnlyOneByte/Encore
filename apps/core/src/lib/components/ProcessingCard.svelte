@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { SINGER_COLORS } from '@encore/shared';
+	import { MEDIA_STAGES, mediaStagePosition, SINGER_COLORS } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
@@ -32,18 +32,23 @@
 		onremove, reorderable = false, canUp = false, canDown = false, onup, ondown
 	}: Props = $props();
 
-	// The stages shown as chips, in worker order. Labels come from the shared helper so the card and
-	// SongRow speak one vocabulary; `aligning` is included because the worker really reports it, and
-	// omitting it rendered every chip as done during it (claiming the song was finished while cooking).
-	const STAGE_KEYS: MediaStatus[] = ['queued', 'downloading', 'separating', 'aligning', 'ready'];
-	const STAGES: { key: MediaStatus; label: string }[] = STAGE_KEYS.map((key) => ({
+	// The stages shown as chips, in worker order. The ORDER comes from the shared `MEDIA_STAGES` — the
+	// same list the server positions every `media:status` on — so the strip cannot disagree with what
+	// the cook reports. It was a hand-written array here (twice over: STAGE_KEYS and a duplicate
+	// `order`), which is what let the two drift apart from the server's view of the same five stops.
+	// Labels come from the shared phrasing helper so the card and SongRow speak one vocabulary.
+	const STAGES: { key: MediaStatus; label: string }[] = MEDIA_STAGES.map((key) => ({
 		key,
 		label: cookStageChipLabel(key)
 	}));
-	const order = ['queued', 'downloading', 'separating', 'aligning', 'ready'];
 	function state(key: MediaStatus): 'done' | 'now' | 'todo' {
-		const cur = order.indexOf(status);
-		const k = order.indexOf(key);
+		const cur = mediaStagePosition(status);
+		const k = mediaStagePosition(key);
+		// A terminal exit (failed / canceled) is not ON the line, so no chip is current. This is what the
+		// bare index comparison below already did with its -1, and saying so explicitly is the point: the
+		// old code got the right answer by accident, which is not a property you want a future edit to
+		// have to rediscover.
+		if (cur < 0) return 'todo';
 		if (k < cur) return 'done';
 		if (k === cur) return 'now';
 		return 'todo';

@@ -107,8 +107,14 @@ test('FULL LIFECYCLE: hello → assign → accept → progress → complete driv
 	expect(m.stemStatus).toBe('ready');
 	expect(m.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
 	expect(m.sourceRef).toBe('vid-m1');
-	const ready = broadcasts.at(-1) as Extract<ServerEvent, { type: 'media:status' }>;
-	expect(ready).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'ready' });
+	// The SONG is not ready — separation finished but its words are not timed yet, and the align job
+	// this completion just enqueued is what the room is now waiting on. This assertion used to read
+	// `status: 'ready'`, which pinned a real defect as correct: every completed job mapped to 'ready'
+	// regardless of type, so a finished fetch OR a finished separation told every phone the song was
+	// singable, and readiness.ts lets a live 'ready' override the catalog (entryPlayable said yes for a
+	// song whose instrumental did not exist yet). See jobs/media-status.ts.
+	const afterStems = broadcasts.at(-1) as Extract<ServerEvent, { type: 'media:status' }>;
+	expect(afterStems).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'aligning' });
 	expect(registry.get('w1')!.slotsFree).toBe(1); // slot released on complete → free for new work
 });
 

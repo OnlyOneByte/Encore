@@ -22,6 +22,28 @@ export type MediaStatus =
   // action. Every other value reads as mid-flight and would re-strand the row we just freed.
   | 'canceled';
 
+/**
+ * The five stops of a cook, IN ORDER — the axis the phone renders (the chip strip in
+ * ProcessingCard) and the one every producer of a `media:status` positions itself on.
+ *
+ * Declared here, beside `MediaStatus`, because it is part of the wire vocabulary rather than either
+ * side's private view: the server needs it to guarantee a cook never reports a stop it has already
+ * passed (see the core's jobs/media-status.ts), and the phone needs it to decide which chips are
+ * done. The chip strip kept two hand-written copies of this list; the server had none, and gained the
+ * ordering it never had by reading this one.
+ *
+ * `failed` and `canceled` are deliberately absent: they are terminal exits from the line, not stops
+ * along it, so they have no position to compare.
+ */
+export const MEDIA_STAGES = ['queued', 'downloading', 'separating', 'aligning', 'ready'] as const;
+
+export type MediaStage = (typeof MEDIA_STAGES)[number];
+
+/** Position on `MEDIA_STAGES`, or -1 for a status that is not on the line (failed / canceled). */
+export function mediaStagePosition(status: MediaStatus): number {
+  return (MEDIA_STAGES as readonly string[]).indexOf(status);
+}
+
 // A singer safe to broadcast (no sessionToken).
 export type PublicSinger = Omit<Singer, 'sessionToken'>;
 
