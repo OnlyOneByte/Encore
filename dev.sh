@@ -75,20 +75,37 @@ echo "data    $DATA_DIR"
 # Refuse to start alongside a previous run. A leftover worker is not harmless: it reconnects every 3s,
 # the core hands it jobs, and two workers cooking the same media race each other on the same paths.
 # Refusing (rather than killing something we did not start) keeps this script from being a surprise.
-STALE="$(pgrep -f 'src\.dial_home|bun run \./server\.ts' 2>/dev/null || true)"
-if [ -n "$STALE" ]; then
-	echo
-	echo "refusing to start — an earlier core/worker is still running:" >&2
-	pgrep -fl 'src\.dial_home|bun run \./server\.ts' >&2
-	echo >&2
-	echo "stop it first:  pkill -f 'src.dial_home'; pkill -f 'bun run ./server.ts'" >&2
-	exit 1
-fi
-if lsof -ti:3000 >/dev/null 2>&1; then
-	echo
-	echo "refusing to start — port 3000 is already in use by pid(s): $(lsof -ti:3000 | tr '\n' ' ')" >&2
-	exit 1
-fi
+#
+# NOTE both checks run only when we are actually going to START something — see below. Cleaning or
+# pulling does not need the port, and refusing to --reset because something holds :3000 just blocks
+# the one command that would have got you unstuck.
+
+# Who is LISTENING on the core port. `-sTCP:LISTEN` is essential: a bare `lsof -ti:3000` also matches
+# CLIENTS connected to it, so a browser tab left open on the TV view reports as "port in use" and
+# refuses a perfectly fine start. (It reported Firefox, holding an ESTABLISHED connection from an
+# earlier run — never a listener.)
+port_owner() { lsof -ti:3000 -sTCP:LISTEN 2>/dev/null || true; }
+
+preflight_free() {
+	local stale owner
+	stale="$(pgrep -f 'src\.dial_home|bun run \./server\.ts' 2>/dev/null || true)"
+	if [ -n "$stale" ]; then
+		echo
+		echo "refusing to start — an earlier core/worker is still running:" >&2
+		pgrep -fl 'src\.dial_home|bun run \./server\.ts' >&2
+		echo >&2
+		echo "stop it first:  pkill -f 'src.dial_home'; pkill -f 'bun run ./server.ts'" >&2
+		return 1
+	fi
+	owner="$(port_owner)"
+	if [ -n "$owner" ]; then
+		echo
+		echo "refusing to start — something is LISTENING on port 3000:" >&2
+		ps -o pid,command -p "$(echo "$owner" | tr '\n' ',' | sed 's/,$//')" >&2 || true
+		return 1
+	fi
+	return 0
+}
 
 # ── pull ─────────────────────────────────────────────────────────────────────────────
 if [ "$DO_PULL" = 1 ]; then
@@ -170,6 +187,10 @@ fi
 
 [ "$DO_START" = 1 ] || { say "done (--no-start)"; exit 0; }
 
+# Checked HERE, not in preflight: maintenance (--pull / --reset) does not touch the port or care about
+# a stale worker, and blocking those on a port conflict blocks the very command that unsticks you.
+preflight_free || exit 1
+
 # ── run ──────────────────────────────────────────────────────────────────────────────
 CORE_PID="" WORKER_PID=""
 
@@ -216,7 +237,7 @@ cleanup() {
 		left=""
 		[ -n "$WORKER_PID" ] && kill -0 "$WORKER_PID" 2>/dev/null && left="$left worker($WORKER_PID)"
 		[ -n "$CORE_PID" ] && kill -0 "$CORE_PID" 2>/dev/null && left="$left core($CORE_PID)"
-		lsof -ti:3000 >/dev/null 2>&1 && left="$left port-3000-still-bound"
+		[ -n "$(port_owner)" ] && left="$left port-3000-still-listening"
 		[ -z "$left" ] && break
 		sleep 0.25
 	done
