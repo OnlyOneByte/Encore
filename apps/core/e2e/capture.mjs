@@ -179,7 +179,10 @@ async function kickPlayback(tv) {
 
 /** Is the TV's media actually moving? The only trustworthy answer is: look twice. */async function positionAdvancing(tv, overMs = 1600) {
 	const read = () =>
-		tv.evaluate(`(() => { const v = document.querySelector('video'); return v ? v.currentTime : -1; })()`);
+		// `video, audio` — the master is an <audio> (TvPlayer plays an instrumental, which has no picture).
+		// Pinned to a bare 'video' this read returned -1 forever, which reads as "not advancing" and would
+		// quietly cost every playing-state frame in the gallery.
+		tv.evaluate(`(() => { const v = document.querySelector('video, audio'); return v ? v.currentTime : -1; })()`);
 	const a = await read();
 	await sleep(overMs);
 	const b = await read();

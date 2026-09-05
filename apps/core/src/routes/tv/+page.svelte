@@ -16,6 +16,7 @@
 	} from '@encore/shared';
 	import { stageBackgroundCss } from '$lib/tv/background';
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
+	import { trySend } from '$lib/ws/send';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
@@ -143,8 +144,19 @@
 		syncSlots();
 	}
 
+	/**
+	 * Position/status telemetry to the server. DROPPED SILENTLY when the socket is not open.
+	 *
+	 * Silent is right here and wrong for a command: this is a ~4Hz ephemeral stream and the next frame
+	 * is 250ms away, so warning per drop would flood the console during any reconnect. What is NOT
+	 * acceptable is throwing, which is what `ws?.send(...)` did — optional chaining guards an absent
+	 * socket, not a CONNECTING/CLOSING/CLOSED one. Because this is called from the media element's
+	 * `ontimeupdate` AFTER the local `positionSec` assignment, that throw left the TV advancing its own
+	 * lyrics and progress while the server never learned the playhead — which the phone then rendered as
+	 * a progress bar that jumps to the beginning on pause. See lib/ws/send.ts.
+	 */
 	function sendTelemetry(status: string, positionSec = 0, durationSec = 0, bufferedNextPct = 0) {
-		ws?.send(JSON.stringify({ type: 'tv:telemetry', positionSec, durationSec, status, bufferedNextPct }));
+		trySend(ws, JSON.stringify({ type: 'tv:telemetry', positionSec, durationSec, status, bufferedNextPct }));
 	}
 
 	function onVisibleError() {
