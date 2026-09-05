@@ -19,6 +19,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.acquisition import fetch as fetch_mod  # noqa: E402
+from src import plans  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.vocabulary import Fetcher, Stage  # noqa: E402
 
@@ -83,21 +84,24 @@ async def test_the_download_TEMPLATE_carries_ext_so_the_file_is_not_mislabelled(
     Nothing broke, because ffmpeg sniffs content and ignores the extension — which is exactly why it went
     unnoticed, and why it needs a test rather than a reader's attention.
     """
-    seen: list[str] = []
+    seen: list[list[str]] = []
 
-    async def spy_download(uri, template):
-        seen.append(template)
-        Path(str(tmp_path) + "/audio/" + "m1.m4a").parent.mkdir(parents=True, exist_ok=True)
-        Path(str(tmp_path) + "/audio/m1.m4a").write_bytes(b"OPUS")
-        yield ProgressEvent(stage=Stage.DOWNLOADING, pct=100)
+    async def spy_download(argv):
+        seen.append(argv)
+        out = Path(str(tmp_path) + "/audio/m1.m4a")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"OPUS")
+        yield "[download] 100% of 1MiB"
 
     job = JobSpec(
         job_id="j", media_id="m1", job_type="fetch", source_uri="https://yt/x",
         params={"fetcher": "ytdlp"}, media_dir=str(tmp_path),
     )
 
-    got = [item async for item in fetch_mod.resolve_source_audio(job, spy_download)]
-    assert seen and seen[0].endswith("m1.%(ext)s"), f"template must carry %(ext)s, got {seen}"
+    events = await drain(plans.fetch_runner(runner=spy_download), job)
+    got = [e.artifacts["source"]["audio"] for e in events if isinstance(e, CompleteResult)]
+    template = next(a[i + 1] for a in seen for i, tok in enumerate(a) if tok == "-o")
+    assert template.endswith("m1.%(ext)s"), f"template must carry %(ext)s, got {template}"
     # ...and the path yielded is the file that ACTUALLY landed, not the one that was assumed.
     assert str(got[-1]).endswith("m1.m4a")
 
@@ -110,7 +114,7 @@ async def test_a_legacy_mislabelled_wav_is_still_found(tmp_path):
     audio.mkdir()
     (audio / "m1.wav").write_bytes(b"actually m4a")
 
-    async def never_download(uri, template):  # pragma: no cover - must not be reached
+    async def never_download(argv):  # pragma: no cover - must not be reached
         raise AssertionError("re-downloaded a file that was already on the volume")
         yield
 
@@ -119,14 +123,15 @@ async def test_a_legacy_mislabelled_wav_is_still_found(tmp_path):
         params={"fetcher": "ytdlp"}, media_dir=str(tmp_path),
     )
 
-    got = [item async for item in fetch_mod.resolve_source_audio(job, never_download)]
+    events = await drain(plans.fetch_runner(runner=never_download), job)
+    got = [e.artifacts["source"]["audio"] for e in events if isinstance(e, CompleteResult)]
     assert str(got[-1]).endswith("m1.wav")
 
 
 @pytest.mark.asyncio
 async def test_fetch_downloads_and_reports_the_retained_original(tmp_path):
     audio = os.path.join(str(tmp_path), "audio", "m1.wav")
-    proc = fetch_mod.FetchProcessor(runner=fake_runner(["[download]  50.0% of 3MiB"], writes=(audio, "AUDIO")))
+    proc = plans.fetch_runner(runner=fake_runner(["[download]  50.0% of 3MiB"], writes=(audio, "AUDIO")))
     events = await drain(proc, spec(tmp_path, fetcher="ytdlp"))
 
     stages = {e.stage for e in events if isinstance(e, ProgressEvent)}
@@ -151,7 +156,7 @@ async def test_fetch_reuses_audio_already_on_the_volume_and_never_re_downloads(t
         calls.append(argv)
         yield ""
 
-    proc = fetch_mod.FetchProcessor(runner=runner)
+    proc = plans.fetch_runner(runner=runner)
     events = await drain(proc, spec(tmp_path, fetcher="ytdlp"))
 
     assert calls == [], "audio was already retained -- yt-dlp must not run"
@@ -169,7 +174,7 @@ async def test_a_local_job_never_downloads(tmp_path):
         raise AssertionError("a local job must not invoke a downloader")
         yield ""
 
-    proc = fetch_mod.FetchProcessor(runner=runner)
+    proc = plans.fetch_runner(runner=runner)
     events = await drain(proc, spec(tmp_path, source_uri=str(local), fetcher="local"))
     done = [e for e in events if isinstance(e, CompleteResult)]
     assert done[0].media_uri == str(local)
@@ -179,8 +184,12 @@ async def test_a_local_job_never_downloads(tmp_path):
 async def test_a_download_that_lands_nothing_FAILS_rather_than_reporting_success(tmp_path):
     # Reporting success for a file that is not there would have the core chain a separation against
     # missing input, which surfaces as a confusing decode error one stage later.
-    proc = fetch_mod.FetchProcessor(runner=fake_runner(["[download] 100%"]))
-    with pytest.raises(RuntimeError, match="produced no audio"):
+    #
+    # The check now lives in AcquireAudio rather than at the end of the fetch action, so it protects
+    # stems and align too — and it names the directory, because the usual cause is yt-dlp resolving no
+    # audio-only format at all (a missing JavaScript runtime for YouTube's player challenge).
+    proc = plans.fetch_runner(runner=fake_runner(["[download] 100%"]))
+    with pytest.raises(RuntimeError, match="produced no file"):
         await drain(proc, spec(tmp_path, fetcher="ytdlp"))
 
 
@@ -208,7 +217,7 @@ MB_HIT = [{
 @pytest.mark.asyncio
 async def test_a_fetch_reports_the_identification_it_made(tmp_path):
     audio = os.path.join(str(tmp_path), "audio", "m1.wav")
-    proc = fetch_mod.FetchProcessor(
+    proc = plans.fetch_runner(
         runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")),
         annotator=FakeAnnotator(MB_HIT),
     )
@@ -226,7 +235,7 @@ async def test_a_fetch_reports_the_identification_it_made(tmp_path):
 async def test_no_lookup_keys_means_no_annotation_attempted(tmp_path):
     # An unconfident parse sends no artist/track, which is the signal to decline rather than guess.
     audio = os.path.join(str(tmp_path), "audio", "m1.wav")
-    proc = fetch_mod.FetchProcessor(
+    proc = plans.fetch_runner(
         runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(MB_HIT)
     )
     done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp")) if isinstance(e, CompleteResult)][0]
@@ -238,7 +247,7 @@ async def test_a_DEAD_metadata_service_still_completes_the_fetch(tmp_path):
     # The whole point of annotation being a step rather than a job: a karaoke night must not stop
     # because MusicBrainz is unreachable. The audio is what matters and it is already on disk.
     audio = os.path.join(str(tmp_path), "audio", "m1.wav")
-    proc = fetch_mod.FetchProcessor(
+    proc = plans.fetch_runner(
         runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(boom=True)
     )
     done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
@@ -249,6 +258,6 @@ async def test_a_DEAD_metadata_service_still_completes_the_fetch(tmp_path):
 @pytest.mark.asyncio
 async def test_annotation_can_be_switched_off_entirely(tmp_path):
     audio = os.path.join(str(tmp_path), "audio", "m1.wav")
-    proc = fetch_mod.FetchProcessor(runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=None)
+    proc = plans.fetch_runner(runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=None)
     done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
     assert "annotation" not in done.artifacts

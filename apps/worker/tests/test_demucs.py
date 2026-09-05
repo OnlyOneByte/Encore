@@ -10,6 +10,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.separation import demucs  # noqa: E402
+from src import plans  # noqa: E402
+from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
@@ -132,7 +134,7 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
         "yt-dlp": ["[download]  10.0% of 4MiB", "[download] 100% of 4MiB"],
         "demucs": ["Selected model is a bag of 4 models.", " 50%|███   | 1/2", "100%|██████| 2/2"],
     })
-    proc = demucs.DemucsProcessor(runner=runner)
+    proc = plans.stems_runner(runner=runner)
     events = await drain(proc, spec(tmp_path))
 
     stages = [(e.stage, e.pct) for e in events if isinstance(e, ProgressEvent)]
@@ -158,7 +160,7 @@ async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_pa
         "yt-dlp": ["[download] 100% of 4MiB"],
         "demucs": ["100%|██| 2/2"],
     }, write_vocals=False)
-    proc = demucs.DemucsProcessor(runner=runner)
+    proc = plans.stems_runner(runner=runner)
     events = await drain(proc, spec(tmp_path))
     completes = [e for e in events if isinstance(e, CompleteResult)]
     assert len(completes) == 1
@@ -175,7 +177,7 @@ async def test_local_source_skips_download_stage(tmp_path):
     local.parent.mkdir(parents=True)
     local.write_bytes(b"LOCAL")
     runner = fake_runner({"demucs": ["100%|██| 2/2"]})
-    proc = demucs.DemucsProcessor(runner=runner)
+    proc = plans.stems_runner(runner=runner)
     events = await drain(proc, spec(tmp_path, source_uri=str(local), fetcher="local"))
     stages = {e.stage for e in events if isinstance(e, ProgressEvent)}
     assert "downloading" not in stages  # local source → no download
@@ -186,7 +188,7 @@ async def test_local_source_skips_download_stage(tmp_path):
 @pytest.mark.asyncio
 async def test_download_failure_propagates_as_retryable_process_error(tmp_path):
     runner = fake_runner({"yt-dlp": ["[download]   5.0% of 4MiB"]}, fail_on="yt-dlp", exit_text="HTTP Error 503")
-    proc = demucs.DemucsProcessor(runner=runner)
+    proc = plans.stems_runner(runner=runner)
     with pytest.raises(demucs.ProcessError) as ei:
         await drain(proc, spec(tmp_path))
     assert ei.value.retryable is True
@@ -195,7 +197,7 @@ async def test_download_failure_propagates_as_retryable_process_error(tmp_path):
 @pytest.mark.asyncio
 async def test_unavailable_video_is_non_retryable(tmp_path):
     runner = fake_runner({"yt-dlp": []}, fail_on="yt-dlp", exit_text="ERROR: Video unavailable")
-    proc = demucs.DemucsProcessor(runner=runner)
+    proc = plans.stems_runner(runner=runner)
     with pytest.raises(demucs.ProcessError) as ei:
         await drain(proc, spec(tmp_path))
     assert ei.value.retryable is False
@@ -212,7 +214,7 @@ async def test_missing_instrumental_output_raises(tmp_path):
         return
         yield  # make it an async generator
 
-    proc = demucs.DemucsProcessor(runner=empty_runner)
+    proc = plans.stems_runner(runner=empty_runner)
     with pytest.raises(RuntimeError, match="no instrumental"):
         await drain(proc, spec(tmp_path))
 
@@ -274,11 +276,11 @@ def test_stems_are_encoded_to_stereo_aac_not_moved_as_wav():
 def test_find_downloaded_ignores_partial_downloads():
     import tempfile, os as _os
     with tempfile.TemporaryDirectory() as d:
-        assert demucs.find_downloaded(d, "id1") is None
+        assert fetch_mod.find_downloaded(d, "id1") is None
         open(_os.path.join(d, "id1.webm.part"), "w").close()
-        assert demucs.find_downloaded(d, "id1") is None  # an interrupted download is not a result
+        assert fetch_mod.find_downloaded(d, "id1") is None  # an interrupted download is not a result
         open(_os.path.join(d, "id1.webm"), "w").close()
-        assert demucs.find_downloaded(d, "id1").endswith("id1.webm")
+        assert fetch_mod.find_downloaded(d, "id1").endswith("id1.webm")
 
 
 # ── per-job demucs model selection ──────────────────────────────────────────

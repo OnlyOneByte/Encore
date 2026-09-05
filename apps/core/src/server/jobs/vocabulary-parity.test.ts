@@ -41,26 +41,32 @@ const capabilities = readFileSync(join(WORKER_SRC, 'capabilities.py'), 'utf8');
  * enum parity above is asserted — by reading the Python as text.
  */
 /**
- * Paths are RELATIVE TO `WORKER_SRC` rather than bare filenames, because the worker's modules moved into
- * domain packages (`docs/specs/SPEC-worker-pipeline.md` S0) and this guard reads them as text. A
- * hardcoded flat filename made a cross-language guard break on a pure file move — which is a real cost,
- * since the guard is the only thing standing between a shape mismatch and a silent whole-library stall.
+ * ONE writer now, not two. The engines used to hand-assemble this dict each — `demucs.py:491` and
+ * `roformer.py:257` — which is how one of them came to put `songProfile` in the wrong place. Publishing
+ * moved into a single step (`steps/separate.py` PublishStems), so the two engines can no longer disagree
+ * about the shape; the worker's own `tests/test_worker_layers.py` E8 asserts that only one step writes
+ * each artifact kind.
+ *
+ * This guard stays anyway, and reads the Python as TEXT, because it is the only check that spans the wire:
+ * the worker's pytest asserts its own dict and the core's bun test asserts its own mock, and neither ever
+ * sees the other's shape.
  */
-const ENGINE_SOURCES = ['separation/demucs.py', 'separation/roformer.py'] as const;
+const ARTIFACT_WRITERS = ['steps/separate.py'] as const;
 
 describe('artifact envelope parity (worker yield vs core read)', () => {
-	for (const file of ENGINE_SOURCES) {
+	for (const file of ARTIFACT_WRITERS) {
 		test(`${file} publishes songProfile as a SIBLING of stems, not inside it`, () => {
 			const path = join(WORKER_SRC, file);
 			// Fail LOUDLY on a moved file rather than vacuously passing on an empty read. A guard that
 			// quietly stops guarding is worse than no guard: the whole point is that nobody is watching.
 			expect(existsSync(path), `${file} not found under ${WORKER_SRC} — did the module move?`).toBe(true);
 			const src = readFileSync(path, 'utf8');
-			// The literal the engine yields. Both engines build it inline in the CompleteResult call.
-			const yielded = [...src.matchAll(/artifacts\s*=\s*\{([^}]*)\}/g)].map((m) => m[1]!);
-			expect(yielded.length).toBeGreaterThan(0);
-			const publishesAtTopLevel = yielded.some((body) => /["']songProfile["']\s*:/.test(body));
-			expect(publishesAtTopLevel).toBe(true);
+			// The step assigns each kind at the top level of the artifacts dict.
+			const assigns = [...src.matchAll(/out\.artifacts\[["'](\w+)["']\]\s*=/g)].map((m) => m[1]!);
+			expect(assigns).toContain('stems');
+			expect(assigns).toContain('songProfile');
+			// ...and never reaches through stems to do it.
+			expect(/artifacts\[["']stems["']\]\[["']songProfile["']\]/.test(src)).toBe(false);
 		});
 	}
 

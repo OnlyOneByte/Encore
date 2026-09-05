@@ -288,7 +288,8 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
 
     if any(c.startswith("fetch:") for c in cfg.capabilities):
-        from .acquisition.fetch import FetchProcessor
+        from .plans import fetch_runner
+        from .separation.demucs import subprocess_runner
 
         # Acquisition needs no ML, so it is built whenever a fetch capability is advertised — including
         # on a box that cannot separate at all. That asymmetry is the point of routing fetch separately.
@@ -297,14 +298,21 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             from .metadata.annotate import MusicBrainzClient
 
             annotator = MusicBrainzClient()
-        by_type["fetch"] = FetchProcessor(ytdlp_bin=cfg.ytdlp_bin, annotator=annotator)
+        by_type["fetch"] = fetch_runner(runner=subprocess_runner, annotator=annotator, ytdlp_bin=cfg.ytdlp_bin)
     if "stems" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
-        from .separation.demucs import DemucsProcessor  # lazy: torch off the import path until selected
-        from .processor import EngineRouter
+        from .plans import stems_runner
+        from .separation.demucs import subprocess_runner
 
-        demucs = DemucsProcessor(
-            model=cfg.demucs_model,
-            ytdlp_bin=cfg.ytdlp_bin,
+        # ONE runner for both separation actions. The engine is resolved from job params into ctx.engines
+        # before the first step runs (plan SELECTION, not branching — see the spec's §5.2c), so there is no
+        # second dispatch layer: EngineRouter's job is now `engine_for` inside the Separate step.
+        #
+        # Roformer's ~700MB checkpoint machinery is still only reachable when the capability was granted:
+        # engine_for imports it lazily, and the CORE only routes a roformer cook to a worker advertising
+        # stems:roformer.
+        runner = stems_runner(
+            runner=subprocess_runner,
+            demucs_model=cfg.demucs_model,
             demucs_bin=cfg.demucs_bin,
             ffmpeg_bin=cfg.ffmpeg_bin,
             bitrate=cfg.stem_bitrate,
@@ -315,17 +323,8 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             segment=cfg.demucs_segment,
             shifts=cfg.demucs_shifts,
         )
-        by_engine: dict[str, Processor] = {"demucs": demucs}
-        # Only load the roformer engine (and its ~700MB checkpoint machinery) when this worker
-        # was given the stems:roformer capability — a demucs-only worker never imports bs_roformer.
-        if "stems:roformer" in cfg.capabilities:
-            from .separation.roformer import RoformerProcessor
-
-            by_engine["roformer"] = RoformerProcessor(device=device, flac_level=cfg.flac_level)
-
-        router = EngineRouter(by_engine)
-        by_type["stems"] = router
-        by_type["stems-upgrade"] = router  # an upgrade is a separation job like any other
+        by_type["stems"] = runner
+        by_type["stems-upgrade"] = runner  # an upgrade is a separation job like any other
     if "align" in cfg.capabilities:
         from .config import whisperx_device_for
         from .lyrics import LrclibClient

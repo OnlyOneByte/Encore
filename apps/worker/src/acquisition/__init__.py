@@ -16,13 +16,14 @@ That mattered: both separation and alignment used to recover the intent by testi
 prefix, so any other scheme was silently classified as a local path and died several stages later inside
 ffmpeg with "No such file" — reporting the symptom and hiding the cause.
 
-STILL BYPASSED, recorded rather than fixed here: `resolve_source_audio` is meant to be the single answer,
-and only `FetchProcessor` calls it. `separation/demucs`, `separation/roformer` and `../whisperx` each
-import `job_fetcher` + `local_source_path` and re-derive the branch — three copies. See
-`docs/specs/SPEC-worker-pipeline.md` §1.2 and E6; S3 consolidates them.
+ONE PATH, enforced. `resolve_source_audio` used to be documented here as "the one place" that answers
+where a job's bytes are — while three of its four callers re-derived the answer, and got it wrong
+(downloading to a literal `.wav` when yt-dlp needs a `%(ext)s` template). That function is gone: the
+`AcquireAudio` step is now the single answer, and this module keeps only the primitives it uses.
+`tests/test_worker_layers.py` E6 fails if anything else starts deciding for itself.
 """
 from __future__ import annotations
 
-from .fetch import job_fetcher, local_source_path, resolve_source_audio
+from .fetch import find_downloaded, job_fetcher, local_source_path
 
-__all__ = ["job_fetcher", "local_source_path", "resolve_source_audio"]
+__all__ = ["find_downloaded", "job_fetcher", "local_source_path"]

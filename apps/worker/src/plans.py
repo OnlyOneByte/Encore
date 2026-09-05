@@ -15,6 +15,9 @@ from typing import Any
 from .runtime.ctx import ResolvedEngines
 from .runtime.plan import PLANS, LinearPlan
 from .steps.acquire import AcquireAudio
+from .steps.analysis import KeyAndRange
+from .steps.metadata import Annotate, PublishOriginal
+from .steps.separate import DecodeToWav, ProbeSilence, PublishStems, Separate
 from .steps.lyrics import (
     AUTHORED,
     MACHINE,
@@ -50,9 +53,63 @@ def align_plan(*, sources: list[Any] | None = None, lyrics_client: Any = None, t
     )
 
 
+def stems_plan(
+    *,
+    engine: Any = None,
+    profiler: Any = None,
+    ffmpeg_bin: str = "ffmpeg",
+    flac_level: int = 8,
+    bitrate: str | None = None,
+) -> LinearPlan:
+    """The stems action: acquire, decode, separate, probe, analyse, publish.
+
+    `ProbeSilence` is a step rather than a line inside publishing, and that is a fix as well as a tidy-up:
+    only demucs used to probe, so a roformer cook could publish a silent guiding track. As a step both
+    engines get it, its cost shows up in `/metrics`, and it is testable with no ffmpeg.
+
+    `KeyAndRange` likewise: it was called inline from both engines through two separate injectable
+    `profiler` parameters, so nothing could see what it cost.
+    """
+    return LinearPlan(
+        "stems",
+        [
+            AcquireAudio(),
+            DecodeToWav(engine=engine, ffmpeg_bin=ffmpeg_bin),
+            Separate(engine=engine),
+            ProbeSilence(ffmpeg_bin=ffmpeg_bin),
+            KeyAndRange(profiler=profiler),
+            PublishStems(ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, **({"bitrate": bitrate} if bitrate else {})),
+        ],
+    )
+
+
+def stems_upgrade_plan(**kwargs: Any) -> LinearPlan:
+    """The stems-upgrade action.
+
+    Its own plan, and TODAY its steps are identical to `stems`. That is not an oversight and the
+    duplication is deliberate: the worker does exactly the same work for an upgrade, and the refusal to
+    publish something that does not outrank what is already there happens CORE-side, in `markMediaReady`.
+    `dial_home` used to hand both actions the same processor, which stated the same thing less visibly.
+
+    Separate anyway because they are separate declarations that happen to coincide, so the day one of them
+    needs to differ, it differs in a plan rather than in a conditional inside a shared step. `validate_plan`
+    checks both and the generated doc shows both, so the copy cannot silently rot.
+    """
+    plan = stems_plan(**kwargs)
+    return LinearPlan("stems-upgrade", plan.steps())
+
+
+def fetch_plan(*, annotator: Any = None) -> LinearPlan:
+    """The fetch action: acquire the bytes, identify the song, report it. No separation."""
+    return LinearPlan("fetch", [AcquireAudio(), Annotate(annotator=annotator), PublishOriginal()])
+
+
 def register_default_plans() -> None:
     """Install the plans the runner looks up. Idempotent, so importing twice is harmless."""
     PLANS[Action.ALIGN] = align_plan()
+    PLANS[Action.STEMS] = stems_plan()
+    PLANS[Action.STEMS_UPGRADE] = stems_upgrade_plan()
+    PLANS[Action.FETCH] = fetch_plan()
 
 
 def resolve_engines(params: dict[str, Any], defaults: ResolvedEngines | None = None) -> ResolvedEngines:
@@ -118,3 +175,58 @@ def align_runner(
         resolve_engines=lambda params: resolve_engines(params, defaults),
         plans=lambda job, engines: plan,
     )
+
+
+def stems_runner(
+    *,
+    runner: Any,
+    engine: Any = None,
+    profiler: Any = None,
+    demucs_model: str | None = None,
+    demucs_bin: str = "demucs",
+    ffmpeg_bin: str = "ffmpeg",
+    bitrate: str | None = None,
+    flac_level: int = 8,
+    device: str | None = None,
+    jobs: int | None = None,
+    overlap: float | None = None,
+    segment: int | None = None,
+    shifts: int | None = None,
+) -> Any:
+    """A PlanRunner for both separation actions, with this worker's separator configuration.
+
+    The engine is chosen per JOB from `params.engine` (plan selection, §5.2c), so one runner serves both
+    demucs and roformer cooks — `EngineRouter`'s dispatch collapsed into `engine_for` inside the Separate
+    step. Passing `engine` overrides that entirely, which is how a test drives a fake separator.
+    """
+    from .runtime.runner import PlanRunner
+    from .separation.engines import engine_for
+
+    def resolve(params: dict[str, Any]) -> ResolvedEngines:
+        return resolve_engines(params, ResolvedEngines(device=device))
+
+    def pick(job: Any, engines: ResolvedEngines) -> LinearPlan:
+        eng = engine or engine_for(
+            engines.separator,
+            default_model=demucs_model or None,
+            demucs_bin=demucs_bin,
+            device=device,
+            jobs=jobs,
+            overlap=overlap,
+            segment=segment,
+            shifts=shifts,
+        )
+        kwargs: dict[str, Any] = dict(engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level)
+        if bitrate:
+            kwargs["bitrate"] = bitrate
+        return stems_upgrade_plan(**kwargs) if job.job_type == Action.STEMS_UPGRADE.value else stems_plan(**kwargs)
+
+    return PlanRunner(runner=runner, resolve_engines=resolve, plans=pick)
+
+
+def fetch_runner(*, runner: Any, annotator: Any = None, ytdlp_bin: str = "yt-dlp") -> Any:
+    """A PlanRunner for the fetch action."""
+    from .runtime.runner import PlanRunner
+
+    plan = fetch_plan(annotator=annotator)
+    return PlanRunner(runner=runner, resolve_engines=resolve_engines, plans=lambda job, engines: plan)
