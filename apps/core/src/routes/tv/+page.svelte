@@ -239,10 +239,6 @@
 				online = e.online;
 				away = e.away;
 			}
-			if (e.type === 'singer:presence') {
-				online = e.online;
-				away = e.away;
-			}
 			// Room settings are live: a change on a phone applies without reloading the TV. One
 			// assignment, so a new setting needs no edit here.
 			if (e.type === 'settings:changed') {
@@ -398,6 +394,33 @@
 	 * the room discover the dead QR one failed scan at a time.
 	 */
 	const joinUnreachable = $derived(isUnreachableJoinOrigin(data.joinOrigin));
+
+	/*
+	 * Which ONE transient treatment is on screen. Previously the skip notice, the "Next up" intro and
+	 * the waiting state were three independent {#if} blocks at the same z-index, all inset:0, with
+	 * non-exclusive conditions — the media:status "stuck" path sets `skipNotice` AND leaves `tvState`
+	 * mid-transition, so two full-screen panels could paint over each other. Deriving a single value and
+	 * gating every block on it makes exactly one mountable, and the precedence states which wins:
+	 *   error   — a skip notice is the most urgent thing to say, so it outranks everything.
+	 *   waiting — the player is actively holding for a cook; a real, named in-progress state.
+	 *   next    — the song-intro card (opener or gapless-swap transition).
+	 *   loading — the FALLBACK for the missed-preload path (P1 black stage). When the gapless swap
+	 *             misses its window, `onEnded` sets `loading` with `current` still set, so `screen`
+	 *             derives `playing` and a not-yet-loaded <video> would render black under only the
+	 *             lower-third — the swap path shows a card, this path showed nothing. Keep a loading
+	 *             treatment up until the visible player reports ready (onVisibleReady flips `loading`
+	 *             to `playing`). Also covers the first-song load before onFirstSongReady, where black
+	 *             was equally wrong.
+	 */
+	const transient = $derived.by(() => {
+		if (skipNotice) return 'error';
+		if (tvState === 'waiting') return 'waiting';
+		if (tvState === 'interstitial' && introEntry) return 'next';
+		if (tvState === 'loading' && current) return 'loading';
+		return null;
+	});
+	/** The entry the loading treatment is announcing — the one the visible player is loading toward. */
+	const loadingDisplay = $derived(songDisplay(mediaOf(current)));
 </script>
 
 <div class="tv">
@@ -528,12 +551,13 @@
 	{/if}
 
 	<!--
-	  Three transient states, three treatments. They used to share one `.interstitial` block and one
-	  pink `.up-song`, so "Next up: Bohemian Rhapsody", "that track would not play" and "still cooking"
-	  were visually identical — a viewer could not tell a failure from a normal song change at a glance.
-	  Each now carries its own mark, its own colour family and its own eyebrow.
+	  Transient states, ONE at a time. They used to be three independent {#if} blocks sharing one
+	  z-index and inset:0 with non-exclusive conditions, so two full-screen panels could stack (e.g. the
+	  media:status stuck path raises `skipNotice` while `tvState` is still transitioning). `transient`
+	  now selects exactly one, and each keeps its own mark, colour family and eyebrow so a viewer can
+	  tell a failure from a normal song change at a glance.
 	-->
-	{#if tvState === 'interstitial' && introEntry}
+	{#if transient === 'next' && introEntry}
 		{@const m = mediaOf(introEntry)}
 		{@const d = songDisplay(m)}
 		<div class="interstitial state-next">
@@ -547,23 +571,33 @@
 			     canonical artist or nothing. -->
 			{#if d.artist}<div class="up-artist">{d.artist}</div>{/if}
 		</div>
-	{/if}
-
-	{#if skipNotice}
+	{:else if transient === 'error'}
 		<!-- An error. --danger exists precisely so this cannot be mistaken for an affirmative event. -->
 		<div class="interstitial state-error" role="alert">
 			<div class="state-mark"><Icon name="warning" /></div>
 			<div class="up-label">Skipped</div>
 			<div class="up-song">{skipNotice}</div>
 		</div>
-	{/if}
-
-	{#if tvState === 'waiting'}
+	{:else if transient === 'waiting'}
 		<!-- Not an error and not a transition: work in progress. Warm, and it names what is happening. -->
 		<div class="interstitial state-waiting">
 			<div class="state-mark"><Icon name="flame" /></div>
 			<div class="up-label">Making the karaoke</div>
 			<div class="up-song">Stripping the vocals — hang tight</div>
+		</div>
+	{:else if transient === 'loading'}
+		<!--
+		  P1: the missed-preload path. `onEnded` could not swap (hidden slot not warmed) and set `loading`
+		  with `current` still set, so `screen` derives `playing` and the not-yet-loaded <video> renders
+		  black under only the lower-third. This keeps a treatment up until the visible player reports
+		  ready (onVisibleReady -> playing dismisses it). Uses the affirmative `state-next` treatment
+		  because a song IS coming — it is the same "a song is about to play" beat the swap card covers.
+		-->
+		<div class="interstitial state-next">
+			<div class="up-label">{openedOnce ? 'Up next' : 'Loading'}</div>
+			<div class="up-name">{singerName(current?.singerId)}</div>
+			<div class="up-song">{loadingDisplay.title}</div>
+			{#if loadingDisplay.artist}<div class="up-artist">{loadingDisplay.artist}</div>{/if}
 		</div>
 	{/if}
 
@@ -572,6 +606,22 @@
 
 <style>
 	/*
+	 * STAGE Z-INDEX SCHEME. Two unrelated layers previously shared a z-index (the lower-third and the
+	 * lyrics reel both at 6; the interstitial, the progress bar and the join corner all at 7), so paint
+	 * order fell to DOM order and a future reorder could silently push a transient behind the chrome.
+	 * One monotonic scale now, higher = closer to the viewer. The lyrics reel (6) is owned by the
+	 * sibling LyricsOverlay and is the fixed anchor this scheme is built around.
+	 *
+	 *   0  stage background + visualizer (this file: .stage-bg)
+	 *   1  hidden player slot / 2  visible player slot (TvPlayer .slot, inline z-index)
+	 *   5  idle full-screen screens: attract, lobby (.attract, TvLobby .lobby)
+	 *   6  lyrics reel (LyricsOverlay .lyrics — SIBLING-owned, not editable here)
+	 *   7  persistent chrome that must sit ABOVE the reel and the video: lower-third, brand-float,
+	 *      progress bar (TvProgress), join corner/badqr (JoinBadge)
+	 *   8  transient full-screen overlays: interstitial / error / waiting / loading (.interstitial) —
+	 *      must cover ALL chrome, which the old shared 7 did only by DOM luck
+	 *   9  connection status dot (.status) — tiny, always visible, never occluded
+	 *
 	 * TV TYPE SCALE AND SAFE AREA — tokens live in app.css so the same components size correctly in the
 	 * /components gallery, which renders them outside this route.
 	 *
@@ -587,6 +637,8 @@
 	.tv {
 		position: fixed;
 		inset: 0;
+		/* Pure black floor UNDER the video/stage — contrast-critical letterbox bars behind object-fit:
+		   contain, not a themeable surface. Legitimate literal (kept per the token sweep). */
 		background: #000;
 		overflow: hidden;
 	}
@@ -611,8 +663,8 @@
 		position: absolute; top: var(--tv-safe-y); left: var(--tv-safe-x);
 		font-weight: 800; font-size: var(--tv-name); display: inline-flex; align-items: center; gap: 12px;
 	}
-	/* the lobby paints its own full-bleed backdrop, so the brand needs to float above it */
-	.brand-float { z-index: 6; }
+	/* the lobby paints its own full-bleed backdrop; the brand floats on the chrome layer above it */
+	.brand-float { z-index: 7; }
 	.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
 	.join { display: flex; align-items: center; gap: 56px; }
 	.join-copy h1 { font-size: var(--tv-hero); margin: 0 0 12px; max-width: 9ch; line-height: 1.05; }
@@ -625,7 +677,7 @@
 	.lower-third {
 		/* Capped: unbounded, a long title or singer name grew this card rightward into the join QR at
 		   bottom-right. 46vw leaves the QR its corner on every aspect ratio. */
-		position: absolute; left: var(--tv-safe-x); bottom: var(--tv-safe-y); z-index: 6;
+		position: absolute; left: var(--tv-safe-x); bottom: var(--tv-safe-y); z-index: 7;
 		display: flex; flex-direction: column;
 		max-width: 46vw;
 		gap: 4px; padding: 16px 28px; border-radius: 16px;
@@ -633,6 +685,12 @@
 		 * Near-opaque, not a 0.7 tint. This card sits over arbitrary video, so translucency put its
 		 * white text at a contrast ratio nothing could predict — and backdrop-filter is unreliable on TV
 		 * browsers, so the blur that was supposed to rescue it may never run at all.
+		 *
+		 * LEGITIMATE LITERAL EXCEPTION (kept, per the token sweep): these are NOT --grad. --grad is
+		 * decoration-only and white text on it measures 2.84:1 (app.css) — below the 3:1 floor. These
+		 * two stops are --accent/--accent2 deliberately DARKENED (88,62,200 vs accent 124,92,255) so
+		 * white reads over them AND over the video behind them. This is the contrast-critical text-over-
+		 * video case the sweep exempts; converting it to var(--grad) would reintroduce the contrast bug.
 		 */
 		background: linear-gradient(120deg, rgba(88, 62, 200, 0.96), rgba(190, 55, 130, 0.94));
 		backdrop-filter: blur(6px);
@@ -658,8 +716,10 @@
 	/* Metadata, not a heading: sized and dimmed like the eyebrow so it sits under the title quietly. */
 	.ls-key { font-size: var(--tv-label); letter-spacing: 0.04em; opacity: 0.82; margin-top: 2px; }
 	.interstitial {
-		position: absolute; inset: 0; z-index: 7; display: flex; flex-direction: column; align-items: center;
-		justify-content: center; gap: 12px; background: rgba(11, 11, 18, 0.94);
+		position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center;
+		justify-content: center; gap: 12px;
+		/* rgba(11,11,18,0.94) was --bg at 94%. color-mix keeps the theme swap intact. */
+		background: color-mix(in srgb, var(--bg) 94%, transparent);
 		padding: var(--tv-safe-y) var(--tv-safe-x);
 		text-align: center;
 	}
@@ -674,8 +734,9 @@
 	/* Affirmative: something good is about to happen. */
 	.state-next .up-song { color: var(--accent2); }
 
-	/* Failure. Distinct family AND a distinct eyebrow, so colour is not the only carrier. */
-	.state-error { background: rgba(42, 27, 34, 0.95); }
+	/* Failure. Distinct family AND a distinct eyebrow, so colour is not the only carrier.
+	   rgba(42,27,34,0.95) was --danger-bg at 95%; color-mix keeps it themeable. */
+	.state-error { background: color-mix(in srgb, var(--danger-bg) 95%, transparent); }
 	.state-error .state-mark { color: var(--danger); }
 	.state-error .up-label { color: var(--danger-ink); }
 	.state-error .up-song { color: var(--danger-ink); }
@@ -691,7 +752,8 @@
 	 */
 	.status {
 		position: absolute; top: var(--tv-safe-y); right: var(--tv-safe-x);
-		width: 16px; height: 16px; border-radius: 50%; background: var(--ink-dim); z-index: 8;
+		width: 16px; height: 16px; border-radius: 50%; background: var(--ink-dim); z-index: 9;
 	}
-	.status.on { background: var(--ok); box-shadow: 0 0 0 5px rgba(51, 214, 166, 0.18); }
+	/* rgba(51,214,166,0.18) was --ok at 18%; color-mix keeps the ring on the theme's ok colour. */
+	.status.on { background: var(--ok); box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 18%, transparent); }
 </style>

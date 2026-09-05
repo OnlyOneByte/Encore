@@ -79,6 +79,32 @@ test('the colour names in the contract match the ones the picker announces', () 
 	expect(names).toEqual([...PRESET_COLOUR_NAMES]);
 });
 
+test('the swatch selector asks for the accessible name the picker actually renders', () => {
+	// THE BUG THIS EXISTS FOR. The test above compares the two NAME LISTS, which is not the same as
+	// checking the SELECTOR is right: SEL.swatch wraps each name in a format, and that wrapper drifted
+	// twice without either list changing. First the driver kept asking for `color #ff5cae` after the
+	// label became "violet swatch"; then it kept asking for "violet swatch" after the label was
+	// shortened to "violet" (role=radio already says "radio", so the word was screen-reader noise).
+	// Both times every unit test stayed green and only a real browser run failed -- and the e2e drivers
+	// are not part of `bun test`, so nothing failed until someone drove the app by hand.
+	//
+	// So assert the format against the component's own expression: the radio's aria-label is
+	// `colorName(c)`, and `colorName` must return the bare name with nothing appended.
+	const picker = readFileSync(join(CORE, 'src/lib/components/ColourPicker.svelte'), 'utf8');
+
+	// The swatch radio names itself from colorName(), not from a literal or a template.
+	expect(picker).toMatch(/aria-label=\{colorName\(c\)\}/);
+
+	// colorName returns an entry of PRESET_NAMES unmodified -- no ` swatch`, no other suffix. A
+	// template literal in its return is exactly how the stale wrapper got there, so reject one.
+	const body = /export function colorName\([^)]*\)[^{]*\{([\s\S]*?)\n\t\}/.exec(picker)?.[1] ?? '';
+	expect(body).not.toBe('');
+	expect(body).not.toMatch(/`/);
+
+	// And the selector helper must not re-add one on its side either.
+	expect(SEL.swatch('pink').name).toBe('pink');
+});
+
 test('the contract exposes a hook for each surface the flow has to reach', () => {
 	// A cheap completeness check: the flow spans join, remote and TV, so all three must be represented.
 	const files = new Set(HOOKS.map((h) => h.file));

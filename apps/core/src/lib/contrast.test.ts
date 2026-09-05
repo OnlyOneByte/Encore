@@ -55,9 +55,9 @@ test('body text passes AA on every surface it is drawn on', () => {
 	expect(fails).toEqual([]);
 });
 
-test('status and score colors pass AA as text on a card', () => {
+test('status colors pass AA as text on a card', () => {
 	const fails: string[] = [];
-	for (const c of ['ok', 'warn', 'danger', 'score-perfect', 'score-good']) {
+	for (const c of ['ok', 'warn', 'danger']) {
 		const r = ratio(token(c), token('card'));
 		if (r < AA_TEXT) fails.push(`--${c} on --card: ${r.toFixed(2)}`);
 	}

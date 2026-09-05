@@ -13,6 +13,7 @@
 	import { untrack } from 'svelte';
 	import ColourPicker from './ColourPicker.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
+	import { modal } from '$lib/ui/modal';
 	import type { PublicSinger } from '@encore/shared';
 
 	interface Props {
@@ -39,6 +40,12 @@
 	let confirmingLeave = $state(false);
 	let leaving = $state(false);
 
+	// The dialog element, so focus management can query the focusables inside it and trap Tab there.
+	let sheetEl = $state<HTMLDivElement | null>(null);
+	// The name input, so open can move focus INTO the sheet rather than leaving it on the trigger
+	// behind the scrim — a modal whose focus is still on the page behind it is not modal to a keyboard.
+	let nameEl = $state<HTMLInputElement | null>(null);
+
 	// Re-seed whenever the sheet opens, so a cancelled edit does not persist as a stale draft into the
 	// next open — and so a rename that landed on another device shows up rather than being overwritten.
 	$effect(() => {
@@ -48,6 +55,21 @@
 			error = '';
 			confirmingLeave = false;
 		}
+	});
+
+	/*
+	 * Modal behaviour lives in lib/ui/modal.ts, not here: focus capture and restore, the Tab trap, the
+	 * Escape handler and the iOS-safe body scroll lock are four separate things that were each missing,
+	 * and any future dialog would have had to remember all four again. One call, one teardown.
+	 *
+	 * `initial` names the name field ON PURPOSE rather than taking the default first-focusable: editing
+	 * your name is why this sheet exists. The cost is that focusing a text input raises the phone
+	 * keyboard immediately, which covers the colour picker below it -- accepted here, and the reason the
+	 * option exists at all instead of being hard-coded in the module.
+	 */
+	$effect(() => {
+		if (!open || !sheetEl) return;
+		return modal(sheetEl, { onclose, initial: () => nameEl });
 	});
 
 	const dirty = $derived(name.trim() !== me.displayName || color !== me.color);
@@ -78,11 +100,12 @@
 </script>
 
 {#if open}
-	<!-- The scrim is a button so a tap outside closes, and Escape works, without a keydown handler on a div. -->
-	<button class="scrim" aria-label="Close profile" onclick={onclose}></button>
-	<div class="sheet" role="dialog" aria-modal="true" aria-label="Your profile">
+	<!-- The scrim is a button so a tap outside closes it. Escape is handled by the keydown listener in
+	     the focus-management effect, not here — Escape on a <button> does not fire a click. -->
+	<button class="sheet-scrim scrim" aria-label="Close profile" onclick={onclose}></button>
+	<div class="sheet-surface sheet" role="dialog" aria-modal="true" aria-labelledby="profile-title" bind:this={sheetEl}>
 		<div class="head">
-			<h2>You</h2>
+			<h2 id="profile-title">You</h2>
 			<button class="x" aria-label="Close" onclick={onclose}><Icon name="close" /></button>
 		</div>
 
@@ -92,8 +115,10 @@
 			type="text"
 			maxlength="32"
 			bind:value={name}
+			bind:this={nameEl}
 			placeholder="e.g. Dana"
 			autocomplete="off"
+			onfocus={(e) => e.currentTarget.scrollIntoView({ block: 'center' })}
 		/>
 
 		<ColourPicker bind:value={color} label="Your color" hint="How you'll spot yourself in the queue and on the TV." />
@@ -121,18 +146,17 @@
 {/if}
 
 <style>
-	.scrim {
-		position: fixed; inset: 0; z-index: 40; border: 0; padding: 0;
-		background: rgba(6, 6, 12, 0.62); backdrop-filter: blur(2px);
-	}
+	/* Geometry, border, top radii and shadow come from .sheet-scrim / .sheet-surface in app.css --
+	   shared with the queue sheet. What stays here is what genuinely differs for a MODAL sheet. */
+	.scrim { z-index: 40; border: 0; padding: 0; backdrop-filter: blur(2px); }
 	.sheet {
-		position: fixed; left: 0; right: 0; bottom: 0; z-index: 41;
-		max-width: var(--max-w); margin: 0 auto;
-		display: flex; flex-direction: column; gap: 12px;
+		z-index: 41;
+		gap: 12px;
 		padding: 18px 18px calc(18px + env(safe-area-inset-bottom));
-		background: var(--card); border: 1px solid var(--line);
-		border-radius: 20px 20px 0 0; box-shadow: var(--shadow);
-		max-height: 88vh; overflow-y: auto;
+		background: var(--card);
+		/* dvh, not vh: on iOS vh is the LARGE viewport, so a bottom-pinned sheet's Save/Leave hid under
+		   the browser chrome. dvh tracks the visible viewport and keeps them reachable. */
+		max-height: 88dvh; overflow-y: auto;
 		animation: rise 0.2s cubic-bezier(0.2, 0.9, 0.3, 1.1);
 	}
 	@keyframes rise { from { transform: translateY(14px); opacity: 0.6; } to { transform: none; opacity: 1; } }
@@ -140,9 +164,9 @@
 
 	.head { display: flex; align-items: center; justify-content: space-between; }
 	h2 { margin: 0; font-size: 1.15rem; }
-	/* 44px: the same tap standard the rest of the phone holds itself to. */
+	/* 44px: the same tap standard the rest of the phone holds itself to, named via the token. */
 	.x {
-		width: 44px; height: 44px; border-radius: 12px; border: 1px solid var(--line);
+		width: var(--tap); height: var(--tap); border-radius: var(--radius-sm); border: 1px solid var(--line);
 		background: var(--card2); color: var(--ink-dim); cursor: pointer;
 		display: grid; place-items: center;
 	}

@@ -10,6 +10,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
+	import { dur, stepLabel, stageLabel } from '$lib/metrics-format';
 
 	interface StepRow {
 		jobType: string;
@@ -74,38 +75,31 @@
 		}
 	});
 
-	/** ms → a human duration. Null renders as an em dash, never as 0. */
-	function dur(ms: number | null): string {
-		if (ms === null) return '—';
-		if (ms < 1000) return `${Math.round(ms)}ms`;
-		if (ms < 60_000) return `${(ms / 1000).toFixed(1)}s`;
-		const min = Math.floor(ms / 60_000);
-		return `${min}m ${Math.round((ms % 60_000) / 1000)}s`;
-	}
+	/** ms to a human duration. Extracted to $lib/metrics-format so this page and the per-song audit
+	    cannot drift apart on how a duration reads. */
 	function rt(v: number | null): string {
 		return v === null ? '—' : `${v.toFixed(2)}×`;
 	}
 
 	/**
-	 * Plain names for the internal job types. `fetch`/`stems`/`align` are what the code calls them and
-	 * what the database stores; they are not what the steps DO, and this page is read by a person.
+	 * The useful worker `host` keys as labelled pairs, replacing a raw JSON.stringify dump on the
+	 * operator dashboard. Resilient by design: `host` is typed as an open bag here, so an unexpected
+	 * or missing key is skipped rather than throwing, and only keys that carry a value are shown.
 	 */
-	const STEP_LABELS: Record<string, string> = {
-		fetch: 'download',
-		stems: 'remove vocals',
-		align: 'time lyrics',
-		score: 'pitch track',
-		'stems-upgrade': 'redo vocals'
+	const HOST_LABELS: Record<string, string> = {
+		accelerator: 'accelerator',
+		deviceName: 'device',
+		cpuCount: 'cpus',
+		platform: 'platform',
+		python: 'python',
+		torch: 'torch',
+		contained: 'contained'
 	};
-	const stepLabel = (jobType: string) => STEP_LABELS[jobType] ?? jobType;
-
-	/** The worker's own sub-step names. `separating`/`aligning` describe the code, not the work. */
-	const STAGE_LABELS: Record<string, string> = {
-		downloading: 'downloading',
-		separating: 'removing vocals',
-		aligning: 'timing lyrics'
-	};
-	const stageLabel = (stage: string) => STAGE_LABELS[stage] ?? stage;
+	function hostFacts(host: Record<string, unknown>): [string, string][] {
+		return Object.entries(HOST_LABELS)
+			.map(([k, label]): [string, string] => [label, host[k] === undefined || host[k] === null ? '' : String(host[k])])
+			.filter(([, v]) => v !== '');
+	}
 </script>
 
 <svelte:head><title>Encore — metrics</title></svelte:head>
@@ -294,7 +288,16 @@
 					<div class="worker">
 						<strong>{w.workerId}</strong>
 						<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} free</span>
-						{#if w.host}<span class="note">{JSON.stringify(w.host)}</span>{/if}
+						{#if w.host}
+							{@const facts = hostFacts(w.host)}
+							{#if facts.length}
+								<dl class="facts">
+									{#each facts as [k, v] (k)}
+										<div><dt>{k}</dt><dd>{v}</dd></div>
+									{/each}
+								</dl>
+							{/if}
+						{/if}
 					</div>
 				{/each}
 			{/if}
@@ -362,13 +365,15 @@
 		text-transform: uppercase;
 		letter-spacing: 0.02em;
 	}
-	/* Stopped, not merely slow — the one state that invalidates every number below it. */
+	/* Stopped, not merely slow — the one state that invalidates every number below it. --warn-bg gives
+	   it a fill (it painted transparent while the token was undefined, hiding the page's most important
+	   state); --warn-line is the matching border. */
 	.banner {
 		margin: 0;
 		padding: 0.6rem 0.8rem;
 		border-radius: var(--radius-sm);
-		background: var(--warn-bg, transparent);
-		border: 1px solid var(--warn);
+		background: var(--warn-bg);
+		border: 1px solid var(--warn-line);
 		color: var(--warn);
 		font-size: 0.85rem;
 		font-weight: 600;
@@ -479,9 +484,32 @@
 		display: inline-flex;
 		align-items: center;
 		min-height: 32px;
+		/* A title-less song shows its raw media id; an unbroken id would push the 320px layout wide. */
+		overflow-wrap: anywhere;
 	}
 	.cooks .note {
 		margin: 0;
+	}
+	/* Aligned key/value pairs for the worker's host — the same pattern the per-song audit uses for its
+	   model facts. Replaces a raw JSON dump: keys stay dim, values take ink. */
+	.facts {
+		display: grid;
+		grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
+		gap: 0.2rem 1.2rem;
+		margin: 0.45rem 0 0;
+		font-size: 0.75rem;
+	}
+	.facts div {
+		display: flex;
+		gap: 0.35rem;
+	}
+	.facts dt {
+		color: var(--ink-dim);
+	}
+	.facts dd {
+		margin: 0;
+		color: var(--ink);
+		overflow-wrap: anywhere;
 	}
 	.worker {
 		display: grid;
