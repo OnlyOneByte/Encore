@@ -12,23 +12,22 @@
 		pct: number;
 		/** Does this song have an isolated vocals stem to mix? */
 		available: boolean;
-		/** The room's standing default, 0..100 — named in the hint when an override differs from it. */
-		roomDefaultPct?: number;
-		/** Is the shown level a deliberate per-song override (vs inherited from the room)? */
-		pinned?: boolean;
 		oninput?: (pct: number) => void;
 		oncommit?: (pct: number) => void;
 	}
-	let { pct, available, roomDefaultPct = 0, pinned = false, oninput, oncommit }: Props = $props();
+	let { pct, available, oninput, oncommit }: Props = $props();
 
 	const shown = $derived(Math.max(0, Math.min(100, Math.round(pct))));
 	const valueLabel = $derived(!available || shown === 0 ? 'Off' : `${shown}%`);
+	// Two states, not three. The override-vs-room-default narration ("Set for this song. The room
+	// default is N%.") was removed as redundant: the value readout above already says what the level
+	// IS, and where it came from is a Settings concern, not something to narrate on the performance
+	// surface every time a singer nudges the slider. What survives is the only line that tells the
+	// guest something the control cannot: why it is dead, and what it does.
 	const hint = $derived(
 		!available
 			? 'No isolated vocals for this song yet. Re-cook it to get a guiding track.'
-			: pinned && roomDefaultPct !== shown
-				? `Set for this song. The room default is ${roomDefaultPct}%.`
-				: "Fades the original singer back in, quietly, for a song you don't quite know."
+			: "Fades the original singer back in, quietly, for a song you don't quite know."
 	);
 </script>
 
@@ -50,7 +49,6 @@
 		oninput={(e) => oninput?.(Number(e.currentTarget.value))}
 		onchange={(e) => oncommit?.(Number(e.currentTarget.value))}
 	/>
-	<div class="gt-scale"><span>Off</span><span>Sing-along</span></div>
 	<p class="gt-hint">{hint}</p>
 </div>
 
@@ -89,14 +87,6 @@
 		margin: 6px 0 0;
 		line-height: 1.45;
 	}
-	.gt-scale {
-		display: flex;
-		justify-content: space-between;
-		font-size: 0.62rem;
-		color: var(--ink-dim);
-		margin-top: 5px;
-	}
-
 	.gt-slider {
 		-webkit-appearance: none;
 		appearance: none;
