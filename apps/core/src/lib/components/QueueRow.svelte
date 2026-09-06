@@ -88,7 +88,10 @@
 	/* Same truncation as .t: a long name plus an appended away/adding badge could wrap and change the
 	   row's height between states. min-width:0 lets the flex item shrink below its content width. */
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.who i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--singer); }
+	/* flex: 0 0 auto so the identity dot never shrinks: .who is a nowrap/overflow flex container,
+	   and an empty element's automatic minimum size is 0, so under a long name the dot collapsed to 0px
+	   and the singer's colour vanished from their own row (issue #89). Same protection .seq/.actions carry. */
+	.who i { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--singer); }
 	/* Hue kept (it is the singer's identity), presence dimmed. */
 	.who i.dim { opacity: 0.5; }
 	.away { color: var(--warn); margin-left: 0.35em; }
