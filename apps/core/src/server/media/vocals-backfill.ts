@@ -15,7 +15,7 @@
 // a disk or a probe.
 
 import type { Media } from '@encore/shared';
-import { vocalsKey } from './paths';
+import { vocalsKey, legacyVocalsRefs } from './paths';
 
 /**
  * Cooked songs that could have a guiding track but have no ref for it yet.
@@ -43,9 +43,10 @@ export function needsVocalsBackfill(catalog: Iterable<Media>): string[] {
  * silently miss those songs.
  */
 export function candidateVocalsRefs(m: Media): string[] {
-	const refs = [vocalsKey(m.id), m.instrumentalRef?.replace('-instrumental.', '-vocals.')].filter(
-		(r): r is string => !!r
-	);
+	const refs = [
+		vocalsKey(m.id),
+		...(m.instrumentalRef ? legacyVocalsRefs(m.instrumentalRef) : [])
+	].filter((r): r is string => !!r);
 	return [...new Set(refs)];
 }
 

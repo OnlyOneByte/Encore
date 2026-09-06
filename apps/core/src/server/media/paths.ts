@@ -123,6 +123,41 @@ export function instrumentalKey(mediaId: string, ext: string = INSTRUMENTAL_EXT)
 export function vocalsKey(mediaId: string, ext: string = VOCALS_EXT): string {
 	return `derived/stems/${mediaId}-vocals.${ext}`;
 }
+
+/**
+ * Every historical vocals-stem extension, newest first. A cook records its vocals stem under one of
+ * these; the extension a given row used depends on the VOCALS_EXT in force when it was cooked (legacy
+ * `.wav`, interim `.m4a` before #480, current `.flac`). Retention and the guiding-track backfill both
+ * need to enumerate all of them to find an existing stem whose extension differs from today's constant.
+ */
+export const KNOWN_VOCALS_EXTS = ['flac', 'm4a', 'wav'] as const;
+
+/**
+ * The SINGLE authority for the legacy `-instrumental.` -> `-vocals.` fallback derivation. A song cooked
+ * under the older layout has an instrumental ref whose sibling vocals file shares the same name; the
+ * only honest fallback (when no vocals ref was stored) is the vocals sibling at EVERY known extension,
+ * because the on-disk extension can differ from the instrumental's after VOCALS_EXT changes (#480).
+ *
+ * This replaces the ext-blind single `.replace('-instrumental.', '-vocals.')` that had been copied to
+ * three sites and drifted (#496 / f6f8fa7): a `.flac` instrumental swapped ext-blind names only a
+ * `.flac` vocals stem, so an interim `.m4a` cook became unfindable.
+ */
+export function siblingVocalsRef(instrumentalRef: string): string {
+	return instrumentalRef.replace('-instrumental.', '-vocals.');
+}
+
+/**
+ * Every ref a legacy cook's vocals stem might live at — the same-extension sibling of the
+ * instrumental ref (a legacy cook shares one extension across both stems) re-based to every known
+ * vocals extension, so a row whose on-disk vocals extension differs from today's VOCALS_EXT is still
+ * named. Empty when the ref carries no `-instrumental.` marker (nothing to derive from).
+ */
+export function legacyVocalsRefs(instrumentalRef: string): string[] {
+	const sibling = siblingVocalsRef(instrumentalRef);
+	if (sibling === instrumentalRef) return [];
+	const stem = sibling.replace(/\.[^.]+$/, '.');
+	return KNOWN_VOCALS_EXTS.map((ext) => stem + ext);
+}
 export function lyricsKey(mediaId: string): string {
 	return `derived/lyrics/${mediaId}.json`;
 }
