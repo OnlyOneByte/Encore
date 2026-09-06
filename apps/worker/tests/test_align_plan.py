@@ -1502,3 +1502,90 @@ async def test_336_wrong_version_is_still_detected_after_openings_only_pairing(t
 
     assert any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
     assert any("may belong to another version" in n for n in ctx.out.notes)
+
+
+# ── #410: the fit paired by align-window INDEX into normalize_lyrics(doc), an index that function does
+# NOT preserve — it DROPS a segment with neither timed words nor bounds (artifact.py), shifting every
+# later positional pairing. One dropped aligned line makes a correctly aligned song read as slipped
+# (#336) and two make a genuinely wrong master go silently inert (#217). The fix pairs by the line's
+# own TEXT — the stable key both _subdivide and normalize_lyrics keep verbatim — so a dropped line is
+# left out of BOTH series together instead of shifting the survivors.
+#
+# The drop shape is the one artifact.py:80 exists for and test_normalize_rejects_nan_inf_timestamps
+# pins: a segment with no start/end whose words carry NaN — normalize_lyrics drops it. The aligner
+# below re-times faithfully (via _SungWordsAligner) and THEN rewrites chosen OPENING windows into that
+# drop shape, so the surviving lines are correctly aligned and only the pairing is under test.
+
+
+class _DroppingAligner:
+    """Faithful re-timing (delegates to _SungWordsAligner) that then blanks chosen OPENING windows into
+    the normalize_lyrics-drop shape (no start/end, a NaN-timed word). `drop_openings` is a set of
+    0-based OPENING-line ordinals (0 = first human line's opening window, etc.)."""
+
+    def __init__(self, human_starts, drop_openings, bridge=0.0, bridge_after=10**9):
+        self._inner = _SungWordsAligner(human_starts, bridge=bridge, bridge_after=bridge_after)
+        self.human_starts = list(human_starts)
+        self.drop_openings = set(drop_openings)
+        self.calls = self._inner.calls
+
+    def align(self, segments, audio_path, language):
+        res = self._inner.align(segments, audio_path, language)
+        # Walk the INPUT windows to identify which output entries are openings (start == a human start),
+        # in order; blank the requested opening ordinals into the drop shape.
+        opening_ordinal = -1
+        for i, w in enumerate(segments):
+            ws = w.get("start")
+            is_opening = any(abs(float(ws) - hs) < 1e-6 for hs in self.human_starts) if isinstance(ws, (int, float)) else False
+            if not is_opening:
+                continue
+            opening_ordinal += 1
+            if opening_ordinal in self.drop_openings:
+                res["segments"][i] = {
+                    "start": None,
+                    "end": None,
+                    "text": w["text"],
+                    "words": [{"word": "w", "start": float("nan"), "end": 1.0}],
+                }
+        return res
+
+
+@pytest.mark.asyncio
+async def test_410_one_dropped_aligned_line_does_NOT_make_a_correct_song_read_as_slipped(tmp_path):
+    """RED ON BASE. Same fixture as the #336 test, correctly aligned, but the aligner's output for ONE
+    opening window is the normalize_lyrics-drop shape — so `doc` has one fewer line than `align_windows`
+    and every positional pairing after that index is off by one. On base the openings-only pairing still
+    indexes `line_starts(doc)[k]` positionally, so a correctly aligned song is told alignment slipped.
+    The fix keys the pairing on text, so the dropped line is left out of both series and the survivors
+    still pair correctly → no slippage note. The expectation (a correct alignment yields NO note) comes
+    from the fixture's construction, never from the fit's own arithmetic.
+    """
+    text = _instrumental_break_text_336()
+    human_starts = [s["start"] for s in text.segments]
+
+    # Drop the SECOND opening line (ordinal 1) — a mid-song drop, so it shifts the tail of the pairing.
+    aligner = _DroppingAligner(human_starts, drop_openings={1}, bridge=0.0)
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    assert aligner.calls and aligner.calls[0][0] == len(text.align_windows)
+    assert len(text.align_windows) > len(text.segments)
+    # FAILING ON BASE: one dropped line must not make a correctly aligned song report slippage.
+    assert not any("alignment slipped" in n for n in ctx.out.notes), ctx.out.notes
+    # And it must not be mislabelled a different version either.
+    assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+
+
+@pytest.mark.asyncio
+async def test_410_wrong_master_is_still_detected_when_two_lines_drop(tmp_path):
+    """The #217 half: with TWO opening lines dropped, base goes count-unequal → `inconclusive` → the
+    wrong-version note never fires on a genuinely different master (silently inert). Text-keyed pairing
+    keeps the surviving openings paired correctly, so the +15s back-half master is still reported."""
+    text = _instrumental_break_text_336()
+    human_starts = [s["start"] for s in text.segments]
+
+    aligner = _DroppingAligner(
+        human_starts, drop_openings={0, 2}, bridge=15.0, bridge_after=len(human_starts) // 2
+    )
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    assert any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+    assert any("may belong to another version" in n for n in ctx.out.notes)
