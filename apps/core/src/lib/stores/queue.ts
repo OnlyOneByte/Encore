@@ -35,7 +35,6 @@ interface PendingOp {
 	snapshot: QueueEntry[];
 	/** Monotonic issue order — reject rebuilds from this op's snapshot by re-applying only LATER ops. */
 	seq: number;
-	baseRev: number; // rev when issued — for resend
 }
 
 export interface QueueStoreDeps {
@@ -136,12 +135,12 @@ export class QueueStore {
 		// restore them verbatim (issue #101).
 		const snapshot = this.#entries.map((e) => ({ ...e }));
 		const clientOpId = (this.#deps.mintId ?? ulid)();
-		this.#pending.set(clientOpId, { op, snapshot, seq: this.#pendingSeq++, baseRev: this.#rev });
+		this.#pending.set(clientOpId, { op, snapshot, seq: this.#pendingSeq++ });
 		// Run the SAME reducer the server runs (applyAndReseq) so the optimistic row lands at its
 		// real round-robin position THIS FRAME — no jump-to-bottom-then-resort flicker (Finding #2).
 		this.#entries = applyAndReseq(this.#entries, op, this.#ordering());
 		this.#emit();
-		this.#deps.sendCommand({ clientOpId, baseRev: this.#rev, op });
+		this.#deps.sendCommand({ clientOpId, op });
 	}
 
 	/**
@@ -150,7 +149,7 @@ export class QueueStore {
 	 */
 	resendPending(): void {
 		for (const [clientOpId, p] of this.#pending) {
-			this.#deps.sendCommand({ clientOpId, baseRev: p.baseRev, op: p.op });
+			this.#deps.sendCommand({ clientOpId, op: p.op });
 		}
 	}
 

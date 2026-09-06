@@ -83,7 +83,6 @@ function harness() {
 
 const add = (entryId: string, mediaId: string, clientOpId: string): ClientCommand => ({
 	clientOpId,
-	baseRev: 0,
 	op: { op: 'add', entry: entry(entryId, 'ana', Number(clientOpId) || 1, mediaId) }
 });
 

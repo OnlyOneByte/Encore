@@ -27,7 +27,6 @@ function harness(actorSingerId?: string) {
 
 const addAs = (singerId: string): ClientCommand => ({
 	clientOpId: ulid(),
-	baseRev: 0,
 	op: { op: 'add', entry: { id: 'q1', mediaId: 'm1', singerId, status: 'queued', rotationSeq: -1, addedAt: 1 } }
 });
 
@@ -41,7 +40,7 @@ test('a socket that never joined cannot mutate the queue', () => {
 
 test('the identity gate covers every op, not just add', () => {
 	const { deps } = harness(undefined);
-	const anon = (op: ClientCommand['op']): ClientCommand => ({ clientOpId: ulid(), baseRev: 0, op });
+	const anon = (op: ClientCommand['op']): ClientCommand => ({ clientOpId: ulid(), op });
 	expect(validateCommand(anon({ op: 'remove', id: 'x' }), deps)).toBe('join the room first');
 	expect(validateCommand(anon({ op: 'move', id: 'x', toSeq: 0 }), deps)).toBe('join the room first');
 	expect(validateCommand(anon({ op: 'status', id: 'x', status: 'done' }), deps)).toBe('join the room first');

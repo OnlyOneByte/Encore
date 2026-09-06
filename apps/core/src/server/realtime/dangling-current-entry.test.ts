@@ -20,10 +20,9 @@ const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', t
 let _s = 0;
 const addCmd = (id: string, mediaId: string): ClientCommand => ({
 	clientOpId: 'add-' + id + '-' + ++_s,
-	baseRev: 0,
 	op: { op: 'add', entry: { id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_s } as QueueEntry }
 });
-const removeCmd = (id: string): ClientCommand => ({ clientOpId: 'rm-' + id + '-' + ++_s, baseRev: 0, op: { op: 'remove', id } });
+const removeCmd = (id: string): ClientCommand => ({ clientOpId: 'rm-' + id + '-' + ++_s, op: { op: 'remove', id } });
 
 function harness() {
 	const published: ServerEvent[] = [];

@@ -47,7 +47,6 @@ function harness(opts: { onEntryRemoved?: HubDeps['onEntryRemoved'] } = {}) {
 
 const statusCmd = (id: string, status: string): ClientCommand => ({
 	clientOpId: ulid(),
-	baseRev: 0,
 	op: { op: 'status', id, status: status as QueueEntry['status'] }
 });
 
@@ -114,7 +113,7 @@ test('the fix is behaviour-preserving: remove/move/add on the same entry still w
 	// DOES fire onEntryRemoved — proving the rejection is scoped to `status`, not the whole handler.
 	const removed: string[] = [];
 	const { state, deps } = harness({ onEntryRemoved: (mediaId) => removed.push(mediaId) });
-	const patch = handleQueueCommand({ clientOpId: ulid(), baseRev: 0, op: { op: 'remove', id: 'q2' } }, deps);
+	const patch = handleQueueCommand({ clientOpId: ulid(), op: { op: 'remove', id: 'q2' } }, deps);
 	expect(patch).not.toBeNull();
 	expect(state.entries.map((e) => e.id)).toEqual(['q1']);
 	expect(removed).toEqual(['m2']);
