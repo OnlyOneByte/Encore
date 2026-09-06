@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { transportFor, type TransportInputs } from './transport';
+import { transportFor, slotHoldsSrc, type TransportInputs } from './transport';
 
 const base: TransportInputs = { hasSrc: true, playable: true, active: true, visible: true, playing: true };
 const at = (over: Partial<TransportInputs>) => transportFor({ ...base, ...over });
@@ -64,10 +64,18 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(src).toContain('transportFor(');
 	});
 
-	test('the transport reads currentSrc, so it re-runs when the src lands', () => {
+	test('the transport hasSrc means "holding THIS song\'s src", so a song change re-runs it (#374)', () => {
 		const calls = src.split('transportFor({').slice(1);
 		expect(calls.length).toBe(1); // ONE decision, derived once
-		expect(calls[0]!.slice(0, 200)).toContain('hasSrc: !!currentSrc');
+		const call = calls[0]!.slice(0, 900);
+		// The input must compare the element's src against the CURRENT media's resolved src, not merely
+		// ask "has this slot ever held a src" (`!!currentSrc`). The latter stays true across a song
+		// change, so the derived kept the same `'play'` value and never re-ran its effect after the new
+		// src landed — #374. `slotHoldsSrc(currentSrc, ...fileSrc(media)...)` gives the `idle -> play`
+		// value edge exactly when the new src lands.
+		expect(call).toContain('hasSrc: slotHoldsSrc(currentSrc,');
+		expect(call).toContain('fileSrc(media)');
+		expect(call).not.toContain('hasSrc: !!currentSrc');
 		// and it must be a $derived, so both the master and the guide effect track it
 		expect(src).toContain('$derived(\n\t\ttransportFor({');
 	});
@@ -139,5 +147,89 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		// `playable` rather than assigned unconditionally to a possibly-empty `resolved`.
 		expect(code).toContain('if (playable) currentSrc = resolved');
 		expect(code).not.toMatch(/^\s*currentSrc = resolved;\s*$/m);
+	});
+});
+
+/*
+ * #374 — "skip the only queued song, add another, nothing plays until you pause/unpause"; more
+ * broadly, only the FIRST song of a TV page ever plays. The server is correct (verified quiescent):
+ * it settles to currentEntryId=null,isPlaying=false and then auto-starts the new song. The defect is
+ * the INPUT the TvPlayer derived feeds `transportFor`: it passed `hasSrc: !!currentSrc`, which only
+ * asks "has this slot EVER held a src". `currentSrc` holds the PREVIOUS song's URL across a change
+ * (TvPlayer never clears it and only rewrites it on a playable pass), so `!!currentSrc` stayed
+ * stale-true, `transportFor` returned the SAME `'play'` value, and a memoized `$derived` does not
+ * re-run its effect on an unchanged value — so play() was never replayed after the new src landed and
+ * the master sat paused at 0.
+ *
+ * `transportFor` itself was always correct, so its own tests cannot see this — the fix and its proof
+ * live in `slotHoldsSrc`, the pure helper that computes the input.
+ */
+describe('slotHoldsSrc — the element is holding THIS song\'s src, not merely SOME src', () => {
+	const A = '/media/song-a-instrumental.wav';
+	const B = '/media/song-b-instrumental.wav';
+
+	test('true only when the held src equals the wanted src', () => {
+		expect(slotHoldsSrc(A, A)).toBe(true);
+	});
+
+	test('false when the element still holds the PREVIOUS song across a change — this is #374', () => {
+		// The slot holds A's URL; the current media now resolves to B. The old `!!currentSrc` read this
+		// as `true` (a src exists) and kept the transport at `'play'`; `slotHoldsSrc` reads it as `false`
+		// because the element is NOT yet holding B.
+		expect(slotHoldsSrc(A, B)).toBe(false);
+	});
+
+	test('false when there is nothing to hold', () => {
+		expect(slotHoldsSrc('', A)).toBe(false);
+		expect(slotHoldsSrc(null, A)).toBe(false);
+		expect(slotHoldsSrc(undefined, A)).toBe(false);
+		expect(slotHoldsSrc(A, null)).toBe(false);
+		expect(slotHoldsSrc(A, undefined)).toBe(false);
+		expect(slotHoldsSrc(A, '')).toBe(false);
+	});
+});
+
+describe('#374: the transport across a song change on one page', () => {
+	const A = '/media/song-a-instrumental.wav';
+	const B = '/media/song-b-instrumental.wav';
+	// The slot state at the moment the new song B has arrived as `media` but the assign effect has not
+	// yet written B's src to the element, so `currentSrc` still holds A's URL. This is the exact instant
+	// #374 is about.
+	const slot = { playable: true, active: true, visible: true, playing: true };
+
+	test('BASE BEHAVIOUR (regression): !!currentSrc plays B before its src has landed', () => {
+		// The OLD input. `currentSrc` (A) is truthy, so the old contract said hasSrc:true and the derived
+		// returned 'play' — for an element still holding A / holding nothing. play() then races the src
+		// assignment and is undone by it. This 'play' is the bug.
+		const hasSrcOld = !!A; // === `!!currentSrc`
+		expect(transportFor({ ...slot, hasSrc: hasSrcOld })).toBe('play');
+	});
+
+	test('FIXED: while the element still holds A, the transport is idle — not play', () => {
+		// The NEW input via slotHoldsSrc: held=A, wanted=fileSrc(B)=B → false → 'idle'. The effect is
+		// LEFT ALONE (not paused) until the src lands, so it does not fight the assign effect.
+		const hasSrc = slotHoldsSrc(A, B);
+		expect(hasSrc).toBe(false);
+		expect(transportFor({ ...slot, hasSrc })).toBe('idle');
+	});
+
+	test('FIXED: once the assign effect writes B\'s src, hasSrc flips true and B plays', () => {
+		// currentSrc has now been rewritten to B (the playable-pass write). held=B, wanted=B → true. The
+		// derived VALUE has changed ('idle' -> 'play'), so the effect re-runs and plays B — after the src
+		// has landed, which is the whole point.
+		const hasSrc = slotHoldsSrc(B, B);
+		expect(hasSrc).toBe(true);
+		expect(transportFor({ ...slot, hasSrc })).toBe('play');
+	});
+
+	test('the idle->play VALUE edge exists across the change (the old input never produced it)', () => {
+		// Old input: same value 'play' on both sides of the change (A truthy before, B truthy after) — no
+		// edge, so the memoized derived never re-runs the effect. New input: 'idle' then 'play' — a real
+		// value change that DOES re-run it. This edge is the fix.
+		const before = { ...slot };
+		expect(transportFor({ ...before, hasSrc: !!A })).toBe(transportFor({ ...before, hasSrc: !!B })); // old: no edge
+		expect(transportFor({ ...before, hasSrc: slotHoldsSrc(A, B) })).not.toBe(
+			transportFor({ ...before, hasSrc: slotHoldsSrc(B, B) })
+		); // new: idle -> play edge
 	});
 });
