@@ -38,7 +38,7 @@
 	}: Props = $props();
 </script>
 
-<div class="qrow card list-row" class:mine class:up class:pending>
+<div class="qrow card list-row pop-in" class:mine class:up class:pending>
 	<div class="seq">{seq}</div>
 	<div class="meta">
 		<div class="t">{title}</div>
@@ -73,9 +73,10 @@
 </div>
 
 <style>
-	/* Geometry comes from .list-row in app.css, shared with the search row and the cooking card. */
-	.qrow { animation: pop 0.22s cubic-bezier(0.2, 0.9, 0.3, 1.3); }
-	@keyframes pop { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: none; } }
+	/* Geometry comes from .list-row in app.css, shared with the search row and the cooking card.
+	   The entry animation is app.css's .pop-in helper (added to the root class list above), which
+	   is wrapped in @media (prefers-reduced-motion: no-preference) so it honours Reduce Motion.
+	   Do NOT re-declare a local @keyframes pop here: that copy was unguarded (issue #148). */
 	.mine { border-color: var(--line-tint); background: linear-gradient(var(--card), var(--card-tint)); }
 	.pending { opacity: 0.55; }
 	.seq {

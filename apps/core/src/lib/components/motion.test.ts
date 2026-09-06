@@ -55,3 +55,64 @@ test('@keyframes use only transform/opacity', () => {
 	}
 	expect(bad).toEqual([]);
 });
+
+// guard (issue #148): every `animation:` declaration must honour Reduce Motion. An animation is
+// suppressible if it is EITHER declared inside an `@media (prefers-reduced-motion: no-preference)`
+// block, OR paired with an `@media (prefers-reduced-motion: reduce) { … animation: none }` reset in
+// the SAME file. `animation: none` declarations are themselves the reset and are exempt. This closes
+// the drift hazard behind #148: QueueRow's `.qrow { animation: pop … }` ran under Reduce Motion while
+// app.css's guarded `.pop-in` helper had no callers. Source-decidable in the same shape as the scans
+// above. Mutation proof: unguarding any animation (moving it out of the no-preference block, or
+// dropping its reduce reset) reds this test.
+function stripComments(css: string): string {
+	return css.replace(/\/\*[\s\S]*?\*\//g, '');
+}
+// spans of every `@media (prefers-reduced-motion: no-preference)` block, as [start, end) offsets
+function noPreferenceSpans(css: string): Array<[number, number]> {
+	const spans: Array<[number, number]> = [];
+	const re = /@media[^{]*prefers-reduced-motion:\s*no-preference[^{]*\{/g;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(css))) {
+		// walk braces from the opening `{` to its match
+		let depth = 1;
+		let i = m.index + m[0].length;
+		for (; i < css.length && depth > 0; i++) {
+			if (css[i] === '{') depth++;
+			else if (css[i] === '}') depth--;
+		}
+		spans.push([m.index, i]);
+	}
+	return spans;
+}
+function hasReduceReset(css: string): boolean {
+	// an `@media (prefers-reduced-motion: reduce) { … animation: none … }` block anywhere in the file
+	const re = /@media[^{]*prefers-reduced-motion:\s*reduce[^{]*\{([\s\S]*?)\}\s*\}/g;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(css))) {
+		if (/animation(-name)?:\s*none/.test(m[1]!)) return true;
+	}
+	return false;
+}
+
+test('every animation declaration honours prefers-reduced-motion', () => {
+	const svelte = [
+		...svelteFiles(join(import.meta.dir, '..', '..', 'lib')),
+		...svelteFiles(join(import.meta.dir, '..', '..', 'routes'))
+	];
+	const files = [...svelte, join(import.meta.dir, '..', '..', 'app.css')];
+	const offenders: string[] = [];
+	for (const f of files) {
+		const css = stripComments(readFileSync(f, 'utf8'));
+		const spans = noPreferenceSpans(css);
+		const reset = hasReduceReset(css);
+		// match `animation:` / `animation-name:` shorthand declarations (not @keyframes, not the guard media queries)
+		for (const m of css.matchAll(/(^|[;{\s])animation(-name)?:\s*([^;}]+)/g)) {
+			const value = m[3]!.trim();
+			if (/^none\b/.test(value)) continue; // the reset itself
+			const at = m.index! + m[1]!.length;
+			const guarded = spans.some(([s, e]) => at >= s && at < e);
+			if (!guarded && !reset) offenders.push(`${f}: unguarded animation: ${value.slice(0, 40)}`);
+		}
+	}
+	expect(offenders).toEqual([]);
+});
