@@ -66,6 +66,10 @@
 	let isPlaying = $state(true);
 	// seek target (positionSec from playback:state) — the player jumps the video on a real change
 	let seekSec = $state(0);
+	// Server `rev` from the last `playback:state`. Bumped by every playback command (restart, pause,
+	// seek, key…) but never by position telemetry, so the player's seek effect can track it to
+	// re-take its decision on a restart whose position equals the last one (#95).
+	let seekRev = $state(0);
 	// Per-song background override from playback:state. null = use the room default (the resting state).
 	let backgroundOverride = $state<TvBackgroundStyle | null>(null);
 	// The GUIDING TRACK, resolved the same way: the per-song override from playback:state (null = none
@@ -272,6 +276,7 @@
 			if (e.type === 'playback:state') {
 				isPlaying = e.state.isPlaying;
 				seekSec = e.state.positionSec;
+				seekRev = e.rev;
 				// Per-song background override; null hands the song back to the room default.
 				backgroundOverride = e.state.background;
 				guideOverride = e.state.guideLevel;
@@ -533,6 +538,7 @@
 		active={visible === 'A'}
 		playing={isPlaying}
 		seekSec={seekSec}
+		seekRev={seekRev}
 		{keyShift}
 		{guideLevel}
 		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); }}
@@ -547,6 +553,7 @@
 		active={visible === 'B'}
 		playing={isPlaying}
 		seekSec={seekSec}
+		seekRev={seekRev}
 		{keyShift}
 		{guideLevel}
 		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); }}
