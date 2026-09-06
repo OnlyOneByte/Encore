@@ -43,10 +43,9 @@ import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
 import { reconcileOnReady } from './realtime/player';
-import { syncEvent } from './realtime/hub';
+import { orderingOf, syncEvent } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
 import { ObjectMediaStore, bunS3Client } from './media/object-store';
-import { singHistoryFrom } from '@encore/shared';
 import type { ServerEvent, Media, WorkerCommand } from '@encore/shared';
 
 export interface EncoreApp {
@@ -147,10 +146,9 @@ export function getApp(): EncoreApp {
 	// mid-party and the sing history moves every time a song starts.
 	const settings = new SettingsRepository(db);
 	const singers = new SingerRepository(db);
-	const state = new AuthoritativeState(sqlitePersistence(db), 250, () => ({
-		order: settings.getRoom().queueOrder,
-		lastSungAt: singHistoryFrom(singers.listPublic())
-	}));
+	const state = new AuthoritativeState(sqlitePersistence(db), 250, () =>
+		orderingOf({ getSettings: () => settings.getEffective(), listSingers: () => singers.listPublic() })
+	);
 	const { entries, playback } = hydrate(db);
 	state.hydrate(entries, playback);
 
