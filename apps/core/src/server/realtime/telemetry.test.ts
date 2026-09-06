@@ -1,5 +1,7 @@
 // Ended telemetry advances rotation, picks next by seq; nowplaying carries upNext.
 import { test, expect } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { handlePlayerCommand, handleTelemetry, emitNowPlaying, reconcileOnReady } from './player';
 import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
@@ -143,4 +145,56 @@ test('an ended with no entry id keeps legacy behaviour (backward compatible with
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handleTelemetry({ positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
+});
+
+test('a stale position frame naming the outgoing entry after an advance does NOT move the playhead (#125)', () => {
+	// q1 plays at ~87s, then a skip/ended advances to q2 (fresh position 0). The outgoing <audio>
+	// for q1 fires one more ontimeupdate across the round-trip + slot swap: a POSITION frame naming
+	// q1, which is no longer current. Before #125 it was written unconditionally (q2.positionSec=87)
+	// and fed back to the TV as a seek target, starting q2 87s in. It must now be dropped.
+	const { state, deps } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
+	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
+	handleTelemetry({ entryId: 'q1', positionSec: 87.4, durationSec: 100, status: 'playing', bufferedNextPct: 100 }, deps);
+	expect(state.playback.positionSec).toBe(87); // a live frame for the current entry still tracks
+
+	// Advance to q2 (its own play resets positionSec to 0).
+	handleTelemetry({ entryId: 'q1', positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	expect(state.playback.currentEntryId).toBe('q2');
+	expect(state.playback.positionSec).toBe(0);
+
+	// The stale trailing position frame from q1's outgoing <audio> — no longer current. Must be dropped.
+	handleTelemetry({ entryId: 'q1', positionSec: 87.4, durationSec: 100, status: 'playing', bufferedNextPct: 100 }, deps);
+	expect(state.playback.positionSec).toBe(0); // NOT 87 — q2 does not inherit q1's playhead
+	expect(state.playback.currentEntryId).toBe('q2');
+});
+
+test('a position frame for the current entry still updates position (guard hoist does not break the live path) (#125)', () => {
+	const { state, deps } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 42.7, durationSec: 100, status: 'playing', bufferedNextPct: 50 }, deps);
+	expect(state.playback.positionSec).toBe(42);
+});
+
+test('an id-less position frame keeps legacy behaviour (older TV unaffected) (#125)', () => {
+	const { state, deps } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	handleTelemetry({ positionSec: 33.3, durationSec: 100, status: 'playing', bufferedNextPct: 50 }, deps);
+	expect(state.playback.positionSec).toBe(33); // no id -> still applied
+});
+
+
+test('the TV stamps entryId on EVERY telemetry frame, not just ended — so the position-path guard is reachable (#125)', () => {
+	// The server drop (player.ts) can only fire on a frame that CARRIES an entryId. Before #125 the
+	// TV stamped one only on `ended`, so position frames arrived id-less and the guard's first
+	// conjunct was false. Reverting the client hunk alone leaves the whole suite green (the server
+	// test still passes because its stale frame is hand-stamped), silently re-opening #125. Pin the
+	// stamping at the call site — same source-scan shape guide-sync.test.ts uses on this file.
+	const src = readFileSync(join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte'), 'utf8');
+	const body = src.split('function sendTelemetry(')[1]?.split('\n\t}')[0] ?? '';
+	expect(body).toContain('const entryId = current?.id'); // stamped on EVERY frame
+	expect(body).not.toContain("status === 'ended' ?");     // the ended-only form is the #125 bug
 });
