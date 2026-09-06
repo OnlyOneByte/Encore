@@ -184,8 +184,15 @@ def test_every_candidate_too_far_off_in_length_is_refused():
 
 def test_no_confident_artist_or_title_means_no_lookup_at_all():
     assert ann.pick_best(ann.parse_recordings(REAL_BODY), "", "Take On Me", 218.0) is None
-    assert ann.annotate(client(), None, "Take On Me", 218.0) is None
-    assert ann.annotate(client(), "a-ha", "", 218.0) is None
+
+    # OBSERVE the attempt, not just the None: "no lookup at all" is the point of the test, so a
+    # call-recording client must show search() was NEVER reached. Asserting only `is None` is blind --
+    # deleting the artist/title guard makes annotate() call search(None, ...)/search(..., ""), whose
+    # query builder raises and is swallowed by the blanket except into the same None (issue #120).
+    calls: list = []
+    assert ann.annotate(client(calls=calls), None, "Take On Me", 218.0) is None
+    assert ann.annotate(client(calls=calls), "a-ha", "", 218.0) is None
+    assert calls == [], f"declined for lack of keys but still looked up: {calls}"
 
 
 # ── client behaviour ─────────────────────────────────────────────────────────────
