@@ -381,3 +381,84 @@ test('the unverified tint overrides variables only — it never re-selects a wor
 	);
 	expect(descendants).toEqual([]);
 });
+
+/*
+ * #98 — the typed join address must not be buried under the roster strip on a short panel.
+ *
+ * THE BUG THIS EXISTS FOR. `.lobby` was `display: flex; align-items/justify-content: center` across
+ * its FULL `inset: 0` box, centring the `.stack` — whose last child is the typed join address — over
+ * the whole screen. `.strip` was `position: absolute; bottom: 0`, out of flow, growing UPWARD as names
+ * wrapped. On panels ≤768px (1280×720, 1366×768) the centred stack's bottom and the bottom-anchored
+ * strip intersected, and because the strip comes after the stack in DOM order with no z-index on either
+ * to reorder the paint, the strip's gradient backdrop and its name chips painted ON TOP of the address
+ * — the ONLY way into the room when a camera won't read the QR. Measured: at the 8-member cap the
+ * address was fully covered under a 0.90 wash. At 1920/3840 there was no overlap at any roster size, so
+ * a reserve keyed to a fixed pixel band would have been wrong at the tall end.
+ *
+ * THE FIX, and what these lock in. `.lobby` is a flow COLUMN; the stack lives in a `.stack-region` that
+ * takes `flex: 1` and centres within it; `.strip` is IN FLOW (not absolutely docked). BUT the strip in
+ * flow is only half of it: the stack is a FIXED height (~614px at 720p, vh-based) and the region shrinks
+ * as the strip grows, so 8 long names wrapping to three rows (~208px, 29% of a 720p panel) drop the
+ * region below the stack's height and `align-items: center` spills the stack — bottom child = the
+ * address — back down into the strip. So the strip is ALSO CAPPED (`max-height` in vh) and its surplus
+ * rows fold behind the same fade the lyrics reel uses, which keeps the region tall enough for the stack
+ * at every roster size up to the max=8 cap plus its overflow chip. Pure geometry the DOM-less runner
+ * cannot SEE, so these pin the structural preconditions and the REVERSIONS: re-adding
+ * `position: absolute; bottom: 0` to `.strip`, or dropping its `max-height`, each restores an overlap
+ * with the whole suite green. Property-level proof (zero `.url`/`.strip` intersection, with the address the element painted at
+ * its own centre, across roster {3, 8, 8+overflow} \u00d7 viewport {1280\u00d7720, 1366\u00d7768, 1920\u00d71080})
+ * is the runnable e2e at e2e/lobby-overlap.mjs (`bun run e2e:lobby`) \u2014 it FAILS 6/9 against base and
+ * 2/9 with the cap removed, so it pins both halves of the fix; before/after frames are in docs/shots/98/.
+ */
+test('#98 the lobby roster strip reserves its band in flow — it is not absolutely docked to the edge', () => {
+	const lobby = stripComments(TV_LOBBY);
+	const stripBlock = /\.strip\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(stripBlock).not.toBe('');
+	// The reversion: an absolutely-positioned, bottom-docked strip is exactly what painted over the
+	// address. In flow it cannot overlap the stack, so it must be neither.
+	expect(/position:\s*absolute/.test(stripBlock)).toBe(false);
+	expect(/bottom:\s*0/.test(stripBlock)).toBe(false);
+	// AND its height must be BOUNDED without clipping the roster. Free to wrap, the strip grows tall
+	// enough (8 long names) to shrink the region below the fixed-height stack and push the address back
+	// into it. It is kept to one row (nowrap) with a vh max-height safety net; the roster is bounded by a
+	// DISPLAY CAP in the script, not by clipping the band (next test), so there is deliberately NO
+	// `overflow: hidden` here — that hard cut is what silently ate roster members and the "+N more" chip.
+	expect(/flex-wrap:\s*nowrap/.test(stripBlock)).toBe(true);
+	expect(/max-height:\s*[0-9.]+vh/.test(stripBlock)).toBe(true);
+	expect(/overflow:\s*hidden/.test(stripBlock)).toBe(false);
+});
+
+test('#98 the roster is bounded by folding surplus into "+N more", never by clipping chips off-screen', () => {
+	const src = TV_LOBBY;
+	const lobby = stripComments(src);
+	// A display cap in the script limits how many chips render; the count folds the rest — the names we
+	// hide PLUS the presence overflow lobbyRoster already reports — into one "+N more".
+	expect(/const\s+MAX_CHIPS\s*=\s*\d+/.test(lobby)).toBe(true);
+	// The each-loop must iterate the CAPPED list, not the full roster, or the cap does nothing.
+	expect(/\{#each\s+shownRoster\s+as/.test(src)).toBe(true);
+	// hiddenCount must add BOTH the folded names and the upstream overflow, so the count stays truthful.
+	expect(/roster\.length\s*-\s*MAX_CHIPS[\s\S]*?\+\s*overflow/.test(lobby)).toBe(true);
+	expect(/\+\{hiddenCount\}\s*more/.test(src)).toBe(true);
+	// A single long name must not blow the one row out: the chip name is width-bounded and ellipsised.
+	const nameBlock = /\.person\s+\.name\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(/text-overflow:\s*ellipsis/.test(nameBlock)).toBe(true);
+	const personBlock = /\.person\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(/max-width:\s*[0-9.]+ch/.test(personBlock)).toBe(true);
+});
+
+test('#98 the lobby centres its stack in the space ABOVE the strip, not across the whole box', () => {
+	const lobby = stripComments(TV_LOBBY);
+	// The lobby is a column: the stack region and the strip stack vertically, so the strip's height is
+	// subtracted from the region the stack centres in. A row/absolute lobby would let them overlap.
+	const lobbyBlock = /\.lobby\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(/flex-direction:\s*column/.test(lobbyBlock)).toBe(true);
+	// The centring moved off `.lobby` (which now only stacks) onto a region that takes the leftover
+	// space with `flex: 1`. Without `flex: 1` the region collapses to content height and the strip no
+	// longer pushes the stack up — so this is the line that does the reserving.
+	const regionBlock = /\.stack-region\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(regionBlock).not.toBe('');
+	expect(/flex:\s*1/.test(regionBlock)).toBe(true);
+	expect(/justify-content:\s*center/.test(regionBlock)).toBe(true);
+	// And the markup must actually WRAP the stack in that region, or the CSS rule guards nothing.
+	expect(/<div class="stack-region">\s*<div class="stack">/.test(TV_LOBBY)).toBe(true);
+});
