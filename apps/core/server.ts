@@ -272,7 +272,10 @@ const server = Bun.serve<SocketData>({
 					seenOps.add(id);
 					if (seenOps.size > 4096) seenOps.delete(seenOps.values().next().value!);
 					return false;
-				}
+				},
+				// #490: non-recording peek at the same ledger, for the validation-failure re-ack path.
+				// Never inserts — a rejected op must not enter the ledger, or its resend would falsely re-ack.
+				hasOp: (id) => seenOps.has(id)
 			};
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 

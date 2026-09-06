@@ -55,8 +55,22 @@ export interface HubDeps {
 	onSang?: (singerId: string) => void;
 	/** Optional: record a queue-add for popularity shortcuts. */
 	recordAdd?: (mediaId: string) => void;
-	/** Optional: idempotency ledger — returns true if this clientOpId was already applied. */
+	/**
+	 * Optional: idempotency ledger, RECORD-ON-CHECK — returns true if this clientOpId was already
+	 * applied, and otherwise RECORDS it as a side effect. Call it exactly once, and only on the path
+	 * that actually applies the op — recording an op that never applied poisons the ledger, so a
+	 * later resend of it would be falsely re-acked (see hasOp).
+	 */
 	seenOp?: (clientOpId: string) => boolean;
+	/**
+	 * Optional: NON-RECORDING peek at the same idempotency ledger — returns true if this clientOpId
+	 * was already applied, with NO side effect. Used on the validation-FAILURE path (#490): a resent
+	 * already-applied op whose shape no longer validates must be re-acked, but a genuinely-invalid
+	 * never-applied op that fails validation must NOT be written to the ledger (its resend must still
+	 * reject, every time). Reading with a recording seenOp there would insert the failing op's id and
+	 * turn its resend into a false success. server.ts backs this with `seenOps.has(id)`.
+	 */
+	hasOp?: (clientOpId: string) => boolean;
 	/**
 	 * Optional: called AFTER a `remove` op is applied, with the removed entry's mediaId and the
 	 * post-remove queue. This is the seam that lets an explicit remove cancel a cook still in flight
@@ -227,6 +241,30 @@ export function handleQueueCommand(
 	// `cmd.clientOpId`, which is itself a crash when the frame carried no command at all.
 	const err = validateCommand(cmd, deps);
 	if (err) {
+		// #490: the idempotency ledger must be consulted BEFORE a validation failure becomes a reject.
+		// A resent command (a reconnect whose lost broadcast left the op pending, then resendPending on
+		// `hello`) is one the server has ALREADY applied — so current state now contradicts the op and
+		// validateCommand fails it: a `remove`'s entry has been pruned (`unknown entry`), and an `add`
+		// whose entry the server has since started fails the id-collision guard (`entry id already
+		// taken`, since #370). Rejecting there turned the re-ack the ledger exists to produce into a
+		// false `op:reject` the phone shows the singer as an error for something that succeeded. So on a
+		// validation failure, ask the ledger first: on a hit, emit the same idempotent re-ack the
+		// already-applied branch below builds (`queue:patch` with `ops: []` and this `causedBy`) and do
+		// NOT reject.
+		//
+		// This MUST use the NON-RECORDING `hasOp`, never the record-on-check `seenOp`. `seenOp` inserts
+		// the id as a side effect of checking, so consulting it here would write a genuinely-INVALID,
+		// never-applied op's id into the ledger the moment it is rejected — and its resend (the same
+		// lost-message path #490 is about) would then be answered with a false re-ack instead of the
+		// reject it deserves, silently vanishing an op that never applied. Only an op that ACTUALLY
+		// applies is recorded, and that happens on the already-applied branch below. This stays BEHIND
+		// the envelope guards — `validateCommand`'s first checks — so `cmd.clientOpId` is only read when
+		// it exists (an envelope failure like `missing clientOpId` has no id to correlate and falls
+		// straight through to the silent drop).
+		if (cmd?.clientOpId && deps.hasOp?.(cmd.clientOpId)) {
+			deps.publish({ type: 'queue:patch', patch: { rev: deps.state.rev, ops: [], causedBy: cmd.clientOpId } });
+			return null;
+		}
 		// Only answerable if we know which op to reject. A frame with no clientOpId is dropped silently —
 		// there is nothing to correlate a rejection to, and the sender is not a client we can help.
 		if (cmd?.clientOpId) sendToOrigin?.({ type: 'op:reject', clientOpId: cmd.clientOpId, reason: err });
@@ -234,7 +272,9 @@ export function handleQueueCommand(
 	}
 
 	// idempotency: a resent command (e.g. after reconnect) must not double-apply. Re-ack with the
-	// current rev so the originator clears its pending op, but don't mutate state again.
+	// current rev so the originator clears its pending op, but don't mutate state again. A resend whose
+	// op still validates against current state (e.g. an `add` whose entry is still `queued`) lands here;
+	// one that no longer validates is re-acked in the validation-failure branch above (#490).
 	if (deps.seenOp?.(cmd.clientOpId)) {
 		deps.publish({ type: 'queue:patch', patch: { rev: deps.state.rev, ops: [], causedBy: cmd.clientOpId } });
 		return null;
