@@ -289,6 +289,50 @@ async def test_a_step_writing_what_it_DID_declare_is_fine(tmp_path, monkeypatch)
     await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
 
 
+@pytest.mark.asyncio
+async def test_a_step_publishing_to_ctx_out_without_declaring_it_is_caught(tmp_path, monkeypatch):
+    """`ctx.out` is the one namespace whose shape goes on the wire — `artifacts`, `facts`, `media_uri`
+    are what the CompleteResult carries. A step that publishes one of them without declaring `out` used
+    to slip through because `_snapshot` never watched `out`, so the generated pipeline doc would then
+    claim the step produces nothing. This is the mirror of the undeclared-`audio` case for `out`.
+    """
+    monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
+
+    class Publishes(Step):
+        name = "publishes"
+        stage = Stage.ALIGNING
+        writes = frozenset({"audio.path"})  # declares audio, publishes to out
+
+        async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+            ctx.out.artifacts["lyrics"] = {"candidates": []}
+            yield ProgressEvent(stage=self.stage, pct=100)
+
+    plan = LinearPlan("publishes", [Publishes()])
+    with pytest.raises(AssertionError, match="wrote to ctx.out without declaring it"):
+        await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_a_step_appending_a_note_without_declaring_out_is_fine(tmp_path, monkeypatch):
+    """`notes` and `timings_sec` are exempt: every step appends to `ctx.out.notes` via `ctx.note()`
+    without declaring `out`, and the runner fills `timings_sec` itself. Watching `out` at field
+    granularity must not turn either of those into a false positive.
+    """
+    monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
+
+    class Notes(Step):
+        name = "notes"
+        stage = Stage.ALIGNING
+        writes = frozenset({"audio.path"})
+
+        async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+            ctx.note("a step said something")
+            yield ProgressEvent(stage=self.stage, pct=100)
+
+    plan = LinearPlan("notes", [Notes()])
+    await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
+
+
 def test_an_unknown_action_has_no_plan_and_says_which(tmp_path):
     from src.runtime.plan import plan_for
 
