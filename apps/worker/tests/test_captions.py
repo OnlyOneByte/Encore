@@ -1,9 +1,21 @@
-"""YouTube caption parsing, and the guarantee that auto-generated tracks never get in.
+"""YouTube caption parsing, and the guarantee that keeps a machine track from being read as authored.
 
-The refusal of automatic captions is STRUCTURAL, not a filter: yt-dlp is never asked for them, so no
-auto-generated file exists to accidentally read. `test_the_argv_never_requests_auto_generated_captions`
-is the load-bearing test in this file — if it fails, `CaptionsSource`'s `high` text confidence has become
-a lie and an ASR track can outrank a correct database lookup.
+TWO KINDS, OPPOSITE ROLES, KEPT APART STRUCTURALLY. An uploader-authored track is a CANDIDATE for the
+song's words; YouTube's automatic track is a BASELINE — evidence of what is audible, barred from being
+the answer while a candidate is trustworthy. Since the two-tier split (`1b948ad`) BOTH kinds are
+deliberately requested: `caption_argv(..., auto=False)` passes `--write-subs`, `caption_argv(..., auto=True)`
+passes `--write-auto-subs`, exactly one per call. yt-dlp names both kinds identically, so the distinction
+is NOT a filename filter — `FetchCaptions` fetches each kind into its own directory (`steps/lyrics.py`
+`AUTHORED = "captions"` / `MACHINE = "auto-captions"`), and that directory separation is the whole
+guarantee that an automatic track cannot be mistaken for an authored one downstream.
+
+Two load-bearing tests hold that up:
+  - `test_the_two_caption_kinds_are_requested_SEPARATELY_never_together` — one call asks for `--write-subs`
+    XOR `--write-auto-subs`, never both.
+  - `test_FetchCaptions_writes_the_two_kinds_into_separate_directories` — the two `FetchCaptions` steps,
+    run in plan order against yt-dlp's no-overwrite default, land the kinds in DIFFERENT directories and
+    keep the authored candidate distinct from the machine baseline. If it fails, an ASR track made from
+    the mixed audio can be read back as an authored candidate and outrank a correct database lookup.
 """
 from __future__ import annotations
 
@@ -241,3 +253,112 @@ def test_the_original_language_track_wins_over_a_translation(tmp_path):
     (tmp_path / "captions.es-orig.vtt").write_text(SAMPLE_VTT, encoding="utf-8")
     chosen = find_caption_file(str(tmp_path))
     assert chosen is not None and chosen.endswith("captions.es-orig.vtt")
+
+
+# ── THE separate-directory guarantee, driven through the real steps ──────────────────────
+#
+# The tests above pin `caption_argv` (one kind per call) and the parser. What none of them touched —
+# and what issue #96 flagged as unguarded across the whole 546-test suite — is the step-level guarantee
+# that the two kinds land in SEPARATE directories. `caption_argv` asking for one kind is not enough:
+# yt-dlp names both kinds' files identically (`captions.en.vtt`), so if `FetchCaptions` derived both
+# output directories from one expression the machine fetch would target the same directory the authored
+# fetch already populated, hit yt-dlp's no-overwrite default, and read the AUTHORED cues back as the
+# machine BASELINE — collapsing the candidate and its own grader into the same text. These drive the
+# real `FetchCaptions` steps in plan order to pin that the directories stay distinct.
+
+import os  # noqa: E402
+import sys  # noqa: E402
+from pathlib import Path  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.processor import JobSpec  # noqa: E402
+from src.runtime import Ctx  # noqa: E402
+from src.steps.lyrics import AUTHORED, FetchCaptions, MACHINE  # noqa: E402
+
+# Two distinct VTT tracks. The authored one is the correct words; the machine one is ASR of the mixed
+# audio — recognisably the same song, recognisably worse. If the guarantee breaks, the machine baseline
+# comes back reading as the authored candidate, i.e. these two collapse to the SAME text.
+_AUTHORED_VTT = "WEBVTT\n\n00:00:09.500 --> 00:00:12.000\nHello, hello baby\n\n00:00:12.000 --> 00:00:14.250\nYou called, I can't hear a thing\n"
+_MACHINE_VTT = "WEBVTT\n\n00:00:09.500 --> 00:00:12.000\nhello hello baby\n\n00:00:12.000 --> 00:00:14.250\nyou call i can hardly hear a thing\n"
+
+
+def _no_overwrite_ytdlp_runner():
+    """A yt-dlp stand-in that models the two behaviours the guarantee depends on:
+
+      1. It writes DIFFERENT text for each kind (authored track vs machine ASR), keyed off which
+         `--write-*` flag is in the argv — the two kinds really are different tracks.
+      2. It honours yt-dlp's DEFAULT no-overwrite policy: if the target caption file already exists on
+         disk it leaves it untouched (real yt-dlp requires `--force-overwrites` to clobber, and the argv
+         does not pass it). This is what turns a shared directory into a silent collapse rather than a
+         visible overwrite.
+
+    Both files land under the `-o` template's directory as `captions.en.vtt` — the SAME basename for both
+    kinds, exactly as real yt-dlp names them.
+    """
+
+    async def run(argv):
+        template = argv[argv.index("-o") + 1]
+        out_dir = os.path.dirname(template)
+        os.makedirs(out_dir, exist_ok=True)
+        body = _MACHINE_VTT if "--write-auto-subs" in argv else _AUTHORED_VTT
+        target = os.path.join(out_dir, "captions.en.vtt")
+        if not os.path.exists(target):  # yt-dlp's default: never clobber an existing file
+            Path(target).write_text(body, encoding="utf-8")
+        return
+        yield  # pragma: no cover — makes this an async generator with no output lines
+
+    return run
+
+
+def _ctx_for_captions(tmp_path):
+    job = JobSpec(job_id="j1", media_id="m1", job_type="align",
+                  source_uri="https://youtube.com/watch?v=abc", params={}, media_dir=str(tmp_path))
+    return Ctx(job=job, work=str(tmp_path / "work"), runner=_no_overwrite_ytdlp_runner())
+
+
+async def _drain(step, ctx):
+    async for _ in step.run(ctx):
+        pass
+
+
+async def test_FetchCaptions_writes_the_two_kinds_into_separate_directories(tmp_path):
+    """THE GUARANTEE, at the step level — issue #96.
+
+    `plans.py` runs `FetchCaptions(AUTHORED)` then `FetchCaptions(MACHINE)` for every align job. yt-dlp
+    names both kinds' files identically, so the ONLY thing that keeps the machine BASELINE from being
+    read back as the authored CANDIDATE is that each step fetches into its OWN directory. Deriving both
+    directories from one expression — a reader could reasonably do it, since `self.kind` is used for
+    nothing else in the method — silently collapses them: the machine fetch targets the directory the
+    authored fetch already filled, yt-dlp's no-overwrite default declines to write, and the machine step
+    reads the authored cues. Candidate and its own grader become the same text.
+
+    This drives the real steps in plan order and pins two independently sufficient facts: the two kinds
+    live in different directories on disk, and the authored candidate stays distinct from the machine
+    baseline.
+    """
+    ctx = _ctx_for_captions(tmp_path)
+
+    await _drain(FetchCaptions(AUTHORED), ctx)
+    await _drain(FetchCaptions(MACHINE), ctx)
+
+    # 1. The two kinds landed in DIFFERENT directories under work/ — this is the guarantee itself.
+    kind_dirs = sorted(d for d in os.listdir(ctx.work) if os.path.isdir(os.path.join(ctx.work, d)))
+    assert kind_dirs == sorted([AUTHORED, MACHINE]), (
+        f"the two caption kinds must occupy separate directories, saw {kind_dirs!r}"
+    )
+    assert AUTHORED != MACHINE  # the directory names themselves must differ
+
+    # 2. Both cue sets were populated, and the machine BASELINE did not come back as the authored
+    #    CANDIDATE. If the directories collapse, the machine fetch reads the authored file and these
+    #    two become identical.
+    assert ctx.lyrics.authored_cues, "authored fetch must yield cues"
+    assert ctx.lyrics.machine_cues, "machine fetch must yield cues"
+    authored_text = " ".join(c["text"] for c in ctx.lyrics.authored_cues)
+    machine_text = " ".join(c["text"] for c in ctx.lyrics.machine_cues)
+    assert authored_text != machine_text, (
+        "the machine baseline was read back as the authored candidate — the separate-directory "
+        "guarantee has collapsed (both kinds share a directory)"
+    )
+    assert authored_text == "Hello, hello baby You called, I can't hear a thing"
+    assert machine_text == "hello hello baby you call i can hardly hear a thing"
