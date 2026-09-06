@@ -1,7 +1,7 @@
 // The gate table is the pipeline's definition of "finished", so these pin the parts that are easy to
 // get wrong when a future step is added.
 import { test, expect } from 'bun:test';
-import { GATES, readyToSing, pendingGates, currentGateLabel, isCooking } from './gates';
+import { GATES, readyToSing, pendingGates, isCooking } from './gates';
 import { isPlayable, type Media } from './types';
 import { EMPTY_SONG_PROFILE } from './song-profile';
 
@@ -101,23 +101,16 @@ test('pendingGates reports what is outstanding, in pipeline order', () => {
 	expect(pendingGates(cooked({ lyricsStatus: 'ready' }))).toEqual([]);
 });
 
-test('the phone names the FIRST outstanding step, never a later one', () => {
-	// Reporting "Timing lyrics" while separation is still running would name a step that has not begun.
-	expect(currentGateLabel(m())).toBe('Separating vocals');
-	expect(currentGateLabel(cooked())).toBe('Timing lyrics');
-	expect(currentGateLabel(cooked({ lyricsStatus: 'ready' }))).toBeNull();
-});
-
 test('pendingGates being empty is exactly readyToSing', () => {
 	for (const song of [m(), cooked(), cooked({ lyricsStatus: 'ready' }), cooked({ lyricsRef: 'x' })]) {
 		expect(pendingGates(song).length === 0).toBe(readyToSing(song));
 	}
 });
 
-test('every gate has a distinct id and a pending label', () => {
-	// A future step added without a label would render an empty status line on the phone.
+test('every gate has a distinct id', () => {
+	// The id names the job type that satisfies the gate; two gates sharing one would make a job
+	// ambiguous about which step it completes.
 	expect(new Set(GATES.map((g) => g.id)).size).toBe(GATES.length);
-	for (const g of GATES) expect(g.pendingLabel.length).toBeGreaterThan(0);
 });
 
 test('isCooking is gate-driven — it catches a song sitting between two gates', () => {
@@ -132,4 +125,64 @@ test('isCooking is gate-driven — it catches a song sitting between two gates',
 	expect(isCooking(cooked())).toBe(true);
 	// Finished → not cooking.
 	expect(isCooking(cooked({ lyricsStatus: 'ready' }))).toBe(false);
+});
+
+// guard: gates.ts holds ONE cook vocabulary, and it is not this one — the dead guest-facing labels
+// #175 removed do not come back.
+//
+// THE DEFECT (#175). gates.ts carried a SECOND guest-facing cook vocabulary: a `pendingLabel` field
+// on CookGate ('Separating vocals' / 'Timing lyrics') read only by `currentGateLabel`, which itself
+// had zero non-test callers. The phone's real cook sub-line is apps/core/src/lib/cook-phrasing.ts
+// (wired to SongRow, ProcessingCard, TvLobby and tv/+page.svelte) — its header asserts it is "the ONE
+// place the cook is described to a guest … there is no third vocabulary to drift into", and names
+// 'Separating vocals', the exact string that was stranded in gates.ts, as copy "written for the
+// developer, not the guest at a party". So this was dead, drift-prone duplicate copy.
+//
+// THE TRIGGER is not runtime — it is the next developer adding a cook step, which gates.ts:1-14
+// explicitly invites ("adding a step means adding one entry to GATES; nothing else moves"). That
+// author would fill in pendingLabel per its docstring, see it asserted by the old value-blind test,
+// and ship guest-facing copy that renders nowhere.
+//
+// WHY A SOURCE SCAN: deleting dead code has no runtime-observable regression — re-adding a field
+// nothing reads leaves the suite green, so a per-hunk mutation proof reports UNVERIFIED and cannot
+// pin it. The absence of the second vocabulary is a decidable property of the source, so this guard
+// encodes it. Matches the repo's source-scan-guard precedent (session-cookie-attributes.test.ts /
+// telemetry-frame-lean.test.ts, both + stripComments).
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// Blank comments before scanning so a mention in a comment (this file explains the removed symbols)
+// cannot make a "must be gone" check pass or fail spuriously. Blank rather than delete so offsets line
+// up. Matches the repo's stripComments convention.
+function stripComments(src: string): string {
+	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
+	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
+}
+
+// import.meta.dir === packages/shared/src.
+const GATES_SRC = stripComments(readFileSync(join(import.meta.dir, 'gates.ts'), 'utf8'));
+
+test('gates.ts source was read (guard is not vacuous) (#175)', () => {
+	// A sentinel that must be present regardless of this fix, so an empty/misread file cannot make the
+	// absence checks below pass vacuously.
+	expect(GATES_SRC).toMatch(/export const GATES/);
+	expect(GATES_SRC).toMatch(/export function readyToSing/);
+});
+
+test('gates.ts no longer carries the dead second cook vocabulary (#175)', () => {
+	// The phone's cook copy lives ONLY in apps/core/src/lib/cook-phrasing.ts. gates.ts must not
+	// re-declare a guest-facing label field or the caller-less function that read it.
+	expect(GATES_SRC).not.toMatch(/pendingLabel/);
+	expect(GATES_SRC).not.toMatch(/currentGateLabel/);
+});
+
+test('the live half of the gate table survives — this is a scoped deletion, not a gutting (#175)', () => {
+	// CookGate.stage is read at apps/core/src/server/jobs/media-status.ts; done/required drive
+	// readyToSing/pendingGates/isCooking. Those must stay, so the guard cannot be satisfied by
+	// deleting the whole table.
+	expect(GATES_SRC).toMatch(/readonly stage: MediaStage/);
+	expect(GATES_SRC).toMatch(/readonly done:/);
+	expect(GATES_SRC).toMatch(/readonly required: boolean/);
+	expect(GATES_SRC).toMatch(/export function pendingGates/);
+	expect(GATES_SRC).toMatch(/export function isCooking/);
 });

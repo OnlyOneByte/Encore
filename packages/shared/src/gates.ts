@@ -19,11 +19,9 @@ import type { MediaStage } from './events';
 export interface CookGate {
 	/** Stable id — matches the job type that satisfies it, so a log line reads the same on both sides. */
 	readonly id: 'stems' | 'lyrics';
-	/** What the phone says while this step is outstanding. */
-	readonly pendingLabel: string;
 	/**
-	 * The stop on `MEDIA_STAGES` a song sits at while this step is outstanding — the progress-bar half
-	 * of `pendingLabel`, declared beside it for the same reason.
+	 * The stop on `MEDIA_STAGES` a song sits at while this step is outstanding — the progress-bar
+	 * datum the phone reads to place the cook on its timeline.
 	 *
 	 * It lives HERE rather than in a lookup table next to its one consumer because of the promise this
 	 * file opens with: adding a step is one entry in GATES and nothing else moves. A separate
@@ -61,7 +59,6 @@ export interface CookGate {
 export const GATES: readonly CookGate[] = [
 	{
 		id: 'stems',
-		pendingLabel: 'Separating vocals',
 		stage: 'separating',
 		// Status AND artifact — both from the ONE stems job, so this stays a single gate under a single
 		// id (the id names the JOB TYPE that satisfies it, and there is no 'key' job). Done means the
@@ -86,7 +83,6 @@ export const GATES: readonly CookGate[] = [
 	},
 	{
 		id: 'lyrics',
-		pendingLabel: 'Timing lyrics',
 		stage: 'aligning',
 		// Ran, not "produced words". `lyricsRef` is absent for a genuine instrumental and that song is
 		// still finished. Media cooked before this gate existed carry no lyricsStatus at all; they are
@@ -109,16 +105,6 @@ export function readyToSing(m: Media): boolean {
 /** The required steps still outstanding, in pipeline order. Empty ⇔ `readyToSing`. */
 export function pendingGates(m: Media): CookGate[] {
 	return GATES.filter((g) => g.required && !g.done(m));
-}
-
-/**
- * What the song is waiting on right now, for the phone's cooking sub-line — or `null` when finished.
- *
- * The FIRST outstanding step, because the pipeline is a chain: reporting "Timing lyrics" while
- * separation is still running would name a step that has not started.
- */
-export function currentGateLabel(m: Media): string | null {
-	return pendingGates(m)[0]?.pendingLabel ?? null;
 }
 
 /**
