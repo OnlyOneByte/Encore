@@ -30,7 +30,7 @@ import {
 	setMediaSongProfile,
 	applyAnnotation,
 	settleLyricsGate,
-	settleStemsGate,
+	settleGatesForFailedJob,
 	markLyricsQueued
 } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
@@ -294,25 +294,14 @@ export class WorkerHub {
 		} else {
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
 			cleanJobWork(msg.jobId); // terminal: nothing will resume from this scratch
-			// A PERMANENTLY failed align must not hold the song hostage. Now that singing waits for the
-			// lyrics gate, leaving it unsettled would mean one broken metadata step — a worker OOM, a
+			// A permanently failed cook must not hold the song hostage. Now that singing waits for the
+			// stems/lyrics gates, leaving one unsettled means a single broken step — a worker OOM, a
 			// model that will not load — makes the song unsingable forever, with no way out but a manual
-			// DB edit. We tried, we are done waiting: settle the gate and let the party continue with no
-			// words on screen. The line logged just below is the record of why.
-			if (job.jobType === 'align') settleLyricsGate(job.mediaId, this.#d.mediaById);
-			// The same argument for the OTHER gate. A dead separation used to leave stemStatus mid-flight,
-			// so isCooking stayed true and the song read as "Making karaoke…" forever while cookState
-			// answered 'cooking' and refused a retry. Settle it back to un-cooked so the guest can try
-			// again; the failure reaches them via #emitStatus below.
-			//
-			// 'fetch' counts, and that is the common case rather than an edge one: requestMakeKaraoke
-			// marks the media cooking BEFORE the download, so a dead fetch (bad URL, no deno, yt-dlp
-			// broken) strands it exactly like a dead separation. 'align' is excluded because that song
-			// already plays — settleLyricsGate above is its remedy — and 'stems-upgrade' because the
-			// song still has its working instrumental, which settleStemsGate refuses to walk back.
-			if (job.jobType === 'fetch' || job.jobType === 'stems') {
-				settleStemsGate(job.mediaId, this.#d.mediaById);
-			}
+			// DB edit. Settle the right gate for this job type and let the party continue; the failure
+			// reaches the room via #emitStatus below, and the line logged just below records why. The
+			// per-type rule lives in settleGatesForFailedJob so the TTL and reaper paths settle
+			// identically (see issue #90) — a fourth fail path cannot reopen the hole.
+			settleGatesForFailedJob(job, this.#d.mediaById);
 			// LOG a terminal failure. A dead `align` job is otherwise completely silent — the song still
 			// plays, it just never gets lyrics and nothing anywhere says why. The operator needs one line
 			// naming the media and the reason, since the jobs table is the only other record.
@@ -360,6 +349,10 @@ export class WorkerHub {
 						`no connected worker advertised capability '${cap}' within ${Math.round(UNSERVABLE_TTL_MS / 1000)}s`,
 						now
 					);
+					// Settle the gate for this now-terminal cook exactly as #onFailed does — otherwise an
+					// unservable align/fetch/stems leaves its gate mid-flight forever, so readyToSing never
+					// flips and rotation holds the queue entry on every pass (issue #90).
+					settleGatesForFailedJob(job, this.#d.mediaById);
 					this.#unservableSince.delete(job.id); // terminal now — prune so the id cannot leak
 					console.warn(
 						`[hub] job ${job.id} (${job.jobType}) FAILED: unservable for ${Math.round((now - since) / 1000)}s ` +

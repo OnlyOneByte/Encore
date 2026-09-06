@@ -239,6 +239,34 @@ export function settleStemsGate(mediaId: string, mediaById: Map<string, Media>):
 	return true;
 }
 
+/**
+ * Settle the right gate for a job that has reached terminal `failed`, by job type. THE single rule
+ * for what a dead cook does to its song's readiness, so every terminal-fail path settles the same
+ * way and a fourth one cannot silently reopen the hole.
+ *
+ * A cook can die on three paths — the worker reports `job:failed` (#onFailed), it sits unservable
+ * past the TTL (dispatch), or the reaper exhausts its attempts because the worker box died — and
+ * ALL of them must settle, not just the reported one. Otherwise a TTL- or reaper-killed cook leaves
+ * `lyricsStatus`/`stemStatus` mid-flight forever: `readyToSing` never flips, rotation holds the
+ * queue entry on every pass, and the song never plays even with its instrumental on disk.
+ *
+ * The per-type rule (unchanged from where it used to live inline in #onFailed):
+ *   • `align`        → settle the LYRICS gate. The song already plays; a dead align must not keep it
+ *                      from ever being sung — let the party continue with no words on screen.
+ *   • `fetch`/`stems`→ settle the STEMS gate back to un-cooked. A dead download or separation used
+ *                      to leave the song reading "Making karaoke…" forever, un-retryable. `fetch`
+ *                      counts because requestMakeKaraoke marks the media cooking BEFORE the download.
+ *   • `stems-upgrade`→ NEITHER. The song still has its working instrumental; settleStemsGate refuses
+ *                      to walk a finished cook backwards anyway.
+ *
+ * Returns whether it changed anything (a gate was settled), for the caller's logging.
+ */
+export function settleGatesForFailedJob(job: Job, mediaById: Map<string, Media>): boolean {
+	if (job.jobType === 'align') return settleLyricsGate(job.mediaId, mediaById);
+	if (job.jobType === 'fetch' || job.jobType === 'stems') return settleStemsGate(job.mediaId, mediaById);
+	return false; // stems-upgrade: keep the working instrumental
+}
+
 /** Mark the lyrics gate as IN FLIGHT, so the phone can name the step a song is waiting on. */
 export function markLyricsQueued(mediaId: string, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);

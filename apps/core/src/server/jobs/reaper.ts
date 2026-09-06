@@ -3,11 +3,21 @@
 // `JobRepository`. A requeue here makes the job eligible for redispatch. See
 // docs/ARCHITECTURE.md.
 
+import type { Job } from '@encore/shared';
 import type { JobRepository } from './repository';
 import { sweep, inflightToRecover, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 
 /** Called after the reaper requeues/fails jobs so the dispatcher can react. */
 export type OnReaped = () => void;
+
+/**
+ * Called once per job the reaper moves to terminal `failed` (attempts exhausted — the worker box
+ * died mid-cook and never reported). Lets the app settle that song's readiness gate, exactly as the
+ * worker-reported and TTL fail paths do; without it a reaper-killed cook leaves its gate mid-flight
+ * forever and rotation holds the queue entry (issue #90). The reaper itself has no catalog access,
+ * so it hands the failed job up and the app supplies the gate-settling.
+ */
+export type OnJobFailed = (job: Job) => void;
 
 export interface ReaperOptions {
 	config?: LeaseConfig;
@@ -17,6 +27,8 @@ export interface ReaperOptions {
 	now?: () => number;
 	/** Hook fired once per tick that changed ≥1 job (dispatch trigger). */
 	onReaped?: OnReaped;
+	/** Hook fired once per job moved to terminal `failed` this tick, so the app can settle its gate. */
+	onFailed?: OnJobFailed;
 }
 
 export class JobReaper {
@@ -25,6 +37,7 @@ export class JobReaper {
 	#tickMs: number;
 	#now: () => number;
 	#onReaped: OnReaped;
+	#onFailed: OnJobFailed;
 	#timer: ReturnType<typeof setInterval> | null = null;
 
 	constructor(jobs: JobRepository, opts: ReaperOptions = {}) {
@@ -33,6 +46,7 @@ export class JobReaper {
 		this.#tickMs = opts.tickMs ?? 3_000;
 		this.#now = opts.now ?? Date.now;
 		this.#onReaped = opts.onReaped ?? (() => {});
+		this.#onFailed = opts.onFailed ?? (() => {});
 	}
 
 	/**
@@ -45,7 +59,7 @@ export class JobReaper {
 		const actions = sweep(inflight, now);
 		for (const action of actions) {
 			if (action.kind === 'requeue') this.#jobs.requeue(action.id, action.attempts, now);
-			else this.#jobs.fail(action.id, action.error, now, action.attempts);
+			else this.#onFailed(this.#jobs.fail(action.id, action.error, now, action.attempts));
 		}
 		if (actions.length > 0) this.#onReaped();
 		return actions.length;
