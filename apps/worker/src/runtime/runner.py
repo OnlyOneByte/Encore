@@ -9,7 +9,7 @@ What lives here and nowhere else:
   * the scratch directory for a job
   * `run_stage`, the subprocess-with-progress wrapper
   * `run_blocking`, the keepalive that keeps in-process ML from killing the websocket
-  * per-step timing, which is what finally gives the internal metrics page real resolution
+  * per-step timing, recorded on the `job:complete` payload for the worker's own log (the core drops it at its fact allowlist, so `/metrics` gets no per-step resolution from it)
   * turning a context into a CompleteResult
 
 It knows nothing about audio, lyrics or separation — only about plans, steps and contexts. That is the

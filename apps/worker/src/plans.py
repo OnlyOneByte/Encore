@@ -66,10 +66,11 @@ def stems_plan(
 
     `ProbeSilence` is a step rather than a line inside publishing, and that is a fix as well as a tidy-up:
     only demucs used to probe, so a roformer cook could publish a silent guiding track. As a step both
-    engines get it, its cost shows up in `/metrics`, and it is testable with no ffmpeg.
+    engines get it and it is testable with no ffmpeg.
 
     `KeyAndRange` likewise: it was called inline from both engines through two separate injectable
-    `profiler` parameters, so nothing could see what it cost.
+    `profiler` parameters. As a step the runner times it into `ctx.out.timings_sec`, so its cost is now
+    measured — though that measurement is not yet surfaced anywhere (the core drops it at its fact allowlist).
     """
     return LinearPlan(
         "stems",

@@ -287,3 +287,59 @@ def test_the_separation_seam_note_points_at_the_real_current_sites():
         "separation/__init__.py must state that the silence probe (volumedetect_argv/parse_max_volume_db/"
         "is_silent/SILENCE_FLOOR_DB) lives in processor.py, not here (issue #237)"
     )
+
+
+def test_no_docstring_claims_step_timings_reach_the_metrics_page():
+    """Issue #377. Three docstrings justified structural decisions with observability the code does not
+    deliver. The runner measures `ctx.out.timings_sec[step.name]` per step (runner.py) and puts it on the
+    wire as the `stepTimingsSec` fact (runner.py `setdefault`), but the core drops it: `pickFacts`'s
+    allowlist (apps/core/src/server/jobs/attempts.ts) keeps eight keys and `stepTimingsSec` is not among
+    them, and `ResolvedFacts` (packages/shared/src/events.ts) does not declare it. So `/metrics` gains no
+    per-step resolution from it and structurally cannot until the core is wired for it — a separate,
+    owner-gated change (issue #377's branch two; #193 wants the same data).
+
+    Production behaviour is correct; only the three claims were false, so this pins the prose. The false
+    `/metrics`-resolution clauses stay gone and the corrected framing (measured for the worker's own log /
+    not yet surfaced) stays stated, so reverting either docstring reds this test.
+    """
+    src = Path(__file__).resolve().parents[1] / "src"
+    runner_src = (src / "runtime" / "runner.py").read_text(encoding="utf-8")
+    plans_src = (src / "plans.py").read_text(encoding="utf-8")
+
+    # ── BAN the three discredited claims at their exact sites ──────────────────────────────────────
+    # runner.py:12 — "which is what finally gives the internal metrics page real resolution".
+    assert "gives the internal metrics page real resolution" not in runner_src, (
+        "runner.py again claims per-step timing gives the internal metrics page real resolution — the core "
+        "drops stepTimingsSec at its fact allowlist (attempts.ts pickFacts), so /metrics gets none (issue #377)"
+    )
+    # plans.py:69 — ProbeSilence "its cost shows up in `/metrics`".
+    assert "its cost shows up in `/metrics`" not in plans_src, (
+        "plans.py again claims ProbeSilence's cost shows up in /metrics — the step timing is dropped by the "
+        "core's fact allowlist and never reaches the metrics page (issue #377)"
+    )
+    # plans.py:72 — KeyAndRange "so nothing could see what it cost", implying that as a step something can.
+    assert "so nothing could see what it cost" not in plans_src, (
+        "plans.py again ends the KeyAndRange rationale with 'so nothing could see what it cost', implying a "
+        "step's cost is now observable — it is measured but not surfaced (dropped at the allowlist) (issue #377)"
+    )
+
+    # ── PRESENCE: the corrected framing must be NAMED, not merely absent, so a revert reds this test ─
+    # runner.py must state the timing is for the worker's own job:complete log and that the core drops it.
+    assert "job:complete" in runner_src and "the core drops it" in runner_src, (
+        "runner.py must state per-step timing rides the job:complete payload for the worker's own log and "
+        "that the core drops it at its fact allowlist (issue #377)"
+    )
+    # plans.py must state KeyAndRange's cost is measured but not yet surfaced.
+    assert "not yet surfaced" in plans_src, (
+        "plans.py must state KeyAndRange's cost is now measured but not yet surfaced anywhere (the core drops "
+        "it at its fact allowlist) (issue #377)"
+    )
+
+    # Sanity: the ban regex must actually match the OLD text, and not match the corrected text. Prove it
+    # against reconstructed original clauses so the guard cannot silently rot into a tautology.
+    _old_runner = "  * per-step timing, which is what finally gives the internal metrics page real resolution"
+    _old_plans_probe = "engines get it, its cost shows up in `/metrics`, and it is testable with no ffmpeg."
+    _old_plans_kar = "`profiler` parameters, so nothing could see what it cost."
+    assert "gives the internal metrics page real resolution" in _old_runner
+    assert "its cost shows up in `/metrics`" in _old_plans_probe
+    assert "so nothing could see what it cost" in _old_plans_kar
