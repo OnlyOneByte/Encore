@@ -9,6 +9,7 @@ import {
 	isLegibleSingerColor,
 	normalizeSingerColor,
 	nearestSingerHue,
+	presetTabStopIndex,
 	stageHueToHex,
 	stageLightnessForHue,
 	STAGE_BG_L,
@@ -187,4 +188,45 @@ test('every singer preset yields a usable stage, including the two that collapse
 		expect(contrastRatio(WHITE, bg)).toBeGreaterThanOrEqual(4.5);
 	}
 	expect(stageHueToHex(nearestSingerHue('#33d6a6'))).toBe(stageHueToHex(nearestSingerHue('#5cffd6')));
+});
+
+
+// ── preset roving tab order ──────────────────────────────────────────────────
+// The eight presets are a roving-tabindex radiogroup: exactly one swatch is tabbable and arrow keys
+// move within. The tab stop is normally the checked preset — but the wheel emits colours that are
+// NEVER presets, and without a fallback a single wheel pick drops all eight out of the tab order for
+// good, locking a keyboard/switch-access guest out of the only named colours. presetTabStopIndex is
+// the pure decision the picker's `tabindex` reads; these pin that a valid tab stop ALWAYS exists.
+
+test('presetTabStopIndex points at the matching swatch for a preset value', () => {
+	SINGER_COLORS.forEach((c, i) => {
+		expect(presetTabStopIndex(c)).toBe(i);
+	});
+});
+
+test('presetTabStopIndex keeps a tab stop after a wheel pick — the closed-door bug', () => {
+	// The bug (#88): after any hue pick, value is a wheel hex, no swatch matches, and the old
+	// `value === c ? 0 : -1` expression left EVERY swatch at -1 — the whole group fell out of the tab
+	// order and the wheel provably cannot return to a preset. The fallback keeps swatch 0 tabbable.
+	//
+	// Mutation proof: revert presetTabStopIndex to `SINGER_COLORS.indexOf(value)` (no fallback) and it
+	// returns -1 for every wheel hue below — this expectation then fails with `-1 to be 0`.
+	for (const wheelHex of SINGER_WHEEL) {
+		// premise: the wheel never lands on a preset, so there is genuinely no match to fall back from
+		expect(SINGER_COLORS as readonly string[]).not.toContain(wheelHex);
+		expect(presetTabStopIndex(wheelHex)).toBe(0);
+	}
+});
+
+test('presetTabStopIndex always yields exactly one in-range tab stop', () => {
+	// The invariant the picker relies on: for ANY value — preset, wheel hue, or garbage — precisely
+	// one swatch ends up with tabindex 0, and it is a real index into the rendered swatches.
+	const inputs = [...SINGER_COLORS, ...SINGER_WHEEL, '#000000', 'not a colour', ''];
+	for (const v of inputs) {
+		const stop = presetTabStopIndex(v);
+		const tabbable = SINGER_COLORS.map((_, i) => i).filter((i) => i === stop);
+		expect(tabbable.length).toBe(1);
+		expect(stop).toBeGreaterThanOrEqual(0);
+		expect(stop).toBeLessThan(SINGER_COLORS.length);
+	}
 });
