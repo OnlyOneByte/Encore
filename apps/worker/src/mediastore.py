@@ -1,6 +1,6 @@
 """Worker-side MediaStore config: parse the `worker:welcome` mediaStore handshake and
 resolve WHERE this worker reads source / writes stems — a shared local volume (single-box) or an
-S3/MinIO bucket (scale-out, MASTER-DESIGN §2).
+S3/MinIO bucket (scale-out, ARCHITECTURE §2).
 
 PURE config + key resolution (no boto3, no network) is unit-tested here. The actual S3 upload is a
 thin injectable seam (Uploader) the processor calls after writing locally — on a real worker box

@@ -1,5 +1,5 @@
 // Singer repository + session tokens. Singers are ephemeral identities (name + color) — no
-// signup wall (MASTER-DESIGN §1/§5). A crypto session token is minted on join and stored in a
+// signup wall (ARCHITECTURE §1/§10). A crypto session token is minted on join and stored in a
 // cookie; subsequent requests resolve the singer by that token.
 
 import { randomBytes } from 'node:crypto';

@@ -2,7 +2,7 @@
 // Marks the media as COOKING (stemStatus:queued) so rotation HOLDS its slot
 // (isEntryReady returns false until stems are ready), then enqueues a stems job at the priority of
 // the soonest queue entry that needs it. worker-hub flips the media to ready on completion.
-// See MASTER-DESIGN §4, §6.
+// See ARCHITECTURE §6, §7.
 
 import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '@encore/shared';
 import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade, isPlayable, needsFetch, normalizeSongProfile } from '@encore/shared';

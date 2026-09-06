@@ -118,7 +118,7 @@ ever in**. Measured side by side on a real cooked song:
 So a run made with the flag cannot support a claim about whether the room makes a sound; it can only
 support a claim about the decode path once something has started. **Assert playback gestureless**, and
 if you do grant the flag, label that probe's output `NOT-A-TV` so the next reader cannot mistake it for
-evidence about a real television. `t17-audiocontext.mjs` runs both policies side by side and is the
+evidence about a real television. `tv-audiocontext-resume.mjs` runs both policies side by side and is the
 reference for this.
 
 ## Writing a probe

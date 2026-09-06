@@ -1,5 +1,5 @@
 // bun:sqlite + Drizzle client. WAL mode (concurrent reads + a single writer) is ideal for
-// our model: reads come from in-memory state, writes are write-behind. See MASTER-DESIGN §2a.
+// our model: reads come from in-memory state, writes are write-behind. See ARCHITECTURE §9.
 
 import { Database } from 'bun:sqlite';
 import { drizzle } from 'drizzle-orm/bun-sqlite';

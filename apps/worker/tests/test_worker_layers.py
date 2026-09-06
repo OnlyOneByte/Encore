@@ -1,6 +1,6 @@
 """Enforcement: the tests that make the architecture stick.
 
-`docs/archive/specs/SPEC-worker-pipeline.md` §1.2 established that this codebase's failure mode is not missing
+`docs/ARCHITECTURE.md` §7.1 records that this codebase's failure mode is not missing
 abstractions but UNENFORCED ones — four verified cases, one of which shipped a near-miss bug. So every
 mechanism the refactor introduced gets a test that fails when someone routes around it. Without this file
 the refactor is decoration.
@@ -134,7 +134,7 @@ def test_there_is_exactly_ONE_thing_that_executes_a_plan():
     unexpected = {k: v for k, v in found.items() if k not in allowed}
     assert not unexpected, (
         f"new Processor implementations: {unexpected}. Work belongs in a Step inside a plan, not in a "
-        f"class with its own process() — see docs/archive/specs/SPEC-worker-pipeline.md §7 E3."
+        f"class with its own process() — see docs/ARCHITECTURE.md §7.1 (one runner)."
     )
 
 

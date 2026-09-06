@@ -12,8 +12,8 @@ So the tables below are computed from `PLANS`, written into `docs/ARCHITECTURE.m
 test asserts the committed file matches regeneration. Everything outside the markers stays hand-written —
 the reasoning is a human's job; the inventory is not.
 
-It lives in ARCHITECTURE.md rather than a new file because `docs/specs/README.md` fixes the docs root at
-three files, and a reader looking for how the worker runs is already there.
+It lives in ARCHITECTURE.md rather than a new file because that is the one canonical system document,
+and a reader looking for how the worker runs is already there.
 """
 from __future__ import annotations
 

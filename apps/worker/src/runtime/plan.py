@@ -1,7 +1,7 @@
 """Plans: what each action does, and the one seam that decides iteration order.
 
 A plan is a list of steps. Execution is linear. Divergence is resolved by `plan_for` BEFORE the first
-step runs, never mid-plan — see `docs/archive/specs/SPEC-worker-pipeline.md` §5.2, which tabulates every
+step runs, never mid-plan — see `docs/ARCHITECTURE.md` §7.1, which tabulates every
 divergence candidate in this codebase and on the roadmap and shows each one is answerable from job
 params, settings or the resolved engine up front.
 

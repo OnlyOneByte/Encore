@@ -408,7 +408,7 @@ test('the unverified tint overrides variables only — it never re-selects a wor
  * with the whole suite green. Property-level proof (zero `.url`/`.strip` intersection, with the address the element painted at
  * its own centre, across roster {3, 8, 8+overflow} \u00d7 viewport {1280\u00d7720, 1366\u00d7768, 1920\u00d71080})
  * is the runnable e2e at e2e/lobby-overlap.mjs (`bun run e2e:lobby`) \u2014 it FAILS 6/9 against base and
- * 2/9 with the cap removed, so it pins both halves of the fix; before/after frames are in docs/shots/98/.
+ * 2/9 with the cap removed, so it pins both halves of the fix; before/after frames are in the PR body.
  */
 test('#98 the lobby roster strip reserves its band in flow — it is not absolutely docked to the edge', () => {
 	const lobby = stripComments(TV_LOBBY);

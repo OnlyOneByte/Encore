@@ -16,8 +16,13 @@
 // does NOT strip comments first: a task ref in a comment is the exact thing being banned, so blanking
 // comments would blind the guard to its whole purpose. This file is the sole exception — it carries
 // the patterns as regex literals and prose, so it excludes itself by path.
+//
+// WHY IT ALSO SCANS docs/ AND CONFIG. The retired families lived mostly in docs (a ROADMAP and an
+// archive, both since deleted) and in the worker's Dockerfile / requirements.txt / .env.example — not
+// in .ts source. Task tracking is GitHub issues now, so the scan covers .md, .txt, .yml and those
+// config basenames as well, and a re-added ticket code in any of them reds this guard.
 import { test, expect } from 'bun:test';
-import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 // import.meta.dir === apps/core/src/lib. Two roots up is apps/core; four up is the repo root, which is
@@ -32,10 +37,12 @@ const REPO = join(import.meta.dir, '..', '..', '..', '..');
 const PATTERNS: { re: RegExp; family: string }[] = [
 	{ re: /\bT-[0-9]+\b/, family: 'T-<n>' },
 	{ re: /\bB-[0-9]+\b/, family: 'B-<n> (retired)' },
-	{ re: /\bM[0-9]-C[0-9]+\b/, family: 'M<n>-C<n> (retired)' }
+	{ re: /\bM[0-9]+-C[0-9]+\b/, family: 'M<n>-C<n> (retired)' }
 ];
 
-const SCANNED_EXT = ['.ts', '.svelte', '.py', '.js'];
+const SCANNED_EXT = ['.ts', '.svelte', '.py', '.js', '.mjs', '.md', '.txt', '.yml', '.yaml'];
+// Extensionless / dotfile config that carried retired task tokens (M<n>-C<n>, B-<n>) and must stay clean.
+const SCANNED_NAMES = new Set(['Dockerfile', '.env.example', '.npmrc']);
 const SKIP_DIRS = new Set(['node_modules', 'build', '.svelte-kit', 'dist', '.git', 'media', '__pycache__']);
 
 // This guard is the one file that must contain the patterns (as literals + prose), so it excludes
@@ -47,7 +54,7 @@ function walk(dir: string, out: string[]): string[] {
 		if (ent.isDirectory()) {
 			if (SKIP_DIRS.has(ent.name)) continue;
 			walk(join(dir, ent.name), out);
-		} else if (SCANNED_EXT.some((e) => ent.name.endsWith(e))) {
+		} else if (SCANNED_EXT.some((e) => ent.name.endsWith(e)) || SCANNED_NAMES.has(ent.name)) {
 			out.push(join(dir, ent.name));
 		}
 	}
@@ -84,4 +91,25 @@ test('no task/ticket number appears in source, comments, tests or fixtures', () 
 		});
 	}
 	expect(offenders).toEqual([]);
+});
+
+// guard: the paths retired in the repo-cleanup sweep stay retired.
+//
+// The cleanup deleted the docs ROADMAP (open work is GitHub issues now), the whole docs/archive tree
+// and docs/specs/ (old specs folded into ARCHITECTURE / DECISIONS), and two dead screenshot trees.
+// A pure deletion cannot be pinned by a behavioural test — the suite stays green whether the file is
+// there or not — so this existence check is the only thing that reds when one is re-added by a stray
+// `git mv`, a revert, or a rebase resurrecting it. Each entry is a real regression, not a style nit:
+// re-adding ROADMAP.md reinstates a second what-to-build-next authority beside the issue tracker, and
+// re-adding an archive spec resurrects a doc whose citations were all repointed to ARCHITECTURE.
+test('the paths retired by the repo-cleanup stay absent from the tree', () => {
+	const RETIRED = [
+		'docs/ROADMAP.md',
+		'docs/archive',
+		'docs/specs',
+		'docs/shots',
+		'temp-screenshots/per-song-word-clamp'
+	];
+	const present = RETIRED.filter((rel) => existsSync(join(REPO, rel)));
+	expect(present).toEqual([]);
 });

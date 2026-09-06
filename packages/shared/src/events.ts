@@ -179,7 +179,7 @@ export interface WorkerHost {
 }
 
 // Where workers pull source / push stems. local = a shared volume (single-box); object = S3/MinIO
-// for workers on other boxes (MASTER-DESIGN §2). Sent verbatim in worker:welcome.
+// for workers on other boxes (ARCHITECTURE §2). Sent verbatim in worker:welcome.
 export type MediaStoreConfig =
   | { kind: 'local' }
   | { kind: 'object'; bucket: string; endpoint?: string; region?: string; prefix?: string };

@@ -136,7 +136,7 @@ What already exists, and did not when the first attempt was built:
   stems plan. Compare this with the removed `score` job, whose disqualification was re-running the
   entire separation for vocals it could have read off disk.
 - **A step/plan worker.** Adding an analysis step is now a declared step in a plan rather than a new
-  processor class (`docs/archive/specs/SPEC-worker-pipeline.md`).
+  processor class (`docs/ARCHITECTURE.md` §7.1).
 
 What does **not** exist:
 

@@ -1,6 +1,6 @@
 // ObjectMediaStore — S3/MinIO-backed MediaStore for scale-out (workers on other boxes). Built on
 // Bun's native S3 (Bun.S3Client) — no aws-sdk/minio dep; speaks to MinIO via a custom `endpoint`.
-// See MASTER-DESIGN §2. The S3 client is injected behind a tiny interface so the whole store
+// See ARCHITECTURE §2. The S3 client is injected behind a tiny interface so the whole store
 // unit-tests against an in-memory fake (no network, no creds).
 
 import { objectKey, mediaProxyUrl, type MediaStore, type ObjectStoreConfig } from './store';
