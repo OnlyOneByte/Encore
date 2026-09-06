@@ -136,6 +136,30 @@ describe('measured cost', () => {
 	});
 });
 
+describe('quality rank', () => {
+	// The sibling of 'every whitelisted model carries a cost record' for the OTHER per-model field.
+	// `rank` is a required field on `SeparatorModel`, so a whitelisted model missing a rank cannot even
+	// compile — but this pins the runtime invariant the type protects: no whitelisted pairing may
+	// resolve to the sentinel 0. Before rank moved onto the registry, `qualityRank` looked a pairing up
+	// in a hand-maintained parallel `QUALITY_RANK` table, so a whitelisted model absent from that table
+	// silently ranked 0 — invisible to `resolveCookSeparator`'s ladder (settings.ts skips `rank === 0`)
+	// and unable to publish over any instrumental (isQualityUpgrade returns false for a rank-0 candidate).
+	// This reds on the base where the table was hand-maintained and could not guarantee registry coverage.
+	it('every whitelisted model has a positive quality rank (never the silent-0 sentinel)', () => {
+		for (const engine of SEPARATOR_ENGINES) {
+			for (const model of engine.models) {
+				expect(qualityRank(engine.id, model.id)).toBeGreaterThan(0);
+			}
+		}
+	});
+
+	// The 0 sentinel is still reachable — but ONLY for a pairing that is not in the registry at all.
+	it('a pairing not in the registry ranks 0', () => {
+		expect(qualityRank('demucs', 'bogus')).toBe(0);
+		expect(qualityRank('nope', 'htdemucs')).toBe(0);
+	});
+});
+
 describe('normalizeGlobalSettings', () => {
 	it('returns defaults for empty/nullish input', () => {
 		expect(normalizeGlobalSettings(undefined)).toEqual(DEFAULT_GLOBAL_SETTINGS);

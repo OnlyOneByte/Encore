@@ -74,6 +74,17 @@ export interface SeparatorModel {
 	note: string;
 	/** Measured cost of running this checkpoint. See `SeparatorCost`. */
 	cost: SeparatorCost;
+	/**
+	 * Relative separation quality, low to high — this model's rung on the upgrade ladder. Lives on the
+	 * model beside `cost` so the registry is the single source of truth: a new whitelisted model cannot
+	 * typecheck without one, which is what makes the "silently ranks 0 and drops off the cook ladder"
+	 * failure structurally impossible rather than a thing a separate table has to remember. Compared
+	 * ACROSS engines (an htdemucs_ft cook beats plain htdemucs; a roformer cook beats both), so the
+	 * numbers are globally ordered, not per-engine. Positive by construction here; `qualityRank`
+	 * returns 0 only for a pairing that is not in the registry at all (unknown or de-whitelisted),
+	 * which is what keeps such a pairing from ever displacing a known-good artifact.
+	 */
+	rank: number;
 }
 
 export interface SeparatorEngine {
@@ -105,6 +116,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				id: 'htdemucs',
 				label: 'HT-Demucs',
 				note: 'Fastest. The default — singable in seconds.',
+				rank: 10,
 				// 50s for a 171.5s song, measured end to end.
 				cost: { rtFactor: 0.29, cpuPrecision: 'fp32', provenance: 'measured' },
 			},
@@ -112,6 +124,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				id: 'htdemucs_ft',
 				label: 'HT-Demucs FT',
 				note: 'Fine-tuned 4-model bag. ~2× slower, cleaner.',
+				rank: 20,
 				// 95s for the same 171.5s song, measured end to end.
 				cost: { rtFactor: 0.55, cpuPrecision: 'fp32', provenance: 'measured' },
 			},
@@ -119,6 +132,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				id: 'htdemucs_6s',
 				label: 'HT-Demucs 6-stem',
 				note: 'Adds piano/guitar stems.',
+				rank: 15,
 				// NOT benchmarked: one pass like htdemucs but resolving six sources instead of four.
 				cost: { rtFactor: 0.4, cpuPrecision: 'fp32', provenance: 'estimated' },
 			},
@@ -145,6 +159,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				 * seams at window boundaries, so that one is a quality decision awaiting a listening test,
 				 * not a free win like the dtype.
 				 */
+				rank: 35,
 				cost: { rtFactor: 8.28, overlap: 4, cpuPrecision: 'bf16', provenance: 'measured' },
 			},
 		],
@@ -160,6 +175,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				id: 'instrumental_clean',
 				label: 'Instrumental (clean)',
 				note: 'Two-model ensemble, minimal vocal bleed.',
+				rank: 45,
 				// NOT benchmarked, and no ensemble worker exists yet: two roformer-class passes plus a
 				// blend, so at least twice a single roformer cook.
 				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' },
@@ -168,6 +184,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				id: 'instrumental_full',
 				label: 'Instrumental (full)',
 				note: 'Maximum instrument preservation.',
+				rank: 40,
 				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' },
 			},
 		],
@@ -196,31 +213,25 @@ export function isLiveSelectable(engineId: string, modelId: string): boolean {
 }
 
 /**
- * Relative separation quality, low to high — the declared upgrade ladder. Mirrors the worker's
- * QUALITY_RANK. Keyed on engine+model because the checkpoint matters as much as the engine (an
- * htdemucs_ft cook beats plain htdemucs on the same engine).
+ * Relative separation quality, low to high — the declared upgrade ladder, read straight off the
+ * registry (`SeparatorModel.rank`). The checkpoint matters as much as the engine (an htdemucs_ft cook
+ * beats plain htdemucs on the same engine), and ranks are globally ordered across engines.
  *
- * An unranked pairing scores 0 and can never win a comparison, which keeps an unknown or
- * de-whitelisted model from displacing a known-good artifact.
+ * Returns 0 for a pairing that is not in the registry — an unknown or de-whitelisted model — and a
+ * rank-0 pairing can never win a comparison, which keeps such a model from displacing a known-good
+ * artifact. Crucially it can no longer return 0 for a *whitelisted* model: `rank` is a required field
+ * on `SeparatorModel`, so a new whitelist entry cannot compile without one. The former hand-maintained
+ * `QUALITY_RANK` parallel table is gone precisely because it let a whitelisted model silently rank 0
+ * and drop off the cook ladder.
  *
- * The former `roformer:mel-roformer-inst-v2` rung (rank 30) is gone: its worker-side token resolved
- * to a registry slug that does not exist, and the engine backing `roformer` today implements only the
- * BS-RoFormer architecture, so no mel-band checkpoint could ever have run. It was an option the phone
- * offered and no worker could satisfy. A de-whitelisted model stored in settings falls back per-field
- * through `normalizeGlobalSettings`, so removing it degrades an affected room to the default rather
- * than breaking it.
+ * The former `roformer:mel-roformer-inst-v2` rung (rank 30) is likewise gone: its worker-side token
+ * resolved to a registry slug that does not exist, and the engine backing `roformer` today implements
+ * only the BS-RoFormer architecture, so no mel-band checkpoint could ever have run. A de-whitelisted
+ * model stored in settings falls back per-field through `normalizeGlobalSettings`, so removing it
+ * degrades an affected room to the default rather than breaking it.
  */
-const QUALITY_RANK: Record<string, number> = {
-	'demucs:htdemucs': 10,
-	'demucs:htdemucs_6s': 15,
-	'demucs:htdemucs_ft': 20,
-	'roformer:bs-roformer-1297': 35,
-	'ensemble:instrumental_full': 40,
-	'ensemble:instrumental_clean': 45
-};
-
 export function qualityRank(engineId: string, modelId: string): number {
-	return QUALITY_RANK[`${engineId}:${modelId}`] ?? 0;
+	return getEngine(engineId)?.models.find((m) => m.id === modelId)?.rank ?? 0;
 }
 
 /** The measured cost record for a pairing, or undefined if the pairing is not whitelisted. */
