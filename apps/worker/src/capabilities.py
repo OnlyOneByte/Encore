@@ -67,12 +67,21 @@ def probe_all(*, ytdlp_bin: str = "yt-dlp", demucs_bin: str = "demucs",
     rof_ok, rof_why = _either("bs_roformer", roformer_bin)
     probes.append(Probe("stems:roformer", rof_ok, rof_why))
 
-    # An ensemble runs both engines and keeps the better result, so it needs both present. Claiming it
-    # with one engine missing would fail mid-cook rather than at routing time.
+    # An ensemble would run both engines and keep the better result, so it would need both present.
+    # But no ensemble engine is implemented: `engine_for` (separation/engines.py) has branches for
+    # `demucs` and `roformer` only, so an ensemble upgrade dispatches and then raises `RuntimeError:
+    # no separator engine: ensemble` at plan selection — the exact "the box cannot honour this claim"
+    # failure this module exists to remove, and it also defeats the core's unservable-capability
+    # diagnostic (worker-hub.ts) which would otherwise name the missing capability cleanly.
+    #
+    # So the token is NOT advertised until an engine backs it, mirroring the OPENVINO backend one
+    # domain over (backends.py): kept in the vocabulary so configuration and routing can name it, but
+    # it never reports available. `stems_ok`/`rof_ok` are read only so the reason can distinguish
+    # "engine unimplemented" from "engines absent"; neither can flip this to available.
     probes.append(Probe(
         "stems:ensemble",
-        stems_ok and rof_ok,
-        "both engines present" if stems_ok and rof_ok else "needs both demucs and roformer",
+        False,
+        "no ensemble engine implemented" if stems_ok and rof_ok else "no ensemble engine implemented (and needs both demucs and roformer)",
     ))
 
     align_ok = _module_available("whisperx")
