@@ -85,8 +85,8 @@ export function resolveBase(ref: string): { base: string; rest: string } {
 
 // ── keys (relative refs — what goes in the DB and on the wire) ──────────────────────
 //
-// These MUST agree byte-for-byte with the worker's output paths (apps/worker/src/processor.py and
-// whisperx.py), because the TV resolves `/media/${ref}`. A mismatch is silent: the file exists, the
+// These MUST agree byte-for-byte with the worker's output paths (apps/worker/src/processor.py),
+// because the TV resolves `/media/${ref}`. A mismatch is silent: the file exists, the
 // player 404s. Keep the two in sync or the cook→play path breaks.
 
 /** Raw original audio. The one unrecoverable asset. */
