@@ -122,7 +122,8 @@ Three results that must survive into any implementation:
 ⚠️ **Speed only — quality is unmeasured.** `bs_roformer-1297` is the only candidate with a published
 SDR (12.9755) and the only one the owner has heard. The becruily/gabox models are community
 fine-tunes. Several carry **non-commercial / research licence terms** on their Hugging Face cards —
-check before whitelisting. A listening test is tracked as B-8-C1b in `docs/ROADMAP.md`.
+check before whitelisting. A listening test to rank the candidate models is open work (the separator
+swap, see `docs/DECISIONS.md`).
 
 ## 5. Cross-architecture sweep — MDX23C and the karaoke families
 

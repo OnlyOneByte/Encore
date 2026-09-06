@@ -1,5 +1,5 @@
 /*
- * T-17 diagnostic: does the TV's AudioContext ever RESUME, with no gesture in the room?
+ * Diagnostic: does the TV's AudioContext ever RESUME, with no gesture in the room?
  *
  * Why this exists. A probe measured the pitch shifter's maths as correct (per-partial ratio 1.1236
  * against a theoretical 1.1225 at +2 semitones) while the owner reports the ± buttons doing nothing at
@@ -17,7 +17,7 @@
  *   GESTURELESS ctx absent while shift > 0 → the graph never built; look at `active` (hypothesis 2).
  *   GESTURELESS ctx.state === 'running'    → the context is fine and the cause is elsewhere (3).
  *
- *   EPORT=<port> bun e2e/probes/t17-audiocontext.mjs
+ *   EPORT=<port> bun e2e/probes/tv-audiocontext-resume.mjs
  */
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
@@ -67,7 +67,7 @@ const READ = `(() => {
 async function runUnder(label, extraFlags, cdpPort) {
 	const proc = spawn(chrome, [
 		`--remote-debugging-port=${cdpPort}`, '--headless=new', '--no-sandbox', '--disable-gpu',
-		'--no-first-run', `--user-data-dir=${process.env.KIROCREW_SCRATCH ?? '/tmp'}/t17-${cdpPort}`,
+		'--no-first-run', `--user-data-dir=${process.env.KIROCREW_SCRATCH ?? '/tmp'}/tv-actx-${cdpPort}`,
 		...extraFlags, 'about:blank'
 	], { stdio: 'ignore' });
 
@@ -133,7 +133,7 @@ if (g.contexts === 0) {
 	console.log('→ hypothesis 2/3: the graph never built. Look at `active` for the audible slot.');
 } else if (g.states.every((s) => s === 'suspended')) {
 	console.log('AudioContext exists and is SUSPENDED with no gesture available.');
-	console.log('→ CONFIRMS T-17 hypothesis 1: audio plays UNSHIFTED and the ± buttons appear dead.');
+	console.log('→ CONFIRMS hypothesis 1: audio plays UNSHIFTED and the ± buttons appear dead.');
 	console.log('→ The fix is a gesture affordance on /tv, NOT a change to the shifter.');
 } else if (g.states.includes('running')) {
 	console.log('AudioContext is RUNNING even with no gesture — the context is not the cause.');

@@ -448,7 +448,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
         #
         # A PlanRunner over the declared align plan, not a bespoke processor: eight named steps rather
         # than one 257-line method, and engines resolved per JOB rather than mutated on this instance.
-        # See docs/archive/specs/SPEC-worker-pipeline.md S2.
+        # See docs/ARCHITECTURE.md §7.1 (the align plan).
         by_type["align"] = align_runner(
             runner=subprocess_runner,
             lyrics_client=LrclibClient(base_url=cfg.lrclib_base),

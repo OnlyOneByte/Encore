@@ -1,6 +1,6 @@
 // In-memory authoritative state — the source of truth on the hot path. Reads never touch disk;
 // a queue:patch broadcast is computed from RAM (sub-ms). Writes update memory, bump `rev`, and
-// schedule a write-behind flush to SQLite. Hydrated once on boot. See MASTER-DESIGN §7 (Tier 1 #2).
+// schedule a write-behind flush to SQLite. Hydrated once on boot. See ARCHITECTURE §9.
 
 import { applyAndReseq, assignSeqs, isTerminal, type Ordering, type QueueOp, type QueueEntry, type PlaybackState } from '@encore/shared';
 

@@ -1,5 +1,5 @@
 // MediaStore — the abstraction that lets a worker on a SECOND box read/write media the core can
-// also reach (MASTER-DESIGN §2: "MediaStore is an interface — local volume (default) or object-
+// also reach (ARCHITECTURE §2: "MediaStore is an interface — local volume (default) or object-
 // store (MinIO/S3) when workers are remote. Flip via env var."). Single-box mode = `local` (a
 // shared volume); scale-out = `object` (S3/MinIO). The `worker:welcome` handshake carries the
 // resolved config so a remote worker knows where to pull the source / push stems.

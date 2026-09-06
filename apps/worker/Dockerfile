@@ -1,6 +1,6 @@
 # Encore worker — container 2 (the make-karaoke ML box). Gated behind the compose `stems` profile,
-# so the MVP never builds or ships it. Dials home to core over WS (§5); runs Demucs htdemucs (M7-C5)
-# + WhisperX (M7-C8). CPU by default — a GPU deploy overrides the torch index + adds a CUDA base.
+# so the MVP never builds or ships it. Dials home to core over WS (ARCHITECTURE §3); runs Demucs
+# htdemucs + WhisperX. CPU by default — a GPU deploy overrides the torch index + adds a CUDA base.
 #
 # Heavy by nature (torch is multi-GB); that's exactly WHY it's quarantined from the one-container MVP.
 FROM python:3.12-slim-bookworm AS runtime
@@ -13,7 +13,7 @@ RUN apt-get update \
 
 # Python deps first for layer caching. Torch CPU wheels from the official index (override with a
 # build-arg for CUDA). --no-cache-dir keeps the (already large) image from bloating further.
-# requirements.txt also pins yt-dlp (B-9-C1) so the source fetcher ships WITH the image: it used to be
+# requirements.txt also pins yt-dlp so the source fetcher ships WITH the image: it used to be
 # hand-installed into a live container, which a `docker rm` silently undid.
 ARG TORCH_INDEX_URL=https://download.pytorch.org/whl/cpu
 COPY apps/worker/requirements.txt ./requirements.txt

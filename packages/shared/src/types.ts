@@ -183,7 +183,7 @@ export interface Singer {
 export type EntryStatus = 'queued' | 'playing' | 'waiting' | 'done' | 'skipped';
 
 export interface QueueEntry {
-  id: string; // client-minted ULID (zero-flicker reconcile — see reconciliation-contract.md)
+  id: string; // client-minted ULID (zero-flicker reconcile — see docs/ARCHITECTURE.md §3)
   mediaId: string;
   singerId: string;
   status: EntryStatus;

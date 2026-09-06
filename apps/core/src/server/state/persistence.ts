@@ -1,6 +1,6 @@
 // Write-behind persistence: snapshots the authoritative queue + playback into SQLite.
 // Replace-the-world per flush is fine — the queue is small (a party), and this never sits on
-// the read/broadcast hot path. See MASTER-DESIGN §7.
+// the read/broadcast hot path. See ARCHITECTURE §9.
 
 import type { DB } from '../db/index';
 import { queueEntries, playbackState } from '../db/schema';

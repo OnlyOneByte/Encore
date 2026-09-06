@@ -4,8 +4,8 @@
 >
 > This is the one architecture document. Detailed original specs are preserved under
 > [`archive/reference/`](archive/reference/) for design archaeology, not as current instructions.
-> Open work belongs in [`ROADMAP.md`](ROADMAP.md); operational traps belong in
-> [`HANDOFF.md`](HANDOFF.md).
+> Open work is tracked in GitHub issues; ratified decisions and the scope fence are in
+> [`DECISIONS.md`](DECISIONS.md); operational traps belong in [`HANDOFF.md`](HANDOFF.md).
 
 ## 1. Product and core loop
 
@@ -56,8 +56,8 @@ Repository shape:
 packages/shared/   realtime contract + pure shared reducers
 apps/core/         SvelteKit surfaces + Bun server + SQLite + media/job coordination
 apps/worker/       dial-home Python worker + separator/WhisperX processors
-docs/              ARCHITECTURE + HANDOFF + ROADMAP at root; everything else in a subfolder
-                   (deploy/ benchmarks/ mocks/, and history under archive/)
+docs/              ARCHITECTURE + HANDOFF + DECISIONS at root; everything else in a subfolder
+                   (deploy/ benchmarks/ mocks/ research/)
 ```
 
 ## 3. Authority and realtime
@@ -594,8 +594,8 @@ known-good artifact.
 
 Every action is one flat plan of steps over a typed per-job context, executed by a single `PlanRunner`
 (`apps/worker/src/runtime/`). Divergence is resolved by `plan_for` **before** the first step runs, so
-there is no mid-plan branching — see `docs/archive/specs/SPEC-worker-pipeline.md` §5.2 for the analysis and for
-the trigger that would revisit it.
+there is no mid-plan branching — the rationale and the trigger that would revisit it are in
+[Why plan-selection, not a state machine](#why-plan-selection-not-a-state-machine) below.
 
 The tables below are **generated from the plans**, because hand-written architecture prose about this
 worker has a track record: `fetch.py` claimed a function was "the one place" three of its four callers
@@ -714,6 +714,58 @@ flowchart LR
 
 <!-- END generated:worker-pipeline -->
 
+#### Why plan-selection, not a state machine
+
+The worker never branches mid-plan, and that is a stronger claim than "the worker is simple": **every
+divergence found in this codebase resolves before the first step runs.** Three things get called
+"branching" and each needs a different mechanism:
+
+- **Conditional skip / conditional write.** "Skip the download when the source is declared local";
+  "withhold the vocals artifact when the stem is digital silence". Handled by `Step.applies(ctx)` and by
+  a step choosing what it writes — the sequence is unchanged, one entry is inert. Declared guards, so
+  they appear in the generated table and the log rather than as an `if` buried mid-method.
+- **Early termination.** An instrumental with no words: `acquire-texts` returns `StepResult(STOP,
+  reason=…)` and the runner completes with what the context holds. One exit, always "finish" — a
+  short-circuit, not a transition table, and the reason string keeps it out of the silent-failure class.
+- **Genuine divergence** — a different *sequence* of work. This is what a state machine is for, so the
+  question is whether it occurs. Separator engine, `stems` vs `stems-upgrade`, lead-vs-backing split,
+  a future scoring tier: each is known from job params, room settings or the resolved engine **before**
+  step 1, so it is **plan selection** (`plan_for`), not branching. The retry cases — silent stem, an
+  unavailable format, LRCLIB becoming reachable — belong to the **core**, because the core owns the
+  `job_attempts` ledger and `/metrics/<mediaId>` audits every attempt; a worker-internal retry loop
+  would report one cook where three engines were tried.
+
+The decision stays deliberately reversible: the runner iterates through one seam (`Plan.first()` /
+`Plan.after(step, result, ctx)`), so a future `GraphPlan` implementing `after()` as a transition table
+would leave steps, the context, the reads/writes declarations, the enforcement tests and the doc
+generator identical. **Revisit trigger:** the first divergence that cannot be resolved by `plan_for`
+before the first step runs — one where a step's outcome selects genuinely different downstream work
+within the same job and moving it to the core would be wrong rather than merely inconvenient.
+`validate_plan` growing a special case is the smell that this has happened.
+
+#### Enforcement — the part that makes it stick
+
+The codebase's characteristic failure mode is abstractions that exist and are silently bypassed
+(`fetch.py`'s "one place" that three callers ignored; a `STAGE_PLANS` table that declared two stages for
+an eight-step action; ~10 mechanisms built, unit-tested, and never wired to the path that needs them).
+So every mechanism carries a test that fails when someone routes around it, in `apps/worker/tests/`:
+
+- **plans are well-formed** — no step reads a context key no earlier step writes (`test_worker_layers`).
+- **no undeclared writes** — in test mode the runner asserts a step touched only its declared keys.
+- **one runner** — the only `process()` implementations are `PlanRunner`, `StubProcessor` and the
+  routers; a new hand-rolled processor fails the suite (`test_worker_layers`).
+- **`STAGE_PLANS` is derived** from the plans, not written, so the parallel table cannot drift.
+- **the doc is generated** — this section's tables come from `python -m src.docgen`, and a test fails if
+  the committed region drifts.
+- **acquisition has one caller path** — no module outside `acquisition/` imports the lower-level
+  fetchers (`test_worker_layers`).
+- **layering** — no domain package (`lyrics/`, `separation/`, `acquisition/`, `metadata/`) imports from
+  `steps/`, `runtime/` or `dial_home` (`test_worker_layers`, `test_worker_packages`).
+- **one publish shape per artifact kind** — `PublishStems` is the sole writer of the `stems`/`songProfile`
+  artifact dict, so the two engines cannot disagree about its shape (the near-miss that motivated it: the
+  worker published `songProfile` as a sibling of `stems` while the core read it nested).
+
+
 ## 8. Lyrics
 
 Lyrics separate **text acquisition** from **timing**:
@@ -770,7 +822,7 @@ Lyrics separate **text acquisition** from **timing**:
   highlighting beat wrong words with polished animation.
 - Provenance is visible: auto-transcribed lyrics must not masquerade as authoritative.
 
-Live scoring was removed (see ROADMAP): it compared mic pitch against a reference pitch curve, which
+Live scoring was removed (see DECISIONS, "Deferred"): it compared mic pitch against a reference pitch curve, which
 is not how any credible karaoke system scores, and a phone mic in a loud room cannot support the
 claim. A redesign is scoped but unbuilt.
 
@@ -811,7 +863,7 @@ Known and accepted, not an oversight:
   and no media bytes. `PUT /api/settings` has the same property and higher stakes: any joined phone
   can change the separator engine and which Whisper weights the fleet loads.
 - The honest fixes are a shared secret (`ENCORE_ADMIN_TOKEN`), binding those routes to a trusted
-  interface, or a real host/operator concept that closes both. Tracked as B-10-C7.
+  interface, or a real host/operator concept that closes both. Gating these is open work.
 - `/stats` and `/api/stats` are public **by design** and are aggregate-only. This is structural rather
   than a filter: the `plays` table has no singer column, so no per-singer figure can be served from it
   even by mistake.

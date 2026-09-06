@@ -17,7 +17,7 @@ expensive kind of wrong: a reader had no reason to check. S3 resolved it by DELE
 than fixing its callers, because the surviving copy was also the wrong one (it assumed a `.wav` extension
 yt-dlp never wrote). The step `AcquireAudio` is now the only answer, for all four actions, and
 `tests/test_worker_layers.py` E6 fails if a second one appears —
-`docs/archive/specs/SPEC-worker-pipeline.md` §7 E6.
+the enforcement tests in `docs/ARCHITECTURE.md` §7.1.
 
 Acquisition is a JOB rather than a stage. That is what lets a box which can download and a box which can
 separate be different machines: a fetch routes on `fetch:<fetcher>` while a cook routes on `stems`, so
