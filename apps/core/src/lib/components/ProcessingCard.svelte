@@ -103,19 +103,26 @@
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
 	.who i.dim { opacity: 0.5; }
 	.who .away { color: var(--warn); margin-left: 0.35em; }
-	/* flex: 0 0 auto is load-bearing HERE, not just QueueRow parity (issue #89). .who above is a
-	   `display: flex` container with no flex-wrap, so it computes nowrap; the dot is an empty flex item
-	   whose automatic minimum size is 0. When the actions cluster renders (the normal in-rotation card)
-	   it cuts .who from ~282px to 134px (actions = 3x44 + 2x8 = 148px), and a name at the 32-char
-	   profile maxlength then overflows it. Without this rule the shrinkable dot shrinks from 10px to
-	   ~5.5px at 390px (measured on the long-name fixture below) — a ~45% loss of the only non-text
-	   singer discriminator (colors.ts:12-14: "the only thing telling two singers apart besides the
-	   name"). It does NOT reach 0px here, unlike QueueRow: QueueRow.svelte:91 additionally gives .who
-	   `min-width:0; white-space:nowrap; overflow:hidden`, making the name an unbreakable run that holds
-	   its width so the empty dot absorbs the ENTIRE deficit (0px in #89); this .who lacks that trio, so
-	   the name shrinks too and the deficit is shared. The ~45% shrink still earns the rule on its own
-	   merits, with QueueRow parity a bonus. design-system.test.ts's identity-dot guard reds if this is
-	   dropped. */
+	/* flex: 0 0 auto is load-bearing HERE, not just QueueRow parity (issue #89). .who is a
+	   `display: flex` container; the dot is an empty flex item whose automatic minimum size is 0, so
+	   without a non-shrinking basis it is the item that gives up width first. When the actions cluster
+	   renders (the normal in-rotation card) it cuts .who from ~282px to 134px (actions = 3x44 + 2x8 =
+	   148px), and a name at the 32-char profile maxlength then overflows it. How far the dot shrinks
+	   depends on whether the name can WRAP, not on QueueRow's trio: what holds a name's width is the
+	   absence of a break opportunity, and an empty dot has no intrinsic content to protect it either
+	   way. So without this rule (measured at 390px on the fixture below):
+	     • a name with spaces (e.g. "Christopher Alexander Montgomery") wraps, sharing the deficit, and
+	       the dot shrinks 10px -> ~5.45px — a ~45% loss;
+	     • an UNBROKEN name at the maxlength (e.g. "ChristopherAlexanderMontgomeryJr", 32 chars, reachable — both
+	       name fields are maxlength=32 and nothing rejects a single token, cf. #109) cannot wrap, so
+	       the dot absorbs the ENTIRE deficit and collapses to 0px — the singer's colour VANISHES from
+	       their own card. colors.ts:12-14 calls that dot "the only thing telling two singers apart
+	       besides the name", so the real worst case is total loss, not a cosmetic shrink.
+	   The mechanism is the same as QueueRow's 0px collapse in #89; the only difference is that
+	   QueueRow.svelte's .who adds `min-width:0; white-space:nowrap; overflow:hidden`, which makes EVERY
+	   name unbreakable (that is why #89 hit 0px even with a spaced name), whereas here only an unbroken
+	   token is unbreakable. design-system.test.ts's identity-dot guard reds if this rule is dropped;
+	   the long-name fixture below carries an unbroken maxlength name so the 0px case is eyes-on. */
 	.who i { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--singer); }
 	.bar { height: 6px; border-radius: 6px; background: var(--card-tint2); overflow: hidden; margin-top: 9px; }
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
