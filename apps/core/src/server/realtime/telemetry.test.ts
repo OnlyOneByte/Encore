@@ -187,14 +187,16 @@ test('an id-less position frame keeps legacy behaviour (older TV unaffected) (#1
 });
 
 
-test('the TV stamps entryId on EVERY telemetry frame, not just ended — so the position-path guard is reachable (#125)', () => {
+test('the TV wires sendTelemetry through the pure telemetryFrame(status, current, …) so the stamp is reachable (#125, #130)', () => {
 	// The server drop (player.ts) can only fire on a frame that CARRIES an entryId. Before #125 the
 	// TV stamped one only on `ended`, so position frames arrived id-less and the guard's first
-	// conjunct was false. Reverting the client hunk alone leaves the whole suite green (the server
-	// test still passes because its stale frame is hand-stamped), silently re-opening #125. Pin the
-	// stamping at the call site — same source-scan shape guide-sync.test.ts uses on this file.
+	// conjunct was false. #130 lifted the stamp out of this .svelte into the pure telemetryFrame()
+	// (src/lib/tv/telemetry.ts), whose OUTPUT is asserted behaviourally in telemetry.test.ts beside
+	// it — so the stamp is now run, not grepped for. This source-scan only pins the WIRING that
+	// reverting the client hunk would break: sendTelemetry must delegate to telemetryFrame passing
+	// the live `current` (not a hardcoded/undefined id) and must not resurrect the ended-only form.
 	const src = readFileSync(join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte'), 'utf8');
 	const body = src.split('function sendTelemetry(')[1]?.split('\n\t}')[0] ?? '';
-	expect(body).toContain('const entryId = current?.id'); // stamped on EVERY frame
-	expect(body).not.toContain("status === 'ended' ?");     // the ended-only form is the #125 bug
+	expect(body).toContain('telemetryFrame(status, current'); // delegates, passing the live current
+	expect(body).not.toContain("status === 'ended' ?");        // the ended-only form is the #125 bug
 });
