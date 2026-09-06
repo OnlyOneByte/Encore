@@ -23,6 +23,7 @@ from __future__ import annotations
 import os
 from typing import Protocol
 
+from ..retry_policy import PermanentError
 from . import demucs as d
 from . import roformer as r
 
@@ -172,4 +173,7 @@ def engine_for(name: str, **kwargs) -> SeparatorEngine:
         if "demucs_model" in given:
             kw["default_model"] = given["demucs_model"]
         return DemucsEngine(**kw)
-    raise RuntimeError(f"no separator engine: {name}")
+    # PermanentError (retryable=False): a name with no registered engine — "ensemble" on a box that
+    # only has demucs, a typo — cannot be honoured by retrying. Subclasses RuntimeError so the
+    # message and the exception type callers/tests match on are unchanged; #443.
+    raise PermanentError(f"no separator engine: {name}")

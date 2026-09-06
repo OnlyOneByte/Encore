@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from enum import Enum
 
+from .retry_policy import BoundaryError
+
 
 class _StrEnum(str, Enum):
     """`str`-valued enum: members compare and serialize as their value."""
@@ -171,7 +173,9 @@ def parse_action(value: str) -> Action:
     try:
         return Action(value)
     except ValueError:
-        raise ValueError(f"unknown action {value!r}; expected one of {[a.value for a in Action]}") from None
+        raise BoundaryError(
+            f"unknown action {value!r}; expected one of {[a.value for a in Action]}"
+        ) from None
 
 
 def parse_fetcher(value: str | None, default: Fetcher = Fetcher.YTDLP) -> Fetcher:
@@ -185,7 +189,9 @@ def parse_fetcher(value: str | None, default: Fetcher = Fetcher.YTDLP) -> Fetche
     try:
         return Fetcher(value)
     except ValueError:
-        raise ValueError(f"unknown fetcher {value!r}; expected one of {[f.value for f in Fetcher]}") from None
+        raise BoundaryError(
+            f"unknown fetcher {value!r}; expected one of {[f.value for f in Fetcher]}"
+        ) from None
 
 
 def parse_engine(value: str | None, default: Engine = Engine.DEMUCS) -> Engine:
@@ -195,7 +201,9 @@ def parse_engine(value: str | None, default: Engine = Engine.DEMUCS) -> Engine:
     try:
         return Engine(value)
     except ValueError:
-        raise ValueError(f"unknown engine {value!r}; expected one of {[e.value for e in Engine]}") from None
+        raise BoundaryError(
+            f"unknown engine {value!r}; expected one of {[e.value for e in Engine]}"
+        ) from None
 
 
 def parse_asr_model(value: str | None, default: AsrModel = AsrModel.BASE) -> AsrModel:
@@ -209,7 +217,7 @@ def parse_asr_model(value: str | None, default: AsrModel = AsrModel.BASE) -> Asr
     try:
         return AsrModel(value)
     except ValueError:
-        raise ValueError(
+        raise BoundaryError(
             f"unknown ASR model {value!r}; expected one of {[m.value for m in AsrModel]}"
         ) from None
 
@@ -221,7 +229,7 @@ def parse_sync_mode(value: str | None, default: SyncMode = SyncMode.FORCED) -> S
     try:
         return SyncMode(value)
     except ValueError:
-        raise ValueError(
+        raise BoundaryError(
             f"unknown sync mode {value!r}; expected one of {[m.value for m in SyncMode]}"
         ) from None
 
@@ -233,7 +241,9 @@ def parse_backend(value: str | None, default: Backend = Backend.TORCH) -> Backen
     try:
         return Backend(value)
     except ValueError:
-        raise ValueError(f"unknown backend {value!r}; expected one of {[b.value for b in Backend]}") from None
+        raise BoundaryError(
+            f"unknown backend {value!r}; expected one of {[b.value for b in Backend]}"
+        ) from None
 
 
 def stages_for(action: Action | str) -> list[Stage]:
