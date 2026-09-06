@@ -50,7 +50,9 @@ test('hello → welcome handshake + dispatch of a waiting job', () => {
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
 
 	const welcome = cmdsOfType(sent, 'worker:welcome')[0] as Extract<WorkerCommand, { type: 'worker:welcome' }>;
-	expect(welcome).toMatchObject({ type: 'worker:welcome', ackTimeoutSec: 10, heartbeatIntervalSec: 30 });
+	// heartbeatIntervalSec is HALF the 30s progress lease (#308): a worker honouring it has room for
+	// one dropped tick before breaching. The derived-value invariant is pinned in vocabulary-parity.test.ts.
+	expect(welcome).toMatchObject({ type: 'worker:welcome', ackTimeoutSec: 10, heartbeatIntervalSec: 15 });
 	expect(welcome.mediaStore).toEqual({ kind: 'local' }); // default single-box store
 	const assign = cmdsOfType(sent, 'job:assign')[0] as Extract<WorkerCommand, { type: 'job:assign' }>;
 	expect(assign).toBeTruthy();
