@@ -55,23 +55,3 @@ export function applyOp(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
   }
   return next.sort((a, b) => a.rotationSeq - b.rotationSeq);
 }
-
-/** Inverse of an op against a prior-state snapshot — used for optimistic rollback on reject. */
-export function inverseOp(entries: QueueEntry[], op: QueueOp): QueueOp | null {
-  switch (op.op) {
-    case 'add':
-      return { op: 'remove', id: op.entry.id };
-    case 'remove': {
-      const gone = entries.find((e) => e.id === op.id);
-      return gone ? { op: 'add', entry: gone } : null;
-    }
-    case 'move': {
-      const cur = entries.find((e) => e.id === op.id);
-      return cur ? { op: 'move', id: op.id, toSeq: cur.rotationSeq } : null;
-    }
-    case 'status': {
-      const cur = entries.find((e) => e.id === op.id);
-      return cur ? { op: 'status', id: op.id, status: cur.status } : null;
-    }
-  }
-}
