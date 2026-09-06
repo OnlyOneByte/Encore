@@ -405,9 +405,10 @@ test('the unverified tint overrides variables only — it never re-selects a wor
  * at every roster size up to the max=8 cap plus its overflow chip. Pure geometry the DOM-less runner
  * cannot SEE, so these pin the structural preconditions and the REVERSIONS: re-adding
  * `position: absolute; bottom: 0` to `.strip`, or dropping its `max-height`, each restores an overlap
- * with the whole suite green. Property-level proof (zero `.url`/`.strip` intersection at 1280×720 for
- * every roster up to 8 long names + overflow) is captured by the CDP probe and its before/after frames
- * in docs/shots/98/.
+ * with the whole suite green. Property-level proof (zero `.url`/`.strip` intersection, with the address the element painted at
+ * its own centre, across roster {3, 8, 8+overflow} \u00d7 viewport {1280\u00d7720, 1366\u00d7768, 1920\u00d71080})
+ * is the runnable e2e at e2e/lobby-overlap.mjs (`bun run e2e:lobby`) \u2014 it FAILS 6/9 against base and
+ * 2/9 with the cap removed, so it pins both halves of the fix; before/after frames are in docs/shots/98/.
  */
 test('#98 the lobby roster strip reserves its band in flow — it is not absolutely docked to the edge', () => {
 	const lobby = stripComments(TV_LOBBY);
