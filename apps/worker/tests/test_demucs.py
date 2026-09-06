@@ -500,3 +500,41 @@ async def test_subprocess_runner_idle_timer_resets_on_each_line(monkeypatch):
     ]
     lines = [ln async for ln in demucs.subprocess_runner(argv)]
     assert lines == ["0", "1", "2", "3", "4", "5"]  # ran ~1.2s total, over the 0.5s idle cap, uninterrupted
+
+
+def test_classify_retryable_flows_through_the_shared_retry_policy_table():
+    """#497 (Part 2/3 of #443): demucs.classify_retryable must CONSUME retry_policy's one canonical
+    PERMANENT_MARKERS table, not keep a divergent copy. demucs raises ProcessError for ffmpeg and
+    bs-roformer-infer too, so a deterministic separator/encoder failure whose stderr hits a canonical
+    marker must classify NON-retryable — reds on base, whose download-only list omitted these markers.
+    """
+    from src import retry_policy
+
+    # The two markers the old divergent demucs list lacked but the canonical union carries.
+    # On base these classified retryable (retried to maxAttempts); now they are permanent.
+    assert demucs.classify_retryable("ffmpeg: Codec is unsupported") is False
+    assert demucs.classify_retryable("state_dict load failed: corrupt checkpoint") is False
+
+    # The table is genuinely SHARED, not re-declared: demucs must agree with retry_policy on every
+    # canonical marker, and there is no private _PERMANENT_MARKERS tuple left to drift.
+    assert not hasattr(demucs, "_PERMANENT_MARKERS")
+    for marker in retry_policy.PERMANENT_MARKERS:
+        assert demucs.classify_retryable(f"some prefix {marker} some suffix") is False
+
+    # A ProcessError raised by a non-download CLI now carries the shared non-retryable verdict.
+    err = demucs.ProcessError(["bs-roformer-infer", "run"], 1, "RuntimeError: corrupt state_dict")
+    assert err.retryable is False
+
+
+def test_resolve_demucs_model_unknown_is_structurally_non_retryable():
+    """The unknown-model ValueError now routes through retry_policy.BoundaryError (#497 coordination
+    note), so it stays a ValueError drop-in but carries the shared structured retryable = False —
+    an unknown model fails fast instead of burning three attempts. Reds on base (plain ValueError,
+    no .retryable, so is_retryable would default it retryable off the heuristic)."""
+    from src import retry_policy
+
+    with pytest.raises(ValueError, match="unknown demucs model") as excinfo:
+        demucs.resolve_demucs_model({"model": "bs-roformer-1297"})
+    assert isinstance(excinfo.value, retry_policy.BoundaryError)
+    assert excinfo.value.retryable is False
+    assert retry_policy.is_retryable(excinfo.value) is False
