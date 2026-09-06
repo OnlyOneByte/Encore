@@ -15,7 +15,7 @@ import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
 import { MediaRepository, hydrateMediaCatalog } from './media/repository';
-import { migrateStorageLayout } from './media/migrate-layout';
+import { migrateStorageLayout, cleanJobWork } from './media/migrate-layout';
 import {
 	retentionCapBytes,
 	planRecompress,
@@ -42,6 +42,7 @@ import { PlayLog } from './media/play-log';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
+import { mediaStatusFor, shouldBroadcastCook } from './jobs/media-status';
 import { reconcileOnReady } from './realtime/player';
 import { orderingOf, syncEvent } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
@@ -476,10 +477,42 @@ export function getApp(): EncoreApp {
 	app.reaper = new JobReaper(jobs, {
 		onReaped: () => app.workerHub.dispatch(),
 		// A reaper-killed cook (worker box died, attempts exhausted) reaches terminal `failed` without
-		// the worker reporting it, so it never hits #onFailed. Settle its readiness gate here just as the
-		// reported and TTL paths do — otherwise readyToSing never flips and rotation holds the queue
-		// entry forever (issue #90). The reaper has no catalog, so it hands the job up and we supply it.
-		onFailed: (job) => settleGatesForFailedJob(job, mediaById)
+		// the worker reporting it, so it never hits #onFailed. The reaper has no catalog, so it hands
+		// the job up and we do here EXACTLY what the reported (#onFailed) and unservable-TTL paths do —
+		// otherwise a reaper-killed cook is completely silent (issue #303): the gate settles but the
+		// room is told nothing, so every phone that watched it cook stays pinned on "Making karaoke… N%"
+		// with no Sing button, for the life of the page (displayReadiness lets the last live event win,
+		// and no user action — not removing the song, not queue:sync — ever clears it).
+		onFailed: (job) => {
+			// 1. Settle the readiness gate so readyToSing can flip and rotation stops holding the entry
+			//    (issue #90 — the half this hook already did).
+			settleGatesForFailedJob(job, mediaById);
+			// 2. Broadcast media:status so the watching phone leaves 'cooking' → 'failed' (Sing returns)
+			//    and the #68 reload-recovery scar is recorded. mediaStatusFor(failedJob) returns 'failed'.
+			//    Gate on shouldBroadcastCook so a dead `stems-upgrade` on an already-singable song does
+			//    not flip every ready row back to "Making karaoke" — the same guard #emitStatus applies.
+			const media = mediaById.get(job.mediaId);
+			if (shouldBroadcastCook(job, media)) {
+				app.publish({
+					type: 'media:status',
+					mediaId: job.mediaId,
+					status: mediaStatusFor(job),
+					pct: job.progressPct,
+					etaSec: job.etaSec ?? undefined
+				});
+			}
+			// 3. One operator log line naming the media and reason — the reaper/leases contain no
+			//    console.* at all, so a reaper-killed cook is otherwise unrecorded outside the jobs table
+			//    (the #onFailed path argues the same at worker-hub.ts:307-309).
+			console.warn(
+				`[core] reaper killed job ${job.id} (${job.jobType}) for media ${job.mediaId} after ` +
+					`${job.attempts} attempt(s): ${job.error ?? 'attempts exhausted'}`
+			);
+			// 4. Reclaim the job's scratch — its work/<jobId>/ holds a decoded source plus both stems and
+			//    nothing resumes from it (worker-hub.ts does the same on its terminal paths). cleanJobWork
+			//    is a no-op when the dir is absent (a remote worker's scratch the core never had).
+			cleanJobWork(job.id);
+		}
 	});
 	// Boot recovery (§3): a core restart drops every worker WS session, so any job still marked
 	// assigned/running is orphaned — reset it to queued for redispatch. One-shot, before the tick
