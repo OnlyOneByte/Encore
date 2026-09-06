@@ -158,9 +158,12 @@
 	 * a progress bar that jumps to the beginning on pause. See lib/ws/send.ts.
 	 */
 	function sendTelemetry(status: string, positionSec = 0, durationSec = 0, bufferedNextPct = 0) {
-		// Stamp the entry this frame is about on `ended` so the server can tell "the song I am
-		// playing ended" from a stale/duplicate `ended` and refuse to double-advance (#70).
-		const entryId = status === 'ended' ? (current?.id ?? undefined) : undefined;
+		// Stamp the entry EVERY frame is about — not just `ended` — so the server can tell a live
+		// frame from a stale one on BOTH paths: a stale/duplicate `ended` must not double-advance
+		// (#70), and a position frame the outgoing song emits across an advance must not overwrite
+		// the new entry's playhead and seek the incoming singer mid-song (#125). `current?.id` is
+		// already in scope; when absent the server keeps its legacy id-less behaviour.
+		const entryId = current?.id ?? undefined;
 		trySend(ws, JSON.stringify({ type: 'tv:telemetry', positionSec, durationSec, status, bufferedNextPct, entryId }));
 	}
 

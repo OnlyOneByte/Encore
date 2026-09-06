@@ -247,12 +247,16 @@ export function handleTelemetry(t: TvTelemetry, deps: HubDeps): void {
 	// not dereferenced.
 	if (!t || typeof t !== 'object') return;
 	const { state } = deps;
+	// A frame that names an entry which is no longer `currentEntryId` is stale — a duplicate send,
+	// a second/reconnecting TV replaying its last frame, or (the position case, #125) the outgoing
+	// song's `<audio>` firing one more `ontimeupdate` across the round-trip + slot swap of an advance.
+	// Whatever it reports, act on NOTHING it says: the `ended` branch must not advance a second time
+	// and skip the next singer's turn (#70), and the position branch must not write the previous
+	// song's playhead as the new entry's position — which is fed back to the TV as a seek target and
+	// starts the incoming singer mid-song (#125). A frame with no id keeps the legacy behaviour so an
+	// older TV that stamps no entry id is unaffected on both paths.
+	if (t.entryId !== undefined && t.entryId !== state.playback.currentEntryId) return;
 	if (t.ended) {
-		// Advance ONLY when this `ended` is for the entry we are currently playing. A frame that
-		// names a stale entry (or a duplicate for the one that already ended) would otherwise
-		// advance a SECOND time and skip the next singer's turn without playing it (#70). A frame
-		// with no id keeps the legacy behaviour so an older TV still advances.
-		if (t.entryId !== undefined && t.entryId !== state.playback.currentEntryId) return;
 		advance(deps);
 		deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		emitNowPlaying(deps);
