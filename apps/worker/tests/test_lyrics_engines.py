@@ -25,6 +25,7 @@ from src.vocabulary import AsrModel, SyncMode, parse_asr_model, parse_sync_mode
 from src import plans  # noqa: E402
 from src.runtime.ctx import ResolvedEngines  # noqa: E402
 from src.steps.lyrics import _time_one  # noqa: E402
+from src.lyrics.source import plain_lyrics_to_segments  # noqa: E402
 
 
 class _FakeTranscriber:
@@ -334,12 +335,22 @@ def test_lines_mode_skips_the_aligner_entirely():
 
 
 def test_lines_mode_declines_a_source_with_no_timings_at_all():
-    # `lines` will not go and FIND timings, so unsynced text has nothing honest to publish — the floor
-    # stays line-level sync rather than a wall of text on the TV.
+    # `lines` will not go and FIND timings, so a plain-lyrics record has nothing honest to publish —
+    # the floor stays line-level sync rather than a wall of synthetic even spacing sold as line timing.
+    #
+    # The segments here are what `plain_lyrics_to_segments` REALLY emits (numeric, evenly spaced): that
+    # is the only shape a TIMING_NONE source ever reaches `_time_one` in (chain.py stamps TIMING_NONE
+    # exactly for a plainLyrics LRCLIB record, whose bounds go through that producer). A hand-built
+    # `start=None` segment is unreachable — and it would let the guard removal pass vacuously, because
+    # `is_line_synced` also rejects a non-numeric start, so `_time_one` would return None either way.
+    # Numeric bounds make the guard the ONLY thing standing between this input and a published
+    # (TIMING_LINE, "high") artifact, so deleting `if text.timing != TIMING_LINE: return None` reds this.
     spy = _SpyAligner()
+    segs = plain_lyrics_to_segments("no timings here\nsecond line", 120.0)
+    assert all(isinstance(seg["start"], (int, float)) for seg in segs)  # production shape, not start=None
     unsynced = LyricsText(
         text_source=SOURCE_LRCLIB,
-        segments=[{"start": None, "end": None, "text": "no timings here"}],
+        segments=segs,
         timing=TIMING_NONE,
         text_confidence="high",
     )
