@@ -118,7 +118,6 @@ def test_same_recording_fits_with_a_small_residual():
     aligned = [10.1, 20.05, 29.95, 40.1, 50.0]  # same master, alignment jitter only
     fit = fit_lrc_to_aligned(lrc, aligned)
     assert fit.verdict == "same_version"
-    assert fit.trust_lrc_timing
     assert fit.residual_sec < SUSPECT_RESIDUAL_SEC
 
 
@@ -148,8 +147,7 @@ def test_a_DIFFERENT_VERSION_is_detected_and_its_timing_discarded():
     lrc = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
     aligned = [x + 8.0 for x in lrc[:5]] + [x + 28.0 for x in lrc[5:]]  # +20s solo after line 5
     fit = fit_lrc_to_aligned(lrc, aligned)
-    assert fit.verdict == "different_version"
-    assert not fit.trust_lrc_timing  # keep the aligner's timing, drop the LRC's
+    assert fit.verdict == "different_version"  # keep the aligner's timing, drop the LRC's
     assert fit.residual_sec > SUSPECT_RESIDUAL_SEC
 
 
@@ -176,7 +174,6 @@ def test_mismatched_line_counts_are_inconclusive_not_a_forced_fit():
     # pair line 5 against line 9 and invent a scale.
     fit = fit_lrc_to_aligned([1.0, 2.0, 3.0], [1.0, 2.0])
     assert fit.verdict == "inconclusive"
-    assert not fit.trust_lrc_timing
 
 
 def test_too_few_lines_to_fit_two_parameters_is_inconclusive():

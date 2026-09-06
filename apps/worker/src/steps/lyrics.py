@@ -446,13 +446,24 @@ class TimeTexts(Step):
                         "different release. Published timings come from the aligner, so they are right "
                         "for this audio; the WORDS may belong to another version."
                     )
-                elif fit.outlier_lines:
-                    # same_version, so the LRC does match — these are the lines where ALIGNMENT slipped,
-                    # which is a different and much more actionable fault than a wrong LRC.
-                    ctx.note(
-                        f"{text.text_source}: matches this recording, but alignment slipped on "
-                        f"{len(fit.outlier_lines)} line(s) (index {fit.outlier_lines[:5]})"
+                elif fit.pairs:
+                    # same_version, so the LRC does match. Report the fitted (offset, scale): the offset
+                    # is how far the LRC sits from the aligner timing we actually publish, and the scale
+                    # is the master-tempo ratio. Both are DIAGNOSTIC only — the published timings are the
+                    # aligner's and are not shifted by these — but they were computed here and are worth
+                    # seeing in the log rather than discarded. Outliers, when present, are the lines where
+                    # ALIGNMENT slipped: a different and much more actionable fault than a wrong LRC.
+                    fit_note = (
+                        f"{text.text_source}: matches this recording "
+                        f"(fitted offset {fit.offset_sec:+.2f}s, scale {fit.scale:.3f} over {fit.pairs} "
+                        "lines; diagnostic only — published timings are the aligner's)"
                     )
+                    if fit.outlier_lines:
+                        fit_note += (
+                            f". Alignment slipped on {len(fit.outlier_lines)} line(s) "
+                            f"(index {fit.outlier_lines[:5]})"
+                        )
+                    ctx.note(fit_note)
 
             ref = candidate_key(ctx.job.media_id, text.text_source, timing, text.tag)
             final = os.path.join(ctx.job.media_dir, ref)

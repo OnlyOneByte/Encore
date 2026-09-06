@@ -1476,6 +1476,13 @@ async def test_217_a_matching_recording_with_split_windows_is_NOT_flagged(tmp_pa
     aligner = _WindowBridgeAligner(bridge_after=999)  # never shifts → same recording
     ctx = await _drive_time_texts(aligner, text, tmp_path)
     assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+    # #93: a same_version fit that RAN now surfaces its diagnostic (offset, scale) in a note, so the
+    # measurement is visible in the log rather than discarded. It is diagnostic only: published timings
+    # stay the aligner's. Reverting the steps/lyrics.py note hunk reds exactly here.
+    assert any(
+        "matches this recording" in n and "fitted offset" in n and "diagnostic only" in n
+        for n in ctx.out.notes
+    ), ctx.out.notes
 
 
 # ── #326: the refusal to publish UNUSABLE word timings must be pinned ──────────────────────────────
