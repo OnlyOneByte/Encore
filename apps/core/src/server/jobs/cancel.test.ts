@@ -13,6 +13,7 @@ import { AuthoritativeState } from '../state/store';
 import { WorkerHub } from './worker-hub';
 import { WorkerRegistry } from './registry';
 import type { WorkerCommand, QueueEntry, Media, ClientCommand, ServerEvent } from '@encore/shared';
+import { readyToSing } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 
@@ -273,3 +274,42 @@ test('EDGE (b) reverse: a job:complete landing AFTER a cancel is dropped as stal
 	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // never flipped to ready
 });
 
+
+// ── FIX (#91): a cancel on the LYRICS step must settle THAT gate, not only stems ───────────────────
+// A song finishes separation (stemStatus 'ready', a real instrumentalRef), followUps enqueues `align`
+// and markLyricsQueued sets lyricsStatus 'queued' — the phone shows "Timing lyrics". A remove cancels
+// the align job. Before the fix, cancel.ts only called settleStemsGate, which refuses a finished cook
+// (a no-op), so the lyrics gate stayed OPEN forever: readyToSing was false, every future queue entry
+// for the song was held and skipped, yet the live instrumental made cookState refuse a re-cook — and
+// the broadcast, gated on that no-op settle, never fired. A song with no words is a finished song, so
+// cancelling align must settle the lyrics gate exactly as the terminal-failure path does.
+
+const separatedTimingLyrics = (id: string): Media => ({
+	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 100,
+	stemStatus: 'ready', instrumentalRef: 'derived/stems/' + id + '-instrumental.flac',
+	lyricsStatus: 'queued'
+});
+
+test('cancelling an ALIGN job on a separated song settles the lyrics gate → readyToSing (not bricked)', () => {
+	const jobs = makeRepo();
+	const align = jobs.enqueue('m1', 'align', 0, T0);
+	jobs.assign(align.id, 'worker-A', T0 + 10_000, T0 + 1);
+	jobs.accept(align.id, T0 + 30_000, T0 + 2); // running — the "Timing lyrics" step
+	const mediaById = new Map<string, Media>([['m1', separatedTimingLyrics('m1')]]);
+	const { deps, broadcasts } = cancelDeps(jobs, [], mediaById);
+
+	expect(readyToSing(mediaById.get('m1')!)).toBe(false); // lyrics gate open before the cancel
+
+	const res = cancelJobsForMedia('m1', deps);
+
+	expect(res.canceled).toEqual([align.id]);
+	// The whole point: the song is now a finished (word-less) song, playable rather than held forever.
+	expect(mediaById.get('m1')!.lyricsStatus).toBe('ready');
+	expect(readyToSing(mediaById.get('m1')!)).toBe(true);
+	// The separation is NOT walked back — cancelling align must not un-cook a finished separation.
+	expect(mediaById.get('m1')!.stemStatus).toBe('ready');
+	expect(mediaById.get('m1')!.instrumentalRef).toBe('derived/stems/m1-instrumental.flac');
+	// And the room hears about it — before the fix the broadcast was gated on the stems no-op and never fired.
+	const statuses = broadcasts.filter((e) => e.type === 'media:status');
+	expect(statuses.at(-1)).toMatchObject({ type: 'media:status', mediaId: 'm1', status: 'canceled', pct: 0 });
+});
