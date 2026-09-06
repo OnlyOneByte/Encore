@@ -154,6 +154,100 @@ def test_the_aligner_is_cached_per_device_on_the_same_reasoning():
     assert aligner_for("cpu") is not aligner_for("cuda")
 
 
+# The tests above pin that the cache HOLDS (a second sequential call gets the first instance). They do
+# NOT pin the `with ML_LOCK:` that guards the check-then-set INSIDE the factory: after the first call
+# populates the module dict, every later call short-circuits on the `.get()` regardless of the lock, so
+# neutering `aligner_for`'s guard to `if True:` leaves this whole file green. The race the lock exists
+# for only appears when two callers hit an EMPTY cache at once — `aligner_for` runs on a real worker
+# thread (steps/lyrics.py: `_time_one` inside `run_blocking` -> `asyncio.to_thread`), so with
+# ENCORE_WORKER_CONCURRENCY>1 two align jobs enter the check-then-set concurrently. Without the lock both
+# read `None`, both construct a WhisperxForcedAligner, and last-write-wins hands the two jobs DIFFERENT
+# instances — each with its own `self._cache`, so each loads the multi-GB wav2vec2 model (double VRAM /
+# double resident copy; the cook still succeeds, so the only symptom is memory). See asr.py's cache
+# comment, which records this exact failure ("load the same model twice and double the memory").
+#
+# This drives the concurrency THROUGH the production factory rather than re-implementing the lock in the
+# test, so it reds when the guard is removed and stays green while it is present. Parametrised over both
+# factories: `transcriber_for` (asr.py) has the identical check-then-set shape and is only accidentally
+# safe today because its default resolves on the event loop, outside the threaded window — pinning it
+# now closes it before that ordering ever changes.
+@pytest.mark.parametrize("factory", ["aligner", "transcriber"])
+def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, factory):
+    """The check-then-set race, pinned as identity. N threads hit an empty cache at once off a Barrier;
+    the module lock must make exactly one construction win and every thread receive that same object.
+    Without `with ML_LOCK:` in the factory, several threads slip between the `.get()` and the store and
+    walk away with distinct instances that each load the model — so this reds `> 1 distinct instance`."""
+    import sys
+    import threading
+    import time
+
+    import src.lyrics.asr as asr_mod
+    import src.lyrics.timing as timing_mod
+    from src.lyrics import aligner_for, transcriber_for
+
+    if factory == "aligner":
+        cls = timing_mod.WhisperxForcedAligner
+        cache = timing_mod._ALIGNERS
+        call = lambda: aligner_for("cpu")  # noqa: E731
+    else:
+        cls = asr_mod.WhisperxTranscriber
+        cache = asr_mod._TRANSCRIBERS
+        call = lambda: transcriber_for("cpu", "base")  # noqa: E731
+
+    n = 8
+    constructions = []
+    con_lock = threading.Lock()
+    real_init = cls.__init__
+
+    def slow_init(self, *args, **kwargs):
+        # Record every construction and dwell INSIDE the check-then-set window, so that without the
+        # factory's lock the other threads (which have already passed the `.get() is None` check) also
+        # construct before this one stores. Cheap by design — the real __init__ only sets fields and an
+        # empty dict, no weights load here — so the sleep is what makes the race reachable, not the load.
+        with con_lock:
+            constructions.append(id(self))
+        time.sleep(0.02)
+        real_init(self, *args, **kwargs)
+
+    monkeypatch.setattr(cls, "__init__", slow_init)
+
+    old_interval = sys.getswitchinterval()
+    sys.setswitchinterval(1e-9)  # widen the interleave so the tiny window is hit reliably (see #180)
+    try:
+        # Loop trials: the window is narrow, so one trial can miss it even unlocked. A handful of trials
+        # makes the unlocked race virtually certain to surface while staying bounded.
+        for _ in range(20):
+            cache.clear()
+            constructions.clear()
+            barrier = threading.Barrier(n)
+            got = [None] * n
+
+            def worker(i):
+                barrier.wait()  # release all threads into the factory at the same instant
+                got[i] = call()
+
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(n)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+
+            # decisive assertion: identity, not a count — every caller must hold the SAME object.
+            distinct = {id(x) for x in got}
+            assert None not in got, "a worker never reached the factory"
+            assert len(distinct) == 1, (
+                f"{factory}_for handed out {len(distinct)} distinct instances to concurrent callers "
+                f"({len(constructions)} constructions) — the check-then-set lock is not holding"
+            )
+            # corroborator: the guarded construct ran at most once per empty-cache trial.
+            assert len(constructions) == 1, (
+                f"the model was constructed {len(constructions)} times for one empty cache — "
+                "two concurrent callers each loaded it"
+            )
+    finally:
+        sys.setswitchinterval(old_interval)
+
+
 def test_worker_config_rejects_an_unknown_model():
     # Same rule at the other entry point: a bad ENCORE_ASR_MODEL must fail when the worker is built, not
     # at the first cook of the night.
