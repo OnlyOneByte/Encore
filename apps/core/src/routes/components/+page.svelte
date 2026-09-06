@@ -637,8 +637,8 @@
 		the DOM rather than read off these frames.
 	-->
 	{#each [
-		{ what: 'size 80% (the legibility floor)', props: { scalePct: 80 }, h: 500, short: false },
-		{ what: 'size 160% (the ceiling)', props: { scalePct: 160 }, h: 760, short: false },
+		{ what: 'size 100% (the neutral legibility floor)', props: { scalePct: 100 }, h: 500, short: false },
+		{ what: 'size 300% (the ceiling)', props: { scalePct: 300 }, h: 900, short: false },
 		{ what: 'case ALL CAPS — note the extra wrapping', props: { textCase: 'upper' as const }, h: 500, short: false },
 		{ what: 'case all lowercase', props: { textCase: 'lower' as const }, h: 500, short: false },
 		{ what: 'font serif', props: { font: 'serif' as const }, h: 500, short: false },

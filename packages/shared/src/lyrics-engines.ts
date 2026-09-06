@@ -414,12 +414,32 @@ export function isValidLyricsCase(id: unknown): id is LyricsCaseId {
  * An integer percent rather than a float factor because every other numeric in `RoomSettings` is an
  * integer and a REAL column for one field is not worth the schema asymmetry.
  *
- * The 80 floor is the legibility guard, deliberately not lower: below it the reel stops being readable
+ * The floor is the legibility guard, deliberately not lower: below it the reel stops being readable
  * from a couch, which is the whole thing the scale exists to guarantee.
+ *
+ * REBASED: the neutral point was folded down by `LYRICS_SCALE_BASE`, so a stored `100` now
+ * renders what `80` rendered before this change — the "80% is the new 100%" fold. The number the room
+ * sees keeps reading `100` at the neutral point; only what it renders moved. The stored column keeps
+ * its meaning as a raw integer (default `100`, no migration), so every existing room's lyrics render
+ * 20% smaller than before — the deliberate intent of the rebase, not a size the room asked for and
+ * lost. Because `100` renders the old legibility floor, the MIN is `100`: there is no honest room
+ * below it, the floor IS the neutral point now. The ceiling is raised a long way (a `300` renders
+ * `2.4×`, well past the old `1.6×`) — the reel's own `max-height` cap and edge-fade mask (see
+ * LyricsOverlay.svelte) absorb an extreme setting on a short panel, so a big MAX degrades honestly
+ * rather than spilling the reel back down over the cards.
  */
 export const DEFAULT_LYRICS_SCALE_PCT = 100;
-export const MIN_LYRICS_SCALE_PCT = 80;
-export const MAX_LYRICS_SCALE_PCT = 160;
+export const MIN_LYRICS_SCALE_PCT = 100;
+export const MAX_LYRICS_SCALE_PCT = 300;
+
+/**
+ * The neutral-point fold for `lyricsScalePct`. The rendered multiplier is
+ * `(scalePct / 100) * LYRICS_SCALE_BASE`, so the neutral `100` renders `0.8×` — exactly what the old
+ * `80` rendered — while the number shown to the room stays `100`. Kept as a named constant, not a
+ * literal at the call site, so the render arithmetic and this rationale live together and a test can
+ * assert the neutral render against a hard number rather than re-deriving it with the same operation.
+ */
+export const LYRICS_SCALE_BASE = 0.8;
 
 /**
  * How many lines show before and after the current one.

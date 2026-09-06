@@ -65,3 +65,21 @@ test('the corrected comment no longer claims the cap is inactive at the defaults
 	expect(raw).not.toMatch(/well under this cap/);
 	expect(raw.toLowerCase()).toContain('active at the defaults');
 });
+
+test('the --lyrics-scale render folds in LYRICS_SCALE_BASE (the 80-is-the-new-100 rebase)', () => {
+	// The rebase lives in the render arithmetic: --lyrics-scale must be (scalePct / 100) * the base
+	// factor, not the bare scalePct / 100 it was before. Read the ACTUAL expression from production
+	// source (no helper indirection), so reverting the fold reds this directly. The neutral-point
+	// numbers themselves are pinned in @encore/shared (separators.test.ts).
+	const m = src.match(/--lyrics-scale:\s*\$\{([^}]*)\}/);
+	expect(m).not.toBeNull();
+	const expr = m![1]!.replace(/\s+/g, ' ').trim();
+	// It multiplies the percent by the shared base constant …
+	expect(expr).toContain('LYRICS_SCALE_BASE');
+	expect(expr).toContain('scalePct / 100');
+	expect(expr).toContain('*');
+	// … and is NOT the un-rebased bare division on its own.
+	expect(expr).not.toBe('scalePct / 100');
+	// The constant is actually imported, so the fold is live rather than a dangling reference.
+	expect(src).toMatch(/import[\s\S]*?LYRICS_SCALE_BASE[\s\S]*?from '@encore\/shared'/);
+});
