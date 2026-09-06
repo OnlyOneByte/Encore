@@ -1295,3 +1295,158 @@ async def test_326_a_word_only_ASR_source_with_unusable_timing_is_DROPPED_not_li
     aligner = _OneBackwardsWordAligner()
     with pytest.raises(RuntimeError, match="nothing could be timed"):
         await _drive_time_texts(aligner, text, tmp_path)
+
+
+# ── #336: the wrong-version fit must NOT pair against _subdivide's char-count guesses ──────────────
+# #319 (the fix for #217) paired the fit with `align_windows`. But only the OPENING window of each
+# human line carries the source's own timestamp; `_subdivide` (presplit.py) spreads every interior
+# window start PROPORTIONALLY TO CHARACTER COUNT across a span that `source.py` defines as ending at
+# the NEXT line's start — so an overflowing line followed by a rest (an instrumental break, a
+# verse→chorus gap) gets interior guesses that sit late in the rest, while a faithful aligner re-times
+# the words where they are SUNG (early, right after the opening). The fit then reads that gap as a
+# residual and the same_version arm reports "alignment slipped" on a correctly aligned song. #92
+# ratified these interior guesses as "throwaway search hints, not published timing" — unusable as a
+# time series exactly here. The fix pairs the fit against the OPENING windows only (real human starts)
+# and the aligned lines at those same indices.
+#
+# Every test here injects an aligner that RE-TIMES the words inside each window (words sung at a
+# constant rate from the human line's real start), NOT one that echoes the window bounds — an echoing
+# aligner makes the interior residuals exactly zero by construction and cannot see this defect (that
+# is why test_217_a_matching_recording_with_split_windows_is_NOT_flagged, whose _WindowBridgeAligner
+# echoes bounds, stayed green through this bug). Windows are built by the REAL `bound_blob_text` /
+# `_subdivide`, so the interior timestamps under test are production-computed, not hand-written.
+
+_CHARS_PER_SEC_336 = 12.0
+
+
+def _bound_only_336(lines, max_chars):
+    """Length-only bounder stand-in for the Dockerfile-only KaraokeLyricsProcessor (see
+    tests/test_lyrics_presplit.py:bound_only): bisect any over-long line at a word boundary, greedily.
+    Feeding it to the real `bound_blob_text` yields production `align_windows` via the real
+    `_subdivide` on a dev box where the real bounder returns lines unchanged."""
+    out = []
+    for line in lines:
+        while len(line) > max_chars:
+            cut = line.rfind(" ", 0, max_chars + 1)
+            if cut <= 0:
+                break
+            out.append(line[:cut])
+            line = line[cut + 1 :]
+        out.append(line)
+    return out
+
+
+def _instrumental_break_text_336(n_lines=10):
+    """A synced LRCLIB record with alternating short/overflowing lines; every OVERFLOWING line is
+    followed by an 18s rest (an instrumental break) because `source.py` sets each line's end to the
+    NEXT line's start. Built through the REAL `bound_blob_text` + `_subdivide`, so `align_windows`
+    carries production-computed interior guesses (a char-count fraction of the whole 18s span, which
+    lands deep inside the rest — not where the words are sung)."""
+    from src.lyrics.presplit import bound_blob_text
+
+    segs, t = [], 0.0
+    for i in range(n_lines):
+        overflow = i % 2 == 1
+        if overflow:
+            txt = f"a very long human authored karaoke lyric line that overflows a tv row number {i} here"
+            span = 18.0  # words sung early, then a long instrumental rest to the next line
+        else:
+            txt = f"short line {i}"
+            span = 3.0
+        segs.append({"start": round(t, 3), "end": round(t + span, 3), "text": txt, "words": []})
+        t += span
+    text = LyricsText(text_source=SOURCE_LRCLIB, segments=segs, timing=TIMING_LINE, text_confidence="high")
+    bt = bound_blob_text(text, max_chars=42, bounder=_bound_only_336)
+    assert bt.align_windows is not None and len(bt.align_windows) > len(bt.segments), (
+        "fixture must produce interior windows (more windows than human lines)"
+    )
+    return bt
+
+
+class _SungWordsAligner:
+    """A FAITHFUL aligner: it re-times every window's words to where they are actually SUNG, ignoring
+    the window's own (`_subdivide`-guessed) start. Words of a human line are sung contiguously from
+    that line's REAL start at a constant rate, so the rest of the line's span is silence — the exact
+    shape the issue measured. `bridge` shifts the back half to simulate a different master.
+
+    Sung positions are derived from the human line starts and character counts — a source completely
+    independent of `line_starts` / `fit_lrc_to_aligned` — so no test can derive its expectation the
+    code's way. An OPENING window's re-timed start equals the human line start (a real aligner finds
+    the first word there); an INTERIOR window's re-timed start is right after the opening's words, far
+    EARLIER than `_subdivide`'s guess when a rest follows.
+    """
+
+    def __init__(self, human_starts, bridge=0.0, bridge_after=10**9):
+        self.human_starts = list(human_starts)
+        self.bridge = bridge
+        self.bridge_after = bridge_after
+        self.calls = []
+
+    def align(self, segments, audio_path, language):
+        self.calls.append((len(segments), audio_path, language))
+        out = []
+        li = -1
+        cursor = 0.0
+        for w in segments:
+            ws = w["start"]
+            # An opening window's start matches the next human line start; reset the sung cursor there.
+            if li + 1 < len(self.human_starts) and abs(ws - self.human_starts[li + 1]) < 1e-6:
+                li += 1
+                cursor = self.human_starts[li]
+            shift = self.bridge if li >= self.bridge_after else 0.0
+            dur = len(w["text"]) / _CHARS_PER_SEC_336
+            st = cursor + shift
+            cursor += dur
+            out.append(
+                {
+                    "start": round(st, 3),
+                    "end": round(st + dur, 3),
+                    "text": w["text"],
+                    "words": [{"word": "w", "start": round(st, 3), "end": round(st + dur, 3)}],
+                }
+            )
+        return {"language": language, "segments": out}
+
+
+@pytest.mark.asyncio
+async def test_336_correctly_aligned_song_with_instrumental_breaks_is_NOT_flagged(tmp_path):
+    """THE regression. A same-version, perfectly aligned recording with instrumental breaks must NOT
+    report that alignment slipped. On BASE the fit pairs against `align_windows` including the interior
+    `_subdivide` guesses, which sit deep in each break while the words are sung early — so the
+    same_version arm fires a spurious "alignment slipped" note. Reverting the fix reds exactly on the
+    assertion below. The expectation (a correct alignment produces NO slippage note) is derived from
+    the fixture's construction, not from the fit's arithmetic.
+    """
+    text = _instrumental_break_text_336()
+    human_starts = [s["start"] for s in text.segments]
+
+    aligner = _SungWordsAligner(human_starts, bridge=0.0)  # perfect same-version alignment
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    # The aligner searched the WINDOWS (this is the #92 windows path, where the defect lives).
+    assert aligner.calls and aligner.calls[0][0] == len(text.align_windows)
+    # There ARE interior windows whose _subdivide start differs from where the words are sung — i.e.
+    # the fixture actually exercises the guess/sung divergence, not a degenerate all-openings case.
+    assert len(text.align_windows) > len(text.segments)
+    # FAILING ON BASE: a correctly aligned song must not be told its alignment slipped.
+    assert not any("alignment slipped" in n for n in ctx.out.notes), ctx.out.notes
+    # And it must not be mislabelled a different version either.
+    assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+
+
+@pytest.mark.asyncio
+async def test_336_wrong_version_is_still_detected_after_openings_only_pairing(tmp_path):
+    """The property the openings-only pairing must PRESERVE: a genuinely different master (every line
+    in the back half shifted) is still reported as the wrong version. Pairing only the opening windows
+    removes the false positive without blinding the detector — the openings are real, independent
+    timestamps over the human lines, which is all the version test ever needed."""
+    text = _instrumental_break_text_336()
+    human_starts = [s["start"] for s in text.segments]
+
+    # Shift the whole back half by 15s: a structural, non-linear difference a scale+offset fit cannot
+    # absorb — what a different release looks like.
+    aligner = _SungWordsAligner(human_starts, bridge=15.0, bridge_after=len(human_starts) // 2)
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    assert any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+    assert any("may belong to another version" in n for n in ctx.out.notes)
