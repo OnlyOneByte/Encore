@@ -12,6 +12,7 @@ function job(id: string, over: Partial<Job> = {}): Job {
 		id,
 		mediaId: 'm-' + id,
 		cookId: 'cook-' + id,
+		singerId: null,
 		jobType: 'stems',
 		status: 'queued',
 		priority: 0,

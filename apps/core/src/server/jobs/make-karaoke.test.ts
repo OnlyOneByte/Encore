@@ -334,3 +334,45 @@ test('re-tapping a song already cooking is never counted against its own owner (
 	expect(again).not.toBeNull();
 	expect(cookState('m0', d, 'alice')).toBe('cooking'); // not 'over-limit'
 });
+
+// ── #135: the cap must hold when the singer's queue ADD was dropped over a reconnecting socket ─────
+// The add (WebSocket) and the cook (HTTP) ride different transports and only the add is droppable.
+// A phone that taps Sing while its socket is not OPEN buffers the add client-side but the cook POST
+// still lands, so NO queue entry exists for these cooks. The old cap derived its count from
+// `state.entries`, saw ZERO, and admitted every tap — a full cap bypass. The count is now derived
+// from the job ledger (the thing being bounded), which does not depend on the second transport.
+// NOTE: `cook()` is not used here on purpose — it adds an entry, which is exactly the transport that
+// is absent in this window. We call requestMakeKaraoke WITHOUT ever touching state.entries.
+test('#135: the per-singer cap holds even when NO queue entry exists (dropped add over a reconnecting socket)', () => {
+	const d = deps();
+	// alice taps Sing on MAX distinct songs while her socket is reconnecting: the cook lands, the
+	// add never does, so state.entries stays empty for all of them.
+	for (let i = 0; i < MAX_CONCURRENT_COOKS_PER_SINGER; i++) {
+		d.mediaById.set('m' + i, media('m' + i));
+		expect(requestMakeKaraoke('m' + i, d, 'alice')).not.toBeNull();
+	}
+	expect(d.state.entries).toHaveLength(0); // the whole point: no entries were ever added
+	// Ledger-derived count is honest despite the empty queue.
+	expect(countInFlightCooks('alice', d)).toBe(MAX_CONCURRENT_COOKS_PER_SINGER);
+
+	// One more distinct tap in the same window → MUST be refused. Under the entry-derived cap this
+	// admitted the burst (count was 0); the ledger-derived cap refuses it.
+	d.mediaById.set('over', media('over'));
+	expect(cookState('over', d, 'alice')).toBe('over-limit');
+	expect(requestMakeKaraoke('over', d, 'alice')).toBeNull();
+	expect(d.mediaById.get('over')!.stemStatus).toBe('none'); // never flipped to cooking
+});
+
+test('#135: a dropped-add cook is attributed to its requester in the ledger, and only to them', () => {
+	const d = deps();
+	// No entries added — pure HTTP cook, socket down.
+	d.mediaById.set('a1', media('a1'));
+	requestMakeKaraoke('a1', d, 'alice');
+	d.mediaById.set('b1', media('b1'));
+	requestMakeKaraoke('b1', d, 'bob');
+	expect(countInFlightCooks('alice', d)).toBe(1); // alice's cook counts for alice
+	expect(countInFlightCooks('bob', d)).toBe(1); // and bob's for bob
+	// The cook job carries the attribution even with an empty queue.
+	const aliceJob = d.jobs.listByStatus('queued').find((j) => j.mediaId === 'a1');
+	expect(aliceJob!.singerId).toBe('alice');
+});

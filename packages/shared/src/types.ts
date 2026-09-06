@@ -269,6 +269,15 @@ export interface Job {
    * an already-finished song, and its cost belongs to itself.
    */
   cookId: string;
+  /**
+   * The singer who REQUESTED this cook, or `null` for internal callers that impose no per-singer
+   * cap (lyrics backfill, chained follow-up steps that inherit their parent's attribution). This is
+   * the authoritative attribution for the per-singer concurrent-cook cap: the cap counts a singer's
+   * live cook JOBS, not their queue entries, because the entry (WebSocket) and the cook (HTTP) ride
+   * different transports and only the entry is droppable — a phone that taps Sing while its socket is
+   * reconnecting files the cook with no entry to count, and an entry-derived cap admits every tap.
+   */
+  singerId: string | null;
   status: JobStatus;
   priority: number; // mirror of soonest rotationSeq; lower = sooner
   attempts: number;
