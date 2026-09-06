@@ -62,16 +62,28 @@ function beginSinging(deps: HubDeps, entry: QueueEntry): void {
 }
 
 /**
- * React to a make-karaoke song becoming ready (held-slot completion). Two cases:
- *  • The room IDLED while it cooked (nothing playing) and this freshly-ready entry is now the
- *    soonest playable → start it (it slots back at its preserved fair position).
- *  • Something is already playing → just re-broadcast nowplaying so the TV preloads the now-ready
- *    song as upNext. Either way playback:state/nowplaying are re-emitted so clients converge.
- * No-op if the ready media has no queued entry (cooked ahead of being queued).
+ * React to a make-karaoke song becoming ready (held-slot completion) OR to the current entry being
+ * retired out from under playback. Three cases, all keyed on "currentEntryId does not resolve to a
+ * live entry" — the room is effectively idle whether the id is null (never started, or advanced to
+ * null) or DANGLING (a client `remove`/`status` pruned the playing entry without touching playback,
+ * issue #128):
+ *  • Idle and a freshly-ready/queued entry is now the soonest playable → start it (it slots back at
+ *    its preserved fair position). A dangling id is overwritten by the new current here.
+ *  • Idle with a dangling id and nothing playable left → clear the dangling id so the room reads as
+ *    genuinely idle (isPlaying false, current null). Without this the `!currentEntryId` auto-start
+ *    gates elsewhere stay false forever and the rotation never advances.
+ *  • Something is already playing (current resolves) → just re-broadcast nowplaying so the TV
+ *    preloads the now-ready song as upNext. Either way playback:state/nowplaying are re-emitted so
+ *    clients converge.
  */
 export function reconcileOnReady(deps: HubDeps): void {
 	const { state } = deps;
-	if (!state.playback.currentEntryId) {
+	// The invariant "currentEntryId resolves to a live entry" used to rest on every playback path
+	// pairing a terminal status op with a setPlayback; the client-driven queue path (hub.ts) has no
+	// such pairing, so a remove/status of the PLAYING entry leaves currentEntryId dangling. Enforce it
+	// here, at the recovery entry point, by treating a dangling id exactly like a null one.
+	const currentResolves = state.entries.some((e) => e.id === state.playback.currentEntryId);
+	if (!currentResolves) {
 		const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 		if (next) {
 			beginSinging(deps, next);
@@ -87,6 +99,19 @@ export function reconcileOnReady(deps: HubDeps): void {
 				guideLevel: null
 			});
 			publishQueue(deps); // the entry left `queued` — tell clients now, not on the next resync
+			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
+		} else if (state.playback.currentEntryId !== null) {
+			// Dangling id with nothing playable to take over: the playing song was pruned and no other
+			// entry is ready. Settle playback to genuinely idle so the auto-start gates unstick.
+			state.setPlayback({
+				currentEntryId: null,
+				positionSec: 0,
+				isPlaying: false,
+				keyShift: 0,
+				background: null,
+				guideLevel: null
+			});
+			publishQueue(deps);
 			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		}
 	}

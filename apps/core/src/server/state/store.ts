@@ -57,7 +57,19 @@ export class AuthoritativeState {
 	hydrate(entries: QueueEntry[], playback: PlaybackState | null): void {
 		// drop terminal (done/skipped) rows and normalize the room's ordering on load
 		this.#entries = assignSeqs(entries.filter((e) => !isTerminal(e)), this.#orderingOf());
-		if (playback) this.#playback = { ...playback };
+		if (playback) {
+			this.#playback = { ...playback };
+			// Self-heal a persisted DANGLING currentEntryId (issue #128): persist() snapshots entries and
+			// playback independently, so a room saved while the playing entry was already pruned stores an
+			// id that names no live entry. Left as-is it survives the reboot and keeps the `!currentEntryId`
+			// auto-start gates jammed. Drop it here — the boot resync/reconcile then starts the next singer.
+			if (
+				this.#playback.currentEntryId !== null &&
+				!this.#entries.some((e) => e.id === this.#playback.currentEntryId)
+			) {
+				this.#playback = { ...this.#playback, currentEntryId: null, isPlaying: false };
+			}
+		}
 	}
 
 	/**
