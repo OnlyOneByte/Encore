@@ -7,7 +7,7 @@
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobs } from '../db/schema';
-import { ulid, type Job, type JobStatus, type JobType } from '@encore/shared';
+import { ulid, isTerminalJob, type Job, type JobStatus, type JobType } from '@encore/shared';
 import { assertTransition } from './transitions';
 import type { AttemptLedger, AttemptFacts } from './attempts';
 
@@ -146,6 +146,39 @@ export class JobRepository {
 
 		const next = { ...patch, status: to, updatedAt: now };
 		this.#db.update(jobs).set(next).where(eq(jobs.id, id)).run();
+		return this.byId(id)!;
+	}
+
+	/**
+	 * Lower a queued/in-flight job's scheduling priority WITHOUT a status change.
+	 *
+	 * `priority` is scheduling metadata, not lifecycle: dispatch sorts `priority ASC, createdAt ASC`
+	 * (dispatch.ts), so a smaller number is more urgent. A cook's priority is a snapshot of
+	 * `soonestSeqFor` taken ONCE at enqueue (make-karaoke.ts). When the singer's queue add is dropped
+	 * over a reconnecting socket, that snapshot is `NO_QUEUE_PRIORITY` — nobody was waiting yet — and
+	 * nothing ever revises it, so the cook sorts behind the lyrics backfill forever even after the
+	 * turn lands (the starvation half of #135).
+	 *
+	 * This cannot go through `transition`: a starved cook is still `queued`, and `queued → queued` is
+	 * deliberately not a legal edge (transitions.ts) — opening one would let a lease-expiry requeue
+	 * masquerade as a no-op progress update. So this is a narrow, status-free write that touches only
+	 * `priority` + `updatedAt` and emits no ledger event.
+	 *
+	 * Two guards keep it safe:
+	 *   • terminal jobs are never touched — a ready/failed/canceled cook has no scheduling future;
+	 *   • it only ever LOWERS the number (makes a cook more urgent). A reorder that would raise a
+	 *     cook's priority — push it further back — is refused, so this hook can only ever unstick a
+	 *     starved cook, never demote one another entry still needs.
+	 *
+	 * No-op (returns the unchanged job) when the id is terminal or the new priority is not strictly
+	 * lower, so callers can fire it unconditionally on any add.
+	 */
+	reprioritize(id: string, priority: number, now: number): Job {
+		const current = this.byId(id);
+		if (!current) throw new Error(`unknown job: ${id}`);
+		if (isTerminalJob(current.status)) return current;
+		if (priority >= current.priority) return current; // only ever more urgent, never less
+		this.#db.update(jobs).set({ priority, updatedAt: now }).where(eq(jobs.id, id)).run();
 		return this.byId(id)!;
 	}
 

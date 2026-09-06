@@ -15,6 +15,7 @@ import {
 import { handleQueueCommand, syncEvent, orderingOf, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './src/server/realtime/player';
 import { cancelJobsForMedia } from './src/server/jobs/cancel';
+import { reprioritizeCookForMedia } from './src/server/jobs/reprioritize-cook';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
@@ -243,6 +244,18 @@ const server = Bun.serve<SocketData>({
 						now: app.now,
 						mediaById: app.mediaById,
 						broadcast: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e))
+					}),
+				// The add-side mirror of onEntryRemoved. A song's cook can be filed at NO_QUEUE_PRIORITY when
+				// the make-karaoke POST beat the singer's queue add over a reconnecting socket; once the turn
+				// lands here we pull the outstanding cook to that turn's rotation position and kick dispatch,
+				// so it stops sorting behind the lyrics backfill forever. No-ops when there is no cook in
+				// flight or nothing more urgent to do. See jobs/reprioritize-cook.ts (#135 starvation half).
+				onEntryAdded: (mediaId, entries) =>
+					reprioritizeCookForMedia(mediaId, {
+						jobs: app.jobs,
+						entries,
+						now: app.now,
+						dispatch: () => app.workerHub.dispatch()
 					}),
 				actorSingerId: ws.data.singerId,
 				seenOp: (id) => {

@@ -54,6 +54,16 @@ export interface HubDeps {
 	 */
 	onEntryRemoved?: (mediaId: string, remainingEntries: QueueEntry[]) => void;
 	/**
+	 * Optional: called AFTER an `add` op is applied, with the added entry's mediaId and the post-add
+	 * queue. The add-side mirror of onEntryRemoved. It exists for the reconnect-starvation case
+	 * (#135): a make-karaoke POST can be filed while the singer's queue add is still in flight over a
+	 * reconnecting socket, so the cook lands at NO_QUEUE_PRIORITY and sorts behind the lyrics backfill
+	 * forever even once the turn arrives. server.ts wires this to reprioritizeCookForMedia, which
+	 * lowers the outstanding cook to the soonest waiting turn and kicks dispatch; unset in the pure
+	 * hub tests, which only assert queue mutation.
+	 */
+	onEntryAdded?: (mediaId: string, entries: QueueEntry[]) => void;
+	/**
 	 * The singer this socket authenticated as, resolved from the session cookie at WS upgrade.
 	 * `undefined` = a socket that never joined (a TV, a spectator, a probe). Queue mutations are
 	 * attributable acts, so they require one — and an `add` must carry this id, not one the client
@@ -157,6 +167,12 @@ export function handleQueueCommand(
 	// whether to actually cancel (it does not when another entry still needs the media — a shared
 	// cook). Fired AFTER the op is applied so it sees the post-remove queue.
 	if (removedMediaId) deps.onEntryRemoved?.(removedMediaId, entries);
+
+	// The add-side mirror. A song can have a cook already in flight (filed at NO_QUEUE_PRIORITY when
+	// this add was still crossing a reconnecting socket) that this newly-landed turn should pull to
+	// the front of the queue. Fired AFTER the op is applied so `entries` carries the added entry, and
+	// gated to `add` so a remove/move/status never re-prioritises. See jobs/reprioritize-cook.ts.
+	if (cmd.op.op === 'add') deps.onEntryAdded?.(cmd.op.entry.mediaId, entries);
 
 	// ONE broadcast (Finding #3): the patch carries the authoritative (pruned, reseq'd) entries +
 	// any referenced media inline, so clients adopt server rotationSeq without a second full
