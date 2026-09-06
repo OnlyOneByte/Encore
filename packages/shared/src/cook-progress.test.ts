@@ -45,6 +45,17 @@ describe('overallCookPct', () => {
 		expect(band('separating')).toBeGreaterThan(band('aligning'));
 	});
 
+	// Every in-flight stage must own a NON-ZERO band. A collapsed band means the bar STOPS MOVING for
+	// the whole of that stage while the worker reports 0→100 on it — the same "bar lies about the cook"
+	// class this module was written to kill (#51), in the opposite direction. The BAND_END table is
+	// hand-tuned and explicitly invites re-weighting (see the docstring), so pin the floor per stage:
+	// verified RED per-band (queued/downloading/aligning each collapse alone with the suite otherwise
+	// green; separating was only caught incidentally by the widest-band ordering above).
+	it('every in-flight stage owns a non-zero band — no stage freezes the bar', () => {
+		const band = (s: MediaStatus) => overallCookPct(s, 100) - overallCookPct(s, 0);
+		for (const s of MEDIA_STAGES) if (s !== 'ready') expect(band(s)).toBeGreaterThan(0);
+	});
+
 	it('terminal non-line exits do not read as complete', () => {
 		// failed / canceled are off the line (mediaStagePosition -1). The bar must not claim 100.
 		expect(overallCookPct('failed', 50)).toBeLessThan(100);
