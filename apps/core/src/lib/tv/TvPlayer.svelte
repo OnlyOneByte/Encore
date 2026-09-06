@@ -513,9 +513,15 @@
 	 */
 	$effect(() => {
 		if (!master) return;
-		// A slot with nothing playable resolves to '' and clears the element, matching the {#if} that
-		// previously unmounted the <video> for unplayable media.
-		const resolved = media && isPlayable(media) ? fileSrc(media) : '';
+		// `playable` is the WHOLE condition the {#if} around the <audio> gates on. It is the pivot of
+		// #251: a next-up cook reaching a stage rebroadcasts `queue:sync`, the TV rebuilds its media
+		// catalog, and for a churn pass or two the PLAYING slot's `media` prop can read momentarily null
+		// (a `mediaOf(current)` miss) or not-yet-`isPlayable`. The element only EXISTS while `media &&
+		// isPlayable(media)`, so a song that genuinely leaves UNMOUNTS it and this effect short-circuits
+		// on `if (!master) return`. Reaching here with `master` still bound but `playable` false is
+		// therefore always that transient churn — one microtask ahead of Svelte tearing the element down.
+		const playable = !!media && isPlayable(media);
+		const resolved = playable ? fileSrc(media) : '';
 		// Compare against what the ELEMENT ACTUALLY HOLDS, not a shadow copy of it. `nextVideoSrc` is
 		// documented in terms of "the string last assigned to the element", and the attribute IS that —
 		// authoritatively, and with no way to go stale. A shadow variable had two failure modes this does
@@ -524,18 +530,15 @@
 		// fresh, src-less element silent). `getAttribute` round-trips exactly because every src assigned
 		// here is the same root-relative string; `master.src` would return an absolutised URL and never
 		// compare equal.
-		const decision = nextVideoSrc(master.getAttribute('src') ?? '', resolved);
-		if (decision.changed) {
-			// Assigning '' would set the src to the document URL and trigger a spurious load/error; use
-			// removeAttribute to genuinely clear it, mirroring an unmounted element.
-			if (decision.src === '') master.removeAttribute('src');
-			else master.src = decision.src;
-		}
-		// The reactive signal the transport effect gates on: "the element is holding this". Assigned
-		// unconditionally so it is correct even when no write was needed (a remount that already carries
-		// the right src); a same-string assignment to a primitive `$state` notifies nobody, so this cannot
-		// loop through the transport effect and back.
-		currentSrc = resolved;
+		const decision = nextVideoSrc(master.getAttribute('src') ?? '', resolved, playable);
+		if (decision.changed) master.src = decision.src;
+		// A NOT-PLAYABLE pass must leave BOTH the element's src AND `currentSrc` untouched. Clearing
+		// `currentSrc` to '' here would tell the transport effect the still-playing song has no src and
+		// stop it (`hasSrc:false`); rewriting the src via the old '' -> removeAttribute -> reassign dance
+		// reloaded it to 0. Both are the #251 reset. When nothing is playable we keep the current song
+		// exactly as the element holds it; the genuine clear on a real song departure is the {#if}
+		// unmount, not this effect.
+		if (playable) currentSrc = resolved;
 	});
 
 	/**
