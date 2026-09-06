@@ -339,6 +339,33 @@ export async function writeSidecar(s: MediaSidecar): Promise<void> {
 	}
 }
 
+/**
+ * Null out a song's four derived-artifact fields on its authoritative record and rewrite it, so an
+ * eviction actually STICKS.
+ *
+ * sidecarFromMedia intentionally does instrumental: m.instrumentalRef ?? prev?.artifacts.instrumental
+ * (load-bearing for an index-only hydrate that carries no refs on the Media). But that same ?? prev
+ * means an eviction upsert, which passes instrumentalRef = undefined, has its just-deleted refs
+ * RESTORED from the prior sidecar, and mediaFromSidecar then re-derives stemStatus: ready,
+ * resurrecting an evicted song as cooked with refs to files no longer on disk (violates ARCHITECTURE
+ * section 6: a browse row must never resolve to a file that is not on disk).
+ *
+ * Rather than weaken ?? prev, the eviction path calls this to null the fields directly on the
+ * authoritative record. A no-op if there is no sidecar yet.
+ */
+export async function clearArtifacts(mediaId: string): Promise<void> {
+	const side = await readSidecar(mediaId);
+	if (!side) return;
+	side.artifacts = {
+		...side.artifacts,
+		instrumental: null,
+		vocals: null,
+		lyrics: null,
+		lyricsCandidates: []
+	};
+	await writeSidecar(side);
+}
+
 /** Every media id that has a sidecar on disk. */
 export async function listSidecarIds(): Promise<string[]> {
 	const { readdirSync } = await import('node:fs');
