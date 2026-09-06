@@ -190,12 +190,13 @@ async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIter
         # unwind (thread may still be running). Block until it truly finishes so the slot the caller is
         # about to free is not still occupied by a live thread. shield() because the unwinding
         # CancelledError would otherwise cut this await short and re-detach the thread we are waiting on.
-        if not task.done():
+        while not task.done():
             try:
                 await asyncio.shield(asyncio.wait({task}))
             except asyncio.CancelledError:
-                # The unwinding cancellation reached us through the shield. The inner wait was still
-                # driven to completion, so by here the thread has finished and is no longer unaccounted.
+                # A SECOND cancellation reached us through the shield. shield() raises to its awaiter
+                # immediately while the inner wait keeps running concurrently, so the thread is NOT
+                # finished here — loop and await it again instead of returning with the thread live.
                 pass
         # Retrieve any exception the abandoned run raised so it is not reported as "exception never
         # retrieved"; we are unwinding an already-decided outcome and its value is not wanted here.
