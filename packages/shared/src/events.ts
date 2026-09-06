@@ -93,7 +93,7 @@ export type PlayerCommand =
 export type ClientEvent =
   | { type: 'queue:command'; command: ClientCommand }
   | { type: 'player:command'; command: PlayerCommand }
-  | { type: 'tv:telemetry'; positionSec: number; durationSec: number; status: string; bufferedNextPct: number; entryId?: string }
+  | { type: 'tv:telemetry'; positionSec: number; status: string; entryId?: string }
   | { type: 'hello'; lastRev: number };
 
 // ── dial-home worker protocol ─────────────────────────────────────────────────

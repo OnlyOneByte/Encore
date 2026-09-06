@@ -8,7 +8,7 @@
 //
 // The TV's telemetry is where that bit visibly. It is sent from the media element's own `ontimeupdate`:
 //
-//     onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
+//     onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s); }}
 //
 // The local assignment happens FIRST, so when `send` threw, the TV's own lyrics and progress kept
 // advancing off `positionSec` while every telemetry frame was lost. The server therefore never learned
