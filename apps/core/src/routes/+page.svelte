@@ -24,7 +24,7 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { cookAndQueue } from '$lib/cook-and-queue';
-	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
+	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, cookingGroupIds, type Readiness } from '$lib/readiness';
 	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
 	import type { MediaStatus } from '@encore/shared';
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel } from '@encore/shared';
@@ -346,21 +346,22 @@
 	}
 
 	/**
-	 * Every song cooking right now, from any origin — the live status map plus anything the catalog
-	 * says is cooking. Deliberately NOT filtered by the search query: this is the one place a cooking
-	 * song is guaranteed to be visible, and a song you kicked off then searched away from must not
-	 * disappear while it works.
+	 * Every song cooking right now. WHEN NOT SEARCHING this is the full union — the live status map
+	 * plus anything the catalog says is cooking — because this is the one place a cook you started is
+	 * guaranteed to be visible, so a song you kicked off then went idle from must not disappear while
+	 * it works. WHEN SEARCHING it is scoped to the query via `cookingResults`, the server's
+	 * query-matched cooking group: a song someone else is cooking that does not match your search must
+	 * NOT appear under it (#252). The id-selection lives in the pure `cookingGroupIds` helper so it is
+	 * unit-testable; `failed` is included and `ready`/`canceled` excluded, all inside that helper.
 	 */
 	const cookingRows = $derived.by(() => {
-		const ids = new Set<string>();
-		// `failed` is INCLUDED, deliberately. It used to be filtered out, which meant a dead cook lost
-		// its row entirely: the song settled back to un-cooked, dropped out of this group, and the
-		// singer's only trace of it was a four-second toast. This is the one group guaranteed to be
-		// visible regardless of the search box, so it is the only place a failure can reliably be seen —
-		// and the row carries its own red chip plus a Sing button to retry. `canceled` is NOT included:
-		// the guest removed that song on purpose and needs no report of their own action.
-		for (const [id, s] of mediaStatus) if (s.status !== 'ready' && s.status !== 'canceled') ids.add(id);
-		for (const [id, m] of mediaCatalog) if (readinessFor(m) === 'cooking') ids.add(id);
+		const ids = cookingGroupIds({
+			searchActive,
+			cookingResults,
+			mediaStatus,
+			mediaCatalog,
+			readiness: readinessFor
+		});
 		return [...ids]
 			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
 			.filter((r) => r.media)
@@ -398,6 +399,9 @@
 	let query = $state('');
 	let readyResults = $state<Media[]>([]);
 	let rawResults = $state<Media[]>([]);
+	// The server's query-matched cooking group. Held so `cookingRows` can scope to the query while a
+	// search is active instead of re-deriving from the whole catalog (#252). Cleared with the box.
+	let cookingResults = $state<Media[]>([]);
 	let searching = $state(false);
 	let debounceTimer: ReturnType<typeof setTimeout> | undefined;
 	let inflight: AbortController | undefined;
@@ -409,6 +413,7 @@
 		if (!q) {
 			readyResults = [];
 			rawResults = [];
+			cookingResults = [];
 			searching = false;
 			inflight?.abort();
 			loadShortcuts();
@@ -434,13 +439,13 @@
 			const j = await res.json();
 			readyResults = j.ready ?? [];
 			rawResults = j.results ?? [];
-			// server also returns the query-matching cooking group; it is folded into cookingRows via
-			// the catalog, so merging is all that's needed here
-			mergeMedia([...readyResults, ...rawResults, ...(j.cooking ?? [])]);
+			cookingResults = j.cooking ?? [];
+			mergeMedia([...readyResults, ...rawResults, ...cookingResults]);
 		} catch (e) {
 			if ((e as Error).name !== 'AbortError') {
 				readyResults = [];
 				rawResults = [];
+				cookingResults = [];
 				showError('Search failed — check your connection');
 			}
 		} finally {

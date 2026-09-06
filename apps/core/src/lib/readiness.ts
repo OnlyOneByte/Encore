@@ -136,3 +136,41 @@ export function nextPlayableEntryId<E extends { id: string; mediaId: string }>(
 ): string | null {
 	return entries.find((e) => entryPlayable(mediaOf(e.mediaId), liveOf(e.mediaId)))?.id ?? null;
 }
+
+/**
+ * The set of media ids that belong in the "Cooking" group — as an ORDER-INDEPENDENT `Set`, because
+ * the caller re-hydrates each id into a row from the catalog and imposes its own order.
+ *
+ * The bug this fixes: with a search active, the group was re-derived from the WHOLE live status map
+ * and the WHOLE catalog, ignoring the query. So a song someone else was cooking ("I want it that
+ * way") showed up under an unrelated search ("never gonna give you up") — a cooking song bypassing
+ * the search-match filter (#252). The server already returns a query-scoped `cooking` group
+ * (partitionSearch filters it through matchesQuery exactly like ready/raw); the phone was throwing
+ * it away and rebuilding from scratch.
+ *
+ * So this makes the query the load-bearing input:
+ *  - searchActive → restrict to `cookingResults`, the server's query-matched cooking group. A cooking
+ *    song that does not match the query is absent; one that DOES match is present.
+ *  - not searching → the full union of every in-flight song (live status map ∪ catalog), preserving
+ *    the requirement that a cook you started is guaranteed visible when the box is empty. `failed` is
+ *    included (a dead cook keeps its row); `ready`/`canceled` are excluded.
+ *
+ * Pure so it is unit-testable without a browser — the extraction is the fix's natural shape.
+ */
+export function cookingGroupIds(opts: {
+	searchActive: boolean;
+	cookingResults: Media[];
+	mediaStatus: ReadonlyMap<string, { status: MediaStatus }>;
+	mediaCatalog: ReadonlyMap<string, Media>;
+	readiness: (m: Media) => Readiness;
+}): Set<string> {
+	const { searchActive, cookingResults, mediaStatus, mediaCatalog, readiness } = opts;
+	if (searchActive) {
+		// The server already scoped this to the query. Trust the wire; do NOT re-scan the catalog.
+		return new Set(cookingResults.map((m) => m.id));
+	}
+	const ids = new Set<string>();
+	for (const [id, s] of mediaStatus) if (s.status !== 'ready' && s.status !== 'canceled') ids.add(id);
+	for (const [id, m] of mediaCatalog) if (readiness(m) === 'cooking') ids.add(id);
+	return ids;
+}
