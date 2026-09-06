@@ -20,6 +20,7 @@
 	//   4. THE VIEW COUNT. The tiebreaker between two lyric uploads of one song (2.1B vs 266K).
 	import type { Readiness } from '$lib/readiness';
 	import { cookStageLabel } from '$lib/cook-phrasing';
+	import { overallCookPct, type MediaStatus } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	import {
 		classifyVideoKind,
@@ -71,6 +72,14 @@
 		keyName?: string;
 		pct?: number; // cooking progress, 0..100
 		etaSec?: number;
+		/**
+		 * The live cook STATUS (queued/downloading/separating/aligning/ready). Present, the row
+		 * shows how far through the whole cook it is via `overallCookPct(status, pct)` instead of
+		 * the raw per-step `pct` — a per-step number filled the bar to 100% at the end of each
+		 * step and even jumped backward when the next step reset it (see #80). Absent (a raw
+		 * search row that is not cooking), the raw `pct` is used unchanged.
+		 */
+		status?: MediaStatus;
 		/** Already in the rotation — the add action becomes a confirmation instead of a repeat. */
 		inQueue?: boolean;
 		onadd?: () => void;
@@ -88,6 +97,7 @@
 		keyName,
 		pct = 0,
 		etaSec,
+		status,
 		inQueue = false,
 		onadd,
 		onmake
@@ -153,6 +163,13 @@
 	 * is waiting for is a karaoke track. The percentage and the ETA stay exactly as they were; the same
 	 * review called those the honest part.
 	 */
+	// The percentage the bar and its readout show. When the live `status` is known, this is how far
+	// through the WHOLE cook the song is (`overallCookPct` maps the worker's per-step pct into weighted
+	// per-stage bands over the shared MEDIA_STAGES vocabulary), so it reaches 100% only at `ready` and
+	// never jumps backward when a step resets its own pct — the two defects #80 names. Without a status
+	// (a non-cooking raw row) it falls back to the raw pct so nothing changes for those rows.
+	const barPct = $derived(status ? overallCookPct(status, pct) : pct);
+
 	const stateChip = $derived.by(() => {
 		if (readiness === 'ready') return cookStageLabel('ready');
 		// A dead cook says so. This branch is why `readiness` grew a fourth value: the row had three
@@ -165,7 +182,11 @@
 		// least-committal in-flight value rather than naming a specific step (e.g. 'separating') the row
 		// has no way to know. Naming a step here would print a guess as fact: an aligning song would
 		// read as if it were still separating.
-		if (readiness === 'cooking') return cookStageLabel('queued', { pct, etaSec });
+		// Round only the READOUT, matching ProcessingCard's convention (its :62 comment): the bar keeps
+		// the unrounded barPct so its transition stays smooth, but the guest-facing "Making karaoke… N%"
+		// line must be an integer — overallCookPct returns a band-interpolated float (e.g. 67.6), and an
+		// unrounded readout prints "67.6%" or "31.200000000000003%" (#80).
+		if (readiness === 'cooking') return cookStageLabel('queued', { pct: Math.round(barPct), etaSec });
 		return null;
 	});
 
@@ -230,7 +251,7 @@
 		{/if}
 		{#if readiness === 'cooking'}
 			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
-			<div class="bar"><i style="transform:scaleX({pct / 100})"></i></div>
+			<div class="bar"><i style="transform:scaleX({barPct / 100})"></i></div>
 		{/if}
 	</div>
 
