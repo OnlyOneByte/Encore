@@ -217,3 +217,50 @@ test('findOutstandingForMedia: null for a media with no jobs at all', () => {
 	const { repo } = makeRepo();
 	expect(repo.findOutstandingForMedia('media-unknown')).toBeNull();
 });
+
+// — reprioritize: the status-free priority write (#135 starvation half) —
+
+test('reprioritize lowers a queued job priority without a status change or ledger event', () => {
+	const { repo } = makeRepo();
+	// filed at NO_QUEUE_PRIORITY (nobody waiting yet) — the reconnect-starvation snapshot
+	const job = repo.enqueue('m-starved', 'stems', Number.MAX_SAFE_INTEGER, T0);
+	expect(job.priority).toBe(Number.MAX_SAFE_INTEGER);
+
+	const after = repo.reprioritize(job.id, 1, T0 + 5);
+	expect(after.priority).toBe(1); // pulled to the singer's rotation position
+	expect(after.status).toBe('queued'); // NOT a transition — still queued (that's what starvation is)
+	expect(after.updatedAt).toBe(T0 + 5);
+	// no ledger event was opened/closed by a reprioritise — it is scheduling metadata, not lifecycle
+	expect(repo.byId(job.id)!.priority).toBe(1);
+});
+
+test('reprioritize only ever LOWERS: an equal-or-higher target is a no-op', () => {
+	const { repo } = makeRepo();
+	const job = repo.enqueue('m1', 'stems', 3, T0);
+
+	expect(repo.reprioritize(job.id, 3, T0 + 1).priority).toBe(3); // equal — refused
+	expect(repo.reprioritize(job.id, 7, T0 + 2).priority).toBe(3); // higher (less urgent) — refused
+	expect(repo.reprioritize(job.id, 1, T0 + 3).priority).toBe(1); // strictly lower — applied
+});
+
+test('reprioritize refuses a terminal job (no scheduling future)', () => {
+	const { repo } = makeRepo();
+	const job = repo.enqueue('m1', 'stems', 5, T0);
+	repo.assign(job.id, 'w', null, T0 + 1);
+	repo.accept(job.id, null, T0 + 2);
+	repo.complete(job.id, T0 + 3); // → ready (terminal)
+
+	const after = repo.reprioritize(job.id, 0, T0 + 4);
+	expect(after.status).toBe('ready');
+	expect(after.priority).toBe(5); // untouched — a finished cook has no queue position to fix
+});
+
+test('reprioritize works on an in-flight (running) job too, not only queued', () => {
+	const { repo } = makeRepo();
+	const job = repo.enqueue('m1', 'stems', 9, T0);
+	repo.assign(job.id, 'w', null, T0 + 1);
+	repo.accept(job.id, null, T0 + 2); // running
+	const after = repo.reprioritize(job.id, 2, T0 + 3);
+	expect(after.status).toBe('running');
+	expect(after.priority).toBe(2);
+});
