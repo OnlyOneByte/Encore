@@ -415,6 +415,14 @@
 	// remove + undo toast
 	let undo = $state<{ mediaId: string; title: string } | null>(null);
 	let undoTimer: ReturnType<typeof setTimeout> | undefined;
+	// The undo toast's real rendered height, bound to its clientHeight in the markup. The error toast
+	// docks ABOVE it, and the toast wraps to as many lines as a real “title — artist” needs, so the
+	// error toast's offset must track this MEASURED value, not a constant (the same reason --peek-h is
+	// measured). Published as 0 when no undo toast is up, so the error toast then docks above the peek.
+	let undoH = $state(0);
+	$effect(() => {
+		document.documentElement.style.setProperty('--undo-h', `${undo ? undoH : 0}px`);
+	});
 	function removeWithUndo(entry: QueueEntry) {
 		store?.removeEntry(entry.id);
 		if (navigator.vibrate) navigator.vibrate(8);
@@ -1099,7 +1107,7 @@
 </QueueSheet>
 
 {#if undo}
-	<div class="undo-toast" role="status">
+	<div class="undo-toast" role="status" bind:clientHeight={undoH}>
 		<span>Removed “{undo.title}”</span>
 		<button onclick={doUndo}>Undo</button>
 	</div>
@@ -1354,16 +1362,18 @@
 	 *
 	 * The offsets were hand-tuned constants (14 / 70) stacking one element above the other above a
 	 * measured value, so they overlapped the instant either toast changed height. Named as scoped
-	 * tokens the stacking order is explicit: undo sits just above the peek; the error toast clears the
-	 * undo toast so the two never draw over each other at one bottom/z-index (the bug --error-dock
-	 * fixed). Adjust these together, not in isolation.
+	 * tokens the stacking order is explicit: undo sits just above the peek; the error toast docks above
+	 * the undo toast's REAL rendered height (--undo-h, bound to its clientHeight in script; 0 when it
+	 * is absent) plus a fixed gap, so the two never draw over each other however many lines the undo
+	 * toast wraps to. The height is content-dependent and unbounded, so it MUST be measured, not a
+	 * constant. Adjust the gaps, not the measurement.
 	 */
 	:root {
 		--undo-dock: calc(var(--peek-h) + 14px);
-		--error-dock: calc(var(--peek-h) + 70px);
+		--error-dock: calc(var(--undo-dock) + var(--undo-h, 0px) + 14px);
 	}
 	.undo-toast {
-		position: fixed; left: 50%; bottom: var(--undo-dock); transform: translateX(-50%);
+		position: fixed; left: 0; right: 0; bottom: var(--undo-dock); margin-inline: auto; width: fit-content;
 		display: flex; align-items: center; gap: 14px; z-index: 30;
 		background: var(--card2); border: 1px solid var(--line); border-radius: 14px;
 		padding: 12px 16px; box-shadow: var(--shadow); font-size: 0.9rem; max-width: 90vw;
@@ -1381,7 +1391,7 @@
 	.error-toast {
 		/* Offset above the undo toast: both sat at the same bottom and z-index, so one drew over the
 		   other and a guest saw only whichever rendered last. */
-		position: fixed; left: 50%; bottom: var(--error-dock); transform: translateX(-50%); z-index: 30;
+		position: fixed; left: 0; right: 0; bottom: var(--error-dock); margin-inline: auto; width: fit-content; z-index: 30;
 		background: var(--danger-bg); color: var(--danger-ink); border: 1px solid var(--danger-line);
 		padding: 11px 16px; border-radius: var(--radius-sm); font-size: 0.88rem; max-width: 90vw;
 	}
