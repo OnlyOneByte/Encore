@@ -68,6 +68,13 @@
 	// surface an on-screen affordance; TvPlayer arms a document-wide gesture listener that re-attempts
 	// playback and clears this the moment the room recovers. Only the active+visible slot reports here.
 	let autoplayBlocked = $state(false);
+	// Whether the MASTER element is actually running, reported up from the active+visible
+	// TvPlayer's own play/pause/ended (#393). The honest counterpart to `isPlaying`, which is the
+	// ROOM'S INTENT from the server: the room can intend to play while the element does not (a TV
+	// wall whose autoplay was refused, or a current entry whose media is not playable), and the
+	// lyrics reel must freeze in exactly those cases rather than sweep over a silent stage. Starts
+	// false — nothing is advancing until an element says so.
+	let masterAdvancing = $state(false);
 	let tvProgressStyle = $derived(settings.room.tvProgressStyle);
 	// What the room paints behind the song. Derived from the same settings object, so a live
 	// settings:changed needs no per-field assignment here.
@@ -452,11 +459,14 @@
 	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundHue, currentSingerColor));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
-	// Bug B: the reel and ball ADVANCE only while the transport is actually playing. `lyricsActive`
-	// stays true through a pause (a paused song is still `current`), so binding the overlay's `playing`
-	// prop to it kept the words scrolling with the audio frozen. Visibility still rides `lyricsActive`
-	// — the overlay stays on screen, just frozen mid-line.
-	const lyricsPlaying = $derived(lyricsAdvancing(screen, tvState, isPlaying));
+	// Bug B + #393: the reel and ball ADVANCE only while the song is genuinely playing on BOTH
+	// dimensions — the room INTENDS to play (`isPlaying`, from the server) AND the master element is
+	// actually running (`masterAdvancing`, reported up from the <audio>'s own play/pause). `isPlaying`
+	// alone stayed true through a phone pause (Bug B) and ALSO through an autoplay refusal or an
+	// unplayable entry (#393) — the room silent while the reel swept forward on wall-clock. Feeding
+	// the element's honest state freezes the words with the sound in every one of those. Visibility
+	// still rides `lyricsActive` — the overlay stays on screen, just frozen mid-line.
+	const lyricsPlaying = $derived(lyricsAdvancing(screen, tvState, isPlaying, masterAdvancing));
 	// Bug C: the lower-third showed the RAW upload title. Resolve the display fields once — canonical
 	// title/artist when a confident parse produced them, never the uploader. Artist is null when there
 	// is nothing trustworthy, and the markup omits the line rather than inventing one.
@@ -572,6 +582,7 @@
 		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s); }}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
+		onplayingchange={(p) => (masterAdvancing = p)}
 	/>
 	<TvPlayer
 		media={slotMedia.B}
@@ -589,6 +600,7 @@
 		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s); }}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
+		onplayingchange={(p) => (masterAdvancing = p)}
 	/>
 
 	<!-- Word-timed karaoke lyrics over the active player -->
