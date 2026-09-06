@@ -8,7 +8,7 @@ fails loudly, fails silently, or keeps working:
   - every rejection must be reported in `warnings`, because config that is silently ignored is worse
     than config that is refused.
 """
-from src.config import WorkerConfig, auto_demucs_jobs, auto_torch_threads
+from src.config import WorkerConfig, auto_demucs_jobs, auto_torch_threads, resolve, whisperx_device_for
 from src.separation import demucs
 
 
@@ -51,11 +51,23 @@ def test_every_perf_knob_is_settable():
         "ENCORE_STEM_BITRATE": "256k",
         "ENCORE_FLAC_LEVEL": "5",
         "ENCORE_FFMPEG_BIN": "/opt/ffmpeg",
+        # These three were previously omitted despite the test's name claiming completeness, so a
+        # deployment that stopped reading any of them would have shipped green. ENCORE_WHISPERX_DEVICE
+        # is the operator override for the alignment device; ENCORE_SEPARATOR_BACKEND selects the
+        # separation implementation; ENCORE_ANNOTATE toggles the MusicBrainz identify step.
+        "ENCORE_WHISPERX_DEVICE": "cuda",
+        "ENCORE_SEPARATOR_BACKEND": "mlx",
+        "ENCORE_ANNOTATE": "0",
     })
     assert (c.demucs_model, c.device, c.demucs_jobs) == ("htdemucs_ft", "cuda:1", 8)
     assert (c.demucs_overlap, c.demucs_segment, c.demucs_shifts) == (0.1, 7, 2)
     assert (c.torch_threads, c.concurrency) == (4, 3)
     assert (c.stem_bitrate, c.flac_level, c.ffmpeg_bin) == ("256k", 5, "/opt/ffmpeg")
+    # from_env carries the operator override verbatim; whether it is HONOURED is decided later in
+    # resolve() (see the whisperx-device tests below). Backend is lower-cased; annotate is a flag.
+    assert c.whisperx_device == "cuda"
+    assert c.separator_backend == "mlx"
+    assert c.annotate is False
     assert c.warnings == ()
 
 
@@ -294,3 +306,60 @@ def test_free_memory_is_what_is_measured_not_physical_capacity():
     # a 12GiB card with 2GiB free is sized like a small card, not like a 12GiB one
     assert auto_demucs_segment(int(2.0 * 1024**3)) is not None
     assert auto_demucs_segment(int(12.0 * 1024**3)) is None
+
+
+# ── the alignment device (FIX: pin whisperx_device_for + config.resolve, which no test reached) ──────
+#
+# CTranslate2 (what whisperx transcribes through) has only a cuda backend and a cpu backend, so the
+# one device that runs the whole worker cannot be handed straight to the aligner: an Intel/Apple box
+# separates on its accelerator but must still align on the CPU. `whisperx_device_for` is that mapping
+# and `resolve()` is the only thing that wires it, yet nothing exercised either — a `return "cpu"`
+# regression (a CUDA box separating on the GPU then transcribing every song on the CPU: slow,
+# correct-looking, and silent) would have shipped green. These assert the mapping AS VALUES and drive
+# the real production functions, not a reimplementation.
+
+
+def test_whisperx_device_for_maps_only_cuda_to_cuda():
+    # A cuda device (with or without an ordinal) aligns on cuda; EVERYTHING else aligns on cpu, because
+    # CTranslate2 has no xpu/mps backend. Asserting the concrete values kills a `return "cpu"` (the
+    # pre-fix regression) and a `return "<garbage>"` alike.
+    assert whisperx_device_for("cuda") == "cuda"
+    assert whisperx_device_for("cuda:1") == "cuda"
+    assert whisperx_device_for("cuda:0") == "cuda"
+    for other in (None, "cpu", "xpu", "mps"):
+        assert whisperx_device_for(other) == "cpu", other
+
+
+def test_resolve_derives_the_align_device_from_the_separation_device():
+    # The wiring at config.py:391. A GPU box with no explicit override must align on cuda, NOT fall back
+    # to a hardcoded cpu — that fallback is the exact bug this code exists to prevent.
+    resolved, _warnings = resolve(WorkerConfig.from_env({}), device="cuda:0")
+    assert resolved.whisperx_device == "cuda"
+
+    # No accelerator resolved: alignment stays on cpu.
+    resolved_cpu, _w = resolve(WorkerConfig.from_env({}), device=None)
+    assert resolved_cpu.whisperx_device == "cpu"
+
+
+def test_resolve_lets_an_explicit_operator_override_win_over_the_derivation():
+    # An operator who sets ENCORE_WHISPERX_DEVICE must have it honoured, not silently replaced by the
+    # derived value. `cpu` on a cuda box is a real choice (e.g. the GPU is reserved for separation), so
+    # the override has to survive resolve().
+    resolved, _warnings = resolve(
+        WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "cpu"}), device="cuda:0"
+    )
+    assert resolved.whisperx_device == "cpu"
+
+
+def test_resolve_warns_on_an_align_device_ctranslate2_cannot_use():
+    # A typo like ENCORE_WHISPERX_DEVICE=mps must not be swallowed: CTranslate2 supports only cuda and
+    # cpu, so alignment would fail, and the one message explaining why must be emitted.
+    _resolved, warnings = resolve(
+        WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "mps"}), device=None
+    )
+    assert any("CTranslate2" in w for w in warnings), warnings
+
+    # A valid override (cuda / cuda:N / cpu) must NOT trigger that warning.
+    for good in ("cpu", "cuda", "cuda:1"):
+        _r, w = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": good}), device=None)
+        assert not any("CTranslate2" in m for m in w), (good, w)
