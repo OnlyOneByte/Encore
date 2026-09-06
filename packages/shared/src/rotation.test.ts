@@ -110,9 +110,8 @@ test('CLIENT==SERVER: applyAndReseq is deterministic for identical input (the co
 	expect(applyAndReseq(base, op)).toEqual(applyAndReseq(base, op)); // pure + deterministic
 });
 
-test('isTerminal classifies done/skipped vs live', () => {
+test('isTerminal classifies done vs live', () => {
 	expect(isTerminal(e('x', 'a', 1))).toBe(false); // queued
 	expect(isTerminal({ ...e('x', 'a', 1), status: 'playing' })).toBe(false);
 	expect(isTerminal({ ...e('x', 'a', 1), status: 'done' })).toBe(true);
-	expect(isTerminal({ ...e('x', 'a', 1), status: 'skipped' })).toBe(true);
 });

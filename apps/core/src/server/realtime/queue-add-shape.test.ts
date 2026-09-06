@@ -71,7 +71,7 @@ test('a client add may only mint status:\'queued\' — every other lifecycle sta
 	const { deps } = harness();
 	expect(validateCommand(add({ status: 'queued' }), deps)).toBeNull();
 	expect(validateCommand(add({ addedAt: 0 }), deps)).toBeNull();
-	for (const s of ['playing', 'waiting', 'done', 'skipped'] as const) {
+	for (const s of ['playing', 'done'] as const) {
 		expect(validateCommand(add({ status: s }), deps)).toContain('invalid status');
 	}
 });
