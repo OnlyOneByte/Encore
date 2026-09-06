@@ -74,6 +74,71 @@ export interface WorkerHubDeps {
 	mediaStore?: MediaStoreConfig;
 }
 
+/**
+ * Validate an inbound worker frame BEFORE anything reads a field off it. Returns an error string
+ * (frame rejected, drop it) or null (frame is shape-safe to `handle`). Mirrors validateCommand in
+ * realtime/hub.ts for the CLIENT-event family: server.ts:message() JSON.parsed a role=worker frame
+ * inside a try/catch and then read fields with NO validation, so a hostile/broken frame — reachable
+ * UNAUTHENTICATED when ENCORE_WORKER_TOKEN is unset — threw out of the socket handler on the first
+ * unguarded read. Three throw sites this closes:
+ *   - `JSON.parse('null')` succeeds, then `'workerId' in msg` (server.ts) throws on `null`;
+ *   - a `worker:hello` with `capabilities: 1` reaches `[...capabilities]` in registry.hello and throws;
+ *   - a `worker:hello` with `capabilities: 'stems'` spreads the STRING then `.join(',')` mislogs/mishandles.
+ * The frame family carrying DISPATCH AUTHORITY is validated exactly like the client family it sits beside.
+ * We check only the envelope + the fields each handler dereferences; the stale-frame guards
+ * (`!job || status/workerId mismatch`) still defend the job lifecycle once jobId/workerId are strings.
+ */
+export function validateWorkerMessage(msg: unknown): string | null {
+	// The ENVELOPE first — a non-null object with a known discriminant. `JSON.parse('null')` is the
+	// literal null that made `'workerId' in msg` throw; a bare array or primitive is just as unusable.
+	if (!msg || typeof msg !== 'object' || Array.isArray(msg)) return 'malformed worker frame';
+	const m = msg as Record<string, unknown>;
+	if (typeof m.type !== 'string') return 'missing worker frame type';
+	// Every worker frame identifies its sender, and every handler dereferences it (the socket also
+	// keys itself by it for deregistration). A non-string workerId is rejected before any read.
+	if (typeof m.workerId !== 'string' || m.workerId.length === 0) return 'missing workerId';
+	switch (m.type) {
+		case 'worker:hello':
+			// capabilities is spread (`[...capabilities]`) and joined (`.join(',')`); a number throws on
+			// the spread, a string spreads into characters and mis-registers. Require a string[].
+			if (!Array.isArray(m.capabilities) || !m.capabilities.every((c) => typeof c === 'string'))
+				return 'malformed capabilities';
+			if (typeof m.concurrency !== 'number' || !Number.isFinite(m.concurrency)) return 'malformed concurrency';
+			if (typeof m.version !== 'string') return 'malformed version';
+			return null;
+		case 'worker:heartbeat':
+			if (typeof m.slotsFree !== 'number' || !Number.isFinite(m.slotsFree)) return 'malformed slotsFree';
+			if (!Array.isArray(m.runningJobIds) || !m.runningJobIds.every((j) => typeof j === 'string'))
+				return 'malformed runningJobIds';
+			return null;
+		case 'job:accept':
+			if (typeof m.jobId !== 'string' || m.jobId.length === 0) return 'missing jobId';
+			return null;
+		case 'job:reject':
+			if (typeof m.jobId !== 'string' || m.jobId.length === 0) return 'missing jobId';
+			if (typeof m.reason !== 'string') return 'malformed reason';
+			return null;
+		case 'job:progress':
+			if (typeof m.jobId !== 'string' || m.jobId.length === 0) return 'missing jobId';
+			if (typeof m.stage !== 'string') return 'malformed stage';
+			if (typeof m.pct !== 'number' || !Number.isFinite(m.pct)) return 'malformed pct';
+			return null;
+		case 'job:complete':
+			if (typeof m.jobId !== 'string' || m.jobId.length === 0) return 'missing jobId';
+			if (typeof m.mediaUri !== 'string') return 'malformed mediaUri';
+			return null;
+		case 'job:failed':
+			if (typeof m.jobId !== 'string' || m.jobId.length === 0) return 'missing jobId';
+			if (typeof m.error !== 'string') return 'malformed error';
+			if (typeof m.retryable !== 'boolean') return 'malformed retryable';
+			return null;
+		default:
+			// An unknown type never reaches a handler (handle()'s switch has no default), but rejecting it
+			// here keeps the boundary honest: only frames we can safely dispatch pass.
+			return 'unknown worker frame type';
+	}
+}
+
 export class WorkerHub {
 	#d: WorkerHubDeps;
 	#config: LeaseConfig;
