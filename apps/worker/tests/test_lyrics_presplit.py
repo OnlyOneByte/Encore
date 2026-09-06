@@ -67,15 +67,52 @@ def bound_only(lines, max_chars):
 LONG_AUTHORITATIVE = "and I will wait right here for you until the very last light goes out tonight"
 
 
-def test_presplit_length_bounds_authoritative_text_that_overflows_a_row():
-    # THE #59 fix: before this, LRCLIB synced/plain text was passed through with no length bounding at
-    # all — only the display-time LINE_MAX_CHARS fallback caught an over-long human line. It must be
-    # bounded at cook time now, exactly like every other tier.
+def test_presplit_length_bounds_authoritative_text_INTO_ALIGNER_WINDOWS_not_segments():
+    # THE #59 fix started length-bounding LRCLIB synced/plain text (before it, only the display-time
+    # LINE_MAX_CHARS fallback caught an over-long human line). #92: that bounding must NOT rewrite the
+    # source's own line timings. An over-long authoritative line yields tight per-row ALIGNER WINDOWS
+    # (`align_windows`) while `segments` stay the human lines verbatim — because the line-sync fallback
+    # publishes `segments` as `high`, and a character-count-derived boundary shipped there is a
+    # fabricated timestamp masquerading as the source's own.
     seg = [{"start": 0.0, "end": 8.0, "text": LONG_AUTHORITATIVE, "words": []}]
     lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=seg, timing=TIMING_LINE, text_confidence="high")
     out = lp.presplit_texts([lrclib], bounder=bound_only)
-    assert len(out[0].segments) > 1  # the over-long line was bounded into rows
-    assert all(len(s["text"]) <= lp.MAX_LINE_CHARS for s in out[0].segments)
+    # segments: the source's own line, un-subdivided, timing untouched
+    assert len(out[0].segments) == 1
+    assert out[0].segments[0]["text"] == LONG_AUTHORITATIVE
+    assert (out[0].segments[0]["start"], out[0].segments[0]["end"]) == (0.0, 8.0)
+    # align_windows: the bounded per-row search hints for the forced aligner
+    assert out[0].align_windows is not None
+    assert len(out[0].align_windows) > 1
+    assert all(len(w["text"]) <= lp.MAX_LINE_CHARS for w in out[0].align_windows)
+
+
+def test_line_sync_publishes_the_authoritative_source_OWN_timings_not_a_char_count_guess():
+    # THE #92 regression. The line-sync fallback publishes `line_synced_lyrics(text.segments)` as
+    # timingConfidence "high" ("the source's own timings, unmodified"). If presplit subdivides an
+    # over-long authoritative line, the interior boundary it invents is `start + (chars/total)*span`
+    # — a character count, not a timestamp — and it ships as the human source's own. This pins that
+    # the boundaries published for a bounded authoritative text are EXACTLY the source's own line
+    # starts, no invented interior boundary between them.
+    from src.lyrics.source import line_synced_lyrics
+
+    over_long = "I walked the empty harbour road until the very morning came around again"  # > MAX_LINE_CHARS
+    assert len(over_long) > lp.MAX_LINE_CHARS
+    seg = [
+        {"start": 10.0, "end": 34.0, "text": over_long, "words": []},
+        {"start": 34.0, "end": 38.0, "text": "and every light behind me faded out", "words": []},
+    ]
+    lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=seg, timing=TIMING_LINE, text_confidence="high")
+    out = lp.presplit_texts([lrclib], bounder=bound_only)
+    doc = line_synced_lyrics(out[0].segments)
+    published_starts = [line["start"] for line in doc["lines"]]
+    # The source authored exactly two lines at 10.0 and 34.0; nothing between them was invented.
+    assert published_starts == [10.0, 34.0]
+    # No published boundary sits strictly inside the first line's [10, 34] window — that is exactly
+    # where a proportional-char subdivision guess would land (the bug published ~[10, 23.9, 34]).
+    assert not any(10.0 < s < 34.0 for s in published_starts)
+    # The aligner still gets tight windows to search — the bounded pieces are not lost, only rerouted.
+    assert out[0].align_windows is not None and len(out[0].align_windows) > 1
 
 
 def test_presplit_does_NOT_run_the_semantic_splitter_on_authoritative_text():

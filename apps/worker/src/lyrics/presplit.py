@@ -364,22 +364,30 @@ def split_blob_text(
 def bound_blob_text(
     text: LyricsText, max_chars: int = MAX_LINE_CHARS, bounder: LineBounder | None = None
 ) -> LyricsText:
-    """Length-bound one AUTHORITATIVE text's segments, WITHOUT semantic re-lineation. New LyricsText.
+    """Length-bound one AUTHORITATIVE text WITHOUT rewriting its timing. New LyricsText.
 
-    Two jobs were fused into `split_blob_text` and only the fused pair ran on any tier, so authoritative
-    text (LRCLIB synced/plain, real human caption tracks) reached the TV with no length bounding at all
-    — the display-time `LINE_MAX_CHARS` fallback its own header dismisses as no better than a char count
-    was the only thing catching an over-long human-authored line.
+    `segments` are LEFT UNCHANGED — they carry the source's OWN (human) line timings, and the line-sync
+    fallback in `steps/lyrics.py` publishes them verbatim as `high` confidence. Subdividing a segment
+    to fit a TV row invents an interior boundary from a CHARACTER COUNT, and that guess would then ship
+    labelled as the source's own timestamp; nothing downstream could tell it apart. So bounding here
+    produces only ALIGNER SEARCH WINDOWS (`align_windows`), never a change to `segments`.
 
-    So bound here, but do NOT call `boundary_split`: the semantic repacker's comma/opener/sentence rules
-    rewrite line STRUCTURE, and rewriting a line a human wrote can only damage it. The upstream bounder
-    "only ever splits, never joins, so feeding it pre-broken lines is safe: it intervenes only on the
-    pieces still too long" — so each segment's existing (human) line is handed over as-is, and upstream
-    touches it only when it overflows a row. `is_authoritative_text` in `presplit_texts` is the fence
-    that routes text here versus to `split_blob_text`.
+    Do NOT call `boundary_split`: the semantic repacker's comma/opener/sentence rules rewrite line
+    STRUCTURE, and rewriting a line a human wrote can only damage it. The upstream bounder "only ever
+    splits, never joins, so feeding it pre-broken lines is safe: it intervenes only on the pieces still
+    too long" — so each segment's existing (human) line is handed over as-is, and upstream touches it
+    only when it overflows a row. The forced aligner re-times every word inside whatever window it gets
+    (see `_subdivide`), so a tighter per-row window is a better anchor with no cost to honesty — the
+    windows are throwaway search hints, not published timing. `is_authoritative_text` in
+    `presplit_texts` is the fence that routes text here versus to `split_blob_text`.
+
+    When no segment overflows a row the windows equal `segments`, so `align_windows` is left None and
+    the aligner simply searches `segments`.
     """
     bound = bounder if bounder is not None else bound_lines
-    return _relineate_segments(text, max_chars, lambda body: bound([body], max_chars))
+    windows = _relineate_segments(text, max_chars, lambda body: bound([body], max_chars)).segments
+    same = windows == list(text.segments)
+    return replace(text, align_windows=None if same else windows)
 
 
 def presplit_texts(
