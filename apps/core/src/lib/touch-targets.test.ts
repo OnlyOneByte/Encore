@@ -40,11 +40,16 @@ const FILES = [
 	...svelteFiles(join(SRC, 'lib', 'components')),
 	join(SRC, 'routes', '+page.svelte'),
 	join(SRC, 'routes', 'join', '+page.svelte'),
-	join(SRC, 'routes', 'settings', '+page.svelte')
+	join(SRC, 'routes', 'settings', '+page.svelte'),
+	// The operator metrics pages are phone surfaces by their own CSS's admission (they harden for the
+	// 320px layout) and each has exactly one navigation control, yet neither was ever scanned — which
+	// is how both shipped at 32px (issue #140).
+	join(SRC, 'routes', 'metrics', '+page.svelte'),
+	join(SRC, 'routes', 'metrics', '[mediaId]', '+page.svelte')
 ];
 
 /** Selectors that are unambiguously interactive controls. */
-const CONTROL = /(^|[\s,>])(button|\.btn-accent|\.chip\b|\.act\b|\.remove\b|\.ic\b|\.gear\b|\.back\b|\.add\b|\.sing\b|\.mic-btn\b|\.browse-toggle\b|\.swatch\b|\.disclose\b|input\[type=['"]range['"]\])/;
+const CONTROL = /(^|[\s,>])(button|\.btn-accent|\.chip\b|\.act\b|\.remove\b|\.ic\b|\.gear\b|\.back\b|\.add\b|\.sing\b|\.mic-btn\b|\.browse-toggle\b|\.swatch\b|\.disclose\b|input\[type=['"]range['"]\]|\.cooks\b)/;
 
 test('every phone control that sizes its own box reaches 44px', () => {
 	const offenders: string[] = [];
@@ -89,6 +94,8 @@ test('every phone control that sizes its own box reaches 44px', () => {
 test('the controls that previously fell short declare 44px explicitly', () => {
 	const phone = readFileSync(join(SRC, 'routes', '+page.svelte'), 'utf8');
 	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
+	const metrics = readFileSync(join(SRC, 'routes', 'metrics', '+page.svelte'), 'utf8');
+	const audit = readFileSync(join(SRC, 'routes', 'metrics', '[mediaId]', '+page.svelte'), 'utf8');
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8');
 
 	// If --tap ever drifts off the standard, accepting it below would silently lower the bar.
@@ -106,6 +113,10 @@ test('the controls that previously fell short declare 44px explicitly', () => {
 	expect(declares(phone, 'browse-toggle', 'min-height')).toBe(true);
 	// the settings back link was ~26px
 	expect(declares(settings, 'back', 'min-(?:width|height)')).toBe(true);
+	// the /metrics slowest-songs links and the audit-page back link were both 32px (issue #140), and
+	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
+	expect(declares(metrics, 'cooks a', 'min-height')).toBe(true);
+	expect(declares(audit, 'back a', 'min-(?:width|height)')).toBe(true);
 
 	// the stage-colour hue slider was 22px tall with a 28px thumb — a 28px hit area (issue #133).
 	// Pinned by the exact selector so reverting the input box to a hard sub-44px height reds this,
