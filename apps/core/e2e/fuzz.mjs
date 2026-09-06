@@ -833,9 +833,24 @@ function checkI1(w, lastInput) {
 	return ok('I1');
 }
 
+/**
+ * The launch policy decides whether a master paused at t=0 is excusable. Gestureless, an autoplay
+ * refusal is what a real television does (paused at 0 with only its preload burst decoded), so any
+ * check that reads the decoder or the playhead has nothing to measure and must SKIP with that reason
+ * named rather than judge a frozen playhead as a defect. Shared by I4 and I6 so the two cannot drift.
+ */
+function autoplayRefused(w) {
+	return !AUTOPLAY && w.master?.paused === true && w.master?.currentTime === 0;
+}
+
 /** I4 · the lyrics active index is consistent with currentTime. */
 async function checkI4(w) {
 	if (!w.master) return skip('I4', 'no master element on stage to measure');
+	if (autoplayRefused(w))
+		return skip(
+			'I4',
+			'gestureless: the browser refused autoplay (paused at 0, preload burst only) — exactly what a real TV does, so the reel advances off the server intent while the playhead is frozen; nothing about the highlight vs currentTime is testable under this policy'
+		);
 	if (!w.curMedia?.lyricsRef) return skip('I4', 'the current song has no lyrics artifact');
 	if (!w.tv.activeWord) return skip('I4', 'no active word rendered (between words, or word-highlight is off)');
 	const doc = await lyricsFor(w.curMedia.lyricsRef);
@@ -897,8 +912,7 @@ async function checkI6(w) {
 	if (!roomClaimsPlaying) return skip('I6', 'the room does not claim to be playing, so it claims nothing about audio');
 	if (!w.master) return skip('I6', 'no master element mounted to measure');
 	if (w.master.decoded === null) return skip('I6', 'this build exposes no webkitAudioDecodedByteCount');
-	const refused = w.master.paused === true && w.master.currentTime === 0;
-	if (!AUTOPLAY && refused) {
+	if (autoplayRefused(w)) {
 		return skip(
 			'I6',
 			'gestureless: the browser refused autoplay (paused at 0, preload burst only) — exactly what a real TV does, so nothing about the decoder is testable under this policy'
