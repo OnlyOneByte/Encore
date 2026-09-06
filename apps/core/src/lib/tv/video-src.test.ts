@@ -30,14 +30,14 @@ test('two distinct Media objects with identical fields do NOT reassign (Bug A)',
 	const b = m(); // a separate object, same values
 	expect(a).not.toBe(b); // genuinely distinct identities
 	const prev = fileSrc(a);
-	const { changed } = nextVideoSrc(prev, fileSrc(b));
+	const { changed } = nextVideoSrc(prev, fileSrc(b), true);
 	expect(changed).toBe(false);
 });
 
 test('a real instrumental change DOES reassign', () => {
 	const prev = fileSrc(m());
 	const upgraded = m({ instrumentalRef: 'stems/m1-instrumental.roformer.wav' });
-	const { src, changed } = nextVideoSrc(prev, fileSrc(upgraded));
+	const { src, changed } = nextVideoSrc(prev, fileSrc(upgraded), true);
 	expect(changed).toBe(true);
 	expect(src).toBe('/media/stems/m1-instrumental.roformer.wav');
 });
@@ -50,18 +50,55 @@ test('a key shift does NOT reassign — the element must keep playing (browser p
 	// the AudioWorklet's ratio moves.
 	const song = m();
 	const prev = fileSrc(song);
-	const { src, changed } = nextVideoSrc(prev, fileSrc(song));
+	const { src, changed } = nextVideoSrc(prev, fileSrc(song), true);
 	expect(changed).toBe(false);
 	expect(src).toBe('/media/stems/m1-instrumental.wav');
 });
 
 test('the first assignment (no previous src) always changes', () => {
-	const { src, changed } = nextVideoSrc(null, fileSrc(m()));
+	const { src, changed } = nextVideoSrc(null, fileSrc(m()), true);
 	expect(changed).toBe(true);
 	expect(src).toBe('/media/stems/m1-instrumental.wav');
 });
 
-test('resolving to empty (nothing playable) from a real src changes; empty-to-empty does not', () => {
-	expect(nextVideoSrc('/media/stems/m1-instrumental.wav', '').changed).toBe(true);
-	expect(nextVideoSrc('', '').changed).toBe(false);
+// ── #251: a not-playable churn pass must NOT clear a still-mounted, still-playing src ────────────────
+//
+// On the OLD two-arg contract this same situation resolved to '' and reported changed:true against a
+// real src — a CLEAR that reloaded the playing song to 0. The `playable` flag is exactly the {#if}
+// condition the <audio> element is mounted under, so reaching this function with playable=false while
+// the element still holds a src is the transient catalog-churn pass, never a real departure (that
+// unmounts the element). It must be a no-op.
+
+test('#251: a not-playable pass over a REAL src does NOT change (no clear) — the reset', () => {
+	const real = fileSrc(m());
+	// Old contract (2-arg) reported changed:true here (real -> '') and cleared the element. Now the
+	// not-playable pass keeps the src the element already holds.
+	const { src, changed } = nextVideoSrc(real, '', false);
+	expect(changed).toBe(false);
+	expect(src).toBe(real);
+});
+
+test('#251: a not-playable pass keeps a REAL src even if `next` is non-empty', () => {
+	// Defensive: playable=false wins regardless of what `next` resolved to, so a churn pass that also
+	// produced a stale string cannot sneak a write through.
+	const real = fileSrc(m());
+	const { src, changed } = nextVideoSrc(real, '/media/stems/other.wav', false);
+	expect(changed).toBe(false);
+	expect(src).toBe(real);
+});
+
+test('#251: not-playable with no prior src still does not write', () => {
+	const { src, changed } = nextVideoSrc(null, '', false);
+	expect(changed).toBe(false);
+	expect(src).toBe('');
+});
+
+test('a genuine transition to a DIFFERENT playable song still reassigns', () => {
+	// Behaviour-preserving: the real song-change / instrumental-swap case (playable=true, different
+	// string) must still write, or the swap would silently never take.
+	const prev = fileSrc(m());
+	const next = fileSrc(m({ id: 'm2', instrumentalRef: 'stems/m2-instrumental.wav' }));
+	const { src, changed } = nextVideoSrc(prev, next, true);
+	expect(changed).toBe(true);
+	expect(src).toBe('/media/stems/m2-instrumental.wav');
 });

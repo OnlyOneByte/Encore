@@ -100,11 +100,44 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	 * (measured: SRC-ATTR-WRITTEN, then abort/emptied/loadstart, currentTime 10.9 -> 0).
 	 */
 	test('the src decision reads the element, not a shadow copy that can go stale', () => {
+		// The decision is made against what the ELEMENT holds (`master.getAttribute('src')`), never a
+		// shadow copy that could be cleared while the element still held its src.
 		expect(src).toContain("nextVideoSrc(master.getAttribute('src') ?? ''");
 		expect(src).not.toContain('nextVideoSrc(currentSrc,');
 	});
 
 	test('the reset never clears the src bookkeeping — that is what reloaded the playing song', () => {
 		expect(src).not.toContain('currentSrc = null');
+	});
+
+	/*
+	 * #251. A next-up cook reaching a stage rebroadcasts queue:sync; the TV rebuilds its catalog and the
+	 * PLAYING slot's media reads momentarily null / not-yet-isPlayable for a churn pass. On the old
+	 * contract the assign effect resolved that pass to '' and, since the element still held the real
+	 * src, CLEARED it (removeAttribute -> reassign -> reload at 0 — the currently-playing song jumped
+	 * back to the start). The fix threads `playable` (the {#if} condition) into the decision so a
+	 * not-playable pass is never a clear, and it must NOT clobber `currentSrc` to '' on such a pass
+	 * either (that would tell the transport the still-playing song has no src). Comments are stripped so
+	 * prose describing the old behaviour can neither satisfy nor trip these checks.
+	 */
+	const code = src
+		.replace(/\/\*[\s\S]*?\*\//g, '')
+		.replace(/<!--[\s\S]*?-->/g, '')
+		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+	test('#251: the src decision is told whether the media is playable', () => {
+		// The pivot of the fix: `playable` is computed and passed to the decision, so a not-playable
+		// churn pass returns changed:false instead of clearing.
+		expect(code).toContain('const playable = !!media && isPlayable(media)');
+		expect(code).toMatch(/nextVideoSrc\(master\.getAttribute\('src'\) \?\? '', resolved, playable\)/);
+		// The element is never CLEARED any more — the old '' -> removeAttribute dance is gone.
+		expect(code).not.toContain("master.removeAttribute('src')");
+	});
+
+	test('#251: currentSrc is not clobbered on a not-playable pass', () => {
+		// The bookkeeping the transport gates on must survive a churn pass, so its write is guarded on
+		// `playable` rather than assigned unconditionally to a possibly-empty `resolved`.
+		expect(code).toContain('if (playable) currentSrc = resolved');
+		expect(code).not.toMatch(/^\s*currentSrc = resolved;\s*$/m);
 	});
 });

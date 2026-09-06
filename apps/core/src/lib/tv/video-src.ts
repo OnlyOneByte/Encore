@@ -23,9 +23,19 @@
  * Decide the next src for a slot given the src it currently holds and the freshly-resolved src.
  *
  * `prev` is the string last assigned to the element (or null before the first assignment). `next` is
- * what the current media resolves to now (`''` when the slot has nothing playable). `changed` is true
- * only when the element must actually be written, so an unchanged song is a no-op and never reloads.
+ * what the current media resolves to now (`''` when the slot has nothing playable). `playable` is
+ * `media && isPlayable(media)`: when false the slot has nothing to play THIS pass, which — because the
+ * element only exists while playable — is a transient churn pass and must never clear a src the element
+ * still holds (see #251, and the `!playable` branch below). `changed` is true only when the element must actually be
+ * written, so an unchanged song is a no-op and never reloads, and a not-playable pass is never a clear.
  */
-export function nextVideoSrc(prev: string | null, next: string): { src: string; changed: boolean } {
+export function nextVideoSrc(
+	prev: string | null,
+	next: string,
+	playable: boolean
+): { src: string; changed: boolean } {
+	// Nothing playable this pass: keep whatever the element holds, never write. The only genuine
+	// "clear" is a real unmount, which never reaches this function.
+	if (!playable) return { src: prev ?? '', changed: false };
 	return { src: next, changed: prev !== next };
 }
