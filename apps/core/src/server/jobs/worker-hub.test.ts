@@ -142,6 +142,118 @@ test('idempotency: accept/progress/complete from the WRONG worker or wrong state
 	expect(jobs.byId(job.id)!.progressPct).toBe(0);
 });
 
+// ── one test per worker-frame GUARD ARM ──────────────────────────────────────────
+// Every worker-message handler shares the same stale-frame guard:
+//   if (!job || job.status !== '<expected>' || job.workerId !== msg.workerId) return;
+// The idempotency test above drives only #onAccept's workerId arm (w-evil) and #onProgress's
+// status arm (progress-before-accept). The remaining EIGHT arms had no test, so weakening any of
+// them — most dangerously #onComplete's — was invisible to the suite. Each test below reaches a
+// state where the named arm is the SOLE defence (the other two clauses in the guard PASS), so
+// deleting exactly that arm turns exactly that test red. Deletion was verified per-arm.
+
+// Drive a job to `running` owned by w1 and return its id.
+function running(h: ReturnType<typeof harness>, worker = 'w1') {
+	const job = h.jobs.enqueue('m1', 'stems', 0, T0);
+	h.hub.handle({ type: 'worker:hello', workerId: worker, capabilities: ['stems'], concurrency: 1, version: '1' });
+	h.hub.handle({ type: 'job:accept', workerId: worker, jobId: job.id });
+	return job.id;
+}
+
+test('guard arm — #onAccept status: a second accept on an already-running job is ignored (no lease re-stamp)', () => {
+	const h = harness();
+	const jobId = running(h); // status is now 'running', workerId 'w1'
+	const leaseAfterFirst = h.jobs.byId(jobId)!.leaseExpiresAt;
+	// A duplicate accept from the SAME worker: workerId matches, so the STATUS arm ('assigned') is the
+	// only thing that can refuse. If it did not, accept() would re-stamp a fresh progress lease.
+	h.setClock(T0 + 50_000);
+	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId });
+	expect(h.jobs.byId(jobId)!.status).toBe('running');
+	expect(h.jobs.byId(jobId)!.leaseExpiresAt).toBe(leaseAfterFirst); // lease NOT refreshed
+});
+
+test('guard arm — #onReject workerId: a reject from the wrong worker is ignored (job stays assigned)', () => {
+	const { hub, jobs } = harness();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	// status is 'assigned' (matches the reject guard), so only the workerId arm can refuse w-evil.
+	hub.handle({ type: 'job:reject', workerId: 'w-evil', jobId: job.id, reason: 'busy' });
+	expect(jobs.byId(job.id)!.status).toBe('assigned'); // NOT requeued by the impostor
+});
+
+test('guard arm — #onReject status: a reject after the job is running is ignored (no requeue)', () => {
+	const h = harness();
+	const jobId = running(h); // status 'running', workerId 'w1' — workerId matches the reject
+	// A reject only makes sense while 'assigned'; once running the STATUS arm must refuse it, else the
+	// job would be requeued mid-run and the slot double-freed.
+	h.hub.handle({ type: 'job:reject', workerId: 'w1', jobId, reason: 'changed my mind' });
+	expect(h.jobs.byId(jobId)!.status).toBe('running'); // still running, not walked back to queued
+});
+
+test('guard arm — #onProgress workerId: a progress frame from the wrong worker is ignored', () => {
+	const h = harness();
+	const jobId = running(h); // status 'running' (matches the progress guard), workerId 'w1'
+	// Only the workerId arm can refuse a progress frame forged by another worker.
+	h.hub.handle({ type: 'job:progress', workerId: 'w-evil', jobId, stage: 'separating', pct: 77 });
+	expect(h.jobs.byId(jobId)!.progressPct).toBe(0); // impostor's progress not applied
+});
+
+test('guard arm — #onComplete workerId: a ZOMBIE worker cannot publish over the live owner', () => {
+	const h = harness();
+	const { hub, jobs, mediaById, registry } = h;
+	// w1 accepts and runs, then a redispatch hands the job to w2 (the reaper-requeue path). We model the
+	// end state directly: the job is running and OWNED BY w2, while w1 is still alive.
+	const jobId = running(h, 'w1'); // running, workerId 'w1'
+	jobs.requeue(jobId, jobs.byId(jobId)!.attempts, T0 + 1_000); // reaper requeues the (still-live) job
+	hub.handle({ type: 'worker:hello', workerId: 'w2', capabilities: ['stems'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w2', jobId }); // w2 now owns it
+	expect(jobs.byId(jobId)!.workerId).toBe('w2');
+	const w1SlotsBefore = registry.get('w1')!.slotsFree;
+	// The zombie w1 finally sends its stale completion. status is 'running' (matches), so the workerId
+	// arm is the ONLY guard. If it were weakened the zombie's instrumental would be published PERMANENTLY
+	// and w2's real completion then silently dropped (status already 'ready').
+	hub.handle({
+		type: 'job:complete', workerId: 'w1', jobId,
+		mediaUri: 'zombie', artifacts: { stems: { instrumental: 'derived/stems/m1-ZOMBIE.flac' } }
+	});
+	expect(jobs.byId(jobId)!.status).toBe('running'); // NOT flipped to ready by the zombie
+	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // no stale instrumental published
+	expect(mediaById.get('m1')!.instrumentalRef).toBeUndefined();
+	expect(registry.get('w1')!.slotsFree).toBe(w1SlotsBefore); // no slot released for a job w1 does not own
+});
+
+test('guard arm — #onComplete status: a complete while still assigned is ignored, never throws', () => {
+	const { hub, jobs, mediaById } = harness();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	// status is 'assigned' (never accepted), workerId matches w1 → the STATUS arm is the sole guard.
+	// jobs.complete() would attempt assigned→ready, an illegal transition that THROWS out of the
+	// unguarded server.ts message handler, ending the socket. The guard must swallow it.
+	expect(() => hub.handle({ type: 'job:complete', workerId: 'w1', jobId: job.id, mediaUri: 'x' })).not.toThrow();
+	expect(jobs.byId(job.id)!.status).toBe('assigned'); // untouched
+	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // nothing published
+});
+
+test('guard arm — #onFailed workerId: a failure frame from the wrong worker is ignored', () => {
+	const h = harness();
+	const jobId = running(h); // running, workerId 'w1'
+	const attemptsBefore = h.jobs.byId(jobId)!.attempts;
+	// status 'running' matches the fail guard → only the workerId arm can refuse the impostor.
+	h.hub.handle({ type: 'job:failed', workerId: 'w-evil', jobId, error: 'not mine to fail', retryable: false });
+	expect(h.jobs.byId(jobId)!.status).toBe('running'); // still running
+	expect(h.jobs.byId(jobId)!.attempts).toBe(attemptsBefore); // no attempt burned by the impostor
+});
+
+test('guard arm — #onFailed status: a failure while still assigned (not running) is ignored', () => {
+	const { hub, jobs } = harness();
+	const job = jobs.enqueue('m1', 'stems', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
+	// status 'assigned', workerId matches w1 → the STATUS arm ('running') is the sole guard. A failure
+	// before the job ever ran must not burn an attempt or move it off 'assigned'.
+	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: job.id, error: 'premature', retryable: false });
+	expect(jobs.byId(job.id)!.status).toBe('assigned');
+	expect(jobs.byId(job.id)!.attempts).toBe(0);
+});
+
 test('job:reject → back to queued (no attempt burned), slot freed, redispatched', () => {
 	const { hub, jobs, registry, sent } = harness();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
