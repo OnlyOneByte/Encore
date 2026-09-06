@@ -14,7 +14,8 @@
 import { existsSync, statSync, rmSync } from 'node:fs';
 import type { Media } from '@encore/shared';
 import { safeMediaPath } from './local-files';
-import { instrumentalKey, vocalsKey, STEM_EXT } from './paths';
+import { instrumentalKey, vocalsKey, siblingVocalsRef } from './paths';
+import { candidateVocalsRefs } from './vocals-backfill';
 import { runCapturing } from './spawn-capture';
 
 /** The soft cap, in bytes. Unset (the default) means unlimited — a party box must not silently delete. */
@@ -64,7 +65,7 @@ export function planRecompress(all: Media[]): RecompressTarget[] {
 		if (isLegacyStemRef(m.instrumentalRef)) {
 			out.push({ mediaId: m.id, from: m.instrumentalRef!, to: instrumentalKey(m.id), kind: 'instrumental' });
 			// a legacy instrumental implies a legacy vocals stem from the same cook
-			out.push({ mediaId: m.id, from: m.instrumentalRef!.replace('-instrumental.', '-vocals.'), to: vocalsKey(m.id), kind: 'vocals' });
+			out.push({ mediaId: m.id, from: siblingVocalsRef(m.instrumentalRef!), to: vocalsKey(m.id), kind: 'vocals' });
 		}
 	}
 	return out;
@@ -213,9 +214,10 @@ function derivedRefsOf(m: Media): string[] {
 		// m.vocalsRef, flipping VOCALS_EXT to .flac (#480) would strand the already-cooked .m4a vocals
 		// cohort — the cohort this PR deliberately does not recompress — from both byte-counting and
 		// eviction, so derivedBytesOf would undercount and evictDerived would orphan those files.
+		// candidateVocalsRefs is the SINGLE candidate list (vocalsKey + every legacy-ext sibling);
+		// m.vocalsRef is prepended because it is authoritative when the worker stored one.
 		m.vocalsRef,
-		vocalsKey(m.id),
-		m.instrumentalRef?.replace('-instrumental.', '-vocals.'),
+		...candidateVocalsRefs(m),
 		// Every lyrics candidate's JSON, not just the chosen one (`lyricsRef`). Each source mints a
 		// distinct key, so the others are silently orphaned on eviction unless enumerated here.
 		...(m.lyricsCandidates ?? []).map((c) => c.ref)
@@ -234,11 +236,19 @@ export function evictDerived(m: Media): { removed: string[]; bytes: number } {
 		const abs = safeMediaPath(ref);
 		if (!abs || !existsSync(abs)) continue;
 		try {
-			bytes += statSync(abs).size;
+			const size = statSync(abs).size;
+			// Count bytes only AFTER the delete succeeds. rmSync can throw (force suppresses ENOENT
+			// only — EACCES/EPERM/EROFS/EBUSY still throw), and counting first reported bytes freed for
+			// a file still on disk, so `removed` and `bytes` disagreed silently and the operator was
+			// told over-budget bytes were reclaimed that were not.
 			rmSync(abs, { force: true });
+			bytes += size;
 			removed.push(ref);
-		} catch {
-			/* a file we cannot remove is not worth failing the pass over */
+		} catch (err) {
+			// A file we cannot remove is not worth failing the pass over, but it must be diagnosable:
+			// the bare catch discarded which file failed and why, so a clean pass looked like one that
+			// freed nothing.
+			console.warn(`retention: failed to evict derived artifact ${ref}:`, err);
 		}
 	}
 	return { removed, bytes };

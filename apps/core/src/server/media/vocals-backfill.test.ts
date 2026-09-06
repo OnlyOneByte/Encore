@@ -64,6 +64,15 @@ describe('candidateVocalsRefs', () => {
 		const legacyM4a = m('a', { instrumentalRef: 'derived/stems/a-instrumental.m4a' });
 		expect(candidateVocalsRefs(legacyM4a)).toContain('derived/stems/a-vocals.m4a');
 	});
+
+	it('#496 G4: a FLAC-instrumental interim cook still surfaces its .m4a vocals sibling', () => {
+		// The finding #488 re-measured: once VOCALS_EXT is .flac, an ext-blind swap on a .flac
+		// instrumental names only -vocals.flac, so a row that never stored a ref and left an interim
+		// .m4a vocals stem on disk becomes unfindable. The fallback must offer EVERY known vocals
+		// extension, not just today's constant. BASE reds: Received [derived/stems/a-vocals.flac].
+		const interim = m('a', { instrumentalRef: 'derived/stems/a-instrumental.flac' });
+		expect(candidateVocalsRefs(interim)).toContain('derived/stems/a-vocals.m4a');
+	});
 });
 
 describe('#480: a stored legacy vocals ref is honored unchanged', () => {
