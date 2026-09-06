@@ -17,14 +17,18 @@
 	// and the lyrics overlay run on. Nothing about the existing playback path changes, which is the
 	// reason this is two media elements rather than a WebAudio graph — a graph buys sample-exact lock
 	// and effects at the cost of rebuilding the part that already works.
-	import { playbackRef, isPlayable, type Media } from '@encore/shared';
+	import { playbackRef, isPlayable } from '@encore/shared';
+	import type { PlaybackSnapshot } from './catalog';
 	import { untrack } from 'svelte';
 	import { GUIDE_PREROLL_ALIGN_SEC, guideCorrection, seekPlan } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
 	import { transportFor, slotHoldsSrc } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	interface Props {
-		media: Media | null;
+		// A `PlaybackSnapshot`, not a live `Media` (#396). The brand makes this a compiler boundary: the
+		// page cannot hand this slot a catalog record that a cook can still change underneath it, so the
+		// player observes a song's fields as they were when the slot was assigned and at no other time.
+		media: PlaybackSnapshot | null;
 		visible: boolean;
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
 		playing?: boolean; // playback:state.isPlaying — pause/resume from the phone
@@ -417,48 +421,76 @@
 		guideGraph?.setGain(effectiveGuide);
 	});
 
-	// Reposition on a real JUMP — a restart, a scrub, a skip, or a reconnect whose position has moved
-	// on. Only a jump (> SEEK_JUMP_SEC from where we are) acts, so the ~4Hz position telemetry and
-	// pause/resume (which carry the current position) don't fight the playhead. Guarded to the active
-	// playable slot.
+	// Reposition on a real JUMP — a restart, a scrub, a skip, or a reconnect whose position has moved on.
+	// ONE-LINE DEPENDENCY SET, ON PURPOSE (#396 — read this before adding a read to it).
 	//
-	// BOTH ELEMENTS MOVE, FROM ONE PLAN. This effect used to reposition the master alone. The guide then
-	// kept playing from wherever it already was, and recovery fell to `syncGuide`'s governor below —
-	// which is built for continuous drift and deliberately prefers a tempo trim to a seam, so it closed
-	// a whole-song discontinuity at 2% (a crawl) and never hard-resynced at all once the residual landed
-	// back inside the trim band. A jump is not drift: it is corrected the way the pre-roll is, with a
-	// seek on both elements at the same moment. The master already has a seam here, so the guide's costs
-	// nothing extra. `seekPlan` owns the two thresholds and the reason `guide` is gated on `master`.
+	// The whole body is a named function so that this effect's tracked reads are the two lines you can
+	// see, and auditable at a glance rather than by tracing which of a dozen reads happens to be
+	// reactive. Everything the decision NEEDS — the elements, the snapshot, the slot's activity — is an
+	// INPUT, read inside `applySeek` through `untrack`, never a reason to re-take the decision.
+	//
+	// THE BUG THIS CLOSES, and why the shape matters more than the fix. `media` used to be read here as
+	// a tracked dependency (`if (!master || !media || !isPlayable(media) ...)`), so ANY fresh Media
+	// identity re-ran this effect and re-applied `seekSec` — the position from the last playback
+	// COMMAND, which is stale by design (position telemetry deliberately does not broadcast). When a
+	// cook for an unrelated song churned the catalog, the playing song's playhead was yanked back to
+	// wherever the last pause/seek/restart had left it. Not to 0 — to an earlier part, which is why four
+	// fixes aimed at the src-assignment path (whose signature is "restarts from 0") all missed it.
+	//
+	// The snapshot seam in `catalog.ts` closes that independently, at the source. This closes it here,
+	// at the consumer. Both, deliberately: a boundary and a scoped dependency set are two reasons the
+	// class stays shut, and the reason the NEXT consumer wired into this component cannot re-open it.
 	$effect(() => {
-		if (!master || !media || !isPlayable(media) || seekSec === undefined) return;
-		if (!active) return;
-		// TRACKED dependency: re-run on every `playback:state`, not only when `seekSec` changes value.
-		// `rev` is bumped by every `setPlayback` (a restart, pause, seek, key…) but never by position
-		// telemetry (`setPosition` leaves rev alone and does not broadcast), so this re-runs the seek
-		// decision on a restart-to-0 from under the threshold WITHOUT reopening telemetry-chasing —
-		// the decision itself is still `seekPlan`'s alone. A bare read is enough to register the dep.
+		// Dependency 1: the position a playback COMMAND asked for.
+		const target = seekSec;
+		// Dependency 2: the server `rev`, bumped by every `setPlayback` (restart, pause, seek, key…) but
+		// never by position telemetry (`setPosition` leaves rev alone and does not broadcast). Tracking it
+		// re-takes the seek decision on a restart-to-0 from under the jump threshold — which writes 0 over
+		// 0 and so notifies nothing through `seekSec` alone (#95) — WITHOUT reopening telemetry-chasing.
+		// A bare read is enough to register the dep in runes mode.
 		void seekRev;
-		// `untrack` so the GUIDE MOUNTING is not a re-run trigger. This effect re-runs on the two
-		// `playback:state`-derived deps above (`seekSec` and `seekRev`) and nothing else. Reading
-		// `vocals` (a `$state` holding the element) as a tracked dependency would make the guide
-		// MOUNTING re-run the effect, and a mount that coincided with a stale `seekSec` would then
-		// yank the MASTER to that stale position. The guide's playhead is an input to the decision,
-		// never a reason to re-take it.
-		//
+		if (target === undefined) return;
+		applySeek(target);
+	});
+
+	/**
+	 * Apply a seek target to both elements, from one plan. Called ONLY by the effect above.
+	 *
+	 * Every read in here is `untrack`ed. That is not incidental tidiness — it is the invariant: an
+	 * input to the decision must never become a trigger for it. `vocals` is the original case (the guide
+	 * MOUNTING would otherwise re-run the seek and yank the master to a stale position); `media`,
+	 * `master` and `active` are the same argument, and `media` is the one that caused #396.
+	 *
+	 * BOTH ELEMENTS MOVE, FROM ONE PLAN. This used to reposition the master alone. The guide then kept
+	 * playing from wherever it already was, and recovery fell to `syncGuide`'s governor — which is built
+	 * for continuous drift and deliberately prefers a tempo trim to a seam, so it closed a whole-song
+	 * discontinuity at 2% (a crawl) and never hard-resynced once the residual landed back inside the trim
+	 * band. A jump is not drift: it is corrected the way the pre-roll is, with a seek on both elements at
+	 * the same moment. The master already has a seam here, so the guide's costs nothing extra. `seekPlan`
+	 * owns the two thresholds and the reason `guide` is gated on `master`.
+	 *
+	 * Only a jump (> SEEK_JUMP_SEC from where we are) acts, so the ~4Hz position telemetry and
+	 * pause/resume (which carry the current position) don't fight the playhead.
+	 */
+	function applySeek(seekTarget: number): void {
+		const el = untrack(() => master);
+		const snap = untrack(() => media);
+		const isActive = untrack(() => active);
+		if (!el || !snap || !isPlayable(snap) || !isActive) return;
 		// A guide that is not mounted has no playhead to compare; NaN reads as "needs the seek" and is
-		// then skipped by the `vocals` guard below, so the master's half of the plan is unaffected.
+		// then skipped by the `guideEl` guard below, so the master's half of the plan is unaffected.
 		const guideEl = untrack(() => vocals);
-		const plan = seekPlan(master.currentTime, guideEl ? guideEl.currentTime : NaN, seekSec);
+		const plan = seekPlan(el.currentTime, guideEl ? guideEl.currentTime : NaN, seekTarget);
 		if (!plan.master) return;
-		master.currentTime = seekSec;
+		el.currentTime = seekTarget;
 		if (guideEl) {
-			if (plan.guide) guideEl.currentTime = seekSec;
+			if (plan.guide) guideEl.currentTime = seekTarget;
 			// Back to neutral tempo. Any trim still on the element was derived from the drift that
 			// existed BEFORE the jump, so carrying it across corrects a drift that no longer exists; the
 			// governor re-derives whatever it needs from real drift on its next tick.
 			guideEl.playbackRate = 1;
 		}
-	});
+	}
 
 	// ── pitch shift (the ± semitone transpose, made audible) ─────────────────────────────────────────
 	//
@@ -496,7 +528,7 @@
 		}
 	});
 
-	function fileSrc(m: Media): string {
+	function fileSrc(m: PlaybackSnapshot): string {
 		// The SINGLE separated instrumental — there are no per-key files any more. Transposition happens
 		// in the browser via the PitchShiftGraph below, so the src never depends on keyShift and can
 		// never 404 on a variant nothing rendered (the whole reason the TV used to ignore the shift).
