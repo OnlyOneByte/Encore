@@ -72,17 +72,23 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
 # the SOURCE is ~129-135 kbps lossy, so 192k leaves headroom for the unavoidable second generation
 # while still cutting a 54 MB WAV stem to roughly 7 MB. Stereo is the ceiling that matters -- YouTube
 # serves stereo, so a surround receiver upmixes from stereo no matter what we store, and anything
-# beyond stereo would be invented data. AAC over Opus deliberately: the instrumental has to play in a
-# browser <video>, and AAC-in-m4a is the safer bet on Safari.
+# beyond stereo would be invented data. AAC over Opus deliberately: the vocals stem is the GUIDING
+# TRACK -- a second <audio> the TV mixes under the instrumental master and pitch-shifts with the key
+# (apps/core/src/lib/tv/TvPlayer.svelte) -- and a guide mixed under a master tolerates lossy
+# compression, so AAC-in-m4a's broad browser reach is worth more here than Opus's efficiency.
 STEM_BITRATE = "192k"
 
 
 def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", level: int = 8) -> list[str]:
     """ffmpeg argv: encode a separated stem to LOSSLESS FLAC, 16-bit stereo at the source rate.
 
-    Used for the INSTRUMENTAL only. 16-bit is transparent here: the signal originated as a lossy
-    48 kHz stream, so extra bit depth would only store quantisation noise. compression_level 8 is the
-    size/CPU sweet spot and is decode-cheap, which matters for a browser starting playback.
+    Used for the INSTRUMENTAL only -- the file that plays at volume as the master, so it stays
+    lossless. FLAC in a browser is a narrower surface than AAC-in-m4a, but the instrumental plays
+    through an <audio> element (not <video>), where WebKit documents FLAC support -- the core settled
+    that decision at apps/core/src/lib/tv/TvPlayer.svelte:5-13. 16-bit is transparent here: the signal
+    originated as a lossy 48 kHz stream, so extra bit depth would only store quantisation noise.
+    compression_level 8 is the size/CPU sweet spot and is decode-cheap, which matters for a browser
+    starting playback.
     """
     return [
         ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
