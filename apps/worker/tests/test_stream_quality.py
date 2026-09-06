@@ -7,20 +7,21 @@ one, and -- the part that actually matters for Encore -- everything downstream i
 step picks: the separator, the FLAC instrumental, and the ASR lyrics tier all consume it. Encoding the
 instrumental losslessly cannot recover fidelity discarded here.
 
-Idea borrowed from nomadkaraoke/flacfetch (MIT), which ranks YouTube candidates by codec generation
-and by whether the upload looks official rather than trusting the platform's own ordering.
+`FORMAT_SELECTOR` is the whole of what this module actually decides: it expresses codec preference by
+POSITION and hands multiple-format ranking to yt-dlp's own selector engine, which is the only place
+the per-format codec/bitrate data exists. The worker never sees more than one candidate itself (a
+JobSpec carries a single source_uri; search is a core/TypeScript concern), so there is no in-worker
+candidate list to rank -- see the deletion guard below, which keeps that policy from silently
+re-growing a dead ranking chain.
 
-These tests are PURE: they build argv strings and rank recorded metadata dicts. No network, no yt-dlp
-process, no fixtures that rot when YouTube changes.
+These tests are PURE: they build argv strings. No network, no yt-dlp process, no fixtures that rot when
+YouTube changes.
 """
 from __future__ import annotations
 
 from src.acquisition import fetch as fetch_mod
-from src.acquisition.stream_quality import (
-    FORMAT_SELECTOR,
-    officiality_score,
-    rank_search_candidates,
-)
+from src.acquisition import stream_quality
+from src.acquisition.stream_quality import FORMAT_SELECTOR
 
 
 # ── the format selector ─────────────────────────────────────────────────────────────
@@ -57,69 +58,27 @@ def test_download_argv_uses_the_ranked_selector_not_bare_bestaudio():
     assert "%(ext)s" in " ".join(argv)
 
 
-# ── officiality signal ──────────────────────────────────────────────────────────────
+# ── no dead in-worker candidate-ranking chain ───────────────────────────────────────
 
-def test_official_channel_markers_score_above_a_random_reupload():
-    topic = officiality_score({"uploader": "Stephanie Mabey - Topic", "title": "The Zombie Song"})
-    official_audio = officiality_score({"uploader": "SomeLabel", "title": "Song (Official Audio)"})
-    verified = officiality_score({"uploader": "ArtistVEVO", "title": "Song"})
-    plain = officiality_score({"uploader": "7clouds", "title": "Song (Lyrics)"})
-    assert topic > plain
-    assert official_audio > plain
-    assert verified > plain
-
-
-def test_officiality_ignores_case_and_tolerates_missing_fields():
-    assert officiality_score({"uploader": "artist - topic", "title": None}) > 0
-    assert officiality_score({}) == 0
-    assert officiality_score({"uploader": None, "title": None}) == 0
-
-
-# ── candidate ranking ───────────────────────────────────────────────────────────────
-
-def _c(**kw):
-    base = {"id": "v", "title": "t", "uploader": "u", "acodec": "opus", "abr": 130, "duration": 200}
-    base.update(kw)
-    return base
-
-
-def test_opus_beats_legacy_aac_even_at_a_lower_bitrate():
-    aac = _c(id="old", acodec="mp4a.40.2", abr=160)
-    opus = _c(id="new", acodec="opus", abr=130)
-    assert rank_search_candidates([aac, opus])[0]["id"] == "new"
-
-
-def test_official_upload_wins_when_codecs_are_comparable():
-    plain = _c(id="reupload", uploader="7clouds")
-    official = _c(id="official", uploader="Artist - Topic")
-    assert rank_search_candidates([plain, official])[0]["id"] == "official"
-
-
-def test_officiality_never_overrides_a_materially_better_codec():
-    # The trap flacfetch's heuristic invites: an "official" legacy-AAC upload must NOT beat a modern
-    # Opus stream, because codec generation is the axis that survives into the instrumental.
-    official_aac = _c(id="official-aac", uploader="Artist - Topic", acodec="mp4a.40.2", abr=128)
-    plain_opus = _c(id="plain-opus", uploader="randomuser", acodec="opus", abr=128)
-    assert rank_search_candidates([official_aac, plain_opus])[0]["id"] == "plain-opus"
-
-
-def test_unusable_candidates_are_dropped_not_merely_deprioritised():
-    good = _c(id="good")
-    ranked = rank_search_candidates([
-        {"id": "novideo-noaudio", "acodec": "none", "abr": 0},
-        {"id": "missing-codec"},
-        good,
-    ])
-    assert [c["id"] for c in ranked] == ["good"]
-
-
-def test_ranking_is_deterministic_and_total():
-    # Identical candidates must not reorder run to run (dict ordering / sort stability).
-    a = _c(id="a")
-    b = _c(id="b")
-    assert [c["id"] for c in rank_search_candidates([a, b])] == ["a", "b"]
-    assert [c["id"] for c in rank_search_candidates([b, a])] == ["b", "a"]
-
-
-def test_empty_input_returns_empty_without_raising():
-    assert rank_search_candidates([]) == []
+def test_module_carries_no_dead_candidate_ranking_chain():
+    # This module previously shipped rank_search_candidates + officiality_score + codec_score +
+    # is_usable, a whole chain with ZERO production callers: a JobSpec carries a single source_uri
+    # and search is a core/TypeScript concern, so the worker never has a candidate LIST to rank, and
+    # the codec/bitrate/uploader metadata it keyed on is never collected on the worker side. Wiring
+    # such ranking on is a core change (widen SearchResult, stop using --flat-playlist, or rank in
+    # TS), not a worker one. Deleting it is the honest state -- FORMAT_SELECTOR is the whole of what
+    # this module decides. Pin that so the dead chain cannot silently re-grow inside the worker.
+    for dead in (
+        "rank_search_candidates",
+        "officiality_score",
+        "codec_score",
+        "is_usable",
+        "_OFFICIAL_MARKERS",
+        "_CODEC_RANK",
+    ):
+        assert not hasattr(stream_quality, dead), (
+            f"{dead} is back in stream_quality; in-worker candidate ranking has no caller and no "
+            "metadata source -- wiring codec-aware search ranking is a core change, not a worker one"
+        )
+    # FORMAT_SELECTOR is what actually survives.
+    assert hasattr(stream_quality, "FORMAT_SELECTOR")
