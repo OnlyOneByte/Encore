@@ -347,13 +347,16 @@
 	.meta { min-width: 0; flex: 1; }
 	/*
 	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)". The title text
-	 * shares .title-line with the cooking mark; flex:1 + min-width:0 let .t take the line and shrink,
-	 * and the two-line clamp now bounds ONLY the title text, so the mark beside it is never pushed onto
-	 * the discarded third line (issue #194).
+	 * shares .title-line with the cooking mark; min-width:0 + the two-line clamp bound ONLY the title
+	 * text, so the mark beside it is never pushed onto the discarded third line (issue #194).
+	 * flex-grow MUST stay 0 (flex: 0 1 auto, the initial value): with flex-grow:1 the clamp box grew to
+	 * fill the whole line and pushed the flex:0 0 auto mark to the column's right edge, up to 116px from
+	 * a short title it marks (issue #334). flex-grow:0 lets the box shrink to its text so the mark hugs
+	 * the title, while flex-shrink:1 still keeps a long title clamped to two lines.
 	 */
 	.title-line { display: flex; align-items: flex-start; }
 	.t {
-		flex: 1; min-width: 0;
+		flex: 0 1 auto; min-width: 0;
 		font-weight: 600; font-size: 0.9rem; line-height: 1.28;
 		display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 	}
