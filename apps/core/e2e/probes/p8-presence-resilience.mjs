@@ -1006,14 +1006,15 @@ async function main() {
 				const shot = await tv.screenshot(join(OUT_DIR, '03-tv-burst.png'));
 				report('PASS', 'burst adds converge — no lost updates, no rev conflicts', `every phone reports ${expected} rows; titles=${ids.length}, unique=${uniqTitles.size} (dups are legal — same media queued by different singers); ${shot}`);
 			}
-			// Note the design observation: server does NOT enforce baseRev-based rejection; clients
-			// carry baseRev but the hub only dedupes by clientOpId. This is a design choice, not a
-			// defect — but it means the "optimistic concurrency" claim only reaches as far as dedupe.
+			// Note the design observation: the command envelope carries NO revision context — the
+			// former baseRev field was deleted (#348/#409) because nothing on the server ever read it.
+			// Concurrency is therefore the whole clientOpId-dedupe story: replays of the same op are
+			// idempotent, and there is no revision-based rejection to count on. This is deliberate.
 			report(
-				'LOW',
-				'baseRev in the command envelope is not consulted server-side',
-				'apps/core/src/server/realtime/hub.ts:57 validateCommand ignores baseRev; concurrency reduces to clientOpId dedupe. Deliberate today, but worth naming so nobody counts on baseRev-triggered rejection.',
-				`packages/shared/src/ops.ts:17 baseRev field`
+				'PASS',
+				'concurrency reduces to clientOpId dedupe — no revision context in the envelope',
+				'apps/core/src/server/realtime/hub.ts validateCommand has no revision check; the envelope carries clientOpId + op only, so duplicate-op replays are the only conflict shape and they dedupe idempotently.',
+				`packages/shared/src/ops.ts ClientCommand (clientOpId + op; the dead baseRev field was removed in #348)`
 			);
 		}
 	} catch (err) {
