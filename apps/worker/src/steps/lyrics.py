@@ -441,7 +441,12 @@ def _time_one(aligner: Any, ctx: Ctx, text: Any, audio: str, language: str) -> t
 
     try:
         al = aligner if aligner is not None else _default_aligner(ctx)
-        aligned = al.align(text.segments, audio, lang)
+        # Search the length-bounded per-row windows when presplit produced them (authoritative text
+        # whose human lines overflow a row): a tighter window is a better alignment anchor, and the
+        # aligner re-times every word inside it. `segments` stays the source's OWN line timings for
+        # the line-sync fallbacks below, so those still publish the human timestamps unmodified.
+        search = text.align_windows if getattr(text, "align_windows", None) else text.segments
+        aligned = al.align(search, audio, lang)
         doc = normalize_lyrics(aligned)
         if not is_valid_lyrics(doc):
             raise RuntimeError("aligner returned no word-timed lyrics")

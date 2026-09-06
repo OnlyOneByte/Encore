@@ -946,3 +946,43 @@ async def test_a_legitimate_REMASTER_is_not_mistaken_for_the_wrong_version(tmp_p
     await drain(proc, spec(tmp_path, durationSec=60.0))
     out = capsys.readouterr().out
     assert "do NOT fit this recording" not in out, out
+
+
+# ── #92: the aligner searches align_windows; the line-sync fallback keeps the source's own timings ──
+def _ctx_forced(monkeypatch):
+    """Minimal ctx stub for _time_one: forced sync mode (so the aligner branch runs)."""
+    from src.vocabulary import SyncMode
+    from types import SimpleNamespace
+    return SimpleNamespace(engines=SimpleNamespace(sync_mode=SyncMode.FORCED))
+
+
+def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_timings(monkeypatch):
+    from src.steps import lyrics as steps_lyrics
+    from src.lyrics.chain import LyricsText, SOURCE_LRCLIB, TIMING_LINE
+
+    # An authoritative line-timed text with ONE human line at [10, 34] plus bounded windows the
+    # presplit step would have produced for the aligner to search.
+    text = LyricsText(
+        text_source=SOURCE_LRCLIB,
+        segments=[{"start": 10.0, "end": 34.0, "text": "a very long human authored karaoke lyric line", "words": []}],
+        timing=TIMING_LINE,
+        text_confidence="high",
+        align_windows=[
+            {"start": 10.0, "end": 22.0, "text": "a very long human", "words": []},
+            {"start": 22.0, "end": 34.0, "text": "authored karaoke lyric line", "words": []},
+        ],
+    )
+
+    # 1. On a successful align, the aligner is handed the WINDOWS (2), not the single source segment.
+    ok = FakeAligner()
+    doc, timing, conf = steps_lyrics._time_one(ok, _ctx_forced(monkeypatch), text, audio="/x.wav", language="en")
+    assert ok.calls and ok.calls[0][0] == 2  # searched the two bounded windows, not one whole line
+    assert timing == TIMING_WORD
+
+    # 2. On aligner FAILURE the line-sync fallback publishes the SOURCE's own segments — one line at
+    #    [10, 34] — NOT the windows, so no character-count-derived interior boundary ships as "high".
+    fail = FakeAligner(fail=True)
+    doc2, timing2, conf2 = steps_lyrics._time_one(fail, _ctx_forced(monkeypatch), text, audio="/x.wav", language="en")
+    assert timing2 == TIMING_LINE and conf2 == "high"
+    assert [l["start"] for l in doc2["lines"]] == [10.0]
+    assert [l["end"] for l in doc2["lines"]] == [34.0]

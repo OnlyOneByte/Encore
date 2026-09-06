@@ -154,6 +154,14 @@ class LyricsText:
     #: on disk and in the candidate set. These are the losers of a choice that has not been made yet —
     #: `select_by_baselines` makes it once the ASR transcript exists to decide with.
     alternates: list["LyricsText"] = field(default_factory=list)
+    #: Length-bounded search WINDOWS for the forced aligner, when `segments` are the source's OWN
+    #: (human) lines and must stay un-subdivided so the line-sync fallback publishes them verbatim.
+    #: `presplit` sets this on authoritative text whose lines overflow a row: the aligner gets tight
+    #: per-row windows to search, but `segments` keeps the true human line timings for the line-sync
+    #: publish path (which would otherwise ship a character-count-derived boundary as `high`). None
+    #: means "the aligner searches `segments` as-is" — the ASR tier, where line structure is invented
+    #: anyway, subdivides `segments` directly and leaves this None.
+    align_windows: list[dict[str, Any]] | None = None
 
     @property
     def plain_text(self) -> str:
