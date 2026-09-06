@@ -54,6 +54,11 @@ class AcquireAudio(Step):
     reads = frozenset({"job", "runner"})
     writes = frozenset({"audio.path", "audio.is_local", "audio.duration_sec", "audio.vocals_path"})
 
+    def __init__(self, *, ytdlp_bin: str = "yt-dlp") -> None:
+        # The worker's configured yt-dlp binary (ENCORE_YTDLP_BIN), threaded from the plan the same way
+        # ffmpeg_bin / demucs_bin reach their steps. A never-sent job param stays as a per-job override.
+        self.ytdlp_bin = ytdlp_bin
+
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         job = ctx.job
         ctx.audio.is_local = job_fetcher(job) is Fetcher.LOCAL
@@ -77,7 +82,7 @@ class AcquireAudio(Step):
             return
 
         template = os.path.join(audio_dir, f"{job.media_id}.%(ext)s")
-        argv = download_argv(job.source_uri, template, _ytdlp_bin(ctx))
+        argv = download_argv(job.source_uri, template, _ytdlp_bin(ctx, self.ytdlp_bin))
         # The single subprocess-with-progress loop, shared with the other steps that shell out.
         async for ev in run_stage(ctx.runner, self.stage, argv, parse_ytdlp_progress):
             yield ev
@@ -103,5 +108,7 @@ def _existing_vocals(ctx: Ctx) -> str | None:
     return path if os.path.exists(path) else None
 
 
-def _ytdlp_bin(ctx: Ctx) -> str:
-    return str(ctx.params.get("ytdlpBin") or "yt-dlp")
+def _ytdlp_bin(ctx: Ctx, configured: str = "yt-dlp") -> str:
+    # A job param wins if the core ever starts sending one; otherwise the worker's configured binary
+    # (ENCORE_YTDLP_BIN, threaded in through the plan) is what runs — not a bare "yt-dlp" from PATH.
+    return str(ctx.params.get("ytdlpBin") or configured)

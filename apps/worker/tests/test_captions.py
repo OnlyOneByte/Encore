@@ -362,3 +362,44 @@ async def test_FetchCaptions_writes_the_two_kinds_into_separate_directories(tmp_
     )
     assert authored_text == "Hello, hello baby You called, I can't hear a thing"
     assert machine_text == "hello hello baby you call i can hardly hear a thing"
+
+
+from src import plans  # noqa: E402
+
+
+async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
+    """Issue #192 — the align (caption) path. ENCORE_YTDLP_BIN was probed and logged but never reached
+    the caption subprocess: `align_runner` accepted no yt-dlp argument and `align_plan` built
+    `FetchCaptions(AUTHORED)` / `FetchCaptions(MACHINE)` with the hardcoded default, so the only reader
+    left was a `ytdlpBin` job param the core never sends. Both YouTube caption tiers therefore shelled
+    out to a bare "yt-dlp" from PATH and, when it was off-PATH, silently declined on every song.
+
+    Pins the whole chain: the binary handed to `align_runner(ytdlp_bin=...)` is threaded through
+    `align_plan` into the FetchCaptions steps the plan actually builds, and lands at argv[0] of the
+    caption invocation for BOTH kinds. `/opt/encore/bin/yt-dlp` is a literal path the code never
+    constructs, so this cannot pass by re-deriving the code's default.
+    """
+    configured = "/opt/encore/bin/yt-dlp"
+
+    proc = plans.align_runner(runner=lambda argv: None, ytdlp_bin=configured)
+    job = JobSpec(job_id="j1", media_id="m1", job_type="align",
+                  source_uri="https://youtube.com/watch?v=abc", params={}, media_dir=str(tmp_path))
+    plan = proc._plan_for(job, None)  # the plan align_runner actually built for this job
+    caption_steps = [s for s in plan.steps() if isinstance(s, FetchCaptions)]
+    assert len(caption_steps) == 2, "the align plan must fetch both caption kinds"
+
+    for step in caption_steps:
+        seen: list[list[str]] = []
+
+        async def spy(argv):
+            seen.append(argv)
+            return
+            yield  # pragma: no cover — async generator with no output lines
+
+        ctx = Ctx(job=job, work=str(tmp_path / step.kind), runner=spy)
+        await _drain(step, ctx)
+
+        assert seen, f"{step.name} must have invoked yt-dlp"
+        assert seen[0][0] == configured, (
+            f"{step.name} argv[0] must be the configured ENCORE_YTDLP_BIN, got {seen[0][0]!r}"
+        )

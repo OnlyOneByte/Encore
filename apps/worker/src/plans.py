@@ -31,7 +31,7 @@ from .steps.lyrics import (
 from .vocabulary import Action, AsrModel, SyncMode, parse_asr_model, parse_sync_mode
 
 
-def align_plan(*, sources: list[Any] | None = None, lyrics_client: Any = None, transcriber: Any = None, aligner: Any = None) -> LinearPlan:
+def align_plan(*, sources: list[Any] | None = None, lyrics_client: Any = None, transcriber: Any = None, aligner: Any = None, ytdlp_bin: str = "yt-dlp") -> LinearPlan:
     """The align action: eight steps that were one 257-line method.
 
     Seams stay injectable for the same reason they always were — the real WhisperX, the real LRCLIB and
@@ -41,9 +41,9 @@ def align_plan(*, sources: list[Any] | None = None, lyrics_client: Any = None, t
     return LinearPlan(
         "align",
         [
-            AcquireAudio(),
-            FetchCaptions(AUTHORED),
-            FetchCaptions(MACHINE),
+            AcquireAudio(ytdlp_bin=ytdlp_bin),
+            FetchCaptions(AUTHORED, ytdlp_bin=ytdlp_bin),
+            FetchCaptions(MACHINE, ytdlp_bin=ytdlp_bin),
             AcquireTexts(sources=sources, lyrics_client=lyrics_client, transcriber=transcriber),
             PresplitTexts(),
             GradeAndSelect(),
@@ -99,9 +99,9 @@ def stems_upgrade_plan(**kwargs: Any) -> LinearPlan:
     return LinearPlan("stems-upgrade", plan.steps())
 
 
-def fetch_plan(*, annotator: Any = None) -> LinearPlan:
+def fetch_plan(*, annotator: Any = None, ytdlp_bin: str = "yt-dlp") -> LinearPlan:
     """The fetch action: acquire the bytes, identify the song, report it. No separation."""
-    return LinearPlan("fetch", [AcquireAudio(), Annotate(annotator=annotator), PublishOriginal()])
+    return LinearPlan("fetch", [AcquireAudio(ytdlp_bin=ytdlp_bin), Annotate(annotator=annotator), PublishOriginal()])
 
 
 def register_default_plans() -> None:
@@ -149,6 +149,7 @@ def align_runner(
     model: str | None = None,
     sync_mode: Any = None,
     device: str | None = None,
+    ytdlp_bin: str = "yt-dlp",
 ) -> Any:
     """A PlanRunner wired to run the align plan with these seams and these worker defaults.
 
@@ -169,7 +170,7 @@ def align_runner(
     if device is not None:
         defaults.device = device
 
-    plan = align_plan(sources=sources, lyrics_client=lyrics_client, transcriber=transcriber, aligner=aligner)
+    plan = align_plan(sources=sources, lyrics_client=lyrics_client, transcriber=transcriber, aligner=aligner, ytdlp_bin=ytdlp_bin)
     return PlanRunner(
         runner=runner,
         resolve_engines=lambda params: resolve_engines(params, defaults),
@@ -228,5 +229,5 @@ def fetch_runner(*, runner: Any, annotator: Any = None, ytdlp_bin: str = "yt-dlp
     """A PlanRunner for the fetch action."""
     from .runtime.runner import PlanRunner
 
-    plan = fetch_plan(annotator=annotator)
+    plan = fetch_plan(annotator=annotator, ytdlp_bin=ytdlp_bin)
     return PlanRunner(runner=runner, resolve_engines=resolve_engines, plans=lambda job, engines: plan)
