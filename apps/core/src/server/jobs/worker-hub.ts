@@ -145,7 +145,12 @@ export class WorkerHub {
 		);
 		this.#d.toWorker(msg.workerId, {
 			type: 'worker:welcome',
-			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000),
+			// Advertise HALF the progress lease, not the full lease. The worker's next `job:progress`
+			// refreshes this lease (leases.ts progressLeaseMs), so a worker honouring the advertised
+			// interval must have room for a dropped/late tick: at the full lease one missed tick breaches
+			// the deadline and the reaper requeues a healthy cook as `progress-lease-expired`. This is the
+			// same margin PR #300 pins on the worker side (LEASE_KEEPALIVE_SEC < progressLeaseMs / 2).
+			heartbeatIntervalSec: Math.floor(this.#config.progressLeaseMs / 1000 / 2),
 			ackTimeoutSec: Math.floor(this.#config.ackTimeoutMs / 1000),
 			mediaStore: this.#d.mediaStore ?? { kind: 'local' }
 		});

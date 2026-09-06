@@ -350,17 +350,70 @@ describe('roformer token ↔ checkpoint identity', () => {
  */
 describe('worker ML keepalive stays under the core progress lease', () => {
 	const runnerPy = readFileSync(join(WORKER_SRC, 'runtime/runner.py'), 'utf8');
+	// Python's effective value is the LAST module-level assignment. Take the last column-0 match, not
+	// the first, so a triple-quoted string containing `LEASE_KEEPALIVE_SEC = <value>` above the real
+	// assignment cannot shadow it and hide a drifted constant. (Folded in from the #300 review.)
+	const lastKeepaliveSec = (): number | null => {
+		const ms = [...runnerPy.matchAll(/^LEASE_KEEPALIVE_SEC = ([\d.]+)/gm)];
+		const last = ms[ms.length - 1];
+		return last ? Number(last[1]) : null;
+	};
 
 	test('LEASE_KEEPALIVE_SEC is defined and read as a number', () => {
-		const m = /^LEASE_KEEPALIVE_SEC = ([\d.]+)/m.exec(runnerPy);
-		expect(m).not.toBeNull();
-		expect(Number.isFinite(Number(m![1]))).toBe(true);
+		const sec = lastKeepaliveSec();
+		expect(sec).not.toBeNull();
+		expect(Number.isFinite(sec!)).toBe(true);
 	});
 
 	test('the keepalive interval sits comfortably under the core progress lease', () => {
-		const m = /^LEASE_KEEPALIVE_SEC = ([\d.]+)/m.exec(runnerPy);
-		const keepaliveMs = Number(m![1]) * 1000;
+		const keepaliveMs = lastKeepaliveSec()! * 1000;
 		// A margin, not `<`: one dropped keepalive must not already breach the lease.
 		expect(keepaliveMs).toBeLessThan(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
+	});
+
+	/**
+	 * The OTHER side of the same wire, previously unguarded (#308): the core ADVERTISES
+	 * `heartbeatIntervalSec` in the welcome handshake (worker-hub.ts). A worker that HONOURS the
+	 * advertised value paces its own `job:progress` by it, so the advertised interval is bound by the
+	 * SAME margin the worker constant above is: at the full lease, a worker doing exactly as told
+	 * emits its next tick right at the deadline and one dropped tick breaches it. The value it
+	 * advertises must therefore also sit under `progressLeaseMs / 2`.
+	 *
+	 * Read worker-hub.ts as TEXT and compute the advertised seconds from the divisor chain the source
+	 * applies to progressLeaseMs — NOT by re-evaluating the code's own expression. Dropping the `/ 2`
+	 * changes the divisors this extracts, so the computed value reds this check.
+	 */
+	const hubRaw = readFileSync(join(import.meta.dir, 'worker-hub.ts'), 'utf8');
+	const hubStripped = hubRaw
+		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+		.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + m.slice(p1.length).replace(/./g, ' '));
+
+	test('core advertises heartbeatIntervalSec derived from progressLeaseMs', () => {
+		// The advertisement must be a Math.floor over progressLeaseMs and nothing else, so the value
+		// tracks the lease rather than being a hard-coded number that can silently desync from it.
+		const m = /heartbeatIntervalSec:\s*Math\.floor\(\s*this\.#config\.progressLeaseMs\s*((?:\/\s*\d+\s*)+)\)/.exec(
+			hubStripped
+		);
+		expect(m, 'heartbeatIntervalSec advertisement not found in worker-hub.ts — did it move or stop deriving from progressLeaseMs?').not.toBeNull();
+	});
+
+	test('the advertised heartbeat interval sits comfortably under the core progress lease', () => {
+		const m = /heartbeatIntervalSec:\s*Math\.floor\(\s*this\.#config\.progressLeaseMs\s*((?:\/\s*\d+\s*)+)\)/.exec(
+			hubStripped
+		);
+		// Compute the advertised value from the divisor literals the source applies — an INDEPENDENT
+		// computation over DEFAULT_LEASE_CONFIG, not a copy of the code's expression. The divisors are
+		// the only free variable, so a dropped `/ 2` reds this.
+		const divisors = m![1].match(/\d+/g)!.map(Number);
+		expect(divisors.length).toBeGreaterThan(0); // a vacuous parse would divide by nothing
+		const advertisedSec = Math.floor(
+			divisors.reduce((acc, d) => acc / d, DEFAULT_LEASE_CONFIG.progressLeaseMs)
+		);
+		const advertisedMs = advertisedSec * 1000;
+		// AT MOST half the lease. Half is the margin: a worker honouring 15s emits its next tick at
+		// 30s == the deadline after one dropped tick, so it does not breach; the full lease (30s) does.
+		// `<=` because exactly-half is the intended value the fix ships (advertising the full lease is
+		// what reds — 30000 is not <= 15000).
+		expect(advertisedMs).toBeLessThanOrEqual(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
 	});
 });
