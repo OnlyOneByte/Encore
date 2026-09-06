@@ -179,8 +179,10 @@ async function searchLocal(q) {
 	throw lastErr;
 }
 
-/** Queue a song for the authenticated phone WS. Returns the entryId used. Fires an add op that
- *  passes validateCommand (WS has resolved singerId at upgrade from the cookie header). */
+/** Queue a song for the authenticated phone WS. Returns the entryId used. The socket has resolved
+ *  its singerId at upgrade from the cookie header, so the add op's entry must carry all six fields
+ *  validateCommand's add arm requires — id, mediaId, singerId, status:'queued', rotationSeq and a
+ *  finite addedAt — or the op is rejected (a missing addedAt reds first, then a missing status). */
 async function queueViaWs(phone, singerId, mediaId) {
 	const entryId = `entry_${Math.random().toString(36).slice(2, 10)}`;
 	const clientOpId = `op_${Math.random().toString(36).slice(2, 10)}`;
@@ -190,7 +192,7 @@ async function queueViaWs(phone, singerId, mediaId) {
 			clientOpId,
 			op: {
 				op: 'add',
-				entry: { id: entryId, mediaId, singerId, source: 'phone', requestedBy: 'guest' }
+				entry: { id: entryId, mediaId, singerId, status: 'queued', rotationSeq: Number.MAX_SAFE_INTEGER, addedAt: Date.now() }
 			}
 		}
 	});
