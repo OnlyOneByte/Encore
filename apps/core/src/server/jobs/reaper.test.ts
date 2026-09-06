@@ -123,3 +123,58 @@ test('onReaped fires once per tick that changed ≥1 job, and not on a no-op', (
 	reaper.tick(); // ack-timeout requeue
 	expect(calls).toBe(1);
 });
+
+// ── #90: a reaper-killed cook must settle its readiness gate ──────────────────────
+// The worker box died mid-cook, so the failure reaches terminal `failed` via the reaper's own
+// attempts-exhaustion path — never through #onFailed. Before #90 the gate stayed mid-flight
+// forever: readyToSing never flipped and rotation held the queue entry on every pass, even with the
+// instrumental on disk. The reaper has no catalog, so app.ts wires its onFailed hook to
+// settleGatesForFailedJob(job, mediaById) — this test drives that live wiring, not a reimplementation.
+import { settleGatesForFailedJob } from './make-karaoke';
+import type { Media } from '@encore/shared';
+
+const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({
+	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', ...over
+});
+
+function exhaustToFailed(jobType: 'stems' | 'align', over: Partial<Media> = {}) {
+	let clock = T0;
+	const { db } = openDb(':memory:');
+	runMigrations(db);
+	const jobs = new JobRepository(db);
+	const mediaById = new Map<string, Media>([['m1', mkMedia('m1', over)]]);
+	// The exact wiring app.ts uses: the reaper hands the failed job up, we settle its gate.
+	const reaper = new JobReaper(jobs, {
+		now: () => clock,
+		tickMs: 1_000_000,
+		onFailed: (job) => settleGatesForFailedJob(job, mediaById)
+	});
+	const job = jobs.enqueue('m1', jobType, 0, T0);
+	for (let i = 0; i < 3; i++) {
+		jobs.assign(job.id, 'w', ackDeadline(clock), clock);
+		jobs.accept(job.id, progressDeadline(clock), clock);
+		clock += 31_000;
+		reaper.tick();
+	}
+	return { jobs, mediaById, job };
+}
+
+test('#90 reaper: a dead stems cook settles the STEMS gate back to un-cooked', () => {
+	// stemStatus 'queued' (separation in flight) → the box dies → reaper exhausts attempts.
+	const { jobs, mediaById, job } = exhaustToFailed('stems', { stemStatus: 'queued' });
+	expect(jobs.byId(job.id)!.status).toBe('failed'); // reaper path, not #onFailed
+	// The regression: before #90 this stayed 'queued' forever → isCooking true → rotation holds it.
+	expect(mediaById.get('m1')!.stemStatus).toBe('none');
+});
+
+test('#90 reaper: a dead align cook settles the LYRICS gate so the playable song can be sung', () => {
+	// The song already has its instrumental and plays; only lyrics were pending → align dies.
+	const { jobs, mediaById, job } = exhaustToFailed('align', {
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'queued'
+	});
+	expect(jobs.byId(job.id)!.status).toBe('failed');
+	expect(mediaById.get('m1')!.lyricsStatus).toBe('ready'); // gate settled → readyToSing can flip
+	expect(mediaById.get('m1')!.stemStatus).toBe('ready'); // never walk the finished cook backwards
+});
