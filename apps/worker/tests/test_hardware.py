@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 
+import pytest
+
 from src import hardware
 
 
@@ -110,11 +112,34 @@ def test_effective_cpus_never_returns_zero(tmp_path):
     assert hardware.effective_cpus(root) >= 1
 
 
-def test_effective_cpus_falls_back_to_the_host_when_uncontained(tmp_path):
-    # On a plain host all the cgroup files are absent and the answer must be the machine's own count —
-    # which is why this bug survives so long: it is correct here.
-    expected = min(os.cpu_count() or 1, len(os.sched_getaffinity(0))) if hasattr(os, "sched_getaffinity") else (os.cpu_count() or 1)
-    assert hardware.effective_cpus(str(tmp_path)) == expected
+def test_effective_cpus_falls_back_to_the_host_when_uncontained(tmp_path, monkeypatch):
+    # On a plain host all the cgroup files are absent and the answer must be the machine's own count.
+    # Pin an INDEPENDENT expected value instead of re-deriving min(cpu_count, affinity): fix both
+    # sources to a known 8 (host and affinity agree, no cgroup files) and assert the answer is 8. The
+    # old form recomputed the code's own expression, so it agreed with any composition of the two.
+    monkeypatch.setattr(os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: set(range(8)))
+    assert hardware.effective_cpus(str(tmp_path)) == 8
+
+
+def test_effective_cpus_honours_a_cpuset_pin_below_the_host_count(tmp_path, monkeypatch):
+    # The cpuset case the module docstring exists to catch: a many-core host pinned to a 2-CPU set via
+    # `docker run --cpuset-cpus=0,1`, systemd AllowedCPUs=, or a k8s static CPU pin. Cpuset leaves no
+    # CFS quota, so cgroup_cpu_quota() is None and affinity is the ONLY signal that the worker is
+    # confined. Independent values (host says 8, affinity says 2, no cgroup files) — the answer must
+    # be 2, not 8. Drops if the affinity candidate stops being appended.
+    monkeypatch.setattr(os, "cpu_count", lambda: 8)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: {0, 1})
+    assert hardware.effective_cpus(str(tmp_path)) == 2
+
+
+def test_effective_cpus_takes_the_tighter_of_a_cpuset_pin_and_a_quota(tmp_path, monkeypatch):
+    # Both a cpuset pin (affinity=2) and a CFS quota (8 cores) present: the tighter — the cpuset — must
+    # win. Pins that affinity is composed with the quota rather than either shadowing the other.
+    root = _tree(tmp_path, {"sys/fs/cgroup/cpu.max": "800000 100000\n"})  # 8 cores
+    monkeypatch.setattr(os, "cpu_count", lambda: 16)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda _pid: {0, 1})
+    assert hardware.effective_cpus(root) == 2
 
 
 # ── accelerator + report ────────────────────────────────────────────────────────────
