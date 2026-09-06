@@ -319,7 +319,7 @@
 		return [...ids]
 			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
 			.filter((r) => r.media)
-			.map((r) => ({ id: r.id, media: r.media!, pct: r.live?.pct ?? 0, etaSec: r.live?.etaSec }));
+			.map((r) => ({ id: r.id, media: r.media!, pct: r.live?.pct ?? 0, etaSec: r.live?.etaSec, status: r.live?.status }));
 	});
 
 	const showReady = $derived(filter === 'all' || filter === 'ready');
@@ -844,6 +844,7 @@
 				{...rowMeta(c.media)}
 				readiness={r}
 				pct={c.pct}
+				status={c.status}
 				etaSec={c.etaSec}
 				inQueue={inMyQueue(c.id)}
 				onadd={() => addSong(c.id)}
@@ -873,6 +874,7 @@
 						{...rowMeta(m)}
 						readiness={r}
 						pct={liveOf(m.id)?.pct ?? 0}
+						status={liveOf(m.id)?.status}
 						inQueue={inMyQueue(m.id)}
 						onadd={() => addSong(m.id)}
 						onmake={canCook(r) ? () => singThis(m.id) : undefined}
@@ -890,6 +892,7 @@
 				{#each popularRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow {...rowMeta(m)} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
+						status={liveOf(m.id)?.status}
 						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
 						onmake={canCook(r) ? () => singThis(m.id) : undefined} />
 				{/each}
@@ -899,6 +902,7 @@
 				{#each recentRows as m (m.id)}
 					{@const r = readinessFor(m)}
 					<SongRow {...rowMeta(m)} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
+						status={liveOf(m.id)?.status}
 						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
 						onmake={canCook(r) ? () => singThis(m.id) : undefined} />
 				{/each}
