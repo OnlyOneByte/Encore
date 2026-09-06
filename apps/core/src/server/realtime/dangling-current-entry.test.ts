@@ -144,6 +144,26 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 	expect(SERVER).toMatch(
 		/if\s*\(\s*!state\.entries\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*state\.playback\.currentEntryId\s*\)\s*\)\s*reconcileOnReady\(deps\)/
 	);
+
+	// THE PINNED ORDER (#261): presence of the gate is not enough — it must run AFTER
+	// handleQueueCommand, which is the prune that retires the playing entry. If the gate is hoisted
+	// ABOVE the call it evaluates the PRE-remove state (the playing id still resolves), so recovery
+	// never fires and #128 re-opens with every assertion above still green. Slice the queue:command
+	// arm out of the comment-blanked SERVER and require the gate's index inside that arm to be
+	// greater than the handleQueueCommand(evt.command call's — which also pins the gate is inside the
+	// queue:command arm at all, not merely somewhere in the file.
+	const caseIdx = SERVER.indexOf("case 'queue:command':");
+	expect(caseIdx).toBeGreaterThanOrEqual(0);
+	const breakIdx = SERVER.indexOf('break;', caseIdx);
+	expect(breakIdx).toBeGreaterThan(caseIdx);
+	const arm = SERVER.slice(caseIdx, breakIdx);
+	const callIdx = arm.search(/handleQueueCommand\(evt\.command/);
+	const gateIdx = arm.search(
+		/if\s*\(\s*!state\.entries\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*state\.playback\.currentEntryId\s*\)\s*\)\s*reconcileOnReady\(deps\)/
+	);
+	expect(callIdx).toBeGreaterThanOrEqual(0);
+	expect(gateIdx).toBeGreaterThanOrEqual(0);
+	expect(gateIdx).toBeGreaterThan(callIdx);
 });
 
 // SOURCE-SCAN GUARD for the hydrate() heal comment (store.ts) — issue #254.
