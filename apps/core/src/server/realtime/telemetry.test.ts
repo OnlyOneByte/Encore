@@ -26,7 +26,7 @@ test('ended telemetry marks current done and advances to next by seq', () => {
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
 	expect(state.playback.currentEntryId).toBe('q1');
 
-	handleTelemetry({ positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	handleTelemetry({ positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
 	// q1 is marked done -> pruned from the queue (terminal entries don't linger, Finding #3a)
 	expect(state.entries.find((e) => e.id === 'q1')).toBeUndefined();
@@ -37,7 +37,7 @@ test('ended on the last entry goes to no-current (attract)', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handleTelemetry({ positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 0, ended: true }, deps);
+	handleTelemetry({ positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBeNull();
 	expect(state.playback.isPlaying).toBe(false);
 });
@@ -56,7 +56,7 @@ test('position-only telemetry updates position without advancing', () => {
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handleTelemetry({ positionSec: 42.7, durationSec: 100, status: 'playing', bufferedNextPct: 50 }, deps);
+	handleTelemetry({ positionSec: 42.7 }, deps);
 	expect(state.playback.currentEntryId).toBe('q1'); // unchanged
 	expect(state.playback.positionSec).toBe(42); // floored
 });
@@ -69,7 +69,7 @@ test('held-slot: ended skips a not-ready file entry, plays the ready one', () =>
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	state.applyQueueOp({ op: 'add', entry: entry('q3', 'm3') });
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1
-	handleTelemetry({ positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	handleTelemetry({ positionSec: 100, ended: true }, deps);
 	// q2 not ready -> held -> advance picks q3
 	expect(state.playback.currentEntryId).toBe('q3');
 });
@@ -119,11 +119,11 @@ test('two ended frames do not double-advance: the stale ended for a no-longer-cu
 	expect(state.playback.currentEntryId).toBe('q1');
 
 	// First ended carries Alice's id (the entry that actually ended on screen). Advances to Bob.
-	handleTelemetry({ entryId: 'q1', positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
 
 	// Second (stale/duplicate) ended still names Alice (q1) — no longer current. It must be IGNORED.
-	handleTelemetry({ entryId: 'q1', positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2'); // still Bob, NOT Cara
 	expect(state.entries.find((e) => e.id === 'q2')!.status).toBe('playing'); // Bob's turn survives
 	expect(state.entries.find((e) => e.id === 'q3')).toBeDefined(); // Cara still queued, not skipped
@@ -134,7 +134,7 @@ test('a genuine ended whose id matches the current entry advances as before (#70
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handleTelemetry({ entryId: 'q1', positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
 });
 
@@ -143,7 +143,7 @@ test('an ended with no entry id keeps legacy behaviour (backward compatible with
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handleTelemetry({ positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	handleTelemetry({ positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
 });
 
@@ -156,16 +156,16 @@ test('a stale position frame naming the outgoing entry after an advance does NOT
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
-	handleTelemetry({ entryId: 'q1', positionSec: 87.4, durationSec: 100, status: 'playing', bufferedNextPct: 100 }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 87.4 }, deps);
 	expect(state.playback.positionSec).toBe(87); // a live frame for the current entry still tracks
 
 	// Advance to q2 (its own play resets positionSec to 0).
-	handleTelemetry({ entryId: 'q1', positionSec: 100, durationSec: 100, status: 'playing', bufferedNextPct: 100, ended: true }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
 	expect(state.playback.currentEntryId).toBe('q2');
 	expect(state.playback.positionSec).toBe(0);
 
 	// The stale trailing position frame from q1's outgoing <audio> — no longer current. Must be dropped.
-	handleTelemetry({ entryId: 'q1', positionSec: 87.4, durationSec: 100, status: 'playing', bufferedNextPct: 100 }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 87.4 }, deps);
 	expect(state.playback.positionSec).toBe(0); // NOT 87 — q2 does not inherit q1's playhead
 	expect(state.playback.currentEntryId).toBe('q2');
 });
@@ -174,7 +174,7 @@ test('a position frame for the current entry still updates position (guard hoist
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handleTelemetry({ entryId: 'q1', positionSec: 42.7, durationSec: 100, status: 'playing', bufferedNextPct: 50 }, deps);
+	handleTelemetry({ entryId: 'q1', positionSec: 42.7 }, deps);
 	expect(state.playback.positionSec).toBe(42);
 });
 
@@ -182,7 +182,7 @@ test('an id-less position frame keeps legacy behaviour (older TV unaffected) (#1
 	const { state, deps } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	handleTelemetry({ positionSec: 33.3, durationSec: 100, status: 'playing', bufferedNextPct: 50 }, deps);
+	handleTelemetry({ positionSec: 33.3 }, deps);
 	expect(state.playback.positionSec).toBe(33); // no id -> still applied
 });
 
