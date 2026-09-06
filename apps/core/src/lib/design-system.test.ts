@@ -143,6 +143,21 @@ test('the colour picker has exactly one name per shared preset colour', () => {
 	expect(nameCount).toBe(colourCount);
 });
 
+test('the colour picker wires its swatch tabindex to presetTabStopIndex', () => {
+	// THE BUG THIS BOUNDS (#88, pr-bot BLOCKED verdict on the first cut). The tab-stop DECISION was
+	// extracted to the pure, unit-tested presetTabStopIndex in @encore/shared so a guard could exercise
+	// production logic instead of a reconstructed predicate -- but that closed only the *reconstruction*
+	// hazard. It left the *reversion* hazard open: the one line that actually READS the function is a
+	// Svelte template expression, and reverting it to the pre-fix `tabindex={value === c ? 0 : -1}`
+	// (issue #88's exact bug -- after any wheel pick no swatch is tabbable and the presets fall out of
+	// the tab order for good) leaves every gate green, because the three presetTabStopIndex unit tests
+	// never touch the caller. This pins the call site itself, mirroring the sibling roving group's guard
+	// at settings-scopes.test.ts (`tabindex={tab === t.id ? 0 : -1}`), so the wiring cannot silently
+	// regress while the helper stays correct.
+	const picker = readFileSync(join(SRC, 'lib/components/ColourPicker.svelte'), 'utf8');
+	expect(picker).toContain('tabindex={i === presetTabStopIndex(value) ? 0 : -1}');
+});
+
 test('every bottom-docked sheet caps its height in dvh, not vh', () => {
 	// `.sheet-surface` in app.css deliberately does NOT default a max-height, because a sheet's cap is
 	// its own business. But the UNIT is not a preference: on iOS `vh` resolves to the LARGE viewport, so

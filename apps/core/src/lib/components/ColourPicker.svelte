@@ -12,7 +12,7 @@
 	is the only thing telling two singers apart besides the name).
 -->
 <script lang="ts">
-	import { SINGER_COLORS, SINGER_HUE_STEP, hueToHex, nearestSingerHue } from '@encore/shared';
+	import { SINGER_COLORS, SINGER_HUE_STEP, hueToHex, nearestSingerHue, presetTabStopIndex } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {
@@ -122,7 +122,7 @@
 				role="radio"
 				aria-checked={value === c}
 				aria-label={colorName(c)}
-				tabindex={value === c ? 0 : -1}
+				tabindex={i === presetTabStopIndex(value) ? 0 : -1}
 				data-swatch={i}
 				onclick={() => pickPreset(c)}
 				class="swatch"

@@ -290,5 +290,26 @@ function rgbToOklabAb([r, g, b]: [number, number, number]): { a: number; b: numb
 	};
 }
 
+/**
+ * Which preset index should be the keyboard tab stop, for a currently-selected colour.
+ *
+ * The preset swatches are a roving-tabindex group: a radiogroup is a SINGLE tab stop, so exactly one
+ * swatch carries tabindex 0 and arrow keys move within. Normally that is the swatch matching `value`.
+ *
+ * But `value` is often NOT a preset — the hue wheel emits colours at a lightness the eight presets
+ * are deliberately outside (see SINGER_COLORS above: L≈0.56 vs the wheel's L≈0.70), so the wheel
+ * PROVABLY never lands on a preset hex. When nothing matches, this returns 0, keeping the FIRST
+ * swatch tabbable so the group stays reachable. Without that fallback a single wheel pick drops all
+ * eight presets out of the tab order for good, and the wheel cannot return to one — a keyboard or
+ * switch-access guest is then locked out of the only named colours (the presets are what every
+ * existing singer holds and the only hues with a spoken name).
+ *
+ * Returns an index into SINGER_COLORS; the caller sets tabindex 0 on that swatch and -1 on the rest.
+ */
+export function presetTabStopIndex(value: string): number {
+	const i = (SINGER_COLORS as readonly string[]).indexOf(value);
+	return i === -1 ? 0 : i;
+}
+
 /** A singer colour is any legible hex now, not one of eight literals. */
 export type SingerColor = string;
