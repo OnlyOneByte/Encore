@@ -67,7 +67,8 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
     ]
 
 
-# Stereo AAC at this bitrate is the storage format for both stems. Rationale:
+# Stereo AAC at this bitrate is the storage format for the VOCALS stem only (encode_stem_argv below); the
+# instrumental is lossless FLAC through encode_flac_argv, so this knob does not govern it. Rationale:
 # the SOURCE is ~129-135 kbps lossy, so 192k leaves headroom for the unavoidable second generation
 # while still cutting a 54 MB WAV stem to roughly 7 MB. Stereo is the ceiling that matters -- YouTube
 # serves stereo, so a surround receiver upmixes from stereo no matter what we store, and anything
