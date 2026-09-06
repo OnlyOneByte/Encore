@@ -205,6 +205,43 @@ async def test_a_raising_step_FAILS_the_job_rather_than_stopping_it(tmp_path):
         await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
 
 
+@pytest.mark.asyncio
+async def test_a_raising_step_still_FLUSHES_the_notes_before_it_propagates(tmp_path, capsys):
+    """The worker's own diagnosis must survive a failure — that is the one moment it is needed.
+
+    A step raising is how it signals FAILURE (step.py). Earlier steps deliberately accumulate notes
+    (baseline scores, the "aligning against the MIX" warning, caption-fetch misses) that ARE the
+    explanation for that failure. The runner buffers notes rather than printing them directly so they
+    can be asserted; the cost is that the buffer must be flushed on the failure path too. Before this
+    fix the flush sat after the step loop, so a raise skipped it entirely and the operator got a bare
+    exception with no trace of why. Here a note-writing step runs, then a step raises, and the note
+    must still reach the log.
+    """
+
+    class Note(Step):
+        name = "note"
+        stage = Stage.ALIGNING
+
+        async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+            ctx.note("aligning against the MIX — no vocals stem")
+            yield ProgressEvent(stage=self.stage, pct=100)
+
+    class Boom(Step):
+        name = "boom"
+        stage = Stage.ALIGNING
+
+        async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+            raise RuntimeError("text was acquired but nothing could be timed")
+            yield  # pragma: no cover
+
+    plan = LinearPlan("note-then-boom", [Note(), Boom()])
+    with pytest.raises(RuntimeError, match="nothing could be timed"):
+        await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
+    assert "aligning against the MIX — no vocals stem" in capsys.readouterr().out, (
+        "a note recorded before the failing step must reach the log on the raise path"
+    )
+
+
 # ── per-step timing ──────────────────────────────────────────────────────────────
 
 

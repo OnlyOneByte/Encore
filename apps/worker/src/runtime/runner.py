@@ -71,32 +71,42 @@ class PlanRunner:
         plan = self._plan_for(job, ctx.engines)
         validate_plan(plan)  # cheap, and a malformed plan must never reach a real cook
 
-        step = plan.first()
-        while step is not None:
-            if not step.applies(ctx):
-                ctx.note(f"{step.name}: skipped")
-                step = plan.after(step, StepResult(), ctx)
-                continue
+        # The notes buffer is the worker's own diagnosis of a job (baseline scores, caption-fetch
+        # misses, the "aligning against the MIX" warning, the silent-instrumental refusal). A step
+        # raising is the documented way it signals FAILURE (step.py) — and that is exactly when those
+        # notes are the explanation the operator needs. So the flush lives in `finally`, not after the
+        # loop: it runs once, on the normal exit AND before a step's exception propagates. The single
+        # call site is the `finally` below, so there is no double-flush path to guard against.
+        def _flush_notes() -> None:
+            for line in ctx.out.notes:
+                print(f"[worker] {job.job_type} {job.media_id}: {line}", flush=True)
 
-            result = StepResult()
-            before = _snapshot(ctx, step) if STRICT_WRITES else None
-            started = time.monotonic()
-            async for item in step.run(ctx):
-                if isinstance(item, StepResult):
-                    result = item
-                else:
-                    yield item
-            ctx.out.timings_sec[step.name] = round(time.monotonic() - started, 3)
-            if before is not None:
-                _assert_declared_writes(ctx, step, before)
+        try:
+            step = plan.first()
+            while step is not None:
+                if not step.applies(ctx):
+                    ctx.note(f"{step.name}: skipped")
+                    step = plan.after(step, StepResult(), ctx)
+                    continue
 
-            if result.outcome is Outcome.STOP:
-                ctx.note(f"{step.name}: stopping — {result.reason or 'no reason given'}")
+                result = StepResult()
+                before = _snapshot(ctx, step) if STRICT_WRITES else None
+                started = time.monotonic()
+                async for item in step.run(ctx):
+                    if isinstance(item, StepResult):
+                        result = item
+                    else:
+                        yield item
+                ctx.out.timings_sec[step.name] = round(time.monotonic() - started, 3)
+                if before is not None:
+                    _assert_declared_writes(ctx, step, before)
 
-            step = plan.after(step, result, ctx)
+                if result.outcome is Outcome.STOP:
+                    ctx.note(f"{step.name}: stopping — {result.reason or 'no reason given'}")
 
-        for line in ctx.out.notes:
-            print(f"[worker] {job.job_type} {job.media_id}: {line}", flush=True)
+                step = plan.after(step, result, ctx)
+        finally:
+            _flush_notes()
 
         ctx.out.facts.setdefault("stepTimingsSec", dict(ctx.out.timings_sec))
         yield CompleteResult(media_uri=ctx.out.media_uri, artifacts=ctx.out.artifacts, facts=ctx.out.facts)
