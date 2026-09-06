@@ -265,9 +265,18 @@ describe('resolveCookSeparator', () => {
 	});
 
 	it('never resolves to an upgrade-only engine for a live cook', () => {
-		const global = { ...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'roformer' as const, defaultModel: 'bs-roformer-1297' };
-		const picked = resolveCookSeparator(withCap(44, global)); // 44 sits just under ensemble's 45
+		// Drives the SEARCH loop, which only runs when the global default ranks ABOVE the cap. A
+		// live-selectable default can never reach it: the highest is roformer at 35 and every ensemble
+		// rung is 40+, so any cap that admits an ensemble pairing also admits the default and returns
+		// early (the vacuous case this replaces). Only an out-of-contract global — one
+		// `normalizeGlobalSettings` would refuse — reaches the `liveSelectable` filter, so that is what
+		// is exercised here, asserting the invariant fails CLOSED. Same stance as the `:477` sibling.
+		const global = { ...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'ensemble' as const, defaultModel: 'instrumental_clean' };
+		// cap 44 skips the early return (ensemble:instrumental_clean ranks 45 > 44) and admits
+		// ensemble:instrumental_full (40); the filter must reject it, leaving roformer (35) as best.
+		const picked = resolveCookSeparator(withCap(44, global));
 		expect(picked.engine).not.toBe('ensemble');
+		expect(isLiveSelectable(picked.engine, picked.model)).toBe(true);
 	});
 });
 
