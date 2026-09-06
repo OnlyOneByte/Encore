@@ -21,6 +21,7 @@ from . import protocol
 from .mediastore import MediaStoreConfig, parse_media_store
 from .config import WorkerConfig
 from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubProcessor
+from .runtime import scratch_for
 
 # All environment reading lives in config.py, so there is ONE place to look for "what is this worker
 # actually configured to do" — and so the perf knobs are testable without mutating os.environ.
@@ -235,7 +236,9 @@ class WorkerClient:
             # accumulated. This cannot be done from the core — in a two-container deployment the core
             # runs as a DIFFERENT uid and a core-side rmtree gets EACCES on dirs the worker created at
             # its own umask. ignore_errors: tidying must never turn a completed job into a failed one.
-            shutil.rmtree(os.path.join(job.media_dir, "work", job.job_id), ignore_errors=True)
+            # Delete EXACTLY what the runner created — call scratch_for, don't rebuild its layout by
+            # hand: a hand-rebuilt copy silently drifts from the producer and leaks every job's scratch.
+            shutil.rmtree(scratch_for(job), ignore_errors=True)
 
     def _on_cancel(self, msg: dict[str, Any]) -> None:
         # Cancel the in-flight task for this job. With subprocess_runner's kill-on-GeneratorExit, the

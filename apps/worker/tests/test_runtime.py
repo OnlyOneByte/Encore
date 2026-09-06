@@ -7,6 +7,7 @@ regardless of what the steps do.
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 from typing import AsyncIterator
@@ -24,6 +25,7 @@ from src.runtime import (  # noqa: E402
     PlanRunner,
     Step,
     StepResult,
+    scratch_for,
     stages_of,
     validate_plan,
 )
@@ -565,3 +567,55 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
         "run_blocking returned on a SECOND cancel while its thread was still running — the swallowed "
         "CancelledError freed the slot for capacity that does not exist (double-run / slot leak)"
     )
+
+
+# ── scratch_for: the cleanup must delete EXACTLY what the runner created ──────────
+
+
+def test_scratch_for_produces_the_documented_media_volume_layout(tmp_path):
+    """`scratch_for` is the SOLE producer of a job's scratch directory (runner.py builds `ctx.work`
+    from it) and is the only thing that reclaims it — dial_home's finally rmtrees the same path, and
+    in a two-container deploy a core-side rmtree gets EACCES, so the worker's own delete is the ONLY
+    reclaim path. It had zero test callers, so a producer edit that changed the path shape — grouping
+    scratch under the media id, a per-attempt subdir, moving off the media volume — sailed past the
+    whole suite (579 green) while every cooked song leaked its decoded source + both WAV stems until
+    the volume filled, silently (`ignore_errors=True`).
+
+    Pin the producer's contract HERE, independent of any hand-rebuilt copy: the expectation is written
+    against `job.media_dir`/`work`/`job.job_id` directly, so drifting `scratch_for` reds this test the
+    moment the shape changes rather than leaking in production. This is the one side of the two-copy
+    duplication that nothing pinned.
+    """
+    j = job(tmp_path)
+    assert scratch_for(j) == os.path.join(str(tmp_path), "work", j.job_id)
+    # Not vacuous: the media_dir and job_id both participate, so a shape that drops either (e.g. a
+    # media-id grouping level, or a fixed dir) diverges.
+    assert scratch_for(j).startswith(str(tmp_path) + os.sep), "scratch must live under the job's media_dir"
+    assert scratch_for(j).endswith(os.sep + j.job_id), "scratch must be keyed by the job id"
+
+
+def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebuild(tmp_path):
+    """The consumer (dial_home's finally-block rmtree) must call `scratch_for(job)`, not rebuild the
+    `media_dir/work/job_id` layout by hand.
+
+    A hand-rebuilt copy is a SECOND spelling of the producer's layout that drifts silently: change
+    `scratch_for` and the cleanup keeps deleting the old path, orphaning the new one. The two
+    `test_dial_home.py` cleanup tests hardcode the literal a THIRD time, so they pin the consumer and
+    are blind to producer drift — the asymmetry is the whole finding (#294). The durable fix is to
+    delete the duplication: have the consumer consume the producer. This guard reads dial_home's source
+    and fails if the finally-block rmtree reverts to a hand-built `os.path.join(..., "work", ...)`
+    instead of `scratch_for(job)`.
+    """
+    src = Path(__file__).resolve().parents[1] / "src" / "dial_home.py"
+    text = src.read_text()
+    # Locate the finally-block cleanup rmtree by its distinctive call.
+    assert "shutil.rmtree(scratch_for(job)" in text, (
+        "dial_home's scratch cleanup must delete scratch_for(job) — deleting a hand-rebuilt "
+        'os.path.join(job.media_dir, "work", job.job_id) drifts silently from the producer'
+    )
+    # And it must NOT re-introduce the hand-rebuilt duplicate as the rmtree target.
+    assert 'shutil.rmtree(os.path.join(job.media_dir, "work"' not in text, (
+        "dial_home's cleanup rebuilt the scratch layout by hand — a copy that drifts from scratch_for"
+    )
+    # Not vacuous: prove the file was actually read and is the module under test.
+    assert "def _run_job" in text and "scratch_for" in text
