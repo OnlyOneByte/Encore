@@ -25,6 +25,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import { cookAndQueue } from '$lib/cook-and-queue';
 	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, type Readiness } from '$lib/readiness';
+	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
 	import type { MediaStatus } from '@encore/shared';
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel } from '@encore/shared';
 
@@ -51,6 +52,11 @@
 	// live make-karaoke progress per mediaId — driven by media:status broadcasts AND seeded
 	// from /api/library on load, so a reload mid-cook doesn't lose the progress bar.
 	let mediaStatus = $state<Map<string, { status: MediaStatus; pct: number; etaSec?: number }>>(new Map());
+	// Failed-cook scars (#68) captured once on mount from localStorage. Held so they can be re-merged
+	// into the catalog after a queue:sync REPLACES it — otherwise the room's first sync wipes the
+	// scarred (failed, so server-unknown) media and its row vanishes again on the very reload the
+	// scar exists to survive.
+	let scarredMedia: Media[] = [];
 	let sheetOpen = $state(false);
 
 	/*
@@ -112,6 +118,15 @@
 		for (const m of list) next.set(m.id, m);
 		mediaCatalog = next;
 	}
+	/** Merge media but only for ids the catalog does NOT already hold — used to re-apply failed-cook
+	 *  scars after a queue:sync without clobbering a fresher server copy of the same song. */
+	function mergeMissingMedia(list: Media[]) {
+		if (!list.length) return;
+		const next = new Map(mediaCatalog);
+		let changed = false;
+		for (const m of list) if (!next.has(m.id)) { next.set(m.id, m); changed = true; }
+		if (changed) mediaCatalog = next;
+	}
 
 	onMount(() => {
 		let disposed = false;
@@ -143,6 +158,11 @@
 						if (e.settings) settings = e.settings;
 						if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
 						if (e.media) mediaCatalog = new Map(e.media.map((m) => [m.id, m]));
+						// Re-apply failed-cook scars: a queue:sync REPLACES the catalog, and a failed song is
+						// not in the room's media (it settled to un-cooked server-side), so without this the
+						// scarred row is wiped by the very first sync. A real entry for the id (already added
+						// above) wins; this only fills a gap. (#68)
+						if (scarredMedia.length) mergeMissingMedia(scarredMedia);
 						// The room's guiding-track default — needed to LABEL the control, since a null
 						// per-song override means "inherit" and the phone would otherwise show 0%.
 						if (e.settings) roomGuideDefault = e.settings.room.guideLevelDefault;
@@ -199,14 +219,39 @@
 							});
 							mediaCatalog = nm;
 						}
-						// a song that just finished cooking belongs in the saved library now
-						if (e.status === 'ready') loadLibrary();
-						// Surface a died cook to the singer instead of leaving the row silently stuck.
-						if (e.status === 'failed') showError(`Couldn't make karaoke for “${mediaTitle(e.mediaId)}” — try again.`);
+						// a song that just finished cooking belongs in the saved library now, and a successful
+						// re-cook clears any failed-cook scar so the row never lingers as failed while it is ready.
+						if (e.status === 'ready') {
+							clearScar(e.mediaId);
+							loadLibrary();
+						}
+						// Surface a died cook to the singer instead of leaving the row silently stuck, and
+						// persist a per-device scar so the failure survives a reload (the live map does not).
+						if (e.status === 'failed') {
+							const failedMedia = mediaCatalog.get(e.mediaId);
+							if (failedMedia) recordScar(failedMedia);
+							showError(`Couldn't make karaoke for “${mediaTitle(e.mediaId)}” — try again.`);
+						}
 					}
 					store.onServerEvent(e);
 				}
 			});
+			// Re-surface failed cooks that a reload would otherwise have erased: the live `mediaStatus`
+			// map is in-memory only, so a persisted scar (Encore #68) is seeded back as a synthetic
+			// `failed` live status. This flows through liveOf -> displayReadiness -> cookingRows to the
+			// same red-chip + Sing row a live failure renders, with no extra UI. A fresher live broadcast
+			// always wins (checked below), and any scar cleared by a later `ready` is already gone.
+			scarredMedia = activeScars();
+			if (scarredMedia.length) {
+				// GET /api/library returns only ready + cooking media, so a failed song is not in the
+				// catalog — merge the scar's snapshot in so its row can render, then mark it failed. The
+				// captured list is re-applied on every queue:sync (which replaces the catalog), so the
+				// row survives the room's first sync.
+				mergeMissingMedia(scarredMedia);
+				const withScars = new Map(mediaStatus);
+				for (const m of scarredMedia) if (!withScars.has(m.id)) withScars.set(m.id, { status: 'failed', pct: 0 });
+				mediaStatus = withScars;
+			}
 			ws.open();
 			loadShortcuts();
 			loadLibrary();
