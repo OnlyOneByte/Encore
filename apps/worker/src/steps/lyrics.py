@@ -236,6 +236,29 @@ class GradeAndSelect(Step):
         yield  # pragma: no cover - makes this an async generator
 
 
+def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[int]:
+    """Indices into `windows` of the window that OPENS each human line.
+
+    `align_windows` is a flat list where each human `segment` contributes one or more windows: the
+    first (opening) window of a line keeps the line's own `start` (`_subdivide` sets its first piece's
+    `lo` to the segment start exactly), while every interior window start is a char-count guess. Walk
+    the segments in order and take, for each, the next window whose `start` equals that segment's
+    start — that is the one window per line carrying a real source timestamp. Returns one index per
+    matched segment; a segment whose start finds no window (defensive) is simply skipped.
+    """
+    opens: list[int] = []
+    si = 0
+    for k, win in enumerate(windows):
+        if si >= len(segments):
+            break
+        ss = segments[si].get("start")
+        ws = win.get("start")
+        if isinstance(ss, (int, float)) and isinstance(ws, (int, float)) and abs(float(ws) - float(ss)) < 1e-6:
+            opens.append(k)
+            si += 1
+    return opens
+
+
 class TimeTexts(Step):
     """Force-align each selected text, degrading to its own line sync when word timing is not usable."""
 
@@ -306,18 +329,29 @@ class TimeTexts(Step):
             # WORDS against what is audible — and this is a cheap independent second opinion on the
             # TIMING, which catches the case where a different master shifts or stretches every line.
             if timing == TIMING_WORD and text.timing == TIMING_LINE:
-                # Pair the fit line-for-line with what the aligner ACTUALLY searched. Since #92 the
-                # aligner searches `align_windows` (the per-row bounded windows) when presplit set
-                # them, so `doc` has one aligned line per WINDOW — more lines than `segments`. Feeding
-                # the fit `segments` then made the line counts unequal, and `fit_lrc_to_aligned`
-                # returns `inconclusive` on a count mismatch, so the detector silently stopped running
-                # on exactly the long-line LRCs presplit windows. The windows carry the source's own
-                # timings (proportionally spread from the human line by `_subdivide`), so pairing
-                # against them preserves the version test's meaning.
-                lrc_lines = text.align_windows if getattr(text, "align_windows", None) else text.segments
-                fit = fit_lrc_to_aligned(
-                    line_starts({"segments": lrc_lines}), line_starts(doc)
-                )
+                # Pair the fit against the human line timings ONLY, positioned to what the aligner
+                # searched. Since #92 the aligner searches `align_windows` (the per-row bounded
+                # windows) when presplit set them, so `doc` has one aligned line per WINDOW — more
+                # lines than `segments`, and feeding the fit `segments` made the counts unequal, so
+                # `fit_lrc_to_aligned` returned `inconclusive` and went silently inert. But only the
+                # OPENING window of each human line carries the source's own timestamp; every interior
+                # window start is a `_subdivide` guess spread PROPORTIONALLY TO CHARACTER COUNT (and
+                # #92 ratified those as throwaway search hints, not published timing). Pairing the fit
+                # against interior guesses made a correctly aligned song report that alignment slipped,
+                # because the aligner honestly re-times the words where they are SUNG while the guess
+                # sits at a char-count fraction of a span that includes the following rest. So pair the
+                # opening windows (real human starts) against the aligned lines at those same indices:
+                # two independent time series over the same human lines, which is what the fit needs.
+                if getattr(text, "align_windows", None):
+                    opens = _opening_window_indices(text.align_windows, text.segments)
+                    aligned_starts = line_starts(doc)
+                    lrc_starts = [text.align_windows[k]["start"] for k in opens]
+                    aligned_starts = [aligned_starts[k] for k in opens if k < len(aligned_starts)]
+                    fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)
+                else:
+                    fit = fit_lrc_to_aligned(
+                        line_starts({"segments": text.segments}), line_starts(doc)
+                    )
                 if fit.verdict == "different_version":
                     ctx.note(
                         f"{text.text_source}: its own line timings do NOT fit this recording "
