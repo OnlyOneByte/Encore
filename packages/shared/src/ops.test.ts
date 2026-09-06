@@ -1,5 +1,6 @@
 import { test, expect } from 'bun:test';
-import { applyOp, inverseOp, type QueueOp } from './ops';
+import { applyOp, type QueueOp } from './ops';
+import { applyAndReseq } from './rotation';
 import type { QueueEntry } from './types';
 
 const e = (id: string, seq: number, singerId = 's1'): QueueEntry => ({
@@ -47,27 +48,32 @@ test('applyOp does not mutate its input (pure)', () => {
 	expect(JSON.stringify(input)).toBe(snapshot);
 });
 
-// ── inverseOp: round-trip restores prior state (the rollback contract) ──────────
-test('inverse(add) = remove; applying it restores prior state', () => {
-	const before = [e('a', 0)];
-	const op: QueueOp = { op: 'add', entry: e('b', 1) };
-	const after = applyOp(before, op);
-	const inv = inverseOp(after, op)!;
-	expect(applyOp(after, inv)).toEqual(before);
+// ── applyAndReseq is pure: it never mutates its input array or its entries ──────────
+// This immutability is what makes snapshot-based rollback total (issue #101): #onReject restores a
+// reference to the pre-op array, so the forward op must not have mutated the objects that array
+// held. `move` is the case that mattered — it routes through reorderWithinSinger, which rewrites
+// addedAt; if it did so in place, a captured snapshot would already carry the permuted stamps.
+test('applyAndReseq(move) does not mutate the input entries (snapshot stays intact)', () => {
+	// Two picks by the SAME singer so reorderWithinSinger actually permutes addedAt in the forward step.
+	const before = [e('a', 0), e('b', 1)];
+	const frozenView = JSON.stringify(before);
+	const after = applyAndReseq(before, { op: 'move', id: 'b', toSeq: 0 });
+	// Forward move really did reorder (the op is non-trivial).
+	expect(after.map((x) => x.id)).toEqual(['b', 'a']);
+	// ...yet the input array — order, rotationSeq AND addedAt of every entry — is byte-for-byte unchanged,
+	// so a snapshot captured before the call is a faithful rollback target.
+	expect(JSON.stringify(before)).toBe(frozenView);
+	expect(after).not.toBe(before); // a fresh array, not the same reference
 });
 
-test('inverse(remove) = add-back; applying it restores prior state', () => {
-	const before = [e('a', 0), e('b', 1)];
-	const op: QueueOp = { op: 'remove', id: 'b' };
-	const inv = inverseOp(before, op)!; // computed against prior state (has the row)
-	const after = applyOp(before, op);
-	expect(applyOp(after, inv)).toEqual(before);
-});
+test('applyAndReseq(add) and (remove) also leave the input untouched', () => {
+	const add0 = [e('a', 0)];
+	const addFrozen = JSON.stringify(add0);
+	applyAndReseq(add0, { op: 'add', entry: e('b', 1) });
+	expect(JSON.stringify(add0)).toBe(addFrozen);
 
-test('inverse(move) restores prior rotationSeq', () => {
-	const before = [e('a', 0), e('b', 1)];
-	const op: QueueOp = { op: 'move', id: 'a', toSeq: 9 };
-	const inv = inverseOp(before, op)!;
-	const after = applyOp(before, op);
-	expect(applyOp(after, inv)).toEqual(before);
+	const rem0 = [e('a', 0), e('b', 1)];
+	const remFrozen = JSON.stringify(rem0);
+	applyAndReseq(rem0, { op: 'remove', id: 'b' });
+	expect(JSON.stringify(rem0)).toBe(remFrozen);
 });
