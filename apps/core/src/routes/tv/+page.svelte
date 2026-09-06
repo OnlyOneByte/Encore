@@ -23,6 +23,12 @@
 	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
 	import { isAutoTranscribed } from '$lib/tv/lyrics';
 	import { cookStageLabel } from '$lib/cook-phrasing';
+	import {
+		mergeCatalog,
+		snapshot,
+		cookIsTerminal,
+		type PlaybackSnapshot
+	} from '$lib/tv/catalog';
 
 	let { data } = $props();
 
@@ -90,7 +96,15 @@
 	// player shifts pitch in the browser (see pitch-shift.ts), so there is no pre-rendered variant to
 	// 404 on — which is why it was ignored before.
 	let keyShift = $state(0);
-	let slotMedia = $state<{ A: Media | null; B: Media | null }>({ A: null, B: null });
+	// THE SNAPSHOT SEAM (#396). The slots hold immutable `PlaybackSnapshot`s, not live catalog records:
+	// a `Media` is not assignable here, so the only way a song reaches the player is through
+	// `snapshot()` in `syncSlots()` — i.e. on an explicit playback transition. A cook event cannot
+	// reach a playing song even if it churns the catalog, because there is no longer a path from the
+	// catalog to a mounted slot that does not go through a deliberate re-assignment.
+	let slotMedia = $state<{ A: PlaybackSnapshot | null; B: PlaybackSnapshot | null }>({
+		A: null,
+		B: null
+	});
 
 	let ws: WebSocket | undefined;
 	let interstitialTimer: ReturnType<typeof setTimeout> | undefined;
@@ -98,26 +112,15 @@
 	let reconnectAttempt = 0;
 	let disposed = false;
 
-	/**
-	 * Fold a fresh `queue:sync` media list into the existing catalog, PRESERVING the existing object
-	 * identity for any song whose fields are unchanged.
+	/*
+	 * The catalog writer and the snapshot seam both live in `$lib/tv/catalog.ts` — see that module for
+	 * why #396 needed a boundary rather than a fifth consumer-side guard. Two rules hold here:
 	 *
-	 * Bug A root cause: the old `new Map(e.media.map(...))` gave every Media a fresh identity on every
-	 * sync, including the one currently playing. `applyNowPlaying` -> `syncSlots` then wrote that new
-	 * object into `slotMedia`, and even with TvPlayer's src-assign guard this is the honest fix — an
-	 * unrelated cook must not churn the object graph the whole render tree reads. Comparing by JSON is
-	 * adequate here: Media is a flat, JSON-shaped record already sent over the wire as JSON, so a
-	 * structural match means genuinely-equal fields, and reusing the prior object on a match keeps
-	 * identity stable for every downstream consumer.
+	 *   • `mergeCatalog` is the ONLY thing that writes `mediaCatalog`, and it takes a full server list,
+	 *     so this route cannot express a partial local edit to a media record. The cook path used to
+	 *     make exactly such an edit; that is what reached the playing song.
+	 *   • the player is handed `snapshot(...)`, never `mediaOf(...)` directly.
 	 */
-	function mergeCatalog(prev: Map<string, Media>, incoming: Media[]): Map<string, Media> {
-		const next = new Map<string, Media>();
-		for (const m of incoming) {
-			const existing = prev.get(m.id);
-			next.set(m.id, existing && JSON.stringify(existing) === JSON.stringify(m) ? existing : m);
-		}
-		return next;
-	}
 
 	function mediaOf(entry: QueueEntry | null): Media | null {
 		return entry ? (mediaCatalog.get(entry.mediaId) ?? null) : null;
@@ -130,8 +133,11 @@
 		const a = ctl.assignment();
 		visible = a.visible;
 		tvState = ctl.state;
-		const curMedia = mediaOf(current);
-		const nextMedia = mediaOf(upNext);
+		// SNAPSHOT HERE, and only here. `syncSlots` already ran only on explicit lifecycle transitions
+		// (a real `nowplaying:changed`, an `ended`, an interstitial hand-off), which is what makes it the
+		// correct seam: the snapshot is re-taken when the song genuinely changes and at no other time.
+		const curMedia = snapshot(mediaOf(current));
+		const nextMedia = snapshot(mediaOf(upNext));
 		// visible slot shows current; hidden slot pre-warms upNext
 		slotMedia = a.visible === 'A' ? { A: curMedia, B: nextMedia } : { A: nextMedia, B: curMedia };
 	}
@@ -289,16 +295,28 @@
 				// keyShift is now honoured — the player transposes in the browser. See `keyShift` state.
 				keyShift = e.state.keyShift;
 			}
-			// live media catalog updates (cooking progress + ready flip) so the TV leaves WAITING
-			// promptly and resolves the ready song's instrumental (also mitigates the cook->play gap)
+			/*
+			 * COOK LIFECYCLE — and note what is NOT here any more (#396).
+			 *
+			 * This handler used to write the catalog: `new Map(mediaCatalog).set(id, {...m, stemStatus})`,
+			 * on EVERY progress tick, minting a fresh Media identity and inventing a `stemStatus` the
+			 * server never sent (anything not `ready`/`failed` was written as `queued`, which made the
+			 * PLAYING song locally unplayable for a moment). That write is the coupling this issue is
+			 * about: it is how a cook for one song reached the playhead of another.
+			 *
+			 * It is gone, and nothing replaced it, because nothing needed it:
+			 *
+			 *   • the READY flip is server-driven. `onMediaReady` publishes a full `queue:sync` (real
+			 *     server truth, through `mergeCatalog`) AND `nowplaying:changed`, so the TV leaves
+			 *     `waiting` on an explicit playback event. The old comment here claimed these local
+			 *     catalog writes were what made the TV "leave WAITING promptly" — that was never true;
+			 *     the only exit this handler ever owned is the terminal-failure one below.
+			 *   • cook PROGRESS has no consumer on the TV. The TV renders "Making the karaoke", not a
+			 *     percentage, so a tick had nothing to update and churned the render tree for free.
+			 *
+			 * What remains is a pure lifecycle decision, and no state of its own.
+			 */
 			if (e.type === 'media:status') {
-				const m = mediaCatalog.get(e.mediaId);
-				if (m) {
-					mediaCatalog = new Map(mediaCatalog).set(e.mediaId, {
-						...m,
-						stemStatus: e.status === 'ready' ? 'ready' : e.status === 'failed' ? m.stemStatus : 'queued'
-					});
-				}
 				// A cook that FAILED, or a job NO connected worker can ever run (`unservable`), will never
 				// become playable — and enterWaiting() sets no timer, so if this is the entry the room is
 				// holding on, the party stares at "Making the karaoke" forever. Leave WAITING the same way
@@ -306,7 +324,7 @@
 				// entry ended so it advances authoritatively, and drop out of the waiting hold.
 				// Defensive: this fires purely on the wire signal and does not assume the server TTL fix
 				// has landed.
-				const stuck = e.status === 'failed' || e.unservable === true;
+				const stuck = cookIsTerminal(e);
 				if (stuck && tvState === 'waiting' && current && current.mediaId === e.mediaId) {
 					const who = singerName(current.singerId);
 					skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
