@@ -449,12 +449,15 @@
 		status="separating" pct={16}
 		reorderable canUp canDown onremove={() => {}} onup={() => {}} ondown={() => {}}
 	/>
-	<!-- Coverage gap closed (issue #216): the only long-name fixture used to be a QueueRow, so the
-	     narrower `.who` on a cooking card WITH its queue controls was never eyes-on. This is the
-	     reachable-collapse case — actions cluster present, name at the 32-char profile maxlength — the
-	     surface `.who i { flex: 0 0 auto }` protects. Christopher Alexander Montgomery is 32 chars. -->
+	<!-- Coverage gap closed (issues #216, #335): the only long-name fixture used to be a QueueRow, so
+	     the narrower `.who` on a cooking card WITH its queue controls was never eyes-on. This is the
+	     reachable-collapse case — actions cluster present, name at the 32-char profile maxlength. The
+	     name is a single UNBROKEN token (no space, so it cannot wrap): dropping the `.who i { flex: 0 0
+	     auto }` rule the surface protects then collapses the dot to 0px, the unmissable failure #335
+	     was filed to keep on demo (a spaced name would only shrink it to ~5.45px, an easy-to-miss
+	     witness). ChristopherAlexanderMontgomeryJr is 32 chars, exactly the profile-name maxlength. -->
 	<ProcessingCard
-		seq={5} title="Toto - Africa (Lyrics)" singerName="Christopher Alexander Montgomery" singerColor={PINK}
+		seq={5} title="Toto - Africa (Lyrics)" singerName="ChristopherAlexanderMontgomeryJr" singerColor={PINK}
 		status="separating" pct={16}
 		reorderable canUp canDown onremove={() => {}} onup={() => {}} ondown={() => {}}
 	/>
