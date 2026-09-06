@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { cookStageChipLabel, cookStageLabel } from './cook-phrasing';
+import { cookStageLabel } from './cook-phrasing';
 
 describe('cookStageLabel', () => {
 	it('says the guest word for a finished cook', () => {
@@ -35,28 +35,5 @@ describe('cookStageLabel', () => {
 
 	it('is honest about failure', () => {
 		expect(cookStageLabel('failed')).toBe("Couldn't make karaoke");
-	});
-});
-
-describe('cookStageChipLabel', () => {
-	it('maps each worker state to a plain-English milestone', () => {
-		expect(cookStageChipLabel('queued')).toBe('Queued');
-		expect(cookStageChipLabel('downloading')).toBe('Fetched');
-		expect(cookStageChipLabel('separating')).toBe('Making karaoke');
-		expect(cookStageChipLabel('aligning')).toBe('Adding lyrics');
-		expect(cookStageChipLabel('ready')).toBe('Ready');
-		expect(cookStageChipLabel('failed')).toBe('Failed');
-	});
-
-	it('keeps the musician/worker words out of the chip labels too', () => {
-		// "lyrics" is a guest word and stays ("Adding lyrics"); the jargon to avoid is the worker's
-		// step names and the musician's stem words.
-		for (const s of ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed'] as const) {
-			const label = cookStageChipLabel(s).toLowerCase();
-			expect(label).not.toContain('vocal');
-			expect(label).not.toContain('instrumental');
-			expect(label).not.toContain('separat');
-			expect(label).not.toContain('align');
-		}
 	});
 });

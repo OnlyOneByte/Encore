@@ -25,26 +25,3 @@ export function cookStageLabel(status: MediaStatus, opts: { pct?: number; etaSec
 	return `Making karaoke…${pct}${eta}`;
 }
 
-/**
- * The short label for a single stage chip in ProcessingCard's progress track. Same guest vocabulary
- * as the stage line: the worker's step names ("Separating", "Lyrics") become plain-English milestones
- * on the way to a karaoke track.
- */
-export function cookStageChipLabel(status: MediaStatus): string {
-	switch (status) {
-		case 'queued':
-			return 'Queued';
-		case 'downloading':
-			return 'Fetched';
-		case 'separating':
-			return 'Making karaoke';
-		case 'aligning':
-			return 'Adding lyrics';
-		case 'ready':
-			return 'Ready';
-		case 'failed':
-			return 'Failed';
-		case 'canceled':
-			return 'Stopped';
-	}
-}
