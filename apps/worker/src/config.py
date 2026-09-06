@@ -307,7 +307,7 @@ class WorkerConfig:
             demucs_segment=_opt_int(e, "ENCORE_DEMUCS_SEGMENT", w),
             demucs_shifts=_opt_int(e, "ENCORE_DEMUCS_SHIFTS", w, minimum=0),
             torch_threads=torch_threads,
-            annotate=e.get("ENCORE_ANNOTATE", "1").strip() not in ("0", "false", "no"),
+            annotate=e.get("ENCORE_ANNOTATE", "1").strip().lower() not in ("0", "false", "no", "off"),
             separator_backend=(e.get("ENCORE_SEPARATOR_BACKEND", "").strip().lower() or None),
             stem_bitrate=_str(e, "ENCORE_STEM_BITRATE", "192k"),
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
