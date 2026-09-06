@@ -25,7 +25,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from .source import MAX_VARIANTS, rank_lrclib_candidates
+from .source import MAX_VARIANTS, LyricsFetchError, rank_lrclib_candidates
 from ..vocabulary import TextSource, Timing
 
 # Text-source ids and timing tiers. Promoted to enums in src/vocabulary.py (TextSource, Timing) so the
@@ -232,7 +232,12 @@ class LrclibSource:
         pool: list[Any] = []
         try:
             found = self._client.search(req.artist, req.track)
-        except Exception:  # noqa: BLE001 — unreachable/5xx/TLS: a miss, not a job failure
+        except LyricsFetchError:
+            # The provider was reachable-and-refusing or unreachable (incl. the DNS sinkhole). That is
+            # NOT this song's miss — it is the whole tier being down — so let it out to be noted rather
+            # than swallowing it as an empty result indistinguishable from "no record for this song".
+            raise
+        except Exception:  # noqa: BLE001 — a genuinely unexpected source bug: contain it as a miss
             found = []
         if found:
             pool = rank_lrclib_candidates(found, req.duration, credit, self._max_variants)
@@ -240,7 +245,9 @@ class LrclibSource:
         if not pool:
             try:
                 one = self._client.get(req.artist, req.track, duration=req.duration)
-            except Exception:  # noqa: BLE001 — same class, same treatment
+            except LyricsFetchError:
+                raise  # provider down, not this song's miss — surface it (see search branch above)
+            except Exception:  # noqa: BLE001 — a genuinely unexpected source bug: contain it as a miss
                 return None
             if one is None:
                 return None
@@ -394,22 +401,50 @@ class AutoCaptionsSource:
         )
 
 
-def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]:
-    """Run EVERY source and return everything that yielded usable text.
+def _source_name(s: LyricsSource) -> str:
+    """Best label for a source in an operator note — its declared `name`, else the class name."""
+    return str(getattr(s, "name", None) or type(s).__name__)
+
+
+def acquire_with_notes(sources: list[LyricsSource], req: LyricsRequest) -> tuple[list[LyricsText], list[str]]:
+    """Run EVERY source; return everything that yielded usable text PLUS an operator note per source
+    that ran and did not.
 
     Not first-hit: the ideal artifact is authoritative text force-aligned to the audio, so an
     authoritative source and ASR are complements, not alternatives. A source that raises is skipped —
     one broken tier must never cost the others.
+
+    The notes are the point (issue #444). `acquire()` used to drop every miss on the floor, so a
+    provider that had been failing 100% for a month (lrclib.net DNS-sinkholed on the corp box) looked
+    EXACTLY like a run of songs that simply have no lyrics — a bare `return None` and "this is an
+    instrumental" were the same observation. A source that RAISED (a provider transport/5xx failure,
+    now including the sinkhole after `_urllib_fetch` converts URLError → LyricsFetchError) is a
+    provider-down signal and gets a loud note; a source that RAN and returned nothing is a genuine
+    per-song miss and gets a quiet one. Either way the operator can now tell them apart.
     """
     out: list[LyricsText] = []
+    notes: list[str] = []
     for s in sources:
+        name = _source_name(s)
         try:
             got = s.fetch(req)
-        except Exception:  # noqa: BLE001 — a misbehaving source is a miss, never a job failure
+        except LyricsFetchError as exc:
+            notes.append(f"{name}: ran but FAILED — {exc}. Provider down, not a song without lyrics.")
+            continue
+        except Exception as exc:  # noqa: BLE001 — a misbehaving source is a miss, never a job failure
+            notes.append(f"{name}: ran but errored — {exc}")
             continue
         if got is not None and got.is_usable():
             out.append(got)
-    return out
+        else:
+            notes.append(f"{name}: ran and found nothing")
+    return out, notes
+
+
+def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]:
+    """Texts-only view of :func:`acquire_with_notes`, kept for callers that do not surface notes."""
+    texts, _notes = acquire_with_notes(sources, req)
+    return texts
 
 
 def candidate_key(media_id: str, text_source: str, timing: str = TIMING_WORD, tag: str | None = None) -> str:

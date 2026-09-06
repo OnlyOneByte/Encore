@@ -297,6 +297,7 @@ from src.lyrics.chain import (  # noqa: E402
     LyricsRequest,
     LyricsText,
     acquire,
+    acquire_with_notes,
 )
 
 
@@ -349,6 +350,105 @@ def test_acquire_skips_a_source_that_raises_without_losing_the_others():
 def test_acquire_drops_empty_text():
     empty = LyricsText(text_source=SOURCE_LRCLIB, segments=[{"text": "   "}], timing=TIMING_NONE)
     assert acquire([FakeSource("e", empty)], LyricsRequest(media_id="m1")) == []
+
+
+class RaisingSource:
+    """A source whose fetch RAISES the transport class — the shape a DNS-sinkholed LRCLIB now takes
+    once _urllib_fetch converts URLError → LyricsFetchError (#444)."""
+
+    def __init__(self, name, exc):
+        self.name = name
+        self._exc = exc
+
+    def fetch(self, req):
+        raise self._exc
+
+
+def test_acquire_with_notes_surfaces_a_provider_transport_failure_as_a_loud_note():
+    """#444: a source that RAN and RAISED a transport failure (the sinkhole) must produce a visible
+    note, not a silent drop that looks like a song with no lyrics. The surviving tier is unaffected."""
+    from src.lyrics.source import LyricsFetchError
+
+    lrclib = RaisingSource("lrclib", LyricsFetchError("lrclib unreachable: [Errno -2] Name or service not known"))
+    asr = FakeSource("asr", _text(SOURCE_ASR, TIMING_WORD))
+    texts, notes = acquire_with_notes([lrclib, asr], LyricsRequest(media_id="m1"))
+
+    # the working tier still delivered
+    assert len(texts) == 1 and texts[0].text_source == SOURCE_ASR
+    # and the dead provider is now legible — not silent
+    joined = " ".join(notes)
+    assert "lrclib" in joined and "unreachable" in joined
+    assert "FAILED" in joined and "not a song without lyrics" in joined
+
+
+def test_acquire_with_notes_notes_a_genuine_per_song_miss_quietly():
+    """A source that ran and simply found nothing is a real miss — still noted, but plainly, so it
+    reads differently from a provider being down."""
+    miss = FakeSource("lrclib", None)
+    texts, notes = acquire_with_notes([miss], LyricsRequest(media_id="m1"))
+    assert texts == []
+    assert any("found nothing" in n for n in notes)
+    assert not any("FAILED" in n for n in notes)
+
+
+def test_acquire_wrapper_still_returns_texts_only_no_regression():
+    """The texts-only acquire() shim must keep the old contract for its existing callers/tests."""
+    a = FakeSource("a", _text(SOURCE_LRCLIB, TIMING_LINE))
+    b = FakeSource("b", _text(SOURCE_ASR, TIMING_WORD))
+    got = acquire([a, b], LyricsRequest(media_id="m1"))
+    assert isinstance(got, list) and len(got) == 2
+
+
+class _FakeLrclibClient:
+    """A client whose search()/get() outcomes are set independently, so a test can bite EXACTLY one
+    branch of LrclibSource.fetch (search vs the get() fallback) rather than both at once."""
+
+    def __init__(self, *, search=None, get=None):
+        self._search = search
+        self._get = get
+
+    def search(self, artist, track):
+        if isinstance(self._search, Exception):
+            raise self._search
+        return self._search or []
+
+    def get(self, artist, track, duration=None, album=None):
+        if isinstance(self._get, Exception):
+            raise self._get
+        return self._get
+
+
+def test_lrclib_source_propagates_a_transport_failure_from_SEARCH():
+    """#444, search branch: a LyricsFetchError from search() (provider down) must escape fetch() so it
+    can be noted — not fall through to a None miss. get() here would MISS (None), so if the search
+    narrowing were absent this would silently return None instead of raising."""
+    from src.lyrics.source import LyricsFetchError
+
+    client = _FakeLrclibClient(search=LyricsFetchError("lrclib unreachable: Name or service not known"), get=None)
+    src = LrclibSource(client=client, to_segments=lambda *_a, **_k: [])
+    with pytest.raises(LyricsFetchError):
+        src.fetch(LyricsRequest(media_id="m1", artist="a-ha", track="Take On Me"))
+
+
+def test_lrclib_source_propagates_a_transport_failure_from_GET_fallback():
+    """#444, get() branch: when search() legitimately finds nothing ([]), the get() fallback runs; a
+    LyricsFetchError there (provider down) must ALSO escape rather than becoming a None miss. Bites the
+    get-branch narrowing specifically — search does not raise here."""
+    from src.lyrics.source import LyricsFetchError
+
+    client = _FakeLrclibClient(search=[], get=LyricsFetchError("lrclib unreachable: connection refused"))
+    src = LrclibSource(client=client, to_segments=lambda *_a, **_k: [])
+    with pytest.raises(LyricsFetchError):
+        src.fetch(LyricsRequest(media_id="m1", artist="a-ha", track="Take On Me"))
+
+
+def test_lyrics_package_reexports_acquire_with_notes():
+    """The step imports acquire_with_notes from the ..lyrics package facade; keep it in __all__ so a
+    `from ..lyrics import *` (and the package's own export contract) does not silently drop it."""
+    import src.lyrics as lyrics_pkg
+
+    assert "acquire_with_notes" in lyrics_pkg.__all__
+    assert hasattr(lyrics_pkg, "acquire_with_notes")
 
 
 def test_lrclib_source_declines_without_confident_metadata_and_never_queries():

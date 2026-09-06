@@ -23,6 +23,7 @@ from ..lyrics import (
     LyricsRequest,
     LyricsText,
     acquire,
+    acquire_with_notes,
     candidate_key,
     caption_argv,
     fit_lrc_to_aligned,
@@ -164,11 +165,16 @@ class AcquireTexts(Step):
         )
         sources = self._build_sources(ctx, req)
         texts: list[LyricsText] = []
-        async for kind, val in run_blocking(lambda: acquire(sources, req), self.stage, 0):
+        run_notes: list[str] = []
+        async for kind, val in run_blocking(lambda: acquire_with_notes(sources, req), self.stage, 0):
             if kind == "progress":
                 yield val
             else:
-                texts = val
+                texts, run_notes = val
+        # A source that ran and did not deliver now leaves a trace — a provider transport failure (incl.
+        # the LRCLIB DNS sinkhole, #444) says so loudly instead of looking like a song without lyrics.
+        for note in run_notes:
+            ctx.note(note)
         ctx.lyrics.texts = texts
         if not texts:
             yield StepResult(

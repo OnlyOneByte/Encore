@@ -345,4 +345,13 @@ def _urllib_fetch(url: str, headers: dict[str, str]) -> tuple[int, str]:
         with urllib.request.urlopen(req, timeout=15) as resp:  # noqa: S310 (fixed https base, not user-controlled scheme)
             return resp.status, resp.read().decode("utf-8", "replace")
     except urllib.error.HTTPError as e:
+        # An HTTP status is a legible answer — hand it back so the client's status ladder decides
+        # (404 → miss, other non-200 → LyricsFetchError). A body is unavailable on an error response.
         return e.code, ""
+    except urllib.error.URLError as e:
+        # No HTTP status at all: DNS failure (the corp-box sinkhole this module was built to expose),
+        # connection refused, TLS failure, timeout. Left uncaught this escapes to LyricsSource's bare
+        # `except Exception` and becomes an ordinary miss — which is precisely how a month of 100%
+        # LRCLIB failure masqueraded as "these songs just have no lyrics". Convert it to the one
+        # explicit transport class the chain already understands, so it can surface as a note instead.
+        raise LyricsFetchError(f"lrclib unreachable: {e.reason}") from e
