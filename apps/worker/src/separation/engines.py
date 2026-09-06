@@ -147,15 +147,28 @@ def engine_for(name: str, **kwargs) -> SeparatorEngine:
     Unknown names raise — the CORE only routes a roformer cook to a worker advertising `stems:roformer`, so
     an unknown name here is a routing bug rather than a user choice.
 
-    None-valued kwargs are DROPPED, not forwarded. A caller that has no opinion about `jobs` or
-    `default_model` passes None, and forwarding it would override the engine's own default with nothing —
-    which for `default_model` means resolve_*_model() gets None as its fallback and fails on a job that
-    carried no model.
+    None-valued kwargs are DROPPED, not forwarded. A caller that has no opinion about `jobs` or a model
+    passes None, and forwarding it would override the engine's own default with nothing — and for the model
+    that means resolve_*_model() gets None as its fallback and fails on a job that carried no model.
+
+    The model default is per ENGINE, not shared: a caller passes `demucs_model` and/or `roformer_model`,
+    and only the matching engine's value is mapped to its `default_model`. A single engine-agnostic
+    `default_model` slot let a caller hand one engine the OTHER engine's checkpoint name (issue #84: the
+    lone production caller supplied the demucs default, which reached `RoformerEngine` and made
+    `DEFAULT_ROFORMER_MODEL` unreachable — a roformer cook without a `model` then raised naming a demucs
+    checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible.
     """
     given = {k: v for k, v in kwargs.items() if v is not None}
     if name == RoformerEngine.id:
-        return RoformerEngine(**{k: v for k, v in given.items() if k in {"default_model", "roformer_bin", "device"}})
+        allowed = {"roformer_bin", "device"}
+        kw = {k: v for k, v in given.items() if k in allowed}
+        if "roformer_model" in given:
+            kw["default_model"] = given["roformer_model"]
+        return RoformerEngine(**kw)
     if name == DemucsEngine.id:
-        allowed = {"default_model", "demucs_bin", "device", "jobs", "overlap", "segment", "shifts"}
-        return DemucsEngine(**{k: v for k, v in given.items() if k in allowed})
+        allowed = {"demucs_bin", "device", "jobs", "overlap", "segment", "shifts"}
+        kw = {k: v for k, v in given.items() if k in allowed}
+        if "demucs_model" in given:
+            kw["default_model"] = given["demucs_model"]
+        return DemucsEngine(**kw)
     raise RuntimeError(f"no separator engine: {name}")
