@@ -11,7 +11,8 @@ import type {
 	Media,
 	PublicSinger,
 	EffectiveSettings,
-	Ordering
+	Ordering,
+	QueueOp
 } from '@encore/shared';
 import { singHistoryFrom } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
@@ -239,7 +240,23 @@ export function handleQueueCommand(
 			? (deps.state.entries.find((e) => e.id === (cmd.op as { id: string }).id)?.mediaId ?? null)
 			: null;
 
-	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(cmd.op);
+	// Server-stamp the add's `addedAt` (issue #345). `addedAt` is the ordering input every
+	// addedAt-reading policy ranks singers by (queue-order.ts orderFair/orderFcfs/orderLeastRecentlySung),
+	// but validateCommand's add arm only checks it for finiteness — so one frame carrying a stamp below
+	// every other singer's first pick puts that singer at the head of every round, the jump
+	// reorderWithinSinger exists to make impossible on `move` (rotation.ts). The wire contract already
+	// declares this channel: ServerPatch.ops is "canonical ops (server may rewrite, e.g. assign
+	// rotationSeq)" (ops.ts). Re-stamp from the room's monotonic counter here, at the seam, so the value
+	// that reaches the shared reducer, the broadcast, and disk is server-owned. The client's own
+	// optimistic addedAt (stores/queue.ts) is left untouched — it needs one to predict with, and adopts
+	// the authoritative `entries` carried inline on this patch, the same one-op mispredict applyAndReseq
+	// already tolerates for a stale snapshot.
+	const op: QueueOp =
+		cmd.op.op === 'add'
+			? { op: 'add', entry: { ...cmd.op.entry, addedAt: deps.state.nextAddedAt() } }
+			: cmd.op;
+
+	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op);
 
 	// An explicit remove of a cooking song must stop the cook, not just hide the row. The hook decides
 	// whether to actually cancel (it does not when another entry still needs the media — a shared

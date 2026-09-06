@@ -156,3 +156,36 @@ test('applyQueueOp prunes terminal entries from the authoritative queue (Finding
 	expect(s.entries.find((e) => e.id === 'a')).toBeUndefined(); // pruned, not lingering
 	expect(s.entries.map((e) => e.id)).toEqual(['b']);
 });
+
+
+// — #345: server-owned monotonic addedAt (nextAddedAt) —
+
+test('#345: nextAddedAt is strictly increasing even when called faster than the clock ticks', () => {
+	const s = new AuthoritativeState();
+	const a = s.nextAddedAt();
+	const b = s.nextAddedAt();
+	const c = s.nextAddedAt();
+	expect(b).toBeGreaterThan(a);
+	expect(c).toBeGreaterThan(b);
+});
+
+test('#345: hydrate seeds nextAddedAt ABOVE the max persisted stamp (survives restart)', () => {
+	const s = new AuthoritativeState();
+	// Persisted state from before the reboot carries a stamp far in the future of Date.now(): the
+	// next server stamp must sit ABOVE it, or a restart-then-add re-opens the very jump this fixes.
+	const future = Date.now() + 5_000_000_000; // ~58 days ahead — well past any same-ms Date.now()
+	s.hydrate([entry('a', future)], null);
+	const next = s.nextAddedAt();
+	expect(next).toBeGreaterThan(future);
+});
+
+test('#345: hydrate seed also counts terminal (done/skipped) rows a later add must clear', () => {
+	const s = new AuthoritativeState();
+	const future = Date.now() + 5_000_000_000;
+	const done: QueueEntry = { id: 'd', mediaId: 'm-d', singerId: 's1', status: 'done', rotationSeq: -1, addedAt: future };
+	// hydrate filters terminal rows OUT of the live queue, but the counter must still be seeded above
+	// them — a new add must not collide with a done entry's stamp.
+	s.hydrate([done], null);
+	expect(s.entries).toHaveLength(0); // terminal filtered from the queue
+	expect(s.nextAddedAt()).toBeGreaterThan(future); // ...but the stamp still clears it
+});
