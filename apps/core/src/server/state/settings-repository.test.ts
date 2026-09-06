@@ -489,9 +489,9 @@ describe('SettingsRepository room scope: lyrics text', () => {
 	it('an out-of-band scale is clamped on write, not persisted raw', () => {
 		const repo = freshRepo();
 		repo.setRoom({ lyricsScalePct: 5 });
-		expect(repo.getRoom().lyricsScalePct).toBe(80);
+		expect(repo.getRoom().lyricsScalePct).toBe(100); // clamps up to the rebased legibility-floor MIN
 		repo.setRoom({ lyricsScalePct: 400 });
-		expect(repo.getRoom().lyricsScalePct).toBe(160);
+		expect(repo.getRoom().lyricsScalePct).toBe(300); // clamps down to the widened MAX
 	});
 
 	it('an invalid font keeps the room CURRENT value rather than resetting to the default', () => {
@@ -504,9 +504,9 @@ describe('SettingsRepository room scope: lyrics text', () => {
 	it('two rooms hold different type, since this is per-party', () => {
 		const repo = freshRepo();
 		repo.setRoom({ lyricsScalePct: 160, lyricsCase: 'upper' }, 'far-tv');
-		repo.setRoom({ lyricsScalePct: 90, lyricsCase: 'natural' }, 'close-tv');
+		repo.setRoom({ lyricsScalePct: 110, lyricsCase: 'natural' }, 'close-tv');
 		expect(repo.getRoom('far-tv').lyricsScalePct).toBe(160);
-		expect(repo.getRoom('close-tv').lyricsScalePct).toBe(90);
+		expect(repo.getRoom('close-tv').lyricsScalePct).toBe(110);
 		expect(repo.getRoom('far-tv').lyricsCase).toBe('upper');
 	});
 

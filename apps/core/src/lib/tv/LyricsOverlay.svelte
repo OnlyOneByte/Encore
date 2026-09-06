@@ -21,6 +21,7 @@
 		DEFAULT_LYRICS_LINES_AFTER,
 		DEFAULT_LYRICS_LINES_BEFORE,
 		DEFAULT_LYRICS_SCALE_PCT,
+		LYRICS_SCALE_BASE,
 		getLyricsCase,
 		getLyricsFont,
 		type LyricsBallStyleId,
@@ -224,7 +225,8 @@
 	const fontStack = $derived(getLyricsFont(font)?.stack ?? 'inherit');
 	const caseTransform = $derived(getLyricsCase(textCase)?.transform ?? 'none');
 	const typeStyle = $derived(
-		`--lyrics-scale: ${scalePct / 100}; --lyrics-rows: ${rowCount}; ` +
+		// REBASED: the neutral 100 renders what 80 rendered before — see LYRICS_SCALE_BASE.
+		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE}; --lyrics-rows: ${rowCount}; ` +
 			`--lyrics-font: ${fontStack}; --lyrics-case: ${caseTransform}; ` +
 			// An edge with no context rows must not be faded — there the current line IS the edge row.
 			`--lyrics-fade-top-on: ${linesBefore > 0 ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 ? 1 : 0}`
