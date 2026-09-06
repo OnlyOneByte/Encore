@@ -6,6 +6,7 @@
 // binary. `ytDlpSearch` is the YtSearchBackend wired into YouTubeResolver in prod.
 
 import type { SearchResult } from './resolver';
+import { runCapturing } from './spawn-capture';
 
 /**
  * The thumbnail URL for a YouTube video id, DERIVED rather than taken from yt-dlp's `thumbnails[]`.
@@ -65,13 +66,15 @@ export function parseSearchJson(lines: string): SearchResult[] {
 let _available: boolean | null = null;
 let _negativeCheckedAt = 0;
 const NEGATIVE_TTL_MS = 60_000;
+const AVAILABLE_TIMEOUT_MS = 5_000; // Finding #5c sibling: a hung `yt-dlp --version` must not wedge boot.
 export async function ytDlpAvailable(spawn = Bun.spawn, now: () => number = Date.now): Promise<boolean> {
 	if (_available === true) return true;
 	if (_available === false && now() - _negativeCheckedAt < NEGATIVE_TTL_MS) return false;
 	try {
-		const proc = spawn(['yt-dlp', '--version'], { stdout: 'pipe', stderr: 'ignore' });
-		await proc.exited;
-		_available = proc.exitCode === 0;
+		// Timed: a `--version` that hangs (a wedged binary, a stuck NFS mount) would otherwise leave the
+		// probe awaiting forever and take every search caller with it. A timeout reads as unavailable.
+		const r = await runCapturing(['yt-dlp', '--version'], AVAILABLE_TIMEOUT_MS, spawn);
+		_available = !r.timedOut && r.code === 0;
 	} catch {
 		_available = false;
 	}

@@ -15,6 +15,7 @@ import { existsSync, statSync, rmSync } from 'node:fs';
 import type { Media } from '@encore/shared';
 import { safeMediaPath } from './local-files';
 import { instrumentalKey, vocalsKey, STEM_EXT } from './paths';
+import { runCapturing } from './spawn-capture';
 
 /** The soft cap, in bytes. Unset (the default) means unlimited — a party box must not silently delete. */
 export function retentionCapBytes(env: Record<string, string | undefined> = process.env): number | null {
@@ -259,6 +260,10 @@ export function derivedBytesOf(m: Media): number {
 	return n;
 }
 
+// A legacy-stem recompress transcodes one file; a few seconds when healthy. 120s bounds a hung
+// ffmpeg without tripping on a genuinely long track.
+const TRANSCODE_TIMEOUT_MS = 120_000;
+
 /**
  * ffmpeg-backed transcoder: stereo AAC at the same bitrate the worker uses, so a recompressed legacy
  * stem is indistinguishable from a freshly cooked one.
@@ -276,9 +281,11 @@ export function ffmpegTranscoder(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg')
 	const encode = ['-c:a', 'aac', '-b:a', '192k', '-ac', '2'];
 
 	const run = async (argv: string[]): Promise<{ ok: boolean; err: string }> => {
-		const proc = Bun.spawn(argv, { stdout: 'ignore', stderr: 'pipe' });
-		const [code, err] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-		return { ok: code === 0, err };
+		// Killed after TRANSCODE_TIMEOUT_MS: the recompress pass runs on the DETACHED boot chain, so a
+		// hung ffmpeg would stall retention (and, before per-pass isolation, everything after it) forever.
+		const r = await runCapturing(argv, TRANSCODE_TIMEOUT_MS);
+		if (r.timedOut) return { ok: false, err: `ffmpeg timed out after ${TRANSCODE_TIMEOUT_MS}ms` };
+		return { ok: r.code === 0, err: r.stderr };
 	};
 
 	return async (absFrom, absTo) => {

@@ -42,6 +42,7 @@ import { PlayLog } from './media/play-log';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
+import { runBootMaintenance, type BootTask } from './boot-maintenance';
 import { reconcileOnReady } from './realtime/player';
 import { orderingOf, syncEvent } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
@@ -211,51 +212,75 @@ export function getApp(): EncoreApp {
 	// volume portable: drop it on a new box (or delete the SQLite file) and the library comes back.
 	// Async and non-blocking — boot must not wait on a directory scan, and a party server that will
 	// not start because a rescan is slow is the worse failure.
-	void rebuildIndexFromMeta({
-		hasMedia: (id) => mediaById.has(id),
-		upsert: (m) => {
-			mediaById.set(m.id, m);
-			mediaRepo.upsert(m);
-		}
-	})
-		.then(async (restored) => {
-			if (restored > 0) console.log(`[core] restored ${restored} media from sidecars in meta/`);
-			// And the other direction: describe every song the index already knows. Without this the
-			// portable-volume property would only apply to songs added AFTER the self-describing sidecars landed.
-			const written = await backfillSidecars(mediaRepo.all(), Date.now());
-			if (written > 0) console.log(`[core] backfilled ${written} sidecars into meta/`);
-
-			// Mirror canonical artist/album/year + genres from every sidecar into the browse
-			// index. Needed as its own pass because backfilling a sidecar does not go through upsert,
-			// so without it browse would only see songs touched since the process started.
-			let indexed = 0;
-			for (const s of await readAllSidecars()) {
-				mediaRepo.setCanonical(s.id, { artist: browseArtist(s), title: lookupTitle(s), album: s.canonical.album, year: s.canonical.year });
-				if (s.canonical.genre.length) mediaRepo.setTags(s.id, 'genre', s.canonical.genre);
-				// ...and into the RUNTIME map, not just the index. hydrateMediaCatalog above ran
-				// synchronously at boot while this pass is async, so mirroring only to the DB left every
-				// in-memory Media without its canonicals for the whole process lifetime — invisible to
-				// browse (which queries the index) but not to anything reading mediaById. It surfaced as an
-				// align job dispatched with `artist` but no `track`. Patch only these fields: a live entry
-				// may have flipped to cooking since hydrate, and a wholesale replace would undo that.
-				const live = mediaById.get(s.id);
-				if (live) {
-					const artist = browseArtist(s);
-					const title = lookupTitle(s);
-					if (artist) live.artistCanonical = artist;
-					if (title) live.titleCanonical = title;
-				}
-				indexed++;
+	// ── boot library maintenance ─────────────────────────────────────────────────────────────
+	// A detached chain of independent passes that restore/repair the library after boot. Each is
+	// ISOLATED: a pass that throws (a hand-edited sidecar, a genuine bug) or is otherwise faulted must
+	// NOT skip the passes after it, and its failure must be VISIBLE and NAMED — not folded into one
+	// terminal catch that could not say which of six passes died. Runs off the main thread so boot never
+	// waits on a directory scan; a party server that will not start because a rescan is slow is the worse
+	// failure. hydrateMediaCatalog above already populated the runtime map synchronously, so the party is
+	// already serveable before any of this runs.
+	//
+	// The table shape is deliberate: each pass already had a name, an optional env gate, a body, and a
+	// report, applied by hand per site. The codebase discovered the "always report an outcome, even a
+	// zero one" principle locally more than once (recompress; the unmeasured/linked split); the table is
+	// where per-pass isolation is applied ONCE for all of them.
+	const bootTasks: BootTask[] = [
+		{
+			name: 'sidecar restore + backfill',
+			run: async () => {
+				// Restore anything the sidecars know about that the index does not, then describe every song
+				// the index already knows. Together these make the media volume portable: drop it on a new box
+				// (or delete the SQLite file) and the library comes back.
+				const restored = await rebuildIndexFromMeta({
+					hasMedia: (id) => mediaById.has(id),
+					upsert: (m) => {
+						mediaById.set(m.id, m);
+						mediaRepo.upsert(m);
+					}
+				});
+				if (restored > 0) console.log(`[core] restored ${restored} media from sidecars in meta/`);
+				const written = await backfillSidecars(mediaRepo.all(), Date.now());
+				if (written > 0) console.log(`[core] backfilled ${written} sidecars into meta/`);
 			}
-			if (indexed > 0) console.log(`[core] browse index synced from ${indexed} sidecars`);
-
-			// ── guiding-track backfill ───────────────────────────────────────────────
-			// Link the vocals stem for songs cooked while the core was dropping that artifact. Pure
-			// filesystem work — no job, no worker, no cpu — so unlike the lyrics backfill below there is
-			// nothing to queue and nothing for a singer's live cook to compete with. A silent stem is
-			// counted and deliberately NOT linked: see media/loudness.ts.
+		},
+		{
+			name: 'browse index sync',
+			run: async () => {
+				// Mirror canonical artist/album/year + genres from every sidecar into the browse index.
+				// Needed as its own pass because backfilling a sidecar does not go through upsert, so without
+				// it browse would only see songs touched since the process started.
+				let indexed = 0;
+				for (const sc of await readAllSidecars()) {
+					mediaRepo.setCanonical(sc.id, { artist: browseArtist(sc), title: lookupTitle(sc), album: sc.canonical.album, year: sc.canonical.year });
+					if (sc.canonical.genre.length) mediaRepo.setTags(sc.id, 'genre', sc.canonical.genre);
+					// ...and into the RUNTIME map, not just the index. hydrateMediaCatalog above ran
+					// synchronously at boot while this pass is async, so mirroring only to the DB left every
+					// in-memory Media without its canonicals for the whole process lifetime — invisible to
+					// browse (which queries the index) but not to anything reading mediaById. It surfaced as an
+					// align job dispatched with `artist` but no `track`. Patch only these fields: a live entry
+					// may have flipped to cooking since hydrate, and a wholesale replace would undo that.
+					const live = mediaById.get(sc.id);
+					if (live) {
+						const artist = browseArtist(sc);
+						const title = lookupTitle(sc);
+						if (artist) live.artistCanonical = artist;
+						if (title) live.titleCanonical = title;
+					}
+					indexed++;
+				}
+				if (indexed > 0) console.log(`[core] browse index synced from ${indexed} sidecars`);
+			}
+		},
+		{
+			name: 'guiding-track backfill',
 			// Set ENCORE_VOCALS_BACKFILL=0 to skip.
-			if (process.env.ENCORE_VOCALS_BACKFILL !== '0') {
+			enabled: () => process.env.ENCORE_VOCALS_BACKFILL !== '0',
+			run: async () => {
+				// Link the vocals stem for songs cooked while the core was dropping that artifact. Pure
+				// filesystem work — no job, no worker, no cpu — so unlike the lyrics backfill there is nothing
+				// to queue and nothing for a singer's live cook to compete with. A silent stem is counted and
+				// deliberately NOT linked: see media/loudness.ts.
 				const probe = ffmpegLoudnessProbe();
 				const res = await backfillVocalsRefs(mediaById.values(), {
 					resolve: (ref) => safeMediaPath(ref),
@@ -297,13 +322,16 @@ export function getApp(): EncoreApp {
 					console.log(`[core] guiding track: ${res.missing} cooked song(s) have no vocals stem on disk (re-cook to add one)`);
 				}
 			}
-
-			// ── lyrics backfill ──────────────────────────────────────────────────────
-			// Songs cooked before the align pipeline existed have no align job and no way to get one, so the library's
-			// existing catalog would never gain lyrics. Enqueued at the LOWEST priority so a singer's
-			// live cook always jumps the whole backfill queue, and dedup on (mediaId, jobType) makes a
-			// restart idempotent. Set ENCORE_LYRICS_BACKFILL=0 to skip (e.g. mid-party on a slow box).
-			if (process.env.ENCORE_LYRICS_BACKFILL !== '0') {
+		},
+		{
+			name: 'lyrics backfill',
+			// Set ENCORE_LYRICS_BACKFILL=0 to skip (e.g. mid-party on a slow box).
+			enabled: () => process.env.ENCORE_LYRICS_BACKFILL !== '0',
+			run: async () => {
+				// Songs cooked before the align pipeline existed have no align job and no way to get one, so
+				// the library's existing catalog would never gain lyrics. Enqueued at the LOWEST priority so a
+				// singer's live cook always jumps the whole backfill queue, and dedup on (mediaId, jobType)
+				// makes a restart idempotent.
 				const need = needsLyricsBackfill(mediaById.values());
 				for (const id of need) {
 					jobs.enqueue(id, 'align', BACKFILL_PRIORITY, Date.now());
@@ -317,14 +345,16 @@ export function getApp(): EncoreApp {
 					app.workerHub.dispatch();
 				}
 			}
-
-			// ── retention ────────────────────────────────────────────────────────────
-			// 1. Recompress legacy stems in place. Songs cooked before the audio policy carry WAV
-			//    stems ~8x larger than a cook produces today; the bytes are already here, so this needs
-			//    no download and no Demucs run, and the song never leaves the library. Eviction would
-			//    have been the wrong tool: it would drop those songs until re-cooked.
-			const targets = planRecompress(mediaRepo.all());
-			if (targets.length > 0) {
+		},
+		{
+			name: 'recompress legacy stems',
+			run: async () => {
+				// Recompress legacy stems in place. Songs cooked before the audio policy carry WAV stems ~8x
+				// larger than a cook produces today; the bytes are already here, so this needs no download and
+				// no Demucs run, and the song never leaves the library. Eviction would have been the wrong
+				// tool: it would drop those songs until re-cooked.
+				const targets = planRecompress(mediaRepo.all());
+				if (targets.length === 0) return;
 				const rc = await recompressLegacyStems(targets, ffmpegTranscoder());
 				// Always report: a pass that converted NOTHING and failed everything must not look
 				// identical to a pass that had nothing to do.
@@ -344,11 +374,15 @@ export function getApp(): EncoreApp {
 					}
 				}
 			}
-
-			// 2. Evict derived artifacts if over the soft cap. Unset by default — a party box must not
-			//    silently delete. `audio/` and `meta/` are never candidates.
-			const cap = retentionCapBytes();
-			if (cap !== null) {
+		},
+		{
+			name: 'derived eviction',
+			// Unset by default — a party box must not silently delete.
+			enabled: () => retentionCapBytes() !== null,
+			run: async () => {
+				// Evict derived artifacts if over the soft cap. `audio/` and `meta/` are never candidates.
+				const cap = retentionCapBytes();
+				if (cap === null) return;
 				const ready = mediaRepo.listReady();
 				const candidates = ready.map((m) => ({ mediaId: m.id, derivedBytes: derivedBytesOf(m), lastUsedAt: 0 }));
 				// recency comes from the sidecar: lastPlayedAt (wired via plays.ts), else addedAt for never-played
@@ -385,13 +419,12 @@ export function getApp(): EncoreApp {
 					console.log(`[core] retention: evicted derived artifacts for ${doomed.length} songs, freed ${(freed / 1e6).toFixed(1)} MB (cap ${(cap / 1e9).toFixed(1)} GB)`);
 				}
 			}
-		})
-		.catch((err) => {
-			// Best effort — the DB index is still enough to run a party. But SAY SO: a silent catch here
-			// hid a whole retention pass that never ran, and "nothing happened" is indistinguishable
-			// from "nothing needed to happen" without this line.
-			console.warn(`[core] library maintenance pass failed: ${(err as Error)?.message ?? err}`);
-		});
+		}
+	];
+
+	// Detached: boot must not wait on it. Per-pass isolation lives in runBootMaintenance — one pass's
+	// failure is named and does not skip the rest (issue #446 defect 1).
+	void runBootMaintenance(bootTasks, (msg) => console.warn(`[core] ${msg}`));
 
 	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
 	// server.ts can replace the real socket map at boot without rebuilding the hub.

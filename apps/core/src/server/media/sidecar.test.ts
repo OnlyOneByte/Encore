@@ -187,6 +187,34 @@ describe('sidecar I/O and index rebuild', () => {
 		}
 	});
 
+	it('a PARTIAL sidecar (only `id`) fails the shape check — a hand edit must not throw a boot pass (#446 defect 2)', async () => {
+		// Hand-editing meta/<id>.json is the design (writeSidecar is pretty-printed on purpose). A hand
+		// edit that keeps only the id — the shape `{"id":"m1"}` — used to PASS readSidecar's id-only check,
+		// then throw deep inside a boot maintenance pass (mediaFromSidecar reads s.origin/raw/canonical,
+		// the browse-sync pass reads s.canonical.genre, retention reads s.library) — and with no per-pass
+		// isolation that one throw aborted backfill, lyrics AND retention behind one silent warn. Require
+		// the sections its consumers dereference, down the existing warn-and-return-null path.
+		const warnings: string[] = [];
+		const orig = console.warn;
+		console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+		try {
+			await writeSidecar(sidecarFromMedia(media(), NOW));
+			await Bun.write(join(root, 'meta', 'm1.json'), JSON.stringify({ id: 'm1' }));
+			const got = await readSidecar('m1');
+			expect(got).toBeNull(); // NOT the partial object
+			expect(warnings.length).toBe(1);
+			expect(warnings[0]).toContain('shape check');
+		} finally {
+			console.warn = orig;
+		}
+	});
+
+	it('mediaFromSidecar throws on the partial shape readSidecar now rejects — proving the rejection matters (#446 defect 2)', () => {
+		// This is what USED to run when readSidecar returned the partial: a dereference of a missing
+		// section. It documents why widening the predicate is the fix — the partial is genuinely unusable.
+		expect(() => mediaFromSidecar({ id: 'm1' } as unknown as MediaSidecar)).toThrow();
+	});
+
 	it('writeSidecar is atomic: it leaves no temp file behind and readback is complete', async () => {
 		const { readdirSync } = await import('node:fs');
 		const s = sidecarFromMedia(media(), NOW);
