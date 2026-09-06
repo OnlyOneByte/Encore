@@ -11,7 +11,6 @@
 	// unreachable by keyboard and screen reader.
 	import type { Snippet } from 'svelte';
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
-	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {
 		open: boolean;
@@ -137,15 +136,15 @@
 				<span class="time r">{formatRemaining(elapsedSec, durationSec)}</span>
 			</div>
 		{/if}
-		<!-- The chevron already says which way this moves, and the grip already reads as draggable, so
-		     spelling out "pull up"/"pull down to close" was redundant. The COUNT is kept: that is
-		     information you cannot get from the affordance. The instruction survives for screen
-		     readers in the button's aria-label above. -->
+		<!-- The grip reads as draggable and the whole peek is a button, so spelling out "pull up"/"pull
+		     down to close" — and the up/down chevron that echoed it — was redundant (#253). The COUNT is
+		     kept: that is information you cannot get from the affordance. A screen reader reaches the same
+		     action through the peek button's aria-label above, which names what it does ("Show the queue"/
+		     "Collapse the queue") rather than a pull direction. -->
 		<div class="hint">
 			<!-- "in the rotation" was hardcoded, and is wrong for a room on first-come-first-served or
 			     shuffle. "waiting" is true under every ordering and needs no prop. -->
 			{#if !open && queueCount > 0}{queueCount} waiting{/if}
-			<span class="chev" class:up={!open}><Icon name="chevron-down" /></span>
 		</div>
 	</div>
 
@@ -203,14 +202,6 @@
 		font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
 		color: var(--ink-dim); margin-top: 9px;
 	}
-	/*
-	 * Base state is OPEN, where the chevron points down ("push down to close"). Collapsed adds .up and
-	 * flips it to point up ("pull up"). The rotations are the inverse of what they were, because the
-	 * glyph this replaced (U+2303) pointed UP at rest while the mark points DOWN at rest — same
-	 * on-screen behaviour, opposite starting geometry.
-	 */
-	.chev { display: inline-block; transition: transform 0.28s ease; transform: rotate(0deg); }
-	.chev.up { transform: rotate(180deg); }
 	.body { overflow-y: auto; padding: 4px 14px calc(20px + env(safe-area-inset-bottom, 0px)); -webkit-overflow-scrolling: touch; }
 	/* keep the collapsed sheet from eating taps meant for the page behind it */
 	.sheet:not(.open) .body { pointer-events: none; }

@@ -19,15 +19,12 @@
 
 	const shown = $derived(Math.max(0, Math.min(100, Math.round(pct))));
 	const valueLabel = $derived(!available || shown === 0 ? 'Off' : `${shown}%`);
-	// Two states, not three. The override-vs-room-default narration ("Set for this song. The room
-	// default is N%.") was removed as redundant: the value readout above already says what the level
-	// IS, and where it came from is a Settings concern, not something to narrate on the performance
-	// surface every time a singer nudges the slider. What survives is the only line that tells the
-	// guest something the control cannot: why it is dead, and what it does.
+	// The hint narrates only what the control DOES. The out-of-place "No isolated vocals for this song
+	// yet" line (#253) was removed: when the control is disabled the greyed-out slider and "Off" readout
+	// already say it is dead, and telling a singer to re-cook a song from the performance surface was
+	// noise. So the hint is empty when unavailable and otherwise explains the effect.
 	const hint = $derived(
-		!available
-			? 'No isolated vocals for this song yet. Re-cook it to get a guiding track.'
-			: "Fades the original singer back in, quietly, for a song you don't quite know."
+		available ? "Fades the original singer back in, quietly, for a song you don't quite know." : ''
 	);
 </script>
 
@@ -49,7 +46,7 @@
 		oninput={(e) => oninput?.(Number(e.currentTarget.value))}
 		onchange={(e) => oncommit?.(Number(e.currentTarget.value))}
 	/>
-	<p class="gt-hint">{hint}</p>
+	{#if hint}<p class="gt-hint">{hint}</p>{/if}
 </div>
 
 <style>
