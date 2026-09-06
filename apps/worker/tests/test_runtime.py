@@ -549,6 +549,18 @@ async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(m
     except (asyncio.CancelledError, asyncio.TimeoutError):
         pass
 
+    # The generator itself must have SETTLED, not merely the thread. `finished` is set by the worker
+    # thread (slow_ml), so it goes True after 0.4s whether or not run_blocking ever returned — a
+    # cleanup that hangs forever (e.g. the 2nd-cancel handler failing to fall back into the loop) leaves
+    # the thread to finish on its own while the generator never unwinds. Assert the generator actually
+    # returned so a never-returning cleanup reds this test instead of passing on the thread's coattails:
+    # if aclose never settles, _run_job's finally never frees the slot and drain(cancel=True) hangs the
+    # reconnect. The bounded wait_for above already gave it 2.0s (>> the 0.4s thread), so on the fix
+    # close_task is done here; under a non-settling regression it is still pending.
+    assert close_task.done(), (
+        "run_blocking never returned at all on a SECOND cancel — the cleanup did not settle, so "
+        "_run_job's finally never frees the slot and drain(cancel=True) hangs the reconnect loop"
+    )
     assert finished.is_set(), (
         "run_blocking returned on a SECOND cancel while its thread was still running — the swallowed "
         "CancelledError freed the slot for capacity that does not exist (double-run / slot leak)"
