@@ -44,23 +44,30 @@ export const MAX_CONCURRENT_COOKS_PER_SINGER = 3;
 /**
  * How many DISTINCT songs this singer currently has cooking — the bound FIX 2 enforces.
  *
- * A cook is attributed to a singer through their queue entries: the cook-and-queue flow queues a song
- * before cooking it, so a singer's in-flight cooks are the cooking media among the entries they
- * authored. Counts distinct mediaIds (two entries for the same song are one cook, matching dedup) and
- * only those still cooking (stemStatus 'queued' and not yet playable — a finished cook no longer
- * counts against the bound). `exclude` drops the media being requested so a re-tap of a song already
- * cooking is never counted against its own owner.
+ * A cook is attributed to a singer through the JOB LEDGER — the thing actually being bounded — not
+ * through their queue entries. WHY THIS CHANGED: the queue entry (WebSocket) and the cook (HTTP) ride
+ * different transports and only the entry is droppable. A phone that taps Sing while its socket is
+ * reconnecting buffers the add client-side but the cook POST still lands, so an entry-derived count
+ * saw ZERO in-flight cooks and admitted every tap — a guest could bypass the cap entirely by tapping
+ * during any reconnect window (first connect, every backoff redial, mobile freeze/resume). The
+ * repository attributes each cook to its requester at enqueue and counts distinct cooking media from
+ * the ledger, which does not depend on the second transport. `exclude` drops the media being
+ * requested so a re-tap of a song already cooking is never counted against its own owner.
  */
 export function countInFlightCooks(
 	singerId: string,
-	deps: Pick<MakeKaraokeDeps, 'mediaById' | 'state'>,
+	deps: Pick<MakeKaraokeDeps, 'jobs' | 'mediaById'>,
 	exclude?: string
 ): number {
 	const cooking = new Set<string>();
-	for (const e of deps.state.entries) {
-		if (e.singerId !== singerId || e.mediaId === exclude) continue;
-		const media = deps.mediaById.get(e.mediaId);
-		if (media && media.stemStatus === 'queued' && !isCooked(media)) cooking.add(e.mediaId);
+	for (const mediaId of deps.jobs.liveCookMediaForSinger(singerId)) {
+		if (mediaId === exclude) continue;
+		const media = deps.mediaById.get(mediaId);
+		// A finished cook no longer costs the worker fleet — drop it, mirroring the old !isCooked rule.
+		// (In production the stems job reaching `ready` and the media flipping ready coincide, so the
+		// ledger filter above usually suffices; this keeps the count honest if they briefly diverge.)
+		if (media && isCooked(media)) continue;
+		cooking.add(mediaId);
 	}
 	return cooking.size;
 }
@@ -105,7 +112,7 @@ export type CookState =
 
 export function cookState(
 	mediaId: string,
-	deps: Pick<MakeKaraokeDeps, 'mediaById' | 'state'>,
+	deps: Pick<MakeKaraokeDeps, 'mediaById' | 'state' | 'jobs'>,
 	singerId?: string
 ): CookState {
 	const media = deps.mediaById.get(mediaId);
@@ -153,7 +160,9 @@ export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps, singe
 	// A local file skips straight to separation — there is nothing to download, and enqueueing a fetch
 	// for it would need a worker capability no fetcher advertises.
 	const first: JobType = needsFetch(media.source, deps.getSettings?.()?.defaultFetcher) ? 'fetch' : 'stems';
-	const job = deps.jobs.enqueue(mediaId, first, priority, deps.now());
+	// Attribute this cook to its requester so the per-singer cap counts it from the ledger even when
+	// the singer's queue add was dropped over a reconnecting socket (the bypass this fix closes).
+	const job = deps.jobs.enqueue(mediaId, first, priority, deps.now(), undefined, singerId);
 	// The dedup index treats a `ready` job as live, so enqueue can hand back a COMPLETED job (the
 	// stems exist, but this media object lost its ready flags — e.g. a runtime catalog entry that
 	// was rebuilt from a stub). Leaving the media `queued` against a job that will never run again

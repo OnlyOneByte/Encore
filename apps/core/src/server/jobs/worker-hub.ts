@@ -262,7 +262,16 @@ export class WorkerHub {
 		for (const next of followUps(job.jobType, settings)) {
 			// A chained step continues THIS cook so the song's end-to-end duration spans the whole run;
 			// `stems-upgrade` deliberately starts its own (see inheritsCook).
-			this.#d.jobs.enqueue(job.mediaId, next, job.priority, this.#d.now(), inheritsCook(next) ? job.cookId : undefined);
+			// Inherit the requester too: a follow-up of the SAME cook keeps its attribution; a new-cook
+			// step (stems-upgrade) is background work and stays unattributed, imposing no per-singer cap.
+			this.#d.jobs.enqueue(
+				job.mediaId,
+				next,
+				job.priority,
+				this.#d.now(),
+				inheritsCook(next) ? job.cookId : undefined,
+				inheritsCook(next) ? (job.singerId ?? undefined) : undefined
+			);
 			// Name the step the song is now waiting on, so the phone's cooking line can say "Timing
 			// lyrics" instead of leaving a finished separation looking idle.
 			if (next === 'align') markLyricsQueued(job.mediaId, this.#d.mediaById);

@@ -51,8 +51,12 @@ export class JobRepository {
 	 * `cookId` threads an existing cook through a chained step (stems inherits fetch's cook). Omitted
 	 * = this job STARTS a cook and mints its own. Reusing an existing live job does not re-open an
 	 * attempt: the caller is subscribing to work already in flight, not causing new work.
+	 *
+	 * `singerId` attributes the cook to the requesting singer for the per-singer concurrent-cook cap
+	 * (`countLiveCooksForSinger`). Omitted by internal callers that impose no cap; a REUSED live job
+	 * keeps its original requester rather than being re-attributed to whoever tapped second.
 	 */
-	enqueue(mediaId: string, jobType: JobType, priority: number, now: number, cookId?: string): Job {
+	enqueue(mediaId: string, jobType: JobType, priority: number, now: number, cookId?: string, singerId?: string): Job {
 		const existing = this.findLive(mediaId, jobType);
 		if (existing) return existing;
 
@@ -60,6 +64,9 @@ export class JobRepository {
 			id: ulid(now),
 			mediaId,
 			cookId: cookId ?? ulid(now),
+			// Who this cook is attributed to for the per-singer cap. Omitted by internal callers
+			// (backfill, chained follow-up steps) which impose no cap.
+			singerId: singerId ?? null,
 			jobType,
 			status: 'queued',
 			priority,
@@ -208,6 +215,38 @@ export class JobRepository {
 		const job = this.transition(id, 'queued', { workerId: null, leaseExpiresAt: null, attempts }, now);
 		this.#ledger?.open(job, now);
 		return job;
+	}
+
+	/**
+	 * The DISTINCT media this singer has an in-flight cook JOB for — the ledger-backed attribution the
+	 * per-singer concurrent-cook cap is derived from.
+	 *
+	 * Returns the set of `mediaId`s with a live root-cook job (`fetch` or `stems`) attributed to this
+	 * singer, where "live" = the dedup-occupying statuses (everything except failed/canceled) MINUS
+	 * `ready`. Only the root steps count, never the chained follow-ups: `align`/`stems-upgrade` reuse
+	 * the same `singerId` but are downstream of a cook already admitted, so counting them would let one
+	 * admitted cook consume several cap slots as it advances.
+	 *
+	 * WHY THE LEDGER, NOT QUEUE ENTRIES. The cook (HTTP) and the queue entry (WebSocket) ride different
+	 * transports and only the entry is droppable. A phone that taps Sing while its socket is
+	 * reconnecting files the cook with NO entry, so an entry-derived count saw zero and admitted every
+	 * tap — the exact cap bypass this closes. The job ledger is the thing being bounded and does not
+	 * depend on the second transport. The caller drops media already marked ready (a finished cook no
+	 * longer costs the fleet) and the media being re-requested.
+	 */
+	liveCookMediaForSinger(singerId: string): Set<string> {
+		const rows = this.#db
+			.select({ mediaId: jobs.mediaId })
+			.from(jobs)
+			.where(
+				and(
+					eq(jobs.singerId, singerId),
+					inArray(jobs.jobType, ['fetch', 'stems']),
+					notInArray(jobs.status, [...SLOT_FREEING_STATUSES, 'ready'])
+				)
+			)
+			.all();
+		return new Set(rows.map((r) => r.mediaId));
 	}
 
 	/** Map a DB row to the shared Job (the row shape mirrors Job 1:1 — see schema.ts / shared types). */
