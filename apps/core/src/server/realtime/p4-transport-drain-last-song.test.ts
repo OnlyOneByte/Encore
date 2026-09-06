@@ -65,20 +65,81 @@ test('the single-cooked-song arm exists and contains the T6a no-current assertio
 	expect(ARM).toMatch(/currentEntryId\s*===\s*null/);
 });
 
-test('the single-cooked-song arm drains the queue with a skip LOOP before asserting no-current (#264)', () => {
-	// A drain loop: a `for` that reads currentEntryId, breaks when it is null, and skips otherwise.
-	// One arm alone would leave a room with an extra queued turn still current after the assertion.
-	expect(ARM).toMatch(/for\s*\([^)]*\)\s*\{[\s\S]*currentEntryId[\s\S]*break[\s\S]*clickByLabel\(\s*['"]skip['"]\s*\)[\s\S]*\}/);
+// Resolve the code that ACTUALLY drains the queue in the single-cooked arm, wherever it lives.
+// The drain may be written inline as a `for` loop in the arm, OR hoisted into a helper the arm
+// calls (a legal refactor — the multi-cooked arm runs the same drain, so factoring it out is the
+// obvious next edit and changes no behaviour). Pinning "a for-loop token sits in the arm" is wrong
+// on both faces: it survives a loop whose break is inverted so it drains NOTHING (#264 verbatim,
+// reached by a one-character edit), and it falsely reds a correct helper extraction. So we find the
+// drain body by structure — the arm's own loop if it has one, else the body of the single helper it
+// awaits — and assert the DRAIN SEMANTICS: it reads currentEntryId, clicks skip, and breaks on the
+// EXHAUSTED condition (`if (!id) break`), never on the PRESENT condition (`if (id) break`, which
+// exits on the first still-current entry and drains nothing).
+function drainBody(arm: string, whole: string): string {
+	// Case 1: the drain loop is inline in the arm.
+	const forIdx = arm.search(/for\s*\(/);
+	if (forIdx >= 0) {
+		// brace-match from the loop's opening `{`.
+		const open = arm.indexOf('{', forIdx);
+		expect(open).toBeGreaterThanOrEqual(0);
+		let depth = 0;
+		for (let i = open; i < arm.length; i++) {
+			const c = arm[i];
+			if (c === '{') depth++;
+			else if (c === '}') {
+				depth--;
+				if (depth === 0) return arm.slice(open + 1, i);
+			}
+		}
+		throw new Error('unbalanced braces in the arm drain loop');
+	}
+	// Case 2: no inline loop — the arm must call exactly one helper; follow it to its declaration.
+	const calls = [...arm.matchAll(/await\s+([A-Za-z_$][\w$]*)\s*\(/g)]
+		.map((m) => m[1])
+		// clickByLabel/readServerPlayback/sleep are not drains; the drain helper is a distinct name.
+		.filter((n) => !['sleep'].includes(n));
+	// Among the awaited names, find the one whose declaration contains a skip loop.
+	for (const name of calls) {
+		const decl = new RegExp(
+			`(?:async\\s+)?function\\s+${name}\\s*\\([^)]*\\)\\s*\\{|(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*=>\\s*\\{`
+		);
+		const dm = whole.match(decl);
+		if (!dm || dm.index === undefined) continue;
+		const open = whole.indexOf('{', dm.index + dm[0].length - 1);
+		if (open < 0) continue;
+		let depth = 0;
+		for (let i = open; i < whole.length; i++) {
+			const c = whole[i];
+			if (c === '{') depth++;
+			else if (c === '}') {
+				depth--;
+				if (depth === 0) {
+					const body = whole.slice(open + 1, i);
+					if (/clickByLabel\(\s*['"]skip['"]\s*\)/.test(body)) return body;
+					break;
+				}
+			}
+		}
+	}
+	throw new Error('single-cooked arm has neither an inline drain loop nor a resolvable drain helper');
+}
+
+const DRAIN = drainBody(ARM, PROBE);
+
+test('the single-cooked-song arm DRAINS the queue: reads currentEntryId, skips, breaks when empty (#264)', () => {
+	// Not vacuous: the drain body we resolved must actually skip and read the playhead.
+	expect(DRAIN).toMatch(/clickByLabel\(\s*['"]skip['"]\s*\)/);
+	expect(DRAIN).toMatch(/currentEntryId/);
+	// The loop must break on the EXHAUSTED condition — `if (!<id>) break` — so it keeps skipping
+	// until the room is empty. This is the invariant #264 requires: "skip the LAST song" means the
+	// queue is genuinely drained, not one skip issued.
+	expect(DRAIN).toMatch(/if\s*\(\s*!\s*[A-Za-z_$][\w$]*\s*\)\s*break/);
 });
 
-test('the single-cooked-song arm does NOT skip exactly once before asserting (#264 regression trap)', () => {
-	// The old shape was a bare `await phone1.clickByLabel('skip')` immediately followed by
-	// readServerPlayback + the T6a assert, with NO surrounding loop. Assert the skip that precedes
-	// the assertion is inside a loop by requiring the loop keyword to appear before the T6a record
-	// within this arm.
-	const loopIdx = ARM.search(/for\s*\(/);
-	const t6aIdx = ARM.indexOf("skip on the sole (last) song");
-	expect(loopIdx).toBeGreaterThanOrEqual(0);
-	expect(t6aIdx).toBeGreaterThanOrEqual(0);
-	expect(loopIdx).toBeLessThan(t6aIdx);
+test('the single-cooked-song drain does NOT break while an entry is still current (#264 false-safety trap)', () => {
+	// M5: inverting the break to `if (<id>) break` keeps the loop's SHAPE but drains NOTHING — it
+	// exits on the first iteration whenever an entry is current, which is exactly the state the loop
+	// exists to clear. currentEntryId is then still set at the T6a assertion and #264 fires verbatim.
+	// A break guarded by the bare (present) condition, with no negation, is the defect; ban it.
+	expect(DRAIN).not.toMatch(/if\s*\(\s*[A-Za-z_$][\w$]*\s*\)\s*break/);
 });
