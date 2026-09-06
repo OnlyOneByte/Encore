@@ -122,6 +122,40 @@ def test_tracker_on_silence_has_no_voiced_frames():
     assert vocal_range.summarize_range(frames)["lowMidi"] is None
 
 
+def test_tracker_on_noise_rejects_every_frame_via_the_clarity_term():
+    # Low-level noise is the reachable trigger the clarity gate exists for: breath, sibilants and
+    # separation bleed between sung lines are present in every real vocals stem. Unlike digital
+    # silence (which never reaches the clarity term — the energy<=0 guard returns f0=0.0, and 0.0
+    # fails the BAND half of the predicate), noise DOES reach it and is rejected ONLY by the clarity
+    # term. The band half rejects nothing here: the argmax lag of noise is arbitrary inside
+    # [min_lag, max_lag], and that interval IS the band, so every frame's f0 lands in [65, 1100] Hz.
+    # Deleting `clarity >= _CLARITY_THRESHOLD` from vocal_range.py's `voiced =` line makes all 40
+    # frames voiced and publishes a ~3.4-octave range built from breath — with the whole suite green.
+    sr = 22050
+    rng = np.random.default_rng(0)
+    noise = rng.standard_normal(sr) * 0.05  # ~1.0s, 40 frames at frame 2048 / hop 512
+    frames = vocal_range.extract_pitch_track(noise, sr)
+
+    assert len(frames) == 40, "expected 40 analysis frames from 1.0s at hop 512"
+    # No frame may be voiced: pure noise must never widen a vocal range.
+    assert all(not f.voiced for f in frames), "noise produced voiced frames — the clarity gate is not rejecting it"
+    # ...and the summary is fully null, the same all-null contract the silent-vocals path relies on.
+    assert vocal_range.summarize_range(frames) == {
+        "lowMidi": None,
+        "highMidi": None,
+        "p05Midi": None,
+        "p95Midi": None,
+        "histogram": None,
+    }
+
+    # Documents WHERE the rejection comes from: the clarity term, not the band. Every frame's f0 is
+    # in the singing band, so if the clarity term were deleted the band half would let all 40 through.
+    inband = [f for f in frames if vocal_range._FMIN_HZ <= f.f0_hz <= vocal_range._FMAX_HZ]
+    assert len(inband) == len(frames), "the band half rejects nothing here; the clarity term is the only gate"
+    # And clarity sits far below the threshold, so this is a decisive rejection, not a marginal one.
+    assert max(f.clarity for f in frames) < vocal_range._CLARITY_THRESHOLD
+
+
 # ── the autocorrelation is the FFT one, and still means the naive thing ──────────
 #
 # `_detect_f0` used `np.correlate(..., mode="full")` under a comment claiming it was an FFT. It is
