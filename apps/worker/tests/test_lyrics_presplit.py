@@ -3,6 +3,7 @@
 PURE: the upstream length-bounder is injected, so every case here runs with no karaoke-lyrics-processor
 installed and no network. One test exercises the real package when it IS present, and skips otherwise.
 """
+import re
 import sys
 from pathlib import Path
 
@@ -12,14 +13,58 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.lyrics import presplit as lp  # noqa: E402
 from src.lyrics.chain import (  # noqa: E402
+    MIN_TOKENS_TO_COMPARE,
     SOURCE_ASR,
     SOURCE_CAPTIONS,
     SOURCE_LRCLIB,
+    SUSPECT_AGREEMENT,
     TIMING_LINE,
     TIMING_WORD,
     LyricsText,
     is_authoritative_text,
 )
+
+# ── the TypeScript authority ─────────────────────────────────────────────────────────
+# The four values below are declared TWICE — once in TypeScript (the authority) and once in
+# Python (a hand-kept mirror; see the docstrings at chain.py:80 and chain.py:431). Nothing but
+# these tests keeps the copies in step. So they must read the TS SOURCE and cross-check the Python
+# constant against what the authority ACTUALLY declares today — asserting a Python literal only
+# proves Python equals itself, and every TS-side drift (the normal way any of these changes) stays
+# green on both suites. These read the .ts files as text (no node/tsc): a source-scan guard whose
+# production truth is the file it parses, so it cannot be defeated by reverting a hunk.
+_REPO = Path(__file__).resolve().parents[3]
+_TV_LYRICS_TS = _REPO / "apps" / "core" / "src" / "lib" / "tv" / "lyrics.ts"
+_SHARED_LYRICS_TS = _REPO / "packages" / "shared" / "src" / "lyrics.ts"
+
+
+def _ts_number(src_path: Path, name: str) -> float:
+    """Extract the numeric literal an `export const <name> = <n>;` declares in a .ts file."""
+    text = src_path.read_text(encoding="utf-8")
+    m = re.search(rf"export const {re.escape(name)}\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*;", text)
+    assert m, f"could not find `export const {name} = <number>;` in {src_path.name}"
+    return float(m.group(1))
+
+
+def _ts_is_authoritative(text_source: str, text_confidence: str) -> bool:
+    """Evaluate the TS `isAuthoritativeText` body against Python inputs by parsing its two guards.
+
+    Parses `return c.textSource !== '<x>' && c.textConfidence !== '<y>';` and reconstructs the
+    boolean, so a change to EITHER operand or the shape of the expression reds this test.
+    """
+    text = _SHARED_LYRICS_TS.read_text(encoding="utf-8")
+    body = re.search(
+        r"export function isAuthoritativeText\([^)]*\)\s*:\s*boolean\s*\{\s*"
+        r"return\s+c\.textSource\s*!==\s*'([^']+)'\s*&&\s*c\.textConfidence\s*!==\s*'([^']+)'\s*;\s*\}",
+        text,
+    )
+    assert body, (
+        "isAuthoritativeText in packages/shared/src/lyrics.ts no longer matches the mirrored shape "
+        "`c.textSource !== '<x>' && c.textConfidence !== '<y>'` — the Python mirror in chain.py must "
+        "be updated to match the new definition and this parser taught the new shape"
+    )
+    forbidden_source, forbidden_confidence = body.group(1), body.group(2)
+    return text_source != forbidden_source and text_confidence != forbidden_confidence
+
 
 # A synthetic one-line blob, shaped like what whisper `transcribe()` returns: several lyric lines run
 # together. Original text, not a real song.
@@ -36,10 +81,29 @@ def passthrough(lines, max_chars):
 
 # ── the gate: only auto-transcribed text is touched ──────────────────────────────────
 def test_is_authoritative_text_mirrors_the_ts_predicate():
+    # Cross-check the Python mirror against the TS AUTHORITY's actual body, not against literals.
+    # Every combination the two axes can take (source in {lrclib, captions, asr} × confidence in
+    # {high, medium, low}) must give the SAME answer on both sides, so tightening OR loosening the
+    # TS predicate reds this test.
+    for source in (SOURCE_LRCLIB, SOURCE_CAPTIONS, SOURCE_ASR):
+        for confidence in ("high", "medium", "low"):
+            assert is_authoritative_text(source, confidence) == _ts_is_authoritative(source, confidence), (
+                f"Python is_authoritative_text disagrees with the TS authority for "
+                f"source={source!r}, confidence={confidence!r} — the two have drifted"
+            )
+    # And the known-truth rows still hold, so a bug that broke BOTH sides identically is still caught.
     assert is_authoritative_text(SOURCE_LRCLIB, "high")
     assert is_authoritative_text(SOURCE_CAPTIONS, "medium")  # a real human caption track
     assert not is_authoritative_text(SOURCE_ASR, "high")  # ASR is never authoritative, however sure
     assert not is_authoritative_text(SOURCE_CAPTIONS, "low")  # auto-captions: ASR wearing a caption hat
+
+
+def test_agreement_thresholds_mirror_the_ts_authority():
+    # MIN_TOKENS_TO_COMPARE / SUSPECT_AGREEMENT are declared authoritative in packages/shared/src/
+    # lyrics.ts (chain.py:431 calls itself their mirror) but nothing cross-checked them. Read the TS
+    # values and assert the Python copies equal them, so a threshold change on the authority side reds.
+    assert MIN_TOKENS_TO_COMPARE == _ts_number(_SHARED_LYRICS_TS, "MIN_TOKENS_TO_COMPARE")
+    assert SUSPECT_AGREEMENT == _ts_number(_SHARED_LYRICS_TS, "SUSPECT_AGREEMENT")
 
 
 def bound_only(lines, max_chars):
@@ -366,8 +430,11 @@ def test_a_raising_upstream_degrades_to_the_unbounded_lines(monkeypatch):
 
 
 def test_max_line_chars_mirrors_the_tv_row_width():
-    # LINE_MAX_CHARS in apps/core/src/lib/tv/lyrics.ts. Explicitly NOT upstream's default of 36.
-    assert lp.MAX_LINE_CHARS == 42
+    # LINE_MAX_CHARS in apps/core/src/lib/tv/lyrics.ts is the authority (the TV row width the worker
+    # bounds cook-time lines to). Read it from the TS source and assert the worker constant equals it,
+    # so narrowing the TV row on the authority side reds here instead of silently re-splitting at
+    # display time. Explicitly NOT upstream's default of 36.
+    assert lp.MAX_LINE_CHARS == _ts_number(_TV_LYRICS_TS, "LINE_MAX_CHARS")
 
 
 # ── the real package, when installed ─────────────────────────────────────────────────
