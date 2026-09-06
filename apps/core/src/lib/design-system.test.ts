@@ -408,3 +408,65 @@ test('a route page block that caps its width also centres it under the app-shell
 	expect(checked).toBeGreaterThanOrEqual(3);
 	expect(offences).toEqual([]);
 });
+
+test('a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets (#301)', () => {
+	// THE BUG THIS EXISTS FOR (#301). QueueSheet's `.peek` is `role="button"` + `tabindex="0"` and
+	// RENDERS the transport snippet (`controls`) inside itself — the three real <button>s (restart /
+	// play-pause / skip) are the app's only transport. The peek's onkeydown handled Enter/Space/arrows
+	// with an unconditional `e.preventDefault()`, so a keypress that BUBBLED UP from a focused transport
+	// button was cancelled and toggled the sheet instead of activating the button. A keyboard, switch,
+	// or Bluetooth-keyboard guest could reach the transport but never fire it.
+	//
+	// The pointer path already guards its target at onPointerDown (`closest('button.no-drag')`); the
+	// keydown path had no equivalent. The fix mirrors it with an IDENTITY test — `if (e.target !==
+	// e.currentTarget) return;` — which the issue prescribes over a class test because the peek only
+	// ever wants keys it originated itself, and an identity check cannot rot when a caller forgets a
+	// class. This is a source scan: bun:test has no layout/event engine, the e2e probes are unwired
+	// live scripts, and the issue's own mutation signal is "restore :109-112 to the unconditional form
+	// → red". Comments are stripped first so the rationale prose above/below cannot satisfy or trip it.
+	const offences: string[] = [];
+	let scanned = 0;
+
+	for (const f of svelteFiles(SRC)) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		// Only the risky shape is in scope: a keydown handler whose body calls preventDefault(). A
+		// handler that never cancels the event cannot swallow a nested control's activation.
+		for (const m of src.matchAll(/onkeydown=\{\(?\s*(\w+)\s*\)?\s*=>\s*\{/g)) {
+			const evName = m[1]!; // the event parameter's local name (e, ev, …)
+			// Capture the arrow-body via a brace-depth walk from the `{` after `=>`.
+			const open = src.indexOf('{', m.index! + m[0].length - 1);
+			let depth = 0;
+			let end = -1;
+			for (let i = open; i < src.length; i++) {
+				if (src[i] === '{') depth++;
+				else if (src[i] === '}') {
+					depth--;
+					if (depth === 0) { end = i; break; }
+				}
+			}
+			if (end === -1) { offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: unbalanced onkeydown body`); continue; }
+			// Strip // line comments from the body too: the rationale comment on the fixed handler
+			// mentions preventDefault()/e.target in prose, which would otherwise skew the index checks
+			// below. (design-system's stripComments only removes /* */ and <!-- -->.)
+			const body = src.slice(open + 1, end).replace(/\/\/[^\n]*/g, '');
+			if (!body.includes('preventDefault(')) continue; // this handler never cancels — not in scope
+			scanned++;
+			// The guard clause must be a target-identity early-return, and it must sit BEFORE the first
+			// preventDefault() so a foreign target is dropped before anything is cancelled.
+			const guardRe = new RegExp(`if\\s*\\(\\s*${evName}\\.target\\s*!==\\s*${evName}\\.currentTarget\\s*\\)\\s*return\\b`);
+			const guardIdx = body.search(guardRe);
+			const pdIdx = body.indexOf('preventDefault(');
+			if (guardIdx === -1) {
+				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: onkeydown preventDefault()s but never early-returns on ${evName}.target !== ${evName}.currentTarget — a nested control's Enter/Space is swallowed (#301)`);
+			} else if (guardIdx > pdIdx) {
+				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: the ${evName}.target identity guard sits AFTER preventDefault() — move it first so a foreign target is dropped before the event is cancelled (#301)`);
+			}
+		}
+	}
+
+	// Non-vacuous: the QueueSheet peek is exactly such a handler, so the scan must have examined at
+	// least one. If a refactor removes the last preventDefault()ing keydown this drops to 0 and the
+	// assertion below fails loudly rather than passing on an empty set.
+	expect(scanned).toBeGreaterThanOrEqual(1);
+	expect(offences).toEqual([]);
+});

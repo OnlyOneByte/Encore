@@ -107,6 +107,12 @@
 		onpointerup={endDrag}
 		onpointercancel={endDrag}
 		onkeydown={(e) => {
+			// A nested control (the transport buttons in `controls`) owns its own keys. Mirror the
+			// pointer path's target guard at onPointerDown (cf. `closest('button.no-drag')`): here an
+			// IDENTITY test is correct and cannot rot, because the peek only ever wants Enter/Space/
+			// arrows it originated itself. Without this, `preventDefault()` cancels a focused transport
+			// button's own Enter/Space activation and toggles the sheet instead (#301).
+			if (e.target !== e.currentTarget) return;
 			if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle?.(!open); }
 			if (e.key === 'ArrowUp') { e.preventDefault(); ontoggle?.(true); }
 			if (e.key === 'ArrowDown') { e.preventDefault(); ontoggle?.(false); }
