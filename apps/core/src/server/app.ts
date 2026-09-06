@@ -15,7 +15,7 @@ import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
 import { ytDlpSearch } from './media/ytdlp';
 import { MediaRepository, hydrateMediaCatalog } from './media/repository';
-import { migrateStorageLayout, cleanJobWork } from './media/migrate-layout';
+import { migrateStorageLayout } from './media/migrate-layout';
 import {
 	retentionCapBytes,
 	planRecompress,
@@ -31,7 +31,7 @@ import { backfillVocalsRefs } from './media/vocals-backfill';
 import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
 import { existsSync } from 'node:fs';
-import { markLyricsQueued, settleGatesForFailedJob } from './jobs/make-karaoke';
+import { markLyricsQueued, reportTerminalFailure } from './jobs/make-karaoke';
 import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, lookupTitle, readAllSidecars } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -42,7 +42,6 @@ import { PlayLog } from './media/play-log';
 import { JobReaper } from './jobs/reaper';
 import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
-import { mediaStatusFor, shouldBroadcastCook } from './jobs/media-status';
 import { reconcileOnReady } from './realtime/player';
 import { orderingOf, syncEvent } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
@@ -483,36 +482,12 @@ export function getApp(): EncoreApp {
 		// room is told nothing, so every phone that watched it cook stays pinned on "Making karaoke… N%"
 		// with no Sing button, for the life of the page (displayReadiness lets the last live event win,
 		// and no user action — not removing the song, not queue:sync — ever clears it).
-		onFailed: (job) => {
-			// 1. Settle the readiness gate so readyToSing can flip and rotation stops holding the entry
-			//    (issue #90 — the half this hook already did).
-			settleGatesForFailedJob(job, mediaById);
-			// 2. Broadcast media:status so the watching phone leaves 'cooking' → 'failed' (Sing returns)
-			//    and the #68 reload-recovery scar is recorded. mediaStatusFor(failedJob) returns 'failed'.
-			//    Gate on shouldBroadcastCook so a dead `stems-upgrade` on an already-singable song does
-			//    not flip every ready row back to "Making karaoke" — the same guard #emitStatus applies.
-			const media = mediaById.get(job.mediaId);
-			if (shouldBroadcastCook(job, media)) {
-				app.publish({
-					type: 'media:status',
-					mediaId: job.mediaId,
-					status: mediaStatusFor(job),
-					pct: job.progressPct,
-					etaSec: job.etaSec ?? undefined
-				});
-			}
-			// 3. One operator log line naming the media and reason — the reaper/leases contain no
-			//    console.* at all, so a reaper-killed cook is otherwise unrecorded outside the jobs table
-			//    (the #onFailed path argues the same at worker-hub.ts:307-309).
-			console.warn(
-				`[core] reaper killed job ${job.id} (${job.jobType}) for media ${job.mediaId} after ` +
-					`${job.attempts} attempt(s): ${job.error ?? 'attempts exhausted'}`
-			);
-			// 4. Reclaim the job's scratch — its work/<jobId>/ holds a decoded source plus both stems and
-			//    nothing resumes from it (worker-hub.ts does the same on its terminal paths). cleanJobWork
-			//    is a no-op when the dir is absent (a remote worker's scratch the core never had).
-			cleanJobWork(job.id);
-		}
+		// The reaper has no catalog and no #emitStatus, which is why this hook used to hand-reimplement
+		// the whole epilogue and drift from the two worker-hub copies (issue #303 shipped it SILENT).
+		// It now calls the one shared epilogue directly — settle the gate (#90), tell the room, log one
+		// uniform line, reclaim scratch — with `cause: 'reaper'` so the operator can still grep this
+		// path apart (issue #451).
+		onFailed: (job) => reportTerminalFailure(job, 'reaper', { broadcast: (e) => app.publish(e), mediaById })
 	});
 	// Boot recovery (§3): a core restart drops every worker WS session, so any job still marked
 	// assigned/running is orphaned — reset it to queued for redispatch. One-shot, before the tick

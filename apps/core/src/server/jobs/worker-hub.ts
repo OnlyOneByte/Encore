@@ -30,7 +30,7 @@ import {
 	setMediaSongProfile,
 	applyAnnotation,
 	settleLyricsGate,
-	settleGatesForFailedJob,
+	reportTerminalFailure,
 	markLyricsQueued
 } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
@@ -363,23 +363,15 @@ export class WorkerHub {
 			this.dispatch();
 		} else {
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
-			cleanJobWork(msg.jobId); // terminal: nothing will resume from this scratch
 			// A permanently failed cook must not hold the song hostage. Now that singing waits for the
 			// stems/lyrics gates, leaving one unsettled means a single broken step — a worker OOM, a
 			// model that will not load — makes the song unsingable forever, with no way out but a manual
-			// DB edit. Settle the right gate for this job type and let the party continue; the failure
-			// reaches the room via #emitStatus below, and the line logged just below records why. The
-			// per-type rule lives in settleGatesForFailedJob so the TTL and reaper paths settle
-			// identically (see issue #90) — a fourth fail path cannot reopen the hole.
-			settleGatesForFailedJob(job, this.#d.mediaById);
-			// LOG a terminal failure. A dead `align` job is otherwise completely silent — the song still
-			// plays, it just never gets lyrics and nothing anywhere says why. The operator needs one line
-			// naming the media and the reason, since the jobs table is the only other record.
-			console.warn(
-				`[core] job ${msg.jobId} (${job.jobType}) FAILED permanently after ${attempts} attempt(s) ` +
-					`for media ${job.mediaId}: ${msg.error}`
-			);
-			this.#emitStatus(updated);
+			// DB edit. The terminal-failure epilogue (settle the right gate, tell the room, log one line,
+			// reclaim scratch) is the SAME on all three fail paths (this one, the unservable-TTL branch,
+			// and the reaper hook in app.ts), so it lives in ONE place — reportTerminalFailure (issue
+			// #451). settleGatesForFailedJob (#90) is step 1 of it; a fourth fail path cannot reopen the
+			// hole because there is no longer a fourth copy to drift.
+			reportTerminalFailure(updated, 'worker', { broadcast: (e) => this.#d.broadcast(e), mediaById: this.#d.mediaById });
 		}
 	}
 
@@ -419,16 +411,12 @@ export class WorkerHub {
 						`no connected worker advertised capability '${cap}' within ${Math.round(UNSERVABLE_TTL_MS / 1000)}s`,
 						now
 					);
-					// Settle the gate for this now-terminal cook exactly as #onFailed does — otherwise an
-					// unservable align/fetch/stems leaves its gate mid-flight forever, so readyToSing never
-					// flips and rotation holds the queue entry on every pass (issue #90).
-					settleGatesForFailedJob(job, this.#d.mediaById);
 					this.#unservableSince.delete(job.id); // terminal now — prune so the id cannot leak
-					console.warn(
-						`[hub] job ${job.id} (${job.jobType}) FAILED: unservable for ${Math.round((now - since) / 1000)}s ` +
-							`(needs capability '${cap}', no connected worker ever advertised it)`
-					);
-					this.#emitStatus(updated);
+					// Same terminal-failure epilogue as #onFailed and the reaper hook: settle the gate (else an
+					// unservable align/fetch/stems leaves its gate mid-flight forever so readyToSing never
+					// flips, #90), tell the room, log one uniform line (the capability rides in the job's
+					// `reason`), and reclaim scratch — which this branch used to OMIT (issue #451).
+					reportTerminalFailure(updated, 'unservable', { broadcast: (e) => this.#d.broadcast(e), mediaById: this.#d.mediaById });
 				}
 				continue; // already warned this stall; nothing else to do until the TTL fires
 			}
