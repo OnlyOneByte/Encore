@@ -54,6 +54,38 @@ describe('attempt ledger — the four clocks', () => {
 		expect(a.assignedAt).toBeNull();
 		expect(a.startedAt).toBeNull(); // 0 here would invent work that never ran
 		expect(a.outcome).toBe('canceled');
+	});
+
+	it('rates an attempt that was assigned then abandoned before accept as null, not the epoch over the song', () => {
+		// Regression: realtimeFactor's FIRST guard (startedAt === null) is the sole one that catches an
+		// attempt with a known audioSec but no start clock. audioSec is stamped at assign (worker-hub
+		// dispatch), startedAt only at accept — so an assign→seal-without-accept lands in exactly that
+		// state. Without this case the length guard (audioSec falsy) masks it, and a deleted clock guard
+		// divides the whole epoch by the song length: ~9.4M× on the audit page for an abandoned row.
+		const { jobs, ledger } = wired();
+		const job = jobs.enqueue('m1', 'stems', 0, T0);
+		jobs.assign(job.id, 'w1', null, T0 + 1_000, { audioSec: 180 }); // dispatch stamps audioSec
+		jobs.requeue(job.id, 1, T0 + 31_000); // ack timeout / lease expiry before accept → abandoned
+
+		const [a] = ledger.byMedia('m1');
+		expect(a.startedAt).toBeNull(); // never accepted
+		expect(a.audioSec).toBe(180); // but the song length is known
+		expect(a.outcome).toBe('abandoned');
+		// The length guard cannot fire (audioSec is set), so this can ONLY pass via the clock guard.
+		expect(realtimeFactor(a)).toBeNull();
+	});
+
+	it('rates an attempt canceled while assigned as null, not the epoch over the song', () => {
+		// Same never-ran clock guard, reached via the cancel-while-assigned path instead of lease expiry.
+		const { jobs, ledger } = wired();
+		const job = jobs.enqueue('m1', 'stems', 0, T0);
+		jobs.assign(job.id, 'w1', null, T0 + 1_000, { audioSec: 240 }); // dispatch stamps audioSec
+		jobs.cancel(job.id, T0 + 2_000); // removed while assigned, before accept
+
+		const [a] = ledger.byMedia('m1');
+		expect(a.startedAt).toBeNull();
+		expect(a.audioSec).toBe(240);
+		expect(a.outcome).toBe('canceled');
 		expect(realtimeFactor(a)).toBeNull();
 	});
 
