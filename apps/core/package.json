@@ -13,6 +13,7 @@
 		"typecheck": "bun --bun svelte-kit sync && bun --bun svelte-check --tsconfig ./tsconfig.json",
 		"e2e": "bun run ./e2e/party.mjs",
 		"e2e:seed": "bun run ./e2e/seed-media.mjs",
+		"e2e:fuzz": "bun run ./e2e/fuzz.mjs",
 		"e2e:lobby": "bun run ./e2e/lobby-overlap.mjs"
 	},
 	"dependencies": {
