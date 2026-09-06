@@ -357,7 +357,202 @@ test('the scope-tab selector matches the id the settings page actually interpola
  * So: a selector-shaped string literal anywhere in a driver is a failure, and the fix is to put it in
  * SEL where both halves of this file can see it.
  */
-const DRIVERS = ['party.mjs', 'capture.mjs'];
+/**
+ * Every driver under `e2e/` and `e2e/probes/` — enumerated, not hand-listed. The previous version of
+ * this guard named only `party.mjs` and `capture.mjs`, so the literal ban applied to 2 of the 24
+ * drivers while `HARNESS.md` told every probe author the guard covered them all (#439). The other 22
+ * spelled selectors out for themselves, unwatched — exactly the rot this file exists to stop, filed
+ * from a read-only audit that counted 110+ such literals.
+ *
+ * `cdp.mjs` is excluded because it is the driver LIBRARY, not a driver: it DEFINES the selector-taking
+ * methods and only ever forwards `JSON.stringify(selector)` — a variable, never a literal — so it has
+ * no hand-written selector of its own to guard.
+ */
+function allDrivers(): string[] {
+	const out: string[] = [];
+	const walk = (dir: string, prefix: string) => {
+		for (const ent of readdirSync(dir, { withFileTypes: true })) {
+			if (ent.isDirectory()) walk(join(dir, ent.name), `${prefix}${ent.name}/`);
+			else if (ent.name.endsWith('.mjs') && ent.name !== 'cdp.mjs') out.push(`${prefix}${ent.name}`);
+		}
+	};
+	walk(import.meta.dir, '');
+	return out.sort();
+}
+const DRIVERS = allDrivers();
+
+/**
+ * KNOWN OFFENDERS — the debt baseline (#439, migration split to a follow-up issue).
+ *
+ * Widening the ban from 2 drivers to all 24 surfaces the selectors the other 22 already spell out for
+ * themselves. Fixing all of them — moving ~85 distinct selectors across 16 files into SEL and rewriting
+ * every `evaluate()` body to interpolate them — is a 16-file migration, far past this guard's one
+ * concern. So each currently-hand-written selector is QUARANTINED here, keyed by driver, as tracked
+ * debt: the guard now covers all 24 drivers, and a NEW selector literal in ANY driver — including a
+ * brand-new file — REDs, because only the exact `(file, literal)` pairs listed below are waved through.
+ *
+ * This is the explicit-exemption discipline the header demands: "an unexplained exemption is a hole
+ * with a comment on it." Every entry below is a hole with THIS comment on it, and the follow-up issue
+ * is the plan to close it. Do NOT add to this map to silence a new literal — put the selector in SEL.
+ */
+const KNOWN_OFFENDERS: Record<string, string[]> = {
+	'fuzz.mjs': [
+		'#ff5cae',
+		'[aria-label=',
+	],
+	'lobby-overlap.mjs': [
+		'#a855f7',
+		'#ec4899',
+		'#f43f5e',
+		'#f59e0b',
+		'.lobby .strip',
+		'.lobby .strip .person',
+		'.lobby .strip .person.more',
+		'.lobby .url',
+		'.strip',
+		'.url',
+	],
+	'playback.mjs': [
+		'video,audio',
+	],
+	'probes/lower-third.mjs': [
+		'#ff5cae',
+		'audio,video',
+	],
+	'probes/p1-gapless.mjs': [
+		'#ff5cae',
+		'.attract',
+		'.interstitial',
+		'.lower-third',
+		'.ls-name',
+		'.ls-song',
+		'.slot',
+		'.tv',
+		'.up-label',
+		'.up-name',
+		'.up-song',
+		'audio,video',
+	],
+	'probes/p10-scaling.mjs': [
+		'.add',
+		'.app-shell',
+		'.attract',
+		'.b',
+		'.badqr',
+		'.badqr *',
+		'.badqr-b',
+		'.badqr-fix',
+		'.badqr-t',
+		'.card',
+		'.chip',
+		'.filter-chip',
+		'.lobby',
+		'.lower-third',
+		'.lower-third .ls-name',
+		'.lower-third .ls-song',
+		'.lyrics',
+		'.lyrics .word.active',
+		'.qrow',
+		'.roster',
+		'.row',
+		'.sing',
+		'.state-error',
+		'.state-next',
+		'.state-waiting',
+		'.up-label',
+		'.up-song',
+		'button',
+	],
+	'probes/p11-dashboards.mjs': [
+		'.card',
+		'.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)',
+		'.card table',
+		'.tile .n',
+		'body',
+		'h1',
+		'h2',
+		'table th',
+	],
+	'probes/p12-search.mjs': [
+		'#ff5cae',
+		'.chips button.ok',
+		'.empty',
+		'.t',
+	],
+	'probes/p13-tap-to-start.mjs': [
+		' + JSON.stringify(SEL.queueRow) + ',
+		' + JSON.stringify(SEL.search) + ',
+		' + JSON.stringify(SEL.songRow) + ',
+		'.autoplay-hint',
+		'video,audio',
+	],
+	'probes/p14-playhead-vs-cook.mjs': [
+		'#ff5cae',
+		'audio',
+	],
+	'probes/p2-guiding-track.mjs': [
+		'#ff5cae',
+		'audio,video',
+	],
+	'probes/p3-key-shift.mjs': [
+		'.add',
+		'.key .key-btn',
+		'.key .lab',
+		'.row',
+		'.sing',
+		'video,audio',
+	],
+	'probes/p4-transport.mjs': [
+		'.attract',
+		'.lobby',
+		'.peek',
+		'.seekrow .time',
+		'.seekrow .track > i',
+		'.slot',
+		'.slot.visible',
+		'.slot.visible audio',
+		'[aria-label=',
+		'audio',
+	],
+	'probes/p6-lyrics.mjs': [
+		'.attract',
+		'.ball',
+		'.interstitial',
+		'.lower-third',
+		'.ls-asr',
+		'.lyrics',
+		'.lyrics .reel',
+		'.lyrics .row',
+		'.lyrics .row.current',
+		'.lyrics .viewport',
+		'.lyrics .word.active',
+		'.lyrics.unverified',
+		'.state-error',
+		'.state-waiting',
+		'video, audio',
+		'video,audio',
+	],
+	'probes/p8-presence-resilience.mjs': [
+		'.add',
+		'.add,.sing',
+		'.away',
+		'.err[role=alert]',
+		'.is-label',
+		'.lower-third',
+		'.proc',
+		'.sing',
+		'.state-error, .state-waiting, .state-next',
+		'.strip .person',
+		'.t',
+		'[aria-label=',
+		'button',
+	],
+	'probes/tv-audiocontext-resume.mjs': [
+		'.key .lab',
+		'audio,video',
+	],
+
+};
 
 /**
  * Literals that are selector-SHAPED but are not selectors. Each needs a reason: an unexplained
@@ -414,6 +609,10 @@ test('no driver spells a selector out for itself — every one comes from the co
 	const offenders: string[] = [];
 	const callSite = new RegExp(`\\.?\\b(${SELECTOR_TAKING.join('|')})\\(\\s*(['"\`])([^'"\`]*)\\2`, 'g');
 
+	// A `(file, literal)` pair listed in KNOWN_OFFENDERS is tracked debt (see the map's comment) and is
+	// waved through; anything else is a fresh hand-written selector and fails here.
+	const quarantined = (name: string, token: string) => (KNOWN_OFFENDERS[name] ?? []).includes(token);
+
 	for (const name of DRIVERS) {
 		const src = stripComments(readFileSync(join(import.meta.dir, name), 'utf8'));
 		src.split('\n').forEach((line, i) => {
@@ -427,6 +626,7 @@ test('no driver spells a selector out for itself — every one comes from the co
 				const literal = m[2]!;
 				const interpolated = /\$\{/.test(literal);
 				if (!interpolated && literal in NOT_A_SELECTOR) continue;
+				if (quarantined(name, literal)) continue;
 				offenders.push(`${name}:${i + 1} — ${m[0]} (selector-shaped literal)`);
 			}
 			/*
@@ -438,11 +638,13 @@ test('no driver spells a selector out for itself — every one comes from the co
 				const fn = m[1]!;
 				const literal = m[3]!;
 				if (/\$\{/.test(literal)) {
+					if (quarantined(name, `INTERP:${literal}`)) continue;
 					// An interpolated argument still has to come from the contract, but its static head is
 					// not the whole selector, so report it by the call rather than by the token.
 					offenders.push(`${name}:${i + 1} — ${fn}(\`${literal}\`) (interpolated selector literal)`);
 					continue;
 				}
+				if (quarantined(name, literal)) continue;
 				offenders.push(`${name}:${i + 1} — ${fn}('${literal}') (literal in a selector position)`);
 			}
 		});
@@ -451,4 +653,17 @@ test('no driver spells a selector out for itself — every one comes from the co
 	// Deduplicate: a literal can be caught by both rules, and one line reported twice reads as two bugs.
 	const unique = [...new Set(offenders)].sort();
 	expect(unique).toEqual([]);
+});
+
+test('the driver ban is not vacuous — it covers every driver, not a shrunk list', () => {
+	// The rot this file catches came from a hand-kept list going stale. A hand-kept DRIVERS array could
+	// silently empty (or shrink back to 2) and the ban above would pass while guarding nothing, so pin a
+	// floor: there are 24 drivers today, and the enumeration must keep finding roughly that many.
+	expect(DRIVERS.length).toBeGreaterThan(20);
+	// party.mjs and capture.mjs — the two the old list named — must still be in the enumerated set, so a
+	// walk that regressed to matching nothing cannot pass this test either.
+	expect(DRIVERS).toContain('party.mjs');
+	expect(DRIVERS).toContain('capture.mjs');
+	// And a spot-check that the walk reaches into probes/, the subtree the old list never covered.
+	expect(DRIVERS.some((d) => d.startsWith('probes/'))).toBe(true);
 });
