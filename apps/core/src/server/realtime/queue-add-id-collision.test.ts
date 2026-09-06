@@ -132,6 +132,39 @@ test('CONTROL: a legitimate remove of q1 still fires onEntryRemoved (the cook-ca
 	expect(removedCalls[0][0]).toBe('m1'); // m1 lost its claim -> cancelJobsForMedia would run
 });
 
+// #371 — the singerId half of hub.ts's identity compare (existing.singerId !== op.entry.singerId)
+// is asserted by nothing above: every collision the file drives ALSO differs on mediaId, so the
+// mediaId disjunct alone decides them. The one case only the singerId half rejects is a SAME-MEDIA,
+// DIFFERENT-SINGER collision on a still-'queued' entry: a second guest names the victim's public
+// mediaId and re-adds it under their OWN singerId, stealing the turn while m1 keeps a queue claim
+// (so, unlike a media-differing overwrite, no cook is even orphaned to notice later). overwriteQ1
+// already parameterizes mediaId, so overwriteQ1('m1') is the whole payload change: existing q1=s1/m1
+// (queued) vs incoming s2/m1 (queued) — equal media, equal status, so ONLY the singerId disjunct can
+// reject it. Deleting that disjunct leaves the shipped six tests green and REDS exactly these two.
+test('#371: validateCommand rejects a SAME-MEDIA, different-singer collision — only the singerId half can (turn theft)', () => {
+	const { deps } = harness(); // actor s2, existing q1 = s1/m1 (queued)
+	// Incoming carries q1's id, s2's own singerId (so :111 impersonation passes) and the SAME media m1.
+	// mediaId and status both match the existing row, so the singerId disjunct is the sole rejector.
+	expect(validateCommand(overwriteQ1('m1'), deps)).toBe('entry id already taken: q1');
+});
+
+test('#371 END-TO-END: the same-media steal is NOT applied/broadcast and s1 still holds the turn', () => {
+	const { published, state, deps } = harness();
+	const sent: unknown[] = [];
+	const patch = handleQueueCommand(overwriteQ1('m1'), deps, (e) => sent.push(e));
+
+	// Rejected at the seam, nothing broadcast.
+	expect(patch).toBeNull();
+	expect((sent[0] as { type: string }).type).toBe('op:reject');
+	expect(published.some((e) => e.type === 'queue:patch')).toBe(false);
+
+	// s1's turn survives: q1 is still s1's (not stolen by s2), and the queue is the two seeded entries.
+	const q1 = state.entries.find((e) => e.id === 'q1');
+	expect(q1!.singerId).toBe('s1');
+	expect(state.entries.some((e) => e.singerId === 's1')).toBe(true);
+	expect(state.entries.map((e) => e.id).sort()).toEqual(['q1', 'q2']);
+});
+
 // #370 — RESIDUAL of #285's identical-identity carve-out. The carve-out (identical singerId+mediaId
 // re-add is allowed) compared only (singerId, mediaId) — not status — while applyOp's add branch
 // rewrites the matched row WHOLE (op.entry, not a merge). So a joined phone can re-add its OWN live
