@@ -44,7 +44,7 @@ const FILES = [
 ];
 
 /** Selectors that are unambiguously interactive controls. */
-const CONTROL = /(^|[\s,>])(button|\.btn-accent|\.chip\b|\.act\b|\.remove\b|\.ic\b|\.gear\b|\.back\b|\.add\b|\.sing\b|\.mic-btn\b|\.browse-toggle\b|\.swatch\b|\.disclose\b)/;
+const CONTROL = /(^|[\s,>])(button|\.btn-accent|\.chip\b|\.act\b|\.remove\b|\.ic\b|\.gear\b|\.back\b|\.add\b|\.sing\b|\.mic-btn\b|\.browse-toggle\b|\.swatch\b|\.disclose\b|input\[type=['"]range['"]\])/;
 
 test('every phone control that sizes its own box reaches 44px', () => {
 	const offenders: string[] = [];
@@ -55,6 +55,9 @@ test('every phone control that sizes its own box reaches 44px', () => {
 			const sel = m[1]!.trim();
 			const body = m[2]!;
 			if (!CONTROL.test(sel)) continue;
+			// a ::pseudo-element (slider track/thumb) is a cosmetic sub-part, never the touch target
+			// itself — the interactive box is the parent selector, which is examined on its own rule.
+			if (sel.includes('::')) continue;
 			// a rule that declares no box has not taken a position on target size
 			const declaresBox = /(min-height|height|padding)\s*:/.test(body);
 			if (!declaresBox) continue;
@@ -103,4 +106,35 @@ test('the controls that previously fell short declare 44px explicitly', () => {
 	expect(declares(phone, 'browse-toggle', 'min-height')).toBe(true);
 	// the settings back link was ~26px
 	expect(declares(settings, 'back', 'min-(?:width|height)')).toBe(true);
+
+	// the stage-colour hue slider was 22px tall with a 28px thumb — a 28px hit area (issue #133).
+	// Pinned by the exact selector so reverting the input box to a hard sub-44px height reds this,
+	// which the structural test above can miss because it waves through any var()-driven height.
+	const hue = new RegExp(
+		`input\\[type=['"]range['"]\\]\\.hue\\s*\\{[^}]*height:\\s*${SIZE}`,
+		's'
+	);
+	expect(hue.test(settings)).toBe(true);
+});
+
+/*
+ * The tap target and the thumb-centring move INDEPENDENTLY, so pinning only the 44px box lets the
+ * exact state issue #133's fix had to correct back in: box raised to 44px, but the 28px WebKit thumb
+ * still anchored to the top of its now-off-centre 22px runnable-track, hanging ~3.75px low. A rendered
+ * measurement is the ideal instrument, but this repo deliberately does NOT gate on a browser (see
+ * e2e/contract.test.ts's header: a test needing a live Chromium skips on any machine missing one, and
+ * a permanently-skipped test is indistinguishable from the rot it was meant to catch). So this is a
+ * source pin — but pinned to the EXACT centring value, not merely the presence of margin-top, because
+ * a wrong value would hang the thumb just as badly as a missing one. The value is not a magic number:
+ * it is (track - thumb) / 2 = (22 - 28) / 2 = -3px, the identical arithmetic ColourPicker.svelte:213
+ * and the sibling :not(.hue) rule both carry. ::-moz-range-thumb needs none — Gecko centres on the
+ * track — so only the WebKit thumb is pinned.
+ */
+test('the stage-colour hue thumb is centred on its runnable-track (issue #133)', () => {
+	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
+	const webkitThumb = new RegExp(
+		`input\\[type=['"]range['"]\\]\\.hue::-webkit-slider-thumb\\s*\\{[^}]*margin-top:\\s*-3px`,
+		's'
+	);
+	expect(webkitThumb.test(settings)).toBe(true);
 });
