@@ -262,8 +262,10 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     # (difference 2) separate takes the input DIRECTORY, and --store_dir is a DIFFERENT dir — putting
     #                output where input lives would re-separate the output on a second pass
     assert store_dir != input_folder, "store_dir must not be the input folder"
-    assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") \
-        != input_folder.rstrip("/") or True  # store lives under work/separated, input under work/roformer_in
+    # store_dir and input_folder are SIBLINGS under the same work dir (work/separated vs work/roformer_in),
+    # not one nested in the other — so store's parent is that shared work dir, never the input folder itself.
+    assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") != input_folder.rstrip("/")
+    assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") == _os.path.dirname(input_folder.rstrip("/")).rstrip("/")
     assert _os.path.basename(store_dir) == "separated"
 
     # (difference 4) outputs are DISCOVERED by globbing, not derived from the model name: the published
@@ -272,6 +274,12 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     inst = completes[0].artifacts["stems"]["instrumental"]
     assert inst.endswith("mr-instrumental.flac")
     assert Path(inst).exists()
+    # the isolated vocals stem — the guiding track the TV mixes under the instrumental — is ALSO
+    # published (mirrors the demucs cook test); without this the engine can map find_roformer_vocals
+    # onto None and every roformer cook silently drops its guiding track with the suite still green.
+    vox = completes[0].artifacts["stems"]["vocals"]
+    assert vox.endswith("mr-vocals.m4a")
+    assert Path(vox).exists()
 
     # (difference 3) progress is COARSE 0→100 (parse_progress returns None), never the tqdm percentages
     seps = [e.pct for e in events if isinstance(e, ProgressEvent) and e.stage == "separating"]
