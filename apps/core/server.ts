@@ -409,7 +409,7 @@ ws.onmessage=ev=>{const e=JSON.parse(ev.data);
 function add(mediaId){const id=ulid();const entry={id,mediaId,singerId:who,status:'queued',rotationSeq:9e15,addedAt:Date.now()};
  // optimistic
  entries=[...entries,entry];render();
- ws.send(JSON.stringify({type:'queue:command',command:{clientOpId:ulid(),baseRev:rev,op:{op:'add',entry}}}));}
+ ws.send(JSON.stringify({type:'queue:command',command:{clientOpId:ulid(),op:{op:'add',entry}}}));}
 function render(){document.getElementById('q').innerHTML=entries.map(e=>'<li>#'+e.rotationSeq+' · '+e.mediaId+' <span class=who>('+e.singerId+')</span></li>').join('');
  document.getElementById('raw').textContent='rev='+rev+'  entries='+entries.length;}
 </script>`;

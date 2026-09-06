@@ -48,7 +48,7 @@ function harness(actorSingerId = 's-self') {
 	return deps;
 }
 
-const cmd = (op: ClientCommand['op']): ClientCommand => ({ clientOpId: 'c1', baseRev: 0, op });
+const cmd = (op: ClientCommand['op']): ClientCommand => ({ clientOpId: 'c1', op });
 
 // (1) Behavioural, against the real can(): today every joined singer holds every capability, so both
 // own and other remove/reorder are allowed. This pins that the fix preserves current behaviour and did

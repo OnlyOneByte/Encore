@@ -23,7 +23,6 @@ function harness() {
 
 const addCmd = (entryId: string, mediaId = 'm1'): ClientCommand => ({
 	clientOpId: ulid(),
-	baseRev: 0,
 	op: {
 		op: 'add',
 		entry: { id: entryId, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 }
@@ -76,7 +75,6 @@ test('state reflects the applied op after handling', () => {
 
 const removeCmd = (entryId: string): ClientCommand => ({
 	clientOpId: ulid(),
-	baseRev: 0,
 	op: { op: 'remove', id: entryId }
 });
 
@@ -126,7 +124,6 @@ function multiHarness() {
 
 const addCmdWith = (entryId: string, mediaId: string, singerId: string, addedAt: number): ClientCommand => ({
 	clientOpId: ulid(),
-	baseRev: 0,
 	op: { op: 'add', entry: { id: entryId, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt } }
 });
 

@@ -32,7 +32,6 @@ const media = (id: string): Media => ({
 let _s = 0;
 const addCmd = (id: string, mediaId: string, singerId = 's1'): ClientCommand => ({
 	clientOpId: 'op-' + id,
-	baseRev: 0,
 	op: { op: 'add', entry: { id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: ++_s } as QueueEntry }
 });
 

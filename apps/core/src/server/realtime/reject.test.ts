@@ -22,7 +22,7 @@ function harness() {
 	return { published, toOrigin, state, deps };
 }
 
-const cmd = (op: ClientCommand['op']): ClientCommand => ({ clientOpId: ulid(), baseRev: 0, op });
+const cmd = (op: ClientCommand['op']): ClientCommand => ({ clientOpId: ulid(), op });
 
 test('add with unknown media -> reject to origin, NO broadcast', () => {
 	const { published, toOrigin, deps } = harness();
