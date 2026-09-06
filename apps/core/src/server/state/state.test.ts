@@ -4,7 +4,7 @@ import { AuthoritativeState } from './store';
 import { sqlitePersistence } from './persistence';
 import { openDb } from '../db/index';
 import { runMigrations, hydrate } from '../db/migrate';
-import { ulid, type QueueEntry } from '@encore/shared';
+import { ulid, type QueueEntry, type PlaybackState } from '@encore/shared';
 
 const entry = (singerId: string, addedAt: number): QueueEntry => ({
 	id: ulid(addedAt),
@@ -65,6 +65,53 @@ test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 	expect(reloaded.entries.map((e) => e.rotationSeq)).toEqual(s.entries.map((e) => e.rotationSeq));
 	expect(reloaded.playback.currentEntryId).toBe(s.playback.currentEntryId);
 	expect(reloaded.playback.isPlaying).toBe(true);
+});
+
+test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND flush', () => {
+	// `playback_state.id` is always 'singleton', so the FIRST flush inserts and EVERY later flush
+	// takes the onConflictDoUpdate `set` arm. That arm is a hand-duplicated copy of the `.values()`
+	// field list; a field added to one and forgotten in the other would persist once and then freeze
+	// at its boot value, with every other test (all single-flush) still green. This drives the arm.
+	const { db } = openDb(':memory:');
+	runMigrations(db);
+	const s = new AuthoritativeState(sqlitePersistence(db), 10_000);
+
+	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
+	s.applyQueueOp({ op: 'add', entry: entry('b', 2) });
+
+	// First flush -> INSERT arm. Seed the row with default-ish playback so the second flush is
+	// genuinely a CHANGE the update arm has to carry (not a no-op that could pass either way).
+	s.setPlayback({ currentEntryId: s.entries[0]!.id });
+	s.flushNow();
+
+	// Now set EVERY one of PlaybackState's six fields to a non-default value and flush AGAIN. This
+	// second flush is the one that exercises the conflict/update arm.
+	const target: PlaybackState = {
+		currentEntryId: s.entries[1]!.id,
+		positionSec: 42,
+		isPlaying: true,
+		keyShift: 3,
+		background: 'solid',
+		guideLevel: 0.4
+	};
+	s.setPlayback(target);
+	s.flushNow();
+
+	const reloaded = new AuthoritativeState();
+	const { playback } = hydrate(db);
+	reloaded.hydrate([], playback);
+
+	// Assert EVERY field of `target` round-tripped. The key list is derived from `target` (a typed
+	// PlaybackState), not hand-written, so a newly-added field the update arm forgets to carry lands
+	// in `target` yet reads back as its boot default here and fails loudly. (We compare per-key rather
+	// than whole-object because hydrate passes the raw db row through, which also carries the `id`
+	// column — that leak is pre-existing and out of scope for this test.)
+	const keys = Object.keys(target) as (keyof PlaybackState)[];
+	for (const k of keys) expect(reloaded.playback[k]).toEqual(target[k]);
+	// spell out the three fields the old single-flush test never round-tripped, so a regression names itself
+	expect(reloaded.playback.keyShift).toBe(3);
+	expect(reloaded.playback.background).toBe('solid');
+	expect(reloaded.playback.guideLevel).toBe(0.4);
 });
 
 test('debounced flush coalesces a burst into persisted state', async () => {
