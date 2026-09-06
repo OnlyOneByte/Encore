@@ -36,7 +36,7 @@ how anything *sounds*. Say which you mean when you report.
 |---|---|---|
 | bun, node, Chromium | present | full browser driving works |
 | yt-dlp | present | YouTube **search** works |
-| **deno** | **missing** | YouTube **download** cannot work — the player challenge needs a JS runtime. Every real cook of a YouTube song fails at download. Do not report that as a defect. |
+| **deno** | **present, 2.4.0** | YouTube **download** works — the player challenge needs a JS runtime and this is it. Verified: `[youtube] [jsc:deno] Solving JS challenges using deno`, real Opus fetched. **Do not upgrade past 2.4.0**: yt-dlp needs `deno >= 2.3.0`, but deno's aarch64 builds from 2.4.5 up require `GLIBC_2.27` and this box has 2.26, so `deno@latest` will not execute at all. Fallback runtimes: node 22.22.3 (at `$HOME/.local/share/mise/installs/node/22.22.3/bin`, not deprecated — name the 22.x path, the default shim is v20.20.2 and silently degrades), then bun 1.3.14 (works, deprecated upstream). |
 | **ffmpeg** | **decode-only** | no encoding, and the loudness probe's `volumedetect` filter is absent |
 | torch / demucs / whisperx | missing | no real separation or alignment — use the fake worker |
 
@@ -104,9 +104,22 @@ failed decode. `readyState === 4` only says bytes arrived. The proof is
 clock. That distinction *is* the FLAC-in-a-`<video>` defect: valid file, element "playing", zero
 decoded bytes, silent room.
 
-`playback.mjs` is the worked example. Launch Chromium with
-`--autoplay-policy=no-user-gesture-required`: the real TV has nobody to tap it. The app must still not
-*depend* on a gesture.
+`playback.mjs` is the worked example.
+
+**Autoplay is the trap this harness fell into, so read this before copying a launch flag.** Granting
+`--autoplay-policy=no-user-gesture-required` proves playback in an environment **no television is
+ever in**. Measured side by side on a real cooked song:
+
+| Launch | paused | currentTime | decoded bytes |
+|---|---|---|---|
+| gestureless (a real TV) | `true` | `0.00` | `24576` — the preload buffer, and nothing more. It never plays. |
+| autoplay granted | `false` | `5.41` | `507904` |
+
+So a run made with the flag cannot support a claim about whether the room makes a sound; it can only
+support a claim about the decode path once something has started. **Assert playback gestureless**, and
+if you do grant the flag, label that probe's output `NOT-A-TV` so the next reader cannot mistake it for
+evidence about a real television. `t17-audiocontext.mjs` runs both policies side by side and is the
+reference for this.
 
 ## Writing a probe
 
