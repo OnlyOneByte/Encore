@@ -24,9 +24,7 @@ export interface StampableEntry {
 export interface TelemetryFrame {
 	type: 'tv:telemetry';
 	positionSec: number;
-	durationSec: number;
 	status: string;
-	bufferedNextPct: number;
 	/**
 	 * The entry the TV was playing when this frame was produced — stamped on EVERY frame, not just
 	 * `ended`, because the server's drop fires on both the `ended` path (#70) and the position path
@@ -44,16 +42,12 @@ export interface TelemetryFrame {
 export function telemetryFrame(
 	status: string,
 	current: StampableEntry | null,
-	positionSec = 0,
-	durationSec = 0,
-	bufferedNextPct = 0
+	positionSec = 0
 ): TelemetryFrame {
 	return {
 		type: 'tv:telemetry',
 		positionSec,
-		durationSec,
 		status,
-		bufferedNextPct,
 		entryId: current?.id ?? undefined
 	};
 }

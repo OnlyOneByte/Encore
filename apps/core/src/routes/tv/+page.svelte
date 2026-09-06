@@ -163,11 +163,11 @@
 	 * lyrics and progress while the server never learned the playhead — which the phone then rendered as
 	 * a progress bar that jumps to the beginning on pause. See lib/ws/send.ts.
 	 */
-	function sendTelemetry(status: string, positionSec = 0, durationSec = 0, bufferedNextPct = 0) {
+	function sendTelemetry(status: string, positionSec = 0) {
 		// The frame — including the entry stamp the server's #70/#125 guard needs on EVERY frame — is
 		// built by the pure `telemetryFrame()` in $lib/tv/telemetry.ts, so the stamp is unit-tested
 		// behaviourally rather than only by scanning this .svelte source for a literal.
-		trySend(ws, JSON.stringify(telemetryFrame(status, current, positionSec, durationSec, bufferedNextPct)));
+		trySend(ws, JSON.stringify(telemetryFrame(status, current, positionSec)));
 	}
 
 	function onVisibleError() {
@@ -551,7 +551,7 @@
 		onprewarmed={() => { ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
-		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
+		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s); }}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 	/>
@@ -568,7 +568,7 @@
 		onprewarmed={() => { ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
-		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
+		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s); }}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 	/>

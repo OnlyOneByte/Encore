@@ -247,9 +247,6 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 
 export interface TvTelemetry {
 	positionSec: number;
-	durationSec: number;
-	status: string;
-	bufferedNextPct: number;
 	ended?: boolean;
 	/**
 	 * Which entry the TV was playing when this frame was produced. Optional for backward
