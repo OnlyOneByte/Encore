@@ -1,6 +1,6 @@
 // POST /api/leave — leave the room on purpose.
 //
-// GET /api/leave/preview reports what it would cost, so the phone can name the consequence in the
+// GET /api/leave reports what it would cost, so the phone can name the consequence in the
 // confirm rather than asking "Are you sure?" about an outcome the guest cannot see. There is no undo:
 // the remove-undo elsewhere is a client-side re-add inside a five-second toast, and after this the cookie
 // is gone and the singer is forgotten, so the confirm is the only place the cost can be stated.
