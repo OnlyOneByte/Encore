@@ -311,5 +311,21 @@ export function presetTabStopIndex(value: string): number {
 	return i === -1 ? 0 : i;
 }
 
+/**
+ * The swatch an arrow key moves to from the current `value`, wrapping the eight-swatch group.
+ *
+ * The base MUST be the same anchor the tab stop uses (`presetTabStopIndex`), not a bare
+ * `indexOf(value)`: after a hue-wheel pick `value` is not a preset, so `indexOf` returns -1 while the
+ * tab stop falls back to swatch 0. If arrow movement started from -1 it would disagree with where the
+ * focus ring actually sits — the first ArrowRight computes `(-1 + 1) % 8 === 0` and does not move,
+ * and ArrowLeft computes `(-1 - 1 + 8) % 8 === 6`, skipping swatch 7. Anchoring both on the same
+ * function keeps them in lockstep. `step` is +1 (ArrowRight/Down) or -1 (ArrowLeft/Up).
+ */
+export function nextSwatchIndex(value: string, step: number): number {
+	const base = presetTabStopIndex(value);
+	const n = SINGER_COLORS.length;
+	return (base + step + n) % n;
+}
+
 /** A singer colour is any legible hex now, not one of eight literals. */
 export type SingerColor = string;
