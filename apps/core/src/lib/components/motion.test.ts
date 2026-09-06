@@ -81,12 +81,17 @@ test('@keyframes use only transform/opacity', () => {
 
 // guard (issue #148): every `animation:` declaration must honour Reduce Motion. An animation is
 // suppressible if it is EITHER declared inside an `@media (prefers-reduced-motion: no-preference)`
-// block, OR paired with an `@media (prefers-reduced-motion: reduce) { … animation: none }` reset in
-// the SAME file. `animation: none` declarations are themselves the reset and are exempt. This closes
-// the drift hazard behind #148: QueueRow's `.qrow { animation: pop … }` ran under Reduce Motion while
-// app.css's guarded `.pop-in` helper had no callers. Source-decidable in the same shape as the scans
-// above. Mutation proof: unguarding any animation (moving it out of the no-preference block, or
-// dropping its reduce reset) reds this test.
+// block, OR paired with an `@media (prefers-reduced-motion: reduce) { … animation: none }` reset that
+// covers ITS OWN selector in the SAME file. `animation: none` declarations are themselves the reset
+// and are exempt. This closes the drift hazard behind #148: QueueRow's `.qrow { animation: pop … }`
+// ran under Reduce Motion while app.css's guarded `.pop-in` helper had no callers. Source-decidable in
+// the same shape as the scans above.
+//
+// The exemption is SELECTOR-scoped, not file-scoped (issue #242): a reduce reset for `.hero .qr`
+// exempts only `.hero .qr`, so a NEW unguarded animation added to the same file on a different
+// selector still reds — the reset no longer waves the whole file through. Mutation proof: unguarding
+// any animation (moving it out of the no-preference block, dropping its reduce reset, or adding a new
+// animation on a selector no reduce block covers) reds this test.
 function stripComments(css: string): string {
 	return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
@@ -107,14 +112,86 @@ function noPreferenceSpans(css: string): Array<[number, number]> {
 	}
 	return spans;
 }
-function hasReduceReset(css: string): boolean {
-	// an `@media (prefers-reduced-motion: reduce) { … animation: none … }` block anywhere in the file
-	const re = /@media[^{]*prefers-reduced-motion:\s*reduce[^{]*\{([\s\S]*?)\}\s*\}/g;
-	let m: RegExpExecArray | null;
-	while ((m = re.exec(css))) {
-		if (/animation(-name)?:\s*none/.test(m[1]!)) return true;
+// A single CSS rule block: its selector (normalised), its body offset range, and whether any ancestor
+// in the brace stack was an `@media (prefers-reduced-motion: reduce)` prelude.
+type Rule = { selector: string; bodyStart: number; bodyEnd: number; underReduce: boolean };
+
+// normalise a selector for set comparison: collapse internal whitespace, trim, lowercase nothing
+// (class names are case-sensitive). `.hero  .qr` and `.hero .qr` compare equal.
+function normSelector(s: string): string {
+	return s.replace(/\s+/g, ' ').trim();
+}
+
+// Forward-scan the CSS into a flat list of rule blocks. Maintains a stack of open blocks, each
+// carrying the prelude text that opened it (the selector, or an at-rule prelude like `@media …`).
+// A block is a plain style RULE (as opposed to an at-rule container) when its prelude does not start
+// with `@`; only those own `animation:` declarations. `underReduce` is true when any ancestor prelude
+// is a `prefers-reduced-motion: reduce` @media, so we can tell a reset block from an ordinary rule.
+function ruleBlocks(css: string): Rule[] {
+	const rules: Rule[] = [];
+	const stack: Array<{ prelude: string; reduce: boolean }> = [];
+	let preludeStart = 0;
+	for (let i = 0; i < css.length; i++) {
+		const c = css[i];
+		if (c === '{') {
+			const prelude = css.slice(preludeStart, i).trim();
+			const isAt = prelude.startsWith('@');
+			const reduce =
+				(stack.length ? stack[stack.length - 1]!.reduce : false) ||
+				/prefers-reduced-motion:\s*reduce/.test(prelude);
+			stack.push({ prelude, reduce });
+			if (!isAt) {
+				// a plain style rule — record it (bodyEnd filled in on the matching `}`)
+				rules.push({
+					selector: normSelector(prelude),
+					bodyStart: i + 1,
+					bodyEnd: -1,
+					underReduce: stack.length >= 2 ? stack[stack.length - 2]!.reduce : false
+				});
+			}
+			preludeStart = i + 1;
+		} else if (c === '}') {
+			const top = stack.pop();
+			if (top && !top.prelude.startsWith('@')) {
+				// close the most-recently-opened still-open plain rule
+				for (let r = rules.length - 1; r >= 0; r--) {
+					if (rules[r]!.bodyEnd === -1) {
+						rules[r]!.bodyEnd = i;
+						break;
+					}
+				}
+			}
+			preludeStart = i + 1;
+		} else if (c === ';') {
+			preludeStart = i + 1;
+		}
 	}
-	return false;
+	return rules;
+}
+
+// The set of selectors a reduce reset covers: any rule that sits under a `prefers-reduced-motion:
+// reduce` @media AND whose body resets `animation` to `none`. Only these selectors earn an exemption.
+function reduceResetSelectors(css: string, rules: Rule[]): Set<string> {
+	const covered = new Set<string>();
+	for (const r of rules) {
+		if (!r.underReduce) continue;
+		const body = css.slice(r.bodyStart, r.bodyEnd);
+		// a reset may group selectors — `.a, .b, .c { animation: none }` covers each of .a/.b/.c.
+		if (/animation(-name)?:\s*none/.test(body))
+			for (const sel of r.selector.split(',')) covered.add(normSelector(sel));
+	}
+	return covered;
+}
+
+// The selector owning a declaration at offset `at`: the innermost plain rule whose body contains it.
+function owningSelector(rules: Rule[], at: number): string | null {
+	let best: Rule | null = null;
+	for (const r of rules) {
+		if (at >= r.bodyStart && at < r.bodyEnd) {
+			if (!best || r.bodyStart > best.bodyStart) best = r;
+		}
+	}
+	return best ? best.selector : null;
 }
 
 test('every animation declaration honours prefers-reduced-motion', () => {
@@ -127,13 +204,21 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 	for (const f of files) {
 		const css = stripComments(readFileSync(f, 'utf8'));
 		const spans = noPreferenceSpans(css);
-		const reset = hasReduceReset(css);
+		const rules = ruleBlocks(css);
+		const resetSelectors = reduceResetSelectors(css, rules);
 		// match `animation:` / `animation-name:` shorthand declarations (not @keyframes, not the guard media queries)
 		for (const m of css.matchAll(/(^|[;{\s])animation(-name)?:\s*([^;}]+)/g)) {
 			const value = m[3]!.trim();
 			if (/^none\b/.test(value)) continue; // the reset itself
 			const at = m.index! + m[1]!.length;
 			const guarded = spans.some(([s, e]) => at >= s && at < e);
+			// exempt only when the declaration's OWN selector has a reduce reset (issue #242): a reset
+			// for one selector no longer waves the whole file through. A grouped owner `.a, .b` is
+			// exempt only if EVERY part is reset — a partial reset does not cover the whole rule.
+			const owner = owningSelector(rules, at);
+			const reset =
+				owner !== null &&
+				owner.split(',').every((sel) => resetSelectors.has(normSelector(sel)));
 			if (!guarded && !reset) offenders.push(`${f}: unguarded animation: ${value.slice(0, 40)}`);
 		}
 	}
