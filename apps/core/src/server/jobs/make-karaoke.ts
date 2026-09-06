@@ -9,6 +9,9 @@ import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade, isPlayable, nee
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
+import { mediaStatusFor, shouldBroadcastCook } from './media-status';
+import { cleanJobWork } from '../media/migrate-layout';
+import type { ServerEvent } from '@encore/shared';
 
 export interface MakeKaraokeDeps {
 	jobs: JobRepository;
@@ -265,6 +268,76 @@ export function settleGatesForFailedJob(job: Job, mediaById: Map<string, Media>)
 	if (job.jobType === 'align') return settleLyricsGate(job.mediaId, mediaById);
 	if (job.jobType === 'fetch' || job.jobType === 'stems') return settleStemsGate(job.mediaId, mediaById);
 	return false; // stems-upgrade: keep the working instrumental
+}
+
+/**
+ * Why a job reached terminal `failed`. Three code paths can end a cook permanently and the operator
+ * needs to tell them apart from one grep, so the cause travels with the log line rather than being
+ * inferred from the (now uniform) format: `worker` — the worker reported job:failed and retries are
+ * exhausted (worker-hub #onFailed); `unservable` — no connected worker ever advertised the required
+ * capability within the TTL (worker-hub dispatch loop); `reaper` — a lease expired and the JobReaper
+ * exhausted attempts with no worker in the loop at all (app.ts, issue #303).
+ */
+export type TerminalFailureCause = 'worker' | 'unservable' | 'reaper';
+
+export interface TerminalFailureDeps {
+	/** The room sink. Injected because make-karaoke cannot reach worker-hub's private #emitStatus,
+	 *  and app.ts's reaper hook had to hand-reimplement it (issue #451). */
+	broadcast: (event: ServerEvent) => void;
+	mediaById: Map<string, Media>;
+}
+
+/**
+ * The terminal-failure EPILOGUE — the four things every permanently-failed cook must do, in one
+ * place (issue #451). Before this, three sites open-coded the identical four steps
+ * (worker-hub #onFailed, worker-hub's unservable-TTL branch, and app.ts's reaper onFailed hook) and a
+ * fourth copy was reconstructed inside reaper-broadcast-on-failure.test.ts. Only the inner gate rule
+ * (settleGatesForFailedJob, #90) had been extracted, so the epilogue AROUND it kept drifting: the TTL
+ * branch omitted cleanJobWork, app.ts hand-reimplemented the private #emitStatus, and all three log
+ * lines diverged (different tag, some missing media/attempts) so no single grep found every terminal
+ * failure — the shape that let the reaper path ship silent until #303.
+ *
+ * The four steps, in order:
+ *   1. Settle the readiness gate for this job type so `readyToSing` can flip and rotation stops
+ *      holding the queue entry (settleGatesForFailedJob, #90).
+ *   2. Broadcast `media:status` so a watching phone leaves 'cooking' → 'failed' and the Sing button
+ *      returns — gated on shouldBroadcastCook exactly as #emitStatus is, so a dead `stems-upgrade` on
+ *      an already-singable song does not flip every ready row back to "Making karaoke".
+ *   3. One operator log line, now in a UNIFORM key=value format (`job= media= attempts= reason=`, with
+ *      a `cause=` discriminator) so `grep 'reaper failure'` or `grep 'job=<id>'` finds it on every
+ *      path — the divergent formats used to drop the reaper case and never carry a media id on the
+ *      unservable case.
+ *   4. Reclaim the job's scratch (cleanJobWork) — its work/<jobId>/ holds a decoded source plus both
+ *      stems and nothing resumes from a terminal job. A no-op when the dir is absent (a remote
+ *      worker's scratch the core never had).
+ *
+ * `job` is the ALREADY-terminal job (post JobRepository.fail), so it carries the final attempts count
+ * and error. Returns whether the gate settle changed anything, for a caller that wants it.
+ */
+export function reportTerminalFailure(job: Job, cause: TerminalFailureCause, deps: TerminalFailureDeps): boolean {
+	// 1. Settle the gate for this job type (the half #90 already extracted).
+	const settled = settleGatesForFailedJob(job, deps.mediaById);
+	// 2. Tell the room — same shouldBroadcastCook guard #emitStatus applies.
+	const media = deps.mediaById.get(job.mediaId);
+	if (shouldBroadcastCook(job, media)) {
+		deps.broadcast({
+			type: 'media:status',
+			mediaId: job.mediaId,
+			status: mediaStatusFor(job),
+			pct: job.progressPct,
+			etaSec: job.etaSec ?? undefined
+		});
+	}
+	// 3. One uniform operator line. Job id is the only field common to all callers, so it leads; the
+	//    cause discriminator lets a grep separate a terminal failure from the merely-informational
+	//    stall warn that shares the `warn` level.
+	console.warn(
+		`[core] terminal job failure cause=${cause} job=${job.id} media=${job.mediaId} ` +
+			`type=${job.jobType} attempts=${job.attempts} reason=${job.error ?? 'unknown'}`
+	);
+	// 4. Reclaim scratch — nothing resumes from a terminal job.
+	cleanJobWork(job.id);
+	return settled;
 }
 
 /** Mark the lyrics gate as IN FLIGHT, so the phone can name the step a song is waiting on. */
