@@ -75,7 +75,7 @@ export function countInFlightCooks(
 /**
  * The deterministic MediaStore key for a media's instrumental stem (stored on Media.instrumentalRef).
  * MUST match the worker's output location (apps/worker/src/processor.py instrumental_path →
- * <media_dir>/derived/stems/<mediaId>-instrumental.wav), since the TV file player resolves
+ * <media_dir>/derived/stems/<mediaId>-instrumental.flac), since the TV file player resolves
  * `/media/${playbackRef(media)}`. Defined once in ../media/paths.ts; do NOT hand-write this string.
  */
 export const instrumentalKey = layoutInstrumentalKey;
