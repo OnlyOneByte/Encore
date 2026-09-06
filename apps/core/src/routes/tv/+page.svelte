@@ -889,14 +889,22 @@
 	 * two-line clamp; it needs the -webkit box display and hidden overflow to take effect.
 	 */
 	.ls-song {
-		font-size: var(--tv-body); font-weight: 600;
+		font-size: var(--tv-body); font-weight: 600; opacity: 0.97;
 		display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
 		overflow: hidden;
 	}
-	/* Secondary to the title: it disambiguates rather than identifies, so it stays dimmer. */
-	.ls-artist { color: var(--ink-dim); font-weight: 500; }
-	/* Metadata, not a heading. */
-	.ls-key { font-size: var(--tv-label); color: var(--ink-dim); font-weight: 600; letter-spacing: 0.04em; }
+	/*
+	 * Secondary to the title: it disambiguates rather than identifies, so it stays dimmer. It is an
+	 * INLINE span nested in .ls-song (see the markup), so it must NOT carry overflow/text-overflow/
+	 * white-space of its own: overflow + text-overflow are inert on a non-replaced inline element (no
+	 * ellipsis is ever painted), while white-space: nowrap DOES apply and turns a long joined credit
+	 * (e.g. "Queen feat. David Bowie") into one unbreakable run that overflows .lower-third's 46vw and
+	 * gets hard-clipped mid-word with no ellipsis. Truncation belongs to .ls-song's 2-line
+	 * -webkit-line-clamp, which absorbs an over-long credit WITH an ellipsis — see #127.
+	 */
+	.ls-artist { font-size: var(--tv-body); color: var(--ink-dim); font-weight: 500; }
+	/* Metadata, not a heading: sized and dimmed like the eyebrow so it sits under the title quietly. */
+	.ls-key { font-size: var(--tv-label); color: var(--ink-dim); font-weight: 600; letter-spacing: 0.04em; opacity: 0.82; margin-top: 2px; }
 	/*
 	 * The provenance label, in the caution family so it matches the amber tint the reel puts on the
 	 * words themselves. Not uppercase and not letter-spaced: it is a short label read once, and the
@@ -925,25 +933,6 @@
 		margin-right: 0.4em; background: var(--singer); }
 	.un-song { font-size: var(--tv-label); color: var(--ink-dim); font-weight: 600;
 		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 32vw; }
-	.ls-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--tv-name); font-weight: 800; }
-	/*
-	 * Clamp the title to two lines. An UNPARSED long raw title (no canonical title to shorten it) would
-	 * otherwise grow the card downward — the TV-LAYOUT agent is reserving a fixed bottom band for these
-	 * cards, and an unbounded title defeats that. -webkit-line-clamp is the only cross-browser two-line
-	 * clamp; it needs the -webkit box display and hidden overflow to take effect.
-	 */
-	.ls-song {
-		font-size: var(--tv-body); opacity: 0.97;
-		display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
-		overflow: hidden;
-	}
-	/* Secondary to the title: it disambiguates rather than identifies, so it stays dimmer and one line. */
-	.ls-artist {
-		font-size: var(--tv-body); color: var(--ink-dim);
-		overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-	}
-	/* Metadata, not a heading: sized and dimmed like the eyebrow so it sits under the title quietly. */
-	.ls-key { font-size: var(--tv-label); letter-spacing: 0.04em; opacity: 0.82; margin-top: 2px; }
 	.interstitial {
 		position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center;
 		justify-content: center; gap: 12px;
