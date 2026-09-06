@@ -20,6 +20,14 @@ describe('safeNextPath', () => {
 		expect(safeNextPath('/\\evil.example')).toBe('/');
 		expect(safeNextPath('https://evil.example')).toBe('/');
 		expect(safeNextPath('http://evil.example')).toBe('/');
+		// The WHATWG URL parser strips ASCII tab/LF/CR before parsing, so a percent-encoded
+		// control char survives a prefix denylist and re-forms `//evil.example`. These are the
+		// exact bypasses reported in #436; each must collapse to the fallback.
+		expect(safeNextPath('/\t/evil.example')).toBe('/');
+		expect(safeNextPath('/\n/evil.example')).toBe('/');
+		expect(safeNextPath('/\r/evil.example')).toBe('/');
+		// mixed-case scheme must not slip past a lowercase-only scheme check
+		expect(safeNextPath('HtTpS://evil.example')).toBe('/');
 		expect(safeNextPath('javascript:alert(1)')).toBe('/');
 		expect(safeNextPath('settings')).toBe('/');
 	});
