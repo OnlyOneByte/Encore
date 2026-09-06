@@ -396,11 +396,18 @@ test('the unverified tint overrides variables only — it never re-selects a wor
  * a reserve keyed to a fixed pixel band would have been wrong at the tall end.
  *
  * THE FIX, and what these lock in. `.lobby` is a flow COLUMN; the stack lives in a `.stack-region` that
- * takes `flex: 1` and centres within it; `.strip` is IN FLOW (not absolutely docked), so its real
- * height — however many rows the names wrap to — always reserves its own band and the centred stack can
- * never reach into it, at any panel height or roster size. Pure geometry the DOM-less runner cannot
- * SEE, so the guard pins the structural precondition, and specifically the REVERSION: re-adding
- * `position: absolute; bottom: 0` to `.strip` restores the exact bug with the whole suite green.
+ * takes `flex: 1` and centres within it; `.strip` is IN FLOW (not absolutely docked). BUT the strip in
+ * flow is only half of it: the stack is a FIXED height (~614px at 720p, vh-based) and the region shrinks
+ * as the strip grows, so 8 long names wrapping to three rows (~208px, 29% of a 720p panel) drop the
+ * region below the stack's height and `align-items: center` spills the stack — bottom child = the
+ * address — back down into the strip. So the strip is ALSO CAPPED (`max-height` in vh) and its surplus
+ * rows fold behind the same fade the lyrics reel uses, which keeps the region tall enough for the stack
+ * at every roster size up to the max=8 cap plus its overflow chip. Pure geometry the DOM-less runner
+ * cannot SEE, so these pin the structural preconditions and the REVERSIONS: re-adding
+ * `position: absolute; bottom: 0` to `.strip`, or dropping its `max-height`, each restores an overlap
+ * with the whole suite green. Property-level proof (zero `.url`/`.strip` intersection at 1280×720 for
+ * every roster up to 8 long names + overflow) is captured by the CDP probe and its before/after frames
+ * in docs/shots/98/.
  */
 test('#98 the lobby roster strip reserves its band in flow — it is not absolutely docked to the edge', () => {
 	const lobby = stripComments(TV_LOBBY);
@@ -410,6 +417,12 @@ test('#98 the lobby roster strip reserves its band in flow — it is not absolut
 	// address. In flow it cannot overlap the stack, so it must be neither.
 	expect(/position:\s*absolute/.test(stripBlock)).toBe(false);
 	expect(/bottom:\s*0/.test(stripBlock)).toBe(false);
+	// AND it must be CAPPED: in flow but unbounded, the strip grows tall enough (8 long names -> three
+	// rows) to shrink the region below the fixed-height stack, which then overflows the address back into
+	// the band. A vh-keyed max-height bounds it so the region always clears the stack; dropping the cap
+	// reintroduces the overlap at 720p.
+	expect(/max-height:\s*[0-9.]+vh/.test(stripBlock)).toBe(true);
+	expect(/overflow:\s*hidden/.test(stripBlock)).toBe(true);
 });
 
 test('#98 the lobby centres its stack in the space ABOVE the strip, not across the whole box', () => {

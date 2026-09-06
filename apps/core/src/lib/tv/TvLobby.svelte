@@ -239,6 +239,21 @@
 		justify-content: center;
 		gap: 16px;
 		flex-wrap: wrap;
+		/*
+		 * CAP the band. The stack above is a fixed height (its margins are vh-based, ~614px at 720p) and
+		 * the region it centres in is whatever the strip leaves; on a short panel 8 long names wrap to
+		 * three rows (~208px, 29% of a 720p screen) and the region drops below the stack's height, so the
+		 * stack — whose last child is the join address — overflows back down into the strip (the #98
+		 * symptom). Bounding the strip keeps the region tall enough for the stack at every roster size.
+		 * Surplus rows fold below the same fade that already dims the band, exactly as the lyrics reel caps
+		 * itself and lets its edge mask absorb the overflow rows (app.css). The label and the "+N more"
+		 * chip lead the flow, so the row that stays visible is the one that answers "am I in, and how many
+		 * are here". Sized in vh so it tracks the panel: 14vh is ~101px at 720p (bounds the band to keep the stack
+		 * clear) and ~151px at 1080p, where the strip already sits comfortably under it and nothing is
+		 * clipped.
+		 */
+		max-height: 14vh;
+		overflow: hidden;
 	}
 	.label {
 		font-size: var(--tv-eyebrow);
