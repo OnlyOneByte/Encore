@@ -21,8 +21,23 @@ from src.processor import JobSpec  # noqa: E402
 from src.runtime import Ctx  # noqa: E402
 from src.steps.separate import ProbeSilence  # noqa: E402
 
-HEALTHY = "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
-SILENT = "[Parsed_volumedetect_0 @ 0x1] max_volume: -91.0 dB"
+# Real ffmpeg volumedetect output, trimmed to the summary block (mirrors test_silence_gate.py).
+# max_volume: is the 3rd of 4 lines in both blocks, so a step that keeps only
+# the first (or last) line of the stream never sees it and reads unmeasurable-not-silent. The
+# runner below yields these ONE LINE AT A TIME, which is how subprocess_runner streams on a real
+# box; a single-line fake could not exercise the join at separate.py:141.
+HEALTHY = [
+    "[Parsed_volumedetect_0 @ 0x1] n_samples: 15925248",
+    "[Parsed_volumedetect_0 @ 0x1] mean_volume: -21.4 dB",
+    "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB",
+    "[Parsed_volumedetect_0 @ 0x1] histogram_1db: 24",
+]
+SILENT = [
+    "[Parsed_volumedetect_0 @ 0x1] n_samples: 15925248",
+    "[Parsed_volumedetect_0 @ 0x1] mean_volume: -91.0 dB",
+    "[Parsed_volumedetect_0 @ 0x1] max_volume: -91.0 dB",
+    "[Parsed_volumedetect_0 @ 0x1] histogram_1db: 0",
+]
 
 
 def ctx_with(raw: dict[str, str], readings: dict[str, str]) -> Ctx:
@@ -30,7 +45,8 @@ def ctx_with(raw: dict[str, str], readings: dict[str, str]) -> Ctx:
 
     async def runner(argv) -> AsyncIterator[str]:
         path = next((a for a in argv if a in readings), None)
-        yield readings[path] if path else HEALTHY
+        for line in (readings[path] if path else HEALTHY):
+            yield line
 
     job = JobSpec(job_id="j1", media_id="m1", job_type="stems", source_uri="u", params={}, media_dir="/tmp")
     ctx = Ctx(job=job, work="/tmp/work", runner=runner)
@@ -102,7 +118,7 @@ async def test_an_UNMEASURABLE_instrumental_is_not_treated_as_silent():
     that raising path is pinned by test_a_raising_instrumental_probe_fails_the_job below — it is NOT
     tolerated here, contrary to what this docstring used to claim.
     """
-    unparseable = "[Parsed_volumedetect_0 @ 0x1] n_samples: 0"  # ffmpeg exit 0, no max_volume: line
+    unparseable = ["[Parsed_volumedetect_0 @ 0x1] n_samples: 0"]  # ffmpeg exit 0, no max_volume: line
     ctx = ctx_with({"instrumental": "/w/inst.wav"}, {"/w/inst.wav": unparseable})
     await drive(ctx)  # does not raise
 
