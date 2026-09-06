@@ -408,6 +408,10 @@
 	<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
 	<QueueRow seq={4} title="Sweet Caroline" singerName="Liam" singerColor="#5cb8ff" />
 	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor={PINK} mine pending />
+	<!-- issue #89: a 32-char name (the profile-name maxlength) overflows the byline. The identity dot
+	     (.who i) must keep its 10px width — it is flex:0 0 auto, not a shrinkable flex item — so the
+	     singer's colour survives on the very row where the truncated name least disambiguates them. -->
+	<QueueRow seq={6} title="Africa" singerName="Christopher Alexander Montgomery" singerColor={PINK} mine subtitle="after Liam" />
 
 	<h2 class="section">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />

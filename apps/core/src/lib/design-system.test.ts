@@ -289,3 +289,38 @@ test('the phone header truncates a long display name instead of growing the row 
 	const gear = page.match(/\.gear\s*\{([^}]*)\}/);
 	expect(gear![1]!).toMatch(/min-width:\s*44px/);
 });
+
+test('every identity-dot rule declares a non-shrinking flex basis', () => {
+	// THE BUG THIS EXISTS FOR (issue #89). The singer identity dot (`.who i`) lives inside `.who`, a
+	// flex container that QueueRow deliberately makes overflowable (nowrap + overflow:hidden so a long
+	// name plus an away/adding badge can't wrap and change the row's height). A dot is an empty element,
+	// whose automatic minimum size is 0, so as a shrinkable flex item it collapsed to 0px under a
+	// 32-char name (32 is exactly the profile-name maxlength) — the singer's colour vanished from their
+	// OWN row, the one place the truncated name is least able to disambiguate them. colors.ts:12-14
+	// states that dot is "the only thing telling two singers apart besides the name", so this is a
+	// functional loss, not cosmetic. The fix is the same `flex: 0 0 auto` that `.seq`/`.actions` carry;
+	// this guard pins it for every identity-dot rule so a future edit can't drop it. ProcessingCard's
+	// `.who i` is byte-identical by design, so it must satisfy the same rule.
+	const offences: string[] = [];
+	for (const f of svelteFiles(SRC)) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const m of src.matchAll(/\.who\s+i\s*\{([^}]*)\}/g)) {
+			const body = m[1]!;
+			const flexShorthand = body.match(/(^|[;{\s])flex:\s*0\s+0\b/);
+			const flexShrink0 = body.match(/flex-shrink:\s*0\b/);
+			if (!flexShorthand && !flexShrink0) {
+				offences.push(
+					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: .who i must declare flex:0 0 <basis> (or flex-shrink:0) so the identity dot cannot collapse to 0px`
+				);
+			}
+		}
+	}
+	// The rule must actually match something, or a selector rename would silently disarm it.
+	// QueueRow + ProcessingCard both carry a .who i rule.
+	let seen = 0;
+	for (const f of svelteFiles(SRC)) {
+		seen += [...stripComments(readFileSync(f, 'utf8')).matchAll(/\.who\s+i\s*\{/g)].length;
+	}
+	expect(seen).toBeGreaterThanOrEqual(2);
+	expect(offences).toEqual([]);
+});
