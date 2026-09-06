@@ -190,7 +190,12 @@ export class QueueStore {
 	}
 
 	#onPatch(e: Extract<ServerEvent, { type: 'queue:patch' }>): void {
-		this.#rev = e.patch.rev;
+		// Advance-only, through the SAME rule #noteRev enforces: the server never intentionally emits
+		// a lower rev (hub/player/leave all publish state.rev at publish time), and a lower rev here
+		// would rewind the counter #noteRev deliberately refuses to rewind — reintroducing the resync
+		// storm through the other writer (issue #115). One enforcement point, not one enforced + one
+		// honour-system copy. The re-ack/entries branches below still run on every patch.
+		this.#noteRev(e.patch.rev);
 		// originator: the echoed op is now server-confirmed, so drop it from pending
 		if (e.patch.causedBy) this.#pending.delete(e.patch.causedBy);
 		if (e.patch.entries) {

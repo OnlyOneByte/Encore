@@ -246,3 +246,42 @@ test('queue:patch with authoritative entries snaps to server order (no flicker),
 	expect(store.entries.map((e) => e.id)).toEqual(['x', 'y']);
 	expect(store.rev).toBe(5);
 });
+
+// Issue #115: #onPatch must not rewind #rev below what a higher-rev event already set. #rev is what
+// the WS gap detector reads (getLastRev at client.ts:161); if a lower-rev queue:patch rewinds it, the
+// next legitimate patch is measured against a stale expected and discarded, forcing a full resync to
+// every phone — the exact storm #noteRev's advance-only rule was written to stop, reintroduced here.
+test('a lower-rev queue:patch does NOT rewind rev, and the next real patch still applies (issue #115)', () => {
+	const { store } = makeStore();
+
+	// server advances the shared counter to 10 via a playback:state (advance-only path).
+	// (state payload is required by the type but ignored by #noteRev, which reads only rev.)
+	const pb = {
+		currentEntryId: null,
+		positionSec: 0,
+		isPlaying: false,
+		keyShift: 0,
+		background: null,
+		guideLevel: null
+	};
+	store.onServerEvent({ type: 'playback:state', state: pb, rev: 10 });
+	expect(store.rev).toBe(10);
+
+	// an out-of-order queue:patch carrying a LOWER rev arrives (reachable once #114's duplicate
+	// socket breaks single-socket ordering). It must NOT rewind the counter.
+	store.onServerEvent({ type: 'queue:patch', patch: { rev: 4, ops: [] } });
+	expect(store.rev).toBe(10); // guarded: NOT 4
+
+	// the next legitimate patch (rev 11) is exactly one past the counter, so getLastRev()+1 === 11
+	// matches and it is adopted rather than looking gapped against a rewound 5.
+	store.onServerEvent({
+		type: 'queue:patch',
+		patch: {
+			rev: 11,
+			ops: [],
+			entries: [{ id: 'z', mediaId: 'm9', singerId: 'a', status: 'queued', rotationSeq: 0, addedAt: 1 }]
+		}
+	});
+	expect(store.rev).toBe(11);
+	expect(store.entries.map((e) => e.id)).toEqual(['z']);
+});
