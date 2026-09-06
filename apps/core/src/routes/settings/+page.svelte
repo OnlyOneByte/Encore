@@ -128,6 +128,11 @@
 	// invalidation) shows fresh server values, not the mount-time snapshot.
 	let settings = $state<EffectiveSettings>(untrack(() => data.settings));
 
+	// The last value the SERVER confirmed. `settings` moves optimistically on a drag frame
+	// (`liveRoom`) so the readout tracks the thumb; this snapshot does not, so a rejected commit
+	// rolls back to what the server actually holds rather than to the dragged value it refused.
+	let committed = untrack(() => data.settings);
+
 	// Minutes read badly past an hour ("120 minutes"), and 0 needs saying in words rather than as a
 	// number that looks like a missing value.
 	const graceLabel = $derived.by(() => {
@@ -140,6 +145,7 @@
 	});
 	$effect(() => {
 		settings = data.settings;
+		committed = data.settings;
 	});
 
 	// The chosen algorithm's own note, so the consequence is stated by the registry rather than
@@ -270,7 +276,7 @@
 	 * value on screen that the server refused.
 	 */
 	async function patch(scope: 'global' | 'room', body: Record<string, unknown>) {
-		const before = settings;
+		const before = committed;
 		settings =
 			scope === 'global'
 				? { ...settings, global: { ...settings.global, ...body } }
@@ -284,6 +290,7 @@
 			});
 			if (!res.ok) throw new Error('rejected');
 			settings = await res.json();
+			committed = settings;
 		} catch {
 			settings = before;
 			failed = true;
@@ -292,6 +299,13 @@
 
 	const onglobal = (body: Partial<GlobalSettings>) => patch('global', body);
 	const onroom = (body: Partial<RoomSettings>) => patch('room', body);
+
+	// Move ONE room field on screen without a write, so the readout label (the only display of the
+	// value) tracks the thumb during a drag. `onchange` still commits via `onroom`; the rollback
+	// baseline is `committed`, so an intermediate drag value never becomes the value we revert to.
+	function liveRoom<K extends keyof RoomSettings>(field: K, value: RoomSettings[K]) {
+		settings = { ...settings, room: { ...settings.room, [field]: value } };
+	}
 
 	function pickEngine(id: string) {
 		const engine = engineOf(id);
@@ -570,6 +584,7 @@
 						max={MAX_PRESENCE_GRACE_MINUTES}
 						step="15"
 						value={settings.room.presenceGraceMinutes}
+						oninput={(e) => liveRoom('presenceGraceMinutes', Number(e.currentTarget.value))}
 						onchange={(e) => onroom({ presenceGraceMinutes: Number(e.currentTarget.value) })}
 					/>
 					<p class="hint">A locked phone is not someone leaving, so they stay on the roster this long.</p>
@@ -681,6 +696,7 @@
 							step={SINGER_HUE_STEP}
 							value={settings.room.tvBackgroundHue}
 							style="--track: {hueTrack}; --thumb: {tvBackgroundPreview}"
+							oninput={(e) => liveRoom('tvBackgroundHue', Number(e.currentTarget.value))}
 							onchange={(e) => onroom({ tvBackgroundHue: Number(e.currentTarget.value) })}
 						/>
 					{/if}
@@ -710,6 +726,7 @@
 						step={SONG_INTRO_STEP_MS}
 						disabled={!settings.room.songIntroEnabled}
 						value={settings.room.songIntroMs}
+						oninput={(e) => liveRoom('songIntroMs', Number(e.currentTarget.value))}
 						onchange={(e) => onroom({ songIntroMs: Number(e.currentTarget.value) })}
 					/>
 				</div>
@@ -796,6 +813,7 @@
 						max={MAX_LYRICS_SCALE_PCT}
 						step="5"
 						value={settings.room.lyricsScalePct}
+						oninput={(e) => liveRoom('lyricsScalePct', Number(e.currentTarget.value))}
 						onchange={(e) => onroom({ lyricsScalePct: Number(e.currentTarget.value) })}
 					/>
 					<!--
@@ -814,6 +832,7 @@
 						max={MAX_LYRICS_LEAD_MS}
 						step="50"
 						value={settings.room.lyricsLeadMs}
+						oninput={(e) => liveRoom('lyricsLeadMs', Number(e.currentTarget.value))}
 						onchange={(e) => onroom({ lyricsLeadMs: Number(e.currentTarget.value) })}
 					/>
 
@@ -827,6 +846,7 @@
 								max={MAX_LYRICS_LINES_BEFORE}
 								step="1"
 								value={settings.room.lyricsLinesBefore}
+								oninput={(e) => liveRoom('lyricsLinesBefore', Number(e.currentTarget.value))}
 								onchange={(e) => onroom({ lyricsLinesBefore: Number(e.currentTarget.value) })}
 							/>
 						</div>
@@ -839,6 +859,7 @@
 								max={MAX_LYRICS_LINES_AFTER}
 								step="1"
 								value={settings.room.lyricsLinesAfter}
+								oninput={(e) => liveRoom('lyricsLinesAfter', Number(e.currentTarget.value))}
 								onchange={(e) => onroom({ lyricsLinesAfter: Number(e.currentTarget.value) })}
 							/>
 						</div>
@@ -859,6 +880,7 @@
 						max="100"
 						step="1"
 						value={Math.round(settings.room.guideLevelDefault * 100)}
+						oninput={(e) => liveRoom('guideLevelDefault', Number(e.currentTarget.value) / 100)}
 						onchange={(e) => onroom({ guideLevelDefault: Number(e.currentTarget.value) / 100 })}
 					/>
 					<p class="hint">Starting vocal level. Singers can change it per song.</p>
