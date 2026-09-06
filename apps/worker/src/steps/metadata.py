@@ -5,11 +5,11 @@ Acquisition itself is `steps/acquire.py` — shared with stems and align, which 
 """
 from __future__ import annotations
 
-import asyncio
 from typing import Any, AsyncIterator
 
 from ..processor import ProgressEvent
 from ..runtime.ctx import Ctx
+from ..runtime.runner import run_blocking
 from ..runtime.step import Step, StepResult
 from ..vocabulary import Stage
 
@@ -47,8 +47,21 @@ class Annotate(Step):
                 self._annotator, params.get("artist"), params.get("track"), params.get("durationSec")
             )
 
+        # Run the lookup through run_blocking, exactly as the sibling blocking steps do (lyrics AcquireTexts,
+        # analysis SongProfile). A raw asyncio.to_thread here emitted NOTHING for the whole MusicBrainz wait,
+        # and that wait can be long: the gate serialises calls and SLEEPS to hold one request per second, so a
+        # throttled/slow service holds this thread well past the core's 30 s progress lease — the ONLY emitter
+        # of job:progress during the wait is gone, the reaper requeues a healthy cook (progress-lease-expired),
+        # and each retry is a full re-acquire. run_blocking yields a keepalive ProgressEvent every
+        # LEASE_KEEPALIVE_SEC so the lease is renewed. pct=100 matches analysis: acquisition has already reached
+        # 100 by the time Annotate runs, so the keepalive holds the bar rather than moving it backward.
+        got = reason = None
         try:
-            got, reason = await asyncio.to_thread(_call)
+            async for kind, val in run_blocking(_call, self.stage, 100):
+                if kind == "progress":
+                    yield val
+                else:
+                    got, reason = val
         except Exception as exc:  # noqa: BLE001 — annotation is an enrichment; never a job failure
             got, reason = None, f"lookup crashed: {exc}"
         if got is not None:
@@ -60,8 +73,6 @@ class Annotate(Step):
             # operator had no way to tell that from a healthy "nothing agreed on the names" miss. The
             # reason distinguishes them, carrying the rate gate's counters when it was a throttle.
             ctx.note(f"annotation declined: {reason or 'no reason'}")
-        return
-        yield  # pragma: no cover - makes this an async generator
 
 
 class PublishOriginal(Step):
