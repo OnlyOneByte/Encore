@@ -282,3 +282,89 @@ describe('evictDerived', () => {
 		);
 	});
 });
+
+
+// ── #496: retention must report bytes it actually freed, and derive the vocals ref in ONE place ──
+import { readFileSync as _readFileSync } from 'node:fs';
+import { chmodSync, statSync as _statSync } from 'node:fs';
+import { join as _join } from 'node:path';
+
+// Strip block and line comments so a scan measures LOGIC, not the prose that describes the old form.
+// retention.ts's docstrings mention `-instrumental.` in prose, which would satisfy a naive scan.
+const stripComments = (src: string): string =>
+	src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+
+const mediaSrcDir = _join(import.meta.dir);
+const readSrc = (name: string) => _readFileSync(_join(mediaSrcDir, name), 'utf8');
+
+describe('#496 §1 — evictDerived reports only bytes it actually freed', () => {
+	it('counts ZERO bytes for a file it could not delete, and leaves it on disk', () => {
+		// The reachable trigger: a derived file `existsSync` can see but `rmSync` cannot dispose of.
+		// `force` suppresses ENOENT only; EACCES/EPERM/EROFS/EBUSY still throw. We reproduce EACCES by
+		// making the parent directory non-writable. Root ignores mode bits, so skip under uid 0.
+		if (process.getuid?.() === 0) return; // root ignores mode bits — the throw cannot be reproduced
+		put('derived/stems/a-instrumental.flac', 4096);
+		const parent = _join(root, 'derived', 'stems');
+		chmodSync(parent, 0o555); // read+execute, no write → unlink throws EACCES
+		try {
+			const { removed, bytes } = evictDerived(media('a', { instrumentalRef: 'derived/stems/a-instrumental.flac' }));
+			// BASE (count-before-delete) reported bytes = 4096 for a file still on disk. Fixed: 0.
+			expect(bytes).toBe(0);
+			expect(removed).toEqual([]);
+			expect(existsSync(_join(root, 'derived/stems/a-instrumental.flac'))).toBe(true);
+		} finally {
+			chmodSync(parent, 0o755); // restore so afterEach can rmSync the tree
+		}
+	});
+
+	it('binds the disposal error and logs it — a swallowed failure is undiagnosable', () => {
+		// Portable structural guard (the behavioural arm above needs a non-root uid). Two invariants:
+		// (1) the byte count happens AFTER the disposal call, not before; (2) the catch binds the error
+		// and logs it rather than being a bare `catch {}`. Both red on base.
+		const body = stripComments(readSrc('retention.ts'));
+		const fn = body.match(/export function evictDerived[\s\S]*?\n}/);
+		expect(fn).not.toBeNull();
+		const evict = fn![0];
+
+		const rmAt = evict.indexOf('rmSync(');
+		const countAt = evict.indexOf('bytes +=');
+		expect(rmAt).toBeGreaterThan(-1); // disposal-call anchor found
+		expect(countAt).toBeGreaterThan(-1); // count anchor found
+		// count AFTER disposal: BASE FAILS (count precedes rmSync)
+		expect(countAt).toBeGreaterThan(rmAt);
+		// error is bound and logged: BASE FAILS (bare `catch {}` with no console call)
+		expect(evict).toMatch(/catch\s*\(/);
+		expect(evict).toMatch(/console\.(warn|error)/);
+	});
+});
+
+describe('#496 §2 — the vocals ref is derived in exactly one place', () => {
+	it('the -instrumental.->-vocals. substitution appears exactly ONCE in production source', () => {
+		// GUARD 1: comments stripped, scan retention.ts / vocals-backfill.ts / paths.ts. BASE = 3
+		// (retention.ts: 2, vocals-backfill.ts: 1). After the extraction into paths.ts it is 1.
+		const swap = /\.replace\(\s*['"]-instrumental\.['"]\s*,\s*['"]-vocals\.['"]\s*\)/g;
+		const files = ['retention.ts', 'vocals-backfill.ts', 'paths.ts'];
+		const hits = files.reduce((n, f) => n + (stripComments(readSrc(f)).match(swap)?.length ?? 0), 0);
+		expect(hits).toBeGreaterThan(0); // sentinel: fails loudly if the anchor ever disappears entirely
+		expect(hits).toBe(1);
+	});
+
+	it('proves comment-stripping is load-bearing, not decorative', () => {
+		// The raw source mentions the swap more often than the stripped source (the docstrings describe
+		// it). Passes on base; fails honestly the day the comments stop mentioning it.
+		const raw = readSrc('retention.ts');
+		const rawCount = (raw.match(/-instrumental\./g) ?? []).length;
+		const strippedCount = (stripComments(raw).match(/-instrumental\./g) ?? []).length;
+		expect(rawCount).toBeGreaterThan(strippedCount);
+	});
+
+	it('derivedRefsOf reads the shared candidate list AND retains the stored ref', () => {
+		// GUARD 3: retention re-derived its own list; it must delegate to candidateVocalsRefs.
+		// The m.vocalsRef arm (added by #480) is a regression guard: it must still be present.
+		const body = stripComments(readSrc('retention.ts'));
+		const fn = body.match(/function derivedRefsOf[\s\S]*?\n}/);
+		expect(fn).not.toBeNull();
+		expect(fn![0]).toContain('candidateVocalsRefs'); // BASE FAILS: re-derived inline
+		expect(fn![0]).toContain('m.vocalsRef'); // #480 regression guard — passes today
+	});
+});
