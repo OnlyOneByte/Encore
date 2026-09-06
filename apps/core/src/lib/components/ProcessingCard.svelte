@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { MEDIA_STAGES, mediaStagePosition, overallCookPct, SINGER_COLORS } from '@encore/shared';
+	import { overallCookPct, SINGER_COLORS } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
-	import { cookStageChipLabel, cookStageLabel } from '$lib/cook-phrasing';
+	import { cookStageLabel } from '$lib/cook-phrasing';
 	interface Props {
 		// Queue-slot number + the singer who asked for it. Both absent when the card renders OUTSIDE
 		// the rotation list — a song cooking for someone else's turn still needs somewhere to show its
@@ -32,27 +32,6 @@
 		onremove, reorderable = false, canUp = false, canDown = false, onup, ondown
 	}: Props = $props();
 
-	// The stages shown as chips, in worker order. The ORDER comes from the shared `MEDIA_STAGES` — the
-	// same list the server positions every `media:status` on — so the strip cannot disagree with what
-	// the cook reports. It was a hand-written array here (twice over: STAGE_KEYS and a duplicate
-	// `order`), which is what let the two drift apart from the server's view of the same five stops.
-	// Labels come from the shared phrasing helper so the card and SongRow speak one vocabulary.
-	const STAGES: { key: MediaStatus; label: string }[] = MEDIA_STAGES.map((key) => ({
-		key,
-		label: cookStageChipLabel(key)
-	}));
-	function state(key: MediaStatus): 'done' | 'now' | 'todo' {
-		const cur = mediaStagePosition(status);
-		const k = mediaStagePosition(key);
-		// A terminal exit (failed / canceled) is not ON the line, so no chip is current. This is what the
-		// bare index comparison below already did with its -1, and saying so explicitly is the point: the
-		// old code got the right answer by accident, which is not a property you want a future edit to
-		// have to rediscover.
-		if (cur < 0) return 'todo';
-		if (k < cur) return 'done';
-		if (k === cur) return 'now';
-		return 'todo';
-	}
 	// pct is shown separately in the .stage row, so the line itself omits it.
 	const stageLabel = $derived(cookStageLabel(status));
 	// `pct` is the WORKER'S per-step 0-100. The bar shows OVERALL cook completion, not the current
@@ -73,10 +52,10 @@
 				     should not learn the singer left only once the song reaches the front.
 
 				     This line names the SINGER and nothing else. It used to end in "· being prepared" (and
-				     rendered a bare "being prepared" with no singer), which was a fourth phrasing for cook
-				     state alongside cook-phrasing.ts's "Making karaoke...", the chip strip's "Making
-				     karaoke", and SongRow's chip -- and it sat one line above the .stage row that already
-				     says exactly that, from the shared source. Redundant AND divergent, so it is gone. -->
+				     rendered a bare "being prepared" with no singer), which was a competing phrasing for cook
+				     state alongside cook-phrasing.ts's "Making karaoke..." and SongRow's chip -- and it sat
+				     one line above the .stage row that already says exactly that, from the shared source.
+				     Redundant AND divergent, so it is gone. -->
 				<i class:dim={singerAway} style="--singer:{singerColor}"></i> {singerName}{#if singerAway}<span
 						class="away">· away</span>{/if}
 			</div>
@@ -96,13 +75,6 @@
 	<div class="progress">
 		<div class="bar"><i style="transform:scaleX({overall / 100})"></i></div>
 		<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
-		<div class="chips">
-			{#each STAGES as s}
-				<span class="chip {state(s.key)}">
-					{#if state(s.key) === 'done'}<Icon name="check" />{/if}{#if state(s.key) === 'now'}<span class="now-dot" aria-hidden="true"></span>{/if}{s.label}
-				</span>
-			{/each}
-		</div>
 	</div>
 </div>
 
@@ -110,7 +82,7 @@
 	/* .list-row gives the padding, margin and gap; ProcessingCard overrides its display to a two-row
 	   grid. Row 1: seq (auto) / title+singer (1fr) / actions (auto). Row 2: the progress block, spanning
 	   every column so it always gets the card's full inner width — the actions cluster can no longer eat
-	   into the bar or the chip strip (issue #176). align-items on row 1 keeps the seq bubble and the
+	   into the bar or the stage line (issue #176). align-items on row 1 keeps the seq bubble and the
 	   action cluster anchored to the title line rather than floating in a taller card. */
 	.qrow.proc {
 		display: grid;
@@ -158,12 +130,4 @@
 	.act:disabled { opacity: 0.35; cursor: default; }
 	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }
 	.remove:active { transform: scale(0.9); color: var(--accent2); }
-	.chips { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
-	.chip { display: inline-flex; align-items: center; gap: 4px; font-size: 0.66rem; padding: 3px 8px; border-radius: 20px; background: var(--card-tint2); color: var(--ink-dim); }
-	/* The "now" marker was a ● glyph; drawn instead so its size does not depend on a fallback font. */
-	.now-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex: 0 0 auto; }
-	/* 16% tints DERIVED from the tokens via color-mix, not the --ok/--warn hexes hand-inlined at
-	   0.16 alpha — a hand-inlined copy silently desyncs the moment either token changes. */
-	.chip.done { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
-	.chip.now { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
 </style>

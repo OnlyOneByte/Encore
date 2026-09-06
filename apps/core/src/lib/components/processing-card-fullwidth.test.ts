@@ -1,14 +1,15 @@
-// Guard for issue #176: the ProcessingCard progress block (bar + stage line + five-milestone chip
-// strip) must occupy the card's FULL inner width, independent of whether the action cluster
+// Guard for issue #176: the ProcessingCard progress block (bar + stage line) must occupy the
+// card's FULL inner width, independent of whether the action cluster
 // (remove / reorder) renders. Before the fix the bar and chips lived INSIDE .meta, which shared a
 // single flex row with .actions, so a viewer's OWN cooking song (which shows up to three 44px
-// buttons = ~148px) got a 134px bar and a five-line chip stack while a stranger's action-less card
-// kept a 294px bar and two chip rows — different geometry for the same component in the same list.
+// buttons = ~148px) got a 134px bar while a stranger's action-less card kept a 294px bar —
+// different geometry for the same component in the same list. (The per-stage chip strip this guard
+// also once covered was removed in #253; the bar's width-invariance is what #176 pins.)
 //
 // The fix lifts the progress block onto its own full-width grid row. This guard pins the two
 // structural facts that make the bar's width invariant to the actions column, and reds if either
 // is reverted:
-//   1. the .bar / .stage / .chips markup is NOT nested inside .meta (the row that carries .actions);
+//   1. the .bar / .stage markup is NOT nested inside .meta (the row that carries .actions);
 //   2. the card is a grid and the .progress block spans every column (grid-column: 1 / -1).
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
@@ -53,10 +54,9 @@ function metaInner(code: string): string {
 
 test('#176: the progress block is NOT nested inside .meta (which shares the row with .actions)', () => {
 	const inner = metaInner(CODE);
-	// The row-sharing container must not carry the bar or the chip strip — that is exactly the
-	// squeeze this issue fixed. Reverting the fix puts them back here and reds this test.
+	// The row-sharing container must not carry the progress bar or the stage line — that is exactly
+	// the squeeze this issue fixed. Reverting the fix puts them back here and reds this test.
 	expect(inner).not.toContain('class="bar"');
-	expect(inner).not.toContain('class="chips"');
 	expect(inner).not.toContain('class="stage"');
 });
 
