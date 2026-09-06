@@ -82,19 +82,9 @@ export class PresenceTracker {
 		return true;
 	}
 
-	/** Whether this singer holds at least one live socket. */
-	isOnline(singerId: string): boolean {
-		return (this.#rec.get(singerId)?.sockets ?? 0) > 0;
-	}
-
 	/** Ids of every singer with a live socket. Order is insertion (arrival) order. */
 	online(): string[] {
 		return [...this.#rec.entries()].filter(([, r]) => r.sockets > 0).map(([id]) => id);
-	}
-
-	/** How many distinct singers hold a socket (not how many sockets). */
-	count(): number {
-		return this.online().length;
 	}
 
 	/** Live socket count for one singer — exposed for the ref-count assertions in tests. */
