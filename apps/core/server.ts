@@ -15,6 +15,7 @@ import {
 import { handleQueueCommand, syncEvent, orderingOf, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './src/server/realtime/player';
 import { cancelJobsForMedia } from './src/server/jobs/cancel';
+import { validateWorkerMessage } from './src/server/jobs/worker-hub';
 import { reprioritizeCookForMedia } from './src/server/jobs/reprioritize-cook';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish } from './src/server/app';
@@ -199,12 +200,20 @@ const server = Bun.serve<SocketData>({
 		message(ws, raw) {
 			// Dial-home worker protocol (§5) — a separate message family on role=worker sockets.
 			if (ws.data.role === 'worker') {
-				let msg: WorkerMessage;
+				let parsed: unknown;
 				try {
-					msg = JSON.parse(String(raw));
+					parsed = JSON.parse(String(raw));
 				} catch {
 					return;
 				}
+				// A role=worker socket carries DISPATCH AUTHORITY and — when ENCORE_WORKER_TOKEN is unset
+				// (see :36 / the boot warning) — is reachable UNAUTHENTICATED. Everything below reads fields
+				// straight off the frame: `'workerId' in msg` throws on a `null` body, and the worker hub
+				// spreads/joins `capabilities`, so a wrong-typed field used to throw out of this handler.
+				// Validate the frame's SHAPE before any of those reads, exactly as validateCommand guards
+				// the client family. A malformed frame is dropped, not executed. (issue #433)
+				if (validateWorkerMessage(parsed) !== null) return;
+				const msg = parsed as WorkerMessage;
 				// remember this socket's workerId so disconnect can deregister + free its slots
 				if ('workerId' in msg && msg.workerId) {
 					ws.data.workerId = msg.workerId;
