@@ -119,7 +119,10 @@
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
 	.who i.dim { opacity: 0.5; }
 	.who .away { color: var(--warn); margin-left: 0.35em; }
-	.who i { width: 10px; height: 10px; border-radius: 50%; background: var(--singer); }
+	/* flex: 0 0 auto for parity with QueueRow's dot (issue #89): today .who here wraps so the dot
+	   survives, but keeping the two identity-dot rules identical stops a future nowrap edit here from
+	   silently reintroducing the 0px-dot collapse. */
+	.who i { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--singer); }
 	.bar { height: 6px; border-radius: 6px; background: var(--card-tint2); overflow: hidden; margin-top: 9px; }
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
 	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 6px; transform-origin: left center; transition: transform 0.4s ease; }
