@@ -67,14 +67,33 @@ test('LyricsOverlay imports and consumes drawPosition from the pure module', () 
 });
 
 test('the drawn position is not a mutable $state accumulator that a stopped rAF would lose', () => {
-	// The bug shape: `let displayPos = $state(0)` written imperatively inside a requestAnimationFrame
-	// tick. The drawn position must instead be a $derived over the pure function. Assert there is no
-	// $state-backed position that the reel reads.
-	expect(/let\s+displayPos\s*=\s*\$state/.test(CODE)).toBe(false);
-	// And there must be no assignment of a position variable from inside the rAF tick callback body:
-	// the loop may advance a clock, never the drawn position itself. Inspect only the tick closure.
-	const tickBodies = [...CODE.matchAll(/const\s+tick\s*=\s*\(\)\s*=>\s*\{([\s\S]*?)\};/g)].map((m) => m[1]!);
+	// The bug shape (#54): the drawn position kept as a mutable `$state(0)` that a requestAnimationFrame
+	// tick rewrites every frame — so a throttled/stopped rAF (backgrounded tab) drifts it back to 0.
+	// The invariant is BEHAVIOURAL, not a name: the drawn position must be a $derived DIRECTLY over the
+	// pure `drawPosition(...)`, and the rAF tick may advance only the clock, never a drawn-position
+	// accumulator. Pin both properties so a rename (`shownPos`) or a re-declared tick walks through
+	// neither.
+	const FLAT = CODE.replace(/\s+/g, ' ');
+
+	// (1) POSITIVE invariant: the drawn position is $derived straight from the pure function. This is
+	// the load-bearing assertion — it reds any accumulator, whatever it is named, because an
+	// accumulator derives `displayPos` from a $state local (`$derived(shownPos)`), not from drawPosition.
+	expect(/\$derived\(\s*drawPosition\s*\(/.test(FLAT)).toBe(true);
+
+	// (2) The old name-pinned negative, kept as a cheap belt-and-suspenders check (no longer load-bearing).
+	expect(/let\s+\w+\s*=\s*\$state\s*\(\s*0\s*\)\s*;[\s\S]*?const\s+displayPos\s*=\s*\$derived\s*\(\s*\w+\s*\)/.test(CODE)).toBe(false);
+
+	// (3) Inspect the rAF tick body — matched in EITHER form (`const tick = () => {…}` OR
+	// `function tick() {…}` OR `const tick = function () {…}`) so a re-declaration cannot make the scan
+	// silently match nothing. A `files.length`-style sentinel makes a zero-match a FAILURE, not a
+	// vacuous pass: the component must have exactly the one tick closure we expect to inspect.
+	const tickBodies = [
+		...CODE.matchAll(/const\s+tick\s*=\s*(?:\(\s*\)\s*=>|function\s*\(\s*\))\s*\{([\s\S]*?)\n\t\t\}/g),
+		...CODE.matchAll(/function\s+tick\s*\(\s*\)\s*\{([\s\S]*?)\n\t\t\}/g)
+	].map((m) => m[1]!);
+	expect(tickBodies.length).toBeGreaterThan(0);
 	for (const body of tickBodies) {
-		expect(/\b(displayPos|cuePos)\s*=/.test(body)).toBe(false);
+		// The tick may advance a clock (`now = …`), never a drawn-position accumulator.
+		expect(/\b(displayPos|shownPos|cuePos|drawPos|drawnPos|reelPos|scrollPos)\s*=[^=]/.test(body)).toBe(false);
 	}
 });
