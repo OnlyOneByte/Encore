@@ -4,6 +4,7 @@
 	import type { ServerEvent, QueueEntry, Media, PublicSinger } from '@encore/shared';
 	import { chosenCandidate, isPlayable, effectiveSongIntroMs, songDisplay, soundingKeyLabel } from '@encore/shared';
 	import { GaplessController } from '$lib/tv/gapless';
+	import { telemetryFrame } from '$lib/tv/telemetry';
 	import TvPlayer from '$lib/tv/TvPlayer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
@@ -158,13 +159,10 @@
 	 * a progress bar that jumps to the beginning on pause. See lib/ws/send.ts.
 	 */
 	function sendTelemetry(status: string, positionSec = 0, durationSec = 0, bufferedNextPct = 0) {
-		// Stamp the entry EVERY frame is about — not just `ended` — so the server can tell a live
-		// frame from a stale one on BOTH paths: a stale/duplicate `ended` must not double-advance
-		// (#70), and a position frame the outgoing song emits across an advance must not overwrite
-		// the new entry's playhead and seek the incoming singer mid-song (#125). `current?.id` is
-		// already in scope; when absent the server keeps its legacy id-less behaviour.
-		const entryId = current?.id ?? undefined;
-		trySend(ws, JSON.stringify({ type: 'tv:telemetry', positionSec, durationSec, status, bufferedNextPct, entryId }));
+		// The frame — including the entry stamp the server's #70/#125 guard needs on EVERY frame — is
+		// built by the pure `telemetryFrame()` in $lib/tv/telemetry.ts, so the stamp is unit-tested
+		// behaviourally rather than only by scanning this .svelte source for a literal.
+		trySend(ws, JSON.stringify(telemetryFrame(status, current, positionSec, durationSec, bufferedNextPct)));
 	}
 
 	function onVisibleError() {
