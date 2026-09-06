@@ -13,6 +13,7 @@
 		type LyricsProvenance
 	} from './lyrics';
 	import { drawPosition } from './lyrics-position';
+	import { reelOffset as reelOffsetFor } from './reel-offset';
 	import {
 		DEFAULT_LYRICS_BALL,
 		DEFAULT_LYRICS_CASE,
@@ -182,9 +183,18 @@
 		 * clamp() the browser resolves and a wrapped row is taller than one line — the same reason the
 		 * offset itself is measured.
 		 */
-		const rowHeight = row.offsetHeight;
-		const bias = ((linesBefore - linesAfter) / 2) * rowHeight;
-		reelOffset = -(row.offsetTop + row.offsetHeight / 2 - viewportEl.clientHeight / 2 - bias);
+		// The reel is clipped to a max-height cap (see the stylesheet), so the height the current row is
+		// actually seen through is `viewportEl.clientHeight`, not the derived row-count height the bias was
+		// sized against. `reelOffset()` applies the asymmetric bias AND clamps the result to keep the sung
+		// row inside that visible band — the whole of issue #270 lives in that clamp, so it is a pure,
+		// unit-tested function rather than inline maths here.
+		reelOffset = reelOffsetFor({
+			rowTop: row.offsetTop,
+			rowHeight: row.offsetHeight,
+			band: viewportEl.clientHeight,
+			linesBefore,
+			linesAfter
+		});
 	}
 	$effect(() => {
 		void lineIdx; // re-measure on every line change
