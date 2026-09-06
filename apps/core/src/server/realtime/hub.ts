@@ -106,6 +106,20 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// the op would leave the sender's optimistic copy disagreeing with the server forever.
 			if (op.entry.singerId !== deps.actorSingerId) return 'singerId does not match this session';
 			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
+			// An add whose id is already held by a DIFFERENT entry overwrites it: applyOp's add arm
+			// updates-in-place on id match (its in-place branch is for the originator's own optimistic
+			// row, so it is not itself the bug), and this arm never asked whether the id was free. So a
+			// joined phone could send an add carrying another live entry's id and (a) destroy that
+			// singer's turn — the record is rewritten whole, singerId/mediaId/addedAt and all — and
+			// (b) orphan the displaced media's cook: the hub fires onEntryRemoved only on a literal
+			// `remove`, so cancelJobsForMedia never runs and a worker keeps cooking a song nobody is
+			// queued on. Reject at the seam, same class as the shape guards below. Compare the WHOLE
+			// identity, not singerId alone: a same-singer re-point to a different mediaId still orphans
+			// the old cook. The identical-identity case is left to pass on purpose — applyOp's in-place
+			// arm and an evicted-clientOpId re-delivery (seenOps is a bounded FIFO) both need it.
+			const existing = deps.state.entries.find((e) => e.id === op.entry.id);
+			if (existing && (existing.singerId !== op.entry.singerId || existing.mediaId !== op.entry.mediaId))
+				return `entry id already taken: ${op.entry.id}`;
 			// Shape of the CLIENT-MINTED fields that reach the queue verbatim (applyOp inserts op.entry
 			// unchanged; only rotationSeq is server-owned). Both are NOT NULL enum/integer columns in
 			// queue_entries, so a non-finite addedAt or an off-enum status sailed through validation, was
