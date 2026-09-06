@@ -115,6 +115,41 @@ test('the focus ring is visible against every surface it can appear on', () => {
 	expect(fails).toEqual([]);
 });
 
+/*
+ * The test above proves --focus is SAFE on every surface a ring can land on, but it never looks at
+ * what colour any rule actually draws a ring IN -- so a rule ringing in --accent (a darker
+ * background token, 3.63:1 on --card2 vs --focus's 5.08:1) or, worse, in the surface colour itself
+ * (an invisible ring) sailed past it. #149: the queue peek and every Trend column rang in --accent.
+ * This closes the class in the same belt-and-braces shape as the --grad and --accent scans: every
+ * `outline`/`outline-color` that names a colour must name --focus. A bare reset (`outline: none`,
+ * `outline: 0`) draws no ring and is allowed; `outline-offset` and `outline-width` set no colour.
+ * MUTATION-VERIFIED against #149: recolouring either ring to var(--accent) or var(--card2) reds this.
+ */
+test('every focus outline is drawn in --focus, not --accent or the surface colour', () => {
+	const files = [
+		join(SRC, 'app.css'),
+		...svelteFiles(join(SRC, 'lib')),
+		...svelteFiles(join(SRC, 'routes'))
+	];
+	const offenders: string[] = [];
+	// A shorthand `outline:` or a longhand `outline-color:` that carries a colour. Not matched:
+	// outline-offset / outline-width / outline-style (no colour), and a bare `outline: none|0` reset.
+	const outlineRule = /(?:^|[;\s])outline(?:-color)?:\s*([^;]+?)\s*(?:;|$)/g;
+	for (const f of files) {
+		for (const block of readFileSync(f, 'utf8').matchAll(/\{([^{}]*)\}/g)) {
+			const body = block[1]!;
+			for (const m of body.matchAll(outlineRule)) {
+				const value = m[1]!.trim();
+				if (/^(none|0|0px|unset|inherit|initial|revert)$/.test(value)) continue; // a reset, no ring
+				if (!/\bvar\(--focus\)/.test(value)) {
+					offenders.push(`${f.replace(SRC, 'src')}: outline "${value}" is not var(--focus)`);
+				}
+			}
+		}
+	}
+	expect(offenders).toEqual([]);
+});
+
 /**
  * The regression that motivated this file. --grad is decoration; a `color:` in the same rule block
  * means someone put a label back on it. Scanning rule blocks rather than whole files keeps this from
