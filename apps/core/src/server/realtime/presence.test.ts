@@ -306,6 +306,33 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 		expect(source).not.toMatch(BOOLEAN_WRAP);
 	});
 
+	it('only the three change-report methods return a boolean at all (a membership predicate cannot be spelled around the shape ban)', () => {
+		// The shape ban above pins the sockets>0 COMPARISON TEXT after return/=>, so the same predicate
+		// written in an `if (…) return true; return false;` or behind a `const n = …; return n > 0;` (see
+		// #353's M1/M2) — or on a method declared with a leading modifier the name-collector misses (M3/M4,
+		// `public`/`async`) — slips through. Pin the INVARIANT by RETURN TYPE instead of by comparison text:
+		// a membership answer is a boolean, and only connect/disconnect/forget legitimately hand one back
+		// (they report "did this change" / "was it there"; membership itself is answered via stateOf/evaluate,
+		// which route through the three-state here/away/gone policy). Any new boolean-returning method reddens
+		// this REGARDLESS of body spelling or method-declaration modifier, so it needs no #-of-positions chase.
+		// The `(?:[a-z]+\s+)*` prefix is modifier-proof (public/async/static/override); `Promise<` covers an
+		// async predicate. Non-boolean returners are exempt by their return type: online(): string[],
+		// sockets(): number, stateOf(): MemberState, evaluate(): MembershipSnapshot. evaluate's `=> boolean`
+		// appears only inside its PARAMETER object, so `[^)]*` (which stops at the first `)`) never reaches it.
+		const BOOL_RETURNERS = ['connect', 'disconnect', 'forget'];
+		const boolReturners = [
+			...classBody.matchAll(
+				/\n\t(?:[a-z]+\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*:\s*(?:Promise<\s*)?boolean/g
+			)
+		]
+			.map((m) => m[1])
+			.sort();
+		// Not-vacuous sentinel: the collector must actually find the honest boolean returners — a broken
+		// regex that matched nothing would pass the equality below only if BOOL_RETURNERS were also empty.
+		expect(boolReturners.length).toBe(BOOL_RETURNERS.length);
+		expect(boolReturners).toEqual([...BOOL_RETURNERS].sort());
+	});
+
 	it('the honest membership API is intact', () => {
 		expect(source).toMatch(/\bonline\s*\(\s*\)\s*:\s*string\[\]/);
 		expect(source).toMatch(/\bsockets\s*\(\s*singerId\s*:\s*string\s*\)\s*:\s*number/);
