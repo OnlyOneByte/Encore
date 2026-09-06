@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { PresenceTracker } from './presence';
 import { syncEvent } from './hub';
 import { AuthoritativeState } from '../state/store';
@@ -18,17 +20,13 @@ const sweep = (
 describe('PresenceTracker sockets', () => {
 	it('a singer becomes here on their first socket and away on their last', () => {
 		const p = new PresenceTracker();
-		expect(p.isOnline('s1')).toBe(false);
+		expect(p.online()).toEqual([]);
 
 		expect(p.connect('s1')).toBe(true); // newly here → broadcast
-		expect(p.isOnline('s1')).toBe(true);
 		expect(p.online()).toEqual(['s1']);
-		expect(p.count()).toBe(1);
 
 		expect(p.disconnect('s1', NOW)).toBe(true); // newly away → broadcast
-		expect(p.isOnline('s1')).toBe(false);
 		expect(p.online()).toEqual([]);
-		expect(p.count()).toBe(0);
 	});
 
 	it('ref-counts multiple sockets: a second tab does not re-announce, one close does not remove', () => {
@@ -39,11 +37,11 @@ describe('PresenceTracker sockets', () => {
 
 		// closing ONE of two sockets must keep them in the roster (the reconnect case)
 		expect(p.disconnect('s1', NOW)).toBe(false);
-		expect(p.isOnline('s1')).toBe(true);
+		expect(p.online()).toEqual(['s1']);
 		expect(p.sockets('s1')).toBe(1);
 
 		expect(p.disconnect('s1', NOW)).toBe(true); // last one out
-		expect(p.isOnline('s1')).toBe(false);
+		expect(p.online()).toEqual([]);
 	});
 
 	it('tracks singers independently and reports arrival order', () => {
@@ -55,13 +53,12 @@ describe('PresenceTracker sockets', () => {
 
 		p.disconnect('maya', NOW);
 		expect(p.online()).toEqual(['angelo', 'devon']);
-		expect(p.count()).toBe(2);
 	});
 
 	it('disconnect for an unknown singer is a no-op, not a phantom entry', () => {
 		const p = new PresenceTracker();
 		expect(p.disconnect('never-connected', NOW)).toBe(false);
-		expect(p.count()).toBe(0);
+		expect(p.online()).toEqual([]);
 		expect(sweep(p).away).toEqual([]);
 	});
 
@@ -78,7 +75,7 @@ describe('PresenceTracker sockets', () => {
 		p.connect('s1');
 		p.disconnect('s1', NOW);
 		expect(p.connect('s1')).toBe(true); // announced again
-		expect(p.isOnline('s1')).toBe(true);
+		expect(p.online()).toEqual(['s1']);
 		expect(p.sockets('s1')).toBe(1);
 	});
 });
@@ -249,5 +246,37 @@ describe('membership rides the sync handshake', () => {
 		const ev = syncEvent(new AuthoritativeState(), { mediaById: new Map() });
 		expect(ev.online).toBeUndefined();
 		expect(ev.away).toBeUndefined();
+	});
+});
+
+describe('membership: the discredited socket-count predicate stays deleted', () => {
+	// #126: PresenceTracker.isOnline() and .count() were dead (zero non-test callers) AND isOnline()
+	// returned exactly the `sockets > 0` predicate this file's header documents as the ORIGINAL BUG —
+	// the locked-phone eviction the three-state here/away/gone policy exists to replace. They were the
+	// cheapest-to-reach presence check and were wrong, so their re-introduction is the trap this pins.
+	// Deletion has no runtime-observable regression (nothing called them), so guard the SOURCE.
+	const stripComments = (src: string) =>
+		src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/[^\n]*/g, '');
+	const source = stripComments(
+		readFileSync(join(import.meta.dir, 'presence.ts'), 'utf-8')
+	);
+
+	it('does not re-expose isOnline() or count() on PresenceTracker', () => {
+		expect(source).not.toMatch(/\bisOnline\s*\(/);
+		expect(source).not.toMatch(/\bcount\s*\(\s*\)/);
+	});
+
+	it('no public method returns the bare `sockets > 0` membership answer', () => {
+		// The honest socket accessors are still here — online() (real caller app.ts:460) returns the ID
+		// LIST, and sockets() returns a COUNT for one singer — but neither answers "is this singer a
+		// member?" with a raw boolean. A method whose body is `return (... sockets ...) > 0;` is the
+		// discredited predicate returning under any name; membership must go through stateOf()/memberState.
+		expect(source).not.toMatch(/return\s*\(.*sockets.*\?\?\s*0\)\s*>\s*0\s*;/);
+	});
+
+	it('the honest membership API is intact', () => {
+		expect(source).toMatch(/\bonline\s*\(\s*\)\s*:\s*string\[\]/);
+		expect(source).toMatch(/\bsockets\s*\(\s*singerId\s*:\s*string\s*\)\s*:\s*number/);
+		expect(source).toMatch(/\bstateOf\s*\(/);
 	});
 });
