@@ -308,6 +308,28 @@ def test_find_downloaded_ignores_partial_downloads():
         assert fetch_mod.find_downloaded(d, "id1").endswith("id1.webm")
 
 
+def test_find_downloaded_ignores_interrupted_fragmented_download():
+    """A killed fragmented (HLS/DASH/premiere) download leaves `<id>.<ext>.part-Frag<N>` fragment
+    payloads plus the `.part` stream file and the `.ytdl` fragment index. yt-dlp writes fragments as
+    `%(tmpfilename)s-Frag%(index)d` where tmpfilename is the `.part` name, so the leftovers are
+    `id1.m4a.part`, `id1.m4a.part-Frag0`, `id1.m4a.part-Frag1`, `id1.m4a.ytdl` -- NONE of which END
+    with `.part`, which is why the old `endswith` predicate adopted `id1.m4a.part-Frag0` (a valid
+    standalone segment, so it decoded silently as a few-seconds original that poisoned the media id
+    forever). None of these is a finished download.
+    """
+    import tempfile, os as _os
+    with tempfile.TemporaryDirectory() as d:
+        for leftover in ("id1.m4a.part", "id1.m4a.part-Frag0", "id1.m4a.part-Frag1", "id1.m4a.ytdl"):
+            open(_os.path.join(d, leftover), "w").close()
+        assert fetch_mod.find_downloaded(d, "id1") is None
+        # the postprocessor temp `<id>.temp.<ext>` is also in-progress, not a result
+        open(_os.path.join(d, "id1.temp.m4a"), "w").close()
+        assert fetch_mod.find_downloaded(d, "id1") is None
+        # once fragments concatenate into the real output, it is adopted
+        open(_os.path.join(d, "id1.m4a"), "w").close()
+        assert fetch_mod.find_downloaded(d, "id1").endswith("id1.m4a")
+
+
 # ── per-job demucs model selection ──────────────────────────────────────────
 def test_resolve_demucs_model_defaults_when_unset():
     assert demucs.resolve_demucs_model({}) == demucs.DEFAULT_MODEL

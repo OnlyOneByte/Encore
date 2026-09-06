@@ -58,15 +58,18 @@ def local_source_path(job: JobSpec) -> str:
 def find_downloaded(directory: str, media_id: str) -> str | None:
     """The file yt-dlp actually produced for this media id, whatever extension it chose.
 
-    Returns None if nothing landed. Ignores yt-dlp's `.part` fragments so an interrupted download is
-    never mistaken for a finished one.
+    Returns None if nothing landed. Skips yt-dlp's in-progress leftovers so an interrupted download is
+    never mistaken for a finished one: the `.part` stream file AND its fragment payloads
+    `<id>.<ext>.part-Frag<N>` (both carry `.part`), the `.ytdl` fragment index, and the postprocessor
+    temp `<id>.temp.<ext>` (a `.temp.` infix). A finished output is `<id>.<ext>`, which carries none
+    of these markers, so this cannot reject a genuine download.
     """
     try:
         names = sorted(os.listdir(directory))
     except OSError:
         return None
     for name in names:
-        if name.startswith(f"{media_id}.") and not name.endswith((".part", ".ytdl", ".temp")):
+        if name.startswith(f"{media_id}.") and ".part" not in name and not name.endswith(".ytdl") and ".temp." not in name:
             return os.path.join(directory, name)
     return None
 
