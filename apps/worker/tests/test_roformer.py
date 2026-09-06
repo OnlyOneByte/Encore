@@ -294,7 +294,7 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     # published (mirrors the demucs cook test); without this the engine can map find_roformer_vocals
     # onto None and every roformer cook silently drops its guiding track with the suite still green.
     vox = completes[0].artifacts["stems"]["vocals"]
-    assert vox.endswith("mr-vocals.m4a")
+    assert vox.endswith("mr-vocals.flac")  # #480: vocals stem is lossless FLAC
     assert Path(vox).exists()
 
     # (difference 3) progress is COARSE 0→100 (parse_progress returns None), never the tqdm percentages

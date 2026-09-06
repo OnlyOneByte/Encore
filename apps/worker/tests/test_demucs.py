@@ -176,7 +176,7 @@ async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
     assert completes[0].artifacts["stems"]["instrumental"] == final
     # the isolated vocals stem is ALSO published (was previously discarded)
     vocals = completes[0].artifacts["stems"]["vocals"]
-    assert vocals.endswith("m1-vocals.m4a")
+    assert vocals.endswith("m1-vocals.flac")  # #480: vocals stem is lossless FLAC
     assert Path(vocals).exists()
 
 

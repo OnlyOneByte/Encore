@@ -30,10 +30,12 @@ export function retentionCapBytes(env: Record<string, string | undefined> = proc
 /**
  * A stem ref worth transcoding: an UNCOMPRESSED (WAV) artifact from before the audio policy.
  *
- * Deliberately NOT "anything not the current format": when the instrumental target became FLAC that
- * looser rule would flag every existing `.m4a` for "upgrade", and AAC→FLAC is actively harmful — it
- * cannot recover what the lossy encode discarded, only produce a ~4x larger file of the same audio. A
- * genuine codec upgrade means re-cooking from the retained raw audio, a different operation.
+ * Deliberately NOT "anything not the current format": both stems now target FLAC (#480), so that
+ * looser rule would flag every existing `.m4a` vocals stem for "upgrade", and AAC→FLAC is actively
+ * harmful — it cannot recover what the lossy encode discarded, only produce a ~4x larger file of the
+ * same audio. Legacy `.m4a` cooks therefore keep their `.m4a` and are NOT recompressed; only WAV
+ * (a genuinely uncompressed pre-policy artifact) is worth transcoding, and a real codec upgrade means
+ * re-cooking from the retained raw audio, a different operation.
  */
 export function isLegacyStemRef(ref: string | undefined | null): boolean {
 	if (!ref) return false;
@@ -181,18 +183,28 @@ export function planEviction(
  * They used to build this inline and had drifted: the plan omitted `vocalsKey`, so a modern cook's
  * vocals stem was deleted by `evictDerived` but invisible to `derivedBytesOf`. It read as correct
  * because the ext-blind `-instrumental.`→`-vocals.` swap only resolves when the two stems share an
- * extension — true of the legacy `.wav`/`.m4a` cooks the tests used, false of the modern layout
- * (instrumental `.flac`, vocals `.m4a`). `planEviction` compares the SUM against the cap, so
- * undercounting made retention conclude there was nothing to reclaim on a volume genuinely over
- * budget. Anything derived that a song can own belongs here, not in a caller.
+ * extension, and `vocalsKey` derives from the CURRENT `VOCALS_EXT`. Neither can name a stem whose
+ * stored extension differs from today's constant — e.g. an interim cook (instrumental `.flac`, vocals
+ * `.m4a`) after #480 flipped `VOCALS_EXT` to `.flac`. So the authoritative source is `m.vocalsRef`,
+ * the ref each cook actually stored; it covers legacy `.wav`, interim `.m4a`, and current `.flac`
+ * alike. `planEviction` compares the SUM against the cap, so undercounting made retention conclude
+ * there was nothing to reclaim on a volume genuinely over budget. Anything derived that a song can own
+ * belongs here, not in a caller.
  *
- * `vocalsKey` covers the current layout; the swap is retained for legacy cooks whose vocals stem
- * shares the instrumental's extension. Callers dedupe with a Set, so overlap is free.
+ * `m.vocalsRef` is authoritative when present; `vocalsKey` + the ext-blind swap are the fallback for
+ * old rows that never stored a vocals ref. Callers dedupe with a Set, so overlap is free.
  */
 function derivedRefsOf(m: Media): string[] {
 	return [
 		m.instrumentalRef,
 		m.lyricsRef,
+		// The STORED per-media vocals ref is authoritative and covers ALL layouts regardless of what
+		// VOCALS_EXT currently is: legacy .wav, interim .m4a, and current .flac cooks all recorded a ref.
+		// vocalsKey + the ext-blind swap are the FALLBACK for old rows that never stored one. Without
+		// m.vocalsRef, flipping VOCALS_EXT to .flac (#480) would strand the already-cooked .m4a vocals
+		// cohort — the cohort this PR deliberately does not recompress — from both byte-counting and
+		// eviction, so derivedBytesOf would undercount and evictDerived would orphan those files.
+		m.vocalsRef,
 		vocalsKey(m.id),
 		m.instrumentalRef?.replace('-instrumental.', '-vocals.')
 	].filter((r): r is string => !!r);

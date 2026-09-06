@@ -191,17 +191,36 @@ describe('evictDerived', () => {
 	});
 
 	it('counts the vocals stem under the CURRENT extensions, not just when they happen to match', () => {
-		// The modern layout is instrumental=.flac (lossless, it is what plays aloud) and vocals=.m4a.
-		// Deriving the vocals ref by swapping "-instrumental." for "-vocals." therefore points at a
-		// .flac that does not exist, so every test using a .m4a instrumental passes by accident.
-		// derivedBytesOf feeds planEviction's cap comparison, so undercounting here means retention
-		// can conclude there is nothing to reclaim while the volume is genuinely over budget.
+		// The modern layout is BOTH stems FLAC (#480). derivedBytesOf must count the vocals stem via
+		// vocalsKey, which now names -vocals.flac; the ext-blind "-instrumental."→"-vocals." swap also
+		// resolves it here because the two stems share .flac. derivedBytesOf feeds planEviction's cap
+		// comparison, so undercounting means retention concludes there is nothing to reclaim while the
+		// volume is genuinely over budget.
 		put('derived/stems/a-instrumental.flac', 500);
-		put('derived/stems/a-vocals.m4a', 400);
+		put('derived/stems/a-vocals.flac', 400);
 		const m = media('a', { instrumentalRef: 'derived/stems/a-instrumental.flac' });
 
 		expect(derivedBytesOf(m)).toBe(900); // and NOT 500
 		// the plan and the eviction must agree, or the plan cannot predict what it frees
+		expect(evictDerived(m).bytes).toBe(900);
+	});
+
+	it('counts an INTERIM cook (flac instrumental + m4a vocals) via the stored m.vocalsRef', () => {
+		// #480 regression pin: flipping VOCALS_EXT to .flac makes BOTH vocalsKey and the ext-blind swap
+		// derive -vocals.flac, so neither names the .m4a vocals stem an interim cook actually left on
+		// disk (this PR deliberately does not recompress it). The ONLY thing that still counts it is the
+		// STORED m.vocalsRef. This is the real on-disk layout, not a synthetic one. Deleting m.vocalsRef
+		// from derivedRefsOf reds this (drops to 500) — proving the stored ref is load-bearing.
+		// derivedBytesOf feeds planEviction's cap comparison, so an undercount makes retention reclaim
+		// nothing on a volume genuinely over budget; evictDerived would also orphan the .m4a file.
+		put('derived/stems/a-instrumental.flac', 500);
+		put('derived/stems/a-vocals.m4a', 400);
+		const m = media('a', {
+			instrumentalRef: 'derived/stems/a-instrumental.flac',
+			vocalsRef: 'derived/stems/a-vocals.m4a'
+		});
+
+		expect(derivedBytesOf(m)).toBe(900); // and NOT 500 — only m.vocalsRef counts the .m4a vocals here
 		expect(evictDerived(m).bytes).toBe(900);
 	});
 

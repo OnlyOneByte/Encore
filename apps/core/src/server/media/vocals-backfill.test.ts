@@ -41,7 +41,7 @@ describe('needsVocalsBackfill', () => {
 
 describe('candidateVocalsRefs', () => {
 	it('offers the modern key first', () => {
-		expect(candidateVocalsRefs(m('a'))[0]).toBe('derived/stems/a-vocals.m4a');
+		expect(candidateVocalsRefs(m('a'))[0]).toBe('derived/stems/a-vocals.flac'); // #480: modern vocals is FLAC
 	});
 
 	it('also offers the LEGACY sibling of an older instrumental ref', () => {
@@ -54,6 +54,21 @@ describe('candidateVocalsRefs', () => {
 	it('de-duplicates when the derived and legacy refs agree', () => {
 		const refs = candidateVocalsRefs(m('a', { instrumentalRef: 'derived/stems/a-instrumental.m4a' }));
 		expect(new Set(refs).size).toBe(refs.length);
+	});
+
+	// #480 CRUX: flipping VOCALS_EXT to FLAC changes only what NEW cooks resolve. A stored legacy .m4a
+	// vocals ref must keep resolving as-is (it is never re-derived, only new output uses the constant),
+	// and a legacy .m4a-instrumental cook must still surface its .m4a vocals sibling. Existing m4a files
+	// are never recompressed (retention.ts isLegacyStemRef is WAV-only); only new stems land as .flac.
+	it('#480: a legacy m4a-instrumental cook still surfaces its .m4a vocals sibling (never re-derived)', () => {
+		const legacyM4a = m('a', { instrumentalRef: 'derived/stems/a-instrumental.m4a' });
+		expect(candidateVocalsRefs(legacyM4a)).toContain('derived/stems/a-vocals.m4a');
+	});
+});
+
+describe('#480: a stored legacy vocals ref is honored unchanged', () => {
+	it('backfill skips a song that already has a stored .m4a vocals ref — it plays via that ref', () => {
+		expect(needsVocalsBackfill([m('a', { vocalsRef: 'derived/stems/a-vocals.m4a' })])).toEqual([]);
 	});
 });
 
@@ -74,7 +89,7 @@ describe('backfillVocalsRefs', () => {
 		const { io: deps, linked } = io();
 		const res = await backfillVocalsRefs([m('a')], deps);
 		expect(res).toEqual({ linked: 1, silent: 0, missing: 0, unmeasured: 0 });
-		expect(linked).toEqual([['a', 'derived/stems/a-vocals.m4a']]);
+		expect(linked).toEqual([['a', 'derived/stems/a-vocals.flac']]); // #480: modern vocals is FLAC
 	});
 
 	it('counts a song with no vocals file as missing, and links nothing', async () => {

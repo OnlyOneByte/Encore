@@ -7,7 +7,7 @@ from src import processor
 
 def test_derived_keys_live_under_the_derived_class():
     assert processor.instrumental_path("/m", "id1") == "/m/derived/stems/id1-instrumental.flac"
-    assert processor.vocals_path("/m", "id1") == "/m/derived/stems/id1-vocals.m4a"
+    assert processor.vocals_path("/m", "id1") == "/m/derived/stems/id1-vocals.flac"  # #480 FLAC
 
 
 def test_raw_audio_is_its_own_unrecoverable_class():
