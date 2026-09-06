@@ -218,3 +218,89 @@ def test_the_hot_loop_does_not_regress_to_the_O_n2_form():
         "and it costs ~18.5s per 3-minute song instead of ~1.1s"
     )
     assert "np.fft.rfft" in called, "the autocorrelation should go through rfft"
+
+
+# ── summarize_wav: the ONLY production path (song_profile.py:76), and it had zero coverage ──
+#
+# summarize_wav is what actually runs in a cook: read the vocals WAV, track pitch, summarize. Every
+# existing summary test injects hop_sec EXPLICITLY (summarize_range(..., hop_sec=...)), which is the
+# one thing production does NOT do — summarize_wav must derive hop_sec itself and keep it in step with
+# the hop extract_pitch_track actually advanced by. So a change to extract_pitch_track's default hop
+# (the ordinary shape of tuning time resolution) could halve or double every published histogram
+# second while all other tests stayed green. These pin the whole path end-to-end.
+
+
+def _write_pcm16_wav(path, samples, sr):
+    """Minimal 16-bit mono PCM WAV writer — the exact shape read_wav_mono reads and the cook produces."""
+    import wave
+
+    pcm = (np.clip(samples, -1.0, 1.0) * 32767).astype("<i2")
+    with wave.open(str(path), "wb") as wf:
+        wf.setnchannels(1)
+        wf.setsampwidth(2)
+        wf.setframerate(sr)
+        wf.writeframes(pcm.tobytes())
+
+
+def test_summarize_wav_histogram_seconds_track_real_duration(tmp_path):
+    """The load-bearing pin: total histogram SECONDS must equal the real sung DURATION.
+
+    The expectation is derived from PHYSICS, not from the code's hop. A steady, clearly-voiced tone
+    makes every analysis frame voiced, so the histogram accumulates one hop_sec per frame across the
+    whole signal — and the sum of those must equal the wall-clock span the frames cover, which for a
+    tone filling the signal is ~= the signal's own duration (last frame start + one hop). If summarize_wav
+    ever uses a hop_sec that disagrees with the hop extract_pitch_track actually stepped by, this sum is
+    scaled by exactly that ratio (halved when the real hop doubles) and this assertion reds — while
+    lowMidi/highMidi/percentiles stay correct, which is exactly the invisible failure mode.
+    """
+    sr = 22050
+    duration_sec = 2.0  # a KNOWN duration chosen here, never read back from the code
+    n = int(sr * duration_sec)
+    sig = np.sin(2 * np.pi * 220.0 * np.arange(n) / sr)  # A3, sustained → every frame voiced
+    wav = tmp_path / "voc.wav"
+    _write_pcm16_wav(wav, sig, sr)
+
+    out = vocal_range.summarize_wav(str(wav))
+    assert out["histogram"] is not None, "a clean sustained tone must produce voiced frames"
+    total_seconds = sum(out["histogram"])
+
+    # The frames span from t=0 to the last frame's start; the sum of per-frame hops covers that span.
+    # A steady tone fills the whole signal, so total voiced seconds must be within ONE frame (2048/sr ≈
+    # 0.093s) of the real 2.0s duration. The halving mutation lands at ~0.96s — an order of magnitude
+    # outside this tolerance, so the test is decisive, not fuzzy.
+    frame_sec = 2048 / sr
+    assert abs(total_seconds - duration_sec) < frame_sec + 0.02, (
+        f"summarize_wav histogram totals {total_seconds:.4f}s for a {duration_sec}s tone; "
+        f"the seconds axis is desynced from the real frame hop"
+    )
+
+
+def test_summarize_wav_derives_hop_from_the_same_constant_extract_pitch_track_defaults_to(tmp_path):
+    """Structural pin on the coupling itself: summarize_wav's hop_sec and extract_pitch_track's default
+    hop must be the SAME value, so tuning one cannot silently leave the other stale.
+
+    Independent of the code: probe extract_pitch_track's ACTUAL default hop by reading the frame spacing
+    it produces (two consecutive frame start times), then confirm summarize_wav's own histogram second
+    count equals (voiced frame count) x (that measured hop / sample_rate). The measured hop is taken from
+    the frame timeline, never from summarize_wav's arithmetic, so a desync between the two hop sites reds
+    this even though every summarize_range(hop_sec=...) test would stay green.
+    """
+    sr = 22050
+    n = int(sr * 2.0)
+    sig = np.sin(2 * np.pi * 220.0 * np.arange(n) / sr)
+    wav = tmp_path / "voc.wav"
+    _write_pcm16_wav(wav, sig, sr)
+
+    frames = vocal_range.extract_pitch_track(sig, sr)  # default hop — the production call
+    assert len(frames) >= 2
+    measured_hop_samples = round((frames[1].time_sec - frames[0].time_sec) * sr)
+    measured_hop_sec = measured_hop_samples / sr
+    n_voiced = sum(1 for f in frames if f.voiced)
+
+    out = vocal_range.summarize_wav(str(wav))
+    total_seconds = sum(out["histogram"])
+    expected = n_voiced * measured_hop_sec
+    assert abs(total_seconds - expected) < 1e-9, (
+        f"summarize_wav totals {total_seconds:.6f}s but the tracker stepped {measured_hop_samples} "
+        f"samples/frame over {n_voiced} voiced frames = {expected:.6f}s — the hop constants disagree"
+    )
