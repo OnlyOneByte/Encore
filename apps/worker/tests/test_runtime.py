@@ -109,6 +109,42 @@ def test_an_unnamed_step_is_REFUSED():
         validate_plan(plan)
 
 
+class _RecordsIfRun(Step):
+    """A step that flips a flag the moment its body runs, so a test can prove it never got that far."""
+
+    stage = Stage.DOWNLOADING
+
+    def __init__(self, name: str, reads: set[str]) -> None:
+        self.name = name
+        self.writes = frozenset()
+        self.reads = frozenset(reads)
+        self.ran = False
+
+    async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+        self.ran = True
+        yield ProgressEvent(stage=self.stage, pct=100)
+
+
+@pytest.mark.asyncio
+async def test_the_RUNNER_refuses_a_malformed_plan_before_any_step_runs(tmp_path):
+    """The pipeline guarantee, not just the function.
+
+    `validate_plan` is exercised directly above, but the promise `plan.py`'s docstring makes — a
+    reordered step is a validation error naming the step and the key, NOT a confusing `None` several
+    steps later on the deploy box mid-cook — is only kept because `PlanRunner.process` calls it before
+    the first step. Drive a malformed plan (a step reading a key nothing earlier writes) through the
+    runner via the `plans=` injection seam and assert it is refused BEFORE execution: the step's `ran`
+    flag must stay False. Deleting the runner's `validate_plan` call reds this — the step runs, reads an
+    empty namespace, and the job reports a bogus success.
+    """
+    step = _RecordsIfRun("reader", reads={"lyrics.texts"})
+    malformed = LinearPlan("malformed", [step])
+    proc = PlanRunner(runner=noop_runner, plans=lambda spec, engines: malformed)
+    with pytest.raises(PlanError, match="lyrics.texts"):
+        await drain(proc, job(tmp_path))
+    assert step.ran is False, "the step ran despite a malformed plan — validation did not gate execution"
+
+
 def test_stages_are_DERIVED_from_the_plan():
     """`vocabulary.STAGE_PLANS` is generated from this rather than hand-maintained, so the wire contract
     and what the worker actually does cannot drift. They already had."""
