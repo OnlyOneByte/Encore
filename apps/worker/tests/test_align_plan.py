@@ -460,6 +460,58 @@ async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynce
         await drain(proc, spec(tmp_path))
 
 
+@pytest.mark.asyncio
+async def test_aligner_that_PLACES_NO_WORD_degrades_via_the_FAILURE_path_not_validate(tmp_path):
+    """#355: the real aligner's second failure shape, which no double in this file models. Every
+    aligner double here signals failure by RAISING; whisperx does not — its own docstring at
+    lyrics/timing.py:31 names a raise as THE failure signal, while normalize_lyrics' docstring at
+    artifact.py:47 says whisperx "leaves some tokens un-timed". When every token is un-timed the
+    aligner has returned cleanly yet placed no word, so `is_valid_lyrics(doc)` is False.
+
+    The guard at steps/lyrics.py:497 exists for exactly this: it re-raises so the SAME line-sync
+    fallback a real raise takes fires — publishing the source's own line timings at (line, HIGH),
+    the tier that says "these are the source's unmodified timings", and emitting NO note (nothing
+    went wrong; the aligner just found nothing to place).
+
+    Deleting the guard (`if False:`) does NOT ship a word-tagged wordless doc — the #326 validate
+    block below backstops it — but it degrades through the WRONG path: `_time_one` returns
+    (word, high), validate finds 0 words and unusable, and degrades to (line, LOW) while emitting a
+    "REFUSING word timing (0 out-of-order word(s))" note that is FALSE — there are no out-of-order
+    words, the aligner simply placed nothing. So the observable delta the guard owns is (a) the
+    confidence tier high→low and (b) a spurious REFUSING note blaming ordering for an empty result.
+    Both reproduce with `if False:`; the whole worker suite otherwise stays byte-identical green.
+
+    Drives the honest counterpart of FakeAligner: echoes the caller's segments with empty `words`
+    arrays and does NOT raise.
+    """
+    class EmptyAligner:
+        """whisperx placed no word: segments come back, every token un-timed. Does NOT raise."""
+        def align(self, segments, audio_path, language):
+            return {"language": language,
+                    "segments": [{"start": s["start"], "end": s["end"], "text": s["text"], "words": []}
+                                 for s in segments]}
+
+    text = _text(SOURCE_LRCLIB, TIMING_LINE)
+    ctx = await _drive_time_texts(EmptyAligner(), text, tmp_path)
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+
+    # DEGRADED via the aligner-FAILURE path: the source's own line sync at the HIGH tier, not (line, low).
+    assert (cands[0]["timing"], cands[0]["timingConfidence"]) == (TIMING_LINE, "high"), cands[0]
+
+    # No word ever placed, so no note fired: nothing went wrong, the aligner found nothing to time.
+    # A REFUSING-for-out-of-order note here would be the wrong-path symptom (0 words, not an ordering
+    # fault), so its ABSENCE is what distinguishes the failure path from the validate path.
+    assert not any("REFUSING word timing" in n for n in ctx.out.notes), ctx.out.notes
+
+    # The published doc carries the source's own line bounds and ZERO word timings — nothing to
+    # highlight, which is exactly why it must not claim the word tier.
+    doc = json.loads(Path(os.path.join(str(tmp_path), cands[0]["ref"])).read_text())
+    assert lyrics_pkg.is_valid_lyrics(doc) is False
+    assert doc["words"] == []
+    assert [l["text"] for l in doc["lines"]] == ["line one here", "line two here"]
+    assert all(l["words"] == [] for l in doc["lines"])
+
+
 # ── the ASR tier ───────────────────────────────────────────────────────
 from src.lyrics.chain import AsrSource  # noqa: E402
 
