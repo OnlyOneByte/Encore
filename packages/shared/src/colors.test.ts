@@ -9,6 +9,7 @@ import {
 	isLegibleSingerColor,
 	normalizeSingerColor,
 	nearestSingerHue,
+	nextSwatchIndex,
 	presetTabStopIndex,
 	stageHueToHex,
 	stageLightnessForHue,
@@ -253,4 +254,34 @@ test('presetTabStopIndex always yields exactly one in-range tab stop', () => {
 		expect(stop).toBeGreaterThanOrEqual(0);
 		expect(stop).toBeLessThan(SINGER_COLORS.length);
 	}
+});
+
+// #215: the arrow-key handler used to anchor movement on a bare `indexOf(value)`, which returns -1
+// for a wheel hex, while the tab stop anchored on presetTabStopIndex (falls back to 0). After a wheel
+// pick the two disagreed: the focus ring sat on swatch 0 but arrow movement computed from -1, so the
+// FIRST ArrowRight did not move (checked 0) and ArrowLeft skipped mint (7), landing on purple (6).
+// nextSwatchIndex now shares presetTabStopIndex's anchor so movement matches the ring. These pin the
+// concrete post-fix landings. Expected indices are written as LITERALS (7, 1, ...) — not computed
+// from indexOf/presetTabStopIndex — so a regression to the old bare-indexOf base reds them.
+
+test('nextSwatchIndex moves correctly from a preset value (the control case)', () => {
+	// violet is SINGER_COLORS[0]. Right -> pink (1), Left wraps -> mint (7).
+	expect(nextSwatchIndex(SINGER_COLORS[0]!, 1)).toBe(1);
+	expect(nextSwatchIndex(SINGER_COLORS[0]!, -1)).toBe(7);
+	// green is [2]. Right -> amber (3), Left -> pink (1).
+	expect(nextSwatchIndex(SINGER_COLORS[2]!, 1)).toBe(3);
+	expect(nextSwatchIndex(SINGER_COLORS[2]!, -1)).toBe(1);
+});
+
+test('nextSwatchIndex after a wheel pick matches the tab stop, not indexOf(-1) — #215', () => {
+	// value is a wheel hex (no preset matches), reproducing the exact reported state.
+	const wheelHex = hueToHex(120);
+	expect(SINGER_COLORS as readonly string[]).not.toContain(wheelHex); // premise: genuinely non-preset
+	// The focus ring sits on swatch 0 (presetTabStopIndex fallback). Movement must start from there:
+	// ArrowRight -> 1 (pink), ArrowLeft -> 7 (mint). Not 0 (dead) and not 6 (purple, the old bug).
+	expect(nextSwatchIndex(wheelHex, 1)).toBe(1);
+	expect(nextSwatchIndex(wheelHex, -1)).toBe(7);
+	// Mutation proof: reverting the base in nextSwatchIndex to `SINGER_COLORS.indexOf(value)` makes this
+	// (1 + -1 + 8) % 8 => wheelHex gives base -1, so step +1 -> 0 (fails toBe(1)) and step -1 -> 6
+	// (fails toBe(7)). Both assertions red exactly as #215 describes.
 });
