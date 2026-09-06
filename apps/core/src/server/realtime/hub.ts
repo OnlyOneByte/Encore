@@ -119,10 +119,18 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// `remove`, so cancelJobsForMedia never runs and a worker keeps cooking a song nobody is
 			// queued on. Reject at the seam, same class as the shape guards below. Compare the WHOLE
 			// identity, not singerId alone: a same-singer re-point to a different mediaId still orphans
-			// the old cook. The identical-identity case is left to pass on purpose — applyOp's in-place
-			// arm and an evicted-clientOpId re-delivery (seenOps is a bounded FIFO) both need it.
+			// the old cook. The identical-identity re-add over a still-QUEUED row is left to pass on
+			// purpose — applyOp's in-place arm and an evicted-clientOpId re-delivery (seenOps is a
+			// bounded FIFO) both need it. But applyOp's add branch rewrites the matched row WHOLE
+			// (entries.map((e) => e.id === op.entry.id ? op.entry : e)), so an identical-identity re-add
+			// onto an entry the server has since moved OFF 'queued' — 'playing' above all — re-lands the
+			// client-minted status:'queued' on it, downgrading the LIVE song: it drops out of
+			// removableOnLeave's status!=='playing' filter (leave.ts:33) so the singer's own Leave then
+			// removes it, and it reseqs behind the entry that should be next. So the id is only free to
+			// re-land on while its entry is still 'queued'; a re-add onto a non-queued row is rejected,
+			// same as a different-identity collision (#370, residual of #285's identical-identity carve-out).
 			const existing = deps.state.entries.find((e) => e.id === op.entry.id);
-			if (existing && (existing.singerId !== op.entry.singerId || existing.mediaId !== op.entry.mediaId))
+			if (existing && (existing.singerId !== op.entry.singerId || existing.mediaId !== op.entry.mediaId || existing.status !== 'queued'))
 				return `entry id already taken: ${op.entry.id}`;
 			// Shape of the CLIENT-MINTED fields that reach the queue verbatim (applyOp inserts op.entry
 			// unchanged; only rotationSeq is server-owned). Both feed NOT NULL columns in queue_entries

@@ -131,3 +131,75 @@ test('CONTROL: a legitimate remove of q1 still fires onEntryRemoved (the cook-ca
 	expect(removedCalls).toHaveLength(1);
 	expect(removedCalls[0][0]).toBe('m1'); // m1 lost its claim -> cancelJobsForMedia would run
 });
+
+// #370 — RESIDUAL of #285's identical-identity carve-out. The carve-out (identical singerId+mediaId
+// re-add is allowed) compared only (singerId, mediaId) — not status — while applyOp's add branch
+// rewrites the matched row WHOLE (op.entry, not a merge). So a joined phone can re-add its OWN live
+// song with a fresh clientOpId and status:'queued', and the server re-lands 'queued' on an entry it
+// had moved to 'playing'. That downgraded entry then falls INTO removableOnLeave's status!=='playing'
+// filter, so the singer's own Leave removes the song out from under the watching room — the one thing
+// leave.ts documents it deliberately never does. Fix: an add may only re-land on a still-'queued' id.
+// Driven end-to-end through the real validateCommand + handleQueueCommand + AuthoritativeState with the
+// server's own start path (applyQueueOp status:'playing' + setPlayback), then through the real
+// removableOnLeave + doLeave against a minimal EncoreApp shim (the only fields those two functions read).
+import { removableOnLeave, doLeave } from '../singers/leave';
+import type { EncoreApp } from '../app';
+
+// s1 re-adds q1 (its OWN live song) with a fresh clientOpId and client-minted status:'queued'.
+const readdLiveQ1: ClientCommand = {
+	clientOpId: 'c6', // fresh — seenOps never fires
+	op: { op: 'add', entry: { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
+};
+
+// Start q1 the way the server does, then wire the two leave functions to the same state.
+function playingHarness() {
+	const h = harness('s1'); // actor is s1, the owner of q1
+	h.state.applyQueueOp({ op: 'status', id: 'q1', status: 'playing' });
+	h.state.setPlayback({ currentEntryId: 'q1', isPlaying: true, positionSec: 12 });
+	const app = {
+		state: h.state,
+		publish: h.deps.publish,
+		presence: { forget: (_id: string) => {} }
+	} as unknown as EncoreApp;
+	return { ...h, app };
+}
+
+test('#370: an identical-identity re-add of the LIVE entry is rejected — does NOT downgrade it to queued', () => {
+	const { deps, state } = playingHarness();
+	// Precondition: q1 really is playing.
+	expect(state.entries.find((e) => e.id === 'q1')!.status).toBe('playing');
+	// The re-add of the live entry is refused at the seam (RED on base: base returns null here).
+	expect(validateCommand(readdLiveQ1, deps)).toBe('entry id already taken: q1');
+});
+
+test('#370 END-TO-END: the live re-add is not applied/broadcast, stays playing, and Leave keeps it', () => {
+	const { published, state, deps, app } = playingHarness();
+	const sent: unknown[] = [];
+	const patch = handleQueueCommand(readdLiveQ1, deps, (e) => sent.push(e));
+
+	// Rejected at the seam, nothing broadcast.
+	expect(patch).toBeNull();
+	expect((sent[0] as { type: string }).type).toBe('op:reject');
+	expect(published.some((e) => e.type === 'queue:patch')).toBe(false);
+
+	// q1 is STILL playing (on base it would read 'queued' here — the downgrade).
+	expect(state.entries.find((e) => e.id === 'q1')!.status).toBe('playing');
+
+	// Because it is still playing, it is NOT in the doomed set, and the singer's own Leave keeps it.
+	expect(removableOnLeave(app, 's1').map((e) => e.id)).toEqual([]);
+	const result = doLeave(app, 's1');
+	expect(result.removed).toEqual([]);
+	expect(result.keptPlaying).toBe('q1');
+	// The live song survives the owner's Leave — the room keeps watching it.
+	expect(state.entries.some((e) => e.id === 'q1')).toBe(true);
+});
+
+test('#370 CONTROL: doLeave on an UNTOUCHED playing harness already keeps q1 — the re-add is what changed it on base', () => {
+	// Load-bearing control: with no re-add at all, Leave keeps the live song. So the ONLY thing that
+	// makes base remove it is the re-add downgrading it — proving the frame, not the harness, is the cause.
+	const { app } = playingHarness();
+	expect(removableOnLeave(app, 's1').map((e) => e.id)).toEqual([]);
+	const result = doLeave(app, 's1');
+	expect(result.removed).toEqual([]);
+	expect(result.keptPlaying).toBe('q1');
+});
