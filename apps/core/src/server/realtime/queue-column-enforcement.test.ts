@@ -86,3 +86,20 @@ test('hub.ts states the measured mechanism, not the false "enum column rejects i
 	// And it must NOT reassert the exact false framing the issue flagged.
 	expect(src).not.toContain('the NOT NULL enum column an add');
 });
+
+// #395 — since #324 the add-arm's ALLOWED set is the bare literal 'queued', NOT derived from the
+// column's enumValues; the enumValues import survives only to pick a word ('server-owned' vs
+// 'off-enum') in the reject-log string. The #317 header rewrite left one clause generalising the
+// classification read into the ALLOWED set ("its enumValues ... allowed set can never drift from the
+// column"), which is the false account this pins against. The guard both BANS that false framing and
+// affirmatively requires the corrected mechanism, so deleting the header cannot pass vacuously.
+test('#395: hub.ts header credits the literal, not enumValues, as the add-arm allowed set', () => {
+	const src = readFileSync(join(import.meta.dir, 'hub.ts'), 'utf8');
+	// FALSE framing the issue flagged: enumValues defining the allowed set / unable to drift from the column.
+	expect(src).not.toContain('allowed set can never drift from the column');
+	// AFFIRMATIVE: the header must name the real allowed set (the single literal 'queued') and scope
+	// the enumValues read to CLASSIFY-only — so the corrected account is present, not merely the
+	// false one absent.
+	expect(src).toContain("allowed set is the single literal 'queued'");
+	expect(src).toMatch(/enumValues are read below ONLY to CLASSIFY/);
+});
