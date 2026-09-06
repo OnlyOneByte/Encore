@@ -212,10 +212,20 @@ def scratch_for(job: JobSpec) -> str:
 
 
 def _snapshot(ctx: Ctx, step: Any) -> dict[str, Any]:
-    """Every namespace a step did NOT declare, so an undeclared write can be detected."""
+    """Every namespace a step did NOT declare, so an undeclared write can be detected.
+
+    `ctx.out` is watched at FIELD granularity, not as a whole: `notes` is appended by every step via
+    `ctx.note()` and `timings_sec` is filled by the runner itself, so neither is a declared write and
+    both must stay exempt. The wire-shaped fields a step CAN publish — `artifacts`, `facts`,
+    `media_uri` — are the ones the guard has to cover, so a step that writes one without declaring
+    `out` is caught the same way an undeclared `ctx.audio` write is.
+    """
     watched = {"audio", "lyrics", "stems", "engines"}
     declared_roots = {w.split(".", 1)[0] for w in step.writes}
-    return {root: repr(getattr(ctx, root)) for root in watched - declared_roots}
+    snap = {root: repr(getattr(ctx, root)) for root in watched - declared_roots}
+    if "out" not in declared_roots:
+        snap["out"] = repr((ctx.out.artifacts, ctx.out.facts, ctx.out.media_uri))
+    return snap
 
 
 def _assert_declared_writes(ctx: Ctx, step: Any, before: dict[str, Any]) -> None:
@@ -223,12 +233,13 @@ def _assert_declared_writes(ctx: Ctx, step: Any, before: dict[str, Any]) -> None
 
     Keeps `Ctx` from decaying into a god-object where any step writes anything — which is the standing
     objection to a shared mutable context, and the reason the declarations have to be enforced rather
-    than merely written. Compares reprs of whole namespaces: coarse, but it needs no bookkeeping in the
-    steps themselves, and the failure names the step and the namespace.
+    than merely written. Compares the per-root reprs `_snapshot` captured before the step ran: coarse
+    (whole namespaces, or `ctx.out`'s wire-shaped fields), but it needs no bookkeeping in the steps
+    themselves, and the failure names the step and the namespace.
     """
+    after = _snapshot(ctx, step)
     for root, was in before.items():
-        now = repr(getattr(ctx, root))
-        if now != was:
+        if after.get(root) != was:
             raise AssertionError(
                 f"step '{step.name}' wrote to ctx.{root} without declaring it in `writes` "
                 f"(declared: {sorted(step.writes)})"
