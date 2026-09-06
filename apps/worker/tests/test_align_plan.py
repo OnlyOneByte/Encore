@@ -169,9 +169,14 @@ class FakeAligner:
     def __init__(self, fail=False):
         self.fail = fail
         self.calls = []
+        # #296: also record the segment VALUES searched, so a test can pin WHICH windows the
+        # aligner was handed — not just how many. `calls` keeps its two existing readers (:205, the
+        # #92 guard) intact.
+        self.searched = []
 
     def align(self, segments, audio_path, language):
         self.calls.append((len(segments), audio_path, language))
+        self.searched.append([(s["start"], s["end"], s["text"]) for s in segments])
         if self.fail:
             raise RuntimeError("aligner unavailable (simulated)")
         out_segs = []
@@ -1003,6 +1008,14 @@ def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_
     ok = FakeAligner()
     doc, timing, conf = steps_lyrics._time_one(ok, _ctx_forced(monkeypatch), text, audio="/x.wav", language="en")
     assert ok.calls and ok.calls[0][0] == 2  # searched the two bounded windows, not one whole line
+    # #296: pin WHICH windows, by value, from the fixture above (NOT the aligner's own output) —
+    # the [10,22]/[22,34] split is the only correct search set. A production mutation that keeps the
+    # count (two windows) but corrupts the timestamps (e.g. zeroing every window's [start,end])
+    # leaves ``calls[0][0] == 2`` green while shipping a 24-second line crushed into one second.
+    assert ok.searched[0] == [
+        (10.0, 22.0, "a very long human"),
+        (22.0, 34.0, "authored karaoke lyric line"),
+    ]
     assert timing == TIMING_WORD
 
     # 2. On aligner FAILURE the line-sync fallback publishes the SOURCE's own segments — one line at
