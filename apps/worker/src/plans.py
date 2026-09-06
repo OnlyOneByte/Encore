@@ -60,6 +60,7 @@ def stems_plan(
     ffmpeg_bin: str = "ffmpeg",
     flac_level: int = 8,
     bitrate: str | None = None,
+    ytdlp_bin: str = "yt-dlp",
 ) -> LinearPlan:
     """The stems action: acquire, decode, separate, probe, analyse, publish.
 
@@ -73,7 +74,7 @@ def stems_plan(
     return LinearPlan(
         "stems",
         [
-            AcquireAudio(),
+            AcquireAudio(ytdlp_bin=ytdlp_bin),
             DecodeToWav(engine=engine, ffmpeg_bin=ffmpeg_bin),
             Separate(engine=engine),
             ProbeSilence(ffmpeg_bin=ffmpeg_bin),
@@ -186,6 +187,7 @@ def stems_runner(
     demucs_model: str | None = None,
     demucs_bin: str = "demucs",
     ffmpeg_bin: str = "ffmpeg",
+    ytdlp_bin: str = "yt-dlp",
     bitrate: str | None = None,
     flac_level: int = 8,
     device: str | None = None,
@@ -217,7 +219,7 @@ def stems_runner(
             segment=segment,
             shifts=shifts,
         )
-        kwargs: dict[str, Any] = dict(engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level)
+        kwargs: dict[str, Any] = dict(engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, ytdlp_bin=ytdlp_bin)
         if bitrate:
             kwargs["bitrate"] = bitrate
         return stems_upgrade_plan(**kwargs) if job.job_type == Action.STEMS_UPGRADE.value else stems_plan(**kwargs)
