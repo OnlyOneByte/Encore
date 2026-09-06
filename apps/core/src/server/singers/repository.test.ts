@@ -1,6 +1,6 @@
 // Create singer -> token set -> resolve from cookie.
 import { test, expect } from 'bun:test';
-import { SingerRepository, sessionCookie, readSessionToken, mintSessionToken, SESSION_COOKIE } from './repository';
+import { SingerRepository, readSessionToken, mintSessionToken, SESSION_COOKIE } from './repository';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
 
@@ -46,18 +46,11 @@ test('session tokens are unique + URL-safe', () => {
 	for (const t of tokens) expect(t).toMatch(/^[A-Za-z0-9_-]+$/); // base64url
 });
 
-test('cookie helpers: build Set-Cookie and parse it back', () => {
-	const token = 'abc123';
-	const setCookie = sessionCookie(token, true);
-	expect(setCookie).toContain(`${SESSION_COOKIE}=abc123`);
-	expect(setCookie).toContain('HttpOnly');
-	expect(setCookie).toContain('SameSite=Lax');
-	expect(setCookie).toContain('Secure');
-	// round-trip parse from a Cookie header
+test('readSessionToken parses our token out of a Cookie header', () => {
+	// The LIVE half of the old cookie-helpers test. sessionCookie() was deleted (#107): it was a
+	// hand-rolled Set-Cookie serializer with no production caller — SvelteKit's cookies.set/.delete
+	// own serialization on every real path (join/leave +server.ts), so its attribute assertions were
+	// testing a dead copy. The live path's attributes are guarded in session-cookie-attributes.test.ts.
 	expect(readSessionToken(`foo=bar; ${SESSION_COOKIE}=abc123; baz=qux`)).toBe('abc123');
 	expect(readSessionToken(null)).toBeUndefined();
-});
-
-test('non-secure cookie omits Secure (for http dev)', () => {
-	expect(sessionCookie('t', false)).not.toContain('Secure');
 });

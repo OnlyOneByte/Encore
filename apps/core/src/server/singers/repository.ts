@@ -76,19 +76,6 @@ export class SingerRepository {
 	}
 }
 
-/** Build the Set-Cookie header value for a singer session (HttpOnly, SameSite=Lax). */
-export function sessionCookie(token: string, secure: boolean): string {
-	const attrs = [
-		`${SESSION_COOKIE}=${token}`,
-		'Path=/',
-		'HttpOnly',
-		'SameSite=Lax',
-		`Max-Age=${60 * 60 * 24 * 30}` // 30 days
-	];
-	if (secure) attrs.push('Secure');
-	return attrs.join('; ');
-}
-
 /** Parse our session token out of a Cookie header. */
 export function readSessionToken(cookieHeader: string | null): string | undefined {
 	if (!cookieHeader) return undefined;
