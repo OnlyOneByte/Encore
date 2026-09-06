@@ -127,6 +127,16 @@ function lineOf(src: string, index: number): number {
 /** Every .svelte under lib/ and routes/ — the entire surface a guest can see. */
 const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 
+/**
+ * Non-vacuity floor (issue #453). Five ban scans below iterate FILES and assert `offenders`
+ * empty; a broken walk returning [] would pass every one of them silently. Pin the file count and
+ * the client-lib .ts count the copy scan uses. ~25 svelte + ~26 client .ts today.
+ */
+test('the icon ban scans actually read a non-empty surface', () => {
+	expect(FILES.length).toBeGreaterThan(15);
+	expect(tsFiles(join(SRC, 'lib')).length).toBeGreaterThan(10);
+});
+
 test('no functional control is a Unicode codepoint (use Icon.svelte)', () => {
 	const offenders: string[] = [];
 	for (const f of FILES) {

@@ -324,6 +324,9 @@ test('every settings id the flow drives exists as an element id', () => {
 	// comment prose must not count as an anchor. Without this the driver scans (which already strip, :47/:368)
 	// and this resolution disagree about what is source, and a dead selector living in a comment stays green.
 	const sources = guardSources();
+	// Non-vacuity floor (issue #453): filtering an empty SETTING_IDS yields [] and passes without
+	// resolving a single id. Assert the flow actually drives some settings ids.
+	expect(SEL.SETTING_IDS.length).toBeGreaterThan(0);
 	const missing = SEL.SETTING_IDS.filter((id) => !sources.some((s) => s.includes(`id="${id}"`)));
 	expect(missing).toEqual([]);
 });

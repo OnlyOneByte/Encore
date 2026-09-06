@@ -22,7 +22,10 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const SRC = join(import.meta.dir, '..');
-const css = readFileSync(join(SRC, 'app.css'), 'utf8');
+// Read app.css comment-stripped: the `defined`-token set and the palette are built from this text and
+// compared against comment-stripped component source, so a token or colour that exists only inside a
+// comment in app.css must NOT count as real (issue #453 -- the asymmetric-stripping hole).
+const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
 
 /** Every .svelte under src, recursively. */
 function svelteFiles(dir: string): string[] {
@@ -38,9 +41,20 @@ function svelteFiles(dir: string): string[] {
 /**
  * Strip comments before scanning. A comment explaining WHY a literal was kept must not itself trip
  * the guard -- that would punish the documentation the rest of this codebase relies on.
+ *
+ * BLANK comments (replace their non-newline characters with spaces) rather than DELETE them, so the
+ * byte offsets lineOf reports stay true -- a delete shifted every reported file:line after the first
+ * comment. Also strip // line comments, sparing https://: without it a `// var(--x)` line was read
+ * as live source, so a token that existed only inside a comment satisfied "is defined" and a
+ * commented-out declaration could hide the --warn-bg transparent-banner defect this file's own header
+ * names. Mirrors ui/icons.test.ts, stage-scale.test.ts, gates.test.ts, contract.test.ts.
  */
 function stripComments(src: string): string {
-	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/<!--[\s\S]*?-->/g, '');
+	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
+	return src
+		.replace(/<!--[\s\S]*?-->/g, blank) // markup comments
+		.replace(/\/\*[\s\S]*?\*\//g, blank) // block comments, in <script> and <style>
+		.replace(/(^|[^:'"\\])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length))); // line comments, sparing https://
 }
 
 function lineOf(src: string, index: number): number {
@@ -63,6 +77,17 @@ function palette(): Map<string, string> {
 	return m;
 }
 
+/**
+ * The full guest-visible .svelte surface, computed ONCE. Every scan below iterates it; a
+ * `.filter(bad).toEqual([])` / `missing.toEqual([])` scan passes vacuously if the walk returns
+ * nothing, so pin a floor here (issue #453). If a refactor moves files out of src/, this reds
+ * loudly instead of silently guarding nothing. 25 files today; floor well below that.
+ */
+const FILES = svelteFiles(SRC);
+test('the design-system scan actually reads the component surface', () => {
+	expect(FILES.length).toBeGreaterThan(15);
+});
+
 test('no component hard-codes a colour the palette already owns', () => {
 	const known = palette();
 	expect(known.size).toBeGreaterThan(10); // the parser still works if app.css is reformatted
@@ -78,7 +103,7 @@ test('no component hard-codes a colour the palette already owns', () => {
 	// custom property cannot resolve in one. Nothing to convert it to.
 	const SVG_PAINT = /(fill|stroke|stop-color)=["']$/;
 
-	for (const f of svelteFiles(SRC)) {
+	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/#[0-9a-fA-F]{3,8}\b/g)) {
 			const hex = normaliseHex(m[0]);
@@ -102,7 +127,7 @@ test('every token a component references is actually defined', () => {
 	const defined = new Set([...css.matchAll(/--([a-z0-9-]+):/g)].map((m) => m[1]!));
 	const missing: string[] = [];
 
-	for (const f of svelteFiles(SRC)) {
+	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
 		// Locally-scoped custom properties (set via style= or a parent rule) are legitimate; collect
 		// what this file declares so they are not reported as typos.
@@ -204,7 +229,7 @@ test('no component leaks a stray comment terminator into the page', () => {
 	// scan should own instead.
 	const offences: string[] = [];
 
-	for (const f of svelteFiles(SRC)) {
+	for (const f of FILES) {
 		const src = readFileSync(f, 'utf8');
 		let depth = 0;
 		let line = 1;
@@ -236,7 +261,7 @@ test('form controls never sit below the 16px iOS zoom threshold', () => {
 	const offences: string[] = [];
 	const CONTROL = /(^|[\s,>])(input|select|textarea)\b/;
 
-	for (const f of svelteFiles(SRC)) {
+	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/([^{}]+)\{([^}]*)\}/g)) {
 			const [sel, body] = [m[1]!, m[2]!];
@@ -337,7 +362,7 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 	// this guard pins it for every identity-dot rule so a future edit can't drop it. ProcessingCard's
 	// `.who i` is byte-identical by design, so it must satisfy the same rule.
 	const offences: string[] = [];
-	for (const f of svelteFiles(SRC)) {
+	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/\.who\s+i\s*\{([^}]*)\}/g)) {
 			const body = m[1]!;
@@ -353,7 +378,7 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 	// The rule must actually match something, or a selector rename would silently disarm it.
 	// QueueRow + ProcessingCard both carry a .who i rule.
 	let seen = 0;
-	for (const f of svelteFiles(SRC)) {
+	for (const f of FILES) {
 		seen += [...stripComments(readFileSync(f, 'utf8')).matchAll(/\.who\s+i\s*\{/g)].length;
 	}
 	expect(seen).toBeGreaterThanOrEqual(2);
@@ -427,7 +452,7 @@ test('a keydown handler that preventDefault()s on a snippet host early-returns o
 	const offences: string[] = [];
 	let scanned = 0;
 
-	for (const f of svelteFiles(SRC)) {
+	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
 		// Only the risky shape is in scope: a keydown handler whose body calls preventDefault(). A
 		// handler that never cancels the event cannot swallow a nested control's activation.
