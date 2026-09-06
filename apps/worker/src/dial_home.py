@@ -22,6 +22,7 @@ from . import protocol
 from .config import WorkerConfig
 from .mediastore import MediaStoreConfig, parse_media_store
 from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubProcessor
+from .retry_policy import is_retryable
 from .runtime import scratch_for
 
 # All environment reading lives in config.py, so there is ONE place to look for "what is this worker
@@ -299,14 +300,12 @@ class WorkerClient:
 
 
 def _is_retryable(exc: Exception) -> bool:
-    # Prefer a structured flag if the processor raised one (e.g. demucs.ProcessError classifies the
-    # CLI's stderr); otherwise fall back to a substring heuristic on the message.
-    structured = getattr(exc, "retryable", None)
-    if isinstance(structured, bool):
-        return structured
-    permanent = ("not found", "404", "unsupported", "corrupt")
-    msg = str(exc).lower()
-    return not any(p in msg for p in permanent)
+    # The retry decision lives in ONE place now: retry_policy.is_retryable (#443). It prefers a
+    # structured `.retryable` flag (ProcessError/ProcessTimeout, and the boundary errors that carry
+    # retryable=False) and otherwise falls back to the canonical permanent-marker table — so this
+    # module no longer keeps its own divergent four-substring copy that defaulted the four boundary
+    # failures (unknown fetcher/ASR model/engine, no plan) to retryable and cost the room 3 attempts.
+    return is_retryable(exc)
 
 
 def oversubscription_warnings(
