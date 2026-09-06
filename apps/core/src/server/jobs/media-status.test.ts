@@ -22,7 +22,7 @@ import { JobRepository } from './repository';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
 import { completedStatusFor, jobStageFloor, mediaStatusFor, shouldBroadcastCook } from './media-status';
-import { mediaStagePosition, GATES, MEDIA_STAGES, type Job, type Media, type ServerEvent } from '@encore/shared';
+import { mediaStagePosition, pendingGates, GATES, MEDIA_STAGES, type Job, type Media, type ServerEvent } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 
@@ -130,6 +130,27 @@ test("only the media's own gates can say 'ready'", () => {
 	// An align that completes WITHOUT satisfying its gate must not walk back to 'separating' either.
 	const stalled = media({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac' });
 	expect(completedStatusFor(job({ jobType: 'align', status: 'ready' }), stalled)).toBe('aligning');
+});
+
+test("a completed align whose EARLIER gate is still outstanding is clamped, not walked back below its floor", () => {
+	// The monotonic clamp at the end of completedStatusFor — the `: floor` branch — is the only thing
+	// that pins this, and no other test in this file constructs its input. Every other completed-path
+	// case has `pendingGates(media)[0].stage` at or ABOVE the completed step's floor, so the `nextStatus`
+	// branch is taken and deleting the clamp (`return nextStatus`) leaves them byte-identical.
+	//
+	// Here the FIRST outstanding gate is `stems`/'separating' (position 2) while the job that just
+	// completed is `align`, whose floor is 'aligning' (position 3): nextStatus is strictly BELOW the
+	// floor. Reachable — an align completes while separation's artifact is missing (retention evicting
+	// instrumentalRef mid-align is the suspected production route; the trigger itself is proven here at
+	// the function boundary the clamp lives on). Without the clamp the guest's strip would jump from
+	// "Adding lyrics" back to "Making karaoke" — the exact backwards walk the invariant forbids.
+	const alignAheadOfStems = media({ stemStatus: 'none', lyricsStatus: 'ready', lyricsRef: 'derived/lyrics/m1.json' });
+	// Guard the premise so this test cannot silently drift into the vacuous shape: the first pending
+	// gate must be strictly below the align floor, or the `: floor` branch is never exercised.
+	expect(pendingGates(alignAheadOfStems)[0]!.stage).toBe('separating');
+	expect(mediaStagePosition('separating')).toBeLessThan(mediaStagePosition(jobStageFloor('align')));
+	// Clamp intact → the completed align holds at its own floor.
+	expect(completedStatusFor(job({ jobType: 'align', status: 'ready' }), alignAheadOfStems)).toBe('aligning');
 });
 
 test("a job's own download stage is clamped to the step it IS", () => {
