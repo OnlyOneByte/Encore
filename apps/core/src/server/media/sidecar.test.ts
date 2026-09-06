@@ -14,6 +14,7 @@ import {
 	readSidecar,
 	readAllSidecars,
 	rebuildIndexFromMeta,
+	clearArtifacts,
 	SIDECAR_SCHEMA,
 	type MediaSidecar
 } from './sidecar';
@@ -324,5 +325,67 @@ describe('annotation persistence', () => {
 		const back = mediaFromSidecar(sidecarFromMedia(media(), NOW));
 		expect(back.mbid).toBeUndefined();
 		expect(back.annotation?.source).not.toBe('musicbrainz');
+	});
+});
+
+
+describe('clearArtifacts (eviction must stick) (#442 §1)', () => {
+	it('nulls all four derived-artifact fields on the authoritative record', async () => {
+		const s0 = sidecarFromMedia(
+			media({
+				instrumentalRef: 'derived/stems/m1-instrumental.flac',
+				vocalsRef: 'derived/stems/m1-vocals.flac',
+				lyricsRef: 'derived/lyrics/m1.json',
+				lyricsCandidates: [
+					{ ref: 'derived/lyrics/m1.json', textSource: 'lrclib', timing: 'word', textConfidence: 'high', createdAt: 1 }
+				]
+			}),
+			NOW
+		);
+		await writeSidecar(s0);
+
+		await clearArtifacts('m1');
+
+		const after = await readSidecar('m1');
+		expect(after?.artifacts.instrumental).toBeNull();
+		expect(after?.artifacts.vocals).toBeNull();
+		expect(after?.artifacts.lyrics).toBeNull();
+		expect(after?.artifacts.lyricsCandidates).toEqual([]);
+	});
+
+	it('makes an eviction STICK: a re-derive does not resurrect the song as cooked', async () => {
+		// The bug: app.ts eviction sets instrumentalRef = undefined and upserts, but sidecarFromMedia
+		// does `m.instrumentalRef ?? prev?.artifacts.instrumental`, so undefined ?? prev RESTORES the
+		// just-deleted ref; mediaFromSidecar then re-derives stemStatus 'ready', resurrecting an evicted
+		// song as cooked with a ref to a deleted file. clearArtifacts nulls the fields directly so the
+		// eviction sticks. This test reproduces BOTH halves.
+		const cooked = media({
+			instrumentalRef: 'derived/stems/m1-instrumental.flac',
+			vocalsRef: 'derived/stems/m1-vocals.flac',
+			lyricsRef: 'derived/lyrics/m1.json',
+			stemStatus: 'ready'
+		});
+		await writeSidecar(sidecarFromMedia(cooked, NOW));
+
+		// Eviction as app.ts performs it: the runtime Media loses its refs (undefined) and is upserted,
+		// which fires sidecarFromMedia with the PRIOR sidecar as `previous`.
+		const prev = await readSidecar('m1');
+		const evicted: Media = { ...cooked, instrumentalRef: undefined, vocalsRef: undefined, lyricsRef: undefined, lyricsCandidates: [], stemStatus: 'none' };
+		const restored = sidecarFromMedia(evicted, NOW, prev);
+		// Without clearArtifacts, the ?? prev restores the ref — proving the defect is real:
+		expect(restored.artifacts.instrumental).toBe('derived/stems/m1-instrumental.flac');
+		expect(mediaFromSidecar(restored).stemStatus).toBe('ready'); // resurrected — the bug
+
+		// clearArtifacts on the authoritative record is what makes the eviction stick:
+		await writeSidecar(restored); // simulate the upsert sink having written the restored sidecar
+		await clearArtifacts('m1');
+		const final = await readSidecar('m1');
+		expect(final?.artifacts.instrumental).toBeNull();
+		expect(mediaFromSidecar(final!).stemStatus).toBe('none'); // stays evicted
+	});
+
+	it('is a no-op when the song has no sidecar yet', async () => {
+		await clearArtifacts('ghost'); // must not throw
+		expect(await readSidecar('ghost')).toBeNull();
 	});
 });

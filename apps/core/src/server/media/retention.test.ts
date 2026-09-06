@@ -240,4 +240,45 @@ describe('evictDerived', () => {
 	it('is safe on a song with no artifacts on disk', () => {
 		expect(evictDerived(media('ghost'))).toEqual({ removed: [], bytes: 0 });
 	});
+
+	it('deletes and counts ALL lyrics-candidate JSONs, not just the chosen lyricsRef (#442 §3)', () => {
+		// A song carries one lyrics JSON per text source (worker lyrics/chain.py mints a distinct key
+		// each), all retained in m.lyricsCandidates; lyricsRef is only the CHOSEN one. derivedRefsOf
+		// listing lyricsRef alone saw 1 of N — the other N-1 were never counted toward the cap and,
+		// worse, never deleted on eviction, orphaning them on disk permanently. Enumerating every
+		// candidate ref (retention.ts derivedRefsOf) is what this pins. Removing the
+		// `...(m.lyricsCandidates ?? []).map((c) => c.ref)` line reds this: bytes drops to 500+200 and the
+		// two extra candidate files survive.
+		mkdirSync(join(root, 'derived', 'lyrics'), { recursive: true });
+		put('derived/stems/a-instrumental.flac', 500);
+		put('derived/lyrics/a-chosen.json', 200);
+		put('derived/lyrics/a-alt1.json', 150);
+		put('derived/lyrics/a-alt2.json', 120);
+		const m = media('a', {
+			instrumentalRef: 'derived/stems/a-instrumental.flac',
+			lyricsRef: 'derived/lyrics/a-chosen.json',
+			lyricsCandidates: [
+				{ ref: 'derived/lyrics/a-chosen.json', textSource: 'lrclib', timing: 'word', textConfidence: 'high', createdAt: 1 },
+				{ ref: 'derived/lyrics/a-alt1.json', textSource: 'captions', timing: 'line', textConfidence: 'medium', createdAt: 2 },
+				{ ref: 'derived/lyrics/a-alt2.json', textSource: 'asr', timing: 'word', textConfidence: 'low', createdAt: 3 }
+			]
+		});
+
+		// 500 instrumental + 200 + 150 + 120 across the three candidate JSONs = 970
+		expect(derivedBytesOf(m)).toBe(970); // and NOT 700 (chosen only)
+		const { removed, bytes } = evictDerived(m);
+		expect(bytes).toBe(970);
+		// every lyrics candidate file is gone, not just the chosen one
+		expect(existsSync(join(root, 'derived/lyrics/a-chosen.json'))).toBe(false);
+		expect(existsSync(join(root, 'derived/lyrics/a-alt1.json'))).toBe(false);
+		expect(existsSync(join(root, 'derived/lyrics/a-alt2.json'))).toBe(false);
+		expect(new Set(removed)).toEqual(
+			new Set([
+				'derived/stems/a-instrumental.flac',
+				'derived/lyrics/a-chosen.json',
+				'derived/lyrics/a-alt1.json',
+				'derived/lyrics/a-alt2.json'
+			])
+		);
+	});
 });
