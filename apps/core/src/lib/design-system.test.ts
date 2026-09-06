@@ -339,3 +339,52 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 	expect(seen).toBeGreaterThanOrEqual(2);
 	expect(offences).toEqual([]);
 });
+
+test('a route page block that caps its width also centres it under the app-shell', () => {
+	// THE BUG THIS EXISTS FOR (issue #145). The layout mounts each route's page block as a direct child
+	// of `.app-shell` (routes/+layout.svelte:12), which is a `display:flex; flex-direction:column;
+	// margin:0 auto` centred column. A flex item that sets a `max-width` but no inline auto margin is
+	// laid out at the cross-axis START, so the cap takes width off the RIGHT only and the block hangs to
+	// the LEFT of a shell whose whole job is to centre. /stats sat 187px left of centre at 1440px with a
+	// 360px void beside it; /metrics and /metrics/[mediaId] the same. The repo had already decided this
+	// twice — settings `main` and join `.join-main` both cap AND `margin:0 auto` — so this pins the rule
+	// for every route root: cap your width if you like, but re-centre it. `width:100%` matters alongside
+	// the margin because on a flex item a bare auto inline margin removes the stretch and collapses the
+	// block to content width; the guard requires the auto margin (the placement fix) and the presence of
+	// the cap is what arms it.
+	const ROUTES = join(SRC, 'routes');
+	const offences: string[] = [];
+	let checked = 0;
+	for (const f of svelteFiles(ROUTES)) {
+		if (!f.endsWith('+page.svelte')) continue;
+		const raw = readFileSync(f, 'utf8');
+		// The route's page block is the first top-level element in the template that carries a class —
+		// it becomes the direct .app-shell child. Look only at markup BEFORE the <style> block.
+		const styleAt = raw.indexOf('<style');
+		const markup = styleAt === -1 ? raw : raw.slice(0, styleAt);
+		const rootClassMatch = markup.match(/<(?:section|main|div|article)\b[^>]*\sclass="([a-z][a-z0-9-]*)/i);
+		if (!rootClassMatch) continue; // a route with no single classed root block (e.g. plain <slot>) is out of scope
+		const rootClass = rootClassMatch[1]!;
+		const css = stripComments(raw);
+		// The rule for that class, at any nesting; take the FIRST base declaration block for the selector.
+		const rule = css.match(new RegExp(`\\.${rootClass}\\s*\\{([^}]*)\\}`));
+		if (!rule) continue;
+		const body = rule[1]!;
+		const capsWidth = /(^|[;{\s])max-width:\s*\d/.test(body);
+		if (!capsWidth) continue; // no cap -> nothing to re-centre; this page fills the shell
+		checked++;
+		const autoMargin =
+			/margin(-inline)?:\s*[^;]*\bauto\b/.test(body) ||
+			/margin-inline-(start|end):\s*auto/.test(body) ||
+			/margin-(left|right):\s*auto/.test(body);
+		if (!autoMargin) {
+			offences.push(
+				`${f.replace(SRC, 'src')}: .${rootClass} caps its width (max-width) but sets no inline auto margin, so it hangs left of the centred .app-shell — add margin-inline:auto (with width:100% to keep the stretch)`
+			);
+		}
+	}
+	// The rule must actually be exercising something, or a refactor of the routes would silently disarm it.
+	// The three dashboards plus the two precedents (settings, join) all cap-and-centre.
+	expect(checked).toBeGreaterThanOrEqual(3);
+	expect(offences).toEqual([]);
+});
