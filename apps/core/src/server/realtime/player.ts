@@ -8,11 +8,32 @@ import {
 	hasGuidingTrack,
 	type PlayerCommand,
 	type ServerEvent,
-	type QueueEntry
+	type QueueEntry,
+	type PlaybackState
 } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
 import { mediaFor, orderingOf, type HubDeps } from './hub';
+
+/**
+ * The per-song ephemeral reset — the fields that a NEW song start clears back to their per-room
+ * default. PlaybackState is a long-lived singleton (nothing rebuilds it per song), and setPlayback
+ * takes a Partial, so a reset object that names three of these four is not a type error: it silently
+ * leaks the previous singer's transpose/background/guide into the next turn. That exact defect
+ * shipped once already (keyShift was missing from reconcileOnReady across 87bce9e..6273ee9). Naming
+ * the set ONCE here, spread at every reset site, is what makes "add an ephemeral field" a single
+ * edit that the compiler then propagates to all of them. Only currentEntryId and isPlaying differ
+ * per site, so they stay inline. The two nullable fields reset to null = INHERIT the room default
+ * (not a concrete value): pinning guideLevel to 0 would rob a room of a permanent faint guide at
+ * every song boundary. `satisfies` keeps this checked against PlaybackState without widening the
+ * literal's type.
+ */
+const EPHEMERAL_RESET = {
+	positionSec: 0,
+	keyShift: 0,
+	background: null,
+	guideLevel: null
+} as const satisfies Partial<PlaybackState>;
 
 /**
  * Broadcast the authoritative queue after a PLAYBACK transition changed entry statuses.
@@ -87,30 +108,16 @@ export function reconcileOnReady(deps: HubDeps): void {
 		const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 		if (next) {
 			beginSinging(deps, next);
-			// A SONG START, so every ephemeral field resets here too — see advance(). keyShift was the one
-			// this site forgot: a song that began this way (the room idled while it cooked, then the cook
-			// finished) silently inherited the previous singer's transpose.
-			state.setPlayback({
-				currentEntryId: next.id,
-				positionSec: 0,
-				isPlaying: true,
-				keyShift: 0,
-				background: null,
-				guideLevel: null
-			});
+			// A SONG START: reset every ephemeral field (EPHEMERAL_RESET). keyShift was historically the
+			// one THIS site forgot — a song that began this way (the room idled while it cooked, then the
+			// cook finished) silently inherited the previous singer's transpose; the shared const closes it.
+			state.setPlayback({ ...EPHEMERAL_RESET, currentEntryId: next.id, isPlaying: true });
 			publishQueue(deps); // the entry left `queued` — tell clients now, not on the next resync
 			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		} else if (state.playback.currentEntryId !== null) {
 			// Dangling id with nothing playable to take over: the playing song was pruned and no other
 			// entry is ready. Settle playback to genuinely idle so the auto-start gates unstick.
-			state.setPlayback({
-				currentEntryId: null,
-				positionSec: 0,
-				isPlaying: false,
-				keyShift: 0,
-				background: null,
-				guideLevel: null
-			});
+			state.setPlayback({ ...EPHEMERAL_RESET, currentEntryId: null, isPlaying: false });
 			publishQueue(deps);
 			deps.publish({ type: 'playback:state', state: state.playback, rev: state.rev });
 		}
@@ -133,18 +140,10 @@ function advance(deps: HubDeps): QueueEntry | null {
 	 * value: pinning guideLevel to 0 here would mean a room that wants a permanent faint guide loses it
 	 * at every song boundary.
 	 *
-	 * This object is a long-lived SINGLETON: nothing rebuilds it per song, so every ephemeral field has
-	 * to be named at each of the three reset sites (here, play-from-idle, and reconcileOnReady) or it
-	 * silently leaks into the next singer's turn. Adding an ephemeral field means editing all three.
+	 * The reset set lives in ONE place now: EPHEMERAL_RESET, spread at each site. Adding an ephemeral
+	 * field means editing that const once; the compiler propagates it to every reset site.
 	 */
-	state.setPlayback({
-		currentEntryId: next?.id ?? null,
-		positionSec: 0,
-		isPlaying: !!next,
-		keyShift: 0,
-		background: null,
-		guideLevel: null
-	});
+	state.setPlayback({ ...EPHEMERAL_RESET, currentEntryId: next?.id ?? null, isPlaying: !!next });
 	// The statuses above are a queue mutation; broadcast it here so BOTH callers (an explicit skip and
 	// a TV `ended`) converge clients immediately rather than at the next resync. Only when something
 	// ACTUALLY changed: a skip in an empty room mutates nothing, and publishing an unchanged snapshot
@@ -165,14 +164,7 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 				const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 				if (next) {
 					beginSinging(deps, next);
-					state.setPlayback({
-						currentEntryId: next.id,
-						positionSec: 0,
-						isPlaying: true,
-						keyShift: 0,
-						background: null,
-						guideLevel: null
-					});
+					state.setPlayback({ ...EPHEMERAL_RESET, currentEntryId: next.id, isPlaying: true });
 					publishQueue(deps); // it just left `queued`
 					break;
 				}
