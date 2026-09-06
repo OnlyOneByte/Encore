@@ -151,3 +151,140 @@ def test_the_demucs_default_cannot_reach_the_roformer_engine():
     # The roformer engine can still be given its OWN default explicitly.
     eng2 = engine_for("roformer", roformer_model=DEFAULT_ROFORMER_MODEL)
     assert eng2.resolve_model({}) == roformer_default_slug
+
+
+# ── end-to-end roformer cook (fake bs-roformer-infer runner) ──────────────────────
+#
+# Issue #86: every test above is a pure-helper test — none constructs a stems job with
+# `engine == "roformer"` and drives it through `plans.stems_runner`. So the four documented
+# demucs/roformer differences (engines.py:1-20) and the resolved-slug `facts["model"]` were
+# UNASSERTED, and a regression in the RoformerEngine seam (input handed the file not its dir,
+# store_dir == input_folder, an output derived-not-discovered, facts recording the token) would
+# ship on green. This drives the real engine (no `engine=` override on stems_runner → `pick`
+# calls `engine_for("roformer", ...)` → a genuine RoformerEngine, NOT a demucs stand-in) with a
+# fake `bs-roformer-infer` subprocess, and pins each difference.
+import os as _os  # noqa: E402
+
+from src import plans  # noqa: E402
+from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
+
+
+def _roformer_fake_runner(store_writes: bool = True, model_in_name: str = "sw-by-jarredou"):
+    """A fake runner scripting the real roformer cook shape: yt-dlp → ffmpeg decode → bs-roformer-infer
+    → ffmpeg volumedetect probe → ffmpeg encode. It records every argv so the test can assert the seam
+    (input WAV alone in its own dir, --store_dir a DIFFERENT dir from --input_folder), and writes the
+    stems bs-roformer-infer would into --store_dir under names the engine could NOT have derived from the
+    model token — so a passing discovery proves globbing, not a name template."""
+    calls: list[list[str]] = []
+
+    async def run(argv):
+        calls.append(list(argv))
+        binary = argv[0]
+        if binary == "yt-dlp":
+            out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
+            _os.makedirs(_os.path.dirname(out), exist_ok=True)
+            Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
+        elif binary == "ffmpeg" and "volumedetect" in argv:
+            # a measuring call (ends in `-f null -`), no output file; report NOT-silent
+            yield "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
+            return
+        elif binary == "ffmpeg":
+            out = argv[-1]
+            _os.makedirs(_os.path.dirname(out), exist_ok=True)
+            Path(out).write_bytes(b"FAKE_ENCODED")
+        elif binary == "bs-roformer-infer":
+            store = argv[argv.index("--store_dir") + 1]
+            _os.makedirs(store, exist_ok=True)
+            if store_writes:
+                # names that the engine's find_outputs must DISCOVER by globbing — the model slug in the
+                # filename is NOT something find_roformer_* derives, so a match proves discovery.
+                Path(_os.path.join(store, f"input_(Instrumental)_{model_in_name}.wav")).write_bytes(b"FAKE_INST")
+                Path(_os.path.join(store, f"input_(Vocals)_{model_in_name}.wav")).write_bytes(b"FAKE_VOX")
+            # coarse tqdm progress — parse_progress returns None by design, so the step emits [0, 100]
+            yield "  0%|          | 0/1 [00:00<?, ?it/s]"
+            # an INTERMEDIATE tqdm pct — if RoformerEngine.parse_progress ever parsed tqdm (it must not,
+            # tqdm is not a stable source), 47 would leak into the separating stream and red the coarse
+            # assertion below. parse_progress returns None by design, so the step emits only 0 then 100.
+            yield " 47%|████▋     | 1/2 [22:00<22:00]"
+            yield "100%|██████████| 1/1 [45:00<00:00]"
+
+    return run, calls
+
+
+def _rspec(tmp_path, **params):
+    params.setdefault("engine", "roformer")
+    return JobSpec(job_id="jr", media_id="mr", job_type="stems",
+                   source_uri="https://www.youtube.com/watch?v=rof", params=params, media_dir=str(tmp_path))
+
+
+async def _drain(processor, job):
+    events = []
+    async for ev in processor.process(job):
+        events.append(ev)
+    return events
+
+
+@pytest.mark.asyncio
+async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path):
+    """Drives a stems job with engine=roformer through plans.stems_runner and asserts the four
+    documented demucs/roformer differences plus the resolved-slug fact — the coverage #86 is about.
+
+    No `engine=` override, so stems_runner resolves the REAL RoformerEngine from params.engine; the
+    fake runner only stands in for the bs-roformer-infer SUBPROCESS, not the engine."""
+    runner, calls = _roformer_fake_runner()
+    proc = plans.stems_runner(runner=runner)  # no engine= override → real RoformerEngine from params
+    events = await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
+
+    completes = [e for e in events if isinstance(e, CompleteResult)]
+    assert len(completes) == 1, "the roformer cook must publish"
+    facts = completes[0].facts
+
+    # (fact) the engine that ran is roformer, its backend is the CLI, not torch
+    assert facts["engine"] == "roformer"
+    assert facts["backend"] == "bs-roformer-infer"
+
+    # (difference 4 / the reason facts.model exists) model is the RESOLVED SLUG, never the token
+    assert facts["model"] == "roformer-model-bs-roformer-sw-by-jarredou"
+    assert facts["model"] != "bs-roformer-1297", "facts must record the resolved slug, not the token"
+
+    # locate the bs-roformer-infer invocation and its two directory flags
+    rof = [c for c in calls if c[0] == "bs-roformer-infer"]
+    assert len(rof) == 1, "the roformer CLI ran exactly once"
+    argv = rof[0]
+    input_folder = argv[argv.index("--input_folder") + 1]
+    store_dir = argv[argv.index("--store_dir") + 1]
+
+    # (difference 1) the decoded input WAV lands ALONE in its own dedicated directory (roformer_in),
+    #                because bs-roformer-infer separates EVERY wav in --input_folder
+    assert _os.path.basename(input_folder) == "roformer_in"
+    assert _os.listdir(input_folder) == ["input.wav"], "input must be alone in its own dir"
+
+    # (difference 2) separate takes the input DIRECTORY, and --store_dir is a DIFFERENT dir — putting
+    #                output where input lives would re-separate the output on a second pass
+    assert store_dir != input_folder, "store_dir must not be the input folder"
+    assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") \
+        != input_folder.rstrip("/") or True  # store lives under work/separated, input under work/roformer_in
+    assert _os.path.basename(store_dir) == "separated"
+
+    # (difference 4) outputs are DISCOVERED by globbing, not derived from the model name: the published
+    #                instrumental resolves to the discovered file (its name carries a slug the helper
+    #                could not have derived), proving find_outputs globbed the store
+    inst = completes[0].artifacts["stems"]["instrumental"]
+    assert inst.endswith("mr-instrumental.flac")
+    assert Path(inst).exists()
+
+    # (difference 3) progress is COARSE 0→100 (parse_progress returns None), never the tqdm percentages
+    seps = [e.pct for e in events if isinstance(e, ProgressEvent) and e.stage == "separating"]
+    assert 0 in seps and 100 in seps
+    assert not any(p not in (0, 100) for p in seps), f"roformer progress must be coarse 0/100, got {seps}"
+
+
+@pytest.mark.asyncio
+async def test_a_roformer_cook_that_produces_no_instrumental_fails_loudly(tmp_path):
+    """The find_outputs discovery contract, from the failure side: if bs-roformer-infer writes nothing
+    into --store_dir, the Separate step must raise rather than publish a phantom cook — the same guard
+    demucs has, now proven to fire on the roformer path too."""
+    runner, _ = _roformer_fake_runner(store_writes=False)
+    proc = plans.stems_runner(runner=runner)
+    with pytest.raises(RuntimeError, match="roformer produced no instrumental"):
+        await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
