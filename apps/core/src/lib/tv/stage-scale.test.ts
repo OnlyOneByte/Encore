@@ -128,6 +128,10 @@ test('the three transient TV states are visually distinct', () => {
 	}
 	// the error state must not be drawn in the affirmative accent
 	const errorBlock = /\.state-error[^{]*\{([^}]*)\}/.exec(src)?.[1] ?? '';
+	// Pair the negative assertion with a non-empty floor, like every sibling slice in this file
+	// (:157, :311, :358, :377, :425, :468): a `?? ''` fallback makes `.not.toContain('--accent2')`
+	// pass vacuously if the `.state-error` rule is renamed or removed, hiding the very regression.
+	expect(errorBlock).not.toBe('');
 	expect(errorBlock).not.toContain('--accent2');
 });
 
@@ -190,12 +194,20 @@ test('every HERO join badge sizes from the --tv-qr token, never a bare pixel num
 	// This is the assertion the size={320}->size={9999} mutation must not survive: a hero badge with a
 	// numeric size is the fixed-pixel bug, whatever the number is.
 	const offenders: string[] = [];
+	// Non-vacuity floor: a zero-match scan iterates zero times and passes with `offenders` empty,
+	// so a hero badge that spells `placement` as `placement={placement}` or hides it in a spread
+	// would ship the exact size={320}->size={9999} defect green. Count the hero badges actually
+	// matched per file and assert each file still has one — the guard only guards if it read them.
+	let heroBadgesSeen = 0;
 	for (const [name, src] of [
 		['routes/tv/+page.svelte', TV_ROUTE],
 		['lib/tv/TvLobby.svelte', TV_LOBBY]
 	] as const) {
 		const clean = stripComments(src);
+		let seenInFile = 0;
 		for (const m of clean.matchAll(/<JoinBadge\b[^>]*?placement="hero"[^>]*?>/gs)) {
+			seenInFile++;
+			heroBadgesSeen++;
 			const tag = m[0];
 			// A hero badge must NOT carry a numeric size ({320}, {238}, {9999}, …).
 			if (/size=\{\s*\d+(?:\.\d+)?\s*\}/.test(tag)) {
@@ -206,8 +218,14 @@ test('every HERO join badge sizes from the --tv-qr token, never a bare pixel num
 				offenders.push(`${name}: hero JoinBadge does not size from var(--tv-qr)`);
 			}
 		}
+		expect(
+			seenInFile,
+			`${name}: no <JoinBadge placement="hero"> matched — the size guard would pass vacuously; the hero badge moved or the attribute form changed`
+		).toBeGreaterThan(0);
 	}
 	expect(offenders).toEqual([]);
+	// Both TV surfaces carry a hero badge (attract + lobby, reachable + unreachable = 4 today).
+	expect(heroBadgesSeen).toBeGreaterThanOrEqual(2);
 });
 
 /*
