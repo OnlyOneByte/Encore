@@ -22,8 +22,9 @@
 // in .ts source. Task tracking is GitHub issues now, so the scan covers .md, .txt, .yml and those
 // config basenames as well, and a re-added ticket code in any of them reds this guard.
 import { test, expect } from 'bun:test';
-import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { join, basename } from 'node:path';
 
 // import.meta.dir === apps/core/src/lib. Two roots up is apps/core; four up is the repo root, which is
 // how the worker (Python) source is reached — CWD-independent, since `bun test` runs from apps/core.
@@ -43,34 +44,37 @@ const PATTERNS: { re: RegExp; family: string }[] = [
 const SCANNED_EXT = ['.ts', '.svelte', '.py', '.js', '.mjs', '.md', '.txt', '.yml', '.yaml'];
 // Extensionless / dotfile config that carried retired task tokens (M<n>-C<n>, B-<n>) and must stay clean.
 const SCANNED_NAMES = new Set(['Dockerfile', '.env.example', '.npmrc']);
-const SKIP_DIRS = new Set(['node_modules', 'build', '.svelte-kit', 'dist', '.git', 'media', '__pycache__']);
 
 // This guard is the one file that must contain the patterns (as literals + prose), so it excludes
 // itself. Nothing else is exempt: source, comments, tests and fixtures are all in scope.
 const SELF = join(import.meta.dir, 'task-number-hygiene.test.ts');
 
-function walk(dir: string, out: string[]): string[] {
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		if (ent.isDirectory()) {
-			if (SKIP_DIRS.has(ent.name)) continue;
-			walk(join(dir, ent.name), out);
-		} else if (SCANNED_EXT.some((e) => ent.name.endsWith(e)) || SCANNED_NAMES.has(ent.name)) {
-			out.push(join(dir, ent.name));
-		}
-	}
-	return out;
+// The scanned set is the GIT-TRACKED files only. `git ls-files` lists exactly what is under version
+// control, so an untracked / .gitignore'd path (the repo-root agent-state tree of operational
+// markdown, and anything similar added later) is never in scope — the guard polices the repo, not the
+// working directory. This also removes the need to hand-maintain a SKIP_DIRS prune list: generated and
+// vendored trees (node_modules, build, .svelte-kit, dist, media, __pycache__) are all untracked.
+function trackedScannedFiles(): string[] {
+	const listed = execFileSync('git', ['-C', REPO, 'ls-files', '-z'], {
+		encoding: 'utf8',
+		maxBuffer: 64 * 1024 * 1024
+	});
+	const rels = listed.split('\0').filter((r) => r.length > 0);
+	return rels
+		.filter((rel) => SCANNED_EXT.some((e) => rel.endsWith(e)) || SCANNED_NAMES.has(basename(rel)))
+		.map((rel) => join(REPO, rel));
 }
 
 /**
- * Every scanned file in the repo — source, comments, tests and fixtures alike, across the TS core,
- * the shared packages, and the Python worker (its src AND its tests). Walking from the repo root, with
- * SKIP_DIRS pruning generated/vendored trees, is what keeps the coverage matching this guard's name:
- * a task ref that lands in `packages/` or `apps/worker/tests/` is the same defect and must not hide.
+ * Every scanned TRACKED file in the repo — source, comments, tests and fixtures alike, across the TS
+ * core, the shared packages, and the Python worker (its src AND its tests). Driving off `git ls-files`
+ * (rather than a raw filesystem walk) is what keeps the coverage matching this guard's name AND its
+ * scope: a task ref that lands in `packages/` or `apps/worker/tests/` is the same defect and must not
+ * hide, but a ref inside an untracked / git-ignored operational tree is not a repo defect and must not
+ * red this guard.
  */
 function scannedFiles(): string[] {
-	const files: string[] = [];
-	walk(REPO, files);
-	return files.filter((f) => f !== SELF && statSync(f).isFile());
+	return trackedScannedFiles().filter((f) => f !== SELF);
 }
 
 test('no task/ticket number appears in source, comments, tests or fixtures', () => {
