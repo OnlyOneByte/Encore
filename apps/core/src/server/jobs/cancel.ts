@@ -20,7 +20,21 @@ import { settleLyricsGate, settleStemsGate } from './make-karaoke';
 // (separating), `align` (timing lyrics), or a background `stems-upgrade` — and a remove should stop
 // whichever is running. Enumerated (not inferred) so a new job type is a compile error here rather
 // than a silently un-cancellable cook. Mirrors packages/shared JobType exactly.
-const PIPELINE_JOB_TYPES: readonly JobType[] = ['fetch', 'stems', 'align', 'stems-upgrade'];
+//
+// The promise is delivered by `CANCELLABLE_JOB_TYPES`, an exhaustive `Record<JobType, true>`:
+// TypeScript requires EVERY `JobType` member as a key, so adding a fifth job type without listing
+// it here fails typecheck at this table (a bare `readonly JobType[]` literal would silently accept
+// the omission). `PIPELINE_JOB_TYPES` is derived from its keys, so the loop bound cannot drift from
+// the witness and cannot be missing a member.
+const CANCELLABLE_JOB_TYPES: Record<JobType, true> = {
+	fetch: true,
+	stems: true,
+	align: true,
+	'stems-upgrade': true
+};
+// The cancel loop walks these in the record's own insertion order (fetch → stems → align →
+// stems-upgrade), derived from the single exhaustive source above.
+const PIPELINE_JOB_TYPES = Object.keys(CANCELLABLE_JOB_TYPES) as readonly JobType[];
 
 export interface CancelJobsDeps {
 	jobs: JobRepository;
