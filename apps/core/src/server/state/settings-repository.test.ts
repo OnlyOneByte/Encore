@@ -4,7 +4,13 @@ import { drizzle } from 'drizzle-orm/bun-sqlite';
 import { runMigrations } from '../db/migrate';
 import * as schema from '../db/schema';
 import { SettingsRepository } from './settings-repository';
-import { DEFAULT_GLOBAL_SETTINGS, DEFAULT_ROOM_SETTINGS, QUEUE_ORDERS } from '@encore/shared';
+import {
+	DEFAULT_GLOBAL_SETTINGS,
+	DEFAULT_ROOM_SETTINGS,
+	QUEUE_ORDERS,
+	type GlobalSettings,
+	type RoomSettings
+} from '@encore/shared';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -220,14 +226,130 @@ describe('SettingsRepository room scope: tv progress style', () => {
 
 	it('the room default set is complete — every field has a value with no writes at all', () => {
 		// A field added to RoomSettings but forgotten in DEFAULT_ROOM_SETTINGS reads as undefined here and
-		// would reach a NOT NULL column on the first write.
+		// would reach a NOT NULL column on the first write. This only catches the DEFAULTS omission
+		// (and TypeScript catches it first); the getRoom SELECT-list omission is the persisted-path
+		// guard below.
 		const room = freshRepo().getRoom();
 		for (const [k, v] of Object.entries(room)) {
 			if (k === 'maxQualityRank') continue; // legitimately nullable
 			expect(v, `${k} has no default`).not.toBeUndefined();
 			expect(v, `${k} has no default`).not.toBeNull();
 		}
-		expect(Object.keys(room).sort()).toEqual(Object.keys(DEFAULT_ROOM_SETTINGS).sort());
+	});
+
+	// A non-default, normalizer-valid value for EVERY RoomSettings key. Each differs from its default so
+	// a value that reverts to the default on read is a caught failure, not a coincidental match. The
+	// completeness check just below makes forgetting one impossible to do SILENTLY: add a room field and
+	// this map must gain a matching entry or the suite goes red here — pointing at the exact key.
+	const NON_DEFAULT_ROOM: RoomSettings = {
+		queueOrder: 'fcfs',
+		tvProgressStyle: 'card',
+		tvBackgroundStyle: 'solid',
+		tvBackgroundHue: 90,
+		tvVisualizer: 'starfield',
+		songIntroEnabled: false,
+		songIntroMs: 5000,
+		maxQualityRank: 3,
+		lyricsBall: 'steady',
+		lyricsHighlight: 'line',
+		lyricsLeadMs: 700,
+		lyricsScalePct: 120,
+		lyricsFont: 'serif',
+		lyricsCase: 'upper',
+		lyricsLinesBefore: 1,
+		lyricsLinesAfter: 3,
+		guideLevelDefault: 0.5,
+		presenceGraceMinutes: 120
+	};
+
+	it('every persisted room field survives a write and a re-read (guards the getRoom SELECT list)', () => {
+		// THE REAL HAZARD. getRoom rebuilds its normalizer input field-by-field from the selected row
+		// (settings-repository.ts). A field on RoomSettings + in the schema + in DEFAULT_ROOM_SETTINGS
+		// but dropped from that SELECT literal reads back as the DEFAULT no matter what was written —
+		// invisible to TypeScript (normalizeRoomSettings takes Partial<RoomSettings>) and to any test
+		// that does not go through a persisted row. Writing a non-default value per key and re-reading
+		// exercises every line of the SELECT literal; the loop takes its keys from DEFAULT_ROOM_SETTINGS
+		// so a newly-added field is checked automatically without a new hand-written test.
+
+		// Overrides must cover exactly the default key set — no more, no less. If a room field is added
+		// without a NON_DEFAULT_ROOM entry, this fails and names the omission rather than the round trip
+		// silently passing over an unwritten key.
+		expect(Object.keys(NON_DEFAULT_ROOM).sort()).toEqual(Object.keys(DEFAULT_ROOM_SETTINGS).sort());
+
+		const repo = freshRepo();
+		const written = repo.setRoom(NON_DEFAULT_ROOM);
+		const readBack = repo.getRoom();
+		for (const k of Object.keys(DEFAULT_ROOM_SETTINGS) as (keyof RoomSettings)[]) {
+			// The override differs from the default, so a field dropped from getRoom's SELECT reverts to
+			// the default here and this assertion fails. Likeliest cause named first; a normalizer that
+			// clamped this override back to its default (e.g. a tightened range) would red this too.
+			expect(
+				readBack[k],
+				`${k} did not survive a persisted round trip — check getRoom's SELECT list (or a normalizer range that clamps this override to its default)`
+			).toBe(written[k]);
+			expect(
+				readBack[k],
+				`${k} read back as its default — it is missing from getRoom's SELECT list (or normalized back to the default)`
+			).not.toBe(DEFAULT_ROOM_SETTINGS[k]);
+		}
+	});
+
+});
+
+describe('SettingsRepository global scope: getGlobal SELECT completeness', () => {
+	// getGlobal rebuilds its normalizer input field-by-field from the selected row, the same hazard as
+	// getRoom: a field dropped from that SELECT literal reads back as its default. This writes a
+	// non-default, normalizer-valid value for every GlobalSettings key and re-reads, iterating the key
+	// set from DEFAULT_GLOBAL_SETTINGS so a newly-added field is checked automatically.
+	//
+	// defaultEngine/defaultModel and upgradeEngine/upgradeModel are COUPLED pairings, so the overrides
+	// are valid live-selectable / valid-separator pairs rather than independently flipped values.
+	//
+	// defaultFetcher is deliberately NOT round-trip-checked here, and NOT because a dedicated test
+	// covers it — it does not. normalizeGlobalSettings (packages/shared/src/settings.ts) refuses the
+	// only other FETCHERS member ('local', which degrades to the default), and setGlobal is the sole
+	// writer to global_settings, so no value distinct from the default can ever reach the column
+	// through the public API. Its SELECT line is therefore UNOBSERVABLE today: deleting it changes no
+	// reachable behaviour and no test — including the dedicated fetcher round-trip — can catch it,
+	// because that test writes 'ytdlp', which IS the default. Guarding it would require a second
+	// fetcher to exist (see settings.ts: "a silently wrong answer the moment a second one lands"). It
+	// is skipped rather than asserted so this test carries no tautological per-field assertion.
+	const GLOBAL_UNOBSERVABLE_FIELDS: (keyof GlobalSettings)[] = ['defaultFetcher'];
+	const NON_DEFAULT_GLOBAL: GlobalSettings = {
+		defaultFetcher: 'ytdlp', // == DEFAULT; unobservable through the public API, see note above
+		defaultEngine: 'roformer',
+		defaultModel: 'bs-roformer-1297',
+		enqueueUpgrade: true,
+		upgradeEngine: 'demucs',
+		upgradeModel: 'htdemucs',
+		asrModel: 'medium',
+		syncMode: 'lines',
+		joinOrigin: 'http://host.test:3000'
+	};
+
+	it('every persisted global field survives a write and a re-read (guards the getGlobal SELECT list)', () => {
+		// Overrides must cover exactly the default key set, so a newly-added global field forces a
+		// matching NON_DEFAULT_GLOBAL entry rather than being silently skipped.
+		expect(Object.keys(NON_DEFAULT_GLOBAL).sort()).toEqual(Object.keys(DEFAULT_GLOBAL_SETTINGS).sort());
+
+		const repo = freshRepo();
+		const written = repo.setGlobal(NON_DEFAULT_GLOBAL);
+		const readBack = repo.getGlobal();
+		for (const k of Object.keys(DEFAULT_GLOBAL_SETTINGS) as (keyof GlobalSettings)[]) {
+			// defaultFetcher's override equals its default (no distinct value can persist), so a
+			// round-trip assertion on it would be tautological — skip it entirely rather than assert it.
+			if (GLOBAL_UNOBSERVABLE_FIELDS.includes(k)) continue;
+			// Likeliest cause named first; a coupled pairing degrades to a partner (dropping defaultModel
+			// from the SELECT reds as defaultEngine), and a tightened normalizer range would red too.
+			expect(
+				readBack[k],
+				`${k} did not survive a persisted round trip — check getGlobal's SELECT list (a coupled pairing may name its partner; or a normalizer that rejects this override)`
+			).toBe(written[k]);
+			expect(
+				readBack[k],
+				`${k} read back as its default — it is missing from getGlobal's SELECT list (or was normalized back)`
+			).not.toBe(DEFAULT_GLOBAL_SETTINGS[k]);
+		}
 	});
 });
 
