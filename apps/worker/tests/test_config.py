@@ -363,3 +363,23 @@ def test_resolve_warns_on_an_align_device_ctranslate2_cannot_use():
     for good in ("cpu", "cuda", "cuda:1"):
         _r, w = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": good}), device=None)
         assert not any("CTranslate2" in m for m in w), (good, w)
+
+
+def test_annotate_flag_is_case_insensitive_like_its_siblings():
+    # ENCORE_ANNOTATE was the only boolean parsed WITHOUT .lower() (issue #298), so the natural
+    # capitalized spellings silently left annotation ON on the very box the flag exists to spare.
+    # Expected values are hard-coded (never derived through the config's own parse) so the assertion
+    # cannot agree with a still-broken parse. off-spellings resolve to False; on-spellings to True.
+    off_values = ["0", "false", "False", "FALSE", "no", "No", "NO", "off", "Off", "OFF", " False ", " no "]
+    for v in off_values:
+        c = WorkerConfig.from_env({"ENCORE_ANNOTATE": v})
+        assert c.annotate is False, f"ENCORE_ANNOTATE={v!r} should turn annotation OFF"
+        assert c.warnings == ()  # a recognized off-value is not a malformed input
+
+    on_values = ["1", "true", "True", "TRUE", "yes", "Yes", "on", "anything-else"]
+    for v in on_values:
+        c = WorkerConfig.from_env({"ENCORE_ANNOTATE": v})
+        assert c.annotate is True, f"ENCORE_ANNOTATE={v!r} should leave annotation ON"
+
+    # Unset falls back to the on-by-default documented in the dataclass.
+    assert WorkerConfig.from_env({}).annotate is True
