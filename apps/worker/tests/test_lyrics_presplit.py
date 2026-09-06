@@ -486,3 +486,74 @@ def test_real_upstream_bounds_an_over_long_line_and_isolates_parentheses():
 
     lp.bound_lines(["another line"], 42)
     assert len(logging.getLogger("karaoke_lyrics_processor.karaoke_lyrics_processor").handlers) == 0
+
+
+# A second over-long human line, distinct from LONG_AUTHORITATIVE, to stand in as a losing LRCLIB
+# version attached as an alternate. Both overflow a TV row (len > MAX_LINE_CHARS = 42).
+LONG_ALTERNATE = "so hold my hand and don't you ever let it go no matter what the morning brings us now"
+
+
+def test_presplit_bounds_a_candidates_ALTERNATES_not_just_the_top_level_246():
+    # THE #246 fix. presplit runs BEFORE select_by_baselines, which grades `[cand, *cand.alternates]`
+    # and may publish an alternate (a normal two-tier outcome — the version that best matches what was
+    # heard wins). presplit_texts used to map over the top-level list only, so an alternate winner
+    # reached the aligner with align_windows=None — the whole song then re-split by display-time
+    # char count, the exact fallback #59/#81 exist to avoid. The fence must run on alternates too.
+    assert len(LONG_ALTERNATE) > lp.MAX_LINE_CHARS  # the fixture actually overflows a row
+    cand = LyricsText(
+        text_source=SOURCE_LRCLIB,
+        segments=[{"start": 10.0, "end": 40.0, "text": LONG_AUTHORITATIVE, "words": []}],
+        timing=TIMING_LINE,
+        text_confidence="high",
+    )
+    alt = LyricsText(
+        text_source=SOURCE_LRCLIB,
+        segments=[{"start": 10.0, "end": 40.0, "text": LONG_ALTERNATE, "words": []}],
+        timing=TIMING_LINE,
+        text_confidence="high",
+    )
+    cand.alternates = [alt]
+
+    out = lp.presplit_texts([cand], bounder=bound_only)
+
+    # Top-level still bounded (proves the run did the ordinary work).
+    assert out[0].align_windows is not None and len(out[0].align_windows) > 1
+    # THE BITE: the alternate is bounded too. On base this is None (the alternate is never visited),
+    # so these three assertions all fail there.
+    assert len(out[0].alternates) == 1
+    alt_out = out[0].alternates[0]
+    assert alt_out.align_windows is not None
+    assert len(alt_out.align_windows) > 1
+    assert all(len(w["text"]) <= lp.MAX_LINE_CHARS for w in alt_out.align_windows)
+    # The alternate's own segments stay the source's verbatim line (bounding produces windows, not a
+    # segment rewrite — same #92 invariant as the top-level).
+    assert len(alt_out.segments) == 1
+    assert alt_out.segments[0]["text"] == LONG_ALTERNATE
+    # And the fence is a fresh object, not the untouched input alternate.
+    assert alt_out is not alt
+
+
+def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
+    # The fence is honest, not blanket: an alternate whose line already fits a row gets align_windows
+    # left None, exactly as a short top-level text would. This pins that we route alternates through
+    # the SAME fence (which no-ops on short/authoritative text) rather than force-bounding them.
+    short = "a short line that fits"
+    assert len(short) <= lp.MAX_LINE_CHARS
+    cand = LyricsText(
+        text_source=SOURCE_LRCLIB,
+        segments=[{"start": 0.0, "end": 4.0, "text": short, "words": []}],
+        timing=TIMING_LINE,
+        text_confidence="high",
+    )
+    alt = LyricsText(
+        text_source=SOURCE_LRCLIB,
+        segments=[{"start": 0.0, "end": 4.0, "text": short, "words": []}],
+        timing=TIMING_LINE,
+        text_confidence="high",
+    )
+    cand.alternates = [alt]
+
+    out = lp.presplit_texts([cand], bounder=bound_only)
+
+    assert out[0].align_windows is None
+    assert out[0].alternates[0].align_windows is None
