@@ -199,8 +199,10 @@ class FakeAnnotator:
     def __init__(self, recordings=None, boom=False):
         self._recs = recordings or []
         self._boom = boom
+        self.search_calls: list[tuple] = []
 
     def search(self, artist, track, limit=10):
+        self.search_calls.append((artist, track))
         if self._boom:
             raise RuntimeError("musicbrainz is down")
         from src.metadata.annotate import parse_recordings
@@ -235,10 +237,16 @@ async def test_a_fetch_reports_the_identification_it_made(tmp_path):
 async def test_no_lookup_keys_means_no_annotation_attempted(tmp_path):
     # An unconfident parse sends no artist/track, which is the signal to decline rather than guess.
     audio = os.path.join(str(tmp_path), "audio", "m1.wav")
+    annotator = FakeAnnotator(MB_HIT)
     proc = plans.fetch_runner(
-        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(MB_HIT)
+        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=annotator
     )
     done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp")) if isinstance(e, CompleteResult)][0]
+    # OBSERVE the attempt, not just the outcome: with no artist/track the lookup must be DECLINED
+    # BEFORE any query is built, so search() is never reached. Asserting only the absent artifact is
+    # blind -- a query built from (None, None) blows up in escape_lucene and is swallowed by the
+    # blanket except, producing the same empty-artifact outcome (issue #120). This pins the DECLINE.
+    assert annotator.search_calls == [], f"expected no lookup attempt, saw {annotator.search_calls}"
     assert "annotation" not in done.artifacts
 
 
