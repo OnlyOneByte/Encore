@@ -14,7 +14,7 @@
 
 import { isTerminalJob, type JobType, type QueueEntry, type WorkerCommand, type ServerEvent, type Media } from '@encore/shared';
 import type { JobRepository } from './repository';
-import { settleStemsGate } from './make-karaoke';
+import { settleLyricsGate, settleStemsGate } from './make-karaoke';
 
 // The full pipeline. A cook can be live at ANY of these stages — `fetch` (downloading), `stems`
 // (separating), `align` (timing lyrics), or a background `stems-upgrade` — and a remove should stop
@@ -70,6 +70,10 @@ export function cancelJobsForMedia(mediaId: string, deps: CancelJobsDeps): Cance
 	// removed is already gone from it.
 	if (deps.remainingEntries.some((e) => e.mediaId === mediaId)) return result;
 
+	// Which pipeline gates the cancelled jobs belong to, so the settle below walks back exactly the
+	// gate(s) that were mid-flight — not just the stems one.
+	const canceledTypes = new Set<JobType>();
+
 	for (const jobType of PIPELINE_JOB_TYPES) {
 		const job = deps.jobs.findLive(mediaId, jobType);
 		// `findLive` excludes failed/canceled but INCLUDES `ready`. Edge (b): a job that already
@@ -90,6 +94,7 @@ export function cancelJobsForMedia(mediaId: string, deps: CancelJobsDeps): Cance
 
 		deps.jobs.cancel(job.id, deps.now());
 		result.canceled.push(job.id);
+		canceledTypes.add(jobType);
 	}
 
 	// The job ledger is now clear, but the MEDIA still reads as cooking: requestMakeKaraoke flipped
@@ -99,8 +104,22 @@ export function cancelJobsForMedia(mediaId: string, deps: CancelJobsDeps): Cance
 	// a no-op cancel (nothing live, or a shared cook that lived on via the edge-(a) return) must not
 	// walk an unrelated media's status, and settleStemsGate already refuses to touch a finished cook.
 	if (result.canceled.length > 0 && deps.mediaById) {
-		const settled = settleStemsGate(mediaId, deps.mediaById);
-		if (settled) {
+		// Settle WHICHEVER gate the cancelled job(s) belong to, mirroring the terminal-failure path in
+		// worker-hub.ts (#onFailed): a cancelled `align` settles the LYRICS gate (align having stopped is
+		// a legitimate "no words" outcome — a song with no words is a finished song), while a cancelled
+		// `fetch`/`stems` settles the STEMS gate back to un-cooked. `stems-upgrade` settles neither: the
+		// song still has its working instrumental, which settleStemsGate refuses to walk back anyway.
+		//
+		// WHY this matters: once singing waits on the lyrics gate, cancelling a song mid-`align` left the
+		// gate open forever with no lyricsRef, so readyToSing stayed false and every future queue entry
+		// for the song was held and skipped — permanently, for everyone — while its live instrumental made
+		// cookState answer 'ready' and refuse a re-cook. Settling only stems (which no-ops on a finished
+		// cook) fixed neither half and, because the broadcast was gated on that no-op, emitted no event at
+		// all. Settle the real gate and broadcast when EITHER settle landed.
+		const stemsSettled =
+			(canceledTypes.has('fetch') || canceledTypes.has('stems')) && settleStemsGate(mediaId, deps.mediaById);
+		const lyricsSettled = canceledTypes.has('align') && settleLyricsGate(mediaId, deps.mediaById);
+		if (stemsSettled || lyricsSettled) {
 			// `MediaStatus` has a dedicated 'canceled' precisely so this is not a lie. The two statuses a
 			// client settles as terminal are 'ready' and 'failed'; every OTHER mid-flight value is written
 			// back as 'queued' by the phone and reads as cooking, i.e. it would re-strand the row we just
