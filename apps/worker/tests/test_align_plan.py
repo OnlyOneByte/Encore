@@ -971,11 +971,15 @@ async def test_a_legitimate_REMASTER_is_not_mistaken_for_the_wrong_version(tmp_p
 
 
 # ── #92: the aligner searches align_windows; the line-sync fallback keeps the source's own timings ──
-def _ctx_forced(monkeypatch):
-    """Minimal ctx stub for _time_one: forced sync mode (so the aligner branch runs)."""
+def _ctx_forced(monkeypatch, mode=None):
+    """Minimal ctx stub for _time_one.
+
+    Defaults to forced sync mode (so the aligner branch runs); pass ``mode=SyncMode.LINES``
+    to drive the lines-only branch instead.
+    """
     from src.vocabulary import SyncMode
     from types import SimpleNamespace
-    return SimpleNamespace(engines=SimpleNamespace(sync_mode=SyncMode.FORCED))
+    return SimpleNamespace(engines=SimpleNamespace(sync_mode=mode or SyncMode.FORCED))
 
 
 def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_timings(monkeypatch):
@@ -1008,6 +1012,47 @@ def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_
     assert timing2 == TIMING_LINE and conf2 == "high"
     assert [l["start"] for l in doc2["lines"]] == [10.0]
     assert [l["end"] for l in doc2["lines"]] == [34.0]
+
+
+def test_time_one_lines_mode_publishes_source_timings_not_the_aligner_windows(monkeypatch):
+    """#223: the LINES sync-mode publish site must ship the source's OWN line timings, never the
+    presplit windows.
+
+    `lines` mode skips forced alignment and line-syncs the source directly (`steps/lyrics.py`, the
+    `if ctx.engines.sync_mode is SyncMode.LINES:` branch). `PresplitTexts` runs unconditionally before
+    `TimeTexts`, so `align_windows` is already populated when this branch is reached. Publishing those
+    windows would leak `_subdivide`'s character-count-derived interior boundary (22.0 here) as a "high"
+    confidence line timestamp — issue #92 verbatim, on the one mode whose whole promise is the source's
+    own timings. The forced-fallback site is pinned by the test above; this pins the lines-only site.
+    """
+    from src.steps import lyrics as steps_lyrics
+    from src.lyrics.chain import LyricsText, SOURCE_LRCLIB, TIMING_LINE
+    from src.vocabulary import SyncMode
+
+    # Same authoritative line-timed text: ONE human line at [10, 34], with two bounded windows the
+    # presplit step would have produced. The interior 22.0 boundary is a character count, not a real
+    # LRC timestamp, so it must NOT reach the published doc.
+    text = LyricsText(
+        text_source=SOURCE_LRCLIB,
+        segments=[{"start": 10.0, "end": 34.0, "text": "a very long human authored karaoke lyric line", "words": []}],
+        timing=TIMING_LINE,
+        text_confidence="high",
+        align_windows=[
+            {"start": 10.0, "end": 22.0, "text": "a very long human", "words": []},
+            {"start": 22.0, "end": 34.0, "text": "authored karaoke lyric line", "words": []},
+        ],
+    )
+
+    # In LINES mode the aligner is never called; if it is handed anything, this fails loudly.
+    never = FakeAligner()
+    ctx = _ctx_forced(monkeypatch, mode=SyncMode.LINES)
+    doc, timing, conf = steps_lyrics._time_one(never, ctx, text, audio="/x.wav", language="en")
+
+    assert not never.calls  # lines mode skips forced alignment entirely
+    assert timing == TIMING_LINE and conf == "high"
+    # The published doc carries the source's ONE line at [10, 34] — never the windows' [10, 22, ...].
+    assert [l["start"] for l in doc["lines"]] == [10.0]
+    assert [l["end"] for l in doc["lines"]] == [34.0]
 
 
 # ── #217: the wrong-version fit must be paired with what the aligner SEARCHED ─────────────────────
