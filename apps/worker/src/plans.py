@@ -208,7 +208,7 @@ def stems_runner(
     def pick(job: Any, engines: ResolvedEngines) -> LinearPlan:
         eng = engine or engine_for(
             engines.separator,
-            default_model=demucs_model or None,
+            demucs_model=demucs_model or None,
             demucs_bin=demucs_bin,
             device=device,
             jobs=jobs,

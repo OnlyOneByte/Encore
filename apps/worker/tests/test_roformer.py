@@ -113,5 +113,41 @@ def test_a_None_config_value_does_not_override_an_engine_default():
 
     from src.separation.demucs import DEFAULT_MODEL
 
-    eng = engine_for("demucs", default_model=None, jobs=None, device=None)
+    eng = engine_for("demucs", demucs_model=None, jobs=None, device=None)
     assert eng.resolve_model({}) == DEFAULT_MODEL
+
+
+def test_the_demucs_default_cannot_reach_the_roformer_engine():
+    """Issue #84 regression. `plans.stems_runner` forwards this worker's `demucs_model` (default
+    "htdemucs") into `engine_for` on EVERY cook, roformer included (plans.py: the lone production caller).
+    While the model slot was ONE engine-agnostic `default_model`, that demucs checkpoint reached
+    `RoformerEngine` and replaced `DEFAULT_ROFORMER_MODEL` — a roformer cook carrying no `model` then
+    raised `unknown roformer model 'htdemucs'` (a demucs name on a roformer engine) and the engine's
+    declared default was unreachable.
+
+    Model defaults are now per engine: `demucs_model` maps ONLY to demucs and `roformer_model` ONLY to
+    roformer. This test drives the pre-fix production seam — a demucs checkpoint offered to the roformer
+    engine — and asserts it does NOT become that engine's default.
+
+    Fails on base: base's roformer branch admits a shared `default_model` AND accepts the demucs
+    `demucs_model` is a no-op there, but the SHARED name that production actually forwarded
+    (`default_model="htdemucs"`) is what stranded the default. So the load-bearing assertion is that the
+    roformer engine, offered a demucs checkpoint through the model slot, still resolves its OWN default."""
+    from src.separation.engines import engine_for
+    from src.separation.roformer import DEFAULT_ROFORMER_MODEL, resolve_roformer_slug
+
+    roformer_default_slug = resolve_roformer_slug({}, DEFAULT_ROFORMER_MODEL)
+
+    # The pre-fix production seam: the demucs default was forwarded to EVERY engine via `default_model`.
+    # After the fix that shared name no longer exists; a demucs checkpoint can only be offered as
+    # `demucs_model`, which the roformer branch ignores. Either way the roformer engine must keep its own
+    # default — never the demucs value.
+    eng = engine_for("roformer", default_model="htdemucs", demucs_model="htdemucs", roformer_bin="bs-roformer-infer")
+    assert eng.id == "roformer"
+    assert eng.resolve_model({}) == roformer_default_slug, (
+        "a demucs checkpoint reached the roformer engine and stranded DEFAULT_ROFORMER_MODEL (issue #84)"
+    )
+
+    # The roformer engine can still be given its OWN default explicitly.
+    eng2 = engine_for("roformer", roformer_model=DEFAULT_ROFORMER_MODEL)
+    assert eng2.resolve_model({}) == roformer_default_slug
