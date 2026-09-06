@@ -16,6 +16,12 @@ import type {
 import { singHistoryFrom } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
 import { can } from '../auth/capabilities';
+import { queueEntries } from '../db/schema';
+
+// The queue_entries.status column IS the single source of truth for the entry-status enum: it is
+// the NOT NULL enum column an add's status is ultimately written into by the write-behind flush.
+// Reading its enumValues here means the add-arm guard can never drift from the column it protects.
+const VALID_ENTRY_STATUSES: readonly string[] = queueEntries.status.enumValues;
 
 export type Publish = (event: ServerEvent) => void;
 export type SendToOrigin = (event: ServerEvent) => void;
@@ -100,6 +106,15 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// the op would leave the sender's optimistic copy disagreeing with the server forever.
 			if (op.entry.singerId !== deps.actorSingerId) return 'singerId does not match this session';
 			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
+			// Shape of the CLIENT-MINTED fields that reach the queue verbatim (applyOp inserts op.entry
+			// unchanged; only rotationSeq is server-owned). Both are NOT NULL enum/integer columns in
+			// queue_entries, so a non-finite addedAt or an off-enum status sailed through validation, was
+			// broadcast to the whole room, and then violated the column inside the debounced write-behind
+			// FLUSH TIMER — taking the WHOLE SERVER PROCESS DOWN asynchronously, detached from the frame
+			// that caused it. Same class as the singerId crash above and the telemetry positionSec one:
+			// validated at the frame, killed at the flush. Reject at the seam so nothing bad is persisted.
+			if (!Number.isFinite(op.entry.addedAt)) return 'invalid addedAt';
+			if (!VALID_ENTRY_STATUSES.includes(op.entry.status)) return `invalid status: ${String(op.entry.status)}`;
 			return null;
 		case 'remove':
 			if (!deps.state.entries.some((e) => e.id === op.id)) return `unknown entry: ${op.id}`;
