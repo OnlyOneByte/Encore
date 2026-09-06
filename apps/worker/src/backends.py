@@ -15,6 +15,7 @@ Two rules make this safe to deploy on hardware nobody has tested yet:
 Availability is probed, never assumed from the platform string: an aarch64 Linux box and an Apple
 Silicon Mac both report `arm64`-ish machines, and an x86_64 box may or may not have an Intel GPU.
 """
+
 from __future__ import annotations
 
 import importlib.util

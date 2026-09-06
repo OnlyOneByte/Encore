@@ -8,6 +8,7 @@ fails loudly, fails silently, or keeps working:
   - every rejection must be reported in `warnings`, because config that is silently ignored is worse
     than config that is refused.
 """
+
 from src.config import WorkerConfig, auto_demucs_jobs, auto_torch_threads, resolve, whisperx_device_for
 from src.separation import demucs
 
@@ -39,26 +40,28 @@ def test_defaults_are_the_shipped_behaviour():
 
 
 def test_every_perf_knob_is_settable():
-    c = WorkerConfig.from_env({
-        "ENCORE_DEMUCS_MODEL": "htdemucs_ft",
-        "ENCORE_DEVICE": "cuda:1",
-        "ENCORE_DEMUCS_JOBS": "8",
-        "ENCORE_DEMUCS_OVERLAP": "0.1",
-        "ENCORE_DEMUCS_SEGMENT": "7",
-        "ENCORE_DEMUCS_SHIFTS": "2",
-        "ENCORE_TORCH_THREADS": "4",
-        "ENCORE_WORKER_CONCURRENCY": "3",
-        "ENCORE_STEM_BITRATE": "256k",
-        "ENCORE_FLAC_LEVEL": "5",
-        "ENCORE_FFMPEG_BIN": "/opt/ffmpeg",
-        # These three were previously omitted despite the test's name claiming completeness, so a
-        # deployment that stopped reading any of them would have shipped green. ENCORE_WHISPERX_DEVICE
-        # is the operator override for the alignment device; ENCORE_SEPARATOR_BACKEND selects the
-        # separation implementation; ENCORE_ANNOTATE toggles the MusicBrainz identify step.
-        "ENCORE_WHISPERX_DEVICE": "cuda",
-        "ENCORE_SEPARATOR_BACKEND": "mlx",
-        "ENCORE_ANNOTATE": "0",
-    })
+    c = WorkerConfig.from_env(
+        {
+            "ENCORE_DEMUCS_MODEL": "htdemucs_ft",
+            "ENCORE_DEVICE": "cuda:1",
+            "ENCORE_DEMUCS_JOBS": "8",
+            "ENCORE_DEMUCS_OVERLAP": "0.1",
+            "ENCORE_DEMUCS_SEGMENT": "7",
+            "ENCORE_DEMUCS_SHIFTS": "2",
+            "ENCORE_TORCH_THREADS": "4",
+            "ENCORE_WORKER_CONCURRENCY": "3",
+            "ENCORE_STEM_BITRATE": "256k",
+            "ENCORE_FLAC_LEVEL": "5",
+            "ENCORE_FFMPEG_BIN": "/opt/ffmpeg",
+            # These three were previously omitted despite the test's name claiming completeness, so a
+            # deployment that stopped reading any of them would have shipped green. ENCORE_WHISPERX_DEVICE
+            # is the operator override for the alignment device; ENCORE_SEPARATOR_BACKEND selects the
+            # separation implementation; ENCORE_ANNOTATE toggles the MusicBrainz identify step.
+            "ENCORE_WHISPERX_DEVICE": "cuda",
+            "ENCORE_SEPARATOR_BACKEND": "mlx",
+            "ENCORE_ANNOTATE": "0",
+        }
+    )
     assert (c.demucs_model, c.device, c.demucs_jobs) == ("htdemucs_ft", "cuda:1", 8)
     assert (c.demucs_overlap, c.demucs_segment, c.demucs_shifts) == (0.1, 7, 2)
     assert (c.torch_threads, c.concurrency) == (4, 3)
@@ -153,14 +156,30 @@ def test_blank_env_vars_fall_back_to_defaults_not_to_empty_strings():
     # environment rather than leaving it absent. `dict.get(key, default)` sees a present value and
     # returns "", so an unset override became demucs_model="" — a worker that passes `-n ''` to demucs
     # and fails every cook for a reason the config line would not explain.
-    blank = {k: "" for k in (
-        "ENCORE_CORE_WS", "ENCORE_WORKER_ID", "ENCORE_WORKER_VERSION", "MEDIA_DIR",
-        "ENCORE_PROCESSOR", "ENCORE_DEMUCS_MODEL", "ENCORE_STEM_BITRATE", "ENCORE_ASR_MODEL",
-        "ENCORE_SYNC_MODE", "ENCORE_LRCLIB_BASE", "ENCORE_YTDLP_BIN", "ENCORE_DEMUCS_BIN",
-        "ENCORE_FFMPEG_BIN", "ENCORE_WORKER_CAPABILITIES", "ENCORE_DEVICE",
-        "ENCORE_WORKER_CONCURRENCY", "ENCORE_DEMUCS_JOBS", "ENCORE_TORCH_THREADS",
-        "ENCORE_FLAC_LEVEL",
-    )}
+    blank = {
+        k: ""
+        for k in (
+            "ENCORE_CORE_WS",
+            "ENCORE_WORKER_ID",
+            "ENCORE_WORKER_VERSION",
+            "MEDIA_DIR",
+            "ENCORE_PROCESSOR",
+            "ENCORE_DEMUCS_MODEL",
+            "ENCORE_STEM_BITRATE",
+            "ENCORE_ASR_MODEL",
+            "ENCORE_SYNC_MODE",
+            "ENCORE_LRCLIB_BASE",
+            "ENCORE_YTDLP_BIN",
+            "ENCORE_DEMUCS_BIN",
+            "ENCORE_FFMPEG_BIN",
+            "ENCORE_WORKER_CAPABILITIES",
+            "ENCORE_DEVICE",
+            "ENCORE_WORKER_CONCURRENCY",
+            "ENCORE_DEMUCS_JOBS",
+            "ENCORE_TORCH_THREADS",
+            "ENCORE_FLAC_LEVEL",
+        )
+    }
     c = WorkerConfig.from_env(blank)
     assert c.demucs_model == "htdemucs"
     assert c.core_ws == "ws://localhost:3000/ws?role=worker"
@@ -190,7 +209,9 @@ def test_unset_knobs_are_OMITTED_so_demucs_defaults_apply():
 
 
 def test_set_knobs_reach_the_cli_in_a_valid_shape():
-    argv = demucs.demucs_argv("in.wav", "/out", "htdemucs_ft", device="cuda", jobs=8, overlap=0.1, segment=7, shifts=2)
+    argv = demucs.demucs_argv(
+        "in.wav", "/out", "htdemucs_ft", device="cuda", jobs=8, overlap=0.1, segment=7, shifts=2
+    )
     joined = " ".join(argv)
     assert "-n htdemucs_ft" in joined
     assert "-d cuda" in joined and "-j 8" in joined
@@ -226,7 +247,7 @@ def test_authed_core_ws_appends_token_when_url_already_has_a_query():
         {"ENCORE_CORE_WS": "ws://host:3000/ws?role=worker", "ENCORE_WORKER_TOKEN": "abc123"}
     )
     url = c.authed_core_ws()
-    from urllib.parse import urlsplit, parse_qs
+    from urllib.parse import parse_qs, urlsplit
 
     q = parse_qs(urlsplit(url).query)
     assert q["role"] == ["worker"]
@@ -237,7 +258,7 @@ def test_authed_core_ws_appends_token_when_url_already_has_a_query():
 def test_authed_core_ws_appends_token_when_url_has_no_query():
     c = WorkerConfig.from_env({"ENCORE_CORE_WS": "ws://host:3000/ws", "ENCORE_WORKER_TOKEN": "abc123"})
     url = c.authed_core_ws()
-    from urllib.parse import urlsplit, parse_qs
+    from urllib.parse import parse_qs, urlsplit
 
     assert urlsplit(url).path == "/ws"
     assert parse_qs(urlsplit(url).query)["token"] == ["abc123"]
@@ -247,7 +268,7 @@ def test_authed_core_ws_replaces_a_pre_existing_token_rather_than_duplicating():
     c = WorkerConfig.from_env(
         {"ENCORE_CORE_WS": "ws://host/ws?role=worker&token=old", "ENCORE_WORKER_TOKEN": "new"}
     )
-    from urllib.parse import urlsplit, parse_qs
+    from urllib.parse import parse_qs, urlsplit
 
     assert parse_qs(urlsplit(c.authed_core_ws()).query)["token"] == ["new"]
 
@@ -345,18 +366,14 @@ def test_resolve_lets_an_explicit_operator_override_win_over_the_derivation():
     # An operator who sets ENCORE_WHISPERX_DEVICE must have it honoured, not silently replaced by the
     # derived value. `cpu` on a cuda box is a real choice (e.g. the GPU is reserved for separation), so
     # the override has to survive resolve().
-    resolved, _warnings = resolve(
-        WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "cpu"}), device="cuda:0"
-    )
+    resolved, _warnings = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "cpu"}), device="cuda:0")
     assert resolved.whisperx_device == "cpu"
 
 
 def test_resolve_warns_on_an_align_device_ctranslate2_cannot_use():
     # A typo like ENCORE_WHISPERX_DEVICE=mps must not be swallowed: CTranslate2 supports only cuda and
     # cpu, so alignment would fail, and the one message explaining why must be emitted.
-    _resolved, warnings = resolve(
-        WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "mps"}), device=None
-    )
+    _resolved, warnings = resolve(WorkerConfig.from_env({"ENCORE_WHISPERX_DEVICE": "mps"}), device=None)
     assert any("CTranslate2" in w for w in warnings), warnings
 
     # A valid override (cuda / cuda:N / cpu) must NOT trigger that warning.

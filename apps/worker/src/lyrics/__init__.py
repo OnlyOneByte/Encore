@@ -21,6 +21,7 @@ means the surface is being bypassed.
 See `docs/ARCHITECTURE.md` §7.1 and §8 for where this goes next: `chain` is the union of five
 concerns and splits into `model` / `grade` / `sources/*` in a later stage. This stage only moved files.
 """
+
 from __future__ import annotations
 
 from .artifact import is_valid_lyrics, lrclib_to_segments, lyrics_key, normalize_lyrics

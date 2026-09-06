@@ -17,14 +17,15 @@ re-growing a dead ranking chain.
 These tests are PURE: they build argv strings. No network, no yt-dlp process, no fixtures that rot when
 YouTube changes.
 """
+
 from __future__ import annotations
 
 from src.acquisition import fetch as fetch_mod
 from src.acquisition import stream_quality
 from src.acquisition.stream_quality import FORMAT_SELECTOR
 
-
 # ── the format selector ─────────────────────────────────────────────────────────────
+
 
 def test_selector_prefers_opus_then_m4a_then_falls_back_to_bestaudio():
     # Ordered preference with `/` alternatives: yt-dlp takes the FIRST branch that matches, so codec
@@ -59,6 +60,7 @@ def test_download_argv_uses_the_ranked_selector_not_bare_bestaudio():
 
 
 # ── no dead in-worker candidate-ranking chain ───────────────────────────────────────
+
 
 def test_module_carries_no_dead_candidate_ranking_chain():
     # This module previously shipped rank_search_candidates + officiality_score + codec_score +

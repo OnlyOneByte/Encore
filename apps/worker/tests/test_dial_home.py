@@ -1,5 +1,6 @@
 """I/O dial-home loop driven by an in-memory fake socket (no network, no torch). Proves the full
 assign -> accept -> progress* -> complete flow, capacity reject, cancel, and failure reporting."""
+
 import asyncio
 import sys
 from pathlib import Path
@@ -8,8 +9,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import protocol  # noqa: E402
 from src import dial_home as dh  # noqa: E402
+from src import protocol  # noqa: E402
 from src.dial_home import WorkerClient, _build_processor, _is_retryable  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent, StubProcessor  # noqa: E402
 
@@ -133,7 +134,14 @@ async def test_failure_is_reported_with_retryable_flag(tmp_path):
             yield ProgressEvent("downloading", 50)
             raise RuntimeError("transient network blip")
 
-    client = WorkerClient(sock.send, BoomProcessor(), worker_id="w1", capabilities=["stems"], concurrency=1, media_dir=str(tmp_path))
+    client = WorkerClient(
+        sock.send,
+        BoomProcessor(),
+        worker_id="w1",
+        capabilities=["stems"],
+        concurrency=1,
+        media_dir=str(tmp_path),
+    )
     await client.handle(assign())
     await client.drain()
     failed = sock.of_type(protocol.FAILED)
@@ -151,7 +159,14 @@ async def test_non_retryable_failure_for_permanent_errors(tmp_path):
             raise RuntimeError("source not found (404)")
             yield  # pragma: no cover (makes this an async generator)
 
-    client = WorkerClient(sock.send, GoneProcessor(), worker_id="w1", capabilities=["stems"], concurrency=1, media_dir=str(tmp_path))
+    client = WorkerClient(
+        sock.send,
+        GoneProcessor(),
+        worker_id="w1",
+        capabilities=["stems"],
+        concurrency=1,
+        media_dir=str(tmp_path),
+    )
     await client.handle(assign())
     await client.drain()
     assert sock.of_type(protocol.FAILED)[0]["retryable"] is False
@@ -180,13 +195,26 @@ async def test_cancel_frees_the_slot(tmp_path):
 async def test_welcome_records_media_store_config_and_sends_nothing(tmp_path):
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
-    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 30, "ackTimeoutSec": 10, "mediaStore": {"kind": "local"}})
+    await client.handle(
+        {
+            "type": protocol.WELCOME,
+            "heartbeatIntervalSec": 30,
+            "ackTimeoutSec": 10,
+            "mediaStore": {"kind": "local"},
+        }
+    )
     assert sock.sent == []  # welcome requires no reply
     assert client.media_store.kind == "local"
 
     # an object-store welcome is recorded so the worker pushes stems to S3
-    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 30, "ackTimeoutSec": 10,
-                         "mediaStore": {"kind": "object", "bucket": "encore-media", "prefix": "encore/"}})
+    await client.handle(
+        {
+            "type": protocol.WELCOME,
+            "heartbeatIntervalSec": 30,
+            "ackTimeoutSec": 10,
+            "mediaStore": {"kind": "object", "bucket": "encore-media", "prefix": "encore/"},
+        }
+    )
     assert client.media_store.kind == "object"
     assert client.media_store.bucket == "encore-media"
     assert sock.sent == []
@@ -203,7 +231,6 @@ def test_build_processor_routes_by_capability(monkeypatch):
     # The DEFAULT is now the whole cook (fetch:ytdlp,stems,align), so the default routing table carries
     # all three.
     from src.processor import RoutingProcessor
-    from src.runtime.runner import PlanRunner
     from src.runtime.runner import PlanRunner
 
     monkeypatch.delenv("ENCORE_PROCESSOR", raising=False)
@@ -232,7 +259,6 @@ def test_build_processor_routes_by_capability(monkeypatch):
     # acquisition routes on its own capability instead of riding along with stems.
     from src.config import WorkerConfig
 
-
     pf = _build_processor(WorkerConfig(capabilities=("fetch:ytdlp",)))
     assert isinstance(pf._by_type["fetch"], PlanRunner)
     assert "stems" not in pf._by_type
@@ -247,14 +273,18 @@ def test_build_processor_routes_by_capability(monkeypatch):
 @pytest.mark.asyncio
 async def test_routing_processor_dispatches_by_job_type(tmp_path):
     # RoutingProcessor.process picks the sub-processor by job.job_type; unknown → raises
-    from src.processor import RoutingProcessor, JobSpec, StubProcessor
+    from src.processor import JobSpec, RoutingProcessor, StubProcessor
 
     routed = RoutingProcessor({"stems": StubProcessor()})
-    stems_job = JobSpec(job_id="j", media_id="m", job_type="stems", source_uri="x", params={}, media_dir=str(tmp_path))
+    stems_job = JobSpec(
+        job_id="j", media_id="m", job_type="stems", source_uri="x", params={}, media_dir=str(tmp_path)
+    )
     events = [ev async for ev in routed.process(stems_job)]
     assert events  # stub ran
     with pytest.raises(RuntimeError, match="no processor for job type"):
-        bad = JobSpec(job_id="j", media_id="m", job_type="align", source_uri="x", params={}, media_dir=str(tmp_path))
+        bad = JobSpec(
+            job_id="j", media_id="m", job_type="align", source_uri="x", params={}, media_dir=str(tmp_path)
+        )
         [ev async for ev in routed.process(bad)]
 
 
@@ -288,8 +318,16 @@ async def test_worker_cleans_its_own_scratch_after_a_job(tmp_path):
         sent.append(m)
 
     client = WorkerClient(send, DoneProcessor())
-    await client._run_job(JobSpec(job_id="j1", media_id="m1", job_type="stems",
-                                  source_uri="https://y/x", params={}, media_dir=str(tmp_path)))
+    await client._run_job(
+        JobSpec(
+            job_id="j1",
+            media_id="m1",
+            job_type="stems",
+            source_uri="https://y/x",
+            params={},
+            media_dir=str(tmp_path),
+        )
+    )
     assert not work.exists(), "job scratch must be removed once the job is terminal"
 
 
@@ -308,8 +346,16 @@ async def test_scratch_is_cleaned_even_when_the_job_FAILS(tmp_path):
         return None
 
     client = WorkerClient(send, BoomProcessor())
-    await client._run_job(JobSpec(job_id="j2", media_id="m1", job_type="stems",
-                                  source_uri="https://y/x", params={}, media_dir=str(tmp_path)))
+    await client._run_job(
+        JobSpec(
+            job_id="j2",
+            media_id="m1",
+            job_type="stems",
+            source_uri="https://y/x",
+            params={},
+            media_dir=str(tmp_path),
+        )
+    )
     assert not work.exists()
 
 
@@ -339,9 +385,7 @@ def test_no_torch_threads_leaves_the_environment_alone(monkeypatch):
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
     # jobs=1 with concurrency=1 means nothing can contend, which is the one case that keeps torch's own
     # physical-core-aware default instead of a derived cap.
-    _build_processor(
-        WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": "none", "ENCORE_DEMUCS_JOBS": "1"})
-    )
+    _build_processor(WorkerConfig.from_env({"ENCORE_WORKER_CAPABILITIES": "none", "ENCORE_DEMUCS_JOBS": "1"}))
     assert "OMP_NUM_THREADS" not in os.environ
 
 
@@ -406,7 +450,14 @@ async def test_cancel_cancels_the_inflight_task_and_frees_the_slot(tmp_path):
                 raise
             yield  # pragma: no cover
 
-    client = WorkerClient(sock.send, SlowProcessor(), worker_id="w1", capabilities=["stems"], concurrency=1, media_dir=str(tmp_path))
+    client = WorkerClient(
+        sock.send,
+        SlowProcessor(),
+        worker_id="w1",
+        capabilities=["stems"],
+        concurrency=1,
+        media_dir=str(tmp_path),
+    )
     await client.handle(assign(job_id="jX"))
     await asyncio.wait_for(started.wait(), timeout=5)
     assert client.state.slots_free == 0
@@ -466,7 +517,7 @@ async def test_a_bad_assign_frame_does_not_prevent_a_later_good_one(tmp_path):
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     await client.handle({"type": protocol.ASSIGN, "jobId": "bad"})  # malformed
-    await client.handle(assign(job_id="good"))                       # well-formed
+    await client.handle(assign(job_id="good"))  # well-formed
     await client.drain()
     # the good job still ran to completion after the bad one was handled
     completes = sock.of_type(protocol.COMPLETE)
@@ -563,7 +614,9 @@ async def test_object_store_without_uploader_rejects_the_job(tmp_path):
     absent on the old code."""
     sock = FakeSocket()
     client = make_client(sock, tmp_path)  # can_publish_object defaults False
-    await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "object", "bucket": "encore-media"}})
+    await client.handle(
+        {"type": protocol.WELCOME, "mediaStore": {"kind": "object", "bucket": "encore-media"}}
+    )
     await client.handle(assign(job_id="jObj"))
     await client.drain()
     rejects = sock.of_type(protocol.REJECT)
@@ -577,9 +630,19 @@ async def test_object_store_without_uploader_rejects_the_job(tmp_path):
 async def test_object_store_with_uploader_accepts(tmp_path):
     # When a build DOES wire an uploader (can_publish_object=True), object mode is honoured normally.
     sock = FakeSocket()
-    client = WorkerClient(sock.send, StubProcessor(), worker_id="w1", capabilities=["stems"],
-                          concurrency=1, media_dir=str(tmp_path), version="test", can_publish_object=True)
-    await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "object", "bucket": "encore-media"}})
+    client = WorkerClient(
+        sock.send,
+        StubProcessor(),
+        worker_id="w1",
+        capabilities=["stems"],
+        concurrency=1,
+        media_dir=str(tmp_path),
+        version="test",
+        can_publish_object=True,
+    )
+    await client.handle(
+        {"type": protocol.WELCOME, "mediaStore": {"kind": "object", "bucket": "encore-media"}}
+    )
     await client.handle(assign(job_id="jOk"))
     await client.drain()
     assert sock.of_type(protocol.ACCEPT) and sock.of_type(protocol.COMPLETE)
@@ -648,8 +711,14 @@ async def test_welcome_stores_heartbeat_interval_and_the_loop_honours_it(tmp_pat
     sock = FakeSocket()
     client = make_client(sock, tmp_path)
     assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
-    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 42, "ackTimeoutSec": 10,
-                         "mediaStore": {"kind": "local"}})
+    await client.handle(
+        {
+            "type": protocol.WELCOME,
+            "heartbeatIntervalSec": 42,
+            "ackTimeoutSec": 10,
+            "mediaStore": {"kind": "local"},
+        }
+    )
     assert client.heartbeat_interval_sec == 42.0
     # Welcome still replies with nothing (the media-store contract is unchanged).
     assert sock.sent == []
@@ -663,9 +732,13 @@ async def test_welcome_ignores_a_missing_or_bad_interval(tmp_path):
     client = make_client(sock, tmp_path)
     await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "local"}})
     assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
-    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 0, "mediaStore": {"kind": "local"}})
+    await client.handle(
+        {"type": protocol.WELCOME, "heartbeatIntervalSec": 0, "mediaStore": {"kind": "local"}}
+    )
     assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
-    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": "nope", "mediaStore": {"kind": "local"}})
+    await client.handle(
+        {"type": protocol.WELCOME, "heartbeatIntervalSec": "nope", "mediaStore": {"kind": "local"}}
+    )
     assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
 
 
@@ -691,12 +764,16 @@ def test_run_forever_starts_the_heartbeat_loop():
     # A create_task(...heartbeat_loop()) call inside _run_forever. Deleting the wiring line reddens this.
     fn = _run_forever_ast()
     started = [
-        n for n in _ast.walk(fn)
+        n
+        for n in _ast.walk(fn)
         if isinstance(n, _ast.Call)
         and getattr(n.func, "attr", None) == "create_task"
         and any(getattr(a.func, "attr", None) == "heartbeat_loop" for a in n.args if isinstance(a, _ast.Call))
     ]
-    assert started, "_run_forever never starts client.heartbeat_loop() — worker:heartbeat would never be sent (issue #132)"
+    assert started, (
+        "_run_forever never starts client.heartbeat_loop() — worker:heartbeat would never be sent "
+        "(issue #132)"
+    )
 
 
 def test_run_forever_cancels_the_heartbeat_task_in_a_finally():
@@ -708,7 +785,10 @@ def test_run_forever_cancels_the_heartbeat_task_in_a_finally():
             for stmt in _ast.walk(_ast.Module(body=node.finalbody, type_ignores=[])):
                 if isinstance(stmt, _ast.Call) and getattr(stmt.func, "attr", None) == "cancel":
                     cancels_in_finally.append(stmt)
-    assert cancels_in_finally, "_run_forever never cancels the heartbeat task in a finally — it would leak across reconnects (issue #132)"
+    assert cancels_in_finally, (
+        "_run_forever never cancels the heartbeat task in a finally — it would leak across "
+        "reconnects (issue #132)"
+    )
 
 
 @pytest.mark.asyncio
@@ -731,8 +811,14 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_
     cfg = WorkerConfig(capabilities=("align",), ytdlp_bin=configured)
     align = _build_processor(cfg)._by_type["align"]
 
-    job = JobSpec(job_id="j1", media_id="m1", job_type="align",
-                  source_uri="https://youtube.com/watch?v=abc", params={}, media_dir=str(tmp_path))
+    job = JobSpec(
+        job_id="j1",
+        media_id="m1",
+        job_type="align",
+        source_uri="https://youtube.com/watch?v=abc",
+        params={},
+        media_dir=str(tmp_path),
+    )
     plan = align._plan_for(job, None)
     caption_steps = [s for s in plan.steps() if isinstance(s, FetchCaptions)]
     assert caption_steps, "the align plan must fetch captions"

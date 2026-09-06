@@ -29,6 +29,7 @@ Those are platform concerns (running a CLI, encoding audio) that ended up in an 
 was the first to need them. Closing this means moving the ffmpeg builders and the subprocess runner into
 a platform module and reducing `demucs.py` to demucs-specific argv, paths and progress parsing.
 """
+
 from __future__ import annotations
 
 __all__: list[str] = []

@@ -15,9 +15,10 @@ numpy + stdlib only. No torch, no librosa: the chromagram is a plain rfft with a
 pitch-class bin map. This is deliberately not real-time; it runs once per cook on a stem already on
 disk, so clarity beats speed.
 """
+
 from __future__ import annotations
 
-from typing import Optional, Tuple
+from typing import cast
 
 import numpy as np
 
@@ -103,7 +104,7 @@ def chromagram(samples: np.ndarray, sample_rate: int, *, frame: int = 8192, hop:
     total = chroma.sum()
     if total <= 0:
         return np.zeros(12, dtype=np.float64)
-    return chroma / total
+    return cast("np.ndarray", chroma / total)
 
 
 def _pearson_against_templates(chroma: np.ndarray) -> np.ndarray:
@@ -120,10 +121,10 @@ def _pearson_against_templates(chroma: np.ndarray) -> np.ndarray:
     t = _TEMPLATES - _TEMPLATES.mean(axis=1, keepdims=True)
     t_norm = np.linalg.norm(t, axis=1)
     t_norm[t_norm == 0] = 1.0  # templates never have zero variance, but never divide by zero
-    return (t @ c) / (t_norm * c_norm)
+    return cast("np.ndarray", (t @ c) / (t_norm * c_norm))
 
 
-def key_from_chroma(chroma: np.ndarray) -> Tuple[Optional[int], Optional[str], Optional[float]]:
+def key_from_chroma(chroma: np.ndarray) -> tuple[int | None, str | None, float | None]:
     """Best (tonic 0-11, mode, confidence) for a 12-bin chroma, or (None, None, None) when the chroma
     is empty (silence / no tonal content). `confidence` is the winning Pearson correlation clamped to
     0..1: a normalized measure so it compares across songs — ~0.8+ is a confident tonal read, near 0
@@ -140,7 +141,7 @@ def key_from_chroma(chroma: np.ndarray) -> Tuple[Optional[int], Optional[str], O
     return tonic, mode, confidence
 
 
-def detect_key(samples: np.ndarray, sample_rate: int) -> Tuple[Optional[int], Optional[str], Optional[float]]:
+def detect_key(samples: np.ndarray, sample_rate: int) -> tuple[int | None, str | None, float | None]:
     """End-to-end: mono samples + rate → (tonic, mode, confidence). Convenience wrapper over
     chromagram + key_from_chroma for callers that have raw audio rather than a precomputed chroma."""
     return key_from_chroma(chromagram(samples, sample_rate))
@@ -150,7 +151,7 @@ def detect_key(samples: np.ndarray, sample_rate: int) -> Tuple[Optional[int], Op
 PITCH_CLASS_NAMES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 
 
-def key_name(tonic: Optional[int], mode: Optional[str]) -> Optional[str]:
+def key_name(tonic: int | None, mode: str | None) -> str | None:
     """Human label like 'A minor' for a detected key, or None. Diagnostics only."""
     if tonic is None or mode is None:
         return None

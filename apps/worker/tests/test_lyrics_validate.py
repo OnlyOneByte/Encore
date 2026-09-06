@@ -3,6 +3,7 @@
 The numbers here are the shapes six REAL artifacts exhibited on the reference box while passing the
 old `is_valid_lyrics` check, so each test names a defect that actually shipped.
 """
+
 from src.lyrics.validate import (
     LONG_GAP_SEC,
     MIN_COVERAGE,
@@ -18,11 +19,17 @@ def doc(words, line_bounds=None):
     ws = [{"word": w, "start": s, "end": e} for w, s, e in words]
     start = line_bounds[0] if line_bounds else (ws[0]["start"] if ws else 0.0)
     end = line_bounds[1] if line_bounds else (ws[-1]["end"] if ws else 0.0)
-    return {"language": "en", "lines": [{"text": " ".join(w for w, _, _ in words), "start": start, "end": end, "words": ws}]}
+    return {
+        "language": "en",
+        "lines": [{"text": " ".join(w for w, _, _ in words), "start": start, "end": end, "words": ws}],
+    }
 
 
 def multiline(starts):
-    return {"language": "en", "lines": [{"text": f"l{i}", "start": s, "end": s + 1.0, "words": []} for i, s in enumerate(starts)]}
+    return {
+        "language": "en",
+        "lines": [{"text": f"l{i}", "start": s, "end": s + 1.0, "words": []} for i, s in enumerate(starts)],
+    }
 
 
 # ── validation ───────────────────────────────────────────────────────────────────────────────────

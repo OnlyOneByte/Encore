@@ -15,6 +15,7 @@ the reasoning is a human's job; the inventory is not.
 It lives in ARCHITECTURE.md rather than a new file because that is the one canonical system document,
 and a reader looking for how the worker runs is already there.
 """
+
 from __future__ import annotations
 
 import sys
@@ -69,7 +70,7 @@ def render() -> str:
         out.append("    direction LR")
         names = [s.name for s in plan.steps()]
         for i, name in enumerate(names):
-            out.append(f"    {key}_{i}[\"{name}\"]")
+            out.append(f'    {key}_{i}["{name}"]')
         for i in range(len(names) - 1):
             out.append(f"    {key}_{i} --> {key}_{i + 1}")
         out.append("  end")

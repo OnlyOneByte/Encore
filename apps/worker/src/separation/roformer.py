@@ -22,6 +22,7 @@ IMPORTS and pip-checks clean on the pinned torch 2.8 stack (verified); the end-t
 run here. Until a network-enabled worker confirms it, a roformer cook only runs where an operator has
 set the `stems:roformer` capability.
 """
+
 from __future__ import annotations
 
 import os
@@ -48,7 +49,7 @@ import os
 #: `model_type == 'bs_roformer'`, and the package ships no mel_band module. It was an option the phone
 #: offered that no worker could ever have satisfied.
 ROFORMER_MODELS = {
-	"bs-roformer-1297": "roformer-model-bs-roformer-sw-by-jarredou",
+    "bs-roformer-1297": "roformer-model-bs-roformer-sw-by-jarredou",
 }
 
 #: Every slug bs-roformer-infer 0.1.5 can actually resolve, read out of its own
@@ -56,18 +57,18 @@ ROFORMER_MODELS = {
 #: rather than by a string-shape assertion — the previous test asserted only that a slug *started
 #: with* "roformer-model-", which is exactly why a nonexistent slug shipped.
 ROFORMER_REGISTRY_SLUGS = frozenset(
-	{
-		"roformer-model-bs-roformer-chorus-male-female-by-sucial",
-		"roformer-model-bs-roformer-de-reverb",
-		"roformer-model-bs-roformer-instrumental-resurrection-by-unwa",
-		"roformer-model-bs-roformer-male-female-by-aufr33",
-		"roformer-model-bs-roformer-sw-by-jarredou",
-		"roformer-model-bs-roformer-vocals-by-gabox",
-		"roformer-model-bs-roformer-vocals-resurrection-by-unwa",
-		"roformer-model-bs-roformer-vocals-revive-by-unwa",
-		"roformer-model-bs-roformer-vocals-revive-v2-by-unwa",
-		"roformer-model-bs-roformer-vocals-revive-v3e-by-unwa",
-	}
+    {
+        "roformer-model-bs-roformer-chorus-male-female-by-sucial",
+        "roformer-model-bs-roformer-de-reverb",
+        "roformer-model-bs-roformer-instrumental-resurrection-by-unwa",
+        "roformer-model-bs-roformer-male-female-by-aufr33",
+        "roformer-model-bs-roformer-sw-by-jarredou",
+        "roformer-model-bs-roformer-vocals-by-gabox",
+        "roformer-model-bs-roformer-vocals-resurrection-by-unwa",
+        "roformer-model-bs-roformer-vocals-revive-by-unwa",
+        "roformer-model-bs-roformer-vocals-revive-v2-by-unwa",
+        "roformer-model-bs-roformer-vocals-revive-v3e-by-unwa",
+    }
 )
 
 #: Measured execution settings per whitelist token — the worker-side mirror of
@@ -87,70 +88,70 @@ ROFORMER_REGISTRY_SLUGS = frozenset(
 #: reachable without patching the package. Recorded here as the measured intent so the numbers are not
 #: lost, and as concrete evidence for the engine-package decision.
 ROFORMER_COST = {
-	"bs-roformer-1297": {"overlap": 4, "precision": "bf16", "rt_factor": 8.28},
+    "bs-roformer-1297": {"overlap": 4, "precision": "bf16", "rt_factor": 8.28},
 }
 
 
 def roformer_cost(token: str) -> dict | None:
-	"""Measured execution settings for a whitelist token, or None when the token is unknown. Returns
-	None rather than a default because a fabricated cost would be indistinguishable from a measured
-	one at the call site."""
-	return ROFORMER_COST.get(token)
+    """Measured execution settings for a whitelist token, or None when the token is unknown. Returns
+    None rather than a default because a fabricated cost would be indistinguishable from a measured
+    one at the call site."""
+    return ROFORMER_COST.get(token)
 
 
 DEFAULT_ROFORMER_MODEL = "bs-roformer-1297"
 
 
 def resolve_roformer_slug(params: dict, default: str = DEFAULT_ROFORMER_MODEL) -> str:
-	"""Map the job's whitelist model token to a bs-roformer-infer registry slug. An explicit-but-
-	unknown token raises (job fails non-retryable) rather than silently separating with the default —
-	same contract as resolve_demucs_model."""
-	token = params.get("model") or default
-	slug = ROFORMER_MODELS.get(token)
-	if slug is None:
-		raise ValueError(f"unknown roformer model {token!r}; expected one of {sorted(ROFORMER_MODELS)}")
-	return slug
+    """Map the job's whitelist model token to a bs-roformer-infer registry slug. An explicit-but-
+    unknown token raises (job fails non-retryable) rather than silently separating with the default —
+    same contract as resolve_demucs_model."""
+    token = params.get("model") or default
+    slug = ROFORMER_MODELS.get(token)
+    if slug is None:
+        raise ValueError(f"unknown roformer model {token!r}; expected one of {sorted(ROFORMER_MODELS)}")
+    return slug
 
 
 def find_roformer_instrumental(store_dir: str) -> str | None:
-	"""bs-roformer-infer writes `<name>_(Instrumental)_<model>.<ext>` (and a matching vocals file)
-	into store_dir. Return the instrumental path, or None if none was produced. Matched case-
-	insensitively on the stem name so a future output-naming tweak upstream does not silently break
-	the pickup (the exact template is one of the things a real cook must confirm)."""
-	if not os.path.isdir(store_dir):
-		return None
-	for name in os.listdir(store_dir):
-		low = name.lower()
-		if "instrumental" in low and low.endswith((".wav", ".flac")):
-			return os.path.join(store_dir, name)
-	return None
+    """bs-roformer-infer writes `<name>_(Instrumental)_<model>.<ext>` (and a matching vocals file)
+    into store_dir. Return the instrumental path, or None if none was produced. Matched case-
+    insensitively on the stem name so a future output-naming tweak upstream does not silently break
+    the pickup (the exact template is one of the things a real cook must confirm)."""
+    if not os.path.isdir(store_dir):
+        return None
+    for name in os.listdir(store_dir):
+        low = name.lower()
+        if "instrumental" in low and low.endswith((".wav", ".flac")):
+            return os.path.join(store_dir, name)
+    return None
 
 
 def find_roformer_vocals(store_dir: str) -> str | None:
-	if not os.path.isdir(store_dir):
-		return None
-	for name in os.listdir(store_dir):
-		low = name.lower()
-		if "vocal" in low and low.endswith((".wav", ".flac")):
-			return os.path.join(store_dir, name)
-	return None
+    if not os.path.isdir(store_dir):
+        return None
+    for name in os.listdir(store_dir):
+        low = name.lower()
+        if "vocal" in low and low.endswith((".wav", ".flac")):
+            return os.path.join(store_dir, name)
+    return None
 
 
 def roformer_argv(
-	input_folder: str,
-	store_dir: str,
-	slug: str,
-	*,
-	device: str | None = None,
-	models_dir: str | None = None,
-	bin: str = "bs-roformer-infer",
+    input_folder: str,
+    store_dir: str,
+    slug: str,
+    *,
+    device: str | None = None,
+    models_dir: str | None = None,
+    bin: str = "bs-roformer-infer",
 ) -> list[str]:
-	"""bs-roformer-infer CLI argv. `--model <slug>` auto-resolves + sha256-downloads the checkpoint on
-	first use (no separate download step). `--input_folder` holds the decoded input.wav; every WAV in
-	it is separated into `--store_dir`. Device defaults to the CLI's own 'auto' when unset."""
-	argv = [bin, "--model", slug, "--input_folder", input_folder, "--store_dir", store_dir]
-	if device:
-		argv += ["--device", device]
-	if models_dir:
-		argv += ["--models_dir", models_dir]
-	return argv
+    """bs-roformer-infer CLI argv. `--model <slug>` auto-resolves + sha256-downloads the checkpoint on
+    first use (no separate download step). `--input_folder` holds the decoded input.wav; every WAV in
+    it is separated into `--store_dir`. Device defaults to the CLI's own 'auto' when unset."""
+    argv = [bin, "--model", slug, "--input_folder", input_folder, "--store_dir", store_dir]
+    if device:
+        argv += ["--device", device]
+    if models_dir:
+        argv += ["--models_dir", models_dir]
+    return argv

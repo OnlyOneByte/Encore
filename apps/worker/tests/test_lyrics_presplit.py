@@ -3,6 +3,7 @@
 PURE: the upstream length-bounder is injected, so every case here runs with no karaoke-lyrics-processor
 installed and no network. One test exercises the real package when it IS present, and skips otherwise.
 """
+
 import re
 import sys
 from pathlib import Path
@@ -188,7 +189,9 @@ def test_presplit_does_NOT_run_the_semantic_splitter_on_authoritative_text():
     rich = "I walked the harbour road, and every light faded. So tell me where it goes"
     assert len(lp.boundary_split(rich)) > 1  # boundary_split WOULD split this
     seg = [{"start": 0.0, "end": 8.0, "text": rich, "words": []}]
-    lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=list(seg), timing=TIMING_LINE, text_confidence="high")
+    lrclib = LyricsText(
+        text_source=SOURCE_LRCLIB, segments=list(seg), timing=TIMING_LINE, text_confidence="high"
+    )
     out = lp.presplit_texts([lrclib], bounder=passthrough)
     assert len(out[0].segments) == 1
     assert out[0].segments[0]["text"] == rich  # verbatim: not re-lineated
@@ -358,7 +361,7 @@ def test_the_full_blob_lands_on_its_real_lyric_lines():
         "So tell me where the river goes,",
         "when all the bridges burn.",
     ]
-    assert all(len(l) <= lp.MAX_LINE_CHARS for l in out)
+    assert all(len(ln) <= lp.MAX_LINE_CHARS for ln in out)
 
 
 # ── timing subdivision ───────────────────────────────────────────────────────────────
@@ -373,7 +376,7 @@ def test_subdivided_bounds_are_ordered_and_span_exactly_the_original_window():
     assert len(segs) == 5
     assert segs[0]["start"] == 10.0
     assert segs[-1]["end"] == 20.0  # no drift: the pieces tile the original window
-    for a, b in zip(segs, segs[1:]):
+    for a, b in zip(segs, segs[1:], strict=False):
         assert a["end"] <= b["start"]  # contiguous and monotonic
         assert a["start"] < a["end"]
 
@@ -445,7 +448,7 @@ def test_a_bounder_that_splits_further_is_honoured():
         timing=TIMING_LINE,
         text_confidence="low",
     )
-    out = lp.split_blob_text(asr, bounder=lambda lines, _m: [w for l in lines for w in l.split()])
+    out = lp.split_blob_text(asr, bounder=lambda lines, _m: [w for ln in lines for w in ln.split()])
     assert [s["text"] for s in out.segments] == ["one.", "two."]
 
 
@@ -479,7 +482,7 @@ def test_real_upstream_bounds_an_over_long_line_and_isolates_parentheses():
     if lp._load_klp() is None:
         pytest.skip("karaoke-lyrics-processor is not installed (installed --no-deps in the image)")
     lines = lp.bound_lines(["and I will wait right here for you at seventeen (ooh, ooh)"], 42)
-    assert all(len(l) <= 42 for l in lines)
+    assert all(len(ln) <= 42 for ln in lines)
     assert "(ooh, ooh)" in lines  # nested-paren isolation is the half upstream does well
     # and the handler it attaches to its module logger does not accumulate across calls
     import logging

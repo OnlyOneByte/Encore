@@ -12,6 +12,7 @@ what YouTube serves for anything recent -- so codec GENERATION, not bitrate, is 
 on. `FORMAT_SELECTOR` encodes that preference by POSITION and hands the decision to yt-dlp's own
 selector engine, which is where the multiple-format data actually exists.
 """
+
 from __future__ import annotations
 
 #: yt-dlp format selector: ordered alternatives, FIRST match wins.

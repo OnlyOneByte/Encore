@@ -26,11 +26,13 @@ PURE of network and subprocess by construction: parsing is a free function over 
 and the fetch runs through the align processor's own injected runner — so the whole tier unit-tests
 with a fake.
 """
+
 from __future__ import annotations
 
 import os
 import re
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 #: Caption languages worth asking for, best-first. Kept narrow deliberately: a lyrics track in a
 #: language the aligner is not running on would align badly and score as a mismatch anyway.

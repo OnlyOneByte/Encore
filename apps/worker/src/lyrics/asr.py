@@ -13,9 +13,10 @@ of word timing for every tier, looked-up or transcribed.
 torch is imported LAZILY inside the loader, so a worker that never runs an align job never pays the
 multi-GB import.
 """
+
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 from .timing import ML_LOCK
 
@@ -44,7 +45,9 @@ class WhisperxTranscriber:
     hardcoded 'en'.
     """
 
-    def __init__(self, device: str = "cpu", model: str = DEFAULT_MODEL, compute_type: str | None = None) -> None:
+    def __init__(
+        self, device: str = "cpu", model: str = DEFAULT_MODEL, compute_type: str | None = None
+    ) -> None:
         self._device = device
         self._model_name = model
         # int8 on CPU: float16 is a GPU format and faster-whisper refuses it on CPU.
@@ -69,7 +72,7 @@ class WhisperxTranscriber:
             out = self._load().transcribe(audio, language=language)
         if language and not out.get("language"):
             out["language"] = language
-        return out
+        return cast(dict[str, Any], out)
 
 
 # ── the model cache ────────────────────────────────────────────────────────────────
@@ -85,10 +88,10 @@ class WhisperxTranscriber:
 # two on different checkpoints each keep theirs, and no job can evict another's. Loading is under ML_LOCK
 # because the lazy loader had a check-then-set race that could load the same model twice and double the
 # memory.
-_TRANSCRIBERS: dict[tuple[str, str], "WhisperxTranscriber"] = {}
+_TRANSCRIBERS: dict[tuple[str, str], WhisperxTranscriber] = {}
 
 
-def transcriber_for(device: str, model: str) -> "WhisperxTranscriber":
+def transcriber_for(device: str, model: str) -> WhisperxTranscriber:
     """The transcriber for this (device, model), loading its weights at most once per worker."""
     key = (device, model)
     with ML_LOCK:

@@ -8,6 +8,7 @@ consumer.
 
 No network and no yt-dlp: the runner is injected, exactly as it is for the separation processors.
 """
+
 from __future__ import annotations
 
 import os
@@ -18,16 +19,20 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src import plans  # noqa: E402
+from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.vocabulary import Fetcher  # noqa: E402
 
 
 def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):
     return JobSpec(
-        job_id="j1", media_id=media_id, job_type="fetch",
-        source_uri=source_uri, params=params, media_dir=str(tmp_path),
+        job_id="j1",
+        media_id=media_id,
+        job_type="fetch",
+        source_uri=source_uri,
+        params=params,
+        media_dir=str(tmp_path),
     )
 
 
@@ -94,8 +99,12 @@ async def test_the_download_TEMPLATE_carries_ext_so_the_file_is_not_mislabelled(
         yield "[download] 100% of 1MiB"
 
     job = JobSpec(
-        job_id="j", media_id="m1", job_type="fetch", source_uri="https://yt/x",
-        params={"fetcher": "ytdlp"}, media_dir=str(tmp_path),
+        job_id="j",
+        media_id="m1",
+        job_type="fetch",
+        source_uri="https://yt/x",
+        params={"fetcher": "ytdlp"},
+        media_dir=str(tmp_path),
     )
 
     events = await drain(plans.fetch_runner(runner=spy_download), job)
@@ -119,8 +128,12 @@ async def test_a_legacy_mislabelled_wav_is_still_found(tmp_path):
         yield
 
     job = JobSpec(
-        job_id="j", media_id="m1", job_type="fetch", source_uri="https://yt/x",
-        params={"fetcher": "ytdlp"}, media_dir=str(tmp_path),
+        job_id="j",
+        media_id="m1",
+        job_type="fetch",
+        source_uri="https://yt/x",
+        params={"fetcher": "ytdlp"},
+        media_dir=str(tmp_path),
     )
 
     events = await drain(plans.fetch_runner(runner=never_download), job)
@@ -210,10 +223,16 @@ class FakeAnnotator:
         return parse_recordings({"recordings": self._recs})
 
 
-MB_HIT = [{
-    "id": "mb-take-on-me", "score": 100, "title": "Take On Me", "length": 225000,
-    "artist-credit": [{"name": "a\u2010ha"}], "releases": [{"title": "Hunting High and Low", "date": "1985-06-01"}],
-}]
+MB_HIT = [
+    {
+        "id": "mb-take-on-me",
+        "score": 100,
+        "title": "Take On Me",
+        "length": 225000,
+        "artist-credit": [{"name": "a\u2010ha"}],
+        "releases": [{"title": "Hunting High and Low", "date": "1985-06-01"}],
+    }
+]
 
 
 @pytest.mark.asyncio
@@ -223,7 +242,9 @@ async def test_a_fetch_reports_the_identification_it_made(tmp_path):
         runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")),
         annotator=FakeAnnotator(MB_HIT),
     )
-    events = await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0))
+    events = await drain(
+        proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)
+    )
     done = [e for e in events if isinstance(e, CompleteResult)][0]
     note = done.artifacts["annotation"]
     assert note["source"] == "musicbrainz"
@@ -258,7 +279,13 @@ async def test_a_DEAD_metadata_service_still_completes_the_fetch(tmp_path):
     proc = plans.fetch_runner(
         runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=FakeAnnotator(boom=True)
     )
-    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
+    done = [
+        e
+        for e in await drain(
+            proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)
+        )
+        if isinstance(e, CompleteResult)
+    ][0]
     assert done.media_uri == audio
     assert "annotation" not in done.artifacts
 
@@ -266,8 +293,16 @@ async def test_a_DEAD_metadata_service_still_completes_the_fetch(tmp_path):
 @pytest.mark.asyncio
 async def test_annotation_can_be_switched_off_entirely(tmp_path):
     audio = os.path.join(str(tmp_path), "audio", "m1.wav")
-    proc = plans.fetch_runner(runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=None)
-    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
+    proc = plans.fetch_runner(
+        runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=None
+    )
+    done = [
+        e
+        for e in await drain(
+            proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)
+        )
+        if isinstance(e, CompleteResult)
+    ][0]
     assert "annotation" not in done.artifacts
 
 
@@ -294,13 +329,15 @@ async def test_configured_ytdlp_binary_reaches_the_download_argv(tmp_path):
         yield "[download] 100% of 1MiB"
 
     job = JobSpec(
-        job_id="j", media_id="m1", job_type="fetch", source_uri="https://yt/x",
-        params={"fetcher": "ytdlp"}, media_dir=str(tmp_path),
+        job_id="j",
+        media_id="m1",
+        job_type="fetch",
+        source_uri="https://yt/x",
+        params={"fetcher": "ytdlp"},
+        media_dir=str(tmp_path),
     )
 
     await drain(plans.fetch_runner(runner=spy_download, ytdlp_bin=configured), job)
 
     assert seen, "yt-dlp must have been invoked"
-    assert seen[0][0] == configured, (
-        f"argv[0] must be the configured ENCORE_YTDLP_BIN, got {seen[0][0]!r}"
-    )
+    assert seen[0][0] == configured, f"argv[0] must be the configured ENCORE_YTDLP_BIN, got {seen[0][0]!r}"

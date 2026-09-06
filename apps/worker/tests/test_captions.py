@@ -17,6 +17,7 @@ Two load-bearing tests hold that up:
     keep the authored candidate distinct from the machine baseline. If it fails, an ASR track made from
     the mixed audio can be read back as an authored candidate and outrank a correct database lookup.
 """
+
 from __future__ import annotations
 
 from src.lyrics.captions import caption_argv, find_caption_file, is_translated_track, parse_vtt, read_captions
@@ -75,7 +76,9 @@ def test_the_argv_downloads_no_media():
     """This runs on every align job, including for a song whose audio is already on disk. It must be a
     metadata request, not a second download."""
     for auto in (False, True):
-        assert "--skip-download" in caption_argv("https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s", auto=auto)
+        assert "--skip-download" in caption_argv(
+            "https://youtube.com/watch?v=abc", "/tmp/c.%(ext)s", auto=auto
+        )
 
 
 def test_the_requested_langs_are_explicit_codes_never_a_glob():
@@ -95,7 +98,9 @@ def test_the_requested_langs_are_explicit_codes_never_a_glob():
     codes = langs.split(",")
     assert codes, "at least one language must be requested"
     assert len(codes) <= 6, f"every extra code is another rate-limited request: {codes!r}"
-    assert "en-orig" in codes  # YouTube's original-language marker: the one track that cannot be a translation
+    assert (
+        "en-orig" in codes
+    )  # YouTube's original-language marker: the one track that cannot be a translation
     assert "en" in codes
 
 
@@ -274,13 +279,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.processor import JobSpec  # noqa: E402
 from src.runtime import Ctx  # noqa: E402
-from src.steps.lyrics import AUTHORED, FetchCaptions, MACHINE  # noqa: E402
+from src.steps.lyrics import AUTHORED, MACHINE, FetchCaptions  # noqa: E402
 
 # Two distinct VTT tracks. The authored one is the correct words; the machine one is ASR of the mixed
 # audio — recognisably the same song, recognisably worse. If the guarantee breaks, the machine baseline
 # comes back reading as the authored candidate, i.e. these two collapse to the SAME text.
-_AUTHORED_VTT = "WEBVTT\n\n00:00:09.500 --> 00:00:12.000\nHello, hello baby\n\n00:00:12.000 --> 00:00:14.250\nYou called, I can't hear a thing\n"
-_MACHINE_VTT = "WEBVTT\n\n00:00:09.500 --> 00:00:12.000\nhello hello baby\n\n00:00:12.000 --> 00:00:14.250\nyou call i can hardly hear a thing\n"
+_AUTHORED_VTT = (
+    "WEBVTT\n\n00:00:09.500 --> 00:00:12.000\nHello, hello baby\n\n"
+    "00:00:12.000 --> 00:00:14.250\nYou called, I can't hear a thing\n"
+)
+_MACHINE_VTT = (
+    "WEBVTT\n\n00:00:09.500 --> 00:00:12.000\nhello hello baby\n\n"
+    "00:00:12.000 --> 00:00:14.250\nyou call i can hardly hear a thing\n"
+)
 
 
 def _no_overwrite_ytdlp_runner():
@@ -312,8 +323,14 @@ def _no_overwrite_ytdlp_runner():
 
 
 def _ctx_for_captions(tmp_path):
-    job = JobSpec(job_id="j1", media_id="m1", job_type="align",
-                  source_uri="https://youtube.com/watch?v=abc", params={}, media_dir=str(tmp_path))
+    job = JobSpec(
+        job_id="j1",
+        media_id="m1",
+        job_type="align",
+        source_uri="https://youtube.com/watch?v=abc",
+        params={},
+        media_dir=str(tmp_path),
+    )
     return Ctx(job=job, work=str(tmp_path / "work"), runner=_no_overwrite_ytdlp_runner())
 
 
@@ -382,8 +399,14 @@ async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
     configured = "/opt/encore/bin/yt-dlp"
 
     proc = plans.align_runner(runner=lambda argv: None, ytdlp_bin=configured)
-    job = JobSpec(job_id="j1", media_id="m1", job_type="align",
-                  source_uri="https://youtube.com/watch?v=abc", params={}, media_dir=str(tmp_path))
+    job = JobSpec(
+        job_id="j1",
+        media_id="m1",
+        job_type="align",
+        source_uri="https://youtube.com/watch?v=abc",
+        params={},
+        media_dir=str(tmp_path),
+    )
     plan = proc._plan_for(job, None)  # the plan align_runner actually built for this job
     caption_steps = [s for s in plan.steps() if isinstance(s, FetchCaptions)]
     assert len(caption_steps) == 2, "the align plan must fetch both caption kinds"
@@ -391,7 +414,7 @@ async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
     for step in caption_steps:
         seen: list[list[str]] = []
 
-        async def spy(argv):
+        async def spy(argv, seen=seen):
             seen.append(argv)
             return
             yield  # pragma: no cover — async generator with no output lines

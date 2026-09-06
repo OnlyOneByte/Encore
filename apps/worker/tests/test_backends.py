@@ -6,6 +6,7 @@ the DECISION logic rather than the hardware. What is genuinely verified here: to
 reachable, an explicit unavailable backend RAISES instead of silently downgrading, and an unknown
 value is rejected at the boundary.
 """
+
 import sys
 from pathlib import Path
 
@@ -93,7 +94,9 @@ def test_mlx_is_only_offered_for_demucs_and_only_on_apple_silicon(monkeypatch):
 
 
 def test_auto_prefers_mlx_when_genuinely_available(monkeypatch):
-    monkeypatch.setattr(backends, "backend_available", lambda b, e=Engine.DEMUCS: b in (Backend.MLX, Backend.TORCH))
+    monkeypatch.setattr(
+        backends, "backend_available", lambda b, e=Engine.DEMUCS: b in (Backend.MLX, Backend.TORCH)
+    )
     choice = resolve_backend(None)
     assert choice.backend is Backend.MLX
     assert choice.device is None  # MLX owns its own execution; no torch device applies

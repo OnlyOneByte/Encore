@@ -8,6 +8,7 @@ shapes -- including the two things that would have broken a from-the-docs implem
   * the top THREE recordings all score 100 while their lengths differ by 110 seconds, so MusicBrainz's
     own score cannot separate a single from an album cut and duration has to do the work.
 """
+
 from __future__ import annotations
 
 import sys
@@ -103,23 +104,38 @@ def test_album_and_year_come_from_a_dated_release():
 def test_the_earliest_release_wins_over_a_later_compilation():
     # Measured problem: taking releases[0] gave "Take On Me" a 1989 live-tour album and "Bohemian
     # Rhapsody" an "Artist Karaoke Series" compilation. MusicBrainz does not order releases.
-    body = {"recordings": [{
-        "id": "x", "score": 100, "title": "T", "length": 200000,
-        "artist-credit": [{"name": "A"}],
-        "releases": [
-            {"title": "Greatest Hits Vol 3", "date": "2011-01-01"},
-            {"title": "The Original Album", "date": "1985-06-01"},
-            {"title": "Some Reissue", "date": "1999-01-01"},
-        ],
-    }]}
+    body = {
+        "recordings": [
+            {
+                "id": "x",
+                "score": 100,
+                "title": "T",
+                "length": 200000,
+                "artist-credit": [{"name": "A"}],
+                "releases": [
+                    {"title": "Greatest Hits Vol 3", "date": "2011-01-01"},
+                    {"title": "The Original Album", "date": "1985-06-01"},
+                    {"title": "Some Reissue", "date": "1999-01-01"},
+                ],
+            }
+        ]
+    }
     rec = ann.parse_recordings(body)[0]
     assert rec.album == "The Original Album"
     assert rec.year == 1985
 
 
 def test_an_undated_release_is_kept_rather_than_discarded():
-    body = {"recordings": [{"id": "x", "title": "T", "artist-credit": [{"name": "A"}],
-                            "releases": [{"title": "Undated Single"}]}]}
+    body = {
+        "recordings": [
+            {
+                "id": "x",
+                "title": "T",
+                "artist-credit": [{"name": "A"}],
+                "releases": [{"title": "Undated Single"}],
+            }
+        ]
+    }
     rec = ann.parse_recordings(body)[0]
     assert rec.album == "Undated Single" and rec.year is None
 
@@ -239,6 +255,7 @@ def test_calls_are_serialised_so_two_threads_cannot_burst():
             in_flight["now"] += 1
             in_flight["max"] = max(in_flight["max"], in_flight["now"])
         import time
+
         time.sleep(0.02)  # hold the "request" open long enough for an overlap to be observable
         with lock:
             in_flight["now"] -= 1
@@ -337,12 +354,26 @@ def test_when_durations_tie_the_EARLIEST_release_wins():
     # Measured: duration alone left several recordings tied and picked a 1989 live-tour cut for
     # "Take On Me" and an "Artist Karaoke Series" compilation for "Bohemian Rhapsody". Both are real
     # recordings of the right song; the original is the one a singer recognises.
-    body = {"recordings": [
-        {"id": "live", "score": 100, "title": "Take On Me", "length": 225000,
-         "artist-credit": [{"name": "a-ha"}], "releases": [{"title": "On Tour In Brazil", "date": "1989-01-01"}]},
-        {"id": "studio", "score": 100, "title": "Take On Me", "length": 225040,
-         "artist-credit": [{"name": "a-ha"}], "releases": [{"title": "Hunting High and Low", "date": "1985-06-01"}]},
-    ]}
+    body = {
+        "recordings": [
+            {
+                "id": "live",
+                "score": 100,
+                "title": "Take On Me",
+                "length": 225000,
+                "artist-credit": [{"name": "a-ha"}],
+                "releases": [{"title": "On Tour In Brazil", "date": "1989-01-01"}],
+            },
+            {
+                "id": "studio",
+                "score": 100,
+                "title": "Take On Me",
+                "length": 225040,
+                "artist-credit": [{"name": "a-ha"}],
+                "releases": [{"title": "Hunting High and Low", "date": "1985-06-01"}],
+            },
+        ]
+    }
     got = ann.pick_best(ann.parse_recordings(body), "a-ha", "Take On Me", 225.0)
     assert got is not None
     assert got.mbid == "studio", "a 40ms closer live cut must not outrank the original release"
@@ -351,12 +382,26 @@ def test_when_durations_tie_the_EARLIEST_release_wins():
 
 def test_a_genuinely_closer_duration_still_beats_an_older_release():
     # The year is a TIE-BREAK, not an override: a 60s edit must not win just for being old.
-    body = {"recordings": [
-        {"id": "old-edit", "score": 100, "title": "T", "length": 60000,
-         "artist-credit": [{"name": "A"}], "releases": [{"title": "Ancient", "date": "1970-01-01"}]},
-        {"id": "right", "score": 100, "title": "T", "length": 200000,
-         "artist-credit": [{"name": "A"}], "releases": [{"title": "Later", "date": "2001-01-01"}]},
-    ]}
+    body = {
+        "recordings": [
+            {
+                "id": "old-edit",
+                "score": 100,
+                "title": "T",
+                "length": 60000,
+                "artist-credit": [{"name": "A"}],
+                "releases": [{"title": "Ancient", "date": "1970-01-01"}],
+            },
+            {
+                "id": "right",
+                "score": 100,
+                "title": "T",
+                "length": 200000,
+                "artist-credit": [{"name": "A"}],
+                "releases": [{"title": "Later", "date": "2001-01-01"}],
+            },
+        ]
+    }
     got = ann.pick_best(ann.parse_recordings(body), "A", "T", 200.0)
     assert got is not None and got.mbid == "right"
 
@@ -417,12 +462,18 @@ def test_what_gets_published_is_the_FULL_billing_not_the_key_that_matched():
 def test_an_exact_full_credit_agreement_still_OUTRANKS_a_primary_only_one():
     # Relaxing the gate must not make the stronger evidence lose. Same title, same duration: the
     # recording whose whole billing agrees is the better identification.
-    body = {"recordings": [
-        {"id": "primary-only", "score": 100, "title": "T", "length": 200000,
-         "artist-credit": [{"name": "A", "joinphrase": " feat. "}, {"name": "Guest"}]},
-        {"id": "exact", "score": 100, "title": "T", "length": 200000,
-         "artist-credit": [{"name": "A"}]},
-    ]}
+    body = {
+        "recordings": [
+            {
+                "id": "primary-only",
+                "score": 100,
+                "title": "T",
+                "length": 200000,
+                "artist-credit": [{"name": "A", "joinphrase": " feat. "}, {"name": "Guest"}],
+            },
+            {"id": "exact", "score": 100, "title": "T", "length": 200000, "artist-credit": [{"name": "A"}]},
+        ]
+    }
     got = ann.pick_best(ann.parse_recordings(body), "A", "T", 200.0)
     assert got is not None and got.mbid == "exact"
 

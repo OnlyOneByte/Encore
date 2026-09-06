@@ -7,6 +7,7 @@ downloaded, results in the RIGHT version's words being written to disk and publi
 Driven through `process()` with fakes for the three external things (yt-dlp, LRCLIB, the aligner and the
 transcriber), so nothing here touches a network or a model.
 """
+
 from __future__ import annotations
 
 import json
@@ -54,10 +55,24 @@ def fake_ytdlp_runner():
 def two_version_client(order=("solo", "feat")):
     """LRCLIB whose /api/search returns both recordings, in the given order."""
     bodies = {
-        "solo": {"id": 11, "instrumental": False, "syncedLyrics": SOLO_LRC, "plainLyrics": SHARED,
-                 "trackName": "Telephone", "artistName": "Lady Gaga", "duration": 218},
-        "feat": {"id": 12, "instrumental": False, "syncedLyrics": FEAT_LRC, "plainLyrics": SHARED + " " + GUEST,
-                 "trackName": "Telephone", "artistName": "Lady Gaga feat. Beyonce", "duration": 243},
+        "solo": {
+            "id": 11,
+            "instrumental": False,
+            "syncedLyrics": SOLO_LRC,
+            "plainLyrics": SHARED,
+            "trackName": "Telephone",
+            "artistName": "Lady Gaga",
+            "duration": 218,
+        },
+        "feat": {
+            "id": 12,
+            "instrumental": False,
+            "syncedLyrics": FEAT_LRC,
+            "plainLyrics": SHARED + " " + GUEST,
+            "trackName": "Telephone",
+            "artistName": "Lady Gaga feat. Beyonce",
+            "duration": 243,
+        },
     }
 
     def fetch(url, headers):
@@ -74,11 +89,21 @@ class FakeAligner:
         for s in segments:
             toks = s["text"].split()
             span = (s["end"] - s["start"]) / max(1, len(toks))
-            out.append({
-                "start": s["start"], "end": s["end"], "text": s["text"],
-                "words": [{"word": t, "start": round(s["start"] + i * span, 3), "end": round(s["start"] + (i + 1) * span, 3)}
-                          for i, t in enumerate(toks)],
-            })
+            out.append(
+                {
+                    "start": s["start"],
+                    "end": s["end"],
+                    "text": s["text"],
+                    "words": [
+                        {
+                            "word": t,
+                            "start": round(s["start"] + i * span, 3),
+                            "end": round(s["start"] + (i + 1) * span, 3),
+                        }
+                        for i, t in enumerate(toks)
+                    ],
+                }
+            )
         return {"language": language, "segments": out}
 
 
@@ -88,7 +113,10 @@ class FakeTranscriber:
 
     def transcribe(self, audio_path, language=None):
         words = ASR_TEXT.split()
-        return {"language": "en", "segments": [{"start": float(i), "end": float(i + 1), "text": w} for i, w in enumerate(words)]}
+        return {
+            "language": "en",
+            "segments": [{"start": float(i), "end": float(i + 1), "text": w} for i, w in enumerate(words)],
+        }
 
 
 def proc(client):
@@ -109,10 +137,22 @@ def spec(tmp_path, **params):
     stem = vocals_path(str(tmp_path), "m1")
     os.makedirs(os.path.dirname(stem), exist_ok=True)
     Path(stem).write_bytes(b"FAKE_VOCALS_STEM")
-    p = {"artist": "Lady Gaga", "track": "Telephone", "language": "en", "durationSec": 243.0,
-         "artistCredit": "Lady Gaga feat. Beyonce"}
+    p = {
+        "artist": "Lady Gaga",
+        "track": "Telephone",
+        "language": "en",
+        "durationSec": 243.0,
+        "artistCredit": "Lady Gaga feat. Beyonce",
+    }
     p.update(params)
-    return JobSpec(job_id="j1", media_id="m1", job_type="align", source_uri="https://yt/x", params=p, media_dir=str(tmp_path))
+    return JobSpec(
+        job_id="j1",
+        media_id="m1",
+        job_type="align",
+        source_uri="https://yt/x",
+        params=p,
+        media_dir=str(tmp_path),
+    )
 
 
 async def run(p, job):
@@ -135,7 +175,7 @@ async def test_THE_BUG_the_published_lyrics_are_the_version_that_matches_the_aud
     events = await run(proc(two_version_client(order=("solo", "feat"))), spec(tmp_path))
     doc, cand = published_lyrics(events, tmp_path)
 
-    body = " ".join(l["text"] for l in doc["lines"]).lower()
+    body = " ".join(ln["text"] for ln in doc["lines"]).lower()
     assert "coat" in body  # a guest-verse word — present only in the correct recording
     assert cand["textConfidence"] == "high"  # the winner agreed, so it was NOT demoted
 
@@ -147,7 +187,7 @@ async def test_the_choice_does_not_depend_on_the_order_the_provider_happened_to_
     for order in [("solo", "feat"), ("feat", "solo")]:
         events = await run(proc(two_version_client(order=order)), spec(tmp_path / f"d-{order[0]}"))
         doc, _ = published_lyrics(events, tmp_path / f"d-{order[0]}")
-        assert "coat" in " ".join(l["text"] for l in doc["lines"]).lower(), order
+        assert "coat" in " ".join(ln["text"] for ln in doc["lines"]).lower(), order
 
 
 @pytest.mark.asyncio
@@ -165,10 +205,15 @@ async def test_the_winner_is_still_judged_against_the_absolute_threshold(tmp_pat
     )
 
     def wrong_song(url, headers):
-        body = {"id": 1, "instrumental": False,
-                "syncedLyrics": "\n".join(f"[00:{i:02d}.00]{w}" for i, w in enumerate(other_song.split())),
-                "plainLyrics": other_song, "trackName": "Telephone", "artistName": "Lady Gaga",
-                "duration": 243}
+        body = {
+            "id": 1,
+            "instrumental": False,
+            "syncedLyrics": "\n".join(f"[00:{i:02d}.00]{w}" for i, w in enumerate(other_song.split())),
+            "plainLyrics": other_song,
+            "trackName": "Telephone",
+            "artistName": "Lady Gaga",
+            "duration": 243,
+        }
         return 200, json.dumps([body] if "/api/search?" in url else body)
 
     events = await run(proc(LrclibClient(fetcher=wrong_song)), spec(tmp_path))
@@ -195,6 +240,7 @@ async def test_BOTH_local_baselines_run_and_a_silent_stem_does_not_lose_the_vote
     baseline is the only evidence left. Here the stem yields nothing and the correct version is still
     chosen, which is exactly the failure the mix baseline exists to cover.
     """
+
     class PerAudioTranscriber:
         """Silence from the stem, real words from the mix — the silent-stem failure, reproduced."""
 
@@ -202,7 +248,9 @@ async def test_BOTH_local_baselines_run_and_a_silent_stem_does_not_lose_the_vote
             words = [] if "vocals" in audio_path else ASR_TEXT.split()
             return {
                 "language": "en",
-                "segments": [{"start": float(i), "end": float(i + 1), "text": w} for i, w in enumerate(words)],
+                "segments": [
+                    {"start": float(i), "end": float(i + 1), "text": w} for i, w in enumerate(words)
+                ],
             }
 
     p = plans.align_runner(
@@ -212,7 +260,7 @@ async def test_BOTH_local_baselines_run_and_a_silent_stem_does_not_lose_the_vote
         transcriber=PerAudioTranscriber(),
     )
     doc, cand = published_lyrics(await run(p, spec(tmp_path)), tmp_path)
-    assert "coat" in " ".join(l["text"] for l in doc["lines"]).lower()  # a guest-verse word
+    assert "coat" in " ".join(ln["text"] for ln in doc["lines"]).lower()  # a guest-verse word
     assert cand["textConfidence"] == "high"
 
 
@@ -220,6 +268,7 @@ async def test_BOTH_local_baselines_run_and_a_silent_stem_does_not_lose_the_vote
 async def test_youtube_AUTOMATIC_captions_grade_a_candidate_but_never_become_one(tmp_path):
     """The third baseline, end to end. The machine track is fetched separately from any authored one, used
     as evidence, and cannot itself be published while a candidate is trustworthy."""
+
     def runner_with_auto_captions():
         async def run_(argv):
             out = argv[argv.index("-o") + 1]
@@ -229,7 +278,8 @@ async def test_youtube_AUTOMATIC_captions_grade_a_candidate_but_never_become_one
                 return
             if "--write-auto-subs" in argv:  # a MACHINE track that heard the guest verse
                 vtt = "WEBVTT\n\n" + "\n\n".join(
-                    f"00:00:{i:02d}.000 --> 00:00:{i + 1:02d}.000\n{w}" for i, w in enumerate(ASR_TEXT.split()[:45])
+                    f"00:00:{i:02d}.000 --> 00:00:{i + 1:02d}.000\n{w}"
+                    for i, w in enumerate(ASR_TEXT.split()[:45])
                 )
                 Path(out.replace("%(ext)s", "en.vtt")).write_text(vtt, encoding="utf-8")
                 yield "[info] writing automatic captions"
@@ -249,13 +299,14 @@ async def test_youtube_AUTOMATIC_captions_grade_a_candidate_but_never_become_one
     sources = {c["textSource"] for c in done.artifacts["lyrics"]["candidates"]}
     assert sources == {"lrclib"}  # the machine track graded the lookup; it did not become the answer
     doc, _ = published_lyrics(await run(p, spec(tmp_path / "again")), tmp_path / "again")
-    assert "coat" in " ".join(l["text"] for l in doc["lines"]).lower()
+    assert "coat" in " ".join(ln["text"] for ln in doc["lines"]).lower()
 
 
 @pytest.mark.asyncio
 async def test_with_no_candidate_at_all_a_baseline_is_published_as_the_answer(tmp_path):
     """A song nobody has written lyrics for. The tiering system picks the best available evidence, and the
     `low` confidence rides along so the TV says the words are auto-transcribed."""
+
     def no_lyrics(url, headers):
         return 404, ""
 
@@ -292,13 +343,15 @@ async def test_authored_captions_can_WIN_over_a_lookup_when_they_match_the_audio
     exact upload, so they cannot be about a different recording, but "attached to this upload" is not the
     same as "correct" and they still have to earn it.
     """
+
     def runner_writing_captions():
         async def run_(argv):
             out = argv[argv.index("-o") + 1]
             os.makedirs(os.path.dirname(out), exist_ok=True)
             if "--write-subs" in argv:  # AUTHORED track — the candidate
                 vtt = "WEBVTT\n\n" + "\n\n".join(
-                    f"00:00:{i:02d}.000 --> 00:00:{i + 1:02d}.000\n{w}" for i, w in enumerate(ASR_TEXT.split()[:45])
+                    f"00:00:{i:02d}.000 --> 00:00:{i + 1:02d}.000\n{w}"
+                    for i, w in enumerate(ASR_TEXT.split()[:45])
                 )
                 Path(out.replace("%(ext)s", "en.vtt")).write_text(vtt, encoding="utf-8")
                 yield "[info] writing subtitles"

@@ -4,12 +4,14 @@ No sockets, no torch, no asyncio: this is the unit-tested core (mirrors the TS p
 e.g. dispatch.ts vs worker-hub.ts). The I/O shell is dial_home.py. See
 docs/ARCHITECTURE.md for the wire contract.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
 
-from .vocabulary import STAGE_PLANS as _STAGE_PLANS, Action, Stage
+from .vocabulary import STAGE_PLANS as _STAGE_PLANS
+from .vocabulary import Action, Stage
 
 # ── message type strings (must match packages/shared/src/events.ts) ──────────────
 # worker -> core
@@ -64,7 +66,12 @@ def hello(
 
 
 def heartbeat(worker_id: str, slots_free: int, running_job_ids: list[str]) -> dict[str, Any]:
-    return {"type": HEARTBEAT, "workerId": worker_id, "slotsFree": slots_free, "runningJobIds": running_job_ids}
+    return {
+        "type": HEARTBEAT,
+        "workerId": worker_id,
+        "slotsFree": slots_free,
+        "runningJobIds": running_job_ids,
+    }
 
 
 def accept(worker_id: str, job_id: str) -> dict[str, Any]:
@@ -76,7 +83,13 @@ def reject(worker_id: str, job_id: str, reason: str) -> dict[str, Any]:
 
 
 def progress(worker_id: str, job_id: str, stage: str, pct: int, eta_sec: int | None = None) -> dict[str, Any]:
-    msg: dict[str, Any] = {"type": PROGRESS, "workerId": worker_id, "jobId": job_id, "stage": stage, "pct": pct}
+    msg: dict[str, Any] = {
+        "type": PROGRESS,
+        "workerId": worker_id,
+        "jobId": job_id,
+        "stage": stage,
+        "pct": pct,
+    }
     if eta_sec is not None:
         msg["etaSec"] = eta_sec
     return msg
@@ -246,8 +259,11 @@ def host_facts() -> dict[str, Any]:
         report = probe()
     except Exception:
         # Never fail a handshake over a diagnostic.
-        return {"platform": platform.platform(), "machine": platform.machine(),
-                "python": platform.python_version()}
+        return {
+            "platform": platform.platform(),
+            "machine": platform.machine(),
+            "python": platform.python_version(),
+        }
 
     facts: dict[str, Any] = {
         "platform": platform.platform(),

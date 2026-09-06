@@ -19,6 +19,7 @@ Two rules, both learned the hard way:
 PURE-ish: every reader takes an optional root/env so tests can point it at a fixture tree instead of
 the live /sys and /proc.
 """
+
 from __future__ import annotations
 
 import os

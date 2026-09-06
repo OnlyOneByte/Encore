@@ -11,6 +11,7 @@ This test reads the hand-maintained capability-routing enumeration and cross-che
 `probe_all` reports available on a maximal box -- the same in-memory simulation the issue used
 (every CLI present, whisperx importable). Reverting the doc to re-add either phantom reds it.
 """
+
 from __future__ import annotations
 
 import re
@@ -75,8 +76,8 @@ def test_backend_never_advertised_as_a_capability_token_in_the_routing_prose():
     backends = ["mlx", "torch", "openvino", "xpu"]
     offenders = []
     for be in backends:
-        for m in re.finditer(r"`stems:%s`" % be, text):
-            preceding = text[max(0, m.start() - 8):m.start()]
+        for m in re.finditer(rf"`stems:{be}`", text):
+            preceding = text[max(0, m.start() - 8) : m.start()]
             # The corrected prose writes 'not `stems:mlx`' -- a denial, not an advertisement.
             negated = preceding.rstrip().endswith("not")
             if not negated:

@@ -9,6 +9,7 @@ the worker logged nothing, and the song sat at 0% forever, which reads exactly l
 It was invisible to unit tests because those built the processor and called it directly; nothing
 exercised the ACCEPT decision on the dial-home message path. Hence this file.
 """
+
 from __future__ import annotations
 
 import sys

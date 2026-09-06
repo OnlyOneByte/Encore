@@ -15,6 +15,7 @@ current one is decided CORE-side in `markMediaReady`, so the worker copy had no 
 tables could drift with nothing comparing them. It is deleted rather than guarded by a parity test,
 because a test would only have kept a dead table faithfully in sync with a live one.
 """
+
 from __future__ import annotations
 
 from enum import Enum
@@ -24,7 +25,7 @@ class _StrEnum(str, Enum):
     """`str`-valued enum: members compare and serialize as their value."""
 
     def __str__(self) -> str:  # so f-strings/argv render the value, not 'Class.MEMBER'
-        return self.value
+        return str(self.value)
 
 
 class Action(_StrEnum):
@@ -164,6 +165,7 @@ STAGE_PLANS: dict[Action, list[Stage]] = {
     Action.ALIGN: [Stage.DOWNLOADING, Stage.ALIGNING],
 }
 
+
 def parse_action(value: str) -> Action:
     """Coerce a wire job type to an Action, raising on anything unknown."""
     try:
@@ -238,5 +240,3 @@ def stages_for(action: Action | str) -> list[Stage]:
     """The ordered stages an action emits."""
     key = action if isinstance(action, Action) else parse_action(action)
     return STAGE_PLANS.get(key, [Stage.DOWNLOADING, Stage.SEPARATING])
-
-

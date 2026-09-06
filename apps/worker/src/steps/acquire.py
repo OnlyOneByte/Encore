@@ -5,17 +5,23 @@ already claimed `resolve_source_audio` was "the one place that answers 'where ar
 I have to go and get them'" — it was true of exactly one of its four callers. Now there is one step, and
 the enforcement test in `tests/test_worker_layers.py` keeps it that way.
 """
+
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
+from ..acquisition.fetch import (
+    download_argv,
+    find_downloaded,
+    job_fetcher,
+    local_source_path,
+    parse_ytdlp_progress,
+)
 from ..processor import ProgressEvent, source_audio_path
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_stage
 from ..runtime.step import Step, StepResult
-from ..acquisition.fetch import find_downloaded, job_fetcher, local_source_path
-from ..acquisition.fetch import download_argv, parse_ytdlp_progress
 from ..vocabulary import Fetcher, Stage
 
 

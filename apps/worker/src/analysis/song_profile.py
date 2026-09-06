@@ -13,12 +13,10 @@ So BOTH analyses are wrapped best-effort here: key detection and range summary e
 to nulls, are logged, and NEVER raise. The instrumental is the load-bearing output; a profile failure
 must never fail the job.
 """
+
 from __future__ import annotations
 
-from typing import Optional
-
-from . import key_detect
-from . import vocal_range
+from . import key_detect, vocal_range
 
 # The exact wire shape core validates. Every key is always present; values are null when unknown.
 # Building the null profile from one place means "publish nulls on failure" cannot forget a field.
@@ -41,8 +39,8 @@ def empty_profile() -> dict:
 
 
 def build_song_profile(
-    instrumental_wav: Optional[str],
-    vocals_wav: Optional[str],
+    instrumental_wav: str | None,
+    vocals_wav: str | None,
     media_id: str = "?",
     *,
     log=print,
@@ -68,7 +66,11 @@ def build_song_profile(
             profile["keyMode"] = mode
             profile["keyConfidence"] = confidence
         except Exception as exc:  # noqa: BLE001 — analysis must never fail the cook
-            log(f"[worker] key detection failed for {media_id} ({type(exc).__name__}: {exc}); publishing null key", flush=True)
+            log(
+                f"[worker] key detection failed for {media_id} "
+                f"({type(exc).__name__}: {exc}); publishing null key",
+                flush=True,
+            )
 
     # ── range (vocals) ────────────────────────────────────────────────────────────────
     if vocals_wav:
@@ -80,6 +82,10 @@ def build_song_profile(
             profile["p95Midi"] = rng["p95Midi"]
             profile["histogram"] = rng["histogram"]
         except Exception as exc:  # noqa: BLE001 — analysis must never fail the cook
-            log(f"[worker] vocal-range summary failed for {media_id} ({type(exc).__name__}: {exc}); publishing null range", flush=True)
+            log(
+                f"[worker] vocal-range summary failed for {media_id} "
+                f"({type(exc).__name__}: {exc}); publishing null range",
+                flush=True,
+            )
 
     return profile

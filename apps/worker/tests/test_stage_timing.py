@@ -4,6 +4,7 @@ Before this the worker measured NOTHING — no perf_counter anywhere in the tree
 minutes" could not be broken down into download versus separate. These tests pin the arithmetic with
 an injected clock, so they assert real behaviour without sleeping.
 """
+
 from __future__ import annotations
 
 from src import protocol
