@@ -29,6 +29,13 @@ export class AuthoritativeState {
 	#flushTimer: ReturnType<typeof setTimeout> | null = null;
 	#flushDelayMs: number;
 	#orderingOf: () => Ordering;
+	// Monotonic source of the server-owned `addedAt` stamp. Every add op is re-stamped from this
+	// at the hub seam (see nextAddedAt), so the ordering input a room ranks singers by is never
+	// client-minted (issue #345). Seeded on hydrate from the max persisted stamp so a restart
+	// followed by an add in the same millisecond still mints a value strictly above every
+	// persisted entry — the monotonic guarantee has to hold across the reboot, not just within one
+	// process lifetime.
+	#lastAddedAt = 0;
 
 	/**
 	 * `orderingOf` is a GETTER, not a value: the room's ordering algorithm is a setting that can change
@@ -57,6 +64,11 @@ export class AuthoritativeState {
 	hydrate(entries: QueueEntry[], playback: PlaybackState | null): void {
 		// drop terminal (done/skipped) rows and normalize the room's ordering on load
 		this.#entries = assignSeqs(entries.filter((e) => !isTerminal(e)), this.#orderingOf());
+		// Seed the monotonic addedAt counter above every stamp we just loaded (terminal rows filtered
+		// above are still counted here — a later add must not collide with a done entry's stamp either).
+		for (const e of entries) {
+			if (Number.isFinite(e.addedAt) && e.addedAt > this.#lastAddedAt) this.#lastAddedAt = e.addedAt;
+		}
 		if (playback) {
 			this.#playback = { ...playback };
 			// Self-heal a persisted DANGLING currentEntryId (issue #128): persist() snapshots entries and
@@ -110,6 +122,18 @@ export class AuthoritativeState {
 		this.#rev++;
 		this.#scheduleFlush();
 		return { rev: this.#rev, canonicalOps: [op], entries: this.entries };
+	}
+
+	/**
+	 * Mint the next server-owned `addedAt` for an add op. MONOTONIC: `Math.max(Date.now(), last + 1)`
+	 * so two adds in the same millisecond still get distinct, strictly increasing stamps — the
+	 * ordering ranks singers by this value and the move-as-addedAt-permute reorder needs it total
+	 * (issue #345, and the original Finding #4 the client store records at stores/queue.ts). Owned
+	 * here rather than as a module global so it is per-room and seeded from persisted state on hydrate.
+	 */
+	nextAddedAt(): number {
+		this.#lastAddedAt = Math.max(Date.now(), this.#lastAddedAt + 1);
+		return this.#lastAddedAt;
 	}
 
 	setPlayback(patch: Partial<PlaybackState>): { rev: number; playback: PlaybackState } {
