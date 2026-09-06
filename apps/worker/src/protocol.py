@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from .vocabulary import STAGE_PLANS as _STAGE_PLANS, Stage
+from .vocabulary import STAGE_PLANS as _STAGE_PLANS, Action, Stage
 
 # ── message type strings (must match packages/shared/src/events.ts) ──────────────
 # worker -> core
@@ -136,9 +136,35 @@ class WorkerState:
         `fetch` job fail with "unsupported job type: fetch" against a worker advertising `fetch:ytdlp`,
         and it would equally reject a plain `stems` job on a roformer-only worker.
 
-        Matched on the action prefix so a new axis needs no change here.
+        A prefix match on the job type covers `fetch`/`stems`/`align`, whose serving capability is
+        namespaced UNDER their own name (`fetch:ytdlp`, `stems:roformer`). It does NOT cover
+        `stems-upgrade`, whose capability is a `stems`/`stems:*` token — a separator engine, chosen
+        core-side by `upgradeEngine`, exactly like a plain `stems` job (`dial_home.py` binds one
+        runner to both). The core's `requiredCapability` already maps the upgrade action onto a
+        stems-family capability; deriving the token textually from `stems-upgrade` here disagreed
+        with that for the one action of the four whose capability lives under a different name.
+
+        So resolve the ACTION to the capability family that serves it — any separation action is
+        served by a `stems`/`stems:*` token — then match. Unknown/unnamespaced actions keep the
+        plain prefix behaviour, so an action the worker cannot run is still refused.
         """
-        return job_type in self.capabilities or any(c.startswith(f"{job_type}:") for c in self.capabilities)
+        served_by = self._serving_action(job_type)
+        return served_by in self.capabilities or any(c.startswith(f"{served_by}:") for c in self.capabilities)
+
+    @staticmethod
+    def _serving_action(job_type: str) -> str:
+        """The action name whose capability family serves this job type.
+
+        `stems-upgrade` is a separation action served by the same `stems`/`stems:*` engine tokens as
+        a plain `stems` job, so it resolves to `stems`. Every other action serves itself. Keyed off
+        the `Action` vocabulary's own `is_separation` rather than a second hand-maintained table, so
+        a new separation action is covered here without a further edit.
+        """
+        try:
+            action = Action(job_type)
+        except ValueError:
+            return job_type
+        return Action.STEMS.value if action.is_separation else job_type
 
     def can_accept(self, job_type: str) -> tuple[bool, str]:
         """(ok, reason) — reject if the worker lacks the capability or has no free slot."""
