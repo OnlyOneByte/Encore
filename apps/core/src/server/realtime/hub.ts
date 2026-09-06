@@ -140,8 +140,26 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// deliberately BROADER than the crash (it also rejects the silently-persisting cases), which is
 			// right. Same seam as the singerId crash above and the telemetry positionSec one. Reject here so
 			// nothing bad — whether it would crash the flush or slip past it — is ever applied or persisted.
+			//
+			// #324: enum-MEMBERSHIP is too broad for a CLIENT-MINTED status. 'playing'/'waiting'/'done'/
+			// 'skipped' are all in VALID_ENTRY_STATUSES but are SERVER-OWNED lifecycle values — beginSinging
+			// mints 'playing', advance mints 'done', both via applyQueueOp DIRECTLY, never this wire seam. The
+			// ONLY add producer in the repo (lib/stores/queue.ts addSong) hardcodes status:'queued'. So a
+			// client's legal set is exactly {'queued'}, and admitting the whole enum re-opened #195's
+			// consequence (a) through the `add` op: a forged 'playing' entry that is never playable (playback
+			// still points at the real entry), never terminal, not removable by its own owner leaving
+			// (removableOnLeave filters status !== 'playing'), and durable across restarts. Narrow to the one
+			// value a real client mints — behaviour-preserving for every real client, the same argument #195's
+			// fix used for the server-owned `status` op. (This also subsumes the off-enum reject above: any
+			// non-'queued' string, in the enum or not, is refused.)
 			if (!Number.isFinite(op.entry.addedAt)) return 'invalid addedAt';
-			if (!VALID_ENTRY_STATUSES.includes(op.entry.status)) return `invalid status: ${String(op.entry.status)}`;
+			if (op.entry.status !== 'queued') {
+				// Distinguish the two rejects for the operator log: a string not even in the column vs a
+				// real-but-server-owned lifecycle value. VALID_ENTRY_STATUSES is the column's own list, so
+				// this classification can never drift from the column it reads.
+				const known = VALID_ENTRY_STATUSES.includes(op.entry.status);
+				return `invalid status: ${String(op.entry.status)} (${known ? 'server-owned' : 'off-enum'}; a client may only add a queued entry)`;
+			}
 			return null;
 		case 'remove': {
 			const removeTarget = deps.state.entries.find((e) => e.id === op.id);
