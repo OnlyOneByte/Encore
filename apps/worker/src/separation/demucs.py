@@ -24,6 +24,8 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable
 from typing import cast
 
+from ..retry_policy import BoundaryError, permanent_by_message
+
 DEFAULT_MODEL = "htdemucs"
 
 # The demucs-family checkpoints this engine will run. Mirrors the `demucs` engine's model
@@ -42,7 +44,12 @@ def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
     if requested is None or requested == "":
         return default
     if requested not in DEMUCS_MODELS:
-        raise ValueError(f"unknown demucs model {requested!r}; expected one of {DEMUCS_MODELS}")
+        # BoundaryError subclasses ValueError (drop-in for existing pytest.raises(ValueError)) but
+        # carries the shared structured `retryable = False`, so an unknown model fails fast via
+        # retry_policy instead of spending three attempts rediscovering the same bad token (#497).
+        raise BoundaryError(
+            f"unknown demucs model {requested!r}; expected one of {DEMUCS_MODELS}"
+        )
     return cast(str, requested)
 
 
@@ -217,25 +224,17 @@ def parse_demucs_progress(line: str) -> int | None:
     return int(m.group(1)) if m else None
 
 
-# Markers that mean a retry will NEVER succeed (source gone / unusable) → non-retryable.
-_PERMANENT_MARKERS = (
-    "video unavailable",
-    "private video",
-    "members-only",
-    "removed",
-    "404",
-    "not found",
-    "no such file",
-    "unsupported url",
-    "is not a valid url",
-    "copyright",
-)
-
-
 def classify_retryable(stderr_text: str) -> bool:
-    """True if the failure is worth retrying (transient); False for permanent source/format errors."""
-    low = stderr_text.lower()
-    return not any(m in low for m in _PERMANENT_MARKERS)
+    """True if the failure is worth retrying (transient); False for permanent source/format errors.
+
+    The permanent-marker table is NOT owned here: it is `retry_policy.PERMANENT_MARKERS`, the one
+    canonical union (issue #443 Part 2/3). demucs raises `ProcessError` for EVERY CLI it runs —
+    yt-dlp, ffmpeg, and bs-roformer-infer — so a deterministic separator/encoder failure whose stderr
+    hits a canonical marker (`"unsupported"`, `"corrupt"`) is now classified non-retryable here too,
+    exactly as `dial_home` classifies it, instead of being retried to maxAttempts off a
+    download-only list that had drifted from `dial_home`'s copy.
+    """
+    return not permanent_by_message(stderr_text)
 
 
 class ProcessError(RuntimeError):
