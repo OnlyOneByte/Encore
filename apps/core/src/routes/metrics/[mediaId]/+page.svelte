@@ -10,7 +10,7 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import { dur, stepLabel, stageLabel } from '$lib/metrics-format';
+	import { dur, stepLabel, stageLabel, localStamp } from '$lib/metrics-format';
 
 	interface AuditAttempt {
 		id: string;
@@ -63,7 +63,9 @@
 
 	// dur() moved to $lib/metrics-format — it had drifted from /metrics's copy, so a new job type
 	// taught to one page silently showed its raw DB name on the other.
-	const stamp = (ms: number) => new Date(ms).toISOString().replace('T', ' ').slice(0, 19);
+	// localStamp renders each instant in the VIEWER'S local zone (#141): the old toISOString() form
+	// printed UTC with the Z sliced off, dating an evening US run to the next day.
+	const stamp = (ms: number) => localStamp(ms);
 	/** Only the model fields this step actually carries — a null is "not applicable", not "unknown". */
 	const usedModels = (m: Record<string, string | null>) => Object.entries(m).filter(([, v]) => v);
 

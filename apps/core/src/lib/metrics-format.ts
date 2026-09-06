@@ -55,3 +55,33 @@ export const STAGE_LABELS: Record<string, string> = {
 	aligning: 'timing lyrics'
 };
 export const stageLabel = (stage: string): string => STAGE_LABELS[stage] ?? stage;
+
+/**
+ * A wall-clock timestamp in the viewer's LOCAL zone, as `YYYY-MM-DD HH:MM:SS`.
+ *
+ * The audit log is a timeline read to reconstruct how a song came to be, so the times must match
+ * the operator's own clock. The previous `new Date(ms).toISOString()...` printed UTC with the `Z`
+ * sliced off, so west of Greenwich the time was wrong and — for a US evening party (this project's
+ * own zone is CDT, UTC−5) — anything after 19:00 rolled the printed DATE to the next day (#141).
+ *
+ * Built from `Intl.DateTimeFormat` parts rather than `toLocaleString` so the layout is fixed
+ * (sortable `YYYY-MM-DD HH:MM:SS`, 24h, zero-padded) regardless of the host locale, while the
+ * `timeZone` still resolves to the viewer's own zone by default. The optional `timeZone` argument
+ * exists so this is deterministically testable against a pinned instant in a known zone.
+ */
+export function localStamp(ms: number, timeZone?: string): string {
+	const parts = new Intl.DateTimeFormat('en-US', {
+		year: 'numeric',
+		month: '2-digit',
+		day: '2-digit',
+		hour: '2-digit',
+		minute: '2-digit',
+		second: '2-digit',
+		hour12: false,
+		...(timeZone ? { timeZone } : {})
+	}).formatToParts(new Date(ms));
+	const g = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+	// hour '24' is Intl's midnight rendering under hour12:false; normalise it to '00'.
+	const hour = g('hour') === '24' ? '00' : g('hour');
+	return `${g('year')}-${g('month')}-${g('day')} ${hour}:${g('minute')}:${g('second')}`;
+}
