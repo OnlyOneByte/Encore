@@ -226,7 +226,16 @@
 	</div>
 
 	<div class="meta">
-		<div class="t">{title}{#if readiness === 'cooking'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}</div>
+		<!--
+			The title and the cooking mark share a flex line so the mark is a SIBLING of .t, not a child of it.
+			.t clamps to two lines with overflow:hidden; a mark rendered INSIDE that box is laid out on the
+			discarded third line and never paints on a phone (issue #194). As a flex:0 0 auto sibling it always
+			paints and no longer competes with the title for the last line's characters.
+		-->
+		<div class="title-line">
+			<span class="t">{title}</span>
+			{#if readiness === 'cooking'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
+		</div>
 		{#if byline}<div class="byline">{byline}</div>{/if}
 		{#if kindLabel || stateChip || views || durationNote || showKey}
 			<div class="chips">
@@ -337,21 +346,25 @@
 
 	.meta { min-width: 0; flex: 1; }
 	/*
-	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)" — and even two
-	 * lines only fits the marker because the action button shrank to an icon. Measured at 390px: the
-	 * text column is ~226px, about 35 characters a line.
+	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)". The title text
+	 * shares .title-line with the cooking mark; flex:1 + min-width:0 let .t take the line and shrink,
+	 * and the two-line clamp now bounds ONLY the title text, so the mark beside it is never pushed onto
+	 * the discarded third line (issue #194).
 	 */
+	.title-line { display: flex; align-items: flex-start; }
 	.t {
+		flex: 1; min-width: 0;
 		font-weight: 600; font-size: 0.9rem; line-height: 1.28;
 		display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 	}
 	/*
-	 * The cooking marker, inline with the title. The margin is load-bearing: the emoji this replaced was
-	 * written as `<span class="sparkle"> ✨</span>` with the separating space INSIDE the span, so swapping
-	 * in a mark left the glyph welded to the last letter — "Sweet Caroline✨". A space in the markup would
-	 * be collapsed away by the flex layout, so the gap has to be a margin.
+	 * The cooking marker, a flex:0 0 auto SIBLING of .t on .title-line — so it always paints and never
+	 * competes with the title for the last line's characters (issue #194). The margin is still
+	 * load-bearing: it separates the mark from the clamped title box, and a space in the markup would be
+	 * collapsed away by the flex layout, so the gap has to be a margin. margin-top nudges the mark down to
+	 * sit on the first title line rather than at the flex row's top edge.
 	 */
-	.sparkle { color: var(--warn); display: inline-grid; place-items: center; vertical-align: -2px; margin-left: 5px; }
+	.sparkle { flex: 0 0 auto; color: var(--warn); display: inline-grid; place-items: center; margin-left: 5px; margin-top: 2px; }
 
 	/* The uploader / canonical artist, alone on its line so it is never truncated by prose beside it. */
 	.byline {
