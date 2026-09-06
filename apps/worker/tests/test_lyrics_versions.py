@@ -276,6 +276,37 @@ def test_the_best_candidate_ACROSS_sources_wins_not_merely_within_one():
     assert sel.publish[0].variant == "caps-feat"
 
 
+def test_an_UNJUDGED_candidate_never_displaces_a_graded_one_ACROSS_sources():
+    """The single line the whole two-tier design funnels into: baselines grade candidates, and this
+    comparison turns those grades into published text. A candidate the baselines COULD NOT judge at all
+    (its own text below MIN_TOKENS_TO_COMPARE, so `composite_score` returns None) must never outrank a
+    candidate measured at real agreement — regardless of which source was acquired first. If it did, the
+    room gets unverified words while correct ones were in hand, and the `winner_suspect` safety net can
+    never fire because a None score reads as neither trustworthy nor suspect."""
+    graded = text(SOURCE_LRCLIB, FEAT_TEXT, "lrclib-full")          # 31 distinct tokens -> judged ~0.94
+    stub = text(SOURCE_CAPTIONS, "la la la", "captions-stub")       # 1 distinct token  -> UNJUDGEABLE
+
+    # Both acquisition orders must publish the GRADED candidate with its REAL score, never the stub.
+    for pool, order in (([graded, stub], "graded-first"), ([stub, graded], "stub-first")):
+        sel = select_by_baselines([*pool, base(ASR_OF_FEAT)])
+        assert sel.publish[0].variant == "lrclib-full", f"unjudged candidate displaced the winner ({order})"
+        assert sel.winner_score is not None, f"winner lost its real score to an unjudged candidate ({order})"
+
+
+def test_between_two_UNJUDGEABLE_candidates_the_first_acquired_stands():
+    """When neither candidate can be graded, 'cannot tell' is not 'they differ' — the earlier (better
+    metadata match) must stand rather than the later one displacing it arbitrarily. This pins the strict
+    `>` in the cross-source comparison: a `>=` would silently let registry acquisition ORDER hand the win
+    to whichever ungradeable candidate came last."""
+    first = text(SOURCE_LRCLIB, "mmm ooh yeah", "first-acquired")   # both under MIN_TOKENS_TO_COMPARE,
+    second = text(SOURCE_CAPTIONS, "na na hey", "second-acquired")  # so neither can be judged
+
+    sel = select_by_baselines([first, second, base(ASR_OF_FEAT)])
+
+    assert sel.publish[0].variant == "first-acquired"
+    assert sel.winner_score is None  # nothing could judge either — must not read as a real score
+
+
 def test_the_report_names_the_loser_and_its_score_for_the_log():
     """A decision nobody can read is a decision nobody can debug — the operator needs to see which
     version lost, by how much, and on how many votes."""
