@@ -73,7 +73,7 @@ describe('lobbyRoster', () => {
 
 	it('lists singers who are here, in arrival order, with their colors', () => {
 		const { shown, overflow } = lobbyRoster(['a', 'm', 'd'], [], dir);
-		expect(shown.map((s) => s.displayName)).toEqual(['Angelo', 'Maya', 'Devon']);
+		expect(shown.map((s) => s.displayName)).toStrictEqual(['Angelo', 'Maya', 'Devon']);
 		expect(shown[0].color).toBe('#7c5cff');
 		expect(shown.every((s) => s.state === 'here')).toBe(true);
 		expect(overflow).toBe(0);
@@ -90,13 +90,13 @@ describe('lobbyRoster', () => {
 
 	it('puts here before away, so the cap sheds the unreachable first', () => {
 		const { shown, overflow } = lobbyRoster(['d'], ['a', 'm'], dir, 2);
-		expect(shown.map((s) => s.displayName)).toEqual(['Devon', 'Angelo']);
+		expect(shown.map((s) => s.displayName)).toStrictEqual(['Devon', 'Angelo']);
 		expect(overflow).toBe(1); // Maya, who could not have taken a turn anyway
 	});
 
 	it('shows only who is in the room — a gone singer in the directory is not listed', () => {
 		const { shown } = lobbyRoster(['m'], [], dir);
-		expect(shown.map((s) => s.displayName)).toEqual(['Maya']);
+		expect(shown.map((s) => s.displayName)).toStrictEqual(['Maya']);
 	});
 
 	it('caps the chips and reports the overflow so a 20-person party cannot flood the screen', () => {
@@ -109,7 +109,7 @@ describe('lobbyRoster', () => {
 	it('skips an id we have no name for yet rather than rendering a nameless chip', () => {
 		// membership can arrive before the queue:sync singer directory does
 		const { shown, overflow } = lobbyRoster(['a', 'unknown-id'], ['also-unknown'], dir);
-		expect(shown.map((s) => s.displayName)).toEqual(['Angelo']);
+		expect(shown.map((s) => s.displayName)).toStrictEqual(['Angelo']);
 		expect(overflow).toBe(0);
 	});
 });
