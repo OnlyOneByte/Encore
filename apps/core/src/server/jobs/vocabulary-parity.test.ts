@@ -20,6 +20,7 @@ import { join } from 'node:path';
 import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/shared';
 import type { JobType } from '@encore/shared';
 import { requiredCapability } from './dispatch';
+import { DEFAULT_LEASE_CONFIG } from './leases';
 
 const WORKER_SRC = join(import.meta.dir, '../../../../worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
@@ -325,5 +326,41 @@ describe('roformer token ↔ checkpoint identity', () => {
 		expect(pyRoformerModels()['bs-roformer-1297']).toBe(
 			'roformer-model-bs-roformer-sw-by-jarredou'
 		);
+	});
+});
+
+
+/**
+ * The WORKER'S ML KEEPALIVE and the CORE'S PROGRESS LEASE are a cross-service invariant that nothing
+ * pinned. `run_blocking` (runtime/runner.py) is the ONLY thing emitting `job:progress` during an
+ * in-process whisper/wav2vec2 pass: `asyncio.wait({task}, timeout=LEASE_KEEPALIVE_SEC)` wakes every
+ * `LEASE_KEEPALIVE_SEC` seconds to yield a progress tick. Core's reaper (leases.ts) requeues a running
+ * job whose last progress is older than `progressLeaseMs`, so if the keepalive interval ever creeps
+ * above that lease a HEALTHY cook goes silent past the deadline and the reaper kills it — reason
+ * `progress-lease-expired`, then at `maxAttempts` a false `worker died` failure, each retry a full ASR
+ * pass. Production is correct today (10s < 30s), so this is an UNGUARDED invariant, not a live defect:
+ * raising the constant to any value ≥ 30 ships with the whole worker suite green, because the two tests
+ * that read as its coverage (test_align_plan.py, test_runtime.py) each `monkeypatch` the constant to
+ * 0.02 and so pin nothing about its real value.
+ *
+ * Guard it the same way the parity checks above do — by reading the Python SOURCE as text, so a drift
+ * reds this `bun test` check with no Python interpreter. Assert a MARGIN, not merely `<`: one missed
+ * keepalive must not expire the lease, so the interval must sit comfortably under it (the constant's own
+ * comment says "comfortably under"). Half the lease is that margin.
+ */
+describe('worker ML keepalive stays under the core progress lease', () => {
+	const runnerPy = readFileSync(join(WORKER_SRC, 'runtime/runner.py'), 'utf8');
+
+	test('LEASE_KEEPALIVE_SEC is defined and read as a number', () => {
+		const m = /^LEASE_KEEPALIVE_SEC = ([\d.]+)/m.exec(runnerPy);
+		expect(m).not.toBeNull();
+		expect(Number.isFinite(Number(m![1]))).toBe(true);
+	});
+
+	test('the keepalive interval sits comfortably under the core progress lease', () => {
+		const m = /^LEASE_KEEPALIVE_SEC = ([\d.]+)/m.exec(runnerPy);
+		const keepaliveMs = Number(m![1]) * 1000;
+		// A margin, not `<`: one dropped keepalive must not already breach the lease.
+		expect(keepaliveMs).toBeLessThan(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
 	});
 });
