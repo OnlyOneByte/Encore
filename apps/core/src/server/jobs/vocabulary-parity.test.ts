@@ -21,6 +21,13 @@ import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/sha
 import type { JobType } from '@encore/shared';
 import { requiredCapability } from './dispatch';
 import { DEFAULT_LEASE_CONFIG } from './leases';
+import {
+	INSTRUMENTAL_EXT,
+	VOCALS_EXT,
+	audioKey,
+	instrumentalKey,
+	vocalsKey
+} from '../media/paths';
 
 const WORKER_SRC = join(import.meta.dir, '../../../../worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
@@ -415,5 +422,138 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 		// `<=` because exactly-half is the intended value the fix ships (advertising the full lease is
 		// what reds — 30000 is not <= 15000).
 		expect(advertisedMs).toBeLessThanOrEqual(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
+	});
+});
+
+
+/**
+ * The STEM EXTENSION / KEY MIRROR is the last cross-language contract in the media layer guarded only
+ * by prose (#440). Both sides declare it MUST agree byte-for-byte:
+ *
+ *  - core `apps/core/src/server/media/paths.ts` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the key
+ *    builders `audioKey` / `instrumentalKey` / `vocalsKey` (what goes in the DB and on the wire).
+ *  - worker `apps/worker/src/processor.py` — `INSTRUMENTAL_EXT`, `VOCALS_EXT`, and the path builders
+ *    `instrumental_path` / `vocals_path` / `source_audio_path` (what the worker writes to disk).
+ *
+ * The TV resolves `/media/<ref>`, so a mismatch is SILENT: the file exists, the player 404s. And the
+ * drift is not merely a 404 — change `VOCALS_EXT` in `processor.py` alone and `retention.ts` /
+ * `vocals-backfill.ts` build a key for a file that no longer exists, so eviction silently skips the
+ * real vocals stem (disk never reclaimed) and backfill no-ops. Nothing crossed this seam: no worker
+ * test opens `paths.ts`, `layout.test.ts` asserts the TS literals against themselves, and the
+ * artifact-envelope block above covers key NESTING only, never a path STRING.
+ *
+ * Guard it the same way the parity checks above do — read `processor.py` as TEXT (no Python
+ * interpreter) and compare the extracted constants and path shapes against the IMPORTED core
+ * constants and the REAL core key builders, so a drift on EITHER side reds this `bun test` check.
+ */
+describe('stem path/extension parity (worker processor.py vs core paths.ts)', () => {
+	const PROCESSOR_REL = 'processor.py';
+	const processorPath = join(WORKER_SRC, PROCESSOR_REL);
+	const processorPy = readFileSync(processorPath, 'utf8');
+
+	// A fixed sample id, run through the real core key builders, is the byte-for-byte reference the
+	// worker path must reproduce. Using the builders (not a re-typed literal) makes this a genuine
+	// cross-seam check: if the core builder shape changes, the reference moves with it.
+	const ID = 'sample-media-id';
+
+	/** A `NAME = "value"` module-level string constant in processor.py, by name. Throws if absent. */
+	function pyStrConst(name: string): string {
+		const m = new RegExp(`^${name}\\s*=\\s*"([^"]+)"`, 'm').exec(processorPy);
+		if (!m) throw new Error(`${name} not found as a module-level string in ${PROCESSOR_REL}`);
+		return m[1]!;
+	}
+
+	/**
+	 * The relative ref a `*_path` builder produces for ID, reconstructed from the `os.path.join(...)`
+	 * call in its body — read as TEXT, never executed. `media_dir` is the volume root the caller
+	 * supplies (it is NOT part of the ref that goes on the wire), so it is dropped; every other
+	 * segment is a string literal or an f-string over `media_id` / an EXT constant, which we expand
+	 * with the values we already extracted. A shape change (a renamed segment, a dropped `derived/`,
+	 * a hard-coded extension) changes the reconstructed ref and reds the comparison below.
+	 */
+	function pyPathRef(fnName: string, subs: Record<string, string>): string {
+		const fn = new RegExp(`def ${fnName}\\([^)]*\\)[^:]*:([\\s\\S]*?)\\n(?:def |[A-Za-z@#])`, 'm').exec(
+			processorPy + '\ndef '
+		);
+		if (!fn) throw new Error(`def ${fnName} not found in ${PROCESSOR_REL}`);
+		// Grab the WHOLE return line, then peel the outer os.path.join(...) by taking everything
+		// between its first `(` and the LAST `)` on that line — a non-greedy match stops at the inner
+		// `)` of a call like `ext.lstrip('.')` and truncates the arg list.
+		const retLine = /return\s+os\.path\.join\(([\s\S]*)\)\s*$/m.exec(fn[1]!);
+		if (!retLine) throw new Error(`${fnName} does not end in os.path.join(...) — shape changed?`);
+		const joinCall = retLine;
+		// Split the join args at top-level commas; the first is media_dir (the volume root, not part
+		// of the wire ref) so it is dropped.
+		const args = joinCall[1]!
+			.split(',')
+			.map((a) => a.trim())
+			.filter((a) => a.length > 0);
+		if (args[0] !== 'media_dir') throw new Error(`${fnName} does not join under media_dir first`);
+		const segs = args.slice(1).map((a) => {
+			// A bare string segment: "derived", "stems", "audio".
+			const lit = /^"([^"]*)"$/.exec(a);
+			if (lit) return lit[1]!;
+			// An f-string filename: f"{media_id}-instrumental.{INSTRUMENTAL_EXT}" etc. Expand the two
+			// interpolation forms we know: {media_id}[.lstrip(...)] and {<EXT const>}. Anything else is
+			// an unrecognised shape and must fail loudly rather than pass a half-parsed ref.
+			const fstr = /^f"([^"]*)"$/.exec(a);
+			if (!fstr) throw new Error(`${fnName}: unrecognised join segment ${a}`);
+			return fstr[1]!.replace(/\{([^}]+)\}/g, (_all, expr: string) => {
+				const key = expr.split('.')[0]!.trim(); // media_id, media_id.lstrip('.'), INSTRUMENTAL_EXT…
+				if (key === 'media_id') return subs.media_id!;
+				if (key === 'ext') return subs.ext ?? '';
+				if (key in subs) return subs[key]!;
+				throw new Error(`${fnName}: cannot expand {${expr}} — unknown interpolation`);
+			});
+		});
+		return segs.join('/');
+	}
+
+	test('processor.py is where the parity read expects it', () => {
+		expect(
+			existsSync(processorPath),
+			`${PROCESSOR_REL} not found under ${WORKER_SRC} — did the module move?`
+		).toBe(true);
+	});
+
+	test('INSTRUMENTAL_EXT / VOCALS_EXT agree across the seam', () => {
+		expect(pyStrConst('INSTRUMENTAL_EXT')).toBe(INSTRUMENTAL_EXT);
+		expect(pyStrConst('VOCALS_EXT')).toBe(VOCALS_EXT);
+	});
+
+	test('the instrumental stem key agrees byte-for-byte', () => {
+		const worker = pyPathRef('instrumental_path', {
+			media_id: ID,
+			INSTRUMENTAL_EXT: pyStrConst('INSTRUMENTAL_EXT')
+		});
+		expect(worker).toBe(instrumentalKey(ID));
+	});
+
+	test('the vocals stem key agrees byte-for-byte', () => {
+		const worker = pyPathRef('vocals_path', {
+			media_id: ID,
+			VOCALS_EXT: pyStrConst('VOCALS_EXT')
+		});
+		expect(worker).toBe(vocalsKey(ID));
+	});
+
+	test('the raw source-audio key agrees byte-for-byte', () => {
+		// source_audio_path interpolates media_id and a default ext="wav"; audioKey defaults the same.
+		const worker = pyPathRef('source_audio_path', { media_id: ID, ext: 'wav' });
+		expect(worker).toBe(audioKey(ID, 'wav'));
+	});
+
+	test('non-vacuity: the extracted keys are non-empty, stem-shaped derived refs', () => {
+		// A silent empty parse (renamed fn, changed join shape) would let a comparison pass vacuously.
+		// Pin the concrete shape so the guard cannot degrade into asserting '' === ''.
+		const ins = pyPathRef('instrumental_path', {
+			media_id: ID,
+			INSTRUMENTAL_EXT: pyStrConst('INSTRUMENTAL_EXT')
+		});
+		const voc = pyPathRef('vocals_path', { media_id: ID, VOCALS_EXT: pyStrConst('VOCALS_EXT') });
+		expect(ins).toMatch(/^derived\/stems\/.+-instrumental\..+$/);
+		expect(voc).toMatch(/^derived\/stems\/.+-vocals\..+$/);
+		expect(pyStrConst('INSTRUMENTAL_EXT').length).toBeGreaterThan(0);
+		expect(pyStrConst('VOCALS_EXT').length).toBeGreaterThan(0);
 	});
 });
