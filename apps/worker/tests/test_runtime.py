@@ -379,12 +379,42 @@ async def test_a_step_appending_a_note_without_declaring_out_is_fine(tmp_path, m
     await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
 
 
-def test_an_unknown_action_has_no_plan_and_says_which(tmp_path):
+def test_an_unknown_wire_action_is_rejected_by_parse_action(tmp_path):
+    """An unrecognised wire job_type fails in `parse_action`, BEFORE plan lookup.
+
+    Named for the branch it actually reaches. `parse_action` raises `ValueError` naming the
+    offending value; `plan_for`'s `plan is None` guard is never reached on this path (a real plan is
+    never looked up), which is exactly why the no-plan branch needs its own sibling test below.
+    """
     from src.runtime.plan import plan_for
 
-    with pytest.raises(Exception) as exc:
+    with pytest.raises(ValueError, match="unknown action") as exc:
         plan_for(job(tmp_path, job_type="not-an-action"), None)  # type: ignore[arg-type]
+    # It is `parse_action` that raised, not the no-plan guard: the message names the value and does
+    # NOT carry the no-plan phrasing.
     assert "not-an-action" in str(exc.value)
+    assert "no plan for action" not in str(exc.value)
+
+
+def test_a_valid_action_with_no_registered_plan_raises_plan_error(tmp_path, monkeypatch):
+    """`plan_for`'s `if plan is None` guard (plan.py) fired directly.
+
+    This is the branch `test_an_unknown_wire_action_is_rejected_by_parse_action` names in spirit but
+    never reaches: a VALID action (so `parse_action` succeeds) for which `PLANS` holds no plan — the
+    "a PlanRunner was built in a process that never registered plans" hazard. Emptying `PLANS` drives
+    a valid `align` job past `parse_action` into the guard, which must raise `PlanError`. A permissive
+    regression there (returning an empty plan) would let the job complete as a zero-step success; this
+    test reds if that guard is loosened.
+    """
+    from src.runtime import plan as plan_mod
+    from src.runtime.plan import PlanError, plan_for
+
+    monkeypatch.setattr(plan_mod, "PLANS", {})
+    with pytest.raises(PlanError, match="no plan for action") as exc:
+        plan_for(job(tmp_path, job_type="align"), None)  # type: ignore[arg-type]
+    # `align` is a real Action, so parse_action did NOT raise — the message proves the no-plan guard
+    # is what fired, and it carries the valid action name.
+    assert "align" in str(exc.value)
 
 
 # ── run_blocking: cancellation must not abandon the in-flight thread ──────────────
