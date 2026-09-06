@@ -92,9 +92,12 @@ STEM_BITRATE = "192k"
 def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", level: int = 8) -> list[str]:
     """ffmpeg argv: encode a separated stem to LOSSLESS FLAC, 16-bit stereo at the source rate.
 
-    Used for the INSTRUMENTAL only -- the file that plays at volume as the master, so it stays
-    lossless. FLAC in a browser is a narrower surface than AAC-in-m4a, but the instrumental plays
-    through an <audio> element (not <video>), where WebKit documents FLAC support -- the core settled
+    Used for BOTH stems (#480). The instrumental plays at volume as the master, so it stays lossless;
+    the vocals guiding track uses the SAME encoder so the two stems share one codec and one container
+    and decode to a sample-exact common start (removing the ~21 ms AAC-in-m4a priming-sample START
+    offset the guide used to carry and the player used to trim out at startup). FLAC in a browser is a
+    narrower surface than AAC-in-m4a, but both stems play through an <audio> element (not <video>),
+    where WebKit documents FLAC support -- the core settled
     that decision at apps/core/src/lib/tv/TvPlayer.svelte:5-13. 16-bit is transparent here: the signal
     originated as a lossy 48 kHz stream, so extra bit depth would only store quantisation noise.
     compression_level 8 is the size/CPU sweet spot and is decode-cheap, which matters for a browser
