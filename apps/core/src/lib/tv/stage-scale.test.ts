@@ -303,15 +303,24 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
 	// is exactly the vacuous pass the codebase's comment-lies defect produces.
 	const raw = readFileSync(join(SRC, 'lib', 'tv', 'TvPlayer.svelte'), 'utf8');
 	const player = stripComments(raw).replace(/\/\/[^\n]*/g, '');
-	// The teardown effect is the one that detaches both graphs AND reads the media id; the destroy-only
-	// effect also detaches, so pick by the id read rather than by position.
+	// The per-song reset effect reads the media id and early-returns on the unchanged VALUE; the
+	// destroy-only effect detaches but reads no id. Pick by the id read, NOT by a detach() call --
+	// #477 removed the master detach from this effect, so keying on detach() would find nothing.
 	const bodies = [...player.matchAll(/\$effect\(\(\)\s*=>\s*\{([\s\S]*?)\n\t\}\);/g)].map((m) => m[1]);
-	const teardown = bodies.find((b) => b.includes('masterGraph?.detach()') && /media\?\.id/.test(b)) ?? '';
+	const teardown = bodies.find((b) => /media\?\.id/.test(b) && /resetForId/.test(b)) ?? '';
 	expect(teardown).not.toBe('');
 	// It must READ the id as an executable statement, so the effect re-runs per song.
 	expect(/media\?\.id/.test(teardown)).toBe(true);
 	// And it must EARLY-RETURN when the id is unchanged, so a new object for the same song is a no-op.
 	expect(/if\s*\(\s*id\s*===\s*resetForId\s*\)\s*return;/.test(teardown)).toBe(true);
+	// #477: the persistent master <audio> lives as long as the SLOT, so its graph must NOT be
+	// detached on a song change (detach() cannot restore the native path -- the element is a
+	// permanent capture -- leaving it feeding a disconnected node = silent instrumental). The reset
+	// resets it to ratio 1 via setShift(0) instead; the guide graph IS still detached (its element is
+	// remounted per song). Stronger lifecycle assertions live in pitch-shift-graph-lifetime.test.ts.
+	expect(/masterGraph\?\.setShift\(\s*0\s*\)/.test(teardown)).toBe(true);
+	expect(/masterGraph\?\.detach\(/.test(teardown)).toBe(false);
+	expect(/guideGraph\?\.detach\(/.test(teardown)).toBe(true);
 });
 
 /*
