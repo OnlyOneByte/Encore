@@ -95,25 +95,72 @@ function switchArm(src: string, op: string): string {
 	return after.slice(0, next);
 }
 
-// The ownership short-circuit: an inequality between the target entry's singerId and the actor's.
-const ownershipGuard = (v: string) =>
-	new RegExp(`${v}\\.singerId\\s*!==\\s*deps\\.actorSingerId`);
+// The ownership short-circuit that must GATE can(): can() is reachable ONLY for a NON-owner entry.
+// Two behaviour-identical spellings both satisfy this and both must pass:
+//   (i)  ENCLOSING form  — `if (<var>.singerId !== deps.actorSingerId) { ... can(...) ... }` — can()
+//        lives INSIDE the "not my entry" block, so an owner never reaches it.
+//   (ii) EARLY-RETURN form — `if (<var>.singerId === deps.actorSingerId) return null;` before the gate
+//        — an owner short-circuits out, so can() is likewise unreachable for an owner.
+// #372: the previous assertion only required an ownership *substring* to appear EARLIER in the arm
+// text than the can() substring. Text order is not enclosure: hoisting the comparison into a `const`
+// used for an audit log (owner still falls through to can()) keeps "before" true while breaking the
+// property, and rewriting the guard to the (ii) early-return form (which STRENGTHENS the property)
+// reds the ordering check. Assert ENCLOSURE instead, so the (a) un-nesting reds and (b) the refactor
+// passes.
+
+// Find the char index at which the block opened by the ownership `if (...) {` on `openRe` closes,
+// by brace-matching from the `{` that follows the match. Returns [openIdx, closeIdx) or null.
+function enclosingOwnershipBlock(arm: string, actorVar: string): [number, number] | null {
+	// `if (<var>.singerId !== deps.actorSingerId) {`  (ENCLOSING form only — the `{` is required)
+	const openRe = new RegExp(
+		`if\\s*\\(\\s*${actorVar}\\.singerId\\s*!==\\s*deps\\.actorSingerId\\s*\\)\\s*\\{`
+	);
+	const m = openRe.exec(arm);
+	if (!m) return null;
+	// The matched text ends with the opening brace; brace-match from there.
+	let depth = 0;
+	for (let i = m.index + m[0].length - 1; i < arm.length; i++) {
+		if (arm[i] === '{') depth++;
+		else if (arm[i] === '}') {
+			depth--;
+			if (depth === 0) return [m.index, i + 1];
+		}
+	}
+	return null; // unbalanced — treated as no enclosure
+}
+
+// The (ii) owner early-return: `if (<var>.singerId === deps.actorSingerId) return null;`
+const ownerEarlyReturn = (v: string) =>
+	new RegExp(`if\\s*\\(\\s*${v}\\.singerId\\s*===\\s*deps\\.actorSingerId\\s*\\)\\s*return\\s+null`);
+
+// can() is unreachable for an owner iff EITHER the can() call is enclosed by the "not my entry" block,
+// OR an owner early-return precedes the can() call. `\w+` matches whatever local the arm binds the
+// target entry to (removeTarget / moveTarget).
+function canGatedByOwnership(arm: string, canCall: string): boolean {
+	const canIdx = arm.indexOf(canCall);
+	if (canIdx < 0) return false;
+	// (i) enclosing block that contains the can() call
+	const block = enclosingOwnershipBlock(arm, '\\w+');
+	if (block && canIdx > block[0] && canIdx < block[1]) return true;
+	// (ii) owner early-return before the can() call
+	const er = ownerEarlyReturn('\\w+').exec(arm);
+	if (er && er.index < canIdx) return true;
+	return false;
+}
 
 test("the 'remove' arm reaches can('queue:remove-any') only for a NON-owner entry", () => {
 	const arm = switchArm(hubSrc, 'remove');
-	// ownership comparison present, and it appears BEFORE the can() gate (guards it)
-	const ownerIdx = arm.search(ownershipGuard('\\w+'));
-	const canIdx = arm.indexOf("can({ singerId: deps.actorSingerId }, 'queue:remove-any')");
-	expect(ownerIdx).toBeGreaterThan(-1);
-	expect(canIdx).toBeGreaterThan(-1);
-	expect(ownerIdx).toBeLessThan(canIdx);
+	const canCall = "can({ singerId: deps.actorSingerId }, 'queue:remove-any')";
+	// non-vacuous: the gate must be present at all
+	expect(arm.indexOf(canCall)).toBeGreaterThan(-1);
+	// load-bearing: an owner must never reach can() — the gate is enclosed by (or preceded by an
+	// early-return from) the ownership short-circuit, not merely textually after an ownership mention.
+	expect(canGatedByOwnership(arm, canCall)).toBe(true);
 });
 
 test("the 'move' arm reaches can('queue:reorder-any') only for a NON-owner entry", () => {
 	const arm = switchArm(hubSrc, 'move');
-	const ownerIdx = arm.search(ownershipGuard('\\w+'));
-	const canIdx = arm.indexOf("can({ singerId: deps.actorSingerId }, 'queue:reorder-any')");
-	expect(ownerIdx).toBeGreaterThan(-1);
-	expect(canIdx).toBeGreaterThan(-1);
-	expect(ownerIdx).toBeLessThan(canIdx);
+	const canCall = "can({ singerId: deps.actorSingerId }, 'queue:reorder-any')";
+	expect(arm.indexOf(canCall)).toBeGreaterThan(-1);
+	expect(canGatedByOwnership(arm, canCall)).toBe(true);
 });
