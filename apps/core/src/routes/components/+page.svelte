@@ -376,6 +376,26 @@
 		artistCanonical="Queen" artist="Richie Lyrics" readiness="cooking"
 		thumbnail="https://i.ytimg.com/vi/AlmHSUirAOs/mqdefault.jpg" durationSec={358} viewCount={265947}
 		pct={68} etaSec={70} />
+	<!--
+		THE #80 BUG STATE, made visible. `status="downloading" pct={100}` is the exact instant this
+		issue names: the FETCH step reports 100% while separating/aligning/ready are unstarted. With the
+		live status threaded in, the bar reads OVERALL cook completion (~20% — the top of the downloading
+		band) and the readout says "20%", NOT the solid "100%" the raw per-step number produced before.
+		A row without a status (the fixture above) is unchanged — it still shows the raw pct.
+	-->
+	<SongRow title="Sweet Caroline — Neil Diamond (first step at 100%, cook barely started)"
+		artistCanonical="Neil Diamond" artist="Neil Diamond" readiness="cooking"
+		thumbnail="https://i.ytimg.com/vi/1vhFnTjia_I/mqdefault.jpg" durationSec={201} viewCount={12345678}
+		status="downloading" pct={100} etaSec={90} />
+	<!--
+		#80 ROUNDING check, committed. `status="separating" pct={68}` gives overallCookPct ~67.6 (a
+		band-interpolated FLOAT), so the readout MUST print a rounded "68%", never "67.6%". The bar keeps
+		the unrounded fraction for a smooth transition. This is the fractional case the two band-edge
+		fixtures (downloading pct=100 -> exactly 20; statusless control -> raw 68) could not exercise.
+	-->
+	<SongRow title="Bohemian Rhapsody — Queen (mid-separation, fractional overall pct)"
+		artistCanonical="Queen" artist="Queen" readiness="cooking"
+		status="separating" pct={68} etaSec={70} />
 	<SongRow title="The Killers - Mr. Brightside" artistCanonical="The Killers" artist="TheKillersMusic" readiness="unacquired" onmake={() => {}}
 		thumbnail="https://i.ytimg.com/vi/gGdGFtwCNBE/mqdefault.jpg" durationSec={228} viewCount={648760065} />
 
