@@ -98,8 +98,11 @@ test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND f
 	s.flushNow();
 
 	const reloaded = new AuthoritativeState();
-	const { playback } = hydrate(db);
-	reloaded.hydrate([], playback);
+	// Hydrate with the persisted entries alongside playback, exactly as boot does. currentEntryId
+	// names entries[1], so passing the real entries keeps it resolvable — an EMPTY entries array here
+	// would trip hydrate's dangling-id self-heal (issue #128) and null the very field we round-trip.
+	const { entries: reloadedEntries, playback } = hydrate(db);
+	reloaded.hydrate(reloadedEntries as unknown as QueueEntry[], playback);
 
 	// Assert EVERY field of `target` round-tripped. The key list is derived from `target` (a typed
 	// PlaybackState), not hand-written, so a newly-added field the update arm forgets to carry lands
