@@ -14,12 +14,19 @@
 // construction — re-adding a field nothing reads leaves the whole suite green, so a per-hunk mutation
 // proof reports UNVERIFIED and cannot pin it. server.ts is the Bun.serve entry with no unit harness.
 // The absence of these fields is a decidable property of the sources, so this guard encodes it: the
-// wire frame, the handler type and the forwarder must not resurrect durationSec/bufferedNextPct, and
-// `bufferedNextPct` (the hardcoded-100 field, whose reappearance is the sharpest regression) must not
-// exist ANYWHERE in production. Matches the repo's source-scan-guard precedent
-// (session-cookie-attributes.test.ts + stripComments, #107).
+// wire frame, the handler type, the forwarder AND the client-side PRODUCER must not resurrect
+// durationSec/bufferedNextPct, and `bufferedNextPct` (the hardcoded-100 field, whose reappearance is
+// the sharpest regression) must not exist ANYWHERE in production. #280 caught that the earlier version
+// scanned only events.ts/player.ts/server.ts and NOT the producer apps/core/src/lib/tv/telemetry.ts —
+// the one file the `<audio>.buffered` value is actually available at, and the natural place a
+// developer would re-add the field — so a hardcoded `bufferedNextPct: 100` there left the guard 5/5
+// green. The producer is now scanned directly (its own TelemetryFrame interface + the telemetryFrame()
+// literal), and the repo-wide claim below is made TRUE by walking the whole production tree rather
+// than a hand-picked file list, so a fourth site added later is covered without editing this file.
+// Matches the repo's source-scan-guard precedents (session-cookie-attributes.test.ts + stripComments,
+// #107; the repo walk mirrors task-number-hygiene.test.ts, #55).
 import { test, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Blank out comments before scanning so a mention living in a comment cannot make a "must be gone"
@@ -36,6 +43,11 @@ function stripComments(src: string): string {
 const EVENTS = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', '..', '..', 'packages', 'shared', 'src', 'events.ts'), 'utf8'));
 const PLAYER = stripComments(readFileSync(join(import.meta.dir, 'player.ts'), 'utf8'));
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
+// The client-side producer of the frame (#280). It declares its OWN copy of the wire type
+// (`TelemetryFrame`) and builds the object literal that gets JSON.stringify'd to the server — so the
+// shared union is never applied to the value and typecheck cannot catch a field added to both this
+// interface and this literal. import.meta.dir === apps/core/src/server/realtime; four up is apps/core.
+const PRODUCER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'src', 'lib', 'tv', 'telemetry.ts'), 'utf8'));
 
 // The tv:telemetry ClientEvent variant, isolated so a durationSec/bufferedNextPct on some OTHER event
 // (or the legitimate Media.durationSec) does not falsely trip these checks.
@@ -51,9 +63,28 @@ const TV_TELEMETRY_IFACE = (() => {
 	return m ? m[0] : '';
 })();
 
+// The producer's own TelemetryFrame interface body, isolated the same way (#280) — so an unrelated
+// interface in telemetry.ts (e.g. StampableEntry) cannot falsely trip these checks.
+const PRODUCER_IFACE = (() => {
+	const m = PRODUCER.match(/export interface TelemetryFrame\s*\{[\s\S]*?\n\}/);
+	return m ? m[0] : '';
+})();
+
+// The `return { ... }` object literal telemetryFrame() builds and hands to JSON.stringify (#280).
+// This is the second half of the issue's two-line mutant: the field is added to the interface AND
+// stamped into this literal. Isolated so an unrelated return elsewhere in the file cannot count.
+const PRODUCER_LITERAL = (() => {
+	const m = PRODUCER.match(/return\s*\{[\s\S]*?type:\s*'tv:telemetry'[\s\S]*?\n\t\}/);
+	return m ? m[0] : '';
+})();
+
 test('the tv:telemetry wire frame declaration was found (guard is not vacuous) (#129)', () => {
 	expect(TELEMETRY_VARIANT).not.toBe('');
 	expect(TV_TELEMETRY_IFACE).not.toBe('');
+	// #280: the producer's own interface and its built literal must both be located, or the
+	// producer-scan below would pass vacuously on an empty slice.
+	expect(PRODUCER_IFACE).not.toBe('');
+	expect(PRODUCER_LITERAL).not.toBe('');
 });
 
 test('the tv:telemetry wire frame no longer declares the dead durationSec/bufferedNextPct fields (#129)', () => {
@@ -87,11 +118,52 @@ test('the server.ts forwarder does not copy the dead fields into TvTelemetry, on
 	expect(forwarded).toMatch(/positionSec:\s*evt\.positionSec/);
 });
 
-test('bufferedNextPct — the hardcoded-100 field — exists nowhere in core/shared production (#129)', () => {
-	// The sharpest regression is resurrecting the field a future reader would trust: a hardcoded 100
-	// that always answers "next song fully buffered". Its absence is checked repo-wide (production
-	// sources only; test files legitimately reference it via git history and are not scanned here).
-	for (const src of [EVENTS, PLAYER, SERVER]) {
-		expect(src).not.toMatch(/bufferedNextPct/);
+test('the client-side producer (lib/tv/telemetry.ts) does not carry the dead fields (#280, #129)', () => {
+	// #280: telemetry.ts is where `<audio>.buffered` is available, so it is the natural place a
+	// developer would re-add `bufferedNextPct: 100` — and it was NOT scanned before. The two-line
+	// mutant adds the field to BOTH the interface and the return literal; pin both.
+	expect(PRODUCER_IFACE).not.toMatch(/durationSec/);
+	expect(PRODUCER_IFACE).not.toMatch(/bufferedNextPct/);
+	expect(PRODUCER_LITERAL).not.toMatch(/durationSec/);
+	expect(PRODUCER_LITERAL).not.toMatch(/bufferedNextPct/);
+	// The fields that survive — the producer still stamps these.
+	expect(PRODUCER_IFACE).toMatch(/positionSec/);
+	expect(PRODUCER_LITERAL).toMatch(/positionSec/);
+});
+
+// #280: make the "exists nowhere in production" claim TRUE by walking the whole production tree,
+// mirroring task-number-hygiene.test.ts (#55). The old version scanned three hand-picked files and
+// missed the producer telemetry.ts; a fixed list would miss the NEXT new site too. The walk excludes
+// *.test.ts so this guard's own references (and any other test citing the field from git history)
+// are not scanned. import.meta.dir === apps/core/src/server/realtime; five levels up is the repo root.
+const REPO = join(import.meta.dir, '..', '..', '..', '..', '..');
+const SCANNED_EXT = ['.ts', '.svelte', '.py', '.js'];
+const SKIP_DIRS = new Set(['node_modules', 'build', '.svelte-kit', 'dist', '.git', 'media', '__pycache__']);
+
+function productionFiles(dir: string, out: string[]): string[] {
+	for (const ent of readdirSync(dir, { withFileTypes: true })) {
+		if (ent.isDirectory()) {
+			if (SKIP_DIRS.has(ent.name)) continue;
+			productionFiles(join(dir, ent.name), out);
+		} else if (SCANNED_EXT.some((e) => ent.name.endsWith(e)) && !ent.name.endsWith('.test.ts')) {
+			out.push(join(dir, ent.name));
+		}
 	}
+	return out;
+}
+
+test('bufferedNextPct — the hardcoded-100 field — exists nowhere in production, repo-wide (#280, #129)', () => {
+	// The sharpest regression is resurrecting the field a future reader would trust: a hardcoded 100
+	// that always answers "next song fully buffered". Walk the whole production tree so the test's own
+	// name ("exists nowhere ... repo-wide") is honest — not a claim over three hand-picked files.
+	const files = productionFiles(REPO, []).filter((f) => statSync(f).isFile());
+	// Not vacuous: the walk must actually reach a meaningful slice of the tree.
+	expect(files.length).toBeGreaterThan(50);
+	const offenders: string[] = [];
+	for (const file of files) {
+		if (/bufferedNextPct/.test(stripComments(readFileSync(file, 'utf8')))) {
+			offenders.push(file.replace(REPO + '/', ''));
+		}
+	}
+	expect(offenders).toEqual([]);
 });
