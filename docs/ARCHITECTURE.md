@@ -471,7 +471,9 @@ engine runs through PyTorch on a Linux box and through MLX on Apple Silicon, pro
 A worker advertises a **capability token** per engine it can run, and dispatch routes a job by that
 token, so a heterogeneous fleet works without the core knowing anything about hardware. A
 demucs/torch worker advertises exactly `stems`, which keeps single-capability workers unchanged;
-other combinations extend the token (`stems:roformer`, `stems:mlx`).
+other combinations extend the token per **engine** (`stems:roformer`). The backend the engine
+runs through is deliberately absent from the token — it is a property of the box, not a routing
+choice, per the rule above — so an MLX worker still advertises `stems`, not `stems:mlx`.
 
 Backend selection is probed, never assumed. Auto-selection picks the fastest genuinely available
 option and falls back to torch/CPU, which works everywhere. An **explicitly configured** backend or
@@ -506,8 +508,11 @@ separation, mapped through `whisperx_device_for` because CTranslate2 has only cu
 an Intel or Apple box separates on its accelerator and still aligns on the CPU.
 
 **Capabilities are proven too** (`capabilities.py`). Each token is backed by a probe — `yt-dlp` on PATH
-or importable → `fetch:ytdlp`, demucs → `stems`, the roformer engine → `stems:roformer`, both →
-`stems:ensemble`, whisperx → `align` — and the evidence is logged either way. `ENCORE_WORKER_CAPABILITIES`
+or importable → `fetch:ytdlp`, demucs → `stems`, the roformer engine → `stems:roformer`,
+whisperx → `align` — and the evidence is logged either way. `stems:ensemble` is kept in the
+vocabulary so configuration and routing can name it, but it is **never advertised** until an
+engine backs it (none does yet), mirroring the OPENVINO backend one domain over — a
+both-engines box does not claim it. `ENCORE_WORKER_CAPABILITIES`
 narrows that set and can never extend it: a box claiming work it cannot do is what left songs at 0%
 forever, which is indistinguishable from a hung worker.
 
