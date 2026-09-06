@@ -277,6 +277,33 @@ function sidecarPath(mediaId: string): string {
 }
 
 /**
+ * Is `parsed` structurally a sidecar we can safely project into `Media`? A string `id` alone is not
+ * enough: `mediaFromSidecar` (via `rebuildIndexFromMeta`), the browse-sync pass (`s.canonical.genre`)
+ * and the retention pass (`s.library.lastPlayedAt`) all dereference the SECTION objects directly, so a
+ * partial record — the exact shape a hand edit produces, and hand-editing is the design — throws deep
+ * inside a boot maintenance pass rather than here. Require every section `readSidecar`'s consumers
+ * dereference to be a present object; anything short of that is corruption of the authoritative record
+ * and must go down the warn-and-return-null path with the other malformed cases, not throw later.
+ */
+function isWellFormedSidecar(parsed: unknown): parsed is MediaSidecar {
+	if (!parsed || typeof parsed !== 'object') return false;
+	const s = parsed as Record<string, unknown>;
+	if (typeof s.id !== 'string') return false;
+	const isObject = (v: unknown) => !!v && typeof v === 'object';
+	// The five sections mediaFromSidecar reads, plus `library` which the retention pass reads. `raw`
+	// carries rawTitle (the title projected into Media); `provenance` is dereferenced for the artist
+	// annotation. All are non-optional in MediaSidecar, so a real record always has them.
+	return (
+		isObject(s.origin) &&
+		isObject(s.canonical) &&
+		isObject(s.provenance) &&
+		isObject(s.artifacts) &&
+		isObject(s.library) &&
+		isObject(s.raw)
+	);
+}
+
+/**
  * Read one sidecar, or null if absent/unparseable. Never throws — a corrupt file must not brick boot.
  *
  * Absent and corrupt both return null (a bad file cannot stop the process from booting), but they are
@@ -292,11 +319,13 @@ export async function readSidecar(mediaId: string): Promise<MediaSidecar | null>
 		const file = Bun.file(path);
 		if (!(await file.exists())) return null;
 		existed = true;
-		const parsed = JSON.parse(await file.text()) as MediaSidecar;
-		if (parsed && typeof parsed.id === 'string') return parsed;
-		// The file is there and is valid JSON, but not a sidecar (wrong/empty shape). Still corruption of
-		// the authoritative record — treat it like a parse failure, not like an absent file.
-		console.warn(`[sidecar] authoritative record ${path} exists but failed the shape check (no string id); returning null`);
+		const parsed = JSON.parse(await file.text()) as unknown;
+		if (isWellFormedSidecar(parsed)) return parsed;
+		// The file is there and is valid JSON, but not a WHOLE sidecar (wrong/empty/partial shape — e.g.
+		// a hand edit that kept only `id`). Still corruption of the authoritative record: returning it
+		// would let a boot maintenance pass throw on a missing section and, with no per-pass isolation,
+		// abort every later pass. Treat it like a parse failure, not like an absent file.
+		console.warn(`[sidecar] authoritative record ${path} exists but failed the shape check (not a complete sidecar); returning null`);
 		return null;
 	} catch (err) {
 		if (existed) {

@@ -13,6 +13,8 @@
 // Split pure/IO like the rest of media/: the parser and the verdict are pure and unit-tested, and
 // only the spawn wrapper touches ffmpeg.
 
+import { runCapturing } from './spawn-capture';
+
 /** What `ffmpeg -af volumedetect` reports about a file, in dBFS (both values are ≤ 0). */
 export interface LoudnessReading {
 	meanDb: number;
@@ -56,6 +58,10 @@ export function isDigitalSilence(reading: LoudnessReading | null): boolean {
 
 export type LoudnessProbe = (absPath: string) => Promise<LoudnessReading | null>;
 
+// A loudness probe decodes the whole file, so it is not instant — but a healthy probe finishes in
+// a few seconds even on a long track. 60s is generous headroom that still bounds a hung ffmpeg.
+const PROBE_TIMEOUT_MS = 60_000;
+
 /**
  * ffmpeg-backed probe. Decodes to null output purely to collect volumedetect's summary, so it reads
  * the whole file but writes nothing.
@@ -66,14 +72,15 @@ export type LoudnessProbe = (absPath: string) => Promise<LoudnessReading | null>
 export function ffmpegLoudnessProbe(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg'): LoudnessProbe {
 	return async (absPath) => {
 		try {
-			const proc = Bun.spawn(
-				[ffmpegBin, '-hide_banner', '-nostats', '-i', absPath, '-af', 'volumedetect', '-f', 'null', '-'],
-				{ stdout: 'ignore', stderr: 'pipe' }
-			);
 			// volumedetect prints its summary to stderr at the END of the decode, so the text is only
-			// complete once the process has exited.
-			const [, stderr] = await Promise.all([proc.exited, new Response(proc.stderr).text()]);
-			return parseVolumeDetect(stderr);
+			// complete once the process has exited. Killed after PROBE_TIMEOUT_MS: a hung ffmpeg on the
+			// detached boot vocals-backfill pass would otherwise stall every later maintenance pass forever.
+			const r = await runCapturing(
+				[ffmpegBin, '-hide_banner', '-nostats', '-i', absPath, '-af', 'volumedetect', '-f', 'null', '-'],
+				PROBE_TIMEOUT_MS
+			);
+			if (r.timedOut) return null; // hung/killed — cannot judge, do not pretend to
+			return parseVolumeDetect(r.stderr);
 		} catch {
 			return null; // ffmpeg absent — unmeasurable, not silent
 		}
