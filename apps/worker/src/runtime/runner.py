@@ -137,14 +137,50 @@ async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> Asy
     S0-S6 refactor left this with no callers and the copies drifted apart again — one step emitted an
     UNCONDITIONAL final 100, double-firing the stage's completion event. The `last < 100` guard below is
     the behaviour that divergence lost.
+
+    A stage whose child emits no NEW percentage for a long stretch (roformer's `parse_progress` returns
+    None unconditionally, so a 45-minute separation parses nothing at all) used to go silent between its
+    opening 0 and closing 100 — long past the core's 30 s progressLeaseMs, so the reaper requeued a
+    HEALTHY cook and each retry re-ran the whole pass. So we race each line against `LEASE_KEEPALIVE_SEC`
+    and, when the child is quiet, emit a TIME-BASED keepalive at the last-known pct (the same cadence and
+    hold-the-bar convention `run_blocking` uses for in-process ML). The keepalive never moves the bar
+    backward and never above 100.
     """
     yield ProgressEvent(stage=stage, pct=0)
     last = -1
-    async for line in runner(argv):
-        pct = parse(line)
-        if pct is not None and pct != last:
-            last = pct
-            yield ProgressEvent(stage=stage, pct=pct)
+    lines = runner(argv).__aiter__()
+    pending: asyncio.Task[str] | None = None
+    try:
+        while True:
+            if pending is None:
+                pending = asyncio.ensure_future(lines.__anext__())
+            # asyncio.wait — NOT wait_for — because a timeout must NOT cancel the in-flight __anext__:
+            # cancelling it mid-await would throw CancelledError into the child generator and kill it.
+            # We keep the SAME pending task alive across quiet intervals and only consume it once it
+            # actually resolves, so the child runs to completion regardless of how many keepalives fire.
+            done, _ = await asyncio.wait({pending}, timeout=LEASE_KEEPALIVE_SEC)
+            if pending not in done:
+                # The child produced no new line within one keepalive interval. It is alive but quiet —
+                # a long roformer/ffmpeg pass that parses no percentage — so renew the lease with a
+                # heartbeat at the last pct we reported (0 until the first real percentage). Holds the
+                # bar; never moves it backward, never above 100.
+                yield ProgressEvent(stage=stage, pct=max(last, 0))
+                continue
+            try:
+                line = pending.result()
+            except StopAsyncIteration:
+                pending = None
+                break
+            pending = None
+            pct = parse(line)
+            if pct is not None and pct != last:
+                last = pct
+                yield ProgressEvent(stage=stage, pct=pct)
+    finally:
+        # If we unwind (caller aclose/cancel) with a line request still in flight, close the child
+        # generator's in-flight __anext__ cleanly rather than leaking a pending task.
+        if pending is not None and not pending.done():
+            pending.cancel()
     if last < 100:
         yield ProgressEvent(stage=stage, pct=100)
 
