@@ -121,8 +121,8 @@ test('hydrate() leaves a currentEntryId that DOES resolve untouched', () => {
 // gate to key on RESOLUTION rather than nullness, on the live writer, the same technique
 // session-cookie-attributes.test.ts (#107) uses on routes/api/join/+server.ts, a file with the
 // identical no-harness problem. Comments are blanked so a commented-out gate cannot satisfy it.
-import { readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
@@ -205,4 +205,94 @@ test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery (#
 	expect(STORE).toContain('queue:command');
 	expect(STORE).toContain('onMediaReady');
 	expect(STORE).toContain('manual play');
+});
+// STRUCTURAL-TRUTH GUARD for the #254 heal comment — issue #342.
+// The #254 guard above pins how store.ts's comment is SPELLED (its prose must deny a boot reconcile
+// and name the three real recovery sites). It does not pin whether that prose is TRUE, because every
+// assertion reads store.ts as text and the facts live in other files. The comment's load-bearing
+// claim — "there is no boot resync or boot reconcile, so nothing starts a singer at hydrate time" —
+// is a claim about reconcileOnReady's call sites in apps/core, not about store.ts. So the moment a
+// later product decision adds the boot reconcile #254 deliberately quarantined ("DO NOT add a
+// reconcileOnReady call ... a rebooted room starts playing audio unprompted is a product call the
+// owner has not made"), the comment is false again — the exact defect #254 was filed for — and the
+// spelling guard above stays green. Pin the STRUCTURE here instead.
+//
+// import.meta.dir === apps/core/src/server/realtime → apps/core is three levels up, apps/core/src two.
+const CORE_ROOT = join(import.meta.dir, '..', '..', '..');
+const SRC_ROOT = join(import.meta.dir, '..', '..');
+
+function collectNonTestSources(): string[] {
+	const out: string[] = [];
+	const walk = (dir: string) => {
+		for (const name of readdirSync(dir)) {
+			if (['node_modules', '.svelte-kit', 'build', 'dist'].includes(name)) continue;
+			const p = join(dir, name);
+			if (statSync(p).isDirectory()) walk(p);
+			else if (/\.(ts|svelte)$/.test(name) && !/\.test\.ts$/.test(name)) out.push(p);
+		}
+	};
+	walk(SRC_ROOT);
+	out.push(join(CORE_ROOT, 'server.ts')); // the Bun.serve entry lives at the package root
+	return out;
+}
+
+// A reconcileOnReady CALL, distinct from its `export function reconcileOnReady(` DEFINITION (player.ts).
+const RECONCILE_CALL = /(?<!function\s)\breconcileOnReady\s*\(/;
+
+test('reconcileOnReady is called from exactly the two non-boot sites the #254 comment names (#342)', () => {
+	// The set of NON-TEST files in apps/core that CALL reconcileOnReady must be exactly server.ts (the
+	// queue:command gate) and src/server/app.ts (the onMediaReady handler). A reconcile added anywhere
+	// else — e.g. a new boot module — reds this; deleting the last call in app.ts reds it too.
+	const sites = collectNonTestSources()
+		.filter((f) => RECONCILE_CALL.test(stripComments(readFileSync(f, 'utf8'))))
+		.map((f) => relative(CORE_ROOT, f))
+		.sort();
+	expect(sites).toEqual(['server.ts', 'src/server/app.ts']);
+
+	// The app.ts call must be INSIDE the onMediaReady handler and be the ONLY reconcile in the file.
+	// This is what pins the comment's actual claim: a boot-time reconcile (the quarantined mutation)
+	// would sit at the top level of createApp — outside onMediaReady — and red here even though the
+	// per-file set above is unchanged (app.ts is already in it). Deleting the onMediaReady call also
+	// reds here (zero calls inside the handler).
+	const APP = stripComments(readFileSync(join(SRC_ROOT, 'server', 'app.ts'), 'utf8'));
+	const handlerKey = APP.indexOf('onMediaReady:');
+	expect(handlerKey).toBeGreaterThanOrEqual(0); // non-vacuous: the handler must exist
+	const arrowBrace = APP.indexOf('{', APP.indexOf('=>', handlerKey));
+	expect(arrowBrace).toBeGreaterThan(handlerKey);
+	let depth = 0;
+	let handlerEnd = -1;
+	for (let i = arrowBrace; i < APP.length; i++) {
+		if (APP[i] === '{') depth++;
+		else if (APP[i] === '}' && --depth === 0) {
+			handlerEnd = i;
+			break;
+		}
+	}
+	expect(handlerEnd).toBeGreaterThan(arrowBrace);
+	const callRe = /(?<!function\s)\breconcileOnReady\s*\(/g;
+	let inside = 0;
+	let total = 0;
+	let m: RegExpExecArray | null;
+	while ((m = callRe.exec(APP)) !== null) {
+		total++;
+		if (m.index > arrowBrace && m.index < handlerEnd) inside++;
+	}
+	expect(total).toBe(1);
+	expect(inside).toBe(1);
+});
+
+test('the play/pause transport button still allows a ready queue while nothing plays (#342)', () => {
+	// The comment's third recovery route — "or a manual play … the play control stays enabled because a
+	// non-empty queue satisfies its gate" — is the play button's `disabled={!nowEntry && queued.length
+	// === 0}` at routes/+page.svelte. restart and skip are the stricter `disabled={!nowEntry}`, so after
+	// a boot heal (nowEntry null, queue ready) the play button is the room's ONLY manual restart.
+	// Narrowing this gate to `!nowEntry` (the mutation #254's own consequence paragraph named) leaves a
+	// boot-healed room with a phone that offers NO transport control at all — invisible to the suite
+	// until now. The +page.svelte file has no unit harness, so this is a source scan, kept SEPARATE from
+	// the reconcile check so a UI refactor reds only its own line.
+	const PAGE = stripComments(readFileSync(join(SRC_ROOT, 'routes', '+page.svelte'), 'utf8'));
+	// non-vacuous: we are looking at the play/pause control specifically.
+	expect(PAGE).toMatch(/cmd:\s*playback\.isPlaying\s*\?\s*'pause'\s*:\s*'play'/);
+	// its gate must keep the queued.length allowance, not degrade to the restart/skip `!nowEntry` form.
+	expect(PAGE).toMatch(/disabled=\{\s*!nowEntry\s*&&\s*queued\.length\s*===\s*0\s*\}/);
 });
