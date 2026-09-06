@@ -135,7 +135,7 @@ export const queueEntries = sqliteTable('queue_entries', {
 	mediaId: text('media_id').notNull(),
 	singerId: text('singer_id').notNull(),
 	status: text('status', {
-		enum: ['queued', 'playing', 'waiting', 'done', 'skipped']
+		enum: ['queued', 'playing', 'done']
 	})
 		.notNull()
 		.default('queued'),

@@ -19,6 +19,7 @@
 
 import type { EncoreApp } from '../app';
 import type { QueueEntry, ServerEvent } from '@encore/shared';
+import { isTerminal } from '@encore/shared';
 
 export interface LeaveResult {
 	/** Entry ids removed from the queue. */
@@ -31,8 +32,6 @@ export interface LeaveResult {
 export function removableOnLeave(app: EncoreApp, singerId: string): QueueEntry[] {
 	return app.state.entries.filter((e) => e.singerId === singerId && e.status !== 'playing' && !isTerminal(e));
 }
-
-const isTerminal = (e: QueueEntry) => e.status === 'done' || e.status === 'skipped';
 
 export function doLeave(app: EncoreApp, singerId: string): LeaveResult {
 	const doomed = removableOnLeave(app, singerId);
