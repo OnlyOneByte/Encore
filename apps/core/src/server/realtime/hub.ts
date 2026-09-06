@@ -129,10 +129,16 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder this entry';
 			return null;
 		case 'status':
-			// A playback-status transition, not one of the 'someone else's entry' capabilities, so it
-			// stays on membership only (the actorSingerId gate above).
-			if (!deps.state.entries.some((e) => e.id === op.id)) return `unknown entry: ${op.id}`;
-			return null;
+			// SERVER-OWNED, never accepted from the wire. The only two producers of a `status` op in the
+			// whole repo are the server itself — player.ts beginSinging ('playing') and advance ('done') —
+			// and BOTH call state.applyQueueOp directly, never through handleQueueCommand. So the wire arm
+			// has no honest caller to serve, and admitting it let one joined phone (a) forge a second
+			// 'playing' entry that is never playable, never terminal, not removable on leave and durable
+			// across restarts, (b) write an off-enum string that reaches the NOT NULL enum column, and
+			// (c) retire a song with a terminal status while its cook keeps running (only `remove` fires
+			// onEntryRemoved). Rejecting it closes all three at the seam and is behaviour-preserving for
+			// every real client. Same class as the add-arm shape guards above: validate at the frame.
+			return 'status is server-owned';
 		default:
 			// An unknown op is a client from the future, or a probe. Reject rather than fall out of the
 			// switch returning undefined, which reads as "valid" to the caller.
