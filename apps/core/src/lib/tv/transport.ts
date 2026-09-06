@@ -67,3 +67,27 @@ export function transportFor({ hasSrc, playable, active, visible, playing }: Tra
 	if (!playable || !hasSrc) return 'idle';
 	return active && visible && playing ? 'play' : 'pause';
 }
+
+/**
+ * Is the element holding the src for THIS media — not merely holding *some* src?
+ *
+ * This is the input `transportFor.hasSrc` actually wants (see its doc: "Is the element holding the src
+ * it is supposed to hold?"). The TvPlayer derived used to pass `!!currentSrc`, which only answers "has
+ * this slot EVER held a src" — true from the first song onward. On a song change `currentSrc` still
+ * holds the PREVIOUS song's URL (`TvPlayer.svelte` deliberately never clears it, and only rewrites it
+ * on a playable pass), so `!!currentSrc` stayed true across the change and the transport stayed `'play'`
+ * with an unchanged VALUE — a memoized `$derived` does not re-run its effect on an unchanged value, so
+ * nothing re-called `play()` after the new src landed and the master sat paused at 0. That is #374.
+ *
+ * `held` is the src the element currently holds (TvPlayer's `currentSrc` bookkeeping); `wanted` is what
+ * the current media resolves to now (`fileSrc(media)`), or `null`/`''` when there is no media. They
+ * match only when the element is holding the CURRENT song's src, so a song change reads `false` until
+ * the assign effect writes the new src — which is exactly the `false -> true` edge that re-arms the
+ * transport effect after the src has landed rather than racing it.
+ *
+ * Pure and string-based (no DOM, no `Media` coupling) so it is unit-testable without a real element,
+ * matching `video-src.ts` and `transportFor` itself.
+ */
+export function slotHoldsSrc(held: string | null | undefined, wanted: string | null | undefined): boolean {
+	return !!held && !!wanted && held === wanted;
+}

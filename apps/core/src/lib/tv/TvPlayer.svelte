@@ -21,7 +21,7 @@
 	import { untrack } from 'svelte';
 	import { GUIDE_PREROLL_ALIGN_SEC, guideCorrection, seekPlan } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
-	import { transportFor } from './transport';
+	import { transportFor, slotHoldsSrc } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	interface Props {
 		media: Media | null;
@@ -260,7 +260,13 @@
 	 */
 	const transport = $derived(
 		transportFor({
-			hasSrc: !!currentSrc,
+			// #374: the element must be holding THIS song's src, not merely SOME src. `currentSrc` holds
+			// the previous song's URL across a change (it is never cleared, only rewritten on a playable
+			// pass by the assign effect below), so `!!currentSrc` stayed stale-true and the transport kept
+			// the same `'play'` value — a memoized derived whose value does not change never re-runs the
+			// effect, so nothing replayed play() after the new src landed. Comparing to the resolved src
+			// gives an `idle -> play` value edge exactly when the new src lands.
+			hasSrc: slotHoldsSrc(currentSrc, media && isPlayable(media) ? fileSrc(media) : null),
 			playable: !!media && isPlayable(media),
 			active,
 			visible,
