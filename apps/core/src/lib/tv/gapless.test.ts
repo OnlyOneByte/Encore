@@ -57,10 +57,17 @@ test('ended with no upNext -> attract', () => {
 test('re-warm when upNext changes before swap (someone reordered)', () => {
 	const c = new GaplessController();
 	c.onNowPlaying(e('q1'), e('q2'));
+	c.onVisibleReady();
 	c.onHiddenReady('q2');
+	expect(c.state).toBe('playing');
 	expect(c.isNextReady('q2')).toBe(true);
-	// upNext changes to q3 (reorder) — hidden must re-warm, no longer ready for the new next
+	// upNext changes to q3 (reorder) — hidden must re-warm, no longer ready for the new next.
+	// current is UNCHANGED (q1): the same-current guard (gapless.ts) must NOT drop the visible
+	// slot back to 'loading', or the full-screen interstitial card would mount over the playing
+	// song. Every player command (pause/resume/seek/background/guide/key) re-emits
+	// nowplaying:changed with an unchanged current, so this asserts the invariant, not the branch.
 	c.onNowPlaying(e('q1'), e('q3'));
+	expect(c.state).toBe('playing');
 	expect(c.isNextReady('q3')).toBe(false);
 	expect(c.assignment().hiddenEntryId).toBe('q3');
 });
