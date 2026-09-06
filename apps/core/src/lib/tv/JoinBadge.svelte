@@ -114,8 +114,12 @@
 		}
 	}
 
-	/* corner: pinned bottom-right, opposite the lower-third, below the score badge */
-	.corner {
+	/* corner: pinned bottom-right, opposite the lower-third, below the score badge.
+	   Scoped :not(.badqr) so this QR treatment's flex row does not reach the unreachable-join
+	   ALERT, which reuses the `corner` class only for its pin (.badqr.corner re-declares the same
+	   position/right/bottom/z-index). Without this the alert's three block children became
+	   side-by-side flex columns and the fix instruction was squeezed off-screen (#357). */
+	.corner:not(.badqr) {
 		position: absolute;
 		right: var(--tv-safe-x);
 		bottom: var(--tv-safe-y);

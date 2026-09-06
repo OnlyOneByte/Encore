@@ -58,6 +58,45 @@ test('the advertised address is a block on its own line so the sentence cannot o
 	expect(addr).toMatch(/overflow-wrap:\s*anywhere/);
 });
 
+// The CORNER placement, the one that renders mid-song while somebody is singing (#357).
+//
+// THE SECOND BUG. `.corner` (`:118`) was written for the QR treatment — a QR tile beside a text block —
+// and declares `display: flex; align-items: center; gap: 14px`. The unreachable ALERT reuses the
+// `corner` class ONLY for its bottom-right pin (`.badqr.corner` re-declares the same
+// position/right/bottom/z-index), and neither `.badqr` nor `.badqr.corner` declares a `display`. So the
+// flex context leaked onto the alert and its three BLOCK children (.badqr-t / .badqr-b / .badqr-fix)
+// became side-by-side flex COLUMNS in a row, squeezed by `max-width: 30vw` with no `overflow`, and the
+// fix instruction — the only sentence that says how to fix the problem — was pushed outside the card and
+// clipped off the screen by `.tv { overflow: hidden }`. #62's own mid-token address break reappeared here.
+//
+// THE FIX, pinned here: scope the QR treatment's flex rule to `.corner:not(.badqr)` so it cannot reach
+// the alert, which then falls back to the default block flow and stacks its children on their own lines.
+// The rendered proof (before/after A/B frames at 720p/1080p/4K, overflow 175px -> 0, fix sentence
+// 55.4% -> 100% visible at 720p) is in the PR body.
+test('the QR-treatment flex layout is scoped away from the unreachable alert (#357)', () => {
+	// The `.corner` flex row (display:flex + align-items:center + gap) must be scoped :not(.badqr) so it
+	// applies only to the QR wrapper, never to the alert that reuses the `corner` class for its pin.
+	// LOAD-BEARING: no `.corner` rule that is NOT scoped `:not(.badqr)` may declare flex — an unscoped
+	// `.corner { display:flex }` is exactly what leaked the row layout onto the alert. Checked first so a
+	// reversion reds on THIS, the assertion that maps to the shipped defect.
+	const unscopedFlex = /\.corner(?!\s*:not\()(?![\w-])[^{}]*\{[^{}]*display:\s*flex[^{}]*\}/;
+	expect(CSS).not.toMatch(unscopedFlex);
+	// And the scoped QR rule must still carry the flex row it needs for the QR-beside-text treatment.
+	const qrCorner = ruleBody(CSS, '.corner:not(.badqr)');
+	expect(qrCorner).toMatch(/display:\s*flex/);
+});
+
+test('the unreachable corner alert declares no row layout, so its parts stack (#357)', () => {
+	// The alert card itself must not turn into a flex/grid ROW; block flow is what stacks the three parts.
+	const badqr = ruleBody(CSS, '.badqr');
+	const badqrCorner = ruleBody(CSS, '.badqr.corner');
+	// If either declares a display at all it must not be flex/grid/inline-flex (any of which rows the parts).
+	for (const body of [badqr, badqrCorner]) {
+		const disp = /display:\s*([^;]+);/.exec(body)?.[1]?.trim() ?? '';
+		if (disp) expect(disp).not.toMatch(/flex|grid|inline-flex/);
+	}
+});
+
 test('the unreachable sentence no longer wraps a clause around the address (no orphan-comma shape)', () => {
 	// The failure shape was `<b>{shortUrl}</b>, which phones can't reach.` — the address inline, a comma
 	// immediately after the closing tag. Pin that that exact inline shape is gone.
