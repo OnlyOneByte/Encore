@@ -355,32 +355,70 @@ async def test_subprocess_runner_raises_ProcessError_on_nonzero_exit():
     assert "boom-line" in ei.value.output_tail
 
 
+# A parent that forks a long-lived child, prints the CHILD's pid, then sleeps — mirrors demucs -j,
+# where the pid we launch is not the pid holding the memory. The grandchild survives a bare
+# proc.kill() and only dies if the whole process group is signalled + reaped, so asserting on its
+# liveness is downstream of the actual kill+reap guarantee (a plain sleep in the direct child would
+# die on any kill and could not tell the invariant apart from its absence).
+_CANCEL_REAP_PARENT = (
+    "import os,sys,time\n"
+    "pid=os.fork()\n"
+    "if pid==0:\n"
+    "    time.sleep(300)\n"
+    "    os._exit(0)\n"
+    "print(pid, flush=True)\n"
+    "time.sleep(300)\n"
+)
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
 @pytest.mark.asyncio
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="needs POSIX fork/process groups")
 async def test_subprocess_runner_kills_and_reaps_the_child_when_the_generator_is_cancelled():
-    # A child that sleeps far longer than the test. Consume it inside a task, cancel the task, and
-    # assert the child was actually killed+reaped (no orphan) — the FIX 2 guarantee. Without the
-    # try/finally kill this child would outlive the cancelled task, holding its resources.
+    # Consume the runner inside a task, cancel the task mid-stream (as _run_job's unwind does via
+    # GeneratorExit), and assert the forked grandchild was actually killed+reaped — the FIX 2
+    # guarantee. This exercises the task-CANCELLATION unwind path; test_subprocess_group_kill covers
+    # the mid-stream `break` path. Without subprocess_runner's finally: _terminate the grandchild
+    # outlives the cancelled task, and the assert below goes red.
     started = _asyncio.Event()
-    captured: dict[str, object] = {}
+    captured: dict[str, int] = {}
 
     async def consume():
-        gen = demucs.subprocess_runner([sys.executable, "-c", "import time; print('alive', flush=True); time.sleep(300)"])
+        gen = demucs.subprocess_runner([sys.executable, "-c", _CANCEL_REAP_PARENT])
         async for line in gen:
-            if line == "alive":
-                started.set()
-                # hold the generator open (as _run_job does mid-stream) until cancelled
-                await _asyncio.sleep(300)
+            captured["pid"] = int(line.strip())
+            started.set()
+            # hold the generator open (as _run_job does mid-stream) until cancelled
+            await _asyncio.sleep(300)
 
     task = _asyncio.ensure_future(consume())
     await _asyncio.wait_for(started.wait(), timeout=10)
-    # reach into the running subprocess via a probe: re-run is racy, so instead assert via psutil-free
-    # means — cancel and confirm the task unwinds promptly (a leaked child would not block this, but a
-    # missing kill would leave a zombie the event loop still tracks). We verify no ProcessLookup noise.
+    child_pid = captured["pid"]
+    assert child_pid is not None, "the parent never reported its forked child"
+
     task.cancel()
     with pytest.raises(_asyncio.CancelledError):
         await task
-    # If the child were orphaned, the loop would warn about a subprocess still running at teardown.
-    # The clean cancellation above (no hang, no unraised exception) is the observable success.
+
+    # Give the group kill a moment to land, then assert the grandchild is gone — the observable proof
+    # the kill reached the whole tree, not just the CLI we launched.
+    for _ in range(60):
+        if not _alive(child_pid):
+            break
+        await _asyncio.sleep(0.05)
+    assert not _alive(child_pid), (
+        f"grandchild {child_pid} survived cancellation — the cancel-path unwind did not kill+reap "
+        "the process tree, so a cancelled cook would leak its demucs -j workers"
+    )
 
 
 @pytest.mark.asyncio
