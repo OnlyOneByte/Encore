@@ -180,7 +180,7 @@ export interface Singer {
   lastSungAt?: number | null;
 }
 
-export type EntryStatus = 'queued' | 'playing' | 'waiting' | 'done' | 'skipped';
+export type EntryStatus = 'queued' | 'playing' | 'done';
 
 export interface QueueEntry {
   id: string; // client-minted ULID (zero-flicker reconcile — see docs/ARCHITECTURE.md §3)

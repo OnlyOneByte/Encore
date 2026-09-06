@@ -26,9 +26,9 @@ export function assignSeqs(entries: QueueEntry[], ordering: Ordering = {}): Queu
   return rotate(entries, ordering).map((e, i) => ({ ...e, rotationSeq: i }));
 }
 
-/** Terminal entries no longer participate in the rotation (played or skipped). */
+/** Terminal entries no longer participate in the rotation (played to completion). */
 export function isTerminal(e: QueueEntry): boolean {
-  return e.status === 'done' || e.status === 'skipped';
+  return e.status === 'done';
 }
 
 /**
