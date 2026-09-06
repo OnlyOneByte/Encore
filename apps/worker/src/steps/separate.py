@@ -27,7 +27,7 @@ from ..processor import (
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_stage
 from ..runtime.step import Step, StepResult
-from ..separation.demucs import STEM_BITRATE, decode_argv, encode_flac_argv, encode_stem_argv
+from ..separation.demucs import STEM_BITRATE, decode_argv, encode_flac_argv
 from ..separation.engines import SeparatorEngine, engine_for
 from ..vocabulary import Stage
 
@@ -167,11 +167,15 @@ class ProbeSilence(Step):
 class PublishStems(Step):
     """Encode and publish the stems.
 
-    Instrumental to LOSSLESS FLAC: it is the file that plays at volume, and a second lossy generation is
-    audible on high-frequency transients — a crash cymbal especially. The vocals stem stays lossy AAC
-    because it is the GUIDING TRACK — a second audio element the TV mixes under the instrumental and
-    pitch-shifts with the key (apps/core/src/lib/tv/TvPlayer.svelte). It also feeds pitch extraction and
-    vocal-range analysis. A guide mixed under a master tolerates lossy compression that the master would not.
+    Both stems to LOSSLESS FLAC (#480). The instrumental plays at volume as the master and a second lossy
+    generation is audible on high-frequency transients — a crash cymbal especially. The vocals stem is the
+    GUIDING TRACK — a second audio element the TV mixes under the instrumental and pitch-shifts with the key
+    (apps/core/src/lib/tv/TvPlayer.svelte) — so it plays aloud too, and it also feeds pitch extraction and
+    vocal-range analysis. Encoding it through the SAME encoder as the instrumental (encode_flac_argv, one
+    codec, one container) is the point: an AAC-in-m4a encoder adds priming samples (~1024, ~21 ms at 48 kHz)
+    that shift the vocals START relative to the FLAC instrumental. That offset sat above guide-sync's 15 ms
+    deadband, so the player converged it out with a startup rate-trim — matching codecs removes the NEED for
+    that correction, since both stems now decode to a sample-exact common start.
 
     The vocals stem is BEST-EFFORT throughout. A missing, silent or unencodable vocals file must never
     fail the load-bearing instrumental.
@@ -202,7 +206,7 @@ class PublishStems(Step):
         if raw_vox and not ctx.stems.vocals_silent:
             out = vocals_path(job.media_dir, job.media_id)
             try:
-                async for _line in ctx.runner(encode_stem_argv(raw_vox, out, self._bitrate, self._ffmpeg)):
+                async for _line in ctx.runner(encode_flac_argv(raw_vox, out, self._ffmpeg, self._flac_level)):
                     pass
                 ctx.stems.published["vocals"] = out
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job

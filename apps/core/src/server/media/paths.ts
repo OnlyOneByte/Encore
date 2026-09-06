@@ -94,20 +94,26 @@ export function audioKey(mediaId: string, ext = 'wav'): string {
 	return `audio/${mediaId}.${ext.replace(/^\./, '')}`;
 }
 /**
- * Stored stem formats (audio policy, revised). The two stems get DIFFERENT treatment and MUST match
+ * Stored stem formats (audio policy, #480). BOTH stems are now lossless FLAC, and both MUST match
  * the worker's processor.py INSTRUMENTAL_EXT / VOCALS_EXT.
  *
  * - **instrumental → FLAC (lossless).** This plays out of the speakers at volume, the one place a
  *   second lossy generation is audible: the image's only AAC encoder (ffmpeg native — no libfdk_aac)
  *   smears high-frequency transients, exactly what a crash cymbal is. Lossless removes that generation.
- * - **vocals → AAC (lossy).** Nothing plays it aloud at full level; it feeds the guiding track, so
- *   transparency is not the bar.
+ * - **vocals → FLAC (lossless).** It plays aloud too: the guiding track is a second <audio> the TV
+ *   mixes under the instrumental. Encoding it through the SAME codec/container as the instrumental
+ *   means both stems decode to a sample-exact common start. The AAC-in-m4a encoder's priming samples
+ *   (~21 ms at 48 kHz) used to shift the vocals start above guide-sync's 15 ms deadband, so the player
+ *   trimmed it out at startup (#480); matching codecs remove the NEED for that startup correction. FLAC
+ *   in <audio> is the decode path the instrumental already uses (TvPlayer.svelte).
  *
  * Songs cooked under an earlier policy keep their own (per-media) refs and still play — these helpers
- * only name NEW output.
+ * only name NEW output. A stored `-vocals.m4a` ref from a legacy cook resolves unchanged; only newly
+ * cooked stems land as `.flac`. AAC→FLAC recompression of existing files is deliberately NOT done
+ * (see retention.ts isLegacyStemRef) — it cannot recover discarded data, only bloat the file.
  */
 export const INSTRUMENTAL_EXT = 'flac';
-export const VOCALS_EXT = 'm4a';
+export const VOCALS_EXT = 'flac';
 /** @deprecated kept so older call sites resolve; prefer the per-stem constants. */
 export const STEM_EXT = VOCALS_EXT;
 

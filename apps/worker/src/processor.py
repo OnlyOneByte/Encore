@@ -16,15 +16,21 @@ from typing import Protocol
 
 from . import protocol
 
-# Stored stem formats — the two stems get DIFFERENT treatment:
+# Stored stem formats — BOTH stems are lossless FLAC (#480):
 #   instrumental -> FLAC (lossless). It comes out of the speakers at volume, and it is the one place
 #     a second lossy generation is audible: AAC smears high-frequency transients (a crash cymbal).
-#     ~22 MB for a 3:27 track vs ~5 MB, affordable now.
-#   vocals -> AAC (lossy). Nothing plays it aloud; it feeds pitch extraction + the future vocal
-#     guide, so transparency is not the bar.
+#   vocals -> FLAC (lossless). It IS played aloud — the guiding track is a second <audio> the TV
+#     mixes under the instrumental (TvPlayer.svelte). Encoding it lossless like the instrumental means
+#     both stems share ONE codec and ONE container, so they decode to a sample-exact common START.
+#     An AAC-in-m4a encoder inserts priming samples (~1024, i.e. ~21 ms at 48 kHz) that shift the
+#     vocals start relative to the FLAC instrumental. That start offset used to sit ABOVE guide-sync's
+#     15 ms deadband, so guideCorrection converged it out with a startup rate-trim (~15 s) rather than
+#     leaving it — the guide was compensated, not broken. Matching codecs removes the NEED for that
+#     startup correction: the guide now starts inside the deadband. FLAC in <audio> is the same decode
+#     path the instrumental already uses (WebKit documents it — see TvPlayer.svelte).
 # MUST match the core's paths.ts INSTRUMENTAL_EXT / VOCALS_EXT.
 INSTRUMENTAL_EXT = "flac"
-VOCALS_EXT = "m4a"
+VOCALS_EXT = "flac"
 
 
 @dataclass
