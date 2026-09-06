@@ -158,6 +158,26 @@ test('the colour picker wires its swatch tabindex to presetTabStopIndex', () => 
 	expect(picker).toContain('tabindex={i === presetTabStopIndex(value) ? 0 : -1}');
 });
 
+test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare indexOf', () => {
+	// THE BUG THIS BOUNDS (#215). The tab stop reads presetTabStopIndex (falls back to swatch 0 for a
+	// wheel value), but the arrow-key handler used to compute its base from a bare
+	// `(SINGER_COLORS as ...).indexOf(value)`, which is -1 for any wheel hex. After a hue pick the two
+	// disagreed: focus sat on swatch 0 while movement started from -1, so the first ArrowRight did not
+	// move and ArrowLeft skipped mint. nextSwatchIndex in @encore/shared shares presetTabStopIndex's
+	// anchor and is unit-tested there -- but that closes only the helper; the handler is a Svelte
+	// script line the helper tests never exercise. This pins the call site so it cannot revert to the
+	// bare-indexOf base while the helper stays correct, mirroring the tab-stop wiring guard above.
+	const picker = stripComments(readFileSync(join(SRC, 'lib/components/ColourPicker.svelte'), 'utf8'));
+	// It must IMPORT the shared helper (reverting the import alone leaves a call to an unimported
+	// symbol — a build break bun test does not see, so the import must be pinned here too)...
+	expect(picker).toMatch(/import \{[^}]*\bnextSwatchIndex\b[^}]*\} from '@encore\/shared';/);
+	// ...and the arrow handler must derive `next` from that helper...
+	expect(picker).toMatch(/const next = nextSwatchIndex\(value, step\);/);
+	// ...and must NOT reintroduce the divergent bare-indexOf arrow base (the #215 defect). Comments are
+	// stripped first, so the rationale prose above cannot satisfy or trip this.
+	expect(picker).not.toMatch(/indexOf\(value\)/);
+});
+
 test('every bottom-docked sheet caps its height in dvh, not vh', () => {
 	// `.sheet-surface` in app.css deliberately does NOT default a max-height, because a sheet's cap is
 	// its own business. But the UNIT is not a preference: on iOS `vh` resolves to the LARGE viewport, so

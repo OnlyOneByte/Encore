@@ -12,7 +12,7 @@
 	is the only thing telling two singers apart besides the name).
 -->
 <script lang="ts">
-	import { SINGER_COLORS, SINGER_HUE_STEP, hueToHex, nearestSingerHue, presetTabStopIndex } from '@encore/shared';
+	import { SINGER_COLORS, SINGER_HUE_STEP, hueToHex, nearestSingerHue, nextSwatchIndex, presetTabStopIndex } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {
@@ -101,8 +101,9 @@
 		if (!keys.includes(e.key)) return;
 		e.preventDefault();
 		const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : -1;
-		const i = (SINGER_COLORS as readonly string[]).indexOf(value);
-		const next = (i + step + SINGER_COLORS.length) % SINGER_COLORS.length;
+		// Anchor arrow movement on the SAME index the tab stop uses (presetTabStopIndex, via
+		// nextSwatchIndex) so the two cannot disagree after a wheel pick — see #215.
+		const next = nextSwatchIndex(value, step);
 		pickPreset(SINGER_COLORS[next]!);
 		(e.currentTarget as HTMLElement)?.querySelector<HTMLElement>(`[data-swatch="${next}"]`)?.focus();
 	}
