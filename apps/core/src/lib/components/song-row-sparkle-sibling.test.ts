@@ -82,3 +82,32 @@ test('.title-line is a flex row and .sparkle is a non-shrinking flex item', () =
 	expect(src).toMatch(/\.title-line\s*\{[^}]*display:\s*flex/);
 	expect(src).toMatch(/\.sparkle\s*\{[^}]*flex:\s*0\s+0\s+auto/);
 });
+
+test('.t does not grow — the clamp box shrinks to its text so the mark hugs the title (issue #334)', () => {
+	// With flex-grow:1 (flex: 1) the two-line clamp box grew to fill the whole .title-line, pushing the
+	// flex:0 0 auto mark to the metadata column's right edge — up to 116px from a short title (#334).
+	// The mark's meaning is "this title is cooking", so it must sit beside the title, not float in the
+	// empty tail. flex-grow must be 0 (flex: 0 1 auto keeps flex-shrink:1 so a long title still clamps).
+	// Slice the .t rule body by brace-matching from its selector so a `flex` elsewhere cannot satisfy or
+	// trip this, then read the effective flex-grow from whichever of `flex:`/`flex-grow:` is present.
+	const tSel = src.search(/(^|[^-\w])\.t\s*\{/m);
+	expect(tSel).toBeGreaterThanOrEqual(0); // not-vacuous: the .t rule exists
+	const braceOpen = src.indexOf('{', tSel);
+	const braceClose = src.indexOf('}', braceOpen);
+	expect(braceClose).toBeGreaterThan(braceOpen);
+	const tBody = src.slice(braceOpen + 1, braceClose);
+
+	// flex-grow is the FIRST value of the `flex` shorthand, or an explicit `flex-grow`. Read it and pin 0.
+	const shorthand = tBody.match(/(?:^|;)\s*flex\s*:\s*([^;]+)/);
+	const longhand = tBody.match(/(?:^|;)\s*flex-grow\s*:\s*([^;]+)/);
+	// flex-grow is the FIRST value of the `flex` shorthand, or an explicit `flex-grow`.
+	const grow = longhand
+		? longhand[1].trim()
+		: shorthand
+			? shorthand[1].trim().split(/\s+/)[0]
+			: null;
+	// .t must declare its flex behaviour explicitly (not-vacuous: a missing rule cannot pass as grow 0).
+	expect(grow).not.toBeNull();
+	// `flex: 1` => grow 1 (the #334 defect); `flex: 0 1 auto` => grow 0 (the fix). Anything > 0 reds.
+	expect(grow).toBe('0');
+});
