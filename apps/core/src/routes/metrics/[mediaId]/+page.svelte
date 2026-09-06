@@ -193,6 +193,11 @@
 		gap: 1rem;
 		padding: 1rem 0 3rem;
 		max-width: 760px;
+		/* The cap takes width off the right only on a flex child (.app-shell is a
+		   centered flex column); width:100% keeps the stretch so margin-inline:auto
+		   re-centres the full capped block instead of collapsing it to content width. */
+		width: 100%;
+		margin-inline: auto;
 	}
 	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
 	.card {
