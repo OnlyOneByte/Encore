@@ -254,6 +254,74 @@ test('guard arm — #onFailed status: a failure while still assigned (not runnin
 	expect(jobs.byId(job.id)!.attempts).toBe(0);
 });
 
+// ── the `!job` arm: a frame naming a jobId with NO row is swallowed, never throws ──────────────────
+// Sibling of #136 (the status/workerId arms). Every handler's guard is
+//   if (!job || job.status !== '<expected>' || job.workerId !== msg.workerId) return;
+// and the tests above only ever drive frames whose jobId EXISTS, so `job` is always truthy and the
+// leading `!job` arm never fires. Delete it from any handler and the suite stays green — the exact
+// mutation this issue reproduces. With `!job` gone, `byId` returns undefined for an unknown id and
+// `job.status` dereferences undefined, throwing a TypeError straight out of the unguarded
+// apps/core/server.ts:212 message handler (its only try/catch wraps the JSON.parse), which ends the
+// worker socket: "one malformed frame must never end a party". Each test below fires a WELL-FORMED
+// frame carrying a jobId that was never enqueued, so `!job` is the SOLE defence (there is no row for
+// the status/workerId arms to read), and asserts .not.toThrow() plus that nothing was created or
+// emitted. Deletion was verified per-arm (delete `!job || ` from one handler, that handler's test reds).
+
+// A jobId that no repository row will ever match. `byId` returns undefined for it, so the `!job` arm
+// is the only guard standing between the frame and a dereference of `undefined.status`.
+const GHOST = 'ghost-job-does-not-exist';
+
+test('guard arm — #onAccept !job: an accept naming an unknown jobId is swallowed, never throws', () => {
+	const { hub, jobs, sent, broadcasts } = harness();
+	// No job enqueued at all → byId(GHOST) is undefined. Only `!job` can refuse this frame.
+	expect(() => hub.handle({ type: 'job:accept', workerId: 'w1', jobId: GHOST })).not.toThrow();
+	expect(jobs.byId(GHOST)).toBeNull(); // byId returns null for a missing row // no phantom row conjured
+	expect(sent).toEqual([]); // no command emitted
+	expect(broadcasts).toEqual([]); // no media:status broadcast
+});
+
+test('guard arm — #onReject !job: a reject naming an unknown jobId is swallowed, never throws', () => {
+	const { hub, jobs, sent, broadcasts } = harness();
+	expect(() => hub.handle({ type: 'job:reject', workerId: 'w1', jobId: GHOST, reason: 'busy' })).not.toThrow();
+	expect(jobs.byId(GHOST)).toBeNull(); // byId returns null for a missing row
+	expect(sent).toEqual([]); // no requeue → no redispatch command
+	expect(broadcasts).toEqual([]);
+});
+
+test('guard arm — #onProgress !job: a progress frame naming an unknown jobId is swallowed, never throws', () => {
+	const { hub, jobs, broadcasts } = harness();
+	expect(() =>
+		hub.handle({ type: 'job:progress', workerId: 'w1', jobId: GHOST, stage: 'separating', pct: 42 })
+	).not.toThrow();
+	expect(jobs.byId(GHOST)).toBeNull(); // byId returns null for a missing row
+	expect(broadcasts).toEqual([]); // no progress rebroadcast for a job that does not exist
+});
+
+test('guard arm — #onComplete !job: a complete naming an unknown jobId is swallowed, never throws', () => {
+	const { hub, jobs, mediaById, broadcasts, readied } = harness();
+	expect(() =>
+		hub.handle({
+			type: 'job:complete', workerId: 'w1', jobId: GHOST, mediaUri: 'x',
+			artifacts: { stems: { instrumental: 'derived/stems/GHOST-instrumental.flac' } }
+		})
+	).not.toThrow();
+	expect(jobs.byId(GHOST)).toBeNull(); // byId returns null for a missing row
+	// Nothing was published — the ghost frame names no media, so no song may flip to ready.
+	expect(mediaById.get('m1')!.stemStatus).toBe('none');
+	expect(mediaById.get('m1')!.instrumentalRef).toBeUndefined();
+	expect(readied).toEqual([]); // onMediaReady never fired
+	expect(broadcasts).toEqual([]);
+});
+
+test('guard arm — #onFailed !job: a failure frame naming an unknown jobId is swallowed, never throws', () => {
+	const { hub, jobs, broadcasts } = harness();
+	expect(() =>
+		hub.handle({ type: 'job:failed', workerId: 'w1', jobId: GHOST, error: 'not a real job', retryable: false })
+	).not.toThrow();
+	expect(jobs.byId(GHOST)).toBeNull(); // byId returns null for a missing row
+	expect(broadcasts).toEqual([]); // no failed broadcast for a nonexistent job
+});
+
 test('job:reject → back to queued (no attempt burned), slot freed, redispatched', () => {
 	const { hub, jobs, registry, sent } = harness();
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
