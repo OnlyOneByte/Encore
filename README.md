@@ -141,8 +141,7 @@ would want it for.
 >   file paths and error strings (no singer identities and no media bytes).
 >
 > Bind to a trusted interface (`HOST=127.0.0.1` keeps it off the network entirely) or put it behind a
-> gateway. Do not expose the port to a network you don't trust. Tracked in
-> [`docs/ROADMAP.md`](docs/ROADMAP.md).
+> gateway. Do not expose the port to a network you don't trust. Tracked as open work in GitHub issues.
 
 ## Stack
 
@@ -166,7 +165,7 @@ apps/core/         ← Container 1: Bun + SvelteKit
   src/routes/        phone (+page), /join, /tv, /settings, /stats, /metrics, /api
   e2e/               selector contract + guard, the party flow, the screenshot capture
 apps/worker/       ← Container 2: Python stems/align (dials home; `--profile stems`)
-docs/              ← ARCHITECTURE + ROADMAP + HANDOFF; deploy/ benchmarks/ mocks/ specs/ research/ archive/
+docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; deploy/ benchmarks/ mocks/ research/
 ```
 
 ## Configuration
@@ -242,20 +241,20 @@ every **lyrics presentation** option are per-room.
 
 ## Status & roadmap
 
-**Done:** M0 foundation · M1 realtime spine · M2 join · M3 phone remote · M4 search · M5 gapless TV ·
-M6 hardening → **v0.1.0** · M7 make-karaoke (Demucs stems) → **v0.2.0** · M8 word-timed lyrics. Then
-backlog: **B-1** library · **B-5** readiness search · **B-6** TV room states + presence · **B-7** media
-storage classes + browse + retention · **B-3** tiered lyrics source chain (LRCLIB → captions → ASR,
-with provenance labelling) · **B-3-C7** two-tier lyrics version selection (candidates graded against
-audible baselines) · **B-10** stats + audit dashboards · **B-2** browser pitch-shift, so ±key actually
-transposes · **song profile** (detected key + the vocal range a song demands, on all three surfaces).
+**Done:** the realtime spine (join, phone remote, search, gapless TV, room states + presence),
+hardening → **v0.1.0**, make-karaoke (Demucs stems) → **v0.2.0**, word-timed lyrics, the saved
+library, readiness search, media storage classes + browse + retention, the tiered lyrics source
+chain (LRCLIB → captions → ASR with provenance labelling) and its two-tier version selection
+(candidates graded against audible baselines), stats + audit dashboards, browser pitch-shift so ±key
+actually transposes, and the song profile (detected key + the vocal range a song demands, on all
+three surfaces). yt-dlp + deno are baked into the worker image, with a smarter audio-stream pick
+that prefers Opus over legacy AAC.
 
-**Next:** **B-8** swap stem separation to `python-audio-separator` (better models than `htdemucs`; also
-improves the ASR lyrics tier, which reads the vocals stem) ·
-**B-4** hot-titles persistence · **M9** accounts + multi-room. **B-9** (yt-dlp + deno baked into the
-worker image, and a smarter audio-stream pick that prefers Opus over legacy AAC) is shipped. Open work
-only in
-[`docs/ROADMAP.md`](docs/ROADMAP.md); shipped history in [`docs/archive/`](docs/archive/). Agent and
+**Next:** swap stem separation to `python-audio-separator` (better models than `htdemucs`; also
+improves the ASR lyrics tier, which reads the vocals stem), hot-titles persistence, and accounts +
+multi-room. Open work
+in GitHub issues. Ratified decisions and the parked scope fence are in
+[`docs/DECISIONS.md`](docs/DECISIONS.md). Agent and
 human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 
 ## Dev notes

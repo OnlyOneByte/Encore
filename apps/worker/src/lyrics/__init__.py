@@ -18,7 +18,7 @@ The names re-exported below are the intended surface. Reaching into a submodule 
 this package genuinely owns and a test genuinely needs to poke at; reaching in for one of these names
 means the surface is being bypassed.
 
-See `docs/archive/specs/SPEC-worker-pipeline.md` §6 for where this goes next: `chain` is the union of five
+See `docs/ARCHITECTURE.md` §7.1 and §8 for where this goes next: `chain` is the union of five
 concerns and splits into `model` / `grade` / `sources/*` in a later stage. This stage only moved files.
 """
 from __future__ import annotations

@@ -11,7 +11,7 @@ import from the separation domain to download a file.
 
 Demucs `--two-stems=vocals` emits two files; the INSTRUMENTAL (backing track) is `no_vocals.wav`. Both are
 published: the instrumental is the karaoke output, and the isolated `vocals.wav` feeds the song profile and
-the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md).
+the vocal-guide mix (docs/ARCHITECTURE.md §7).
 """
 from __future__ import annotations
 

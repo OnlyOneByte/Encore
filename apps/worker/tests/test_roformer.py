@@ -81,7 +81,7 @@ def test_roformer_argv_omits_device_when_unset():
 # ── engine selection ──────────────────────────────────────────────────────────────
 #
 # Was EngineRouter, a second dispatch layer that picked a whole processor per engine. Choosing a separator
-# is plan SELECTION now (docs/archive/specs/SPEC-worker-pipeline.md §5.2c): `engine_for` resolves it before the
+# is plan SELECTION now (docs/ARCHITECTURE.md §7.1): `engine_for` resolves it before the
 # first step runs, and one Separate step asks whichever engine won the same four questions.
 
 

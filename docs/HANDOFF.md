@@ -1,13 +1,14 @@
 # Encore — Agent Handoff
 
 > **Purpose.** Onboarding for an agent or human picking up Encore cold: the traps, the invariants you
-> must not break, and how to verify. **What to build next is NOT here** — that is
-> [`ROADMAP.md`](ROADMAP.md), which opens with the auto-pilot contract.
+> must not break, how to run it, and how to verify. **What to build next is NOT here** — open work is
+> tracked in **GitHub issues**; ratified decisions and the parked scope fence are in
+> [`DECISIONS.md`](DECISIONS.md).
 >
-> **Reading order:** [`ARCHITECTURE.md`](ARCHITECTURE.md) → [`ROADMAP.md`](ROADMAP.md) → this file.
+> **Reading order:** [`ARCHITECTURE.md`](ARCHITECTURE.md) → this file → [`DECISIONS.md`](DECISIONS.md).
 >
-> **Last updated:** 2026-09-03 · **State:** `v0.2.0` (stems) shipped; M0–M8 closed; B-1/B-5/B-6/B-7
-> and B-3 (except its captions tier) done. Next: **B-8** separator swap.
+> **State:** `v0.2.0` (stems) shipped; the saved-library, media-storage, key-shift and two-tier lyrics
+> work are done. The current large item is the separator swap to `python-audio-separator`.
 
 Self-hosted, mobile-first karaoke (personal project, `github.com/OnlyOneByte/Encore`). Scan a QR →
 name+color, no signup → search → one-tap queue. A TV surface plays **gaplessly** with round-robin
@@ -44,7 +45,7 @@ The case for Bun was made and accepted. Do not propose Node/Deno swaps.
 Encore/
 ├─ docker-compose.yml     # core (always) + worker (profile: stems)
 ├─ push.sh                # how you push — see Gotcha 7
-├─ docs/                  # ARCHITECTURE, ROADMAP, HANDOFF; deploy/, benchmarks/, mocks/, research/, archive/
+├─ docs/                  # ARCHITECTURE, HANDOFF, DECISIONS; deploy/, benchmarks/, mocks/, research/
 ├─ packages/shared/       # @encore/shared — types, ops, rotation reducer, events, ulid, colors
 └─ apps/
     ├─ core/              # @encore/core — SvelteKit app + server
@@ -59,15 +60,47 @@ Encore/
 
 ## 3. Running it
 
-Test/build gates and the eyes-on serve loop live in [`ROADMAP.md`](ROADMAP.md) — one copy, not two.
-What is specific to this file:
+**Run it.**
+```bash
+cd apps/core && bun run build
+PATH="/home/angryang/.local/share/mise/installs/python/3.12.13/bin:/home/angryang/ffmpeg:$PATH" \
+  HOST=127.0.0.1 PORT=5180 bun run server.ts
+```
+`yt-dlp` is invoked **by name via PATH**, so that directory must be on PATH or YouTube search silently
+returns empty. The worker is a separate process — `docker compose --profile stems up`, or the
+long-lived `encore-worker-live` container.
 
+Other entry points:
 ```bash
 bun run build && bun run start      # prod build + serve; `start` → server.ts
 bun run dev                         # vite HMR for UI ONLY — the WS hub lives in server.ts
 docker compose up                   # core only
 docker compose --profile stems up   # + the Python worker
 ```
+
+**Verification gates — run all four on every change.**
+```bash
+bun test                              # core + shared — runs from the REPO ROOT
+cd apps/worker && python3 -m pytest   # worker suite
+bun run typecheck && bun run build    # both workspaces; typecheck must be 0 errors / 0 warnings
+```
+`runMigrations()` locates `apps/core/drizzle` by walking up from `import.meta.dir`, so `bun test`
+works from anywhere. Re-measure the counts every time — they drift as tests land.
+
+**A green suite is the floor, not the bar.** Every real defect in this project so far was invisible to
+a passing suite and only surfaced by driving the app (§5). Anything with a rendered surface needs
+eyes-on; screenshots live in `docs/mocks/` as `<id>-<what>-eyeson.png`.
+
+**Environment ceilings — flag these, do not fight them.**
+- `lrclib.net` fails DNS outright (`gaierror`) **on this laptop only**; `huggingface.co` and
+  `www.youtube.com` resolve from the same shell — a box property, not a project fact, hence
+  `ENCORE_LRCLIB_BASE`. WhisperX models **do** download, so real-ML lyrics work is verifiable here.
+- Demucs/WhisperX run in the worker container, ~1–2 min/song on CPU.
+- Host ffmpeg (`/home/angryang/ffmpeg/ffmpeg`) is a **stripped 7.1.1 build**: no AAC encoder, no mp4
+  muxer, no `ffprobe`. Use the **container's** ffmpeg (`docker exec`) for probing and transcoding.
+- A long-lived Python process does **not** reload bind-mounted source; `docker restart` after editing
+  worker code.
+- YouTube autoplay-with-audio needs a user gesture in-browser.
 
 `data/` and `media/` are created on first boot, so a fresh clone needs no setup. `ENCORE_EPHEMERAL=1`
 swaps in an in-memory DB.
@@ -103,7 +136,7 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
    durations of past cooks were never written down and are not recoverable. A song with no history
    says so explicitly on its audit page rather than reading as "never processed". Related: `/metrics`
    and `/api/audit/*` are **ungated** by decision (there is no operator identity in Encore; any LAN
-   phone can self-join), so treat them as LAN-visible. See ARCHITECTURE §10 and ROADMAP B-10-C7.
+   phone can self-join), so treat them as LAN-visible. See ARCHITECTURE §10 (gating this is open work).
    Also: a fresh git worktree has no `node_modules`, so `bun test` reports ~39 phantom failures on
    `@encore/shared` until you run `bun install`.
 1. **`.npmrc` is repo-local and pins PUBLIC npm on purpose.** The *global* npmrc points at
@@ -118,7 +151,7 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
 5. **Don't kill processes by broad pattern.** `pkill -f 'bun ...'` can self-match the harness. Use
    `lsof -ti tcp:5180 | xargs -r kill`.
 6. **Stage files explicitly; never `git add .`** — `.kiro/` is local tooling and stays untracked. And
-   **check `git status` after committing**: a B-6 commit shipped without its `packages/shared`
+   **check `git status` after committing**: a commit once shipped without its `packages/shared`
    contract change and was not buildable in isolation, because local verification ran on a working
    tree the commit didn't describe.
 7. **Pushing works — with a bare `bash push.sh` from the repo root, no env prefix and no pipe.**
@@ -195,7 +228,7 @@ So, after the AUTO gates pass:
    as `<id>-<what>-eyeson.png`.
 6. `curl /api/me` from a shell returns null — no session cookie. Not a bug.
 
-Record what you verified on the ROADMAP item, split **AUTO** vs **EYES-ON**, and be honest when
+Record what you verified on the issue, split **AUTO** vs **EYES-ON**, and be honest when
 something can only be flagged for a human (audio, real ML, network).
 
 ---
@@ -237,7 +270,7 @@ one malformed message could end a party. Validation lives in `hub.ts:validateCom
 pruned on apply and hydrate. The **held-slot rule** — a singer keeps their seq while their song cooks
 — is real: a not-yet-ready `file` entry is skipped by `isEntryReady` but keeps its seq.
 
-**Media identity** (learned the hard way in B-5). `sourceRef` is **immutable origin identity**; the
+**Media identity** (learned the hard way). `sourceRef` is **immutable origin identity**; the
 cooked stem key lives in `Media.instrumentalRef` and players ask `playbackRef(media)` what to load.
 Overwriting `sourceRef` on cook made a song unmatchable against its own search result forever, so
 every search minted a fresh uncooked duplicate.
@@ -272,14 +305,13 @@ has `no-new-privileges`, `cap_drop: [ALL]`, non-root user, pinned base image.
 
 ## 7. Doc index
 
-There are exactly three live docs:
+Three live docs, and open work lives in GitHub issues (not in a file):
 
 | Doc | What it owns |
 |---|---|
-| [`ROADMAP.md`](ROADMAP.md) | **What to build next** + the auto-pilot contract |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **How the system works** + invariants |
-| [`HANDOFF.md`](HANDOFF.md) | **How to operate safely** + traps + verification |
+| [`HANDOFF.md`](HANDOFF.md) | **How to run and operate safely** + traps + verification |
+| [`DECISIONS.md`](DECISIONS.md) | **Ratified decisions**, the parked scope fence, lyrics-chain model |
 
-Everything else is evidence or history: [`archive/`](archive/) preserves shipped plans and the
-superseded source specs; `mocks/` holds eyes-on evidence; [`../README.md`](../README.md) is the
-user-facing quickstart.
+Everything else is evidence: `mocks/` holds eyes-on frames, `benchmarks/` and `research/` hold
+measurements and write-ups, and [`../README.md`](../README.md) is the user-facing quickstart.

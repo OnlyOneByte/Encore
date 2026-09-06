@@ -1,7 +1,7 @@
 """What each action does, declared as data.
 
 The ONE module allowed to import both the runtime and the steps. That is what makes the dependency rule
-in `docs/archive/specs/SPEC-worker-pipeline.md` §3 hold mechanically: the runtime never imports a step, a domain
+in `docs/ARCHITECTURE.md` §7.1 hold mechanically: the runtime never imports a step, a domain
 never imports the runtime, and this file is the seam where they meet.
 
 Read a plan top to bottom and you have read what the action does. That readability is most of why this is

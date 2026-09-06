@@ -29,7 +29,7 @@ services:
       # is localhost:3000 and the QR would tell every phone to connect to itself.
       #   ENCORE_PUBLIC_ORIGIN=http://10.69.1.169:3000
       - ENCORE_PUBLIC_ORIGIN=${ENCORE_PUBLIC_ORIGIN:-}
-      # B-7 storage classes, split by REPLACEABILITY (docs/media-storage-spec.md §3). Each defaults
+      # Storage classes, split by REPLACEABILITY (docs/ARCHITECTURE.md §2). Each defaults
       # under MEDIA_DIR, so these lines are documentation as much as configuration — point any one at
       # its own volume to separate the disks (audio on the big one, derived on the fast one).
       - MEDIA_DIR=/app/media

@@ -3,9 +3,9 @@
 Findings that inform a decision not yet taken — surveys of how other systems solve a problem,
 measurements, and the reasoning they support.
 
-Distinct from `docs/specs/`, which describes what we are **going to build** (staged, with acceptance
+Distinct from a tracked GitHub issue, which describes what we are **going to build** (with acceptance
 criteria). A file here has no commit plan and nothing scheduled against it. When a research note turns
-into committed work, the spec that supersedes it links back here rather than restating it.
+into committed work, the issue that supersedes it links back here rather than restating it.
 
 | File | Question it answers |
 |---|---|

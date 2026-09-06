@@ -286,7 +286,7 @@ export const jobs = sqliteTable(
 		createdAt: integer('created_at').notNull(),
 		updatedAt: integer('updated_at').notNull()
 	},
-	// Dedup (job-lifecycle §6/§10): at most ONE live job per (mediaId, jobType). The index is
+	// Dedup (ARCHITECTURE §7): at most ONE live job per (mediaId, jobType). The index is
 	// PARTIAL — terminal jobs (failed/canceled) are excluded so a song can be re-processed after a
 	// failure or cancel. Two people queueing the same song → one compute; the DB enforces it even
 	// if a dispatch race slips past the application-level check.

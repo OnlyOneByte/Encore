@@ -108,7 +108,7 @@ def source_audio_path(media_dir: str, media_id: str, ext: str = "wav") -> str:
 
 def vocals_path(media_dir: str, media_id: str) -> str:
     """Deterministic MediaStore key for a media's ISOLATED VOCALS stem. Feeds pitch
-    extraction and the vocal-guide mix (docs/archive/reference/vocal-guide-spec.md). Parallels the core's
+    extraction and the vocal-guide mix (docs/ARCHITECTURE.md §7). Parallels the core's
     make-karaoke `vocalsKey` (stems/<mediaId>-vocals.wav) so the TV resolves the same /media name."""
     return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{VOCALS_EXT}")
 

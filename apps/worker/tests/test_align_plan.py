@@ -1,7 +1,7 @@
 """The ALIGN plan, end to end.
 
 Was test_whisperx.py, when align was one 257-line method on a WhisperXProcessor. The subject is now eight
-declared steps over a typed context (docs/archive/specs/SPEC-worker-pipeline.md S2), so the file is named for the
+declared steps over a typed context (docs/ARCHITECTURE.md §7.1), so the file is named for the
 plan rather than for a module that no longer exists.
 
 Every seam stays injectable for the reason it always was: the real WhisperX, the real LRCLIB and the real

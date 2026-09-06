@@ -9,9 +9,9 @@
 // Measured in a real headless Chromium at the DEFAULT five rows, the second lookahead row was cut:
 // 24.2% visible at 1280×720, 66.6% at 1920×1080, hard-masked mid-glyph with unused height beneath
 // it. Dropping the redundant `- var(--tv-safe-y)` restores that row to 100% at 1080p and 4K (the
-// remaining 720p shortfall is the type-budget overflow — the ladder-vs-clamp choice the roadmap
+// remaining 720p shortfall is the type-budget overflow — the ladder-vs-clamp choice DECISIONS.md
 // reserves for the owner — and is out of scope here).
-// The rendered A/B was captured with the CDP driver and lives in the PR body + docs/shots/99/.
+// The rendered A/B was captured with the CDP driver and lives in the PR body.
 //
 // WHY A SOURCE SCAN AND NOT A RENDER TEST. bun test has no Svelte compiler and no browser, so the
 // computed cap cannot be read at runtime here — the rendered half is proven by the committed CDP

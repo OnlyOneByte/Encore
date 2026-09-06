@@ -1,5 +1,5 @@
 // Shared runtime singleton — the seam between SvelteKit `+server.ts` API routes and the
-// Bun.serve WS hub. In production both run in ONE Bun process (MASTER-DESIGN §2), so a
+// Bun.serve WS hub. In production both run in ONE Bun process (ARCHITECTURE §2), so a
 // module-level singleton is the correct, simplest wiring: routes mutate authoritative state
 // and call app.publish(); server.ts injects the real Bun.serve publish at boot.
 
@@ -76,7 +76,7 @@ export interface EncoreApp {
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
 	popularity: PopularityTracker;
-	mediaStore: MediaStore; // local volume (default) or object-store (S3/MinIO) — MASTER-DESIGN §2
+	mediaStore: MediaStore; // local volume (default) or object-store (S3/MinIO) — ARCHITECTURE §2
 	mediaStoreConfig: MediaStoreConfig; // the resolved config sent to remote workers in worker:welcome
 	publish: (e: ServerEvent) => void; // room broadcast; replaced by server.ts at boot
 	/** Send a WorkerCommand to ONE worker session; replaced by server.ts with the real socket map. */
