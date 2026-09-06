@@ -204,3 +204,34 @@ def test_client_get_non_200_raises():
 def test_client_get_unparseable_body_raises():
     with pytest.raises(ls.LyricsFetchError):
         ls.LrclibClient(fetcher=fetcher_returning(200, "<html>not json</html>")).get("x", "y")
+
+
+# ── the DNS-sinkhole gap (#444): a URLError must NOT vanish as an ordinary miss ────────
+def test_urllib_fetch_converts_urlerror_to_lyricsfetcherror(monkeypatch):
+    """A DNS sinkhole (or refused connection / TLS failure / timeout) raises urllib.error.URLError,
+    which carries NO HTTP status. Before #444 `_urllib_fetch` caught only HTTPError, so a URLError
+    escaped to LyricsSource's bare `except Exception` and became a plain None — indistinguishable from
+    "this song has no lyrics", which is exactly how lrclib.net failing 100% for a month stayed invisible.
+    Now it must surface as the one explicit transport class the chain already routes to a note."""
+    import urllib.error
+
+    def boom(*_a, **_k):
+        raise urllib.error.URLError("Name or service not known")
+
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    with pytest.raises(ls.LyricsFetchError) as ei:
+        ls._urllib_fetch("https://lrclib.net/api/get?x=1", {"User-Agent": ls.USER_AGENT})
+    assert "unreachable" in str(ei.value)
+
+
+def test_urllib_fetch_still_maps_httperror_to_its_status(monkeypatch):
+    """Regression guard on the ordering: HTTPError is a URLError subclass, so the new URLError arm
+    must not steal an HTTP status — a 503 still comes back as (503, "") for the status ladder."""
+    import urllib.error
+
+    def http503(*_a, **_k):
+        raise urllib.error.HTTPError("https://lrclib.net", 503, "busy", {}, None)  # type: ignore[arg-type]
+
+    monkeypatch.setattr("urllib.request.urlopen", http503)
+    status, body = ls._urllib_fetch("https://lrclib.net/api/get?x=1", {"User-Agent": ls.USER_AGENT})
+    assert status == 503 and body == ""
