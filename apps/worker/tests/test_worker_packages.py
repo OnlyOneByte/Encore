@@ -95,3 +95,34 @@ def test_the_domain_packages_are_exactly_the_ones_declared():
         f"packages on disk {found} != declared {sorted(ALL_PACKAGES)}. Add it to DOMAIN_PACKAGES or\n"
         f"RUNTIME_PACKAGES (and give it a docstring) if the new package is intended."
     )
+
+
+def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed():
+    """Issue #85. The separation domain's audio policy is the rule that stops a reader re-encoding a stem
+    badly, and its load-bearing clauses were false in the direction that RELAXES the rule.
+
+    Two false facts had to go, at three sites: (1) "nothing plays [the vocals stem]" — the vocals stem is
+    the guiding track, a second <audio> the TV mixes under the instrumental at up to full gain and pitch-
+    shifts with the key (apps/core/src/lib/tv/TvPlayer.svelte); (2) STEM_BITRATE is the storage format "for
+    both stems" — it governs the vocals stem only (encode_stem_argv); the instrumental is FLAC through
+    encode_flac_argv. There is no behaviour to test, so this pins the prose instead: the false clauses stay
+    gone and the true reason (the guiding track) stays named."""
+    src = Path(__file__).resolve().parents[1] / "src"
+
+    # (1) The "nothing plays it" clause is false and must not reappear at any of its three former sites.
+    init_doc = importlib.import_module("src.separation").__doc__ or ""
+    separate_src = (src / "steps" / "separate.py").read_text(encoding="utf-8")
+    for name, text in (("separation/__init__.py", init_doc), ("steps/separate.py", separate_src)):
+        assert "nothing plays" not in text, (
+            f"{name} still claims the vocals stem is unplayed — it is the guiding track (issue #85)"
+        )
+    # The true reason must be stated where the policy lives, not merely absent.
+    assert "GUIDING TRACK" in init_doc, "separation/__init__.py must name the guiding track as the reason (#85)"
+    assert "GUIDING TRACK" in separate_src, "steps/separate.py must name the guiding track as the reason (#85)"
+
+    # (2) STEM_BITRATE must not be described as governing BOTH stems; it is the vocals stem only.
+    demucs_src = (src / "separation" / "demucs.py").read_text(encoding="utf-8")
+    assert "for both stems" not in demucs_src, (
+        "demucs.py STEM_BITRATE still claims it governs both stems — it governs the vocals stem only, the "
+        "instrumental is FLAC via encode_flac_argv (issue #85)"
+    )

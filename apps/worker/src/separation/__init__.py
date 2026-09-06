@@ -8,8 +8,9 @@ One engine per module, each behind the same processor seam:
 
 WHAT BELONGS HERE. Producing stems, and the audio policy around them: which container each stem is
 stored in (instrumental FLAC because it plays aloud and a second lossy generation smears a crash cymbal;
-vocals AAC because nothing plays it), and the silence probe that refuses to publish a stem measured at
-the 16-bit floor.
+vocals AAC because it is the GUIDING TRACK — a second audio element the TV mixes UNDER the instrumental
+at up to full gain and pitch-shifts with the key, so it is worth headroom but not losslessness), and the
+silence probe that refuses to publish a stem measured at the 16-bit floor.
 
 WHAT DOES NOT. Reading the stems back to describe the recording is `analysis/`. Getting the bytes in the
 first place is `acquisition/`.
