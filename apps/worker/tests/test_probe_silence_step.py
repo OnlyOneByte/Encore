@@ -93,9 +93,17 @@ async def test_nothing_separated_means_nothing_to_probe():
 
 
 async def test_an_UNMEASURABLE_instrumental_is_not_treated_as_silent():
-    """ffmpeg absent or output unparseable means unknown, not silent. Failing every cook because the
-    probe could not run would be worse than the bug it guards."""
-    ctx = ctx_with({"instrumental": "/w/inst.wav"}, {"/w/inst.wav": "ffmpeg: No such file or directory"})
+    """ffmpeg RAN but produced no `max_volume:` line (wrong filter, truncated output, an error
+    printed on a successful exit). parse_max_volume_db returns None, is_silent(None) is False, so
+    this is unknown, not silent — failing every such cook would be worse than the bug it guards.
+
+    This is the ONLY shape that reaches this branch without raising. ffmpeg *absent* is a different
+    case: the real runner (subprocess_runner) raises FileNotFoundError before yielding any line, and
+    that raising path is pinned by test_a_raising_instrumental_probe_fails_the_job below — it is NOT
+    tolerated here, contrary to what this docstring used to claim.
+    """
+    unparseable = "[Parsed_volumedetect_0 @ 0x1] n_samples: 0"  # ffmpeg exit 0, no max_volume: line
+    ctx = ctx_with({"instrumental": "/w/inst.wav"}, {"/w/inst.wav": unparseable})
     await drive(ctx)  # does not raise
 
 
@@ -111,3 +119,26 @@ async def test_a_failed_vocals_probe_never_costs_the_room_a_working_guide():
     ctx.stems.raw = {"vocals": "/w/vox.wav"}
     await drive(ctx)
     assert ctx.stems.vocals_silent is False
+
+
+async def test_a_raising_instrumental_probe_fails_the_job():
+    """The real ffmpeg-absent path. subprocess_runner raises FileNotFoundError before yielding any
+    line when ffmpeg is not on PATH; the instrumental branch has NO try/except, so that raise must
+    propagate and fail the cook — a box without ffmpeg cannot silently publish unchecked stems.
+
+    This is the mutation guard for the "No try/except" property at separate.py: wrapping the
+    instrumental probe the way the vocals probe is wrapped would swallow this raise and turn it back
+    into a green cook, re-shipping the silent-instrumental bug the step exists to catch. With this
+    test present, that wrapping goes RED.
+    """
+
+    async def boom(argv) -> AsyncIterator[str]:
+        raise FileNotFoundError(2, "No such file or directory", "ffmpeg")
+        yield ""  # pragma: no cover
+
+    job = JobSpec(job_id="j1", media_id="m1", job_type="stems", source_uri="u", params={}, media_dir="/tmp")
+    ctx = Ctx(job=job, work="/tmp/work", runner=boom)
+    ctx.stems.raw = {"instrumental": "/w/inst.wav"}
+    with pytest.raises(FileNotFoundError):
+        await drive(ctx)
+
