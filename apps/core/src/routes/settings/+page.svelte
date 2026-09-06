@@ -1289,6 +1289,24 @@
 	input[type='range'].hue {
 		-webkit-appearance: none;
 		appearance: none;
+		/*
+		 * 44px interactive height (the project's --tap minimum), matching ColourPicker.svelte:180. The
+		 * input box is transparent and the 22px gradient is painted on the runnable-track pseudo-elements
+		 * below, which the browser centres in the box. Painting the gradient (with its border/radius)
+		 * directly on a 22px-tall input, as this rule did, made the whole hit area 22px — and the 28px
+		 * thumb overhung it, so Chrome hit-tested a 28px extent, below the 44px floor (issue #133).
+		 */
+		height: var(--tap);
+		background: transparent;
+		cursor: pointer;
+	}
+	input[type='range'].hue::-webkit-slider-runnable-track {
+		height: 22px;
+		border-radius: var(--radius-pill);
+		border: 1px solid var(--line);
+		background: var(--track);
+	}
+	input[type='range'].hue::-moz-range-track {
 		height: 22px;
 		border-radius: var(--radius-pill);
 		border: 1px solid var(--line);
@@ -1303,6 +1321,11 @@
 		background: var(--thumb, #fff);
 		border: 3px solid var(--ink);
 		cursor: pointer;
+		/* Centre the 28px thumb on the 22px runnable-track: (22 - 28) / 2 = -3px. WebKit anchors the
+		   thumb to the track's TOP otherwise, so it hangs ~3.75px below centre inside the 44px box
+		   (matches ColourPicker.svelte:213 and the sibling :not(.hue) rule). Gecko centres its thumb
+		   on the track, so ::-moz-range-thumb needs none. */
+		margin-top: -3px;
 	}
 	input[type='range'].hue::-moz-range-thumb {
 		width: 28px;
