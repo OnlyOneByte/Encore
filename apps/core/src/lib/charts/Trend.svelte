@@ -75,13 +75,23 @@
 		align-items: flex-end;
 		gap: 2px;
 		height: 96px;
+		/*
+		 * 31 days at a phone's width squeezed each column to ~9px — a real button too narrow to tap,
+		 * with five days under one fingertip (#144). Each column now claims a full 44px tap target
+		 * (see .col), so the row overflows a narrow viewport on purpose; scroll it horizontally
+		 * rather than shrink the days below a tappable size. -webkit-overflow-scrolling keeps the
+		 * momentum flick a phone expects.
+		 */
+		overflow-x: auto;
+		-webkit-overflow-scrolling: touch;
 	}
 	.col {
-		flex: 1 1 0;
+		/* grow to fill when the days are few, but never shrink below a 44px tap target (--tap). */
+		flex: 1 0 var(--tap);
 		height: 100%;
 		display: flex;
 		align-items: flex-end;
-		min-width: 3px;
+		min-width: var(--tap);
 		/* Was a div; now a real button so the day is tap-/keyboard-reachable. Strip the chrome. */
 		position: relative;
 		padding: 0;

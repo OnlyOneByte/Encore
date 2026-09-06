@@ -126,6 +126,11 @@
 	 */
 	.card {
 		padding: 1rem 1.1rem;
+		/* A grid item defaults to min-width:auto = its min-content, so the Trend chart's row of
+		   44px-wide day buttons (#144) would otherwise size this card to its full scroll width and
+		   overflow the page. min-width:0 lets the card shrink to its track, which bounds the chart
+		   so its own overflow-x scrolls the days instead of stretching the layout. */
+		min-width: 0;
 	}
 	h1 {
 		font-size: 1.4rem;
