@@ -183,3 +183,47 @@ def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution
         "the comment's whole point (issue #103) is that the band reaches ~18 semitones below the "
         f"resolution limit; that gap is now only {midi_cross - _MIN_MIDI:.1f} semitones"
     )
+
+def test_the_stem_bitrate_comment_justifies_aac_by_the_vocals_stem_not_the_instrumental():
+    """Issue #236. Residue of closed #85: the STEM_BITRATE comment's closing clause still justified the
+    AAC-over-Opus choice by the INSTRUMENTAL's browser needs ("the instrumental has to play in a browser
+    <video>, and AAC-in-m4a is the safer bet on Safari"), while the same block's opening sentence (fixed
+    in #85) correctly says STEM_BITRATE governs the VOCALS stem only and the instrumental is FLAC. Both
+    could not be true. The instrumental is FLAC-in-<audio> (processor.py INSTRUMENTAL_EXT, encode_flac_argv,
+    apps/core/src/lib/tv/TvPlayer.svelte:5-13), so the clause reasoned about a file that does not exist.
+
+    There is no behaviour to test, so this pins the prose. The "caller" of this guard is the test itself
+    reading the real production source. It scopes both arms to the STEM_BITRATE comment block (the `# ...`
+    lines immediately above the `STEM_BITRATE =` assignment), so the legitimate <video>/WebKit prose that
+    now lives in encode_flac_argv's docstring can neither satisfy the presence arm nor trip the ban arm.
+    """
+    src_dir = Path(__file__).resolve().parents[1] / "src"
+    demucs_src = (src_dir / "separation" / "demucs.py").read_text(encoding="utf-8")
+
+    # Extract exactly the comment block directly above the STEM_BITRATE assignment.
+    lines = demucs_src.splitlines()
+    assign_idx = next(i for i, ln in enumerate(lines) if ln.startswith("STEM_BITRATE"))
+    block = []
+    i = assign_idx - 1
+    while i >= 0 and lines[i].lstrip().startswith("#"):
+        block.insert(0, lines[i])
+        i -= 1
+    block_text = "\n".join(block)
+    assert block_text, "could not locate the STEM_BITRATE comment block above the assignment (#236)"
+
+    # Presence: the block must justify the container choice by the VOCALS stem being the guiding track.
+    assert "GUIDING" in block_text.upper(), (
+        "the STEM_BITRATE comment must justify AAC by the vocals stem being the GUIDING TRACK, not by the "
+        "instrumental's browser needs (issue #236)"
+    )
+
+    # Ban: the discredited instrumental-browser-needs justification must not reappear in this block.
+    lowered = block_text.lower()
+    assert "instrumental has to play" not in lowered, (
+        "the STEM_BITRATE comment again justifies the vocals bitrate by the INSTRUMENTAL's playback — the "
+        "instrumental is FLAC-in-<audio>, not AAC-in-m4a in a <video> (issue #236)"
+    )
+    assert "<video>" not in lowered, (
+        "the STEM_BITRATE comment again claims a stem plays in a browser <video> — playback is through "
+        "<audio> (apps/core/src/lib/tv/TvPlayer.svelte); the instrumental is FLAC (issue #236)"
+    )
