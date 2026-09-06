@@ -42,6 +42,13 @@ _FMAX_HZ = 1100.0
 # unvoiced knife — high enough to reject noise, low enough to keep quiet-but-pitched singing.
 _CLARITY_THRESHOLD = 0.5
 
+# The single source of truth for the analysis frame hop. `extract_pitch_track`'s `hop` default and
+# the seconds-per-frame `summarize_wav` uses MUST be the same number — the histogram's seconds axis
+# is (voiced frame count) x (hop / sample_rate), so if the two ever disagree every published duration
+# is scaled wrong (halved/doubled) with no other field moving and no test failing. Naming it once and
+# deriving hop_sec from the same constant is what makes that desync impossible rather than unenforced.
+_DEFAULT_HOP = 512
+
 
 def hz_to_midi(freq: float) -> float:
     """Frequency (Hz) → fractional MIDI note number. A4=440Hz→69. Matches the standard 12-TET map so
@@ -142,7 +149,7 @@ def _detect_f0(frame: np.ndarray, sample_rate: int) -> tuple[float, float]:
 
 
 def extract_pitch_track(
-    samples: np.ndarray, sample_rate: int, *, frame: int = 2048, hop: int = 512
+    samples: np.ndarray, sample_rate: int, *, frame: int = 2048, hop: int = _DEFAULT_HOP
 ) -> List[PitchFrame]:
     """Per-frame monophonic pitch track over a mono signal. Each frame gets a normalized-
     autocorrelation f0 + clarity; a frame is `voiced` only when its clarity clears _CLARITY_THRESHOLD
@@ -237,5 +244,5 @@ def summarize_wav(path: str) -> dict:
     publishes nulls, so a failure here degrades to an empty profile rather than a failed cook."""
     samples, sample_rate = read_wav_mono(path)
     frames = extract_pitch_track(samples, sample_rate)
-    hop_sec = 512 / sample_rate  # matches extract_pitch_track's default hop
+    hop_sec = _DEFAULT_HOP / sample_rate  # SAME constant extract_pitch_track defaults its hop to
     return summarize_range(frames, hop_sec=hop_sec)
