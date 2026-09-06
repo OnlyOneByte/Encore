@@ -269,3 +269,38 @@ async def test_annotation_can_be_switched_off_entirely(tmp_path):
     proc = plans.fetch_runner(runner=fake_runner(["[download] 100%"], writes=(audio, "AUDIO")), annotator=None)
     done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp", artist="a-ha", track="Take On Me", durationSec=225.0)) if isinstance(e, CompleteResult)][0]
     assert "annotation" not in done.artifacts
+
+
+@pytest.mark.asyncio
+async def test_configured_ytdlp_binary_reaches_the_download_argv(tmp_path):
+    """Issue #192 — the fetch path. ENCORE_YTDLP_BIN was probed and logged but never reached the
+    subprocess: `fetch_runner` accepted a `ytdlp_bin` and dropped it, because `fetch_plan` built
+    `AcquireAudio()` with the hardcoded default and the only surviving reader was a `ytdlpBin` job
+    param the core never sends. So argv[0] was the literal "yt-dlp" in every reachable configuration,
+    and a worker configured with an off-PATH binary probed one yt-dlp and ran another.
+
+    Drives the REAL `plans.fetch_runner(ytdlp_bin=...)` end to end and pins that the binary the worker
+    was configured with is the one that lands at argv[0]. The expected value is a literal standalone
+    path the code never constructs, so this cannot pass by re-deriving the code's own default.
+    """
+    configured = "/opt/encore/bin/yt-dlp"
+    seen: list[list[str]] = []
+
+    async def spy_download(argv):
+        seen.append(argv)
+        out = Path(str(tmp_path)) / "audio" / "m1.m4a"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_bytes(b"OPUS")
+        yield "[download] 100% of 1MiB"
+
+    job = JobSpec(
+        job_id="j", media_id="m1", job_type="fetch", source_uri="https://yt/x",
+        params={"fetcher": "ytdlp"}, media_dir=str(tmp_path),
+    )
+
+    await drain(plans.fetch_runner(runner=spy_download, ytdlp_bin=configured), job)
+
+    assert seen, "yt-dlp must have been invoked"
+    assert seen[0][0] == configured, (
+        f"argv[0] must be the configured ENCORE_YTDLP_BIN, got {seen[0][0]!r}"
+    )
