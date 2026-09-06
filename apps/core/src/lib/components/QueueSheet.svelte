@@ -184,7 +184,7 @@
 		transform-origin: left center; transition: transform 1s linear;
 	}
 	@media (prefers-reduced-motion: reduce) { .track > i { transition: none; } }
-	.peek:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; border-radius: var(--radius); }
+	.peek:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius); }
 	.grip { width: 40px; height: 4px; border-radius: 3px; background: var(--line-strong); margin: 2px auto 10px; }
 	.line { display: flex; align-items: center; gap: 12px; }
 	.txt { min-width: 0; flex: 1; }
