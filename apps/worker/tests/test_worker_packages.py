@@ -227,3 +227,63 @@ def test_the_stem_bitrate_comment_justifies_aac_by_the_vocals_stem_not_the_instr
         "the STEM_BITRATE comment again claims a stem plays in a browser <video> — playback is through "
         "<audio> (apps/core/src/lib/tv/TvPlayer.svelte); the instrumental is FLAC (issue #236)"
     )
+
+
+def test_the_separation_seam_note_points_at_the_real_current_sites():
+    """Issue #237. The separation domain header's KNOWN SEAM PROBLEM paragraph recorded the seam at
+    three sites that no longer exist and said the fixing refactor was still pending.
+
+    Every claim was false at HEAD: (1) "`roformer` does `from . import demucs as d`" — roformer.py imports
+    only os; that line lives in engines.py:25. (2) "`acquisition/fetch` ... reach[es] in" — fetch.py's own
+    header states download_argv/parse_ytdlp_progress live THERE now, lifted out by S3. (3) "`../whisperx`
+    reach[es] in" — apps/worker/src/whisperx.py was dissolved in S0-S6 and does not exist. (4) "S3 lifts
+    them out; this stage only moved files, so the borrowing is unchanged" — 8f7212c (S3) already removed the
+    demucs import from roformer.py, so the header described a pending refactor that had landed.
+
+    There is no behaviour to test, so this pins the prose: the four discredited claims stay gone and the
+    header names the REAL surviving sites (the ffmpeg builders + subprocess_runner in demucs.py, consumed
+    engine-agnostically by steps/separate.py and dial_home.py). The related secondary line — the silence
+    probe listed under WHAT BELONGS HERE though it lives in processor.py — is also corrected here.
+    """
+    init_doc = importlib.import_module("src.separation").__doc__ or ""
+    lowered = init_doc.lower()
+
+    # ── BAN the four discredited claims (each was disproven against HEAD) ──────────────────────────
+    # (1) The claim that roformer borrows demucs via its own import. roformer.py imports only os; the
+    #     line lives in engines.py. The corrected header may MENTION the removed line, but must not
+    #     assert roformer performs it. Ban the specific subject-verb-object phrasing.
+    assert "`roformer` does `from . import demucs as d`" not in init_doc, (
+        "separation/__init__.py again claims roformer imports demucs — that import lives in engines.py:25, "
+        "not roformer.py (issue #237)"
+    )
+    # (2)/(3) The whisperx module was dissolved; the header must not reach for it as a live site.
+    assert "whisperx" not in lowered, (
+        "separation/__init__.py again names ../whisperx as reaching into the seam — that module was "
+        "dissolved in S0-S6 and does not exist (issue #237)"
+    )
+    # (4) The header must not describe S3 as a pending future that would fix the borrowing — S3 landed.
+    assert "lifts them out; this stage only moved files" not in init_doc, (
+        "separation/__init__.py again says the S3 refactor is pending — 8f7212c (S3) already removed the "
+        "demucs import from roformer.py and lifted the yt-dlp half to acquisition/fetch.py (issue #237)"
+    )
+
+    # ── PRESENCE: the header must point at the REAL surviving seam ────────────────────────────────
+    # The yt-dlp half was lifted; acquisition/fetch.py owns download_argv now.
+    assert "acquisition/fetch.py" in init_doc, (
+        "separation/__init__.py must state that S3 lifted the yt-dlp half to acquisition/fetch.py (#237)"
+    )
+    # The ffmpeg half is what remains, consumed engine-agnostically at the two real current sites.
+    assert "steps/separate.py" in init_doc, (
+        "separation/__init__.py must name steps/separate.py as a real consumer of the demucs.py ffmpeg "
+        "builders on a roformer cook (issue #237)"
+    )
+    assert "dial_home.py" in init_doc, (
+        "separation/__init__.py must name dial_home.py as a real consumer of demucs.py's subprocess_runner "
+        "(issue #237)"
+    )
+
+    # ── SECONDARY (:12-13): the silence probe is not in separation/, it is in processor.py ────────
+    assert "processor.py" in init_doc, (
+        "separation/__init__.py must state that the silence probe (volumedetect_argv/parse_max_volume_db/"
+        "is_silent/SILENCE_FLOOR_DB) lives in processor.py, not here (issue #237)"
+    )
