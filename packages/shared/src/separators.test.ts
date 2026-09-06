@@ -39,6 +39,7 @@ import {
 	DEFAULT_LYRICS_FONT,
 	DEFAULT_LYRICS_CASE,
 	DEFAULT_LYRICS_SCALE_PCT,
+	LYRICS_SCALE_BASE,
 	MIN_LYRICS_SCALE_PCT,
 	MAX_LYRICS_SCALE_PCT,
 	DEFAULT_LYRICS_LINES_BEFORE,
@@ -598,6 +599,29 @@ describe('lyrics text registries', () => {
 		// If this ever drops toward 0 the distance-based scale stops guaranteeing anything.
 		expect(MIN_LYRICS_SCALE_PCT).toBeGreaterThanOrEqual(80);
 		expect(MAX_LYRICS_SCALE_PCT).toBeGreaterThan(MIN_LYRICS_SCALE_PCT);
+	});
+
+	it('the scale is rebased so the neutral 100 renders what 80 rendered before', () => {
+		// The neutral fold is a HARD FACT, not re-derived with the render op: LYRICS_SCALE_BASE is
+		// exactly 0.8, so the neutral 100 (100/100 * 0.8) renders 0.8x — precisely what the old 80
+		// rendered. The value that now renders the OLD neutral 1.0x is 125, and the raised ceiling 300
+		// renders 2.4x. These target multipliers are asserted as literals; the render EXPRESSION that
+		// consumes the base is pinned separately against production source in lyrics-reel-cap.test.ts.
+		expect(LYRICS_SCALE_BASE).toBe(0.8);
+		// old-80 render, expressed as a literal the fold must reproduce at the neutral point:
+		expect(DEFAULT_LYRICS_SCALE_PCT * LYRICS_SCALE_BASE).toBe(80); // 100 * 0.8 (percent points)
+		// 125 is the value that renders the OLD 1.0x neutral; 300 the new ceiling at 2.4x:
+		expect(125 * LYRICS_SCALE_BASE).toBe(100); // 125 -> 1.0x
+		expect(MAX_LYRICS_SCALE_PCT * LYRICS_SCALE_BASE).toBe(240); // 300 -> 2.4x
+	});
+
+	it('the neutral point and the widened band', () => {
+		// Neutral stays 100 (so the DB default and every stored value keep their integer meaning — no
+		// migration), the floor IS the neutral point (nothing honest renders below the 0.8x floor), and
+		// the ceiling is raised well past the old 160.
+		expect(DEFAULT_LYRICS_SCALE_PCT).toBe(100);
+		expect(MIN_LYRICS_SCALE_PCT).toBe(100);
+		expect(MAX_LYRICS_SCALE_PCT).toBe(300);
 	});
 });
 
