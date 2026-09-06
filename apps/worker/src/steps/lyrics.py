@@ -62,9 +62,12 @@ class FetchCaptions(Step):
     stage = Stage.DOWNLOADING
     reads = frozenset({"job", "runner", "work", "audio.is_local"})
 
-    def __init__(self, kind: str) -> None:
+    def __init__(self, kind: str, *, ytdlp_bin: str = "yt-dlp") -> None:
         self.kind = kind
         self.auto = kind == MACHINE
+        # The worker's configured yt-dlp binary (ENCORE_YTDLP_BIN), threaded from the align plan. Without
+        # it every caption fetch shelled out to a bare "yt-dlp" from PATH and silently missed.
+        self.ytdlp_bin = ytdlp_bin
         self.name = f"fetch-captions:{'machine' if self.auto else 'authored'}"
         self.writes = frozenset({"lyrics.machine_cues" if self.auto else "lyrics.authored_cues"})
 
@@ -77,7 +80,7 @@ class FetchCaptions(Step):
         argv = caption_argv(
             ctx.job.source_uri,
             os.path.join(out_dir, "captions.%(ext)s"),
-            str(ctx.params.get("ytdlpBin") or "yt-dlp"),
+            str(ctx.params.get("ytdlpBin") or self.ytdlp_bin),
             auto=self.auto,
         )
         try:

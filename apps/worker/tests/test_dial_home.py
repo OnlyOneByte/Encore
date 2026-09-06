@@ -709,3 +709,46 @@ def test_run_forever_cancels_the_heartbeat_task_in_a_finally():
                 if isinstance(stmt, _ast.Call) and getattr(stmt.func, "attr", None) == "cancel":
                     cancels_in_finally.append(stmt)
     assert cancels_in_finally, "_run_forever never cancels the heartbeat task in a finally — it would leak across reconnects (issue #132)"
+
+
+@pytest.mark.asyncio
+async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_path):
+    """Issue #192 — the wiring seam. `_build_processor` builds the align runner from a WorkerConfig; the
+    configured `cfg.ytdlp_bin` (ENCORE_YTDLP_BIN) must reach the FetchCaptions steps that plan actually
+    runs, not stop at the capability probe. Before the fix `_build_processor` passed no yt-dlp argument
+    to `align_runner` at all, so the align caption fetches ran a bare "yt-dlp" from PATH regardless of
+    what the operator configured.
+
+    Drives the align PlanRunner `_build_processor` produced, extracts a real FetchCaptions step from the
+    plan it builds, runs it through a recording runner, and asserts the configured binary lands at
+    argv[0]. `/opt/encore/bin/yt-dlp` is a literal path the code never constructs.
+    """
+    from src.config import WorkerConfig
+    from src.runtime import Ctx
+    from src.steps.lyrics import FetchCaptions
+
+    configured = "/opt/encore/bin/yt-dlp"
+    cfg = WorkerConfig(capabilities=("align",), ytdlp_bin=configured)
+    align = _build_processor(cfg)._by_type["align"]
+
+    job = JobSpec(job_id="j1", media_id="m1", job_type="align",
+                  source_uri="https://youtube.com/watch?v=abc", params={}, media_dir=str(tmp_path))
+    plan = align._plan_for(job, None)
+    caption_steps = [s for s in plan.steps() if isinstance(s, FetchCaptions)]
+    assert caption_steps, "the align plan must fetch captions"
+
+    seen: list[list[str]] = []
+
+    async def spy(argv):
+        seen.append(argv)
+        return
+        yield  # pragma: no cover — async generator with no output lines
+
+    ctx = Ctx(job=job, work=str(tmp_path / "cap"), runner=spy)
+    async for _ in caption_steps[0].run(ctx):
+        pass
+
+    assert seen, "the caption step must have invoked yt-dlp"
+    assert seen[0][0] == configured, (
+        f"ENCORE_YTDLP_BIN must reach the align caption argv[0], got {seen[0][0]!r}"
+    )

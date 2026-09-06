@@ -451,6 +451,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             device=cfg.whisperx_device or whisperx_device_for(device),
             model=cfg.asr_model,
             sync_mode=cfg.sync_mode,
+            ytdlp_bin=cfg.ytdlp_bin,
         )
     return RoutingProcessor(by_type)
 
