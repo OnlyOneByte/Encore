@@ -33,6 +33,55 @@ function stripComments(src: string): string {
 }
 
 /*
+ * Derive the interactive-control selector set from the MARKUP of each component, not from a
+ * hand-maintained literal list. The old `CONTROL` allowlist decided what counted as a control by a
+ * regex someone had to remember to extend; a control introduced under any selector nobody added was
+ * silently skipped and shipped undersized green (issue #400 — a renamed strip's `.pills`/`.pill`
+ * escaped 44px scrutiny entirely). The FILES tree-walk already closed the file dimension; this closes
+ * the selector dimension by the same principle: read what the markup says is interactive.
+ *
+ * An element is interactive if it is a bare interactive tag (`<button>`, `<a href>`, `<input>`,
+ * `<select>`, `<textarea>`) or carries an interaction hook (`onclick`, `role="button"`, `tabindex`).
+ * We collect the CLASS TOKENS of every such element plus which bare tags appeared. A CSS rule is then
+ * a control iff the SUBJECT of its selector (the last compound, after the final combinator) targets a
+ * bare interactive tag or any interactive class token — matched hash-agnostically, since Svelte adds a
+ * `.svelte-xxxxx` scope class at compile time that never appears in authored source.
+ */
+// Bare element selectors we honour as controls. `input` is deliberately absent: no box-sizing
+// input rule in these surfaces is written element-only — text inputs carry a class
+// (.name-input / .text), the range slider is attribute-targeted (input[type='range']), and a
+// checkbox/radio is a UA glyph inside a <label> that owns the tap target. Matching bare `input`
+// would flag `.check input` (an 18px checkbox glyph) whose real target — the label — already
+// passes at var(--tap).
+const BARE_CONTROL_TAGS = ['button', 'a', 'select', 'textarea'];
+function markupControls(src: string): { tags: Set<string>; classes: Set<string> } {
+	const tags = new Set<string>();
+	const classes = new Set<string>();
+	// each opening tag: <tag ...attrs...>  (self-closing or not; we only need the attr text)
+	for (const m of src.matchAll(/<([a-zA-Z][\w-]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g)) {
+		const tag = m[1]!.toLowerCase();
+		const attrs = m[2]!;
+		const hasHandler = /(^|\s)onclick[\s=]/.test(attrs);
+		const isButtonRole = /(^|\s)role\s*=\s*["']button["']/.test(attrs);
+		const isTabbable = /(^|\s)tabindex[\s=]/.test(attrs);
+		const isLink = tag === 'a' && /(^|\s)href[\s=]/.test(attrs);
+		// a checkbox/radio is a platform glyph sized by the UA; its tap target is delegated to the
+		// wrapping <label> (see `.check` in settings, which itself carries min-height: var(--tap)), so
+		// its own 18px box is not the control and would be a false offender.
+		const isGlyphInput =
+			tag === 'input' && /(^|\s)type\s*=\s*["'](?:checkbox|radio)["']/.test(attrs);
+		const isFormControl = (tag === 'input' || tag === 'select' || tag === 'textarea') && !isGlyphInput;
+		if (!(hasHandler || isButtonRole || isTabbable || isLink || isFormControl)) continue;
+		// only honour a BARE element selector for tags whose box rules are written element-only here
+		if (BARE_CONTROL_TAGS.includes(tag)) tags.add(tag);
+		if (isLink) tags.add('a');
+		const cls = attrs.match(/(?:^|\s)class\s*=\s*"([^"]*)"/);
+		if (cls) for (const t of cls[1]!.trim().split(/\s+/)) if (t) classes.add(t);
+	}
+	return { tags, classes };
+}
+
+/*
  * Only the PHONE surfaces. The TV is not touched — its controls are a phone in someone's hand, and its
  * own scale is enforced by stage-scale.test.ts.
  */
@@ -48,24 +97,41 @@ const FILES = [
 	join(SRC, 'routes', 'metrics', '[mediaId]', '+page.svelte')
 ];
 
-/** Selectors that are unambiguously interactive controls. */
-const CONTROL = /(^|[\s,>])(button|\.btn-accent|\.chip\b|\.act\b|\.remove\b|\.ic\b|\.gear\b|\.back\b|\.add\b|\.sing\b|\.mic-btn\b|\.browse-toggle\b|\.swatch\b|\.disclose\b|input\[type=['"]range['"]\]|\.cooks\b)/;
+// Is a CSS selector's SUBJECT (its last compound, after the final combinator) an interactive control,
+// per the markup-derived set? Class tokens are matched hash-agnostically: `.chip`, `.chip.active`, and
+// the compiled `.chip.svelte-xyz` all count as targeting `.chip`. A leading tag (`button {`, `a {`)
+// counts only when the markup actually used that tag interactively.
+function subjectIsControl(sel: string, ctrl: { tags: Set<string>; classes: Set<string> }): boolean {
+	const subject = sel.split(/[\s>+~]+/).pop() ?? '';
+	// strip pseudos/attribute-suffixes so `.chip:active` and `.chip[data-x]` reduce to their classes
+	const cleaned = subject.replace(/::?[\w-]+(\([^)]*\))?/g, '').replace(/\[[^\]]*\]/g, '');
+	const leadingTag = cleaned.match(/^([a-zA-Z][\w-]*)/);
+	if (leadingTag && ctrl.tags.has(leadingTag[1]!.toLowerCase())) return true;
+	for (const cls of cleaned.matchAll(/\.([A-Za-z_][\w-]*)/g)) {
+		if (ctrl.classes.has(cls[1]!)) return true;
+	}
+	return false;
+}
 
 test('every phone control that sizes its own box reaches 44px', () => {
 	const offenders: string[] = [];
+	let controlRulesSeen = 0;
 	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
+		const ctrl = markupControls(src);
 		// crude rule-block split is enough: these are hand-written scoped stylesheets, not minified CSS
 		for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
 			const sel = m[1]!.trim();
 			const body = m[2]!;
-			if (!CONTROL.test(sel)) continue;
 			// a ::pseudo-element (slider track/thumb) is a cosmetic sub-part, never the touch target
 			// itself — the interactive box is the parent selector, which is examined on its own rule.
 			if (sel.includes('::')) continue;
+			// derive "is this a control?" from the markup, not a literal allowlist (issue #400)
+			if (!sel.split(',').some((s) => subjectIsControl(s.trim(), ctrl))) continue;
 			// a rule that declares no box has not taken a position on target size
 			const declaresBox = /(min-height|height|padding)\s*:/.test(body);
 			if (!declaresBox) continue;
+			controlRulesSeen++;
 			// an explicit min-height/height at or above the standard passes
 			const explicit = [...body.matchAll(/(?:min-)?height:\s*([0-9.]+)px/g)].map((x) => Number(x[1]));
 			if (explicit.some((h) => h >= TAP)) continue;
@@ -79,6 +145,9 @@ test('every phone control that sizes its own box reaches 44px', () => {
 		}
 	}
 	expect(offenders).toEqual([]);
+	// a broken markup walk (empty tag/class sets) would silently measure nothing and pass vacuously;
+	// pin a floor so the guard fails loudly if the derivation ever stops finding controls.
+	expect(controlRulesSeen).toBeGreaterThan(10);
 });
 
 /**
