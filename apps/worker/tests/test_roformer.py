@@ -169,12 +169,13 @@ from src import plans  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
-def _roformer_fake_runner(store_writes: bool = True, model_in_name: str = "sw-by-jarredou"):
+def _roformer_fake_runner(store_writes: bool = True, write_vocals: bool = True, model_in_name: str = "sw-by-jarredou"):
     """A fake runner scripting the real roformer cook shape: yt-dlp → ffmpeg decode → bs-roformer-infer
     → ffmpeg volumedetect probe → ffmpeg encode. It records every argv so the test can assert the seam
     (input WAV alone in its own dir, --store_dir a DIFFERENT dir from --input_folder), and writes the
     stems bs-roformer-infer would into --store_dir under names the engine could NOT have derived from the
-    model token — so a passing discovery proves globbing, not a name template."""
+    model token — so a passing discovery proves globbing, not a name template. `write_vocals=False`
+    simulates a roformer run that produced the instrumental but not the vocals stem (best-effort path)."""
     calls: list[list[str]] = []
 
     async def run(argv):
@@ -199,7 +200,8 @@ def _roformer_fake_runner(store_writes: bool = True, model_in_name: str = "sw-by
                 # names that the engine's find_outputs must DISCOVER by globbing — the model slug in the
                 # filename is NOT something find_roformer_* derives, so a match proves discovery.
                 Path(_os.path.join(store, f"input_(Instrumental)_{model_in_name}.wav")).write_bytes(b"FAKE_INST")
-                Path(_os.path.join(store, f"input_(Vocals)_{model_in_name}.wav")).write_bytes(b"FAKE_VOX")
+                if write_vocals:
+                    Path(_os.path.join(store, f"input_(Vocals)_{model_in_name}.wav")).write_bytes(b"FAKE_VOX")
             # coarse tqdm progress — parse_progress returns None by design, so the step emits [0, 100]
             yield "  0%|          | 0/1 [00:00<?, ?it/s]"
             # an INTERMEDIATE tqdm pct — if RoformerEngine.parse_progress ever parsed tqdm (it must not,
@@ -296,3 +298,28 @@ async def test_a_roformer_cook_that_produces_no_instrumental_fails_loudly(tmp_pa
     proc = plans.stems_runner(runner=runner)
     with pytest.raises(RuntimeError, match="roformer produced no instrumental"):
         await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
+
+
+@pytest.mark.asyncio
+async def test_a_roformer_cook_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
+    """The vocals-LESS half of the discovery contract — the roformer analogue of demucs's
+    test_missing_vocals_is_best_effort_still_publishes_instrumental (test_demucs.py). When
+    bs-roformer-infer writes the instrumental but no vocals output, find_roformer_vocals returns None
+    (roformer.py:131,136 — a real production state, exactly as find_roformer_instrumental does), so
+    RoformerEngine.find_outputs maps the `vocals` key onto None and the publish step drops null stems.
+    The cook must still complete best-effort and publish the load-bearing instrumental, with the vocals
+    key simply ABSENT — not a None value. Without this, a roformer cook could silently drop its guiding
+    track on the best-effort path and every worker test stayed green (issue #346, the half of #245 that
+    #333 left open). Mirrors the demucs sibling's `"vocals" not in stems` shape, NOT `stems["vocals"] is None`."""
+    runner, _ = _roformer_fake_runner(write_vocals=False)  # instrumental written, vocals output absent
+    proc = plans.stems_runner(runner=runner)  # no engine= override → real RoformerEngine from params
+    events = await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
+
+    completes = [e for e in events if isinstance(e, CompleteResult)]
+    assert len(completes) == 1, "the roformer cook must still complete best-effort"
+    stems = completes[0].artifacts["stems"]
+    # the load-bearing output is published
+    assert stems["instrumental"].endswith("mr-instrumental.flac")
+    assert Path(stems["instrumental"]).exists()
+    # the guiding track is simply ABSENT (key dropped), never a None value
+    assert "vocals" not in stems
