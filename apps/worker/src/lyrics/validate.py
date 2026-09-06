@@ -20,8 +20,12 @@ What survives a version difference is the RELATIVE structure: line order always,
 between lines under a constant offset, and where the long instrumental breaks sit. So the LRC is fitted
 to the aligner's output as a two-parameter (offset, scale) model and the RESIDUALS are read:
 
-  small residuals            -> same recording; the fitted offset is a measured display offset, which
-                                is a principled replacement for a hand-tuned lead constant
+  small residuals            -> same recording; keep the aligner's timing (it is what gets published,
+                                and it is right for THIS audio). The fitted offset only quantifies how
+                                far the LRC was shifted from that timing; it is reported as a
+                                diagnostic, NOT applied as a display lead. It cannot be: the offset is
+                                only measurable when alignment succeeded, and that is exactly the case
+                                whose published timings come from the aligner, not the LRC.
   large systematic residual  -> different version; keep the aligner's timing and DISCARD the LRC's
   fine except one region     -> that region is where alignment failed
 """
@@ -173,10 +177,6 @@ class LrcFit:
     verdict: str = "inconclusive"
     #: Aligned line indices whose residual is an outlier while the rest fit — where alignment failed.
     outlier_lines: list[int] = field(default_factory=list)
-
-    @property
-    def trust_lrc_timing(self) -> bool:
-        return self.verdict == "same_version"
 
 
 def fit_lrc_to_aligned(lrc_starts: Iterable[float], aligned_starts: Iterable[float]) -> LrcFit:
