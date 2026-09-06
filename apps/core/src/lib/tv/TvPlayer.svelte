@@ -29,6 +29,11 @@
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
 		playing?: boolean; // playback:state.isPlaying — pause/resume from the phone
 		seekSec?: number; // playback:state.positionSec — jump the video when the phone seeks
+		// Bumped by every `playback:state` (server `rev`). Tracked by the seek effect so a restart
+		// whose reported position EQUALS the last one still re-takes the seek decision — a restart
+		// under the jump threshold writes 0 over 0, which a `$state` (strict `===`) never notifies,
+		// so `seekSec` alone would leave the effect asleep and the song would not restart (#95).
+		seekRev?: number;
 		keyShift?: number; // ± semitones for a file song — selects the keyed instrumental
 		guideLevel?: number; // 0..1 — how loud the original vocals sit under the instrumental
 		// Fires ONLY while this slot is the visible one. Drives the controller's onVisibleReady, which
@@ -50,6 +55,7 @@
 		active,
 		playing = true,
 		seekSec,
+		seekRev,
 		keyShift = 0,
 		guideLevel = 0,
 		onready,
@@ -317,11 +323,18 @@
 	$effect(() => {
 		if (!master || !media || !isPlayable(media) || seekSec === undefined) return;
 		if (!active) return;
-		// `untrack` so this effect's DEPENDENCIES are unchanged by the fix — it still re-runs on a new
-		// reported position and nothing else. Reading `vocals` (a `$state` holding the element) as a
-		// tracked dependency would make the guide MOUNTING re-run the effect, and a mount that coincided
-		// with a stale `seekSec` would then yank the MASTER to that stale position. The guide's playhead
-		// is an input to the decision, never a reason to re-take it.
+		// TRACKED dependency: re-run on every `playback:state`, not only when `seekSec` changes value.
+		// `rev` is bumped by every `setPlayback` (a restart, pause, seek, key…) but never by position
+		// telemetry (`setPosition` leaves rev alone and does not broadcast), so this re-runs the seek
+		// decision on a restart-to-0 from under the threshold WITHOUT reopening telemetry-chasing —
+		// the decision itself is still `seekPlan`'s alone. A bare read is enough to register the dep.
+		void seekRev;
+		// `untrack` so the GUIDE MOUNTING is not a re-run trigger. This effect re-runs on the two
+		// `playback:state`-derived deps above (`seekSec` and `seekRev`) and nothing else. Reading
+		// `vocals` (a `$state` holding the element) as a tracked dependency would make the guide
+		// MOUNTING re-run the effect, and a mount that coincided with a stale `seekSec` would then
+		// yank the MASTER to that stale position. The guide's playhead is an input to the decision,
+		// never a reason to re-take it.
 		//
 		// A guide that is not mounted has no playhead to compare; NaN reads as "needs the seek" and is
 		// then skipped by the `vocals` guard below, so the master's half of the plan is unaffected.

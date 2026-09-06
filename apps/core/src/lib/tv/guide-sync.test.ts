@@ -165,6 +165,43 @@ describe('seekPlan — whenever the master jumps, the guide goes with it', () =>
 		expect(seekPlan(10, 10, 10 + SEEK_JUMP_SEC + 0.01).master).toBe(true);
 	});
 
+	it('restarts a song playing under the jump threshold — the target-0 rewind is not telemetry (#95)', () => {
+		// A `restart` sets the reported position to 0 while the song plays on. From a currentTime UNDER
+		// SEEK_JUMP_SEC the move |masterSec - 0| is below the telemetry threshold, so the plain distance
+		// test never rewinds and the restart does nothing — the master playhead does not move. Positions
+		// keyed to the constant so lowering SEEK_JUMP_SEC cannot silently route these through the
+		// DISTANCE clause and leave the restart clause untested.
+		for (const masterSec of [
+			GUIDE_PREROLL_ALIGN_SEC + 0.01, // just past the pre-roll tolerance, the smallest real rewind
+			SEEK_JUMP_SEC / 3,
+			SEEK_JUMP_SEC / 2,
+			SEEK_JUMP_SEC - 0.01 // the top of the window #95 names
+		]) {
+			expect(seekPlan(masterSec, masterSec, 0)).toEqual({ master: true, guide: true });
+		}
+		// The guide half still respects the pre-roll tolerance: a guide already at 0 is not flushed.
+		expect(seekPlan(SEEK_JUMP_SEC / 2, 0, 0)).toEqual({ master: true, guide: false });
+	});
+
+	it('does not read ordinary telemetry as a restart just because 0 is nearby (#95)', () => {
+		// Telemetry can only report a target of 0 when the song is genuinely at ~0, in which case the
+		// master is already there and the target-0 clause must NOT fire (moving is a no-op, but the
+		// clause keys on masterSec > GUIDE_PREROLL_ALIGN_SEC precisely so it stays a plain no-move).
+		expect(seekPlan(0, 0, 0).master).toBe(false);
+		expect(seekPlan(GUIDE_PREROLL_ALIGN_SEC / 2, GUIDE_PREROLL_ALIGN_SEC / 2, 0).master).toBe(false);
+		expect(seekPlan(GUIDE_PREROLL_ALIGN_SEC, GUIDE_PREROLL_ALIGN_SEC, 0).master).toBe(false); // the > boundary
+		// A NON-ZERO sub-threshold target with the master past the pre-roll tolerance is the case that
+		// distinguishes the fix (target === 0) from the banned relaxation (target < SEEK_JUMP_SEC): the
+		// latter would fire here, the fix must not. This is the coverage the earlier ≥-threshold targets
+		// could not exercise.
+		expect(seekPlan(0.9, 0.9, 0.5).master).toBe(false);
+		expect(seekPlan(1.0, 1.0, 0.4).master).toBe(false);
+		// And a non-zero sub-threshold telemetry frame around a mid-song playhead is still ignored.
+		for (const target of [10, 10.5, 11, 9, 8.7]) {
+			expect(seekPlan(10, 10, target).master).toBe(false);
+		}
+	});
+
 	it('holds on a non-finite playhead or target rather than seeking on a guess', () => {
 		// Matches guideCorrection's policy above. A NaN target reaching `currentTime` throws.
 		expect(seekPlan(NaN, 10, 0)).toEqual({ master: false, guide: false });
@@ -212,8 +249,9 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 	 * The guide's playhead is an INPUT to the decision, never a reason to re-take it. Reading the
 	 * element's `$state` as a tracked dependency would make the guide MOUNTING re-run this effect, and a
 	 * mount coinciding with a stale reported position would then yank the MASTER to that stale position
-	 * — a regression introduced BY the fix rather than closed by it. `untrack` keeps the effect's
-	 * dependencies exactly what they were before the guide was considered at all.
+	 * — a regression introduced BY the fix rather than closed by it. `untrack` keeps the guide's
+	 * mounting out of the effect's dependency set; the effect's real deps are the two
+	 * `playback:state`-derived values (`seekSec` and `seekRev`), pinned by the next test.
 	 */
 	it('reads the guide element untracked, so the fix adds no new re-run trigger', () => {
 		expect(seekEffect).toContain('untrack(() => vocals)');
@@ -243,5 +281,32 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 	it('aligns the guide to the fixed seek target, never to the master’s moving playhead', () => {
 		expect(seekEffect).not.toContain('guideEl.currentTime = master.currentTime');
 		expect(seekEffect).not.toContain('vocals.currentTime = master.currentTime');
+	});
+
+	/*
+	 * THE #95 COMPLETION. `seekPlan` admitting a restart-to-0 as a jump is necessary but not enough: on
+	 * #95's own repro the song starts at position 0, so `seekSec` is already 0, and a restart under the
+	 * jump threshold publishes positionSec 0 AGAIN. Writing 0 over 0 into a `$state` (strict `===`)
+	 * notifies nothing, so an effect whose only dep is `seekSec` never re-runs and the master never
+	 * moves — the reported symptom, upstream of the threshold. The server `rev` moves on EVERY
+	 * `playback:state` (bumped by `setPlayback`) but never on position telemetry (`setPosition` leaves
+	 * rev alone and does not broadcast), so tracking it re-takes the seek decision on an equal-position
+	 * restart WITHOUT reopening telemetry-chasing. This guard fails if that tracked read is removed.
+	 */
+	it('re-runs the seek effect on every playback:state via a tracked seekRev, so an equal-position restart still fires (#95)', () => {
+		expect(seekEffect).not.toBe('');
+		// Strip comments before asserting: a `seekRev` mentioned only in a comment does NOT register a
+		// reactive dependency, so a guard that matched comment text would be mutation-blind (it would
+		// stay green with the executable read deleted). Assert on CODE.
+		const effectCode = seekEffect
+			.replace(/\/\*[\s\S]*?\*\//g, '')
+			.replace(/\/\/.*$/gm, '');
+		// The effect must READ seekRev in executable position (a bare read registers the dep in runes mode).
+		expect(effectCode).toContain('seekRev');
+		// And the prop must exist and be plumbed from playback:state's rev on the page.
+		expect(src).toContain('seekRev?: number');
+		const page = readFileSync(join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte'), 'utf8');
+		expect(page).toContain('seekRev = e.rev');
+		expect(page).toContain('seekRev={seekRev}');
 	});
 });
