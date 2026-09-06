@@ -34,6 +34,11 @@ CAPABILITIES = list(CONFIG.capabilities)
 MEDIA_DIR = CONFIG.media_dir
 VERSION = CONFIG.version
 RECONNECT_BACKOFF_SEC = 3.0
+# Fallback heartbeat cadence if worker:welcome never carried one (older core, or a welcome that
+# predates heartbeatIntervalSec). The real value is the core's progressLeaseMs/1000 handed over at
+# handshake; this is only the floor so the leg is never fully silent. Kept below the 30s lease so a
+# reconciling frame always lands before a lease can expire.
+DEFAULT_HEARTBEAT_INTERVAL_SEC = 10.0
 
 
 class WorkerClient:
@@ -68,6 +73,12 @@ class WorkerClient:
         # it, with the subprocess_runner kill-on-GeneratorExit, the child process). A bare set could
         # only be drained, not cancelled by job.
         self._tasks: dict[str, asyncio.Task] = {}
+        # Heartbeat cadence, handed over in worker:welcome (= core progressLeaseMs / 1000). Until the
+        # handshake arrives we use the conservative default so the periodic sender in _run_forever has
+        # a valid interval from the first tick. This is what makes worker:heartbeat actually leave the
+        # worker in production: registry.heartbeat is the ONLY path that reconciles slotsFree from the
+        # worker's own truth, and a reaped (lease-expired) job otherwise strands its slot forever.
+        self.heartbeat_interval_sec: float = DEFAULT_HEARTBEAT_INTERVAL_SEC
 
     async def hello(self) -> None:
         await self._send(
@@ -83,12 +94,34 @@ class WorkerClient:
     async def send_heartbeat(self) -> None:
         await self._send(protocol.heartbeat(self.state.worker_id, self.state.slots_free, list(self.state.running)))
 
+    async def heartbeat_loop(self) -> None:
+        """Periodically push a worker:heartbeat so the core can reconcile this worker's slotsFree.
+
+        The core sends no `ping` (the PING arm above is a passive responder to a command production
+        never emits), and it has no core-side liveness poll, so WITHOUT this loop worker:heartbeat is
+        never sent and registry.heartbeat never runs. That path is the only one that gives a slot back
+        after the reaper requeues a lease-expired job, so its absence lets one reaped job strand the
+        worker's capacity permanently (issue #132). Runs until cancelled (on disconnect, from
+        _run_forever). The interval is refreshed live from self.heartbeat_interval_sec each tick, so a
+        worker:welcome that lands after the loop starts still takes effect.
+        """
+        while True:
+            await asyncio.sleep(max(0.1, self.heartbeat_interval_sec))
+            await self.send_heartbeat()
+
     async def handle(self, msg: dict[str, Any]) -> None:
         """Dispatch one inbound core->worker command."""
         t = msg.get("type")
         if t == protocol.WELCOME:
             # config handshake: record where to read source / write stems (local volume vs S3/MinIO)
             self.media_store = parse_media_store(msg)
+            # Adopt the core's heartbeat cadence (= progressLeaseMs / 1000). Storing it is what makes
+            # the periodic heartbeat_loop tick at the interval the core actually leases at, rather than
+            # the default floor. A malformed / missing value is ignored so a bad frame cannot silence
+            # the leg. Sends nothing here — welcome requires no reply.
+            interval = msg.get("heartbeatIntervalSec")
+            if isinstance(interval, (int, float)) and interval > 0:
+                self.heartbeat_interval_sec = float(interval)
             # Surface the object-mode gap at handshake time, not only when the first job is rejected:
             # an operator who set MEDIA_STORE=object on the core should learn immediately that this
             # worker cannot honour it (see _on_assign — every such job is refused, not silently
@@ -460,6 +493,7 @@ async def _run_forever() -> None:
     processor: Processor = _build_processor(cfg)
     while True:
         client: WorkerClient | None = None
+        heartbeat_task: asyncio.Task | None = None
         try:
             # Attach the worker token (if configured) only to the CONNECT url — never to the log line
             # below, which prints the token-free cfg.core_ws so the secret never lands in the log.
@@ -474,6 +508,12 @@ async def _run_forever() -> None:
                 )
                 await client.hello()
                 print(f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})")
+                # The message pump below only ever REACTS to inbound frames (async for raw in ws), so a
+                # periodic heartbeat has to run as its own task alongside it — otherwise worker:heartbeat
+                # is never sent and the core can never reconcile this worker's slotsFree after a reaped
+                # job (issue #132). Cancelled in the finally, before the next reconnect builds a fresh
+                # client, so it is bound to exactly this socket's lifetime.
+                heartbeat_task = asyncio.create_task(client.heartbeat_loop())
                 async for raw in ws:
                     # Per-frame guard: a single malformed frame (bad JSON, or an exception escaping a
                     # handler) must fail only that frame, not drop the connection and every in-flight
@@ -486,6 +526,10 @@ async def _run_forever() -> None:
             print(f"[worker] disconnected ({exc!r}); reconnecting in {RECONNECT_BACKOFF_SEC}s")
             await asyncio.sleep(RECONNECT_BACKOFF_SEC)
         finally:
+            # Stop the per-socket heartbeat first: it is bound to this connection and the next loop
+            # starts a fresh one. Cancelling a never-started task (connect itself failed) is a no-op.
+            if heartbeat_task is not None:
+                heartbeat_task.cancel()
             # The next loop builds a BRAND NEW client, so this one's in-flight tasks are about to be
             # abandoned. Cancel them rather than let them run to completion against a socket that is
             # already closed: an orphaned cook loses its result AND races the core's reaper, which has
