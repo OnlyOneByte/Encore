@@ -10,10 +10,11 @@ it has happened twice on the owner's library, both stems pinned at the 16-bit fl
 and a silent guiding track is worse than a missing one, because the singer drags the control up and
 nothing happens. As a step, both engines get it.
 """
+
 from __future__ import annotations
 
 import os
-from typing import AsyncIterator
+from collections.abc import AsyncIterator
 
 from ..processor import (
     ProgressEvent,
@@ -191,7 +192,9 @@ class PublishStems(Step):
         raw_inst = ctx.stems.raw.get("instrumental")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
-        async for _line in ctx.runner(encode_flac_argv(raw_inst or "", final, self._ffmpeg, self._flac_level)):
+        async for _line in ctx.runner(
+            encode_flac_argv(raw_inst or "", final, self._ffmpeg, self._flac_level)
+        ):
             pass
         ctx.stems.published["instrumental"] = final
 

@@ -12,8 +12,8 @@ Two mechanisms, deliberately separate, and the distinction is the point of most 
   * DEMOTION is absolute (SUSPECT_AGREEMENT, tested in test_whisperx.py). It judges whether the winner
     is trustworthy at all.
 """
-from __future__ import annotations
 
+from __future__ import annotations
 
 from src.lyrics.chain import (
     BASELINE_CAPTIONS_AUTO,
@@ -202,7 +202,9 @@ def test_a_winner_that_disagrees_with_every_baseline_is_flagged_AND_gets_a_real_
     """Selection is comparative and always returns a best; that says nothing about whether the best is any
     good. When it is not, the room needs words that ARE about this audio — not just a warning label on
     words that are not."""
-    wrong = text(SOURCE_LRCLIB, "never gonna give you up let down run around desert cry goodbye lie hurt", "wrong")
+    wrong = text(
+        SOURCE_LRCLIB, "never gonna give you up let down run around desert cry goodbye lie hurt", "wrong"
+    )
     sel = select_by_baselines([wrong, base(ASR_OF_FEAT)])
 
     assert sel.winner_suspect
@@ -283,8 +285,8 @@ def test_an_UNJUDGED_candidate_never_displaces_a_graded_one_ACROSS_sources():
     candidate measured at real agreement — regardless of which source was acquired first. If it did, the
     room gets unverified words while correct ones were in hand, and the `winner_suspect` safety net can
     never fire because a None score reads as neither trustworthy nor suspect."""
-    graded = text(SOURCE_LRCLIB, FEAT_TEXT, "lrclib-full")          # 31 distinct tokens -> judged ~0.94
-    stub = text(SOURCE_CAPTIONS, "la la la", "captions-stub")       # 1 distinct token  -> UNJUDGEABLE
+    graded = text(SOURCE_LRCLIB, FEAT_TEXT, "lrclib-full")  # 31 distinct tokens -> judged ~0.94
+    stub = text(SOURCE_CAPTIONS, "la la la", "captions-stub")  # 1 distinct token  -> UNJUDGEABLE
 
     # Both acquisition orders must publish the GRADED candidate with its REAL score, never the stub.
     for pool, order in (([graded, stub], "graded-first"), ([stub, graded], "stub-first")):
@@ -298,7 +300,7 @@ def test_between_two_UNJUDGEABLE_candidates_the_first_acquired_stands():
     metadata match) must stand rather than the later one displacing it arbitrarily. This pins the strict
     `>` in the cross-source comparison: a `>=` would silently let registry acquisition ORDER hand the win
     to whichever ungradeable candidate came last."""
-    first = text(SOURCE_LRCLIB, "mmm ooh yeah", "first-acquired")   # both under MIN_TOKENS_TO_COMPARE,
+    first = text(SOURCE_LRCLIB, "mmm ooh yeah", "first-acquired")  # both under MIN_TOKENS_TO_COMPARE,
     second = text(SOURCE_CAPTIONS, "na na hey", "second-acquired")  # so neither can be judged
 
     sel = select_by_baselines([first, second, base(ASR_OF_FEAT)])
@@ -390,7 +392,10 @@ def test_the_credit_breaks_a_duration_tie_toward_the_record_naming_the_GUEST():
     """What the parsed billing buys. Both records are the same length here, so only the credit can
     separate 'Lady Gaga' from 'Lady Gaga feat. Beyoncé'."""
     pool = rank_lrclib_candidates(
-        [rec(id=1, artist_name="Lady Gaga", duration=243.0), rec(id=2, artist_name="Lady Gaga feat. Beyoncé", duration=243.0)],
+        [
+            rec(id=1, artist_name="Lady Gaga", duration=243.0),
+            rec(id=2, artist_name="Lady Gaga feat. Beyoncé", duration=243.0),
+        ],
         duration=243.0,
         credit="Lady Gaga feat. Beyoncé",
     )
@@ -401,7 +406,10 @@ def test_duration_outranks_the_credit():
     """Ordering of the axes, pinned. A record whose LENGTH matches the audio is better evidence than one
     whose artist string reads well: the credit is parsed from an upload title and is often wrong."""
     pool = rank_lrclib_candidates(
-        [rec(id=1, artist_name="Lady Gaga feat. Beyoncé", duration=180.0), rec(id=2, artist_name="Lady Gaga", duration=243.0)],
+        [
+            rec(id=1, artist_name="Lady Gaga feat. Beyoncé", duration=180.0),
+            rec(id=2, artist_name="Lady Gaga", duration=243.0),
+        ],
         duration=243.0,
         credit="Lady Gaga feat. Beyoncé",
     )
@@ -414,7 +422,9 @@ def test_the_pool_is_capped():
 
 
 def test_a_record_label_names_the_version_for_the_log():
-    r = rec(id=77, track_name="Telephone", artist_name="Lady Gaga", album_name="The Fame Monster", duration=243.0)
+    r = rec(
+        id=77, track_name="Telephone", artist_name="Lady Gaga", album_name="The Fame Monster", duration=243.0
+    )
     label = r.label
     assert "Lady Gaga" in label and "Telephone" in label and "243s" in label and "#77" in label
 
@@ -451,7 +461,11 @@ def _segments(res, duration):
 
 def _req():
     return LyricsRequest(
-        media_id="m1", artist="Lady Gaga", track="Telephone", artist_credit="Lady Gaga feat. Beyoncé", duration=243.0
+        media_id="m1",
+        artist="Lady Gaga",
+        track="Telephone",
+        artist_credit="Lady Gaga feat. Beyoncé",
+        duration=243.0,
     )
 
 
@@ -552,7 +566,9 @@ def test_automatic_captions_are_never_authoritative():
     when it is all that is left the TV labels it.
     """
     got = AutoCaptionsSource().fetch(
-        LyricsRequest(media_id="m", auto_caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}])
+        LyricsRequest(
+            media_id="m", auto_caption_segments=[{"start": 0.0, "end": 2.0, "text": "hello hello baby"}]
+        )
     )
     assert got is not None
     assert got.text_confidence == "low"
@@ -587,11 +603,15 @@ def test_the_REGISTRY_decides_which_tier_each_source_speaks_in():
 def test_the_two_caption_kinds_read_from_SEPARATE_inputs():
     """Structural, not a filter: an authored track cannot arrive through the automatic door or vice versa,
     because they are different fields fed by different yt-dlp fetches."""
-    only_auto = LyricsRequest(media_id="m", auto_caption_segments=[{"start": 0.0, "end": 2.0, "text": "hi there"}])
+    only_auto = LyricsRequest(
+        media_id="m", auto_caption_segments=[{"start": 0.0, "end": 2.0, "text": "hi there"}]
+    )
     assert CaptionsSource().fetch(only_auto) is None
     assert AutoCaptionsSource().fetch(only_auto) is not None
 
-    only_manual = LyricsRequest(media_id="m", caption_segments=[{"start": 0.0, "end": 2.0, "text": "hi there"}])
+    only_manual = LyricsRequest(
+        media_id="m", caption_segments=[{"start": 0.0, "end": 2.0, "text": "hi there"}]
+    )
     assert AutoCaptionsSource().fetch(only_manual) is None
     assert CaptionsSource().fetch(only_manual) is not None
 

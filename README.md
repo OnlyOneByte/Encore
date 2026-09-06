@@ -260,14 +260,23 @@ human onboarding: [`docs/HANDOFF.md`](docs/HANDOFF.md).
 ## Dev notes
 
 ```bash
-bun test          # 1168 unit/integration tests — runnable from the root
+bun test          # unit/integration tests — runnable from the root
 bun run check     # svelte-check + types, 0 errors
 bun run typecheck # both workspaces
-cd apps/worker && pytest   # 450 worker tests — needs `pip install pytest pytest-asyncio`
+
+# Worker (apps/worker) — install the pinned dev toolchain once, then run all four gates:
+cd apps/worker && pip install -r requirements.txt -r requirements-dev.txt
+pytest -q                    # worker unit tests (asyncio_mode=auto)
+ruff check .                 # lint (pyflakes/pycodestyle/isort/bugbear/pyupgrade/tidy-imports)
+ruff format --check .        # format gate (ruff is the formatter; no separate black)
+mypy                         # type-check src/ (config in pyproject.toml)
 ```
 
-`pytest.ini` sets `asyncio_mode = auto`, so without **`pytest-asyncio`** the async tests fail with
-"async def functions are not natively supported" — a missing test dep, not a real failure.
+`requirements-dev.txt` pins the worker's dev toolchain (pytest, pytest-asyncio, ruff, mypy) so the
+gates above reproduce from the repo alone. `pytest.ini` sets `asyncio_mode = auto`, so without
+**`pytest-asyncio`** the async tests fail with "async def functions are not natively supported" — a
+missing test dep, not a real failure. `ruff check`, `ruff format --check` and `mypy` all exit 0 on a
+clean tree; any non-zero exit is a real finding.
 
 - `apps/core/e2e/contract.ts` is the **selector contract**: one declaration of every hook the browser
   flows drive, guarded by `contract.test.ts` so `bun test` fails the moment a selector's anchor

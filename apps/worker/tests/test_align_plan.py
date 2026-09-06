@@ -7,6 +7,7 @@ plan rather than for a module that no longer exists.
 Every seam stays injectable for the reason it always was: the real WhisperX, the real LRCLIB and the real
 yt-dlp only run on a worker box, so the whole flow has to be exercisable without any of them.
 """
+
 import asyncio
 import json
 import os
@@ -18,13 +19,11 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src import plans  # noqa: E402
-from src.runtime import runner as runner_mod  # noqa: E402
 from src import lyrics as lyrics_pkg  # noqa: E402
-from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
-
-
+from src import plans  # noqa: E402
 from src.lyrics.source import LrclibResult  # noqa: E402
+from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
+from src.runtime import runner as runner_mod  # noqa: E402
 
 
 def test_lyrics_key():
@@ -32,7 +31,9 @@ def test_lyrics_key():
 
 
 def test_lrclib_to_segments_prefers_synced_then_plain_then_empty():
-    synced = LrclibResult(id=1, instrumental=False, synced_lyrics="[00:01.00]a\n[00:03.00]b", plain_lyrics="a\nb")
+    synced = LrclibResult(
+        id=1, instrumental=False, synced_lyrics="[00:01.00]a\n[00:03.00]b", plain_lyrics="a\nb"
+    )
     segs = lyrics_pkg.lrclib_to_segments(synced, total_duration=5.0)
     assert [s["text"] for s in segs] == ["a", "b"]
     assert segs[0] == {"start": 1.0, "end": 3.0, "text": "a"}  # line end = next line start
@@ -50,7 +51,9 @@ RAW = {
     "language": "en",
     "segments": [
         {
-            "start": 0.5, "end": 2.0, "text": "Is this the real life",
+            "start": 0.5,
+            "end": 2.0,
+            "text": "Is this the real life",
             "words": [
                 {"word": "Is", "start": 0.5, "end": 0.7, "score": 0.9},
                 {"word": "this", "start": 0.7, "end": 0.95, "score": 0.9},
@@ -60,7 +63,9 @@ RAW = {
             ],
         },
         {
-            "start": 2.2, "end": 4.0, "text": "Is this just fantasy",
+            "start": 2.2,
+            "end": 4.0,
+            "text": "Is this just fantasy",
             "words": [
                 {"word": "Is", "start": 2.2, "end": 2.4},
                 {"word": "this", "start": 2.4, "end": 2.6},
@@ -112,7 +117,13 @@ def test_normalize_drops_untimed_words_and_derives_line_bounds():
 
 
 def test_normalize_skips_empty_segments_and_handles_garbage():
-    raw = {"segments": [{"text": "", "words": []}, "not-a-dict", {"words": [{"word": "x", "start": 0, "end": 0.5}]}]}
+    raw = {
+        "segments": [
+            {"text": "", "words": []},
+            "not-a-dict",
+            {"words": [{"word": "x", "start": 0, "end": 0.5}]},
+        ]
+    }
     doc = lyrics_pkg.normalize_lyrics(raw)
     # empty-text seg with no words → skipped; garbage → skipped; the last derives text from its word
     assert len(doc["lines"]) == 1
@@ -120,10 +131,17 @@ def test_normalize_skips_empty_segments_and_handles_garbage():
 
 
 def test_normalize_rejects_nan_inf_timestamps():
-    raw = {"segments": [{"text": "a b", "words": [
-        {"word": "a", "start": float("nan"), "end": 1.0},
-        {"word": "b", "start": 1.0, "end": float("inf")},
-    ]}]}
+    raw = {
+        "segments": [
+            {
+                "text": "a b",
+                "words": [
+                    {"word": "a", "start": float("nan"), "end": 1.0},
+                    {"word": "b", "start": 1.0, "end": float("inf")},
+                ],
+            }
+        ]
+    }
     doc = lyrics_pkg.normalize_lyrics(raw)
     assert doc["lines"] == []  # both words un-timed (NaN/inf) → no usable line
 
@@ -141,6 +159,7 @@ from src.lyrics.source import LrclibClient  # noqa: E402
 
 def fake_ytdlp_runner(*, progress=("[download]  50.0% of 1MiB", "[download] 100% of 1MiB")):
     """yt-dlp stand-in: writes the extracted wav so the download stage 'produces' its output."""
+
     async def run(argv):
         out = argv[argv.index("-o") + 1]
         os.makedirs(os.path.dirname(out), exist_ok=True)
@@ -151,12 +170,23 @@ def fake_ytdlp_runner(*, progress=("[download]  50.0% of 1MiB", "[download] 100%
     return run
 
 
-def fake_client(*, synced="[00:01.00]Is this the real life\n[00:03.00]Is this just fantasy", instrumental=False, found=True):
+def fake_client(
+    *,
+    synced="[00:01.00]Is this the real life\n[00:03.00]Is this just fantasy",
+    instrumental=False,
+    found=True,
+):
     """LrclibClient with an injected fetcher returning canned JSON (or a 404 when found=False)."""
+
     def fetch(url, headers):
         if not found:
             return 404, ""
-        body = {"id": 1, "instrumental": instrumental, "syncedLyrics": None if instrumental else synced, "plainLyrics": None if instrumental else "Is this the real life\nIs this just fantasy"}
+        body = {
+            "id": 1,
+            "instrumental": instrumental,
+            "syncedLyrics": None if instrumental else synced,
+            "plainLyrics": None if instrumental else "Is this the real life\nIs this just fantasy",
+        }
         return 200, json.dumps(body)
 
     return LrclibClient(fetcher=fetch)
@@ -183,7 +213,14 @@ class FakeAligner:
         for s in segments:
             toks = s["text"].split()
             span = (s["end"] - s["start"]) / max(1, len(toks))
-            words = [{"word": t, "start": round(s["start"] + i * span, 3), "end": round(s["start"] + (i + 1) * span, 3)} for i, t in enumerate(toks)]
+            words = [
+                {
+                    "word": t,
+                    "start": round(s["start"] + i * span, 3),
+                    "end": round(s["start"] + (i + 1) * span, 3),
+                }
+                for i, t in enumerate(toks)
+            ]
             out_segs.append({"start": s["start"], "end": s["end"], "text": s["text"], "words": words})
         return {"language": language, "segments": out_segs}
 
@@ -191,7 +228,14 @@ class FakeAligner:
 def spec(tmp_path, source_uri="https://yt/x", media_id="m1", **params):
     p = {"artist": "Queen", "track": "Bohemian Rhapsody", "language": "en", "durationSec": 6.0}
     p.update(params)
-    return JobSpec(job_id="j1", media_id=media_id, job_type="align", source_uri=source_uri, params=p, media_dir=str(tmp_path))
+    return JobSpec(
+        job_id="j1",
+        media_id=media_id,
+        job_type="align",
+        source_uri=source_uri,
+        params=p,
+        media_dir=str(tmp_path),
+    )
 
 
 async def drain(proc, job):
@@ -216,7 +260,7 @@ async def test_hybrid_flow_download_lrclib_forcealign_writes_word_timed_lyrics(t
     doc = json.loads(Path(uri).read_text())
     # WORD-timed on the correct text (the whole hybrid point)
     assert lyrics_pkg.is_valid_lyrics(doc)
-    assert [l["text"] for l in doc["lines"]] == ["Is this the real life", "Is this just fantasy"]
+    assert [ln["text"] for ln in doc["lines"]] == ["Is this the real life", "Is this just fantasy"]
     # line "Is this the real life" (5 words) spans [1.0,3.0] → span 0.4 → first word [1.0,1.4]
     assert doc["words"][0] == {"word": "Is", "start": 1.0, "end": 1.4}
     assert all({"word", "start", "end"} == set(w) for w in doc["words"])
@@ -228,7 +272,11 @@ async def test_local_source_skips_download(tmp_path):
     local.parent.mkdir(parents=True)
     local.write_bytes(b"x")
     proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner())
-    stages = {e.stage for e in await drain(proc, spec(tmp_path, source_uri=str(local), fetcher="local")) if isinstance(e, ProgressEvent)}
+    stages = {
+        e.stage
+        for e in await drain(proc, spec(tmp_path, source_uri=str(local), fetcher="local"))
+        if isinstance(e, ProgressEvent)
+    }
     assert "downloading" not in stages  # DECLARED local → no fetch, regardless of the uri shape
     assert "aligning" in stages
 
@@ -236,13 +284,15 @@ async def test_local_source_skips_download(tmp_path):
 @pytest.mark.asyncio
 async def test_aligner_failure_falls_back_to_line_sync(tmp_path):
     # the aligner blows up → we DON'T fail; ship LRCLIB's line-level sync (whole-line highlight)
-    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner(fail=True))
+    proc = plans.align_runner(
+        runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=FakeAligner(fail=True)
+    )
     events = await drain(proc, spec(tmp_path))
     doc = json.loads(Path([e for e in events if isinstance(e, CompleteResult)][0].media_uri).read_text())
     # line-synced fallback: lines with bounds + text, but NO word timings
-    assert [l["text"] for l in doc["lines"]] == ["Is this the real life", "Is this just fantasy"]
+    assert [ln["text"] for ln in doc["lines"]] == ["Is this the real life", "Is this just fantasy"]
     assert doc["lines"][0]["start"] == 1.0
-    assert all(l["words"] == [] for l in doc["lines"])
+    assert all(ln["words"] == [] for ln in doc["lines"])
     assert lyrics_pkg.is_valid_lyrics(doc) is False  # no word timings — but still shipped line-sync
 
 
@@ -261,7 +311,9 @@ async def _completes_with_no_lyrics(proc, job) -> None:
 
 @pytest.mark.asyncio
 async def test_no_lyrics_found_COMPLETES_with_no_lyrics(tmp_path):
-    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(found=False), aligner=FakeAligner())
+    proc = plans.align_runner(
+        runner=fake_ytdlp_runner(), lyrics_client=fake_client(found=False), aligner=FakeAligner()
+    )
     await _completes_with_no_lyrics(proc, spec(tmp_path))
 
 
@@ -269,7 +321,9 @@ async def test_no_lyrics_found_COMPLETES_with_no_lyrics(tmp_path):
 async def test_an_instrumental_COMPLETES_rather_than_being_stuck_forever(tmp_path):
     # The load-bearing case: an instrumental has no lyrics BY NATURE. Failing it would make the song
     # permanently unsingable via the readiness gate.
-    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(instrumental=True), aligner=FakeAligner())
+    proc = plans.align_runner(
+        runner=fake_ytdlp_runner(), lyrics_client=fake_client(instrumental=True), aligner=FakeAligner()
+    )
     await _completes_with_no_lyrics(proc, spec(tmp_path))
 
 
@@ -280,7 +334,14 @@ async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(
     an assertion about params, which is what let "no LRCLIB" mean "no lyrics"."""
     client = fake_client()
     proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=client, aligner=FakeAligner())
-    job = JobSpec(job_id="j", media_id="m1", job_type="align", source_uri="/tmp/a.wav", params={}, media_dir=str(tmp_path))
+    job = JobSpec(
+        job_id="j",
+        media_id="m1",
+        job_type="align",
+        source_uri="/tmp/a.wav",
+        params={},
+        media_dir=str(tmp_path),
+    )
     await _completes_with_no_lyrics(proc, job)
 
 
@@ -328,7 +389,11 @@ def _text(source, timing, lines=("line one here", "line two here"), conf="high")
             toks = s["text"].split()
             span = (s["end"] - s["start"]) / max(1, len(toks))
             s["words"] = [
-                {"word": w, "start": round(s["start"] + i * span, 3), "end": round(s["start"] + (i + 1) * span, 3)}
+                {
+                    "word": w,
+                    "start": round(s["start"] + i * span, 3),
+                    "end": round(s["start"] + (i + 1) * span, 3),
+                }
                 for i, w in enumerate(toks)
             ]
     return LyricsText(text_source=source, segments=segs, timing=timing, text_confidence=conf)
@@ -342,8 +407,10 @@ def test_acquire_runs_every_source_not_just_the_first():
 
 
 def test_acquire_skips_a_source_that_raises_without_losing_the_others():
-    got = acquire([FakeSource("boom", boom=True), FakeSource("ok", _text(SOURCE_ASR, TIMING_WORD))],
-                  LyricsRequest(media_id="m1"))
+    got = acquire(
+        [FakeSource("boom", boom=True), FakeSource("ok", _text(SOURCE_ASR, TIMING_WORD))],
+        LyricsRequest(media_id="m1"),
+    )
     assert len(got) == 1 and got[0].text_source == SOURCE_ASR
 
 
@@ -369,7 +436,9 @@ def test_acquire_with_notes_surfaces_a_provider_transport_failure_as_a_loud_note
     note, not a silent drop that looks like a song with no lyrics. The surviving tier is unaffected."""
     from src.lyrics.source import LyricsFetchError
 
-    lrclib = RaisingSource("lrclib", LyricsFetchError("lrclib unreachable: [Errno -2] Name or service not known"))
+    lrclib = RaisingSource(
+        "lrclib", LyricsFetchError("lrclib unreachable: [Errno -2] Name or service not known")
+    )
     asr = FakeSource("asr", _text(SOURCE_ASR, TIMING_WORD))
     texts, notes = acquire_with_notes([lrclib, asr], LyricsRequest(media_id="m1"))
 
@@ -424,7 +493,9 @@ def test_lrclib_source_propagates_a_transport_failure_from_SEARCH():
     narrowing were absent this would silently return None instead of raising."""
     from src.lyrics.source import LyricsFetchError
 
-    client = _FakeLrclibClient(search=LyricsFetchError("lrclib unreachable: Name or service not known"), get=None)
+    client = _FakeLrclibClient(
+        search=LyricsFetchError("lrclib unreachable: Name or service not known"), get=None
+    )
     src = LrclibSource(client=client, to_segments=lambda *_a, **_k: [])
     with pytest.raises(LyricsFetchError):
         src.fetch(LyricsRequest(media_id="m1", artist="a-ha", track="Take On Me"))
@@ -500,9 +571,9 @@ async def test_a_suspect_winner_and_its_baseline_get_SEPARATE_artifact_files(tmp
     lrc = FakeSource(SOURCE_LRCLIB, _candidate(wrong))
     asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
     proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
-    cands = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0].artifacts["lyrics"][
-        "candidates"
-    ]
+    cands = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0].artifacts[
+        "lyrics"
+    ]["candidates"]
     refs = {c["textSource"]: c["ref"] for c in cands}
     assert set(refs) == {SOURCE_LRCLIB, SOURCE_ASR}
     assert refs[SOURCE_LRCLIB] != refs[SOURCE_ASR]
@@ -549,13 +620,15 @@ async def test_aligner_failure_degrades_that_candidate_to_LINE_sync(tmp_path):
 async def test_untimed_text_with_a_broken_aligner_is_DROPPED_not_shipped_unsynced(tmp_path):
     """No word timings and no line timings = nothing to sync against. Shipping it would put a static
     wall of text on the TV, which is below the owner's floor."""
+
     class Broken:
         def align(self, *a, **k):
             raise RuntimeError("no model")
 
     untimed = LyricsText(text_source=SOURCE_LRCLIB, segments=[{"text": "some words"}], timing=TIMING_NONE)
-    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=Broken(),
-                                      sources=[FakeSource(SOURCE_LRCLIB, untimed)])
+    proc = plans.align_runner(
+        runner=fake_ytdlp_runner(), aligner=Broken(), sources=[FakeSource(SOURCE_LRCLIB, untimed)]
+    )
     with pytest.raises(RuntimeError, match="nothing could be timed"):
         await drain(proc, spec(tmp_path))
 
@@ -584,12 +657,17 @@ async def test_aligner_that_PLACES_NO_WORD_degrades_via_the_FAILURE_path_not_val
     Drives the honest counterpart of FakeAligner: echoes the caller's segments with empty `words`
     arrays and does NOT raise.
     """
+
     class EmptyAligner:
         """whisperx placed no word: segments come back, every token un-timed. Does NOT raise."""
+
         def align(self, segments, audio_path, language):
-            return {"language": language,
-                    "segments": [{"start": s["start"], "end": s["end"], "text": s["text"], "words": []}
-                                 for s in segments]}
+            return {
+                "language": language,
+                "segments": [
+                    {"start": s["start"], "end": s["end"], "text": s["text"], "words": []} for s in segments
+                ],
+            }
 
     text = _text(SOURCE_LRCLIB, TIMING_LINE)
     ctx = await _drive_time_texts(EmptyAligner(), text, tmp_path)
@@ -608,8 +686,8 @@ async def test_aligner_that_PLACES_NO_WORD_degrades_via_the_FAILURE_path_not_val
     doc = json.loads(Path(os.path.join(str(tmp_path), cands[0]["ref"])).read_text())
     assert lyrics_pkg.is_valid_lyrics(doc) is False
     assert doc["words"] == []
-    assert [l["text"] for l in doc["lines"]] == ["line one here", "line two here"]
-    assert all(l["words"] == [] for l in doc["lines"])
+    assert [ln["text"] for ln in doc["lines"]] == ["line one here", "line two here"]
+    assert all(ln["words"] == [] for ln in doc["lines"])
 
 
 # ── the ASR tier ───────────────────────────────────────────────────────
@@ -658,9 +736,12 @@ def test_asr_source_declines_when_the_vocals_stem_is_not_cooked_yet():
     """It does NOT fall back to the mixed audio: quietly producing worse words would be
     indistinguishable from producing good ones."""
     t = FakeTranscriber(ASR_RAW)
-    assert AsrSource(t, lyrics_pkg.normalize_lyrics).fetch(
-        LyricsRequest(media_id="m1", audio_path="/mix.wav", vocals_path=None)
-    ) is None
+    assert (
+        AsrSource(t, lyrics_pkg.normalize_lyrics).fetch(
+            LyricsRequest(media_id="m1", audio_path="/mix.wav", vocals_path=None)
+        )
+        is None
+    )
     assert t.calls == []  # never even attempted
 
 
@@ -732,11 +813,23 @@ async def test_a_lookup_TOO_SHORT_to_judge_is_published_unjudged_not_condemned(t
 def test_asr_KEEPS_word_timings_if_a_transcriber_ever_supplies_them():
     """Defensive: real whisper transcribe() has no words, but a different backend might. Then the
     timing layer should keep them rather than re-aligning."""
-    raw = {"language": "en", "segments": [
-        {"start": 0.0, "end": 1.0, "text": "hello there",
-         "words": [{"word": "hello", "start": 0.0, "end": 0.5}, {"word": "there", "start": 0.5, "end": 1.0}]}]}
+    raw = {
+        "language": "en",
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 1.0,
+                "text": "hello there",
+                "words": [
+                    {"word": "hello", "start": 0.0, "end": 0.5},
+                    {"word": "there", "start": 0.5, "end": 1.0},
+                ],
+            }
+        ],
+    }
     got = AsrSource(FakeTranscriber(raw), lyrics_pkg.normalize_lyrics).fetch(
-        LyricsRequest(media_id="m1", vocals_path="/v.m4a"))
+        LyricsRequest(media_id="m1", vocals_path="/v.m4a")
+    )
     assert got is not None and got.timing == TIMING_WORD
 
 
@@ -753,8 +846,12 @@ async def test_asr_text_is_FORCE_ALIGNED_to_get_word_timings(tmp_path):
         def get(self, *a, **k):
             raise RuntimeError("dead")
 
-    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=DeadLrclib(),
-                                      aligner=aligner, transcriber=FakeTranscriber(ASR_RAW))
+    proc = plans.align_runner(
+        runner=fake_ytdlp_runner(),
+        lyrics_client=DeadLrclib(),
+        aligner=aligner,
+        transcriber=FakeTranscriber(ASR_RAW),
+    )
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     assert aligner.calls, "the ASR text must be handed to the aligner"
     assert done.artifacts["lyrics"]["candidates"][0]["timing"] == TIMING_WORD
@@ -778,13 +875,23 @@ async def test_blocking_ML_does_not_freeze_the_event_loop(tmp_path, monkeypatch)
     class SlowAligner:
         def align(self, segments, audio_path, language):
             time.sleep(0.2)  # a stand-in for a 60s wav2vec2 pass
-            return {"language": language, "segments": [
-                {"start": 0.0, "end": 1.0, "text": "x", "words": [{"word": "x", "start": 0.0, "end": 1.0}]}]}
+            return {
+                "language": language,
+                "segments": [
+                    {
+                        "start": 0.0,
+                        "end": 1.0,
+                        "text": "x",
+                        "words": [{"word": "x", "start": 0.0, "end": 1.0}],
+                    }
+                ],
+            }
 
     beat = asyncio.ensure_future(heartbeat())
     try:
-        proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(),
-                                         aligner=SlowAligner())
+        proc = plans.align_runner(
+            runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=SlowAligner()
+        )
         await drain(proc, spec(tmp_path))
     finally:
         beat.cancel()
@@ -800,11 +907,19 @@ async def test_keepalive_progress_is_emitted_while_ML_runs(tmp_path, monkeypatch
     class SlowAligner:
         def align(self, segments, audio_path, language):
             time.sleep(0.25)
-            return {"language": language, "segments": [
-                {"start": 0.0, "end": 1.0, "text": "x", "words": [{"word": "x", "start": 0.0, "end": 1.0}]}]}
+            return {
+                "language": language,
+                "segments": [
+                    {
+                        "start": 0.0,
+                        "end": 1.0,
+                        "text": "x",
+                        "words": [{"word": "x", "start": 0.0, "end": 1.0}],
+                    }
+                ],
+            }
 
-    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(),
-                                      aligner=SlowAligner())
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), lyrics_client=fake_client(), aligner=SlowAligner())
     events = await drain(proc, spec(tmp_path))
     aligning = [e for e in events if isinstance(e, ProgressEvent) and e.stage == "aligning"]
     assert len(aligning) >= 3, f"expected repeated aligning keepalives, got {len(aligning)}"
@@ -813,6 +928,7 @@ async def test_keepalive_progress_is_emitted_while_ML_runs(tmp_path, monkeypatch
 @pytest.mark.asyncio
 async def test_a_raising_aligner_still_propagates_through_the_thread_wrapper(tmp_path):
     """_run_blocking must not swallow failures — the line-sync degrade depends on the raise."""
+
     class Broken:
         def align(self, *a, **k):
             raise RuntimeError("no model")
@@ -898,10 +1014,9 @@ def test_concurrent_ML_calls_are_serialized_on_the_shared_model(monkeypatch, tmp
     al = WhisperxForcedAligner(device="cpu")
     segs = [{"start": 0.0, "end": 1.0, "text": "x"}]
 
-    targets = (
-        [lambda: tr.transcribe(audio) for _ in range(2)]
-        + [lambda: al.align(segs, audio, "en") for _ in range(2)]
-    )
+    targets = [lambda: tr.transcribe(audio) for _ in range(2)] + [
+        lambda: al.align(segs, audio, "en") for _ in range(2)
+    ]
     threads = [threading.Thread(target=t) for t in targets]
     for t in threads:
         t.start()
@@ -962,14 +1077,24 @@ _SUNG = "we could be heroes just for one day standing by the wall guns above our
 def _baseline(body, rank=0, variant="whisper/vocals"):
     """A BASELINE text — evidence of what is audible. Roles are explicit now: a fake that forgot to
     declare itself a baseline would be graded as a claim about the words instead of grading them."""
-    return LyricsText(text_source=SOURCE_ASR, timing=TIMING_LINE, text_confidence="low",
-                      role=ROLE_BASELINE, baseline_rank=rank, variant=variant,
-                      segments=[{"start": 0.0, "end": 4.0, "text": body}])
+    return LyricsText(
+        text_source=SOURCE_ASR,
+        timing=TIMING_LINE,
+        text_confidence="low",
+        role=ROLE_BASELINE,
+        baseline_rank=rank,
+        variant=variant,
+        segments=[{"start": 0.0, "end": 4.0, "text": body}],
+    )
 
 
 def _candidate(body, source=SOURCE_LRCLIB):
-    return LyricsText(text_source=source, timing=TIMING_LINE, text_confidence="high",
-                      segments=[{"start": 0.0, "end": 4.0, "text": body}])
+    return LyricsText(
+        text_source=source,
+        timing=TIMING_LINE,
+        text_confidence="high",
+        segments=[{"start": 0.0, "end": 4.0, "text": body}],
+    )
 
 
 def test_agreement_score_matches_the_TS_semantics():
@@ -1013,7 +1138,7 @@ async def test_A_WRONG_SONG_LOOKUP_IS_DEMOTED_not_shown_as_authoritative(tmp_pat
     done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
     cands = done.artifacts["lyrics"]["candidates"]
     bysrc = {c["textSource"]: c for c in cands}
-    assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "low"        # demoted: no longer authoritative
+    assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "low"  # demoted: no longer authoritative
     assert bysrc[SOURCE_LRCLIB]["agreement"] < SUSPECT_AGREEMENT  # and the evidence is recorded
     assert SOURCE_ASR in bysrc  # the baseline was published as a real alternative
 
@@ -1039,9 +1164,7 @@ async def test_an_AGREEING_lookup_keeps_its_authority_and_records_the_score(tmp_
 #: the first draft of these tests hit, passing while the detector never ran. Sixteen lines is a normal
 #: verse-chorus LRC and is where a structural difference stops being absorbable by scale alone.
 LRC_STARTS = [2 * i + 1 for i in range(16)]
-SIXTEEN_LINE_LRC = "\n".join(
-    f"[00:{s:02d}.00]line {i} of the song here" for i, s in enumerate(LRC_STARTS)
-)
+SIXTEEN_LINE_LRC = "\n".join(f"[00:{s:02d}.00]line {i} of the song here" for i, s in enumerate(LRC_STARTS))
 
 
 class ExtraBridgeAligner:
@@ -1134,20 +1257,24 @@ def _ctx_forced(monkeypatch, mode=None):
     Defaults to forced sync mode (so the aligner branch runs); pass ``mode=SyncMode.LINES``
     to drive the lines-only branch instead.
     """
-    from src.vocabulary import SyncMode
     from types import SimpleNamespace
+
+    from src.vocabulary import SyncMode
+
     return SimpleNamespace(engines=SimpleNamespace(sync_mode=mode or SyncMode.FORCED))
 
 
 def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_timings(monkeypatch):
+    from src.lyrics.chain import SOURCE_LRCLIB, TIMING_LINE, LyricsText
     from src.steps import lyrics as steps_lyrics
-    from src.lyrics.chain import LyricsText, SOURCE_LRCLIB, TIMING_LINE
 
     # An authoritative line-timed text with ONE human line at [10, 34] plus bounded windows the
     # presplit step would have produced for the aligner to search.
     text = LyricsText(
         text_source=SOURCE_LRCLIB,
-        segments=[{"start": 10.0, "end": 34.0, "text": "a very long human authored karaoke lyric line", "words": []}],
+        segments=[
+            {"start": 10.0, "end": 34.0, "text": "a very long human authored karaoke lyric line", "words": []}
+        ],
         timing=TIMING_LINE,
         text_confidence="high",
         align_windows=[
@@ -1158,7 +1285,9 @@ def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_
 
     # 1. On a successful align, the aligner is handed the WINDOWS (2), not the single source segment.
     ok = FakeAligner()
-    doc, timing, conf = steps_lyrics._time_one(ok, _ctx_forced(monkeypatch), text, audio="/x.wav", language="en")
+    doc, timing, conf = steps_lyrics._time_one(
+        ok, _ctx_forced(monkeypatch), text, audio="/x.wav", language="en"
+    )
     assert ok.calls and ok.calls[0][0] == 2  # searched the two bounded windows, not one whole line
     # #296: pin WHICH windows, by value, from the fixture above (NOT the aligner's own output) —
     # the [10,22]/[22,34] split is the only correct search set. A production mutation that keeps the
@@ -1173,10 +1302,12 @@ def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_
     # 2. On aligner FAILURE the line-sync fallback publishes the SOURCE's own segments — one line at
     #    [10, 34] — NOT the windows, so no character-count-derived interior boundary ships as "high".
     fail = FakeAligner(fail=True)
-    doc2, timing2, conf2 = steps_lyrics._time_one(fail, _ctx_forced(monkeypatch), text, audio="/x.wav", language="en")
+    doc2, timing2, conf2 = steps_lyrics._time_one(
+        fail, _ctx_forced(monkeypatch), text, audio="/x.wav", language="en"
+    )
     assert timing2 == TIMING_LINE and conf2 == "high"
-    assert [l["start"] for l in doc2["lines"]] == [10.0]
-    assert [l["end"] for l in doc2["lines"]] == [34.0]
+    assert [ln["start"] for ln in doc2["lines"]] == [10.0]
+    assert [ln["end"] for ln in doc2["lines"]] == [34.0]
 
 
 def test_time_one_lines_mode_publishes_source_timings_not_the_aligner_windows(monkeypatch):
@@ -1190,8 +1321,8 @@ def test_time_one_lines_mode_publishes_source_timings_not_the_aligner_windows(mo
     confidence line timestamp — issue #92 verbatim, on the one mode whose whole promise is the source's
     own timings. The forced-fallback site is pinned by the test above; this pins the lines-only site.
     """
+    from src.lyrics.chain import SOURCE_LRCLIB, TIMING_LINE, LyricsText
     from src.steps import lyrics as steps_lyrics
-    from src.lyrics.chain import LyricsText, SOURCE_LRCLIB, TIMING_LINE
     from src.vocabulary import SyncMode
 
     # Same authoritative line-timed text: ONE human line at [10, 34], with two bounded windows the
@@ -1199,7 +1330,9 @@ def test_time_one_lines_mode_publishes_source_timings_not_the_aligner_windows(mo
     # LRC timestamp, so it must NOT reach the published doc.
     text = LyricsText(
         text_source=SOURCE_LRCLIB,
-        segments=[{"start": 10.0, "end": 34.0, "text": "a very long human authored karaoke lyric line", "words": []}],
+        segments=[
+            {"start": 10.0, "end": 34.0, "text": "a very long human authored karaoke lyric line", "words": []}
+        ],
         timing=TIMING_LINE,
         text_confidence="high",
         align_windows=[
@@ -1216,8 +1349,8 @@ def test_time_one_lines_mode_publishes_source_timings_not_the_aligner_windows(mo
     assert not never.calls  # lines mode skips forced alignment entirely
     assert timing == TIMING_LINE and conf == "high"
     # The published doc carries the source's ONE line at [10, 34] — never the windows' [10, 22, ...].
-    assert [l["start"] for l in doc["lines"]] == [10.0]
-    assert [l["end"] for l in doc["lines"]] == [34.0]
+    assert [ln["start"] for ln in doc["lines"]] == [10.0]
+    assert [ln["end"] for ln in doc["lines"]] == [34.0]
 
 
 # ── #217: the wrong-version fit must be paired with what the aligner SEARCHED ─────────────────────
@@ -1243,12 +1376,17 @@ def _mismatched_windows_text(n_lines=16, bridge_after=8):
         start = 2.0 * i + 1.0
         end = start + 1.8
         mid = round((start + end) / 2, 3)
-        segs.append({"start": start, "end": end, "text": f"human authored karaoke lyric line {i} here", "words": []})
+        segs.append(
+            {"start": start, "end": end, "text": f"human authored karaoke lyric line {i} here", "words": []}
+        )
         windows.append({"start": start, "end": mid, "text": f"human authored karaoke {i}", "words": []})
         windows.append({"start": mid, "end": end, "text": f"lyric line here {i}", "words": []})
     return LyricsText(
-        text_source=SOURCE_LRCLIB, segments=segs, timing=TIMING_LINE,
-        text_confidence="high", align_windows=windows,
+        text_source=SOURCE_LRCLIB,
+        segments=segs,
+        timing=TIMING_LINE,
+        text_confidence="high",
+        align_windows=windows,
     )
 
 
@@ -1288,8 +1426,14 @@ async def _drive_time_texts(aligner, text, tmp_path):
     from src.steps.lyrics import TimeTexts
 
     ctx = Ctx(
-        job=JobSpec(job_id="j", media_id="m1", job_type="align",
-                    source_uri="/x.wav", params={"language": "en"}, media_dir=str(tmp_path)),
+        job=JobSpec(
+            job_id="j",
+            media_id="m1",
+            job_type="align",
+            source_uri="/x.wav",
+            params={"language": "en"},
+            media_dir=str(tmp_path),
+        ),
         work=str(tmp_path),
         audio=AudioCtx(path="/x.wav", vocals_path="/vocals.wav", duration_sec=60.0),
         lyrics=LyricsCtx(texts=[text]),
@@ -1368,7 +1512,11 @@ class _OneBackwardsWordAligner:
             toks = s["text"].split()
             span = (s["end"] - s["start"]) / max(1, len(toks))
             words = [
-                {"word": t, "start": round(s["start"] + i * span, 3), "end": round(s["start"] + (i + 1) * span, 3)}
+                {
+                    "word": t,
+                    "start": round(s["start"] + i * span, 3),
+                    "end": round(s["start"] + (i + 1) * span, 3),
+                }
                 for i, t in enumerate(toks)
             ]
             out.append({"start": s["start"], "end": s["end"], "text": s["text"], "words": words})
@@ -1394,7 +1542,9 @@ def _six_line_synced_text():
         "and the shame was on the other side",
         "we could beat them just for one day",
     ]
-    segs = [{"start": 4.0 * i + 1.0, "end": 4.0 * i + 3.5, "text": t, "words": []} for i, t in enumerate(lines)]
+    segs = [
+        {"start": 4.0 * i + 1.0, "end": 4.0 * i + 3.5, "text": t, "words": []} for i, t in enumerate(lines)
+    ]
     return LyricsText(text_source=SOURCE_LRCLIB, segments=segs, timing=TIMING_LINE, text_confidence="high")
 
 
@@ -1402,8 +1552,10 @@ def _asr_word_source():
     """A word-timed ASR source (`timing == TIMING_WORD`). This is the M4 branch: it has no line timings
     of its own, so when its word timing is refused there is `nothing honest left to publish` and it must
     be DROPPED, not line-synced."""
-    segs = [{"start": 4.0 * i + 1.0, "end": 4.0 * i + 3.5, "text": t, "words": []}
-            for i, t in enumerate(["oh baby baby how was i", "supposed to know that something"])]
+    segs = [
+        {"start": 4.0 * i + 1.0, "end": 4.0 * i + 3.5, "text": t, "words": []}
+        for i, t in enumerate(["oh baby baby how was i", "supposed to know that something"])
+    ]
     return LyricsText(text_source=SOURCE_ASR, segments=segs, timing=TIMING_WORD, text_confidence="low")
 
 
@@ -1429,7 +1581,7 @@ async def test_326_unusable_word_timing_is_REFUSED_and_degraded_to_line_low(tmp_
     # M1: the published document carries NO word timings — a refused alignment publishes zero words.
     ref = tmp_path / cand["ref"]
     doc = json.loads(ref.read_text())
-    assert [w for l in doc["lines"] for w in (l.get("words") or [])] == [], doc
+    assert [w for ln in doc["lines"] for w in (ln.get("words") or [])] == [], doc
     # M1: the operator gets the refusal note (its absence is how a silent deletion escapes notice).
     assert any("REFUSING word timing" in n for n in ctx.out.notes), ctx.out.notes
 
@@ -1635,7 +1787,11 @@ class _DroppingAligner:
         opening_ordinal = -1
         for i, w in enumerate(segments):
             ws = w.get("start")
-            is_opening = any(abs(float(ws) - hs) < 1e-6 for hs in self.human_starts) if isinstance(ws, (int, float)) else False
+            is_opening = (
+                any(abs(float(ws) - hs) < 1e-6 for hs in self.human_starts)
+                if isinstance(ws, (int, float))
+                else False
+            )
             if not is_opening:
                 continue
             opening_ordinal += 1

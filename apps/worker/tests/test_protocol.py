@@ -1,4 +1,5 @@
 """Pure protocol layer — message shapes, capacity/capability gating, stage plans."""
+
 import sys
 from pathlib import Path
 

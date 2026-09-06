@@ -8,6 +8,7 @@ Read a plan top to bottom and you have read what the action does. That readabili
 a list rather than a transition table — see the spec's §5.2 for the branching analysis, and for the
 revisit trigger if that ever stops being true.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -16,8 +17,6 @@ from .runtime.ctx import ResolvedEngines
 from .runtime.plan import PLANS, LinearPlan
 from .steps.acquire import AcquireAudio
 from .steps.analysis import KeyAndRange
-from .steps.metadata import Annotate, PublishOriginal
-from .steps.separate import DecodeToWav, ProbeSilence, PublishStems, Separate
 from .steps.lyrics import (
     AUTHORED,
     MACHINE,
@@ -28,10 +27,19 @@ from .steps.lyrics import (
     PublishLyrics,
     TimeTexts,
 )
+from .steps.metadata import Annotate, PublishOriginal
+from .steps.separate import DecodeToWav, ProbeSilence, PublishStems, Separate
 from .vocabulary import Action, AsrModel, SyncMode, parse_asr_model, parse_sync_mode
 
 
-def align_plan(*, sources: list[Any] | None = None, lyrics_client: Any = None, transcriber: Any = None, aligner: Any = None, ytdlp_bin: str = "yt-dlp") -> LinearPlan:
+def align_plan(
+    *,
+    sources: list[Any] | None = None,
+    lyrics_client: Any = None,
+    transcriber: Any = None,
+    aligner: Any = None,
+    ytdlp_bin: str = "yt-dlp",
+) -> LinearPlan:
     """The align action: eight steps that were one 257-line method.
 
     Seams stay injectable for the same reason they always were — the real WhisperX, the real LRCLIB and
@@ -80,7 +88,9 @@ def stems_plan(
             Separate(engine=engine),
             ProbeSilence(ffmpeg_bin=ffmpeg_bin),
             KeyAndRange(profiler=profiler),
-            PublishStems(ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, **({"bitrate": bitrate} if bitrate else {})),
+            PublishStems(
+                ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, **({"bitrate": bitrate} if bitrate else {})
+            ),
         ],
     )
 
@@ -103,7 +113,9 @@ def stems_upgrade_plan(**kwargs: Any) -> LinearPlan:
 
 def fetch_plan(*, annotator: Any = None, ytdlp_bin: str = "yt-dlp") -> LinearPlan:
     """The fetch action: acquire the bytes, identify the song, report it. No separation."""
-    return LinearPlan("fetch", [AcquireAudio(ytdlp_bin=ytdlp_bin), Annotate(annotator=annotator), PublishOriginal()])
+    return LinearPlan(
+        "fetch", [AcquireAudio(ytdlp_bin=ytdlp_bin), Annotate(annotator=annotator), PublishOriginal()]
+    )
 
 
 def register_default_plans() -> None:
@@ -172,7 +184,13 @@ def align_runner(
     if device is not None:
         defaults.device = device
 
-    plan = align_plan(sources=sources, lyrics_client=lyrics_client, transcriber=transcriber, aligner=aligner, ytdlp_bin=ytdlp_bin)
+    plan = align_plan(
+        sources=sources,
+        lyrics_client=lyrics_client,
+        transcriber=transcriber,
+        aligner=aligner,
+        ytdlp_bin=ytdlp_bin,
+    )
     return PlanRunner(
         runner=runner,
         resolve_engines=lambda params: resolve_engines(params, defaults),
@@ -220,10 +238,16 @@ def stems_runner(
             segment=segment,
             shifts=shifts,
         )
-        kwargs: dict[str, Any] = dict(engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, ytdlp_bin=ytdlp_bin)
+        kwargs: dict[str, Any] = dict(
+            engine=eng, profiler=profiler, ffmpeg_bin=ffmpeg_bin, flac_level=flac_level, ytdlp_bin=ytdlp_bin
+        )
         if bitrate:
             kwargs["bitrate"] = bitrate
-        return stems_upgrade_plan(**kwargs) if job.job_type == Action.STEMS_UPGRADE.value else stems_plan(**kwargs)
+        return (
+            stems_upgrade_plan(**kwargs)
+            if job.job_type == Action.STEMS_UPGRADE.value
+            else stems_plan(**kwargs)
+        )
 
     return PlanRunner(runner=runner, resolve_engines=resolve, plans=pick)
 

@@ -1,5 +1,6 @@
 """Worker MediaStore config — parse the worker:welcome handshake, resolve S3 keys, and build the
 post-process publisher (local no-op vs object upload via an injected fake). Pure; no boto3/network."""
+
 import sys
 from pathlib import Path
 
@@ -20,10 +21,17 @@ def test_parse_local_default_and_garbage():
 
 
 def test_parse_object_config():
-    cfg = ms.parse_media_store({"mediaStore": {
-        "kind": "object", "bucket": "encore-media",
-        "endpoint": "https://minio.lan:9000", "region": "us-west-2", "prefix": "encore/"
-    }})
+    cfg = ms.parse_media_store(
+        {
+            "mediaStore": {
+                "kind": "object",
+                "bucket": "encore-media",
+                "endpoint": "https://minio.lan:9000",
+                "region": "us-west-2",
+                "prefix": "encore/",
+            }
+        }
+    )
     assert cfg.kind == "object" and cfg.is_object
     assert cfg.bucket == "encore-media"
     assert cfg.endpoint == "https://minio.lan:9000"

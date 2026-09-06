@@ -8,13 +8,12 @@ counters (built and documented as the operator's diagnosis) had no reader anywhe
 step drives a REAL MusicBrainzClient + RateLimiter through an injected fetcher (no unit under test is
 mocked), so the note is proven to carry the real gate state.
 """
+
 from __future__ import annotations
 
 import sys
 import time
 from pathlib import Path
-
-import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -54,8 +53,14 @@ async def _drive(step: Annotate, ctx: Ctx) -> None:
 
 async def test_a_throttled_lookup_leaves_an_operator_note_carrying_the_gate_counters():
     step = Annotate(annotator=_client(lambda u, h: (503, "")))
-    job = JobSpec(job_id="j", media_id="m", job_type="fetch", source_uri="u",
-                  params={"artist": "a-ha", "track": "Take On Me", "durationSec": 218.0}, media_dir="/tmp")
+    job = JobSpec(
+        job_id="j",
+        media_id="m",
+        job_type="fetch",
+        source_uri="u",
+        params={"artist": "a-ha", "track": "Take On Me", "durationSec": 218.0},
+        media_dir="/tmp",
+    )
     ctx = Ctx(job=job, work="/tmp/work")
     await _drive(step, ctx)
     # no annotation written — best-effort contract holds — but the decline is NO LONGER silent
@@ -68,8 +73,14 @@ async def test_a_throttled_lookup_leaves_an_operator_note_carrying_the_gate_coun
 
 async def test_a_healthy_match_still_writes_the_artifact_and_the_success_note():
     step = Annotate(annotator=_client(lambda u, h: (200, __import__("json").dumps(REAL_BODY))))
-    job = JobSpec(job_id="j", media_id="m", job_type="fetch", source_uri="u",
-                  params={"artist": "a-ha", "track": "Take On Me", "durationSec": 218.0}, media_dir="/tmp")
+    job = JobSpec(
+        job_id="j",
+        media_id="m",
+        job_type="fetch",
+        source_uri="u",
+        params={"artist": "a-ha", "track": "Take On Me", "durationSec": 218.0},
+        media_dir="/tmp",
+    )
     ctx = Ctx(job=job, work="/tmp/work")
     await _drive(step, ctx)
     assert ctx.out.artifacts["annotation"]["source"] == "musicbrainz"
@@ -79,8 +90,14 @@ async def test_a_healthy_match_still_writes_the_artifact_and_the_success_note():
 
 async def test_a_genuine_miss_notes_a_DIFFERENT_reason_than_a_throttle():
     step = Annotate(annotator=_client(lambda u, h: (200, '{"recordings": []}')))
-    job = JobSpec(job_id="j", media_id="m", job_type="fetch", source_uri="u",
-                  params={"artist": "a-ha", "track": "Take On Me", "durationSec": 218.0}, media_dir="/tmp")
+    job = JobSpec(
+        job_id="j",
+        media_id="m",
+        job_type="fetch",
+        source_uri="u",
+        params={"artist": "a-ha", "track": "Take On Me", "durationSec": 218.0},
+        media_dir="/tmp",
+    )
     ctx = Ctx(job=job, work="/tmp/work")
     await _drive(step, ctx)
     notes = "\n".join(ctx.out.notes)
@@ -105,8 +122,14 @@ async def test_a_slow_lookup_emits_keepalive_progress_so_the_lease_is_renewed(mo
         return (200, __import__("json").dumps(REAL_BODY))
 
     step = Annotate(annotator=_client(_slow_fetcher))
-    job = JobSpec(job_id="j", media_id="m", job_type="fetch", source_uri="u",
-                  params={"artist": "a-ha", "track": "Take On Me", "durationSec": 218.0}, media_dir="/tmp")
+    job = JobSpec(
+        job_id="j",
+        media_id="m",
+        job_type="fetch",
+        source_uri="u",
+        params={"artist": "a-ha", "track": "Take On Me", "durationSec": 218.0},
+        media_dir="/tmp",
+    )
     ctx = Ctx(job=job, work="/tmp/work")
 
     events = [item async for item in step.run(ctx)]

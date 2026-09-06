@@ -12,6 +12,7 @@ constant True for the real cook plans too, so a step that writes an undeclared `
 instead of only the two hand-armed cases. Env, not `monkeypatch`, because the value is captured at import
 and a session-wide default cannot come from a per-test fixture.
 """
+
 import os
 
 os.environ.setdefault("ENCORE_STRICT_STEP_WRITES", "1")

@@ -2,6 +2,7 @@
 REAL-ML/NET and unverified in this environment (see roformer.py's module warning), so these cover the
 argv-free logic: model-token→slug resolution, output-stem discovery, and engine selection.
 """
+
 import sys
 from pathlib import Path
 
@@ -109,9 +110,8 @@ def test_a_None_config_value_does_not_override_an_engine_default():
     """`stems_runner` passes every separator knob through, and a worker with no opinion passes None.
     Forwarding it would replace the engine's own default with nothing — and for the model that means
     resolve_*_model() gets None as its fallback and fails on a job that carried no model."""
-    from src.separation.engines import engine_for
-
     from src.separation.demucs import DEFAULT_MODEL
+    from src.separation.engines import engine_for
 
     eng = engine_for("demucs", demucs_model=None, jobs=None, device=None)
     assert eng.resolve_model({}) == DEFAULT_MODEL
@@ -142,7 +142,9 @@ def test_the_demucs_default_cannot_reach_the_roformer_engine():
     # After the fix that shared name no longer exists; a demucs checkpoint can only be offered as
     # `demucs_model`, which the roformer branch ignores. Either way the roformer engine must keep its own
     # default — never the demucs value.
-    eng = engine_for("roformer", default_model="htdemucs", demucs_model="htdemucs", roformer_bin="bs-roformer-infer")
+    eng = engine_for(
+        "roformer", default_model="htdemucs", demucs_model="htdemucs", roformer_bin="bs-roformer-infer"
+    )
     assert eng.id == "roformer"
     assert eng.resolve_model({}) == roformer_default_slug, (
         "a demucs checkpoint reached the roformer engine and stranded DEFAULT_ROFORMER_MODEL (issue #84)"
@@ -169,7 +171,9 @@ from src import plans  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 
 
-def _roformer_fake_runner(store_writes: bool = True, write_vocals: bool = True, model_in_name: str = "sw-by-jarredou"):
+def _roformer_fake_runner(
+    store_writes: bool = True, write_vocals: bool = True, model_in_name: str = "sw-by-jarredou"
+):
     """A fake runner scripting the real roformer cook shape: yt-dlp → ffmpeg decode → bs-roformer-infer
     → ffmpeg volumedetect probe → ffmpeg encode. It records every argv so the test can assert the seam
     (input WAV alone in its own dir, --store_dir a DIFFERENT dir from --input_folder), and writes the
@@ -199,7 +203,9 @@ def _roformer_fake_runner(store_writes: bool = True, write_vocals: bool = True, 
             if store_writes:
                 # names that the engine's find_outputs must DISCOVER by globbing — the model slug in the
                 # filename is NOT something find_roformer_* derives, so a match proves discovery.
-                Path(_os.path.join(store, f"input_(Instrumental)_{model_in_name}.wav")).write_bytes(b"FAKE_INST")
+                Path(_os.path.join(store, f"input_(Instrumental)_{model_in_name}.wav")).write_bytes(
+                    b"FAKE_INST"
+                )
                 if write_vocals:
                     Path(_os.path.join(store, f"input_(Vocals)_{model_in_name}.wav")).write_bytes(b"FAKE_VOX")
             # coarse tqdm progress — parse_progress returns None by design, so the step emits [0, 100]
@@ -215,8 +221,14 @@ def _roformer_fake_runner(store_writes: bool = True, write_vocals: bool = True, 
 
 def _rspec(tmp_path, **params):
     params.setdefault("engine", "roformer")
-    return JobSpec(job_id="jr", media_id="mr", job_type="stems",
-                   source_uri="https://www.youtube.com/watch?v=rof", params=params, media_dir=str(tmp_path))
+    return JobSpec(
+        job_id="jr",
+        media_id="mr",
+        job_type="stems",
+        source_uri="https://www.youtube.com/watch?v=rof",
+        params=params,
+        media_dir=str(tmp_path),
+    )
 
 
 async def _drain(processor, job):
@@ -267,7 +279,9 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     # store_dir and input_folder are SIBLINGS under the same work dir (work/separated vs work/roformer_in),
     # not one nested in the other — so store's parent is that shared work dir, never the input folder itself.
     assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") != input_folder.rstrip("/")
-    assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") == _os.path.dirname(input_folder.rstrip("/")).rstrip("/")
+    assert _os.path.dirname(store_dir.rstrip("/")).rstrip("/") == _os.path.dirname(
+        input_folder.rstrip("/")
+    ).rstrip("/")
     assert _os.path.basename(store_dir) == "separated"
 
     # (difference 4) outputs are DISCOVERED by globbing, not derived from the model name: the published
@@ -310,7 +324,8 @@ async def test_a_roformer_cook_missing_vocals_is_best_effort_still_publishes_ins
     The cook must still complete best-effort and publish the load-bearing instrumental, with the vocals
     key simply ABSENT — not a None value. Without this, a roformer cook could silently drop its guiding
     track on the best-effort path and every worker test stayed green (issue #346, the half of #245 that
-    #333 left open). Mirrors the demucs sibling's `"vocals" not in stems` shape, NOT `stems["vocals"] is None`."""
+    #333 left open). Mirrors the demucs sibling's `"vocals" not in stems` shape, NOT
+    `stems["vocals"] is None`."""
     runner, _ = _roformer_fake_runner(write_vocals=False)  # instrumental written, vocals output absent
     proc = plans.stems_runner(runner=runner)  # no engine= override → real RoformerEngine from params
     events = await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))

@@ -25,10 +25,12 @@ to the aligner's output as a two-parameter (offset, scale) model and the RESIDUA
   large systematic residual  -> different version; keep the aligner's timing and DISCARD the LRC's
   fine except one region     -> that region is where alignment failed
 """
+
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 # ── validation thresholds ────────────────────────────────────────────────────────────────────────
 # Each is a shape a real artifact exhibited, not a guess.
@@ -106,7 +108,9 @@ class TimingReport:
             worst = max(g[1] - g[0] for g in self.long_gaps)
             bits.append(f"{len(self.long_gaps)} gap(s) >{LONG_GAP_SEC:g}s (worst {worst:.0f}s)")
         if self.smeared:
-            bits.append(f"{len(self.smeared)} smeared (worst '{self.smeared[0][0]}' {self.smeared[0][1]:.1f}s)")
+            bits.append(
+                f"{len(self.smeared)} smeared (worst '{self.smeared[0][0]}' {self.smeared[0][1]:.1f}s)"
+            )
         if self.flashed:
             bits.append(f"{len(self.flashed)} flashed <{MIN_WORD_SEC * 1000:.0f}ms")
         return " · ".join(bits)
@@ -209,15 +213,17 @@ def fit_lrc_to_aligned(lrc_starts: Iterable[float], aligned_starts: Iterable[flo
     if not slopes:
         return fit  # every LRC line at the same timestamp — degenerate, cannot fit
     fit.scale = _median(slopes)
-    fit.offset_sec = _median([y - fit.scale * x for x, y in zip(xs, ys)])
+    fit.offset_sec = _median([y - fit.scale * x for x, y in zip(xs, ys, strict=False)])
 
-    resid = [y - (fit.scale * x + fit.offset_sec) for x, y in zip(xs, ys)]
+    resid = [y - (fit.scale * x + fit.offset_sec) for x, y in zip(xs, ys, strict=False)]
     # MEDIAN, not mean: one badly-aligned region must not decide the verdict for the whole song. That
     # is the difference between "this LRC is the wrong version" and "alignment failed in the bridge".
     fit.residual_sec = _median([abs(r) for r in resid])
     fit.verdict = "same_version" if fit.residual_sec <= SUSPECT_RESIDUAL_SEC else "different_version"
     if fit.verdict == "same_version":
-        fit.outlier_lines = [i for i, r in enumerate(resid) if abs(r) > max(SUSPECT_RESIDUAL_SEC, 3 * fit.residual_sec)]
+        fit.outlier_lines = [
+            i for i, r in enumerate(resid) if abs(r) > max(SUSPECT_RESIDUAL_SEC, 3 * fit.residual_sec)
+        ]
     return fit
 
 
@@ -230,4 +236,4 @@ def _median(values: list[float]) -> float:
 def line_starts(doc: dict[str, Any]) -> list[float]:
     """Line start times from either doc shape, for feeding the fit."""
     lines = doc.get("lines") or doc.get("segments") or []
-    return [float(l["start"]) for l in lines if isinstance(l.get("start"), (int, float))]
+    return [float(ln["start"]) for ln in lines if isinstance(ln.get("start"), (int, float))]

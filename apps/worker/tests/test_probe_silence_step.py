@@ -7,11 +7,12 @@ published clean: markMediaReady fired, the song entered the rotation, the TV loa
 reported advancing telemetry, and the room played four minutes of nothing with no signal on any surface.
 The parser tests passed throughout, because the file it was pointed at was never the file that plays.
 """
+
 from __future__ import annotations
 
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator
 
 import pytest
 
@@ -45,7 +46,7 @@ def ctx_with(raw: dict[str, str], readings: dict[str, str]) -> Ctx:
 
     async def runner(argv) -> AsyncIterator[str]:
         path = next((a for a in argv if a in readings), None)
-        for line in (readings[path] if path else HEALTHY):
+        for line in readings[path] if path else HEALTHY:
             yield line
 
     job = JobSpec(job_id="j1", media_id="m1", job_type="stems", source_uri="u", params={}, media_dir="/tmp")
@@ -157,4 +158,3 @@ async def test_a_raising_instrumental_probe_fails_the_job():
     ctx.stems.raw = {"instrumental": "/w/inst.wav"}
     with pytest.raises(FileNotFoundError):
         await drive(ctx)
-

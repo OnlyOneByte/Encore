@@ -7,32 +7,33 @@ The one behavioural difference is where engine resolution lives. It used to muta
 instance, so with ENCORE_WORKER_CONCURRENCY > 1 two align jobs with different `asrModel` raced. It is now
 resolved per job into `ctx.engines` before the first step runs.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import time
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from ..lyrics import (
-    is_line_synced,
     SUSPECT_AGREEMENT,
     TIMING_LINE,
     TIMING_WORD,
     LrclibClient,
     LyricsRequest,
     LyricsText,
-    acquire,
     acquire_with_notes,
+    build_sources,
     candidate_key,
     caption_argv,
     fit_lrc_to_aligned,
+    is_line_synced,
     is_valid_lyrics,
-    line_synced_lyrics,
     line_starts,
+    line_synced_lyrics,
     lrclib_to_segments,
     normalize_lyrics,
-    build_sources,
     presplit_texts,
     read_captions,
     select_by_baselines,
@@ -40,7 +41,7 @@ from ..lyrics import (
 )
 from ..processor import ProgressEvent
 from ..runtime.ctx import Ctx
-from ..runtime.runner import run_stage, run_blocking
+from ..runtime.runner import run_blocking, run_stage
 from ..runtime.step import Outcome, Step, StepResult
 from ..vocabulary import Stage, SyncMode
 
@@ -117,10 +118,21 @@ class AcquireTexts(Step):
 
     name = "acquire-texts"
     stage = Stage.ALIGNING
-    reads = frozenset({"job", "audio.path", "audio.vocals_path", "audio.duration_sec", "lyrics.authored_cues", "lyrics.machine_cues"})
+    reads = frozenset(
+        {
+            "job",
+            "audio.path",
+            "audio.vocals_path",
+            "audio.duration_sec",
+            "lyrics.authored_cues",
+            "lyrics.machine_cues",
+        }
+    )
     writes = frozenset({"lyrics.texts"})
 
-    def __init__(self, sources: list[Any] | None = None, lyrics_client: Any = None, transcriber: Any = None) -> None:
+    def __init__(
+        self, sources: list[Any] | None = None, lyrics_client: Any = None, transcriber: Any = None
+    ) -> None:
         self._sources = sources
         self._client = lyrics_client
         self._transcriber = transcriber
@@ -179,7 +191,8 @@ class AcquireTexts(Step):
         if not texts:
             yield StepResult(
                 outcome=Outcome.STOP,
-                reason="no text from any source (instrumental, or every tier missed) — completing with no lyrics",
+                reason="no text from any source (instrumental, or every tier missed) "
+                "— completing with no lyrics",
             )
 
 
@@ -266,7 +279,11 @@ def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[i
             break
         ss = segments[si].get("start")
         ws = win.get("start")
-        if isinstance(ss, (int, float)) and isinstance(ws, (int, float)) and abs(float(ws) - float(ss)) < 1e-6:
+        if (
+            isinstance(ss, (int, float))
+            and isinstance(ws, (int, float))
+            and abs(float(ws) - float(ss)) < 1e-6
+        ):
             opens.append(k)
             si += 1
     return opens
@@ -297,9 +314,9 @@ def _pair_openings_to_aligned(
     series built together so they can never diverge in length.
     """
     aligned = [
-        (str(l.get("text", "")).strip(), float(l["start"]))
-        for l in (doc.get("lines") or [])
-        if isinstance(l, dict) and isinstance(l.get("start"), (int, float))
+        (str(ln.get("text", "")).strip(), float(ln["start"]))
+        for ln in (doc.get("lines") or [])
+        if isinstance(ln, dict) and isinstance(ln.get("start"), (int, float))
     ]
     opens_set = set(opens)
     lrc_starts: list[float] = []
@@ -324,7 +341,9 @@ class TimeTexts(Step):
 
     name = "time-texts"
     stage = Stage.ALIGNING
-    reads = frozenset({"job", "engines", "lyrics.texts", "lyrics.selection", "audio.path", "audio.vocals_path"})
+    reads = frozenset(
+        {"job", "engines", "lyrics.texts", "lyrics.selection", "audio.path", "audio.vocals_path"}
+    )
     writes = frozenset({"out"})
 
     def __init__(self, aligner: Any = None) -> None:
@@ -340,15 +359,20 @@ class TimeTexts(Step):
         # vocal under the band. The stem is already separated and already retained.
         align_audio = ctx.audio.vocals_path or ctx.audio.path or ""
         if ctx.audio.vocals_path is None:
-            ctx.note("no vocals stem — aligning against the MIX, which is materially less accurate. Re-cook to get a stem.")
+            ctx.note(
+                "no vocals stem — aligning against the MIX, which is materially less accurate. "
+                "Re-cook to get a stem."
+            )
 
         sel = ctx.lyrics.selection
         candidates: list[dict[str, Any]] = []
         for text in ctx.lyrics.texts:
             built = None
-            async for kind, val in run_blocking(
-                lambda t=text: _time_one(self._aligner, ctx, t, align_audio, language), self.stage, 50
-            ):
+
+            def _run(t: Any = text) -> Any:
+                return _time_one(self._aligner, ctx, t, align_audio, language)
+
+            async for kind, val in run_blocking(_run, self.stage, 50):
                 if kind == "progress":
                     yield val
                 else:
@@ -373,7 +397,10 @@ class TimeTexts(Step):
                         "outro; occasionally a media/duration mismatch."
                     )
                 if not rep.usable:
-                    ctx.note(f"REFUSING word timing ({rep.out_of_order} out-of-order word(s)) — degrading to line sync")
+                    ctx.note(
+                        f"REFUSING word timing ({rep.out_of_order} out-of-order word(s)) "
+                        "— degrading to line sync"
+                    )
                     if text.timing != TIMING_LINE:
                         continue  # nothing honest left to publish for this source
                     doc = line_synced_lyrics(text.segments, language=text.language or language)
@@ -408,14 +435,10 @@ class TimeTexts(Step):
                     # which can DROP a line, and a positional index into it would shift every later
                     # pairing after a drop — re-opening #336 (spurious "slipped") and #217 (inert on a
                     # wrong master). Text is the stable key both _subdivide and normalize_lyrics keep.
-                    lrc_starts, aligned_starts = _pair_openings_to_aligned(
-                        text.align_windows, opens, doc
-                    )
+                    lrc_starts, aligned_starts = _pair_openings_to_aligned(text.align_windows, opens, doc)
                     fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)
                 else:
-                    fit = fit_lrc_to_aligned(
-                        line_starts({"segments": text.segments}), line_starts(doc)
-                    )
+                    fit = fit_lrc_to_aligned(line_starts({"segments": text.segments}), line_starts(doc))
                 if fit.verdict == "different_version":
                     ctx.note(
                         f"{text.text_source}: its own line timings do NOT fit this recording "

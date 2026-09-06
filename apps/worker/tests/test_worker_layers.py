@@ -11,6 +11,7 @@ the refactor is decoration.
   E7  the layering rule holds: dependencies point down only
   E8  one publish shape per artifact kind
 """
+
 from __future__ import annotations
 
 import ast
@@ -164,7 +165,11 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
         if rel in allowed:
             continue
         names = _imports(path)
-        bad = [n for n in names if n.endswith("acquisition.fetch") or n == "acquisition" or n.endswith(".acquisition")]
+        bad = [
+            n
+            for n in names
+            if n.endswith("acquisition.fetch") or n == "acquisition" or n.endswith(".acquisition")
+        ]
         # `_imports` records a dotted module and so misses `from . import acquisition` / `from .. import
         # acquisition`, where the package is an imported NAME not part of the module path — the exact
         # shape a regression module would reach for. Scan the imported names directly to close that gap.
@@ -202,6 +207,7 @@ def test_imports_normalises_the_src_prefixed_form_to_the_relative_one(tmp_path: 
     # `_imports` measures against the module SRC; both fixtures share a src-relative shape, so patch the
     # module-level SRC for the read of these two throwaway files only.
     import src as _src_pkg  # noqa: F401  (import guard: the module under test is importable)
+
     global SRC
     saved = SRC
     try:
@@ -211,7 +217,9 @@ def test_imports_normalises_the_src_prefixed_form_to_the_relative_one(tmp_path: 
     finally:
         SRC = saved
 
-    assert got_abs == {"runtime.plan"}, f"src.-prefixed absolute import recorded as {got_abs}, not 'runtime.plan'"
+    assert got_abs == {"runtime.plan"}, (
+        f"src.-prefixed absolute import recorded as {got_abs}, not 'runtime.plan'"
+    )
     assert got_rel == {"runtime.plan"}, f"..-relative import recorded as {got_rel}, not 'runtime.plan'"
     assert got_abs == got_rel, "the two forms of the same edge must be indistinguishable to the guard"
 

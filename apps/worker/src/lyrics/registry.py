@@ -14,19 +14,21 @@ So a source DECLARES what it requires, one place decides whether the requirement
 requirement is REPORTED by name. A source that declines for its own reasons still can, but a source that
 never got the chance says which input was missing.
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 from .chain import (
+    BASELINE_ASR_MIX,
+    BASELINE_ASR_VOCALS,
+    BASELINE_CAPTIONS_AUTO,
     ROLE_BASELINE,
     ROLE_CANDIDATE,
     AsrSource,
     AutoCaptionsSource,
-    BASELINE_ASR_MIX,
-    BASELINE_ASR_VOCALS,
-    BASELINE_CAPTIONS_AUTO,
     CaptionsSource,
     LrclibSource,
     LyricsRequest,
@@ -104,14 +106,18 @@ SPECS: tuple[SourceSpec, ...] = (
         role=ROLE_BASELINE,
         baseline_rank=BASELINE_ASR_VOCALS,
         requires=frozenset({NEEDS_VOCALS_STEM}),
-        build=lambda transcriber, normalize, **_: AsrSource(transcriber, normalize, audio=AsrSource.AUDIO_VOCALS),
+        build=lambda transcriber, normalize, **_: AsrSource(
+            transcriber, normalize, audio=AsrSource.AUDIO_VOCALS
+        ),
     ),
     SourceSpec(
         id="asr:mix",
         role=ROLE_BASELINE,
         baseline_rank=BASELINE_ASR_MIX,
         requires=frozenset({NEEDS_AUDIO}),
-        build=lambda transcriber, normalize, **_: AsrSource(transcriber, normalize, audio=AsrSource.AUDIO_MIX),
+        build=lambda transcriber, normalize, **_: AsrSource(
+            transcriber, normalize, audio=AsrSource.AUDIO_MIX
+        ),
     ),
     SourceSpec(
         id="captions:machine",
@@ -142,6 +148,11 @@ class _Classified:
     inner: LyricsSource
     role: str
     baseline_rank: int | None
+
+    @property
+    def name(self) -> str:
+        # delegate to the wrapped source, matching the read-only `LyricsSource.name` protocol member.
+        return self.inner.name
 
     def fetch(self, req: LyricsRequest) -> Any:
         got = self.inner.fetch(req)

@@ -20,6 +20,7 @@ Probes are import-free where possible (`find_spec`, `shutil.which`) so building 
 drag multi-GB of torch into the dial-home process — the lazy-import discipline in dial_home.py
 depends on that.
 """
+
 from __future__ import annotations
 
 import shutil
@@ -52,8 +53,9 @@ def _either(module: str, binary: str) -> tuple[bool, str]:
     return False, f"neither {binary} on PATH nor {module} importable"
 
 
-def probe_all(*, ytdlp_bin: str = "yt-dlp", demucs_bin: str = "demucs",
-              roformer_bin: str = "bs-roformer-infer") -> list[Probe]:
+def probe_all(
+    *, ytdlp_bin: str = "yt-dlp", demucs_bin: str = "demucs", roformer_bin: str = "bs-roformer-infer"
+) -> list[Probe]:
     """Probe every capability this worker could advertise. Order is the cook order, so the startup
     log reads as the pipeline it describes."""
     probes: list[Probe] = []
@@ -78,17 +80,24 @@ def probe_all(*, ytdlp_bin: str = "yt-dlp", demucs_bin: str = "demucs",
     # domain over (backends.py): kept in the vocabulary so configuration and routing can name it, but
     # it never reports available. `stems_ok`/`rof_ok` are read only so the reason can distinguish
     # "engine unimplemented" from "engines absent"; neither can flip this to available.
-    probes.append(Probe(
-        "stems:ensemble",
-        False,
-        "no ensemble engine implemented" if stems_ok and rof_ok else "no ensemble engine implemented (and needs both demucs and roformer)",
-    ))
+    probes.append(
+        Probe(
+            "stems:ensemble",
+            False,
+            "no ensemble engine implemented"
+            if stems_ok and rof_ok
+            else "no ensemble engine implemented (and needs both demucs and roformer)",
+        )
+    )
 
     align_ok = _module_available("whisperx")
-    probes.append(Probe(
-        "align", align_ok,
-        "whisperx importable" if align_ok else "whisperx not importable",
-    ))
+    probes.append(
+        Probe(
+            "align",
+            align_ok,
+            "whisperx importable" if align_ok else "whisperx not importable",
+        )
+    )
 
     return probes
 

@@ -22,6 +22,7 @@ where a job's bytes are — while three of its four callers re-derived the answe
 `AcquireAudio` step is now the single answer, and this module keeps only the primitives it uses.
 `tests/test_worker_layers.py` E6 fails if anything else starts deciding for itself.
 """
+
 from __future__ import annotations
 
 from .fetch import find_downloaded, job_fetcher, local_source_path

@@ -47,14 +47,16 @@ DEGRADES, never fails. If the package is absent the boundary split still runs on
 display layer's `LINE_MAX_CHARS` fallback still catches an over-long line — so the dependency is
 genuinely optional rather than nominally so.
 """
+
 from __future__ import annotations
 
 import logging
 import re
 import sys
 import types
+from collections.abc import Callable
 from dataclasses import replace
-from typing import Any, Callable
+from typing import Any
 
 from .chain import LyricsText, is_authoritative_text
 
@@ -285,7 +287,7 @@ def bound_lines(lines: list[str], max_chars: int = MAX_LINE_CHARS) -> list[str]:
             max_line_length=max_chars,
         )
         proc.logger.removeHandler(proc.log_handler)
-        return [l.strip() for l in proc.process().splitlines() if l.strip()] or lines
+        return [ln.strip() for ln in proc.process().splitlines() if ln.strip()] or lines
     except Exception:  # noqa: BLE001 — a bad bound is a missed improvement, not a failed job
         return lines
 
@@ -313,9 +315,7 @@ def _subdivide(seg: dict[str, Any], pieces: list[str]) -> list[dict[str, Any]]:
     return out
 
 
-def _relineate_segments(
-    text: LyricsText, max_chars: int, lineator: Callable[[str], list[str]]
-) -> LyricsText:
+def _relineate_segments(text: LyricsText, max_chars: int, lineator: Callable[[str], list[str]]) -> LyricsText:
     """Re-lineate every text-only segment of `text` with `lineator`; return a NEW LyricsText.
 
     `lineator` maps one segment body to its output lines — the ONE place the authoritative and
@@ -358,7 +358,9 @@ def split_blob_text(
     long. Returns a NEW LyricsText; input untouched.
     """
     bound = bounder if bounder is not None else bound_lines
-    return _relineate_segments(text, max_chars, lambda body: bound(boundary_split(body, max_chars), max_chars))
+    return _relineate_segments(
+        text, max_chars, lambda body: bound(boundary_split(body, max_chars), max_chars)
+    )
 
 
 def bound_blob_text(

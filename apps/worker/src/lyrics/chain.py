@@ -19,14 +19,15 @@ PURE of network/ML by construction: every source is injectable, so the whole cha
 Candidate metadata mirrors `LyricsCandidate` in packages/shared/src/lyrics.ts — that TS module is the
 authority on RANKING; this side only reports what it produced and how trustworthy it is.
 """
+
 from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
 from typing import Any, Protocol
 
-from .source import MAX_VARIANTS, LyricsFetchError, rank_lrclib_candidates
 from ..vocabulary import TextSource, Timing
+from .source import MAX_VARIANTS, LyricsFetchError, rank_lrclib_candidates
 
 # Text-source ids and timing tiers. Promoted to enums in src/vocabulary.py (TextSource, Timing) so the
 # TS↔Python guard in apps/core/src/server/jobs/vocabulary-parity.test.ts covers them — a comment saying
@@ -153,7 +154,7 @@ class LyricsText:
     #: published: the artifact key is (media, source, timing), so two LRCLIB candidates would collide
     #: on disk and in the candidate set. These are the losers of a choice that has not been made yet —
     #: `select_by_baselines` makes it once the ASR transcript exists to decide with.
-    alternates: list["LyricsText"] = field(default_factory=list)
+    alternates: list[LyricsText] = field(default_factory=list)
     #: Length-bounded search WINDOWS for the forced aligner, when `segments` are the source's OWN
     #: (human) lines and must stay un-subdivided so the line-sync fallback publishes them verbatim.
     #: `presplit` sets this on authoritative text whose lines overflow a row: the aligner gets tight
@@ -175,7 +176,8 @@ class LyricsText:
 class LyricsSource(Protocol):
     """One place text can come from. MUST NOT raise for an ordinary miss — return None."""
 
-    name: str
+    @property
+    def name(self) -> str: ...
 
     def fetch(self, req: LyricsRequest) -> LyricsText | None: ...
 
@@ -356,10 +358,15 @@ class AsrSource:
         return LyricsText(
             text_source=SOURCE_ASR,
             segments=[
-                {"start": l.get("start"), "end": l.get("end"), "text": l.get("text"), "words": l.get("words") or []}
-                for l in lines
+                {
+                    "start": ln.get("start"),
+                    "end": ln.get("end"),
+                    "text": ln.get("text"),
+                    "words": ln.get("words") or [],
+                }
+                for ln in lines
             ],
-            timing=TIMING_WORD if any(l.get("words") for l in lines) else TIMING_LINE,
+            timing=TIMING_WORD if any(ln.get("words") for ln in lines) else TIMING_LINE,
             text_confidence="low",
             language=doc.get("language"),
             tag=self._audio,
@@ -537,7 +544,9 @@ def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> tuple
     unweighted mean over independent errors is the honest default; if measurement later justifies
     weights, this is the one function that changes.
     """
-    votes = [s for s in (agreement_score(candidate.plain_text, b.plain_text) for b in baselines) if s is not None]
+    votes = [
+        s for s in (agreement_score(candidate.plain_text, b.plain_text) for b in baselines) if s is not None
+    ]
     if not votes:
         return None, []
     return sum(votes) / len(votes), votes
@@ -589,7 +598,8 @@ class VariantChoice:
         if self.decided_by == "metadata":
             return head + " — chosen on metadata; no baseline could judge"
         losers = ", ".join(
-            f"{label or '?'}" + (f" {score:.2f}" if score is not None else " —") for label, score in self.rejected
+            f"{label or '?'}" + (f" {score:.2f}" if score is not None else " —")
+            for label, score in self.rejected
         )
         return head + (f", over {losers}" if losers else "")
 
@@ -651,7 +661,9 @@ def select_by_baselines(texts: list[LyricsText]) -> Selection:
         if any(s is not None for s, _ in scored):
             # max on (score, negative index) so an exact tie keeps the earlier — i.e. the better
             # metadata match. `-1.0` sorts an unjudgeable version below every judged one.
-            pick = max(range(len(pool)), key=lambda i: (scored[i][0] if scored[i][0] is not None else -1.0, -i))
+            pick = max(
+                range(len(pool)), key=lambda i: (scored[i][0] if scored[i][0] is not None else -1.0, -i)
+            )
             decided_by = "agreement"
         else:
             decided_by = "metadata"
@@ -664,14 +676,20 @@ def select_by_baselines(texts: list[LyricsText]) -> Selection:
                     considered=len(pool),
                     chosen=winner.variant,
                     chosen_score=score,
-                    rejected=[(c.variant, s) for i, (c, (s, _)) in enumerate(zip(pool, scored)) if i != pick],
+                    rejected=[
+                        (c.variant, s)
+                        for i, (c, (s, _)) in enumerate(zip(pool, scored, strict=False))
+                        if i != pick
+                    ],
                     decided_by=decided_by,
                     votes=len(votes),
                 )
             )
         # Across sources, the same comparison decides. An unjudged candidate (-1.0) never displaces a
         # judged one, and among unjudged candidates the first acquired stands.
-        if best is None or (score if score is not None else -1.0) > (best_score if best_score is not None else -1.0):
+        if best is None or (score if score is not None else -1.0) > (
+            best_score if best_score is not None else -1.0
+        ):
             best, best_score = winner, score
 
     if best is None:

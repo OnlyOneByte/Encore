@@ -1,6 +1,8 @@
 """Demucs pipeline — pure helpers (argv/parse/paths/retryability) + the DemucsProcessor flow driven
 by a FAKE runner (canned CLI output), so the full path tests with no torch, no yt-dlp, no network.
 The real-ML run defers to a GPU box."""
+
+import asyncio as _asyncio
 import os
 import sys
 from pathlib import Path
@@ -9,10 +11,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.separation import demucs  # noqa: E402
 from src import plans  # noqa: E402
 from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
+from src.separation import demucs  # noqa: E402
 
 
 # ── pure helpers ──────────────────────────────────────────────────────────────────
@@ -24,8 +26,14 @@ def test_acquisition_is_DECLARED_not_inferred_from_the_uri_shape():
     from src.vocabulary import Fetcher
 
     def spec(params):
-        return JobSpec(job_id="j", media_id="m", job_type="stems",
-                                source_uri="spotify:track:4cOdK2wGLETKBW3PvgPWqT", params=params, media_dir="/m")
+        return JobSpec(
+            job_id="j",
+            media_id="m",
+            job_type="stems",
+            source_uri="spotify:track:4cOdK2wGLETKBW3PvgPWqT",
+            params=params,
+            media_dir="/m",
+        )
 
     # a non-http scheme is NOT local just because it lacks an http prefix
     assert job_fetcher(spec({"fetcher": "ytdlp"})) is Fetcher.YTDLP
@@ -83,8 +91,13 @@ def test_process_error_carries_retryable():
 
 
 # ── DemucsProcessor flow with a fake runner ─────────────────────────────────────────
-def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, exit_text: str = "",
-                write_vocals: bool = True):
+def fake_runner(
+    scripted: dict[str, list[str]],
+    *,
+    fail_on: str | None = None,
+    exit_text: str = "",
+    write_vocals: bool = True,
+):
     """Build a runner that emits canned lines keyed by the binary name (argv[0]), optionally raising
     a ProcessError for one binary. It also CREATES the files the real CLIs would, so the processor's
     existence checks + move succeed. `--two-stems=vocals` writes BOTH stems; `write_vocals=False`
@@ -124,7 +137,14 @@ def fake_runner(scripted: dict[str, list[str]], *, fail_on: str | None = None, e
 
 
 def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):
-    return JobSpec(job_id="j1", media_id=media_id, job_type="stems", source_uri=source_uri, params=params, media_dir=str(tmp_path))
+    return JobSpec(
+        job_id="j1",
+        media_id=media_id,
+        job_type="stems",
+        source_uri=source_uri,
+        params=params,
+        media_dir=str(tmp_path),
+    )
 
 
 async def drain(processor, job):
@@ -136,10 +156,12 @@ async def drain(processor, job):
 
 @pytest.mark.asyncio
 async def test_youtube_job_downloads_then_separates_then_publishes(tmp_path):
-    runner = fake_runner({
-        "yt-dlp": ["[download]  10.0% of 4MiB", "[download] 100% of 4MiB"],
-        "demucs": ["Selected model is a bag of 4 models.", " 50%|███   | 1/2", "100%|██████| 2/2"],
-    })
+    runner = fake_runner(
+        {
+            "yt-dlp": ["[download]  10.0% of 4MiB", "[download] 100% of 4MiB"],
+            "demucs": ["Selected model is a bag of 4 models.", " 50%|███   | 1/2", "100%|██████| 2/2"],
+        }
+    )
     proc = plans.stems_runner(runner=runner)
     events = await drain(proc, spec(tmp_path))
 
@@ -165,10 +187,12 @@ async def test_separating_reaches_100_exactly_once_when_the_parser_already_did(t
     Routing the step through the runner's run_stage — the single loop, which guards the tail with
     `if last < 100` — collapses that to one. Non-vacuous: on the old inline loop this asserts 2.
     """
-    runner = fake_runner({
-        "yt-dlp": ["[download] 100% of 4MiB"],
-        "demucs": [" 50%|███   | 1/2", "100%|██████| 2/2"],  # parser reaches 100 on the last line
-    })
+    runner = fake_runner(
+        {
+            "yt-dlp": ["[download] 100% of 4MiB"],
+            "demucs": [" 50%|███   | 1/2", "100%|██████| 2/2"],  # parser reaches 100 on the last line
+        }
+    )
     proc = plans.stems_runner(runner=runner)
     events = await drain(proc, spec(tmp_path))
     separating_hundreds = [
@@ -181,10 +205,13 @@ async def test_separating_reaches_100_exactly_once_when_the_parser_already_did(t
 async def test_missing_vocals_is_best_effort_still_publishes_instrumental(tmp_path):
     # demucs wrote the instrumental but not vocals.wav → the job still completes with the
     # instrumental; the vocals key is simply absent (never fails the load-bearing output).
-    runner = fake_runner({
-        "yt-dlp": ["[download] 100% of 4MiB"],
-        "demucs": ["100%|██| 2/2"],
-    }, write_vocals=False)
+    runner = fake_runner(
+        {
+            "yt-dlp": ["[download] 100% of 4MiB"],
+            "demucs": ["100%|██| 2/2"],
+        },
+        write_vocals=False,
+    )
     proc = plans.stems_runner(runner=runner)
     events = await drain(proc, spec(tmp_path))
     completes = [e for e in events if isinstance(e, CompleteResult)]
@@ -212,7 +239,9 @@ async def test_local_source_skips_download_stage(tmp_path):
 
 @pytest.mark.asyncio
 async def test_download_failure_propagates_as_retryable_process_error(tmp_path):
-    runner = fake_runner({"yt-dlp": ["[download]   5.0% of 4MiB"]}, fail_on="yt-dlp", exit_text="HTTP Error 503")
+    runner = fake_runner(
+        {"yt-dlp": ["[download]   5.0% of 4MiB"]}, fail_on="yt-dlp", exit_text="HTTP Error 503"
+    )
     proc = plans.stems_runner(runner=runner)
     with pytest.raises(demucs.ProcessError) as ei:
         await drain(proc, spec(tmp_path))
@@ -248,6 +277,7 @@ async def test_missing_instrumental_output_raises(tmp_path):
 # Measured on a real 5:20 song: YouTube's best audio is ~5 MB (Opus 135k / AAC 129k), which the old
 # `-x --audio-format wav` inflated to 58.7 MB -- 12x the bytes for zero fidelity, since you cannot
 # restore what YouTube already discarded. These tests pin the policy so it cannot silently regress.
+
 
 def test_download_keeps_the_native_stream_and_never_transcodes_to_wav():
     argv = fetch_mod.download_argv("https://youtu.be/x", "/m/audio/id1.%(ext)s")
@@ -292,14 +322,16 @@ def test_instrumental_is_encoded_LOSSLESS_but_vocals_are_not():
 def test_stems_are_encoded_to_stereo_aac_not_moved_as_wav():
     argv = demucs.encode_stem_argv("/w/no_vocals.wav", "/m/derived/stems/id1-instrumental.flac")
     joined = " ".join(argv)
-    assert "-c:a aac" in joined      # AAC, not Opus: the instrumental must play in Safari
-    assert "-b:a 192k" in joined     # headroom over a ~130k lossy source
-    assert "-ac 2" in joined         # stereo is the ceiling; YouTube serves stereo
-    assert "+faststart" in joined    # browser can start playing before the full download
+    assert "-c:a aac" in joined  # AAC, not Opus: the instrumental must play in Safari
+    assert "-b:a 192k" in joined  # headroom over a ~130k lossy source
+    assert "-ac 2" in joined  # stereo is the ceiling; YouTube serves stereo
+    assert "+faststart" in joined  # browser can start playing before the full download
 
 
 def test_find_downloaded_ignores_partial_downloads():
-    import tempfile, os as _os
+    import os as _os
+    import tempfile
+
     with tempfile.TemporaryDirectory() as d:
         assert fetch_mod.find_downloaded(d, "id1") is None
         open(_os.path.join(d, "id1.webm.part"), "w").close()
@@ -317,7 +349,9 @@ def test_find_downloaded_ignores_interrupted_fragmented_download():
     standalone segment, so it decoded silently as a few-seconds original that poisoned the media id
     forever). None of these is a finished download.
     """
-    import tempfile, os as _os
+    import os as _os
+    import tempfile
+
     with tempfile.TemporaryDirectory() as d:
         for leftover in ("id1.m4a.part", "id1.m4a.part-Frag0", "id1.m4a.part-Frag1", "id1.m4a.ytdl"):
             open(_os.path.join(d, leftover), "w").close()
@@ -356,7 +390,6 @@ def test_resolve_demucs_model_rejects_unknown_rather_than_silently_falling_back(
 # ── the REAL subprocess_runner (FIX 2 kill+reap, FIX 3 idle timeout) ────────────────
 # The rest of the suite injects fake runners, so subprocess_runner itself — the code that was
 # broken — had ZERO coverage. These drive a REAL trivial child (python, always on PATH here).
-import asyncio as _asyncio
 
 
 @pytest.mark.asyncio
@@ -460,9 +493,10 @@ async def test_subprocess_runner_idle_timer_resets_on_each_line(monkeypatch):
     # A child that keeps printing under the idle window must NOT be killed, even though its TOTAL
     # runtime exceeds the idle timeout — proving this is an idle-output timeout, not a wall-clock cap.
     monkeypatch.setattr(demucs, "SUBPROCESS_IDLE_TIMEOUT_SEC", 0.5)
-    argv = [sys.executable, "-c",
-            "import time,sys\n"
-            "for i in range(6):\n"
-            "    print(i, flush=True); time.sleep(0.2)\n"]
+    argv = [
+        sys.executable,
+        "-c",
+        "import time,sys\nfor i in range(6):\n    print(i, flush=True); time.sleep(0.2)\n",
+    ]
     lines = [ln async for ln in demucs.subprocess_runner(argv)]
     assert lines == ["0", "1", "2", "3", "4", "5"]  # ran ~1.2s total, over the 0.5s idle cap, uninterrupted

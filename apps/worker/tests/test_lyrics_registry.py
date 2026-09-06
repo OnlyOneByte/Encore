@@ -6,6 +6,7 @@ no lyrics. But it was the ONLY signal, so "this song has no lyrics" and "this pr
 month" were the same observation. lrclib.net has been failing 100% on the owner's corp box since a DNS
 sinkhole, and nothing said so; it just looked like songs without lyrics.
 """
+
 from __future__ import annotations
 
 import sys
@@ -42,7 +43,9 @@ def full_request(**over) -> LyricsRequest:
 
 
 def build(req, **kw):
-    return build_sources(req, client=object(), to_segments=lambda *a: [], transcriber=object(), normalize=lambda d: d, **kw)
+    return build_sources(
+        req, client=object(), to_segments=lambda *a: [], transcriber=object(), normalize=lambda d: d, **kw
+    )
 
 
 # ── the reporting gap this closes ────────────────────────────────────────────────

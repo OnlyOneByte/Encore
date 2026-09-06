@@ -18,6 +18,7 @@ Design rules:
     defaults (demucs' own overlap, its cuda-if-available device pick) keep applying.
   - An override may NARROW what a box does; it may not claim something the box cannot prove.
 """
+
 from __future__ import annotations
 
 import os
@@ -260,7 +261,7 @@ class WorkerConfig:
     warnings: tuple[str, ...] = field(default_factory=tuple)
 
     @staticmethod
-    def from_env(env: dict[str, str] | None = None) -> "WorkerConfig":
+    def from_env(env: dict[str, str] | None = None) -> WorkerConfig:
         e = dict(os.environ if env is None else env)
         w: list[str] = []
 
@@ -280,8 +281,8 @@ class WorkerConfig:
         # ENCORE_DEMUCS_DEVICE is the old name and applied to separation only. Accepted so an existing
         # deployment keeps working, but it now sets the device for the WHOLE worker, which is what the
         # operator wanted in every case we have seen.
-        device = (e.get("ENCORE_DEVICE", "").strip() or None)
-        legacy_device = (e.get("ENCORE_DEMUCS_DEVICE", "").strip() or None)
+        device = e.get("ENCORE_DEVICE", "").strip() or None
+        legacy_device = e.get("ENCORE_DEMUCS_DEVICE", "").strip() or None
         if legacy_device and not device:
             device = legacy_device
             w.append(
@@ -354,7 +355,7 @@ class WorkerConfig:
         """
         if not self.worker_token:
             return self.core_ws
-        from urllib.parse import urlsplit, urlunsplit, parse_qsl, urlencode
+        from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
         parts = urlsplit(self.core_ws)
         query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k != "token"]
@@ -390,7 +391,11 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
         worker_id=cfg.worker_id or default_worker_id(),
         whisperx_device=cfg.whisperx_device or whisperx_device_for(device),
     )
-    if cfg.whisperx_device and cfg.whisperx_device not in ("cpu", "cuda") and not cfg.whisperx_device.startswith("cuda"):
+    if (
+        cfg.whisperx_device
+        and cfg.whisperx_device not in ("cpu", "cuda")
+        and not cfg.whisperx_device.startswith("cuda")
+    ):
         warnings.append(
             f"ENCORE_WHISPERX_DEVICE={cfg.whisperx_device!r} is not a device whisperx can use "
             "(CTranslate2 supports cuda and cpu only); alignment will likely fail"

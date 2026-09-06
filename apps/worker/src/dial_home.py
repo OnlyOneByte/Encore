@@ -8,18 +8,19 @@ worker reconnects and re-announces.
 
 The stem separation is behind the Processor seam (processor.py). See docs/ARCHITECTURE.md, §9.
 """
+
 from __future__ import annotations
 
-import shutil
 import asyncio
 import json
 import os
+import shutil
 import time
 from typing import Any
 
 from . import protocol
-from .mediastore import MediaStoreConfig, parse_media_store
 from .config import WorkerConfig
+from .mediastore import MediaStoreConfig, parse_media_store
 from .processor import CompleteResult, JobSpec, Processor, ProgressEvent, StubProcessor
 from .runtime import scratch_for
 
@@ -47,10 +48,18 @@ class WorkerClient:
     library: it takes an async `send(dict)` and is fed inbound messages via `handle(msg)`, so the
     full flow unit-tests with an in-memory fake socket."""
 
-    def __init__(self, send, processor: Processor, *, worker_id: str = WORKER_ID,
-                 capabilities: list[str] | None = None, concurrency: int = CONCURRENCY,
-                 media_dir: str = MEDIA_DIR, version: str = VERSION,
-                 can_publish_object: bool = False) -> None:
+    def __init__(
+        self,
+        send,
+        processor: Processor,
+        *,
+        worker_id: str = WORKER_ID,
+        capabilities: list[str] | None = None,
+        concurrency: int = CONCURRENCY,
+        media_dir: str = MEDIA_DIR,
+        version: str = VERSION,
+        can_publish_object: bool = False,
+    ) -> None:
         self._send = send
         self._processor = processor
         self._media_dir = media_dir
@@ -93,7 +102,9 @@ class WorkerClient:
         )
 
     async def send_heartbeat(self) -> None:
-        await self._send(protocol.heartbeat(self.state.worker_id, self.state.slots_free, list(self.state.running)))
+        await self._send(
+            protocol.heartbeat(self.state.worker_id, self.state.slots_free, list(self.state.running))
+        )
 
     async def heartbeat_loop(self) -> None:
         """Periodically push a worker:heartbeat so the core can reconcile this worker's slotsFree.
@@ -159,7 +170,9 @@ class WorkerClient:
             return
         if not isinstance(job_type, str) or not job_type or not isinstance(media_id, str) or not media_id:
             print(f"[worker] rejecting malformed job:assign {job_id!r} (missing jobType/mediaId)", flush=True)
-            await self._send(protocol.reject(self.state.worker_id, job_id, "malformed assign: missing jobType/mediaId"))
+            await self._send(
+                protocol.reject(self.state.worker_id, job_id, "malformed assign: missing jobType/mediaId")
+            )
             return
         # HONESTY over object mode. If the core told us stems live in an object store (worker:welcome
         # carried a usable bucket) but this worker has no uploader wired, every step would still write
@@ -196,7 +209,11 @@ class WorkerClient:
         # run processing concurrently so the loop keeps reading ping/cancel
         task = asyncio.ensure_future(self._run_job(job))
         self._tasks[job_id] = task
-        task.add_done_callback(lambda _t, jid=job_id: self._tasks.pop(jid, None))
+
+        def _pop_task(_t: Any, jid: Any = job_id) -> None:
+            self._tasks.pop(jid, None)
+
+        task.add_done_callback(_pop_task)
 
     async def _run_job(self, job: JobSpec) -> None:
         try:
@@ -207,7 +224,9 @@ class WorkerClient:
             async for ev in self._processor.process(job):
                 if isinstance(ev, ProgressEvent):
                     timer.observe(ev.stage)
-                    await self._send(protocol.progress(self.state.worker_id, job.job_id, ev.stage, ev.pct, ev.eta_sec))
+                    await self._send(
+                        protocol.progress(self.state.worker_id, job.job_id, ev.stage, ev.pct, ev.eta_sec)
+                    )
                 else:  # CompleteResult
                     result = ev
             if result is None:
@@ -226,8 +245,10 @@ class WorkerClient:
             retryable = _is_retryable(exc)
             # LOG it too: reporting only over the wire made a retry loop invisible from both ends — a
             # job failing at 99% every attempt looked identical to one still cooking.
-            print(f"[worker] job {job.job_id} ({job.job_type}) FAILED "
-                  f"retryable={retryable}: {exc!r}", flush=True)
+            print(
+                f"[worker] job {job.job_id} ({job.job_type}) FAILED retryable={retryable}: {exc!r}",
+                flush=True,
+            )
             await self._send(protocol.failed(self.state.worker_id, job.job_id, str(exc), retryable=retryable))
         finally:
             self.state.finish(job.job_id)
@@ -288,8 +309,9 @@ def _is_retryable(exc: Exception) -> bool:
     return not any(p in msg for p in permanent)
 
 
-def oversubscription_warnings(cfg: WorkerConfig, cores: int | None,
-                              memory_bytes: int | None = None) -> list[str]:
+def oversubscription_warnings(
+    cfg: WorkerConfig, cores: int | None, memory_bytes: int | None = None
+) -> list[str]:
     """Warn when concurrency x jobs asks for more parallel work than the box can run.
 
     PURE (cores and memory are passed in) so it unit-tests without touching the machine. This is its
@@ -389,7 +411,9 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             from .metadata.annotate import MusicBrainzClient
 
             annotator = MusicBrainzClient()
-        by_type["fetch"] = fetch_runner(runner=subprocess_runner, annotator=annotator, ytdlp_bin=cfg.ytdlp_bin)
+        by_type["fetch"] = fetch_runner(
+            runner=subprocess_runner, annotator=annotator, ytdlp_bin=cfg.ytdlp_bin
+        )
     if "stems" in cfg.capabilities or "stems:roformer" in cfg.capabilities:
         from .plans import stems_runner
         from .separation.demucs import subprocess_runner
@@ -412,7 +436,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
 
             free = free_vram_bytes()
             segment = auto_demucs_segment(free)
-            if segment is not None:
+            if segment is not None and free is not None:
                 print(
                     f"[worker] demucs segment: {segment}s — derived from "
                     f"{free / (1024**3):.1f}GiB free accelerator memory "
@@ -504,7 +528,8 @@ async def _run_forever() -> None:
             # below, which prints the token-free cfg.core_ws so the secret never lands in the log.
             async with websockets.connect(cfg.authed_core_ws()) as ws:
                 client = WorkerClient(
-                    lambda m: ws.send(json.dumps(m)), processor,
+                    lambda m: ws.send(json.dumps(m)),
+                    processor,
                     worker_id=cfg.worker_id,
                     capabilities=list(cfg.capabilities),
                     concurrency=cfg.concurrency,
@@ -512,7 +537,9 @@ async def _run_forever() -> None:
                     version=cfg.version,
                 )
                 await client.hello()
-                print(f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})")
+                print(
+                    f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})"
+                )
                 # The message pump below only ever REACTS to inbound frames (async for raw in ws), so a
                 # periodic heartbeat has to run as its own task alongside it — otherwise worker:heartbeat
                 # is never sent and the core can never reconcile this worker's slotsFree after a reaped

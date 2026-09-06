@@ -2,6 +2,7 @@
 torch: tones are generated in-memory. The bar is coarse on purpose — we assert TONIC+MODE for a clear
 harmonic signal and LOW confidence for noise/silence, not exact correlation values, because the
 useful contract downstream is exactly "which key, and do we believe it"."""
+
 import sys
 from pathlib import Path
 
@@ -33,12 +34,14 @@ def _chord(midis, dur, sr=SR):
 def test_c_major_triad_progression_detects_c_major():
     # A I–IV–V–I in C major (C-E-G, F-A-C, G-B-D, C-E-G). The chromagram over the whole progression
     # is dominated by the C-major scale's tonal weights → C major.
-    prog = np.concatenate([
-        _chord([60, 64, 67], 1.0),  # C major
-        _chord([65, 69, 72], 1.0),  # F major
-        _chord([67, 71, 74], 1.0),  # G major
-        _chord([60, 64, 67], 1.0),  # C major
-    ])
+    prog = np.concatenate(
+        [
+            _chord([60, 64, 67], 1.0),  # C major
+            _chord([65, 69, 72], 1.0),  # F major
+            _chord([67, 71, 74], 1.0),  # G major
+            _chord([60, 64, 67], 1.0),  # C major
+        ]
+    )
     tonic, mode, conf = key_detect.detect_key(prog, SR)
     assert tonic == 0  # C
     assert mode == "major"
@@ -48,12 +51,14 @@ def test_c_major_triad_progression_detects_c_major():
 def test_a_minor_triad_progression_detects_a_minor():
     # i–iv–v–i in A minor (A-C-E, D-F-A, E-G-B, A-C-E). Same pitch-class content family as C major but
     # the tonal-hierarchy correlation resolves the RELATIVE-minor tonic via the minor template.
-    prog = np.concatenate([
-        _chord([57, 60, 64], 1.0),  # A minor
-        _chord([62, 65, 69], 1.0),  # D minor
-        _chord([64, 67, 71], 1.0),  # E minor
-        _chord([57, 60, 64], 1.0),  # A minor
-    ])
+    prog = np.concatenate(
+        [
+            _chord([57, 60, 64], 1.0),  # A minor
+            _chord([62, 65, 69], 1.0),  # D minor
+            _chord([64, 67, 71], 1.0),  # E minor
+            _chord([57, 60, 64], 1.0),  # A minor
+        ]
+    )
     tonic, mode, conf = key_detect.detect_key(prog, SR)
     assert tonic == 9  # A
     assert mode == "minor"

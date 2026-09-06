@@ -16,6 +16,7 @@ align jobs carrying different `asrModel` raced: one could null the other's cache
 or transcribe with the other's weights. Per-job state cannot live on a per-worker object if the
 per-worker object has nowhere to put it.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field

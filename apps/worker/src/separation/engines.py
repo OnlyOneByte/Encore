@@ -17,6 +17,7 @@ WHAT THIS SEAM IS NOT. It is not a place to unify the argv builders or the path 
 `demucs.py` and `roformer.py`, unchanged, because they encode measured behaviour of two CLIs. This only
 lets one step ask both engines the same four questions.
 """
+
 from __future__ import annotations
 
 import os

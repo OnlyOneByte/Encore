@@ -9,18 +9,21 @@ What lives here and nowhere else:
   * the scratch directory for a job
   * `run_stage`, the subprocess-with-progress wrapper
   * `run_blocking`, the keepalive that keeps in-process ML from killing the websocket
-  * per-step timing, recorded on the `job:complete` payload for the worker's own log (the core drops it at its fact allowlist, so `/metrics` gets no per-step resolution from it)
+  * per-step timing, recorded on the `job:complete` payload for the worker's own log —
+    the core drops it at its fact allowlist, so `/metrics` gets no per-step resolution from it
   * turning a context into a CompleteResult
 
 It knows nothing about audio, lyrics or separation — only about plans, steps and contexts. That is the
 dependency rule from the spec's §3, and it is what makes every domain testable without an event loop.
 """
+
 from __future__ import annotations
 
 import asyncio
 import os
 import time
-from typing import Any, AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable
+from typing import Any
 
 from ..processor import CompleteResult, JobSpec, ProgressEvent
 from .ctx import Ctx, ResolvedEngines
@@ -113,7 +116,9 @@ class PlanRunner:
 
     # ── the two things a step cannot do for itself ─────────────────────────────────
 
-    async def run_stage(self, ctx: Ctx, stage: Any, argv: list[str], parse: Any) -> AsyncIterator[ProgressEvent]:
+    async def run_stage(
+        self, ctx: Ctx, stage: Any, argv: list[str], parse: Any
+    ) -> AsyncIterator[ProgressEvent]:
         """Deprecated shim: delegates to the module-level `run_stage`. Kept so an existing caller that
         already holds a PlanRunner needs no change; a Step should call the free function instead, since
         it is handed only a `ctx` and never the runner that drives it."""

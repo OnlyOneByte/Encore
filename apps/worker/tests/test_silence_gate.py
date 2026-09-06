@@ -1,5 +1,6 @@
 """The worker-side silence gate: a separation can succeed and still write digital silence, and a
 SILENT guiding track is worse than none because it looks like it works. Pure parser + verdict."""
+
 from src.processor import (
     SILENCE_FLOOR_DB,
     is_silent,

@@ -8,6 +8,7 @@ pin the property that actually removes it — a capability is only advertised if
 Probes are driven through the `*_bin` arguments so a fixture can create a fake executable rather than
 depending on what happens to be installed on the test machine.
 """
+
 from __future__ import annotations
 
 import stat

@@ -18,6 +18,7 @@ Three tests:
 `/opt/encore/bin/yt-dlp` and the other sentinels below are literal values the code never constructs, so a
 test cannot pass by re-deriving the code's own defaults.
 """
+
 from __future__ import annotations
 
 import sys
@@ -51,8 +52,12 @@ async def test_configured_ytdlp_binary_reaches_the_stems_download_argv(tmp_path)
     runner = plans.stems_runner(runner=lambda argv: None, ytdlp_bin=configured)
 
     job = JobSpec(
-        job_id="j1", media_id="m1", job_type="stems",
-        source_uri="https://www.youtube.com/watch?v=abc", params={}, media_dir=str(tmp_path),
+        job_id="j1",
+        media_id="m1",
+        job_type="stems",
+        source_uri="https://www.youtube.com/watch?v=abc",
+        params={},
+        media_dir=str(tmp_path),
     )
     engines = runner._resolve_engines(job.params)
     plan = runner._plan_for(job, engines)
@@ -89,15 +94,18 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_stems_plan(tmp_
     """
     from src.config import WorkerConfig
     from src.dial_home import _build_processor
-    from src.runtime import Ctx
 
     configured = "/opt/encore/bin/yt-dlp"
     cfg = WorkerConfig(capabilities=("stems",), ytdlp_bin=configured)
     stems = _build_processor(cfg)._by_type["stems"]
 
     job = JobSpec(
-        job_id="j1", media_id="m1", job_type="stems",
-        source_uri="https://www.youtube.com/watch?v=abc", params={}, media_dir=str(tmp_path),
+        job_id="j1",
+        media_id="m1",
+        job_type="stems",
+        source_uri="https://www.youtube.com/watch?v=abc",
+        params={},
+        media_dir=str(tmp_path),
     )
     engines = stems._resolve_engines(job.params)
     plan = stems._plan_for(job, engines)

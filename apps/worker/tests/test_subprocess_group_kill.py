@@ -8,6 +8,7 @@ kept its memory forever, and a box with ENCORE_WORKER_CONCURRENCY>1 OOMed after 
 This drives a real process tree rather than a fake runner, because the defect is entirely in how the
 process is spawned and signalled — a mock cannot express it.
 """
+
 from __future__ import annotations
 
 import asyncio

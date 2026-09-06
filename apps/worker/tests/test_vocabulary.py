@@ -1,4 +1,5 @@
 """Enumerated vocabulary: boundary parsing, the declared quality ladder, and capability tokens."""
+
 import sys
 from pathlib import Path
 

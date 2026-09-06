@@ -4,13 +4,14 @@ These are the spec's §7 enforcement tests for the runtime layer (E1 and E2). Th
 any action — a plan of toy steps is the right subject, because the point is that the RUNTIME is correct
 regardless of what the steps do.
 """
+
 from __future__ import annotations
 
 import asyncio
 import os
 import sys
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import AsyncIterator
 
 import pytest
 
@@ -35,7 +36,12 @@ from src.vocabulary import Stage  # noqa: E402
 
 def job(tmp_path, job_type="align") -> JobSpec:
     return JobSpec(
-        job_id="j1", media_id="m1", job_type=job_type, source_uri="https://yt/x", params={}, media_dir=str(tmp_path)
+        job_id="j1",
+        media_id="m1",
+        job_type=job_type,
+        source_uri="https://yt/x",
+        params={},
+        media_dir=str(tmp_path),
     )
 
 
@@ -94,7 +100,9 @@ def test_the_same_plan_in_the_RIGHT_order_validates():
 def test_the_runner_seeds_what_it_guarantees():
     """A step may read `job`, `work`, `runner` and the resolved engines without an earlier step writing
     them — the runner builds those before the first step runs."""
-    validate_plan(LinearPlan("seeded", [Writes("s", writes=set(), reads={"job", "work", "runner", "engines"})]))
+    validate_plan(
+        LinearPlan("seeded", [Writes("s", writes=set(), reads={"job", "work", "runner", "engines"})])
+    )
 
 
 def test_a_plan_with_two_identically_named_steps_is_REFUSED():
