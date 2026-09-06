@@ -1,16 +1,14 @@
 // Optimistic queue store — the client half of the reconciliation contract.
 // (docs/ARCHITECTURE.md). The whole optimistic engine is:
-//   client-minted ULID  +  a `pending` map (op + inverse)  +  server `rev`.
+//   client-minted ULID  +  a `pending` map (op + pre-op snapshot)  +  server `rev`.
 // No CRDT, no OT. Mutations render locally THIS FRAME, then reconcile on the server broadcast;
-// rejects roll back via the recorded inverse; resync rebases still-pending ops onto truth.
+// rejects roll back to the recorded snapshot; resync rebases still-pending ops onto truth.
 //
 // Framework-agnostic (plain class + subscribe callback) so it unit-tests without a DOM; the
 // Svelte component wraps this in a $state rune.
 
 import {
-	applyOp,
 	applyAndReseq,
-	inverseOp,
 	ulid,
 	type Ordering,
 	type QueueOp,
@@ -21,7 +19,22 @@ import {
 
 interface PendingOp {
 	op: QueueOp;
-	inverse: QueueOp | null;
+	/**
+	 * The FULL entries array as it stands immediately BEFORE this op is applied — with every EARLIER
+	 * still-pending op baked in, ON THE CURRENT SERVER TRUTH. Kept in sync: the rebase loops in
+	 * #onPatch/#onSync/#onReject re-derive it each time truth moves, so it is never stale (issue
+	 * #101 regression — a snapshot frozen at op-issue time drops any server patch that lands before
+	 * the reject). Rollback restores this snapshot
+	 * rather than deriving an undo from the op (issue #101): a per-op inverse must agree with the
+	 * forward reducer, and for `move` it did not — the forward step routes through
+	 * `applyAndReseq`/`reorderWithinSinger` (permutes `addedAt`) while the inverse ran `applyOp`
+	 * (rewrites `rotationSeq`), so the inverse undid a mutation that never happened and left the
+	 * real one in place. A snapshot is total for every op kind and cannot drift as future ops gain
+	 * their own reducer branches.
+	 */
+	snapshot: QueueEntry[];
+	/** Monotonic issue order — reject rebuilds from this op's snapshot by re-applying only LATER ops. */
+	seq: number;
 	baseRev: number; // rev when issued — for resend
 }
 
@@ -54,6 +67,7 @@ export class QueueStore {
 	#deps: QueueStoreDeps;
 	#subs = new Set<(entries: QueueEntry[]) => void>();
 	#lastAddedAt = 0; // monotonic clock for addedAt tiebreaker (Finding #4)
+	#pendingSeq = 0; // monotonic issue counter for pending ops (rollback rebase order, issue #101)
 
 	constructor(deps: QueueStoreDeps) {
 		this.#deps = deps;
@@ -118,9 +132,11 @@ export class QueueStore {
 	}
 
 	#optimistic(op: QueueOp): void {
-		const inverse = inverseOp(this.#entries, op);
+		// Snapshot the pre-op entries (with all earlier pending ops baked in) so a reject can
+		// restore them verbatim (issue #101).
+		const snapshot = this.#entries.map((e) => ({ ...e }));
 		const clientOpId = (this.#deps.mintId ?? ulid)();
-		this.#pending.set(clientOpId, { op, inverse, baseRev: this.#rev });
+		this.#pending.set(clientOpId, { op, snapshot, seq: this.#pendingSeq++, baseRev: this.#rev });
 		// Run the SAME reducer the server runs (applyAndReseq) so the optimistic row lands at its
 		// real round-robin position THIS FRAME — no jump-to-bottom-then-resort flicker (Finding #2).
 		this.#entries = applyAndReseq(this.#entries, op, this.#ordering());
@@ -183,7 +199,13 @@ export class QueueStore {
 			// originator's optimistic row snap to the server's canonical rotationSeq with zero flicker
 			// (Finding #2/#3) and drops terminal entries the server pruned.
 			let base = e.patch.entries.map((x) => ({ ...x }));
-			for (const { op } of this.#pending.values()) base = applyAndReseq(base, op, this.#ordering());
+			for (const p of this.#pending.values()) {
+				// Refresh each op's rollback target to the rebased pre-op state (issue #101): server
+				// truth just replaced #entries, so a snapshot frozen at op-issue time would roll a
+				// later reject back to a stale world and silently drop this patch.
+				p.snapshot = base.map((x) => ({ ...x }));
+				base = applyAndReseq(base, p.op, this.#ordering());
+			}
 			this.#entries = base;
 		} else {
 			// Pure re-ack (dedup path) carries no entries and no ops — nothing to apply.
@@ -197,7 +219,12 @@ export class QueueStore {
 		// REBASE: authoritative truth, then re-apply still-pending local ops on top (via the shared
 		// reducer so seqs match the server) so the user's in-flight changes don't vanish on resync.
 		let base = e.entries.map((x) => ({ ...x }));
-		for (const { op } of this.#pending.values()) base = applyAndReseq(base, op, this.#ordering());
+		for (const p of this.#pending.values()) {
+			// Refresh each op's rollback target to the rebased pre-op state (issue #101) — same reason
+			// as #onPatch: a resync replaces truth, and a stale snapshot would lose it on a later reject.
+			p.snapshot = base.map((x) => ({ ...x }));
+			base = applyAndReseq(base, p.op, this.#ordering());
+		}
 		this.#entries = base;
 		this.#emit();
 	}
@@ -206,11 +233,21 @@ export class QueueStore {
 		const pending = this.#pending.get(e.clientOpId);
 		if (!pending) return;
 		this.#pending.delete(e.clientOpId);
-		// ROLLBACK via the recorded inverse
-		if (pending.inverse) {
-			this.#entries = applyOp(this.#entries, pending.inverse);
-			this.#emit();
+		// ROLLBACK by restoring the pre-op snapshot (issue #101): a per-op inverse cannot be trusted
+		// to undo what the forward reducer actually did (it failed for `move`). The snapshot already
+		// carries every EARLIER pending op, so re-apply only the ops issued AFTER the rejected one
+		// (via the shared reducer, the same rebase the patch/sync paths use) — that keeps a concurrent
+		// in-flight op alive without double-applying the earlier ones already baked into the snapshot.
+		let base = pending.snapshot.map((x) => ({ ...x }));
+		for (const p of this.#pending.values()) {
+			if (p.seq <= pending.seq) continue; // earlier ops are already baked into the snapshot
+			// Refresh the survivor's rollback target too, so a later reject of IT rolls back to the
+			// correct rebased pre-op world (keeps the same snapshot invariant #onPatch/#onSync hold).
+			p.snapshot = base.map((x) => ({ ...x }));
+			base = applyAndReseq(base, p.op, this.#ordering());
 		}
+		this.#entries = base;
+		this.#emit();
 		this.#deps.onReject?.(e.reason); // surface to the UI (toast)
 	}
 }
