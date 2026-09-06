@@ -70,6 +70,10 @@ def _py_files(*rel: str) -> list[Path]:
     for r in rel:
         root = SRC / r
         files.extend(p for p in root.rglob("*.py") if "__pycache__" not in p.parts)
+    # Non-vacuity floor (issue #453): every intended call names a real, populated subtree, so an
+    # empty result means SRC is wrong or the tree moved -- which would make the layering scans that
+    # iterate this pass while guarding nothing. Fail loudly instead.
+    assert files, f"_py_files({rel!r}) found no .py files under {SRC} -- the guard has stopped guarding"
     return files
 
 
@@ -132,6 +136,10 @@ def test_there_is_exactly_ONE_thing_that_executes_a_plan():
             methods = {n.name for n in node.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))}
             if "process" in methods:
                 found[node.name] = str(path.relative_to(SRC))
+    # Non-vacuity floor (issue #453): a broken AST walk finding zero process() classes leaves
+    # `unexpected` empty and passes without proving the one-runner rule. There is always at least
+    # the PlanRunner; assert we found the canonical implementations.
+    assert found, "no class with a process() method found -- the one-runner guard has stopped guarding"
     unexpected = {k: v for k, v in found.items() if k not in allowed}
     assert not unexpected, (
         f"new Processor implementations: {unexpected}. Work belongs in a Step inside a plan, not in a "
@@ -160,10 +168,12 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
     # surface that re-exports them.
     allowed = {"acquisition/fetch.py", "acquisition/__init__.py", "steps/acquire.py"}
     offenders: dict[str, list[str]] = {}
+    scanned = 0
     for path in _py_files(""):
         rel = str(path.relative_to(SRC))
         if rel in allowed:
             continue
+        scanned += 1
         names = _imports(path)
         bad = [
             n
@@ -179,6 +189,11 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
                 bad.extend(f"from . import {a.name}" for a in node.names if a.name == "acquisition")
         if bad:
             offenders[rel] = bad
+    # Non-vacuity floor (issue #453): an empty scan leaves `offenders` empty and passes without
+    # inspecting a single import edge.
+    assert scanned > 10, (
+        f"only {scanned} modules scanned -- the acquisition-caller guard has stopped guarding"
+    )
     assert not offenders, (
         f"{sorted(offenders)} re-derive where a job's audio is. Use the AcquireAudio step, or "
         f"AcquireAudio is the single answer -- see the spec §7 E6."

@@ -79,7 +79,12 @@ function scannedFiles(): string[] {
 
 test('no task/ticket number appears in source, comments, tests or fixtures', () => {
 	const offenders: string[] = [];
-	for (const file of scannedFiles()) {
+	const files = scannedFiles();
+	// Non-vacuity floor (issue #453): the walk was unanchored — if `git ls-files` returned nothing
+	// (guard run outside the git tree, or the ext/name filter matched none), the scan iterated zero
+	// files and passed while guarding nothing. Pin a floor well below the true count (hundreds).
+	expect(files.length).toBeGreaterThan(50);
+	for (const file of files) {
 		const lines = readFileSync(file, 'utf8').split('\n');
 		lines.forEach((line, i) => {
 			for (const { re, family } of PATTERNS) {

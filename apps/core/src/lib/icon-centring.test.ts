@@ -44,6 +44,12 @@ const FILES = [
 	join(SRC, 'routes', 'settings', '+page.svelte')
 ];
 
+// Non-vacuity floor (issue #453): the scan below asserts `offenders` empty, so an empty FILES
+// (a broken components walk) would pass vacuously. 7 components + 3 routes = 10 today.
+test('the icon-centring scan actually reads a non-empty surface', () => {
+	expect(FILES.length).toBeGreaterThan(7);
+});
+
 /*
  * The icon-only controls, by the class names they are addressed by. These carry a bare <Icon> and no
  * text child, so their mark's position depends entirely on the box's centring. A `.chip` or a labelled
