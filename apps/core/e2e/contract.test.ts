@@ -54,12 +54,27 @@ test('the e2e does not reference UI that was removed', () => {
 	expect(flow).not.toContain('.result');
 });
 
-/** Blank comments out, keeping newlines so any reported line numbers stay true. */
+/**
+ * Blank comments out, keeping newlines so any reported line numbers stay true. Covers JS block/line
+ * comments AND Svelte/HTML `<!-- -->` comments: a `.svelte` source carries both (the media-element
+ * note in TvPlayer.svelte lives in an HTML comment), and a selector that appears only in comment prose
+ * — of either kind — must NOT count as a rendered anchor.
+ */
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
 	return src
+		.replace(/<!--[\s\S]*?-->/g, blank)
 		.replace(/\/\*[\s\S]*?\*\//g, blank)
 		.replace(/(^|[^:'"\\`])\/\/[^\n]*/g, (m, p1) => p1 + blank(m.slice(p1.length)));
+}
+
+/**
+ * The exact source array the SEL-resolution guard resolves against: every .svelte file under src,
+ * comments blanked. The regression test below consumes THIS builder (not a private copy) so the test
+ * exercises the same composition the guard does — reverting the stripComments wrapper here reds it.
+ */
+function guardSources(): string[] {
+	return allSvelte(join(CORE, 'src')).map((f) => stripComments(readFileSync(f, 'utf8')));
 }
 
 test('the flow imports the contract instead of hard-coding selectors', () => {
@@ -212,7 +227,10 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 }
 
 test('every SEL selector resolves to an anchor in the source (the guard, non-vacuous)', () => {
-	const sources = allSvelte(join(CORE, 'src')).map((f) => readFileSync(f, 'utf8'));
+	// Strip comments first: the flow resolves against RENDERED source, so a selector that appears only in
+	// comment prose must not count as an anchor. Without this the driver scans (which already strip, :47/:368)
+	// and this resolution disagree about what is source, and a dead selector living in a comment stays green.
+	const sources = guardSources();
 
 	/*
 	 * Explicit, documented exemptions — honest about what this resolver cannot check by source scan,
@@ -270,10 +288,42 @@ test('every SEL selector resolves to an anchor in the source (the guard, non-vac
 	expect(unresolved).toEqual([]);
 });
 
+test('a selector whose only occurrence is a comment does not resolve (the guard strips comments)', () => {
+	// The rot this locks out: a dead selector kept alive by comment prose. In the real tree TvPlayer.svelte
+	// carries `<video` ONLY in comments — the rendered media element is `<audio>` — so SEL.mediaEl =
+	// 'video, audio' passes today only because the `audio` branch renders. If comments were treated as
+	// source, the `video` branch would resolve against comment text and the union would stay green over a
+	// read that can never land. This asserts the guard reads RENDERED source, the same way it does above.
+
+	// `stripped` is the guard's OWN source builder (guardSources), the exact array the resolver runs over,
+	// so reverting the stripComments wrapper inside guardSources reds this test — the guard and this test
+	// can no longer drift. `raw` stays unstripped inline: the raw-vs-stripped asymmetry is the whole point.
+	const stripped = guardSources();
+	const raw = allSvelte(join(CORE, 'src')).map((f) => readFileSync(f, 'utf8'));
+
+	// Precondition for this to be a meaningful guard: `<video` really does exist in the raw source (in
+	// comments) but never as a rendered element. If either stops holding, this test must be revisited.
+	expect(
+		raw.some((s) => /<video\b/.test(s)),
+		'this guard depends on `<video` living only in comment prose (TvPlayer.svelte / routes/tv/+page.svelte); if that note is removed, update this test rather than deleting the assertion'
+	).toBe(true);
+
+	// The masked read: over RAW source the bare `video` tag falsely resolves against comment text...
+	expect(selectorResolves('video', raw)).toBe(true);
+	// ...but over comment-stripped source — what the guard actually feeds — it does not.
+	expect(selectorResolves('video', stripped)).toBe(false);
+
+	// And a genuinely-rendered tag still resolves after stripping, so the fix does not over-tighten.
+	expect(selectorResolves('audio', stripped)).toBe(true);
+});
+
 test('every settings id the flow drives exists as an element id', () => {
 	// SETTING_IDS is exempt from the resolver above because it is raw data; this is where each id is
 	// resolved. The flow queries `#<id>`, so the source must carry `id="<id>"`.
-	const sources = allSvelte(join(CORE, 'src')).map((f) => readFileSync(f, 'utf8'));
+	// Strip comments first: the flow resolves against RENDERED source, so a selector that appears only in
+	// comment prose must not count as an anchor. Without this the driver scans (which already strip, :47/:368)
+	// and this resolution disagree about what is source, and a dead selector living in a comment stays green.
+	const sources = guardSources();
 	const missing = SEL.SETTING_IDS.filter((id) => !sources.some((s) => s.includes(`id="${id}"`)));
 	expect(missing).toEqual([]);
 });
