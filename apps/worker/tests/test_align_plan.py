@@ -709,7 +709,18 @@ def test_concurrent_ML_calls_are_serialized_on_the_shared_model(monkeypatch, tmp
     import threading
 
     from src.lyrics.asr import WhisperxTranscriber
-    from src.lyrics.timing import WhisperxForcedAligner
+    from src.lyrics.timing import ML_LOCK, WhisperxForcedAligner
+
+    # Fail FAST on a non-reentrant lock before the threaded drive: this test also runs the real
+    # transcribe()->_load() / align()->_model() nested acquisition, so a plain Lock would DEADLOCK
+    # the drive below with no verdict — and this test sits before the dedicated reentrancy test in
+    # the file, so without this probe a non-reentrant ML_LOCK wedges the whole suite HERE, one test
+    # earlier than that guard (see #180). The bounded nested acquire returns instead of blocking.
+    with ML_LOCK:
+        got = ML_LOCK.acquire(timeout=1.0)
+        if got:
+            ML_LOCK.release()
+    assert got, "ML_LOCK is not reentrant — transcribe()/align() would deadlock on the lazy loader"
 
     inside = []
     overlaps = []
@@ -753,10 +764,21 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader(monke
     call. Drives the production methods so it exercises the real nested acquisition, and raises
     NameError on the pre-fix tree."""
     from src.lyrics.asr import WhisperxTranscriber
-    from src.lyrics.timing import WhisperxForcedAligner
+    from src.lyrics.timing import ML_LOCK, WhisperxForcedAligner
 
     _stub_whisperx(monkeypatch)
     audio = str(tmp_path / "vocals.wav")
+
+    # Fail FAST on a non-reentrant lock instead of deadlocking the whole suite: hold ML_LOCK once,
+    # then try a bounded second acquire. An RLock re-grants it (got=True); a plain Lock blocks and
+    # acquire() returns False at the timeout — so this asserts reentrancy in ~0s rather than wedging
+    # the production drive below (which would hang with no failing name, taking every later test
+    # file with it — see #180). Runs before the drive so the drive is only reached once proven safe.
+    with ML_LOCK:
+        got = ML_LOCK.acquire(timeout=1.0)
+        if got:
+            ML_LOCK.release()
+    assert got, "ML_LOCK is not reentrant — transcribe()/align() would deadlock on the lazy loader"
 
     # transcribe() -> _load(): both acquire ML_LOCK; a non-reentrant lock never returns here.
     out = WhisperxTranscriber(device="cpu").transcribe(audio)
