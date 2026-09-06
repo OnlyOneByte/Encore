@@ -93,6 +93,9 @@ test('the tv:telemetry wire frame no longer declares the dead durationSec/buffer
 	// The fields that survive — the frame still carries these and the server reads/derives from them.
 	expect(TELEMETRY_VARIANT).toMatch(/positionSec/);
 	expect(TELEMETRY_VARIANT).toMatch(/status/); // forwarder derives `ended` from this
+	// entryId is the stamp #70/#125 depend on to reach player.ts:280's drop; the wire half is
+	// otherwise held by typecheck alone (deleting it makes evt.entryId a TS error). #295.
+	expect(TELEMETRY_VARIANT).toMatch(/entryId\?/);
 });
 
 test('the TvTelemetry handler type carries only what handleTelemetry reads (#129)', () => {
@@ -116,6 +119,11 @@ test('the server.ts forwarder does not copy the dead fields into TvTelemetry, on
 	expect(forwarded).not.toMatch(/status:\s*evt\.status/);
 	expect(forwarded).toMatch(/ended:\s*evt\.status\s*===\s*'ended'/);
 	expect(forwarded).toMatch(/positionSec:\s*evt\.positionSec/);
+	// #295: the middle link of the producer -> wire -> FORWARDER -> handler chain. Without the
+	// entryId stamp here, player.ts:280's `t.entryId !== undefined` drop goes inert for every
+	// frame (t.entryId is optional, so any unstamped form typechecks) and #70/#125 both re-open
+	// silently. The producer and handler ends are pinned; nothing pinned this middle site.
+	expect(forwarded).toMatch(/entryId:\s*evt\.entryId/);
 });
 
 test('the client-side producer (lib/tv/telemetry.ts) does not carry the dead fields (#280, #129)', () => {
