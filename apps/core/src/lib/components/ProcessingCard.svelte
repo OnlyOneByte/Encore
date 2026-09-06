@@ -57,7 +57,7 @@
 	const stageLabel = $derived(cookStageLabel(status));
 	// `pct` is the WORKER'S per-step 0-100. The bar shows OVERALL cook completion, not the current
 	// step's own progress — otherwise every step reaching 100% filled the whole bar while three of
-	// five milestones had not started (T-15). overallCookPct maps the per-step pct into a per-stage
+	// five milestones had not started. overallCookPct maps the per-step pct into a per-stage
 	// band over the shared MEDIA_STAGES, reaching 100 iff status === 'ready'. Rounded for the readout;
 	// the bar uses the unrounded fraction so its transition stays smooth.
 	const overall = $derived(overallCookPct(status, pct));

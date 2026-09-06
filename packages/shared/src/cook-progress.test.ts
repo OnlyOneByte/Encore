@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test';
 import { MEDIA_STAGES, type MediaStatus } from './events';
 import { overallCookPct } from './cook-progress';
 
-// T-15: the processing bar scaled the WHOLE bar by the current step's own 0-100, so every step
+// The processing bar scaled the WHOLE bar by the current step's own 0-100, so every step
 // reaching 100% filled the bar while three of five milestones had not started. overallCookPct maps
 // the per-step pct into a per-stage band over MEDIA_STAGES, so the bar reads OVERALL cook completion.
 describe('overallCookPct', () => {
