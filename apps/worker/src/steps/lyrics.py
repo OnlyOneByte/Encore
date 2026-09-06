@@ -244,7 +244,14 @@ def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[i
     `lo` to the segment start exactly), while every interior window start is a char-count guess. Walk
     the segments in order and take, for each, the next window whose `start` equals that segment's
     start — that is the one window per line carrying a real source timestamp. Returns one index per
-    matched segment; a segment whose start finds no window (defensive) is simply skipped.
+    matched segment. Matching is strict-in-order: `si` advances only on a match, so if a segment's
+    opening window is ever absent, the search for it consumes the rest of the windows and every later
+    segment is dropped from the result too. That degenerate path is currently UNREACHABLE — every
+    producer of a segment/window start rounds to 3 decimals (`presplit._subdivide`, `source._stamp_to_sec`
+    / `entries_to_segments` / `plain_lyrics_to_segments`, `captions._cue_seconds`) so the opening window
+    of each line is always present and matches exactly — hence it is left as-is. The drop-tolerance that
+    matters for the version fit lives in `_pair_openings_to_aligned`, which re-derives the surviving
+    pairs by TEXT rather than trusting this index.
     """
     opens: list[int] = []
     si = 0
@@ -257,6 +264,53 @@ def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[i
             opens.append(k)
             si += 1
     return opens
+
+
+def _pair_openings_to_aligned(
+    windows: list[dict], opens: list[int], doc: dict
+) -> tuple[list[float], list[float]]:
+    """Pair each opening window's source start against the aligned line it produced, drop-tolerant.
+
+    The wrong-version fit needs two time series over the SAME human lines: the source's own line
+    starts (the opening windows) and where the aligner placed those lines. The obvious pairing —
+    `line_starts(doc)[k]` for each opening index `k` — is WRONG, because `doc` is `normalize_lyrics`
+    output and that function DROPS a segment with neither timed words nor bounds (`artifact.py`), so
+    `doc["lines"][k]` is not guaranteed to be the aligned result of `windows[k]`. One dropped line
+    shifts every later positional pairing: a correctly aligned song then reads as slipped (#336) or,
+    once counts diverge, the check goes silently inert on a genuinely different master (#217).
+
+    So recover which window each SURVIVING aligned line came from, rather than trusting position. The
+    aligner emits one line per window it was given, in order, and `normalize_lyrics` preserves that
+    order — it only DROPS. So walk the full window stream and the aligned lines in LOCKSTEP, matching
+    on stripped text, and advance both together. This assigns each surviving aligned line to its
+    window even when several openings share the same text ("a very long line…" repeated), because the
+    distinct interior windows between them keep the two cursors in sync — text alone is not unique, but
+    text-in-order over the whole stream is. A window whose aligned line was dropped simply has no match
+    at its turn and is left unpaired. Then keep only the OPENING windows (the ones carrying a real
+    source timestamp): their source start and their recovered aligned start, one entry each, both
+    series built together so they can never diverge in length.
+    """
+    aligned = [
+        (str(l.get("text", "")).strip(), float(l["start"]))
+        for l in (doc.get("lines") or [])
+        if isinstance(l, dict) and isinstance(l.get("start"), (int, float))
+    ]
+    opens_set = set(opens)
+    lrc_starts: list[float] = []
+    aligned_starts: list[float] = []
+    ai = 0
+    for k, win in enumerate(windows):
+        if ai >= len(aligned):
+            break
+        wtext = str(win.get("text", "")).strip()
+        if aligned[ai][0] != wtext:
+            continue  # this window's aligned line was dropped by normalize_lyrics — skip, don't consume
+        wstart = win.get("start")
+        if k in opens_set and isinstance(wstart, (int, float)):
+            lrc_starts.append(float(wstart))
+            aligned_starts.append(aligned[ai][1])
+        ai += 1
+    return lrc_starts, aligned_starts
 
 
 class TimeTexts(Step):
@@ -344,9 +398,13 @@ class TimeTexts(Step):
                 # two independent time series over the same human lines, which is what the fit needs.
                 if getattr(text, "align_windows", None):
                     opens = _opening_window_indices(text.align_windows, text.segments)
-                    aligned_starts = line_starts(doc)
-                    lrc_starts = [text.align_windows[k]["start"] for k in opens]
-                    aligned_starts = [aligned_starts[k] for k in opens if k < len(aligned_starts)]
+                    # Pair by the line's own text, NOT its position: `doc` is normalize_lyrics output,
+                    # which can DROP a line, and a positional index into it would shift every later
+                    # pairing after a drop — re-opening #336 (spurious "slipped") and #217 (inert on a
+                    # wrong master). Text is the stable key both _subdivide and normalize_lyrics keep.
+                    lrc_starts, aligned_starts = _pair_openings_to_aligned(
+                        text.align_windows, opens, doc
+                    )
                     fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)
                 else:
                     fit = fit_lrc_to_aligned(
