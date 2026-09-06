@@ -132,6 +132,14 @@ export class WsClient {
 	}
 
 	#dial(): void {
+		// Detach and close any socket we are replacing BEFORE we overwrite `#sock`. A redial can be
+		// triggered while a previous socket is still live or CONNECTING (`wake()` dials on `!connected`,
+		// which is false for the whole connecting window), so without this the old socket is orphaned
+		// with its handlers still attached: it delivers frames to a `#sock` that no longer points at it,
+		// and its eventual `onclose` runs `#clearTimers()`/`#setConnected(false)`/`#scheduleReconnect()`
+		// against the CURRENT socket — killing the live socket's heartbeat and multiplying connections.
+		// Same detach-before-close defense as #presumeDead, applied to the wake/reconnect path.
+		this.#discard(this.#sock);
 		const sock = this.#opt.connect(this.#opt.url);
 		this.#sock = sock;
 		sock.onopen = () => {
@@ -194,21 +202,28 @@ export class WsClient {
 	 * close so the socket's own `onclose` cannot schedule a second reconnect on top of ours.
 	 */
 	#presumeDead(): void {
-		const sock = this.#sock;
+		this.#discard(this.#sock);
 		this.#sock = null;
 		this.#setConnected(false);
 		this.#clearTimers();
-		if (sock) {
-			sock.onopen = null;
-			sock.onclose = null;
-			sock.onmessage = null;
-			try {
-				sock.close();
-			} catch {
-				// already gone — the point was to stop using it, which we have
-			}
-		}
 		this.#scheduleReconnect();
+	}
+
+	/**
+	 * Detach a socket's handlers, then close it. Handlers come off FIRST so the socket's own `onclose`
+	 * cannot fire our reconnect/timer logic on top of whatever the caller is doing next. A no-op on a
+	 * null socket. The caller owns `#sock`: this only makes the passed socket inert.
+	 */
+	#discard(sock: MinimalSocket | null): void {
+		if (!sock) return;
+		sock.onopen = null;
+		sock.onclose = null;
+		sock.onmessage = null;
+		try {
+			sock.close();
+		} catch {
+			// already gone — the point was to stop using it, which we have
+		}
 	}
 
 	#scheduleReconnect(): void {
