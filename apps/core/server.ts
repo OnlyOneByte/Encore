@@ -272,7 +272,13 @@ const server = Bun.serve<SocketData>({
 					// screen forever and the phone shows no play control (there's no "current" entry to
 					// hang one on). reconcileOnReady starts the soonest-playable entry when nothing is
 					// current, and no-ops once something is already playing.
-					if (!state.playback.currentEntryId) reconcileOnReady(deps);
+					//
+					// "Nothing current" is not just a null id: a client `remove`/`status` on the PLAYING
+					// entry prunes it here and leaves currentEntryId DANGLING (issue #128), which reads as
+					// busy to `!currentEntryId` while nothing plays. Gate on whether the id still RESOLVES
+					// so the same recovery fires — reconcileOnReady then advances to the next singer, or
+					// settles the room to idle if none is ready.
+					if (!state.entries.some((e) => e.id === state.playback.currentEntryId)) reconcileOnReady(deps);
 					// A grace clock starts when someone's last pending song leaves the queue and clears when
 					// they queue another, so a queue change can move membership exactly as a socket can.
 					refreshMembership();
