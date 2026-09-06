@@ -1,0 +1,298 @@
+/*
+ * P14 — DOES A COOK MOVE THE PLAYING SONG'S PLAYHEAD? (#396)
+ *
+ * The invariant under test, stated as the owner did: "the currently playing song should absolutely
+ * NOT be affected by anything happening for processing."
+ *
+ * METHOD. Cook song A, get it genuinely playing and past the seek threshold, then cook song B — a
+ * DIFFERENT media — and watch A's playhead across B's whole cook. B's cook produces the real event
+ * traffic: `media:status` progress frames, then `onMediaReady`'s `queue:sync` + `nowplaying:changed`.
+ * A backwards step in A's `currentTime` is the reported defect.
+ *
+ * WHY currentTime AND decoded bytes. `paused === false` is not proof of playback (see HARNESS.md), so
+ * the run first establishes A is really decoding, and only then treats a backwards step as meaningful.
+ * A monotonic playhead across a cook with zero decode is not evidence of anything.
+ *
+ *   PORT=5241 bun apps/core/e2e/probes/p14-playhead-vs-cook.mjs
+ *
+ * Exit: 0 the playhead held, 1 it moved backwards, 2 the environment could not host the test.
+ *
+ * NOT-A-TV: this probe GRANTS autoplay. It has to — the invariant is about a MOVING playhead being
+ * perturbed, so the playhead must be moving, and a real TV's gestureless policy leaves it at 0.00
+ * where nothing can be observed. This run therefore says nothing about whether a real television
+ * starts on its own (that is p13's job); it says only what a cook does to a song already playing.
+ */
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+import { connect, sleep } from '../cdp.mjs';
+
+const PORT = Number(process.env.PORT ?? 5241);
+const CDP_PORT = Number(process.env.CDP_PORT ?? PORT + 100);
+const BASE = `http://127.0.0.1:${PORT}`;
+const SCRATCH = process.env.SCRATCH ?? join('/tmp', `e2e-${PORT}`);
+const MEDIA_DIR = join(SCRATCH, 'media');
+const CORE = resolve(new URL('../..', import.meta.url).pathname);
+
+const children = [];
+function launch(cmd, args, opts = {}) {
+	const p = spawn(cmd, args, { stdio: 'ignore', ...opts });
+	children.push(p);
+	return p;
+}
+function stopChildren() {
+	while (children.length) {
+		const p = children.pop();
+		try {
+			p.kill('SIGKILL');
+		} catch {}
+	}
+}
+process.on('exit', stopChildren);
+const bail = (m) => {
+	console.error(`\nENVIRONMENT: ${m}`);
+	process.exit(2);
+};
+
+function findChromium() {
+	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
+	for (const b of ['chromium-1232', 'chromium-1228']) {
+		const p = join(process.env.HOME, '.cache', 'ms-playwright', b, 'chrome-linux', 'chrome');
+		if (existsSync(p)) return p;
+	}
+	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
+		if (existsSync(p)) return p;
+	}
+	return null;
+}
+
+const jget = async (path) => (await fetch(BASE + path)).json();
+
+// ── boot a private instance ────────────────────────────────────────────────
+rmSync(SCRATCH, { recursive: true, force: true });
+mkdirSync(MEDIA_DIR, { recursive: true });
+
+const seed = launch('bun', ['run', 'e2e/seed-media.mjs'], {
+	cwd: CORE,
+	env: { ...process.env, MEDIA_DIR }
+});
+await new Promise((r) => seed.on('exit', r));
+
+launch('bun', ['run', './server.ts'], {
+	cwd: CORE,
+	env: {
+		...process.env,
+		ENCORE_EPHEMERAL: '1',
+		PORT: String(PORT),
+		HOST: '127.0.0.1',
+		MEDIA_DIR,
+		ENCORE_LYRICS_BACKFILL: '0',
+		ENCORE_VOCALS_BACKFILL: '0'
+	}
+});
+for (let i = 0; i < 80; i++) {
+	try {
+		await fetch(BASE + '/health');
+		break;
+	} catch {
+		await sleep(500);
+	}
+}
+launch('bun', ['e2e/fake-stems-worker.mjs'], {
+	cwd: CORE,
+	env: { ...process.env, EPORT: String(PORT), MEDIA_DIR }
+});
+await sleep(1500);
+
+// ── join, then cook two DIFFERENT songs ───────────────────────────────────
+// Search matches on title, so one query does not surface the whole seeded library. Union across the
+// four demo titles (seed-media.mjs) and de-duplicate by id.
+const QUERIES = ['caroline', 'believin', 'rhapsody', 'prayer'];
+const found = new Map();
+for (const q of QUERIES) {
+	const d = await jget(`/api/search?q=${q}`);
+	for (const m of [...(d.ready ?? []), ...(d.results ?? [])]) {
+		if (m.source === 'local' && !found.has(m.id)) found.set(m.id, m);
+	}
+}
+const uniq = [...found.values()];
+if (uniq.length < 2) bail(`need 2 distinct local fixtures, found ${uniq.length}`);
+const [songA, songB] = uniq;
+const qOf = (song) => QUERIES.find((q) => song.title.toLowerCase().includes(q)) ?? QUERIES[0];
+const qA = qOf(songA);
+const qB = qOf(songB);
+/** Has this media id become playable? Asked per-title, for the same reason the fixtures were. */
+async function isReady(id, q) {
+	const d = await jget(`/api/search?q=${q}`);
+	return (d.ready ?? []).some((m) => m.id === id);
+}
+console.log(`fixture A (plays): ${songA.title} [${songA.id}]`);
+console.log(`fixture B (cooks): ${songB.title} [${songB.id}]\n`);
+
+// ── drive the TV ──────────────────────────────────────────────────────────
+const chromium = findChromium();
+if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
+launch(chromium, [
+	'--remote-debugging-port=' + CDP_PORT,
+	'--headless=new',
+	'--no-sandbox',
+	'--disable-gpu',
+	'--no-first-run',
+	// NOT-A-TV, deliberately: see the header. The playhead must be moving to be perturbed.
+	'--autoplay-policy=no-user-gesture-required',
+	'--user-data-dir=' + join(SCRATCH, 'chrome-' + process.pid),
+	'about:blank'
+]);
+await sleep(2500);
+
+let browser;
+try {
+	browser = await connect(CDP_PORT);
+} catch (err) {
+	bail(`could not attach to Chromium: ${err.message}`);
+}
+// A PHONE first: the singer session and the queue socket both have to be a real client, because the
+// queue validator requires entry.singerId to equal the acting session's singer.
+const phone = await browser.newPage();
+await phone.goto(`${BASE}/`);
+const singerId = await phone.evaluate(`(async () => {
+  const r = await fetch('/api/join', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ displayName: 'P14-${process.pid}', color: '#ff5cae' })
+  });
+  const d = await r.json().catch(() => ({}));
+  return d?.singer?.id ?? d?.id ?? null;
+})()`);
+if (!singerId) bail('phone join did not yield a singer id');
+
+/** Open a raw socket in the phone page, so ops carry that page's session. */
+async function ensureProbeWs() {
+	await phone.evaluate(`(async () => {
+    if (window.probeWs && window.probeWs.readyState === 1) return;
+    const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+    const ws = new WebSocket(proto + '://' + location.host + '/ws?role=phone');
+    await new Promise((res, rej) => { ws.onopen = res; ws.onerror = () => rej(new Error('ws open failed')); });
+    window.probeWs = ws;
+  })()`);
+}
+async function queueAdd(mediaId) {
+	await ensureProbeWs();
+	const now = Date.now();
+	const entry = {
+		id: `p14-e-${now}-${Math.floor(Math.random() * 1e6)}`,
+		mediaId,
+		singerId,
+		status: 'queued',
+		rotationSeq: Number.MAX_SAFE_INTEGER,
+		addedAt: now
+	};
+	const command = {
+		clientOpId: `p14-o-${now}-${Math.floor(Math.random() * 1e6)}`,
+		baseRev: 0,
+		op: { op: 'add', entry }
+	};
+	await phone.evaluate(
+		`window.probeWs.send(JSON.stringify({ type: 'queue:command', command: ${JSON.stringify(command)} }))`
+	);
+	await sleep(300);
+}
+const cook = (mediaId) =>
+	phone.evaluate(`fetch('/api/make-karaoke', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ mediaId: ${JSON.stringify(mediaId)} })
+  }).then(r => r.status)`);
+
+// Cook A and queue it, so the room has a real song to sing.
+await cook(songA.id);
+let readyA = false;
+for (let i = 0; i < 120; i++) {
+	if (await isReady(songA.id, qA)) {
+		readyA = true;
+		break;
+	}
+	await sleep(500);
+}
+if (!readyA) bail('song A never cooked');
+await queueAdd(songA.id);
+
+const page = await browser.newPage();
+await page.goto(`${BASE}/tv`);
+
+const READ = `(() => {
+  const els = [...document.querySelectorAll('audio')];
+  const m = els.find(e => e.currentSrc && e.currentSrc.includes('/media/'));
+  return m ? { t: m.currentTime, src: m.currentSrc, bytes: m.webkitAudioDecodedByteCount ?? 0, paused: m.paused } : null;
+})()`;
+
+try {
+	// Past SEEK_JUMP_SEC (1.5s) by a clear margin, so a stale-anchor re-seek is unambiguous.
+	await page.waitFor(`(${READ})?.t > 3`, { timeout: 60000 });
+} catch (err) {
+	bail(`song A never reached a playhead past 3s — nothing to perturb. ${err.message}`);
+}
+
+const before = await page.evaluate(READ);
+console.log(`A playing: t=${before.t.toFixed(2)}s decoded=${before.bytes}B paused=${before.paused}`);
+if (before.bytes <= 32768) bail(`A is not really decoding (${before.bytes}B) — a held playhead would prove nothing`);
+
+// ── the actual test: cook B while A plays ────────────────────────────────
+console.log(`\ncooking B (${songB.title}) while A plays — sampling A's playhead\n`);
+await cook(songB.id);
+
+// The window is song A ONLY. A song CHANGE legitimately resets the playhead, so the moment the
+// element stops holding A's src the window closes — otherwise the natural advance to the next song
+// would read as the very defect under test.
+const srcA = before.src;
+let prev = before.t;
+let worstDrop = 0;
+let worstAt = null;
+let readyB = false;
+let readyAtT = null;
+let samples = 0;
+let closedBecause = 'sampling budget spent';
+for (let i = 0; i < 90; i++) {
+	await sleep(200);
+	const now = await page.evaluate(READ);
+	if (!now) {
+		closedBecause = 'A’s element went away (song ended)';
+		break;
+	}
+	if (now.src !== srcA) {
+		closedBecause = 'the room advanced to the next song';
+		break;
+	}
+	const drop = prev - now.t;
+	if (drop > worstDrop) {
+		worstDrop = drop;
+		worstAt = { from: prev, to: now.t };
+	}
+	prev = now.t;
+	samples++;
+	if (!readyB && (await isReady(songB.id, qB))) {
+		readyB = true;
+		readyAtT = now.t;
+		console.log(`  B reported READY at A t=${now.t.toFixed(2)}s — onMediaReady's queue:sync + nowplaying:changed land here`);
+	}
+}
+
+console.log(`\nwindow closed: ${closedBecause}`);
+console.log(`samples inside A: ${samples}, last playhead ${prev.toFixed(2)}s`);
+console.log(`B reached ready inside the window: ${readyB}${readyAtT !== null ? ` (at A t=${readyAtT.toFixed(2)}s)` : ''}`);
+
+// A 0.25s tolerance covers ordinary decoder jitter on a sampled element; the defect is a jump back to
+// a stale COMMAND anchor, which is seconds, and is gated by seekPlan's own 1.5s threshold anyway.
+const TOL = 0.25;
+if (worstDrop > TOL) {
+	console.error(`\nFAIL — A's playhead moved BACKWARDS ${worstDrop.toFixed(2)}s during B's cook`);
+	console.error(`  ${worstAt.from.toFixed(2)}s -> ${worstAt.to.toFixed(2)}s`);
+	console.error('  Processing another song perturbed the playing song. This is #396.');
+	process.exit(1);
+}
+if (!readyB) {
+	bail(`B never cooked inside A's window (${closedBecause}), so the onMediaReady burst was not observed`);
+}
+console.log(`\nPASS — A's playhead never stepped back (worst delta ${worstDrop.toFixed(3)}s, tol ${TOL}s)`);
+console.log("       across B's media:status progress frames AND its onMediaReady queue:sync burst.");
+process.exit(0);

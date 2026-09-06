@@ -221,12 +221,32 @@ describe('seekPlan — whenever the master jumps, the guide goes with it', () =>
  */
 describe('TvPlayer applies the seek plan to BOTH elements', () => {
 	const src = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
-	// The seek effect's body ONLY — anchored on its own guard line and cut at the first effect close —
-	// so a match in the play path, the governor, or a nearby comment block cannot satisfy these.
-	const seekEffect =
-		src
-			.split('if (!master || !media || !isPlayable(media) || seekSec === undefined) return;')[1]
-			?.split('\n\t});')[0] ?? '';
+	/*
+	 * RE-ANCHORED (#396) — and this is not cosmetic, so do not move it back.
+	 *
+	 * This slice used to be `.split('if (!master || !media || !isPlayable(media) || seekSec ===
+	 * undefined) return;')[1]`, i.e. THE DELIMITER WAS THE DEFECTIVE LINE. Two consequences, both bad:
+	 *
+	 *   1. Blind to the defect. The tracked `media` / `isPlayable(media)` reads that caused #396 landed
+	 *      in the DISCARDED prefix (`[0]`), so every assertion in this block ran on the text after them
+	 *      and was structurally incapable of observing them — while the block's own comment claimed the
+	 *      effect's deps were "seekSec and seekRev". That is why four rounds of review passed it.
+	 *   2. Load-bearing AGAINST the fix. Removing that line makes the delimiter vanish and the slice
+	 *      collapse to '', reddening several assertions here — including `not.toBe('')`, whose comment
+	 *      said it "fails if that tracked read is removed". It does. For the wrong reason. So the cheap
+	 *      way out of fixing #396 was to weaken this block.
+	 *
+	 * Both anchors below are things the fix does NOT move: the extracted `applySeek` declaration, and
+	 * the call site the triggering effect makes. A future correctness fix to either the guard condition
+	 * or the dependency set therefore cannot silence these.
+	 */
+	const seekEffect = src.split('function applySeek(seekTarget: number): void {')[1]?.split('\n\t}')[0] ?? '';
+	/** The TRIGGERING effect — the part whose tracked reads are the dependency set #396 is about. */
+	const seekTrigger = (() => {
+		const upto = src.split('applySeek(target);')[0];
+		const i = upto.lastIndexOf('$effect(() => {');
+		return i < 0 ? '' : upto.slice(i);
+	})();
 
 	it('the seek decision comes from seekPlan, not from an inline threshold', () => {
 		expect(src).toContain('seekPlan(');
@@ -236,7 +256,7 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 
 	it('the seek effect repositions the guide', () => {
 		expect(seekEffect).not.toBe('');
-		expect(seekEffect).toContain('guideEl.currentTime = seekSec');
+		expect(seekEffect).toContain('guideEl.currentTime = seekTarget');
 	});
 
 	it('the seek effect returns the guide to neutral tempo, so a stale trim cannot survive the jump', () => {
@@ -259,7 +279,7 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 
 	it('the master and the guide are moved from the SAME plan, not from two conditions', () => {
 		// Two copies of one condition is how the guide's transport drifted from the master's before.
-		expect(seekEffect).toContain('master.currentTime = seekSec');
+		expect(seekEffect).toContain('el.currentTime = seekTarget');
 		expect(src.split('seekPlan(').length - 1).toBe(1);
 	});
 
@@ -281,6 +301,8 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 	it('aligns the guide to the fixed seek target, never to the master’s moving playhead', () => {
 		expect(seekEffect).not.toContain('guideEl.currentTime = master.currentTime');
 		expect(seekEffect).not.toContain('vocals.currentTime = master.currentTime');
+		// The same ban in the post-#396 spelling, where the master element is a local `el`.
+		expect(seekEffect).not.toContain('guideEl.currentTime = el.currentTime');
 	});
 
 	/*
@@ -294,11 +316,11 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 	 * restart WITHOUT reopening telemetry-chasing. This guard fails if that tracked read is removed.
 	 */
 	it('re-runs the seek effect on every playback:state via a tracked seekRev, so an equal-position restart still fires (#95)', () => {
-		expect(seekEffect).not.toBe('');
+		expect(seekTrigger).not.toBe('');
 		// Strip comments before asserting: a `seekRev` mentioned only in a comment does NOT register a
 		// reactive dependency, so a guard that matched comment text would be mutation-blind (it would
 		// stay green with the executable read deleted). Assert on CODE.
-		const effectCode = seekEffect
+		const effectCode = seekTrigger
 			.replace(/\/\*[\s\S]*?\*\//g, '')
 			.replace(/\/\/.*$/gm, '');
 		// The effect must READ seekRev in executable position (a bare read registers the dep in runes mode).
