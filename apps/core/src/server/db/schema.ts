@@ -261,6 +261,13 @@ export const jobs = sqliteTable(
 		// column existed read as "no cook recorded" instead of null-checking at every call site; those
 		// rows predate the attempt ledger and have no timings to group anyway.
 		cookId: text('cook_id').notNull().default(''),
+		// The singer who requested this cook — the authoritative attribution for the per-singer
+		// concurrent-cook cap. NULLABLE: internal callers (lyrics backfill, chained follow-up steps)
+		// impose no cap and record no singer. The cap counts a singer's live cook JOBS here rather than
+		// their queue ENTRIES, because entry (WS) and cook (HTTP) ride different transports and only the
+		// entry is droppable; an entry-derived cap counts zero and admits every tap while the socket is
+		// reconnecting.
+		singerId: text('singer_id'),
 		jobType: text('job_type', { enum: ['fetch', 'stems', 'align', 'stems-upgrade'] }).notNull(),
 		status: text('status', {
 			enum: ['queued', 'assigned', 'running', 'ready', 'failed', 'canceled']

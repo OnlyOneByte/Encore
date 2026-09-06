@@ -54,6 +54,7 @@ CREATE TABLE `jobs` (
 	`id` text PRIMARY KEY NOT NULL,
 	`media_id` text NOT NULL,
 	`cook_id` text DEFAULT '' NOT NULL,
+	`singer_id` text,
 	`job_type` text NOT NULL,
 	`status` text DEFAULT 'queued' NOT NULL,
 	`priority` integer DEFAULT 0 NOT NULL,

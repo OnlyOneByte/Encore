@@ -20,7 +20,7 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 
 	// With a durable catalog, "already cooked" is the common happy path (a song separated on a
 	// previous night), not an error — answer 200 so the phone shows "ready" instead of a red toast.
-	const state = cookState(mediaId, { mediaById: app.mediaById, state: app.state }, singer.id);
+	const state = cookState(mediaId, { mediaById: app.mediaById, state: app.state, jobs: app.jobs }, singer.id);
 	if (state === 'ready') {
 		app.publish({ type: 'media:status', mediaId, status: 'ready', pct: 100 });
 		return json({ alreadyReady: true, job: null });
