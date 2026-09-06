@@ -422,3 +422,49 @@ def test_a_recording_with_no_credit_list_cannot_agree_with_anything():
     # caller-side guard already refuses an empty key, and this is the other half of that pair.
     body = {"recordings": [{"id": "x", "score": 100, "title": "T", "length": 200000}]}
     assert ann.pick_best(ann.parse_recordings(body), "A", "T", 200.0) is None
+
+
+# ── the decline REASON: throttle vs miss must be distinguishable (#102) ─────────────
+def test_a_throttle_decline_carries_the_gate_counters_so_it_is_not_a_silent_none():
+    # An IP-level block and "nothing agreed on the names" are the same observable event from annotate():
+    # both return None. annotate_or_reason separates them by CATCHING AnnotationFetchError and reading
+    # the rate gate the code kept counters in for exactly this — counters that had no reader until now.
+    lim = ann.RateLimiter(min_interval=0.0, now=lambda: 0.0, sleep=lambda _s: None)
+    c = ann.MusicBrainzClient(fetcher=lambda u, h: (503, ""), rate_limiter=lim)
+    got, reason = ann.annotate_or_reason(c, "a-ha", "Take On Me", 218.0)
+    assert got is None
+    assert reason is not None and "throttled" in reason
+    # the gate's OBSERVED counters ride along, which is the whole capability the docstring promised
+    assert "'throttled': 3" in reason and "'calls': 3" in reason
+
+
+def test_a_genuine_miss_and_a_throttle_produce_DIFFERENT_reasons():
+    # control: a healthy 200 that simply matches nothing must NOT read as a throttle.
+    miss = ann.MusicBrainzClient(
+        fetcher=lambda u, h: (200, '{"recordings": []}'),
+        rate_limiter=ann.RateLimiter(now=lambda: 0.0, sleep=lambda _s: None),
+    )
+    got, reason = ann.annotate_or_reason(miss, "a-ha", "Take On Me", 218.0)
+    assert got is None
+    assert reason == "no confident match"
+
+
+def test_no_artist_or_title_declines_with_a_reason_and_never_looks_up():
+    got, reason = ann.annotate_or_reason(client(), None, "Take On Me", 218.0)
+    assert got is None and reason == "no artist/title to look up"
+
+
+def test_a_match_returns_the_annotation_and_no_reason():
+    got, reason = ann.annotate_or_reason(client(), "a-ha", "Take On Me", 218.0)
+    assert got is not None and reason is None
+    assert got.confidence == ann.CONFIDENCE_HIGH
+
+
+def test_annotate_still_returns_None_on_a_transport_fault_delegating_to_the_reason_form():
+    # The value-only annotate() contract is unchanged: it delegates to annotate_or_reason and drops the
+    # reason, so a throttle is still a None (never a raise), and every existing caller is untouched.
+    class Dead:
+        def search(self, *_a, **_k):
+            raise ann.AnnotationFetchError("sinkholed")
+
+    assert ann.annotate(Dead(), "a-ha", "Take On Me", 218.0) is None
