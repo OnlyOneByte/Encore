@@ -332,20 +332,24 @@ async def test_worker_cleans_its_own_scratch_after_a_job(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_scratch_is_cleaned_even_when_the_job_FAILS(tmp_path):
+async def test_scratch_is_cleaned_on_a_PERMANENT_failure(tmp_path):
+    """A NON-retryable failure is terminal — the core will not re-dispatch it — so its scratch is
+    reclaimed here exactly as a success is. `"source not found (404)"` carries a permanent marker, so
+    `is_retryable` is False and this job never runs again; leaving its scratch would leak it forever.
+    (The retryable case is the opposite invariant — see the #469 test below.)"""
     work = tmp_path / "work" / "j2"
     work.mkdir(parents=True)
     (work / "input.wav").write_bytes(b"BIG")
 
-    class BoomProcessor:
+    class GoneProcessor:
         async def process(self, job):
-            raise RuntimeError("demucs exploded")
+            raise RuntimeError("source not found (404)")  # permanent -> non-retryable
             yield  # pragma: no cover
 
     async def send(_m):
         return None
 
-    client = WorkerClient(send, BoomProcessor())
+    client = WorkerClient(send, GoneProcessor())
     await client._run_job(
         JobSpec(
             job_id="j2",
@@ -356,7 +360,138 @@ async def test_scratch_is_cleaned_even_when_the_job_FAILS(tmp_path):
             media_dir=str(tmp_path),
         )
     )
-    assert not work.exists()
+    assert not work.exists(), "a permanent (non-retryable) failure is terminal; its scratch must be reclaimed"
+
+
+@pytest.mark.asyncio
+async def test_scratch_is_PRESERVED_across_a_RETRYABLE_failure_issue_469(tmp_path):
+    """#469: a RETRYABLE failure must NOT destroy scratch — the core requeues the SAME jobId
+    (JobRepository.requeue transitions the row in place), so scratch_for resolves to the same
+    work/<jobId> dir on attempt 2, and the completed-step work living there is what the retry reuses
+    instead of re-downloading / re-separating from step 1.
+
+    `"transient network blip"` carries no permanent marker, so `is_retryable` is True. On base, the
+    finally block rmtrees unconditionally, so the input.wav below is gone after the failure and this
+    reds with the dir removed."""
+    work = tmp_path / "work" / "j469"
+    work.mkdir(parents=True)
+    (work / "input.wav").write_bytes(b"decoded source - expensive to recompute")
+
+    class BlipProcessor:
+        async def process(self, job):
+            yield ProgressEvent("downloading", 50)
+            raise RuntimeError("transient network blip")  # retryable -> preserve
+
+    sent = []
+
+    async def send(m):
+        sent.append(m)
+
+    client = WorkerClient(send, BlipProcessor(), capabilities=["stems"], media_dir=str(tmp_path))
+    await client._run_job(
+        JobSpec(
+            job_id="j469",
+            media_id="m1",
+            job_type="stems",
+            source_uri="https://y/x",
+            params={},
+            media_dir=str(tmp_path),
+        )
+    )
+    # the failure was reported as retryable...
+    failed = [m for m in sent if m["type"] == protocol.FAILED]
+    assert len(failed) == 1 and failed[0]["retryable"] is True
+    # ...and BECAUSE it is retryable, the partial scratch survives for attempt 2 to reuse.
+    assert work.exists(), "a retryable failure must keep scratch so the same-jobId retry reuses it (#469)"
+    assert (work / "input.wav").exists(), "the completed-step artifact in scratch must survive the retry"
+    # slot is still freed (the finally's state.finish is unconditional, only the rmtree is gated).
+    assert client.state.slots_free == 1
+
+
+@pytest.mark.asyncio
+async def test_a_retried_job_REUSES_completed_step_artifacts_and_does_not_re_run_them_issue_469(tmp_path):
+    """#469 end-to-end, asserted via the runner's call log (the issue's prescribed test).
+
+    A job whose step N fails on attempt 1 and succeeds on attempt 2 must NOT re-execute steps 1..N-1.
+    Build a real PlanRunner over three toy steps whose `applies()` returns False once their on-disk
+    marker in ctx.work exists — the exact "my output is already on disk, skip me" shape three real
+    steps already use (AcquireAudio, Separate, ProbeSilence). Drive it through dial_home._run_job on the
+    SAME jobId twice: attempt 1 writes step-1 and step-2 markers, then step 3 fails RETRYABLY; attempt 2
+    must skip steps 1 and 2 (their markers survived in the preserved scratch) and run only step 3.
+
+    On base, the retryable failure rmtrees scratch, so attempt 2's markers are gone and it re-runs steps
+    1 and 2 — the ran-log then shows them a second time and this reds."""
+    import os
+
+    from src.runtime import Ctx, LinearPlan, PlanRunner, Step, StepResult  # noqa: F401
+    from src.vocabulary import Stage
+
+    ran: list[str] = []
+
+    class MarkerStep(Step):
+        """Skips itself once its marker file exists in scratch — the on-disk reuse guard shape."""
+
+        stage = Stage.DOWNLOADING
+
+        def __init__(self, name: str, *, fail_times: int = 0) -> None:
+            self.name = name
+            self.writes = frozenset()
+            self.reads = frozenset({"work"})
+            self._fail_times = fail_times
+            self._marker = None
+
+        def _marker_path(self, ctx: Ctx) -> str:
+            return os.path.join(ctx.work, f"{self.name}.done")
+
+        def applies(self, ctx: Ctx) -> bool:
+            return not os.path.exists(self._marker_path(ctx))
+
+        async def run(self, ctx: Ctx):
+            ran.append(self.name)
+            if self._fail_times > 0:
+                self._fail_times -= 1
+                raise RuntimeError("transient network blip")  # retryable
+            os.makedirs(ctx.work, exist_ok=True)
+            with open(self._marker_path(ctx), "w") as fh:
+                fh.write("done")
+            yield ProgressEvent(stage=self.stage, pct=100)
+
+    step1 = MarkerStep("acquire")
+    step2 = MarkerStep("separate")
+    step3 = MarkerStep("align", fail_times=1)  # fails ONCE (attempt 1), succeeds on attempt 2
+    plan = LinearPlan("cook", [step1, step2, step3])
+
+    async def noop_runner(argv):
+        if False:
+            yield ""
+
+    processor = PlanRunner(runner=noop_runner, plans=lambda j, e: plan)
+
+    async def send(_m):
+        return None
+
+    spec = JobSpec(
+        job_id="jReuse",
+        media_id="m1",
+        job_type="stems",
+        source_uri="https://y/x",
+        params={},
+        media_dir=str(tmp_path),
+    )
+
+    # Attempt 1: steps 1 and 2 complete (write markers), step 3 fails retryably.
+    client = WorkerClient(send, processor, capabilities=["stems"], media_dir=str(tmp_path))
+    await client._run_job(spec)
+    assert ran == ["acquire", "separate", "align"], f"attempt 1 ran all three, got {ran}"
+    assert (tmp_path / "work" / "jReuse" / "acquire.done").exists(), "scratch must survive the retryable fail"
+
+    # Attempt 2: SAME jobId (same scratch). Steps 1 and 2 must be SKIPPED (markers exist); only step 3 reruns.
+    ran.clear()
+    await client._run_job(spec)
+    assert ran == ["align"], (
+        f"attempt 2 must reuse the completed steps' scratch and re-run ONLY the failed step, got {ran} "
+        "(on base the retryable fail destroyed scratch, so acquire/separate re-ran)"
+    )
 
 
 # ── performance knobs must actually cross the process boundary ─────────────────
@@ -837,4 +972,125 @@ async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_
     assert seen, "the caption step must have invoked yt-dlp"
     assert seen[0][0] == configured, (
         f"ENCORE_YTDLP_BIN must reach the align caption argv[0], got {seen[0][0]!r}"
+    )
+
+
+# ── issue #469, blocking finding: exhausted-retry scratch must be reclaimed ──────────
+# A retryable failure that was the LAST attempt is terminal, but _run_job cannot tell it apart (no
+# attempt count on the wire), so it preserves that scratch for a retry that never comes. A periodic,
+# age-bounded sweep reclaims it — safely, because a live job's scratch is always fresher than the age
+# bound, so it cannot be swept even on a media volume shared by several workers. These pin the sweep,
+# its age guard, its live-set guard, and its periodic wiring.
+
+
+def test_sweep_reclaims_an_aged_orphan_but_never_a_live_one(tmp_path):
+    """sweep_orphaned_scratch removes an AGED work/<jobId> dir belonging to no in-flight job, and
+    leaves a live one alone. The exhausted-retry leak (#469) is exactly an aged orphan with no live
+    job. min_age_sec=0 so the just-created orphan qualifies without waiting."""
+    from src.dial_home import sweep_orphaned_scratch
+
+    work = tmp_path / "work"
+    orphan = work / "jExhausted"  # a job that exhausted its retries; nothing will re-run it
+    live = work / "jRunning"  # this worker's in-flight job
+    for d in (orphan, live):
+        d.mkdir(parents=True)
+        (d / "input.wav").write_bytes(b"BIG")
+
+    removed = sweep_orphaned_scratch(str(tmp_path), frozenset({"jRunning"}), min_age_sec=0)
+
+    assert removed == ["jExhausted"], f"only the orphan must be reclaimed, got {removed}"
+    assert not orphan.exists(), "the exhausted-retry orphan must be reclaimed (#469)"
+    assert live.exists(), "this worker's live job's scratch must NEVER be swept"
+
+
+def test_sweep_never_touches_a_FRESH_dir_even_when_not_in_the_live_set(tmp_path):
+    """THE concurrency fix (round-2 block): on a shared media volume, ANOTHER worker's in-flight
+    scratch is not in THIS worker's live set — so the live set alone would delete it. The age bound is
+    the real guard: a scratch touched within min_age_sec is never swept, no matter whose it is or
+    whether the caller knows it is live. Here the dir is fresh and the live set is EMPTY, yet it must
+    survive. On the pre-age code (frozenset()-only) this dir would be destroyed."""
+    from src.dial_home import sweep_orphaned_scratch
+
+    other_worker_live = tmp_path / "work" / "jOtherWorkerLive"
+    other_worker_live.mkdir(parents=True)
+    (other_worker_live / "decoded.wav").write_bytes(b"another worker is writing this RIGHT NOW")
+
+    removed = sweep_orphaned_scratch(str(tmp_path), frozenset())  # empty live set, default 6h age bound
+
+    assert removed == [], f"a freshly-written scratch must never be swept, got {removed}"
+    assert other_worker_live.exists(), (
+        "a concurrent worker's in-flight scratch was destroyed — the shared-volume regression (#469 round 2)"
+    )
+
+
+def test_sweep_uses_the_NEWEST_mtime_in_the_subtree_not_the_top_dir(tmp_path):
+    """A separation writes one big file deep in work/<jobId> over many minutes without bumping the top
+    dir's own mtime. The age check must track the newest file anywhere under the dir, or it would call
+    an actively-written scratch 'old'. Backdate the top dir far past the bound but write a FRESH file
+    inside: it must still be treated as recent and survive."""
+    import os
+    import time as _time
+
+    from src.dial_home import sweep_orphaned_scratch
+
+    d = tmp_path / "work" / "jDeepWrite"
+    d.mkdir(parents=True)
+    fresh = d / "stems" / "vocals.wav"
+    fresh.parent.mkdir(parents=True)
+    fresh.write_bytes(b"being written now")
+    old = _time.time() - 10 * 3600  # 10h ago, older than the 6h bound
+    os.utime(d, (old, old))  # backdate ONLY the top dir; the deep file stays fresh
+
+    removed = sweep_orphaned_scratch(str(tmp_path), frozenset(), min_age_sec=6 * 3600)
+
+    assert removed == [], "a dir with a fresh file deep inside must not be swept on the top dir's stale mtime"
+    assert fresh.exists()
+
+
+def test_sweep_reclaims_a_dir_whose_whole_subtree_is_old(tmp_path):
+    """The positive side of the age bound: an exhausted-retry orphan nobody has touched for longer
+    than the bound IS reclaimed. Backdate the whole subtree past the threshold."""
+    import os
+    import time as _time
+
+    from src.dial_home import sweep_orphaned_scratch
+
+    d = tmp_path / "work" / "jStaleOrphan"
+    inner = d / "input.wav"
+    d.mkdir(parents=True)
+    inner.write_bytes(b"old decoded source")
+    old = _time.time() - 10 * 3600
+    for path in (inner, d):
+        os.utime(path, (old, old))
+
+    removed = sweep_orphaned_scratch(str(tmp_path), frozenset(), min_age_sec=6 * 3600)
+
+    assert removed == ["jStaleOrphan"], f"an aged orphan must be reclaimed, got {removed}"
+    assert not d.exists()
+
+
+def test_sweep_is_a_noop_when_there_is_no_work_dir(tmp_path):
+    # A fresh box has no work/ yet — the sweep must not crash on that.
+    from src.dial_home import sweep_orphaned_scratch
+
+    assert sweep_orphaned_scratch(str(tmp_path), frozenset()) == []
+
+
+# ── WIRING GUARD: _run_forever must START the periodic sweep loop — the whole reclaim path is that one
+#    create_task, and the behavioural tests prove the sweep WORKS, never that it RUNS. Deleting the
+#    line reintroduces the #469 leak with the suite still green. Pin it at the source level (ast).
+def test_run_forever_starts_the_periodic_scratch_sweep():
+    fn = _run_forever_ast()
+    started = [
+        n
+        for n in _ast.walk(fn)
+        if isinstance(n, _ast.Call)
+        and getattr(n.func, "attr", None) in ("create_task", "ensure_future")
+        and any(
+            getattr(a.func, "id", None) == "_scratch_sweep_loop" for a in n.args if isinstance(a, _ast.Call)
+        )
+    ]
+    assert started, (
+        "_run_forever never starts _scratch_sweep_loop — an exhausted-retry job's preserved scratch "
+        "would leak until the worker restarts (#469)"
     )
