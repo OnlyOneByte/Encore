@@ -627,3 +627,56 @@ def test_the_cleanup_derives_its_delete_target_FROM_scratch_for_not_a_hand_rebui
     )
     # Not vacuous: prove the file was actually read and is the module under test.
     assert "def _run_job" in text and "scratch_for" in text
+
+
+# ── run_stage: a slow-but-alive subprocess must keep its lease (#435) ─────────────
+
+
+@pytest.mark.asyncio
+async def test_run_stage_emits_a_time_based_keepalive_while_the_child_is_quiet(monkeypatch):
+    """A subprocess stage whose child makes no NEW percentage for longer than the progress lease must
+    still renew the lease with a TIME-BASED keepalive, or the core's 30 s progressLeaseMs expires and a
+    HEALTHY cook is reaped and retried as a fresh pass (#435).
+
+    This is the roformer shape exactly: `parse` returns None unconditionally (roformer's
+    parse_progress does), so NOT ONE line parses to a percentage, and the child stays quiet for a long
+    stretch (a 45-minute separation). Pre-fix, `run_stage` awaited the next line with no timeout, so it
+    emitted ONLY its opening 0 and closing 100 — nothing in between — and the reaper killed it at 30 s.
+
+    We shrink LEASE_KEEPALIVE_SEC to 0.02 and make the fake child sleep ~0.25 s (~12 intervals) between
+    its one line and finishing, so the fix must emit several keepalives during that quiet window. On the
+    pre-fix code the quiet window emits zero events and this reds with `got 0 keepalives`.
+    """
+    monkeypatch.setattr(runner_mod, "LEASE_KEEPALIVE_SEC", 0.02)
+
+    async def quiet_child(_argv):
+        # One line up front (which parses to None, so emits nothing), then a long silent stretch that
+        # spans many keepalive intervals before the child exits — a slow-but-alive roformer pass.
+        yield "loading model weights"
+        await asyncio.sleep(0.25)  # ~12 intervals of 0.02s: alive, but making no parseable progress
+
+    def parse_none(_line):
+        return None  # roformer's parse_progress returns None unconditionally
+
+    events = [
+        ev
+        async for ev in runner_mod.run_stage(quiet_child, Stage.SEPARATING, ["bs-roformer-infer"], parse_none)
+    ]
+    pcts = [ev.pct for ev in events if isinstance(ev, ProgressEvent) and ev.stage == Stage.SEPARATING]
+
+    # Opening 0 and closing 100 bookend the stage as before.
+    assert pcts[0] == 0, f"first event must be the opening 0, got {pcts}"
+    assert pcts[-1] == 100, f"last event must be the closing 100, got {pcts}"
+
+    # THE LOAD-BEARING ASSERTION: keepalives fired DURING the quiet stretch. A run of ~12 intervals must
+    # produce several; pre-fix there are zero between the 0 and the 100. Require >= 3 so a single stray
+    # tick cannot pass it, mirroring the run_blocking keepalive test's margin.
+    keepalives = [p for p in pcts if p == 0][1:]  # every 0 AFTER the opening 0 is a held-at-last keepalive
+    assert len(keepalives) >= 3, (
+        f"run_stage emitted no time-based keepalive while the child ran quietly for ~12 lease intervals "
+        f"— a slow roformer pass would breach the 30s lease and be reaped. pcts={pcts}"
+    )
+
+    # Anti-vacuity: the keepalive holds the bar at the last-known pct (0 here, since nothing parsed) and
+    # NEVER leaks an intermediate value — the bar must not move off 0 until the closing 100.
+    assert not any(0 < p < 100 for p in pcts), f"keepalive must hold the bar, never move it, got {pcts}"
