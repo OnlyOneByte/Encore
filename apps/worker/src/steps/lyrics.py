@@ -306,8 +306,17 @@ class TimeTexts(Step):
             # WORDS against what is audible — and this is a cheap independent second opinion on the
             # TIMING, which catches the case where a different master shifts or stretches every line.
             if timing == TIMING_WORD and text.timing == TIMING_LINE:
+                # Pair the fit line-for-line with what the aligner ACTUALLY searched. Since #92 the
+                # aligner searches `align_windows` (the per-row bounded windows) when presplit set
+                # them, so `doc` has one aligned line per WINDOW — more lines than `segments`. Feeding
+                # the fit `segments` then made the line counts unequal, and `fit_lrc_to_aligned`
+                # returns `inconclusive` on a count mismatch, so the detector silently stopped running
+                # on exactly the long-line LRCs presplit windows. The windows carry the source's own
+                # timings (proportionally spread from the human line by `_subdivide`), so pairing
+                # against them preserves the version test's meaning.
+                lrc_lines = text.align_windows if getattr(text, "align_windows", None) else text.segments
                 fit = fit_lrc_to_aligned(
-                    line_starts({"segments": text.segments}), line_starts(doc)
+                    line_starts({"segments": lrc_lines}), line_starts(doc)
                 )
                 if fit.verdict == "different_version":
                     ctx.note(
