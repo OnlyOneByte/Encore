@@ -38,9 +38,11 @@ export const GET: RequestHandler = async ({ params, request }) => {
 	const ext = ref.split('.').pop()?.toLowerCase() ?? '';
 	const type = CONTENT_TYPES[ext] ?? 'application/octet-stream';
 
-	// A store that cannot report a size or slice a range (the object-store proxy path) keeps exactly
-	// the previous behaviour: one full-body 200. S3 itself honours ranges on the presigned URL the TV
-	// normally gets, so the proxy is the rare path, not the playing one.
+	// Fallback for a MediaStore that implements neither `size` nor `getRange`: one full-body 200 with
+	// no `accept-ranges`, which means WebKit (Safari/iOS) will refuse to play — see media/http-range.ts.
+	// Both shipped stores (local + object) answer these, so this is a floor for a future store, NOT the
+	// object-store path: the TV loads every ref through this same-origin /media route (TvPlayer hardcodes
+	// `/media/${ref}` and never calls MediaStore.url()), so the object store MUST serve ranges here.
 	if (typeof store.size !== 'function' || typeof store.getRange !== 'function') {
 		const stream = await store.get(ref);
 		if (!stream) return new Response('not found', { status: 404 });
