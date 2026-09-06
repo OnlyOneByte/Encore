@@ -74,6 +74,7 @@
 </script>
 
 <div class="lobby">
+	<div class="stack-region">
 	<div class="stack">
 		{#if unreachable}
 			<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size="var(--tv-qr)" unreachable={true} />
@@ -99,6 +100,7 @@
 			-->
 			<p class="url">{joinShort}</p>
 		{/if}
+	</div>
 	</div>
 
 	{#if roster.length > 0}
@@ -129,9 +131,29 @@
 		inset: 0;
 		z-index: 5;
 		display: flex;
+		/*
+		 * COLUMN, not a single centred box. The stack takes a flex region that ENDS where the roster
+		 * strip begins; the strip flows beneath it in normal order. Centring the stack across the full
+		 * `inset: 0` box while the strip was pinned `bottom: 0` and grew upward as names wrapped meant the
+		 * two intersected on short panels (≤768px), and DOM order painted the strip's backdrop and chips
+		 * over the typed join address — the only way in when a camera won't read the QR (#98). With the
+		 * strip in flow its real height always reserves its band, so no roster size at any panel height
+		 * can reach the address. The 1920/3840 panels never overlapped, so a reserve keyed to a fixed
+		 * height would have been wrong at the tall end; letting the strip's own height do the reserving is
+		 * correct at every resolution.
+		 */
+		flex-direction: column;
+		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
+	}
+	/* The stack owns all the space the strip does not, and centres itself inside it — so on a tall panel
+	   it reads exactly as before (centred with the strip a thin band at the very bottom), and on a short
+	   one it slides up out of the strip's way rather than into it. */
+	.stack-region {
+		flex: 1;
+		min-height: 0;
+		display: flex;
 		align-items: center;
 		justify-content: center;
-		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
 	.stack {
 		display: flex;
@@ -196,16 +218,18 @@
 	}
 
 	.strip {
-		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 0;
 		/*
-		 * The BACKDROP is deliberately full-bleed (bottom: 0) so its fade reaches the edge of the panel,
-		 * but the CONTENT inside it must not be. Padding carries the safe-area inset instead of the
-		 * offset, because a set that overscans would otherwise crop the roster — the one place a guest
-		 * confirms the room actually saw them join. A guard that only inspects edge OFFSETS cannot catch
-		 * this shape, which is why it survived the first pass of the stage scale.
+		 * In normal flow at the foot of the .lobby column now, not `position: absolute; bottom: 0`. It
+		 * still spans the full width (it is the column's own width) and keeps its full-bleed fade to the
+		 * bottom edge, but its height is part of layout, which is what reserves the band above it (#98).
+		 */
+		flex: none;
+		/*
+		 * The BACKDROP is deliberately full-bleed (it is the column's full width and its fade runs to the
+		 * bottom edge) so it reaches the edge of the panel, but the CONTENT inside it must not be. Padding
+		 * carries the safe-area inset, because a set that overscans would otherwise crop the roster — the
+		 * one place a guest confirms the room actually saw them join. A guard that only inspects edge
+		 * OFFSETS cannot catch this shape, which is why it survived the first pass of the stage scale.
 		 */
 		padding: 22px var(--tv-safe-x) calc(var(--tv-safe-y) * 0.6);
 		/* rgba(11,11,18,0.9) was --bg at 90%; color-mix keeps the fade on the theme's background. */

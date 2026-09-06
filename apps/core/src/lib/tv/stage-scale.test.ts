@@ -381,3 +381,50 @@ test('the unverified tint overrides variables only — it never re-selects a wor
 	);
 	expect(descendants).toEqual([]);
 });
+
+/*
+ * #98 — the typed join address must not be buried under the roster strip on a short panel.
+ *
+ * THE BUG THIS EXISTS FOR. `.lobby` was `display: flex; align-items/justify-content: center` across
+ * its FULL `inset: 0` box, centring the `.stack` — whose last child is the typed join address — over
+ * the whole screen. `.strip` was `position: absolute; bottom: 0`, out of flow, growing UPWARD as names
+ * wrapped. On panels ≤768px (1280×720, 1366×768) the centred stack's bottom and the bottom-anchored
+ * strip intersected, and because the strip comes after the stack in DOM order with no z-index on either
+ * to reorder the paint, the strip's gradient backdrop and its name chips painted ON TOP of the address
+ * — the ONLY way into the room when a camera won't read the QR. Measured: at the 8-member cap the
+ * address was fully covered under a 0.90 wash. At 1920/3840 there was no overlap at any roster size, so
+ * a reserve keyed to a fixed pixel band would have been wrong at the tall end.
+ *
+ * THE FIX, and what these lock in. `.lobby` is a flow COLUMN; the stack lives in a `.stack-region` that
+ * takes `flex: 1` and centres within it; `.strip` is IN FLOW (not absolutely docked), so its real
+ * height — however many rows the names wrap to — always reserves its own band and the centred stack can
+ * never reach into it, at any panel height or roster size. Pure geometry the DOM-less runner cannot
+ * SEE, so the guard pins the structural precondition, and specifically the REVERSION: re-adding
+ * `position: absolute; bottom: 0` to `.strip` restores the exact bug with the whole suite green.
+ */
+test('#98 the lobby roster strip reserves its band in flow — it is not absolutely docked to the edge', () => {
+	const lobby = stripComments(TV_LOBBY);
+	const stripBlock = /\.strip\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(stripBlock).not.toBe('');
+	// The reversion: an absolutely-positioned, bottom-docked strip is exactly what painted over the
+	// address. In flow it cannot overlap the stack, so it must be neither.
+	expect(/position:\s*absolute/.test(stripBlock)).toBe(false);
+	expect(/bottom:\s*0/.test(stripBlock)).toBe(false);
+});
+
+test('#98 the lobby centres its stack in the space ABOVE the strip, not across the whole box', () => {
+	const lobby = stripComments(TV_LOBBY);
+	// The lobby is a column: the stack region and the strip stack vertically, so the strip's height is
+	// subtracted from the region the stack centres in. A row/absolute lobby would let them overlap.
+	const lobbyBlock = /\.lobby\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(/flex-direction:\s*column/.test(lobbyBlock)).toBe(true);
+	// The centring moved off `.lobby` (which now only stacks) onto a region that takes the leftover
+	// space with `flex: 1`. Without `flex: 1` the region collapses to content height and the strip no
+	// longer pushes the stack up — so this is the line that does the reserving.
+	const regionBlock = /\.stack-region\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(regionBlock).not.toBe('');
+	expect(/flex:\s*1/.test(regionBlock)).toBe(true);
+	expect(/justify-content:\s*center/.test(regionBlock)).toBe(true);
+	// And the markup must actually WRAP the stack in that region, or the CSS rule guards nothing.
+	expect(/<div class="stack-region">\s*<div class="stack">/.test(TV_LOBBY)).toBe(true);
+});
