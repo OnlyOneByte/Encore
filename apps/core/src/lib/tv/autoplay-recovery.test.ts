@@ -112,10 +112,16 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 	// The affordance must actually be STYLED as a full-screen top-of-stack overlay, not an unstyled
 	// button that a viewer cannot see or tap. Pins hunk #11 (the .autoplay-hint CSS): the rule must exist,
 	// cover the viewport (inset: 0), and sit above every other layer (z-index: 10) so a tap anywhere lands.
-	const raw = readFileSync(TV_ROUTE, 'utf8'); // read raw — the rule body is inside <style>, which stripComments keeps
-	const rule = raw.match(/\.autoplay-hint\s*\{([^}]*)\}/);
+	// Match against the comment-stripped `src` computed above: a live CSS rule is neither a /* */ nor an
+	// <!-- --> comment, so stripComments leaves it intact, while a commented-out copy of the selector is
+	// blanked to spaces — so the first regex match is always the real rule, not a decoy comment above it.
+	const rule = src.match(/\.autoplay-hint\s*\{([^}]*)\}/);
 	expect(rule, 'the .autoplay-hint style rule must exist').not.toBeNull();
 	const body = rule ? rule[1] : '';
+	// position is the load-bearing declaration: inset is ignored on a statically-positioned box and
+	// z-index applies only to a positioned box, so both assertions below are inert without it. Dropping
+	// `position` shrinks the affordance to normal-flow ~26% of the viewport with those two still present.
+	expect(body).toMatch(/position:\s*absolute/);
 	expect(body).toMatch(/inset:\s*0/);
 	expect(body).toMatch(/z-index:\s*10/);
 });
