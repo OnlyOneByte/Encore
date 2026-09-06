@@ -32,7 +32,7 @@ import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
 import { existsSync } from 'node:fs';
 import { markLyricsQueued, reportTerminalFailure } from './jobs/make-karaoke';
-import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, lookupTitle, readAllSidecars } from './media/sidecar';
+import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, lookupTitle, readAllSidecars, clearArtifacts } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
@@ -351,12 +351,20 @@ export function getApp(): EncoreApp {
 			if (cap !== null) {
 				const ready = mediaRepo.listReady();
 				const candidates = ready.map((m) => ({ mediaId: m.id, derivedBytes: derivedBytesOf(m), lastUsedAt: 0 }));
-				// recency comes from the sidecar; addedAt stands in until play tracking is wired
+				// recency comes from the sidecar: lastPlayedAt (wired via plays.ts), else addedAt for never-played
 				for (const c of candidates) {
 					const side = await readSidecar(c.mediaId);
 					c.lastUsedAt = side?.library.lastPlayedAt ?? side?.library.addedAt ?? 0;
 				}
-				const doomed = planEviction(candidates, cap);
+				// Never strip a cook out from under a live or queued entry. hydrate() (above) restored the
+				// queue and playback BEFORE this pass, so a restart mid-party with the cap set could otherwise
+				// evict the playing/queued song. Protect every queued media id plus the currently-playing one.
+				const protectedIds = new Set<string>(entries.map((e) => e.mediaId));
+				const currentMediaId = playback
+					? entries.find((e) => e.id === playback.currentEntryId)?.mediaId
+					: undefined;
+				if (currentMediaId) protectedIds.add(currentMediaId);
+				const doomed = planEviction(candidates, cap, protectedIds);
 				let freed = 0;
 				for (const id of doomed) {
 					const live = mediaById.get(id);
@@ -364,9 +372,14 @@ export function getApp(): EncoreApp {
 					freed += evictDerived(live).bytes;
 					// back to un-cooked: rotation stops treating it as playable, a re-request re-cooks it
 					live.instrumentalRef = undefined;
+					live.vocalsRef = undefined;
 					live.lyricsRef = undefined;
+					live.lyricsCandidates = [];
 					live.stemStatus = 'none';
 					mediaRepo.upsert(live);
+					// upsert fires sidecarFromMedia, whose `?? prev` would RESTORE the refs just cleared;
+					// null them directly on the authoritative record so the eviction sticks.
+					await clearArtifacts(id);
 				}
 				if (doomed.length > 0) {
 					console.log(`[core] retention: evicted derived artifacts for ${doomed.length} songs, freed ${(freed / 1e6).toFixed(1)} MB (cap ${(cap / 1e9).toFixed(1)} GB)`);

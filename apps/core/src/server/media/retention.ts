@@ -151,9 +151,9 @@ export interface EvictionCandidate {
  * Protected songs still count toward the total (they occupy real bytes), so the plan can conclude the
  * cap is unreachable and evict everything it is allowed to rather than under-reporting the pressure.
  *
- * Recency signal caveat: play tracking is not wired yet (`library.lastPlayedAt` is never incremented),
- * so callers pass `addedAt` — making this oldest-added-first, not truly least-recently-played. Worth
- * upgrading once plays are counted.
+ * Recency signal: play tracking IS wired — `plays.ts` bumps `library.lastPlayedAt` and the caller reads
+ * it in preference to `addedAt`, so this is least-recently-PLAYED, falling back to oldest-added only for
+ * songs that have never played.
  */
 export function planEviction(
 	candidates: EvictionCandidate[],
@@ -192,7 +192,15 @@ export function planEviction(
  * belongs here, not in a caller.
  *
  * `m.vocalsRef` is authoritative when present; `vocalsKey` + the ext-blind swap are the fallback for
- * old rows that never stored a vocals ref. Callers dedupe with a Set, so overlap is free.
+ * old rows that never stored a vocals ref.
+ *
+ * `lyricsRef` is only the CHOSEN candidate's JSON; a song can carry several lyrics artifacts (one per
+ * text source — see `lyricsCandidates` in shared/types.ts and the distinct per-candidate keys minted
+ * at worker `lyrics/chain.py`). Listing `lyricsRef` alone counted 1 of N and left the other N−1 lyrics
+ * JSONs both uncounted and, worse, permanently orphaned on disk when the song was evicted. Enumerate
+ * every candidate ref too — same class of drift the vocals-omission fix above closed.
+ *
+ * Callers dedupe with a Set, so overlap (a candidate that equals `lyricsRef`) is free.
  */
 function derivedRefsOf(m: Media): string[] {
 	return [
@@ -206,7 +214,10 @@ function derivedRefsOf(m: Media): string[] {
 		// eviction, so derivedBytesOf would undercount and evictDerived would orphan those files.
 		m.vocalsRef,
 		vocalsKey(m.id),
-		m.instrumentalRef?.replace('-instrumental.', '-vocals.')
+		m.instrumentalRef?.replace('-instrumental.', '-vocals.'),
+		// Every lyrics candidate's JSON, not just the chosen one (`lyricsRef`). Each source mints a
+		// distinct key, so the others are silently orphaned on eviction unless enumerated here.
+		...(m.lyricsCandidates ?? []).map((c) => c.ref)
 	].filter((r): r is string => !!r);
 }
 
