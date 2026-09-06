@@ -1008,3 +1008,117 @@ def test_time_one_feeds_align_windows_to_the_aligner_and_line_sync_keeps_source_
     assert timing2 == TIMING_LINE and conf2 == "high"
     assert [l["start"] for l in doc2["lines"]] == [10.0]
     assert [l["end"] for l in doc2["lines"]] == [34.0]
+
+
+# ── #217: the wrong-version fit must be paired with what the aligner SEARCHED ─────────────────────
+# #92 routed the aligner at `steps/lyrics.py` to search `align_windows` (the per-row bounded windows)
+# instead of `segments` when presplit set them. `doc` then carries one aligned line per WINDOW, so it
+# has MORE lines than `segments`. The wrong-version fit was still fed `segments`, and
+# `fit_lrc_to_aligned` returns `inconclusive` on a line-count mismatch (`len(xs) != len(ys)`) — so the
+# detector went silently inert on exactly the long-line authoritative LRCs presplit produces windows
+# for. The regression drives the real `TimeTexts.run` with `align_windows` injected the way the
+# Dockerfile-only bounder would have set them on a worker box, and proves the "do NOT fit" note fires.
+
+
+def _mismatched_windows_text(n_lines=16, bridge_after=8):
+    """A synced LRCLIB text whose 16 human lines each split into TWO aligner windows.
+
+    That is the production state presplit leaves on a worker box for an authoritative LRC whose lines
+    overflow a TV row: `segments` keeps the human lines, `align_windows` carries the per-row search
+    hints (twice as many). Injected directly because the real bounder (KaraokeLyricsProcessor) is
+    Dockerfile-only and returns the lines unchanged locally (align_windows would be None).
+    """
+    segs, windows = [], []
+    for i in range(n_lines):
+        start = 2.0 * i + 1.0
+        end = start + 1.8
+        mid = round((start + end) / 2, 3)
+        segs.append({"start": start, "end": end, "text": f"human authored karaoke lyric line {i} here", "words": []})
+        windows.append({"start": start, "end": mid, "text": f"human authored karaoke {i}", "words": []})
+        windows.append({"start": mid, "end": end, "text": f"lyric line here {i}", "words": []})
+    return LyricsText(
+        text_source=SOURCE_LRCLIB, segments=segs, timing=TIMING_LINE,
+        text_confidence="high", align_windows=windows,
+    )
+
+
+class _WindowBridgeAligner:
+    """Re-times every WINDOW it is handed, applying a monotonic +12s bridge to the back half.
+
+    Keyed off the source-line index embedded in each window's text (`... {i}`), so both windows of a
+    source line move together — the structural (non-linear) difference a scale+offset fit cannot
+    absorb, which is what a genuinely different master looks like. Independent of how `line_starts` /
+    `fit_lrc_to_aligned` compute, so the test cannot derive its expectation the code's way.
+    """
+
+    def __init__(self, seconds=12.0, bridge_after=8):
+        self.seconds = seconds
+        self.bridge_after = bridge_after
+        self.calls = []
+
+    def align(self, segments, audio_path, language):
+        self.calls.append((len(segments), audio_path, language))
+        out = []
+        for s in segments:
+            idx = int(s["text"].strip().split()[-1])
+            shift = self.seconds if idx >= self.bridge_after else 0.0
+            start, end = s["start"] + shift, s["end"] + shift
+            toks = s["text"].split()
+            span = (end - start) / max(1, len(toks))
+            words = [
+                {"word": t, "start": round(start + j * span, 3), "end": round(start + (j + 1) * span, 3)}
+                for j, t in enumerate(toks)
+            ]
+            out.append({"start": start, "end": end, "text": s["text"], "words": words})
+        return {"language": language, "segments": out}
+
+
+async def _drive_time_texts(aligner, text, tmp_path):
+    from src.runtime.ctx import AudioCtx, Ctx, LyricsCtx
+    from src.steps.lyrics import TimeTexts
+
+    ctx = Ctx(
+        job=JobSpec(job_id="j", media_id="m1", job_type="align",
+                    source_uri="/x.wav", params={"language": "en"}, media_dir=str(tmp_path)),
+        work=str(tmp_path),
+        audio=AudioCtx(path="/x.wav", vocals_path="/vocals.wav", duration_sec=60.0),
+        lyrics=LyricsCtx(texts=[text]),
+    )
+    async for _ in TimeTexts(aligner=aligner).run(ctx):
+        pass
+    return ctx
+
+
+@pytest.mark.asyncio
+async def test_217_wrong_version_check_still_runs_when_align_windows_split_the_lines(tmp_path):
+    """The regression. With `align_windows` set (more lines than `segments`), the aligned `doc` has one
+    line per window. Feeding the fit `segments` (the pre-#217 behaviour) makes the counts unequal so
+    the fit is `inconclusive` and the "do NOT fit" note never fires — reverting the fix reds exactly
+    here on the assertion below. The fix pairs the fit with `align_windows`, the lineation the aligner
+    actually searched, so equal counts feed a real fit that reports the structural difference.
+    """
+    text = _mismatched_windows_text()
+    # The precondition that made the detector inert: what the aligner searched (windows) outnumbers
+    # the human lines, so a fit against `segments` could never have equal counts.
+    assert len(text.align_windows) != len(text.segments)
+
+    aligner = _WindowBridgeAligner()
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    # the aligner was handed the WINDOWS (32), confirming this is the #92 search path
+    assert aligner.calls and aligner.calls[0][0] == len(text.align_windows)
+    # FAILING ASSERTION ON BASE: the operator-facing wrong-version note must be present.
+    assert any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+    assert any("may belong to another version" in n for n in ctx.out.notes)
+
+
+@pytest.mark.asyncio
+async def test_217_a_matching_recording_with_split_windows_is_NOT_flagged(tmp_path):
+    """The false positive that would matter more than the miss: when `align_windows` are set but the
+    recording MATCHES (no bridge), the fit runs and stays `same_version`, so no wrong-version note. This
+    also proves the fix did not turn the detector into an indiscriminate warner on the windows path.
+    """
+    text = _mismatched_windows_text()
+    aligner = _WindowBridgeAligner(bridge_after=999)  # never shifts → same recording
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+    assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
