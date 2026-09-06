@@ -665,36 +665,108 @@ async def test_a_raising_aligner_still_propagates_through_the_thread_wrapper(tmp
     assert done.artifacts["lyrics"]["candidates"][0]["timing"] == TIMING_LINE
 
 
-def test_concurrent_ML_calls_are_serialized_on_the_shared_model():
-    """One WhisperXProcessor serves every align job and caches ONE model, so with concurrency>1 two
-    threads would otherwise enter transcribe()/align() on it at once. faster-whisper is not
-    thread-safe; before the thread offload the blocked event loop hid this."""
+def _stub_whisperx(monkeypatch, *, on_call=None):
+    """Install a fake `whisperx` in sys.modules so the real WhisperxTranscriber / WhisperxForcedAligner
+    lazy-import succeeds and their production `with ML_LOCK:` bodies actually run. `on_call` (if given)
+    is invoked inside the model call so a test can observe concurrency THROUGH the production lock."""
+    import types
+
+    wx = types.ModuleType("whisperx")
+
+    def load_audio(path):
+        return f"audio::{path}"
+
+    class _Model:
+        def transcribe(self, audio, language=None):
+            if on_call is not None:
+                on_call()
+            return {"language": language or "en", "segments": []}
+
+    def load_model(name, device, compute_type=None):
+        return _Model()
+
+    def load_align_model(language_code, device):
+        return ("align_model", {"lang": language_code})
+
+    def align(segments, model, meta, audio, device, return_char_alignments=False):
+        if on_call is not None:
+            on_call()
+        return {"segments": segments}
+
+    wx.load_audio = load_audio
+    wx.load_model = load_model
+    wx.load_align_model = load_align_model
+    wx.align = align
+    monkeypatch.setitem(sys.modules, "whisperx", wx)
+    return wx
+
+
+def test_concurrent_ML_calls_are_serialized_on_the_shared_model(monkeypatch, tmp_path):
+    """Two threads enter the REAL transcribe()/align() on shared model objects at once. faster-whisper
+    and whisperx are not thread-safe, so the production `with ML_LOCK:` must serialize them. Drives the
+    production code (not a re-implemented lock in the test body), so it raises NameError on the pre-fix
+    tree where the call sites reference the undefined `_ML_LOCK`."""
     import threading
 
-    overlaps = []
-    inside = []
+    from src.lyrics.asr import WhisperxTranscriber
+    from src.lyrics.timing import WhisperxForcedAligner
 
-    def body():
-        with lyrics_pkg.ML_LOCK:
+    inside = []
+    overlaps = []
+    gate = threading.Lock()
+
+    def on_call():
+        with gate:
             inside.append(1)
             overlaps.append(len(inside))
-            time.sleep(0.05)
+        time.sleep(0.05)
+        with gate:
             inside.pop()
 
-    threads = [threading.Thread(target=body) for _ in range(4)]
+    _stub_whisperx(monkeypatch, on_call=on_call)
+    audio = str(tmp_path / "vocals.wav")
+
+    tr = WhisperxTranscriber(device="cpu")
+    al = WhisperxForcedAligner(device="cpu")
+    segs = [{"start": 0.0, "end": 1.0, "text": "x"}]
+
+    targets = (
+        [lambda: tr.transcribe(audio) for _ in range(2)]
+        + [lambda: al.align(segs, audio, "en") for _ in range(2)]
+    )
+    threads = [threading.Thread(target=t) for t in targets]
     for t in threads:
         t.start()
     for t in threads:
         t.join()
+
+    assert overlaps, "no ML call ran — production path never executed"
     assert max(overlaps) == 1, f"ML section was entered concurrently ({max(overlaps)} at once)"
+    # all four threads must have run the production ML path; an aligner-side NameError
+    # would kill the two align() threads, leaving only 2 transcribe() entries (see pr-bot #155).
+    assert len(overlaps) == 4, f"expected 4 ML entries (2 transcribe + 2 align), got {len(overlaps)}"
 
 
-def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader():
-    """transcribe() takes the lock and then calls _load(), which takes it again — a plain Lock would
-    deadlock the worker on the first real transcription."""
-    with lyrics_pkg.ML_LOCK:
-        with lyrics_pkg.ML_LOCK:
-            pass  # a non-reentrant lock never reaches here
+def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader(monkeypatch, tmp_path):
+    """transcribe() takes ML_LOCK and then calls _load(), which takes it again; align() takes it and
+    calls _model(), which takes it again. A plain Lock would deadlock the worker on the first real
+    call. Drives the production methods so it exercises the real nested acquisition, and raises
+    NameError on the pre-fix tree."""
+    from src.lyrics.asr import WhisperxTranscriber
+    from src.lyrics.timing import WhisperxForcedAligner
+
+    _stub_whisperx(monkeypatch)
+    audio = str(tmp_path / "vocals.wav")
+
+    # transcribe() -> _load(): both acquire ML_LOCK; a non-reentrant lock never returns here.
+    out = WhisperxTranscriber(device="cpu").transcribe(audio)
+    assert out["segments"] == []
+
+    # align() -> _model(): same nested acquisition on the aligner side.
+    aligned = WhisperxForcedAligner(device="cpu").align(
+        [{"start": 0.0, "end": 1.0, "text": "x"}], audio, "en"
+    )
+    assert aligned["segments"] == [{"start": 0.0, "end": 1.0, "text": "x"}]
 
 
 # ── the wrong-song guard, now graded against BASELINES ─────────────────────────
