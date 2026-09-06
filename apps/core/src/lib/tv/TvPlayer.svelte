@@ -61,6 +61,13 @@
 		// A gesture (or a later transport re-attempt) got the instrumental playing after a block — the
 		// page can retract the hint.
 		onautoplayrecovered?: () => void;
+		// Whether the MASTER element is actually running right now, reported from its own `play`/`pause`/
+		// `ended` events — the honest counterpart to the room's `playing` INTENT prop (#393). Fires ONLY
+		// from the active+visible slot (like `onautoplayblocked`) so the hidden pre-warming slot, which is
+		// deliberately paused, cannot report the room as stopped. The page feeds this to `lyricsAdvancing`
+		// so the reel freezes when the element is not advancing (autoplay refused, or media not playable)
+		// even though the server still says the room intends to play.
+		onplayingchange?: (playing: boolean) => void;
 	}
 	let {
 		media,
@@ -77,7 +84,8 @@
 		onerror,
 		onposition,
 		onautoplayblocked,
-		onautoplayrecovered
+		onautoplayrecovered,
+		onplayingchange
 	}: Props = $props();
 
 	let master: HTMLAudioElement | undefined = $state();
@@ -606,7 +614,12 @@
 			bind:this={master}
 			preload="auto"
 			oncanplaythrough={() => (masterReady = true)}
-			onended={() => onended?.()}
+			onplay={() => active && visible && onplayingchange?.(true)}
+			onpause={() => active && visible && onplayingchange?.(false)}
+			onended={() => {
+				if (active && visible) onplayingchange?.(false);
+				onended?.();
+			}}
 			onerror={() => active && visible && onerror?.()}
 			ontimeupdate={() => {
 				if (master) onposition?.(master.currentTime, master.duration);
