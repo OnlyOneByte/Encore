@@ -541,32 +541,11 @@ Two ordering constraints that are not preference:
   placeholders have none — so an empty `/api/library` is right. The flow searches, and
   `/api/search?q=…` returns the seeded tracks.
 
-- [ ] **T-22 · Rebase the lyrics text-size scale, and let it go much further** — today's **80%** should
-  become the new **100%**, and the range should allow a far bigger change than it does.
+- [x] **T-22 · Rebase the lyrics text-size scale, and let it go much further** — SHIPPED (PR #250, issue #58). today's **80%** became the new **100%**, and the range now reaches much further.
 
-  Today: `DEFAULT_LYRICS_SCALE_PCT = 100`, `MIN = 80`, `MAX = 160`
-  (`packages/shared/src/lyrics-engines.ts:420-422`), the Settings slider is bound to those constants at
-  `step="5"`, and it is applied as `--lyrics-scale: ${scalePct / 100}` at
-  `LyricsOverlay.svelte:211`. The value is a **percent of the TV's own distance-derived size**, not a
-  size — that framing is deliberate and should survive the change.
+  **Owner ruling (blessed the product fork):** leave the stored values, widen the band, fold the neutral point. The render multiplier is `(scalePct / 100) * LYRICS_SCALE_BASE` with `LYRICS_SCALE_BASE = 0.8`, so a stored `100` renders `0.8×` (what `80` rendered before) while the number shown stays `100`. `DEFAULT = 100` (no migration), `MIN = 100` (the `0.8×` legibility floor is the neutral point), `MAX = 300` (`2.4×`). **Accepted one-time semantic shift:** every existing room's lyrics render ~20% smaller on deploy.
 
-  **Rebasing means folding 0.8 into the neutral point**, so the number shown reads `100` while
-  rendering what `80` renders today. Two consequences to decide out loud rather than discover:
-
-  - **Stored room values change meaning.** A room sitting at `120` renders `1.2×` today and `0.96×`
-    afterwards. Not a schema migration — the column keeps its type — but a *semantic* one. Either
-    leave the values (every room's lyrics get 20% smaller, which is presumably the intent) or rescale
-    them by `1.25` on read to preserve the rendered size. Pick one and say which.
-  - **"Massively" collides with a guard that already exists.** `LyricsOverlay.svelte:395` records that
-    at max `scalePct` with max `linesBefore + linesAfter`, the derived height can exceed what remains
-    inside the safe area. Scale and row count compete for a fixed height, so raising `MAX` a lot means
-    one of them has to yield: clamp rows down as scale rises (there is precedent — the lyrics
-    presentation resolver already clamps downward-only), or let the overlay shrink to fit and accept
-    that the setting becomes a *request*. The second makes the displayed number a lie, which this
-    repo's settings copy deliberately avoids elsewhere, so prefer the first.
-
-  **AUTO** — the clamp and the derived height are pure; **EYES-ON** at TV width and at the new extremes,
-  because the failure mode is text leaving the safe area.
+  **Clamp-up for the next author:** rooms that stored `80`–`99` under the old `MIN = 80` now clamp **up** to `100` when next normalized (`normalizeRoomSettings` → `clampInt`, `settings.ts:485`; a raw DB read is not re-clamped). Legacy `80` → `100` renders `0.8×`, identical to before; `90`/`95` shrink slightly into the floor. Nothing renders below `0.8×` afterward. The scale-vs-rows concern needed no new clamp: the reel's existing `max-height` cap + edge-fade mask absorb an extreme setting.
 
 - [ ] **T-23 · Run every text tier through the length bounder; keep the semantic splitter for ASR and
   captions only** — *the answer to "is candidate text going through `karaoke-lyrics-processor`?" is
