@@ -48,6 +48,15 @@
 		onended?: () => void;
 		onerror?: () => void; // dead/unplayable media — caller should skip
 		onposition?: (sec: number, dur: number) => void;
+		// The instrumental's play() rejected with NotAllowedError — the browser's autoplay policy blocked
+		// it and the room is silent until a user gesture authorises playback. A TV wall display registers
+		// no gesture on its own, so the page surfaces an on-screen "tap to start" affordance in response.
+		// This fires ONLY from the active+visible slot, so the hint tracks the room the viewer is looking
+		// at rather than the hidden pre-warming slot (which is deliberately paused and would never block).
+		onautoplayblocked?: () => void;
+		// A gesture (or a later transport re-attempt) got the instrumental playing after a block — the
+		// page can retract the hint.
+		onautoplayrecovered?: () => void;
 	}
 	let {
 		media,
@@ -62,7 +71,9 @@
 		onprewarmed,
 		onended,
 		onerror,
-		onposition
+		onposition,
+		onautoplayblocked,
+		onautoplayrecovered
 	}: Props = $props();
 
 	let master: HTMLAudioElement | undefined = $state();
@@ -139,6 +150,14 @@
 	// (the authoritative copy is the element's own `src` attribute — see the assign effect). Declared here
 	// with the other slot state.
 	let currentSrc = $state<string>('');
+
+	// True while the master's play() has been REFUSED by the browser's autoplay policy (NotAllowedError)
+	// and nothing has yet un-stuck it. A plain <audio> in a page that never received a user gesture is
+	// refused under the default policy — which is exactly the case a set-and-forget TV wall is in — so
+	// the room sits silent with no on-screen way back. This latch drives the one-shot gesture listener
+	// below AND the page's "tap to start" hint (via onautoplayblocked). It is NOT $state's business to
+	// know it is a TV: any refused autoplay, on any surface, arms the same recovery.
+	let autoplayBlocked = $state(false);
 
 	// The song this slot has already reset for. A PLAIN variable, not `$state`: it is the guard's own
 	// bookkeeping and nothing renders off it.
@@ -266,13 +285,97 @@
 			return;
 		}
 		// An autoplay refusal must degrade to a silent room, never to a stalled song — but it must not
-		// degrade SILENTLY. Swallowing every rejection is what let the AbortError above go unseen through
-		// two rounds of diagnosis, so name the reason. AbortError here now means a genuine interruption
-		// (a real src change), not the self-inflicted one this effect used to cause.
-		master.play().catch((err: unknown) => {
+		// degrade SILENTLY, and it must not degrade PERMANENTLY. Swallowing every rejection is what let the
+		// AbortError above go unseen through two rounds of diagnosis, so name the reason; and a
+		// NotAllowedError (the autoplay policy) is not terminal — it is exactly the state a user gesture
+		// can lift, so it arms the recovery path (the gesture listener + the page hint) rather than ending
+		// there. AbortError here still means a genuine interruption (a real src change), not the
+		// self-inflicted one this effect used to cause.
+		void tryPlayMaster();
+	});
+
+	/**
+	 * Play the master, tracking whether the browser's autoplay policy refused it.
+	 *
+	 * This is the ONE place that resolves a `master.play()` promise, so it is the one place that can tell
+	 * a genuine "the room will be silent" from a "the room is silent UNTIL a tap". A NotAllowedError is
+	 * the latter: the platform blocked autoplay and only a user gesture can authorise playback. On a TV
+	 * wall that gesture may never come on its own, so we raise `autoplayBlocked` (which surfaces the hint
+	 * and arms the gesture listener) instead of logging and giving up. Any other rejection (AbortError
+	 * from a real src change, a decode failure) is logged and left alone — those are not gesture-liftable.
+	 *
+	 * CRITICALLY, this touches ONLY the plain <audio> element. It constructs no AudioContext and no
+	 * MediaElementSource — see pitch-shift.ts: a MediaElementSource is a PERMANENT capture, so eagerly
+	 * wrapping the element to "solve" autoplay would commit all room audio to WebAudio forever. Resuming
+	 * playback is a property of the element; the pitch graph stays built lazily on the first non-zero
+	 * shift, exactly as before.
+	 */
+	async function tryPlayMaster(): Promise<void> {
+		if (!master) return;
+		try {
+			await master.play();
+			// It is playing. If we had been blocked, the room just recovered — retract the hint and tell
+			// the page. Guarded on the latch so a normal successful play does not spam the callback.
+			if (autoplayBlocked) {
+				autoplayBlocked = false;
+				onautoplayrecovered?.();
+			}
+		} catch (err: unknown) {
 			const name = err instanceof Error ? err.name : String(err);
-			console.warn(`[tv] the instrumental refused to start (${name}) — the room will be silent`);
-		});
+			if (name === 'NotAllowedError') {
+				// Autoplay was blocked — recoverable by a gesture, so latch it rather than treat it as final.
+				// Announce to the page only from the slot the viewer is actually looking at, so the hidden
+				// pre-warming slot (paused, never really trying to play) cannot raise a phantom hint.
+				if (!autoplayBlocked) {
+					autoplayBlocked = true;
+					console.warn('[tv] autoplay was blocked (NotAllowedError) — waiting for a tap to start the music');
+					if (active && visible) onautoplayblocked?.();
+				}
+			} else {
+				console.warn(`[tv] the instrumental refused to start (${name}) — the room will be silent`);
+			}
+		}
+	}
+
+	// Recovery from a blocked autoplay. A user gesture ANYWHERE on the page (a tap on the TV's own
+	// touchscreen, a click from a paired remote, a keypress) authorises playback for this document, so on
+	// such a gesture we re-attempt the master's play() SYNCHRONOUSLY inside the handler — the play() must
+	// share the gesture's task to consume the user activation. The listener is NOT `once`: it is torn
+	// down by this effect's cleanup, which runs when `autoplayBlocked` clears (a successful re-attempt
+	// flips the latch inside tryPlayMaster). So a gesture that does NOT recover playback (rare, but a
+	// second attempt is free) leaves the listener armed for the next one, while a recovery removes it and
+	// a TV that recovered pays nothing thereafter. We re-align and re-start the guide too, so a recovered
+	// master never leaves the guide silent behind it.
+	//
+	// It does NOT build a WebAudio graph: this is a bare element.play(), so the keyShift===0 invariant —
+	// no AudioContext, no MediaElementSource unless a shift is actually applied — is untouched. A pending
+	// non-zero shift is applied by the pitch-shift effect on its own inputs, independently of this retry.
+	$effect(() => {
+		if (!autoplayBlocked) return;
+		if (typeof window === 'undefined') return;
+		const onGesture = () => {
+			void tryPlayMaster();
+			// Bring the guide along if it is mounted and wanted — it obeys the same transport, but its own
+			// play() was refused by the same policy, so it needs the same nudge.
+			if (vocals && transport === 'play') {
+				if (Math.abs(vocals.currentTime - (master?.currentTime ?? 0)) > GUIDE_PREROLL_ALIGN_SEC) {
+					vocals.currentTime = master?.currentTime ?? 0;
+				}
+				vocals.playbackRate = 1;
+				vocals.preservesPitch = true;
+				vocals.play().catch(() => {});
+			}
+		};
+		// `capture` so it sees the gesture even if something downstream stops propagation. Passive: we
+		// never preventDefault. Not `once` — removal is the effect cleanup's job (fires when the block
+		// clears), so a non-recovering gesture leaves the listener armed for the next attempt.
+		const opts: AddEventListenerOptions = { capture: true, passive: true };
+		window.addEventListener('pointerdown', onGesture, opts);
+		window.addEventListener('keydown', onGesture, opts);
+		return () => {
+			window.removeEventListener('pointerdown', onGesture, opts);
+			window.removeEventListener('keydown', onGesture, opts);
+		};
 	});
 
 	// The guide mirrors the master's transport exactly — the SAME `transport` value, so it can never run
