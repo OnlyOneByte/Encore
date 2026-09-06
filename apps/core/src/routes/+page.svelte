@@ -717,7 +717,7 @@
 			  gear opens the room scope, this opens `?tab=you`.
 			-->
 			<a class="me-btn" href="/settings?tab=you" aria-label="Your profile">
-				<span>{me.displayName}</span>
+				<span class="me-name">{me.displayName}</span>
 				<span class="me-dot" style="--singer:{me.color};"></span>
 			</a>
 			<!--
@@ -1158,6 +1158,14 @@
 		background: var(--singer);
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--singer) 19%, transparent);
 	}
+	/* The one child of the header whose width is user-supplied. A single unbroken token has a
+	   min-content width equal to its full rendered width, so with automatic minimum sizing flex-shrink
+	   cannot take it below that and the row grows the document — carrying the settings gear off the
+	   viewport (#109). Truncate it instead: text-overflow only fires on a block box, so this is a
+	   styled span (block), and min-width:0 must exist up the whole chain (.me-cluster, .me-btn) for it
+	   to actually shrink. The dot (flex:0 0 auto) and the gear (min-width:44px) stay unshrinkable so
+	   the 44px target survives. */
+	.me-name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 	/* 44px, matching every other control in the app. The emoji gear this replaced was ~18px. */
 	.gear {
 		display: grid; place-items: center;
@@ -1390,7 +1398,7 @@
 	   now (it navigates to /settings?tab=you), so the underline a link would default to is dropped —
 	   the tappable affordance here is the 44px box and the colour dot, as it was as a button. */
 	.me-btn {
-		display: inline-flex; align-items: center; gap: 8px;
+		display: inline-flex; align-items: center; gap: 8px; min-width: 0;
 		min-height: 44px; padding: 0 6px;
 		background: none; border: 0; cursor: pointer;
 		color: inherit; font: inherit; text-decoration: none;
@@ -1411,7 +1419,7 @@
 	.topbar { display: flex; align-items: center; gap: 10px; padding: 16px 18px 8px; }
 	/* The name + gear cluster, pushed to the trailing edge. Static styling classed (not inline) so it
 	   inherits the responsive layer rather than freezing raw px. */
-	.me-cluster { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-dim); }
+	.me-cluster { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-dim); }
 	/* Centres the "Show all" way-back button under an empty Ready filter. Classed, not inline, so the
 	   one-off row is not stranded outside the responsive rules with hard px. */
 	.showall-row { display: flex; justify-content: center; padding: 0 0 8px; }
