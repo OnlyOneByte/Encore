@@ -31,7 +31,7 @@ import { backfillVocalsRefs } from './media/vocals-backfill';
 import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
 import { existsSync } from 'node:fs';
-import { markLyricsQueued } from './jobs/make-karaoke';
+import { markLyricsQueued, settleGatesForFailedJob } from './jobs/make-karaoke';
 import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, lookupTitle, readAllSidecars } from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
@@ -475,7 +475,14 @@ export function getApp(): EncoreApp {
 	});
 
 	// When the reaper requeues/fails a job (lease expiry), capacity may have changed → redispatch.
-	app.reaper = new JobReaper(jobs, { onReaped: () => app.workerHub.dispatch() });
+	app.reaper = new JobReaper(jobs, {
+		onReaped: () => app.workerHub.dispatch(),
+		// A reaper-killed cook (worker box died, attempts exhausted) reaches terminal `failed` without
+		// the worker reporting it, so it never hits #onFailed. Settle its readiness gate here just as the
+		// reported and TTL paths do — otherwise readyToSing never flips and rotation holds the queue
+		// entry forever (issue #90). The reaper has no catalog, so it hands the job up and we supply it.
+		onFailed: (job) => settleGatesForFailedJob(job, mediaById)
+	});
 	// Boot recovery (§3): a core restart drops every worker WS session, so any job still marked
 	// assigned/running is orphaned — reset it to queued for redispatch. One-shot, before the tick
 	// loop (server.ts starts the loop). No-op on a fresh/in-memory DB.
