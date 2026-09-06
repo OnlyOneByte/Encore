@@ -1,11 +1,13 @@
 """Guards on the worker's package structure.
 
-These exist because the worker was repackaged into domains/runtime/steps (docs/ARCHITECTURE.md §7.1), and packaging has two
+These exist because the worker was repackaged into domains/runtime/steps (docs/ARCHITECTURE.md
+§7.1), and packaging has two
 failure modes that are silent until something far away breaks. Both were hit while doing the move, which
 is why they are pinned rather than remembered.
 
 They are the first of the spec's enforcement tests (§7). The rest arrive with the runtime.
 """
+
 from __future__ import annotations
 
 import importlib
@@ -89,7 +91,9 @@ def test_the_domain_packages_are_exactly_the_ones_declared():
     domain is a deliberate act, not something that appears because a file needed somewhere to go."""
     src = Path(__file__).resolve().parents[1] / "src"
     found = sorted(
-        p.name for p in src.iterdir() if p.is_dir() and (p / "__init__.py").exists() and not p.name.startswith("_")
+        p.name
+        for p in src.iterdir()
+        if p.is_dir() and (p / "__init__.py").exists() and not p.name.startswith("_")
     )
     assert found == sorted(ALL_PACKAGES), (
         f"packages on disk {found} != declared {sorted(ALL_PACKAGES)}. Add it to DOMAIN_PACKAGES or\n"
@@ -117,8 +121,12 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
             f"{name} still claims the vocals stem is unplayed — it is the guiding track (issue #85)"
         )
     # The true reason must be stated where the policy lives, not merely absent.
-    assert "GUIDING TRACK" in init_doc, "separation/__init__.py must name the guiding track as the reason (#85)"
-    assert "GUIDING TRACK" in separate_src, "steps/separate.py must name the guiding track as the reason (#85)"
+    assert "GUIDING TRACK" in init_doc, (
+        "separation/__init__.py must name the guiding track as the reason (#85)"
+    )
+    assert "GUIDING TRACK" in separate_src, (
+        "steps/separate.py must name the guiding track as the reason (#85)"
+    )
 
     # (2) STEM_BITRATE must not be described as governing BOTH stems; it is the vocals stem only.
     demucs_src = (src / "separation" / "demucs.py").read_text(encoding="utf-8")
@@ -183,6 +191,7 @@ def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution
         "the comment's whole point (issue #103) is that the band reaches ~18 semitones below the "
         f"resolution limit; that gap is now only {midi_cross - _MIN_MIDI:.1f} semitones"
     )
+
 
 def test_the_stem_bitrate_comment_justifies_aac_by_the_vocals_stem_not_the_instrumental():
     """Issue #236. Residue of closed #85: the STEM_BITRATE comment's closing clause still justified the
@@ -310,7 +319,8 @@ def test_no_docstring_claims_step_timings_reach_the_metrics_page():
     # runner.py:12 — "which is what finally gives the internal metrics page real resolution".
     assert "gives the internal metrics page real resolution" not in runner_src, (
         "runner.py again claims per-step timing gives the internal metrics page real resolution — the core "
-        "drops stepTimingsSec at its fact allowlist (attempts.ts pickFacts), so /metrics gets none (issue #377)"
+        "drops stepTimingsSec at its fact allowlist (attempts.ts pickFacts), so /metrics gets "
+        "none (issue #377)"
     )
     # plans.py:69 — ProbeSilence "its cost shows up in `/metrics`".
     assert "its cost shows up in `/metrics`" not in plans_src, (
@@ -320,7 +330,8 @@ def test_no_docstring_claims_step_timings_reach_the_metrics_page():
     # plans.py:72 — KeyAndRange "so nothing could see what it cost", implying that as a step something can.
     assert "so nothing could see what it cost" not in plans_src, (
         "plans.py again ends the KeyAndRange rationale with 'so nothing could see what it cost', implying a "
-        "step's cost is now observable — it is measured but not surfaced (dropped at the allowlist) (issue #377)"
+        "step's cost is now observable — it is measured but not surfaced (dropped at the "
+        "allowlist) (issue #377)"
     )
 
     # ── PRESENCE: the corrected framing must be NAMED, not merely absent, so a revert reds this test ─
@@ -331,7 +342,8 @@ def test_no_docstring_claims_step_timings_reach_the_metrics_page():
     )
     # plans.py must state KeyAndRange's cost is measured but not yet surfaced.
     assert "not yet surfaced" in plans_src, (
-        "plans.py must state KeyAndRange's cost is now measured but not yet surfaced anywhere (the core drops "
+        "plans.py must state KeyAndRange's cost is now measured but not yet surfaced anywhere "
+        "(the core drops "
         "it at its fact allowlist) (issue #377)"
     )
 

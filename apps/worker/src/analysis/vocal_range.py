@@ -21,12 +21,12 @@ transcription-grade tracker.
 numpy + stdlib ONLY (wave is stdlib). No torch, no soundfile: the stem is a plain PCM WAV in scratch
 at this point in the cook, before it is encoded to m4a.
 """
+
 from __future__ import annotations
 
 import math
 import wave
 from dataclasses import dataclass
-from typing import List, Optional
 
 import numpy as np
 
@@ -150,13 +150,13 @@ def _detect_f0(frame: np.ndarray, sample_rate: int) -> tuple[float, float]:
 
 def extract_pitch_track(
     samples: np.ndarray, sample_rate: int, *, frame: int = 2048, hop: int = _DEFAULT_HOP
-) -> List[PitchFrame]:
+) -> list[PitchFrame]:
     """Per-frame monophonic pitch track over a mono signal. Each frame gets a normalized-
     autocorrelation f0 + clarity; a frame is `voiced` only when its clarity clears _CLARITY_THRESHOLD
     AND its f0 lands in the human singing band. Unvoiced frames are still emitted (with voiced=False)
     so the caller sees the full timeline, but they carry no usable pitch."""
     x = np.asarray(samples, dtype=np.float64).ravel()
-    frames: List[PitchFrame] = []
+    frames: list[PitchFrame] = []
     if x.size < frame:
         return frames
     for start in range(0, x.size - frame + 1, hop):
@@ -170,7 +170,7 @@ def extract_pitch_track(
     return frames
 
 
-def summarize_range(frames: List[PitchFrame], *, hop_sec: Optional[float] = None) -> dict:
+def summarize_range(frames: list[PitchFrame], *, hop_sec: float | None = None) -> dict:
     """Summarize a pitch track into the vocal-range half of the songProfile.
 
     Considers ONLY voiced frames — an unvoiced frame has no pitch and must never widen the range.
@@ -228,7 +228,7 @@ def summarize_range(frames: List[PitchFrame], *, hop_sec: Optional[float] = None
     }
 
 
-def _infer_hop_sec(frames: List[PitchFrame]) -> float:
+def _infer_hop_sec(frames: list[PitchFrame]) -> float:
     """Seconds-per-frame from consecutive timestamps. Uses the first positive gap it finds so a couple
     of identical timestamps at the head don't collapse it to zero; 0.0 for a single frame."""
     for i in range(1, len(frames)):

@@ -13,6 +13,7 @@ Demucs `--two-stems=vocals` emits two files; the INSTRUMENTAL (backing track) is
 published: the instrumental is the karaoke output, and the isolated `vocals.wav` feeds the song profile and
 the vocal-guide mix (docs/ARCHITECTURE.md §7).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -20,7 +21,8 @@ import os
 import re
 import signal
 from collections import deque
-from typing import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable
+from typing import cast
 
 DEFAULT_MODEL = "htdemucs"
 
@@ -41,7 +43,8 @@ def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
         return default
     if requested not in DEMUCS_MODELS:
         raise ValueError(f"unknown demucs model {requested!r}; expected one of {DEMUCS_MODELS}")
-    return requested
+    return cast(str, requested)
+
 
 # ── pure helpers (no IO) ─────────────────────────────────────────────────────────
 
@@ -56,13 +59,20 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
     alone -- see the `-ar` note in the argv below before adding one back.
     """
     return [
-        ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
-        "-i", input_path,
-        "-ac", "2",
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        input_path,
+        "-ac",
+        "2",
         # NO -ar: keep the SOURCE sample rate. YouTube serves 48 kHz Opus, so forcing 44100 here was a
         # resampling stage that cost quality and bought nothing — every output format we use (FLAC,
         # AAC, Opus) handles 48 kHz natively.
-        "-c:a", "pcm_s16le",
+        "-c:a",
+        "pcm_s16le",
         out_wav,
     ]
 
@@ -91,24 +101,47 @@ def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", 
     starting playback.
     """
     return [
-        ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
-        "-i", input_wav,
-        "-c:a", "flac", "-compression_level", str(level), "-sample_fmt", "s16", "-ac", "2",
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        input_wav,
+        "-c:a",
+        "flac",
+        "-compression_level",
+        str(level),
+        "-sample_fmt",
+        "s16",
+        "-ac",
+        "2",
         out_path,
     ]
 
 
-def encode_stem_argv(input_wav: str, out_path: str, bitrate: str = STEM_BITRATE, ffmpeg_bin: str = "ffmpeg") -> list[str]:
+def encode_stem_argv(
+    input_wav: str, out_path: str, bitrate: str = STEM_BITRATE, ffmpeg_bin: str = "ffmpeg"
+) -> list[str]:
     """ffmpeg argv: encode a separated WAV stem to stereo AAC in an m4a container (VOCALS stem)."""
     return [
-        ffmpeg_bin, "-hide_banner", "-loglevel", "error", "-y",
-        "-i", input_wav,
-        "-c:a", "aac", "-b:a", bitrate, "-ac", "2",
-        "-movflags", "+faststart",  # moov atom first so a browser can start playing before full download
+        ffmpeg_bin,
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-y",
+        "-i",
+        input_wav,
+        "-c:a",
+        "aac",
+        "-b:a",
+        bitrate,
+        "-ac",
+        "2",
+        "-movflags",
+        "+faststart",  # moov atom first so a browser can start playing before full download
         out_path,
     ]
-
-
 
 
 def demucs_argv(
@@ -118,7 +151,7 @@ def demucs_argv(
     demucs_bin: str = "demucs",
     *,
     device: str | None = None,
-    jobs: int = 1,
+    jobs: int | None = 1,
     overlap: float | None = None,
     segment: int | None = None,
     shifts: int | None = None,
@@ -138,10 +171,14 @@ def demucs_argv(
     """
     argv = [
         demucs_bin,
-        "-n", model,
-        "--two-stems", "vocals",
-        "-o", out_dir,
-        "--filename", "{stem}.{ext}",
+        "-n",
+        model,
+        "--two-stems",
+        "vocals",
+        "-o",
+        out_dir,
+        "--filename",
+        "{stem}.{ext}",
     ]
     if device:
         argv += ["-d", device]
@@ -248,7 +285,7 @@ async def _iter_lines(stream: asyncio.StreamReader) -> AsyncIterator[str]:
         yield buf.decode("utf-8", "replace")
 
 
-async def _terminate(proc: "asyncio.subprocess.Process") -> None:
+async def _terminate(proc: asyncio.subprocess.Process) -> None:
     """Kill the child AND ITS CHILDREN if still running, then AWAIT it so it is reaped (no zombie, no
     leaked handle). SIGKILL rather than SIGTERM because these CLIs ignore polite signals mid-work, and by
     the time we terminate we have already decided the process must not survive this generator.
@@ -312,7 +349,7 @@ async def subprocess_runner(argv: list[str]) -> AsyncIterator[str]:
             except StopAsyncIteration:
                 break
             except asyncio.TimeoutError:
-                raise ProcessTimeout(argv, SUBPROCESS_IDLE_TIMEOUT_SEC)
+                raise ProcessTimeout(argv, SUBPROCESS_IDLE_TIMEOUT_SEC) from None
             tail.append(line)
             yield line
         rc = await proc.wait()
@@ -322,4 +359,3 @@ async def subprocess_runner(argv: list[str]) -> AsyncIterator[str]:
         # Normal exit: proc has already been waited and this is a cheap no-op. Exception / timeout /
         # GeneratorExit: this is the path that stops the orphaned child.
         await _terminate(proc)
-

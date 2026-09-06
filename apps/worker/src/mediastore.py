@@ -8,10 +8,12 @@ that's a boto3/minio put; in tests it's a fake. Mirrors the TS MediaStore: local
 opt-in, identical key layout (stems/<id>-instrumental.wav, lyrics/<id>.json) so the core resolves
 the same ref it told the worker to write.
 """
+
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 
 @dataclass
@@ -59,7 +61,9 @@ def _str_or_none(v: Any) -> str | None:
 Uploader = Callable[[str, str], None]
 
 
-def make_publisher(config: MediaStoreConfig, s3_put: Callable[[str, str, str], None] | None = None) -> Uploader:
+def make_publisher(
+    config: MediaStoreConfig, s3_put: Callable[[str, str, str], None] | None = None
+) -> Uploader:
     """Build the post-process publisher for a store config. local → no-op (the file is already on
     the shared volume the core reads). object → upload local_path to bucket/object_key(ref) via the
     injected s3_put(bucket, key, local_path) (boto3/minio on a real worker; a fake in tests)."""

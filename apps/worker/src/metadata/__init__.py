@@ -26,6 +26,7 @@ raise AttributeError on a plain function object. So only `MusicBrainzClient` is 
 function at its full path (`from .metadata.annotate import annotate`), which is also more readable at the
 call site.
 """
+
 from __future__ import annotations
 
 from .annotate import MusicBrainzClient

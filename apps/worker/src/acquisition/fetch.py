@@ -31,6 +31,7 @@ tested: the argv builders below are pure, and the only thing that touches the ne
 They were part of the pre-S0 monolith, and left where they were, the acquisition step had to reach into
 the separation domain to download a file — the one thing E6 says acquisition owns.
 """
+
 from __future__ import annotations
 
 import os
@@ -69,7 +70,12 @@ def find_downloaded(directory: str, media_id: str) -> str | None:
     except OSError:
         return None
     for name in names:
-        if name.startswith(f"{media_id}.") and ".part" not in name and not name.endswith(".ytdl") and ".temp." not in name:
+        if (
+            name.startswith(f"{media_id}.")
+            and ".part" not in name
+            and not name.endswith(".ytdl")
+            and ".temp." not in name
+        ):
             return os.path.join(directory, name)
     return None
 
@@ -97,8 +103,10 @@ def download_argv(source_uri: str, out_template: str, ytdlp_bin: str = "yt-dlp")
         ytdlp_bin,
         "--no-playlist",
         "--newline",  # emit progress as discrete lines (not \r) so the parser sees each update
-        "-f", FORMAT_SELECTOR,  # audio-only, native container, codec-ranked
-        "-o", out_template,
+        "-f",
+        FORMAT_SELECTOR,  # audio-only, native container, codec-ranked
+        "-o",
+        out_template,
         source_uri,
     ]
 

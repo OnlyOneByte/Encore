@@ -3,9 +3,11 @@
 Acquisition itself is `steps/acquire.py` — shared with stems and align, which is the point of making
 `fetch` its own action rather than a stage every consumer repeats.
 """
+
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from ..processor import ProgressEvent
 from ..runtime.ctx import Ctx
@@ -51,9 +53,11 @@ class Annotate(Step):
         # analysis SongProfile). A raw asyncio.to_thread here emitted NOTHING for the whole MusicBrainz wait,
         # and that wait can be long: the gate serialises calls and SLEEPS to hold one request per second, so a
         # throttled/slow service holds this thread well past the core's 30 s progress lease — the ONLY emitter
-        # of job:progress during the wait is gone, the reaper requeues a healthy cook (progress-lease-expired),
+        # of job:progress during the wait is gone, the reaper requeues a healthy cook
+        # (progress-lease-expired),
         # and each retry is a full re-acquire. run_blocking yields a keepalive ProgressEvent every
-        # LEASE_KEEPALIVE_SEC so the lease is renewed. pct=100 matches analysis: acquisition has already reached
+        # LEASE_KEEPALIVE_SEC so the lease is renewed. pct=100 matches analysis: acquisition has
+        # already reached
         # 100 by the time Annotate runs, so the keepalive holds the bar rather than moving it backward.
         got = reason = None
         try:

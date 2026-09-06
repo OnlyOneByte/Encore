@@ -15,10 +15,11 @@ The aligner is not text-source-specific. It upgrades ANY text — a database loo
 captions, a local transcript — from line timing to word timing, which is why there is exactly one of
 these and every tier goes through it.
 """
+
 from __future__ import annotations
 
 import threading
-from typing import Any, Protocol
+from typing import Any, Protocol, cast
 
 #: See the module docstring. Public because asr.py takes the same lock.
 ML_LOCK = threading.RLock()
@@ -58,17 +59,17 @@ class WhisperxForcedAligner:
             # return_char_alignments=False → word-level only (what the overlay needs)
             out = whisperx.align(segments, model, meta, audio, self._device, return_char_alignments=False)
         out.setdefault("language", language)
-        return out
+        return cast(dict[str, Any], out)
 
 
 # ── the aligner cache ──────────────────────────────────────────────────────────────
 #
 # Same reasoning as the transcriber cache in asr.py: keyed by device at module level so concurrent jobs
 # share one loaded wav2vec2 model instead of one evicting the other's, and so no job pays to re-read it.
-_ALIGNERS: dict[str, "WhisperxForcedAligner"] = {}
+_ALIGNERS: dict[str, WhisperxForcedAligner] = {}
 
 
-def aligner_for(device: str) -> "WhisperxForcedAligner":
+def aligner_for(device: str) -> WhisperxForcedAligner:
     """The aligner for this device, loading its weights at most once per worker."""
     with ML_LOCK:
         got = _ALIGNERS.get(device)

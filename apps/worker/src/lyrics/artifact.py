@@ -16,6 +16,7 @@ this format, while only one of them depends on how the timings were obtained.
 
 PURE: dict in, dict out. No numpy, no torch, no I/O.
 """
+
 from __future__ import annotations
 
 from typing import Any
@@ -89,7 +90,7 @@ def is_valid_lyrics(doc: dict[str, Any]) -> bool:
     lines = doc.get("lines")
     if not isinstance(lines, list) or not lines:
         return False
-    return any(isinstance(l, dict) and l.get("words") for l in lines)
+    return any(isinstance(ln, dict) and ln.get("words") for ln in lines)
 
 
 def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str, Any]]:

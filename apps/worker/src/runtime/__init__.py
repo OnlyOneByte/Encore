@@ -11,6 +11,7 @@ it must never import from a domain package — the dependency rule in
 allowed to import both the runtime and the steps, precisely so that rule holds mechanically rather than
 by good intentions.
 """
+
 from __future__ import annotations
 
 from .ctx import AudioCtx, Ctx, LyricsCtx, Outputs, ResolvedEngines, StemsCtx

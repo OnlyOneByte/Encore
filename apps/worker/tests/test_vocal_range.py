@@ -2,6 +2,7 @@
 PitchFrame lists (no audio needed). A couple of tests also exercise the pure-numpy tracker on a
 synthesized tone, since the `pitch_track.py` the task described does not exist and the tracker had to
 live in this module."""
+
 import ast
 import sys
 from pathlib import Path
@@ -36,8 +37,8 @@ def test_absolute_extremes_use_all_voiced_frames():
     # A run mostly in the middle with ONE low outlier and ONE high outlier. low/high are the absolute
     # extremes; the outliers are exactly what the percentiles should discount.
     frames = [_frame(i * 0.1, 60) for i in range(98)]
-    frames.append(_frame(9.8, 48))   # one very low note
-    frames.append(_frame(9.9, 84))   # one very high note
+    frames.append(_frame(9.8, 48))  # one very low note
+    frames.append(_frame(9.9, 84))  # one very high note
     out = vocal_range.summarize_range(frames, hop_sec=0.1)
     assert out["lowMidi"] == 48.0
     assert out["highMidi"] == 84.0
@@ -138,7 +139,9 @@ def test_tracker_on_noise_rejects_every_frame_via_the_clarity_term():
 
     assert len(frames) == 40, "expected 40 analysis frames from 1.0s at hop 512"
     # No frame may be voiced: pure noise must never widen a vocal range.
-    assert all(not f.voiced for f in frames), "noise produced voiced frames — the clarity gate is not rejecting it"
+    assert all(not f.voiced for f in frames), (
+        "noise produced voiced frames — the clarity gate is not rejecting it"
+    )
     # ...and the summary is fully null, the same all-null contract the silent-vocals path relies on.
     assert vocal_range.summarize_range(frames) == {
         "lowMidi": None,

@@ -14,9 +14,11 @@ costs one class rather than a rewrite. The revisit trigger is written down in th
 divergence `plan_for` cannot resolve up front, where moving it to the core would be wrong rather than
 merely inconvenient.
 """
+
 from __future__ import annotations
 
-from typing import Iterable, Protocol
+from collections.abc import Iterable
+from typing import Protocol
 
 from ..processor import JobSpec
 from ..vocabulary import Action, Stage, parse_action

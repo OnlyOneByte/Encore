@@ -17,12 +17,13 @@ claiming "both separation and alignment call it" was false for three of four cal
 CLASSES, NOT FUNCTIONS, so one class can fill two plan slots with different construction —
 `FetchCaptions(AUTHORED)` and `FetchCaptions(MACHINE)` are the same code and different steps.
 """
+
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import AsyncIterator
 
 from ..processor import ProgressEvent
 from ..vocabulary import Stage

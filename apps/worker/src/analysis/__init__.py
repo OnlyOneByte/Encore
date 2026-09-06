@@ -20,6 +20,7 @@ step in both separation plans, which is what finally makes it measurable.
 
 PURE by construction: numpy in, dict out. No subprocess, no network, no torch.
 """
+
 from __future__ import annotations
 
 from .key_detect import detect_key

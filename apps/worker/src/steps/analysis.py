@@ -5,9 +5,11 @@ Its own step because it was invisible. `build_song_profile` used to be called in
 was billed to SEPARATING and `/metrics` could not see it at all. Two call sites hand-assembling the same
 artifact is also what let `songProfile` ship as a sibling of `stems` where the core read it nested.
 """
+
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from ..analysis import build_song_profile
 from ..processor import ProgressEvent

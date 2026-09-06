@@ -5,11 +5,10 @@ about the machine running them. That matters here more than usual: the bug being
 invisible on an un-contained box, so a test that reads the real /sys would pass on this dev box
 whether the code worked or not.
 """
+
 from __future__ import annotations
 
 import os
-
-import pytest
 
 from src import hardware
 
@@ -38,18 +37,24 @@ def test_cgroup_v2_max_means_unlimited(tmp_path):
 def test_cgroup_v1_quota_is_read_too(tmp_path):
     # v1 is still the live layout on Amazon Linux 2, and a v2-only reader silently reports "no limit"
     # there — the same outcome as not looking at all.
-    root = _tree(tmp_path, {
-        "sys/fs/cgroup/cpu/cpu.cfs_quota_us": "200000\n",
-        "sys/fs/cgroup/cpu/cpu.cfs_period_us": "100000\n",
-    })
+    root = _tree(
+        tmp_path,
+        {
+            "sys/fs/cgroup/cpu/cpu.cfs_quota_us": "200000\n",
+            "sys/fs/cgroup/cpu/cpu.cfs_period_us": "100000\n",
+        },
+    )
     assert hardware.cgroup_cpu_quota(root) == 2.0
 
 
 def test_cgroup_v1_negative_quota_means_unlimited(tmp_path):
-    root = _tree(tmp_path, {
-        "sys/fs/cgroup/cpu/cpu.cfs_quota_us": "-1\n",
-        "sys/fs/cgroup/cpu/cpu.cfs_period_us": "100000\n",
-    })
+    root = _tree(
+        tmp_path,
+        {
+            "sys/fs/cgroup/cpu/cpu.cfs_quota_us": "-1\n",
+            "sys/fs/cgroup/cpu/cpu.cfs_period_us": "100000\n",
+        },
+    )
     assert hardware.cgroup_cpu_quota(root) is None
 
 
@@ -78,10 +83,13 @@ def test_meminfo_is_converted_from_kb_to_bytes(tmp_path):
 
 def test_available_memory_takes_the_tighter_of_cgroup_and_meminfo(tmp_path):
     # The container ceiling wins even when the host has plenty free — that is the whole point.
-    root = _tree(tmp_path, {
-        "proc/meminfo": f"MemAvailable: {64 * 1024 * 1024} kB\n",  # 64 GiB
-        "sys/fs/cgroup/memory.max": str(2 * 1024**3) + "\n",  # 2 GiB
-    })
+    root = _tree(
+        tmp_path,
+        {
+            "proc/meminfo": f"MemAvailable: {64 * 1024 * 1024} kB\n",  # 64 GiB
+            "sys/fs/cgroup/memory.max": str(2 * 1024**3) + "\n",  # 2 GiB
+        },
+    )
     assert hardware.available_memory_bytes(root) == 2 * 1024**3
 
 

@@ -5,12 +5,14 @@ placeholder artifact. The real implementation is `runtime.runner.PlanRunner`, wh
 the SAME interface (an async generator of ProgressEvent ending with a CompleteResult) — so the
 dial-home loop never changes, and one runner serves all four actions rather than a class per action.
 """
+
 from __future__ import annotations
 
 import asyncio
 import os
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
-from typing import AsyncIterator, Protocol
+from typing import Protocol
 
 from . import protocol
 
@@ -193,4 +195,3 @@ class RoutingProcessor:
         if proc is None:
             raise RuntimeError(f"no processor for job type: {job.job_type}")
         return proc.process(job)
-

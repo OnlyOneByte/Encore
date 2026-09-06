@@ -1,5 +1,6 @@
 """LRCLIB lyrics source (known-text stage) — pure LRC parse/segment/shape + the injectable-fetcher
 client. No network (this box DNS-sinkholes lrclib.net; the real fetch is deferred to the deploy box)."""
+
 import sys
 from pathlib import Path
 
@@ -8,7 +9,6 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.lyrics import source as ls  # noqa: E402
-
 
 # ── LRC parsing ──────────────────────────────────────────────────────────────────
 LRC = """[ar:a-ha]
@@ -95,8 +95,8 @@ def test_line_synced_lyrics_shape_and_validity():
     segs = ls.entries_to_segments([ls.LrcEntry(1.0, "a"), ls.LrcEntry(2.0, "b")], total_duration=3.0)
     doc = ls.line_synced_lyrics(segs, language="en")
     assert doc["language"] == "en"
-    assert [l["text"] for l in doc["lines"]] == ["a", "b"]
-    assert all(l["words"] == [] for l in doc["lines"])  # line-synced → NO word timings
+    assert [ln["text"] for ln in doc["lines"]] == ["a", "b"]
+    assert all(ln["words"] == [] for ln in doc["lines"])  # line-synced → NO word timings
     assert doc["words"] == []
     assert ls.is_line_synced(doc) is True  # ≥1 line with numeric start + text (words NOT required)
     assert ls.is_line_synced({"lines": []}) is False
@@ -111,9 +111,13 @@ def test_lrclib_get_url_encodes_and_rounds_duration():
 
 
 def test_parse_lrclib_response():
-    r = ls.parse_lrclib_response({"id": 42, "instrumental": False, "syncedLyrics": "[00:01.00]hi", "plainLyrics": "hi"})
+    r = ls.parse_lrclib_response(
+        {"id": 42, "instrumental": False, "syncedLyrics": "[00:01.00]hi", "plainLyrics": "hi"}
+    )
     assert r.id == 42 and r.instrumental is False and r.has_synced and r.has_plain
-    inst = ls.parse_lrclib_response({"id": 9, "instrumental": True, "syncedLyrics": None, "plainLyrics": None})
+    inst = ls.parse_lrclib_response(
+        {"id": 9, "instrumental": True, "syncedLyrics": None, "plainLyrics": None}
+    )
     assert inst.instrumental and not inst.has_synced and not inst.has_plain
 
 
@@ -150,7 +154,8 @@ SEARCH_BODY = (
     '{"id":11,"instrumental":false,"syncedLyrics":"[00:01.00]solo","plainLyrics":"solo",'
     '"trackName":"Telephone","artistName":"Lady Gaga","albumName":"The Fame Monster","duration":218},'
     '{"id":12,"instrumental":false,"syncedLyrics":"[00:01.00]feat","plainLyrics":"feat",'
-    '"trackName":"Telephone","artistName":"Lady Gaga feat. Beyoncé","albumName":"The Fame Monster","duration":243}'
+    '"trackName":"Telephone","artistName":"Lady Gaga feat. Beyoncé",'
+    '"albumName":"The Fame Monster","duration":243}'
     "]"
 )
 

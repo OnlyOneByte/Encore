@@ -2,6 +2,7 @@
 'the analysis step ran' and an ABSENT one as 'still cooking', so the load-bearing assertion is that a
 songProfile object is ALWAYS in the completion artifacts, with null inner fields when analysis found
 or produced nothing. A profile failure must NEVER fail the job."""
+
 import os
 import sys
 import wave
@@ -12,10 +13,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.separation import demucs  # noqa: E402
 from src import plans  # noqa: E402
 from src.analysis import song_profile  # noqa: E402
 from src.processor import CompleteResult, JobSpec  # noqa: E402
+from src.separation import demucs  # noqa: E402
 
 WIRE_KEYS = {"keyTonic", "keyMode", "keyConfidence", "lowMidi", "highMidi", "p05Midi", "p95Midi", "histogram"}
 
@@ -95,6 +96,7 @@ def test_silent_vocals_yield_null_range_not_a_failure(tmp_path):
 # ── engine wiring: demucs always publishes songProfile ────────────────────────────────
 def _demucs_fake_runner(tmp_path):
     """Mirrors test_demucs.fake_runner: writes the files the CLIs would, emits nothing useful."""
+
     async def run(argv):
         binary = argv[0]
         if binary == "yt-dlp":
@@ -130,8 +132,14 @@ async def _drain(proc, job):
 async def test_demucs_publishes_songprofile_even_when_analysis_fails(tmp_path):
     # The fake runner writes placeholder-byte "WAV"s, so the REAL profiler will fail to parse them and
     # degrade to nulls — exactly the always-publish path. songProfile MUST still be present.
-    job = JobSpec(job_id="j", media_id="m1", job_type="stems",
-                  source_uri="https://youtube.com/watch?v=x", params={}, media_dir=str(tmp_path))
+    job = JobSpec(
+        job_id="j",
+        media_id="m1",
+        job_type="stems",
+        source_uri="https://youtube.com/watch?v=x",
+        params={},
+        media_dir=str(tmp_path),
+    )
     proc = plans.stems_runner(runner=_demucs_fake_runner(tmp_path))  # default (real) profiler
     events = await _drain(proc, job)
     complete = [e for e in events if isinstance(e, CompleteResult)][0]
@@ -152,8 +160,14 @@ async def test_demucs_passes_the_raw_wavs_to_the_profiler(tmp_path):
         seen["inst"], seen["voc"], seen["media_id"] = inst, voc, media_id
         return song_profile.empty_profile()
 
-    job = JobSpec(job_id="j", media_id="m1", job_type="stems",
-                  source_uri="https://youtube.com/watch?v=x", params={}, media_dir=str(tmp_path))
+    job = JobSpec(
+        job_id="j",
+        media_id="m1",
+        job_type="stems",
+        source_uri="https://youtube.com/watch?v=x",
+        params={},
+        media_dir=str(tmp_path),
+    )
     proc = plans.stems_runner(runner=_demucs_fake_runner(tmp_path), profiler=spy_profiler)
     await _drain(proc, job)
     assert seen["inst"].endswith("no_vocals.wav")

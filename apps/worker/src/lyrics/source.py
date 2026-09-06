@@ -9,12 +9,14 @@ PURE parse/shape logic (no network, no ML) is unit-tested with LRC fixtures. The
 the deploy box (this corp box DNS-sinkholes lrclib.net). Output mirrors whisperx.normalize_lyrics'
 artifact shape: {language, lines:[{start,end,text,words:[]}], words:[]} (words empty until aligned).
 """
+
 from __future__ import annotations
 
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 LRCLIB_BASE = "https://lrclib.net"
 # LRCLIB asks non-browser clients to identify themselves + a contact/link (their docs).
@@ -34,7 +36,7 @@ class LyricsFetchError(RuntimeError):
 def _stamp_to_sec(mm: str, ss: str, frac: str | None) -> float:
     """[mm:ss.frac] → seconds. `frac` is read as a decimal fraction of a second, so '5'→0.5,
     '50'→0.50, '500'→0.500 all resolve correctly (no centi-vs-milli ambiguity)."""
-    total = int(mm) * 60 + int(ss)
+    total: float = int(mm) * 60 + int(ss)
     if frac:
         total += float(f"0.{frac}")
     return round(total, 3)
@@ -105,12 +107,14 @@ def entries_to_segments(
 def plain_lyrics_to_segments(plain_text: str, total_duration: float | None) -> list[dict[str, Any]]:
     """Un-timed plain lyrics → segments with bounds EVENLY distributed across the track, so the
     aligner still has a per-line window to refine. Falls back to 1s/line when duration is unknown."""
-    lines = [l.strip() for l in (plain_text or "").splitlines() if l.strip()]
+    lines = [ln.strip() for ln in (plain_text or "").splitlines() if ln.strip()]
     if not lines:
         return []
     dur = total_duration if (total_duration and total_duration > 0) else float(len(lines))
     step = dur / len(lines)
-    return [{"start": round(i * step, 3), "end": round((i + 1) * step, 3), "text": t} for i, t in enumerate(lines)]
+    return [
+        {"start": round(i * step, 3), "end": round((i + 1) * step, 3), "text": t} for i, t in enumerate(lines)
+    ]
 
 
 def line_synced_lyrics(segments: list[dict[str, Any]], language: str | None = None) -> dict[str, Any]:
@@ -127,7 +131,8 @@ def is_line_synced(doc: dict[str, Any]) -> bool:
     if not isinstance(lines, list):
         return False
     return any(
-        isinstance(l, dict) and isinstance(l.get("start"), (int, float)) and bool(l.get("text")) for l in lines
+        isinstance(ln, dict) and isinstance(ln.get("start"), (int, float)) and bool(ln.get("text"))
+        for ln in lines
     )
 
 
@@ -174,7 +179,9 @@ class LrclibResult:
 Fetcher = Callable[[str, dict[str, str]], "tuple[int, str]"]
 
 
-def lrclib_get_url(base: str, artist: str, track: str, duration: float | None = None, album: str | None = None) -> str:
+def lrclib_get_url(
+    base: str, artist: str, track: str, duration: float | None = None, album: str | None = None
+) -> str:
     from urllib.parse import urlencode
 
     q: dict[str, str] = {"artist_name": artist, "track_name": track}
@@ -297,7 +304,9 @@ class LrclibClient:
         self._fetch = fetcher or _urllib_fetch
         self._base = base_url
 
-    def get(self, artist: str, track: str, duration: float | None = None, album: str | None = None) -> LrclibResult | None:
+    def get(
+        self, artist: str, track: str, duration: float | None = None, album: str | None = None
+    ) -> LrclibResult | None:
         url = lrclib_get_url(self._base, artist, track, duration, album)
         status, body = self._fetch(url, {"User-Agent": USER_AGENT, "Accept": "application/json"})
         if status == 404:

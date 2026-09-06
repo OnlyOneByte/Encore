@@ -30,13 +30,15 @@ PURE/IO SPLIT as elsewhere in this worker: query building, normalisation, scorin
 and unit-tested against captured responses; only the client touches the network, through an injected
 fetcher.
 """
+
 from __future__ import annotations
 
 import json
 import re
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 MB_BASE = "https://musicbrainz.org/ws/2"
 
@@ -114,7 +116,8 @@ def build_query(artist: str, track: str) -> str:
 def search_url(base: str, artist: str, track: str, limit: int = 10) -> str:
     from urllib.parse import urlencode
 
-    return f"{base}/recording?{urlencode({'query': build_query(artist, track), 'fmt': 'json', 'limit': str(limit)})}"
+    qs = urlencode({"query": build_query(artist, track), "fmt": "json", "limit": str(limit)})
+    return f"{base}/recording?{qs}"
 
 
 # ── pure: parsing + matching ──────────────────────────────────────────────────────
@@ -323,7 +326,12 @@ def pick_best(
     scored.sort(key=lambda t: (t[0], t[1], t[2], t[3]))
     *_, best, conf = scored[0]
     return Annotation(
-        mbid=best.mbid, artist=best.artist, title=best.title, confidence=conf, album=best.album, year=best.year
+        mbid=best.mbid,
+        artist=best.artist,
+        title=best.title,
+        confidence=conf,
+        album=best.album,
+        year=best.year,
     )
 
 
@@ -381,7 +389,7 @@ class RateLimiter:
                 self._sleep(wait)
         self._last_call = self._now()
 
-    def run(self, call: Callable[[], "tuple[int, str]"]) -> "tuple[int, str]":
+    def run(self, call: Callable[[], tuple[int, str]]) -> tuple[int, str]:
         """Execute one paced request under the gate, retrying a 503 with backoff.
 
         Retries happen INSIDE the lock so a throttled box does not have every other queued caller pile

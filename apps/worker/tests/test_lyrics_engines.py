@@ -9,10 +9,12 @@ these values were hardcoded:
   * changing the model must drop the CACHED transcriber AND the cached source list that holds it.
     Otherwise the log says one model and AsrSource keeps using the previous weights.
 """
+
 from __future__ import annotations
 
 import pytest
 
+from src import plans  # noqa: E402
 from src.lyrics.chain import (
     SOURCE_ASR,
     SOURCE_LRCLIB,
@@ -21,11 +23,10 @@ from src.lyrics.chain import (
     TIMING_WORD,
     LyricsText,
 )
-from src.vocabulary import AsrModel, SyncMode, parse_asr_model, parse_sync_mode
-from src import plans  # noqa: E402
+from src.lyrics.source import plain_lyrics_to_segments  # noqa: E402
 from src.runtime.ctx import ResolvedEngines  # noqa: E402
 from src.steps.lyrics import _time_one  # noqa: E402
-from src.lyrics.source import plain_lyrics_to_segments  # noqa: E402
+from src.vocabulary import AsrModel, SyncMode, parse_asr_model, parse_sync_mode
 
 
 class _FakeTranscriber:
@@ -223,7 +224,7 @@ def test_the_factory_hands_concurrent_callers_ONE_instance_not_two(monkeypatch, 
             barrier = threading.Barrier(n)
             got = [None] * n
 
-            def worker(i):
+            def worker(i, barrier=barrier, got=got):
                 barrier.wait()  # release all threads into the factory at the same instant
                 got[i] = call()
 
@@ -280,7 +281,11 @@ class _SpyAligner:
                     "end": s["end"],
                     "text": s["text"],
                     "words": [
-                        {"word": t, "start": round(s["start"] + i * span, 3), "end": round(s["start"] + (i + 1) * span, 3)}
+                        {
+                            "word": t,
+                            "start": round(s["start"] + i * span, 3),
+                            "end": round(s["start"] + (i + 1) * span, 3),
+                        }
                         for i, t in enumerate(toks)
                     ],
                 }
