@@ -57,6 +57,11 @@
 	// dropped. Progress needs both.
 	let durationSec = $state(0);
 	let skipNotice = $state('');
+	// The active player slot's instrumental had its autoplay REFUSED (NotAllowedError) and the room is
+	// silent until someone provides a user gesture. A TV wall registers no gesture on its own, so we
+	// surface an on-screen affordance; TvPlayer arms a document-wide gesture listener that re-attempts
+	// playback and clears this the moment the room recovers. Only the active+visible slot reports here.
+	let autoplayBlocked = $state(false);
 	let tvProgressStyle = $derived(settings.room.tvProgressStyle);
 	// What the room paints behind the song. Derived from the same settings object, so a live
 	// settings:changed needs no per-field assignment here.
@@ -547,6 +552,8 @@
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
 		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
+		onautoplayblocked={() => (autoplayBlocked = true)}
+		onautoplayrecovered={() => (autoplayBlocked = false)}
 	/>
 	<TvPlayer
 		media={slotMedia.B}
@@ -562,6 +569,8 @@
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
 		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s, d, 100); }}
+		onautoplayblocked={() => (autoplayBlocked = true)}
+		onautoplayrecovered={() => (autoplayBlocked = false)}
 	/>
 
 	<!-- Word-timed karaoke lyrics over the active player -->
@@ -756,6 +765,28 @@
 		</div>
 	{/if}
 
+	<!--
+		AUTOPLAY BLOCKED — the room is silent until a gesture. Shown ONLY when the active player's
+		instrumental.play() was refused with NotAllowedError (TvPlayer -> onautoplayblocked), so a TV that
+		autoplays fine never sees it. It is a full-screen affordance at the very top of the stack (z 10, above
+		even the status dot) so a tap ANYWHERE lands on it — but the recovery does not depend on hitting this
+		element: TvPlayer arms a document-wide gesture listener, so any tap/keypress on the page starts the
+		music and clears this via onautoplayrecovered. The overlay is purely the on-screen SAY of what a tap
+		will do; it is also click-dismissable so a viewer who preferred silence can put it away.
+	-->
+	{#if autoplayBlocked}
+		<button
+			type="button"
+			class="autoplay-hint"
+			onclick={() => (autoplayBlocked = false)}
+			aria-label="Tap anywhere to start the music"
+		>
+			<span class="ah-mark"><Icon name="play" /></span>
+			<span class="ah-head">Tap anywhere to <span class="grad">start the music</span></span>
+			<span class="ah-sub">This TV needs one tap before it can play sound</span>
+		</button>
+	{/if}
+
 	<div class="status" class:on={connected}></div>
 </div>
 
@@ -776,6 +807,7 @@
 	 *   8  transient full-screen overlays: interstitial / error / waiting / loading (.interstitial) —
 	 *      must cover ALL chrome, which the old shared 7 did only by DOM luck
 	 *   9  connection status dot (.status) — tiny, always visible, never occluded
+	 *  10  autoplay-blocked "tap to start" affordance (.autoplay-hint) — MUST be tappable above all else
 	 *
 	 * TV TYPE SCALE AND SAFE AREA — tokens live in app.css so the same components size correctly in the
 	 * /components gallery, which renders them outside this route.
@@ -1002,4 +1034,49 @@
 	}
 	/* rgba(51,214,166,0.18) was --ok at 18%; color-mix keeps the ring on the theme's ok colour. */
 	.status.on { background: var(--ok); box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 18%, transparent); }
+
+	/*
+	 * The autoplay affordance. A full-screen button so a tap anywhere authorises playback, sitting above
+	 * every other layer (z 10). A <button>, not a <div>: it is keyboard-focusable and announces itself,
+	 * and a keydown is one of the gestures TvPlayer listens for. Dark scrim so it reads over any stage
+	 * background; the tokens are the room's own type/safe-area scale so it sizes correctly on a wall.
+	 */
+	.autoplay-hint {
+		position: absolute;
+		inset: 0;
+		z-index: 10;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2.2vh;
+		padding: var(--tv-safe-y) var(--tv-safe-x);
+		border: 0;
+		cursor: pointer;
+		color: var(--ink);
+		text-align: center;
+		background: color-mix(in srgb, var(--bg) 82%, transparent);
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
+	}
+	.ah-mark {
+		display: grid;
+		place-items: center;
+		width: clamp(64px, 12vmin, 160px);
+		height: clamp(64px, 12vmin, 160px);
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--accent) 26%, transparent);
+		font-size: clamp(32px, 6vmin, 84px);
+	}
+	.ah-head {
+		font-size: var(--tv-hero);
+		font-weight: 800;
+		line-height: 1.1;
+		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+	}
+	.ah-sub {
+		font-size: var(--tv-body, clamp(16px, 2.4vmin, 32px));
+		color: var(--ink-dim);
+		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+	}
 </style>
