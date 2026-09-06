@@ -161,6 +161,35 @@ describe('membership: away is not gone', () => {
 		expect(sweep(p, second + GRACE, noSongs).gone).toEqual(['dana']);
 	});
 
+	it('a reconnect that re-drops inside one sweep interval still gets a full fresh window', () => {
+		// The pocket case connect() must handle: a phone wakes on a notification and re-locks before the
+		// next 20s membership sweep, so no sweep runs between the reconnect and the re-drop. connect()
+		// clears the running clock outright (awaySince + clockStartedAt), so the re-drop starts a fresh
+		// window. If connect() only paused (or did nothing), the stale start time would carry over and
+		// the next sweep would expire her a full grace window early — the exact bug this pins.
+		const p = new PresenceTracker();
+		p.connect('dana');
+		p.disconnect('dana', NOW);
+		sweep(p, NOW, noSongs); // clock starts at NOW
+
+		// she reconnects most of the way through the window, then re-drops WITHOUT any sweep in between
+		const back = NOW + GRACE - 1000;
+		p.connect('dana');
+		const redrop = back; // re-locks immediately; no sweep has cleared the stale clock
+		p.disconnect('dana', redrop);
+
+		// She is observed away right after the re-drop (redrop is GRACE - 1000, so even a carried-over
+		// clock reads below grace here — this sweep is the fixture, not the discriminator).
+		expect(sweep(p, redrop, noSongs).away).toEqual(['dana']);
+		// THE DISCRIMINATOR: one tick before a fresh window would expire, she must still be away. A
+		// carried-over clockStartedAt of NOW reads elapsed 2*GRACE - 1001 >= grace here and would have
+		// already expired her — a full window early. This is the assertion the connect() cancel pins.
+		expect(sweep(p, redrop + GRACE - 1, noSongs).away).toEqual(['dana']);
+		// ...and she does expire once the fresh window is fully spent (so the test also demands that a
+		// clock exists at all, not merely that no expiry happened).
+		expect(sweep(p, redrop + GRACE, noSongs).gone).toEqual(['dana']);
+	});
+
 	it('a gone singer is forgotten, so the map stays bounded over a long night', () => {
 		const p = new PresenceTracker();
 		p.connect('dana');
