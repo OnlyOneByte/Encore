@@ -87,9 +87,14 @@ test('.t does not grow — the clamp box shrinks to its text so the mark hugs th
 	// With flex-grow:1 (flex: 1) the two-line clamp box grew to fill the whole .title-line, pushing the
 	// flex:0 0 auto mark to the metadata column's right edge — up to 116px from a short title (#334).
 	// The mark's meaning is "this title is cooking", so it must sit beside the title, not float in the
-	// empty tail. flex-grow must be 0 (flex: 0 1 auto keeps flex-shrink:1 so a long title still clamps).
+	// empty tail. .t must be flex: 0 1 auto — grow 0 AND shrink 1: grow 0 stops the clamp box filling the
+	// row and floating the mark out to the column's right edge, and shrink > 0 lets the box shrink to hug
+	// its (clamped) text so the mark still sits adjacent. Pinning grow alone (#389) left a hole: setting
+	// flex-shrink:0 / flex: 0 0 auto keeps grow 0 and passes, but the box stops shrinking and the mark is
+	// pushed back to x=1151.5 (column right edge, title-length-independent) — #334 reopened, gate green.
 	// Slice the .t rule body by brace-matching from its selector so a `flex` elsewhere cannot satisfy or
-	// trip this, then read the effective flex-grow from whichever of `flex:`/`flex-grow:` is present.
+	// trip this, then read the effective flex-grow AND flex-shrink from whichever of `flex:`/`flex-*:` is
+	// present.
 	const tSel = src.search(/(^|[^-\w])\.t\s*\{/m);
 	expect(tSel).toBeGreaterThanOrEqual(0); // not-vacuous: the .t rule exists
 	const braceOpen = src.indexOf('{', tSel);
@@ -110,4 +115,21 @@ test('.t does not grow — the clamp box shrinks to its text so the mark hugs th
 	expect(grow).not.toBeNull();
 	// `flex: 1` => grow 1 (the #334 defect); `flex: 0 1 auto` => grow 0 (the fix). Anything > 0 reds.
 	expect(grow).toBe('0');
+
+	// flex-shrink is the SECOND value of the `flex` shorthand, or an explicit `flex-shrink`. A shorthand
+	// with only one <number> (e.g. `flex: 0`) leaves shrink at its CSS default of 1, so absence of a
+	// second token means shrink 1 — read it that way rather than treating it as unset. This is the axis
+	// #389 left unpinned: `flex: 0 0 auto` / `flex-shrink: 0` keeps grow 0 but stops the clamp box
+	// shrinking to hug its text, floating the mark back to the column's right edge and reopening #334.
+	const shrinkLong = tBody.match(/(?:^|;)\s*flex-shrink\s*:\s*([^;]+)/);
+	const shrink = shrinkLong
+		? shrinkLong[1].trim()
+		: shorthand
+			? (shorthand[1].trim().split(/\s+/)[1] ?? '1')
+			: null;
+	// .t must declare a shrink axis (not-vacuous: a missing rule cannot pass as shrink 1).
+	expect(shrink).not.toBeNull();
+	// shrink MUST be > 0 so the two-line clamp box shrinks to hug its (clamped) text. `flex: 0 0 auto`
+	// (shrink 0) is the #334-reopening edit the grow-only guard misses; it must red here.
+	expect(Number(shrink)).toBeGreaterThan(0);
 });
