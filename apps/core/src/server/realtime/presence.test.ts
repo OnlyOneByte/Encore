@@ -277,10 +277,16 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 	const classBody = source.slice(source.indexOf(CLASS_START));
 	// Class-member declarations are indented one tab; a name is harvested whether it is followed by
 	// `(` (method shorthand) OR `=` (an arrow class property — `isHere = (id) => …`), which is the form
-	// #347's blocking review proved escaped a `(`-only collector. Interface fields and private #members
-	// are not matched (# prefix, and the interface lives above the class start). Reads names off the
-	// source so the test cannot derive its expectation the way the class does.
-	const publicMethods = [...classBody.matchAll(/\n\t([A-Za-z_$][\w$]*)\s*(?:\(|=)/g)]
+	// #347's blocking review proved escaped a `(`-only collector. A leading access/declaration modifier
+	// (`public`/`private`/`protected`/`readonly`/`static`) is SKIPPED before the name capture — without
+	// that skip the collector harvests the modifier itself as the member name (`public sockets(…)` →
+	// `public`), a false RED unrelated to any membership predicate (#417). Interface fields and private
+	// #members are not matched (# prefix, and the interface lives above the class start). Reads names off
+	// the source so the test cannot derive its expectation the way the class does.
+	const MEMBER_MODIFIERS = /(?:public|private|protected|readonly|static)\s+/.source;
+	const publicMethods = [
+		...classBody.matchAll(new RegExp(`\\n\\t(?:${MEMBER_MODIFIERS})*([A-Za-z_$][\\w$]*)\\s*(?:\\(|=)`, 'g'))
+	]
 		.map((m) => m[1])
 		.sort();
 
@@ -302,8 +308,17 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 		const BARE_MEMBERSHIP_BOOL =
 			/(?:return\s+|=>\s*)(?!.*\.(?:filter|map|some|every|reduce|find)\s*\()[^\n;]*\bsockets\b[^\n;]*(?:>\s*0|>=\s*1|!==?\s*0)/;
 		const BOOLEAN_WRAP = /(?:return\s+|=>\s*)Boolean\s*\([^\n;]*\bsockets\b/;
+		// Const-indirection hop (#417): the single-line bans above cannot span a newline, so a membership
+		// bool smuggled into an ALREADY-ALLOWLISTED bool-returner via a local const —
+		// `const n = …sockets…;` then `return n > 0;` (or `>= 1`, `!== 0`) — evaded both the shape ban
+		// (name allowed, comparison text on a different line from `sockets`) and the allowlist (the name is
+		// legitimate). Bind the local to the `sockets` read, then require a return/arrow comparison on that
+		// SAME identifier; `[\s\S]*?` (lazy) lets the two sit on different lines within the method body.
+		const CONST_INDIRECTION_BOOL =
+			/const\s+([A-Za-z_$][\w$]*)\s*=\s*[^\n;]*\bsockets\b[^\n;]*;[\s\S]*?(?:return\s+|=>\s*)\1\s*(?:>\s*0|>=\s*1|!==?\s*0)/;
 		expect(source).not.toMatch(BARE_MEMBERSHIP_BOOL);
 		expect(source).not.toMatch(BOOLEAN_WRAP);
+		expect(source).not.toMatch(CONST_INDIRECTION_BOOL);
 	});
 
 	it('only the three change-report methods return a boolean at all (a membership predicate cannot be spelled around the shape ban)', () => {
