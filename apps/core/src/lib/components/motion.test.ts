@@ -180,11 +180,25 @@ function normSelector(s: string): string {
 	return s.replace(/\s+/g, ' ').trim();
 }
 
+// A reduce reset only WINS when the OS asks for reduced motion, so the reset @media must fire in
+// exactly that state and no narrower one (issue #337). A bare substring test on the prelude accepts
+// three preludes CSS discards: `@media not (prefers-reduced-motion: reduce)` (fires when motion is
+// ALLOWED — inverted), and `@media (prefers-reduced-motion: reduce) and (min-width: 5000px)` (fires
+// only on a 5000px viewport). Qualify a prelude as a reset carrier ONLY when it names the reduce
+// feature, contains no `not`, and carries no extra `and (…)` term. A conditional reset is not coverage.
+function isUnconditionalReduce(prelude: string): boolean {
+	if (!/prefers-reduced-motion:\s*reduce/.test(prelude)) return false;
+	if (/\bnot\b/.test(prelude)) return false; // `@media not (prefers-reduced-motion: reduce)` is inverted
+	if (/\band\b/.test(prelude)) return false; // any extra `and (…)` term narrows when the reset fires
+	return true;
+}
+
 // Forward-scan the CSS into a flat list of rule blocks. Maintains a stack of open blocks, each
 // carrying the prelude text that opened it (the selector, or an at-rule prelude like `@media …`).
 // A block is a plain style RULE (as opposed to an at-rule container) when its prelude does not start
 // with `@`; only those own `animation:` declarations. `underReduce` is true when any ancestor prelude
-// is a `prefers-reduced-motion: reduce` @media, so we can tell a reset block from an ordinary rule.
+// is an UNCONDITIONAL `prefers-reduced-motion: reduce` @media (issue #337) — a `not`-inverted or
+// extra-`and`-gated reduce prelude does NOT count, since its reset does not win under Reduce Motion.
 function ruleBlocks(css: string): Rule[] {
 	const rules: Rule[] = [];
 	const stack: Array<{ prelude: string; reduce: boolean }> = [];
@@ -196,7 +210,7 @@ function ruleBlocks(css: string): Rule[] {
 			const isAt = prelude.startsWith('@');
 			const reduce =
 				(stack.length ? stack[stack.length - 1]!.reduce : false) ||
-				/prefers-reduced-motion:\s*reduce/.test(prelude);
+				isUnconditionalReduce(prelude);
 			stack.push({ prelude, reduce });
 			if (!isAt) {
 				// a plain style rule — record it (bodyEnd filled in on the matching `}`)
@@ -227,16 +241,25 @@ function ruleBlocks(css: string): Rule[] {
 	return rules;
 }
 
-// The set of selectors a reduce reset covers: any rule that sits under a `prefers-reduced-motion:
-// reduce` @media AND whose body resets `animation` to `none`. Only these selectors earn an exemption.
-function reduceResetSelectors(css: string, rules: Rule[]): Set<string> {
-	const covered = new Set<string>();
+// The selectors a reduce reset covers, mapped to the source OFFSET of the reset's own body
+// (issue #337). A reset only wins the cascade when it sits AFTER the animation it defeats — a media
+// query adds no specificity, so at equal specificity the later declaration wins. We therefore record
+// each covered selector's reset `bodyStart` (the EARLIEST, if a selector is reset more than once — a
+// later reset cannot rescue an animation the earliest reset already fails to cover). The caller
+// exempts an animation only when its selector's reset offset is greater than the animation's offset.
+// Only rules under an UNCONDITIONAL reduce @media qualify — `underReduce` already enforces that.
+function reduceResetSelectors(css: string, rules: Rule[]): Map<string, number> {
+	const covered = new Map<string, number>();
 	for (const r of rules) {
 		if (!r.underReduce) continue;
 		const body = css.slice(r.bodyStart, r.bodyEnd);
 		// a reset may group selectors — `.a, .b, .c { animation: none }` covers each of .a/.b/.c.
 		if (/animation(-name)?:\s*none/.test(body))
-			for (const sel of r.selector.split(',')) covered.add(normSelector(sel));
+			for (const sel of r.selector.split(',')) {
+				const key = normSelector(sel);
+				const prev = covered.get(key);
+				if (prev === undefined || r.bodyStart < prev) covered.set(key, r.bodyStart);
+			}
 	}
 	return covered;
 }
@@ -273,10 +296,17 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 			// exempt only when the declaration's OWN selector has a reduce reset (issue #242): a reset
 			// for one selector no longer waves the whole file through. A grouped owner `.a, .b` is
 			// exempt only if EVERY part is reset — a partial reset does not cover the whole rule.
+			// Each part's reset must ALSO sit AFTER the animation in source order (issue #337): a reset
+			// placed above the rule it means to defeat loses the cascade at equal specificity, so it is
+			// not coverage even though it names the selector. `resetSelectors` maps selector -> reset
+			// offset; `> at` is the cascade-wins test.
 			const owner = owningSelector(rules, at);
 			const reset =
 				owner !== null &&
-				owner.split(',').every((sel) => resetSelectors.has(normSelector(sel)));
+				owner.split(',').every((sel) => {
+					const resetAt = resetSelectors.get(normSelector(sel));
+					return resetAt !== undefined && resetAt > at;
+				});
 			if (!guarded && !reset) offenders.push(`${f}: unguarded animation: ${value.slice(0, 40)}`);
 		}
 	}
