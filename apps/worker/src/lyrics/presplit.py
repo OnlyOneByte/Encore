@@ -399,10 +399,20 @@ def presplit_texts(
       • length bounding runs on EVERY tier (a human line can still overflow a TV row), and
       • semantic re-lineation runs ONLY where line structure was never present to begin with — ASR and
         the auto-caption tracks demoted to `low` confidence to land on that side of the fence.
+
+    Alternates get the SAME fence. An alternate is a fully publishable text — `select_by_baselines`
+    grades `[cand, *cand.alternates]` and may publish an alternate — and presplit runs strictly BEFORE
+    selection, so any alternate that goes unfenced here reaches the aligner unbounded if it wins. Route
+    each alternate through the fence (not `bound_blob_text` directly): they are all authoritative today,
+    so the fence is a no-op on them, but hard-coding the authoritative branch would mis-route the first
+    non-authoritative source that ever attaches alternates.
     """
-    return [
-        bound_blob_text(t, max_chars=max_chars, bounder=bounder)
-        if is_authoritative_text(t.text_source, t.text_confidence)
-        else split_blob_text(t, max_chars=max_chars, bounder=bounder)
-        for t in texts
-    ]
+
+    def _fence(t: LyricsText) -> LyricsText:
+        return (
+            bound_blob_text(t, max_chars=max_chars, bounder=bounder)
+            if is_authoritative_text(t.text_source, t.text_confidence)
+            else split_blob_text(t, max_chars=max_chars, bounder=bounder)
+        )
+
+    return [replace(_fence(t), alternates=[_fence(a) for a in t.alternates]) for t in texts]
