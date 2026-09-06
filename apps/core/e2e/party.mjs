@@ -303,14 +303,22 @@ try {
 
 		// ── cross-client sync ───────────────────────────────────────────────
 		// Wait for the OTHER phone to catch up over the socket, rather than assuming a latency.
-		await ada
+		// Capture the wait result: an empty rotation must FAIL as a missing precondition,
+		// not slip past the agreement check (where '[]' === '[]' reads as spurious agreement).
+		const adaSawRotation = await ada
 			.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueTitle)}).length > 0`, { timeout: 10_000 })
+			.then(() => true)
 			.catch(() => false);
 		const mayaQ = await maya.texts(SEL.queueTitle);
 		const adaQ = await ada.texts(SEL.queueTitle);
 		check(
+			'the rotation reached both phones',
+			adaSawRotation && mayaQ.length > 0 && adaQ.length > 0,
+			`maya=${JSON.stringify(mayaQ)} ada=${JSON.stringify(adaQ)}${adaSawRotation ? '' : ' (ada never saw a non-empty rotation within 10s)'}`
+		);
+		check(
 			'both phones see the same rotation, in the same order',
-			JSON.stringify(mayaQ) === JSON.stringify(adaQ),
+			mayaQ.length > 0 && adaQ.length > 0 && JSON.stringify(mayaQ) === JSON.stringify(adaQ),
 			`maya=${JSON.stringify(mayaQ)} ada=${JSON.stringify(adaQ)}`
 		);
 
