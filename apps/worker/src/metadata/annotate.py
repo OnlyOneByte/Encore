@@ -464,6 +464,56 @@ class MusicBrainzClient:
             raise AnnotationFetchError(f"musicbrainz returned unparseable body: {exc}") from exc
 
 
+def _limiter_of(client: Any) -> RateLimiter:
+    """The gate a client paces through, so a decline can read how much it was throttled.
+
+    A MusicBrainzClient carries its own limiter (`_limiter`); a hand-rolled test double may not, in
+    which case the process-global gate is the only one it could have used. Either way this is the
+    reader `limiter()`/`RateLimiter.stats()` were written for: the counters at :371-403 record whether a
+    silent decline was a throttle or a genuine miss, and nothing read them until here.
+    """
+    lim = getattr(client, "_limiter", None)
+    return lim if isinstance(lim, RateLimiter) else limiter()
+
+
+def annotate_or_reason(
+    client: Any, artist: str | None, track: str | None, duration_sec: float | None
+) -> tuple[Annotation | None, str | None]:
+    """Identify a song, or decline WITH A REASON. NEVER raises for an ordinary failure.
+
+    Returns `(annotation, None)` on a match and `(None, reason)` on every decline. The reason is the
+    point of this function over `annotate()`: an IP-level MusicBrainz block and "nothing agreed on the
+    names" are the same observable event -- `annotate()` returns `None` for both -- so the caller cannot
+    tell a throttled box (self-sustaining, every lookup declines until the box goes quiet) from a
+    healthy per-song miss. This separates them by CATCHING `AnnotationFetchError` distinctly and reading
+    the throttle counters the gate already keeps.
+
+    Reasons:
+      * no confident artist/title to search with -> "no artist/title to look up"
+      * the service is unreachable / throttled / a 5xx (an `AnnotationFetchError`) -> the error text,
+        annotated with the gate's `stats()` so "throttled us (503)" carries the observed counters
+      * nothing agrees on the names or the closest match is too far off in length -> "no confident match"
+
+    Declining is still never a job failure -- the caller keeps the normalizer's values -- but now the
+    decline is legible instead of silent.
+    """
+    if not artist or not track:
+        return None, "no artist/title to look up"
+    try:
+        candidates = client.search(artist, track)
+    except AnnotationFetchError as exc:
+        # A transport fault, not a miss: unreachable, a 5xx, or -- the case this issue is about -- an
+        # IP-level throttle. Read the gate so an operator can tell throttling from a slow network.
+        stats = _limiter_of(client).stats()
+        return None, f"lookup failed: {exc} [rate gate: {stats}]"
+    except Exception as exc:  # noqa: BLE001 - any other client fault is still a decline, never a failure
+        return None, f"lookup failed: {exc}"
+    got = pick_best(candidates, artist, track, duration_sec)
+    if got is None:
+        return None, "no confident match"
+    return got, None
+
+
 def annotate(
     client: Any, artist: str | None, track: str | None, duration_sec: float | None
 ) -> Annotation | None:
@@ -473,14 +523,12 @@ def annotate(
     nothing agrees on the names, or the closest agreement is too far off in length. Every one of those
     means "keep the normalizer's values", not "fail the job" -- annotation is an enrichment, and a cook
     that failed because a metadata lookup was down would be absurd.
+
+    Kept as the value-only shape for callers that do not need the reason; `annotate_or_reason` is the
+    one that also explains a decline.
     """
-    if not artist or not track:
-        return None
-    try:
-        candidates = client.search(artist, track)
-    except Exception:  # noqa: BLE001 - unreachable/5xx/TLS: a miss, never a job failure
-        return None
-    return pick_best(candidates, artist, track, duration_sec)
+    got, _reason = annotate_or_reason(client, artist, track, duration_sec)
+    return got
 
 
 def _urllib_fetch(url: str, headers: dict[str, str]) -> tuple[int, str]:

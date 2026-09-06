@@ -38,20 +38,28 @@ class Annotate(Step):
         return self._annotator is not None
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
-        from ..metadata.annotate import annotate
+        from ..metadata.annotate import annotate_or_reason
 
         params = ctx.params
 
         def _call():
-            return annotate(self._annotator, params.get("artist"), params.get("track"), params.get("durationSec"))
+            return annotate_or_reason(
+                self._annotator, params.get("artist"), params.get("track"), params.get("durationSec")
+            )
 
         try:
-            got = await asyncio.to_thread(_call)
-        except Exception:  # noqa: BLE001 — annotation is an enrichment; never a job failure
-            got = None
+            got, reason = await asyncio.to_thread(_call)
+        except Exception as exc:  # noqa: BLE001 — annotation is an enrichment; never a job failure
+            got, reason = None, f"lookup crashed: {exc}"
         if got is not None:
             ctx.out.artifacts["annotation"] = got.as_artifact()
             ctx.note("identified against MusicBrainz")
+        else:
+            # The decline used to be SILENT on every path — a throttled box declines every annotation
+            # indefinitely (ENCORE_ANNOTATE is on by default, so this runs on every fetch) and an
+            # operator had no way to tell that from a healthy "nothing agreed on the names" miss. The
+            # reason distinguishes them, carrying the rate gate's counters when it was a throttle.
+            ctx.note(f"annotation declined: {reason or 'no reason'}")
         return
         yield  # pragma: no cover - makes this an async generator
 
