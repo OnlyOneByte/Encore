@@ -15,6 +15,7 @@ import type {
 } from '@encore/shared';
 import { singHistoryFrom } from '@encore/shared';
 import type { AuthoritativeState } from '../state/store';
+import { can } from '../auth/capabilities';
 
 export type Publish = (event: ServerEvent) => void;
 export type SendToOrigin = (event: ServerEvent) => void;
@@ -91,8 +92,20 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			if (!deps.mediaById.has(op.entry.mediaId)) return `unknown media: ${op.entry.mediaId}`;
 			return null;
 		case 'remove':
+			if (!deps.state.entries.some((e) => e.id === op.id)) return `unknown entry: ${op.id}`;
+			// The asker `queue:remove-any` was named for. Routed through can() rather than left to the
+			// membership check above so removing someone else's turn gates with the module's ONE
+			// decision — narrowing can() there now actually denies it, as capabilities.ts:9-11 promises.
+			if (!can({ singerId: deps.actorSingerId }, 'queue:remove-any')) return 'not allowed to remove this entry';
+			return null;
 		case 'move':
+			if (!deps.state.entries.some((e) => e.id === op.id)) return `unknown entry: ${op.id}`;
+			// The asker `queue:reorder-any` was named for — same reasoning as remove above.
+			if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder this entry';
+			return null;
 		case 'status':
+			// A playback-status transition, not one of the 'someone else's entry' capabilities, so it
+			// stays on membership only (the actorSingerId gate above).
 			if (!deps.state.entries.some((e) => e.id === op.id)) return `unknown entry: ${op.id}`;
 			return null;
 		default:
