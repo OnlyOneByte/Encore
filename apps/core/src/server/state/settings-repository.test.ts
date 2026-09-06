@@ -224,6 +224,22 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		expect(repo.setRoom({ tvBackgroundStyle: 'visualizer' }).tvVisualizer).toBe('lissajous');
 	});
 
+	it('a quality ceiling can be cleared and the clear survives the round trip through SQLite', () => {
+		// settings/+page.svelte:594 sends maxQualityRank: null for the "No limit" option — the real
+		// clear payload. The visualizer sibling above gets this set→change→re-read shape; the ceiling
+		// never did, which let a bad normalizer keep the old cap forever with the UI insisting it is off.
+		const repo = freshRepo();
+		expect(repo.getRoom().maxQualityRank).toBeNull();
+		expect(repo.setRoom({ maxQualityRank: 20 }).maxQualityRank).toBe(20);
+		expect(repo.getRoom().maxQualityRank).toBe(20);
+		// operator picks "No limit": the cap must actually drop, not snap back to 20
+		expect(repo.setRoom({ maxQualityRank: null }).maxQualityRank).toBeNull();
+		expect(repo.getRoom().maxQualityRank).toBeNull();
+		// and an unrelated later patch must not resurrect the old cap
+		repo.setRoom({ songIntroMs: 1200 });
+		expect(repo.getRoom().maxQualityRank).toBeNull();
+	});
+
 	it('the room default set is complete — every field has a value with no writes at all', () => {
 		// A field added to RoomSettings but forgotten in DEFAULT_ROOM_SETTINGS reads as undefined here and
 		// would reach a NOT NULL column on the first write. This only catches the DEFAULTS omission
