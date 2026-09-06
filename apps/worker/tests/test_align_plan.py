@@ -1167,3 +1167,118 @@ async def test_217_a_matching_recording_with_split_windows_is_NOT_flagged(tmp_pa
     aligner = _WindowBridgeAligner(bridge_after=999)  # never shifts → same recording
     ctx = await _drive_time_texts(aligner, text, tmp_path)
     assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+
+
+# ── #326: the refusal to publish UNUSABLE word timings must be pinned ──────────────────────────────
+# steps/lyrics.py:292-297 is the one place the worker decides NOT to publish word timings: when
+# `validate_timing` reports an out-of-order word (`usable == False`), it degrades to line sync at
+# `(line, low)` and emits a REFUSING note. Five independent mutations of that block each left the whole
+# worker suite byte-identical green — the string `REFUSING` appears in no test — because nothing drove a
+# text carrying an out-of-order word through the publish path. These tests close M1/M2/M3 together (an
+# unusable word-timed source publishes as line/low with NO words and a note) and M4 (a word-only ASR
+# source with the same defect is DROPPED, not line-synced). The reachable state is exactly one
+# out-of-order word (validate.py:83 `usable = out_of_order == 0 and words > 0`), and `_words_of`
+# flattens across line boundaries, so a boundary overlap counts.
+
+
+class _OneBackwardsWordAligner:
+    """Force-aligner stand-in that re-times every line normally, then makes EXACTLY ONE word start
+    before the previous word ended — a single order violation across a line boundary.
+
+    A real different-master or window-boundary overlap is monotonic everywhere except one seam; this
+    reproduces that seam deterministically. The first line's last word is stretched to end at
+    `overlap_end`, and the second line's first word is pulled to start at `overlap_end - 1.0` — one word
+    whose `start` is a full second below the previous `end`, well past validate.py's 1e-6 threshold.
+    Every OTHER word is in order, so `validate_timing` reports `out_of_order == 1` and nothing else,
+    which is the reachable `usable == False` state the block exists for.
+    """
+
+    def __init__(self):
+        self.calls = []
+
+    def align(self, segments, audio_path, language):
+        self.calls.append((len(segments), audio_path, language))
+        out = []
+        for s in segments:
+            toks = s["text"].split()
+            span = (s["end"] - s["start"]) / max(1, len(toks))
+            words = [
+                {"word": t, "start": round(s["start"] + i * span, 3), "end": round(s["start"] + (i + 1) * span, 3)}
+                for i, t in enumerate(toks)
+            ]
+            out.append({"start": s["start"], "end": s["end"], "text": s["text"], "words": words})
+        # Inject a single backward jump across the boundary between the first two aligned lines: the
+        # first line's LAST word runs long, and the second line's FIRST word starts a second earlier.
+        # Chosen from the produced timeline, not from any threshold in validate.py.
+        if len(out) >= 2 and out[0]["words"] and out[1]["words"]:
+            overlap_end = out[0]["words"][-1]["end"] + 1.0
+            out[0]["words"][-1]["end"] = round(overlap_end, 3)
+            out[1]["words"][0]["start"] = round(overlap_end - 1.0, 3)  # < previous end by 1.0s
+        return {"language": language, "segments": out}
+
+
+def _six_line_synced_text():
+    """A synced LRCLIB text (its OWN line timings) with six lines — the branch that CAN degrade to line
+    sync, because `text.timing == TIMING_LINE`. Six lines gives the aligner two lines to overlap and
+    keeps the doc large enough that a single out-of-order word is the only defect."""
+    lines = [
+        "we could be heroes just for one day",
+        "standing by the wall over our heads",
+        "and the guns shot above our heads",
+        "and we kissed as though nothing could fall",
+        "and the shame was on the other side",
+        "we could beat them just for one day",
+    ]
+    segs = [{"start": 4.0 * i + 1.0, "end": 4.0 * i + 3.5, "text": t, "words": []} for i, t in enumerate(lines)]
+    return LyricsText(text_source=SOURCE_LRCLIB, segments=segs, timing=TIMING_LINE, text_confidence="high")
+
+
+def _asr_word_source():
+    """A word-timed ASR source (`timing == TIMING_WORD`). This is the M4 branch: it has no line timings
+    of its own, so when its word timing is refused there is `nothing honest left to publish` and it must
+    be DROPPED, not line-synced."""
+    segs = [{"start": 4.0 * i + 1.0, "end": 4.0 * i + 3.5, "text": t, "words": []}
+            for i, t in enumerate(["oh baby baby how was i", "supposed to know that something"])]
+    return LyricsText(text_source=SOURCE_ASR, segments=segs, timing=TIMING_WORD, text_confidence="low")
+
+
+@pytest.mark.asyncio
+async def test_326_unusable_word_timing_is_REFUSED_and_degraded_to_line_low(tmp_path):
+    """M1/M2/M3 in one assertion. An LRCLIB source force-aligned to a doc with one out-of-order word is
+    UNUSABLE, so the worker must NOT publish it as word timing. It degrades to the source's own line
+    sync stamped `(line, low)` — `line` (not `word`, M2) so the TV does not run a backwards ball, and
+    `low` (not `high`, M3) so breaksTie in packages/shared/src/lyrics.ts cannot let a refused alignment
+    outrank a genuinely good line-sync candidate. A REFUSING note is emitted (M1). Deleting the block
+    (`if not rep.usable:` -> `if False:`) publishes 30+ word timings at `(word, high)` and reds every
+    line here.
+    """
+    text = _six_line_synced_text()
+    aligner = _OneBackwardsWordAligner()
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    assert len(cands) == 1, cands
+    cand = cands[0]
+    # M2 + M3: degraded to line sync at the LOW tier, never advertised as word or high.
+    assert (cand["timing"], cand["timingConfidence"]) == (TIMING_LINE, "low")
+    # M1: the published document carries NO word timings — a refused alignment publishes zero words.
+    ref = tmp_path / cand["ref"]
+    doc = json.loads(ref.read_text())
+    assert [w for l in doc["lines"] for w in (l.get("words") or [])] == [], doc
+    # M1: the operator gets the refusal note (its absence is how a silent deletion escapes notice).
+    assert any("REFUSING word timing" in n for n in ctx.out.notes), ctx.out.notes
+
+
+@pytest.mark.asyncio
+async def test_326_a_word_only_ASR_source_with_unusable_timing_is_DROPPED_not_line_synced(tmp_path):
+    """M4. An ASR source has no line timings of its own (`text.timing == TIMING_WORD`), so when its word
+    timing is refused there is nothing honest to fall back to and the source must be DROPPED — not
+    line-synced over text that never had line timings. With this the ONLY source, dropping it means the
+    step raises `nothing could be timed` rather than publishing a bogus line-sync. Mutating
+    `if text.timing != TIMING_LINE: continue` -> `if False:` would instead publish a line-synced doc and
+    stop this raising.
+    """
+    text = _asr_word_source()
+    aligner = _OneBackwardsWordAligner()
+    with pytest.raises(RuntimeError, match="nothing could be timed"):
+        await _drive_time_texts(aligner, text, tmp_path)
