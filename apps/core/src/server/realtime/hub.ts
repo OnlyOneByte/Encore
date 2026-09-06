@@ -116,18 +116,30 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			if (!Number.isFinite(op.entry.addedAt)) return 'invalid addedAt';
 			if (!VALID_ENTRY_STATUSES.includes(op.entry.status)) return `invalid status: ${String(op.entry.status)}`;
 			return null;
-		case 'remove':
-			if (!deps.state.entries.some((e) => e.id === op.id)) return `unknown entry: ${op.id}`;
-			// The asker `queue:remove-any` was named for. Routed through can() rather than left to the
-			// membership check above so removing someone else's turn gates with the module's ONE
-			// decision — narrowing can() there now actually denies it, as capabilities.ts:9-11 promises.
-			if (!can({ singerId: deps.actorSingerId }, 'queue:remove-any')) return 'not allowed to remove this entry';
+		case 'remove': {
+			const removeTarget = deps.state.entries.find((e) => e.id === op.id);
+			if (!removeTarget) return `unknown entry: ${op.id}`;
+			// Your OWN song is always yours to pull, with no capability required — that is not "remove-any",
+			// it is removing your own turn. `queue:remove-any` (capabilities.ts:9-11, "remove SOMEONE ELSE'S
+			// entry") is only the asker for a DIFFERENT singer's entry. Gating every remove through it — the
+			// scope this arm previously used — is inert while can() ignores the capability, but the day can()
+			// is narrowed to a host role (the migration :9-11 exists to enable) it would refuse a singer their
+			// own song. So consult can() ONLY for someone else's entry (issue #241).
+			if (removeTarget.singerId !== deps.actorSingerId) {
+				if (!can({ singerId: deps.actorSingerId }, 'queue:remove-any')) return 'not allowed to remove this entry';
+			}
 			return null;
-		case 'move':
-			if (!deps.state.entries.some((e) => e.id === op.id)) return `unknown entry: ${op.id}`;
-			// The asker `queue:reorder-any` was named for — same reasoning as remove above.
-			if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder this entry';
+		}
+		case 'move': {
+			const moveTarget = deps.state.entries.find((e) => e.id === op.id);
+			if (!moveTarget) return `unknown entry: ${op.id}`;
+			// Same ownership scope as remove above: reordering your OWN entry needs no capability;
+			// `queue:reorder-any` is only the asker for SOMEONE ELSE'S entry (issue #241).
+			if (moveTarget.singerId !== deps.actorSingerId) {
+				if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder this entry';
+			}
 			return null;
+		}
 		case 'status':
 			// SERVER-OWNED, never accepted from the wire. The only two producers of a `status` op in the
 			// whole repo are the server itself — player.ts beginSinging ('playing') and advance ('done') —
