@@ -607,9 +607,20 @@ try {
 			`isPlaying=${srvAfterLastSkip.state.isPlaying}`
 		);
 	} else {
-		// Only one cooked song was available. Skip directly ends into attract.
-		await phone1.clickByLabel('skip');
-		await sleep(1500);
+		// Only ONE song was COOKED (secondReadyId is null), so there is no other cooked song to skip
+		// TO. There may still be more than one QUEUED turn on that one cooked song, though — a second
+		// singer taking a turn on it, or an entry left behind by an interrupted earlier run. A single
+		// skip would then advance INTO the waiting turn (correct rotation, player.ts advance()), so
+		// currentEntryId would stay set and the "skip on the sole last song → no-current" assertion
+		// would fire a phantom CRITICAL. Drain EVERY remaining turn — same loop as the multi-cooked
+		// arm — so "the last song" is genuinely the last song regardless of how many turns are
+		// queued, and the T5 precondition below (queue empty, nothing playing) is actually true.
+		for (let i = 0; i < 8; i++) {
+			const cur = (await readServerPlayback()).state.currentEntryId;
+			if (!cur) break;
+			await phone1.clickByLabel('skip');
+			await sleep(1200);
+		}
 		const srvAfterSkip = await readServerPlayback();
 		record(
 			'CRITICAL',
