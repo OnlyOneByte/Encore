@@ -35,9 +35,22 @@ test('server.ts wires HubDeps.onEntryAdded to reprioritizeCookForMedia (#179)', 
 });
 
 test('the wired hook passes the job ledger, the post-add entries, and a dispatch kick (#179)', () => {
-	// Without app.jobs it cannot find the outstanding cook; without dispatch() the un-stuck cook waits
-	// for an unrelated trigger. Pin all three so a partial wiring is a red, not a silent regression.
-	expect(SERVER).toMatch(/jobs:\s*app\.jobs/);
-	expect(SERVER).toMatch(/entries,/);
-	expect(SERVER).toMatch(/dispatch:\s*\(\)\s*=>\s*app\.workerHub\.dispatch\(\)/);
+	// Without app.jobs it cannot find the outstanding cook; without the *unfiltered* post-add entries
+	// soonestSeqFor sees no queued turn and returns NO_QUEUE_PRIORITY (the cook stays starved); without
+	// dispatch() the un-stuck cook waits for an unrelated trigger. Pin all three in ONE anchored match
+	// over the whole call so a partial wiring — e.g. entries substituted by a filtered subset — reds,
+	// not a silent regression. Three unanchored substring scans were vacuous here: /jobs:\s*app\.jobs/,
+	// /entries,/ and /dispatch:.../ each also match unrelated call sites elsewhere in server.ts
+	// (the onEntryRemoved cancelJobsForMedia wiring, upNextAfter(..., state.entries, ...), and the
+	// /harness/phone dev-page <script> string), so the guard stayed 3/3 green with the hook mutated to
+	// `entries: entries.filter((e) => e.status === 'playing')` — the exact type-valid partial that
+	// restores the #135 starvation bug (#309). This mirrors reaper-onfailed-wiring.test.ts's single
+	// anchored /onFailed:...settleGatesForFailedJob(job, mediaById)/.
+
+	// Not-vacuous sentinel: the hook opening must be present, so a broken/empty read reds here first.
+	expect(SERVER).toMatch(/onEntryAdded:\s*\(mediaId,\s*entries\)\s*=>\s*reprioritizeCookForMedia\(mediaId,\s*\{/);
+
+	expect(SERVER).toMatch(
+		/onEntryAdded:\s*\(mediaId,\s*entries\)\s*=>\s*reprioritizeCookForMedia\(mediaId,\s*\{\s*jobs:\s*app\.jobs,\s*entries,\s*now:[^,]+,\s*dispatch:\s*\(\)\s*=>\s*app\.workerHub\.dispatch\(\)\s*\}\)/
+	);
 });
