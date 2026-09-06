@@ -18,9 +18,12 @@ import type { AuthoritativeState } from '../state/store';
 import { can } from '../auth/capabilities';
 import { queueEntries } from '../db/schema';
 
-// The queue_entries.status column IS the single source of truth for the entry-status enum: it is
-// the NOT NULL enum column an add's status is ultimately written into by the write-behind flush.
-// Reading its enumValues here means the add-arm guard can never drift from the column it protects.
+// The queue_entries.status column is the single source of truth for the entry-status VALUE LIST:
+// reading its enumValues here means the add-arm guard's allowed set can never drift from the column
+// it protects. It is NOT an enforcing enum at runtime — the column is `text ... NOT NULL` with no
+// CHECK constraint (drizzle's `enum:` is compile-time only), so SQLite will happily persist an
+// off-enum string. Only an explicit null violates anything at the flush. That is precisely why the
+// add-arm guard below (not the column) is what keeps the written value set honest.
 const VALID_ENTRY_STATUSES: readonly string[] = queueEntries.status.enumValues;
 
 export type Publish = (event: ServerEvent) => void;
@@ -121,12 +124,22 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			if (existing && (existing.singerId !== op.entry.singerId || existing.mediaId !== op.entry.mediaId))
 				return `entry id already taken: ${op.entry.id}`;
 			// Shape of the CLIENT-MINTED fields that reach the queue verbatim (applyOp inserts op.entry
-			// unchanged; only rotationSeq is server-owned). Both are NOT NULL enum/integer columns in
-			// queue_entries, so a non-finite addedAt or an off-enum status sailed through validation, was
-			// broadcast to the whole room, and then violated the column inside the debounced write-behind
-			// FLUSH TIMER — taking the WHOLE SERVER PROCESS DOWN asynchronously, detached from the frame
-			// that caused it. Same class as the singerId crash above and the telemetry positionSec one:
-			// validated at the frame, killed at the flush. Reject at the seam so nothing bad is persisted.
+			// unchanged; only rotationSeq is server-owned). Both feed NOT NULL columns in queue_entries
+			// (added_at integer, status text). What the column ACTUALLY rejects at the write-behind flush is
+			// narrow and is NOT NULL alone — never an enum, never finiteness. Measured against a real
+			// migrated DB: a missing or null addedAt, or a null status, throws `NOT NULL constraint failed`
+			// and takes the WHOLE SERVER PROCESS DOWN asynchronously, detached from the frame that caused it
+			// (a MISSING status is NOT in that class — the column carries DEFAULT 'queued', so it silently
+			// defaults instead of throwing; added_at has no default, so a missing addedAt does throw). But an
+			// off-enum non-null status ("obliterated") and a representable-but-garbage addedAt (Infinity)
+			// throw NOTHING — status has no CHECK constraint (drizzle's `enum:` is compile-time only) so the
+			// bad string is stored verbatim, and Infinity is coerced past the NOT NULL check into the row —
+			// so those persist SILENTLY into the room's state and onto disk. So this guard is not
+			// defence-in-depth behind a strict column: it is the ONLY thing keeping an off-enum status
+			// or a garbage addedAt out of the queue. It is
+			// deliberately BROADER than the crash (it also rejects the silently-persisting cases), which is
+			// right. Same seam as the singerId crash above and the telemetry positionSec one. Reject here so
+			// nothing bad — whether it would crash the flush or slip past it — is ever applied or persisted.
 			if (!Number.isFinite(op.entry.addedAt)) return 'invalid addedAt';
 			if (!VALID_ENTRY_STATUSES.includes(op.entry.status)) return `invalid status: ${String(op.entry.status)}`;
 			return null;
