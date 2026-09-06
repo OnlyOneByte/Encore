@@ -52,8 +52,8 @@ const HUES = ['#8b5cf6', '#ec4899', '#22c55e', '#f59e0b', '#3b82f6', '#f43f5e', 
 // are user-typed). Unique per case — the singers table is append-only, so a reused name is refused
 // with 409 and would abort the run.
 function longNames(prefix, n) {
-	const stems = ['Christopher', 'Alexandria', 'Sebastiano', 'Nathanielle', 'Elizabetha', 'Maximiliano', 'Anastasiya', 'Bartholomeo', 'Evangelina'];
-	return Array.from({ length: n }, (_, i) => `${stems[i % stems.length]}${prefix}`);
+	// 32 chars — the ceiling repository.ts admits (displayName.trim().slice(0, 32)). Unique per case.
+	return Array.from({ length: n }, (_, i) => `Guest${i}${prefix}`.padEnd(32, 'x').slice(0, 32));
 }
 
 // Each case is [label, names[], overflowExtra] — overflowExtra > 0 adds people past the cap so the
@@ -120,17 +120,25 @@ try {
 				const ub = url.getBoundingClientRect(); const sb = strip ? strip.getBoundingClientRect() : null;
 				const cx = ub.left + ub.width / 2, cy = ub.top + ub.height / 2;
 				const hit = document.elementFromPoint(cx, cy);
+				const chips = [...document.querySelectorAll('.lobby .strip .person')];
+				const cut = sb ? chips.filter((p) => { const r = p.getBoundingClientRect(); return r.bottom > sb.bottom + 0.5 || r.right > sb.right + 0.5; }).length : 0;
+				const more = document.querySelector('.lobby .strip .person.more');
 				return {
 					overlap: sb ? Math.max(0, ub.bottom - sb.top) : 0,
 					painted: hit ? (typeof hit.className === 'string' && hit.className ? '.' + hit.className.split(' ')[0] : hit.tagName) : null,
 					inStrip: hit ? !!hit.closest('.strip') : false,
-					strip: sb ? +sb.height.toFixed(1) : null
+					strip: sb ? +sb.height.toFixed(1) : null,
+					clipped: strip ? strip.scrollHeight > strip.clientHeight || strip.scrollWidth > strip.clientWidth + 1 : false,
+					chipsCut: cut,
+					moreShown: !!more
 				};
 			})()`);
 			// The address must not intersect the strip AND must be the element painted at its own centre.
-			const ok = m.overlap === 0 && m.painted === '.url' && !m.inStrip;
-			check(`${label} @ ${w}x${h}: address clear of roster strip`, ok,
-				`overlap=${m.overlap}px painted=${m.painted} inStrip=${m.inStrip} stripH=${m.strip}`);
+			// The address must be clear AND painted AND the strip must not clip any roster member: the
+			// #98 fix must not trade the burial for silently dropping the people it names.
+			const ok = m.overlap === 0 && m.painted === '.url' && !m.inStrip && !m.clipped && m.chipsCut === 0;
+			check(`${label} @ ${w}x${h}: address clear + roster not clipped`, ok,
+				`overlap=${m.overlap}px painted=${m.painted} inStrip=${m.inStrip} clipped=${m.clipped} chipsCut=${m.chipsCut} moreShown=${m.moreShown} stripH=${m.strip}`);
 		}
 
 		for (const s of caseSockets) { try { s.close(); } catch {} }

@@ -418,12 +418,32 @@ test('#98 the lobby roster strip reserves its band in flow — it is not absolut
 	// address. In flow it cannot overlap the stack, so it must be neither.
 	expect(/position:\s*absolute/.test(stripBlock)).toBe(false);
 	expect(/bottom:\s*0/.test(stripBlock)).toBe(false);
-	// AND it must be CAPPED: in flow but unbounded, the strip grows tall enough (8 long names -> three
-	// rows) to shrink the region below the fixed-height stack, which then overflows the address back into
-	// the band. A vh-keyed max-height bounds it so the region always clears the stack; dropping the cap
-	// reintroduces the overlap at 720p.
+	// AND its height must be BOUNDED without clipping the roster. Free to wrap, the strip grows tall
+	// enough (8 long names) to shrink the region below the fixed-height stack and push the address back
+	// into it. It is kept to one row (nowrap) with a vh max-height safety net; the roster is bounded by a
+	// DISPLAY CAP in the script, not by clipping the band (next test), so there is deliberately NO
+	// `overflow: hidden` here — that hard cut is what silently ate roster members and the "+N more" chip.
+	expect(/flex-wrap:\s*nowrap/.test(stripBlock)).toBe(true);
 	expect(/max-height:\s*[0-9.]+vh/.test(stripBlock)).toBe(true);
-	expect(/overflow:\s*hidden/.test(stripBlock)).toBe(true);
+	expect(/overflow:\s*hidden/.test(stripBlock)).toBe(false);
+});
+
+test('#98 the roster is bounded by folding surplus into "+N more", never by clipping chips off-screen', () => {
+	const src = TV_LOBBY;
+	const lobby = stripComments(src);
+	// A display cap in the script limits how many chips render; the count folds the rest — the names we
+	// hide PLUS the presence overflow lobbyRoster already reports — into one "+N more".
+	expect(/const\s+MAX_CHIPS\s*=\s*\d+/.test(lobby)).toBe(true);
+	// The each-loop must iterate the CAPPED list, not the full roster, or the cap does nothing.
+	expect(/\{#each\s+shownRoster\s+as/.test(src)).toBe(true);
+	// hiddenCount must add BOTH the folded names and the upstream overflow, so the count stays truthful.
+	expect(/roster\.length\s*-\s*MAX_CHIPS[\s\S]*?\+\s*overflow/.test(lobby)).toBe(true);
+	expect(/\+\{hiddenCount\}\s*more/.test(src)).toBe(true);
+	// A single long name must not blow the one row out: the chip name is width-bounded and ellipsised.
+	const nameBlock = /\.person\s+\.name\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(/text-overflow:\s*ellipsis/.test(nameBlock)).toBe(true);
+	const personBlock = /\.person\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(/max-width:\s*[0-9.]+ch/.test(personBlock)).toBe(true);
 });
 
 test('#98 the lobby centres its stack in the space ABOVE the strip, not across the whole box', () => {

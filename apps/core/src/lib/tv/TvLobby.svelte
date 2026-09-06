@@ -39,6 +39,25 @@
 	let { qrDataUrl, joinUrl, roster, overflow = 0, pendingCount = 0, unreachable = false }: Props = $props();
 
 	const count = $derived(roster.length + overflow);
+
+	/*
+	 * DISPLAY CAP — bound what the strip has to CONTAIN, not clip what it shows (#98).
+	 *
+	 * The strip sits in the .lobby column below the fixed-height stack; its own height reserves the band
+	 * above it, but if it grows tall the region left for the stack shrinks and the join address spills
+	 * back into it. `lobbyRoster` already caps the roster at 8, but 8 names at the 32-char ceiling the
+	 * join path allows (repository.ts) wrap to ~5 rows on a 720p panel — far taller than the band can be
+	 * without eating the stack. So we render at most MAX_CHIPS names here and FOLD the rest into the
+	 * "+N more" chip, before layout, so the strip is at most two rows at any name length and NOTHING is
+	 * clipped off-screen — the count stays truthful and the overflow chip always survives (it was the
+	 * first casualty of a raw `overflow: hidden`). MAX_CHIPS = 4, combined with a per-chip
+	 * max-width + ellipsis (a 32-char name is unreadable on a wall anyway), keeps even the widest room to
+	 * two rows so the band stays short.
+	 */
+	const MAX_CHIPS = 4;
+	const shownRoster = $derived(roster.slice(0, MAX_CHIPS));
+	// Everyone not shown: the names we folded here PLUS the presence overflow lobbyRoster already counted.
+	const hiddenCount = $derived(Math.max(0, roster.length - MAX_CHIPS) + overflow);
 	/* Scheme-less, matching attract: nobody types "http://" off a wall. The QR carries the full URL. */
 	const joinShort = $derived(joinUrl.replace(/^https?:\/\//, ''));
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
@@ -106,7 +125,7 @@
 	{#if roster.length > 0}
 		<div class="strip">
 			<span class="label">In the room</span>
-			{#each roster as member (member.id)}
+			{#each shownRoster as member (member.id)}
 				<!--
 				  An away singer is GREYED, not removed. Before this the roster was pure socket count, so a
 				  locked phone erased its owner from the screen — the one place a guest confirms the room
@@ -114,12 +133,12 @@
 				  a legible signal across a room, and it is invisible to anyone reading the name aloud.
 				-->
 				<span class="person" class:away={member.state === 'away'}>
-					<span class="swatch" style="--singer: {member.color}"></span>{member.displayName}
+					<span class="swatch" style="--singer: {member.color}"></span><span class="name">{member.displayName}</span>
 					{#if member.state === 'away'}<span class="tag">away</span>{/if}
 				</span>
 			{/each}
-			{#if overflow > 0}
-				<span class="person more">+{overflow} more</span>
+			{#if hiddenCount > 0}
+				<span class="person more">+{hiddenCount} more</span>
 			{/if}
 		</div>
 	{/if}
@@ -238,22 +257,14 @@
 		align-items: center;
 		justify-content: center;
 		gap: 16px;
-		flex-wrap: wrap;
+		flex-wrap: nowrap;
 		/*
-		 * CAP the band. The stack above is a fixed height (its margins are vh-based, ~614px at 720p) and
-		 * the region it centres in is whatever the strip leaves; on a short panel 8 long names wrap to
-		 * three rows (~208px, 29% of a 720p screen) and the region drops below the stack's height, so the
-		 * stack — whose last child is the join address — overflows back down into the strip (the #98
-		 * symptom). Bounding the strip keeps the region tall enough for the stack at every roster size.
-		 * Surplus rows fold below the same fade that already dims the band, exactly as the lyrics reel caps
-		 * itself and lets its edge mask absorb the overflow rows (app.css). The label and the "+N more"
-		 * chip lead the flow, so the row that stays visible is the one that answers "am I in, and how many
-		 * are here". Sized in vh so it tracks the panel: 14vh is ~101px at 720p (bounds the band to keep the stack
-		 * clear) and ~151px at 1080p, where the strip already sits comfortably under it and nothing is
-		 * clipped.
+		 * The display cap (MAX_CHIPS in the script) already keeps this to at most two rows at any name
+		 * length, so this max-height is a SAFETY NET, not the mechanism — and there is deliberately no
+		 * `overflow: hidden`: with the roster bounded before layout nothing needs clipping, and a hard clip
+		 * is what silently ate roster members (and the "+N more" chip) at the 32-char ceiling.
 		 */
-		max-height: 14vh;
-		overflow: hidden;
+		max-height: 20vh;
 	}
 	.label {
 		font-size: var(--tv-eyebrow);
@@ -277,6 +288,21 @@
 		gap: 0.42em;
 		font-size: var(--tv-body);
 		font-weight: 700;
+		/*
+		 * Bound the chip WIDTH so one very long name (the join path admits up to 32 chars) cannot blow a
+		 * row out and, combined with the MAX_CHIPS count cap, force the strip to a height that eats the
+		 * stack above (#98). A name past this is clipped with an ellipsis on the NAME only — the dot (the
+		 * singer's identity) is flex:none and always shows. A 32-char name is not readable across a room
+		 * regardless, so truncating the tail loses nothing a guest could use.
+		 */
+		max-width: 16ch;
+		min-width: 0;
+	}
+	.person .name {
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		min-width: 0;
 	}
 	.person.more {
 		color: var(--ink-dim);
