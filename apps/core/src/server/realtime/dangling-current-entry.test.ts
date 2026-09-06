@@ -145,3 +145,44 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 		/if\s*\(\s*!state\.entries\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*state\.playback\.currentEntryId\s*\)\s*\)\s*reconcileOnReady\(deps\)/
 	);
 });
+
+// SOURCE-SCAN GUARD for the hydrate() heal comment (store.ts) — issue #254.
+// The heal at store.ts drops a dangling currentEntryId and sets isPlaying:false, which UNJAMS the
+// `!currentEntryId` auto-start gates but starts nothing: there is no boot resync and no boot
+// reconcile, so at hydrate time the room is left genuinely idle with a possibly-ready queue.
+// Recovery only happens later, on the next real event that runs reconcileOnReady (a queue:command,
+// a cook completing, or a manual play). The pre-#254 comment CLAIMED "the boot resync/reconcile then
+// starts the next singer" — a boot reconcile that does not exist — which is exactly the false premise
+// that would stop the next developer from noticing the gap. A comment is not machine-checkable by
+// running it, so pin it here: the raw store.ts text must NOT re-assert a boot resync/reconcile that
+// starts anything, and MUST name the three real recovery sites. Read RAW (not stripComments): the
+// assertions are ABOUT the comment, so blanking comments would make every check vacuous.
+const STORE = readFileSync(join(import.meta.dir, '..', 'state', 'store.ts'), 'utf8');
+
+test("hydrate()'s heal comment (store.ts) tells the truth about boot recovery (#254)", () => {
+	// Non-vacuous: the heal the comment describes must actually be present, or the checks below
+	// would pass against a file that no longer has the code they document.
+	expect(STORE).toMatch(/currentEntryId:\s*null,\s*isPlaying:\s*false/);
+	expect(STORE).toContain('Self-heal a persisted DANGLING currentEntryId (issue #128)');
+
+	// THE PINNED FALSEHOOD. The retired comment claimed "the boot resync/reconcile then starts the
+	// next singer" — asserting a boot-time resync/reconcile that STARTS/recovers a singer. No such
+	// boot-time reconcile exists. Reinstating that claim must red this test. Match the AFFIRMATIVE
+	// over-promise: a "boot resync"/"boot reconcile" whose SAME clause (no newline between) carries a
+	// start/recover/advance verb acting on a singer/room. The corrected comment legitimately DENIES a
+	// boot reconcile ("there is no boot resync or boot reconcile, so nothing starts a singer"), so a
+	// blunt word-scan is deliberately NOT used — that would forbid even saying it does not exist.
+	// STORE is read RAW (not stripComments) because the comment text IS the subject here.
+	const bootPromisesStart =
+		/boot\s+(?:resync|reconcile)[^\n]*\b(?:start|starts|recover|recovers|advance|advances)\b[^\n]*\b(?:singer|room|playback|song)\b/i;
+	expect(STORE).not.toMatch(bootPromisesStart);
+
+	// And the corrected comment must AFFIRM there is no boot-time reconcile, and name the three REAL
+	// recovery sites so the next reader is pointed at what actually restarts the room.
+	// wrap-tolerant: the comment may line-wrap between tokens, so allow `//`, tabs and newlines
+	// between words (the phrase spans two comment lines in the source).
+	expect(STORE).toMatch(/no(?:\s|\/\/)+boot(?:\s|\/\/)+resync(?:\s|\/\/)+or(?:\s|\/\/)+boot(?:\s|\/\/)+reconcile/i);
+	expect(STORE).toContain('queue:command');
+	expect(STORE).toContain('onMediaReady');
+	expect(STORE).toContain('manual play');
+});
