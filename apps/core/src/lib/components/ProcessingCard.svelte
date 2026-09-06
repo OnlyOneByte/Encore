@@ -81,15 +81,6 @@
 						class="away">· away</span>{/if}
 			</div>
 		{/if}
-		<div class="bar"><i style="transform:scaleX({overall / 100})"></i></div>
-		<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
-		<div class="chips">
-			{#each STAGES as s}
-				<span class="chip {state(s.key)}">
-					{#if state(s.key) === 'done'}<Icon name="check" />{/if}{#if state(s.key) === 'now'}<span class="now-dot" aria-hidden="true"></span>{/if}{s.label}
-				</span>
-			{/each}
-		</div>
 	</div>
 	{#if onremove || reorderable}
 		<div class="actions">
@@ -102,13 +93,34 @@
 			{/if}
 		</div>
 	{/if}
+	<div class="progress">
+		<div class="bar"><i style="transform:scaleX({overall / 100})"></i></div>
+		<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
+		<div class="chips">
+			{#each STAGES as s}
+				<span class="chip {state(s.key)}">
+					{#if state(s.key) === 'done'}<Icon name="check" />{/if}{#if state(s.key) === 'now'}<span class="now-dot" aria-hidden="true"></span>{/if}{s.label}
+				</span>
+			{/each}
+		</div>
+	</div>
 </div>
 
 <style>
-	/* Geometry comes from .list-row in app.css. align-items is the one deliberate override: this card
-	   is taller than a plain row, so its seq bubble and actions anchor to the top rather than floating
-	   at the vertical centre. */
-	.qrow { align-items: flex-start; }
+	/* .list-row gives the padding, margin and gap; ProcessingCard overrides its display to a two-row
+	   grid. Row 1: seq (auto) / title+singer (1fr) / actions (auto). Row 2: the progress block, spanning
+	   every column so it always gets the card's full inner width — the actions cluster can no longer eat
+	   into the bar or the chip strip (issue #176). align-items on row 1 keeps the seq bubble and the
+	   action cluster anchored to the title line rather than floating in a taller card. */
+	.qrow.proc {
+		display: grid;
+		grid-template-columns: auto 1fr auto;
+		align-items: flex-start;
+		row-gap: 0;
+	}
+	/* The progress block is the second grid row and spans from the first column through the last,
+	   regardless of whether the actions column rendered. This is the fix's load-bearing declaration. */
+	.progress { grid-column: 1 / -1; }
 	.proc { background: linear-gradient(var(--card), var(--card-tint)); border-color: var(--line-tint); }
 	.seq { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 0.8rem; font-weight: 700; background: var(--card2); color: var(--ink-dim); flex: 0 0 auto; }
 	.meta { flex: 1; min-width: 0; }
