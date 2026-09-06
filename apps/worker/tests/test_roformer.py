@@ -65,6 +65,26 @@ def test_find_roformer_instrumental_none_when_absent(tmp_path):
     assert roformer.find_roformer_instrumental(str(tmp_path / "nope")) is None
 
 
+@pytest.mark.parametrize("slug", sorted(roformer.ROFORMER_REGISTRY_SLUGS))
+def test_stem_discovery_is_not_fooled_by_a_slug_that_contains_the_other_role(tmp_path, slug):
+    """bs-roformer-infer names its outputs `<name>_(Instrumental)_<slug>.<ext>` and
+    `<name>_(Vocals)_<slug>.<ext>` — the resolved model slug is INSIDE the filename the discovery
+    searches. Six of the ten registry slugs contain `vocals`/`instrumental`
+    (roformer-model-bs-roformer-{vocals-by-gabox,vocals-resurrection-by-unwa,vocals-revive-by-unwa,
+    vocals-revive-v2-by-unwa,vocals-revive-v3e-by-unwa,instrumental-resurrection-by-unwa}), so a bare
+    substring match lets the instrumental file satisfy find_roformer_vocals (and, for the
+    instrumental-named slug, the vocals file satisfy find_roformer_instrumental). Assert both stems
+    resolve to their OWN role for every slug. RED on base for the six colliding slugs (#445)."""
+    inst = tmp_path / f"input_(Instrumental)_{slug}.wav"
+    vox = tmp_path / f"input_(Vocals)_{slug}.wav"
+    inst.write_bytes(b"INST")
+    vox.write_bytes(b"VOX")
+    found_inst = roformer.find_roformer_instrumental(str(tmp_path))
+    found_vox = roformer.find_roformer_vocals(str(tmp_path))
+    assert found_inst == str(inst), f"{slug}: instrumental discovery returned {found_inst!r}"
+    assert found_vox == str(vox), f"{slug}: vocals discovery returned {found_vox!r}"
+
+
 def test_roformer_argv_shape():
     argv = roformer.roformer_argv("/in", "/out", "roformer-model-x", device="cpu")
     assert argv[0] == "bs-roformer-infer"
