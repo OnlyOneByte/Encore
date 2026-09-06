@@ -113,28 +113,36 @@ def resolve_roformer_slug(params: dict, default: str = DEFAULT_ROFORMER_MODEL) -
     return slug
 
 
-def find_roformer_instrumental(store_dir: str) -> str | None:
-    """bs-roformer-infer writes `<name>_(Instrumental)_<model>.<ext>` (and a matching vocals file)
-    into store_dir. Return the instrumental path, or None if none was produced. Matched case-
-    insensitively on the stem name so a future output-naming tweak upstream does not silently break
-    the pickup (the exact template is one of the things a real cook must confirm)."""
+def _find_roformer_stem(store_dir: str, marker: str) -> str | None:
+    """bs-roformer-infer writes `<name>_(Instrumental)_<slug>.<ext>` and `<name>_(Vocals)_<slug>.<ext>`
+    into store_dir. Match the DELIMITED role marker (`_(instrumental)_` / `_(vocals)_`), not a bare
+    `"instrumental"` / `"vocal"` substring: the resolved model slug is part of the filename and six of
+    the ten registry slugs themselves contain `vocals`/`instrumental` (e.g.
+    `roformer-model-bs-roformer-vocals-by-gabox`), so a bare substring test lets the instrumental file
+    satisfy the vocals search and vice-versa (#445). The marker sits before the slug and is unaffected
+    by it. Listing is sorted so the pick is deterministic — os.listdir order is unspecified, matching the
+    deliberate sort in acquisition/fetch.py:find_downloaded. Matched case-insensitively so an upstream
+    output-naming tweak does not silently break the pickup (the exact template is confirmed by a cook)."""
     if not os.path.isdir(store_dir):
         return None
-    for name in os.listdir(store_dir):
+    needle = marker.lower()
+    for name in sorted(os.listdir(store_dir)):
         low = name.lower()
-        if "instrumental" in low and low.endswith((".wav", ".flac")):
+        if needle in low and low.endswith((".wav", ".flac")):
             return os.path.join(store_dir, name)
     return None
+
+
+def find_roformer_instrumental(store_dir: str) -> str | None:
+    """Return the instrumental stem bs-roformer-infer wrote into store_dir, or None. See
+    _find_roformer_stem for why the delimited `_(Instrumental)_` marker is matched, not `instrumental`."""
+    return _find_roformer_stem(store_dir, "_(instrumental)_")
 
 
 def find_roformer_vocals(store_dir: str) -> str | None:
-    if not os.path.isdir(store_dir):
-        return None
-    for name in os.listdir(store_dir):
-        low = name.lower()
-        if "vocal" in low and low.endswith((".wav", ".flac")):
-            return os.path.join(store_dir, name)
-    return None
+    """Return the vocals stem bs-roformer-infer wrote into store_dir, or None. See _find_roformer_stem
+    for why the delimited `_(Vocals)_` marker is matched, not `vocal`."""
+    return _find_roformer_stem(store_dir, "_(vocals)_")
 
 
 def roformer_argv(
