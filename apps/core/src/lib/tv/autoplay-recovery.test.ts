@@ -70,9 +70,11 @@ test('TvPlayer arms a document-wide gesture listener that re-attempts playback (
 	// the effect and the callbacks reading a non-reactive value.
 	expect(src).toMatch(/let\s+autoplayBlocked\s*=\s*\$state\(false\)/);
 	// The two callbacks are actually DESTRUCTURED from props (not merely declared in the interface), so
-	// the parent's handlers are the ones invoked. Pins hunk #2.
+	// the parent's handlers are the ones invoked. Pins hunk #2. Each must appear in the destructure list
+	// as its own entry — trailing comma OR end-of-list — so a later prop (#393's onplayingchange now sits
+	// after onautoplayrecovered) does not falsify the guard while the destructuring it checks still holds.
 	expect(src).toMatch(/onautoplayblocked\s*,/);
-	expect(src).toMatch(/onautoplayrecovered\n/);
+	expect(src).toMatch(/onautoplayrecovered\s*[,\n]/);
 });
 
 test('the gesture recovery path builds NO AudioContext / MediaElementSource — keyShift===0 invariant (#64)', () => {

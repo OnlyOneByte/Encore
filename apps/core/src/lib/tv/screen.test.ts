@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { tvScreen, lobbyRoster, lyricsAdvancing } from './screen';
 import type { QueueEntry } from '@encore/shared';
 
@@ -43,24 +45,46 @@ describe('tvScreen', () => {
 });
 
 describe('lyricsAdvancing', () => {
-	it('advances while a song plays', () => {
-		expect(lyricsAdvancing('playing', 'playing', true)).toBe(true);
+	it('advances while a song plays and the element is actually running', () => {
+		expect(lyricsAdvancing('playing', 'playing', true, true)).toBe(true);
 	});
 
 	it('does NOT advance while paused, even though the screen is still playing (Bug B)', () => {
 		// The bug: a paused song is still `current`, so the old screen-only gate kept the reel and ball
-		// scrolling with no audio. The transport state must freeze them.
-		expect(lyricsAdvancing('playing', 'playing', false)).toBe(false);
+		// scrolling with no audio. The room's play/pause INTENT must freeze them.
+		expect(lyricsAdvancing('playing', 'playing', false, false)).toBe(false);
 	});
 
 	it('does not advance during the interstitial (a song is not on the words yet)', () => {
-		expect(lyricsAdvancing('playing', 'interstitial', true)).toBe(false);
+		expect(lyricsAdvancing('playing', 'interstitial', true, true)).toBe(false);
 	});
 
 	it('does not advance on the idle screens regardless of transport', () => {
-		expect(lyricsAdvancing('attract', 'attract', true)).toBe(false);
-		expect(lyricsAdvancing('lobby', 'attract', true)).toBe(false);
-		expect(lyricsAdvancing('waiting', 'waiting', true)).toBe(false);
+		expect(lyricsAdvancing('attract', 'attract', true, true)).toBe(false);
+		expect(lyricsAdvancing('lobby', 'attract', true, true)).toBe(false);
+		expect(lyricsAdvancing('waiting', 'waiting', true, true)).toBe(false);
+	});
+
+	// #393 — THE MISSING QUADRANT. The room INTENDS to play (`isPlaying === true`) while the master
+	// element is NOT advancing. `isPlaying` is the server's word, not the element's; without the fourth
+	// input the reel swept forward on wall-clock over a silent stage. This is the case no prior test
+	// covered, which is why "scrolling words, silent room" shipped with the suite green. Each of the two
+	// reachable triggers reduces to the SAME shape here: `elementAdvancing === false`.
+	it('does NOT advance when the room intends to play but the element is not running (#393)', () => {
+		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
+	});
+
+	it('freezes when autoplay was refused — silent behind the "tap to start" hint (#393 trigger 1)', () => {
+		// A TV wall registers no gesture, master.play() rejects with NotAllowedError, the room stays silent,
+		// but the server frame still reports isPlaying: true. The element never fired `play`, so it never
+		// reported advancing, and the reel must not sweep.
+		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
+	});
+
+	it('freezes when the current entry is not playable / its src has not landed (#393 trigger 2)', () => {
+		// transportFor returns `idle` for a not-yet-cooked or src-less entry while tvScreen still returns
+		// `playing` for any current entry. Same idle element, same frozen reel.
+		expect(lyricsAdvancing('playing', 'playing', true, false)).toBe(false);
 	});
 });
 
@@ -111,5 +135,53 @@ describe('lobbyRoster', () => {
 		const { shown, overflow } = lobbyRoster(['a', 'unknown-id'], ['also-unknown'], dir);
 		expect(shown.map((s) => s.displayName)).toStrictEqual(['Angelo']);
 		expect(overflow).toBe(0);
+	});
+});
+
+
+/*
+ * #393 the wiring — the honest element-advancing signal reaches the gate.
+ *
+ * `lyricsAdvancing`'s fourth input is unit-pinned above, but the pure function is only half the fix:
+ * the value fed to it must be the MASTER element's real play/pause state, not the room's intent a
+ * second time. That plumbing lives in two .svelte files with no unit harness, so it is pinned by a
+ * source scan here — the same shape as the #64 autoplay guard and the #396 catalog-boundary guard.
+ * Blank comments first so prose describing the wiring cannot satisfy a scan.
+ */
+function stripComments(src: string): string {
+	return src
+		.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '))
+		.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, ' '))
+		.replace(/\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
+describe('#393 the element-advancing signal is wired from the master element to the gate', () => {
+	const here = import.meta.dir;
+	const route = stripComments(readFileSync(join(here, '..', '..', 'routes', 'tv', '+page.svelte'), 'utf8'));
+	const player = stripComments(readFileSync(join(here, 'TvPlayer.svelte'), 'utf8'));
+
+	it('feeds lyricsAdvancing a real element signal, not the room intent twice', () => {
+		// The fourth argument must be `masterAdvancing` — passing `isPlaying` again would compile and stay
+		// green on the pure tests while reintroducing the exact defect (intent gating itself).
+		expect(route).toMatch(/lyricsAdvancing\(\s*screen\s*,\s*tvState\s*,\s*isPlaying\s*,\s*masterAdvancing\s*\)/);
+		// It is a reactive `$state`, so a callback write actually re-runs the derived.
+		expect(route).toMatch(/let\s+masterAdvancing\s*=\s*\$state\(false\)/);
+	});
+
+	it('sets masterAdvancing from onplayingchange on BOTH player slots', () => {
+		// Two slots (visible + hidden pre-warm); each must report, or the signal goes stale across a swap.
+		const wires = [...route.matchAll(/onplayingchange=\{\(\w+\)\s*=>\s*\(masterAdvancing\s*=\s*\w+\)\}/g)];
+		expect(wires.length).toBe(2);
+	});
+
+	it('TvPlayer reports the MASTER element\'s own play/pause, gated on active+visible', () => {
+		// The honest source is the <audio>'s native events, not a re-derivation of the intent prop. Gating on
+		// active+visible mirrors onautoplayblocked so the hidden pre-warm slot (deliberately paused) cannot
+		// report the room as stopped.
+		expect(player).toMatch(/onplayingchange\?:\s*\(playing:\s*boolean\)\s*=>\s*void/);
+		expect(player).toMatch(/onplay=\{\(\)\s*=>\s*active\s*&&\s*visible\s*&&\s*onplayingchange\?\.\(true\)\}/);
+		expect(player).toMatch(/onpause=\{\(\)\s*=>\s*active\s*&&\s*visible\s*&&\s*onplayingchange\?\.\(false\)\}/);
+		// onended reports a stop too (the element pauses at track end without firing `pause` in every engine).
+		expect(player).toMatch(/if\s*\(active\s*&&\s*visible\)\s*onplayingchange\?\.\(false\)/);
 	});
 });

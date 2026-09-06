@@ -61,16 +61,30 @@ export function tvScreen(input: TvScreenInput): TvScreen {
  * Should the lyrics reel and ball ADVANCE right now?
  *
  * `LyricsOverlay` extrapolates position from wall-clock while its `playing` prop is true. The screen
- * being `playing` is necessary but NOT sufficient: a PAUSED song is still `current`, so gating the
- * overlay on `screen`/`tvState` alone (the old `lyricsActive`) left the reel scrolling on while the
- * audio was frozen. This folds in the real transport state so the words freeze with the sound.
+ * being `playing` is necessary but NOT sufficient, and NEITHER is the room's play/pause intent:
  *
- * Advancing is distinct from VISIBLE — the overlay stays on screen while paused (frozen mid-line),
- * so the caller keeps passing `visible` on the same `screen`/`tvState` condition and only feeds the
- * ADVANCING signal through here.
+ *   • `isPlaying` is what the SERVER says the room is doing (`playback:state.isPlaying`). It closes
+ *     the pause-from-the-phone case (Bug B): a paused song is still `current`, so the screen stays
+ *     `playing`, and without this the reel scrolled with the audio frozen.
+ *   • `elementAdvancing` is whether the MASTER ELEMENT is actually running — the honest signal the
+ *     page reports up from the <audio>'s own play/pause (#393). The room can INTEND to play while the
+ *     element is not: a TV wall's autoplay is refused (`NotAllowedError`, the room silent behind the
+ *     "tap to start" hint), or the current entry's media is not playable / its src has not landed
+ *     (`transportFor` returns `idle`), and the server still says `isPlaying: true`. In every one of
+ *     those the reel used to sweep to 90s into a song whose element never started — silent room,
+ *     scrolling words. Both dimensions must agree before the words move.
+ *
+ * Advancing is distinct from VISIBLE — the overlay stays on screen while paused or silent (frozen
+ * mid-line), so the caller keeps passing `visible` on the same `screen`/`tvState` condition and only
+ * feeds the ADVANCING signal through here.
  */
-export function lyricsAdvancing(screen: TvScreen, tvState: string, isPlaying: boolean): boolean {
-	return screen === 'playing' && tvState !== 'interstitial' && isPlaying;
+export function lyricsAdvancing(
+	screen: TvScreen,
+	tvState: string,
+	isPlaying: boolean,
+	elementAdvancing: boolean
+): boolean {
+	return screen === 'playing' && tvState !== 'interstitial' && isPlaying && elementAdvancing;
 }
 
 
