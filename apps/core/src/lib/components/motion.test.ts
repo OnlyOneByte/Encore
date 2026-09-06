@@ -6,7 +6,19 @@ import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const LAYOUT_PROPS = ['width', 'height', 'top', 'left', 'right', 'bottom', 'margin', 'padding'];
+// ALLOWLIST, not a denylist (issue #290): the file header states the rule positively —
+// animations/transitions may touch ONLY GPU-composited properties. Flag anything animated
+// that is not in this set, so `transition: all` (which animates width/height/…) and every
+// layout prop outside a fixed denylist (max-height, inset, gap, flex-basis, font-size, …) red.
+const COMPOSITED_PROPS = new Set([
+	'transform',
+	'opacity',
+	'background',
+	'background-color',
+	'background-position', // paint-only, compositor-safe; used by the shimmer skeleton loader
+	'color',
+	'box-shadow'
+]);
 
 function svelteFiles(dir: string): string[] {
 	const out: string[] = [];
@@ -28,6 +40,14 @@ function styleFiles(dir: string): string[] {
 		else if (ent.name.endsWith('.svelte') || ent.name.endsWith('.css')) out.push(p);
 	}
 	return out;
+}
+
+// strip BOTH comment forms before a whole-file scan: CSS `/* … */` AND HTML `<!-- … -->`. Tests 1 and 2
+// read entire .svelte files (markup + <style>), so a `transition:` written in prose inside an HTML
+// comment (e.g. tv/+page.svelte's 'not a transition: work in progress' note) must not false-positive
+// (issue #287 gap 1 / #290 :55,:67). Test 3 keeps the CSS-only stripComments — its scan is CSS-scoped.
+function stripAllComments(src: string): string {
+	return src.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 }
 
 // extract EVERY property animated by each `transition:` shorthand or `transition-property:` longhand.
@@ -53,26 +73,64 @@ function animatedProps(css: string): string[] {
 test('no transition animates a layout-triggering property (transform/opacity only)', () => {
 	// scan every .svelte + .css under src/ — including src/lib/tv, src/lib/ui and src/app.css
 	const files = styleFiles(join(import.meta.dir, '..', '..'));
+	// count floor (issue #287 gap 3): a directory rename / moved src / glob typo would make this
+	// scan pass VACUOUSLY. Pin it around the current scanned-file count (16 today) so a broken walk
+	// reds instead of silently passing — the exact failure mode #140 shipped under.
+	expect(files.length).toBeGreaterThanOrEqual(12);
 	const offenders: string[] = [];
 	for (const f of files) {
-		const css = readFileSync(f, 'utf8');
+		// strip comments first (issue #287 gap 1): a `transition:` in a `/* … */` or `<!-- … -->` comment
+		// must not false-positive — the #205 source-scan precedent.
+		const css = stripAllComments(readFileSync(f, 'utf8'));
 		for (const prop of animatedProps(css)) {
-			if (LAYOUT_PROPS.includes(prop)) offenders.push(`${f}: transition: ${prop}`);
+			if (!COMPOSITED_PROPS.has(prop)) offenders.push(`${f}: transition: ${prop}`);
 		}
 	}
 	expect(offenders).toEqual([]);
 });
 
-test('@keyframes use only transform/opacity', () => {
+// capture the full body of every @keyframes block via a brace-depth walk (issue #290 :71). The old
+// `\}\s*\}` terminator required the block to end with two braces separated by whitespace ONLY, so a
+// trailing comment — or any non-whitespace — between the last stop's `}` and the block's `}` made the
+// regex skip the ENTIRE block. A depth counter from the block's opening `{` to its matching close is
+// immune to what sits between the inner stops. Comments are stripped by the caller first.
+function keyframeBodies(css: string): string[] {
+	const bodies: string[] = [];
+	const re = /@keyframes[^{]*\{/g;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(css))) {
+		let depth = 1;
+		const bodyStart = m.index + m[0].length;
+		let i = bodyStart;
+		for (; i < css.length && depth > 0; i++) {
+			if (css[i] === '{') depth++;
+			else if (css[i] === '}') depth--;
+		}
+		bodies.push(css.slice(bodyStart, i - 1));
+		re.lastIndex = i;
+	}
+	return bodies;
+}
+
+// every property animated inside a keyframes body: the FIRST identifier of each `prop:` declaration.
+function keyframeProps(body: string): string[] {
+	const props: string[] = [];
+	for (const m of body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)) props.push(m[1]!);
+	return props;
+}
+
+test('@keyframes animate only GPU-composited properties', () => {
 	const files = styleFiles(join(import.meta.dir, '..', '..'));
+	expect(files.length).toBeGreaterThanOrEqual(12);
 	const bad: string[] = [];
 	for (const f of files) {
-		const css = readFileSync(f, 'utf8');
-		for (const block of css.matchAll(/@keyframes[^{]+\{([\s\S]*?)\}\s*\}/g)) {
-			const body = block[1]!;
-			for (const lp of LAYOUT_PROPS) {
-				// flag a layout prop used as an animated declaration inside keyframes
-				if (new RegExp(`(^|[;{\\s])${lp}\\s*:`).test(body)) bad.push(`${f}: keyframe animates ${lp}`);
+		// strip comments first so (a) a trailing comment can't defeat the block capture and (b) a
+		// commented-out declaration does not false-positive; strips `/* */` and `<!-- -->` (issue #287 gap 1).
+		const css = stripAllComments(readFileSync(f, 'utf8'));
+		for (const body of keyframeBodies(css)) {
+			for (const prop of keyframeProps(body)) {
+				// `from`/`to`/percentage stops are selectors, not declarations; they never precede a `:` here.
+				if (!COMPOSITED_PROPS.has(prop)) bad.push(`${f}: keyframe animates ${prop}`);
 			}
 		}
 	}
