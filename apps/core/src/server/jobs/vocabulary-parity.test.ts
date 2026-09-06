@@ -310,8 +310,11 @@ describe('roformer token ↔ checkpoint identity', () => {
 	const roformerPy = readFileSync(join(WORKER_SRC, 'separation/roformer.py'), 'utf8');
 
 	function pyRoformerModels(): Record<string, string> {
-		const block = roformerPy.match(/ROFORMER_MODELS\s*=\s*\{([\s\S]*?)\n\}/);
-		if (!block) throw new Error('ROFORMER_MODELS not found in roformer.py — did the table move?');
+		// Anchor to a MODULE-LEVEL assignment (^ under the m flag = column 0). Python indents nothing
+		// at module scope and a comment begins with `#`, so a `# ROFORMER_MODELS = {...}` line above
+		// the live table can no longer be the first (unanchored) match and mask a real divergence.
+		const block = roformerPy.match(/^ROFORMER_MODELS\s*=\s*\{([\s\S]*?)\n\}/m);
+		if (!block) throw new Error('ROFORMER_MODELS not found at module level in roformer.py — did the table move or get commented out?');
 		const out: Record<string, string> = {};
 		for (const m of block[1]!.matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) out[m[1]!] = m[2]!;
 		return out;
@@ -424,6 +427,7 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 		expect(advertisedMs).toBeLessThanOrEqual(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
 	});
 });
+
 
 
 /**
@@ -555,5 +559,64 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 		expect(voc).toMatch(/^derived\/stems\/.+-vocals\..+$/);
 		expect(pyStrConst('INSTRUMENTAL_EXT').length).toBeGreaterThan(0);
 		expect(pyStrConst('VOCALS_EXT').length).toBeGreaterThan(0);
+
+	});
+});
+
+
+/**
+ * The DEMUCS_MODELS WHITELIST is the roformer table's twin, and until now the ONLY half of the
+ * separator contract with no guard.
+ *
+ * `demucs.py` carries `DEMUCS_MODELS = ("htdemucs", ...)` under a comment that says it "Mirrors the
+ * `demucs` engine's model whitelist in packages/shared/src/separators.ts" — but nothing enforced the
+ * mirror. Its roformer twin IS guarded (the token↔checkpoint block above reads ROFORMER_MODELS as
+ * text and pins it against the offered set); the demucs side lived only in that prose comment.
+ *
+ * The drift this stops is concrete: add a fourth checkpoint to `separators.ts` and it becomes
+ * selectable in room settings, but the worker's `resolve_demucs_model` rejects any id not in
+ * DEMUCS_MODELS. The core validated the engine+model pairing against `separators.ts` before
+ * enqueueing, so every cook of that song then hits `demucs.py`'s `ValueError` — a permanent config
+ * error that no retry can fix, burned `maxAttempts` times. Guard it the same way the roformer twin
+ * is: read the Python tuple as TEXT (no interpreter, runs in `bun test`) and assert it agrees, in
+ * both directions, with the demucs engine's offered model ids.
+ */
+describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)', () => {
+	const demucsPy = readFileSync(join(WORKER_SRC, 'separation/demucs.py'), 'utf8');
+
+	/** The ids in `DEMUCS_MODELS = ("a", "b", ...)`, read from demucs.py as text. */
+	function pyDemucsModels(): string[] {
+		// Anchor to a MODULE-LEVEL assignment (^ under the m flag = column 0). Unanchored, String.match
+		// takes the FIRST occurrence, so a commented-out CORRECT tuple parked above a live WRONG one
+		// would parse the comment and pass on a genuine drift — a false EXEMPT on the exact divergence
+		// this guard exists to catch. A `#`-commented line cannot start at column 0, so it is skipped.
+		const block = demucsPy.match(/^DEMUCS_MODELS\s*=\s*\(([\s\S]*?)\)/m);
+		if (!block) throw new Error('DEMUCS_MODELS not found at module level in demucs.py — did the tuple move or get commented out?');
+		return [...block[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
+	}
+
+	/** The model ids the `demucs` engine offers phones in the shared registry. */
+	function offeredDemucsModels(): string[] {
+		return SEPARATOR_ENGINES.filter((e) => e.id === 'demucs').flatMap((e) => e.models.map((m) => m.id));
+	}
+
+	test('the worker whitelist and the offered set agree exactly, in both directions', () => {
+		const worker = pyDemucsModels();
+		const offered = offeredDemucsModels();
+		// Non-vacuity floor: a silent empty parse on either side would let the equality pass with
+		// nothing in it, exactly the trap the roformer/stage guards above call out.
+		expect(worker.length, 'DEMUCS_MODELS parsed empty from demucs.py — did the tuple change shape?').toBeGreaterThan(0);
+		expect(offered.length, 'the demucs engine offers no models in separators.ts — did the registry move?').toBeGreaterThan(0);
+		// Set equality both directions: a model selectable in room settings the worker will reject
+		// (offered ⊄ worker) parks every cook of it on a non-retryable ValueError; a worker checkpoint
+		// no UI offers (worker ⊄ offered) is dead config that drifts unnoticed.
+		expect([...worker].sort()).toEqual([...offered].sort());
+	});
+
+	test('demucs.py is where the whitelist read expects it', () => {
+		const path = join(WORKER_SRC, 'separation/demucs.py');
+		expect(existsSync(path), `demucs.py not found under ${WORKER_SRC} — did the module move?`).toBe(
+			true
+		);
 	});
 });
