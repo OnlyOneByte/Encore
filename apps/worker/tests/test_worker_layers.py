@@ -211,15 +211,43 @@ def test_only_ONE_step_writes_each_artifact_kind():
     a shape mismatch that would have stalled every cook at "Separating vocals" forever, caught only by a
     parity guard added afterwards. One writer per kind means the two engines cannot disagree."""
     writers: dict[str, set[str]] = {}
+
+    def _record(kind: object, rel: str) -> None:
+        # Only string keys name an artifact kind; a non-constant key is out of AST reach and left to
+        # the `assert writers` backstop below.
+        if isinstance(kind, str):
+            writers.setdefault(kind, set()).add(rel)
+
+    def _is_artifacts(value: ast.expr) -> bool:
+        return ast.unparse(value).endswith("out.artifacts")
+
     for path in _py_files("steps"):
+        rel = str(path.relative_to(SRC))
         text = path.read_text(encoding="utf-8")
         tree = ast.parse(text)
         for node in ast.walk(tree):
-            # ctx.out.artifacts["<kind>"] = ...
-            if not isinstance(node, ast.Subscript) or not isinstance(node.slice, ast.Constant):
+            # Shape 1 — per-key subscript: ctx.out.artifacts["<kind>"] = ...
+            if (
+                isinstance(node, ast.Subscript)
+                and isinstance(node.slice, ast.Constant)
+                and _is_artifacts(node.value)
+            ):
+                _record(node.slice.value, rel)
                 continue
-            if ast.unparse(node.value).endswith("out.artifacts") and isinstance(node.slice.value, str):
-                writers.setdefault(node.slice.value, set()).add(str(path.relative_to(SRC)))
+            # Shapes 2 & 3 — the dict was mutated as a whole, which is exactly what the §1.2 bug did:
+            #   ctx.out.artifacts.update({"<kind>": ..., ...})   (a dict literal argument)
+            #   ctx.out.artifacts.setdefault("<kind>", ...)
+            if (
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and _is_artifacts(node.func.value)
+            ):
+                if node.func.attr == "update" and node.args and isinstance(node.args[0], ast.Dict):
+                    for key in node.args[0].keys:
+                        if isinstance(key, ast.Constant):
+                            _record(key.value, rel)
+                elif node.func.attr == "setdefault" and node.args and isinstance(node.args[0], ast.Constant):
+                    _record(node.args[0].value, rel)
     multi = {k: sorted(v) for k, v in writers.items() if len(v) > 1}
     assert not multi, f"more than one step writes these artifact kinds: {multi}"
     assert writers, "no artifact writers found — this guard has stopped guarding"
