@@ -68,6 +68,18 @@ export interface SeekPlan {
  * from a master that never moved — manufacturing the desync this function exists to prevent, and
  * flushing the decoder ~4 times a second while doing it.
  *
+ * THE ZERO FIXED POINT. A `restart` sets the reported position to 0 (player.ts) while the song plays
+ * on, so a restart pressed under `SEEK_JUMP_SEC` into the song — a currentTime below 1.5s — reads as
+ * a sub-threshold move and the master never rewinds: the restart does nothing (#95). Telemetry cannot
+ * report a target of 0 unless the song is genuinely at ~0, in which case the master is already there
+ * and moving it is a no-op; so a target of exactly 0 with the master past the pre-roll tolerance is
+ * unambiguously a rewind, never a telemetry frame. It is admitted as a jump on that basis, WITHOUT
+ * relaxing the threshold for any non-zero target (which would reopen the telemetry-chasing this
+ * function exists to prevent). The clause tests `targetSec === 0` — exact equality, load-bearing:
+ * `restart` writes the integer literal 0 (player.ts), so 0 is a genuine FIXED POINT, not a value
+ * that arrives near-zero from a computation. A future writer computing a near-zero restart target
+ * would fall outside this clause and want its own reason to seek.
+ *
  * @param masterSec the instrumental's playhead
  * @param guideSec  the guiding track's playhead (`NaN` when no guide is mounted — it is then ignored)
  * @param targetSec the position the room reported
@@ -77,7 +89,11 @@ export function seekPlan(masterSec: number, guideSec: number, targetSec: number)
 	// `guideCorrection`'s policy above; a NaN target reaching the element throws.
 	if (!Number.isFinite(masterSec) || !Number.isFinite(targetSec)) return { master: false, guide: false };
 
-	const master = Math.abs(masterSec - targetSec) > SEEK_JUMP_SEC;
+	// A jump either moves far enough to clear the telemetry threshold, or it is a rewind to the
+	// restart fixed point (target 0) from a master that is meaningfully past it. See THE ZERO FIXED
+	// POINT above for why the second clause cannot fire on ordinary telemetry.
+	const restartToZero = targetSec === 0 && masterSec > GUIDE_PREROLL_ALIGN_SEC;
+	const master = Math.abs(masterSec - targetSec) > SEEK_JUMP_SEC || restartToZero;
 	if (!master) return { master: false, guide: false };
 
 	// A guide already at the target needs no flush. A non-finite guide playhead cannot be compared, so
