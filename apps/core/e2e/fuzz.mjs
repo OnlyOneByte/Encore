@@ -599,7 +599,6 @@ async function wireQueueOp(page, op, opId) {
 		if (!window.__fz || window.__fz.readyState !== 1) return 'closed';
 		window.__fz.send(JSON.stringify({ type: 'queue:command', command: {
 			clientOpId: ${JSON.stringify(opId)},
-			baseRev: window.__fzRev ?? 0,
 			op: ${JSON.stringify(op)}
 		}}));
 		return 'sent';

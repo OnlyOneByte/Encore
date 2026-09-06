@@ -332,7 +332,7 @@ async function sendPlayer(phone, command) {
 }
 async function sendQueueAdd(phone, mediaId, singerId) {
 	await ensureProbeWs(phone);
-	// Wire shape: { type: 'queue:command', command: { clientOpId, baseRev, op: { op: 'add', entry: {...} } } }
+	// Wire shape: { type: 'queue:command', command: { clientOpId, op: { op: 'add', entry: {...} } } }
 	// The validator requires entry.singerId === actorSingerId (the browser session's singer). Making
 	// up an id would silently reject the op.
 	const now = Date.now();
@@ -346,7 +346,6 @@ async function sendQueueAdd(phone, mediaId, singerId) {
 	};
 	const command = {
 		clientOpId: `p2-o-${now}-${Math.floor(Math.random() * 1e6)}`,
-		baseRev: 0,
 		op: { op: 'add', entry }
 	};
 	await phone.evaluate(

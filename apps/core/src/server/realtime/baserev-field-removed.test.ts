@@ -86,3 +86,42 @@ test('no non-test source under apps/core references baseRev (#348)', () => {
 	// reds this with the offending path named.
 	expect(offenders).toEqual([]);
 });
+
+
+// The three .ts/.svelte scans above do NOT reach the e2e harness: `apps/core/e2e/**/*.mjs` are
+// live-server scripts invoked by nothing in `bun test`, so #348 left three of them still sending or
+// documenting the dead field (#411). This scan closes that gap — precedent for widening a source-scan
+// guard to `.mjs` is #408 (task-number-hygiene.test.ts).
+//
+// It bans the AFFIRMATIVE declaration `baseRev:` (a property/send), not the bare word: after the
+// stale prose was corrected, the probes legitimately NAME `baseRev` as the removed field in a
+// `report()` string literal that stripComments cannot blank (it is not a comment), and a bare-word
+// ban self-reds on it — the exact trap that fired three times on #254. A re-added send is always
+// `baseRev: <value>`, so the colon form catches every regression while leaving honest prose alone.
+const E2E_DIR = join(import.meta.dir, '..', '..', '..', 'e2e');
+
+function collectMjs(root: string): string[] {
+	const out: string[] = [];
+	const walk = (dir: string) => {
+		for (const name of readdirSync(dir)) {
+			if (['node_modules', '.svelte-kit', 'build', 'dist'].includes(name)) continue;
+			const p = join(dir, name);
+			if (statSync(p).isDirectory()) walk(p);
+			else if (/\.mjs$/.test(name)) out.push(p);
+		}
+	};
+	walk(root);
+	return out;
+}
+
+test('no e2e .mjs harness script sends the dead baseRev field (#411)', () => {
+	const files = collectMjs(E2E_DIR);
+	// Sentinel: a broken walk that finds nothing must not pass vacuously (fuzz + party + probes/*).
+	expect(files.length).toBeGreaterThan(10);
+	const offenders = files
+		.filter((f) => /\bbaseRev\s*:/.test(stripComments(readFileSync(f, 'utf8'))))
+		.map((f) => f.slice(REPO_ROOT.length + 1))
+		.sort();
+	// Re-adding `baseRev: <value>` to any e2e command envelope reds this with the offending path named.
+	expect(offenders).toEqual([]);
+});
