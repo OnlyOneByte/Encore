@@ -126,3 +126,60 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
         "demucs.py STEM_BITRATE still claims it governs both stems — it governs the vocals stem only, the "
         "instrumental is FLAC via encode_flac_argv (issue #85)"
     )
+
+
+def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution_limit():
+    """Issue #103. The _MIN_MIDI band-floor comment justified the floor with arithmetic that was wrong
+    by 18 semitones and is exactly the kind of reasoning the next person to touch the chromagram trusts.
+
+    The constant (_MIN_MIDI = 24, C1, 32.7Hz) is CORRECT and measured — see the issue. What was false:
+    (1) that below C1 the rfft bin spacing is coarser than a semitone (the crossover is actually ~90Hz /
+    MIDI ~42 at frame=8192, so the band's lowest 18 semitones are BELOW the limit, not above it); and
+    (2) that the floor keeps sub-bass rumble out (the band starts at 32.7Hz, which IS sub-bass). There is
+    no behaviour to test, so this pins the prose: the false clauses stay gone and the true reason (the
+    floor bounds the fold and deliberately reaches below the resolution limit) stays stated. It also pins
+    the crossover arithmetic to the code's own defaults, so a future `frame` change surfaces here.
+    """
+    src = Path(__file__).resolve().parents[1] / "src"
+    key_detect_src = (src / "analysis" / "key_detect.py").read_text(encoding="utf-8")
+
+    # (1) The false "coarser than a semitone below C1 / unreliable fold" justification must not reappear.
+    for banned in ("bin spacing is coarser than a semitone", "the fold is unreliable"):
+        assert banned not in key_detect_src, (
+            f"key_detect.py still justifies _MIN_MIDI with the false clause {banned!r} — the resolution "
+            "crossover is ~90Hz/MIDI ~42, not the C1 floor (issue #103)"
+        )
+    # (2) The false "keeps sub-bass out" justification must not reappear: the band STARTS in sub-bass.
+    assert "keeps sub-bass rumble and hiss out" not in key_detect_src, (
+        "key_detect.py still claims the band floor keeps sub-bass out — the band starts at 32.7Hz, which "
+        "is sub-bass, and sums raw magnitudes there (issue #103)"
+    )
+    # The true reason must be NAMED where the constant lives, not merely absent: the floor bounds the
+    # fold and reaches below the resolution limit on purpose.
+    assert "BOUND the fold" in key_detect_src, (
+        "key_detect.py must state that the floor bounds the fold (issue #103)"
+    )
+    assert "BELOW the rfft resolution limit" in key_detect_src, (
+        "key_detect.py must state the floor sits below the resolution limit on purpose (issue #103)"
+    )
+
+    # Pin the arithmetic to the code's own defaults so a future `frame` change surfaces HERE: the
+    # semitone-equals-one-bin crossover is ~MIDI 42, ~18 semitones above the _MIN_MIDI = 24 floor.
+    import numpy as np
+
+    from src.analysis.key_detect import _MIN_MIDI
+
+    frame, sample_rate = 8192, 44100
+    bin_hz = sample_rate / frame
+    # crossover freq where a semitone (f*(2**(1/12)-1)) first equals one bin, in MIDI
+    f_cross = bin_hz / (2 ** (1 / 12) - 1)
+    midi_cross = 69.0 + 12.0 * np.log2(f_cross / 440.0)
+    assert _MIN_MIDI == 24, "issue #103 measured this floor as correct; do not change the constant"
+    assert 41.0 < midi_cross < 42.5, (
+        f"resolution crossover moved to MIDI {midi_cross:.2f}; the band-floor comment (issue #103) "
+        "quotes ~MIDI 42 at frame=8192 and must be re-derived if `frame` changed"
+    )
+    assert midi_cross - _MIN_MIDI > 15, (
+        "the comment's whole point (issue #103) is that the band reaches ~18 semitones below the "
+        f"resolution limit; that gap is now only {midi_cross - _MIN_MIDI:.1f} semitones"
+    )
