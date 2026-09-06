@@ -20,8 +20,10 @@ import { can } from '../auth/capabilities';
 import { queueEntries } from '../db/schema';
 
 // The queue_entries.status column is the single source of truth for the entry-status VALUE LIST:
-// reading its enumValues here means the add-arm guard's allowed set can never drift from the column
-// it protects. It is NOT an enforcing enum at runtime — the column is `text ... NOT NULL` with no
+// its enumValues are read below ONLY to CLASSIFY a rejected status for the operator log (a value the
+// column knows vs one it does not). Since #324 they do NOT define what the add arm allows — that
+// allowed set is the single literal 'queued' (see the guard below), so the two cannot drift together.
+// It is NOT an enforcing enum at runtime — the column is `text ... NOT NULL` with no
 // CHECK constraint (drizzle's `enum:` is compile-time only), so SQLite will happily persist an
 // off-enum string. Only an explicit null violates anything at the flush. That is precisely why the
 // add-arm guard below (not the column) is what keeps the written value set honest.
