@@ -3,7 +3,7 @@ import { MEDIA_STAGES, mediaStagePosition, type MediaStatus } from './events';
 /**
  * Overall cook completion 0–100 for the processing bar — NOT the current step's own progress.
  *
- * T-15: `ProcessingCard` scaled the whole bar by the worker's per-step `pct`, so every step that
+ * `ProcessingCard` scaled the whole bar by the worker's per-step `pct`, so every step that
  * reached 100% filled the bar while later milestones had not started. The fix maps that per-step pct
  * into a per-stage BAND over `MEDIA_STAGES`, so the bar reads how far through the *cook* a song is.
  *

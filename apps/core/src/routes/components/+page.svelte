@@ -412,7 +412,7 @@
 	<h2 class="section">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
 
-	<!-- The T-15 bug state: an early stage (downloading) at pct=100. Old code filled the bar solid and
+	<!-- The bug this fixed: an early stage (downloading) at pct=100. Old code filled the bar solid and
 	     read 100%; overallCookPct maps it to the downloading band top (20%), so this card is the one that
 	     makes the fix self-evident to a human eyes-on. -->
 	<ProcessingCard seq={2} title="Africa (downloading complete)" singerName="You" singerColor={PINK} status="downloading" pct={100} />
