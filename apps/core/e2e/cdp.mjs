@@ -192,6 +192,20 @@ function makePage(send, sessionId) {
 			})()`);
 		},
 
+		/**
+		 * Deliver a REAL user gesture — a trusted mousePressed/mouseReleased pair through the CDP Input
+		 * domain, at raw viewport coordinates. This is not a nicety over `click()`: a scripted
+		 * `HTMLElement.click()` dispatches an UNTRUSTED event and grants NO user activation, so it can
+		 * never unblock autoplay. The /tv tap-to-start affordance (#64) is the only route out of a
+		 * silent television, and it can only be exercised by input the browser trusts. Phone controls
+		 * need no activation, so `click()` stays correct and cheaper for them; only the TV's gesture
+		 * path needs this. Coordinates are viewport pixels (e.g. 960,540 = centre of a 1920×1080 TV).
+		 */
+		async realClick(x, y) {
+			await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 }, sessionId);
+			await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, sessionId);
+		},
+
 		count: (selector) => evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`),		texts: (selector) =>
 			evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].map(e => e.textContent.trim())`),
 		text: (selector) =>
