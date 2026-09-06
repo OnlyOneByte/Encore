@@ -167,8 +167,10 @@ class PublishStems(Step):
     """Encode and publish the stems.
 
     Instrumental to LOSSLESS FLAC: it is the file that plays at volume, and a second lossy generation is
-    audible on high-frequency transients — a crash cymbal especially. The vocals stem stays lossy AAC,
-    because nothing plays it aloud; it feeds pitch extraction and the vocal-guide mix.
+    audible on high-frequency transients — a crash cymbal especially. The vocals stem stays lossy AAC
+    because it is the GUIDING TRACK — a second audio element the TV mixes under the instrumental and
+    pitch-shifts with the key (apps/core/src/lib/tv/TvPlayer.svelte). It also feeds pitch extraction and
+    vocal-range analysis. A guide mixed under a master tolerates lossy compression that the master would not.
 
     The vocals stem is BEST-EFFORT throughout. A missing, silent or unencodable vocals file must never
     fail the load-bearing instrumental.
