@@ -594,3 +594,118 @@ async def test_local_store_is_unaffected_by_the_object_guard(tmp_path):
     await client.handle(assign(job_id="jLocal"))
     await client.drain()
     assert sock.of_type(protocol.COMPLETE)
+
+
+# ── issue #132: the worker must SEND worker:heartbeat on its own, not only answer a ping the core
+#    never emits. registry.heartbeat is the only path that reconciles slotsFree after the reaper
+#    requeues a lease-expired job, so without a periodic sender one reaped job strands the worker's
+#    capacity forever. These pin the production path (heartbeat_loop), not the passive PING responder.
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_loop_sends_periodically_without_a_ping(tmp_path):
+    # The core sends no `ping`, so the ONLY way worker:heartbeat leaves the worker in production is
+    # heartbeat_loop. Drive it directly with a tiny interval and prove frames arrive with no ping.
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    client.heartbeat_interval_sec = 0.1  # the loop floors the sleep at 0.1s to avoid spinning
+    task = asyncio.create_task(client.heartbeat_loop())
+    # Yield long enough for at least two ticks, then stop the unbounded loop.
+    await asyncio.sleep(0.35)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    hb = sock.of_type(protocol.HEARTBEAT)
+    assert len(hb) >= 2, f"expected periodic heartbeats, got {sock.types()}"
+    # Not one PING was involved — this leg does not depend on a command the core never sends.
+    assert protocol.PING not in sock.types()
+    # The frame carries this worker's live capacity (the source of truth registry.heartbeat reads).
+    assert hb[0]["slotsFree"] == 1 and hb[0]["workerId"] == "w1"
+
+
+@pytest.mark.asyncio
+async def test_heartbeat_loop_reports_reduced_slots_while_a_job_runs(tmp_path):
+    # slotsFree in the frame must reflect running jobs — that reconciled number is the whole point
+    # of the leg (the core hands the slot back from it after a reap).
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    client.heartbeat_interval_sec = 0.1
+    client.state.start("jBusy")
+    task = asyncio.create_task(client.heartbeat_loop())
+    await asyncio.sleep(0.25)
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    hb = sock.of_type(protocol.HEARTBEAT)
+    assert hb and all(m["slotsFree"] == 0 for m in hb)
+    assert hb[0]["runningJobIds"] == ["jBusy"]
+
+
+@pytest.mark.asyncio
+async def test_welcome_stores_heartbeat_interval_and_the_loop_honours_it(tmp_path):
+    # The declared wire field heartbeatIntervalSec was previously supplied by every producer and
+    # test and READ by nobody. Now the WELCOME arm adopts it and the loop ticks at it.
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
+    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 42, "ackTimeoutSec": 10,
+                         "mediaStore": {"kind": "local"}})
+    assert client.heartbeat_interval_sec == 42.0
+    # Welcome still replies with nothing (the media-store contract is unchanged).
+    assert sock.sent == []
+
+
+@pytest.mark.asyncio
+async def test_welcome_ignores_a_missing_or_bad_interval(tmp_path):
+    # A welcome without the field (older core), or a garbage value, must not silence the leg: the
+    # default floor stands so heartbeats keep flowing.
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    await client.handle({"type": protocol.WELCOME, "mediaStore": {"kind": "local"}})
+    assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
+    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": 0, "mediaStore": {"kind": "local"}})
+    assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
+    await client.handle({"type": protocol.WELCOME, "heartbeatIntervalSec": "nope", "mediaStore": {"kind": "local"}})
+    assert client.heartbeat_interval_sec == dh.DEFAULT_HEARTBEAT_INTERVAL_SEC
+
+
+# ── issue #132 WIRING GUARD: the whole production fix is one line in _run_forever —
+#    asyncio.create_task(client.heartbeat_loop()) — and the behavioural tests above prove the loop
+#    BEHAVES, never that it RUNS. This repo's most-repeated defect is a mechanism built, unit-tested,
+#    and never wired to the path that needs it; deleting that one line leaves the whole suite green
+#    with #132 fully reintroduced. Pin the wiring at the source level (ast, no async harness needed):
+#    _run_forever must START heartbeat_loop AND cancel that task in a finally so it dies with its socket.
+import ast as _ast  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+
+def _run_forever_ast():
+    src = _Path(dh.__file__).read_text(encoding="utf-8")
+    for node in _ast.walk(_ast.parse(src)):
+        if isinstance(node, (_ast.FunctionDef, _ast.AsyncFunctionDef)) and node.name == "_run_forever":
+            return node
+    raise AssertionError("_run_forever not found in dial_home.py")
+
+
+def test_run_forever_starts_the_heartbeat_loop():
+    # A create_task(...heartbeat_loop()) call inside _run_forever. Deleting the wiring line reddens this.
+    fn = _run_forever_ast()
+    started = [
+        n for n in _ast.walk(fn)
+        if isinstance(n, _ast.Call)
+        and getattr(n.func, "attr", None) == "create_task"
+        and any(getattr(a.func, "attr", None) == "heartbeat_loop" for a in n.args if isinstance(a, _ast.Call))
+    ]
+    assert started, "_run_forever never starts client.heartbeat_loop() — worker:heartbeat would never be sent (issue #132)"
+
+
+def test_run_forever_cancels_the_heartbeat_task_in_a_finally():
+    # The task is bound to one socket's lifetime: a Try/finally that calls <name>.cancel().
+    fn = _run_forever_ast()
+    cancels_in_finally = []
+    for node in _ast.walk(fn):
+        if isinstance(node, _ast.Try) and node.finalbody:
+            for stmt in _ast.walk(_ast.Module(body=node.finalbody, type_ignores=[])):
+                if isinstance(stmt, _ast.Call) and getattr(stmt.func, "attr", None) == "cancel":
+                    cancels_in_finally.append(stmt)
+    assert cancels_in_finally, "_run_forever never cancels the heartbeat task in a finally — it would leak across reconnects (issue #132)"
