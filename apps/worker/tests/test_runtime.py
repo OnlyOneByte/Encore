@@ -382,3 +382,62 @@ async def test_run_blocking_awaits_its_thread_before_the_generator_finishes(tmp_
         "run_blocking returned before its thread finished — the slot would be freed while native ML "
         "work is still in flight"
     )
+
+
+@pytest.mark.asyncio
+async def test_run_blocking_survives_a_second_cancel_during_the_shielded_await(monkeypatch):
+    """A SECOND cancel arriving while run_blocking is shielding its still-running thread must not free
+    the slot early.
+
+    The sibling test above cancels ONCE: the finally awaits the shield and the inner wait is driven to
+    completion, so the single-cancel path holds even under the bug. The reachable defect is a SECOND
+    cancel (dial_home._on_cancel then drain(cancel=True) on any socket drop, both hitting the same task)
+    landing on the shield await mid-ML-pass. asyncio.shield raises CancelledError to its awaiter
+    immediately while the inner wait keeps running, so a finally that checks the thread only ONCE
+    (`if not task.done()`) swallows that error and returns with the native thread still live. _run_job's
+    finally then frees the concurrency slot for capacity that does not exist and rmtrees inputs the
+    abandoned thread is still reading.
+
+    We open the generator, consume one keepalive (proving the thread is running), then run `aclose()`
+    inside a task: aclose throws GeneratorExit, which unwinds into the finally and suspends on the
+    shielded `await`. Cancelling THAT task delivers the second cancel straight onto the shield await.
+    With the fix (`while`) aclose does not settle until the thread genuinely finishes; with the bug
+    (`if`) aclose returns immediately with the thread still running.
+    """
+    import threading
+    import time as _time
+
+    monkeypatch.setattr(runner_mod, "LEASE_KEEPALIVE_SEC", 0.02)
+
+    finished = threading.Event()
+
+    def slow_ml() -> str:
+        _time.sleep(0.4)
+        finished.set()
+        return "done"
+
+    gen = runner_mod.run_blocking(slow_ml, Stage.ALIGNING, 0)
+    kind, _val = await gen.__anext__()
+    assert kind == "progress", "expected a keepalive while the thread is still running"
+    assert not finished.is_set(), "thread should not have finished yet — test setup is wrong"
+
+    # aclose() -> GeneratorExit -> finally -> suspends on `await asyncio.shield(asyncio.wait({task}))`.
+    close_task = asyncio.ensure_future(gen.aclose())
+    await asyncio.sleep(0.05)  # let the unwind reach the shielded await
+    assert not finished.is_set(), "thread finished too soon — the shield window closed before cancel #2"
+    assert not close_task.done(), "aclose settled before the second cancel — cannot exercise the path"
+
+    # Second cancel lands on the shielded await inside the finally.
+    close_task.cancel()
+
+    # BOUNDED probe first (deadlock-hazard class, #180): never wedge the whole worker suite. A bound
+    # comfortably longer than the 0.4s thread but far short of a hang.
+    try:
+        await asyncio.wait_for(asyncio.shield(close_task), timeout=2.0)
+    except (asyncio.CancelledError, asyncio.TimeoutError):
+        pass
+
+    assert finished.is_set(), (
+        "run_blocking returned on a SECOND cancel while its thread was still running — the swallowed "
+        "CancelledError freed the slot for capacity that does not exist (double-run / slot leak)"
+    )
