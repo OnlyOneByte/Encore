@@ -195,13 +195,25 @@
 		const id = media?.id ?? null;
 		if (id === resetForId) return;
 		resetForId = id;
-		// Tear the pitch-shift graphs down PER SONG. A graph binds a PERMANENT
-		// MediaElementAudioSourceNode to the element that played THIS media; leaving it in place would
-		// let the shift-wiring effect below see `masterGraph` already set and post setShift() to a node
-		// wired to media that is no longer playing — silent on the transposed song.
-		masterGraph?.detach();
+		// Per-song graph handling. A PitchShiftGraph binds a PERMANENT MediaElementAudioSourceNode to
+		// its element: once captured, the element outputs ONLY through the graph, and detach() frees the
+		// context but CANNOT restore the native path (pitch-shift.ts:492-497). So the reset strategy has
+		// to match each element's LIFETIME, not the media's:
+		//
+		//   • MASTER lives as long as the SLOT — the <audio bind:this={master}> below is mounted
+		//     unconditionally. Detaching its graph on a song change left the persistent, already-captured
+		//     element feeding a disconnected node: the instrumental went silent and stayed silent until a
+		//     keyShift rebuilt a graph on it (issue #477). We must NOT detach it. Instead reset it to
+		//     ratio 1 via setShift(0): on a routed graph that keeps source→node→gain→destination intact
+		//     and merely posts ratio 1 (pitch-shift.ts:150), so the element stays audible on the new song;
+		//     on an un-built graph it is a documented no-op. Teardown happens only on slot unmount (the
+		//     destroy effect below).
+		//   • GUIDE lives as long as the SONG — its <audio> sits behind {#if wantsGuide && guideRef} and
+		//     is remounted per song, so the previous graph's captured element is already gone. Detach the
+		//     stale graph and drop the reference; the shift-wiring effect rebuilds against the fresh
+		//     `vocals` element.
+		void masterGraph?.setShift(0);
 		guideGraph?.detach();
-		masterGraph = undefined;
 		guideGraph = undefined;
 		masterReady = false;
 		guideSettled = false;
