@@ -83,6 +83,30 @@ test('near-black and near-surface picks are refused', () => {
 	expect(isLegibleSingerColor('#101018')).toBe(false);
 });
 
+test('the 3:1 dot rule is pinned at its boundary, not just far below it', () => {
+	// The rest of the negative coverage sits at or below 1.22:1 — a factor of ~2.5 under the bar —
+	// so a validator enforcing any looser threshold (1.5:1, 2:1, 2.9:1) would pass unnoticed. These
+	// cases sit inside the 1.3–3.0 band the rule exists to reject, and bracket the exact 3:1 edge.
+
+	// Mid-band: below 3:1 against BOTH surfaces (bg 2.97, card 2.60). A ~2:1 rule would wrongly pass it.
+	expect(contrastRatio('#5c5c66', BG)).toBeCloseTo(2.97, 1);
+	expect(contrastRatio('#5c5c66', CARD)).toBeCloseTo(2.6, 1);
+	expect(isLegibleSingerColor('#5c5c66')).toBe(false);
+
+	// Just under the edge, and only against ONE surface: bg 3.40 clears 3:1 but card 2.98 does not.
+	// This pins both the exact threshold AND that BOTH surfaces must clear it (the `.every`), so
+	// dropping MIN_DOT_CONTRAST to 2.9, or switching `.every` to `.some`, would wrongly accept it.
+	expect(contrastRatio('#65656f', BG)).toBeCloseTo(3.4, 1);
+	expect(contrastRatio('#65656f', CARD)).toBeCloseTo(2.98, 2);
+	expect(isLegibleSingerColor('#65656f')).toBe(false);
+
+	// Just at/above the edge on both surfaces (bg 3.45, card 3.03) — the nearest legible colour.
+	// Raising MIN_DOT_CONTRAST above ~3.03 would wrongly reject it.
+	expect(contrastRatio('#666670', BG)).toBeCloseTo(3.45, 1);
+	expect(contrastRatio('#666670', CARD)).toBeCloseTo(3.03, 2);
+	expect(isLegibleSingerColor('#666670')).toBe(true);
+});
+
 test('normalizeSingerColor canonicalises rather than rejecting shorthand', () => {
 	expect(normalizeSingerColor('#0AF')).toBe('#00aaff');
 	expect(normalizeSingerColor('#7C5CFF')).toBe('#7c5cff');
