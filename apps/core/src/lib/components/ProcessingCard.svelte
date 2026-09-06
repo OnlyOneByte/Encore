@@ -131,9 +131,19 @@
 	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; }
 	.who i.dim { opacity: 0.5; }
 	.who .away { color: var(--warn); margin-left: 0.35em; }
-	/* flex: 0 0 auto for parity with QueueRow's dot (issue #89): today .who here wraps so the dot
-	   survives, but keeping the two identity-dot rules identical stops a future nowrap edit here from
-	   silently reintroducing the 0px-dot collapse. */
+	/* flex: 0 0 auto is load-bearing HERE, not just QueueRow parity (issue #89). .who above is a
+	   `display: flex` container with no flex-wrap, so it computes nowrap; the dot is an empty flex item
+	   whose automatic minimum size is 0. When the actions cluster renders (the normal in-rotation card)
+	   it cuts .who from ~282px to 134px (actions = 3x44 + 2x8 = 148px), and a name at the 32-char
+	   profile maxlength then overflows it. Without this rule the shrinkable dot shrinks from 10px to
+	   ~5.5px at 390px (measured on the long-name fixture below) — a ~45% loss of the only non-text
+	   singer discriminator (colors.ts:12-14: "the only thing telling two singers apart besides the
+	   name"). It does NOT reach 0px here, unlike QueueRow: QueueRow.svelte:91 additionally gives .who
+	   `min-width:0; white-space:nowrap; overflow:hidden`, making the name an unbreakable run that holds
+	   its width so the empty dot absorbs the ENTIRE deficit (0px in #89); this .who lacks that trio, so
+	   the name shrinks too and the deficit is shared. The ~45% shrink still earns the rule on its own
+	   merits, with QueueRow parity a bonus. design-system.test.ts's identity-dot guard reds if this is
+	   dropped. */
 	.who i { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; background: var(--singer); }
 	.bar { height: 6px; border-radius: 6px; background: var(--card-tint2); overflow: hidden; margin-top: 9px; }
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
