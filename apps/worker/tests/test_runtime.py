@@ -313,6 +313,52 @@ async def test_a_step_publishing_to_ctx_out_without_declaring_it_is_caught(tmp_p
 
 
 @pytest.mark.asyncio
+async def test_a_step_publishing_ctx_out_facts_without_declaring_it_is_caught(tmp_path, monkeypatch):
+    """`facts` is watched with the same field granularity as `artifacts`. A step that resolves an
+    engine/model/device onto `ctx.out.facts` without declaring `out` must be caught: `facts` is what
+    the per-attempt audit page shows, and letting it slip is the exact undeclared-publisher defect
+    #75 was filed for. Companion to the `artifacts` case so all three wire-shaped fields are pinned.
+    """
+    monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
+
+    class PublishesFacts(Step):
+        name = "publishes-facts"
+        stage = Stage.ALIGNING
+        writes = frozenset({"audio.path"})  # declares audio, publishes to out.facts
+
+        async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+            ctx.out.facts["engine"] = "demucs"
+            yield ProgressEvent(stage=self.stage, pct=100)
+
+    plan = LinearPlan("publishes-facts", [PublishesFacts()])
+    with pytest.raises(AssertionError, match="wrote to ctx.out without declaring it"):
+        await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_a_step_publishing_ctx_out_media_uri_without_declaring_it_is_caught(tmp_path, monkeypatch):
+    """`media_uri` is watched with the same field granularity as `artifacts`. This is the field with
+    the sharpest failure mode: `ctx.py` documents "First published wins; ranking is the core's job",
+    so an undeclared second writer of `media_uri` silently decides which artifact the CompleteResult
+    points at. It must be caught the same way an undeclared `artifacts` or `facts` write is.
+    """
+    monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
+
+    class PublishesMediaUri(Step):
+        name = "publishes-media-uri"
+        stage = Stage.ALIGNING
+        writes = frozenset({"audio.path"})  # declares audio, publishes to out.media_uri
+
+        async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+            ctx.out.media_uri = "/media/x.flac"
+            yield ProgressEvent(stage=self.stage, pct=100)
+
+    plan = LinearPlan("publishes-media-uri", [PublishesMediaUri()])
+    with pytest.raises(AssertionError, match="wrote to ctx.out without declaring it"):
+        await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
+
+
+@pytest.mark.asyncio
 async def test_a_step_appending_a_note_without_declaring_out_is_fine(tmp_path, monkeypatch):
     """`notes` and `timings_sec` are exempt: every step appends to `ctx.out.notes` via `ctx.note()`
     without declaring `out`, and the runner fills `timings_sec` itself. Watching `out` at field
