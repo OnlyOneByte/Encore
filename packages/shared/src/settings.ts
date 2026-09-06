@@ -458,6 +458,9 @@ export function normalizeRoomSettings(
 	const enabled = input?.songIntroEnabled;
 	const songIntroEnabled = typeof enabled === 'boolean' ? enabled : d.songIntroEnabled;
 	const cap = input?.maxQualityRank;
+	// EXCEPTION to the fall-back-to-base contract above: an invalid or absent ceiling means NO ceiling,
+	// NOT the room's current cap. "No limit" (settings/+page.svelte:594) sends null and must actually
+	// clear — falling back to d.maxQualityRank here would make the cap permanently unremovable.
 	const maxQualityRank = typeof cap === 'number' && Number.isFinite(cap) && cap > 0 ? Math.round(cap) : null;
 	const style = input?.tvProgressStyle;
 	const tvProgressStyle = isTvProgressStyle(style) ? style : d.tvProgressStyle;

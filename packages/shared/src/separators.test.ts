@@ -229,6 +229,19 @@ describe('room scope', () => {
 		expect(normalizeRoomSettings({ maxQualityRank: -3 }).maxQualityRank).toBeNull();
 		expect(normalizeRoomSettings({ maxQualityRank: 20 }).maxQualityRank).toBe(20);
 	});
+
+	it('an explicit null CLEARS a ceiling the room already set', () => {
+		// settings/+page.svelte:594 sends null for the "No limit" option, so this IS the production
+		// clear payload. maxQualityRank is the one field that deliberately ignores `base` (returns null,
+		// not d.maxQualityRank) — without this test, making it fall back like its 17 siblings would leave
+		// the cap permanently unremovable and pass the whole suite.
+		const capped = { ...DEFAULT_ROOM_SETTINGS, maxQualityRank: 20 };
+		expect(normalizeRoomSettings({ maxQualityRank: null as never }, capped).maxQualityRank).toBeNull();
+		// a genuinely new ceiling still replaces the old one
+		expect(normalizeRoomSettings({ maxQualityRank: 35 }, capped).maxQualityRank).toBe(35);
+		// and an invalid write does NOT keep the old cap — it drops to no ceiling
+		expect(normalizeRoomSettings({ maxQualityRank: 0 }, capped).maxQualityRank).toBeNull();
+	});
 });
 
 describe('resolveCookSeparator', () => {
