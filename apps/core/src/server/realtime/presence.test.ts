@@ -266,12 +266,44 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 		expect(source).not.toMatch(/\bcount\s*\(\s*\)/);
 	});
 
-	it('no public method returns the bare `sockets > 0` membership answer', () => {
-		// The honest socket accessors are still here — online() (real caller app.ts:460) returns the ID
-		// LIST, and sockets() returns a COUNT for one singer — but neither answers "is this singer a
-		// member?" with a raw boolean. A method whose body is `return (... sockets ...) > 0;` is the
-		// discredited predicate returning under any name; membership must go through stateOf()/memberState.
-		expect(source).not.toMatch(/return\s*\(.*sockets.*\?\?\s*0\)\s*>\s*0\s*;/);
+	// The public surface of PresenceTracker, name-for-name. This is the invariant #281 pins: membership
+	// is answered ONLY through stateOf()/evaluate() (which route through memberState/the three-state
+	// policy), never by a method that hands back a raw socket-count boolean. The previous guard pinned
+	// the DELETED BODY TEXT of isOnline() (`?? 0) > 0;`), so the same predicate re-added under a new
+	// name with a delegating body survived it (see #281's mutation table). These two checks are
+	// name-independent: an allowlist reddens on ANY new public method, and a shape ban reddens on the
+	// discredited comparison under ANY spelling.
+	const CLASS_START = 'class PresenceTracker';
+	const classBody = source.slice(source.indexOf(CLASS_START));
+	// Class-member declarations are indented one tab; a name is harvested whether it is followed by
+	// `(` (method shorthand) OR `=` (an arrow class property — `isHere = (id) => …`), which is the form
+	// #347's blocking review proved escaped a `(`-only collector. Interface fields and private #members
+	// are not matched (# prefix, and the interface lives above the class start). Reads names off the
+	// source so the test cannot derive its expectation the way the class does.
+	const publicMethods = [...classBody.matchAll(/\n\t([A-Za-z_$][\w$]*)\s*(?:\(|=)/g)]
+		.map((m) => m[1])
+		.sort();
+
+	it('exposes ONLY the allowlisted public methods (a rename cannot slip a membership predicate in)', () => {
+		// Add a method here ONLY after deciding it belongs on the presence surface. A `sockets > 0`
+		// membership boolean under any name (isHere, present, active, …) reddens this by construction —
+		// which is exactly the copy-paste-and-rename trap #126's deleted isOnline() left open.
+		const ALLOWED = ['connect', 'disconnect', 'evaluate', 'forget', 'online', 'sockets', 'stateOf'];
+		expect([...publicMethods]).toEqual([...ALLOWED].sort());
+	});
+
+	it('no method RETURNS a bare sockets-based membership predicate, under any name', () => {
+		// Ban the SHAPE, not the deleted literal: a value that IS `<…sockets…> > 0` (or >= 1, !== 0,
+		// != 0, or Boolean(<…sockets…>)), reached via `return …` OR an arrow expression body `=> …`
+		// (#347's review proved a `return`-only ban is blind to `isHere = (id) => (…sockets…) > 0`).
+		// The negative lookahead exempts online()'s honest `.filter(([, r]) => r.sockets > 0)` — that
+		// returns the ID LIST, not a per-singer boolean. A getter/static/computed-key membership
+		// predicate is not name-collected (its name is not in method/arrow position) but is caught here.
+		const BARE_MEMBERSHIP_BOOL =
+			/(?:return\s+|=>\s*)(?!.*\.(?:filter|map|some|every|reduce|find)\s*\()[^\n;]*\bsockets\b[^\n;]*(?:>\s*0|>=\s*1|!==?\s*0)/;
+		const BOOLEAN_WRAP = /(?:return\s+|=>\s*)Boolean\s*\([^\n;]*\bsockets\b/;
+		expect(source).not.toMatch(BARE_MEMBERSHIP_BOOL);
+		expect(source).not.toMatch(BOOLEAN_WRAP);
 	});
 
 	it('the honest membership API is intact', () => {
