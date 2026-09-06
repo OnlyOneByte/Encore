@@ -398,6 +398,25 @@ describe('resolveLyricsPresentation', () => {
 		}
 	});
 
+	it('a room where only ONE mark needs words is still reported as clamped', () => {
+		// `clamped` is an OR over the two marks, not an AND: a room that turned the marker off but kept
+		// a word highlight (or the reverse) has still had a choice overridden, and the Settings notice
+		// at routes/settings/+page.svelte:755 is the only place it is told so. Every OTHER clamped=true
+		// case here degrades BOTH marks, so an AND-mutant of settings.ts passes them unchanged. Each
+		// fixture below is a room where exactly one mark needs word timings, so OR-clamped !== AND-clamped
+		// and flipping the operator reddens it. Expected values are hard-coded, not derived by re-running
+		// the operator under test.
+		const highlightOnly = resolveLyricsPresentation(settings('lines', { lyricsBall: 'off', lyricsHighlight: 'word' }));
+		expect(highlightOnly.ball).toBe('off'); // ball 'off' needs no words — unchanged
+		expect(highlightOnly.highlight).toBe('line'); // word highlight degraded to line
+		expect(highlightOnly.clamped).toBe(true); // AND-mutant would report false and hide the notice
+
+		const ballOnly = resolveLyricsPresentation(settings('lines', { lyricsBall: 'bounce', lyricsHighlight: 'line' }));
+		expect(ballOnly.ball).toBe('off'); // bounce needs words — dropped
+		expect(ballOnly.highlight).toBe('line'); // line highlight needs no words — unchanged
+		expect(ballOnly.clamped).toBe(true); // AND-mutant would report false and hide the notice
+	});
+
 	it('degrades a word highlight to line, NOT to off', () => {
 		// The room asked to be shown where it is. Line timing can honour that; turning the highlight off
 		// would discard a choice made for reasons unrelated to granularity.
