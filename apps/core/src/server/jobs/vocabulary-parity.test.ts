@@ -18,6 +18,8 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/shared';
+import type { JobType } from '@encore/shared';
+import { requiredCapability } from './dispatch';
 
 const WORKER_SRC = join(import.meta.dir, '../../../../worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
@@ -190,6 +192,33 @@ describe('TS↔Python vocabulary parity', () => {
 		// `local` needs no worker — it is served from the media volume, so it advertises nothing.
 		const routed = FETCHERS.filter((f) => f.id !== 'local').map((f) => `fetch:${f.id}`);
 		expect(routed.filter((c) => !advertisable.has(c))).toEqual([]);
+	});
+
+	/**
+	 * The two assertions above enumerate the engine and fetcher capability TABLES, but the core does
+	 * not route on a table — it routes on `requiredCapability(jobType)` (dispatch.ts), whose LAST
+	 * branch is a bare `return jobType`. That fall-through covers `align`, whose capability lives in
+	 * neither `SEPARATOR_ENGINES` nor `FETCHERS`, so neither assertion above ever reaches it: rename
+	 * the worker's `align` probe (the natural change the moment align gains a second backend, exactly
+	 * as `stems` grew `stems:roformer`) and every align job is routed on a capability no worker can
+	 * advertise, parking silently at 0% with both suites green. Assert the ROUTED set directly —
+	 * every JobType's required capability must be advertisable — which subsumes both checks above and
+	 * closes the fall-through. `align` and `stems-upgrade` are the members the enumerations miss.
+	 */
+	test('every JobType routes to a capability the worker can advertise', () => {
+		// TypeScript checks this list IS the JobType union (same trick as the enum tests), so it
+		// cannot silently fall behind if a job type is added.
+		const jobTypes = ['fetch', 'stems', 'stems-upgrade', 'align'] as const;
+		const _exhaustive: readonly JobType[] = jobTypes;
+		void _exhaustive;
+		const advertisable = new Set(pyCapabilityTokens());
+		// With no settings, requiredCapability returns each type's DEFAULT-routed capability — the one
+		// a job actually carries when the operator has not overridden the engine. That is the set the
+		// worker must be able to serve out of the box.
+		const missing = jobTypes
+			.map((jt) => ({ jt, cap: requiredCapability(jt) }))
+			.filter(({ cap }) => !advertisable.has(cap));
+		expect(missing).toEqual([]);
 	});
 	/**
 	 * The WIRE VERBS were the last contract in this file guarded only by a comment.
