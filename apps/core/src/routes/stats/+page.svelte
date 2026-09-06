@@ -117,6 +117,11 @@
 		gap: 1rem;
 		padding: 1rem 0 3rem;
 		max-width: 720px;
+		/* The cap takes width off the right only on a flex child (.app-shell is a
+		   centered flex column); width:100% keeps the stretch so margin-inline:auto
+		   re-centres the full capped block instead of collapsing it to content width. */
+		width: 100%;
+		margin-inline: auto;
 	}
 	/*
 	 * The .card primitive in app.css carries background/border/radius ONLY — no padding, and nothing
