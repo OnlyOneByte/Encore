@@ -2,6 +2,7 @@
 // idempotent re-add. Plus the failure/cancel/requeue edges and the DB-level dedup guarantee.
 import { test, expect } from 'bun:test';
 import { JobRepository } from './repository';
+import type { JobType } from '@encore/shared';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
 import { jobs } from '../db/schema';
@@ -129,4 +130,90 @@ test('unknown job id throws', () => {
 	const { repo } = makeRepo();
 	expect(() => repo.transition('nope', 'assigned', {}, T0)).toThrow('unknown job: nope');
 	expect(repo.byId('nope')).toBeNull();
+});
+
+// — findOutstandingForMedia: the lookup behind /api/library's "what is cooking right now?" —
+// It walks the cook chain fetch → stems → align in order and returns the first step that is NOT
+// `ready` (in flight or waiting), skips finished/never-enqueued steps, and excludes stems-upgrade
+// (background work on an already-singable song). A silent regression here snaps the phone's
+// progress strip back to queued/0% on reload while a song is mid-cook (issue #83).
+
+/** Drive a fresh job to `running` (queued → assigned → running). Returns its id. */
+function runningJob(repo: JobRepository, mediaId: string, jobType: JobType, at = T0): string {
+	const job = repo.enqueue(mediaId, jobType, 0, at);
+	repo.assign(job.id, 'w', null, at + 1);
+	repo.accept(job.id, null, at + 2);
+	return job.id;
+}
+
+/** Drive a fresh job all the way to terminal `ready`. */
+function readyJob(repo: JobRepository, mediaId: string, jobType: JobType, at = T0): void {
+	repo.complete(runningJob(repo, mediaId, jobType, at), at + 3);
+}
+
+test('findOutstandingForMedia: fetch running is the outstanding step', () => {
+	const { repo } = makeRepo();
+	runningJob(repo, 'media-1', 'fetch');
+	const out = repo.findOutstandingForMedia('media-1');
+	expect(out?.jobType).toBe('fetch');
+	expect(out?.status).toBe('running');
+});
+
+test('findOutstandingForMedia: a ready fetch is skipped, running stems is returned', () => {
+	const { repo } = makeRepo();
+	readyJob(repo, 'media-1', 'fetch');
+	runningJob(repo, 'media-1', 'stems', T0 + 100);
+	const out = repo.findOutstandingForMedia('media-1');
+	expect(out?.jobType).toBe('stems'); // walked past the ready fetch
+	expect(out?.status).toBe('running');
+});
+
+test('findOutstandingForMedia: fetch+stems ready, running align is returned', () => {
+	const { repo } = makeRepo();
+	readyJob(repo, 'media-1', 'fetch');
+	readyJob(repo, 'media-1', 'stems', T0 + 100);
+	runningJob(repo, 'media-1', 'align', T0 + 200);
+	const out = repo.findOutstandingForMedia('media-1');
+	expect(out?.jobType).toBe('align'); // last step in the chain
+	expect(out?.status).toBe('running');
+});
+
+test('findOutstandingForMedia: every step ready → null (nothing outstanding)', () => {
+	const { repo } = makeRepo();
+	readyJob(repo, 'media-1', 'fetch');
+	readyJob(repo, 'media-1', 'stems', T0 + 100);
+	readyJob(repo, 'media-1', 'align', T0 + 200);
+	expect(repo.findOutstandingForMedia('media-1')).toBeNull();
+});
+
+test('findOutstandingForMedia: a local file (no fetch job) with stems running is still outstanding', () => {
+	const { repo } = makeRepo();
+	// no fetch job at all — a local file skips acquisition; the walk must not stop at the gap
+	runningJob(repo, 'media-1', 'stems');
+	const out = repo.findOutstandingForMedia('media-1');
+	expect(out?.jobType).toBe('stems');
+	expect(out?.status).toBe('running');
+});
+
+test('findOutstandingForMedia: a queued (waiting) step counts as outstanding', () => {
+	const { repo } = makeRepo();
+	repo.enqueue('media-1', 'fetch', 0, T0); // queued, never assigned — a step waiting to start
+	const out = repo.findOutstandingForMedia('media-1');
+	expect(out?.jobType).toBe('fetch');
+	expect(out?.status).toBe('queued');
+});
+
+test('findOutstandingForMedia: a live stems-upgrade on an all-ready song reads as null (not cooking)', () => {
+	const { repo } = makeRepo();
+	readyJob(repo, 'media-1', 'fetch');
+	readyJob(repo, 'media-1', 'stems', T0 + 100);
+	readyJob(repo, 'media-1', 'align', T0 + 200);
+	// background upgrade running on a finished, singable song — must NOT report the song as cooking
+	runningJob(repo, 'media-1', 'stems-upgrade', T0 + 300);
+	expect(repo.findOutstandingForMedia('media-1')).toBeNull();
+});
+
+test('findOutstandingForMedia: null for a media with no jobs at all', () => {
+	const { repo } = makeRepo();
+	expect(repo.findOutstandingForMedia('media-unknown')).toBeNull();
 });
