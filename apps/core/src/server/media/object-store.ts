@@ -7,12 +7,20 @@ import { objectKey, mediaProxyUrl, type MediaStore, type ObjectStoreConfig } fro
 
 /** The slice of an S3 client this store needs — Bun.S3Client satisfies it; tests pass a fake. */
 export interface S3Like {
-	/** Object handle exposing exists/write/stream + a presign for a single key. */
+	/** Object handle exposing exists/write/stream/size/slice + a presign for a single key. */
 	file(key: string): {
 		exists(): Promise<boolean>;
 		write(data: Uint8Array | ReadableStream | Blob): Promise<unknown>;
 		stream(): ReadableStream;
 		presign(opts?: { expiresIn?: number }): string;
+		/** HEAD the object for metadata (Bun.S3File.stat) — `.size` is the byte length, no body. */
+		stat(): Promise<{ size: number }>;
+		/**
+		 * A `Blob` over a byte window, WITHOUT downloading the whole object — a ranged GET on S3
+		 * (`Bun.S3File.slice(start, end)`, whose end is EXCLUSIVE like `Blob.slice`, and which issues
+		 * the `Range` request lazily). A Blob body is what lets the response carry a `Content-Length`.
+		 */
+		slice(start: number, end: number): Blob;
 	};
 }
 
@@ -48,6 +56,28 @@ export class ObjectMediaStore implements MediaStore {
 	async get(ref: string): Promise<ReadableStream | null> {
 		const f = this.#client.file(this.#key(ref));
 		return (await f.exists()) ? f.stream() : null;
+	}
+
+	/**
+	 * Byte size via a HEAD on the object (no body transferred), or null when it is absent. This is
+	 * half of the range capability the /media route needs; without it the route degrades to a
+	 * range-less full 200 and WebKit never plays — see media/http-range.ts.
+	 */
+	async size(ref: string): Promise<number | null> {
+		const f = this.#client.file(this.#key(ref));
+		return (await f.exists()) ? (await f.stat()).size : null;
+	}
+
+	/**
+	 * Read an INCLUSIVE byte range as a Blob backed by a ranged GET (no full download). HTTP ranges
+	 * are inclusive but `slice`'s end is EXCLUSIVE — hence `end + 1`; getting that wrong drops the
+	 * final byte of every chunk, which a decoder reports as a corrupt stream. Returns a Blob (not a
+	 * stream) so the response carries a `Content-Length`. Null for an absent object.
+	 */
+	async getRange(ref: string, start: number, end: number): Promise<Blob | null> {
+		const f = this.#client.file(this.#key(ref));
+		if (!(await f.exists())) return null;
+		return f.slice(start, end + 1);
 	}
 
 	async put(ref: string, data: Uint8Array | ReadableStream | Blob): Promise<void> {
