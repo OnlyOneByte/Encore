@@ -189,7 +189,6 @@ async function queueAdd(mediaId) {
 	};
 	const command = {
 		clientOpId: `p14-o-${now}-${Math.floor(Math.random() * 1e6)}`,
-		baseRev: 0,
 		op: { op: 'add', entry }
 	};
 	await phone.evaluate(
