@@ -27,24 +27,40 @@ from src.runtime.plan import stages_of, validate_plan  # noqa: E402
 from src.vocabulary import STAGE_PLANS, Action  # noqa: E402
 
 
+def _strip_src(name: str) -> str:
+    """Normalise a `src.`-prefixed absolute name to the package-relative form the matchers expect.
+
+    `src/` imports relatively today, but every file in `tests/` writes the absolute `src.runtime.plan`
+    form, so that is the form a developer copies — and it resolves at runtime, so the violation would
+    ship working while the three layering matchers (which key off a bare `runtime`/`steps`/`plans`
+    segment) stayed blind. Stripping the leading `src.` (and a bare `src`) in the ONE place that records
+    import names makes every consumer see the same names for both forms, so `src.runtime.plan` and
+    `..runtime.plan` become indistinguishable to the guard — as they must be, since they are the same
+    edge."""
+    if name == "src":
+        return ""
+    if name.startswith("src."):
+        return name[len("src.") :]
+    return name
+
+
 def _imports(path: Path) -> set[str]:
     """Every module this file imports, as a dotted name relative to `src` where it is a sibling."""
     tree = ast.parse(path.read_text(encoding="utf-8"))
     out: set[str] = set()
-    pkg_depth = len(path.relative_to(SRC).parts) - 1
     for node in ast.walk(tree):
         if isinstance(node, ast.ImportFrom):
             if node.level == 0:
-                out.add(node.module or "")
+                out.add(_strip_src(node.module or ""))
                 continue
             # A relative import: '.' is this package, '..' its parent.
             base = list(path.relative_to(SRC).parts[:-1])
             up = node.level - 1
             base = base[: len(base) - up] if up else base
-            out.add(".".join([*base, node.module]) if node.module else ".".join(base))
+            out.add(_strip_src(".".join([*base, node.module]) if node.module else ".".join(base)))
         elif isinstance(node, ast.Import):
             for alias in node.names:
-                out.add(alias.name)
+                out.add(_strip_src(alias.name))
     return out
 
 
@@ -162,6 +178,42 @@ def test_only_acquisition_and_its_step_decide_where_the_bytes_ARE():
         f"{sorted(offenders)} re-derive where a job's audio is. Use the AcquireAudio step, or "
         f"AcquireAudio is the single answer -- see the spec §7 E6."
     )
+
+
+# ── _imports() normalisation: the two forms of the same edge must be indistinguishable ──────────
+
+
+def test_imports_normalises_the_src_prefixed_form_to_the_relative_one(tmp_path: Path):
+    """`src.runtime.plan` and `..runtime.plan` are the SAME cross-layer edge written two ways. Before this
+    lock the three matchers below keyed off a bare `runtime`/`steps`/`plans` segment, so a name recorded
+    as `src.runtime.plan` slipped past all of them while `runtime.plan` was caught — the exact blindness
+    that let a domain take a runtime dependency with the whole suite green. `_imports()` must collapse
+    both to the same package-relative name so the matchers cannot tell them apart.
+    """
+    pkg = tmp_path / "src" / "lyrics"
+    pkg.mkdir(parents=True)
+
+    absolute = pkg / "with_absolute.py"
+    absolute.write_text("from src.runtime.plan import validate_plan\n", encoding="utf-8")
+
+    relative = pkg / "with_relative.py"
+    relative.write_text("from ..runtime.plan import validate_plan\n", encoding="utf-8")
+
+    # `_imports` measures against the module SRC; both fixtures share a src-relative shape, so patch the
+    # module-level SRC for the read of these two throwaway files only.
+    import src as _src_pkg  # noqa: F401  (import guard: the module under test is importable)
+    global SRC
+    saved = SRC
+    try:
+        SRC = tmp_path / "src"  # noqa: F811
+        got_abs = _imports(absolute)
+        got_rel = _imports(relative)
+    finally:
+        SRC = saved
+
+    assert got_abs == {"runtime.plan"}, f"src.-prefixed absolute import recorded as {got_abs}, not 'runtime.plan'"
+    assert got_rel == {"runtime.plan"}, f"..-relative import recorded as {got_rel}, not 'runtime.plan'"
+    assert got_abs == got_rel, "the two forms of the same edge must be indistinguishable to the guard"
 
 
 # ── E7: the layering rule ────────────────────────────────────────────────────────
