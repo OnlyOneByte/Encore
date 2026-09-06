@@ -176,3 +176,66 @@ test('connection edges are reported once each, so the UI can show an offline cue
 	h.sockets[1]!.fireOpen();
 	expect(h.edges).toEqual([true, false, true]);
 });
+
+// Issue #114: #dial() overwrote #sock without disposing the socket it replaced, so the wake/reconnect
+// path reintroduced exactly what #presumeDead defends against on the death path. A single lifecycle
+// event during a reconnect (a phone unlocking mid-connect -> one visibilitychange -> wake) dialled a
+// second socket while the first was still CONNECTING (wake() checks !connected, which is false for the
+// whole connecting window). When the first socket then completed, BOTH were live subscribers, and the
+// orphan kept its onclose -- so its eventual close ran #clearTimers()/#setConnected(false) against the
+// CURRENT socket, killing the live socket's heartbeat and watchdog. See the "two sockets per drop,
+// forever" liveness invariant above; this is that invariant for the reconnect path.
+
+/** Sockets that opened and have not since been closed -- i.e. real live subscribers. */
+const liveSockets = (sockets: FakeSocket[]) => sockets.filter((s) => !s.closed);
+
+test('a wake during a reconnect does not leave a second live socket (issue #114)', () => {
+	const h = makeClient();
+	h.client.open();
+	h.sockets[0]!.fireOpen();
+	h.sockets[0]!.deliver({ type: 'queue:sync', rev: 4, entries: [] });
+
+	// socket #0 drops; backoff fires and #dial() runs -> socket #1 is CONNECTING, connected === false
+	h.sockets[0]!.close();
+	h.fire(10);
+	expect(h.sockets).toHaveLength(2);
+	expect(h.client.connected).toBe(false);
+
+	// phone unlocks mid-connect: ONE visibilitychange -> wake() -> !connected -> #dial() again
+	h.client.wake();
+
+	// socket #1 (the one we just replaced) must have been discarded before #2 was opened, so when the
+	// server accepts it, it is NOT a second live subscriber.
+	h.sockets[1]!.fireOpen();
+	h.sockets[2]!.fireOpen();
+
+	// exactly one live socket, and it is the one #sock points at (the last dialled).
+	expect(liveSockets(h.sockets)).toHaveLength(1);
+	expect(h.sockets[2]!.closed).toBe(false);
+	expect(h.sockets[1]!.closed).toBe(true);
+	expect(h.client.connected).toBe(true);
+});
+
+test('the surviving socket keeps its heartbeat after a wake-orphaned socket closes (issue #114)', () => {
+	const h = makeClient();
+	h.client.open();
+	h.sockets[0]!.fireOpen();
+	h.sockets[0]!.deliver({ type: 'queue:sync', rev: 4, entries: [] });
+
+	h.sockets[0]!.close();
+	h.fire(10); // backoff -> socket #1 CONNECTING
+	h.client.wake(); // one lifecycle event mid-connect -> socket #2
+	h.sockets[2]!.fireOpen(); // the live socket opens and beats
+	h.client.connected && expect(h.client.connected).toBe(true);
+
+	// The discarded socket #1 has its handlers detached, so even if the real server later closes it,
+	// that close must NOT tear down the live socket's timers or flip us offline.
+	const beatsBefore = h.sockets[2]!.sent.filter((m) => m.type === 'hello').length;
+	h.sockets[1]!.onclose?.(); // simulate the orphan's late close arriving (no-op if detached)
+
+	expect(h.client.connected).toBe(true); // live socket still considered online
+	h.fire(1000); // the live socket's heartbeat must still be armed
+	const beatsAfter = h.sockets[2]!.sent.filter((m) => m.type === 'hello').length;
+	expect(beatsAfter).toBeGreaterThan(beatsBefore);
+	expect(h.sockets[2]!.closed).toBe(false);
+});
