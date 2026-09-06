@@ -55,7 +55,6 @@ function harness(actorSingerId = 's2') {
 // singerId and a media s2 wants. singerId matches the session, so the :101 impersonation check passes.
 const overwriteQ1 = (mediaId = 'm2'): ClientCommand => ({
 	clientOpId: 'c1',
-	baseRev: 0,
 	op: { op: 'add', entry: { id: 'q1', mediaId, singerId: 's2', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
 });
 
@@ -70,7 +69,7 @@ test('validateCommand rejects a same-singer re-point to a different mediaId (orp
 	// identity, not singerId alone. Actor is s1 here (the owner of q1) so the singerId matches.
 	const { deps } = harness('s1');
 	const selfRepoint: ClientCommand = {
-		clientOpId: 'c2', baseRev: 0,
+		clientOpId: 'c2',
 		op: { op: 'add', entry: { id: 'q1', mediaId: 'm2', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
 	};
 	expect(validateCommand(selfRepoint, deps)).toBe('entry id already taken: q1');
@@ -81,7 +80,7 @@ test('the identical-identity re-add is still allowed (originator optimistic row 
 	// in-place arm exists for exactly this, so the guard must let it through.
 	const { deps } = harness('s1');
 	const identicalReadd: ClientCommand = {
-		clientOpId: 'c3', baseRev: 0,
+		clientOpId: 'c3',
 		op: { op: 'add', entry: { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
 	};
 	expect(validateCommand(identicalReadd, deps)).toBeNull();
@@ -90,7 +89,7 @@ test('the identical-identity re-add is still allowed (originator optimistic row 
 test('a first-time add of a genuinely free id still validates (guard is not over-broad)', () => {
 	const { deps } = harness();
 	const freshAdd: ClientCommand = {
-		clientOpId: 'c4', baseRev: 0,
+		clientOpId: 'c4',
 		op: { op: 'add', entry: { id: 'q3', mediaId: 'm2', singerId: 's2', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
 	};
 	expect(validateCommand(freshAdd, deps)).toBeNull();
@@ -126,7 +125,7 @@ test('CONTROL: a legitimate remove of q1 still fires onEntryRemoved (the cook-ca
 	// Proves the seam the overwrite bypasses is real and reachable, so the defect was the add arm
 	// silently deleting q1 off that seam, not the seam being broken.
 	const { removedCalls, deps } = harness('s1');
-	const remove: ClientCommand = { clientOpId: 'c5', baseRev: 0, op: { op: 'remove', id: 'q1' } };
+	const remove: ClientCommand = { clientOpId: 'c5', op: { op: 'remove', id: 'q1' } };
 	const patch = handleQueueCommand(remove, deps);
 	expect(patch).not.toBeNull();
 	expect(removedCalls).toHaveLength(1);

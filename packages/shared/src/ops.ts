@@ -9,12 +9,11 @@ import type { QueueEntry, EntryStatus, Media } from './types';
 export type QueueOp =
   | { op: 'add'; entry: QueueEntry } // entry.id is the client-minted ULID
   | { op: 'remove'; id: string }
-  | { op: 'move'; id: string; toSeq: number } // toSeq = target rotationSeq
+  | { op: 'move'; id: string; toSeq: number } // toSeq = target index into the singer's own picks (reorderWithinSinger), NOT a rotationSeq
   | { op: 'status'; id: string; status: EntryStatus };
 
 export interface ClientCommand {
   clientOpId: string; // ULID — idempotency + reject routing
-  baseRev: number; // client's rev when it made the change (optimistic concurrency)
   op: QueueOp;
 }
 

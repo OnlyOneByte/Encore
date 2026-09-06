@@ -202,10 +202,9 @@ test('a no-op cancel (nothing live) does not touch the media or broadcast', () =
 const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'queued' });
 const addCmd = (id: string, mediaId: string, singerId: string): ClientCommand => ({
 	clientOpId: 'add-' + id,
-	baseRev: 0,
 	op: { op: 'add', entry: { id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: Date.now() } as QueueEntry }
 });
-const removeCmd = (id: string, singerId: string): ClientCommand => ({ clientOpId: 'rm-' + id, baseRev: 0, op: { op: 'remove', id }, });
+const removeCmd = (id: string, singerId: string): ClientCommand => ({ clientOpId: 'rm-' + id, op: { op: 'remove', id }, });
 
 function hubHarness(jobs: JobRepository, actorSingerId: string) {
 	const state = new AuthoritativeState();

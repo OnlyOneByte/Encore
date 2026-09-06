@@ -48,7 +48,6 @@ function harness() {
 // an earlier one (id / singerId / mediaId all valid).
 const add = (overrides: Partial<QueueEntry>): ClientCommand => ({
 	clientOpId: 'c1',
-	baseRev: 0,
 	op: { op: 'add', entry: { id: 'e1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: 1, ...overrides } as QueueEntry }
 });
 

@@ -22,7 +22,7 @@ function harness() {
 }
 
 const addCmd = (clientOpId: string, entryId: string): ClientCommand => ({
-	clientOpId, baseRev: 0,
+	clientOpId,
 	op: { op: 'add', entry: { id: entryId, mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } }
 });
 
