@@ -204,7 +204,11 @@
 		display: inline-flex;
 		align-items: center;
 		gap: 0.3rem;
-		min-height: 32px;
+		/* 44px, matching the settings back link and the rest of the app — this was a 32px box and the
+		   only route back off the audit page (issue #140). Kept as a 44px literal, not var(--tap):
+		   touch-targets.test.ts pins .back by the literal string. */
+		min-width: 44px;
+		min-height: 44px;
 	}
 	h1 {
 		font-size: 1.25rem;

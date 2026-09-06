@@ -483,7 +483,9 @@
 		text-underline-offset: 0.2em;
 		display: inline-flex;
 		align-items: center;
-		min-height: 32px;
+		/* 44px tap target — this is the only route into the per-song audit and was 32px, under the
+		   ratified floor (issue #140). No literal-string pin like settings/.back, so the token is fine. */
+		min-height: var(--tap);
 		/* A title-less song shows its raw media id; an unbroken id would push the 320px layout wide. */
 		overflow-wrap: anywhere;
 	}
