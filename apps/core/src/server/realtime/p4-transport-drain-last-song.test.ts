@@ -143,3 +143,56 @@ test('the single-cooked-song drain does NOT break while an entry is still curren
 	// A break guarded by the bare (present) condition, with no negation, is the defect; ban it.
 	expect(DRAIN).not.toMatch(/if\s*\(\s*[A-Za-z_$][\w$]*\s*\)\s*break/);
 });
+
+// Resolve WHERE the drain sits inside the arm, so we can pin its ORDER relative to the T6a assert.
+// Mirrors drainBody()'s Case 1 / Case 2 split, but returns the drain's start index WITHIN the arm
+// (Case 1: the inline `for`; Case 2: the arm's call-site of the drain helper) rather than its body.
+// This is a distinct property from "a drain exists": #264 is produced by the compare that FOLLOWS
+// the drain, so a real drain placed AFTER the T6a assertion still asserts against an undrained room
+// and ships #264 back green (the direction PR #404 left unpinned). Precedent: #331 / #378 pinned the
+// skip's index < the measurement's index as a separate property from the skip existing.
+function drainStartInArm(arm: string): number {
+	// Case 1: inline `for` loop lives in the arm — its position IS the drain's position.
+	const forIdx = arm.search(/for\s*\(/);
+	if (forIdx >= 0) return forIdx;
+	// Case 2: the drain is hoisted into a helper — the arm's AWAIT CALL-SITE is where it runs. Find
+	// the awaited name whose declaration is the skip loop (same resolution drainBody() uses), then
+	// return the index of that await in the arm.
+	const calls = [...arm.matchAll(/await\s+([A-Za-z_$][\w$]*)\s*\(/g)].filter((m) => m[1] !== 'sleep');
+	for (const m of calls) {
+		const name = m[1];
+		const decl = new RegExp(
+			`(?:async\\s+)?function\\s+${name}\\s*\\([^)]*\\)\\s*\\{|(?:const|let|var)\\s+${name}\\s*=\\s*(?:async\\s*)?\\([^)]*\\)\\s*=>\\s*\\{`
+		);
+		const dm = PROBE.match(decl);
+		if (!dm || dm.index === undefined) continue;
+		const open = PROBE.indexOf('{', dm.index + dm[0].length - 1);
+		if (open < 0) continue;
+		let depth = 0;
+		for (let i = open; i < PROBE.length; i++) {
+			const c = PROBE[i];
+			if (c === '{') depth++;
+			else if (c === '}') {
+				depth--;
+				if (depth === 0) {
+					const body = PROBE.slice(open + 1, i);
+					if (/clickByLabel\(\s*['"]skip['"]\s*\)/.test(body)) return m.index ?? -1;
+					break;
+				}
+			}
+		}
+	}
+	throw new Error('could not locate the drain in the single-cooked arm to pin its order');
+}
+
+test('the single-cooked-song arm DRAINS BEFORE it asserts no-current (#264 order — the ship-a-bug direction)', () => {
+	const drainIdx = drainStartInArm(ARM);
+	const t6aIdx = ARM.indexOf("skip on the sole (last) song");
+	// Not vacuous: both anchors must resolve inside the arm.
+	expect(drainIdx).toBeGreaterThanOrEqual(0);
+	expect(t6aIdx).toBeGreaterThanOrEqual(0);
+	// The drain MUST run before the T6a assertion. A real drain placed AFTER T6a leaves every
+	// earlier test green (a drain still exists, still breaks on empty) yet asserts currentEntryId
+	// against an UNDRAINED room — #264 verbatim. This assertion is the one that reds that move.
+	expect(drainIdx).toBeLessThan(t6aIdx);
+});
