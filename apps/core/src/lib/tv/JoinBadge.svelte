@@ -55,7 +55,9 @@
 	<div class="badqr" class:corner={placement === 'corner'} class:hero={placement === 'hero'} role="alert">
 		<div class="badqr-t">Join QR unavailable</div>
 		<div class="badqr-b">
-			This screen is advertising <b>{shortUrl}</b>, which phones can't reach.
+			<span class="badqr-lead">This screen is advertising</span>
+			<b class="badqr-addr">{shortUrl}</b>
+			<span class="badqr-lead">which no phone can reach.</span>
 		</div>
 		<div class="badqr-fix">Set the party address in Settings under Joining (or the ENCORE_PUBLIC_ORIGIN env var).</div>
 	</div>
@@ -168,7 +170,13 @@
 		box-shadow: var(--shadow);
 	}
 	.badqr.hero {
-		max-width: 34ch;
+		/*
+		 * Prose width, not a QR's. 34ch here resolved against this element's own 16px root font
+		 * (~346px) — a column two words wide that never grew with the TV type — so the address was
+		 * forced to break mid-token and the trailing clause orphaned its comma (#62). This is the same
+		 * vmin axis the TV type scale rides, so the card grows on a 4K wall instead of dead-ending.
+		 */
+		max-width: clamp(320px, 44vmin, 720px);
 		padding: 28px 34px;
 		text-align: center;
 	}
@@ -190,8 +198,16 @@
 		font-size: var(--tv-body);
 		color: var(--ink);
 	}
-	.badqr-b b {
+	/* Each part on its own line: the sentence never wraps around the address, so the comma that used
+	   to orphan onto its own line (#62) is gone with the clause it followed. */
+	.badqr-lead {
+		display: block;
+	}
+	.badqr-addr {
+		display: block;
+		margin: 2px 0;
 		color: var(--danger-ink);
+		/* A long advertised address still has to fit the card rather than push it wide. */
 		overflow-wrap: anywhere;
 	}
 	.badqr-fix {
