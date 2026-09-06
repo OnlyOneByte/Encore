@@ -1,6 +1,7 @@
 // guard: animations/transitions must be GPU-composited (transform/opacity/background/
 // color/box-shadow only) — NEVER layout-triggering props (width/height/top/left/margin), which
-// cause jank. Source-scan the component + route CSS. See docs/ARCHITECTURE.md.
+// cause jank. Source-scan every .svelte + .css file under src/ (incl. src/lib/tv, src/lib/ui and
+// src/app.css, the shared design system). See docs/ARCHITECTURE.md.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -17,19 +18,41 @@ function svelteFiles(dir: string): string[] {
 	return out;
 }
 
-// extract the property animated by each `transition:` / `animation:` declaration
+// every .svelte AND .css file under a directory — the CSS lives in both component <style> blocks
+// and the shared design system (src/app.css), so a scan restricted to .svelte is blind to app.css.
+function styleFiles(dir: string): string[] {
+	const out: string[] = [];
+	for (const ent of readdirSync(dir, { withFileTypes: true })) {
+		const p = join(dir, ent.name);
+		if (ent.isDirectory()) out.push(...styleFiles(p));
+		else if (ent.name.endsWith('.svelte') || ent.name.endsWith('.css')) out.push(p);
+	}
+	return out;
+}
+
+// extract EVERY property animated by each `transition:` shorthand or `transition-property:` longhand.
+// A shorthand may list several comma-separated animations (`transform 0.2s, height 0.2s`), each of
+// whose FIRST identifier is the animated property — so we cannot read only the first token of the
+// declaration. The longhand `transition-property: a, b` lists bare property names directly.
 function animatedProps(css: string): string[] {
 	const props: string[] = [];
-	// transition: <prop> ... ;  (first token after the colon is the property)
-	for (const m of css.matchAll(/transition:\s*([a-z-]+)/g)) props.push(m[1]!);
+	// captures both the shorthand and the longhand; the value after the colon runs to `;` or `}`.
+	for (const m of css.matchAll(/transition(-property)?:\s*([^;}]+)/g)) {
+		for (const entry of m[2]!.split(',')) {
+			// the property is the FIRST identifier of each comma entry (timing/easing follow it in the
+			// shorthand; the longhand lists bare property names, so the same rule reads both)
+			const id = entry.trim().match(/^[a-z-]+/);
+			if (!id) continue;
+			if (id[0] === 'none') continue; // `transition: none` animates nothing
+			props.push(id[0]);
+		}
+	}
 	return props;
 }
 
 test('no transition animates a layout-triggering property (transform/opacity only)', () => {
-	const files = [
-		...svelteFiles(join(import.meta.dir, '..', '..', 'lib', 'components')),
-		...svelteFiles(join(import.meta.dir, '..', '..', 'routes'))
-	];
+	// scan every .svelte + .css under src/ — including src/lib/tv, src/lib/ui and src/app.css
+	const files = styleFiles(join(import.meta.dir, '..', '..'));
 	const offenders: string[] = [];
 	for (const f of files) {
 		const css = readFileSync(f, 'utf8');
@@ -41,7 +64,7 @@ test('no transition animates a layout-triggering property (transform/opacity onl
 });
 
 test('@keyframes use only transform/opacity', () => {
-	const files = svelteFiles(join(import.meta.dir, '..', '..'));
+	const files = styleFiles(join(import.meta.dir, '..', '..'));
 	const bad: string[] = [];
 	for (const f of files) {
 		const css = readFileSync(f, 'utf8');
