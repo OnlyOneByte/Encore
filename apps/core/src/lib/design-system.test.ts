@@ -247,3 +247,45 @@ test('a bottom-docked sheet clears the home indicator', () => {
 	expect(peek).not.toBeNull();
 	expect(peek![0]).toMatch(/env\(safe-area-inset-bottom/);
 });
+
+test('the phone header truncates a long display name instead of growing the row (#109)', () => {
+	// THE BUG (#109): the header is a nowrap flex row and the ONE child whose width is user-supplied --
+	// the display name -- rendered raw with no truncation. A single unbroken token has a min-content
+	// width equal to its full rendered width, so with CSS automatic minimum sizing flex-shrink cannot
+	// take it below that: the row grows the document instead, and the settings gear -- the only entry
+	// point to /settings from the home screen -- is carried off the viewport. Measured live: 23 chars
+	// already overflowed at 390px; a 31-char name pushed the gear fully off screen.
+	//
+	// The fix is the same treatment QueueRow's `.who` carries: min-width:0 up the whole chain so the
+	// item can shrink, plus overflow:hidden/text-overflow:ellipsis/white-space:nowrap on the name. And
+	// text-overflow only fires on a BLOCK box, not on an anonymous flex item -- so the name must be a
+	// styled block span. This guard is a source scan (no layout engine in bun:test), but each clause
+	// below is exactly what a reverted fix drops, so it fails red on the pre-fix source.
+	const page = stripComments(readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8'));
+
+	// The name is a styled block span (not a bare <span>), so text-overflow can act on it.
+	expect(page).toMatch(/<span class="me-name">\{me\.displayName\}<\/span>/);
+
+	const meName = page.match(/\.me-name\s*\{([^}]*)\}/);
+	expect(meName).not.toBeNull();
+	const nameBody = meName![1]!;
+	expect(nameBody).toMatch(/display:\s*block/); // text-overflow needs a block box
+	expect(nameBody).toMatch(/min-width:\s*0/); // so it can shrink below content width
+	expect(nameBody).toMatch(/overflow:\s*hidden/);
+	expect(nameBody).toMatch(/text-overflow:\s*ellipsis/);
+	expect(nameBody).toMatch(/white-space:\s*nowrap/);
+
+	// min-width:0 must exist all the way up the flex chain or the name never gets the chance to shrink.
+	const cluster = page.match(/\.me-cluster\s*\{([^}]*)\}/);
+	expect(cluster).not.toBeNull();
+	expect(cluster![1]!).toMatch(/min-width:\s*0/);
+	const btn = page.match(/\.me-btn\s*\{([^}]*)\}/);
+	expect(btn).not.toBeNull();
+	expect(btn![1]!).toMatch(/min-width:\s*0/);
+
+	// The dot and the gear must stay unshrinkable so the 44px target and the colour dot survive.
+	const dot = page.match(/\.me-dot\s*\{([^}]*)\}/);
+	expect(dot![1]!).toMatch(/flex:\s*0 0 auto/);
+	const gear = page.match(/\.gear\s*\{([^}]*)\}/);
+	expect(gear![1]!).toMatch(/min-width:\s*44px/);
+});
