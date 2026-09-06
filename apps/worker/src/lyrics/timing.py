@@ -42,7 +42,7 @@ class WhisperxForcedAligner:
         self._cache: dict[str, tuple[Any, Any]] = {}
 
     def _model(self, language: str) -> tuple[Any, Any]:
-        with _ML_LOCK:
+        with ML_LOCK:
             if language not in self._cache:
                 import whisperx  # lazy: multi-GB torch
 
@@ -53,7 +53,7 @@ class WhisperxForcedAligner:
         import whisperx
 
         audio = whisperx.load_audio(audio_path)
-        with _ML_LOCK:  # shared model across concurrent align jobs — see _ML_LOCK
+        with ML_LOCK:  # shared model across concurrent align jobs — see ML_LOCK
             model, meta = self._model(language)
             # return_char_alignments=False → word-level only (what the overlay needs)
             out = whisperx.align(segments, model, meta, audio, self._device, return_char_alignments=False)

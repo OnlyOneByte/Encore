@@ -52,7 +52,7 @@ class WhisperxTranscriber:
         self._model: Any = None
 
     def _load(self) -> Any:
-        with _ML_LOCK:
+        with ML_LOCK:
             if self._model is None:
                 import whisperx  # lazy: multi-GB torch stays off the import path until this tier runs
 
@@ -65,7 +65,7 @@ class WhisperxTranscriber:
         import whisperx
 
         audio = whisperx.load_audio(audio_path)
-        with _ML_LOCK:  # one model, possibly two concurrent align jobs — see _ML_LOCK
+        with ML_LOCK:  # one model, possibly two concurrent align jobs — see ML_LOCK
             out = self._load().transcribe(audio, language=language)
         if language and not out.get("language"):
             out["language"] = language
