@@ -410,11 +410,23 @@
 		 * A ceiling so an EXTREME setting cannot outgrow the freed space above the chrome band. At the
 		 * max scalePct with max linesBefore+linesAfter the derived height can exceed what remains once
 		 * the band is reserved; capping it lets the existing edge mask fade absorb the surplus rows
-		 * rather than the reel spilling back down toward the cards. Symmetric --tv-safe-y keeps a little
-		 * breathing room at the top mirror of the band. Does not change default geometry: at the default
-		 * five rows the derived height is well under this cap, so the reel is unaffected.
+		 * rather than the reel spilling back down toward the cards.
+		 *
+		 * The cap is EXACTLY the parent band `100vh - --tv-chrome-h` — the same height `.lyrics` already
+		 * gives this box via `top: 0; bottom: --tv-chrome-h`. It must NOT subtract a further
+		 * `--tv-safe-y`: that box is `justify-content: center`, so a `--tv-safe-y` charged against its
+		 * height only buys `--tv-safe-y / 2` of top inset while removing a full `--tv-safe-y` of reel,
+		 * and the top mirror it was paying for is already inside the band (--tv-chrome-h is itself
+		 * `calc(--tv-safe-y + …)`, app.css). Measured in a real browser at the DEFAULT five rows, that
+		 * extra subtraction cut the second lookahead row — 66.6% visible at 1080p, hard-masked mid-glyph
+		 * with unused height below it — and dropping it restores that row to 100% at 1080p and 4K.
+		 *
+		 * IS active at the defaults on short panels: at 1280×720 five rows of --tv-lyric want ~79.8vh
+		 * against ~76vh of band, so the cap still bites there and the surplus fades at the edge. Seating
+		 * all five at 720p needs the type budget itself to change — the ladder-vs-clamp choice the roadmap
+		 * reserves for the owner — and is out of scope here.
 		 */
-		max-height: calc(100vh - var(--tv-chrome-h) - var(--tv-safe-y));
+		max-height: calc(100vh - var(--tv-chrome-h));
 		overflow: hidden;
 		/*
 		 * DELIBERATE LITERALS, not scrims. A mask reads only the LUMINANCE/alpha of each stop, never the
