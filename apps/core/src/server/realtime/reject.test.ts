@@ -58,7 +58,9 @@ test('rev does NOT advance on a rejected command', () => {
 
 test('validateCommand returns precise reasons', () => {
 	const { deps } = harness();
-	expect(validateCommand(cmd({ op: 'status', id: 'x', status: 'done' }), deps)).toContain('unknown entry');
+	// The `status` op is server-owned (player.ts drives it directly, never through the wire); the wire
+	// arm now rejects it outright, BEFORE the entry-existence check that used to be the only guard.
+	expect(validateCommand(cmd({ op: 'status', id: 'x', status: 'done' }), deps)).toBe('status is server-owned');
 	expect(
 		validateCommand(
 			cmd({ op: 'add', entry: { id: 'q', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } }),
