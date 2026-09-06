@@ -317,10 +317,15 @@ async def test_a_roformer_cook_runs_the_real_roformer_engine_end_to_end(tmp_path
     assert vox.endswith("mr-vocals.flac")  # #480: vocals stem is lossless FLAC
     assert Path(vox).exists()
 
-    # (difference 3) progress is COARSE 0→100 (parse_progress returns None), never the tqdm percentages
+    # (difference 3) roformer's parse_progress returns None, so the child's tqdm percentages must NEVER
+    # leak into progress — the only NON-terminal pct run_stage may emit for this stage is a time-based
+    # keepalive, and roformer's is held at 0 (its last-known pct) so the bar never moves off 0 until the
+    # closing 100. The invariant is therefore: no INTERMEDIATE (0 < pct < 100) value ever appears. This
+    # does NOT pin the event COUNT — pinning [0, 100] would forbid the keepalive that #435 added to keep
+    # a 45-minute pass from being reaped at the 30 s lease.
     seps = [e.pct for e in events if isinstance(e, ProgressEvent) and e.stage == "separating"]
     assert 0 in seps and 100 in seps
-    assert not any(p not in (0, 100) for p in seps), f"roformer progress must be coarse 0/100, got {seps}"
+    assert not any(0 < p < 100 for p in seps), f"roformer must never leak an intermediate pct, got {seps}"
 
 
 @pytest.mark.asyncio
