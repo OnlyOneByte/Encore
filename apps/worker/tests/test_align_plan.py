@@ -27,7 +27,9 @@ from src.runtime import runner as runner_mod  # noqa: E402
 
 
 def test_lyrics_key():
-    assert lyrics_pkg.lyrics_key("m1") == "derived/lyrics/m1.json"
+    # lyrics_key (the dead single-file key) was removed in #456; candidate_key is the live
+    # per-(source,timing,tag) key builder, moved from chain.py to artifact.py in the same change.
+    assert lyrics_pkg.candidate_key("m1", "lrclib", "line") == "derived/lyrics/m1-lrclib-line.json"
 
 
 def test_lrclib_to_segments_prefers_synced_then_plain_then_empty():

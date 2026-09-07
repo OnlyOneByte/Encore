@@ -27,10 +27,10 @@ from ..lyrics import (
     build_sources,
     candidate_key,
     caption_argv,
-    fit_lrc_to_aligned,
     is_line_synced,
     is_valid_lyrics,
     line_synced_lyrics,
+    lrc_fit_notes,
     lrclib_to_segments,
     normalize_lyrics,
     presplit_texts,
@@ -38,6 +38,11 @@ from ..lyrics import (
     select_by_baselines,
     validate_timing,
 )
+
+# _opening_window_indices moved to lyrics/validate.py (#456); re-imported so `_opens_for`'s
+# fallback works and the #459 guard tests can still do `from src.steps.lyrics import
+# _opening_window_indices`.
+from ..lyrics.validate import _opening_window_indices
 from ..processor import ProgressEvent
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_blocking, run_stage
@@ -272,87 +277,6 @@ def _opens_for(text: Any) -> list[int]:
     return _opening_window_indices(text.align_windows, text.segments)
 
 
-def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[int]:
-    """Indices into `windows` of the window that OPENS each human line.
-
-    `align_windows` is a flat list where each human `segment` contributes one or more windows: the
-    first (opening) window of a line keeps the line's own `start` (`_subdivide` sets its first piece's
-    `lo` to the segment start exactly), while every interior window start is a char-count guess. Walk
-    the segments in order and take, for each, the next window whose `start` equals that segment's
-    start — that is the one window per line carrying a real source timestamp. Returns one index per
-    matched segment. Matching is strict-in-order: `si` advances only on a match, so if a segment's
-    opening window is ever absent, the search for it consumes the rest of the windows and every later
-    segment is dropped from the result too. That degenerate path is currently UNREACHABLE — every
-    producer of a segment/window start rounds to 3 decimals (`presplit._subdivide`, `source._stamp_to_sec`
-    / `entries_to_segments` / `plain_lyrics_to_segments`, `captions._cue_seconds`) so the opening window
-    of each line is always present and matches exactly — hence it is left as-is. The drop-tolerance that
-    matters for the version fit lives in `_pair_openings_to_aligned`, which re-derives the surviving
-    pairs by TEXT rather than trusting this index.
-    """
-    opens: list[int] = []
-    si = 0
-    for k, win in enumerate(windows):
-        if si >= len(segments):
-            break
-        ss = segments[si].get("start")
-        ws = win.get("start")
-        if (
-            isinstance(ss, (int, float))
-            and isinstance(ws, (int, float))
-            and abs(float(ws) - float(ss)) < 1e-6
-        ):
-            opens.append(k)
-            si += 1
-    return opens
-
-
-def _pair_openings_to_aligned(
-    windows: list[dict], opens: list[int], doc: dict
-) -> tuple[list[float], list[float]]:
-    """Pair each opening window's source start against the aligned line it produced, drop-tolerant.
-
-    The wrong-version fit needs two time series over the SAME human lines: the source's own line
-    starts (the opening windows) and where the aligner placed those lines. The obvious pairing —
-    `line_starts(doc)[k]` for each opening index `k` — is WRONG, because `doc` is `normalize_lyrics`
-    output and that function DROPS a segment with neither timed words nor bounds (`artifact.py`), so
-    `doc["lines"][k]` is not guaranteed to be the aligned result of `windows[k]`. One dropped line
-    shifts every later positional pairing: a correctly aligned song then reads as slipped (#336) or,
-    once counts diverge, the check goes silently inert on a genuinely different master (#217).
-
-    So recover which window each SURVIVING aligned line came from, rather than trusting position. The
-    aligner emits one line per window it was given, in order, and `normalize_lyrics` preserves that
-    order — it only DROPS. So walk the full window stream and the aligned lines in LOCKSTEP, matching
-    on stripped text, and advance both together. This assigns each surviving aligned line to its
-    window even when several openings share the same text ("a very long line…" repeated), because the
-    distinct interior windows between them keep the two cursors in sync — text alone is not unique, but
-    text-in-order over the whole stream is. A window whose aligned line was dropped simply has no match
-    at its turn and is left unpaired. Then keep only the OPENING windows (the ones carrying a real
-    source timestamp): their source start and their recovered aligned start, one entry each, both
-    series built together so they can never diverge in length.
-    """
-    aligned = [
-        (str(ln.get("text", "")).strip(), float(ln["start"]))
-        for ln in (doc.get("lines") or [])
-        if isinstance(ln, dict) and isinstance(ln.get("start"), (int, float))
-    ]
-    opens_set = set(opens)
-    lrc_starts: list[float] = []
-    aligned_starts: list[float] = []
-    ai = 0
-    for k, win in enumerate(windows):
-        if ai >= len(aligned):
-            break
-        wtext = str(win.get("text", "")).strip()
-        if aligned[ai][0] != wtext:
-            continue  # this window's aligned line was dropped by normalize_lyrics — skip, don't consume
-        wstart = win.get("start")
-        if k in opens_set and isinstance(wstart, (int, float)):
-            lrc_starts.append(float(wstart))
-            aligned_starts.append(aligned[ai][1])
-        ai += 1
-    return lrc_starts, aligned_starts
-
-
 class TimeTexts(Step):
     """Force-align each selected text, degrading to its own line sync when word timing is not usable."""
 
@@ -433,62 +357,21 @@ class TimeTexts(Step):
             # WORDS against what is audible — and this is a cheap independent second opinion on the
             # TIMING, which catches the case where a different master shifts or stretches every line.
             if timing == TIMING_WORD and text.timing == TIMING_LINE:
-                # Pair the fit against the human line timings ONLY, positioned to what the aligner
-                # searched. Since #92 the aligner searches `align_windows` (the per-row bounded
-                # windows) when presplit set them, so `doc` has one aligned line per WINDOW — more
-                # lines than `segments`, and feeding the fit `segments` made the counts unequal, so
-                # `fit_lrc_to_aligned` returned `inconclusive` and went silently inert. But only the
-                # OPENING window of each human line carries the source's own timestamp; every interior
-                # window start is a `_subdivide` guess spread PROPORTIONALLY TO CHARACTER COUNT (and
-                # #92 ratified those as throwaway search hints, not published timing). Pairing the fit
-                # against interior guesses made a correctly aligned song report that alignment slipped,
-                # because the aligner honestly re-times the words where they are SUNG while the guess
-                # sits at a char-count fraction of a span that includes the following rest. So pair the
-                # opening windows (real human starts) against the aligned lines at those same indices:
-                # two independent time series over the same human lines, which is what the fit needs.
-                # Pair by the line's own text, NOT its position: `doc` is normalize_lyrics output,
-                # which can DROP a line, and a positional index into it would shift every later
-                # pairing after a drop — re-opening #336 (spurious "slipped") and #217 (inert on a
-                # wrong master). Text is the stable key both _subdivide and normalize_lyrics keep.
-                # Both branches route through the same drop-tolerant pairing: when presplit set
-                # `align_windows`, only the OPENING window of each line carries a real source start;
-                # when it did not, the segments ARE the windows and every index is an opening. Feeding
-                # the no-windows branch two independent positional series (the old `line_starts` pair)
-                # made a single dropped aligned line diverge the counts, so `fit_lrc_to_aligned` went
-                # `inconclusive` and the check went silently inert on a wrong master (#217) — the exact
-                # index-fragility #410's text-keyed pairing removed, applied there too (#534 F2).
+                # Compute the OPENING-window index of each human line, then hand the fit decision
+                # to lyrics/validate.lrc_fit_notes (#456 moved the ~45-line decision + its two pairing
+                # helpers into the domain package; this step now owns only the windows/opens the
+                # decision needs). `_opens_for` prefers presplit's EMITTED opens map over re-deriving by
+                # float-equality — that preference is pinned HERE, in the step layer, by #459, which is
+                # why the call site stays in TimeTexts.run and is not folded into the domain function.
+                # When presplit set `align_windows`, only each line's OPENING window carries a real
+                # source start; when it did not, the segments ARE the windows and every index opens one.
                 windows = getattr(text, "align_windows", None)
                 if windows:
                     opens = _opens_for(text)
                 else:
                     windows, opens = text.segments, list(range(len(text.segments)))
-                lrc_starts, aligned_starts = _pair_openings_to_aligned(windows, opens, doc)
-                fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)
-                if fit.verdict == "different_version":
-                    ctx.note(
-                        f"{text.text_source}: its own line timings do NOT fit this recording "
-                        f"(median residual {fit.residual_sec:.1f}s over {fit.pairs} lines) — likely a "
-                        "different release. Published timings come from the aligner, so they are right "
-                        "for this audio; the WORDS may belong to another version."
-                    )
-                elif fit.verdict == "same_version":
-                    # same_version, so the LRC does match. Report the fitted (offset, scale): the offset
-                    # is how far the LRC sits from the aligner timing we actually publish, and the scale
-                    # is the master-tempo ratio. Both are DIAGNOSTIC only — the published timings are the
-                    # aligner's and are not shifted by these — but they were computed here and are worth
-                    # seeing in the log rather than discarded. Outliers, when present, are the lines where
-                    # ALIGNMENT slipped: a different and much more actionable fault than a wrong LRC.
-                    fit_note = (
-                        f"{text.text_source}: matches this recording "
-                        f"(fitted offset {fit.offset_sec:+.2f}s, scale {fit.scale:.3f} over {fit.pairs} "
-                        "lines; diagnostic only — published timings are the aligner's)"
-                    )
-                    if fit.outlier_lines:
-                        fit_note += (
-                            f". Alignment slipped on {len(fit.outlier_lines)} line(s) "
-                            f"(index {fit.outlier_lines[:5]})"
-                        )
-                    ctx.note(fit_note)
+                for note in lrc_fit_notes(text.text_source, windows, opens, doc):
+                    ctx.note(note)
 
             ref = candidate_key(ctx.job.media_id, text.text_source, timing, text.tag)
             final = os.path.join(ctx.job.media_dir, ref)

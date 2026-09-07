@@ -24,7 +24,7 @@ concerns and splits into `model` / `grade` / `sources/*` in a later stage. This 
 
 from __future__ import annotations
 
-from .artifact import is_valid_lyrics, lrclib_to_segments, lyrics_key, normalize_lyrics
+from .artifact import candidate_key, is_valid_lyrics, lrclib_to_segments, normalize_lyrics
 from .asr import DEFAULT_MODEL, Transcriber, WhisperxTranscriber, transcriber_for
 from .captions import caption_argv, is_translated_track, parse_vtt, read_captions
 from .chain import (
@@ -52,7 +52,6 @@ from .chain import (
     acquire_with_notes,
     agreement_score,
     baselines_of,
-    candidate_key,
     candidates_of,
     composite_score,
     is_authoritative_text,
@@ -74,12 +73,13 @@ from .source import (
     rank_lrclib_candidates,
 )
 from .timing import ML_LOCK, Aligner, WhisperxForcedAligner, aligner_for
-from .validate import LrcFit, fit_lrc_to_aligned, line_starts, validate_timing
+from .validate import LrcFit, fit_lrc_to_aligned, line_starts, lrc_fit_notes, validate_timing
 
 __all__ = [
     "LrcFit",
     "fit_lrc_to_aligned",
     "line_starts",
+    "lrc_fit_notes",
     # roles + vocabulary
     "ROLE_BASELINE",
     "ROLE_CANDIDATE",
@@ -129,7 +129,6 @@ __all__ = [
     "is_valid_lyrics",
     "line_synced_lyrics",
     "lrclib_to_segments",
-    "lyrics_key",
     "normalize_lyrics",
     "parse_lrc",
     "plain_lyrics_to_segments",
