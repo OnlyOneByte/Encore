@@ -7,7 +7,7 @@
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobs } from '../db/schema';
-import { ulid, isTerminalJob, type Job, type JobStatus, type JobType, type JobEvent } from '@encore/shared';
+import { ulid, isTerminalJob, type Job, type JobStatus, type JobType, type JobEvent, type AttemptOutcome } from '@encore/shared';
 import { assertEvent } from './transitions';
 import type { AttemptLedger, AttemptFacts } from './attempts';
 
@@ -29,9 +29,41 @@ export interface JobPatch {
 	attempts?: number;
 }
 
+// The attempt OUTCOME each terminal-or-requeue event seals, so the ledger can be driven off the
+// event inside `transition` rather than re-derived in each named wrapper. A requeue (REJECT /
+// LEASE_EXPIRED / RECOVER) seals the dying attempt `abandoned`; the terminal events seal their own
+// name. Events absent here (DISPATCH / ACCEPT / PROGRESS / REPRIORITIZE) seal nothing — DISPATCH and
+// ACCEPT PATCH the open attempt with dispatch facts / a start time via `assign`/`accept`, which stay
+// in the wrappers because they carry data the machine does not have.
+const OUTCOME_FOR_EVENT: Partial<Record<JobEvent, AttemptOutcome>> = {
+	COMPLETE: 'ready',
+	FAIL: 'failed',
+	CANCEL: 'canceled',
+	REJECT: 'abandoned',
+	LEASE_EXPIRED: 'abandoned',
+	RECOVER: 'abandoned'
+};
+
+/** The requeue events — those that seal the old attempt AND open a fresh one after the status write. */
+const REQUEUE_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'LEASE_EXPIRED', 'RECOVER']);
+
+// The WORKER-REPORTED events that hand a worker's concurrency slot back — a live worker over its WS
+// session declined (REJECT), finished (COMPLETE) or failed (FAIL) the job it held, so its slot is
+// free NOW. Reaper/boot events (LEASE_EXPIRED, RECOVER) are deliberately ABSENT: they fire when the
+// worker is presumed dead and its session gone, so the registry reclaims its slots on the next
+// heartbeat or session drop rather than the machine double-freeing against an in-flight completion.
+// CANCEL is ABSENT for the same double-free reason cancel.ts documents: after cancel() clears
+// `workerId` there is no owner to notify, and a proactive release could race a completion that is
+// already in flight — the worker frees its own slot and the registry catches up. Slot accounting
+// thus rides the ENTRY into the released state (fired off the event inside `transition`), so a
+// fifth worker-reported terminal path cannot forget to release, exactly as settleGatesForFailedJob
+// centralised gate-settling (#90).
+const SLOT_RELEASING_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'COMPLETE', 'FAIL']);
+
 export class JobRepository {
 	#db: DB;
 	#ledger: AttemptLedger | null;
+	#releaseSlot: ((workerId: string) => void) | null = null;
 	/**
 	 * The ledger is OPTIONAL so every existing unit test that constructs a bare repository keeps
 	 * working, and so a missing ledger can never break a cook — it is observability, not correctness.
@@ -40,6 +72,17 @@ export class JobRepository {
 	constructor(db: DB, ledger?: AttemptLedger) {
 		this.#db = db;
 		this.#ledger = ledger ?? null;
+	}
+
+	/**
+	 * Register the worker-slot release action. OPTIONAL and wired by app.ts (the registry is
+	 * constructed after the repository, so it is injected rather than passed to the constructor —
+	 * mirroring the ledger). Fired by `transition` on a SLOT_RELEASING_EVENT with the OWNING worker
+	 * id (read pre-write, before the patch clears `workerId`). Unit tests that never touch worker
+	 * capacity leave it unset and the hook is a no-op, so slot accounting can never break a cook.
+	 */
+	setSlotReleaseHook(release: (workerId: string) => void): void {
+		this.#releaseSlot = release;
 	}
 
 	/**
@@ -146,9 +189,33 @@ export class JobRepository {
 		if (!current) throw new Error(`unknown job: ${id}`);
 		const to = assertEvent(current.status, event);
 
+		// The event carries the ledger outcome, so the ledger hooks the MACHINE, not seven hand-written
+		// wrappers (#471 step 2). Now that the event is a parameter, `transition` alone knows both that
+		// a status changed AND what caused it — a REJECT and a LEASE_EXPIRED both land on `queued` but
+		// seal the attempt as `abandoned` identically, while a COMPLETE seals `ready`. Sealing the
+		// in-flight attempt happens BEFORE the row write (it patches the open attempt by jobId, and a
+		// requeue's abandon must date from the pre-transition attempt); a fresh attempt is opened AFTER
+		// the write so its 1-based number counts the row just sealed. The consequence the issue wants:
+		// a caller reaching `transition` directly is no longer invisible to history — the wrappers are
+		// ergonomics (§5 names), not the enforcement boundary.
+		const outcome = OUTCOME_FOR_EVENT[event];
+		if (outcome) this.#ledger?.closed(id, outcome, now, patch.error ?? null);
+
+		// Slot accounting via the machine (issue #524 step 3). A worker-reported release event frees
+		// the OWNING worker's concurrency slot — read from the pre-write row, because a requeue patch
+		// (REJECT) clears `workerId` before the write. This retires the three hand-paired
+		// registry.releaseSlot() calls in worker-hub.ts (#onReject/#onComplete/#onFailed): the release
+		// now rides ENTERING the released state, so it cannot be forgotten by a new terminal path.
+		if (current.workerId && SLOT_RELEASING_EVENTS.has(event)) this.#releaseSlot?.(current.workerId);
+
 		const next = { ...patch, status: to, updatedAt: now };
 		this.#db.update(jobs).set(next).where(eq(jobs.id, id)).run();
-		return this.byId(id)!;
+		const updated = this.byId(id)!;
+
+		// A requeue (REJECT / LEASE_EXPIRED / RECOVER back to `queued`) opens the next attempt so the
+		// new wait is dated from now rather than inheriting the abandoned attempt's queue time.
+		if (REQUEUE_EVENTS.has(event)) this.#ledger?.open(updated, now);
+		return updated;
 	}
 
 	/**
@@ -214,9 +281,8 @@ export class JobRepository {
 
 	/** Worker finished (`job:complete`): terminal `ready`. */
 	complete(id: string, now: number): Job {
-		const job = this.transition(id, 'COMPLETE', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
-		this.#ledger?.closed(id, 'ready', now);
-		return job;
+		// `transition` seals the attempt `ready` off the COMPLETE event (see OUTCOME_FOR_EVENT).
+		return this.transition(id, 'COMPLETE', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
 	}
 
 	/**
@@ -227,16 +293,14 @@ export class JobRepository {
 	fail(id: string, error: string, now: number, attempts?: number): Job {
 		const patch: JobPatch = { error, leaseExpiresAt: null, workerId: null };
 		if (attempts !== undefined) patch.attempts = attempts;
-		const job = this.transition(id, 'FAIL', patch, now);
-		this.#ledger?.closed(id, 'failed', now, error);
-		return job;
+		// `transition` seals the attempt `failed` off the FAIL event, reading the error from `patch`.
+		return this.transition(id, 'FAIL', patch, now);
 	}
 
 	/** Song removed before finish (`job:cancel`): terminal `canceled`, frees the dedup slot. */
 	cancel(id: string, now: number): Job {
-		const job = this.transition(id, 'CANCEL', { leaseExpiresAt: null, workerId: null }, now);
-		this.#ledger?.closed(id, 'canceled', now);
-		return job;
+		// `transition` seals the attempt `canceled` off the CANCEL event.
+		return this.transition(id, 'CANCEL', { leaseExpiresAt: null, workerId: null }, now);
 	}
 
 	/**
@@ -256,10 +320,9 @@ export class JobRepository {
 	 * inheriting the abandoned attempt's queue time.
 	 */
 	requeue(id: string, attempts: number, now: number, cause: JobEvent = 'LEASE_EXPIRED'): Job {
-		this.#ledger?.closed(id, 'abandoned', now);
-		const job = this.transition(id, cause, { workerId: null, leaseExpiresAt: null, attempts }, now);
-		this.#ledger?.open(job, now);
-		return job;
+		// `transition` seals the dying attempt `abandoned` before the status write and opens the fresh
+		// one after it (see REQUEUE_EVENTS), so both ledger writes ride the machine off `cause`.
+		return this.transition(id, cause, { workerId: null, leaseExpiresAt: null, attempts }, now);
 	}
 
 	/**

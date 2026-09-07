@@ -22,6 +22,20 @@ export const DEFAULT_LEASE_CONFIG: LeaseConfig = {
 	progressLeaseMs: 30_000
 };
 
+/**
+ * Have this job's processing attempts run out? The §8 retry policy: a job with `attempts` burned may
+ * still be retried while it has budget left, and fails terminally once `attempts` reaches
+ * `maxAttempts`. This is the ONE place that rule is written. It was inlined in two places that had
+ * to stay in lockstep by hand — the reaper's progress-lease-expiry branch (`sweep`, below) and the
+ * worker-hub's `job:failed` handler — with the second spelling it as the complement
+ * (`attempts < job.maxAttempts`), so a change to the policy (say, a per-job-type cap) had to be
+ * mirrored across both sites or they would silently disagree about when a cook is dead. Named once,
+ * shared, so the retry ceiling cannot drift between the reaper path and the worker-reported path.
+ */
+export function attemptsExhausted(attempts: number, maxAttempts: number): boolean {
+	return attempts >= maxAttempts;
+}
+
 /** Deadline to stamp on a job at dispatch (`assign`) — the ack lease. */
 export function ackDeadline(now: number, cfg: LeaseConfig = DEFAULT_LEASE_CONFIG): number {
 	return now + cfg.ackTimeoutMs;
@@ -53,7 +67,7 @@ export function sweep(jobs: Job[], now: number): ReapAction[] {
 			actions.push({ id: job.id, kind: 'requeue', attempts: job.attempts, reason: 'ack-timeout' });
 		} else if (job.status === 'running') {
 			const attempts = job.attempts + 1;
-			if (attempts >= job.maxAttempts) {
+			if (attemptsExhausted(attempts, job.maxAttempts)) {
 				actions.push({
 					id: job.id,
 					kind: 'fail',
