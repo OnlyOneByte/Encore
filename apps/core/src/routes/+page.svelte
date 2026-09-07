@@ -47,6 +47,10 @@
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
+	// Entry ids of not-yet-confirmed optimistic adds, republished on every store emit so the
+	// QueueRow/ProcessingCard `pending` affordance reflects the real pending map instead of the
+	// placeholder rotationSeq that applyAndReseq overwrites in the same frame (issue #304).
+	let unconfirmed = $state<Set<string>>(new Set());
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
@@ -169,7 +173,10 @@
 				// the party runs, and predicting with a stale ordering is what makes a row jump.
 				ordering: () => ({ order: settings.room.queueOrder, lastSungAt: singHistoryFrom(singers.values()) })
 			});
-			store.subscribe((e) => (entries = e));
+			store.subscribe((e) => {
+				entries = e;
+				unconfirmed = store.unconfirmedAddIds;
+			});
 
 			ws = new WsClient({
 				url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=phone`,
@@ -1173,6 +1180,7 @@
 					singerAway={awaySingers.has(e.singerId)}
 					status={proc.status}
 					pct={proc.pct}
+					pending={unconfirmed.has(e.id)}
 					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
 					reorderable={canReorder && e.singerId === me?.id && myPicks.length > 1}
 					canUp={myIdx(e.id) > 0}
@@ -1192,7 +1200,7 @@
 					mine={e.singerId === me?.id}
 					singerAway={awaySingers.has(e.singerId)}
 					up={e.id === nextPlayableId}
-					pending={e.rotationSeq === Number.MAX_SAFE_INTEGER}
+					pending={unconfirmed.has(e.id)}
 					subtitle={e.id === nextPlayableId ? 'up next' : ''}
 					removable={e.singerId === me?.id}
 					reorderable={canReorder && e.singerId === me?.id && myPicks.length > 1}
