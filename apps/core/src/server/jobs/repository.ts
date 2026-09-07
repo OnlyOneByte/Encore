@@ -7,8 +7,8 @@
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobs } from '../db/schema';
-import { ulid, isTerminalJob, type Job, type JobStatus, type JobType } from '@encore/shared';
-import { assertTransition } from './transitions';
+import { ulid, isTerminalJob, type Job, type JobStatus, type JobType, type JobEvent } from '@encore/shared';
+import { assertEvent } from './transitions';
 import type { AttemptLedger, AttemptFacts } from './attempts';
 
 // Dedup slot occupancy: a (mediaId, jobType) is "taken" by any job NOT failed/canceled — the same
@@ -135,14 +135,16 @@ export class JobRepository {
 	}
 
 	/**
-	 * Apply a status change through the pure state machine, patching any provided fields and always
-	 * bumping `updatedAt`. Throws on an unknown id or an illegal transition (the machine is the
-	 * authority). Returns the updated job.
+	 * Fire a lifecycle EVENT through the pure state machine, patching any provided fields and always
+	 * bumping `updatedAt`. The event (not a bare destination status) is the input, so the machine can
+	 * tell a REJECT from a LEASE_EXPIRED even though both land on `queued` — the distinction the
+	 * status-pair table lost (#471). Throws on an unknown id or an event illegal from the current
+	 * status (the machine is the authority). Returns the updated job.
 	 */
-	transition(id: string, to: JobStatus, patch: JobPatch, now: number): Job {
+	transition(id: string, event: JobEvent, patch: JobPatch, now: number): Job {
 		const current = this.byId(id);
 		if (!current) throw new Error(`unknown job: ${id}`);
-		assertTransition(current.status, to);
+		const to = assertEvent(current.status, event);
 
 		const next = { ...patch, status: to, updatedAt: now };
 		this.#db.update(jobs).set(next).where(eq(jobs.id, id)).run();
@@ -176,17 +178,20 @@ export class JobRepository {
 	reprioritize(id: string, priority: number, now: number): Job {
 		const current = this.byId(id);
 		if (!current) throw new Error(`unknown job: ${id}`);
-		if (isTerminalJob(current.status)) return current;
+		if (isTerminalJob(current.status)) return current; // no scheduling future (also has no REPRIORITIZE edge)
 		if (priority >= current.priority) return current; // only ever more urgent, never less
-		this.#db.update(jobs).set({ priority, updatedAt: now }).where(eq(jobs.id, id)).run();
-		return this.byId(id)!;
+		// Now an in-machine edge: queued|running --REPRIORITIZE--> same status. The machine is the
+		// authority for "may this job be rescheduled at all" (terminal states have no REPRIORITIZE
+		// edge); the two guards above stay because they encode POLICY the pure machine does not know
+		// (only-lower, and the cheap terminal short-circuit before a byId re-read inside transition).
+		return this.transition(id, 'REPRIORITIZE', { priority }, now);
 	}
 
 	// — semantic lifecycle helpers (thin wrappers over transition, named for the wire protocol §5) —
 
 	/** Dispatch: offer the job to a worker; the caller sets the ack-lease deadline. */
 	assign(id: string, workerId: string, leaseExpiresAt: number | null, now: number, facts: AttemptFacts = {}): Job {
-		const job = this.transition(id, 'assigned', { workerId, leaseExpiresAt }, now);
+		const job = this.transition(id, 'DISPATCH', { workerId, leaseExpiresAt }, now);
 		this.#ledger?.assigned(id, workerId, facts, now);
 		return job;
 	}
@@ -197,19 +202,19 @@ export class JobRepository {
 	 * reaped as a dead running job. Pass the deadline (lease policy lives in the pure leases.ts).
 	 */
 	accept(id: string, leaseExpiresAt: number | null, now: number): Job {
-		const job = this.transition(id, 'running', { leaseExpiresAt }, now);
+		const job = this.transition(id, 'ACCEPT', { leaseExpiresAt }, now);
 		this.#ledger?.started(id, now);
 		return job;
 	}
 
 	/** Worker progress (`job:progress`): self-loop in `running`, refresh stage/pct/lease. */
 	progress(id: string, patch: JobPatch, now: number): Job {
-		return this.transition(id, 'running', patch, now);
+		return this.transition(id, 'PROGRESS', patch, now);
 	}
 
 	/** Worker finished (`job:complete`): terminal `ready`. */
 	complete(id: string, now: number): Job {
-		const job = this.transition(id, 'ready', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
+		const job = this.transition(id, 'COMPLETE', { progressPct: 100, leaseExpiresAt: null, workerId: null }, now);
 		this.#ledger?.closed(id, 'ready', now);
 		return job;
 	}
@@ -222,30 +227,37 @@ export class JobRepository {
 	fail(id: string, error: string, now: number, attempts?: number): Job {
 		const patch: JobPatch = { error, leaseExpiresAt: null, workerId: null };
 		if (attempts !== undefined) patch.attempts = attempts;
-		const job = this.transition(id, 'failed', patch, now);
+		const job = this.transition(id, 'FAIL', patch, now);
 		this.#ledger?.closed(id, 'failed', now, error);
 		return job;
 	}
 
 	/** Song removed before finish (`job:cancel`): terminal `canceled`, frees the dedup slot. */
 	cancel(id: string, now: number): Job {
-		const job = this.transition(id, 'canceled', { leaseExpiresAt: null, workerId: null }, now);
+		const job = this.transition(id, 'CANCEL', { leaseExpiresAt: null, workerId: null }, now);
 		this.#ledger?.closed(id, 'canceled', now);
 		return job;
 	}
 
 	/**
-	 * Return a non-terminal job to the queue (worker reject, lease expiry, or boot recovery). The
-	 * caller decides whether to increment `attempts` — an ack-timeout doesn't (work never started),
-	 * a progress-lease expiry does. Clears the owner + lease.
+	 * Return a non-terminal job to the queue. `cause` names WHY — the whole point of #471: a worker
+	 * REJECT, an ack-timeout or progress-lease `LEASE_EXPIRED`, and a boot `RECOVER` are three
+	 * distinct events that a status-pair machine could not tell apart because all three land on
+	 * `queued`. It is validated against the machine (a REJECT is only legal from `assigned`; RECOVER
+	 * only from `running`), so a caller cannot smuggle in an event the current status forbids. The
+	 * caller still decides whether to increment `attempts` — an ack-timeout doesn't (work never
+	 * started), a progress-lease expiry does. Clears the owner + lease.
+	 *
+	 * Defaults to `LEASE_EXPIRED` (legal from both `assigned` and `running`) so a caller that does not
+	 * care about the distinction — most tests, and the generic reaper requeue — keeps working.
 	 *
 	 * Two ledger writes, in order: the in-flight attempt is ABANDONED (it is over — a retry is not a
 	 * continuation of it), then a fresh attempt opens so the new wait is dated from now rather than
 	 * inheriting the abandoned attempt's queue time.
 	 */
-	requeue(id: string, attempts: number, now: number): Job {
+	requeue(id: string, attempts: number, now: number, cause: JobEvent = 'LEASE_EXPIRED'): Job {
 		this.#ledger?.closed(id, 'abandoned', now);
-		const job = this.transition(id, 'queued', { workerId: null, leaseExpiresAt: null, attempts }, now);
+		const job = this.transition(id, cause, { workerId: null, leaseExpiresAt: null, attempts }, now);
 		this.#ledger?.open(job, now);
 		return job;
 	}

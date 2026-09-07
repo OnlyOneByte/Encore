@@ -74,7 +74,7 @@ export class JobReaper {
 		const inflight = this.#jobs.listByStatus('assigned', 'running');
 		const now = this.#now();
 		const ids = inflightToRecover(inflight);
-		for (const id of ids) this.#jobs.requeue(id, this.#jobByIdAttempts(inflight, id), now);
+		for (const id of ids) this.#jobs.requeue(id, this.#jobByIdAttempts(inflight, id), now, 'RECOVER'); // boot recovery — the event RECOVER was added for
 		if (ids.length > 0) this.#onReaped();
 		return ids.length;
 	}
