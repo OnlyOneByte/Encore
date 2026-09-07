@@ -237,3 +237,139 @@ def line_starts(doc: dict[str, Any]) -> list[float]:
     """Line start times from either doc shape, for feeding the fit."""
     lines = doc.get("lines") or doc.get("segments") or []
     return [float(ln["start"]) for ln in lines if isinstance(ln.get("start"), (int, float))]
+
+
+# ── the LRC-fit decision, moved out of steps/lyrics.py (#456) ──────────────────────────────────────
+#
+# `TimeTexts.run` used to hold ~45 lines deciding one domain question — does a source's OWN line
+# timing fit THIS recording — even though its two other halves (`fit_lrc_to_aligned`, `line_starts`)
+# already live here. The audit (#456) moved the decision and its two pure pairing helpers into the
+# domain package so the whole thing is reachable from `tests/test_lyrics_*` and sits under the
+# layering guard, leaving `TimeTexts.run` as align → validate → note → write. Behaviour is unchanged:
+# `lrc_fit_notes` returns exactly the note strings the step used to build inline, and the step still
+# owns computing `windows`/`opens` (via `_opens_for`, whose emitted-map preference is pinned in the
+# step layer by #459) and emitting the notes through `ctx.note`.
+def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[int]:
+    """Indices into `windows` of the window that OPENS each human line.
+
+    `align_windows` is a flat list where each human `segment` contributes one or more windows: the
+    first (opening) window of a line keeps the line's own `start` (`_subdivide` sets its first piece's
+    `lo` to the segment start exactly), while every interior window start is a char-count guess. Walk
+    the segments in order and take, for each, the next window whose `start` equals that segment's
+    start — that is the one window per line carrying a real source timestamp. Returns one index per
+    matched segment. Matching is strict-in-order: `si` advances only on a match, so if a segment's
+    opening window is ever absent, the search for it consumes the rest of the windows and every later
+    segment is dropped from the result too. That degenerate path is currently UNREACHABLE — every
+    producer of a segment/window start rounds to 3 decimals (`presplit._subdivide`, `source._stamp_to_sec`
+    / `entries_to_segments` / `plain_lyrics_to_segments`, `captions._cue_seconds`) so the opening window
+    of each line is always present and matches exactly — hence it is left as-is. The drop-tolerance that
+    matters for the version fit lives in `_pair_openings_to_aligned`, which re-derives the surviving
+    pairs by TEXT rather than trusting this index.
+    """
+    opens: list[int] = []
+    si = 0
+    for k, win in enumerate(windows):
+        if si >= len(segments):
+            break
+        ss = segments[si].get("start")
+        ws = win.get("start")
+        if (
+            isinstance(ss, (int, float))
+            and isinstance(ws, (int, float))
+            and abs(float(ws) - float(ss)) < 1e-6
+        ):
+            opens.append(k)
+            si += 1
+    return opens
+
+
+def _pair_openings_to_aligned(
+    windows: list[dict], opens: list[int], doc: dict
+) -> tuple[list[float], list[float]]:
+    """Pair each opening window's source start against the aligned line it produced, drop-tolerant.
+
+    The wrong-version fit needs two time series over the SAME human lines: the source's own line
+    starts (the opening windows) and where the aligner placed those lines. The obvious pairing —
+    `line_starts(doc)[k]` for each opening index `k` — is WRONG, because `doc` is `normalize_lyrics`
+    output and that function DROPS a segment with neither timed words nor bounds (`artifact.py`), so
+    `doc["lines"][k]` is not guaranteed to be the aligned result of `windows[k]`. One dropped line
+    shifts every later positional pairing: a correctly aligned song then reads as slipped (#336) or,
+    once counts diverge, the check goes silently inert on a genuinely different master (#217).
+
+    So recover which window each SURVIVING aligned line came from, rather than trusting position. The
+    aligner emits one line per window it was given, in order, and `normalize_lyrics` preserves that
+    order — it only DROPS. So walk the full window stream and the aligned lines in LOCKSTEP, matching
+    on stripped text, and advance both together. This assigns each surviving aligned line to its
+    window even when several openings share the same text ("a very long line…" repeated), because the
+    distinct interior windows between them keep the two cursors in sync — text alone is not unique, but
+    text-in-order over the whole stream is. A window whose aligned line was dropped simply has no match
+    at its turn and is left unpaired. Then keep only the OPENING windows (the ones carrying a real
+    source timestamp): their source start and their recovered aligned start, one entry each, both
+    series built together so they can never diverge in length.
+    """
+    aligned = [
+        (str(ln.get("text", "")).strip(), float(ln["start"]))
+        for ln in (doc.get("lines") or [])
+        if isinstance(ln, dict) and isinstance(ln.get("start"), (int, float))
+    ]
+    opens_set = set(opens)
+    lrc_starts: list[float] = []
+    aligned_starts: list[float] = []
+    ai = 0
+    for k, win in enumerate(windows):
+        if ai >= len(aligned):
+            break
+        wtext = str(win.get("text", "")).strip()
+        if aligned[ai][0] != wtext:
+            continue  # this window's aligned line was dropped by normalize_lyrics — skip, don't consume
+        wstart = win.get("start")
+        if k in opens_set and isinstance(wstart, (int, float)):
+            lrc_starts.append(float(wstart))
+            aligned_starts.append(aligned[ai][1])
+        ai += 1
+    return lrc_starts, aligned_starts
+
+
+def lrc_fit_notes(text_source: str, windows: list[dict], opens: list[int], doc: dict[str, Any]) -> list[str]:
+    """Decide whether a source's own line timing fits this recording, and return the operator note(s).
+
+    Only meaningful for a source that brought its OWN line timings (a synced LRCLIB record) and was
+    then force-aligned: that gives two independent time series over the same lines, which is exactly
+    what the fit needs. The caller (``TimeTexts.run``) guards that condition and computes ``windows`` /
+    ``opens`` — the OPENING window index of each human line — so this function stays pure of ``ctx``,
+    the step layer, and the ``_opens_for`` emitted-map preference (pinned in the step layer by #459).
+
+    Returns a list of note strings (0 or 1 today) rather than calling ``ctx.note`` itself, so the
+    layering direction is preserved: the domain package never reaches into ``steps/``.
+
+    The pairing is drop-tolerant and keyed by text, not position — see ``_pair_openings_to_aligned``
+    for why (a dropped ``normalize_lyrics`` line would otherwise shift every later positional pair,
+    re-opening #336 and #217).
+    """
+    lrc_starts, aligned_starts = _pair_openings_to_aligned(windows, opens, doc)
+    fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)
+    if fit.verdict == "different_version":
+        return [
+            f"{text_source}: its own line timings do NOT fit this recording "
+            f"(median residual {fit.residual_sec:.1f}s over {fit.pairs} lines) — likely a "
+            "different release. Published timings come from the aligner, so they are right "
+            "for this audio; the WORDS may belong to another version."
+        ]
+    if fit.verdict == "same_version":
+        # same_version, so the LRC does match. Report the fitted (offset, scale): the offset
+        # is how far the LRC sits from the aligner timing we actually publish, and the scale
+        # is the master-tempo ratio. Both are DIAGNOSTIC only — the published timings are the
+        # aligner's and are not shifted by these — but they were computed here and are worth
+        # seeing in the log rather than discarded. Outliers, when present, are the lines where
+        # ALIGNMENT slipped: a different and much more actionable fault than a wrong LRC.
+        fit_note = (
+            f"{text_source}: matches this recording "
+            f"(fitted offset {fit.offset_sec:+.2f}s, scale {fit.scale:.3f} over {fit.pairs} "
+            "lines; diagnostic only — published timings are the aligner's)"
+        )
+        if fit.outlier_lines:
+            fit_note += (
+                f". Alignment slipped on {len(fit.outlier_lines)} line(s) (index {fit.outlier_lines[:5]})"
+            )
+        return [fit_note]
+    return []
