@@ -35,6 +35,42 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #561, following the
+ * #557/#558/#559/#560 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they
+ * cannot drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped
+ * results are cast at the call site.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
+ * @typedef {{ sev: Severity, id: string, title: string, evidence: string, path: string }} Finding
+ *
+ * A media row as returned by /api/search (the fields this probe reads).
+ * @typedef {{ id: string, title: string, source?: string, instrumentalRef?: string, stemStatus?: string }} Media
+ *
+ * A joined singer with its session cookie.
+ * @typedef {{ name: string, singerId: string, cookie: string }} Singer
+ *
+ * One audio/video element read out of the TV page per sample.
+ * @typedef {{
+ *   tag: string, src: string, readyState: number, paused: boolean, muted: boolean, volume: number,
+ *   currentTime: number, duration: number, ended: boolean, decoded: number | null,
+ *   error: { code: number, message: string } | null, slotIdx: number, slotVisible: boolean | null
+ * }} Elem
+ *
+ * One dense-poll sample of the TV: the element readout plus the lower-third / up-next / attract state.
+ * @typedef {{
+ *   t: number, slotCount: number, slotVisible: boolean[], elems: Elem[],
+ *   lowerThird: { visible: boolean, name: string, song: string },
+ *   upNext: { visible: boolean, label: string, name: string, song: string, kind: string | null },
+ *   attract: boolean, wallMs: number, relMono: number
+ * }} Sample
+ *
+ * The context handed to analyze(): the two readied songs and the two singers.
+ * @typedef {{ song1: Media, song2: Media, alice: Singer, bob: Singer }} Ctx
+ */
+
 // ── config ─────────────────────────────────────────────────────────────────────────────────────
 const PORT = process.env.EPORT ?? process.env.PORT ?? '5221';
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9421);
@@ -51,6 +87,7 @@ const OBSERVE_TIMEOUT_MS = 45_000;
 const SAMPLE_MS = 40; // ~25 Hz — dense enough to see a boundary the size of one video frame
 
 // ── little helpers ─────────────────────────────────────────────────────────────────────────────
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	process.exit(2);
@@ -67,6 +104,7 @@ function findChromium() {
 	}
 	return null;
 }
+/** @param {string} url @param {RequestInit} [init] @returns {Promise<{ ok: boolean, status: number, headers: Headers, body: any }>} */
 async function j(url, init = {}) {
 	const res = await fetch(url, init);
 	const text = await res.text();
@@ -77,15 +115,24 @@ async function j(url, init = {}) {
 	}
 }
 /** Parse an `encore_singer=<token>` value out of one or more Set-Cookie response headers. */
+/** @param {string | null} setCookie @returns {string | null} */
 function parseSessionCookie(setCookie) {
 	if (!setCookie) return null;
 	const m = /encore_singer=([^;]+)/.exec(setCookie);
 	return m ? m[1] : null;
 }
 // ── findings sink ──────────────────────────────────────────────────────────────────────────────
+/** @type {Finding[]} */
 const findings = []; // {sev, id, title, evidence, path}
+/**
+ * @param {Severity} sev
+ * @param {string} id
+ * @param {string} title
+ * @param {string} [evidence]
+ * @param {string} [path]
+ */
 function record(sev, id, title, evidence, path = '') {
-	findings.push({ sev, id, title, evidence, path });
+	findings.push({ sev, id, title, evidence: evidence ?? '', path });
 	console.log(`\n[${sev}] ${id}  ${title}`);
 	if (path) console.log(`  where: ${path}`);
 	if (evidence) console.log(`  ${evidence.split('\n').join('\n  ')}`);
@@ -107,12 +154,13 @@ if (!preSearch.ok) bail(`search endpoint failed: ${preSearch.status} ${JSON.stri
 
 // ── pick two DIFFERENT library songs ───────────────────────────────────────────────────────────
 /** Fetch a specific library title from the four demo tracks. */
+/** @param {string} q @returns {Promise<Media | null>} */
 async function findLocalByTitle(q) {
 	const r = await j(`${base}/api/search?q=${encodeURIComponent(q)}`);
 	if (!r.ok) bail(`search failed for ${JSON.stringify(q)}: ${r.status}`);
 	const groups = [r.body.ready ?? [], r.body.cooking ?? [], r.body.results ?? []];
 	for (const g of groups) {
-		for (const m of g) if (m.source === 'local') return m;
+		for (const m of /** @type {Media[]} */ (g)) if (m.source === 'local') return m;
 	}
 	return null;
 }
@@ -129,6 +177,7 @@ console.log(`song1: "${song1.title}"  ${song1.id}`);
 console.log(`song2: "${song2.title}"  ${song2.id}`);
 
 // ── two singers via /api/join ───────────────────────────────────────────────────────────────────
+/** @param {string} name @param {string} color @returns {Promise<Singer>} */
 async function joinSinger(name, color) {
 	const res = await fetch(`${base}/api/join`, {
 		method: 'POST',
@@ -147,6 +196,7 @@ const bob = await joinSinger(`Bob-${Date.now() % 100000}`, '#66d1ff');
 console.log(`joined ${alice.name} ${alice.singerId} and ${bob.name} ${bob.singerId}`);
 
 // ── cook both songs ─────────────────────────────────────────────────────────────────────────────
+/** @param {string} mediaId @param {string} cookie @param {string} label @returns {Promise<Media>} */
 async function cookAndWait(mediaId, cookie, label) {
 	const res = await fetch(`${base}/api/make-karaoke`, {
 		method: 'POST',
@@ -158,11 +208,11 @@ async function cookAndWait(mediaId, cookie, label) {
 		bail(`make-karaoke ${label} failed: ${res.status} ${body}`);
 	}
 	// poll /api/search?q=<title> until this media appears in `ready`
-	const q = label === song1.title ? 'caroline' : 'believin';
+	const q = label === /** @type {Media} */ (song1).title ? 'caroline' : 'believin';
 	const deadline = Date.now() + COOK_TIMEOUT_MS;
 	while (Date.now() < deadline) {
 		const s = await j(`${base}/api/search?q=${encodeURIComponent(q)}`);
-		const ready = (s.body.ready ?? []).find((m) => m.id === mediaId);
+		const ready = /** @type {Media[]} */ (s.body.ready ?? []).find((m) => m.id === mediaId);
 		if (ready && ready.instrumentalRef && ready.stemStatus === 'ready') return ready;
 		await sleep(300);
 	}
@@ -191,8 +241,15 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
+/** @type {Browser | undefined} */
 let browser;
-let phone1, phone2, tv;
+/** @type {Page | undefined} */
+let phone1;
+/** @type {Page | undefined} */
+let phone2;
+/** @type {Page | undefined} */
+let tv;
+/** @type {Sample[]} */
 const timeline = []; // per-sample rows: {t, elems:[{tag,src,decoded,currentTime,paused,muted,volume,readyState,ended,error}], lowerThird, upName, upSong, transientKind, tvClass, screenClass}
 
 try {
@@ -210,6 +267,7 @@ try {
 	// the whole reason they land as distinct sessions. We ALREADY joined them via /api/join above
 	// (so we have their session tokens), so drive the browsers with those cookies rather than doing a
 	// second UI join — the API-side singer would collide on name and the /join form would 409.
+	/** @param {Page} page @param {string} cookieValue */
 	async function withCookie(page, cookieValue) {
 		// Land on ANY same-origin URL first so `document.cookie` has an origin to attach to.
 		await page.goto(`${base}/health`);
@@ -303,7 +361,7 @@ try {
 	let sawFirstSong = false;
 	let sawSecondSong = false;
 	while (Date.now() < deadline) {
-		const s = await tv.evaluate(probe);
+		const s = /** @type {Sample} */ (await tv.evaluate(probe));
 		s.wallMs = Date.now() - t0;
 		s.relMono = s.t - t0Mono;
 		timeline.push(s);
@@ -321,7 +379,7 @@ try {
 		if (sawSecondSong && s.attract) {
 			// give it one more sample window so we lock in the terminal state
 			await sleep(SAMPLE_MS);
-			timeline.push({ ...(await tv.evaluate(probe)), wallMs: Date.now() - t0, relMono: 0 });
+			timeline.push(/** @type {Sample} */ ({ ...(await tv.evaluate(probe)), wallMs: Date.now() - t0, relMono: 0 }));
 			break;
 		}
 		await sleep(SAMPLE_MS);
@@ -343,7 +401,7 @@ try {
 		'CRITICAL',
 		'PROBE-CRASH',
 		'the probe itself blew up',
-		String(err?.stack ?? err),
+		String(/** @type {Error} */ (err)?.stack ?? err),
 		'apps/core/e2e/probes/p1-gapless.mjs'
 	);
 } finally {
@@ -354,6 +412,7 @@ try {
 // ── analysis helpers ───────────────────────────────────────────────────────────────────────────
 
 /** Set of distinct decoded-carrying src strings across the timeline so far. */
+/** @param {Sample[]} tl @returns {Set<string>} */
 function timelineDistinctDecodedSrcs(tl) {
 	const s = new Set();
 	for (const row of tl) {
@@ -365,6 +424,7 @@ function timelineDistinctDecodedSrcs(tl) {
 }
 
 /** Per-src stream: first sample where decoded>0 (start), last sample where it climbed (end). */
+/** @param {Sample[]} tl @param {(src: string) => boolean} srcMatch */
 function decodingWindow(tl, srcMatch) {
 	let first = -1;
 	let lastClimb = -1;
@@ -385,6 +445,7 @@ function decodingWindow(tl, srcMatch) {
 /**
  * The core of P1. Every finding here should carry numbers a reviewer can re-derive from timeline.json.
  */
+/** @param {Sample[]} tl @param {Ctx} ctx */
 function analyze(tl, ctx) {
 	if (tl.length === 0) {
 		record(
@@ -399,8 +460,10 @@ function analyze(tl, ctx) {
 	const { song1, song2 } = ctx;
 	// Anchor srcs on the two songs. `playbackRef` resolves to instrumentalRef, so the src the element
 	// holds is `/media/<mediaId>-instrumental.wav`.
-	const isSong1 = (src) => src.includes(song1.id) || src.includes(song1.instrumentalRef);
-	const isSong2 = (src) => src.includes(song2.id) || src.includes(song2.instrumentalRef);
+	const isSong1 = (/** @type {string} */ src) =>
+		src.includes(song1.id) || (song1.instrumentalRef ? src.includes(song1.instrumentalRef) : false);
+	const isSong2 = (/** @type {string} */ src) =>
+		src.includes(song2.id) || (song2.instrumentalRef ? src.includes(song2.instrumentalRef) : false);
 
 	const w1 = decodingWindow(tl, isSong1);
 	const w2 = decodingWindow(tl, isSong2);
@@ -454,6 +517,7 @@ function analyze(tl, ctx) {
 		// The A/B swap is meant to be a single composited frame, no network at transition. On this
 		// harness a boundary in the low tens of ms is the expected shape; anything past ~250ms reads
 		// as an audible dead-air seam, and anything negative reads as double-audio.
+		/** @type {Severity} */
 		let sev = 'LOW';
 		if (deltaMs > 400) sev = 'HIGH';
 		else if (deltaMs > 150) sev = 'MEDIUM';
@@ -557,6 +621,7 @@ function analyze(tl, ctx) {
 			const dur = end - start;
 			// Nominal 2500ms. Sampling adds ±SAMPLE_MS at both edges, so a window in [~2300, ~2700] is on-nominal.
 			const drift = dur - 2500;
+			/** @type {Severity} */
 			let sev = 'LOW';
 			if (Math.abs(drift) > 400) sev = 'MEDIUM';
 			if (Math.abs(drift) > 1200) sev = 'HIGH';

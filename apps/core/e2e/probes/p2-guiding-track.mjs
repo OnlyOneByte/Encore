@@ -31,6 +31,31 @@ import { join, resolve } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #561, following the
+ * #557/#558/#559/#560 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they
+ * cannot drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped
+ * results are cast at the call site.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {import('node:child_process').ChildProcess} Child
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
+ *
+ * A media row as returned by /api/search or /api/library (the fields this probe reads).
+ * @typedef {{ id: string, title?: string, source?: string, stemStatus?: string, instrumentalRef?: string, vocalsRef?: string }} Media
+ *
+ * One audio/video element read out of a page by ELEMENTS_EXPR.
+ * @typedef {{
+ *   i: number, tag: string, src: string, readyState: number, paused: boolean, muted: boolean,
+ *   volume: number, playbackRate: number, currentTime: number, duration: number,
+ *   decoded: number | null, error: { code: number, message: string } | null
+ * }} Elem
+ *
+ * The master/vocals pair classified out of an element readout.
+ * @typedef {{ master: Elem | undefined, vocals: Elem | undefined }} Pair
+ */
+
 const PORT = process.env.EPORT ?? '5222';
 const BASE = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9422);
@@ -40,8 +65,15 @@ const MEDIA_DIR = process.env.MEDIA_DIR ?? join(RUN_DIR, 'media');
 const CORE_DIR = resolve(new URL('../../', import.meta.url).pathname); // apps/core
 
 // ── reporting ──────────────────────────────────────────────────────────────
-/** @type {{sev:string,name:string,ok:boolean,obs?:string,exp?:string}[]} */
+/** @type {{ sev: Severity, name: string, ok: boolean, obs?: string, exp?: string }[]} */
 const findings = [];
+/**
+ * @param {Severity} sev
+ * @param {string} name
+ * @param {boolean} ok
+ * @param {string} [obs]
+ * @param {string} [exp]
+ */
 function record(sev, name, ok, obs, exp) {
 	findings.push({ sev, name, ok, obs, exp });
 	const badge = ok ? 'PASS   ' : `${sev.padEnd(7, ' ')}`;
@@ -51,6 +83,7 @@ function record(sev, name, ok, obs, exp) {
 		if (exp !== undefined) console.log(`         expected: ${exp}`);
 	}
 }
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	cleanup();
@@ -60,14 +93,22 @@ function bail(msg) {
 // ── process lifecycle ──────────────────────────────────────────────────────
 /** @type {import('node:child_process').ChildProcess[]} */
 const childProcs = [];
+/** @type {Browser | undefined} */
 let browser;
+/** @type {Child | undefined} */
 let chromiumProc;
 
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {import('node:child_process').SpawnOptions} [opts]
+ */
 function spawnChild(cmd, args, opts = {}) {
 	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 	childProcs.push(p);
 	return p;
 }
+/** @param {Child} p @param {number} [grace] */
 async function killChild(p, grace = 800) {
 	if (!p || p.exitCode !== null) return;
 	try {
@@ -126,6 +167,12 @@ async function serverAlive() {
 		return false;
 	}
 }
+/**
+ * @template T
+ * @param {() => Promise<T>} fn
+ * @param {{ timeout?: number, every?: number, name?: string }} [opts]
+ * @returns {Promise<NonNullable<T>>}
+ */
 async function waitFor(fn, { timeout = 30_000, every = 250, name = 'condition' } = {}) {
 	const deadline = Date.now() + timeout;
 	let last;
@@ -185,7 +232,9 @@ async function bootServer() {
  * its registry and can dispatch to it. Not waiting produced a race where make-karaoke enqueued a job
  * before ANY worker was live, and cookState was 'queued' forever with nothing to work it.
  */
-async function spawnWorker(kind /* 'audible' | 'silent' */) {
+/** @param {'audible' | 'silent'} kind */
+async function spawnWorker(kind) {
+	/** @type {Record<string, string | undefined>} */
 	const env = {
 		...process.env,
 		EPORT: PORT,
@@ -222,6 +271,7 @@ async function spawnWorker(kind /* 'audible' | 'silent' */) {
 
 // ── HTTP helpers with a probe session cookie ───────────────────────────────
 let COOKIE = ''; // set on join
+/** @param {string} path @param {RequestInit} [init] @returns {Promise<Response>} */
 async function api(path, init = {}) {
 	const headers = new Headers(init.headers ?? {});
 	if (COOKIE) headers.set('cookie', COOKIE);
@@ -232,6 +282,7 @@ async function api(path, init = {}) {
 	return res;
 }
 
+/** @param {string} name @returns {Promise<any>} */
 async function apiJoin(name) {
 	const r = await api('/api/join', {
 		method: 'POST',
@@ -241,32 +292,36 @@ async function apiJoin(name) {
 	return r.json();
 }
 
+/** @param {string} q @returns {Promise<Media | null>} */
 async function searchFor(q) {
 	const r = await api(`/api/search?q=${encodeURIComponent(q)}`);
 	const d = await r.json();
 	// Prefer a local hit — those are decodable on this box.
 	const all = [...(d.ready ?? []), ...(d.results ?? []), ...(d.cooking ?? [])];
-	return all.find((x) => x.source === 'local') ?? all[0] ?? null;
+	return /** @type {Media[]} */ (all).find((x) => x.source === 'local') ?? all[0] ?? null;
 }
 
+/** @param {string} mediaId @returns {Promise<any>} */
 async function makeKaraoke(mediaId) {
 	const r = await api('/api/make-karaoke', { method: 'POST', body: JSON.stringify({ mediaId }) });
 	if (!r.ok && r.status !== 409) throw new Error(`make-karaoke ${r.status} ${await r.text()}`);
 	return r.json();
 }
 
+/** @param {string} mediaId @param {{ timeout?: number }} [opts] @returns {Promise<Media>} */
 async function waitReady(mediaId, { timeout = 45_000 } = {}) {
 	return waitFor(
 		async () => {
 			const r = await api(`/api/library`);
 			const d = await r.json();
-			const m = d.library?.find((x) => x.id === mediaId);
+			const m = /** @type {Media[]} */ (d.library ?? []).find((x) => x.id === mediaId);
 			return m && m.stemStatus === 'ready' && m.instrumentalRef ? m : null;
 		},
 		{ timeout, name: `media ${mediaId} ready` }
 	);
 }
 
+/** @param {number} pct01 @returns {Promise<any>} */
 async function setRoomGuideDefault(pct01) {
 	const r = await api('/api/settings/room', {
 		method: 'PUT',
@@ -297,20 +352,23 @@ const ELEMENTS_EXPR = `(() => {
 	}));
 })()`;
 
+/** @param {Elem[]} els @returns {Pair} */
 const classify = (els) => {
 	const master = els.find((e) => e.src.includes('instrumental'));
 	const vocals = els.find((e) => e.src.includes('vocals'));
 	return { master, vocals };
 };
 
+/** @param {Page} tv @returns {Promise<Pair>} */
 async function tvElements(tv) {
-	return classify(await tv.evaluate(ELEMENTS_EXPR));
+	return classify(/** @type {Elem[]} */ (await tv.evaluate(ELEMENTS_EXPR)));
 }
 
 /** Send a player command over a probe WebSocket opened from the phone page's context — same origin,
  *  so the phone session cookie rides on the handshake and the socket is authorised. Keeping ONE
  *  connection in `window.probeWs` avoids a fresh handshake per command (a slam of them at the
  *  throttle boundary would race the client's queue:sync). */
+/** @param {Page} phone */
 async function ensureProbeWs(phone) {
 	await phone.evaluate(`
 		(async () => {
@@ -324,12 +382,14 @@ async function ensureProbeWs(phone) {
 		})()
 	`);
 }
+/** @param {Page} phone @param {Record<string, unknown>} command */
 async function sendPlayer(phone, command) {
 	await ensureProbeWs(phone);
 	await phone.evaluate(
 		`window.probeWs.send(JSON.stringify({ type: 'player:command', command: ${JSON.stringify(command)} }))`
 	);
 }
+/** @param {Page} phone @param {string} mediaId @param {string} singerId */
 async function sendQueueAdd(phone, mediaId, singerId) {
 	await ensureProbeWs(phone);
 	// Wire shape: { type: 'queue:command', command: { clientOpId, op: { op: 'add', entry: {...} } } }
@@ -368,6 +428,7 @@ async function main() {
 	let worker = await spawnWorker('audible');
 	await apiJoin(`Probe${Date.now() % 100000}`);
 	const AUDIBLE_QUERIES = ['caroline', 'believin', 'bohemian'];
+	/** @type {Media[]} */
 	const audibleMedia = [];
 	for (const q of AUDIBLE_QUERIES) {
 		const hit = await searchFor(q);
@@ -486,21 +547,21 @@ async function main() {
 		record(
 			'CRITICAL',
 			'level 0.15: vocals element is decoding (webkitAudioDecodedByteCount climbing)',
-			v1 && (v1.decoded ?? 0) > (v0?.decoded ?? 0) + 1000,
+			!!v1 && (v1.decoded ?? 0) > (v0?.decoded ?? 0) + 1000,
 			`decoded went ${v0?.decoded} → ${v1?.decoded}`,
 			`a positive delta over the 2.5s sample window`
 		);
 		record(
 			'CRITICAL',
 			'level 0.15: master is still decoding alongside the guide',
-			m1 && (m1.decoded ?? 0) > (m0?.decoded ?? 0) + 1000,
+			!!m1 && (m1.decoded ?? 0) > (m0?.decoded ?? 0) + 1000,
 			`master decoded ${m0?.decoded} → ${m1?.decoded}`,
 			`the master keeps decoding (a two-element mix means BOTH elements advance)`
 		);
 		record(
 			'HIGH',
 			'level 0.15: element .volume = 0.15, master .volume = 1 (vocals quieter than master)',
-			v1 && Math.abs(v1.volume - 0.15) < 0.001 && m1 && Math.abs(m1.volume - 1) < 0.001 && v1.volume < m1.volume,
+			!!v1 && Math.abs(v1.volume - 0.15) < 0.001 && !!m1 && Math.abs(m1.volume - 1) < 0.001 && v1.volume < m1.volume,
 			`master.volume=${m1?.volume} vocals.volume=${v1?.volume}`,
 			`master 1.00, vocals 0.15; vocals must be strictly lower`
 		);
@@ -568,14 +629,14 @@ async function main() {
 		record(
 			'HIGH',
 			'resume: vocals still mounted at .volume=0.15 (per-song override survived)',
-			resumed.vocals && Math.abs(resumed.vocals.volume - 0.15) < 0.001,
+			!!resumed.vocals && Math.abs(resumed.vocals.volume - 0.15) < 0.001,
 			`vocals.volume=${resumed.vocals?.volume} mounted=${!!resumed.vocals}`,
 			`resumed vocals mounted at 0.15`
 		);
 		record(
 			'CRITICAL',
 			'resume decodes the vocals again',
-			resumed.vocals && (resumed.vocals.decoded ?? 0) > (paused.vocals?.decoded ?? 0),
+			!!resumed.vocals && (resumed.vocals.decoded ?? 0) > (paused.vocals?.decoded ?? 0),
 			`vocals decoded ${paused.vocals?.decoded} → ${resumed.vocals?.decoded}`,
 			`vocals decoded byte count climbs after resume`
 		);
@@ -641,7 +702,7 @@ async function main() {
 	record(
 		'CRITICAL',
 		'room default 0.30 applies to a fresh song with no per-song override',
-		withDefault.vocals && Math.abs(withDefault.vocals.volume - 0.3) < 0.02,
+		!!withDefault.vocals && Math.abs(withDefault.vocals.volume - 0.3) < 0.02,
 		`master src=${withDefault.master?.src ?? 'none'} paused=${withDefault.master?.paused} · vocals mounted=${!!withDefault.vocals} volume=${withDefault.vocals?.volume ?? 'n/a'}`,
 		`vocals mounted at .volume=0.30 (effectiveGuideLevel(null, 0.30) → 0.30)`
 	);
@@ -663,7 +724,7 @@ async function main() {
 	record(
 		'HIGH',
 		'room default: vocals element decodes bytes (mount alone would not prove audio flow)',
-		vocalsDecoded && (vocalsDecoded.vocals.decoded ?? 0) > (withDefault.vocals?.decoded ?? 0),
+		!!vocalsDecoded && (vocalsDecoded.vocals?.decoded ?? 0) > (withDefault.vocals?.decoded ?? 0),
 		`master paused=${roomDefaultLatest.master?.paused} decoded ${withDefault.master?.decoded} → ${roomDefaultLatest.master?.decoded}; ` +
 			`vocals paused=${roomDefaultLatest.vocals?.paused} decoded ${withDefault.vocals?.decoded} → ${roomDefaultLatest.vocals?.decoded ?? '?'}`,
 		`vocals decoded byte count climbs within 8s of mount`
@@ -757,7 +818,7 @@ try {
 	// (silent-vocals surface behaviour is arguable, sync numbers may be flaky under load).
 	exitCode = criticals.length ? 1 : 0;
 } catch (err) {
-	console.error(`\nFATAL: ${err?.stack ?? err}`);
+	console.error(`\nFATAL: ${/** @type {Error} */ (err)?.stack ?? err}`);
 	exitCode = 1;
 } finally {
 	cleanup();
