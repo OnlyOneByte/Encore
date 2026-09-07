@@ -16,11 +16,10 @@
 // (the status map, the stage passthrough, the completion handler) and a unit test of any one of them
 // would have passed while the sequence a guest sees still regressed.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { WorkerHub } from './worker-hub';
 import { WorkerRegistry } from './registry';
 import { JobRepository } from './repository';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { completedStatusFor, jobStageFloor, mediaStatusFor, shouldBroadcastCook } from './media-status';
 import {
 	mediaStagePosition,
@@ -60,8 +59,7 @@ const job = (over: Partial<Job> = {}): Job =>
 	}) as Job;
 
 function harness(startMedia: Media = media({ stemStatus: 'queued' })) {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const registry = new WorkerRegistry();
 	const mediaById = new Map<string, Media>([[startMedia.id, startMedia]]);

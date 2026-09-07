@@ -1,8 +1,5 @@
 import { describe, it, expect } from 'bun:test';
-import { Database } from 'bun:sqlite';
-import { drizzle } from 'drizzle-orm/bun-sqlite';
-import { runMigrations } from '../db/migrate';
-import * as schema from '../db/schema';
+import { migratedDb } from '../db/test-db';
 import { SettingsRepository } from './settings-repository';
 import {
 	DEFAULT_GLOBAL_SETTINGS,
@@ -15,9 +12,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 function freshRepo() {
-	const sqlite = new Database(':memory:');
-	const db = drizzle(sqlite, { schema });
-	runMigrations(db);
+	const db = migratedDb();
 	return new SettingsRepository(db);
 }
 

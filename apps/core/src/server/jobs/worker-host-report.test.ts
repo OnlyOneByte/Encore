@@ -3,11 +3,10 @@
 // with zero production call sites. So these tests are about the wiring, not the pure functions —
 // the failure mode they guard is "the capability exists but nothing calls it".
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { WorkerHub } from './worker-hub';
 import { WorkerRegistry } from './registry';
 import { JobRepository } from './repository';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import type { WorkerCommand, ServerEvent, Media, WorkerHost } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
@@ -38,8 +37,7 @@ const HOST: WorkerHost = {
 };
 
 function harness(mediaOver: Record<string, Partial<Media>> = {}) {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const registry = new WorkerRegistry();
 	const mediaById = new Map<string, Media>([

@@ -1,12 +1,10 @@
 // Create singer -> token set -> resolve from cookie.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { SingerRepository, readSessionToken, mintSessionToken, SESSION_COOKIE } from './repository';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 
 function repo() {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	return new SingerRepository(db);
 }
 

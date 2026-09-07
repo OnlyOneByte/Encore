@@ -1,15 +1,13 @@
 // Done-when: full lifecycle (queued→assigned→running→ready) + dedup on (mediaId,jobType) +
 // idempotent re-add. Plus the failure/cancel/requeue edges and the DB-level dedup guarantee.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { JobRepository } from './repository';
 import type { JobType } from '@encore/shared';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { jobs } from '../db/schema';
 
 function makeRepo() {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	return { repo: new JobRepository(db), db };
 }
 

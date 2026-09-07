@@ -6,22 +6,19 @@
 //   4. one cook's steps grouped without blending in a re-cook or an upgrade
 
 import { describe, expect, it } from 'bun:test';
-import { Database } from 'bun:sqlite';
-import { drizzle } from 'drizzle-orm/bun-sqlite';
-import { migrate } from 'drizzle-orm/bun-sqlite/migrator';
 import { realtimeFactor } from '@encore/shared';
 import { AttemptLedger } from './attempts';
 import { JobRepository } from './repository';
 import { inheritsCook } from './dispatch';
 import type { DB } from '../db/index';
+import { migratedDb } from '../db/test-db';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const T0 = 1_700_000_000_000;
 
 function freshDb(): DB {
-	const db = drizzle(new Database(':memory:')) as unknown as DB;
-	migrate(db, { migrationsFolder: new URL('../../../drizzle', import.meta.url).pathname });
+	const db = migratedDb();
 	return db;
 }
 

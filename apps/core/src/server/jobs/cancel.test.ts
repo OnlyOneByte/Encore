@@ -4,10 +4,9 @@
 // media) is NOT cancelled; an already-terminal (ready) job is not touched; and the whole thing runs
 // through the real queue-command remove path (handleQueueCommand) exactly as server.ts composes it.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { cancelJobsForMedia } from './cancel';
 import { JobRepository } from './repository';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { handleQueueCommand, type HubDeps } from '../realtime/hub';
 import { AuthoritativeState } from '../state/store';
 import { WorkerHub } from './worker-hub';
@@ -18,8 +17,7 @@ import { readyToSing } from '@encore/shared';
 const T0 = 1_700_000_000_000;
 
 function makeRepo() {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	return new JobRepository(db);
 }
 

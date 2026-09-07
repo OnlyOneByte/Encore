@@ -5,13 +5,12 @@
 // (handleQueueCommand -> onEntryAdded -> reprioritizeCookForMedia) + the real dispatch policy, so
 // the assertion is the observable end effect: the drained dispatch ORDER, not just a priority field.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { JobRepository } from './repository';
 import { planAssignments } from './dispatch';
 import { reprioritizeCookForMedia } from './reprioritize-cook';
 import { handleQueueCommand, type HubDeps } from '../realtime/hub';
 import { AuthoritativeState } from '../state/store';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { NO_QUEUE_PRIORITY } from './make-karaoke';
 import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand, type ServerEvent } from '@encore/shared';
 import type { WorkerSession } from './registry';
@@ -19,8 +18,7 @@ import type { WorkerSession } from './registry';
 const T0 = 1_700_000_000_000;
 
 function makeRepo() {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	return new JobRepository(db);
 }
 
