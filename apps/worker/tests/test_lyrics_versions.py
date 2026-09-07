@@ -173,7 +173,12 @@ def test_a_baseline_is_never_a_candidate():
     assert baselines_of([lrclib, auto]) == [auto]
     # even though the auto track's text matches the audio PERFECTLY (it is the audio), the lookup wins
     sel = select_by_baselines([lrclib, auto])
-    assert sel.publish[0] is lrclib
+    # The published winner is the lrclib candidate. It is a COPY, not the same object (#605): the
+    # selector now clears `alternates` via dataclasses.replace instead of mutating the caller's object
+    # in place, so compare by identifying content rather than by `is`.
+    assert sel.publish[0].text_source == lrclib.text_source
+    assert sel.publish[0].variant == lrclib.variant
+    assert sel.publish[0].role == lrclib.role == ROLE_CANDIDATE
     assert not sel.baseline_fallback
 
 

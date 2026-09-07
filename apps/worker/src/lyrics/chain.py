@@ -23,10 +23,10 @@ authority on RANKING; this side only reports what it produced and how trustworth
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
-from ..vocabulary import TextSource, Timing
+from ..vocabulary import ROLE_BASELINE, ROLE_CANDIDATE, ROLE_UNSPECIFIED, TextSource, Timing
 from .artifact import (
     candidate_key as candidate_key,  # noqa: F401 — re-export: moved to artifact.py in #456, kept importable from chain
 )
@@ -62,8 +62,10 @@ TIMING_NONE = Timing.NONE.value
 # mean matters: one baseline is a single opinion, and the failure modes are independent — a separation
 # that produced a silent vocals stem, an upload YouTube captioned badly, a passage no model hears.
 # Averaging over independent errors is what makes the ruler steadier than any of its parts.
-ROLE_BASELINE = "baseline"
-ROLE_CANDIDATE = "candidate"
+#
+# The role constants themselves now live in src/vocabulary.py beside TextSource/Timing (moved in #605)
+# and are re-exported here — imported above — so every importer of chain.py is unchanged. ROLE_UNSPECIFIED
+# is the fail-closed default for a hand-built text: see LyricsText.role and vocabulary.py's ROLES note.
 
 #: Preference among BASELINES, lower first. Only consulted to pick a fallback to SHOW when no candidate
 #: is trustworthy — never to weight the grading, where every baseline that can speak gets one equal vote.
@@ -142,8 +144,13 @@ class LyricsText:
     #: from the fetching source's `SourceSpec`. The sources used to set it themselves, which made the
     #: registry's `role`/`baseline_rank` fields a second declaration of the same fact that nothing read —
     #: so the two could disagree and every test would stay green. The default below therefore applies
-    #: only to a text built by hand (a test, or one rehydrated from disk by `split_blob_text`).
-    role: str = ROLE_CANDIDATE
+    #: only to a text built by hand (a test, or one rehydrated from disk by `split_blob_text`) — and it is
+    #: fail-CLOSED (#605): ROLE_UNSPECIFIED is in neither `candidates_of` nor `baselines_of`, so an
+    #: unspecified text is NOT published as the song's words (and is not used as grading evidence) until a
+    #: role is stamped. The old default was ROLE_CANDIDATE — the PUBLISHABLE tier — which silently let an
+    #: unspecified construction publish, exactly the fail-open the `presplit.py` replace() note guards
+    #: against (a dropped role once turned a baseline into a candidate).
+    role: str = ROLE_UNSPECIFIED
     #: Preference among baselines when one must be SHOWN. None for candidates. Registry-assigned, as above.
     baseline_rank: int | None = None
     #: A short stable id for this text WITHIN its source, so two baselines from the same source can
@@ -416,7 +423,12 @@ def select_by_baselines(texts: list[LyricsText]) -> Selection:
         else:
             decided_by = "metadata"
         winner, (score, votes) = pool[pick], scored[pick]
-        winner.alternates = []  # the choice is made; carrying the losers further would only confuse
+        # The choice is made; the winner should no longer carry the losers. Rebind via replace rather
+        # than assigning `winner.alternates = []`: `winner` is a caller-owned object (an element of the
+        # candidate list passed in, or one of its `alternates`), and mutating it in place reaches across
+        # the module boundary into the step layer's data — the same class of cross-object write #605 fixes
+        # at steps/lyrics.py. See presplit.py's replace() note on why copy-with-replacement is the rule here.
+        winner = replace(winner, alternates=[])
         if len(pool) > 1:
             sel.choices.append(
                 VariantChoice(

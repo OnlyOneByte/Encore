@@ -14,6 +14,7 @@ import json
 import os
 import time
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from typing import Any
 
 from ..lyrics import (
@@ -252,7 +253,11 @@ class GradeAndSelect(Step):
                 f"{SUSPECT_AGREEMENT}) — probably the WRONG SONG; demoting it and publishing what was "
                 "actually heard alongside"
             )
-            sel.publish[0].text_confidence = "low"
+            # Demote via replace rather than `sel.publish[0].text_confidence = "low"`: that reached from
+            # the step layer straight into a domain LyricsText, mutating a caller-owned object in place
+            # (the same cross-object write #605 fixes in chain.py). Rebinding the list slot to a copy keeps
+            # the demotion local to the published list — see presplit.py's replace() note.
+            sel.publish[0] = replace(sel.publish[0], text_confidence="low")
         ctx.lyrics.selection = sel
         ctx.lyrics.texts = sel.publish
         return

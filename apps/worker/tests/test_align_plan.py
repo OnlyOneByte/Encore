@@ -351,6 +351,7 @@ async def test_missing_params_declines_the_lookup_instead_of_erroring_on_params(
 # The bug this closes: stage 2 was hardwired to LrclibClient.get() and raised when it returned
 # nothing, so an unreachable LRCLIB meant "no lyrics" rather than "no AUTHORITATIVE lyrics".
 from src.lyrics.chain import (  # noqa: E402
+    ROLE_CANDIDATE,
     SOURCE_ASR,
     SOURCE_LRCLIB,
     TIMING_LINE,
@@ -380,7 +381,7 @@ class FakeSource:
         return self._text
 
 
-def _text(source, timing, lines=("line one here", "line two here"), conf="high"):
+def _text(source, timing, lines=("line one here", "line two here"), conf="high", role=ROLE_CANDIDATE):
     segs = [{"start": i * 2.0, "end": i * 2.0 + 1.5, "text": t} for i, t in enumerate(lines)]
     if timing == TIMING_WORD:
         for s in segs:
@@ -398,7 +399,10 @@ def _text(source, timing, lines=("line one here", "line two here"), conf="high")
                 }
                 for i, w in enumerate(toks)
             ]
-    return LyricsText(text_source=source, segments=segs, timing=timing, text_confidence=conf)
+    # role is EXPLICIT (#605): _text models an authored candidate whose role the registry would
+    # stamp in production. The LyricsText default is now fail-closed (ROLE_UNSPECIFIED), which a
+    # hand-built fake bypassing the registry must override, or it is published by nothing.
+    return LyricsText(text_source=source, segments=segs, timing=timing, text_confidence=conf, role=role)
 
 
 def test_acquire_runs_every_source_not_just_the_first():
@@ -1068,6 +1072,7 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader(monke
 # ── the wrong-song guard, now graded against BASELINES ─────────────────────────
 from src.lyrics.chain import (  # noqa: E402
     ROLE_BASELINE,
+    ROLE_CANDIDATE,
     SUSPECT_AGREEMENT,
     agreement_score,
     composite_score,
@@ -1091,10 +1096,15 @@ def _baseline(body, rank=0, variant="whisper/vocals"):
 
 
 def _candidate(body, source=SOURCE_LRCLIB):
+    """A CANDIDATE text — an authored claim about the words, scored against the baselines and, if it
+    wins, published as the song's words. Role is EXPLICIT (#605): the registry's _Classified.fetch
+    stamps it in production; a hand-built fake must declare it too, now that the LyricsText default is
+    fail-closed (ROLE_UNSPECIFIED) and an unspecified text is published by nothing."""
     return LyricsText(
         text_source=source,
         timing=TIMING_LINE,
         text_confidence="high",
+        role=ROLE_CANDIDATE,
         segments=[{"start": 0.0, "end": 4.0, "text": body}],
     )
 
