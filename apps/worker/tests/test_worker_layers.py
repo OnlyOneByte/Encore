@@ -570,3 +570,66 @@ def test_the_blocking_bypass_guard_actually_detects_a_direct_call(tmp_path: Path
     assert any("to_thread" in f for f in found), f"missed asyncio.to_thread: {joined}"
     assert any("subprocess.run" in f for f in found), f"missed subprocess.run: {joined}"
     assert any("create_subprocess_exec" in f for f in found), f"missed create_subprocess_exec: {joined}"
+
+
+# ── E11: `run_stage` is defined exactly once in runner.py ──────────────────────────
+
+RUNNER_PY = SRC / "runtime" / "runner.py"
+
+
+def _run_stage_class_methods(source: str) -> list[str]:
+    """Every class in `source` that defines a method named `run_stage`, as `ClassName (line N)`.
+
+    AST, not a source scan: `ast.parse` drops comments and docstrings by construction, so the prose lines
+    that name `run_stage` (the module header's `:10` inventory, the free function's own docstring) can
+    neither satisfy nor trip the check. Only a real `ClassDef` body with a `FunctionDef`/`AsyncFunctionDef`
+    named `run_stage` counts — which is exactly the callerless `PlanRunner.run_stage` shim this guard bans.
+    """
+    tree = ast.parse(source)
+    out: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ClassDef):
+            for item in node.body:
+                if isinstance(item, (ast.FunctionDef, ast.AsyncFunctionDef)) and item.name == "run_stage":
+                    out.append(f"{node.name}.run_stage (line {item.lineno})")
+    return out
+
+
+def test_run_stage_is_defined_once_and_only_as_a_free_function():
+    """`runtime/runner.py`'s header (`:3-10`) promises `run_stage` "lives here and nowhere else" — one
+    implementation for the four actions that used to hand-roll their own copies (demucs/whisperx/roformer,
+    the S0-S6 refactor). Issue #650: it shipped TWO — the real module-level free function AND a callerless
+    `PlanRunner.run_stage` shim, re-opening the "which run_stage do I call?" ambiguity the file exists to
+    kill (the drift that once double-fired a stage's completion event).
+
+    A deletion of dead code moves no behavioural test, so the invariant is guarded structurally: no class
+    in `runner.py` may define a method named `run_stage`. Reds on base (PlanRunner.run_stage present),
+    passes once the shim is gone. The three real call sites all import the free function
+    (steps/acquire.py, steps/lyrics.py, steps/separate.py); `git grep '.run_stage('` finds no method call.
+    """
+    twins = _run_stage_class_methods(RUNNER_PY.read_text(encoding="utf-8"))
+    assert not twins, (
+        "run_stage is defined more than once in runner.py — a class defines it as a method alongside the "
+        "canonical module-level free function, re-opening the ambiguity runner.py exists to end "
+        "(issue #650): " + "; ".join(twins)
+    )
+
+
+def test_run_stage_class_method_guard_is_not_vacuous():
+    """Non-vacuity floor (the E8/E10 idiom): a matcher whose AST shapes were wrong would return [] and pass
+    while guarding nothing. Feed it a synthetic module that DOES define a `run_stage` method on a class and
+    confirm the guard reports it — so E11 fails on the real shim, not merely on today's clean tree. Also
+    confirm a module-level `async def run_stage` and a docstring/comment naming `run_stage` are NOT flagged.
+    """
+    twin = (
+        "class Fake:\n"
+        "    async def run_stage(self, ctx):\n"
+        '        """delegates to the free run_stage"""\n'
+        "        yield 1\n"
+        "\n"
+        "# run_stage lives here and nowhere else\n"
+        "async def run_stage(runner, stage):\n"
+        "    yield 1\n"
+    )
+    found = _run_stage_class_methods(twin)
+    assert found == ["Fake.run_stage (line 2)"], f"guard mis-detected the method twin: {found!r}"
