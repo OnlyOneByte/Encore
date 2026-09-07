@@ -73,36 +73,6 @@ async function waitForHealth(timeoutMs = 15000) {
 	return false;
 }
 
-// ── phone WS observer ───────────────────────────────────────────────────────
-// Subscribes as a phone (with a session cookie) and appends every server event so a scenario can
-// assert on the media:status sequence. Not a driver — a passive recorder.
-function attachPhone(cookie) {
-	const events = [];
-	const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`, { headers: { cookie } });
-	// Bun WebSocket doesn't support headers in the ctor — use a plain global object with cookie.
-	// Fallback via unauthenticated observer: presence events won't be attributed but media:status is
-	// broadcast to the ROOM_TOPIC and reaches every subscriber regardless.
-	return new Promise((resolve, reject) => {
-		const rawWs = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`);
-		rawWs.onopen = () => {
-			rawWs.send(JSON.stringify({ type: 'hello' }));
-			resolve({
-				events,
-				close: () => rawWs.close(),
-				statusOf: (mediaId) => events.filter((e) => e.type === 'media:status' && e.mediaId === mediaId),
-				lastStatus: (mediaId) => {
-					const list = events.filter((e) => e.type === 'media:status' && e.mediaId === mediaId);
-					return list[list.length - 1];
-				}
-			});
-		};
-		rawWs.onerror = (e) => reject(new Error(`phone ws error ${e?.message ?? e}`));
-		rawWs.onmessage = (m) => {
-			try { events.push(JSON.parse(String(m.data))); } catch {}
-		};
-	});
-}
-
 // ── one-scenario harness ────────────────────────────────────────────────────
 async function bootServer() {
 	if (existsSync(SCRATCH)) rmSync(SCRATCH, { recursive: true, force: true });
@@ -235,14 +205,6 @@ async function requestCook(cookie, mediaId) {
 		headers: { 'content-type': 'application/json', cookie },
 		body: JSON.stringify({ mediaId })
 	});
-}
-
-async function queueSong(phoneWs, cookie, singerId, mediaId, entryId) {
-	// The phone WS carries add ops; the singerId must match the WS session's actor. For probes we
-	// bypass the WS by directly posting through the queue via a helper — but simpler: use the same
-	// authenticated WS. That requires the WS to have been upgraded with our cookie; the WebSocket
-	// polyfill here doesn't send arbitrary headers, so we do queue ops through a socket that DOES.
-	return null; // unused in the probes below; kept as a stub in case a follow-up scenario needs it
 }
 
 // Open a WS handshake with a cookie header — needed for queue commands, which are only accepted
