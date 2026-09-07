@@ -60,9 +60,16 @@ export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Orde
 export function reorderWithinSinger(entries: QueueEntry[], id: string, toIdx: number): QueueEntry[] {
 	const moving = entries.find((e) => e.id === id);
 	if (!moving) return entries.slice();
-	const mine = entries.filter((e) => e.singerId === moving.singerId).sort((a, b) => a.addedAt - b.addedAt);
-	const stamps = mine.map((e) => e.addedAt); // stable timestamp slots for this singer
+	// Index over the singer's REORDERABLE (queued) picks only. A playing/terminal entry is not a
+	// reorder target and must not occupy a slot: the client (+page.svelte) derives its toSeq from
+	// queued picks only, so if the server counted a playing entry too, every index would be off by
+	// one and the singer's first queued pick would resolve onto its own slot (a no-op — issue #637).
+	const mine = entries
+		.filter((e) => e.singerId === moving.singerId && e.status === 'queued')
+		.sort((a, b) => a.addedAt - b.addedAt);
 	const from = mine.findIndex((e) => e.id === id);
+	if (from === -1) return entries.slice(); // moving entry isn't reorderable (e.g. playing) — no-op
+	const stamps = mine.map((e) => e.addedAt); // stable timestamp slots for this singer's picks
 	const clamped = Math.max(0, Math.min(toIdx, mine.length - 1));
 	mine.splice(clamped, 0, mine.splice(from, 1)[0]!);
 	const reStamp = new Map(mine.map((e, i) => [e.id, stamps[i]!]));
