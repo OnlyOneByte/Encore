@@ -95,6 +95,11 @@ export const SEL = {
 	 * models a `tag.class` compound part (bare-tag mid-selector anchor) to resolve it.
 	 */
 	readyChip: '.chips button.ok',
+	/** A SongRow status/kind chip (`<span class="chip state">` / `<span class="chip kind ...">` in
+	 *  SongRow.svelte) — the SCALING probe (p10) contrast-checks its text on the remote. Migrated from
+	 *  KNOWN_OFFENDERS in #547 (Group E). Distinct from `readyChip` above (a `.chips button.ok`
+	 *  readiness filter button); this is the per-row label chip. */
+	chip: '.chip',
 	away: '.away',
 	isLabel: '.is-label',
 	strip: '.strip',
@@ -137,6 +142,16 @@ export const SEL = {
 	/** The wordmark whose inset proves stage chrome clears the overscan region. */
 	stageBrand: '.brand',
 	badQr: '.badqr',
+	/*
+	 * The `.badqr` operator-notice card's own text lines the SCALING probe (p10) contrast-checks —
+	 * migrated from KNOWN_OFFENDERS in #547 (Group E of the #513 per-driver split, tail of #494).
+	 * All three are children of `.badqr` in src/lib/tv/JoinBadge.svelte: `.badqr-t` is the
+	 * "Join QR unavailable" title, `.badqr-b` the body paragraph, `.badqr-fix` the fix hint. p10 reads
+	 * them for existence/geometry/contrast, never clicks them.
+	 */
+	badQrTitle: '.badqr-t',
+	badQrBody: '.badqr-b',
+	badQrFix: '.badqr-fix',
 	/** The TV's master/guide media elements. An <audio> carries the instrumental, so a bare `video`
 	 *  selector read -1 forever and every playing frame in the gallery was silently skipped. */
 	mediaEl: 'video, audio',
