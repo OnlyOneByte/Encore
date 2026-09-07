@@ -142,8 +142,10 @@ def test_annotation_only_cues_are_dropped():
 
 
 def test_a_line_held_across_consecutive_cues_is_collapsed_and_its_window_extended():
-    """Tracks repeat a line to hold it on screen. Left in, the same line would be aligned twice and the
-    text would score as far more repetitive than the vocals are — which would skew agreement."""
+    """Tracks repeat a line to hold it on screen. Left in, the same line would be handed to the forced
+    aligner twice and displayed twice on the TV's baseline-fallback path. (It does NOT "score as more
+    repetitive": agreement_score is Jaccard over token SETS, so a repeated line cannot move it — the
+    real beneficiaries are the aligner and the overlay.)"""
     segs = parse_vtt(SAMPLE_VTT)
     held = [s for s in segs if s["text"].startswith("You called")]
     assert len(held) == 1
@@ -496,3 +498,89 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
     # 3. The two retained tracks are the two DIFFERENT tracks (authored candidate vs machine baseline),
     #    not one track copied twice — the structural split is meaningful, not cosmetic.
     assert Path(authored_dest).read_text(encoding="utf-8") != Path(machine_dest).read_text(encoding="utf-8")
+
+
+# ── the rolling YouTube auto-caption format, pinned against a REAL captured track ─────────
+#
+# The fixture below is a real YouTube automatic-caption track, not a hand-written one. It was captured
+# with the exact `caption_argv(auto=True)` flags (`--write-auto-subs --convert-subs vtt` in particular,
+# so the grammar is what production parses, not srv3/json3) from the 350s prank-call upload wRRsXxE1KVY,
+# already in the library. Provenance is fixed by content hash so a re-capture that drifted would fail
+# loudly rather than silently re-shape the test:
+#
+#   source:  https://www.youtube.com/watch?v=wRRsXxE1KVY  (--write-auto-subs, en-orig)
+#   bytes:   39678
+#   sha256:  427cd3e16dd18aca4b1d6b4807df9b0a1745251fda121b561c2636bcc9646fd5
+#
+# YouTube's rolling format emits cues in triplets: (a) a word-timed cue whose payload OPENS with a
+# whitespace-only line and carries `<c>` per-word markup, (b) a ~10ms cue holding the plain text, then
+# (c) a cue repeating that text and APPENDING the next words. The text therefore rolls forward as a
+# growing prefix, and on base `parse_vtt` this survives as ~2× the real lines.
+
+import hashlib  # noqa: E402
+
+_ROLLING_FIXTURE = Path(__file__).resolve().parent / "fixtures" / "youtube-rolling-auto-captions.en-orig.vtt"
+_ROLLING_FIXTURE_SHA256 = "427cd3e16dd18aca4b1d6b4807df9b0a1745251fda121b561c2636bcc9646fd5"
+
+
+def test_the_rolling_fixture_is_the_untouched_captured_track():
+    """The proof is only as trustworthy as the fixture. Pin its content hash so an accidental re-save,
+    normalisation, or line-ending rewrite is caught here rather than silently changing every count below.
+    """
+    data = _ROLLING_FIXTURE.read_bytes()
+    assert hashlib.sha256(data).hexdigest() == _ROLLING_FIXTURE_SHA256
+    assert len(data) == 39678
+
+
+def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
+    """THE #539 PROOF. A real rolling auto-caption track must not survive as ~2× duplicated lines.
+
+    Base `parse_vtt` collapses only EXACT consecutive duplicates (`out[-1]["text"] == body`), but the
+    rolling repeat is a strict PREFIX, never an equality, so the guard never fires: base returns 236
+    lines with 115 adjacent prefix-extend pairs (measured on this exact file). The fix folds a
+    prefix-extending, time-adjacent run into one line, keeping the longest text — so the track parses to
+    roughly half as many lines and NO adjacent pair where the earlier line is a prefix of the later one.
+
+    Asserted as PROPERTIES of the collapse, not a golden line count, so the test states the mechanism:
+    (1) no surviving rolling pair, (2) a large drop from the raw cue count, (3) no degenerate ~10ms
+    lines from the triplet's hold cue. On base, (1) fails — 115 prefix-extends remain.
+    """
+    segs = parse_vtt(_ROLLING_FIXTURE.read_text(encoding="utf-8"))
+
+    prefix_extends = sum(
+        1
+        for a, b in zip(segs, segs[1:], strict=False)
+        if b["text"] != a["text"] and b["text"].startswith(a["text"])
+    )
+    assert prefix_extends == 0, (
+        f"a rolling run survived uncollapsed: {prefix_extends} adjacent pairs where the earlier line is "
+        "a strict prefix of the later one (base parse_vtt leaves 115 here)"
+    )
+
+    # No exact consecutive duplicate should remain either (the held-repeat rule already covered these).
+    assert not any(a["text"] == b["text"] for a, b in zip(segs, segs[1:], strict=False))
+
+    # The collapse roughly halves the line count vs. the ~2x-inflated base output (236 lines here).
+    assert 100 <= len(segs) <= 150, f"expected the rolling track to collapse to ~half; got {len(segs)}"
+
+    # The triplet's 10ms hold cue must be folded into its run, not left as a degenerate line.
+    assert min(s["end"] - s["start"] for s in segs) > 0.05
+
+    # Sanity: monotonic, non-empty, and the opening rolled line is fully assembled (not truncated).
+    assert segs[0]["text"].startswith("was this week's phone scam. Check it out.")
+    assert all(a["start"] <= b["start"] for a, b in zip(segs, segs[1:], strict=False))
+
+
+def test_a_cue_whose_payload_opens_with_a_whitespace_only_line_is_not_dropped():
+    """DEFECT 2. A cue block ends at a literally EMPTY line; a whitespace-only line is legal INSIDE a
+    payload. Base `parse_vtt` terminated the payload scan on `lines[i].strip()` being falsy, so a cue
+    whose payload opens with a space-only line — which is exactly how YouTube opens the word-timed cue
+    of each rolling triplet — collected an empty body and was discarded by the `if not body` guard.
+
+    This is a minimal reproduction: one cue, whose real text sits after a leading space-only line. On
+    base the space-only line ends the payload before the text is read, so the cue vanishes and parse
+    returns []. The fix reads to the genuinely empty separator, so the text survives.
+    """
+    vtt = "WEBVTT\n\n00:00:01.000 --> 00:00:03.000\n \nreal lyric words\n\n"
+    segs = parse_vtt(vtt)
+    assert [s["text"] for s in segs] == ["real lyric words"]
