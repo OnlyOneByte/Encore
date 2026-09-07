@@ -9,6 +9,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
+import { clampDays, songDisplay } from '@encore/shared';
 
 const DAY_MS = 86_400_000;
 const DEFAULT_DAYS = 30;
@@ -16,14 +17,15 @@ const MAX_DAYS = 365;
 
 export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();
-	const days = clampDays(url.searchParams.get('days'));
+	const days = clampDays(url.searchParams.get('days'), { fallback: DEFAULT_DAYS, max: MAX_DAYS });
 	const since = app.now() - days * DAY_MS;
 
 	const ready = app.media.listReady();
 	// Name the ranked songs here rather than making the client fetch the whole catalog to join: the
 	// play log stores media ids only, and an id is not a song title anyone can read.
-	const titleOf = new Map(app.media.all().map((m) => [m.id, m.titleCanonical ?? m.title]));
-	const artistOf = new Map(app.media.all().map((m) => [m.id, m.artistCanonical]));
+	const displayOf = new Map(app.media.all().map((m) => [m.id, songDisplay(m)]));
+	const titleOf = new Map([...displayOf].map(([id, d]) => [id, d.title]));
+	const artistOf = new Map([...displayOf].map(([id, d]) => [id, d.artist]));
 
 	const topAllTime = app.playLog.topSongs(10);
 	const topRecent = app.playLog.topSongs(10, since);
@@ -52,12 +54,6 @@ export const GET: RequestHandler = async ({ url }) => {
 		window: { days, since }
 	});
 };
-
-function clampDays(raw: string | null): number {
-	const n = Number(raw);
-	if (!Number.isFinite(n) || n <= 0) return DEFAULT_DAYS;
-	return Math.min(MAX_DAYS, Math.floor(n));
-}
 
 /**
  * Rank artists by total plays of their songs.

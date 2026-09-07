@@ -11,6 +11,7 @@
 import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
+import { clampDays, songDisplay } from '@encore/shared';
 import { e2e, isAnecdote, perAsrModel, perCook, perModel, perStage, perStep } from '$server/jobs/metrics';
 
 const DEFAULT_LIMIT = 2000;
@@ -18,7 +19,7 @@ const DEFAULT_LIMIT = 2000;
 export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();
 	const limit = clampLimit(url.searchParams.get('limit'));
-	const windowDays = clampDays(url.searchParams.get('days'));
+	const windowDays = clampDays(url.searchParams.get('days'), { fallback: DEFAULT_WINDOW_DAYS, max: MAX_WINDOW_DAYS });
 	// Window by TIME, not by a bare row count. The old row-count window (`allFinished(limit)`) had no
 	// notion of its own edge: at the cap it returned N rows with nothing saying more existed, and a
 	// cook straddling that edge lost its older steps yet still reported `complete: true` and measured
@@ -36,7 +37,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	const overall = e2e(attempts, windowStart);
 	const cooks = perCook(attempts, windowStart);
 	const models = perModel(attempts);
-	const titleOf = new Map(app.media.all().map((mm) => [mm.id, mm.titleCanonical ?? mm.title]));
+	const titleOf = new Map(app.media.all().map((mm) => [mm.id, songDisplay(mm).title]));
 
 	// Truncation is now VISIBLE rather than silent: `clipped` is true when the row backstop actually
 	// bit (more rows finished in the window than we fetched) or when any cook straddled the window's
@@ -87,17 +88,10 @@ export const GET: RequestHandler = async ({ url }) => {
 
 const DAY_MS = 86_400_000;
 const DEFAULT_WINDOW_DAYS = 7;
+const MAX_WINDOW_DAYS = 3650;
 
 function clampLimit(raw: string | null): number {
 	const n = Number(raw);
 	if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
 	return Math.min(20_000, Math.floor(n));
-}
-
-/** Read window in days. Default 7. Clamped to [1, 3650]; a garbage value falls back to the default. */
-function clampDays(raw: string | null): number {
-	if (raw === null) return DEFAULT_WINDOW_DAYS;
-	const n = Number(raw);
-	if (!Number.isFinite(n) || n <= 0) return DEFAULT_WINDOW_DAYS;
-	return Math.min(3650, Math.floor(n));
 }
