@@ -1854,6 +1854,103 @@ async def test_410_wrong_master_is_still_detected_when_two_lines_drop(tmp_path):
     assert any("may belong to another version" in n for n in ctx.out.notes)
 
 
+# -- #534: wrong-version check on the no-align_windows path + an inconclusive fit reporting a match
+def _plain_synced_text(n_lines=16, spacing=2.0):
+    """A synced LRCLIB text with NO align_windows: segments are the human lines; presplit set no
+    windows. This is the common production shape the no-windows fit branch runs for."""
+    segs = [
+        {
+            "start": spacing * i + 1.0,
+            "end": spacing * i + 2.6,
+            "text": f"line {i} of the song here",
+            "words": [],
+        }
+        for i in range(n_lines)
+    ]
+    return LyricsText(
+        text_source=SOURCE_LRCLIB,
+        segments=segs,
+        timing=TIMING_LINE,
+        text_confidence="high",
+        align_windows=None,
+    )
+
+
+class _PlainDroppingAligner:
+    """One aligned line per input segment (the no-windows shape), keyed off each segment index in its
+    trailing text so it is independent of line_starts / fit_lrc_to_aligned. bridge shifts every line at
+    or after bridge_after (a different master). Segments whose index is in drop are emitted in the
+    normalize_lyrics-DROP shape (no start/end, a NaN word), which normalize_lyrics then removes."""
+
+    def __init__(self, drop=frozenset(), bridge=0.0, bridge_after=10**9):
+        self.drop = set(drop)
+        self.bridge = bridge
+        self.bridge_after = bridge_after
+        self.calls = []
+
+    def align(self, segments, audio_path, language):
+        self.calls.append((len(segments), audio_path, language))
+        out = []
+        for i, s in enumerate(segments):
+            if i in self.drop:
+                out.append(
+                    {
+                        "start": None,
+                        "end": None,
+                        "text": s["text"],
+                        "words": [{"word": "w", "start": float("nan"), "end": 1.0}],
+                    }
+                )
+                continue
+            shift = self.bridge if i >= self.bridge_after else 0.0
+            start, end = s["start"] + shift, s["end"] + shift
+            toks = s["text"].split()
+            span = (end - start) / max(1, len(toks))
+            words = [
+                {"word": t, "start": round(start + j * span, 3), "end": round(start + (j + 1) * span, 3)}
+                for j, t in enumerate(toks)
+            ]
+            out.append({"start": start, "end": end, "text": s["text"], "words": words})
+        return {"language": language, "segments": out}
+
+
+@pytest.mark.asyncio
+async def test_534_F2_wrong_master_still_detected_on_the_no_align_windows_path_after_a_drop(tmp_path):
+    """RED ON BASE. align_windows absent (the common branch), master structurally different (+15s back
+    half), aligner DROPS one mid-song line into the normalize_lyrics-drop shape. On base the else branch
+    pairs line_starts(segments) (16) against line_starts(doc) (15) -- unequal counts -> inconclusive ->
+    the wrong-version note never fires (#217, live on this branch). The fix routes this branch through
+    the same drop-tolerant text-keyed pairing, so survivors still fit and the +15s master is reported.
+    Expectation comes from the fixture (a genuinely different master), not the fit arithmetic."""
+    text = _plain_synced_text()
+    assert text.align_windows is None
+    aligner = _PlainDroppingAligner(drop={4}, bridge=15.0, bridge_after=8)
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    assert aligner.calls and aligner.calls[0][0] == len(text.segments)
+    assert any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+    assert any("may belong to another version" in n for n in ctx.out.notes)
+    assert not any("matches this recording" in n for n in ctx.out.notes), ctx.out.notes
+
+
+@pytest.mark.asyncio
+async def test_534_F1_an_inconclusive_fit_does_NOT_report_a_match(tmp_path):
+    """RED ON BASE. A TWO-line synced LRC with a matching aligner: fit_lrc_to_aligned needs >= 3 lines,
+    so it returns early with pairs == min(2, 2) == 2, verdict inconclusive, and the dataclass defaults
+    offset 0.0 / scale 1.0. On base the caller gates the affirmative note on fit.pairs, so it prints
+    matches this recording (fitted offset +0.00s, scale 1.000 over 2 lines) -- a fabricated positive
+    match from a fit that never ran. The fix gates on fit.verdict == same_version, so an inconclusive
+    fit produces no affirmative note. Pins F1 independently of the drop shape."""
+    text = _plain_synced_text(n_lines=2)
+    assert text.align_windows is None
+    aligner = _PlainDroppingAligner()
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    assert aligner.calls and aligner.calls[0][0] == 2
+    assert not any("matches this recording" in n for n in ctx.out.notes), ctx.out.notes
+    assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+
+
 # ── #459: the version fit selected its opening-window indices by re-deriving them from window starts
 # via float-equality (_opening_window_indices), which strands every line after one start that fails to
 # match to 1e-6 — a latent trap the moment a producer stops rounding to 3 dp. presplit now EMITS the
