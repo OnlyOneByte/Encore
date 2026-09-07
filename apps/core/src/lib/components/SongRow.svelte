@@ -71,7 +71,6 @@
 		 */
 		keyName?: string;
 		pct?: number; // cooking progress, 0..100
-		etaSec?: number;
 		/**
 		 * The live cook STATUS (queued/downloading/separating/aligning/ready). Present, the row
 		 * shows how far through the whole cook it is via `overallCookPct(status, pct)` instead of
@@ -96,7 +95,6 @@
 		viewCount,
 		keyName,
 		pct = 0,
-		etaSec,
 		status,
 		inQueue = false,
 		onadd,
@@ -186,7 +184,7 @@
 		// the unrounded barPct so its transition stays smooth, but the guest-facing "Making karaoke… N%"
 		// line must be an integer — overallCookPct returns a band-interpolated float (e.g. 67.6), and an
 		// unrounded readout prints "67.6%" or "31.200000000000003%" (#80).
-		if (readiness === 'cooking') return cookStageLabel('queued', { pct: Math.round(barPct), etaSec });
+		if (readiness === 'cooking') return cookStageLabel('queued', { pct: Math.round(barPct) });
 		return null;
 	});
 
@@ -382,9 +380,9 @@
 		white-space: nowrap;
 	}
 	/*
-	 * The one chip allowed to wrap. Its text is the longest here and it GROWS as a cook runs
-	 * ("Separating vocals… 68% · ~1 min"), so nowrap clipped it to "~1 mi" — losing the ETA, which is
-	 * the only part a singer standing there waiting actually wants.
+	 * The one chip allowed to wrap. Its text is the longest here ("Making karaoke… 68%"), so on a
+	 * narrow row nowrap would clip the trailing percent — the one moving part a singer standing there
+	 * waiting is watching. Letting it wrap keeps the whole line, and the percent, visible.
 	 */
 	.chip.state { white-space: normal; }
 	.chip.state.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }

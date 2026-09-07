@@ -11,17 +11,16 @@
 import type { MediaStatus } from '@encore/shared';
 
 /**
- * The guest-facing stage line — the sentence under the title while a song cooks. `pct`/`etaSec` are
- * appended when present; a caller that shows those separately can omit them.
+ * The guest-facing stage line — the sentence under the title while a song cooks. `pct` is
+ * appended when present; a caller that shows it separately can omit it.
  */
-export function cookStageLabel(status: MediaStatus, opts: { pct?: number; etaSec?: number } = {}): string {
+export function cookStageLabel(status: MediaStatus, opts: { pct?: number } = {}): string {
 	if (status === 'ready') return 'Karaoke ready';
 	if (status === 'failed') return "Couldn't make karaoke";
 	// A cancel is not a failure and gets no line: the song went back to un-cooked and the row shows the
 	// Sing button again, so saying anything here would narrate the guest's own removal back at them.
 	if (status === 'canceled') return '';
-	const eta = opts.etaSec && opts.etaSec > 0 ? ` · ~${Math.max(1, Math.round(opts.etaSec / 60))} min left` : '';
 	const pct = typeof opts.pct === 'number' ? ` ${opts.pct}%` : '';
-	return `Making karaoke…${pct}${eta}`;
+	return `Making karaoke…${pct}`;
 }
 

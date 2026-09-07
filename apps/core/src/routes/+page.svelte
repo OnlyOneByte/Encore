@@ -895,7 +895,6 @@
 				readiness={r}
 				pct={c.pct}
 				status={c.status}
-				etaSec={c.etaSec}
 				inQueue={inMyQueue(c.id)}
 				onadd={() => addSong(c.id)}
 				onmake={canCook(r) ? () => singThis(c.id) : undefined}
