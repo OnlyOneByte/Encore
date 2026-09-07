@@ -205,6 +205,29 @@ test('play still RESUMES a loaded-but-paused song (currentEntryId set) to isPlay
 	expect(state.playback.isPlaying).toBe(true);
 });
 
+// Reported (#619): the (currentEntryId, isPlaying) === (null, true) illegal state was closed at `play`
+// but left OPEN at its sibling `restart` branch seven lines below in the same switch — a `restart` on a
+// null currentEntryId latched isPlaying:true (silent room shows a pause icon; persists across reboot
+// since store hydrate only clears the DANGLING non-null case). Twin of the `play` guard above.
+test('THE BUG: restart in an idle room with nothing loaded stays stopped, not (null, isPlaying:true)', () => {
+	const { state, deps } = harness();
+	// no entries added, nothing to restart
+	handlePlayerCommand({ cmd: 'restart' }, deps);
+	expect(state.playback.currentEntryId).toBeNull();
+	expect(state.playback.isPlaying).toBe(false); // NOT true — (null, true) is illegal
+});
+
+test('restart still REWINDS a loaded song to (positionSec:0, isPlaying:true)', () => {
+	const { state, deps } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	handlePlayerCommand({ cmd: 'play' }, deps); // q1 becomes current + playing
+	handlePlayerCommand({ cmd: 'seek', positionSec: 30 }, deps);
+	handlePlayerCommand({ cmd: 'restart' }, deps);
+	expect(state.playback.currentEntryId).toBe('q1');
+	expect(state.playback.positionSec).toBe(0);
+	expect(state.playback.isPlaying).toBe(true);
+});
+
 test('pause/seek do NOT emit a queue:patch (nothing about the queue changed)', () => {
 	const { state, deps, published } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
