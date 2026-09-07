@@ -832,7 +832,7 @@ if (!chromium) {
 				add: row.querySelectorAll(${JSON.stringify(SEL.addTurn)}).length,
 				sing: row.querySelectorAll(${JSON.stringify(SEL.sing)}).length,
 				readiness: row.className.match(/ready|cooking/)?.[0] ?? 'raw',
-				title: row.querySelector('.t')?.textContent?.trim()?.slice(0, 40)
+				title: row.querySelector(${JSON.stringify(SEL.rowTitle)})?.textContent?.trim()?.slice(0, 40)
 			}))
 		`);
 		const eachExactlyOne = Array.isArray(perRow) && perRow.every((r) => r.add + r.sing === 1);
@@ -853,7 +853,7 @@ if (!chromium) {
 		await phone.fill(SEL.search, 'zzzzzzznotasongzzzzzz');
 		await sleep(600); // debounce is 150ms; give the search a fair moment
 		const noResultsText = await phone
-			.evaluate(`document.querySelector('.empty')?.textContent?.trim() ?? ''`)
+			.evaluate(`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`)
 			.catch(() => '');
 		const mentionsYtDlpUnavailable = /yt-dlp/i.test(noResultsText);
 		record(
@@ -870,7 +870,7 @@ if (!chromium) {
 		await sleep(400);
 		await phone.click('.chips button.ok'); // pick the Ready chip (class .ok distinguishes it)
 		await sleep(200);
-		const readyEmpty = await phone.evaluate(`document.querySelector('.empty')?.textContent?.trim() ?? ''`);
+		const readyEmpty = await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`);
 		const namesTheCount = /None of your \d+ karaoke/.test(readyEmpty);
 		record(
 			'MEDIUM',

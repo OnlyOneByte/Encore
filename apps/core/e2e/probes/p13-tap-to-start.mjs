@@ -107,7 +107,7 @@ try {
 		const els = [...document.querySelectorAll('video,audio')];
 		const master = els.find((e) => (e.currentSrc || e.src || '').includes('instrumental')) ?? els.find((e) => e.currentSrc || e.src) ?? null;
 		return {
-			hint: !!document.querySelector('.autoplay-hint'),
+			hint: !!document.querySelector(${JSON.stringify(SEL.autoplayHint)}),
 			master: master ? {
 				paused: master.paused,
 				currentTime: +master.currentTime.toFixed(2),

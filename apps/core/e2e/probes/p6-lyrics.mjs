@@ -294,7 +294,7 @@ try {
 		const deadline = Date.now() + 20_000;
 		let lastDiag = 0;
 		while (Date.now() < deadline) {
-			const p = await tv.evaluate(`document.querySelector('.lyrics') !== null`);
+			const p = await tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyrics)}) !== null`);
 			if (p) return true;
 			// Every 3s, print a diagnostic snapshot of the page state so we can tell WHY the reel is
 			// not there yet (attract screen, interstitial, loading, media element failure).
@@ -307,14 +307,14 @@ try {
 					return {
 						url: location.pathname,
 						screens: {
-							attract: !!document.querySelector('.attract'),
-							interstitial: !!document.querySelector('.interstitial'),
-							lowerThird: !!document.querySelector('.lower-third'),
-							stateWaiting: !!document.querySelector('.state-waiting'),
-							stateError: !!document.querySelector('.state-error')
+							attract: !!document.querySelector(${JSON.stringify(SEL.attract)}),
+							interstitial: !!document.querySelector(${JSON.stringify(SEL.interstitial)}),
+							lowerThird: !!document.querySelector(${JSON.stringify(SEL.lowerThird)}),
+							stateWaiting: !!document.querySelector(${JSON.stringify(SEL.stateWaiting)}),
+							stateError: !!document.querySelector(${JSON.stringify(SEL.stateError)})
 						},
 						media,
-						lyricsInMemory: !!document.querySelector('.lyrics')
+						lyricsInMemory: !!document.querySelector(${JSON.stringify(SEL.lyrics)})
 					};
 				})()`);
 				console.log('  P6-1 diag:', JSON.stringify(diag));
@@ -337,16 +337,16 @@ try {
 
 	// Under what state exactly does it render? Useful context for the visual finding.
 	const overlayState = await tv.evaluate(`(() => {
-		const l = document.querySelector('.lyrics');
+		const l = document.querySelector(${JSON.stringify(SEL.lyrics)});
 		if (!l) return { present: false };
 		const cs = getComputedStyle(l);
 		return {
 			present: true,
 			unverified: l.classList.contains('unverified'),
 			hlClass: [...l.classList].find(c => c.startsWith('hl-')),
-			rows: document.querySelectorAll('.lyrics .row').length,
-			hasCurrent: document.querySelector('.lyrics .row.current') !== null,
-			rowsText: [...document.querySelectorAll('.lyrics .row')].map(r => r.textContent.trim()),
+			rows: document.querySelectorAll(${JSON.stringify(SEL.lyricsRow)}).length,
+			hasCurrent: document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null,
+			rowsText: [...document.querySelectorAll(${JSON.stringify(SEL.lyricsRow)})].map(r => r.textContent.trim()),
 			bbox: l.getBoundingClientRect(),
 			fontSize: cs.fontSize,
 			color: cs.color
@@ -383,9 +383,9 @@ try {
 		for (let i = 0; i < 20 && Date.now() - start < 6500; i++) {
 			const s = await tv.evaluate(`(() => {
 				const v = document.querySelector('video,audio');
-				const a = document.querySelector('.lyrics .word.active');
-				const c = document.querySelector('.lyrics .row.current');
-				const reel = document.querySelector('.lyrics .reel');
+				const a = document.querySelector(${JSON.stringify(SEL.activeWord)});
+				const c = document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)});
+				const reel = document.querySelector(${JSON.stringify(SEL.lyricsReel)});
 				const t = reel ? getComputedStyle(reel).transform : '';
 				// The .word.active element wraps both the ball glyph (a <span class="ball">) AND the
 				// word's own text. textContent lumps them together and yields "●here" — strip that
@@ -589,9 +589,9 @@ try {
 	console.log(`\n  screenshot: ${shotPath}`);
 
 	const geom = await tv.evaluate(`(() => {
-		const current = document.querySelector('.lyrics .row.current');
-		const active = document.querySelector('.lyrics .word.active');
-		const viewport = document.querySelector('.lyrics .viewport');
+		const current = document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)});
+		const active = document.querySelector(${JSON.stringify(SEL.activeWord)});
+		const viewport = document.querySelector(${JSON.stringify(SEL.lyricsViewport)});
 		const cs = current ? getComputedStyle(current) : null;
 		return current ? {
 			currentTextPx: parseFloat(cs.fontSize),
@@ -649,9 +649,9 @@ try {
 	// but NOT `artifacts.lyrics.candidates`, so setMediaLyrics attaches only the ref and
 	// chosenCandidate returns null → provenance is null → no label rendered.
 	const provState = await tv.evaluate(`(() => ({
-		asrLabel: document.querySelector('.ls-asr')?.textContent.trim() ?? null,
-		unverified: !!document.querySelector('.lyrics.unverified'),
-		reelColor: (() => { const w = document.querySelector('.lyrics .word.active'); return w ? getComputedStyle(w).color : null; })()
+		asrLabel: document.querySelector(${JSON.stringify(SEL.lsAsr)})?.textContent.trim() ?? null,
+		unverified: !!document.querySelector(${JSON.stringify(SEL.lyricsUnverified)}),
+		reelColor: (() => { const w = document.querySelector(${JSON.stringify(SEL.activeWord)}); return w ? getComputedStyle(w).color : null; })()
 	}))()`);
 	console.log('  provenance state:', JSON.stringify(provState));
 	// This is a LEGIT env limit rather than a real defect: real ASR workers (whisperx.py
@@ -680,12 +680,12 @@ try {
 
 	// Make sure a song is playing (the 8s fixture may have ended between findings).
 	async function ensureSongOnStage() {
-		const has = await tv.evaluate(`document.querySelector('.lyrics .row.current') !== null`);
+		const has = await tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null`);
 		if (has) return true;
 		// First cheapest attempt — seek back to 0 in the current song via the phone.
 		await seekToStart(tv, phone);
 		await sleep(800);
-		const nowHas = await tv.evaluate(`document.querySelector('.lyrics .row.current') !== null`);
+		const nowHas = await tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null`);
 		if (nowHas) return true;
 		// Fall back to re-queueing.
 		await phone.fill(SEL.search, 'caroline');
@@ -700,7 +700,7 @@ try {
 		await sleep(1200);
 		await ensurePlaying(tv, phone);
 		await sleep(600);
-		return tv.evaluate(`document.querySelector('.lyrics .row.current') !== null`);
+		return tv.evaluate(`document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null`);
 	}
 	// Ensure lyricsHighlight is `word` so ball/marker rules below are meaningful. Also
 	// force lyricsBall back to bounce (the default) — a previous run may have changed it.
@@ -724,11 +724,11 @@ try {
 	}
 	async function readClasses() {
 		return tv.evaluate(`(() => {
-			const l = document.querySelector('.lyrics');
+			const l = document.querySelector(${JSON.stringify(SEL.lyrics)});
 			if (!l) return null;
-			const w = document.querySelector('.lyrics .row.current');
+			const w = document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)});
 			const cs = w ? getComputedStyle(w) : null;
-			const ball = document.querySelector('.ball');
+			const ball = document.querySelector(${JSON.stringify(SEL.ball)});
 			return {
 				hlClass: [...l.classList].find(c => c.startsWith('hl-')),
 				ballClass: ball ? [...ball.classList].find(c => ['bounce','steady','underline'].includes(c)) : null,
@@ -900,12 +900,12 @@ try {
 	}).catch(() => {});
 	await sleep(1500);
 	const emptyState = await tv.evaluate(`(() => {
-		const l = document.querySelector('.lyrics');
+		const l = document.querySelector(${JSON.stringify(SEL.lyrics)});
 		return {
 			present: !!l,
-			rows: document.querySelectorAll('.lyrics .row').length,
-			hasCurrent: document.querySelector('.lyrics .row.current') !== null,
-			hasText: (document.querySelector('.lyrics')?.textContent ?? '').trim().length
+			rows: document.querySelectorAll(${JSON.stringify(SEL.lyricsRow)}).length,
+			hasCurrent: document.querySelector(${JSON.stringify(SEL.lyricsRowCurrent)}) !== null,
+			hasText: (document.querySelector(${JSON.stringify(SEL.lyrics)})?.textContent ?? '').trim().length
 		};
 	})()`);
 	// Overlay must render nothing observable when parseLyricsDoc returns null.
