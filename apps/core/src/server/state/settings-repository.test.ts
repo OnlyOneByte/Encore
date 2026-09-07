@@ -309,7 +309,6 @@ describe('SettingsRepository room scope: tv progress style', () => {
 			).not.toBe(DEFAULT_ROOM_SETTINGS[k]);
 		}
 	});
-
 });
 
 describe('SettingsRepository global scope: getGlobal SELECT completeness', () => {

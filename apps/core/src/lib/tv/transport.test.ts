@@ -164,7 +164,7 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
  * `transportFor` itself was always correct, so its own tests cannot see this — the fix and its proof
  * live in `slotHoldsSrc`, the pure helper that computes the input.
  */
-describe('slotHoldsSrc — the element is holding THIS song\'s src, not merely SOME src', () => {
+describe("slotHoldsSrc — the element is holding THIS song's src, not merely SOME src", () => {
 	const A = '/media/song-a-instrumental.wav';
 	const B = '/media/song-b-instrumental.wav';
 
@@ -213,7 +213,7 @@ describe('#374: the transport across a song change on one page', () => {
 		expect(transportFor({ ...slot, hasSrc })).toBe('idle');
 	});
 
-	test('FIXED: once the assign effect writes B\'s src, hasSrc flips true and B plays', () => {
+	test("FIXED: once the assign effect writes B's src, hasSrc flips true and B plays", () => {
 		// currentSrc has now been rewritten to B (the playable-pass write). held=B, wanted=B → true. The
 		// derived VALUE has changed ('idle' -> 'play'), so the effect re-runs and plays B — after the src
 		// has landed, which is the whole point.

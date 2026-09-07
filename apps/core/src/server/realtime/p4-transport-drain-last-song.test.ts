@@ -39,7 +39,7 @@ const PROBE = stripComments(readFileSync(PROBE_PATH, 'utf8'));
 // text ("skip on the sole (last) song"), then walk back to the `} else {` and forward with a brace
 // depth counter to the matching close so the slice is exactly the arm, not the whole file.
 function elseArmBody(src: string): string {
-	const t6a = src.indexOf("skip on the sole (last) song");
+	const t6a = src.indexOf('skip on the sole (last) song');
 	expect(t6a).toBeGreaterThanOrEqual(0); // not vacuous: the arm's T6a record must exist
 	const elseOpen = src.lastIndexOf('} else {', t6a);
 	expect(elseOpen).toBeGreaterThanOrEqual(0);
@@ -61,7 +61,7 @@ function elseArmBody(src: string): string {
 const ARM = elseArmBody(PROBE);
 
 test('the single-cooked-song arm exists and contains the T6a no-current assertion (#264, not vacuous)', () => {
-	expect(ARM).toContain("skip on the sole (last) song");
+	expect(ARM).toContain('skip on the sole (last) song');
 	expect(ARM).toMatch(/currentEntryId\s*===\s*null/);
 });
 
@@ -187,7 +187,7 @@ function drainStartInArm(arm: string): number {
 
 test('the single-cooked-song arm DRAINS BEFORE it asserts no-current (#264 order — the ship-a-bug direction)', () => {
 	const drainIdx = drainStartInArm(ARM);
-	const t6aIdx = ARM.indexOf("skip on the sole (last) song");
+	const t6aIdx = ARM.indexOf('skip on the sole (last) song');
 	// Not vacuous: both anchors must resolve inside the arm.
 	expect(drainIdx).toBeGreaterThanOrEqual(0);
 	expect(t6aIdx).toBeGreaterThanOrEqual(0);

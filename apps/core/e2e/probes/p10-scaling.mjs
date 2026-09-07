@@ -30,6 +30,7 @@
 import { connect, sleep } from '../cdp.mjs';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { SEL } from '../contract.ts';
 
 const PORT = Number(process.env.PORT || 5230);
 const CDPPORT = Number(process.env.CDPPORT || 9230);
@@ -80,7 +81,9 @@ async function driveRoomToPlaying() {
 	await phone.waitFor(`document.querySelector('input[placeholder^="e.g."]') != null`, { timeout: 5000 });
 	const uniq = `Driver-${Date.now().toString(36).slice(-5)}`;
 	await phone.fill('input[placeholder^="e.g."]', uniq);
-	await phone.evaluate(`[...document.querySelectorAll('button')].find(b=>/start singing/i.test(b.textContent||''))?.click()`);
+	await phone.evaluate(
+		`[...document.querySelectorAll('button')].find(b=>/start singing/i.test(b.textContent||''))?.click()`
+	);
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 5000 });
 	// Add the ready song to the queue (whichever action is offered — .add on ready songs).
 	await phone.waitFor(`document.querySelector(${JSON.stringify(SEL.songRow)}) != null`, { timeout: 6000 });
@@ -101,9 +104,8 @@ async function driveRoomToPlaying() {
 	return phone;
 }
 
-let phonePage = null;
 try {
-	phonePage = await driveRoomToPlaying();
+	await driveRoomToPlaying();
 } catch (err) {
 	record({ phase: 'setup', warning: `could not reach playing state via phone: ${err}` });
 }
@@ -361,7 +363,9 @@ async function measureRemote(label, w, h) {
 	await page.fill('input[placeholder^="e.g."]', uniq);
 	// Wait for submit, then click.
 	await page.waitFor(`[...document.querySelectorAll('button')].some(b=>/start singing/i.test(b.textContent||''))`);
-	await page.evaluate(`[...document.querySelectorAll('button')].find(b=>/start singing/i.test(b.textContent||''))?.click()`);
+	await page.evaluate(
+		`[...document.querySelectorAll('button')].find(b=>/start singing/i.test(b.textContent||''))?.click()`
+	);
 	await page.waitFor(`location.pathname === '/'`, { timeout: 5000 });
 	await sleep(300);
 

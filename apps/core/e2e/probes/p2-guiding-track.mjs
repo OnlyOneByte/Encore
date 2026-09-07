@@ -24,7 +24,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync, readFileSync, statSync, openSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -357,13 +357,12 @@ async function sendQueueAdd(phone, mediaId, singerId) {
 }
 
 // ── the probe ──────────────────────────────────────────────────────────────
-let serverProc;
 async function main() {
 	mkdirSync(RUN_DIR, { recursive: true });
 	const chromium = findChromium();
 	if (!chromium) bail('no Chromium found. Set PW_CHROMIUM.');
 
-	serverProc = await bootServer();
+	await bootServer();
 
 	// 1. Cook three audible songs, so the room has enough content for reset + default tests.
 	let worker = await spawnWorker('audible');
@@ -376,7 +375,8 @@ async function main() {
 		await makeKaraoke(hit.id);
 		const ready = await waitReady(hit.id);
 		audibleMedia.push(ready);
-		if (!ready.vocalsRef) bail(`audible cook of "${q}" produced no vocalsRef — the fake worker must always publish one`);
+		if (!ready.vocalsRef)
+			bail(`audible cook of "${q}" produced no vocalsRef — the fake worker must always publish one`);
 	}
 	console.log(`[cook] 3 audible songs ready:`, audibleMedia.map((m) => m.id).join(', '));
 
@@ -441,7 +441,9 @@ async function main() {
 		},
 		{ timeout: 20_000, name: 'master decoding' }
 	);
-	console.log(`[tv] master decoding: ${decodedAfterStart.decoded} bytes, t=${decodedAfterStart.currentTime.toFixed(2)}s`);
+	console.log(
+		`[tv] master decoding: ${decodedAfterStart.decoded} bytes, t=${decodedAfterStart.currentTime.toFixed(2)}s`
+	);
 
 	// ── Finding 1: at guide level 0 (the resting default), the vocals element must not mount. ───
 	{
@@ -478,7 +480,7 @@ async function main() {
 			'CRITICAL',
 			'level 0.15: vocals element mounted with src=<…vocals…>',
 			!!v1 && v1.src.includes('vocals'),
-			`vocals ? src=${v1?.src}` ,
+			`vocals ? src=${v1?.src}`,
 			`an <audio> whose currentSrc contains "vocals"`
 		);
 		record(
@@ -586,7 +588,10 @@ async function main() {
 	const afterSkip = await waitFor(
 		async () => {
 			const els = await tvElements(tv);
-			return els.master && els.master.src && els.master.src !== decodedAfterStart.src && (els.master.decoded ?? 0) > 3000
+			return els.master &&
+				els.master.src &&
+				els.master.src !== decodedAfterStart.src &&
+				(els.master.decoded ?? 0) > 3000
 				? els
 				: null;
 		},
@@ -630,7 +635,7 @@ async function main() {
 			},
 			{ timeout: 15_000, every: 400, name: 'room-default: master decoding + vocals mounted on fresh song' }
 		);
-	} catch (err) {
+	} catch {
 		withDefault = await tvElements(tv);
 	}
 	record(
@@ -642,7 +647,7 @@ async function main() {
 	);
 	// … and it's actually decoding under the room default: poll for progress with a real timeout so a
 	// slow first buffer doesn't false-fail.
-	let vocalsDecoded = null;
+	let vocalsDecoded;
 	try {
 		vocalsDecoded = await waitFor(
 			async () => {
@@ -651,7 +656,7 @@ async function main() {
 			},
 			{ timeout: 8000, name: 'room-default vocals decoded byte count climbs' }
 		);
-	} catch (err) {
+	} catch {
 		vocalsDecoded = null;
 	}
 	const roomDefaultLatest = vocalsDecoded ?? (await tvElements(tv));
@@ -738,7 +743,7 @@ async function main() {
 	} catch {}
 }
 
-let exitCode = 0;
+let exitCode;
 try {
 	await main();
 	const failed = findings.filter((f) => !f.ok);

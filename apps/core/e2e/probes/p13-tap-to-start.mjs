@@ -135,7 +135,10 @@ try {
 	);
 	check(
 		'the master is stalled at the preload floor before any gesture (paused, t=0, some decoded bytes)',
-		blocked.master && blocked.master.paused === true && blocked.master.currentTime === 0 && (blocked.master.decoded ?? 0) > 0,
+		blocked.master &&
+			blocked.master.paused === true &&
+			blocked.master.currentTime === 0 &&
+			(blocked.master.decoded ?? 0) > 0,
 		`master=${JSON.stringify(blocked.master)} - gestureless it must NOT be playing`
 	);
 
@@ -149,7 +152,11 @@ try {
 	const b = (await tv.evaluate(probe)).master;
 
 	if (!a || !b) {
-		check('AUDIO IS DECODING after the tap (decoded byte count climbing)', false, 'no master element with a source to measure');
+		check(
+			'AUDIO IS DECODING after the tap (decoded byte count climbing)',
+			false,
+			'no master element with a source to measure'
+		);
 	} else {
 		const dDecoded = (b.decoded ?? 0) - (a.decoded ?? 0);
 		const dTime = b.currentTime - a.currentTime;

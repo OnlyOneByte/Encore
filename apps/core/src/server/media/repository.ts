@@ -193,7 +193,9 @@ export class MediaRepository {
 	setTags(mediaId: string, kind: 'genre' | 'tag' | 'mood', values: string[]): void {
 		const clean = [...new Set(values.map((v) => v.trim().toLowerCase()).filter(Boolean))];
 		this.#db.transaction((tx) => {
-			tx.delete(mediaTags).where(and(eq(mediaTags.mediaId, mediaId), eq(mediaTags.kind, kind))).run();
+			tx.delete(mediaTags)
+				.where(and(eq(mediaTags.mediaId, mediaId), eq(mediaTags.kind, kind)))
+				.run();
 			if (clean.length === 0) return;
 			tx.insert(mediaTags)
 				.values(clean.map((value) => ({ mediaId, kind, value })))
@@ -254,7 +256,9 @@ export class MediaRepository {
 			.select()
 			.from(media)
 			.innerJoin(mediaTags, eq(mediaTags.mediaId, media.id))
-			.where(and(eq(media.stemStatus, 'ready'), eq(mediaTags.kind, 'genre'), eq(mediaTags.value, genre.trim().toLowerCase())))
+			.where(
+				and(eq(media.stemStatus, 'ready'), eq(mediaTags.kind, 'genre'), eq(mediaTags.value, genre.trim().toLowerCase()))
+			)
 			.orderBy(desc(media.id))
 			.all()
 			.map((r) => fromRow(r.media));

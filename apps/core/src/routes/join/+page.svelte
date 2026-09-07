@@ -66,12 +66,7 @@
 		<div class="err" role="alert">{error}</div>
 	{/if}
 
-	<button
-		class="btn-accent submit"
-		class:disabled={!canJoin}
-		disabled={!canJoin}
-		onclick={join}
-	>
+	<button class="btn-accent submit" class:disabled={!canJoin} disabled={!canJoin} onclick={join}>
 		{#if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
 	</button>
 </main>
@@ -79,26 +74,60 @@
 <style>
 	/* Was inline on <header>; moved here so the page's spacing lives in one place, not split between
 	   attributes and this block. */
-	.join-head { padding: 26px 20px 8px; text-align: center; }
+	.join-head {
+		padding: 26px 20px 8px;
+		text-align: center;
+	}
 	/* The mic was 🎤 — platform-dependent art, and a tofu box with no emoji font. */
-	.brand { display: inline-flex; align-items: center; justify-content: center; gap: 10px; font-weight: 800; font-size: 1.6rem; letter-spacing: 0.5px; margin: 0; line-height: inherit; }
+	.brand {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 10px;
+		font-weight: 800;
+		font-size: 1.6rem;
+		letter-spacing: 0.5px;
+		margin: 0;
+		line-height: inherit;
+	}
 	.wordmark {
 		background: var(--grad);
 		-webkit-background-clip: text;
 		background-clip: text;
 		color: transparent;
 	}
-	.lede { color: var(--ink-dim); margin: 6px 0 0; font-size: 0.9rem; }
+	.lede {
+		color: var(--ink-dim);
+		margin: 6px 0 0;
+		font-size: 0.9rem;
+	}
 	/* --danger-ink (text-on-dark ink), NOT --danger (the semantic failure FILL): using the fill token
 	   as text put join's error one tap away from ProfileSheet's error in a different, wrong red. */
-	.err { color: var(--danger-ink); font-size: 0.9rem; }
+	.err {
+		color: var(--danger-ink);
+		font-size: 0.9rem;
+	}
 
-	.name-field { display: flex; flex-direction: column; gap: 8px; }
+	.name-field {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
 	/* Eyebrow label: this exact idiom (0.78rem / 0.12em / uppercase / --ink-dim) is a THIRD copy of one
 	   in ProfileSheet (.field) and ColourPicker (.field-label). Kept local since this file owns only
 	   this copy; flagged for a later shared primitive rather than reaching into siblings. */
-	.name-label { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
-	.name-input { padding: 14px; font-size: 1.1rem; color: var(--ink); background: var(--card); }
+	.name-label {
+		font-size: 0.78rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+	.name-input {
+		padding: 14px;
+		font-size: 1.1rem;
+		color: var(--ink);
+		background: var(--card);
+	}
 
 	/*
 	 * Join stays narrow while the shell widens: it is four short controls, so stretching the name
@@ -118,7 +147,9 @@
 		margin-top: auto;
 		/* --radius (18px), the card/sheet radius, for this full-width primary button; the inline 16px it
 		   replaced matched neither token. Padding + type keep it well over the 44px tap target. */
-		padding: 16px; font-size: 1.1rem; border-radius: var(--radius);
+		padding: 16px;
+		font-size: 1.1rem;
+		border-radius: var(--radius);
 		/* Centres the trailing mark with the label instead of letting it sit on the text baseline. */
 		display: inline-flex;
 		align-items: center;
@@ -126,7 +157,9 @@
 		gap: 8px;
 	}
 	/* Was an inline opacity bound to canJoin; the disabled attribute already carries the state. */
-	.submit.disabled { opacity: 0.5; }
+	.submit.disabled {
+		opacity: 0.5;
+	}
 	@media (min-width: 768px) {
 		/*
 		 * Centre the wordmark and the form TOGETHER. Centring only the form leaves the header pinned to

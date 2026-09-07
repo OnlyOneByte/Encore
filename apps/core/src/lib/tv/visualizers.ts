@@ -94,10 +94,7 @@ export function drawPlasma(ctx: VizContext, f: VizFrame): void {
 			const x = cx / Math.max(1, cols);
 			const y = cy / Math.max(1, rows);
 			// three interfering waves — the classic form, slow enough to read as drifting not flickering
-			const v =
-				Math.sin(x * 6 + f.t * 0.6) +
-				Math.sin(y * 5 - f.t * 0.45) +
-				Math.sin((x + y) * 4 + f.t * 0.3);
+			const v = Math.sin(x * 6 + f.t * 0.6) + Math.sin(y * 5 - f.t * 0.45) + Math.sin((x + y) * 4 + f.t * 0.3);
 			const n = (v + 3) / 6; // → 0..1
 			ctx.globalAlpha = 0.25 + n * 0.75;
 			ctx.fillStyle = n > 0.5 ? warm : cool;
@@ -163,7 +160,7 @@ export function drawMoire(ctx: VizContext, f: VizFrame): void {
 	for (const [cx, cy, dir] of centres) {
 		ctx.strokeStyle = dir > 0 ? stageHueToHex(f.hue) : shifted(f.hue, 50);
 		const step = 26;
-		const phase = ((f.t * 18 * dir) % step + step) % step;
+		const phase = (((f.t * 18 * dir) % step) + step) % step;
 		for (let r = phase; r < maxR; r += step) {
 			ctx.globalAlpha = 0.25 + 0.35 * (1 - r / maxR);
 			ctx.beginPath();

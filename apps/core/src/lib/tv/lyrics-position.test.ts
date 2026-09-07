@@ -30,7 +30,11 @@ test('paused: no wall-clock reading can move the drawn position off the anchor',
 	const P = 17;
 	// Sweep an arbitrary set of clock pairs; paused output must be P for every one of them.
 	for (const [anchoredAtMs, nowMs] of [
-		[0, 0], [0, 60_000], [1000, 0], [999_999, 1], [1, 999_999]
+		[0, 0],
+		[0, 60_000],
+		[1000, 0],
+		[999_999, 1],
+		[1, 999_999]
 	] as const) {
 		expect(drawPosition({ positionSec: P, playing: false, anchoredAtMs, nowMs })).toBe(P);
 	}
@@ -57,7 +61,10 @@ test('playing: the elapsed term is floored at 0 so the draw position never dips 
 const OVERLAY = readFileSync(join(import.meta.dir, 'LyricsOverlay.svelte'), 'utf8');
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, '');
+	return src
+		.replace(/<!--[\s\S]*?-->/g, blank)
+		.replace(/\/\*[\s\S]*?\*\//g, blank)
+		.replace(/\/\/[^\n]*/g, '');
 }
 const CODE = stripComments(OVERLAY);
 
@@ -81,7 +88,9 @@ test('the drawn position is not a mutable $state accumulator that a stopped rAF 
 	expect(/\$derived\(\s*drawPosition\s*\(/.test(FLAT)).toBe(true);
 
 	// (2) The old name-pinned negative, kept as a cheap belt-and-suspenders check (no longer load-bearing).
-	expect(/let\s+\w+\s*=\s*\$state\s*\(\s*0\s*\)\s*;[\s\S]*?const\s+displayPos\s*=\s*\$derived\s*\(\s*\w+\s*\)/.test(CODE)).toBe(false);
+	expect(
+		/let\s+\w+\s*=\s*\$state\s*\(\s*0\s*\)\s*;[\s\S]*?const\s+displayPos\s*=\s*\$derived\s*\(\s*\w+\s*\)/.test(CODE)
+	).toBe(false);
 
 	// (3) Inspect the rAF tick body — matched in EITHER form (`const tick = () => {…}` OR
 	// `function tick() {…}` OR `const tick = function () {…}`) so a re-declaration cannot make the scan

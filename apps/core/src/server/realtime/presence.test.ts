@@ -257,9 +257,7 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 	// Deletion has no runtime-observable regression (nothing called them), so guard the SOURCE.
 	const stripComments = (src: string) =>
 		src.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' ')).replace(/\/\/[^\n]*/g, '');
-	const source = stripComments(
-		readFileSync(join(import.meta.dir, 'presence.ts'), 'utf-8')
-	);
+	const source = stripComments(readFileSync(join(import.meta.dir, 'presence.ts'), 'utf-8'));
 
 	it('does not re-expose isOnline() or count() on PresenceTracker', () => {
 		expect(source).not.toMatch(/\bisOnline\s*\(/);
@@ -336,9 +334,7 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 		// appears only inside its PARAMETER object, so `[^)]*` (which stops at the first `)`) never reaches it.
 		const BOOL_RETURNERS = ['connect', 'disconnect', 'forget'];
 		const boolReturners = [
-			...classBody.matchAll(
-				/\n\t(?:[a-z]+\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*:\s*(?:Promise<\s*)?boolean/g
-			)
+			...classBody.matchAll(/\n\t(?:[a-z]+\s+)*([A-Za-z_$][\w$]*)\s*\([^)]*\)\s*:\s*(?:Promise<\s*)?boolean/g)
 		]
 			.map((m) => m[1])
 			.sort();

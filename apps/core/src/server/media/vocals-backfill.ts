@@ -43,10 +43,9 @@ export function needsVocalsBackfill(catalog: Iterable<Media>): string[] {
  * silently miss those songs.
  */
 export function candidateVocalsRefs(m: Media): string[] {
-	const refs = [
-		vocalsKey(m.id),
-		...(m.instrumentalRef ? legacyVocalsRefs(m.instrumentalRef) : [])
-	].filter((r): r is string => !!r);
+	const refs = [vocalsKey(m.id), ...(m.instrumentalRef ? legacyVocalsRefs(m.instrumentalRef) : [])].filter(
+		(r): r is string => !!r
+	);
 	return [...new Set(refs)];
 }
 

@@ -29,11 +29,7 @@
  * still holds (see #251, and the `!playable` branch below). `changed` is true only when the element must actually be
  * written, so an unchanged song is a no-op and never reloads, and a not-playable pass is never a clear.
  */
-export function nextVideoSrc(
-	prev: string | null,
-	next: string,
-	playable: boolean
-): { src: string; changed: boolean } {
+export function nextVideoSrc(prev: string | null, next: string, playable: boolean): { src: string; changed: boolean } {
 	// Nothing playable this pass: keep whatever the element holds, never write. The only genuine
 	// "clear" is a real unmount, which never reaches this function.
 	if (!playable) return { src: prev ?? '', changed: false };

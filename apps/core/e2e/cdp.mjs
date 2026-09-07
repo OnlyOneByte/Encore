@@ -76,11 +76,7 @@ export async function connect(port) {
 
 function makePage(send, sessionId) {
 	const evaluate = async (expression) => {
-		const res = await send(
-			'Runtime.evaluate',
-			{ expression, awaitPromise: true, returnByValue: true },
-			sessionId
-		);
+		const res = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
 		if (res.exceptionDetails) {
 			throw new Error(`in-page error: ${res.exceptionDetails.exception?.description ?? 'unknown'}`);
 		}
@@ -206,10 +202,10 @@ function makePage(send, sessionId) {
 			await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, sessionId);
 		},
 
-		count: (selector) => evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`),		texts: (selector) =>
+		count: (selector) => evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`),
+		texts: (selector) =>
 			evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].map(e => e.textContent.trim())`),
-		text: (selector) =>
-			evaluate(`(document.querySelector(${JSON.stringify(selector)})?.textContent ?? '').trim()`),
+		text: (selector) => evaluate(`(document.querySelector(${JSON.stringify(selector)})?.textContent ?? '').trim()`),
 		/** The computed value of a CSS property — how a rendered-size assertion is actually made. */
 		css: (selector, prop) =>
 			evaluate(`(() => {

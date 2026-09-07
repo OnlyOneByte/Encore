@@ -4,12 +4,15 @@ import { YouTubeResolver } from './youtube';
 import type { SearchResult } from './resolver';
 
 const fakeResult = (id: string): SearchResult => ({
-	source: 'youtube', sourceRef: id, title: 'T-' + id, durationSec: 200
+	source: 'youtube',
+	sourceRef: id,
+	title: 'T-' + id,
+	durationSec: 200
 });
 
 test('second identical query is served from cache (backend called once)', async () => {
 	let calls = 0;
-	const r = new YouTubeResolver(async (q, n) => {
+	const r = new YouTubeResolver(async (_q, _n) => {
 		calls++;
 		return [fakeResult('v1')];
 	});
@@ -21,7 +24,10 @@ test('second identical query is served from cache (backend called once)', async 
 
 test('different limit is a different cache key', async () => {
 	let calls = 0;
-	const r = new YouTubeResolver(async () => { calls++; return [fakeResult('v1')]; });
+	const r = new YouTubeResolver(async () => {
+		calls++;
+		return [fakeResult('v1')];
+	});
 	await r.search('abba', 5);
 	await r.search('abba', 10);
 	expect(calls).toBe(2);
@@ -30,7 +36,13 @@ test('different limit is a different cache key', async () => {
 test('cache expires after ttl', async () => {
 	let calls = 0;
 	let t = 1000;
-	const r = new YouTubeResolver(async () => { calls++; return [fakeResult('v1')]; }, { ttlMs: 100, now: () => t });
+	const r = new YouTubeResolver(
+		async () => {
+			calls++;
+			return [fakeResult('v1')];
+		},
+		{ ttlMs: 100, now: () => t }
+	);
 	await r.search('queen', 5);
 	t += 50; // within ttl
 	await r.search('queen', 5);
@@ -53,7 +65,10 @@ test('concurrent identical queries dedupe to one backend call', async () => {
 
 test('blank query returns nothing without calling backend', async () => {
 	let calls = 0;
-	const r = new YouTubeResolver(async () => { calls++; return []; });
+	const r = new YouTubeResolver(async () => {
+		calls++;
+		return [];
+	});
 	expect(await r.search('   ', 5)).toEqual([]);
 	expect(calls).toBe(0);
 });

@@ -29,8 +29,16 @@
 		ontoggle?: (open: boolean) => void;
 	}
 	let {
-		open, title, sub, position, queueCount = 0, elapsedSec = 0, durationSec = 0,
-		children, controls, ontoggle
+		open,
+		title,
+		sub,
+		position,
+		queueCount = 0,
+		elapsedSec = 0,
+		durationSec = 0,
+		children,
+		controls,
+		ontoggle
 	}: Props = $props();
 
 	const progress = $derived(progressFraction(elapsedSec, durationSec));
@@ -93,7 +101,13 @@
 	<div class="sheet-scrim backdrop" onclick={() => ontoggle?.(false)} aria-hidden="true"></div>
 {/if}
 
-<section class="sheet-surface sheet" class:open class:dragging style="--drag:{dragDy}px" aria-label="Queue">
+<section
+	class="sheet-surface sheet"
+	class:open={open}
+	class:dragging={dragging}
+	style="--drag:{dragDy}px"
+	aria-label="Queue"
+>
 	<div
 		class="peek"
 		bind:clientHeight={peekH}
@@ -112,9 +126,18 @@
 			// arrows it originated itself. Without this, `preventDefault()` cancels a focused transport
 			// button's own Enter/Space activation and toggles the sheet instead (#301).
 			if (e.target !== e.currentTarget) return;
-			if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); ontoggle?.(!open); }
-			if (e.key === 'ArrowUp') { e.preventDefault(); ontoggle?.(true); }
-			if (e.key === 'ArrowDown') { e.preventDefault(); ontoggle?.(false); }
+			if (e.key === 'Enter' || e.key === ' ') {
+				e.preventDefault();
+				ontoggle?.(!open);
+			}
+			if (e.key === 'ArrowUp') {
+				e.preventDefault();
+				ontoggle?.(true);
+			}
+			if (e.key === 'ArrowDown') {
+				e.preventDefault();
+				ontoggle?.(false);
+			}
 		}}
 	>
 		<div class="grip" aria-hidden="true"></div>
@@ -155,7 +178,9 @@
 
 <style>
 	/* Geometry and surface come from .sheet-scrim / .sheet-surface in app.css. */
-	.backdrop { z-index: 9; }
+	.backdrop {
+		z-index: 9;
+	}
 	.sheet {
 		z-index: 10;
 		background: var(--card2);
@@ -167,42 +192,126 @@
 		transform: translateY(calc(100% - var(--peek-h, 132px) + var(--drag, 0px)));
 		transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1);
 	}
-	.sheet.open { transform: translateY(var(--drag, 0px)); }
+	.sheet.open {
+		transform: translateY(var(--drag, 0px));
+	}
 	/* while a finger is down, follow it exactly — a transition here feels like lag */
-	.sheet.dragging { transition: none; }
+	.sheet.dragging {
+		transition: none;
+	}
 	/* .peek bottom padding carries the iOS home-indicator inset. .sheet is position:fixed, so the
 	   .app-shell's safe-area padding does not reach it — the collapsed peek (transport + seek row)
 	   would otherwise sit in the ~34px reserved for the home indicator. Matches the settings route's
 	   calc(28px + env(...)) pattern. A sibling adds a short-viewport rule from the route/token side;
 	   keeping this to the inset lets the two compose. */
-	.peek { padding: 8px 14px calc(10px + env(safe-area-inset-bottom, 0px)); cursor: grab; touch-action: none; flex: 0 0 auto; }
-	.seekrow { display: flex; align-items: center; gap: 9px; margin: 10px 0 2px; }
-	.time { font-size: 0.68rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; min-width: 30px; }
-	.time.r { text-align: right; }
-	.track { flex: 1; height: 4px; background: var(--line); border-radius: var(--radius-xs); overflow: hidden; }
+	.peek {
+		padding: 8px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+		cursor: grab;
+		touch-action: none;
+		flex: 0 0 auto;
+	}
+	.seekrow {
+		display: flex;
+		align-items: center;
+		gap: 9px;
+		margin: 10px 0 2px;
+	}
+	.time {
+		font-size: 0.68rem;
+		color: var(--ink-dim);
+		font-variant-numeric: tabular-nums;
+		min-width: 30px;
+	}
+	.time.r {
+		text-align: right;
+	}
+	.track {
+		flex: 1;
+		height: 4px;
+		background: var(--line);
+		border-radius: var(--radius-xs);
+		overflow: hidden;
+	}
 	/* scaleX, not width: animating width triggers layout every frame, which motion.test.ts forbids
 	   outright. The fill is full-width and scaled from its left edge instead, which composites. The
 	   transition exists because position arrives about once a second — without it the bar visibly
 	   steps; with it the steps read as continuous motion. */
 	.track > i {
-		display: block; height: 100%; width: 100%; background: var(--grad); border-radius: var(--radius-xs);
-		transform-origin: left center; transition: transform 1s linear;
+		display: block;
+		height: 100%;
+		width: 100%;
+		background: var(--grad);
+		border-radius: var(--radius-xs);
+		transform-origin: left center;
+		transition: transform 1s linear;
 	}
-	@media (prefers-reduced-motion: reduce) { .track > i { transition: none; } }
-	.peek:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: var(--radius); }
-	.grip { width: 40px; height: 4px; border-radius: 3px; background: var(--line-strong); margin: 2px auto 10px; }
-	.line { display: flex; align-items: center; gap: 12px; }
-	.txt { min-width: 0; flex: 1; }
-	.t { font-weight: 700; font-size: 0.95rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-	.s { font-size: 0.78rem; color: var(--ink-dim); }
-	.pos { font-size: 0.8rem; font-weight: 700; color: var(--accent2); margin-top: 3px; }
-	.ctrls { display: flex; align-items: center; gap: 10px; flex: 0 0 auto; }
+	@media (prefers-reduced-motion: reduce) {
+		.track > i {
+			transition: none;
+		}
+	}
+	.peek:focus-visible {
+		outline: 2px solid var(--focus);
+		outline-offset: -2px;
+		border-radius: var(--radius);
+	}
+	.grip {
+		width: 40px;
+		height: 4px;
+		border-radius: 3px;
+		background: var(--line-strong);
+		margin: 2px auto 10px;
+	}
+	.line {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+	.txt {
+		min-width: 0;
+		flex: 1;
+	}
+	.t {
+		font-weight: 700;
+		font-size: 0.95rem;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.s {
+		font-size: 0.78rem;
+		color: var(--ink-dim);
+	}
+	.pos {
+		font-size: 0.8rem;
+		font-weight: 700;
+		color: var(--accent2);
+		margin-top: 3px;
+	}
+	.ctrls {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex: 0 0 auto;
+	}
 	.hint {
-		display: flex; align-items: center; justify-content: center; gap: 6px;
-		font-size: 0.68rem; letter-spacing: 0.08em; text-transform: uppercase;
-		color: var(--ink-dim); margin-top: 9px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+		font-size: 0.68rem;
+		letter-spacing: 0.08em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+		margin-top: 9px;
 	}
-	.body { overflow-y: auto; padding: 4px 14px calc(20px + env(safe-area-inset-bottom, 0px)); -webkit-overflow-scrolling: touch; }
+	.body {
+		overflow-y: auto;
+		padding: 4px 14px calc(20px + env(safe-area-inset-bottom, 0px));
+		-webkit-overflow-scrolling: touch;
+	}
 	/* keep the collapsed sheet from eating taps meant for the page behind it */
-	.sheet:not(.open) .body { pointer-events: none; }
+	.sheet:not(.open) .body {
+		pointer-events: none;
+	}
 </style>

@@ -22,12 +22,7 @@ const dir = join(MEDIA, 'library');
 
 // Must match the seededLibrary sourceRefs in server.ts. The contract guard does not cover these
 // because they are dev-seed data rather than a UI selector, so they are listed with that warning.
-const FILES = [
-	'dont-stop-believin.mp4',
-	'sweet-caroline.mp4',
-	'bohemian-rhapsody.mp4',
-	'livin-on-a-prayer.mp4'
-];
+const FILES = ['dont-stop-believin.mp4', 'sweet-caroline.mp4', 'bohemian-rhapsody.mp4', 'livin-on-a-prayer.mp4'];
 
 mkdirSync(dir, { recursive: true });
 let written = 0;

@@ -114,7 +114,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 	if (!deps.actorSingerId) return 'join the room first';
 	const { op } = cmd;
 	switch (op.op) {
-		case 'add':
+		case 'add': {
 			if (!op.entry?.id) return 'missing entry id';
 			// singerId is NOT NULL in queue_entries, and the persistence write happens inside the
 			// state mutation — so an add without one used to throw a SQLiteError out of store.apply()
@@ -146,7 +146,12 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// re-land on while its entry is still 'queued'; a re-add onto a non-queued row is rejected,
 			// same as a different-identity collision (#370, residual of #285's identical-identity carve-out).
 			const existing = deps.state.entries.find((e) => e.id === op.entry.id);
-			if (existing && (existing.singerId !== op.entry.singerId || existing.mediaId !== op.entry.mediaId || existing.status !== 'queued'))
+			if (
+				existing &&
+				(existing.singerId !== op.entry.singerId ||
+					existing.mediaId !== op.entry.mediaId ||
+					existing.status !== 'queued')
+			)
 				return `entry id already taken: ${op.entry.id}`;
 			// Shape of the CLIENT-MINTED fields that reach the queue verbatim (applyOp inserts op.entry
 			// unchanged; only rotationSeq is server-owned). Both feed NOT NULL columns in queue_entries
@@ -187,6 +192,7 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 				return `invalid status: ${String(op.entry.status)} (${known ? 'server-owned' : 'off-enum'}; a client may only add a queued entry)`;
 			}
 			return null;
+		}
 		case 'remove': {
 			const removeTarget = deps.state.entries.find((e) => e.id === op.id);
 			if (!removeTarget) return `unknown entry: ${op.id}`;
@@ -303,9 +309,7 @@ export function handleQueueCommand(
 	// the authoritative `entries` carried inline on this patch, the same one-op mispredict applyAndReseq
 	// already tolerates for a stale snapshot.
 	const op: QueueOp =
-		cmd.op.op === 'add'
-			? { op: 'add', entry: { ...cmd.op.entry, addedAt: deps.state.nextAddedAt() } }
-			: cmd.op;
+		cmd.op.op === 'add' ? { op: 'add', entry: { ...cmd.op.entry, addedAt: deps.state.nextAddedAt() } } : cmd.op;
 
 	const { rev, canonicalOps, entries } = deps.state.applyQueueOp(op);
 

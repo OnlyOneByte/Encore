@@ -63,7 +63,5 @@ test('sourceUriFor replaces the core-side source conditional', () => {
 	expect(sourceUriFor({ source: 'youtube', sourceRef: 'djV11Xbc914' })).toBe(
 		'https://www.youtube.com/watch?v=djV11Xbc914'
 	);
-	expect(sourceUriFor({ source: 'local', sourceRef: 'library/sweet-caroline.mp4' })).toBe(
-		'library/sweet-caroline.mp4'
-	);
+	expect(sourceUriFor({ source: 'local', sourceRef: 'library/sweet-caroline.mp4' })).toBe('library/sweet-caroline.mp4');
 });

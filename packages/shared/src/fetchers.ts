@@ -84,10 +84,7 @@ export function needsFetch(source: MediaSource, defaultFetcher?: string): boolea
 }
 
 /** The URI a worker pulls for this media. Replaces the core's old source-conditional. */
-export function sourceUriFor(
-	media: { source: MediaSource; sourceRef: string },
-	defaultFetcher?: string
-): string {
+export function sourceUriFor(media: { source: MediaSource; sourceRef: string }, defaultFetcher?: string): string {
 	const f = getFetcher(fetcherFor(media.source, defaultFetcher));
 	return f ? f.uri(media.sourceRef) : media.sourceRef;
 }

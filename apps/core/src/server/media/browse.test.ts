@@ -21,7 +21,13 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 });
 
 const cooked = (id: string, over: Partial<Media> = {}) =>
-	media(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey(id), songProfile: EMPTY_SONG_PROFILE, ...over });
+	media(id, {
+		stemStatus: 'ready',
+		lyricsStatus: 'ready',
+		instrumentalRef: instrumentalKey(id),
+		songProfile: EMPTY_SONG_PROFILE,
+		...over
+	});
 
 let repo: MediaRepository;
 
@@ -142,15 +148,30 @@ describe('browse only shows singable songs', () => {
 		]);
 	});
 
-	it('byArtist returns that artist\'s ready songs only', () => {
-		expect(repo.byArtist('Daft Punk').map((m) => m.id).sort()).toEqual(['c1', 'c2']);
+	it("byArtist returns that artist's ready songs only", () => {
+		expect(
+			repo
+				.byArtist('Daft Punk')
+				.map((m) => m.id)
+				.sort()
+		).toEqual(['c1', 'c2']);
 		expect(repo.byArtist('Queen').map((m) => m.id)).toEqual(['c3']);
 		expect(repo.byArtist('Nobody')).toEqual([]);
 	});
 
 	it('byGenre returns ready songs carrying it, and is case-insensitive on input', () => {
-		expect(repo.byGenre('electronic').map((m) => m.id).sort()).toEqual(['c1', 'c2']);
-		expect(repo.byGenre('Electronic').map((m) => m.id).sort()).toEqual(['c1', 'c2']);
+		expect(
+			repo
+				.byGenre('electronic')
+				.map((m) => m.id)
+				.sort()
+		).toEqual(['c1', 'c2']);
+		expect(
+			repo
+				.byGenre('Electronic')
+				.map((m) => m.id)
+				.sort()
+		).toEqual(['c1', 'c2']);
 		expect(repo.byGenre('house').map((m) => m.id)).toEqual(['c2']);
 	});
 
@@ -163,7 +184,7 @@ describe('browse only shows singable songs', () => {
 
 	it('browsed rows are full Media, so a one-tap re-queue still works', () => {
 		const [m] = repo.byArtist('Queen');
-        expect(m.instrumentalRef).toBe(instrumentalKey('c3'));
+		expect(m.instrumentalRef).toBe(instrumentalKey('c3'));
 		expect(m.stemStatus).toBe('ready');
 	});
 });

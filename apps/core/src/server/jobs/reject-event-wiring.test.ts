@@ -34,15 +34,28 @@ function methodBody(src: string, name: string): string {
 	let afterParams = -1;
 	for (let i = paramOpen + 1; i < src.length; i++) {
 		if (src[i] === '(') paren++;
-		else if (src[i] === ')') { paren--; if (paren === 0) { afterParams = i + 1; break; } }
+		else if (src[i] === ')') {
+			paren--;
+			if (paren === 0) {
+				afterParams = i + 1;
+				break;
+			}
+		}
 	}
 	expect(afterParams).toBeGreaterThan(sig);
 	const open = src.indexOf('{', afterParams);
 	expect(open).toBeGreaterThanOrEqual(0);
-	let depth = 0, end = -1;
+	let depth = 0,
+		end = -1;
 	for (let i = open; i < src.length; i++) {
 		if (src[i] === '{') depth++;
-		else if (src[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+		else if (src[i] === '}') {
+			depth--;
+			if (depth === 0) {
+				end = i;
+				break;
+			}
+		}
 	}
 	expect(end).toBeGreaterThan(open);
 	return src.slice(open, end + 1);

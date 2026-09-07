@@ -56,4 +56,3 @@ test('an instrumental without a ready status is not playable either', () => {
 	// never flipped. Playing it would resurrect a song the pipeline does not consider done.
 	expect(playbackRef(m({ stemStatus: 'queued', instrumentalRef: 'stems/m1-instrumental.wav' }))).toBe('');
 });
-

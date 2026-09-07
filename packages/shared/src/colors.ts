@@ -67,7 +67,11 @@ export function parseHex(input: string): [number, number, number] | null {
 	const m = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec((input ?? '').trim());
 	if (!m) return null;
 	let h = m[1]!;
-	if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+	if (h.length === 3)
+		h = h
+			.split('')
+			.map((c) => c + c)
+			.join('');
 	return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
 }
 
@@ -217,7 +221,6 @@ export function stageLightnessForHue(hueDeg: number): number {
 export function stageHueToHex(hueDeg: number): string {
 	return hueToHex(hueDeg, stageLightnessForHue(hueDeg), STAGE_BG_C);
 }
-
 
 // ── validation ─────────────────────────────────────────────────────────────
 

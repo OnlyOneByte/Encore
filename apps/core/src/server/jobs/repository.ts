@@ -7,7 +7,15 @@
 import { and, eq, inArray, notInArray } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobs } from '../db/schema';
-import { ulid, isTerminalJob, type Job, type JobStatus, type JobType, type JobEvent, type AttemptOutcome } from '@encore/shared';
+import {
+	ulid,
+	isTerminalJob,
+	type Job,
+	type JobStatus,
+	type JobType,
+	type JobEvent,
+	type AttemptOutcome
+} from '@encore/shared';
 import { assertEvent } from './transitions';
 import type { AttemptLedger, AttemptFacts } from './attempts';
 
@@ -138,13 +146,7 @@ export class JobRepository {
 		const row = this.#db
 			.select()
 			.from(jobs)
-			.where(
-				and(
-					eq(jobs.mediaId, mediaId),
-					eq(jobs.jobType, jobType),
-					notInArray(jobs.status, SLOT_FREEING_STATUSES)
-				)
-			)
+			.where(and(eq(jobs.mediaId, mediaId), eq(jobs.jobType, jobType), notInArray(jobs.status, SLOT_FREEING_STATUSES)))
 			.all()[0];
 		return this.#toJob(row);
 	}
@@ -174,7 +176,12 @@ export class JobRepository {
 	/** All jobs in any of the given statuses — feeds dispatch (queued) and the reaper. */
 	listByStatus(...statuses: JobStatus[]): Job[] {
 		if (statuses.length === 0) return [];
-		return this.#db.select().from(jobs).where(inArray(jobs.status, statuses)).all().map((r) => this.#toJob(r)!);
+		return this.#db
+			.select()
+			.from(jobs)
+			.where(inArray(jobs.status, statuses))
+			.all()
+			.map((r) => this.#toJob(r)!);
 	}
 
 	/**

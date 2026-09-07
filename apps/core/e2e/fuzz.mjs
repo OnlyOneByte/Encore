@@ -231,7 +231,10 @@ async function bootRoom() {
 	 */
 	let port = Number(process.env.FUZZ_PORT) || 0;
 	if (port) {
-		if (!(await portFree(port))) bail(`FUZZ_PORT=${port} is already in use by another process. Pick another, or set EPORT to drive that room deliberately.`);
+		if (!(await portFree(port)))
+			bail(
+				`FUZZ_PORT=${port} is already in use by another process. Pick another, or set EPORT to drive that room deliberately.`
+			);
 	} else {
 		port = await freePort(5400);
 	}
@@ -381,7 +384,9 @@ async function cookSongs(want) {
 		attempts.push(`${row.title}→${res.status}${res.ok ? '' : ` ${body.slice(0, 80)}`}`);
 		if (res.ok) cooked++;
 	}
-	console.log(`cook: discovered ${c0.raw.length} raw local row(s); requested ${attempts.length} — ${attempts.join('; ')}`);
+	console.log(
+		`cook: discovered ${c0.raw.length} raw local row(s); requested ${attempts.length} — ${attempts.join('; ')}`
+	);
 	// The stems job chains an align job, so readiness arrives a few seconds later.
 	for (let i = 0; i < 60; i++) {
 		const now = (await catalog()).ready.filter((r) => r.lyricsRef);
@@ -422,7 +427,8 @@ function serverSnapshot(timeoutMs = 4000) {
 			try {
 				ws.close();
 			} catch {}
-			err ? reject(err) : resolve(out);
+			if (err) reject(err);
+			else resolve(out);
 		};
 		const timer = setTimeout(() => finish(new Error('server snapshot timed out')), timeoutMs);
 		ws.onopen = () => ws.send(JSON.stringify({ type: 'hello', lastRev: 0 }));
@@ -666,7 +672,8 @@ function drawInput(prev, world) {
 function seamLabel(input, prev, world) {
 	if (input === 'restart' && world.cooking > 0) return 'RESTART-DURING-COOK';
 	if (input === 'skip' && world.current && world.waiting === 0) return 'SKIP-AT-LAST-ENTRY';
-	if (input === 'pause' && prev === 'restart') return 'RESTART-THEN-PAUSE (stands in for back-then-pause; `back` does not exist)';
+	if (input === 'pause' && prev === 'restart')
+		return 'RESTART-THEN-PAUSE (stands in for back-then-pause; `back` does not exist)';
 	return null;
 }
 
@@ -961,7 +968,7 @@ async function checkAll(lastInput) {
 	const deadline = Date.now() + CROSS_MS;
 	const before = snapshotStats();
 	let world;
-	let cross = null;
+	let cross;
 	for (;;) {
 		// Each retry is a DISCARDED reading, so its bookkeeping is rolled back — otherwise a value that
 		// took three attempts to propagate would inflate the summary's counts threefold.
@@ -985,7 +992,7 @@ async function driveInput(input, world) {
 	const page = phones[phoneIdx];
 	const who = `phone${phoneIdx + 1}`;
 	const playing = world.srv.playback?.isPlaying === true;
-	let detail = '';
+	let detail;
 
 	/**
 	 * The transport controls are DISABLED when there is nothing for them to act on, and calling .click()
@@ -1110,7 +1117,9 @@ function reportViolation(v, world) {
 	console.log('════════════════════════════════════════════════════════════════════════════');
 	console.log(`VIOLATION · ${v.id} — ${v.title}`);
 	console.log('════════════════════════════════════════════════════════════════════════════');
-	console.log(`  replay      FUZZ_SEED=${SEED}${AUTOPLAY ? ' FUZZ_AUTOPLAY=1' : ''} FUZZ_INPUTS=${N_INPUTS} bun run e2e:fuzz`);
+	console.log(
+		`  replay      FUZZ_SEED=${SEED}${AUTOPLAY ? ' FUZZ_AUTOPLAY=1' : ''} FUZZ_INPUTS=${N_INPUTS} bun run e2e:fuzz`
+	);
 	console.log(`  policy      ${AUTOPLAY ? 'autoplay granted — NOT-A-TV' : 'gestureless (a real TV)'}`);
 	console.log(`  at input    #${sequence.length} of ${N_INPUTS}`);
 	console.log('  sequence');
@@ -1119,16 +1128,26 @@ function reportViolation(v, world) {
 	console.log(`  expected    ${v.expected}`);
 	if (v.context) console.log(`  context     ${v.context}`);
 	console.log('  room state');
-	console.log(`    server    rev=${world.srv.rev} currentEntryId=${world.srv.playback?.currentEntryId} isPlaying=${world.srv.playback?.isPlaying} positionSec=${world.srv.playback?.positionSec} keyShift=${world.srv.playback?.keyShift} guideLevel=${world.srv.playback?.guideLevel}`);
-	console.log(`    entries   ${(world.srv.entries ?? []).map((e) => `${e.id.slice(-6)}:${e.status}@${e.rotationSeq}`).join(' ') || '(none)'}`);
-	console.log(`    tv        nowSong=${JSON.stringify(world.tv.nowSong)} nowName=${JSON.stringify(world.tv.nowName)} attract=${world.tv.attract} activeWord=${JSON.stringify(world.tv.activeWord)}`);
-	console.log(`    master    ${world.master ? `src=${world.master.src} paused=${world.master.paused} t=${world.master.currentTime.toFixed(2)} decoded=${world.master.decoded} err=${JSON.stringify(world.master.error)}` : 'none'} (${world.masterHow})`);
+	console.log(
+		`    server    rev=${world.srv.rev} currentEntryId=${world.srv.playback?.currentEntryId} isPlaying=${world.srv.playback?.isPlaying} positionSec=${world.srv.playback?.positionSec} keyShift=${world.srv.playback?.keyShift} guideLevel=${world.srv.playback?.guideLevel}`
+	);
+	console.log(
+		`    entries   ${(world.srv.entries ?? []).map((e) => `${e.id.slice(-6)}:${e.status}@${e.rotationSeq}`).join(' ') || '(none)'}`
+	);
+	console.log(
+		`    tv        nowSong=${JSON.stringify(world.tv.nowSong)} nowName=${JSON.stringify(world.tv.nowName)} attract=${world.tv.attract} activeWord=${JSON.stringify(world.tv.activeWord)}`
+	);
+	console.log(
+		`    master    ${world.master ? `src=${world.master.src} paused=${world.master.paused} t=${world.master.currentTime.toFixed(2)} decoded=${world.master.decoded} err=${JSON.stringify(world.master.error)}` : 'none'} (${world.masterHow})`
+	);
 	console.log('');
 }
 
 function printSummary() {
 	console.log('');
-	console.log(`ran 1 opening add + ${sequence.length - 1} fuzzed inputs across ${phones.length} phones + the TV, seed ${SEED}, ${AUTOPLAY ? 'autoplay granted (NOT-A-TV)' : 'gestureless'}`);
+	console.log(
+		`ran 1 opening add + ${sequence.length - 1} fuzzed inputs across ${phones.length} phones + the TV, seed ${SEED}, ${AUTOPLAY ? 'autoplay granted (NOT-A-TV)' : 'gestureless'}`
+	);
 	console.log('');
 	console.log('invariant   checked  skipped  why it was skipped');
 	const titles = {
@@ -1141,7 +1160,9 @@ function printSummary() {
 	};
 	for (const id of ['I1', 'I2', 'I3', 'I4', 'I5', 'I6']) {
 		const s = stats[id];
-		console.log(`  ${id}       ${String(s.checked).padStart(6)}   ${String(s.skipped).padStart(6)}  ${[...s.why].join(' | ') || '—'}`);
+		console.log(
+			`  ${id}       ${String(s.checked).padStart(6)}   ${String(s.skipped).padStart(6)}  ${[...s.why].join(' | ') || '—'}`
+		);
 		console.log(`             ${titles[id]}`);
 	}
 	console.log('');
@@ -1177,7 +1198,9 @@ try {
 	tv = await browser.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
-	await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 15000 }).catch(() => {});
+	await tv
+		.waitFor(`document.querySelector(${JSON.stringify(SEL.tvConnected)}) !== null`, { timeout: 15000 })
+		.catch(() => {});
 
 	// The room starts empty; seed it with one add so the first input has something to act on. Recorded
 	// in the sequence like any other input, because it is one.

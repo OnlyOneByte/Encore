@@ -17,7 +17,6 @@ describe('cookStageLabel', () => {
 		expect(cookStageLabel('separating', { pct: 68 })).toBe('Making karaoke… 68%');
 	});
 
-
 	it('never leaks the musician vocabulary a guest found confusing', () => {
 		for (const s of ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed'] as const) {
 			const line = cookStageLabel(s, { pct: 40 }).toLowerCase();

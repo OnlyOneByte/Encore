@@ -24,7 +24,12 @@ function makeRepo() {
 }
 
 const cookingMedia = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 100, stemStatus: 'queued'
+	id,
+	source: 'youtube',
+	sourceRef: 'vid-' + id,
+	title: id,
+	durationSec: 100,
+	stemStatus: 'queued'
 });
 
 /** A capturing toWorker sink + the deps the helper needs, with an empty post-remove queue by default.
@@ -116,7 +121,14 @@ test('EDGE (a) shared cook: does NOT cancel while another entry still references
 	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
 	jobs.accept(job.id, T0 + 30_000, T0 + 2); // running
 	// The post-remove queue STILL has an entry pointing at m1 (a second singer queued the same song).
-	const survivor: QueueEntry = { id: 'q-other', mediaId: 'm1', singerId: 's2', status: 'queued', rotationSeq: 0, addedAt: T0 };
+	const survivor: QueueEntry = {
+		id: 'q-other',
+		mediaId: 'm1',
+		singerId: 's2',
+		status: 'queued',
+		rotationSeq: 0,
+		addedAt: T0
+	};
 	const { sent, deps } = cancelDeps(jobs, [survivor]);
 
 	const res = cancelJobsForMedia('m1', deps);
@@ -180,7 +192,14 @@ test('a SHARED cook (edge a) neither settles the media nor broadcasts — anothe
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
 	jobs.accept(job.id, T0 + 30_000, T0 + 2);
-	const survivor: QueueEntry = { id: 'q-other', mediaId: 'm1', singerId: 's2', status: 'queued', rotationSeq: 0, addedAt: T0 };
+	const survivor: QueueEntry = {
+		id: 'q-other',
+		mediaId: 'm1',
+		singerId: 's2',
+		status: 'queued',
+		rotationSeq: 0,
+		addedAt: T0
+	};
 	const { deps, mediaById, broadcasts } = cancelDeps(jobs, [survivor]);
 
 	cancelJobsForMedia('m1', deps);
@@ -199,12 +218,25 @@ test('a no-op cancel (nothing live) does not touch the media or broadcast', () =
 
 // ── through the real remove path (handleQueueCommand), the way server.ts composes it ──────────────
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'queued' });
+const media = (id: string): Media => ({
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'queued'
+});
 const addCmd = (id: string, mediaId: string, singerId: string): ClientCommand => ({
 	clientOpId: 'add-' + id,
-	op: { op: 'add', entry: { id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: Date.now() } as QueueEntry }
+	op: {
+		op: 'add',
+		entry: { id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: Date.now() } as QueueEntry
+	}
 });
-const removeCmd = (id: string, singerId: string): ClientCommand => ({ clientOpId: 'rm-' + id, op: { op: 'remove', id }, });
+const removeCmd = (id: string, _singerId: string): ClientCommand => ({
+	clientOpId: 'rm-' + id,
+	op: { op: 'remove', id }
+});
 
 function hubHarness(jobs: JobRepository, actorSingerId: string) {
 	const state = new AuthoritativeState();
@@ -216,7 +248,12 @@ function hubHarness(jobs: JobRepository, actorSingerId: string) {
 		actorSingerId,
 		// Exactly the wiring server.ts uses.
 		onEntryRemoved: (mediaId, remainingEntries) =>
-			cancelJobsForMedia(mediaId, { jobs, toWorker: (w, c) => sent.push({ workerId: w, cmd: c }), remainingEntries, now: () => T0 + 1000 })
+			cancelJobsForMedia(mediaId, {
+				jobs,
+				toWorker: (w, c) => sent.push({ workerId: w, cmd: c }),
+				remainingEntries,
+				now: () => T0 + 1000
+			})
 	};
 	return { state, deps, sent };
 }
@@ -257,7 +294,14 @@ test('EDGE (b) reverse: a job:complete landing AFTER a cancel is dropped as stal
 	const jobs = makeRepo();
 	const registry = new WorkerRegistry();
 	const mediaById = new Map<string, Media>([['m1', media('m1')]]);
-	const hub = new WorkerHub({ jobs, registry, mediaById, toWorker: () => {}, broadcast: () => {}, now: () => T0 + 2000 });
+	const hub = new WorkerHub({
+		jobs,
+		registry,
+		mediaById,
+		toWorker: () => {},
+		broadcast: () => {},
+		now: () => T0 + 2000
+	});
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'worker-A', T0 + 10_000, T0 + 1);
 	jobs.accept(job.id, T0 + 30_000, T0 + 2); // running, worker-A owns it
@@ -273,7 +317,6 @@ test('EDGE (b) reverse: a job:complete landing AFTER a cancel is dropped as stal
 	expect(mediaById.get('m1')!.stemStatus).toBe('queued'); // never flipped to ready
 });
 
-
 // ── FIX (#91): a cancel on the LYRICS step must settle THAT gate, not only stems ───────────────────
 // A song finishes separation (stemStatus 'ready', a real instrumentalRef), followUps enqueues `align`
 // and markLyricsQueued sets lyricsStatus 'queued' — the phone shows "Timing lyrics". A remove cancels
@@ -284,8 +327,13 @@ test('EDGE (b) reverse: a job:complete landing AFTER a cancel is dropped as stal
 // cancelling align must settle the lyrics gate exactly as the terminal-failure path does.
 
 const separatedTimingLyrics = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 100,
-	stemStatus: 'ready', instrumentalRef: 'derived/stems/' + id + '-instrumental.flac',
+	id,
+	source: 'youtube',
+	sourceRef: 'vid-' + id,
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	instrumentalRef: 'derived/stems/' + id + '-instrumental.flac',
 	lyricsStatus: 'queued'
 });
 

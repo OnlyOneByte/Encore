@@ -3,7 +3,14 @@ import { test, expect } from 'bun:test';
 import { GaplessController } from './gapless';
 import type { QueueEntry } from '@encore/shared';
 
-const e = (id: string): QueueEntry => ({ id, mediaId: 'm-' + id, singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: 1 });
+const e = (id: string): QueueEntry => ({
+	id,
+	mediaId: 'm-' + id,
+	singerId: 's1',
+	status: 'queued',
+	rotationSeq: 0,
+	addedAt: 1
+});
 
 test('idle with no current -> attract', () => {
 	const c = new GaplessController();

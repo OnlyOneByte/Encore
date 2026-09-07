@@ -148,7 +148,7 @@ test('re-running a job overwrites its OWN artifact rather than stacking duplicat
 
 // ── agreement: catching a confidently wrong lookup ────────────────────────────
 test('tokenizer strips LRC stamps, markers, and punctuation', () => {
-	expect(lyricsTokens("[00:12.50]Hello, world! [Chorus]")).toEqual(['hello', 'world']);
+	expect(lyricsTokens('[00:12.50]Hello, world! [Chorus]')).toEqual(['hello', 'world']);
 });
 
 test('the same lyrics score ~1; a different song scores low', () => {

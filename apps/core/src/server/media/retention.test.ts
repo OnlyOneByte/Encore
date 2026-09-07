@@ -22,7 +22,8 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 	sourceRef: 'r-' + id,
 	title: 't-' + id,
 	durationSec: 200,
-	stemStatus: 'ready', lyricsStatus: 'ready',
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
 	instrumentalRef: `derived/stems/${id}-instrumental.m4a`,
 	...over
 });
@@ -84,10 +85,12 @@ describe('legacy-format detection', () => {
 });
 
 describe('recompressLegacyStems', () => {
-	const fakeTranscode = (ratio = 0.1) => async (from: string, to: string) => {
-		writeFileSync(to, Buffer.alloc(Math.max(1, Math.floor(readFileSync(from).length * ratio)), 2));
-		return true;
-	};
+	const fakeTranscode =
+		(ratio = 0.1) =>
+		async (from: string, to: string) => {
+			writeFileSync(to, Buffer.alloc(Math.max(1, Math.floor(readFileSync(from).length * ratio)), 2));
+			return true;
+		};
 
 	it('shrinks in place, deletes the legacy file and reports the new ref', async () => {
 		put('derived/stems/a-instrumental.wav', 1000);
@@ -162,11 +165,7 @@ describe('planEviction', () => {
 		// (or queued) song. A pure-LRU plan would strip it mid-party — reset stemStatus to 'none' and
 		// delete its stems out from under a live entry. The exclusion is enforced HERE so no caller can
 		// forget it. It falls through to 'mid' instead to make the same room.
-		const out = planEviction(
-			[c('new', 100, 300), c('mid', 100, 200), c('old', 100, 100)],
-			150,
-			new Set(['old'])
-		);
+		const out = planEviction([c('new', 100, 300), c('mid', 100, 200), c('old', 100, 100)], 150, new Set(['old']));
 		expect(out).not.toContain('old'); // protected, though it is the oldest
 		expect(out).toEqual(['mid', 'new']); // freed 200 ≥ the 150 needed, oldest-first among the rest
 	});
@@ -258,8 +257,20 @@ describe('evictDerived', () => {
 			instrumentalRef: 'derived/stems/a-instrumental.flac',
 			lyricsRef: 'derived/lyrics/a-chosen.json',
 			lyricsCandidates: [
-				{ ref: 'derived/lyrics/a-chosen.json', textSource: 'lrclib', timing: 'word', textConfidence: 'high', createdAt: 1 },
-				{ ref: 'derived/lyrics/a-alt1.json', textSource: 'captions', timing: 'line', textConfidence: 'medium', createdAt: 2 },
+				{
+					ref: 'derived/lyrics/a-chosen.json',
+					textSource: 'lrclib',
+					timing: 'word',
+					textConfidence: 'high',
+					createdAt: 1
+				},
+				{
+					ref: 'derived/lyrics/a-alt1.json',
+					textSource: 'captions',
+					timing: 'line',
+					textConfidence: 'medium',
+					createdAt: 2
+				},
 				{ ref: 'derived/lyrics/a-alt2.json', textSource: 'asr', timing: 'word', textConfidence: 'low', createdAt: 3 }
 			]
 		});
@@ -283,7 +294,6 @@ describe('evictDerived', () => {
 	});
 });
 
-
 // ── #496: retention must report bytes it actually freed, and derive the vocals ref in ONE place ──
 import { readFileSync as _readFileSync } from 'node:fs';
 import { chmodSync, statSync as _statSync } from 'node:fs';
@@ -291,8 +301,7 @@ import { join as _join } from 'node:path';
 
 // Strip block and line comments so a scan measures LOGIC, not the prose that describes the old form.
 // retention.ts's docstrings mention `-instrumental.` in prose, which would satisfy a naive scan.
-const stripComments = (src: string): string =>
-	src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+const stripComments = (src: string): string => src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
 const mediaSrcDir = _join(import.meta.dir);
 const readSrc = (name: string) => _readFileSync(_join(mediaSrcDir, name), 'utf8');

@@ -72,7 +72,11 @@ export class SingerRepository {
 
 	/** All singers, without session tokens (safe to broadcast). */
 	listPublic(): Omit<Singer, 'sessionToken'>[] {
-		return this.#db.select().from(singers).all().map(({ sessionToken: _t, ...rest }) => rest);
+		return this.#db
+			.select()
+			.from(singers)
+			.all()
+			.map(({ sessionToken: _t, ...rest }) => rest);
 	}
 }
 

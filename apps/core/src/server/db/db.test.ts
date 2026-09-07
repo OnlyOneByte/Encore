@@ -16,16 +16,29 @@ test('migrations create all tables and every entity round-trips', () => {
 		.values({ id: 's1', displayName: 'Maya', color: '#ff5cae', sessionToken: 'tok', joinedAt: now })
 		.run();
 	db.insert(media)
-		.values({ id: 'm1', source: 'youtube', sourceRef: 'abc', title: 'Take On Me', durationSec: 225, stemStatus: 'none' })
+		.values({
+			id: 'm1',
+			source: 'youtube',
+			sourceRef: 'abc',
+			title: 'Take On Me',
+			durationSec: 225,
+			stemStatus: 'none'
+		})
 		.run();
 	db.insert(queueEntries)
 		.values({ id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: now })
 		.run();
-	db.insert(playbackState)
-		.values({ id: 'singleton', currentEntryId: 'q1', positionSec: 0, isPlaying: false })
-		.run();
+	db.insert(playbackState).values({ id: 'singleton', currentEntryId: 'q1', positionSec: 0, isPlaying: false }).run();
 	db.insert(jobs)
-		.values({ id: 'j1', mediaId: 'm1', jobType: 'stems', status: 'queued', priority: 0, createdAt: now, updatedAt: now })
+		.values({
+			id: 'j1',
+			mediaId: 'm1',
+			jobType: 'stems',
+			status: 'queued',
+			priority: 0,
+			createdAt: now,
+			updatedAt: now
+		})
 		.run();
 
 	expect(db.select().from(rooms).all()).toHaveLength(1);

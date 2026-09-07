@@ -5,7 +5,7 @@
 
 import type { Job } from '@encore/shared';
 import type { JobRepository } from './repository';
-import { sweep, inflightToRecover, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
+import { sweep, inflightToRecover } from './leases';
 
 /** Called after the reaper requeues/fails jobs so the dispatcher can react. */
 export type OnReaped = () => void;
@@ -20,7 +20,6 @@ export type OnReaped = () => void;
 export type OnJobFailed = (job: Job) => void;
 
 export interface ReaperOptions {
-	config?: LeaseConfig;
 	/** Reaper cadence; §3 says ~3s. */
 	tickMs?: number;
 	/** Injected clock for deterministic tests (defaults to Date.now). */
@@ -33,7 +32,6 @@ export interface ReaperOptions {
 
 export class JobReaper {
 	#jobs: JobRepository;
-	#config: LeaseConfig;
 	#tickMs: number;
 	#now: () => number;
 	#onReaped: OnReaped;
@@ -42,7 +40,6 @@ export class JobReaper {
 
 	constructor(jobs: JobRepository, opts: ReaperOptions = {}) {
 		this.#jobs = jobs;
-		this.#config = opts.config ?? DEFAULT_LEASE_CONFIG;
 		this.#tickMs = opts.tickMs ?? 3_000;
 		this.#now = opts.now ?? Date.now;
 		this.#onReaped = opts.onReaped ?? (() => {});

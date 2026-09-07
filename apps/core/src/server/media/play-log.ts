@@ -8,7 +8,7 @@
 //
 // Deliberately no singer column. See the `plays` table comment in schema.ts.
 
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { desc, eq, gte, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { plays } from '../db/schema';
 import { ulid } from '@encore/shared';

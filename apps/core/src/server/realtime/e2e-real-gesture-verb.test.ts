@@ -42,7 +42,7 @@ test('cdp.mjs exposes a realClick verb that delivers a TRUSTED gesture via CDP I
 	// mousePressed followed by a mouseReleased — assert BOTH halves, in order, or a half-verb (press
 	// with no release, or release with no press) would grant activation unreliably and still pass a
 	// single-token check.
-	const pressed = CDP.indexOf("Input.dispatchMouseEvent");
+	const pressed = CDP.indexOf('Input.dispatchMouseEvent');
 	expect(pressed).toBeGreaterThanOrEqual(0);
 	expect(CDP).toMatch(/Input\.dispatchMouseEvent[^\n]*type:\s*'mousePressed'/);
 	expect(CDP).toMatch(/Input\.dispatchMouseEvent[^\n]*type:\s*'mouseReleased'/);

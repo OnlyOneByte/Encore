@@ -12,7 +12,8 @@ const media = (over: Partial<Media> = {}): Media => ({
 	title: 'Britney Spears - Baby One More Time (Lyrics)', // the RAW title, as search stores it
 	artist: '7clouds', // the UPLOADER, not the artist
 	durationSec: 211,
-	stemStatus: 'ready', lyricsStatus: 'ready',
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
 	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	...over
 });
@@ -48,13 +49,18 @@ test('THE GAP: the full billing rides on an align job, not just the primary arti
 test('the credit is omitted when it would only repeat the primary artist', () => {
 	// A solo song's billing IS its primary artist. Sending it would add a field with no signal, and the
 	// worker's ranking axis would score every candidate identically — noise, not evidence.
-	const p = assignParams('align', media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me', artistCredit: 'a-ha' }));
+	const p = assignParams(
+		'align',
+		media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me', artistCredit: 'a-ha' })
+	);
 	expect(p.artistCredit).toBeUndefined();
 });
 
 test('a song with no parsed credit sends none', () => {
 	// Absent, not empty: a source that needs it must be able to tell "no credit" from "credit is blank".
-	expect(assignParams('align', media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me' })).artistCredit).toBeUndefined();
+	expect(
+		assignParams('align', media({ artistCanonical: 'a-ha', titleCanonical: 'Take On Me' })).artistCredit
+	).toBeUndefined();
 });
 
 test('the credit is NOT a lookup key — it never replaces artist or track', () => {

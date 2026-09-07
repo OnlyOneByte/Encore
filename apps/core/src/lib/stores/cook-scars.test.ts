@@ -94,7 +94,11 @@ test('pruneScars keeps only scars whose deadline is strictly after now', () => {
 	const input: ScarMap = { future: scar(200), exact: scar(100), past: scar(50) };
 	expect(pruneScars(input, 100)).toEqual({ future: scar(200) }); // deadline exclusive at now=100
 	// corrupt entries (missing media / non-number expiry) are dropped
-	const corrupt = { bad: { expiresAt: 'x' } as unknown as ScarMap[string], nomedia: { expiresAt: 999 } as ScarMap[string], ok: scar(999) };
+	const corrupt = {
+		bad: { expiresAt: 'x' } as unknown as ScarMap[string],
+		nomedia: { expiresAt: 999 } as ScarMap[string],
+		ok: scar(999)
+	};
 	expect(pruneScars(corrupt as ScarMap, 100)).toEqual({ ok: scar(999) });
 	expect(input).toEqual({ future: scar(200), exact: scar(100), past: scar(50) }); // input not mutated
 });
@@ -133,7 +137,10 @@ test('clearScar removes exactly one scar and is a no-op when absent', () => {
 
 test('activeScars returns unexpired media and self-cleans expired entries from storage', () => {
 	const store = fakeStorage({
-		[COOK_SCARS_KEY]: JSON.stringify({ live: scar(2_000, media({ id: 'live' })), dead: scar(500, media({ id: 'dead' })) })
+		[COOK_SCARS_KEY]: JSON.stringify({
+			live: scar(2_000, media({ id: 'live' })),
+			dead: scar(500, media({ id: 'dead' }))
+		})
 	});
 	const out = activeScars(1_000, store); // now=1000: live survives, dead expired
 	expect(out.map((m) => m.id)).toEqual(['live']);

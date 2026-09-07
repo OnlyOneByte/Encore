@@ -272,13 +272,17 @@ for (let i = 0; i < 90; i++) {
 	if (!readyB && (await isReady(songB.id, qB))) {
 		readyB = true;
 		readyAtT = now.t;
-		console.log(`  B reported READY at A t=${now.t.toFixed(2)}s — onMediaReady's queue:sync + nowplaying:changed land here`);
+		console.log(
+			`  B reported READY at A t=${now.t.toFixed(2)}s — onMediaReady's queue:sync + nowplaying:changed land here`
+		);
 	}
 }
 
 console.log(`\nwindow closed: ${closedBecause}`);
 console.log(`samples inside A: ${samples}, last playhead ${prev.toFixed(2)}s`);
-console.log(`B reached ready inside the window: ${readyB}${readyAtT !== null ? ` (at A t=${readyAtT.toFixed(2)}s)` : ''}`);
+console.log(
+	`B reached ready inside the window: ${readyB}${readyAtT !== null ? ` (at A t=${readyAtT.toFixed(2)}s)` : ''}`
+);
 
 // A 0.25s tolerance covers ordinary decoder jitter on a sampled element; the defect is a jump back to
 // a stale COMMAND anchor, which is seconds, and is gated by seekPlan's own 1.5s threshold anyway.

@@ -35,11 +35,7 @@ function glowInHue(hue: number): string {
  * TV_BACKGROUND_STYLES without teaching this function about it is a type error rather than a silent
  * fallback — the same discipline `TvProgress.svelte` applies to the progress styles.
  */
-export function stageBackgroundCss(
-	style: TvBackgroundStyle,
-	hue: number,
-	singerColor?: string | null
-): string {
+export function stageBackgroundCss(style: TvBackgroundStyle, hue: number, singerColor?: string | null): string {
 	switch (style) {
 		case 'off':
 			return '#000';

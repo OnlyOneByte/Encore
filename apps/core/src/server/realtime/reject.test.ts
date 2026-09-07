@@ -6,7 +6,15 @@ import { ulid, type ServerEvent, type Media, type ClientCommand } from '@encore/
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 function harness() {
@@ -63,7 +71,10 @@ test('validateCommand returns precise reasons', () => {
 	expect(validateCommand(cmd({ op: 'status', id: 'x', status: 'done' }), deps)).toBe('status is server-owned');
 	expect(
 		validateCommand(
-			cmd({ op: 'add', entry: { id: 'q', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } }),
+			cmd({
+				op: 'add',
+				entry: { id: 'q', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 }
+			}),
 			deps
 		)
 	).toBeNull();
@@ -84,7 +95,14 @@ test('add with a missing singerId is rejected, not crashed on', () => {
 	const c = cmd({
 		op: 'add',
 		// exactly what a client with a bad "who am I" lookup sends
-		entry: { id: 'q1', mediaId: 'm1', singerId: undefined as unknown as string, status: 'queued', rotationSeq: -1, addedAt: 1 }
+		entry: {
+			id: 'q1',
+			mediaId: 'm1',
+			singerId: undefined as unknown as string,
+			status: 'queued',
+			rotationSeq: -1,
+			addedAt: 1
+		}
 	});
 
 	expect(() => handleQueueCommand(c, deps, (e) => toOrigin.push(e))).not.toThrow();

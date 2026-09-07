@@ -7,7 +7,7 @@
 //
 // Pure (no Svelte, no DOM) so the precedence rules are unit-testable; `+page.svelte` renders it.
 
-import type { QueueEntry, Media } from '@encore/shared';
+import type { QueueEntry } from '@encore/shared';
 
 /**
  * What the TV should be showing.
@@ -86,7 +86,6 @@ export function lyricsAdvancing(
 ): boolean {
 	return screen === 'playing' && tvState !== 'interstitial' && isPlaying && elementAdvancing;
 }
-
 
 /** A singer as the TV roster needs them: display name, identity color, and whether they are reachable. */
 export interface RosterMember {

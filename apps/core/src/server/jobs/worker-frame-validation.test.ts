@@ -99,7 +99,9 @@ test('#433: an unknown frame type is rejected (never falls through handle())', (
 	expect(validateWorkerMessage({ type: 'worker:evil', workerId: 'w' })).not.toBeNull();
 });
 test('#433: heartbeat with a non-array runningJobIds is rejected', () => {
-	expect(validateWorkerMessage({ type: 'worker:heartbeat', workerId: 'w', slotsFree: 1, runningJobIds: 'x' })).not.toBeNull();
+	expect(
+		validateWorkerMessage({ type: 'worker:heartbeat', workerId: 'w', slotsFree: 1, runningJobIds: 'x' })
+	).not.toBeNull();
 });
 test('#433: job:progress with a non-number pct is rejected', () => {
 	expect(

@@ -82,7 +82,13 @@ describe('sidecarFromMedia', () => {
 		// The DB has no idea a human set these, so a naive rebuild would stomp them.
 		const curated: MediaSidecar = {
 			...sidecarFromMedia(media(), NOW),
-			canonical: { ...sidecarFromMedia(media(), NOW).canonical, artist: 'Britney Spears', genre: ['pop', '90s'], year: 1998, album: 'Baby One More Time' },
+			canonical: {
+				...sidecarFromMedia(media(), NOW).canonical,
+				artist: 'Britney Spears',
+				genre: ['pop', '90s'],
+				year: 1998,
+				album: 'Baby One More Time'
+			},
 			provenance: { artist: { by: 'manual', confidence: 'high' } }
 		};
 		const again = sidecarFromMedia(media({ title: 'Some Totally Different Title - X' }), NOW + 5000, curated);
@@ -94,7 +100,10 @@ describe('sidecarFromMedia', () => {
 
 	it('preserves addedAt, play counts and tags across rewrites', () => {
 		const first = sidecarFromMedia(media(), NOW);
-		const withHistory: MediaSidecar = { ...first, library: { tags: ['banger'], addedAt: NOW - 99, playCount: 7, lastPlayedAt: NOW - 5 } };
+		const withHistory: MediaSidecar = {
+			...first,
+			library: { tags: ['banger'], addedAt: NOW - 99, playCount: 7, lastPlayedAt: NOW - 5 }
+		};
 		const again = sidecarFromMedia(media(), NOW + 1000, withHistory);
 		expect(again.library).toEqual({ tags: ['banger'], addedAt: NOW - 99, playCount: 7, lastPlayedAt: NOW - 5 });
 	});
@@ -110,7 +119,13 @@ describe('mediaFromSidecar (the index projection)', () => {
 	it('round-trips a plain song', () => {
 		const m = media();
 		const back = mediaFromSidecar(sidecarFromMedia(m, NOW));
-		expect(back).toMatchObject({ id: 'm1', source: 'youtube', sourceRef: 'djV11Xbc914', durationSec: 210, stemStatus: 'none' });
+		expect(back).toMatchObject({
+			id: 'm1',
+			source: 'youtube',
+			sourceRef: 'djV11Xbc914',
+			durationSec: 210,
+			stemStatus: 'none'
+		});
 	});
 
 	it('a cooked song comes back as READY and playable, so it is not re-cooked', () => {
@@ -129,7 +144,10 @@ describe('mediaFromSidecar (the index projection)', () => {
 
 describe('browseArtist', () => {
 	it('returns the canonical artist when the parse was confident', () => {
-		const s = sidecarFromMedia(media({ title: 'Daft Punk - One More Time (Official Video)', artist: 'Daft Punk' }), NOW);
+		const s = sidecarFromMedia(
+			media({ title: 'Daft Punk - One More Time (Official Video)', artist: 'Daft Punk' }),
+			NOW
+		);
 		expect(s.provenance.artist?.confidence).toBe('high');
 		expect(browseArtist(s)).toBe('Daft Punk');
 	});
@@ -196,7 +214,9 @@ describe('sidecar I/O and index rebuild', () => {
 		// the sections its consumers dereference, down the existing warn-and-return-null path.
 		const warnings: string[] = [];
 		const orig = console.warn;
-		console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+		console.warn = (...args: unknown[]) => {
+			warnings.push(args.map(String).join(' '));
+		};
 		try {
 			await writeSidecar(sidecarFromMedia(media(), NOW));
 			await Bun.write(join(root, 'meta', 'm1.json'), JSON.stringify({ id: 'm1' }));
@@ -229,7 +249,10 @@ describe('sidecar I/O and index rebuild', () => {
 		// Two writes to the same id land via distinct temps + rename, so a reader always sees one whole
 		// file — either the old complete one or the new complete one.
 		await writeSidecar(sidecarFromMedia(media({ id: 'x' }), NOW));
-		const updated = sidecarFromMedia(media({ id: 'x', instrumentalRef: 'derived/stems/x-instrumental.m4a' }), NOW + 1000);
+		const updated = sidecarFromMedia(
+			media({ id: 'x', instrumentalRef: 'derived/stems/x-instrumental.m4a' }),
+			NOW + 1000
+		);
 		await writeSidecar(updated);
 		const back = await readSidecar('x');
 		expect(back).toEqual(updated);
@@ -277,7 +300,10 @@ describe('sidecar I/O and index rebuild', () => {
 		curated.provenance.artist = { by: 'manual', confidence: 'high' };
 		await writeSidecar(curated);
 
-		const written = await backfillSidecars([media({ id: 'old1' }), media({ id: 'old2' }), media({ id: 'curated' })], NOW);
+		const written = await backfillSidecars(
+			[media({ id: 'old1' }), media({ id: 'old2' }), media({ id: 'curated' })],
+			NOW
+		);
 		expect(written).toBe(2); // the curated one is skipped, not rewritten
 		expect(await readSidecar('old1')).not.toBeNull();
 		expect((await readSidecar('curated'))!.canonical.genre).toEqual(['soul']); // curation intact
@@ -356,7 +382,6 @@ describe('annotation persistence', () => {
 	});
 });
 
-
 describe('clearArtifacts (eviction must stick) (#442 §1)', () => {
 	it('nulls all four derived-artifact fields on the authoritative record', async () => {
 		const s0 = sidecarFromMedia(
@@ -398,7 +423,14 @@ describe('clearArtifacts (eviction must stick) (#442 §1)', () => {
 		// Eviction as app.ts performs it: the runtime Media loses its refs (undefined) and is upserted,
 		// which fires sidecarFromMedia with the PRIOR sidecar as `previous`.
 		const prev = await readSidecar('m1');
-		const evicted: Media = { ...cooked, instrumentalRef: undefined, vocalsRef: undefined, lyricsRef: undefined, lyricsCandidates: [], stemStatus: 'none' };
+		const evicted: Media = {
+			...cooked,
+			instrumentalRef: undefined,
+			vocalsRef: undefined,
+			lyricsRef: undefined,
+			lyricsCandidates: [],
+			stemStatus: 'none'
+		};
 		const restored = sidecarFromMedia(evicted, NOW, prev);
 		// Without clearArtifacts, the ?? prev restores the ref — proving the defect is real:
 		expect(restored.artifacts.instrumental).toBe('derived/stems/m1-instrumental.flac');

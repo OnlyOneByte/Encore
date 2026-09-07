@@ -82,11 +82,7 @@ describe('the two durations are genuinely different numbers', () => {
 
 describe('perStep', () => {
 	it('reports timings in pipeline order, not alphabetical', () => {
-		const rows = perStep([
-			attempt({ jobType: 'align' }),
-			attempt({ jobType: 'fetch' }),
-			attempt({ jobType: 'stems' })
-		]);
+		const rows = perStep([attempt({ jobType: 'align' }), attempt({ jobType: 'fetch' }), attempt({ jobType: 'stems' })]);
 		expect(rows.map((r) => r.jobType)).toEqual(['fetch', 'stems', 'align']);
 	});
 
@@ -118,7 +114,13 @@ describe('perCook and e2e', () => {
 		const cook = [
 			attempt({ jobType: 'fetch', cookId: 'c1', enqueuedAt: T0, startedAt: T0, finishedAt: T0 + 10_000 }),
 			// 30s of idle queue between the two steps
-			attempt({ jobType: 'stems', cookId: 'c1', enqueuedAt: T0 + 10_000, startedAt: T0 + 40_000, finishedAt: T0 + 100_000 })
+			attempt({
+				jobType: 'stems',
+				cookId: 'c1',
+				enqueuedAt: T0 + 10_000,
+				startedAt: T0 + 40_000,
+				finishedAt: T0 + 100_000
+			})
 		];
 		const [c] = perCook(cook);
 		expect(c.totalMs).toBe(100_000); // what the singer waited
@@ -161,7 +163,13 @@ describe('perModel — measured against what the whitelist claims', () => {
 
 	it('leaves the ratio null for a model the whitelist does not know', () => {
 		const rows = perModel([
-			attempt({ engine: 'roformer', model: 'some-unlisted-checkpoint', startedAt: T0, finishedAt: T0 + 1_000, audioSec: 10 })
+			attempt({
+				engine: 'roformer',
+				model: 'some-unlisted-checkpoint',
+				startedAt: T0,
+				finishedAt: T0 + 1_000,
+				audioSec: 10
+			})
 		]);
 		expect(rows[0].declared).toBeUndefined();
 		expect(rows[0].ratioToDeclared).toBeNull();
@@ -173,8 +181,22 @@ describe('perModel — measured against what the whitelist claims', () => {
 
 	it('groups the same model across cooks and songs', () => {
 		const rows = perModel([
-			attempt({ mediaId: 'm1', engine: 'demucs', model: 'htdemucs', startedAt: T0, finishedAt: T0 + 1_000, audioSec: 10 }),
-			attempt({ mediaId: 'm2', engine: 'demucs', model: 'htdemucs', startedAt: T0, finishedAt: T0 + 3_000, audioSec: 10 })
+			attempt({
+				mediaId: 'm1',
+				engine: 'demucs',
+				model: 'htdemucs',
+				startedAt: T0,
+				finishedAt: T0 + 1_000,
+				audioSec: 10
+			}),
+			attempt({
+				mediaId: 'm2',
+				engine: 'demucs',
+				model: 'htdemucs',
+				startedAt: T0,
+				finishedAt: T0 + 3_000,
+				audioSec: 10
+			})
 		]);
 		expect(rows.length).toBe(1);
 		expect(rows[0].n).toBe(2);
@@ -187,7 +209,14 @@ describe('perAsrModel — the axis with no declared cost at all', () => {
 		// AsrModel deliberately carries no rtFactor: "Do not add an rtFactor here until someone has
 		// actually timed these on the target hardware." This is that timing.
 		const rows = perAsrModel([
-			attempt({ jobType: 'align', asrModel: 'base', syncMode: 'forced', startedAt: T0, finishedAt: T0 + 30_000, audioSec: 200 })
+			attempt({
+				jobType: 'align',
+				asrModel: 'base',
+				syncMode: 'forced',
+				startedAt: T0,
+				finishedAt: T0 + 30_000,
+				audioSec: 200
+			})
 		]);
 		expect(rows[0].asrModel).toBe('base');
 		expect(rows[0].meanRtFactor).toBeCloseTo(0.15, 5);
@@ -205,8 +234,18 @@ describe('perAsrModel — the axis with no declared cost at all', () => {
 describe('perStage — the split the core cannot see on its own', () => {
 	it('averages each sub-step and ranks the expensive one first', () => {
 		const rows = perStage([
-			attempt({ stages: JSON.stringify([{ stage: 'downloading', ms: 9_000 }, { stage: 'separating', ms: 81_000 }]) }),
-			attempt({ stages: JSON.stringify([{ stage: 'downloading', ms: 11_000 }, { stage: 'separating', ms: 79_000 }]) })
+			attempt({
+				stages: JSON.stringify([
+					{ stage: 'downloading', ms: 9_000 },
+					{ stage: 'separating', ms: 81_000 }
+				])
+			}),
+			attempt({
+				stages: JSON.stringify([
+					{ stage: 'downloading', ms: 11_000 },
+					{ stage: 'separating', ms: 79_000 }
+				])
+			})
 		]);
 		expect(rows[0]).toEqual({ stage: 'separating', n: 2, meanMs: 80_000 });
 		expect(rows[1]).toEqual({ stage: 'downloading', n: 2, meanMs: 10_000 });
@@ -240,9 +279,7 @@ describe('#472 — the read window no longer understates the boundary cook', () 
 
 	function clippedCook(): JobAttempt[] {
 		// The real cook ran fetch (enqueued at T0) then stems; only the stems row survived the window.
-		return [
-			attempt({ jobType: 'stems', cookId: 'boundary', enqueuedAt: T0, finishedAt: boundary + 60_000 })
-		];
+		return [attempt({ jobType: 'stems', cookId: 'boundary', enqueuedAt: T0, finishedAt: boundary + 60_000 })];
 	}
 
 	it('flags a cook that began before the window as clipped, and never complete', () => {
@@ -260,8 +297,20 @@ describe('#472 — the read window no longer understates the boundary cook', () 
 
 	it('still reports a cook that lives entirely inside the window as complete', () => {
 		const inside = [
-			attempt({ jobType: 'fetch', cookId: 'inside', enqueuedAt: boundary + 1_000, startedAt: boundary + 1_000, finishedAt: boundary + 5_000 }),
-			attempt({ jobType: 'stems', cookId: 'inside', enqueuedAt: boundary + 5_000, startedAt: boundary + 5_000, finishedAt: boundary + 65_000 })
+			attempt({
+				jobType: 'fetch',
+				cookId: 'inside',
+				enqueuedAt: boundary + 1_000,
+				startedAt: boundary + 1_000,
+				finishedAt: boundary + 5_000
+			}),
+			attempt({
+				jobType: 'stems',
+				cookId: 'inside',
+				enqueuedAt: boundary + 5_000,
+				startedAt: boundary + 5_000,
+				finishedAt: boundary + 65_000
+			})
 		];
 		const [c] = perCook(inside, boundary);
 		expect(c.clipped).toBe(false);

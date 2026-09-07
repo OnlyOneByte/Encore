@@ -65,7 +65,7 @@ test('every policy is total — it returns exactly the entries it was given', ()
 });
 
 // ── fair: today's behaviour, pinned ─────────────────────────────────────────
-test('fair is unchanged: everyone\'s 1st pick before anyone\'s 2nd', () => {
+test("fair is unchanged: everyone's 1st pick before anyone's 2nd", () => {
 	const entries = [e('maya1', 'maya', 1), e('maya2', 'maya', 2), e('sam1', 'sam', 3), e('maya3', 'maya', 4)];
 	expect(ids(orderQueue(entries, { order: 'fair' }))).toEqual(['maya1', 'sam1', 'maya2', 'maya3']);
 	// and the un-parameterised call — the pre-setting default — agrees
@@ -104,7 +104,9 @@ test('shuffle actually reorders — it is not addedAt order wearing a hat', () =
 // ── least-recently-sung ─────────────────────────────────────────────────────
 test('least-recently-sung with no history is exactly fair', () => {
 	const entries = [e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3), e('c1', 'c', 4)];
-	expect(ids(orderQueue(entries, { order: 'least-recently-sung' }))).toEqual(ids(orderQueue(entries, { order: 'fair' })));
+	expect(ids(orderQueue(entries, { order: 'least-recently-sung' }))).toEqual(
+		ids(orderQueue(entries, { order: 'fair' }))
+	);
 });
 
 test('least-recently-sung puts the singer who sang longest ago first', () => {
@@ -164,7 +166,7 @@ test('singHistoryFrom omits singers with no stamp rather than zeroing them', () 
 // A drag-reorder permutes the singer's OWN addedAt stamps. If any policy let that change the set of
 // SLOTS the singer holds, a singer could drag their way past someone else — the fairness hole this
 // whole feature could most easily open without anyone noticing.
-test('a singer reordering their own picks never changes another singer\'s position', () => {
+test("a singer reordering their own picks never changes another singer's position", () => {
 	const lastSungAt = new Map([
 		['a', 200],
 		['b', 100]

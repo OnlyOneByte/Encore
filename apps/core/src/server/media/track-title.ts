@@ -77,7 +77,17 @@ const NOISE_TERMS = [
 ];
 
 /** Uploader names that are aggregator / lyric channels rather than artists. */
-const AGGREGATOR_MARKERS = ['lyric', 'lyrics', 'music tv', 'musictainment', 'vibes', 'clouds', 'nation', 'topic', 'records tv'];
+const AGGREGATOR_MARKERS = [
+	'lyric',
+	'lyrics',
+	'music tv',
+	'musictainment',
+	'vibes',
+	'clouds',
+	'nation',
+	'topic',
+	'records tv'
+];
 
 /** Collaboration markers. Their presence on one side of the split means THAT side names artists. */
 const COLLAB_RE = /(?:\bft\b\.?|\bfeat\b\.?|\bfeaturing\b|\bwith\b|\bx\b|&|,|\bvs\b\.?)/i;
@@ -91,6 +101,9 @@ const SEPARATORS = [' — ', ' – ', ' -- ', ' - ', ' | ', ' _ ', '–', '—']
 function stripEmoji(s: string): string {
 	// Symbol/pictograph + regional-indicator + variation-selector ranges. Keeps letters, digits,
 	// punctuation and CJK — a Japanese title must survive this.
+	// Regional-indicator range (U+1F1E6-U+1F1FF) composes into flag emoji; stripping either half
+	// removes the flag, which is the intent — so the combined-character warning does not apply.
+	// eslint-disable-next-line no-misleading-character-class
 	return s.replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}\u{1F1E6}-\u{1F1FF}\u{2B00}-\u{2BFF}]/gu, '');
 }
 
@@ -100,7 +113,9 @@ function collapseWs(s: string): string {
 
 /** Is this bracketed chunk pure upload-noise (and therefore droppable)? */
 function isNoise(inner: string): boolean {
-	const t = collapseWs(stripEmoji(inner)).toLowerCase().replace(/[.!]+$/, '');
+	const t = collapseWs(stripEmoji(inner))
+		.toLowerCase()
+		.replace(/[.!]+$/, '');
 	if (!t) return true;
 	if (NOISE_TERMS.includes(t)) return true;
 	// "Official Music Video HD", "Lyrics / Letra" — every word is a noise word
@@ -188,7 +203,11 @@ function withFeatured(artistFull: string, featured: string | null): string {
 
 /** Normalize for comparison: case-fold, drop emoji/punctuation, collapse space. */
 function comparable(s: string): string {
-	return collapseWs(stripEmoji(s).toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' '));
+	return collapseWs(
+		stripEmoji(s)
+			.toLowerCase()
+			.replace(/[^\p{L}\p{N}\s]/gu, ' ')
+	);
 }
 
 function looksLikeAggregator(uploader: string): boolean {

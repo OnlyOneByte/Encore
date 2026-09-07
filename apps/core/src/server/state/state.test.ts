@@ -28,7 +28,9 @@ test('mutations bump rev monotonically', () => {
 
 test('server re-assigns fair rotationSeq on every mutation (round-robin)', () => {
 	const s = new AuthoritativeState();
-	const a1 = entry('a', 1), a2 = entry('a', 2), b1 = entry('b', 3);
+	const a1 = entry('a', 1),
+		a2 = entry('a', 2),
+		b1 = entry('b', 3);
 	s.applyQueueOp({ op: 'add', entry: a1 });
 	s.applyQueueOp({ op: 'add', entry: a2 });
 	s.applyQueueOp({ op: 'add', entry: b1 });
@@ -157,7 +159,6 @@ test('applyQueueOp prunes terminal entries from the authoritative queue (Finding
 	expect(s.entries.map((e) => e.id)).toEqual(['b']);
 });
 
-
 // — #345: server-owned monotonic addedAt (nextAddedAt) —
 
 test('#345: nextAddedAt is strictly increasing even when called faster than the clock ticks', () => {
@@ -182,7 +183,14 @@ test('#345: hydrate seeds nextAddedAt ABOVE the max persisted stamp (survives re
 test('#345: hydrate seed also counts terminal (done/skipped) rows a later add must clear', () => {
 	const s = new AuthoritativeState();
 	const future = Date.now() + 5_000_000_000;
-	const done: QueueEntry = { id: 'd', mediaId: 'm-d', singerId: 's1', status: 'done', rotationSeq: -1, addedAt: future };
+	const done: QueueEntry = {
+		id: 'd',
+		mediaId: 'm-d',
+		singerId: 's1',
+		status: 'done',
+		rotationSeq: -1,
+		addedAt: future
+	};
 	// hydrate filters terminal rows OUT of the live queue, but the counter must still be seeded above
 	// them — a new add must not collide with a done entry's stamp.
 	s.hydrate([done], null);

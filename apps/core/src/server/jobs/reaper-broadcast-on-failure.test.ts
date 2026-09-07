@@ -23,7 +23,13 @@ import type { Media, ServerEvent } from '@encore/shared';
 const T0 = 1_700_000_000_000;
 
 const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', ...over
+	id,
+	source: 'youtube',
+	sourceRef: 'vid-' + id,
+	title: id,
+	durationSec: 200,
+	stemStatus: 'none',
+	...over
 });
 
 function exhaust(jobType: 'stems' | 'align' | 'stems-upgrade', over: Partial<Media> = {}) {
@@ -65,7 +71,7 @@ test('#303 reaper-killed stems cook broadcasts media:status failed + logs unifor
 		expect(ev.mediaId).toBe('m1');
 		// And the operator gets exactly one line, in the uniform key=value format with the reaper cause.
 		expect(warn).toHaveBeenCalledTimes(1);
-		const line = (warn.mock.calls[0]![0] as string);
+		const line = warn.mock.calls[0]![0] as string;
 		expect(line).toContain('cause=reaper');
 		expect(line).toContain(`job=${job.id}`);
 		expect(line).toContain('media=m1');

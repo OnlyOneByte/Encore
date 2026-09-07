@@ -32,8 +32,14 @@
 		unreachable?: boolean;
 	}
 
-	let { qrDataUrl, joinUrl, placement = 'hero', onlineCount = 0, size = placement === 'corner' ? 88 : 238, unreachable = false }: Props =
-		$props();
+	let {
+		qrDataUrl,
+		joinUrl,
+		placement = 'hero',
+		onlineCount = 0,
+		size = placement === 'corner' ? 88 : 238,
+		unreachable = false
+	}: Props = $props();
 
 	// A number is pixels; a string is a raw CSS length. This is what --qr is set to.
 	const qrLength = $derived(typeof size === 'number' ? `${size}px` : size);
@@ -63,7 +69,9 @@
 	</div>
 {:else if placement === 'corner'}
 	<div class="corner" aria-label="Scan to join Encore">
-		<div class="qr" style="--qr: {qrLength}"><img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} /></div>
+		<div class="qr" style="--qr: {qrLength}">
+			<img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} />
+		</div>
 		<div class="meta">
 			<div class="t">Scan to join</div>
 			<div class="u">{shortUrl}</div>
@@ -74,7 +82,9 @@
 	</div>
 {:else}
 	<div class="hero">
-		<div class="qr" style="--qr: {qrLength}"><img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} /></div>
+		<div class="qr" style="--qr: {qrLength}">
+			<img src={qrDataUrl} alt="QR code to join Encore" width={intrinsicPx} height={intrinsicPx} />
+		</div>
 	</div>
 {/if}
 

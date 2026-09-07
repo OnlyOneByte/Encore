@@ -60,10 +60,17 @@ test('reportTerminalFailure performs all four terminal-fail epilogue steps (#451
 	expect(sig).toBeGreaterThanOrEqual(0);
 	const open = MK.indexOf('{', sig);
 	expect(open).toBeGreaterThanOrEqual(0);
-	let depth = 0, end = -1;
+	let depth = 0,
+		end = -1;
 	for (let i = open; i < MK.length; i++) {
 		if (MK[i] === '{') depth++;
-		else if (MK[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+		else if (MK[i] === '}') {
+			depth--;
+			if (depth === 0) {
+				end = i;
+				break;
+			}
+		}
 	}
 	expect(end).toBeGreaterThan(open);
 	const fn = MK.slice(open, end + 1);

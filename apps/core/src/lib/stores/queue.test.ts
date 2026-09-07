@@ -1,7 +1,7 @@
 // done-when: add renders pre-broadcast, reconciles with zero reorder; reject rolls back.
 import { test, expect } from 'bun:test';
 import { QueueStore } from './queue';
-import type { ClientCommand, ServerEvent, QueueEntry } from '@encore/shared';
+import type { ClientCommand, QueueEntry } from '@encore/shared';
 
 // deterministic id minting: first mint = entry id, second = clientOpId, ... (addSong mints 2)
 function makeStore() {
@@ -33,7 +33,6 @@ test('optimistic add renders immediately, BEFORE any server broadcast', () => {
 test('server echo (causedBy) clears pending; reconcile adopts server seq with zero duplicate', () => {
 	const { store } = makeStore();
 	const id = store.addSong('m1');
-	const cmd = (store as unknown as { _: 0 }) && id; // id is the entry id
 
 	// server confirms: patch echoes our clientOpId, sync carries the authoritative entry w/ seq 0
 	const clientOpId = 'id1'; // addSong mints id0=entryId, id1=clientOpId
@@ -163,7 +162,14 @@ test('reject rolls back to CURRENT truth, preserving a server patch that arrived
 
 test('observer applies a remote add (no pending, just inserts)', () => {
 	const { store } = makeStore();
-	const remote: QueueEntry = { id: 'other', mediaId: 'm2', singerId: 'sam', status: 'queued', rotationSeq: 0, addedAt: 1 };
+	const remote: QueueEntry = {
+		id: 'other',
+		mediaId: 'm2',
+		singerId: 'sam',
+		status: 'queued',
+		rotationSeq: 0,
+		addedAt: 1
+	};
 	store.onServerEvent({ type: 'queue:patch', patch: { rev: 1, ops: [{ op: 'add', entry: remote }] } });
 	expect(store.entries.map((e) => e.id)).toEqual(['other']);
 });

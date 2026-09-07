@@ -34,9 +34,7 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 	const { sessionToken: _t, ...me } = singer;
 
 	const requested = url.searchParams.get('tab');
-	const tab: TabId = (TAB_IDS as readonly string[]).includes(requested ?? '')
-		? (requested as TabId)
-		: DEFAULT_TAB;
+	const tab: TabId = (TAB_IDS as readonly string[]).includes(requested ?? '') ? (requested as TabId) : DEFAULT_TAB;
 
 	return {
 		me,

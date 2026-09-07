@@ -108,13 +108,13 @@ console.log(`fixture: "${ready[0].title}" → ${ready[0].instrumentalRef}\n`);
 async function ensureSecondReady() {
 	// Cast a wide net: "caroline" only matches the fixture cook. "a" matches any track with an 'a' in
 	// its metadata — which every seeded song does.
-	const list = await fetch(`${base}/api/search?q=a`).then((r) => r.json()).catch(() => null);
+	const list = await fetch(`${base}/api/search?q=a`)
+		.then((r) => r.json())
+		.catch(() => null);
 	if (!list) return null;
 	const already = list.ready ?? [];
 	// Pick a NON-cooked LOCAL track other than the first fixture as the second cook target.
-	const raw = (list.results ?? []).find(
-		(r) => r.source === 'local' && !already.some((a) => a.id === r.id)
-	);
+	const raw = (list.results ?? []).find((r) => r.source === 'local' && !already.some((a) => a.id === r.id));
 	if (already.length >= 2) return already[1];
 	if (!raw) return null;
 	const jr = await fetch(`${base}/api/join`, {
@@ -130,7 +130,9 @@ async function ensureSecondReady() {
 	});
 	// Poll (using a search that matches THIS raw title, so we don't miss it) until it's ready.
 	for (let i = 0; i < 40; i++) {
-		const l = await fetch(`${base}/api/search?q=a`).then((r) => r.json()).catch(() => null);
+		const l = await fetch(`${base}/api/search?q=a`)
+			.then((r) => r.json())
+			.catch(() => null);
 		if ((l?.ready ?? []).some((r) => r.id === raw.id)) return raw;
 		await sleep(500);
 	}
@@ -368,7 +370,8 @@ try {
 	await phone.fill(SEL.search, 'caroline');
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const hasAdd = await phone.count(SEL.addTurn);
-	if (hasAdd === 0) bail(`cooked song offered no ${SEL.addTurn} action — the seeder+worker sequence probably did not finish`);
+	if (hasAdd === 0)
+		bail(`cooked song offered no ${SEL.addTurn} action — the seeder+worker sequence probably did not finish`);
 	await phone.click(SEL.addTurn);
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
@@ -382,22 +385,21 @@ try {
 	record('LOW', 'the probe hook installs on the TV page', installed === 'installed', `got: ${installed}`);
 
 	// ── (1) baseline: at keyShift 0, audio decodes normally, no graph ──────
-	let els = [];
 	try {
-		els = await tv.waitFor(
+		await tv.waitFor(
 			`(() => { const e=[...document.querySelectorAll('video,audio')].filter(x=>x.currentSrc||x.src); return e.length ? ${MEDIA_PROBE} : null; })()`,
 			{ timeout: 25000 }
 		);
 	} catch {
-		els = await tv.evaluate(MEDIA_PROBE);
+		await tv.evaluate(MEDIA_PROBE);
 	}
 	const pick = (set) => set.find((e) => e.src.includes('instrumental')) ?? set.find((e) => e.src);
 
 	const t0 = pick(await tv.evaluate(MEDIA_PROBE));
 	await sleep(2500);
 	const t1 = pick(await tv.evaluate(MEDIA_PROBE));
-	const decoded0 = ((t1?.decoded ?? 0) - (t0?.decoded ?? 0)) > 0;
-	const advanced0 = ((t1?.currentTime ?? 0) - (t0?.currentTime ?? 0)) > 1.2;
+	const decoded0 = (t1?.decoded ?? 0) - (t0?.decoded ?? 0) > 0;
+	const advanced0 = (t1?.currentTime ?? 0) - (t0?.currentTime ?? 0) > 1.2;
 	record(
 		'CRITICAL',
 		'baseline (keyShift 0): audio decodes without a WebAudio graph',
@@ -499,7 +501,7 @@ try {
 	const tS1a = pick(await tv.evaluate(MEDIA_PROBE));
 	await sleep(2500);
 	const tS1b = pick(await tv.evaluate(MEDIA_PROBE));
-	const decodedS1 = ((tS1b?.decoded ?? 0) - (tS1a?.decoded ?? 0)) > 0;
+	const decodedS1 = (tS1b?.decoded ?? 0) - (tS1a?.decoded ?? 0) > 0;
 	record(
 		'CRITICAL',
 		'at +1 semitone: the element keeps decoding audio (bytes climbing)',
@@ -527,11 +529,7 @@ try {
 	// Now switch to 0 (ratio-1 passthrough on the same graph) so the "baseline" is measured through
 	// the same tap as +N. This is what gives the ratio check its cleanness.
 	const shiftedTo0 = await targetShift(0);
-	record(
-		'HIGH',
-		'phone → server: returning to 0 lands playback.keyShift at 0',
-		shiftedTo0
-	);
+	record('HIGH', 'phone → server: returning to 0 lands playback.keyShift at 0', shiftedTo0);
 	await sleep(800);
 	await restart();
 	await sleep(700);
@@ -576,8 +574,13 @@ try {
 
 	function summarise(n, m) {
 		if (!m?.ok) return `n/a: ${m?.why ?? 'no reading'}`;
-		const top = (m.partials || []).slice(0, 3).map((p) => `${p.hz.toFixed(1)}Hz`).join(', ');
-		return `rms=${m.rms.toFixed(4)}, peak=${m.peakHz.toFixed(1)}Hz, top=[${top}], expected~[${expected(n).map((f) => f.toFixed(1)).join(', ')}]`;
+		const top = (m.partials || [])
+			.slice(0, 3)
+			.map((p) => `${p.hz.toFixed(1)}Hz`)
+			.join(', ');
+		return `rms=${m.rms.toFixed(4)}, peak=${m.peakHz.toFixed(1)}Hz, top=[${top}], expected~[${expected(n)
+			.map((f) => f.toFixed(1))
+			.join(', ')}]`;
 	}
 
 	console.log('\n─── frequency-domain measurements ───');
@@ -618,7 +621,12 @@ try {
 			'HIGH',
 			`shift ${n >= 0 ? '+' : ''}${n}: two of the chord partials land at 2^(${n}/12)× their fixture frequencies`,
 			ok,
-			`measured top: ${partials.slice(0, 3).map((p) => p.hz.toFixed(1) + 'Hz').join(', ')}   expected: ${expected(n).map((f) => f.toFixed(1) + 'Hz').join(', ')}`
+			`measured top: ${partials
+				.slice(0, 3)
+				.map((p) => p.hz.toFixed(1) + 'Hz')
+				.join(', ')}   expected: ${expected(n)
+				.map((f) => f.toFixed(1) + 'Hz')
+				.join(', ')}`
 		);
 	}
 
@@ -633,12 +641,17 @@ try {
 			const measuredRatio = b.peakHz / a.peakHz;
 			// Nearest-match ratio: for each fixture partial, find the measured (at 0) and (at +2) partial
 			// closest to it and its ratio, then average.
-			const closest = (freq, arr) => arr.reduce((best, p) => (Math.abs(p.hz - freq) < Math.abs(best.hz - freq) ? p : best), arr[0]);
-			let sum = 0, n = 0;
+			const closest = (freq, arr) =>
+				arr.reduce((best, p) => (Math.abs(p.hz - freq) < Math.abs(best.hz - freq) ? p : best), arr[0]);
+			let sum = 0,
+				n = 0;
 			for (const fx of FIXTURE) {
 				const c0 = closest(fx, a.partials);
 				const c2 = closest(fx * ratio(2), b.partials);
-				if (c0 && c2) { sum += c2.hz / c0.hz; n++; }
+				if (c0 && c2) {
+					sum += c2.hz / c0.hz;
+					n++;
+				}
 			}
 			const nearest = n > 0 ? sum / n : NaN;
 			record(
@@ -685,7 +698,7 @@ try {
 			'MEDIUM',
 			"the 'sounding key' line renders when a real songProfile is present",
 			false,
-			"the fake worker publishes a legacy-shape songProfile that setSongProfile discards (see search response — songProfile.keyTonic === null), so keySounding is null and the .key-head line does not render. This is an environment limit, not a defect in the shifter.",
+			'the fake worker publishes a legacy-shape songProfile that setSongProfile discards (see search response — songProfile.keyTonic === null), so keySounding is null and the .key-head line does not render. This is an environment limit, not a defect in the shifter.',
 			true /* env */
 		);
 	}
@@ -722,7 +735,13 @@ try {
 			'HIGH',
 			'shift +2: the pitch survives pause/resume (top partial matches expected within 3%)',
 			meas2b?.ok && matches(meas2b.partials, expected(2)),
-			`before pause top=[${(meas2a.partials || []).slice(0,3).map(p => p.hz.toFixed(1)).join(', ')}]  after resume top=[${(meas2b.partials || []).slice(0,3).map(p => p.hz.toFixed(1)).join(', ')}]`
+			`before pause top=[${(meas2a.partials || [])
+				.slice(0, 3)
+				.map((p) => p.hz.toFixed(1))
+				.join(', ')}]  after resume top=[${(meas2b.partials || [])
+				.slice(0, 3)
+				.map((p) => p.hz.toFixed(1))
+				.join(', ')}]`
 		);
 	}
 
@@ -737,9 +756,7 @@ try {
 			// field still has 'caroline' from earlier, so first change it to a term that finds the second
 			// song. Then click .add on its row.
 			await phone.fill(SEL.search, secondReady.title.split(' ')[0].toLowerCase());
-			await phone.waitFor(
-				`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`
-			);
+			await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 			await phone.evaluate(`
 				(async () => {
 					const rows = [...document.querySelectorAll(${JSON.stringify(SEL.songRow)})];
@@ -780,7 +797,7 @@ try {
 			// no new context is built. Log for the record.
 			record(
 				'MEDIUM',
-				'song change: the previous song\'s AudioContext was closed by detach()',
+				"song change: the previous song's AudioContext was closed by detach()",
 				stateAfterChange?.contextStates?.every((s) => s === 'closed' || s === 'running'),
 				`ctx states: ${JSON.stringify(stateAfterChange?.contextStates ?? [])} (expect the shifted song's ctx to be 'closed')`
 			);
@@ -800,7 +817,7 @@ try {
 			const stateAfterChange = await tv.evaluate(HOOK_STATE);
 			record(
 				'MEDIUM',
-				'song-end: the shifted song\'s AudioContext was closed by detach()',
+				"song-end: the shifted song's AudioContext was closed by detach()",
 				stateAfterChange?.contextStates?.every((s) => s === 'closed'),
 				`ctx states: ${JSON.stringify(stateAfterChange?.contextStates ?? [])}`
 			);

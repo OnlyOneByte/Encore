@@ -244,16 +244,7 @@ export const SEL = {
  * what a screen reader — and therefore a role-based query — actually sees. The hex is deliberately not
  * used: it was the thing that rotted.
  */
-export const PRESET_COLOUR_NAMES = [
-	'violet',
-	'pink',
-	'green',
-	'amber',
-	'blue',
-	'coral',
-	'purple',
-	'mint'
-] as const;
+export const PRESET_COLOUR_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'] as const;
 
 export const HOOKS: Hook[] = [
 	// join (the colour picker itself is a shared component — see ColourPicker.svelte)

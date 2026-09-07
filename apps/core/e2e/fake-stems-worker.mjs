@@ -49,7 +49,9 @@ function writeRef(ref, bytes) {
 	return abs;
 }
 
-const ws = new WebSocket(`ws://127.0.0.1:${port}/ws?role=worker${process.env.ENCORE_WORKER_TOKEN ? `&token=${process.env.ENCORE_WORKER_TOKEN}` : ''}`);
+const ws = new WebSocket(
+	`ws://127.0.0.1:${port}/ws?role=worker${process.env.ENCORE_WORKER_TOKEN ? `&token=${process.env.ENCORE_WORKER_TOKEN}` : ''}`
+);
 const send = (m) => ws.send(JSON.stringify(m));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -111,7 +113,10 @@ ws.onmessage = async (ev) => {
 			const insRef = `derived/stems/${mediaId}-instrumental.wav`;
 			const vocRef = `derived/stems/${mediaId}-vocals.wav`;
 			if (!process.env.FAKE_SKIP_WRITE) {
-				writeRef(insRef, process.env.FAKE_SILENT_INSTRUMENTAL ? silence() : tone({ seconds: 8, hz: [220, 277.18, 329.63] }));
+				writeRef(
+					insRef,
+					process.env.FAKE_SILENT_INSTRUMENTAL ? silence() : tone({ seconds: 8, hz: [220, 277.18, 329.63] })
+				);
 				writeRef(vocRef, process.env.FAKE_SILENT_VOCALS ? silence() : tone({ seconds: 8, hz: [440], amp: 0.2 }));
 			}
 			await progress('separating', 90);

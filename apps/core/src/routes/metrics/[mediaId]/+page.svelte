@@ -37,7 +37,13 @@
 		attempts: AuditAttempt[];
 	}
 	interface Audit {
-		media: { id: string; title: string; titleCanonical?: string | null; artistCanonical?: string | null; durationSec: number } | null;
+		media: {
+			id: string;
+			title: string;
+			titleCanonical?: string | null;
+			artistCanonical?: string | null;
+			durationSec: number;
+		} | null;
 		cooks: Cook[];
 		plays: { at: number; entryId: string }[];
 		hasHistory: boolean;
@@ -78,7 +84,7 @@
 		canceled: 'canceled',
 		running: 'running'
 	};
-	const outcomeLabel = (outcome: string | null) => OUTCOME_LABELS[outcome ?? 'running'] ?? (outcome ?? 'running');
+	const outcomeLabel = (outcome: string | null) => OUTCOME_LABELS[outcome ?? 'running'] ?? outcome ?? 'running';
 
 	/** The model/hardware keys, in words. `asrModel` and `syncMode` are field names, not English. */
 	const FACT_LABELS: Record<string, string> = {
@@ -112,20 +118,20 @@
 		<h1>{audit.media?.titleCanonical ?? audit.media?.title ?? mediaId}</h1>
 		{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
 		<p class="note">
-			{#if audit.media}{songLength(audit.media.durationSec)} long · {/if}sung {audit.plays.length} times
+			{#if audit.media}{songLength(audit.media.durationSec)} long ·
+			{/if}sung {audit.plays.length} times
 		</p>
 
 		{#if !audit.hasHistory}
 			<div class="card">
 				<p class="note">
-					No history for this song — it was processed before this page existed, so its timings were
-					never recorded.
+					No history for this song — it was processed before this page existed, so its timings were never recorded.
 				</p>
 			</div>
 		{:else}
 			<p class="note">
-				Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several
-				steps, and a step can be retried.
+				Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several steps, and a step can
+				be retried.
 			</p>
 		{/if}
 
@@ -136,7 +142,9 @@
 					<span class="pill {cook.outcome}">{outcomeLabel(cook.outcome)}</span>
 				</header>
 				<p class="note">
-					{stamp(cook.startedAt)}{#if cook.totalMs !== null}{' · took '}{dur(cook.totalMs)}{:else}{' · still going'}{/if}
+					{stamp(cook.startedAt)}{#if cook.totalMs !== null}{' · took '}{dur(
+							cook.totalMs
+						)}{:else}{' · still going'}{/if}
 				</p>
 
 				<ol class="steps">
@@ -156,7 +164,10 @@
 							{#if usedModels(a.models).length}
 								<dl class="facts">
 									{#each usedModels(a.models) as [k, v] (k)}
-										<div><dt>{factLabel(k)}</dt><dd>{v}</dd></div>
+										<div>
+											<dt>{factLabel(k)}</dt>
+											<dd>{v}</dd>
+										</div>
 									{/each}
 								</dl>
 							{/if}

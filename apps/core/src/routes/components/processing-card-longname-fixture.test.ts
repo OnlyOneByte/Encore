@@ -27,10 +27,7 @@ const PAGE = join(import.meta.dir, '+page.svelte');
 const src = readFileSync(PAGE, 'utf8');
 
 // The profile-name maxlength is what a real singer name can reach; the fixture must hit it.
-const repo = readFileSync(
-	join(import.meta.dir, '../../server/singers/repository.ts'),
-	'utf8'
-);
+const repo = readFileSync(join(import.meta.dir, '../../server/singers/repository.ts'), 'utf8');
 const maxLen = Number(repo.match(/\.slice\(0,\s*(\d+)\)/)![1]);
 
 test('the gallery demos a ProcessingCard with actions AND an UNBROKEN maxlength singer name', () => {

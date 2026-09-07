@@ -30,7 +30,9 @@ export interface SongDisplay {
  * resort for a NAME (it still names the song, just noisily); `artistCanonical ?? null` because the
  * only other candidate is the uploader, which is worse than showing nothing.
  */
-export function songDisplay(m: Pick<Media, 'title' | 'titleCanonical' | 'artistCanonical'> | null | undefined): SongDisplay {
+export function songDisplay(
+	m: Pick<Media, 'title' | 'titleCanonical' | 'artistCanonical'> | null | undefined
+): SongDisplay {
 	if (!m) return { title: '', artist: null };
 	return {
 		title: m.titleCanonical ?? m.title,

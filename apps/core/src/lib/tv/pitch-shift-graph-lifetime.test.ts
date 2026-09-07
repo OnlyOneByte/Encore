@@ -18,10 +18,10 @@
 //      Svelte compile + DOM, so a text scan proves the fix is WIRED: on song change the master graph
 //      is reset via setShift(0) and is NOT detached. Mutation trap: reintroducing masterGraph.detach()
 //      in that block reds it.
-import { test, expect, beforeEach, afterEach } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { PitchShiftGraph } from "./pitch-shift";
+import { test, expect, beforeEach, afterEach } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { PitchShiftGraph } from './pitch-shift';
 
 // -- A. Behavioural: routing lifetime under stubbed WebAudio --------------------------------------
 
@@ -45,14 +45,14 @@ class StubSource extends StubNode {
 	}
 }
 class StubAudioContext {
-	state: "suspended" | "running" | "closed" = "running";
+	state: 'suspended' | 'running' | 'closed' = 'running';
 	destination = new StubNode();
 	sources: StubSource[] = [];
 	async resume() {
-		this.state = "running";
+		this.state = 'running';
 	}
 	async close() {
-		this.state = "closed";
+		this.state = 'closed';
 	}
 	createMediaElementSource(el: unknown) {
 		const s = new StubSource(el);
@@ -73,9 +73,12 @@ beforeEach(() => {
 	g.window = { AudioContext: StubAudioContext };
 	g.AudioWorkletNode = StubNode;
 	g.Blob = class {
-		constructor(public parts: unknown[], public opts: unknown) {}
+		constructor(
+			public parts: unknown[],
+			public opts: unknown
+		) {}
 	};
-	g.URL = { createObjectURL: () => "blob:stub", revokeObjectURL: () => {} };
+	g.URL = { createObjectURL: () => 'blob:stub', revokeObjectURL: () => {} };
 });
 
 afterEach(() => {
@@ -86,7 +89,7 @@ function fakeEl(): HTMLMediaElement {
 	return {} as HTMLMediaElement;
 }
 
-test("#477: a routed master graph SURVIVES setShift(0) -- stays routed (song-change reset)", async () => {
+test('#477: a routed master graph SURVIVES setShift(0) -- stays routed (song-change reset)', async () => {
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(1);
 	expect(graph.isRouted).toBe(true);
@@ -95,7 +98,7 @@ test("#477: a routed master graph SURVIVES setShift(0) -- stays routed (song-cha
 	expect(graph.isDegraded).toBe(false);
 });
 
-test("#477 control: detach() (the OLD per-song call) closes the context -- the silence path", async () => {
+test('#477 control: detach() (the OLD per-song call) closes the context -- the silence path', async () => {
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(1);
 	expect(graph.isRouted).toBe(true);
@@ -108,19 +111,19 @@ test("#477 control: detach() (the OLD per-song call) closes the context -- the s
 // -- B. Source-scan: reset wired to setShift(0), not detach(), for the master ---------------------
 
 function stripComments(s: string): string {
-	return s.replace(/[/][*][\s\S]*?[*][/]/g, "").replace(/(^|[^:])[/][/][^\n]*/g, "$1");
+	return s.replace(/[/][*][\s\S]*?[*][/]/g, '').replace(/(^|[^:])[/][/][^\n]*/g, '$1');
 }
 
 function resetEffectBody(s: string): string {
-	const anchor = "if (id === resetForId) return;";
+	const anchor = 'if (id === resetForId) return;';
 	const start = s.indexOf(anchor);
 	expect(start).toBeGreaterThanOrEqual(0);
-	let i = s.indexOf("{", s.lastIndexOf("$effect", start));
+	let i = s.indexOf('{', s.lastIndexOf('$effect', start));
 	const from = i;
 	let depth = 0;
 	for (; i < s.length; i++) {
-		if (s[i] === "{") depth++;
-		else if (s[i] === "}") {
+		if (s[i] === '{') depth++;
+		else if (s[i] === '}') {
 			depth--;
 			if (depth === 0) break;
 		}
@@ -128,22 +131,22 @@ function resetEffectBody(s: string): string {
 	return s.slice(from, i + 1);
 }
 
-const TV = readFileSync(join(import.meta.dir, "TvPlayer.svelte"), "utf8");
+const TV = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 
-test("#477 guard: the per-song reset resets the master graph via setShift(0)", () => {
+test('#477 guard: the per-song reset resets the master graph via setShift(0)', () => {
 	const body = stripComments(resetEffectBody(TV));
 	expect(body).toMatch(/masterGraph[?][.]setShift[(]\s*0\s*[)]/);
 });
 
-test("#477 guard (mutation trap): the per-song reset must NOT detach the master graph", () => {
+test('#477 guard (mutation trap): the per-song reset must NOT detach the master graph', () => {
 	const body = stripComments(resetEffectBody(TV));
 	expect(body).not.toMatch(/masterGraph[?][.]detach[(]/);
 	expect(body).toMatch(/guideGraph[?][.]detach[(]/);
 });
 
-test("#477 guard (not-vacuous): the destroy effect still detaches BOTH graphs on slot unmount", () => {
+test('#477 guard (not-vacuous): the destroy effect still detaches BOTH graphs on slot unmount', () => {
 	const stripped = stripComments(TV);
-	const destroyIdx = stripped.indexOf("return () => {");
+	const destroyIdx = stripped.indexOf('return () => {');
 	expect(destroyIdx).toBeGreaterThanOrEqual(0);
 	const destroyRegion = stripped.slice(destroyIdx, destroyIdx + 300);
 	expect(destroyRegion).toMatch(/masterGraph[?][.]detach[(]/);

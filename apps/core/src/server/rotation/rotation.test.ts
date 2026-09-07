@@ -6,11 +6,24 @@ import type { QueueEntry, Media } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const e = (id: string, singerId: string, addedAt: number, mediaId = 'm-' + id): QueueEntry => ({
-	id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt
+	id,
+	mediaId,
+	singerId,
+	status: 'queued',
+	rotationSeq: -1,
+	addedAt
 });
 const m = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE, ...over
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE,
+	...over
 });
 
 test('reseq: three singers interleave fairly', () => {
@@ -25,7 +38,10 @@ test('new joiner slots into the next gap', () => {
 
 test('nextPlayable returns the soonest ready entry', () => {
 	const entries = [e('a1', 'a', 1), e('b1', 'b', 2)];
-	const media = new Map([[ 'm-a1', m('m-a1') ], [ 'm-b1', m('m-b1') ]]);
+	const media = new Map([
+		['m-a1', m('m-a1')],
+		['m-b1', m('m-b1')]
+	]);
 	expect(nextPlayable(entries, media).next?.id).toBe('a1');
 });
 
@@ -43,7 +59,10 @@ test('HELD SLOT: a not-ready (cooking) entry is skipped but keeps its position',
 	expect(reseq(entries).find((x) => x.id === 'a1')!.rotationSeq).toBe(0);
 
 	// once a1's stems are ready, it becomes the next playable again at its held position
-	media.set('m-a1', m('m-a1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
+	media.set(
+		'm-a1',
+		m('m-a1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })
+	);
 	expect(nextPlayable(entries, media).next?.id).toBe('a1');
 });
 
@@ -52,7 +71,10 @@ test('isEntryReady: ready ONLY with an instrumental — nothing plays unprocesse
 		['none', m('none', { stemStatus: 'none', instrumentalRef: undefined })],
 		['queued', m('queued', { stemStatus: 'queued', instrumentalRef: undefined })],
 		['skewed', m('skewed', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: undefined })],
-		['cooked', m('cooked', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })]
+		[
+			'cooked',
+			m('cooked', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })
+		]
 	]);
 	// An unseparated song is a cook candidate, not something the room can sing — this is the change
 	// from the embed era, where a YouTube entry was always immediately playable.
@@ -66,7 +88,9 @@ test('isEntryReady: ready ONLY with an instrumental — nothing plays unprocesse
 test('upNextAfter skips the current entry and returns the next ready one', () => {
 	const entries = [e('a1', 'a', 1), e('b1', 'b', 2), e('a2', 'a', 3)];
 	const media = new Map([
-		['m-a1', m('m-a1')], ['m-b1', m('m-b1')], ['m-a2', m('m-a2')]
+		['m-a1', m('m-a1')],
+		['m-b1', m('m-b1')],
+		['m-a2', m('m-a2')]
 	]);
 	// fair order a1,b1,a2 — after a1, up next is b1
 	expect(upNextAfter('a1', entries, media)?.id).toBe('b1');

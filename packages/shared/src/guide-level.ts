@@ -24,19 +24,16 @@ import { isPlayable, type Media, type PlaybackState } from './types';
  * notch compare equal.
  */
 export function clampGuideLevel(level: number | null | undefined): number | null {
-  if (level === null || level === undefined || !Number.isFinite(level)) return null;
-  return Math.round(Math.max(0, Math.min(1, level)) * 100) / 100;
+	if (level === null || level === undefined || !Number.isFinite(level)) return null;
+	return Math.round(Math.max(0, Math.min(1, level)) * 100) / 100;
 }
 
 /**
  * The level the TV should actually mix at: the per-song override when one is pinned, otherwise the
  * room default. Never returns null — the player needs a number for `.volume`.
  */
-export function effectiveGuideLevel(
-  playback: Pick<PlaybackState, 'guideLevel'>,
-  roomDefault: number
-): number {
-  return playback.guideLevel ?? clampGuideLevel(roomDefault) ?? 0;
+export function effectiveGuideLevel(playback: Pick<PlaybackState, 'guideLevel'>, roomDefault: number): number {
+	return playback.guideLevel ?? clampGuideLevel(roomDefault) ?? 0;
 }
 
 /**
@@ -47,8 +44,6 @@ export function effectiveGuideLevel(
  * separated before the ref was persisted, and songs whose vocals stem came back silent, report
  * false and simply do not offer the control.
  */
-export function hasGuidingTrack(
-  m: Pick<Media, 'stemStatus' | 'instrumentalRef' | 'vocalsRef'>
-): boolean {
-  return isPlayable(m) && !!m.vocalsRef;
+export function hasGuidingTrack(m: Pick<Media, 'stemStatus' | 'instrumentalRef' | 'vocalsRef'>): boolean {
+	return isPlayable(m) && !!m.vocalsRef;
 }

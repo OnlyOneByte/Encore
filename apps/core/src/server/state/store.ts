@@ -2,7 +2,15 @@
 // a queue:patch broadcast is computed from RAM (sub-ms). Writes update memory, bump `rev`, and
 // schedule a write-behind flush to SQLite. Hydrated once on boot. See ARCHITECTURE §9.
 
-import { applyAndReseq, assignSeqs, isTerminal, type Ordering, type QueueOp, type QueueEntry, type PlaybackState } from '@encore/shared';
+import {
+	applyAndReseq,
+	assignSeqs,
+	isTerminal,
+	type Ordering,
+	type QueueOp,
+	type QueueEntry,
+	type PlaybackState
+} from '@encore/shared';
 
 export interface StatePersistence {
 	/** Write-behind sink. Called (debounced) after mutations; must be side-effect-only. */
@@ -43,7 +51,11 @@ export class AuthoritativeState {
 	 * mutation means nothing has to be re-wired when either moves. Defaults to `{}` — fair rotation —
 	 * so a caller with no settings to hand (tests, a boot path) gets the pre-setting behaviour.
 	 */
-	constructor(persistence: StatePersistence = NOOP_PERSIST, flushDelayMs = 250, orderingOf: () => Ordering = () => ({})) {
+	constructor(
+		persistence: StatePersistence = NOOP_PERSIST,
+		flushDelayMs = 250,
+		orderingOf: () => Ordering = () => ({})
+	) {
 		this.#persistence = persistence;
 		this.#flushDelayMs = flushDelayMs;
 		this.#orderingOf = orderingOf;
@@ -63,7 +75,10 @@ export class AuthoritativeState {
 	/** Seed from durable storage on boot (does NOT bump rev or schedule a flush). */
 	hydrate(entries: QueueEntry[], playback: PlaybackState | null): void {
 		// drop terminal (done) rows and normalize the room's ordering on load
-		this.#entries = assignSeqs(entries.filter((e) => !isTerminal(e)), this.#orderingOf());
+		this.#entries = assignSeqs(
+			entries.filter((e) => !isTerminal(e)),
+			this.#orderingOf()
+		);
 		// Seed the monotonic addedAt counter above every stamp we just loaded (terminal rows filtered
 		// above are still counted here — a later add must not collide with a done entry's stamp either).
 		for (const e of entries) {
@@ -102,8 +117,7 @@ export class AuthoritativeState {
 	 */
 	reorder(): { rev: number; entries: QueueEntry[] } | null {
 		const next = assignSeqs(this.#entries, this.#orderingOf());
-		const same =
-			next.length === this.#entries.length && next.every((e, i) => e.id === this.#entries[i]!.id);
+		const same = next.length === this.#entries.length && next.every((e, i) => e.id === this.#entries[i]!.id);
 		if (same) return null;
 		this.#entries = next;
 		this.#rev++;
@@ -147,9 +161,7 @@ export class AuthoritativeState {
 		// column from inside the flush timer. So drop non-finite numbers here too — this is the last-line
 		// guard behind player.ts, so no future caller can reintroduce the process-kill.
 		const defined = Object.fromEntries(
-			Object.entries(patch).filter(
-				([, v]) => v !== undefined && !(typeof v === 'number' && !Number.isFinite(v))
-			)
+			Object.entries(patch).filter(([, v]) => v !== undefined && !(typeof v === 'number' && !Number.isFinite(v)))
 		) as Partial<PlaybackState>;
 		this.#playback = { ...this.#playback, ...defined };
 		this.#rev++;

@@ -5,7 +5,14 @@
 // See ARCHITECTURE §6, §7.
 
 import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '@encore/shared';
-import { mergeLyricsCandidate, pickBestLyrics, isQualityUpgrade, isPlayable, needsFetch, normalizeSongProfile } from '@encore/shared';
+import {
+	mergeLyricsCandidate,
+	pickBestLyrics,
+	isQualityUpgrade,
+	isPlayable,
+	needsFetch,
+	normalizeSongProfile
+} from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AuthoritativeState } from '../state/store';
 import { instrumentalKey as layoutInstrumentalKey, toRelativeKey } from '../media/paths';
