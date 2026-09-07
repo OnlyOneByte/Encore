@@ -75,7 +75,8 @@ function harness() {
 			if (seen.has(id)) return true;
 			seen.add(id);
 			return false;
-		}
+		},
+		hasOp: (id) => seen.has(id) // non-recording peek — mirrors server.ts (#490)
 	};
 	let clock = 1000;
 	return { state, deps, plays, playsLogged, popularity, published };

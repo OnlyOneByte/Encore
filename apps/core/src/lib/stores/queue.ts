@@ -144,8 +144,12 @@ export class QueueStore {
 	}
 
 	/**
-	 * Resend every still-pending command (call on WS reconnect). Safe because the server dedupes
-	 * by clientOpId: an already-applied op is re-acked, not double-applied.
+	 * Resend every still-pending command (call on WS reconnect). Safe because the server dedupes by
+	 * clientOpId: an already-applied op is re-acked, not double-applied — and, since #490, that re-ack
+	 * fires even for an op the server has already applied whose shape no longer validates against
+	 * current state (a resent `remove` whose entry is now pruned, or an `add` whose entry has started),
+	 * because the idempotency ledger is consulted before a validation failure becomes an `op:reject`.
+	 * So resending a genuinely-succeeded op never surfaces a false error banner to the singer.
 	 */
 	resendPending(): void {
 		for (const [clientOpId, p] of this.#pending) {
