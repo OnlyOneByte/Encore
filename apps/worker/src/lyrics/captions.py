@@ -77,6 +77,12 @@ _TAG_RE = re.compile(r"<[^>]*>")
 #: Bracketed non-lyric annotations captioners add: [Music], [Applause], (chorus), ♪♪.
 _ANNOTATION_RE = re.compile(r"^\s*(?:[\[(][^\])]*[\])]|[♪♫\s]+)\s*$")
 
+#: How close two cues must sit in time for a prefix-extend to count as the SAME rolling line rather
+#: than a coincidentally-repeated one. A rolling triplet's cues are contiguous or overlapping (the
+#: 10ms hold cue butts straight against the next), so a small non-zero slack absorbs float rounding
+#: without reaching across the gap to a chorus line that recurs later in the song.
+_ROLLING_ADJACENCY_SEC = 0.5
+
 
 def _cue_seconds(hh: str | None, mm: str, ss: str, frac: str) -> float:
     total = int(mm) * 60 + int(ss)
@@ -104,10 +110,30 @@ def parse_vtt(text: str) -> list[dict[str, Any]]:
     only an annotation ([Music]) are dropped — they are not lyrics, and feeding them to a forced
     aligner corrupts the words on either side.
 
-    CONSECUTIVE DUPLICATES ARE COLLAPSED. Caption tracks routinely repeat a line across cues to hold it
-    on screen, and a rolling track repeats it with each new cue. Left in, the same line would be
-    aligned several times and the transcript would score its own text as far more repetitive than the
-    vocals are.
+    A PAYLOAD ENDS AT A GENUINELY EMPTY LINE, not a whitespace-only one. WebVTT separates cue blocks
+    with an empty line, but a whitespace-only line is legal *inside* a payload — and YouTube's auto
+    tracks open the word-timed cue of each rolling triplet with exactly such a line. Terminating the
+    payload scan on `.strip()` being falsy (rather than the line being literally empty) truncated at
+    that first space-only line: `body` came out empty and the whole cue — the one carrying the per-word
+    `<c>` timing — was silently discarded. `_clean_cue_text` already skips whitespace-only lines within
+    a payload, so admitting them here is safe; the only change is where a cue block is judged to end.
+
+    ROLLING AND HELD DUPLICATES ARE COLLAPSED. Caption tracks repeat a line across cues to hold it on
+    screen (exact repeat), and YouTube's auto tracks *roll*: each cue repeats the previous cue's text
+    and appends the next few words, so the same words arrive two or three times and the run grows by a
+    prefix each step. Left in, a rolling track parses to ~2× the real lines — measured 236 where 121
+    exist on a real 350s auto track — every one of which a forced aligner then has to place, and which
+    the TV shows on the baseline-fallback path.
+
+    Both are collapsed here: when a cue's text is the previous line verbatim (held) OR extends it as a
+    prefix (rolling), the run is folded into one line, keeping the longest (final) text and stretching
+    its window over the whole run. The fold is bounded by TIME-ADJACENCY — the new cue must begin at or
+    before the running line's end — so a chorus line that genuinely recurs later in the song, separated
+    by other cues, is never merged into an earlier one.
+
+    (The old rationale here claimed the point was to stop the transcript "scoring its own text as far
+    more repetitive"; that is wrong on its own terms — `agreement_score` is Jaccard over token SETS, so
+    repetition cannot move it. The real beneficiaries are the forced aligner and the TV overlay.)
     """
     out: list[dict[str, Any]] = []
     lines = (text or "").replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -121,14 +147,22 @@ def parse_vtt(text: str) -> list[dict[str, Any]]:
         end = _cue_seconds(m.group(5), m.group(6), m.group(7), m.group(8))
         i += 1
         payload: list[str] = []
-        while i < len(lines) and lines[i].strip() and _VTT_CUE_RE.match(lines[i].strip()) is None:
+        # A cue block ends at a literally EMPTY line or the next cue's timing — NOT at a whitespace-only
+        # line, which is legal inside a payload and opens the word-timed cue of a rolling triplet.
+        while i < len(lines) and lines[i] != "" and _VTT_CUE_RE.match(lines[i].strip()) is None:
             payload.append(lines[i])
             i += 1
         body = _clean_cue_text(payload)
         if not body or end <= start:
             continue
-        if out and out[-1]["text"] == body:
-            out[-1]["end"] = max(out[-1]["end"], end)  # held-on-screen repeat, not a new line
+        if (
+            out
+            and start <= out[-1]["end"] + _ROLLING_ADJACENCY_SEC
+            and (body == out[-1]["text"] or body.startswith(out[-1]["text"]))
+        ):
+            # Held repeat (equal) or rolling extend (prefix): fold into the run, keep the longest text.
+            out[-1]["text"] = body
+            out[-1]["end"] = max(out[-1]["end"], end)
             continue
         out.append({"start": start, "end": end, "text": body})
     out.sort(key=lambda s: s["start"])
