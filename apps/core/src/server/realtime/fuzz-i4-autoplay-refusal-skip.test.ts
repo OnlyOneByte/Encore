@@ -37,7 +37,7 @@ const PROBE = stripComments(readFileSync(PROBE_PATH, 'utf8'));
 // opening `{`, then advance with a brace-depth counter to the matching close so the slice is exactly
 // checkI4's body and not the whole file or a first-`}` truncation.
 function checkI4Body(src: string): string {
-	const decl = src.indexOf('async function checkI4(w)');
+	const decl = src.indexOf('async function checkI4(w');
 	expect(decl).toBeGreaterThanOrEqual(0); // not vacuous: checkI4 must exist
 	const open = src.indexOf('{', decl);
 	expect(open).toBeGreaterThanOrEqual(0);
