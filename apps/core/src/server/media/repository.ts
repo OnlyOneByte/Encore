@@ -227,18 +227,6 @@ export class MediaRepository {
 			.filter((r): r is { artist: string; count: number } => !!r.artist);
 	}
 
-	/** Browse facet: ready songs grouped by genre. */
-	genreFacets(): Array<{ genre: string; count: number }> {
-		return this.#db
-			.select({ genre: mediaTags.value, count: sql<number>`count(*)`.as('count') })
-			.from(mediaTags)
-			.innerJoin(media, eq(media.id, mediaTags.mediaId))
-			.where(and(eq(mediaTags.kind, 'genre'), eq(media.stemStatus, 'ready')))
-			.groupBy(mediaTags.value)
-			.orderBy(desc(sql`count(*)`), asc(mediaTags.value))
-			.all();
-	}
-
 	/** Ready songs by canonical artist (exact match on the canonical value the facet returned). */
 	byArtist(artist: string): Media[] {
 		return this.#db
@@ -248,20 +236,6 @@ export class MediaRepository {
 			.orderBy(desc(media.id))
 			.all()
 			.map(fromRow);
-	}
-
-	/** Ready songs carrying a genre. */
-	byGenre(genre: string): Media[] {
-		return this.#db
-			.select()
-			.from(media)
-			.innerJoin(mediaTags, eq(mediaTags.mediaId, media.id))
-			.where(
-				and(eq(media.stemStatus, 'ready'), eq(mediaTags.kind, 'genre'), eq(mediaTags.value, genre.trim().toLowerCase()))
-			)
-			.orderBy(desc(media.id))
-			.all()
-			.map((r) => fromRow(r.media));
 	}
 }
 

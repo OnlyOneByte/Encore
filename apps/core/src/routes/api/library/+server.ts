@@ -20,8 +20,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// every search result ever materialised (271 rows for 7 cooked songs on the live box), so browsing
 	// the whole table would bury the library in things you cannot sing yet.
 	const artist = url.searchParams.get('artist')?.trim();
-	const genre = url.searchParams.get('genre')?.trim();
-	const library = artist ? app.media.byArtist(artist) : genre ? app.media.byGenre(genre) : app.media.listReady();
+	const library = artist ? app.media.byArtist(artist) : app.media.listReady();
 
 	// The hub validates adds against the runtime catalog, so anything we offer for one-tap re-queue
 	// must be resolvable there. Boot hydration already covers this; re-seeding keeps the endpoint
@@ -50,7 +49,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		cooking,
 		// Browse facets always describe the WHOLE ready library, never the current filter — otherwise
 		// picking an artist would collapse the facet list to that one artist and strand you there.
-		facets: { artists: app.media.artistFacets(), genres: app.media.genreFacets() },
-		filter: artist ? { artist } : genre ? { genre } : null
+		facets: { artists: app.media.artistFacets() },
+		filter: artist ? { artist } : null
 	});
 };
