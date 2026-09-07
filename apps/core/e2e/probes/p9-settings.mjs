@@ -23,25 +23,59 @@ import { join as pathJoin } from 'node:path';
 import { tmpdir } from 'node:os';
 import { SEL } from '../contract.ts';
 
+/**
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO' | 'PASS'} Severity
+ * @typedef {{ sev: Severity, area: string, msg: string, evidence: string }} Finding
+ * @typedef {import('@encore/shared').GlobalSettings} GlobalSettings
+ * @typedef {import('@encore/shared').RoomSettings} RoomSettings
+ * @typedef {import('@encore/shared').EffectiveSettings} EffectiveSettings
+ *
+ * Options accepted by {@link api}. Kept structural (not the full RequestInit) because these are the
+ * only knobs the probe drives; body is any JSON-serialisable value the endpoint accepts.
+ * @typedef {{ cookie?: string | null, body?: unknown, expectJson?: boolean }} ApiOpts
+ *
+ * The subset of the fetch Response the probe reads back, plus the parsed JSON body. `body` is
+ * `unknown` on purpose — each call site narrows it with a cast to the shape it expects.
+ * @typedef {{ status: number, headers: Headers, text: string, body: any, setCookie: string | null }} ApiResult
+ *
+ * A phone WebSocket harness capturing every server event.
+ * @typedef {{ ws: WebSocket, events: any[], opened: Promise<unknown> }} PhoneWs
+ */
+
 const PORT = process.env.EPORT ?? '5229';
 const BASE = `http://127.0.0.1:${PORT}`;
 const WS_BASE = `ws://127.0.0.1:${PORT}`;
 const SCRATCH = process.env.KIROCREW_SCRATCH ?? tmpdir();
 
 // ── result plumbing ─────────────────────────────────────────────────────────
+/** @type {Finding[]} */
 const findings = [];
+/**
+ * @param {Severity} sev
+ * @param {string} area
+ * @param {string} msg
+ * @param {string} [evidence]
+ */
 function add(sev, area, msg, evidence = '') {
 	findings.push({ sev, area, msg, evidence });
 	const tag = sev === 'PASS' ? '     ' : `${sev.padEnd(8)}`;
 	console.log(`${tag} [${area}] ${msg}${evidence ? `\n           evidence: ${evidence}` : ''}`);
 }
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	process.exit(2);
 }
 
 // ── helpers ─────────────────────────────────────────────────────────────────
+/**
+ * @param {string} method
+ * @param {string} path
+ * @param {ApiOpts} [opts]
+ * @returns {Promise<ApiResult>}
+ */
 async function api(method, path, { cookie, body, expectJson = true } = {}) {
+	/** @type {Record<string, string>} */
 	const headers = { 'content-type': 'application/json' };
 	if (cookie) headers.Cookie = cookie;
 	const res = await fetch(`${BASE}${path}`, {
@@ -60,31 +94,40 @@ async function api(method, path, { cookie, body, expectJson = true } = {}) {
 	}
 	return { status: res.status, headers: res.headers, text, body: parsed, setCookie: res.headers.get('set-cookie') };
 }
+/** @param {string | null} setCookieHeader @returns {string | null} */
 function cookieFromSetCookie(setCookieHeader) {
 	if (!setCookieHeader) return null;
 	// First segment before ; — "encore_singer=abc123"
 	const first = setCookieHeader.split(';')[0].trim();
 	return first;
 }
+/**
+ * @param {string} name
+ * @returns {Promise<{ cookie: string, singerId: string }>}
+ */
 async function joinAs(name) {
 	const r = await api('POST', '/api/join', { body: { displayName: name, color: '#7c5cff' } });
 	if (r.status !== 200) throw new Error(`join failed for ${name}: HTTP ${r.status} ${r.text}`);
 	const cookie = cookieFromSetCookie(r.setCookie);
 	if (!cookie) throw new Error(`no cookie back from /api/join for ${name}`);
-	return { cookie, singerId: r.body.singer.id };
+	const singerId = /** @type {{ singer: { id: string } }} */ (r.body).singer.id;
+	return { cookie, singerId };
 }
+/** @returns {Promise<EffectiveSettings>} */
 async function getSettings() {
 	const r = await api('GET', '/api/settings');
 	if (r.status !== 200) throw new Error(`GET /api/settings HTTP ${r.status}`);
 	return r.body;
 }
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 
 // A phone WS that captures every server event. Cookie carries the session so it counts as a joined
 // singer and receives broadcasts.
+/** @param {string} cookie @returns {PhoneWs} */
 function openPhoneWs(cookie) {
+	/** @type {any[]} */
 	const events = [];
-	const ws = new WebSocket(`${WS_BASE}/ws?role=phone`, { headers: { Cookie: cookie } });
+	const ws = new WebSocket(`${WS_BASE}/ws?role=phone`, /** @type {any} */ ({ headers: { Cookie: cookie } }));
 	ws.onmessage = (ev) => {
 		try {
 			events.push(JSON.parse(String(ev.data)));
@@ -94,7 +137,7 @@ function openPhoneWs(cookie) {
 	};
 	const opened = new Promise((resolve, reject) => {
 		ws.onopen = resolve;
-		ws.onerror = (e) => reject(new Error(`ws open error: ${e?.message ?? e}`));
+		ws.onerror = (e) => reject(new Error(`ws open error: ${/** @type {any} */ (e)?.message ?? e}`));
 	});
 	return { ws, events, opened };
 }
@@ -181,6 +224,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 
 	// All room-scope SEL.SETTING_IDS in one write to prove the persistence contract; per-field errors
 	// come out of the normalizer as reject-to-current, so a full round-trip check is decisive.
+	/** @type {Partial<RoomSettings>} */
 	const roomWrite = {
 		queueOrder: 'fcfs',
 		tvProgressStyle: 'corner',
@@ -192,6 +236,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		lyricsCase: 'upper'
 	};
 	const rroom = await api('PUT', '/api/settings/room', { cookie: aliceCookie, body: roomWrite });
+	/** @type {Partial<RoomSettings>} */
 	const room = rroom.body?.room ?? {};
 	for (const id of [
 		'queue-order',
@@ -203,7 +248,8 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		'lyrics-font',
 		'lyrics-case'
 	]) {
-		const camel = {
+		/** @type {Record<string, keyof RoomSettings>} */
+		const camelMap = {
 			'queue-order': 'queueOrder',
 			'tv-progress': 'tvProgressStyle',
 			'tv-background': 'tvBackgroundStyle',
@@ -212,7 +258,8 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 			'lyrics-ball': 'lyricsBall',
 			'lyrics-font': 'lyricsFont',
 			'lyrics-case': 'lyricsCase'
-		}[id];
+		};
+		const camel = camelMap[id];
 		const want = roomWrite[camel];
 		const got = room[camel];
 		add(
@@ -250,6 +297,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	// Each garbage payload targets one field. Normalizer contract is "reject-to-current per-field",
 	// asserted in packages/shared/src/settings.ts (normalizeGlobalSettings/normalizeRoomSettings).
 	const baseline = await getSettings();
+	/** @type {{ scope: 'global' | 'room', body: Record<string, unknown>, field: string, expect: unknown }[]} */
 	const garbage = [
 		{ scope: 'global', body: { syncMode: 'no-thanks' }, field: 'syncMode', expect: baseline.global.syncMode },
 		{ scope: 'global', body: { asrModel: '../../etc/passwd' }, field: 'asrModel', expect: baseline.global.asrModel },
@@ -281,6 +329,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	for (const g of garbage) {
 		const path = g.scope === 'global' ? '/api/settings' : '/api/settings/room';
 		const r = await api('PUT', path, { cookie: aliceCookie, body: g.body });
+		/** @type {Record<string, unknown> | undefined} */
 		const bucket = g.scope === 'global' ? r.body?.global : r.body?.room;
 		const got = bucket?.[g.field];
 		const ok = got === g.expect || (Number.isNaN(g.expect) && Number.isNaN(got));
@@ -361,6 +410,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		);
 	}
 }
+/** @param {string} html @returns {string | null} */
 function extractJoinFromHtml(html) {
 	// SvelteKit serialises page data through devalue, so the joinUrl might not appear as a literal
 	// key-value pair. Fall back to scraping any http(s) URL that ends with /join.
@@ -473,6 +523,7 @@ async function runWireProbe() {
 		env: { ...process.env, EPORT: PORT, MEDIA_DIR: process.env.MEDIA_DIR ?? './media', FAKE_CAPS: 'fetch,stems' },
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
+	/** @type {string[]} */
 	const stemsOut = [];
 	stems.stdout.on('data', (d) => stemsOut.push(String(d)));
 	stems.stderr.on('data', (d) => stemsOut.push(String(d)));
@@ -484,6 +535,7 @@ async function runWireProbe() {
 		env: { ...process.env, EPORT: PORT },
 		stdio: ['ignore', 'pipe', 'pipe']
 	});
+	/** @type {string[]} */
 	const alignOutA = [];
 	alignA.stdout.on('data', (d) => alignOutA.push(String(d)));
 	alignA.stderr.on('data', (d) => alignOutA.push(String(d)));
@@ -541,6 +593,7 @@ async function runWireProbe() {
 			env: { ...process.env, EPORT: PORT },
 			stdio: ['ignore', 'pipe', 'pipe']
 		});
+		/** @type {string[]} */
 		const alignOutB = [];
 		alignB.stdout.on('data', (d) => alignOutB.push(String(d)));
 		alignB.stderr.on('data', (d) => alignOutB.push(String(d)));
@@ -585,7 +638,8 @@ async function runWireProbe() {
 try {
 	await runWireProbe();
 } catch (err) {
-	add('LOW', 'wire', 'wire probe threw — environment issue', `${err.message ?? err}. Bun + fake workers required.`);
+	const detail = err instanceof Error ? err.message : String(err);
+	add('LOW', 'wire', 'wire probe threw — environment issue', `${detail}. Bun + fake workers required.`);
 }
 
 // ═══ 7. Security — the room's blast radius. ══════════════════════════════════
