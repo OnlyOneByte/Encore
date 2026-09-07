@@ -128,8 +128,10 @@ def _parent(dotted: str) -> str:
 def stages_of(plan: Plan) -> list[Stage]:
     """The coarse stages a plan emits, in order, deduped.
 
-    `vocabulary.STAGE_PLANS` is DERIVED from this rather than hand-maintained, so the wire contract and
-    what the worker actually does cannot drift. They already had: the table said align was two stages
+    `vocabulary.STAGE_PLANS` is a HAND-WRITTEN literal that MUST agree with what this returns — it is not
+    computed from the plans (it sits below them in the import graph, so importing the plans there would
+    be a cycle). The agreement is ENFORCED instead, by E4 (`test_STAGE_PLANS_agrees_with_what_the_plan
+    _actually_emits`), which is what stops the drift it had before: the table said align was two stages
     while the real action emitted DOWNLOADING three times and covered acquisition, grading and wav2vec2
     under one ALIGNING span.
     """

@@ -270,7 +270,43 @@ class LrclibSource:
         return best
 
 
-class CaptionsSource:
+class _CaptionsSource:
+    """Shared body for the two caption tiers, parameterized by the four literals that differ.
+
+    Both read a list of cue dicts off the request, decline (None) when it is absent, and otherwise build a
+    LINE-timed LyricsText tagged SOURCE_CAPTIONS. They diverged only in WHICH request field they read and
+    in three literals (text_confidence / tag / variant) — the same shape `AsrSource(audio=...)` already
+    uses. Held as class attributes so the two public subclasses below stay ZERO-ARG (registry SPECS and
+    the tests build them with no arguments) while the one `fetch` cannot drift between them.
+    """
+
+    name = SOURCE_CAPTIONS
+
+    #: The LyricsRequest attribute this tier's cues arrive on.
+    _segments_attr: str
+    #: text_confidence stamped on the produced LyricsText.
+    _confidence: str
+    #: A short stable id within the source (part of the artifact key).
+    _tag: str
+    #: Human label for logs.
+    _variant: str
+
+    def fetch(self, req: LyricsRequest) -> LyricsText | None:
+        segments = getattr(req, self._segments_attr)
+        if not segments:
+            return None  # no track of this kind on this upload — the common case, and not an error
+        return LyricsText(
+            text_source=SOURCE_CAPTIONS,
+            segments=list(segments),
+            timing=TIMING_LINE,
+            text_confidence=self._confidence,
+            language=None,
+            tag=self._tag,
+            variant=self._variant,
+        )
+
+
+class CaptionsSource(_CaptionsSource):
     """Lyrics from the upload's own HUMAN-AUTHORED caption track — a CANDIDATE.
 
     Uniquely version-proof among candidates. Every other authored tier is indexed by artist+track and can
@@ -292,20 +328,10 @@ class CaptionsSource:
     because the harness's injected fake runner had no way to reach a second private path to yt-dlp.
     """
 
-    name = SOURCE_CAPTIONS
-
-    def fetch(self, req: LyricsRequest) -> LyricsText | None:
-        if not req.caption_segments:
-            return None  # no manual track on this upload — the common case, and not an error
-        return LyricsText(
-            text_source=SOURCE_CAPTIONS,
-            segments=list(req.caption_segments),
-            timing=TIMING_LINE,
-            text_confidence="high",
-            language=None,
-            tag="manual",
-            variant="uploader captions",
-        )
+    _segments_attr = "caption_segments"
+    _confidence = "high"
+    _tag = "manual"
+    _variant = "uploader captions"
 
 
 class AsrSource:
@@ -381,7 +407,7 @@ class AsrSource:
         )
 
 
-class AutoCaptionsSource:
+class AutoCaptionsSource(_CaptionsSource):
     """YouTube's OWN automatic captions — a BASELINE, never a candidate.
 
     This is the reversal that the two-tier split earns. Treated as authored text these are actively
@@ -395,24 +421,15 @@ class AutoCaptionsSource:
     15 music markers). A baseline that thin cannot reach MIN_TOKENS_TO_COMPARE and therefore ABSTAINS
     rather than dragging the mean down — see `composite_score`. That abstention is what makes including
     a weak baseline safe.
+
+    `low` text_confidence is load-bearing, not decorative: it is what makes isAuthoritativeText() false,
+    so even when this is the only text left to show, the TV labels it as auto-transcribed.
     """
 
-    name = SOURCE_CAPTIONS
-
-    def fetch(self, req: LyricsRequest) -> LyricsText | None:
-        if not req.auto_caption_segments:
-            return None
-        return LyricsText(
-            text_source=SOURCE_CAPTIONS,
-            segments=list(req.auto_caption_segments),
-            timing=TIMING_LINE,
-            # `low` is load-bearing, not decorative: it is what makes isAuthoritativeText() false, so
-            # even when this is the only text left to show, the TV labels it as auto-transcribed.
-            text_confidence="low",
-            language=None,
-            tag="auto",
-            variant="youtube auto-captions",
-        )
+    _segments_attr = "auto_caption_segments"
+    _confidence = "low"
+    _tag = "auto"
+    _variant = "youtube auto-captions"
 
 
 def _source_name(s: LyricsSource) -> str:

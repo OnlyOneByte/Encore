@@ -24,6 +24,7 @@ from collections import deque
 from collections.abc import AsyncIterator, Callable
 from typing import cast
 
+from ..ffmpeg import ffmpeg_argv
 from ..retry_policy import BoundaryError, permanent_by_message
 
 DEFAULT_MODEL = "htdemucs"
@@ -47,9 +48,7 @@ def resolve_demucs_model(params: dict, default: str = DEFAULT_MODEL) -> str:
         # BoundaryError subclasses ValueError (drop-in for existing pytest.raises(ValueError)) but
         # carries the shared structured `retryable = False`, so an unknown model fails fast via
         # retry_policy instead of spending three attempts rediscovering the same bad token (#497).
-        raise BoundaryError(
-            f"unknown demucs model {requested!r}; expected one of {DEMUCS_MODELS}"
-        )
+        raise BoundaryError(f"unknown demucs model {requested!r}; expected one of {DEMUCS_MODELS}")
     return cast(str, requested)
 
 
@@ -65,23 +64,10 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
     whether the source arrived as Opus-in-webm or AAC-in-m4a; the sample rate is deliberately left
     alone -- see the `-ar` note in the argv below before adding one back.
     """
-    return [
-        ffmpeg_bin,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-i",
-        input_path,
-        "-ac",
-        "2",
-        # NO -ar: keep the SOURCE sample rate. YouTube serves 48 kHz Opus, so forcing 44100 here was a
-        # resampling stage that cost quality and bought nothing — every output format we use (FLAC,
-        # AAC, Opus) handles 48 kHz natively.
-        "-c:a",
-        "pcm_s16le",
-        out_wav,
-    ]
+    # NO -ar: keep the SOURCE sample rate. YouTube serves 48 kHz Opus, so forcing 44100 here was a
+    # resampling stage that cost quality and bought nothing — every output format we use (FLAC, AAC,
+    # Opus) handles 48 kHz natively.
+    return ffmpeg_argv(ffmpeg_bin, input_path, ["-ac", "2", "-c:a", "pcm_s16le"], [out_wav])
 
 
 # History (#480): the vocals stem used to be stored as stereo AAC-in-m4a at 192k, on the argument that a
@@ -106,24 +92,12 @@ def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", 
     compression_level 8 is the size/CPU sweet spot and is decode-cheap, which matters for a browser
     starting playback.
     """
-    return [
+    return ffmpeg_argv(
         ffmpeg_bin,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-i",
         input_wav,
-        "-c:a",
-        "flac",
-        "-compression_level",
-        str(level),
-        "-sample_fmt",
-        "s16",
-        "-ac",
-        "2",
-        out_path,
-    ]
+        ["-c:a", "flac", "-compression_level", str(level), "-sample_fmt", "s16", "-ac", "2"],
+        [out_path],
+    )
 
 
 def demucs_argv(

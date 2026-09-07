@@ -25,7 +25,7 @@ from ..processor import (
     volumedetect_argv,
 )
 from ..runtime.ctx import Ctx
-from ..runtime.runner import run_stage
+from ..runtime.runner import run_capture, run_quiet, run_stage
 from ..runtime.step import Step, StepResult
 from ..separation.demucs import decode_argv, encode_flac_argv
 from ..separation.engines import SeparatorEngine, engine_for
@@ -58,8 +58,7 @@ class DecodeToWav(Step):
             # The old `or ""` would hand ffmpeg an empty input and die as the opaque
             # "ffmpeg: : No such file or directory"; name the missing key instead.
             raise RuntimeError("decode-to-wav: audio.path is empty (AcquireAudio did not run or failed)")
-        async for _line in ctx.runner(decode_argv(ctx.audio.path, out, self._ffmpeg)):
-            pass
+        await run_quiet(ctx.runner, decode_argv(ctx.audio.path, out, self._ffmpeg))
         ctx.audio.decoded_wav = out
         return
         yield  # pragma: no cover - makes this an async generator
@@ -140,10 +139,8 @@ class ProbeSilence(Step):
         return bool(ctx.stems.raw.get("vocals") or ctx.stems.raw.get("instrumental"))
 
     async def _is_silent(self, ctx: Ctx, path: str) -> bool:
-        lines: list[str] = []
-        async for line in ctx.runner(volumedetect_argv(path, self._ffmpeg)):
-            lines.append(line)
-        return is_silent(parse_max_volume_db("\n".join(lines)))
+        output = await run_capture(ctx.runner, volumedetect_argv(path, self._ffmpeg))
+        return is_silent(parse_max_volume_db(output))
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         instrumental = ctx.stems.raw.get("instrumental")
@@ -205,16 +202,14 @@ class PublishStems(Step):
             raise RuntimeError("publish-stems: stems.raw['instrumental'] is missing (Separate did not run)")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
-        async for _line in ctx.runner(encode_flac_argv(raw_inst, final, self._ffmpeg, self._flac_level)):
-            pass
+        await run_quiet(ctx.runner, encode_flac_argv(raw_inst, final, self._ffmpeg, self._flac_level))
         ctx.stems.published["instrumental"] = final
 
         raw_vox = ctx.stems.raw.get("vocals")
         if raw_vox and not ctx.stems.vocals_silent:
             out = vocals_path(job.media_dir, job.media_id)
             try:
-                async for _line in ctx.runner(encode_flac_argv(raw_vox, out, self._ffmpeg, self._flac_level)):
-                    pass
+                await run_quiet(ctx.runner, encode_flac_argv(raw_vox, out, self._ffmpeg, self._flac_level))
                 ctx.stems.published["vocals"] = out
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job
                 ctx.note("vocals encode failed (non-fatal) — publishing the instrumental alone")

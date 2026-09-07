@@ -16,7 +16,7 @@ must never fail the job.
 
 from __future__ import annotations
 
-from . import key_detect, vocal_range
+from . import key_detect, vocal_range, wav
 
 # The exact wire shape core validates. Every key is always present; values are null when unknown.
 # Building the null profile from one place means "publish nulls on failure" cannot forget a field.
@@ -60,7 +60,7 @@ def build_song_profile(
     # ── key (instrumental) ──────────────────────────────────────────────────────────
     if instrumental_wav:
         try:
-            samples, sample_rate = vocal_range.read_wav_mono(instrumental_wav)
+            samples, sample_rate = wav.read_wav_mono(instrumental_wav)
             tonic, mode, confidence = key_detect.detect_key(samples, sample_rate)
             profile["keyTonic"] = tonic
             profile["keyMode"] = mode
