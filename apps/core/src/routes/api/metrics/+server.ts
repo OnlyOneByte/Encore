@@ -18,20 +18,42 @@ const DEFAULT_LIMIT = 2000;
 export const GET: RequestHandler = async ({ url }) => {
 	const app = getApp();
 	const limit = clampLimit(url.searchParams.get('limit'));
-	// EVERY sealed attempt, not just successful ones: a failure rate is part of how a step performs,
-	// and the rollup already refuses to average a failure into a duration.
-	const attempts = app.attempts.allFinished(limit);
+	const windowDays = clampDays(url.searchParams.get('days'));
+	// Window by TIME, not by a bare row count. The old row-count window (`allFinished(limit)`) had no
+	// notion of its own edge: at the cap it returned N rows with nothing saying more existed, and a
+	// cook straddling that edge lost its older steps yet still reported `complete: true` and measured
+	// its span from only the surviving rows — silently understating that cook's duration (#472). A
+	// time window has a knowable edge (`windowStart`), which `perCook`/`e2e` use to flag and drop a
+	// boundary-straddling cook, and it buys the one query Encore lacked: "the last N days".
+	const windowStart = app.now() - windowDays * DAY_MS;
+	// EVERY sealed attempt in the window, not just successful ones: a failure rate is part of how a
+	// step performs, and the rollup already refuses to average a failure into a duration. `limit`
+	// stays as a hard backstop so a pathological window can never load the whole table into memory.
+	const attempts = app.attempts.finishedSince(windowStart, limit);
+	const totalFinished = app.attempts.countFinished();
 
 	const steps = perStep(attempts);
-	const overall = e2e(attempts);
+	const overall = e2e(attempts, windowStart);
+	const cooks = perCook(attempts, windowStart);
 	const models = perModel(attempts);
 	const titleOf = new Map(app.media.all().map((mm) => [mm.id, mm.titleCanonical ?? mm.title]));
+
+	// Truncation is now VISIBLE rather than silent: `clipped` is true when the row backstop actually
+	// bit (more rows finished in the window than we fetched) or when any cook straddled the window's
+	// older edge. Either way the operator is told the sample is partial instead of reading a confident
+	// number off an incomplete set.
+	const clipped = attempts.length >= limit || cooks.some((c) => c.clipped);
 
 	return json({
 		// Sample size first, and flagged, because it governs how much of the rest means anything. A
 		// mean over two cooks renders identically to a mean over two hundred unless something says so.
+		// `total` is the honest denominator behind the windowed `attempts`, and `clipped` says whether
+		// the window or the row backstop dropped anything.
 		sample: {
 			attempts: attempts.length,
+			total: totalFinished,
+			windowDays,
+			clipped,
 			cooks: overall.n,
 			provisional: isAnecdote(overall.n)
 		},
@@ -49,7 +71,7 @@ export const GET: RequestHandler = async ({ url }) => {
 		// Slowest complete cooks, for finding the outlier rather than reasoning about the mean. Titles are
 		// joined here because a media id is not a song: an operator navigating a list of "m-zombie" has
 		// to open each one to find out what it is. /api/stats already does the same join.
-		slowestCooks: perCook(attempts)
+		slowestCooks: cooks
 			.filter((c) => c.complete)
 			.slice(0, 10)
 			.map((c) => ({ ...c, title: titleOf.get(c.mediaId) ?? null })),
@@ -63,8 +85,19 @@ export const GET: RequestHandler = async ({ url }) => {
 	});
 };
 
+const DAY_MS = 86_400_000;
+const DEFAULT_WINDOW_DAYS = 7;
+
 function clampLimit(raw: string | null): number {
 	const n = Number(raw);
 	if (!Number.isFinite(n) || n <= 0) return DEFAULT_LIMIT;
 	return Math.min(20_000, Math.floor(n));
+}
+
+/** Read window in days. Default 7. Clamped to [1, 3650]; a garbage value falls back to the default. */
+function clampDays(raw: string | null): number {
+	if (raw === null) return DEFAULT_WINDOW_DAYS;
+	const n = Number(raw);
+	if (!Number.isFinite(n) || n <= 0) return DEFAULT_WINDOW_DAYS;
+	return Math.min(3650, Math.floor(n));
 }
