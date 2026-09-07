@@ -585,7 +585,6 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             demucs_bin=cfg.demucs_bin,
             ffmpeg_bin=cfg.ffmpeg_bin,
             ytdlp_bin=cfg.ytdlp_bin,
-            bitrate=cfg.stem_bitrate,
             flac_level=cfg.flac_level,
             device=device,
             jobs=cfg.demucs_jobs,

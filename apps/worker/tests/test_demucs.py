@@ -307,25 +307,16 @@ def test_decode_forces_stereo_but_NEVER_resamples():
     assert "pcm_s16le" in joined  # a WORKING format, written into scratch
 
 
-def test_instrumental_is_encoded_LOSSLESS_but_vocals_are_not():
-    # Different jobs, different bars: the instrumental plays at volume (a second lossy generation is
-    # audible on crash cymbals), the vocals stem only feeds analysis.
-    inst = " ".join(demucs.encode_flac_argv("/w/no_vocals.wav", "/m/derived/stems/id1-instrumental.flac"))
-    assert "-c:a flac" in inst
-    assert "-sample_fmt s16" in inst  # transparent for a lossy-sourced signal
-    assert "-b:a" not in inst  # lossless has no bitrate
-
-    vox = " ".join(demucs.encode_stem_argv("/w/vocals.wav", "/m/derived/stems/id1-vocals.m4a"))
-    assert "-c:a aac" in vox and "-b:a 192k" in vox
-
-
-def test_stems_are_encoded_to_stereo_aac_not_moved_as_wav():
-    argv = demucs.encode_stem_argv("/w/no_vocals.wav", "/m/derived/stems/id1-instrumental.flac")
-    joined = " ".join(argv)
-    assert "-c:a aac" in joined  # AAC, not Opus: the instrumental must play in Safari
-    assert "-b:a 192k" in joined  # headroom over a ~130k lossy source
-    assert "-ac 2" in joined  # stereo is the ceiling; YouTube serves stereo
-    assert "+faststart" in joined  # browser can start playing before the full download
+def test_both_stems_are_encoded_LOSSLESS_flac():
+    # #480: both stems go through encode_flac_argv. The instrumental plays at volume (a second lossy
+    # generation is audible on crash cymbals); the vocals stem is the guiding track (a played second
+    # <audio>) and sharing the FLAC codec removes the AAC-in-m4a priming-sample start offset.
+    for out in ("/m/derived/stems/id1-instrumental.flac", "/m/derived/stems/id1-vocals.flac"):
+        argv = " ".join(demucs.encode_flac_argv("/w/stem.wav", out))
+        assert "-c:a flac" in argv
+        assert "-sample_fmt s16" in argv  # transparent for a lossy-sourced signal
+        assert "-ac 2" in argv  # stereo is the ceiling; YouTube serves stereo
+        assert "-b:a" not in argv  # lossless has no bitrate
 
 
 def test_find_downloaded_ignores_partial_downloads():

@@ -218,7 +218,7 @@ or you want to deliberately limit a box:
   does `cpu`/`cuda` and nothing else), `ENCORE_TORCH_THREADS`. `ENCORE_DEMUCS_DEVICE` is a deprecated
   alias of `ENCORE_DEVICE` and now sets the device for the whole worker
 - **Separation** — `ENCORE_DEMUCS_MODEL`, `ENCORE_DEMUCS_JOBS` (auto-derived from usable cores),
-  `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT` (auto-derived from *free* accelerator memory)/`_SHIFTS`, `ENCORE_STEM_BITRATE` (`192k`), `ENCORE_FLAC_LEVEL`
+  `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT` (auto-derived from *free* accelerator memory)/`_SHIFTS`, `ENCORE_FLAC_LEVEL`
   (`8`)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is

@@ -105,12 +105,13 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
     """Issue #85. The separation domain's audio policy is the rule that stops a reader re-encoding a stem
     badly, and its load-bearing clauses were false in the direction that RELAXES the rule.
 
-    Two false facts had to go, at three sites: (1) "nothing plays [the vocals stem]" — the vocals stem is
+    Part (1) is the original #85 finding: "nothing plays [the vocals stem]" — false, the vocals stem is
     the guiding track, a second <audio> the TV mixes under the instrumental at up to full gain and pitch-
-    shifts with the key (apps/core/src/lib/tv/TvPlayer.svelte); (2) STEM_BITRATE is the storage format "for
-    both stems" — it governs the vocals stem only (encode_stem_argv); the instrumental is FLAC through
-    encode_flac_argv. There is no behaviour to test, so this pins the prose instead: the false clauses stay
-    gone and the true reason (the guiding track) stays named."""
+    shifts with the key (apps/core/src/lib/tv/TvPlayer.svelte). Part (2) is #502's tail-cleanup of #480:
+    once #480 pointed PublishStems at encode_flac_argv, the AAC vocals path (STEM_BITRATE + encode_stem_argv
+    + the ENCORE_STEM_BITRATE knob) reached no argv, so it was deleted. There is no behaviour to test, so
+    this pins the prose and the delete: the guiding-track reason stays named, and the dead AAC names must
+    not reappear in apps/worker/src."""
     src = Path(__file__).resolve().parents[1] / "src"
 
     # (1) The "nothing plays it" clause is false and must not reappear at any of its three former sites.
@@ -128,11 +129,32 @@ def test_the_separation_audio_policy_does_not_claim_the_vocals_stem_is_unplayed(
         "steps/separate.py must name the guiding track as the reason (#85)"
     )
 
-    # (2) STEM_BITRATE must not be described as governing BOTH stems; it is the vocals stem only.
+    # (2) #502 (tail of #480): the AAC vocals path is dead. STEM_BITRATE and encode_stem_argv reached
+    # no argv once #480 pointed PublishStems at encode_flac_argv, so both were removed. Guard that
+    # neither name reappears anywhere in apps/worker/src, with line comments and docstrings stripped
+    # so the retired-policy prose in demucs.py can neither satisfy nor trip this. A sentinel proves the
+    # strip did not silently blank the corpus.
+    def _code_only(text):
+        # drop triple-quoted blocks (docstrings), then drop line comments
+        parts = text.split('"""')
+        no_doc = ''.join(parts[::2]) if len(parts) % 2 == 1 else text
+        return "\n".join(ln.split("#", 1)[0] for ln in no_doc.splitlines())
+
+    code_only = "\n".join(_code_only((f).read_text(encoding="utf-8")) for f in sorted(src.rglob("*.py")))
+    # non-vacuous sentinel: a live symbol that must survive the strip, else the strip ate everything.
+    assert "encode_flac_argv" in code_only, (
+        "comment/docstring strip removed live code — the STEM_BITRATE guard would pass vacuously (#502)"
+    )
+    for dead in ("STEM_BITRATE", "encode_stem_argv"):
+        assert dead not in code_only, (
+            f"{dead} still reaches code in apps/worker/src — #480 made the AAC vocals path dead and "
+            "#502 removed it; nothing consumes the AAC bitrate knob now (issue #502)"
+        )
+
+    # And the current reality must be positively stated where the policy lives: both stems are FLAC.
     demucs_src = (src / "separation" / "demucs.py").read_text(encoding="utf-8")
-    assert "for both stems" not in demucs_src, (
-        "demucs.py STEM_BITRATE still claims it governs both stems — it governs the vocals stem only, the "
-        "instrumental is FLAC via encode_flac_argv (issue #85)"
+    assert "Used for BOTH stems (#480)" in demucs_src, (
+        "encode_flac_argv must state it encodes BOTH stems since #480 (issue #502)"
     )
 
 
@@ -190,51 +212,6 @@ def test_the_key_detect_band_floor_comment_does_not_misstate_the_rfft_resolution
     assert midi_cross - _MIN_MIDI > 15, (
         "the comment's whole point (issue #103) is that the band reaches ~18 semitones below the "
         f"resolution limit; that gap is now only {midi_cross - _MIN_MIDI:.1f} semitones"
-    )
-
-
-def test_the_stem_bitrate_comment_justifies_aac_by_the_vocals_stem_not_the_instrumental():
-    """Issue #236. Residue of closed #85: the STEM_BITRATE comment's closing clause still justified the
-    AAC-over-Opus choice by the INSTRUMENTAL's browser needs ("the instrumental has to play in a browser
-    <video>, and AAC-in-m4a is the safer bet on Safari"), while the same block's opening sentence (fixed
-    in #85) correctly says STEM_BITRATE governs the VOCALS stem only and the instrumental is FLAC. Both
-    could not be true. The instrumental is FLAC-in-<audio> (processor.py INSTRUMENTAL_EXT, encode_flac_argv,
-    apps/core/src/lib/tv/TvPlayer.svelte:5-13), so the clause reasoned about a file that does not exist.
-
-    There is no behaviour to test, so this pins the prose. The "caller" of this guard is the test itself
-    reading the real production source. It scopes both arms to the STEM_BITRATE comment block (the `# ...`
-    lines immediately above the `STEM_BITRATE =` assignment), so the legitimate <video>/WebKit prose that
-    now lives in encode_flac_argv's docstring can neither satisfy the presence arm nor trip the ban arm.
-    """
-    src_dir = Path(__file__).resolve().parents[1] / "src"
-    demucs_src = (src_dir / "separation" / "demucs.py").read_text(encoding="utf-8")
-
-    # Extract exactly the comment block directly above the STEM_BITRATE assignment.
-    lines = demucs_src.splitlines()
-    assign_idx = next(i for i, ln in enumerate(lines) if ln.startswith("STEM_BITRATE"))
-    block = []
-    i = assign_idx - 1
-    while i >= 0 and lines[i].lstrip().startswith("#"):
-        block.insert(0, lines[i])
-        i -= 1
-    block_text = "\n".join(block)
-    assert block_text, "could not locate the STEM_BITRATE comment block above the assignment (#236)"
-
-    # Presence: the block must justify the container choice by the VOCALS stem being the guiding track.
-    assert "GUIDING" in block_text.upper(), (
-        "the STEM_BITRATE comment must justify AAC by the vocals stem being the GUIDING TRACK, not by the "
-        "instrumental's browser needs (issue #236)"
-    )
-
-    # Ban: the discredited instrumental-browser-needs justification must not reappear in this block.
-    lowered = block_text.lower()
-    assert "instrumental has to play" not in lowered, (
-        "the STEM_BITRATE comment again justifies the vocals bitrate by the INSTRUMENTAL's playback — the "
-        "instrumental is FLAC-in-<audio>, not AAC-in-m4a in a <video> (issue #236)"
-    )
-    assert "<video>" not in lowered, (
-        "the STEM_BITRATE comment again claims a stem plays in a browser <video> — playback is through "
-        "<audio> (apps/core/src/lib/tv/TvPlayer.svelte); the instrumental is FLAC (issue #236)"
     )
 
 
