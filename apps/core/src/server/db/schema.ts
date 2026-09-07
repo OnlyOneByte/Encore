@@ -5,11 +5,18 @@
 import { sqliteTable, text, integer, real, uniqueIndex, index } from 'drizzle-orm/sqlite-core';
 import { sql } from 'drizzle-orm';
 
-export const rooms = sqliteTable('rooms', {
-	id: text('id').primaryKey(),
-	code: text('code').notNull(),
-	createdAt: integer('created_at').notNull()
-});
+export const rooms = sqliteTable(
+	'rooms',
+	{
+		id: text('id').primaryKey(),
+		// The join code a phone types (or a QR encodes) to reach THIS room. Unique so a lookup by
+		// code resolves to exactly one room — the writer retries on the (vanishingly unlikely)
+		// collision rather than minting two rooms a joiner could not tell apart.
+		code: text('code').notNull(),
+		createdAt: integer('created_at').notNull()
+	},
+	(t) => ({ codeIdx: uniqueIndex('rooms_code_idx').on(t.code) })
+);
 
 export const singers = sqliteTable(
 	'singers',
