@@ -34,7 +34,7 @@ import {
 	markLyricsQueued
 } from './make-karaoke';
 import { cleanJobWork } from '../media/migrate-layout';
-import { ackDeadline, progressDeadline, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
+import { ackDeadline, progressDeadline, attemptsExhausted, DEFAULT_LEASE_CONFIG, type LeaseConfig } from './leases';
 import { completedStatusFor, mediaStatusFor, shouldBroadcastCook } from './media-status';
 
 export type ToWorker = (workerId: string, cmd: WorkerCommand) => void;
@@ -150,6 +150,12 @@ export class WorkerHub {
 	constructor(deps: WorkerHubDeps) {
 		this.#d = deps;
 		this.#config = deps.config ?? DEFAULT_LEASE_CONFIG;
+		// Slot accounting rides the job machine (#524 step 3). The hub owns the registry, so it wires
+		// the repository's slot-release action here: a job leaving a worker's hands via a worker-reported
+		// event (REJECT/COMPLETE/FAIL) frees that worker's concurrency slot from ONE place inside
+		// `transition`, retiring the three hand-paired registry.releaseSlot() calls the handlers used to
+		// carry. Reaper/boot (LEASE_EXPIRED/RECOVER) and CANCEL are deliberately not releasing events.
+		this.#d.jobs.setSlotReleaseHook((workerId) => this.#d.registry.releaseSlot(workerId));
 	}
 
 	/**
@@ -238,8 +244,9 @@ export class WorkerHub {
 	#onReject(msg: Extract<WorkerMessage, { type: 'job:reject' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'assigned' || job.workerId !== msg.workerId) return;
+		// requeue via REJECT frees the worker's slot through the machine's slot-release hook (#524);
+		// it reads the owner off the pre-write row, so the release still fires though the patch clears workerId.
 		this.#d.jobs.requeue(msg.jobId, job.attempts, this.#d.now(), 'REJECT'); // worker declined; no attempt burned (never ran)
-		this.#d.registry.releaseSlot(msg.workerId);
 		this.dispatch();
 	}
 
@@ -320,7 +327,7 @@ export class WorkerHub {
 		// Persist the cooked media NOW (stems key + lyrics) so a restart finds the separated
 		// song in the library instead of re-cooking it.
 		this.#d.persistMedia?.(job.mediaId);
-		this.#d.registry.releaseSlot(msg.workerId);
+		// The worker's slot is freed by the machine's slot-release hook off the COMPLETE event (#524).
 		// Job scratch is transient by contract — the intermediate WAVs in work/<jobId> are large
 		// (a decoded source plus both separated stems) and nothing reads them after this point. Leaving
 		// them is how 432MB accumulated under the old layout.
@@ -356,9 +363,16 @@ export class WorkerHub {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
 		this.#unservableSince.delete(msg.jobId); // terminal or requeue — prune stale unservable tracking
-		this.#d.registry.releaseSlot(msg.workerId);
 		const attempts = job.attempts + 1;
-		if (msg.retryable && attempts < job.maxAttempts) {
+		if (msg.retryable && !attemptsExhausted(attempts, job.maxAttempts)) {
+			// The terminal `failed` branch below frees the slot through the machine's slot-release hook
+			// (FAIL is a worker-reported releasing event, #524). This RETRYABLE requeue cannot: it rides
+			// `LEASE_EXPIRED`, the ONE requeue event the machine deliberately does not treat as a release
+			// because the reaper's dead-worker requeue shares it and must NOT double-free a slot the
+			// registry will reclaim on the next heartbeat. Here the worker is demonstrably alive (it just
+			// sent this frame), so its slot IS free now and the immediate redispatch needs it back — the
+			// one worker-reported requeue that stays an explicit release at the call site.
+			this.#d.registry.releaseSlot(msg.workerId);
 			this.#d.jobs.requeue(msg.jobId, attempts, this.#d.now());
 			this.dispatch();
 		} else {
