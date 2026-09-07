@@ -8,6 +8,9 @@
 
 	let name = $state('');
 	let color = $state<string>(SINGER_COLORS[0]);
+	// The room code the QR encoded (`/join?room=CODE`), forwarded to /api/join so this phone joins THAT
+	// party (#654). A bare /join has no code and lands in the core's single active room.
+	const roomCode = $derived(page.url.searchParams.get('room')?.trim() ?? '');
 	let submitting = $state(false);
 	let error = $state('');
 
@@ -21,7 +24,7 @@
 			const res = await fetch('/api/join', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ displayName: name.trim(), color })
+				body: JSON.stringify({ displayName: name.trim(), color, code: roomCode || undefined })
 			});
 			if (!res.ok) {
 				error = (await res.json()).error ?? 'Could not join';

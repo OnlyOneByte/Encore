@@ -30,6 +30,9 @@ const NOW = 1_700_000_000_000;
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 	const db = migratedDb();
+	const rooms = new RoomRepository(db);
+	// #654: doJoin resolves the room a join lands in, so the harness mints the single active room.
+	const activeRoomId = rooms.ensureActive(1_700_000_000_000).id;
 	const published: ServerEvent[] = [];
 	const jobs = new JobRepository(db);
 	const workers = new WorkerRegistry();
@@ -38,7 +41,8 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		db,
 		state: new AuthoritativeState(),
 		singers: new SingerRepository(db),
-		rooms: new RoomRepository(db),
+		rooms,
+		activeRoomId,
 		presence: new PresenceTracker(),
 		plays: new PlayTracker(() => {}),
 		jobs,

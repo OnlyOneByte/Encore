@@ -10,7 +10,7 @@
 // #652 is explicitly scoped not to cross the shared package.
 
 import { randomBytes } from 'node:crypto';
-import { eq } from 'drizzle-orm';
+import { asc, eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { rooms } from '../db/schema';
 import { ulid } from '@encore/shared';
@@ -73,6 +73,21 @@ export class RoomRepository {
 			}
 		}
 		throw new Error(`could not mint a free room code after ${attempts} attempts`, { cause: lastErr });
+	}
+
+	/**
+	 * The single active party for this core. #654 mints exactly one room — the identity the phones
+	 * join and the QR advertises — so this returns the sole existing room, minting one on first boot.
+	 * When the chain reaches concurrent parties (#655+), a caller that wants a SPECIFIC room resolves
+	 * it by code instead; this stays the "which room does an unqualified join land in" answer.
+	 *
+	 * Oldest-first so a box that somehow accumulated rows still resolves deterministically to the room
+	 * it has been advertising, rather than flipping to a newer one on restart.
+	 */
+	ensureActive(now: number): Room {
+		const existing = this.#db.select().from(rooms).orderBy(asc(rooms.createdAt)).all()[0];
+		if (existing) return existing;
+		return this.create(now);
 	}
 
 	/** Look a room up by its join code, or null if no room carries it. */
