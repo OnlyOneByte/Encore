@@ -127,6 +127,24 @@ def vocals_path(media_dir: str, media_id: str) -> str:
     return os.path.join(media_dir, "derived", "stems", f"{media_id}-vocals.{VOCALS_EXT}")
 
 
+def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt") -> str:
+    """Deterministic key for a media's RAW caption track, retained for post-cook diagnosis (#670).
+
+    Under the `derived/` storage class so it inherits the "safe to delete, regenerable, first to
+    evict" retention the cap already bounds -- a `.vtt` is tens of kilobytes of text, unlike the
+    hundreds of megabytes of decoded audio that made `work/` need cleaning (#469). It is NOT a lyrics
+    candidate and is never recorded in the sidecar; it is debugging evidence of what the parser was
+    handed, which is otherwise destroyed with the job scratch and cannot be re-fetched reliably (the
+    upload may be gone or the box rate-limited).
+
+    `kind` ("captions" authored / "auto-captions" machine) is a directory segment, NOT a filename
+    part, so the authored/machine distinction stays STRUCTURAL exactly as `captions.py` insists: yt-dlp
+    names both tracks identically, so a single flat namespace would reintroduce the filename-heuristic
+    ambiguity the two-directory fetch scheme exists to prevent.
+    """
+    return os.path.join(media_dir, "derived", "captions", kind, f"{media_id}.captions.{ext.lstrip('.')}")
+
+
 # ── silence detection ───────────────────────────────────────────────────────────
 # Separation can SUCCEED and still write digital silence. It has happened twice in the owner's
 # library: both stems came back pinned at the 16-bit floor, ~50KB against 20MB, and every readiness
