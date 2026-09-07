@@ -556,6 +556,14 @@
 		if (g) {
 			if (needsShift(shift) && !guideGraph) guideGraph = new PitchShiftGraph(g);
 			guideGraph?.setShift(shift);
+			// Re-apply the room's guide level (issue #434). The gain effect above owns the level, but its
+			// tracked deps are `vocals` and `effectiveGuide` only — `guideGraph` is a plain variable, so
+			// that effect does NOT re-run when a transpose builds (or, post-#477, rebuilds) the graph here.
+			// A freshly built PitchShiftGraph defaults desiredGain to 1 (pitch-shift.ts), so without this
+			// the isolated vocals jump to FULL volume the first time anyone transposes and stay there.
+			// Reading `effectiveGuide` here also makes this effect re-run on a level change, so the graph's
+			// gain tracks the knob whether the graph is built before or after the level is set.
+			guideGraph?.setGain(effectiveGuide);
 		}
 	});
 
