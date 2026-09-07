@@ -27,6 +27,8 @@ from __future__ import annotations
 
 import os
 
+from ..retry_policy import BoundaryError
+
 # ── pure helpers (no torch, no session) ──────────────────────────────────────────
 
 #: Our stable whitelist tokens (packages/shared/src/separators.ts) → bs-roformer-infer registry
@@ -109,7 +111,12 @@ def resolve_roformer_slug(params: dict, default: str = DEFAULT_ROFORMER_MODEL) -
     token = params.get("model") or default
     slug = ROFORMER_MODELS.get(token)
     if slug is None:
-        raise ValueError(f"unknown roformer model {token!r}; expected one of {sorted(ROFORMER_MODELS)}")
+        # BoundaryError subclasses ValueError (drop-in for the existing pytest.raises(ValueError))
+        # but carries the shared structured retryable = False, so an unknown roformer
+        # model fails fast via retry_policy instead of burning three cook attempts on a
+        # token that can never resolve — the identical treatment demucs.resolve_demucs_model
+        # got in #497, which the docstring above already claims (#651).
+        raise BoundaryError(f"unknown roformer model {token!r}; expected one of {sorted(ROFORMER_MODELS)}")
     return slug
 
 
