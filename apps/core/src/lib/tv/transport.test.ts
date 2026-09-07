@@ -148,6 +148,30 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(code).toContain('if (playable) currentSrc = resolved');
 		expect(code).not.toMatch(/^\s*currentSrc = resolved;\s*$/m);
 	});
+
+	/*
+	 * #674 — draining the room UNMOUNTS the master (`{#if media && isPlayable(media)}`), but `currentSrc`
+	 * is a component-level shadow that outlives the element. Re-adding the SAME just-ended song resolves
+	 * to the byte-identical src, so `slotHoldsSrc(currentSrc, …)` reads `true` on a fresh, src-less
+	 * element: the transport is `'play'` on its first pass, races the src assignment, is aborted, and —
+	 * the derived value never having changed — is never retried. The room is silent while every surface
+	 * says it is playing. The fix clears the shadow WHEN THE ELEMENT IS GONE, so a remounted element reads
+	 * `hasSrc:false` and the transport takes a genuine `idle -> play` edge once the assign effect lands the
+	 * new src. This is a DIFFERENT clear from the #251 not-playable churn pass (element still bound, keep
+	 * the song) — it fires only on the unmount, and no such reset exists on base, so this reds today.
+	 * Comments are stripped so the prose above (which names the old and new shapes) can neither satisfy
+	 * nor trip it.
+	 */
+	test('#674: currentSrc is reset when the master element unmounts, not left to go stale', () => {
+		// A guard against the shadow that survives the drain. The reset must fire on the ABSENCE of the
+		// binding (`!master`) — a genuine unmount — and clear the shadow to '' so a re-added same-song
+		// element does not read a stale hasSrc:true. Wrap-tolerant on whitespace between tokens.
+		expect(code).toMatch(/if\s*\(\s*!master\s*\)\s*currentSrc\s*=\s*''/);
+		// Not vacuous: the reader it protects is still wired to the shadow (if someone converts the
+		// transport reader to the element too, this shadow-reset stops being load-bearing and this anchor
+		// should be revisited — until then it must exist).
+		expect(code).toContain('slotHoldsSrc(currentSrc,');
+	});
 });
 
 /*
