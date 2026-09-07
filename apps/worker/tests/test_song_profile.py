@@ -17,6 +17,7 @@ from src import plans  # noqa: E402
 from src.analysis import song_profile  # noqa: E402
 from src.processor import CompleteResult, JobSpec  # noqa: E402
 from src.separation import demucs  # noqa: E402
+from tests.cli_fakes import fake_cli_runner  # noqa: E402
 
 WIRE_KEYS = {"keyTonic", "keyMode", "keyConfidence", "lowMidi", "highMidi", "p05Midi", "p95Midi", "histogram"}
 
@@ -95,33 +96,21 @@ def test_silent_vocals_yield_null_range_not_a_failure(tmp_path):
 
 # ── engine wiring: demucs always publishes songProfile ────────────────────────────────
 def _demucs_fake_runner(tmp_path):
-    """Mirrors test_demucs.fake_runner: writes the files the CLIs would, emits nothing useful."""
+    """A demucs cook fake that writes both stems and emits nothing useful. The acquisition / volumedetect
+    / encode branches live in the shared `fake_cli_runner` (issue #455) — including the volumedetect
+    branch that makes the silence probe real; only the demucs stem writes are here."""
 
-    async def run(argv):
-        binary = argv[0]
-        if binary == "yt-dlp":
-            out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
-            os.makedirs(os.path.dirname(out), exist_ok=True)
-            Path(out).write_bytes(b"FAKE")
-        elif binary == "ffmpeg" and "volumedetect" in argv:
-            # See test_demucs.fake_runner: a volumedetect call measures and writes nothing.
-            yield "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
-            return
-        elif binary == "ffmpeg":
-            out = argv[-1]
-            os.makedirs(os.path.dirname(out), exist_ok=True)
-            Path(out).write_bytes(b"FAKE_ENCODED")
-        elif binary == "demucs":
-            out_dir = argv[argv.index("-o") + 1]
-            model = argv[argv.index("-n") + 1]
-            inst = demucs.demucs_no_vocals_path(out_dir, model)
-            os.makedirs(os.path.dirname(inst), exist_ok=True)
-            Path(inst).write_bytes(b"FAKE_INSTRUMENTAL")
-            Path(demucs.demucs_vocals_path(out_dir, model)).write_bytes(b"FAKE_VOCALS")
+    async def demucs_handler(argv):
+        out_dir = argv[argv.index("-o") + 1]
+        model = argv[argv.index("-n") + 1]
+        inst = demucs.demucs_no_vocals_path(out_dir, model)
+        os.makedirs(os.path.dirname(inst), exist_ok=True)
+        Path(inst).write_bytes(b"FAKE_INSTRUMENTAL")
+        Path(demucs.demucs_vocals_path(out_dir, model)).write_bytes(b"FAKE_VOCALS")
         return
-        yield  # noqa
+        yield  # pragma: no cover — makes this an async generator; the return above wins
 
-    return run
+    return fake_cli_runner(handlers={"demucs": demucs_handler})
 
 
 async def _drain(proc, job):
