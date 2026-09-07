@@ -8,6 +8,7 @@ the enforcement test in `tests/test_worker_layers.py` keeps it that way.
 
 from __future__ import annotations
 
+import glob
 import os
 from collections.abc import AsyncIterator
 
@@ -107,11 +108,28 @@ def _existing_vocals(ctx: Ctx) -> str | None:
     Returned only when it EXISTS. The ASR baseline reads this, and a path to a missing file would make it
     fail rather than decline — and a declining baseline is a real, honest outcome (stems not cooked yet),
     while a failing one looks like a broken worker.
-    """
-    from ..processor import vocals_path
 
-    path = vocals_path(ctx.job.media_dir, ctx.job.media_id)
-    return path if os.path.exists(path) else None
+    Extension-blind, exactly as `find_downloaded` is for the retained original above. `VOCALS_EXT`
+    switched from `m4a` to `flac` in #480 for NEW cooks, but the worker re-derives this path on every
+    align job from the CURRENT `VOCALS_EXT` — it is never sent the stored ref — so an interim-era song
+    (instrumental `.flac` + vocals `.m4a`, the whole library up to that commit) has a real stem on disk
+    under an unexpected name. Nothing migrates those files. Glob `<id>-vocals.*`, prefer the current
+    extension when several exist so a fresh re-cook wins, and fall back to the legacy file otherwise.
+    No transcode: AAC → FLAC recovers nothing, which #480 already ruled — align just has to LOOK.
+    """
+    from ..processor import VOCALS_EXT, vocals_path
+
+    canonical = vocals_path(ctx.job.media_dir, ctx.job.media_id)
+    if os.path.exists(canonical):
+        return canonical
+
+    stem_dir = os.path.dirname(canonical)
+    # basename is "<id>-vocals.<VOCALS_EXT>"; strip the extension to build the glob prefix so this
+    # stays derived from the canonical key rather than re-hardcoding the stems layout.
+    prefix = os.path.basename(canonical)[: -(len(VOCALS_EXT) + 1)]
+    # escape the literal id/prefix so a media id with a glob metacharacter can't misresolve.
+    matches = sorted(glob.glob(os.path.join(stem_dir, glob.escape(prefix) + "*")))
+    return matches[0] if matches else None
 
 
 def _ytdlp_bin(ctx: Ctx, configured: str = "yt-dlp") -> str:
