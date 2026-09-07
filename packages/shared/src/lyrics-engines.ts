@@ -150,10 +150,10 @@ export function isValidSyncMode(id: string): id is SyncModeId {
 // data that already exists gets drawn on one room's TV, and they are room-scoped for the same reason
 // `tvProgressStyle` is — a staging choice for one party's screen.
 //
-// They live here rather than beside `tvProgressStyle` in separators.ts because they are COUPLED to
+// They live here rather than beside `tvProgressStyle` in settings.ts because they are COUPLED to
 // `SYNC_MODES` above: a room can only render at or below the granularity the global mode produced.
 // Keeping the registry and the constraint it is checked against in one file is what stops the two
-// drifting. The resolver that applies the clamp is `resolveLyricsPresentation` in separators.ts,
+// drifting. The resolver that applies the clamp is `resolveLyricsPresentation` in settings.ts,
 // which is where `EffectiveSettings` lives.
 
 /**
