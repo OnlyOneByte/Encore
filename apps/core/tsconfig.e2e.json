@@ -10,6 +10,16 @@
 		"checkJs": true,
 		"allowImportingTsExtensions": true
 	},
-	"include": ["e2e/cdp.mjs", "e2e/fuzz.mjs", "e2e/contract.ts", "scripts/shot.mjs", "scripts/playwright-core.d.ts", "e2e/probes/p11-dashboards.mjs", "e2e/probes/p10-scaling.mjs"],
+	"include": [
+		"e2e/cdp.mjs",
+		"e2e/fuzz.mjs",
+		"e2e/contract.ts",
+		"scripts/shot.mjs",
+		"scripts/playwright-core.d.ts",
+		"e2e/probes/p11-dashboards.mjs",
+		"e2e/probes/p10-scaling.mjs",
+		"e2e/probes/p5-cook-lifecycle.mjs",
+		"e2e/probes/p14-playhead-vs-cook.mjs"
+	],
 	"exclude": ["build", "node_modules"]
 }
