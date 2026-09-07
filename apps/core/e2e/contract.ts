@@ -253,7 +253,31 @@ export const SEL = {
 		'lyrics-ball',
 		'lyrics-font',
 		'lyrics-case'
-	]
+	],
+
+	// ── dashboards (the stats/metrics /stats page the p11 probe reads) ─────
+	/*
+	 * The /stats dashboard's card/tile/chart hooks the p11-dashboards probe reads. Migrated here from
+	 * KNOWN_OFFENDERS as Group D of the #513 per-driver SEL split (tail of #494) — the ENGINE-HEAVY
+	 * group, because `dashChartOrBody` uses shapes the resolver could not model on base: the `+`
+	 * adjacent-sibling combinator and a `:not()` exclusion chain. The resolver now models both (see
+	 * selectorResolves in contract.test.ts), so all four resolve against the /stats page's own markup.
+	 */
+	/** A dashboard card — `<div class="card">` / `<div class="card tile …">` (routes/stats/+page.svelte). */
+	dashCard: '.card',
+	/** A table inside a dashboard card — the step/stage timing tables the probe pulls text from. */
+	dashCardTable: '.card table',
+	/** A stat tile's headline number — `<span class="n">` inside a `.card.tile` (routes/stats/+page.svelte). */
+	dashTileNumber: '.tile .n',
+	/*
+	 * The chart element a card's <h2> heads: `.card h2 + .bars` (the <Bars> chart's `<ol class="bars">`),
+	 * or the same slot as anything-but-a-table/note/scroller — `.card h2 + :not(table):not(.note):not(.scroller)`.
+	 * A comma UNION so one branch resolving is enough; the first branch's `.card`/`h2`/`.bars` parts
+	 * carry it. The `:not()` arguments are EXCLUSIONS the source need not render (see the resolver's
+	 * `:not()` branch), and the `+` sibling combinator resolves like `>`/descendant — both sides must
+	 * exist, their relative position is not source-checkable.
+	 */
+	dashChartOrBody: '.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)'
 } as const;
 
 /**

@@ -217,18 +217,50 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 		const anchor = `${name}="${value}`;
 		return sources.some((s) => s.includes(anchor));
 	}
-	// A CSS class selector, possibly compound and possibly with descendant/child structure
-	// (`.row .t`, `.lyrics .word.active`, `.seekrow .track > i`, `.slot.visible audio`). Split into the
-	// selector's structural PARTS — on descendant whitespace AND the child combinator, which for a
-	// source-existence check ask the same question: does every part's anchor exist somewhere. EVERY
-	// part must resolve; a compound that names a dropped descendant is still broken. A part is either a
-	// bare tag (`audio`, `i` — resolve as a tag) or a class-compound (`.slot.visible` — every `.token`
-	// must be a class). The leading part starts with `.`, so this branch owns any selector beginning
-	// with a class even when a later part is a tag.
+	// A CSS class selector, possibly compound and possibly with descendant/child/sibling structure
+	// (`.row .t`, `.lyrics .word.active`, `.seekrow .track > i`, `.slot.visible audio`, `.card h2 + .bars`).
+	// Split into the selector's structural PARTS — on descendant whitespace, the child combinator `>`,
+	// AND the adjacent-sibling combinator `+`, which for a source-existence check all ask the same
+	// question: does every part's anchor exist somewhere. A combinator does not change WHAT must exist
+	// (both a child `.a > .b` and a sibling `.a + .b` need `.a` and `.b` rendered), only where they sit
+	// relative to each other — which no source scan can see anyway — so `+` splits exactly like `>`.
+	// EVERY part must resolve; a compound that names a dropped descendant/sibling is still broken. A part
+	// is either a bare tag (`audio`, `i` — resolve as a tag), a class-compound (`.slot.visible` — every
+	// `.token` must be a class), or a `:not(...)` exclusion chain (see its branch below). The leading part
+	// starts with `.`, so this branch owns any selector beginning with a class even when a later part is a
+	// tag or a `:not()` chain.
 	if (selector.startsWith('.')) {
-		const parts = selector.split(/\s*>\s*|\s+/).filter(Boolean);
+		const parts = selector.split(/\s*>\s*|\s*\+\s*|\s+/).filter(Boolean);
 		if (parts.length === 0) return null;
 		const partResults = parts.map((part): boolean | null => {
+			// A `:not(...)` EXCLUSION chain — checked first because it can prefix any other part shape
+			// (`:not(table):not(.note):not(.scroller)`, `.bars:not(.empty)`, `span:not(.x)`). Introduced
+			// for the p11-dashboards `.card h2 + :not(table):not(.note):not(.scroller)` chart-or-body
+			// read (#546). A `:not()` argument filters OUT elements, so it names nothing that HAS to be
+			// rendered; the positive anchor is the BASE written before the `:not()` chain. Peel every
+			// `:not(...)` suffix off and resolve only that base:
+			//   • a bare chain with no base (`:not(table)…`, the p11 case — the sibling it filters is
+			//     anchored by the `.card h2` parts to its left) has no positive anchor of its own and
+			//     resolves true, letting the sibling parts carry the resolution;
+			//   • a chain WITH a base resolves that base as a class-compound (`.bars`) or a tag (`span`),
+			//     so a base naming a dropped class/tag STILL fails — the non-vacuity is in the base.
+			// The excluded arguments themselves are deliberately NOT required to exist: excluding a class
+			// no component renders is a harmless over-specification, not a broken anchor.
+			if (/:not\(/.test(part)) {
+				const notChain = /^(.*?)((?::not\([^)]*\))+)$/.exec(part);
+				if (notChain) {
+					const [, base] = notChain;
+					if (base === '') return true; // bare exclusion — no positive anchor, siblings carry it.
+					if (base.startsWith('.')) {
+						const tokens = base.split('.').filter(Boolean);
+						if (tokens.length === 0) return null;
+						return tokens.every((tok) => sources.some((s) => classPresent(s, tok)));
+					}
+					if (/^[a-z][a-z0-9]*$/.test(base)) return tagResolves(base, sources);
+					return null; // a base shape this resolver does not otherwise model.
+				}
+				return null; // a `:not()` appearing in a shape the peel regex cannot split.
+			}
 			if (part.startsWith('.')) {
 				// A class-compound part may carry a trailing UNQUOTED attribute selector, e.g. the
 				// `.err[role=alert]` the p8-presence probe reads (a class + `[role=alert]`, no quotes).
@@ -270,8 +302,8 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 				const classTokens = classPortion.split('.').filter(Boolean);
 				return classTokens.every((tok) => sources.some((s) => classPresent(s, tok)));
 			}
-			// Any other part shape (a universal token, a `:not()` chain, an unquoted attribute) is one
-			// this resolver does not model — surface it as unmodelled rather than silently pass.
+			// Any other part shape (a universal token, an unquoted attribute) is one this resolver does
+			// not model — surface it as unmodelled rather than silently pass.
 			return null;
 		});
 		if (partResults.some((r) => r === false)) return false;
@@ -500,14 +532,17 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'.up-song'
 	],
 	'probes/p11-dashboards.mjs': [
-		'.card',
-		'.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)',
-		'.card table',
-		'.tile .n',
+		// Bare tags / a tag descendant, deliberately NOT UI selectors: `body`/`h1`/`h2` are structural
+		// document chrome and `table th` is a tag descendant read for header text, not a hook.
 		'body',
 		'h1',
 		'h2',
 		'table th'
+		// Group D of the #494 tail (#513) migrated this driver's four real hooks into SEL — .card
+		// (SEL.dashCard), .card table (SEL.dashCardTable), .tile .n (SEL.dashTileNumber), and the
+		// `.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)` chart-or-body union
+		// (SEL.dashChartOrBody) — extending the resolver to model the `+` adjacent-sibling combinator
+		// and a `:not()` exclusion chain. This was the engine-heavy group; see the #546 test below.
 	],
 	'probes/p12-search.mjs': [
 		// Hex swatch colour (shape rule), not a selector.
@@ -742,4 +777,54 @@ test('#545 Group C — p12-search .chips button.ok moved from KNOWN_OFFENDERS in
 	//     the `button` anchor rather than dropping to a class-only handle.
 	expect(selectorResolves('.chips button.nope-not-a-class', sources)).toBe(false);
 	expect(selectorResolves('.chips marquee.ok', sources)).toBe(false);
+});
+
+test('#546 Group D — p11-dashboards card/tile/chart selectors moved from KNOWN_OFFENDERS into SEL', () => {
+	// Half 1: all four selectors are no longer quarantined for p11-dashboards. On base they sat in
+	// KNOWN_OFFENDERS (the probe spelled them out); after the migration the only honest place they may
+	// live is SEL, so KNOWN_OFFENDERS must no longer wave any of them through. The bare tags the driver
+	// also reads (body/h1/h2, table th) are NOT selectors and legitimately stay quarantined.
+	const p11 = KNOWN_OFFENDERS['probes/p11-dashboards.mjs'] ?? [];
+	expect(p11).not.toContain('.card');
+	expect(p11).not.toContain('.card table');
+	expect(p11).not.toContain('.tile .n');
+	expect(p11).not.toContain('.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)');
+
+	// Half 2: the four now live in SEL with their exact values, and the resolver — extended here to
+	// model the `+` adjacent-sibling combinator AND a `:not()` exclusion chain (this is the engine-heavy
+	// group) — resolves each against real source. Anchors on routes/stats/+page.svelte: `<div class="card">`
+	// / `<div class="card tile">`, a `<table>` inside a card, `<span class="n">` inside a `.tile`, and the
+	// <Bars> chart's `<ol class="bars">` following a card `<h2>`. A green false/null would mean the SEL
+	// entry points at markup no component renders.
+	expect(SEL.dashCard).toBe('.card');
+	expect(SEL.dashCardTable).toBe('.card table');
+	expect(SEL.dashTileNumber).toBe('.tile .n');
+	expect(SEL.dashChartOrBody).toBe('.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)');
+	const sources = guardSources();
+	expect(selectorResolves(SEL.dashCard, sources)).toBe(true);
+	expect(selectorResolves(SEL.dashCardTable, sources)).toBe(true);
+	expect(selectorResolves(SEL.dashTileNumber, sources)).toBe(true);
+	// The union resolves because its FIRST branch (`.card h2 + .bars`) does — every part (`.card`, the
+	// `h2` tag, the `.bars` chart class) is rendered; the `+` sibling combinator splits like `>`.
+	expect(selectorResolves(SEL.dashChartOrBody, sources)).toBe(true);
+	// Prove the `+` sibling combinator alone resolves as its own selector, not only inside the union.
+	expect(selectorResolves('.card h2 + .bars', sources)).toBe(true);
+	// Prove the `:not()` branch alone resolves too: the `:not(...)` chain is an exclusion that carries no
+	// positive anchor, so the sibling parts (`.card`, `h2`) carry the resolution.
+	expect(selectorResolves('.card h2 + :not(table):not(.note):not(.scroller)', sources)).toBe(true);
+
+	// The resolver extension must be REAL, not a widening that accepts any `+`/`:not()` shape:
+	//   • a `+`-sibling naming a dropped CLASS must still fail — no source renders a `.nope-not-a-class`;
+	//   • a `+`-sibling naming an unrendered TAG must still fail — no component renders a `<marquee>`;
+	//   • a class BEFORE the sibling that no component renders must still fail — no `.nope-card` exists;
+	//   • a `:not()` chain whose BASE anchor is a dropped class must still fail (`.nope-base:not(table)`),
+	//     proving the base part is genuinely resolved rather than the whole chain waved through.
+	//   • BUT the `:not()` ARGUMENTS themselves are exclusions and need NOT exist — `.card h2 + :not(marquee)`
+	//     still resolves even though no `<marquee>` renders, because excluding an absent element is a
+	//     harmless over-specification, not a broken anchor.
+	expect(selectorResolves('.card h2 + .nope-not-a-class', sources)).toBe(false);
+	expect(selectorResolves('.card h2 + marquee', sources)).toBe(false);
+	expect(selectorResolves('.nope-card h2 + .bars', sources)).toBe(false);
+	expect(selectorResolves('.card .nope-base:not(table)', sources)).toBe(false);
+	expect(selectorResolves('.card h2 + :not(marquee)', sources)).toBe(true);
 });
