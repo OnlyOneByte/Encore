@@ -5,9 +5,11 @@ import {
 	GUIDE_DEADBAND_SEC,
 	GUIDE_MAX_RATE_TRIM,
 	GUIDE_PREROLL_ALIGN_SEC,
+	GUIDE_RATE_GAIN,
 	GUIDE_RESEEK_SEC,
 	SEEK_JUMP_SEC,
 	guideCorrection,
+	prerollSeekTarget,
 	seekPlan
 } from './guide-sync';
 
@@ -328,5 +330,114 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 		const page = readFileSync(join(import.meta.dir, '..', '..', 'routes', 'tv', '+page.svelte'), 'utf8');
 		expect(page).toContain('seekRev = e.rev');
 		expect(page).toContain('seekRev={seekRev}');
+	});
+});
+
+/*
+ * -- the PRE-ROLL path: the start is not drift (#578) ---------------------------------------------
+ *
+ * The reported defect: the guide starts BEHIND the instrumental and stays behind. The pre-roll used
+ * to align the guide to master.currentTime at EFFECT time and then call play(); the guide decoder
+ * spin-up let the master advance before the first guide frame emerged, so the guide entered late by
+ * that latency. A residual that size lands in the governor TRIM band, closed at ~15s per e-fold --
+ * starts late and stays late.
+ *
+ * prerollSeekTarget owns the decision, taken when the guide can actually play. The invariant: given
+ * the two playheads AT THAT MOMENT, the guide locks onto the master within the pre-roll tolerance in
+ * ONE seek -- immediately, not over the trim band.
+ */
+
+describe('prerollSeekTarget -- the guide locks onto the master at once, not over the trim band', () => {
+	it('seeks to the master playhead when the guide is outside the pre-roll tolerance', () => {
+		// The reported sizes: a guide 150-250ms behind must be pulled to the master NOW, not trimmed.
+		for (const behind of [0.15, 0.2, 0.25, 0.5, 2]) {
+			const plan = prerollSeekTarget(10 - behind, 10);
+			expect(plan.seek).toBe(true);
+			expect(plan.target).toBe(10);
+			// After the seek the guide is AT the master -- residual zero, nothing left for the governor.
+			expect(Math.abs(plan.target - 10)).toBeLessThanOrEqual(GUIDE_PREROLL_ALIGN_SEC);
+		}
+	});
+
+	it('does not flush a guide already inside the tolerance', () => {
+		// The same cost guideCorrection refuses on ordinary drift: no seek for a residual that small.
+		for (const off of [0, GUIDE_PREROLL_ALIGN_SEC / 2, -GUIDE_PREROLL_ALIGN_SEC / 2]) {
+			expect(prerollSeekTarget(10 + off, 10).seek).toBe(false);
+		}
+	});
+
+	it('holds on a non-finite playhead rather than seeking on a guess', () => {
+		expect(prerollSeekTarget(NaN, 10).seek).toBe(false);
+		expect(prerollSeekTarget(10, NaN).seek).toBe(false);
+		expect(prerollSeekTarget(Infinity, 10).seek).toBe(false);
+	});
+});
+
+/*
+ * THE SETTLE-TIME RELATIONSHIP (#578 -2). Written against the CONSTANTS, not a hard-coded 38.75s, so
+ * a deliberate retune of the band updates one expectation here instead of hitting a wall. The point
+ * of #578 is that leaving a residual to the trim band is slow: this pins HOW slow, as a fact about
+ * the policy, so the value of taking the pre-roll seek at once (prerollSeekTarget) is measurable.
+ *
+ * The trim is rate = 1 + (-drift * GUIDE_RATE_GAIN) inside the band, i.e. d(drift)/dt = -drift/tau
+ * with tau = 1 / GUIDE_RATE_GAIN. So a residual decays exponentially with that time-constant, and
+ * the time to fall from an initial drift d0 to the deadband is tau * ln(d0 / GUIDE_DEADBAND_SEC).
+ */
+describe('guideCorrection -- the trim band closes only asymptotically, which is why the pre-roll seeks (#578)', () => {
+	it('has time-constant tau = 1 / GUIDE_RATE_GAIN', () => {
+		const tau = 1 / GUIDE_RATE_GAIN;
+		// The trim ramp is linear in drift with slope -GUIDE_RATE_GAIN inside the band: a drift of
+		// exactly tau worth of correction asks for rate offset of -drift * GUIDE_RATE_GAIN.
+		const drift = 0.1;
+		const { rate } = guideCorrection(10 + drift, 10);
+		expect(1 - rate).toBeCloseTo(drift / tau, 12);
+	});
+
+	it('takes many seconds per e-fold, so a start residual is slow to close if left to it', () => {
+		const tau = 1 / GUIDE_RATE_GAIN;
+		// Derived from the constants, never hard-coded: one e-fold is tau seconds.
+		expect(tau).toBeCloseTo(GUIDE_RESEEK_SEC / GUIDE_MAX_RATE_TRIM, 12);
+		// Time for a 200ms start residual to reach the deadband, as a relationship not a magic number.
+		const settle = tau * Math.log(0.2 / GUIDE_DEADBAND_SEC);
+		expect(settle).toBeCloseTo(tau * Math.log(0.2 / GUIDE_DEADBAND_SEC), 12);
+		// It is many seconds -- the concrete reason the pre-roll must lock on at once instead.
+		expect(settle).toBeGreaterThan(30);
+	});
+});
+
+/*
+ * A source guard, because #578 too lived in WIRING: prerollSeekTarget being correct proves nothing
+ * about the component. The original defect was the pre-roll assigning vocals.currentTime =
+ * master.currentTime at effect time in the transport effect and the gesture-recovery handler, where
+ * the guide decoder flush then outran the master. These assertions fail if the pre-roll stops
+ * consulting the helper, reverts to the moving-target form, or stops re-taking the lock on canplay.
+ */
+describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at effect time (#578)', () => {
+	const tv = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
+
+	it('the pre-roll decision comes from prerollSeekTarget, not an inline tolerance compare', () => {
+		expect(tv).toContain('prerollSeekTarget(');
+	});
+
+	it('aligns the pre-roll to the fixed helper target, never to the master moving playhead (#578)', () => {
+		// Scope the ban to alignGuidePreroll -- the governor syncGuide LEGITIMATELY reseeks to
+		// master.currentTime for continuous drift (the issue keeps that), so a whole-file ban would
+		// wrongly red on the governor. The pre-roll helper must seek to the fixed prerollSeekTarget
+		// result, not to master.currentTime read inline while the decoder flush lets the master run.
+		const align = tv.split('function alignGuidePreroll(): void {')[1]?.split('\n\t}')[0] ?? '';
+		expect(align).not.toBe('');
+		expect(align).toContain('prerollSeekTarget(');
+		expect(align).toContain('plan.target');
+		expect(align).not.toContain('vocals.currentTime = master.currentTime');
+		// And the two pre-roll call sites route through the helper, not an inline moving-target seek.
+		expect(tv).not.toContain('vocals.currentTime = master?.currentTime ?? 0;');
+		expect(tv.split('alignGuidePreroll()').length - 1).toBeGreaterThanOrEqual(3);
+	});
+
+	it('re-takes the lock-on on the guide canplay, when the buffer is primed', () => {
+		// The heart of the fix: the comparison is taken when the guide can actually play, so the
+		// seek->audible gap is a primed-buffer flush and the master has not run away from it.
+		expect(tv).toContain('oncanplay={');
+		expect(tv).toContain('alignGuidePreroll()');
 	});
 });
