@@ -114,8 +114,6 @@ export function audioKey(mediaId: string, ext = 'wav'): string {
  */
 export const INSTRUMENTAL_EXT = 'flac';
 export const VOCALS_EXT = 'flac';
-/** @deprecated kept so older call sites resolve; prefer the per-stem constants. */
-export const STEM_EXT = VOCALS_EXT;
 
 export function instrumentalKey(mediaId: string, ext: string = INSTRUMENTAL_EXT): string {
 	return `derived/stems/${mediaId}-instrumental.${ext}`;
@@ -160,9 +158,6 @@ export function legacyVocalsRefs(instrumentalRef: string): string[] {
 }
 export function lyricsKey(mediaId: string): string {
 	return `derived/lyrics/${mediaId}.json`;
-}
-export function thumbKey(hash: string): string {
-	return `derived/thumbs/${hash}.jpg`;
 }
 /** The sidecar record — authoritative per docs/ARCHITECTURE.md. */
 export function metaKey(mediaId: string): string {

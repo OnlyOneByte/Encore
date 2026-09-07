@@ -242,18 +242,6 @@ export function activeLineIndex(lines: LyricLine[], pos: number): number {
 	return active;
 }
 
-/**
- * How far a word has been sung at `pos`, 0..1 (the "bouncing-ball" fill fraction across the word):
- * 0 before it starts, 1 after it ends, linear in between. Degenerate/zero-length words snap 0→1.
- */
-export function wordFill(word: LyricWord, pos: number): number {
-	if (pos >= word.end) return 1; // fully sung (also snaps a zero-length word to 1 once reached)
-	if (pos <= word.start) return 0;
-	const span = word.end - word.start;
-	if (span <= 0) return 1;
-	return (pos - word.start) / span;
-}
-
 /** Index of the word within a line being sung at `pos` (the "ball" position); -1 if none/between. */
 export function activeWordIndex(line: LyricLine, pos: number): number {
 	for (let i = 0; i < line.words.length; i++) {
@@ -268,22 +256,6 @@ import { isAuthoritativeText, type LyricsCandidate } from '@encore/shared';
 
 /** The provenance slice the overlay needs — a Pick of the stored candidate. */
 export type LyricsProvenance = Pick<LyricsCandidate, 'textSource' | 'textConfidence' | 'timing'>;
-
-/**
- * The caption to show alongside the lyrics, or null when none is warranted.
- *
- * Only auto-transcribed text gets a notice, and it gets one precisely BECAUSE the result looks
- * finished: force-aligned ASR renders a perfect bouncing ball over words that may be wrong, which is
- * the most misleading state the overlay can be in. Authoritative text needs no caption, and coarse
- * timing needs none either — that is visible on its own.
- *
- * Unknown provenance (an artifact from before candidate tracking) returns null: we cannot claim the
- * text is a guess, and we cannot claim it is verified, so we say nothing rather than something false.
- */
-export function lyricsNotice(p: LyricsProvenance | null | undefined): string | null {
-	if (!p) return null;
-	return isAuthoritativeText(p) ? null : 'auto-transcribed · words may be wrong';
-}
 
 /** Should the lyrics render in the "not verified" visual treatment? */
 export function isAutoTranscribed(p: LyricsProvenance | null | undefined): boolean {

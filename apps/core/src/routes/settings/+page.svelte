@@ -25,13 +25,21 @@
 		TV_BACKGROUND_STYLES,
 		TV_VISUALIZERS,
 		ASR_MODELS,
-		// The registry's own lookups. Each of these had zero callers while this page hand-rolled the
-		// same `X.find((s) => s.id === …)` five times — so the accessor a reader would reach for was
-		// the one thing nothing used.
+		// The registry's own by-id lookups. This page is their sole caller: every id->record lookup
+		// here goes through the accessor rather than hand-rolling `X.find((s) => s.id === …)`, so the
+		// registry owns the shape and there is no parallel find to drift. (liveModels stays a plain
+		// .find — it is a runtime worker list, not a registry.)
 		getAsrModel,
 		getTvProgressStyle,
 		getTvBackgroundStyle,
 		getTvVisualizer,
+		getEngine,
+		getFetcher,
+		getSyncMode,
+		getLyricsBallStyle,
+		getLyricsHighlight,
+		getLyricsFont,
+		getLyricsCase,
 		SYNC_MODES,
 		LYRICS_BALL_STYLES,
 		LYRICS_HIGHLIGHTS,
@@ -159,7 +167,7 @@
 	// is upgrade-only, so offering it here would let a singer pick something the server rejects.
 	const liveEngines = SEPARATOR_ENGINES.filter((e) => e.liveSelectable);
 
-	const engineOf = (id: string) => SEPARATOR_ENGINES.find((e) => e.id === id);
+	const engineOf = (id: string) => getEngine(id);
 
 	// Models are scoped to the chosen engine — the whole reason engine and model are separate axes.
 	let liveModels = $derived(engineOf(settings.global.defaultEngine)?.models ?? []);
@@ -204,13 +212,13 @@
 	// media's already-present bytes, not a default a room could pick (see fetchers.ts / the schema
 	// comment). Sourced note, same as the splitter and reader pickers.
 	const defaultFetchers = FETCHERS.filter((f) => f.id !== 'local');
-	let fetcherNote = $derived(FETCHERS.find((f) => f.id === settings.global.defaultFetcher)?.note ?? '');
+	let fetcherNote = $derived(getFetcher(settings.global.defaultFetcher)?.note ?? '');
 
 	// ── lyrics ───────────────────────────────────────────────────────────────
 	// The two knobs on the words rather than the audio. Same shape as the splitter pair above: the
 	// note comes from the registry so a model cannot appear here without its tradeoff stated.
 	let asrNote = $derived(getAsrModel(settings.global.asrModel)?.note ?? '');
-	let syncNote = $derived(SYNC_MODES.find((m) => m.id === settings.global.syncMode)?.note ?? '');
+	let syncNote = $derived(getSyncMode(settings.global.syncMode)?.note ?? '');
 
 	// The same footgun as a slow splitter, and worth naming in the same place: a bigger reader is the
 	// one lever on wrong words, and it is also the one that turns a two-minute cook into a long wait on
@@ -244,19 +252,17 @@
 			qualityRank(settings.global.defaultEngine, settings.global.defaultModel)
 	);
 
-	let ballNote = $derived(LYRICS_BALL_STYLES.find((s) => s.id === settings.room.lyricsBall)?.note ?? '');
-	let highlightNote = $derived(LYRICS_HIGHLIGHTS.find((h) => h.id === settings.room.lyricsHighlight)?.note ?? '');
+	let ballNote = $derived(getLyricsBallStyle(settings.room.lyricsBall)?.note ?? '');
+	let highlightNote = $derived(getLyricsHighlight(settings.room.lyricsHighlight)?.note ?? '');
 	// Ask the SAME resolver the TV uses, rather than re-testing syncMode here. If the two ever
 	// disagreed, this page would be confidently wrong about what is on screen.
 	let resolved = $derived(resolveLyricsPresentation(settings));
 	let lyricsClamped = $derived(resolved.clamped);
-	let resolvedHighlight = $derived(
-		LYRICS_HIGHLIGHTS.find((h) => h.id === resolved.highlight)?.label.toLowerCase() ?? resolved.highlight
-	);
+	let resolvedHighlight = $derived(getLyricsHighlight(resolved.highlight)?.label.toLowerCase() ?? resolved.highlight);
 	let resolvedBall = $derived(resolved.ball !== 'off');
 
-	let fontNote = $derived(LYRICS_FONTS.find((f) => f.id === settings.room.lyricsFont)?.note ?? '');
-	let caseNote = $derived(LYRICS_CASES.find((c) => c.id === settings.room.lyricsCase)?.note ?? '');
+	let fontNote = $derived(getLyricsFont(settings.room.lyricsFont)?.note ?? '');
+	let caseNote = $derived(getLyricsCase(settings.room.lyricsCase)?.note ?? '');
 
 	/**
 	 * Apply a patch optimistically, then reconcile on the authoritative response — the same shape the

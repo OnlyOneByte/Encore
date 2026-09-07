@@ -1,7 +1,7 @@
 // pure karaoke-timing logic — parse untrusted artifacts + resolve the active line/word and
 // per-word fill at a playback position. This is the testable core behind the eyes-on TV overlay.
 import { test, expect } from 'bun:test';
-import { parseLyricsDoc, lineBounds, activeLineIndex, activeWordIndex, wordFill, type LyricsDoc } from './lyrics';
+import { parseLyricsDoc, lineBounds, activeLineIndex, activeWordIndex, type LyricsDoc } from './lyrics';
 
 // mirrors the worker's normalize_lyrics output
 const raw = {
@@ -101,18 +101,10 @@ test('activeWordIndex: the "ball" sits on the word being sung, -1 between words'
 	expect(activeWordIndex(line, 5)).toBe(-1); // past the line
 });
 
-test('wordFill: 0 before, linear during, 1 after; zero-length snaps to 1', () => {
-	const w = { word: 'quick', start: 0.3, end: 0.6 };
-	expect(wordFill(w, 0.2)).toBe(0);
-	expect(wordFill(w, 0.45)).toBeCloseTo(0.5, 5);
-	expect(wordFill(w, 0.7)).toBe(1);
-	expect(wordFill({ word: 'z', start: 1, end: 1 }, 1)).toBe(1); // degenerate
-});
-
 // ── honesty about auto-transcribed words ──────────────────────────────
 // Force-aligned ASR renders a PERFECT bouncing ball over words that may be wrong — the most
 // misleading state the overlay can be in. The notice exists because the result looks finished.
-import { lyricsNotice, isAutoTranscribed, type LyricsProvenance } from './lyrics';
+import { isAutoTranscribed, type LyricsProvenance } from './lyrics';
 
 const prov = (over: Partial<LyricsProvenance> = {}): LyricsProvenance => ({
 	textSource: 'lrclib',
@@ -122,14 +114,11 @@ const prov = (over: Partial<LyricsProvenance> = {}): LyricsProvenance => ({
 });
 
 test('authoritative text gets NO notice', () => {
-	expect(lyricsNotice(prov())).toBeNull();
-	expect(lyricsNotice(prov({ textSource: 'manual' }))).toBeNull();
 	expect(isAutoTranscribed(prov())).toBe(false);
 });
 
 test('ASR text is labelled, even with word timings that look perfect', () => {
 	const p = prov({ textSource: 'asr', textConfidence: 'low', timing: 'word' });
-	expect(lyricsNotice(p)).toContain('auto-transcribed');
 	expect(isAutoTranscribed(p)).toBe(true);
 });
 
@@ -143,13 +132,11 @@ test('a real human caption track is not labelled', () => {
 });
 
 test('UNKNOWN provenance says nothing — never claims verified OR guessed', () => {
-	expect(lyricsNotice(null)).toBeNull();
-	expect(lyricsNotice(undefined)).toBeNull();
 	expect(isAutoTranscribed(null)).toBe(false);
 });
 
-test('coarse LINE timing alone is not labelled (visible on its own)', () => {
-	expect(lyricsNotice(prov({ timing: 'line' }))).toBeNull();
+test('coarse LINE timing alone is not flagged unverified when text is authoritative', () => {
+	expect(isAutoTranscribed(prov({ timing: 'line' }))).toBe(false);
 });
 
 // ── pause-based line splitting (whisper segments are not lyric lines) ──────────

@@ -2,7 +2,8 @@
 // MEDIA_DIR. These are the attack vectors the route depends on it rejecting.
 import { test, expect, beforeEach } from 'bun:test';
 import { resolve, sep } from 'node:path';
-import { safeMediaPath, mediaDir } from './local-files';
+import { safeMediaPath } from './local-files';
+import { mediaRoot } from './paths';
 
 beforeEach(() => {
 	process.env.MEDIA_DIR = '/srv/encore/media';
@@ -11,7 +12,7 @@ beforeEach(() => {
 test('legitimate library file resolves inside MEDIA_DIR', () => {
 	const p = safeMediaPath('library/sweet-caroline.mp4');
 	expect(p).toBe(resolve('/srv/encore/media/library/sweet-caroline.mp4'));
-	expect(p!.startsWith(mediaDir() + sep)).toBe(true);
+	expect(p!.startsWith(mediaRoot() + sep)).toBe(true);
 });
 
 test('nested stems path is allowed', () => {

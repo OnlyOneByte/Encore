@@ -10,11 +10,6 @@
 import { resolve, join, sep } from 'node:path';
 import { mediaRoot, resolveBase, metaDir, derivedDir } from './paths';
 
-/** The media root. Kept for callers that legitimately want the root itself. */
-export function mediaDir(): string {
-	return mediaRoot();
-}
-
 /**
  * Resolve a request path segment (e.g. "derived/stems/x.wav", "library/song.mp4") to an absolute
  * path that is PROVABLY inside that ref's storage class root, or null if it escapes. Defeats `../`,
