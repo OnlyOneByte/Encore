@@ -200,7 +200,8 @@ export const SEL = {
 	/*
 	 * LYRICS OVERLAY internals the lyrics probe reads (#494). `.lyrics` is the overlay; `.reel` scrolls,
 	 * `.viewport` clips it, `.row`/`.row.current` are the lines, `.lyrics.unverified` flags ASR-only text,
-	 * `.ls-asr` is the "transcribed" badge, `.ball` is the bouncing dot. `activeWord` (below) is the word
+	 * `.ls-source` is the provenance badge naming the lyrics source (`.ls-asr` = its amber guess variant),
+	 * `.ball` is the bouncing dot. `activeWord` (below) is the word
 	 * the ball sits on.
 	 */
 	lyrics: '.lyrics',
@@ -209,6 +210,7 @@ export const SEL = {
 	lyricsRow: '.lyrics .row',
 	lyricsRowCurrent: '.lyrics .row.current',
 	lyricsUnverified: '.lyrics.unverified',
+	lsSource: '.ls-source',
 	lsAsr: '.ls-asr',
 	ball: '.ball',
 	/** The full-screen tap-to-start affordance the autoplay-block probe checks for (#64/#494). */

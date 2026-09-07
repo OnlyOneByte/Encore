@@ -704,7 +704,7 @@ try {
 	);
 
 	// ── FINDING (5): provenance label for transcribed words ───────────────
-	// The overlay's amber tint AND the "Auto-Transcribed lyrics" label both hang off
+	// The overlay's amber tint AND the "Auto-transcribed" provenance label both hang off
 	// `chosenCandidate(media)` returning a candidate whose textSource is 'asr' /
 	// 'captions'. The fake worker in fake-stems-worker.mjs sends `artifacts.lyrics.uri`
 	// but NOT `artifacts.lyrics.candidates`, so setMediaLyrics attaches only the ref and
@@ -719,12 +719,12 @@ try {
 	// via apps/worker/src/lyrics/artifact.py) also pass candidates alongside the uri, so
 	// the label DOES appear in a real cook. The fake worker exposes the surface — the
 	// probe therefore records the finding but classifies it as MEDIUM/env-limit.
-	const provOk = provState.asrLabel === 'Auto-Transcribed lyrics' && provState.unverified;
+	const provOk = provState.asrLabel === 'Auto-transcribed' && provState.unverified;
 	record(
 		'P6-5',
 		'MEDIUM',
 		provOk,
-		'transcribed lyrics carry the "Auto-Transcribed lyrics" label and the amber .unverified tint',
+		'transcribed lyrics carry the "Auto-transcribed" provenance label and the amber .unverified tint',
 		provOk
 			? ''
 			: `no .ls-asr label rendered and .lyrics.unverified=${provState.unverified}. ` +

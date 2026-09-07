@@ -343,7 +343,7 @@
 	 * and simultaneously see it does not look like the confident white of every other song, so the
 	 * meaning arrives without a warning line to ignore. The old standalone `.notice` strip — one ~880px
 	 * letter-spaced sentence pinned centre-bottom — is gone; it landed in the gutter between the two
-	 * bottom cards and read as debris, and the route now carries a short `Auto-Transcribed lyrics` label
+	 * bottom cards and read as debris, and the route now carries a short provenance label naming the source
 	 * in the song block, which is what that string is ABOUT.
 	 *
 	 * Deliberately NOT dimmed: these are still the words to sing from, so making them harder to read
