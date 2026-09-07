@@ -23,6 +23,7 @@ authority on RANKING; this side only reports what it produced and how trustworth
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -250,8 +251,18 @@ _TOKEN_KEEP = re.compile(r"[^\w\s']", re.UNICODE)
 
 
 def lyrics_tokens(text: str) -> list[str]:
-    """Words, lowercased, punctuation and [bracket] markers stripped. Compares CONTENT, not form."""
-    cleaned = _TOKEN_KEEP.sub(" ", _TOKEN_STRIP.sub(" ", text.lower()))
+    """Words, lowercased, punctuation and [bracket] markers stripped. Compares CONTENT, not form.
+
+    NFKC-normalised first so text differing only in Unicode FORM tokenises the same: full-width vs
+    half-width digits/letters, composed vs decomposed accents, ligatures. Without it "Beyonc\u00e9" (one
+    codepoint) and "Beyonce\u0301" (e + combining acute) are distinct tokens on both the intersection
+    and the union of `agreement_score`, counting a correct candidate as disagreeing twice. Idempotent
+    on ASCII (unicodedata.normalize("NFKC", ascii) == ascii), so it cannot move an all-ASCII score.
+    Mirrors packages/shared/src/lyrics.ts:lyricsTokens (kept in one commit) and the established fold in
+    metadata/annotate.py:normalize_for_match.
+    """
+    folded = unicodedata.normalize("NFKC", text).lower()
+    cleaned = _TOKEN_KEEP.sub(" ", _TOKEN_STRIP.sub(" ", folded))
     return [t for t in cleaned.split() if t]
 
 

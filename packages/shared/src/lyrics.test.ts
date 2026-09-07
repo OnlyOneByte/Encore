@@ -151,6 +151,16 @@ test('tokenizer strips LRC stamps, markers, and punctuation', () => {
 	expect(lyricsTokens('[00:12.50]Hello, world! [Chorus]')).toEqual(['hello', 'world']);
 });
 
+test('tokenizer NFKC-folds so Unicode form-variants tokenise alike (#540, mirrors the Python side)', () => {
+	// composed vs decomposed: "Beyonce\u0301" (e + combining acute) vs "Beyonc\u00e9" (single codepoint)
+	expect(lyricsTokens('Beyonce\u0301')).toEqual(lyricsTokens('Beyonc\u00e9'));
+	// full-width Latin folds to ASCII, and a ligature (U+FB01 fi) expands
+	expect(lyricsTokens('\uFF28\uFF45\uFF4C\uFF4C\uFF4F')).toEqual(['hello']);
+	expect(lyricsTokens('\uFB01nd')).toEqual(['find']);
+	// ASCII path unchanged
+	expect(lyricsTokens("Hello, World! don't stop")).toEqual(['hello', 'world', "don't", 'stop']);
+});
+
 test('the same lyrics score ~1; a different song scores low', () => {
 	// each side has >= MIN_TOKENS_TO_COMPARE (12) UNIQUE tokens after dedup
 	const a = 'we could be heroes just for one day standing by the wall guns above our heads and we kissed';

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -257,7 +258,9 @@ DURATION_TOLERANCE_SEC = 10.0
 
 
 def _credit_tokens(s: str | None) -> set[str]:
-    return {t for t in re.split(r"[^\w']+", (s or "").lower()) if t}
+    # NFKC first so a credit differing only in Unicode form (full/half-width, composed/decomposed)
+    # tokenises the same on both sides of the overlap. Idempotent on ASCII. See lyrics_tokens.
+    return {t for t in re.split(r"[^\w']+", unicodedata.normalize("NFKC", s or "").lower()) if t}
 
 
 def candidate_sort_key(
