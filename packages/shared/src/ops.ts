@@ -9,7 +9,7 @@ import type { QueueEntry, EntryStatus, Media } from './types';
 export type QueueOp =
 	| { op: 'add'; entry: QueueEntry } // entry.id is the client-minted ULID
 	| { op: 'remove'; id: string }
-	| { op: 'move'; id: string; toSeq: number } // toSeq = target index into the singer's own picks (reorderWithinSinger), NOT a rotationSeq
+	| { op: 'move'; id: string; toSeq: number } // toSeq = target index into the singer's own QUEUED picks (reorderWithinSinger indexes queued entries only; a playing/terminal entry never occupies a slot), NOT a rotationSeq
 	| { op: 'status'; id: string; status: EntryStatus };
 
 export interface ClientCommand {
