@@ -23,7 +23,6 @@ def test_defaults_are_the_shipped_behaviour():
     assert c.concurrency == 1
     assert c.demucs_model == "htdemucs"
     assert c.demucs_jobs == auto_demucs_jobs()  # scales with the box, not a hardcoded guess
-    assert c.stem_bitrate == "192k"
     # unset = let the tool decide; we do not invent a value
     assert c.device is None
     assert c.demucs_overlap is None
@@ -50,7 +49,6 @@ def test_every_perf_knob_is_settable():
             "ENCORE_DEMUCS_SHIFTS": "2",
             "ENCORE_TORCH_THREADS": "4",
             "ENCORE_WORKER_CONCURRENCY": "3",
-            "ENCORE_STEM_BITRATE": "256k",
             "ENCORE_FLAC_LEVEL": "5",
             "ENCORE_FFMPEG_BIN": "/opt/ffmpeg",
             # These three were previously omitted despite the test's name claiming completeness, so a
@@ -65,7 +63,7 @@ def test_every_perf_knob_is_settable():
     assert (c.demucs_model, c.device, c.demucs_jobs) == ("htdemucs_ft", "cuda:1", 8)
     assert (c.demucs_overlap, c.demucs_segment, c.demucs_shifts) == (0.1, 7, 2)
     assert (c.torch_threads, c.concurrency) == (4, 3)
-    assert (c.stem_bitrate, c.flac_level, c.ffmpeg_bin) == ("256k", 5, "/opt/ffmpeg")
+    assert (c.flac_level, c.ffmpeg_bin) == (5, "/opt/ffmpeg")
     # from_env carries the operator override verbatim; whether it is HONOURED is decided later in
     # resolve() (see the whisperx-device tests below). Backend is lower-cased; annotate is a flag.
     assert c.whisperx_device == "cuda"
@@ -165,7 +163,6 @@ def test_blank_env_vars_fall_back_to_defaults_not_to_empty_strings():
             "MEDIA_DIR",
             "ENCORE_PROCESSOR",
             "ENCORE_DEMUCS_MODEL",
-            "ENCORE_STEM_BITRATE",
             "ENCORE_ASR_MODEL",
             "ENCORE_SYNC_MODE",
             "ENCORE_LRCLIB_BASE",
@@ -185,7 +182,7 @@ def test_blank_env_vars_fall_back_to_defaults_not_to_empty_strings():
     assert c.core_ws == "ws://localhost:3000/ws?role=worker"
     assert c.media_dir == "/app/media"
     assert c.processor == "real"
-    assert (c.stem_bitrate, c.flac_level) == ("192k", 8)
+    assert c.flac_level == 8
     assert (c.asr_model, c.sync_mode) == ("base", "forced")
     assert (c.ytdlp_bin, c.demucs_bin, c.ffmpeg_bin) == ("yt-dlp", "demucs", "ffmpeg")
     assert c.lrclib_base == "https://lrclib.net"

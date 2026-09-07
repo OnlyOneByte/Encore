@@ -230,7 +230,6 @@ class WorkerConfig:
     separator_backend: str | None = None
 
     # ── encoding ──────────────────────────────────────────────────────────────────
-    stem_bitrate: str = "192k"  # the lossy VOCALS stem; the instrumental is lossless
     flac_level: int = 8
     #: None => derived from the resolved device via `whisperx_device_for`. It used to default to a
     #: hardcoded "cpu", which meant a CUDA box separated on the GPU and then transcribed on the CPU
@@ -310,7 +309,6 @@ class WorkerConfig:
             torch_threads=torch_threads,
             annotate=e.get("ENCORE_ANNOTATE", "1").strip().lower() not in ("0", "false", "no", "off"),
             separator_backend=(e.get("ENCORE_SEPARATOR_BACKEND", "").strip().lower() or None),
-            stem_bitrate=_str(e, "ENCORE_STEM_BITRATE", "192k"),
             flac_level=_int(e, "ENCORE_FLAC_LEVEL", 8, w, minimum=0),
             whisperx_device=(e.get("ENCORE_WHISPERX_DEVICE", "").strip() or None),
             asr_model=_str(e, "ENCORE_ASR_MODEL", "base"),

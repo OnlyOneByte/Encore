@@ -84,16 +84,12 @@ def decode_argv(input_path: str, out_wav: str, ffmpeg_bin: str = "ffmpeg") -> li
     ]
 
 
-# Stereo AAC at this bitrate is the storage format for the VOCALS stem only (encode_stem_argv below); the
-# instrumental is lossless FLAC through encode_flac_argv, so this knob does not govern it. Rationale:
-# the SOURCE is ~129-135 kbps lossy, so 192k leaves headroom for the unavoidable second generation
-# while still cutting a 54 MB WAV stem to roughly 7 MB. Stereo is the ceiling that matters -- YouTube
-# serves stereo, so a surround receiver upmixes from stereo no matter what we store, and anything
-# beyond stereo would be invented data. AAC over Opus deliberately: the vocals stem is the GUIDING
-# TRACK -- a second <audio> the TV mixes under the instrumental master and pitch-shifts with the key
-# (apps/core/src/lib/tv/TvPlayer.svelte) -- and a guide mixed under a master tolerates lossy
-# compression, so AAC-in-m4a's broad browser reach is worth more here than Opus's efficiency.
-STEM_BITRATE = "192k"
+# History (#480): the vocals stem used to be stored as stereo AAC-in-m4a at 192k, on the argument that a
+# guiding track mixed UNDER the instrumental master tolerates lossy compression. #480 replaced that with
+# lossless FLAC for both stems (see encode_flac_argv below and PublishStems in steps/separate.py): the
+# offset argument won -- an AAC-in-m4a encoder adds priming samples (~21 ms) that shift the vocals start
+# relative to the FLAC instrumental, so sharing one codec removes the need for a startup rate-trim. The
+# AAC encoder and its bitrate knob are gone with #502.
 
 
 def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", level: int = 8) -> list[str]:
@@ -126,30 +122,6 @@ def encode_flac_argv(input_wav: str, out_path: str, ffmpeg_bin: str = "ffmpeg", 
         "s16",
         "-ac",
         "2",
-        out_path,
-    ]
-
-
-def encode_stem_argv(
-    input_wav: str, out_path: str, bitrate: str = STEM_BITRATE, ffmpeg_bin: str = "ffmpeg"
-) -> list[str]:
-    """ffmpeg argv: encode a separated WAV stem to stereo AAC in an m4a container (VOCALS stem)."""
-    return [
-        ffmpeg_bin,
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-y",
-        "-i",
-        input_wav,
-        "-c:a",
-        "aac",
-        "-b:a",
-        bitrate,
-        "-ac",
-        "2",
-        "-movflags",
-        "+faststart",  # moov atom first so a browser can start playing before full download
         out_path,
     ]
 
