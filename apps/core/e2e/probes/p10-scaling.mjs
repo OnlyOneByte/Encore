@@ -188,12 +188,12 @@ async function measureTv(label, w, h) {
 			// Lower third
 			lowerThird: rect(document.querySelector(${JSON.stringify(SEL.lowerThird)})),
 			lowerThirdName: (() => {
-				const el = document.querySelector('.lower-third .ls-name');
+				const el = document.querySelector(${JSON.stringify(SEL.nowNameScoped)});
 				if (!el) return null;
 				return { ...rect(el), fontSizePx: parseFloat(getComputedStyle(el).fontSize) };
 			})(),
 			lowerThirdSong: (() => {
-				const el = document.querySelector('.lower-third .ls-song');
+				const el = document.querySelector(${JSON.stringify(SEL.nowSongScoped)});
 				if (!el) return null;
 				return { ...rect(el), fontSizePx: parseFloat(getComputedStyle(el).fontSize) };
 			})(),
@@ -216,6 +216,9 @@ async function measureTv(label, w, h) {
 				};
 			})(),
 			// Every direct text descendant of .badqr, so we can see if a child word ran off the box.
+			// The .badqr universal-child read below stays a LITERAL (quarantined in contract.test.ts,
+			// #547 Group E): a bare universal token has no source anchor the SEL-resolution guard can
+			// model, so it cannot live in SEL. The container itself is SEL.badQr, used two lines down.
 			badqrChildren: [...document.querySelectorAll('.badqr *')].map((el) => {
 				const r = el.getBoundingClientRect();
 				const parent = el.closest(${JSON.stringify(SEL.badQr)});
@@ -235,7 +238,7 @@ async function measureTv(label, w, h) {
 			stateError: rect(document.querySelector(${JSON.stringify(SEL.stateError)})),
 			stateWaiting: rect(document.querySelector(${JSON.stringify(SEL.stateWaiting)})),
 			screenLabel: (() => {
-				if (document.querySelector('.attract')) return 'attract';
+				if (document.querySelector(${JSON.stringify(SEL.attract)})) return 'attract';
 				if (document.querySelector(${JSON.stringify(SEL.lobby)})) return 'lobby';
 				if (document.querySelector(${JSON.stringify(SEL.stateWaiting)})) return 'waiting';
 				if (document.querySelector(${JSON.stringify(SEL.lowerThird)})) return 'playing';
@@ -247,20 +250,27 @@ async function measureTv(label, w, h) {
 
 	// Also measure contrast on interesting text nodes at THIS size.
 	const contrastPairs = await page.evaluate(`(() => {
+		// Contrast target pairs [foreground, background]. In-scope selectors for #547 (Group E) are
+		// interpolated from SEL so the guard reads them from the contract; out-of-scope descendant
+		// selectors (".badqr-b b", ".lower-third .ls-artist/.ls-key", ".attract .brand/.idle-title/
+		// .idle-url", ".corner .t/.u") keep their literals — they carry a space so the guard's shape
+		// rule never flagged them, and they belong to selectors tracked separately, not this group.
+		// ".roster" stays a literal: it is a quarantined dead selector (no ".roster" anchor exists in
+		// any component), so it cannot enter SEL — see KNOWN_OFFENDERS in contract.test.ts.
 		const targets = [
-			['.badqr-t', '.badqr-t'],
-			['.badqr-b', '.badqr-b'],
+			[${JSON.stringify(SEL.badQrTitle)}, ${JSON.stringify(SEL.badQrTitle)}],
+			[${JSON.stringify(SEL.badQrBody)}, ${JSON.stringify(SEL.badQrBody)}],
 			['.badqr-b b', '.badqr-b b'],
-			['.badqr-fix', '.badqr-fix'],
-			['.lower-third .ls-name', '.lower-third .ls-name'],
-			['.lower-third .ls-song', '.lower-third .ls-song'],
+			[${JSON.stringify(SEL.badQrFix)}, ${JSON.stringify(SEL.badQrFix)}],
+			[${JSON.stringify(SEL.nowNameScoped)}, ${JSON.stringify(SEL.nowNameScoped)}],
+			[${JSON.stringify(SEL.nowSongScoped)}, ${JSON.stringify(SEL.nowSongScoped)}],
 			['.lower-third .ls-artist', '.lower-third .ls-artist'],
 			['.lower-third .ls-key', '.lower-third .ls-key'],
-			['.up-label', '.up-label'],
-			['.up-song', '.up-song'],
-			['.attract .brand', '.attract'],
-			['.attract .idle-title', '.attract'],
-			['.attract .idle-url', '.attract'],
+			[${JSON.stringify(SEL.upLabel)}, ${JSON.stringify(SEL.upLabel)}],
+			[${JSON.stringify(SEL.upSong)}, ${JSON.stringify(SEL.upSong)}],
+			['.attract .brand', ${JSON.stringify(SEL.attract)}],
+			['.attract .idle-title', ${JSON.stringify(SEL.attract)}],
+			['.attract .idle-url', ${JSON.stringify(SEL.attract)}],
 			['.corner .t', 'body'],
 			['.corner .u', 'body'],
 			['.roster', 'body']
@@ -395,7 +405,12 @@ async function measureRemote(label, w, h) {
 
 	// Contrast pairs on remote — cover the primary controls and body text.
 	const contrastPairs = await page.evaluate(`(() => {
-		const targets = ['h1','h2','.searchbox input','.searchbox button','.row .t','.row .a','.row .add','.row .sing','.qrow .t','.filter-chip','.chip','.card','p','.b','a'];
+		// Remote contrast targets. #547 (Group E) interpolates the two in-scope class hooks from SEL
+		// (.chip -> SEL.chip, .card -> SEL.dashCard); bare tags (h1/h2/p/a) and descendant selectors
+		// (.searchbox input, .row .*, .qrow .t) are not selector hooks the guard tracks here. '.filter-chip'
+		// and '.b' stay literals: both are quarantined DEAD selectors (no matching class in any component),
+		// so they cannot enter SEL — see KNOWN_OFFENDERS in contract.test.ts.
+		const targets = ['h1','h2','.searchbox input','.searchbox button','.row .t','.row .a','.row .add','.row .sing','.qrow .t','.filter-chip',${JSON.stringify(SEL.chip)},${JSON.stringify(SEL.dashCard)},'p','.b','a'];
 		const out = {};
 		for (const sel of targets) {
 			const els = [...document.querySelectorAll(sel)];
