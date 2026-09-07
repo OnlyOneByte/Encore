@@ -101,7 +101,12 @@ export function contrastRatio(a: string, b: string): number {
  * 8-bit result so callers can detect a hue that has left the gamut instead of silently accepting the
  * desaturated clip — clipping is exactly what turns a vivid violet into lavender.
  */
-function oklchToRgb(L: number, C: number, hueDeg: number): { rgb: [number, number, number]; inGamut: boolean } {
+/**
+ * OKLCH -> sRGB (0-255 per channel) plus whether the colour was IN GAMUT before clamping. Exported
+ * so the design guard can verify hueToHex fully reduces chroma to a gamut-fitting value rather than
+ * returning a clipped colour (the no-clip guarantee this module promises).
+ */
+export function oklchToRgb(L: number, C: number, hueDeg: number): { rgb: [number, number, number]; inGamut: boolean } {
 	const h = (hueDeg * Math.PI) / 180;
 	const a = C * Math.cos(h);
 	const bb = C * Math.sin(h);
@@ -134,14 +139,18 @@ function oklchToRgb(L: number, C: number, hueDeg: number): { rgb: [number, numbe
  */
 export function hueToHex(hueDeg: number, l: number = SINGER_L, c: number = SINGER_C): string {
 	const hue = ((hueDeg % 360) + 360) % 360;
+	// Reduce chroma until the colour is in gamut. The step is fixed but the loop is bounded by chroma
+	// REACHING ZERO, not by a fixed iteration count — an earlier `for (i < 40)` covered only 0.20 of
+	// chroma, so a caller passing c > 0.20 (e.g. 0.3) exited still out of gamut and returned exactly
+	// the clipped, hue-shifted colour this function exists to prevent. At c=0 grey is always in gamut,
+	// so the loop terminates.
 	let chroma = c;
-	for (let i = 0; i < 40; i++) {
+	while (chroma > 0) {
 		const { rgb, inGamut } = oklchToRgb(l, chroma, hue);
 		if (inGamut) return toHex(rgb);
 		chroma -= 0.005;
-		if (chroma <= 0) return toHex(oklchToRgb(l, 0, hue).rgb);
 	}
-	return toHex(oklchToRgb(l, Math.max(0, chroma), hue).rgb);
+	return toHex(oklchToRgb(l, 0, hue).rgb);
 }
 
 /** The wheel's stops, in order. What the picker renders and the only hues it can produce. */

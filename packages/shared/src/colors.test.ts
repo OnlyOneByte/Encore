@@ -14,7 +14,8 @@ import {
 	stageHueToHex,
 	stageLightnessForHue,
 	STAGE_BG_L,
-	SINGER_L
+	SINGER_L,
+	oklchToRgb
 } from './colors';
 
 // Every colour the wheel can emit. Derived here, not exported from `colors.ts`: production picks a
@@ -281,4 +282,49 @@ test('nextSwatchIndex after a wheel pick matches the tab stop, not indexOf(-1) â
 	// Mutation proof: reverting the base in nextSwatchIndex to `SINGER_COLORS.indexOf(value)` makes this
 	// (1 + -1 + 8) % 8 => wheelHex gives base -1, so step +1 -> 0 (fails toBe(1)) and step -1 -> 6
 	// (fails toBe(7)). Both assertions red exactly as #215 describes.
+});
+
+test('hueToHex fully reduces chroma into sRGB gamut, even from a high starting chroma (no clip)', () => {
+	// The no-clip guarantee: chroma is reduced UNTIL the colour fits, because clipping an out-of-gamut
+	// blue hue-shifts it. The bug was a FIXED 40-iteration, -0.005 loop = only 0.20 of chroma covered,
+	// so from START=0.30 it bottomed out at 0.10 and, for a hue whose max in-gamut chroma is BELOW 0.10,
+	// returned the clipped colour hueToHex exists to prevent. We pick L=0.5, where the teal hues cap out
+	// around chroma 0.084 â€” inside the 0.30->0.10 range the fixed loop covered, so the old code clipped
+	// while the `while (chroma > 0)` fix keeps going. Recompute the true first-in-gamut chroma from 0.30
+	// down and require hueToHex to return exactly it; assert non-vacuity two ways.
+	const L = 0.5;
+	const START = 0.3;
+	const STEP = 0.005;
+	const FIXED_FLOOR = START - 40 * STEP; // 0.10 - where the buggy fixed-count loop stopped
+	const toHexLocal = (rgb: [number, number, number]) =>
+		'#' +
+		rgb
+			.map((v) =>
+				Math.max(0, Math.min(255, Math.round(v)))
+					.toString(16)
+					.padStart(2, '0')
+			)
+			.join('');
+	let sawStartOutOfGamut = false;
+	let sawFixedFloorOutOfGamut = false; // the hue the OLD loop could not rescue
+	for (let h = 0; h < 360; h += 5) {
+		if (!oklchToRgb(L, START, h).inGamut) sawStartOutOfGamut = true;
+		if (!oklchToRgb(L, FIXED_FLOOR, h).inGamut) sawFixedFloorOutOfGamut = true;
+		let c = START;
+		let expected: string | null = null;
+		while (c > 0) {
+			const { rgb, inGamut } = oklchToRgb(L, c, h);
+			if (inGamut) {
+				expected = toHexLocal(rgb);
+				break;
+			}
+			c -= STEP;
+		}
+		if (expected === null) expected = toHexLocal(oklchToRgb(L, 0, h).rgb);
+		expect(hueToHex(h, L, START)).toBe(expected);
+	}
+	// non-vacuous: START is genuinely out of gamut for some hue, AND the fixed-40 loop's 0.10 endpoint
+	// is STILL out of gamut for some hue - the exact condition that made the old code return a clip.
+	expect(sawStartOutOfGamut).toBe(true);
+	expect(sawFixedFloorOutOfGamut).toBe(true);
 });
