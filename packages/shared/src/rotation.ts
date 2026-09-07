@@ -21,9 +21,47 @@ export function rotate(entries: QueueEntry[], ordering: Ordering = {}): QueueEnt
 	return orderQueue(entries, ordering);
 }
 
-/** Assign contiguous rotationSeq values (0-based) from rotate() order. */
+/**
+ * Assign contiguous rotationSeq values (0-based) from rotate() order, AFTER honouring any host pins.
+ *
+ * The pin pass sits HERE — between the policy's order and the numbering — so it is the one place every
+ * caller (client optimistic store and authoritative server both reach assignSeqs) applies it, and so a
+ * pin overrides whichever policy the room chose rather than being an input to one of them. See placePins.
+ */
 export function assignSeqs(entries: QueueEntry[], ordering: Ordering = {}): QueueEntry[] {
-	return rotate(entries, ordering).map((e, i) => ({ ...e, rotationSeq: i }));
+	return placePins(rotate(entries, ordering)).map((e, i) => ({ ...e, rotationSeq: i }));
+}
+
+/**
+ * THE PIN MECHANISM. Given entries already in the room's policy order, move each host-pinned entry to
+ * its recorded global index, leaving the unpinned entries in the policy order around them.
+ *
+ * WHY A POST-PASS rather than a policy input. Every ordering (fair/fcfs/least-recently-sung/shuffle) is
+ * pure over entries + Ordering and must agree byte-for-byte between phone and server; teaching each of
+ * the four to read a pin would be four chances to diverge and would make "pinned" mean something
+ * different per policy. Placing pins AFTER any policy has run makes a global drag mean the same thing
+ * under all four, and is why the pin survives assignSeqs re-derivation and the next add: `pinnedSeq`
+ * lives on the entry (a durable column), so it is present on every re-derivation until an `unpin` op
+ * clears it. `move`'s per-singer reorder is untouched — it still permutes addedAt and flows through the
+ * policy, so the two mechanisms compose (a singer reorders their own picks; a host overrides globally).
+ *
+ * Pure and deterministic: reads only `pinnedSeq` off the entries, so both sides compute the identical
+ * result. Pins are applied lowest-target-first (ties broken by id) so the placement of one pin does not
+ * depend on hidden iteration order, and each target is clamped into range against the list as it grows.
+ */
+export function placePins(ordered: QueueEntry[]): QueueEntry[] {
+	const pinned = ordered
+		.filter((e) => typeof e.pinnedSeq === 'number' && Number.isFinite(e.pinnedSeq))
+		.sort((a, b) => a.pinnedSeq! - b.pinnedSeq! || (a.id < b.id ? -1 : 1));
+	if (pinned.length === 0) return ordered.slice();
+	const pinnedIds = new Set(pinned.map((e) => e.id));
+	// Start from the policy order with the pinned entries removed, then splice each back at its target.
+	const out = ordered.filter((e) => !pinnedIds.has(e.id));
+	for (const e of pinned) {
+		const at = Math.max(0, Math.min(e.pinnedSeq!, out.length));
+		out.splice(at, 0, e);
+	}
+	return out;
 }
 
 /** Terminal entries no longer participate in the rotation (played to completion). */
