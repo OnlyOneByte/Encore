@@ -20,7 +20,7 @@
 	import { playbackRef, isPlayable } from '@encore/shared';
 	import type { PlaybackSnapshot } from './catalog';
 	import { untrack } from 'svelte';
-	import { GUIDE_PREROLL_ALIGN_SEC, guideCorrection, seekPlan } from './guide-sync';
+	import { guideCorrection, prerollSeekTarget, seekPlan } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
 	import { transportFor, slotHoldsSrc } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
@@ -399,11 +399,9 @@
 			// Bring the guide along if it is mounted and wanted — it obeys the same transport, but its own
 			// play() was refused by the same policy, so it needs the same nudge.
 			if (vocals && transport === 'play') {
-				if (Math.abs(vocals.currentTime - (master?.currentTime ?? 0)) > GUIDE_PREROLL_ALIGN_SEC) {
-					vocals.currentTime = master?.currentTime ?? 0;
-				}
-				vocals.playbackRate = 1;
-				vocals.preservesPitch = true;
+				// Same fixed-target lock-on as the transport path: seek to the master playhead sampled NOW,
+				// never to a moving reference the guide flush would fall behind (#578).
+				alignGuidePreroll();
 				vocals.play().catch(() => {});
 			}
 		};
@@ -426,23 +424,43 @@
 	$effect(() => {
 		if (!vocals || !master) return;
 		if (transport === 'play') {
-			// Line it up BEFORE starting, so the guide does not enter a couple of seconds behind and get
-			// dragged forward audibly by the first governor tick. A seek here is free — nothing is
-			// audible yet — which is exactly why the governor below does not use one.
-			if (Math.abs(vocals.currentTime - master.currentTime) > GUIDE_PREROLL_ALIGN_SEC) {
-				vocals.currentTime = master.currentTime;
-			}
-			// Start from neutral; the governor re-derives any trim it still needs from real drift.
+			// Start from neutral tempo and preserve pitch; the governor re-derives any trim it needs
+			// from real drift, and a tempo trim must never become a pitch shift on a sung vocal (set
+			// explicitly -- the default is not uniform across browsers).
 			vocals.playbackRate = 1;
-			// A tempo trim must never become a pitch shift on a sung vocal. Set explicitly rather than
-			// trusting the default, which is not uniform across browsers.
 			vocals.preservesPitch = true;
+			// The ALIGNMENT is deliberately NOT taken here. Aligning at effect time and then calling
+			// play() lets the guide decoder spin-up (~150-250ms) run the master forward before the
+			// first guide frame emerges, so the guide enters that far behind and the governor spends
+			// ~15s per e-fold crawling it back -- the 'starts late and stays late' defect (#578).
+			// The lock-on is re-taken on the guide canplay, against the master playhead AT THAT MOMENT,
+			// by alignGuidePreroll below; we also take it here so a pause->play on an already-primed
+			// buffer (whose canplay will not fire again) still locks on.
+			alignGuidePreroll();
 			vocals.play().catch(() => {});
 		} else {
 			vocals.pause();
 			vocals.playbackRate = 1;
 		}
 	});
+
+	/**
+	 * Lock the guide onto the master CURRENT playhead -- the pre-roll alignment, and the fix for #578.
+	 *
+	 * Called at the moment the guide can actually play (its canplay) and on a transport arm, never at
+	 * effect time before the buffer exists. The decision is prerollSeekTarget in guide-sync.ts: it reads
+	 * the master playhead into a fixed local target and seeks the guide to THAT, so the guide is never
+	 * assigned master.currentTime inline (a moving target the decoder flush would outrun). A guide
+	 * already inside GUIDE_PREROLL_ALIGN_SEC is left untouched -- no decoder flush for nothing.
+	 */
+	function alignGuidePreroll(): void {
+		if (!vocals || !master) return;
+		const plan = prerollSeekTarget(vocals.currentTime, master.currentTime);
+		if (plan.seek) vocals.currentTime = plan.target;
+		// Neutral tempo so the governor starts from real drift; pitch preserved for the sung vocal.
+		vocals.playbackRate = 1;
+		vocals.preservesPitch = true;
+	}
 
 	// The level itself — the whole "how loud are the original vocals" knob. Set on the element for the
 	// native (unshifted) path AND on the guide graph, because once the guide is routed through WebAudio
@@ -665,6 +683,14 @@
 				src={`/media/${guideRef}`}
 				preload="auto"
 				oncanplaythrough={() => (guideSettled = true)}
+				oncanplay={() => {
+					// #578: take the pre-roll lock-on HERE, when the guide buffer is primed and the master
+					// playhead is where it will be when audio emerges -- not at effect time before decode.
+					if (transport === 'play') {
+						alignGuidePreroll();
+						vocals?.play().catch(() => {});
+					}
+				}}
 				onerror={() => (guideSettled = true)}
 			></audio>
 		{/if}
