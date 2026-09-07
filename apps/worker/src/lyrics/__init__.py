@@ -59,7 +59,7 @@ from .chain import (
     lyrics_tokens,
     select_by_baselines,
 )
-from .presplit import presplit_texts
+from .presplit import klp_probe_line, klp_status, presplit_texts
 from .registry import SPECS, SourceSpec, build_sources, unmet
 from .source import (
     LRCLIB_BASE,
@@ -134,6 +134,8 @@ __all__ = [
     "parse_lrc",
     "plain_lyrics_to_segments",
     "presplit_texts",
+    "klp_probe_line",
+    "klp_status",
     "validate_timing",
     # transcription + timing (the two ML seams)
     "DEFAULT_MODEL",

@@ -50,6 +50,7 @@ genuinely optional rather than nominally so.
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 import re
 import sys
@@ -236,9 +237,26 @@ def boundary_split(text: str, max_chars: int = MAX_LINE_CHARS) -> list[str]:
 _UNSET = object()
 _KLP: Any = _UNSET
 
+#: Why `_load_klp` returned what it did — probed once, reported at startup. `None` until first load.
+#: The three failure-adjacent facts the load can establish are kept DISTINCT here, because the caller
+#: collapses them to one behaviour (bound nothing) and #444 filed this exact conflation as a defect:
+#: without a status an operator cannot tell "package absent" from "stub broke" from "no line was
+#: over-long", so a klp regression on the deploy box is invisible from the dev box where it is absent.
+#:   • "available" — imported; `_KLP` is the class and bounding runs.
+#:   • "absent"    — not installed (`find_spec` is None); bounding is a no-op, EXPECTED here.
+#:   • "broken"    — installed but the import raised (a shim/version regression); bounding is a no-op,
+#:                   and this is the one an operator must be able to see, because it looks like absent.
+_KLP_STATUS: str | None = None
+_KLP_DETAIL: str = ""
+
 
 def _load_klp() -> Any:
-    """Import `KaraokeLyricsProcessor`, or None if it is not installed. Cached (import is not free).
+    """Import `KaraokeLyricsProcessor`, or None if it is absent or broken. Cached (import is not free).
+
+    Also records WHY it returned what it did in `_KLP_STATUS`/`_KLP_DETAIL` so absent, broken and a
+    legitimate no-op stay three distinguishable observations rather than one silent `None` (#475).
+    Absent (not installed) is told apart from broken (installed but raises on import) with `find_spec`,
+    which answers without importing — the same probe-don't-infer rule `backends._module_available` uses.
 
     Registers a stub `textract` module first. Upstream imports textract at MODULE level even though it
     is only reachable from `read_doc_file`, a .doc path we never take — our text arrives in memory from
@@ -247,7 +265,7 @@ def _load_klp() -> Any:
     xlrd<2 …), so the package is installed `--no-deps` and this stands in for the one import that has
     no cheap real counterpart. See the note in requirements.txt.
     """
-    global _KLP
+    global _KLP, _KLP_STATUS, _KLP_DETAIL
     if _KLP is not _UNSET:
         return _KLP
     if "textract" not in sys.modules:
@@ -258,13 +276,43 @@ def _load_klp() -> Any:
 
         stub.process = _unavailable  # type: ignore[attr-defined]
         sys.modules["textract"] = stub
+    # Ask whether the package is even installed WITHOUT importing it, so a clean "absent" is not
+    # mistaken for a "broken" import below. find_spec can itself raise on a half-installed package;
+    # that is a broken install, not an absent one, so it falls through to the import which records it.
+    try:
+        spec_absent = importlib.util.find_spec("karaoke_lyrics_processor") is None
+    except Exception:  # noqa: BLE001 — a raising find_spec means a broken install, resolved by the import
+        spec_absent = False
     try:
         from karaoke_lyrics_processor import KaraokeLyricsProcessor
-    except Exception:  # noqa: BLE001 — absent or broken install: bound nothing, never fail the job
+    except Exception as exc:  # noqa: BLE001 — absent or broken install: bound nothing, never fail the job
         _KLP = None
+        if spec_absent:
+            _KLP_STATUS, _KLP_DETAIL = "absent", "karaoke-lyrics-processor is not installed"
+        else:
+            _KLP_STATUS = "broken"
+            _KLP_DETAIL = f"karaoke-lyrics-processor is installed but failed to import: {exc!r}"
     else:
         _KLP = KaraokeLyricsProcessor
+        _KLP_STATUS, _KLP_DETAIL = "available", "karaoke-lyrics-processor imported"
     return _KLP
+
+
+def klp_status() -> tuple[str, str]:
+    """Load klp if not already, and return its resolved ``(status, detail)`` — one of available /
+    absent / broken with a human-readable reason. The distinguishing observation #475 asks for."""
+    _load_klp()
+    # _load_klp always sets _KLP_STATUS before returning; the `or` only guards a caller that somehow
+    # reads this before any load (there is none) so it never returns None to a formatter.
+    return _KLP_STATUS or "absent", _KLP_DETAIL
+
+
+def klp_probe_line() -> str:
+    """One startup line naming the resolved line-bounder state, mirroring the worker's other probed
+    lines (backends, capabilities): probe, never infer; report loudly. `absent` is a normal degrade
+    (the boundary split and the TV row fallback still run); `broken` is the one worth noticing."""
+    status, detail = klp_status()
+    return f"line-bounder (karaoke-lyrics-processor): {status} — {detail}"
 
 
 def bound_lines(lines: list[str], max_chars: int = MAX_LINE_CHARS) -> list[str]:
