@@ -754,7 +754,9 @@ So every mechanism carries a test that fails when someone routes around it, in `
 - **no undeclared writes** — in test mode the runner asserts a step touched only its declared keys.
 - **one runner** — the only `process()` implementations are `PlanRunner`, `StubProcessor` and the
   routers; a new hand-rolled processor fails the suite (`test_worker_layers`).
-- **`STAGE_PLANS` is derived** from the plans, not written, so the parallel table cannot drift.
+- **`STAGE_PLANS` agrees with the plans** — the table is hand-written (it sits below the plans in the
+  import graph, so computing it there would be a cycle), and E4 asserts it matches what each plan
+  actually emits, so the parallel table cannot drift.
 - **the doc is generated** — this section's tables come from `python -m src.docgen`, and a test fails if
   the committed region drifts.
 - **acquisition has one caller path** — no module outside `acquisition/` imports the lower-level

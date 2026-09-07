@@ -25,10 +25,11 @@ at this point in the cook, before it is encoded to m4a.
 from __future__ import annotations
 
 import math
-import wave
 from dataclasses import dataclass
 
 import numpy as np
+
+from .wav import read_wav_mono
 
 # Human singing spans roughly the bass low E (~82 Hz) to a soprano high C (~1046 Hz). Clamp the f0
 # search to a padded version of that: below ~65 Hz is almost always a separation artifact / rumble,
@@ -68,31 +69,6 @@ class PitchFrame:
     midi: float
     voiced: bool
     clarity: float = 0.0
-
-
-def read_wav_mono(path: str) -> tuple[np.ndarray, int]:
-    """Read a PCM WAV to a mono float64 signal in [-1, 1] and its sample rate. Downmixes multi-channel
-    by averaging. stdlib `wave` only — the vocals stem at this cook stage is uncompressed PCM. Supports
-    8/16/32-bit integer PCM (what ffmpeg's pcm_s16le decode produces); an unsupported width raises."""
-    with wave.open(path, "rb") as wf:
-        n_channels = wf.getnchannels()
-        sampwidth = wf.getsampwidth()
-        sample_rate = wf.getframerate()
-        raw = wf.readframes(wf.getnframes())
-
-    if sampwidth == 2:
-        data = np.frombuffer(raw, dtype=np.int16).astype(np.float64) / 32768.0
-    elif sampwidth == 4:
-        data = np.frombuffer(raw, dtype=np.int32).astype(np.float64) / 2147483648.0
-    elif sampwidth == 1:
-        # 8-bit WAV is UNSIGNED (0..255, centre 128) — the one PCM width that is not signed.
-        data = (np.frombuffer(raw, dtype=np.uint8).astype(np.float64) - 128.0) / 128.0
-    else:
-        raise ValueError(f"unsupported WAV sample width {sampwidth} bytes")
-
-    if n_channels > 1:
-        data = data.reshape(-1, n_channels).mean(axis=1)
-    return data, sample_rate
 
 
 def _detect_f0(frame: np.ndarray, sample_rate: int) -> tuple[float, float]:

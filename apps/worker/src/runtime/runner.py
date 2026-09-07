@@ -59,7 +59,9 @@ class PlanRunner:
         self._runner = runner
         self._resolve_engines = resolve_engines or (lambda params: ResolvedEngines())
         # Plan LOOKUP is injectable so a test can hand in a plan carrying fake seams, without a global
-        # registry mutation that would leak between tests. Production passes nothing and gets `plan_for`.
+        # registry mutation that would leak between tests. Every production runner in `plans.py`
+        # (align_runner / stems_runner / fetch_runner) injects `plans=`, so the `plan_for` fallback
+        # below is the test/default path, not the one production takes.
         self._plan_for = plans or plan_for
 
     async def process(self, job: JobSpec) -> AsyncIterator[ProgressEvent | CompleteResult]:
@@ -184,6 +186,31 @@ async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> Asy
             pending.cancel()
     if last < 100:
         yield ProgressEvent(stage=stage, pct=100)
+
+
+async def run_quiet(runner: Runner, argv: list[str]) -> None:
+    """Run a subprocess and DISCARD its output.
+
+    The drain loop `async for _line in ctx.runner(argv): pass`, written three times in steps/separate.py
+    (decode, and both FLAC encodes). Those calls run ffmpeg with `-loglevel error`, so there is nothing
+    to read on success and a non-zero exit raises inside the runner regardless — draining is the whole
+    interaction. One name for it means a step never re-writes the loop (and never accidentally forgets
+    to consume the generator, which would leave the child unwaited).
+    """
+    async for _line in runner(argv):
+        pass
+
+
+async def run_capture(runner: Runner, argv: list[str]) -> str:
+    """Run a subprocess and return its full output as one newline-joined string.
+
+    The counterpart to `run_quiet` for a MEASURING call — today only ProbeSilence's volumedetect, which
+    needs ffmpeg's `max_volume:` summary back to parse. Same collect-then-join the step did inline.
+    """
+    lines: list[str] = []
+    async for line in runner(argv):
+        lines.append(line)
+    return "\n".join(lines)
 
 
 async def run_blocking(fn: Callable[[], Any], stage: Any, pct: int) -> AsyncIterator[tuple[str, Any]]:

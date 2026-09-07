@@ -19,6 +19,7 @@ because a test would only have kept a dead table faithfully in sync with a live 
 from __future__ import annotations
 
 from enum import Enum
+from typing import TypeVar, cast
 
 from .retry_policy import BoundaryError
 
@@ -168,14 +169,41 @@ STAGE_PLANS: dict[Action, list[Stage]] = {
 }
 
 
+_E = TypeVar("_E", bound="_StrEnum")
+
+
+class _Missing:
+    """Sentinel type for a parser with NO default (only `parse_action`), so mypy can tell the
+    default-bearing wrappers from it without `default` widening the return type to Any."""
+
+
+_MISSING = _Missing()
+
+
+def _parse(cls: type[_E], value: str | None, default: _E | _Missing, noun: str) -> _E:
+    """Coerce a wire value to a member of `cls`, raising a BoundaryError on anything unknown.
+
+    The single body the six `parse_*` wrappers share. Two behaviours, unchanged from the hand-written
+    copies:
+
+      * When `default` is provided (every parser except `parse_action`), an absent value — None or the
+        empty string — returns that default. `parse_action` passes the `_MISSING` sentinel instead, so it
+        has no default branch and an empty/absent action still hits the `cls(value)` path exactly as
+        before (raising, because "" is not a member).
+      * An unknown value RAISES at the boundary — the whole point of these parsers — with the same message
+        shape the copies produced: `unknown {noun} {value!r}; expected one of {[member values]}`.
+    """
+    if not isinstance(default, _Missing) and (value is None or value == ""):
+        return default
+    try:
+        return cast(_E, cls(value))
+    except ValueError:
+        raise BoundaryError(f"unknown {noun} {value!r}; expected one of {[m.value for m in cls]}") from None
+
+
 def parse_action(value: str) -> Action:
     """Coerce a wire job type to an Action, raising on anything unknown."""
-    try:
-        return Action(value)
-    except ValueError:
-        raise BoundaryError(
-            f"unknown action {value!r}; expected one of {[a.value for a in Action]}"
-        ) from None
+    return _parse(Action, value, _MISSING, "action")
 
 
 def parse_fetcher(value: str | None, default: Fetcher = Fetcher.YTDLP) -> Fetcher:
@@ -184,26 +212,12 @@ def parse_fetcher(value: str | None, default: Fetcher = Fetcher.YTDLP) -> Fetche
     Raising is the point: a job carrying a fetcher this worker does not implement must fail before any
     download or decode runs, rather than being treated as a local path and dying later.
     """
-    if value is None or value == "":
-        return default
-    try:
-        return Fetcher(value)
-    except ValueError:
-        raise BoundaryError(
-            f"unknown fetcher {value!r}; expected one of {[f.value for f in Fetcher]}"
-        ) from None
+    return _parse(Fetcher, value, default, "fetcher")
 
 
 def parse_engine(value: str | None, default: Engine = Engine.DEMUCS) -> Engine:
     """Coerce a wire engine to an Engine. Absent means the default; unknown raises."""
-    if value is None or value == "":
-        return default
-    try:
-        return Engine(value)
-    except ValueError:
-        raise BoundaryError(
-            f"unknown engine {value!r}; expected one of {[e.value for e in Engine]}"
-        ) from None
+    return _parse(Engine, value, default, "engine")
 
 
 def parse_asr_model(value: str | None, default: AsrModel = AsrModel.BASE) -> AsrModel:
@@ -212,41 +226,25 @@ def parse_asr_model(value: str | None, default: AsrModel = AsrModel.BASE) -> Asr
     `default` is BASE deliberately: it is what whisperx.py hardcoded before this was configurable, so
     an align job from a core that predates the setting transcribes exactly as it always did.
     """
-    if value is None or value == "":
-        return default
-    try:
-        return AsrModel(value)
-    except ValueError:
-        raise BoundaryError(
-            f"unknown ASR model {value!r}; expected one of {[m.value for m in AsrModel]}"
-        ) from None
+    return _parse(AsrModel, value, default, "ASR model")
 
 
 def parse_sync_mode(value: str | None, default: SyncMode = SyncMode.FORCED) -> SyncMode:
     """Coerce a wire sync mode to a SyncMode. Absent means the default; unknown raises."""
-    if value is None or value == "":
-        return default
-    try:
-        return SyncMode(value)
-    except ValueError:
-        raise BoundaryError(
-            f"unknown sync mode {value!r}; expected one of {[m.value for m in SyncMode]}"
-        ) from None
+    return _parse(SyncMode, value, default, "sync mode")
 
 
 def parse_backend(value: str | None, default: Backend = Backend.TORCH) -> Backend:
     """Coerce a configured backend to a Backend. Absent means the portable default; unknown raises."""
-    if value is None or value == "":
-        return default
-    try:
-        return Backend(value)
-    except ValueError:
-        raise BoundaryError(
-            f"unknown backend {value!r}; expected one of {[b.value for b in Backend]}"
-        ) from None
+    return _parse(Backend, value, default, "backend")
 
 
 def stages_for(action: Action | str) -> list[Stage]:
-    """The ordered stages an action emits."""
+    """The ordered stages an action emits, straight off STAGE_PLANS.
+
+    Kept here beside the table it reads. The PRODUCTION progress path goes through
+    `protocol.stages_for` (which the StubProcessor and the dial-home loop call); this one has only
+    test callers today, so treat the two as the same contract rather than assuming this is the live
+    one."""
     key = action if isinstance(action, Action) else parse_action(action)
     return STAGE_PLANS.get(key, [Stage.DOWNLOADING, Stage.SEPARATING])
