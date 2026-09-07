@@ -19,7 +19,10 @@ import { writeFileSync } from 'node:fs';
 
 const DEFAULT_TIMEOUT = 10_000;
 
-/** Connect to a Chromium already listening on a debugging port. */
+/**
+ * Connect to a Chromium already listening on a debugging port.
+ * @param {number} port
+ */
 export async function connect(port) {
 	const version = await fetchJson(`http://127.0.0.1:${port}/json/version`);
 	const ws = new WebSocket(version.webSocketDebuggerUrl);
@@ -33,7 +36,7 @@ export async function connect(port) {
 		});
 	});
 
-	ws.addEventListener('message', (ev) => {
+	ws.addEventListener('message', (/** @type {MessageEvent} */ ev) => {
 		const msg = JSON.parse(ev.data);
 		if (msg.id && pending.has(msg.id)) {
 			const { resolve, reject } = pending.get(msg.id);
@@ -43,6 +46,12 @@ export async function connect(port) {
 		}
 	});
 
+	/**
+	 * @param {string} method
+	 * @param {Record<string, unknown>} [params]
+	 * @param {string} [sessionId]
+	 * @returns {Promise<any>} the raw CDP result (protocol-shaped; not modelled here)
+	 */
 	function send(method, params = {}, sessionId) {
 		const id = nextId++;
 		return new Promise((resolve, reject) => {
@@ -74,8 +83,12 @@ export async function connect(port) {
 	};
 }
 
+/**
+ * @param {(method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<any>} send
+ * @param {string} sessionId
+ */
 function makePage(send, sessionId) {
-	const evaluate = async (expression) => {
+	const evaluate = async (/** @type {string} */ expression) => {
 		const res = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true }, sessionId);
 		if (res.exceptionDetails) {
 			throw new Error(`in-page error: ${res.exceptionDetails.exception?.description ?? 'unknown'}`);
@@ -86,6 +99,7 @@ function makePage(send, sessionId) {
 	return {
 		evaluate,
 
+		/** @param {string} url */
 		async goto(url) {
 			await send('Page.navigate', { url }, sessionId);
 			// Poll for readiness rather than trusting a lifecycle event: this app hydrates and then opens
@@ -94,6 +108,10 @@ function makePage(send, sessionId) {
 		},
 
 		/** Poll an in-page expression until truthy. Returns its value; throws with the source on timeout. */
+		/**
+		 * @param {string} expression
+		 * @param {{ timeout?: number, every?: number }} [opts]
+		 */
 		async waitFor(expression, { timeout = DEFAULT_TIMEOUT, every = 100 } = {}) {
 			const deadline = Date.now() + timeout;
 			let last;
@@ -110,6 +128,7 @@ function makePage(send, sessionId) {
 		},
 
 		/** Click by CSS selector, after waiting for it to exist. */
+		/** @param {string} selector */
 		async click(selector) {
 			await this.waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`);
 			await evaluate(`document.querySelector(${JSON.stringify(selector)}).click()`);
@@ -120,6 +139,7 @@ function makePage(send, sessionId) {
 		 * control. Preferring this over CSS is deliberate: the labels ARE the contract, and a flow that
 		 * clicks by class silently keeps working when a control loses its accessible name.
 		 */
+		/** @param {string} name */
 		async clickByLabel(name) {
 			const sel = `[aria-label=${JSON.stringify(name)}]`;
 			await this.waitFor(`document.querySelector(${JSON.stringify(sel)}) !== null`);
@@ -127,6 +147,7 @@ function makePage(send, sessionId) {
 		},
 
 		/** Click the first button whose visible text matches. */
+		/** @param {string} text */
 		async clickByText(text) {
 			const expr = `[...document.querySelectorAll('button,a')].find(el => el.textContent.trim().includes(${JSON.stringify(text)}))`;
 			await this.waitFor(`${expr} != null`);
@@ -134,6 +155,10 @@ function makePage(send, sessionId) {
 		},
 
 		/** Set a field's value the way a user would — the input event is what the framework listens to. */
+		/**
+		 * @param {string} selector
+		 * @param {string} value
+		 */
 		async fill(selector, value) {
 			await this.waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`);
 			await evaluate(`(() => {
@@ -146,6 +171,10 @@ function makePage(send, sessionId) {
 		},
 
 		/** Drag a range input to a value, firing the same events a real drag would. */
+		/**
+		 * @param {string} selector
+		 * @param {number | string} value
+		 */
 		async setRange(selector, value) {
 			await this.fill(selector, String(value));
 		},
@@ -154,6 +183,11 @@ function makePage(send, sessionId) {
 		 * Emulate a device viewport. Needed because the same build must be judged at two very different
 		 * sizes — a phone in a hand and a TV on a wall — and the TV scale is vh-relative, so a screenshot
 		 * taken at the wrong height is measuring the wrong design.
+		 */
+		/**
+		 * @param {number} width
+		 * @param {number} height
+		 * @param {number} [deviceScaleFactor]
 		 */
 		async viewport(width, height, deviceScaleFactor = 2) {
 			await send(
@@ -164,6 +198,10 @@ function makePage(send, sessionId) {
 		},
 
 		/** PNG to disk. Returns the path, so a caller can hand it straight to a reader. */
+		/**
+		 * @param {string} path
+		 * @param {{ fullPage?: boolean }} [opts]
+		 */
 		async screenshot(path, { fullPage = false } = {}) {
 			const { data } = await send(
 				'Page.captureScreenshot',
@@ -178,6 +216,10 @@ function makePage(send, sessionId) {
 		 * Dispatch a real keydown at an element. Needed for controls that are keyboard- and
 		 * pointer-driven rather than click-driven: the queue sheet's peek is a div with role=button and
 		 * pointer/keydown handlers, so `.click()` on it does precisely nothing and fails silently.
+		 */
+		/**
+		 * @param {string} selector
+		 * @param {string} key
 		 */
 		async pressKey(selector, key) {
 			await this.waitFor(`document.querySelector(${JSON.stringify(selector)}) !== null`);
@@ -197,17 +239,23 @@ function makePage(send, sessionId) {
 		 * need no activation, so `click()` stays correct and cheaper for them; only the TV's gesture
 		 * path needs this. Coordinates are viewport pixels (e.g. 960,540 = centre of a 1920×1080 TV).
 		 */
+		/**
+		 * @param {number} x
+		 * @param {number} y
+		 */
 		async realClick(x, y) {
 			await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 }, sessionId);
 			await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, sessionId);
 		},
 
-		count: (selector) => evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`),
-		texts: (selector) =>
+		count: (/** @type {string} */ selector) =>
+			evaluate(`document.querySelectorAll(${JSON.stringify(selector)}).length`),
+		texts: (/** @type {string} */ selector) =>
 			evaluate(`[...document.querySelectorAll(${JSON.stringify(selector)})].map(e => e.textContent.trim())`),
-		text: (selector) => evaluate(`(document.querySelector(${JSON.stringify(selector)})?.textContent ?? '').trim()`),
+		text: (/** @type {string} */ selector) =>
+			evaluate(`(document.querySelector(${JSON.stringify(selector)})?.textContent ?? '').trim()`),
 		/** The computed value of a CSS property — how a rendered-size assertion is actually made. */
-		css: (selector, prop) =>
+		css: (/** @type {string} */ selector, /** @type {string} */ prop) =>
 			evaluate(`(() => {
 				const el = document.querySelector(${JSON.stringify(selector)});
 				return el ? getComputedStyle(el).getPropertyValue(${JSON.stringify(prop)}) : null;
@@ -215,6 +263,10 @@ function makePage(send, sessionId) {
 	};
 }
 
+/**
+ * @param {string} url
+ * @param {number} [tries]
+ */
 async function fetchJson(url, tries = 40) {
 	for (let i = 0; i < tries; i++) {
 		try {
@@ -228,4 +280,4 @@ async function fetchJson(url, tries = 40) {
 	throw new Error(`no CDP endpoint at ${url} — is Chromium running with --remote-debugging-port?`);
 }
 
-export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+export const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
