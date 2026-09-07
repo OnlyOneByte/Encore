@@ -595,12 +595,17 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
     # on the GPU and then transcribed on the CPU unless a human set a second env var. One resolution
     # means the two cannot disagree.
     device: str | None = None
+    # The RESOLVED separator backend for this worker (torch/mlx). Bound to None up here alongside
+    # `device` so it is unconditionally defined, then threaded into stems_runner below so it drives the
+    # engine and is recorded into facts — not merely printed (#119).
+    backend: str | None = None
     if any(c in cfg.capabilities for c in ("stems", "stems:roformer", "stems:ensemble", "align")):
         from .backends import resolve_backend
         from .vocabulary import Engine
 
         choice = resolve_backend(cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.device)
         device = choice.device
+        backend = choice.backend.value
         print(f"[worker] separator backend: {choice.backend.value} — {choice.reason}", flush=True)
 
     if any(c.startswith("fetch:") for c in cfg.capabilities):
@@ -655,6 +660,10 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             ytdlp_bin=cfg.ytdlp_bin,
             flac_level=cfg.flac_level,
             device=device,
+            # The resolved backend now DRIVES the engine and is recorded into facts, not just printed:
+            # it is the same value the startup log announced, so facts.backend and the log can no longer
+            # disagree (#119).
+            backend=backend,
             jobs=cfg.demucs_jobs,
             overlap=cfg.demucs_overlap,
             segment=segment,
