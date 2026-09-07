@@ -28,6 +28,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
+import { SEL } from './contract.ts';
 
 const PORT = process.env.EPORT ?? '5188';
 const base = `http://127.0.0.1:${PORT}`;
@@ -112,21 +113,21 @@ try {
 			const tv = await browser.newPage();
 			await tv.viewport(w, h, 1);
 			await tv.goto(`${base}/tv`);
-			const rendered = await tv.waitFor(`document.querySelector('.lobby .url') !== null`, { timeout: 8000 }).catch(() => false);
+			const rendered = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.lobbyUrl)}) !== null`, { timeout: 8000 }).catch(() => false);
 			if (!rendered) { check(`${label} @ ${w}x${h} rendered the lobby`, false, 'no .lobby .url — roster did not sync'); continue; }
 			await sleep(800);
 			const m = await tv.evaluate(`(() => {
-				const url = document.querySelector('.lobby .url'); const strip = document.querySelector('.lobby .strip');
+				const url = document.querySelector(${JSON.stringify(SEL.lobbyUrl)}); const strip = document.querySelector(${JSON.stringify(SEL.lobbyStrip)});
 				const ub = url.getBoundingClientRect(); const sb = strip ? strip.getBoundingClientRect() : null;
 				const cx = ub.left + ub.width / 2, cy = ub.top + ub.height / 2;
 				const hit = document.elementFromPoint(cx, cy);
-				const chips = [...document.querySelectorAll('.lobby .strip .person')];
+				const chips = [...document.querySelectorAll(${JSON.stringify(SEL.lobbyStripPerson)})];
 				const cut = sb ? chips.filter((p) => { const r = p.getBoundingClientRect(); return r.bottom > sb.bottom + 0.5 || r.right > sb.right + 0.5; }).length : 0;
-				const more = document.querySelector('.lobby .strip .person.more');
+				const more = document.querySelector(${JSON.stringify(SEL.lobbyStripPersonMore)});
 				return {
 					overlap: sb ? Math.max(0, ub.bottom - sb.top) : 0,
 					painted: hit ? (typeof hit.className === 'string' && hit.className ? '.' + hit.className.split(' ')[0] : hit.tagName) : null,
-					inStrip: hit ? !!hit.closest('.strip') : false,
+					inStrip: hit ? !!hit.closest(${JSON.stringify(SEL.strip)}) : false,
 					strip: sb ? +sb.height.toFixed(1) : null,
 					clipped: strip ? strip.scrollHeight > strip.clientHeight || strip.scrollWidth > strip.clientWidth + 1 : false,
 					chipsCut: cut,
@@ -136,7 +137,7 @@ try {
 			// The address must not intersect the strip AND must be the element painted at its own centre.
 			// The address must be clear AND painted AND the strip must not clip any roster member: the
 			// #98 fix must not trade the burial for silently dropping the people it names.
-			const ok = m.overlap === 0 && m.painted === '.url' && !m.inStrip && !m.clipped && m.chipsCut === 0;
+			const ok = m.overlap === 0 && m.painted === SEL.lobbyAddress && !m.inStrip && !m.clipped && m.chipsCut === 0;
 			check(`${label} @ ${w}x${h}: address clear + roster not clipped`, ok,
 				`overlap=${m.overlap}px painted=${m.painted} inStrip=${m.inStrip} clipped=${m.clipped} chipsCut=${m.chipsCut} moreShown=${m.moreShown} stripH=${m.strip}`);
 		}

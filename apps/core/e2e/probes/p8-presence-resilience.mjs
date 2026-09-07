@@ -305,8 +305,8 @@ async function getState(page) {
 		`(() => {
 			// The phone's authoritative view of the room, read straight off the DOM the singer sees.
 			const rows = [...document.querySelectorAll(${JSON.stringify(SEL.queueRow)})].map(r => ({
-				title: (r.querySelector('.t')?.textContent || '').trim(),
-				away: r.querySelector('.away') != null,
+				title: (r.querySelector(${JSON.stringify(SEL.rowTitle)})?.textContent || '').trim(),
+				away: r.querySelector(${JSON.stringify(SEL.away)}) != null,
 				pending: r.classList.contains('pending')
 			}));
 			return { rows, count: rows.length };
@@ -341,7 +341,7 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 			`(() => {
 				const row = document.querySelector(${JSON.stringify(SEL.songRow)});
 				if (!row) return null;
-				const btn = row.querySelector('.add') || row.querySelector('.sing');
+				const btn = row.querySelector(${JSON.stringify(SEL.addAction)}) || row.querySelector(${JSON.stringify(SEL.singAction)});
 				if (!btn) return null;
 				btn.click();
 				return btn.className || 'clicked';
@@ -352,7 +352,7 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 		`(() => {
 			const row = document.querySelector(${JSON.stringify(SEL.songRow)});
 			if (!row) return null;
-			return row.querySelector('.add,.sing') ? 'row-ready' : null;
+			return row.querySelector(${JSON.stringify(SEL.addOrSing)}) ? 'row-ready' : null;
 		})()`,
 		20_000
 	).catch(() => null);
@@ -399,13 +399,13 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 async function tvRoster(tv) {
 	return tv.evaluate(
 		`(() => {
-			const chips = [...document.querySelectorAll('.strip .person')].map(el => ({
+			const chips = [...document.querySelectorAll(${JSON.stringify(SEL.stripPerson)})].map(el => ({
 				name: (el.childNodes[1]?.textContent || el.textContent || '').trim(),
 				away: el.classList.contains('away'),
 				more: el.classList.contains('more'),
 				text: (el.textContent || '').trim()
 			}));
-			return { chips, screen: document.querySelector('.state-error, .state-waiting, .state-next') ? 'transient' : (document.querySelector('.lower-third') ? 'playing' : (document.querySelector('.strip .person') ? 'lobby' : 'attract')) };
+			return { chips, screen: document.querySelector(${JSON.stringify(SEL.anyTransientState)}) ? 'transient' : (document.querySelector(${JSON.stringify(SEL.lowerThird)}) ? 'playing' : (document.querySelector(${JSON.stringify(SEL.stripPerson)}) ? 'lobby' : 'attract')) };
 		})()`
 	);
 }
@@ -465,7 +465,7 @@ async function main() {
 		// route swaps in a `JoinBadge` "unreachable" card instead — so the guard was matching a
 		// condition that doesn't exist in this harness. `.is-label` renders on both branches of the
 		// attract state and on neither of the other two, so it does the actual job.
-		const attract = await tv.waitFor(`document.querySelector('.is-label') !== null`, 8_000).catch(() => false);
+		const attract = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.isLabel)}) !== null`, 8_000).catch(() => false);
 		if (!attract) {
 			report('ENV', 'server was not empty at start of run', 'A prior run left singers or an in-flight state in the room. Restart the ephemeral server between runs (see e2e/HARNESS.md).');
 			throw new Error('bail: not empty');
@@ -719,7 +719,7 @@ async function main() {
 				// which broadcasts singer:presence to the whole room. This should be near-instant.
 				const tvSaidAway = await tv.waitFor(
 					`(() => {
-						const chips = [...document.querySelectorAll('.strip .person')];
+						const chips = [...document.querySelectorAll(${JSON.stringify(SEL.stripPerson)})];
 						return chips.some(c => c.classList.contains('away') && (c.textContent || '').includes(${JSON.stringify(away.name)}));
 					})()`,
 					15_000
@@ -761,7 +761,7 @@ async function main() {
 				await away.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, 15_000).catch(() => null);
 				const back = await tv.waitFor(
 					`(() => {
-						const chips = [...document.querySelectorAll('.strip .person')];
+						const chips = [...document.querySelectorAll(${JSON.stringify(SEL.stripPerson)})];
 						const c = chips.find(c => (c.textContent || '').includes(${JSON.stringify(away.name)}));
 						return c && !c.classList.contains('away');
 					})()`,
@@ -804,7 +804,7 @@ async function main() {
 					`(() => {
 						const row = document.querySelector(${JSON.stringify(SEL.songRow)});
 						if (!row) return 0;
-						return row.querySelector('.add,.sing') ? 1 : 0;
+						return row.querySelector(${JSON.stringify(SEL.addOrSing)}) ? 1 : 0;
 					})()`,
 					20_000
 				)
@@ -823,12 +823,12 @@ async function main() {
 				await p.page.evaluate(
 					`(() => {
 						const row = document.querySelector(${JSON.stringify(SEL.songRow)});
-						const btn = row && (row.querySelector('.add') || row.querySelector('.sing'));
+						const btn = row && (row.querySelector(${JSON.stringify(SEL.addAction)}) || row.querySelector(${JSON.stringify(SEL.singAction)}));
 						if (btn) btn.click();
 					})()`
 				);
 				const optimistic = await p.page.evaluate(
-					`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length + document.querySelectorAll('.proc').length`
+					`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length + document.querySelectorAll(${JSON.stringify(SEL.processing)}).length`
 				);
 				// Even though we're offline, the local (already-hydrated) DOM should render the
 				// optimistic row — if not, the store's #optimistic path failed to render at all.

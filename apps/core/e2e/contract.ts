@@ -65,6 +65,23 @@ export const SEL = {
 	 */
 	processing: '.proc',
 	browseToggle: '.browse-toggle',
+	/*
+	 * Bare remote-list handles the probes read directly (not scoped under .row like addTurn/sing/songTitle
+	 * above): p3/p8/p10 query `.add`, `.sing`, `.t` on their own to check an action or a title exists at all,
+	 * and p8/p12 read the presence and empty-state chrome. Named here so those reads come through the
+	 * contract instead of being spelled out per probe (#494, migrated from KNOWN_OFFENDERS).
+	 */
+	addAction: '.add',
+	singAction: '.sing',
+	/** "queued or ready" in one query — p8 asks whether a row offers EITHER queue action; a comma
+	 *  union, so one branch resolving is enough. */
+	addOrSing: '.add,.sing',
+	rowTitle: '.t',
+	empty: '.empty',
+	away: '.away',
+	isLabel: '.is-label',
+	strip: '.strip',
+	stripPerson: '.strip .person',
 
 	// ── the pull-up queue sheet (capture drives the transport through it) ──
 	/** The sheet surface; `.open` on it is what says the pull-up actually pulled up. */
@@ -116,6 +133,61 @@ export const SEL = {
 	stateNext: '.state-next',
 	stateError: '.state-error',
 	stateWaiting: '.state-waiting',
+	/** The three transient TV states as one union — p8 asks "is the stage in any non-playing state?" in a
+	 *  single query; the resolver treats a comma list as a union, so one branch existing is enough. */
+	anyTransientState: '.state-error, .state-waiting, .state-next',
+	/*
+	 * TV STAGE STRUCTURE the timing/scaling probes read (#494, migrated from KNOWN_OFFENDERS).
+	 *
+	 * `.tv` is the stage root; `.lobby` is the joined-but-not-playing screen (distinct from `.attract`,
+	 * the empty room); `.interstitial` is the between-songs card. `.slot` is a rotation media slot and
+	 * `.slot.visible` the one currently on screen. `.up-*` are the "up next" label/name/song lines the
+	 * gapless probe measures. All are read for existence/geometry, never clicked.
+	 */
+	tvRoot: '.tv',
+	lobby: '.lobby',
+	interstitial: '.interstitial',
+	slot: '.slot',
+	slotVisible: '.slot.visible',
+	/** The transport's elapsed-time readout inside the seek row (p4 reads its text). */
+	seekTime: '.seekrow .time',
+	upLabel: '.up-label',
+	upName: '.up-name',
+	upSong: '.up-song',
+	/** The lower-third's own name/song lines, scoped — p10 measures these nested under .lower-third. */
+	nowNameScoped: '.lower-third .ls-name',
+	nowSongScoped: '.lower-third .ls-song',
+	/*
+	 * LYRICS OVERLAY internals the lyrics probe reads (#494). `.lyrics` is the overlay; `.reel` scrolls,
+	 * `.viewport` clips it, `.row`/`.row.current` are the lines, `.lyrics.unverified` flags ASR-only text,
+	 * `.ls-asr` is the "transcribed" badge, `.ball` is the bouncing dot. `activeWord` (below) is the word
+	 * the ball sits on.
+	 */
+	lyrics: '.lyrics',
+	lyricsReel: '.lyrics .reel',
+	lyricsViewport: '.lyrics .viewport',
+	lyricsRow: '.lyrics .row',
+	lyricsRowCurrent: '.lyrics .row.current',
+	lyricsUnverified: '.lyrics.unverified',
+	lsAsr: '.ls-asr',
+	ball: '.ball',
+	/** The full-screen tap-to-start affordance the autoplay-block probe checks for (#64/#494). */
+	autoplayHint: '.autoplay-hint',
+	/*
+	 * LOBBY strip the overlap probe reads (#494). `.strip` is the joined-singers ribbon, `.person` a
+	 * chip in it (`.more` the "+N" overflow chip), `.url` the lobby's typed join address. Scoped forms
+	 * are what lobby-overlap.mjs queries.
+	 */
+	lobbyUrl: '.lobby .url',
+	lobbyStrip: '.lobby .strip',
+	lobbyStripPerson: '.lobby .strip .person',
+	lobbyStripPersonMore: '.lobby .strip .person.more',
+	lobbyAddress: '.url',
+	/* KEY-SHIFT control the transpose probe reads (#494): the +/- buttons and the current-key label. */
+	keyBtn: '.key .key-btn',
+	keyLabel: '.key .lab',
+	/* The remote's app shell (p10 measures its width to catch a capped grid leaving a void). */
+	appShell: '.app-shell',
 	/*
 	 * The join QR, addressed by the ALT TEXT rather than a class.
 	 *

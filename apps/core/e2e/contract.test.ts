@@ -404,16 +404,11 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'[aria-label=',
 	],
 	'lobby-overlap.mjs': [
+		// Hex swatch colours the probe drives the picker with — caught by the shape rule, not selectors.
 		'#a855f7',
 		'#ec4899',
 		'#f43f5e',
 		'#f59e0b',
-		'.lobby .strip',
-		'.lobby .strip .person',
-		'.lobby .strip .person.more',
-		'.lobby .url',
-		'.strip',
-		'.url',
 	],
 	'playback.mjs': [
 		'video,audio',
@@ -423,25 +418,20 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'audio,video',
 	],
 	'probes/p1-gapless.mjs': [
+		// Not selectors: a hex colour caught by the shape rule, and the bare media-element liveness union.
 		'#ff5cae',
-		'.attract',
-		'.interstitial',
-		'.lower-third',
-		'.ls-name',
-		'.ls-song',
-		'.slot',
-		'.tv',
-		'.up-label',
-		'.up-name',
-		'.up-song',
 		'audio,video',
 	],
 	'probes/p10-scaling.mjs': [
-		'.add',
-		'.app-shell',
+		// STAYS - a bare tag query, not a UI hook.
+		'button',
+		// DEFERRED to the #494 tail follow-up: read from p10 SELECTORS/targets DATA arrays, not single
+		// query call-sites, and several have no natural SEL home yet or are compound/tag/universal shapes
+		// the SEL-resolution guard cannot model. The clean single-query selectors in this file (.row/.add/
+		// .sing/.qrow/.badqr/.lower-third/.lyrics/.lyrics .word.active/.app-shell/.state-*/.lobby) ARE
+		// migrated to SEL and removed from this list.
 		'.attract',
 		'.b',
-		'.badqr',
 		'.badqr *',
 		'.badqr-b',
 		'.badqr-fix',
@@ -449,22 +439,11 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'.card',
 		'.chip',
 		'.filter-chip',
-		'.lobby',
-		'.lower-third',
 		'.lower-third .ls-name',
 		'.lower-third .ls-song',
-		'.lyrics',
-		'.lyrics .word.active',
-		'.qrow',
 		'.roster',
-		'.row',
-		'.sing',
-		'.state-error',
-		'.state-next',
-		'.state-waiting',
 		'.up-label',
 		'.up-song',
-		'button',
 	],
 	'probes/p11-dashboards.mjs': [
 		'.card',
@@ -477,16 +456,17 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'table th',
 	],
 	'probes/p12-search.mjs': [
+		// Hex swatch colour (shape rule), not a selector.
 		'#ff5cae',
+		// DEFERRED to the #494 tail follow-up: '.chips button.ok' contains the bare tag `button`, which the
+		// SEL-resolution guard cannot model as a class anchor, so it cannot move to SEL without changing the
+		// probe to address the chip by a class alone. Tracked, not silenced.
 		'.chips button.ok',
-		'.empty',
-		'.t',
 	],
 	'probes/p13-tap-to-start.mjs': [
 		' + JSON.stringify(SEL.queueRow) + ',
 		' + JSON.stringify(SEL.search) + ',
 		' + JSON.stringify(SEL.songRow) + ',
-		'.autoplay-hint',
 		'video,audio',
 	],
 	'probes/p14-playhead-vs-cook.mjs': [
@@ -498,60 +478,34 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'audio,video',
 	],
 	'probes/p3-key-shift.mjs': [
-		'.add',
-		'.key .key-btn',
-		'.key .lab',
-		'.row',
-		'.sing',
+		// Media-element liveness union, not a UI selector (see SEL.mediaEl).
 		'video,audio',
 	],
 	'probes/p4-transport.mjs': [
-		'.attract',
-		'.lobby',
-		'.peek',
-		'.seekrow .time',
+		// Tag-only / attribute-fragment reads, deliberately NOT selectors:
+		'[aria-label=',   // truncated attribute-selector fragment built by string concat
+		'audio',           // a bare tag query for the media element (see SEL.mediaEl for the union form)
+		// DEFERRED to the #494 tail follow-up — combinator/descendant shapes the SEL-resolution guard cannot
+		// model (a `>` child combinator; a tag-descendant `audio` that is not a class anchor). Tracked.
 		'.seekrow .track > i',
-		'.slot',
-		'.slot.visible',
 		'.slot.visible audio',
-		'[aria-label=',
-		'audio',
 	],
 	'probes/p6-lyrics.mjs': [
-		'.attract',
-		'.ball',
-		'.interstitial',
-		'.lower-third',
-		'.ls-asr',
-		'.lyrics',
-		'.lyrics .reel',
-		'.lyrics .row',
-		'.lyrics .row.current',
-		'.lyrics .viewport',
-		'.lyrics .word.active',
-		'.lyrics.unverified',
-		'.state-error',
-		'.state-waiting',
+		// Liveness reads, deliberately NOT in SEL: a bare tag-union existence check for a media element,
+		// not a UI selector (the same rationale as SEL.mediaEl's `video, audio`).
 		'video, audio',
 		'video,audio',
 	],
 	'probes/p8-presence-resilience.mjs': [
-		'.add',
-		'.add,.sing',
-		'.away',
+		// Tag-only / attribute-fragment reads, deliberately NOT selectors moved to SEL:
+		'[aria-label=',   // a truncated attribute-selector fragment built by string concat, not a whole selector
+		'button',          // a bare tag query for "any button", not a UI-specific hook
+		// DEFERRED to the #494 tail follow-up: '.err[role=alert]' is a class+unquoted-attribute compound the
+		// SEL-resolution guard's attribute matcher (which requires quoted values) cannot model, so it cannot
+		// move to SEL as-is. Tracked, not silenced.
 		'.err[role=alert]',
-		'.is-label',
-		'.lower-third',
-		'.proc',
-		'.sing',
-		'.state-error, .state-waiting, .state-next',
-		'.strip .person',
-		'.t',
-		'[aria-label=',
-		'button',
 	],
 	'probes/tv-audiocontext-resume.mjs': [
-		'.key .lab',
 		'audio,video',
 	],
 

@@ -60,7 +60,7 @@ const READ = `(() => {
     contexts: (window.__ctx ?? []).length,
     states: (window.__ctx ?? []).map((c) => c.state),
     audible: live ? { paused: live.paused, t: +live.currentTime.toFixed(2), decoded: live.webkitAudioDecodedByteCount ?? null } : null,
-    keyLabel: (document.querySelector('.key .lab')?.textContent ?? '').trim()
+    keyLabel: (document.querySelector(${JSON.stringify(SEL.keyLabel)})?.textContent ?? '').trim()
   };
 })()`;
 
