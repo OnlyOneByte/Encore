@@ -24,12 +24,12 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, openSync } from 'node:fs';
+import { mkdirSync, openSync } from 'node:fs';
 import { readFile as readFileP } from 'node:fs/promises';
-import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
+import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #561, following the
@@ -144,20 +144,6 @@ process.on('SIGTERM', () => {
 });
 
 // ── environment discovery ──────────────────────────────────────────────────
-function findChromium() {
-	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
-	for (const home of [homedir(), '/home/angryang', '/local/home/angryang']) {
-		const cache = join(home, '.cache', 'ms-playwright');
-		for (const b of ['chromium-1232', 'chromium-1228']) {
-			const p = join(cache, b, 'chrome-linux', 'chrome');
-			if (existsSync(p)) return p;
-		}
-	}
-	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
-		if (existsSync(p)) return p;
-	}
-	return null;
-}
 
 async function serverAlive() {
 	try {

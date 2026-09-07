@@ -29,11 +29,11 @@
  *              2 = the environment could not host the test (no server, no library, no Chromium)
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
+import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #561, following the
@@ -91,18 +91,6 @@ const SAMPLE_MS = 40; // ~25 Hz — dense enough to see a boundary the size of o
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	process.exit(2);
-}
-function findChromium() {
-	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
-	const cache = join(homedir(), '.cache', 'ms-playwright');
-	for (const b of ['chromium-1232', 'chromium-1228']) {
-		const p = join(cache, b, 'chrome-linux', 'chrome');
-		if (existsSync(p)) return p;
-	}
-	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
-		if (existsSync(p)) return p;
-	}
-	return null;
 }
 /** @param {string} url @param {RequestInit} [init] @returns {Promise<{ ok: boolean, status: number, headers: Headers, body: any }>} */
 async function j(url, init = {}) {

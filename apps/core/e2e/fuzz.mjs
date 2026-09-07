@@ -72,11 +72,11 @@
  * not host the run. Conflating 2 with 0 is exactly how this project's original audio hole stayed hidden.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL } from './contract.ts';
+import { findChromium } from './lib/chromium.mjs';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (issue #557); the shapes
@@ -220,21 +220,6 @@ function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	cleanup();
 	process.exit(2);
-}
-
-function findChromium() {
-	// Validated rather than trusted: an unset-but-wrong PW_CHROMIUM used to sail past here and surface
-	// as a CDP connect failure, which reads like a driver bug instead of a missing browser.
-	if (process.env.PW_CHROMIUM) return existsSync(process.env.PW_CHROMIUM) ? process.env.PW_CHROMIUM : null;
-	const cache = join(homedir(), '.cache', 'ms-playwright');
-	for (const b of ['chromium-1232', 'chromium-1228']) {
-		const p = join(cache, b, 'chrome-linux', 'chrome');
-		if (existsSync(p)) return p;
-	}
-	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
-		if (existsSync(p)) return p;
-	}
-	return null;
 }
 
 // ── the room: attach to one, or boot a private one and own it ────────────────────────────────────

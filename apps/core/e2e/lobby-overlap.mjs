@@ -24,11 +24,9 @@
  * browser page so the CSS cascade and layout are the real ones.
  */
 import { spawn } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { homedir } from 'node:os';
-import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL } from './contract.ts';
+import { findChromium } from './lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
@@ -47,19 +45,6 @@ import { SEL } from './contract.ts';
 const PORT = process.env.EPORT ?? '5188';
 const base = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9339);
-
-function findChromium() {
-	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
-	const cache = join(homedir(), '.cache', 'ms-playwright');
-	for (const build of ['chromium-1232', 'chromium-1228']) {
-		const p = join(cache, build, 'chrome-linux', 'chrome');
-		if (existsSync(p)) return p;
-	}
-	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
-		if (existsSync(p)) return p;
-	}
-	return null;
-}
 
 const HUES = ['#8b5cf6', '#ec4899', '#22c55e', '#f59e0b', '#3b82f6', '#f43f5e', '#a855f7', '#10b981'];
 
