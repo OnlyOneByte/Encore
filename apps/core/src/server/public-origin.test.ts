@@ -15,10 +15,7 @@ test('a bare LAN request is http, whatever the adapter claims', () => {
 });
 
 test('a proxy that reports https is believed — the tunnel case', () => {
-	const o = publicOrigin(
-		req({ host: 'angryang-encore.v.tunnels.lab.aws.dev', 'x-forwarded-proto': 'https' }),
-		url
-	);
+	const o = publicOrigin(req({ host: 'angryang-encore.v.tunnels.lab.aws.dev', 'x-forwarded-proto': 'https' }), url);
 	expect(o).toBe('https://angryang-encore.v.tunnels.lab.aws.dev');
 });
 
@@ -27,7 +24,10 @@ test('a chain of proxies uses the CLIENT-facing scheme, which is the first entry
 });
 
 test('x-forwarded-host wins over host, so a tunnel hostname survives the hop', () => {
-	const o = publicOrigin(req({ host: '127.0.0.1:5180', 'x-forwarded-host': 'party.example', 'x-forwarded-proto': 'https' }), url);
+	const o = publicOrigin(
+		req({ host: '127.0.0.1:5180', 'x-forwarded-host': 'party.example', 'x-forwarded-proto': 'https' }),
+		url
+	);
 	expect(o).toBe('https://party.example');
 });
 
@@ -179,8 +179,6 @@ test('fallbackJoinOrigin is what an empty setting resolves to, so the UI can sho
 	// The settings page prints this as the field's placeholder; if it disagreed with what joinOrigin
 	// actually falls back to, the UI would advertise an address the TV does not use.
 	const r = req({ host: '192.168.1.20:3000' });
-	expect(withOrigin(undefined, () => fallbackJoinOrigin(r, url))).toBe(
-		withOrigin(undefined, () => joinOrigin(r, url))
-	);
+	expect(withOrigin(undefined, () => fallbackJoinOrigin(r, url))).toBe(withOrigin(undefined, () => joinOrigin(r, url)));
 	expect(withOrigin('http://10.0.0.5:3000', () => fallbackJoinOrigin(r, url))).toBe('http://10.0.0.5:3000');
 });

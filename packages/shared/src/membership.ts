@@ -65,7 +65,9 @@ export function memberState(facts: MemberFacts, now: number, graceMs: number): M
 
 /** Whether this singer's grace clock should be started now. */
 export function shouldStartClock(facts: MemberFacts): boolean {
-	return facts.sockets === 0 && facts.awaySince !== undefined && !facts.hasPendingSongs && facts.clockStartedAt === undefined;
+	return (
+		facts.sockets === 0 && facts.awaySince !== undefined && !facts.hasPendingSongs && facts.clockStartedAt === undefined
+	);
 }
 
 /** Whether a started clock should be cleared again — they reconnected, or re-queued a song. */

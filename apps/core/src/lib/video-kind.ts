@@ -65,7 +65,13 @@ const LIVE = ['live aid', 'live at', 'live in', 'live from', 'live on', 'concert
 
 const LYRIC = ['lyrics', 'lyric', 'letra', 'sub español', 'subtitulada', 'with lyrics', 'karaoke version'];
 
-const OFFICIAL = ['official video', 'official music video', 'official audio', 'official visualizer', 'official hd video'];
+const OFFICIAL = [
+	'official video',
+	'official music video',
+	'official audio',
+	'official visualizer',
+	'official hd video'
+];
 
 /** Word-bounded, case-insensitive containment. Avoids "live" matching "delivery" / "Olive". */
 function hasTerm(haystack: string, term: string): boolean {

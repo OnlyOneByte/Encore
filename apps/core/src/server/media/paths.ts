@@ -206,7 +206,13 @@ export function toRelativeKey(uri: string | undefined | null): string | null {
 	for (const [dir, prefix] of candidates) {
 		if (abs === dir) continue;
 		if (abs.startsWith(dir + sep)) {
-			return prefix + abs.slice(dir.length + 1).split(sep).join('/');
+			return (
+				prefix +
+				abs
+					.slice(dir.length + 1)
+					.split(sep)
+					.join('/')
+			);
 		}
 	}
 	return null;

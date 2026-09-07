@@ -16,7 +16,7 @@
 // Moves use rename() and fall back to copy+unlink across devices (a class pointed at another volume).
 
 import { existsSync, mkdirSync, readdirSync, renameSync, rmSync, statSync, copyFileSync, chmodSync } from 'node:fs';
-import { join, dirname, basename, extname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { mediaRoot, audioDir, derivedDir, metaDir, workDir, LEGACY } from './paths';
 
 export interface MigrationPlan {
@@ -105,7 +105,7 @@ export function planMigration(root = mediaRoot()): MigrationPlan {
 	// ── 1. raw audio out of the scratch dir (the 432MB) ───────────────────────────────
 	const legacyWork = join(root, LEGACY.workRoot);
 	if (existsSync(legacyWork)) {
-		let entries: string[] = [];
+		let entries: string[];
 		try {
 			entries = readdirSync(legacyWork, { withFileTypes: true })
 				.filter((d) => d.isDirectory())
@@ -164,7 +164,17 @@ export function applyMigration(
 	plan: MigrationPlan,
 	rewriteRefs?: (mediaId: string, fields: Record<string, string>) => void
 ): MigrationResult {
-	const res: MigrationResult = { moved: 0, bytesMoved: 0, pruned: 0, refsRewritten: 0, skipped: 0, copiedInPlace: 0, failed: 0, failures: [], alreadyMigrated: false };
+	const res: MigrationResult = {
+		moved: 0,
+		bytesMoved: 0,
+		pruned: 0,
+		refsRewritten: 0,
+		skipped: 0,
+		copiedInPlace: 0,
+		failed: 0,
+		failures: [],
+		alreadyMigrated: false
+	};
 
 	for (const [from, to] of plan.moves) {
 		if (!existsSync(from)) {
@@ -233,7 +243,14 @@ export function applyMigration(
  */
 export function ensureLayout(): void {
 	// worker-written: raw downloads, stems, pitch tracks, lyrics, job scratch
-	const shared = [audioDir(), join(derivedDir(), 'stems'), join(derivedDir(), 'pitch'), join(derivedDir(), 'lyrics'), join(derivedDir(), 'thumbs'), workDir()];
+	const shared = [
+		audioDir(),
+		join(derivedDir(), 'stems'),
+		join(derivedDir(), 'pitch'),
+		join(derivedDir(), 'lyrics'),
+		join(derivedDir(), 'thumbs'),
+		workDir()
+	];
 	for (const dir of shared) {
 		mkdirSync(dir, { recursive: true });
 		try {
@@ -259,11 +276,23 @@ export function ensureLayout(): void {
  * Boot entry: create the layout, migrate anything legacy, report what happened. Safe to call on
  * every start. Returns a result the caller can log — silence on a no-op volume.
  */
-export function migrateStorageLayout(rewriteRefs?: (mediaId: string, fields: Record<string, string>) => void): MigrationResult {
+export function migrateStorageLayout(
+	rewriteRefs?: (mediaId: string, fields: Record<string, string>) => void
+): MigrationResult {
 	ensureLayout();
 	const plan = planMigration();
 	if (plan.moves.length === 0 && plan.prunes.length === 0) {
-		return { moved: 0, bytesMoved: 0, pruned: 0, refsRewritten: 0, skipped: 0, copiedInPlace: 0, failed: 0, failures: [], alreadyMigrated: true };
+		return {
+			moved: 0,
+			bytesMoved: 0,
+			pruned: 0,
+			refsRewritten: 0,
+			skipped: 0,
+			copiedInPlace: 0,
+			failed: 0,
+			failures: [],
+			alreadyMigrated: true
+		};
 	}
 	return applyMigration(plan, rewriteRefs);
 }

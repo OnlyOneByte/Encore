@@ -39,11 +39,7 @@ export interface TelemetryFrame {
  * `entryId` off only when nothing is playing (`current` is `null`). The status is passed through
  * verbatim — the server derives `ended` from `status === 'ended'` at dispatch, not from a client flag.
  */
-export function telemetryFrame(
-	status: string,
-	current: StampableEntry | null,
-	positionSec = 0
-): TelemetryFrame {
+export function telemetryFrame(status: string, current: StampableEntry | null, positionSec = 0): TelemetryFrame {
 	return {
 		type: 'tv:telemetry',
 		positionSec,

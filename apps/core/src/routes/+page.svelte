@@ -13,7 +13,15 @@
 	} from '@encore/shared';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
-	import type { ServerEvent, QueueEntry, Media, PublicSinger, PlaybackState, PlayerCommand, EffectiveSettings } from '@encore/shared';
+	import type {
+		ServerEvent,
+		QueueEntry,
+		Media,
+		PublicSinger,
+		PlaybackState,
+		PlayerCommand,
+		EffectiveSettings
+	} from '@encore/shared';
 	import { QueueStore } from '$lib/stores/queue';
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
@@ -24,7 +32,15 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { cookAndQueue } from '$lib/cook-and-queue';
-	import { displayReadiness, canCook, readyEmptyState, nextPlayableEntryId, entryPlayable, cookingGroupIds, type Readiness } from '$lib/readiness';
+	import {
+		displayReadiness,
+		canCook,
+		readyEmptyState,
+		nextPlayableEntryId,
+		entryPlayable,
+		cookingGroupIds,
+		type Readiness
+	} from '$lib/readiness';
 	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
 	import type { MediaStatus } from '@encore/shared';
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel } from '@encore/shared';
@@ -83,7 +99,9 @@
 
 	// derived: my position in the rotation + who's right before me
 	const myNextEntry = $derived(
-		entries.filter((e) => e.singerId === me?.id && e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq)[0]
+		entries
+			.filter((e) => e.singerId === me?.id && e.status === 'queued')
+			.sort((a, b) => a.rotationSeq - b.rotationSeq)[0]
 	);
 	const myPositionLabel = $derived.by(() => {
 		if (!myNextEntry) return '';
@@ -98,7 +116,7 @@
 			return playable ? "You're up next!" : "You're next once it's ready";
 		}
 		const before = q[idx - 1];
-		const beforeName = before ? singers.get(before.singerId)?.displayName ?? 'someone' : 'someone';
+		const beforeName = before ? (singers.get(before.singerId)?.displayName ?? 'someone') : 'someone';
 		return `You're #${idx + 1} · after ${beforeName}`;
 	});
 
@@ -124,7 +142,11 @@
 		if (!list.length) return;
 		const next = new Map(mediaCatalog);
 		let changed = false;
-		for (const m of list) if (!next.has(m.id)) { next.set(m.id, m); changed = true; }
+		for (const m of list)
+			if (!next.has(m.id)) {
+				next.set(m.id, m);
+				changed = true;
+			}
 		if (changed) mediaCatalog = next;
 	}
 
@@ -211,11 +233,7 @@
 									// A failed OR canceled cook settles back to un-cooked server-side (settleStemsGate),
 									// so the optimistic copy follows it. This used to preserve the mid-flight status,
 									// which is what kept the row reading as cooking after the job had already died.
-									e.status === 'ready'
-										? 'ready'
-										: e.status === 'failed' || e.status === 'canceled'
-											? 'none'
-											: 'queued'
+									e.status === 'ready' ? 'ready' : e.status === 'failed' || e.status === 'canceled' ? 'none' : 'queued'
 							});
 							mediaCatalog = nm;
 						}
@@ -365,7 +383,13 @@
 		return [...ids]
 			.map((id) => ({ id, media: mediaCatalog.get(id), live: liveOf(id) }))
 			.filter((r) => r.media)
-			.map((r) => ({ id: r.id, media: r.media!, pct: r.live?.pct ?? 0, etaSec: r.live?.etaSec, status: r.live?.status }));
+			.map((r) => ({
+				id: r.id,
+				media: r.media!,
+				pct: r.live?.pct ?? 0,
+				etaSec: r.live?.etaSec,
+				status: r.live?.status
+			}));
 	});
 
 	const showReady = $derived(filter === 'all' || filter === 'ready');
@@ -505,7 +529,10 @@
 	let library = $state<Media[]>([]);
 	// Browse: facets describe the WHOLE ready library (never the current filter), so picking an
 	// artist cannot collapse the rail to that one artist and strand you with no way back.
-	let facets = $state<{ artists: { artist: string; count: number }[]; genres: { genre: string; count: number }[] }>({ artists: [], genres: [] });
+	let facets = $state<{ artists: { artist: string; count: number }[]; genres: { genre: string; count: number }[] }>({
+		artists: [],
+		genres: []
+	});
 	let browseFilter = $state<{ artist?: string; genre?: string } | null>(null);
 	/*
 	 * Browse starts collapsed so the readiness spine is the only filter on screen at rest. It opens
@@ -519,7 +546,8 @@
 
 	function setBrowse(kind: 'artist' | 'genre' | null, value: string) {
 		// tapping the active chip again clears it — a filter you cannot undo is a trap
-		const same = kind === 'artist' ? browseFilter?.artist === value : kind === 'genre' ? browseFilter?.genre === value : false;
+		const same =
+			kind === 'artist' ? browseFilter?.artist === value : kind === 'genre' ? browseFilter?.genre === value : false;
 		browseFilter = kind === null || same ? null : kind === 'artist' ? { artist: value } : { genre: value };
 		if (navigator.vibrate) navigator.vibrate(8);
 		loadLibrary();
@@ -541,7 +569,8 @@
 				mergeMedia(cooking.map((c) => c.media));
 				const next = new Map(mediaStatus);
 				// a live broadcast is fresher than this snapshot — never overwrite one
-				for (const c of cooking) if (!next.has(c.media.id)) next.set(c.media.id, { status: c.status, pct: c.pct, etaSec: c.etaSec });
+				for (const c of cooking)
+					if (!next.has(c.media.id)) next.set(c.media.id, { status: c.status, pct: c.pct, etaSec: c.etaSec });
 				mediaStatus = next;
 			}
 		} catch {
@@ -633,7 +662,9 @@
 	const nowMedia = $derived(nowEntry ? mediaCatalog.get(nowEntry.mediaId) : undefined);
 	// key-shift is available only once a song's stems are separated — there is nothing to re-pitch before
 	const keyShiftEnabled = $derived(!!nowMedia && isPlayable(nowMedia));
-	const keyLabel = $derived(playback.keyShift === 0 ? 'Key' : `Key · ${playback.keyShift > 0 ? '+' : '−'}${Math.abs(playback.keyShift)}`);
+	const keyLabel = $derived(
+		playback.keyShift === 0 ? 'Key' : `Key · ${playback.keyShift > 0 ? '+' : '−'}${Math.abs(playback.keyShift)}`
+	);
 
 	// ── key line + vocal range readout ──────────────────────────────────
 	// The now-playing song's musical profile, derived once. All the music judgement lives in the shared
@@ -745,9 +776,7 @@
 		const id = setInterval(() => (displayPos = livePositionSec()), 1000);
 		return () => clearInterval(id);
 	});
-	const nowDurationSec = $derived(
-		nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0
-	);
+	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
 </script>
 
 <header class="topbar">
@@ -794,8 +823,12 @@
 	     which index the song came from — so there is no source switch. -->
 	<div class="card searchbox">
 		<span class="search-mark"><Icon name="search" /></span>
-		<input bind:value={query} oninput={onQueryInput} aria-label="Search a song or artist"
-			placeholder="Search a song or artist…" />
+		<input
+			bind:value={query}
+			oninput={onQueryInput}
+			aria-label="Search a song or artist"
+			placeholder="Search a song or artist…"
+		/>
 		{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
 	</div>
 
@@ -821,11 +854,7 @@
 		-->
 		{#if !searchActive && (facets.artists.length > 1 || facets.genres.length > 1)}
 			<div class="browse">
-				<button
-					class="browse-toggle"
-					aria-expanded={browseOpen}
-					onclick={() => (browseOpen = !browseOpen)}
-				>
+				<button class="browse-toggle" aria-expanded={browseOpen} onclick={() => (browseOpen = !browseOpen)}>
 					<Icon name={browseOpen ? 'chevron-down' : 'chevron-right'} />
 					Browse
 					{#if browseFilter}<span class="browse-active">{browseFilter.artist ?? browseFilter.genre}</span>{/if}
@@ -841,7 +870,11 @@
 					<div class="facets" role="group" aria-label="Browse by artist">
 						<span class="facet-label">Artist</span>
 						{#each facets.artists as f (f.artist)}
-							<button class="chip" class:active={browseFilter?.artist === f.artist} onclick={() => setBrowse('artist', f.artist)}>
+							<button
+								class="chip"
+								class:active={browseFilter?.artist === f.artist}
+								onclick={() => setBrowse('artist', f.artist)}
+							>
 								{f.artist}&nbsp;<span class="facet-count">{f.count}</span>
 							</button>
 						{/each}
@@ -851,7 +884,11 @@
 					<div class="facets" role="group" aria-label="Browse by genre">
 						<span class="facet-label">Genre</span>
 						{#each facets.genres as f (f.genre)}
-							<button class="chip ok" class:active={browseFilter?.genre === f.genre} onclick={() => setBrowse('genre', f.genre)}>
+							<button
+								class="chip ok"
+								class:active={browseFilter?.genre === f.genre}
+								onclick={() => setBrowse('genre', f.genre)}
+							>
 								{f.genre}&nbsp;<span class="facet-count">{f.count}</span>
 							</button>
 						{/each}
@@ -909,7 +946,10 @@
 					{#each [0, 1, 2] as i (i)}
 						<div class="skel-row">
 							<div class="skel-thumb"></div>
-							<div class="skel-text"><div class="skel-line"></div><div class="skel-line short"></div></div>
+							<div class="skel-text">
+								<div class="skel-line"></div>
+								<div class="skel-line short"></div>
+							</div>
 						</div>
 					{/each}
 				</div>
@@ -940,20 +980,30 @@
 				<h2 class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</h2>
 				{#each popularRows as m (m.id)}
 					{@const r = readinessFor(m)}
-					<SongRow {...rowMeta(m)} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
+					<SongRow
+						{...rowMeta(m)}
+						readiness={r}
+						pct={liveOf(m.id)?.pct ?? 0}
 						status={liveOf(m.id)?.status}
-						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
-						onmake={canCook(r) ? () => singThis(m.id) : undefined} />
+						inQueue={inMyQueue(m.id)}
+						onadd={() => addSong(m.id)}
+						onmake={canCook(r) ? () => singThis(m.id) : undefined}
+					/>
 				{/each}
 			{/if}
 			{#if recentRows.length}
 				<h2 class="grouphead grouphead-mark"><Icon name="clock" /> Recently queued</h2>
 				{#each recentRows as m (m.id)}
 					{@const r = readinessFor(m)}
-					<SongRow {...rowMeta(m)} readiness={r} pct={liveOf(m.id)?.pct ?? 0}
+					<SongRow
+						{...rowMeta(m)}
+						readiness={r}
+						pct={liveOf(m.id)?.pct ?? 0}
 						status={liveOf(m.id)?.status}
-						inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)}
-						onmake={canCook(r) ? () => singThis(m.id) : undefined} />
+						inQueue={inMyQueue(m.id)}
+						onadd={() => addSong(m.id)}
+						onmake={canCook(r) ? () => singThis(m.id) : undefined}
+					/>
 				{/each}
 			{/if}
 			{#if !popularRows.length && !recentRows.length && !library.length}
@@ -969,7 +1019,9 @@
 			{#if empty.showAllCount !== null}
 				<!-- the way back: the library is one tap away, not gone -->
 				<div class="showall-row">
-					<button class="chip ok chip-icon" onclick={clearSearch}><Icon name="mic" /> Show all {empty.showAllCount}</button>
+					<button class="chip ok chip-icon" onclick={clearSearch}
+						><Icon name="mic" /> Show all {empty.showAllCount}</button
+					>
 				</div>
 			{/if}
 		{:else}
@@ -1012,11 +1064,9 @@
 			queue that has something in it, because "start when it is ready" is a real intent and the
 			server, not the phone, decides when that is.
 		-->
-		<button
-			class="ic no-drag"
-			aria-label="restart"
-			disabled={!nowEntry}
-			onclick={() => sendPlayer({ cmd: 'restart' })}><Icon name="prev" /></button>
+		<button class="ic no-drag" aria-label="restart" disabled={!nowEntry} onclick={() => sendPlayer({ cmd: 'restart' })}
+			><Icon name="prev" /></button
+		>
 		<button
 			class="ic play no-drag"
 			aria-label="play/pause"
@@ -1025,21 +1075,14 @@
 		>
 			<Icon name={playback.isPlaying ? 'pause' : 'play'} />
 		</button>
-		<button
-			class="ic no-drag"
-			aria-label="skip"
-			disabled={!nowEntry}
-			onclick={() => sendPlayer({ cmd: 'skip' })}><Icon name="next" /></button>
+		<button class="ic no-drag" aria-label="skip" disabled={!nowEntry} onclick={() => sendPlayer({ cmd: 'skip' })}
+			><Icon name="next" /></button
+		>
 	{/snippet}
 
 	<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
 	     sharing its labelled-row idiom; both are per-song adjustments to the same playing song. -->
-	<GuidingTrack
-		pct={guidePct}
-		available={guideEnabled}
-		oninput={onGuideInput}
-		oncommit={onGuideCommit}
-	/>
+	<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
 
 	<!--
 		KEY LINE. A value row ABOVE the ± buttons, NOT inline in `.key`: `.key` is a no-wrap flex with two
@@ -1066,8 +1109,17 @@
 
 	<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
 		<span class="lab">{keyLabel}</span>
-		<button class="key-btn" disabled={!keyShiftEnabled || playback.keyShift <= -7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}><Icon name="minus" /> semitone</button>
-		<button class="key-btn" disabled={!keyShiftEnabled || playback.keyShift >= 7} onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}><Icon name="plus" /> semitone</button>
+		<button
+			class="key-btn"
+			disabled={!keyShiftEnabled || playback.keyShift <= -7}
+			onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}
+			><Icon name="minus" /> semitone</button
+		>
+		<button
+			class="key-btn"
+			disabled={!keyShiftEnabled || playback.keyShift >= 7}
+			onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}><Icon name="plus" /> semitone</button
+		>
 	</div>
 
 	<!--
@@ -1079,11 +1131,7 @@
 	-->
 	{#if hasRange}
 		<div class="range">
-			<button
-				class="range-toggle"
-				aria-expanded={rangeOpen}
-				onclick={() => (rangeOpen = !rangeOpen)}
-			>
+			<button class="range-toggle" aria-expanded={rangeOpen} onclick={() => (rangeOpen = !rangeOpen)}>
 				<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
 				Vocal range
 				<span class="range-peek">{rangeText}</span>
@@ -1095,7 +1143,7 @@
 						{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
 					</div>
 					{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
-					<RangeBar {profile} keyShift={playback.keyShift} />
+					<RangeBar profile={profile} keyShift={playback.keyShift} />
 				</div>
 			{/if}
 		</div>
@@ -1120,7 +1168,7 @@
 				<ProcessingCard
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
-					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
+					singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
 					singerColor={s?.color ?? SINGER_COLORS[0]}
 					singerAway={awaySingers.has(e.singerId)}
 					status={proc.status}
@@ -1139,7 +1187,7 @@
 				<QueueRow
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
-					singerName={e.singerId === me?.id ? 'You' : s?.displayName ?? 'Guest'}
+					singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
 					singerColor={s?.color ?? SINGER_COLORS[0]}
 					mine={e.singerId === me?.id}
 					singerAway={awaySingers.has(e.singerId)}
@@ -1180,16 +1228,24 @@
 
 <style>
 	/* the sheet's peek is docked, so the page must be able to scroll clear of it */
-	main { flex: 1; padding: 6px 18px calc(var(--peek-h) + 28px); }
+	main {
+		flex: 1;
+		padding: 6px 18px calc(var(--peek-h) + 28px);
+	}
 
 	/* Visually-hidden live region: announced by assistive tech, painted nowhere (so it is
 	   screenshot-neutral). The standard clip-rect idiom, not display:none — a display:none region is
 	   not announced by most screen readers. */
 	.sr-live {
 		position: absolute;
-		width: 1px; height: 1px;
-		margin: -1px; padding: 0; border: 0;
-		overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%);
+		width: 1px;
+		height: 1px;
+		margin: -1px;
+		padding: 0;
+		border: 0;
+		overflow: hidden;
+		clip: rect(0 0 0 0);
+		clip-path: inset(50%);
 		white-space: nowrap;
 	}
 
@@ -1198,7 +1254,15 @@
 	 * with no emoji font, which is not something a brand mark can be. The gradient stays on the TEXT
 	 * (background-clip), where it is the glyph fill against the page and carries no label of its own.
 	 */
-	.brand { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.25rem; margin: 0; line-height: inherit; }
+	.brand {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		font-weight: 800;
+		font-size: 1.25rem;
+		margin: 0;
+		line-height: inherit;
+	}
 	.wordmark {
 		background: var(--grad);
 		-webkit-background-clip: text;
@@ -1215,7 +1279,10 @@
 	 * colour syntax, so the free hue picker cannot break it.
 	 */
 	.me-dot {
-		width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;
+		width: 22px;
+		height: 22px;
+		border-radius: 50%;
+		flex: 0 0 auto;
 		background: var(--singer);
 		box-shadow: 0 0 0 3px color-mix(in srgb, var(--singer) 19%, transparent);
 	}
@@ -1226,14 +1293,27 @@
 	   styled span (block), and min-width:0 must exist up the whole chain (.me-cluster, .me-btn) for it
 	   to actually shrink. The dot (flex:0 0 auto) and the gear (min-width:44px) stay unshrinkable so
 	   the 44px target survives. */
-	.me-name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.me-name {
+		display: block;
+		min-width: 0;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 	/* 44px, matching every other control in the app. The emoji gear this replaced was ~18px. */
 	.gear {
-		display: grid; place-items: center;
-		min-width: 44px; min-height: 44px; margin-right: -10px;
-		font-size: 1.15rem; color: var(--ink-dim); text-decoration: none;
+		display: grid;
+		place-items: center;
+		min-width: 44px;
+		min-height: 44px;
+		margin-right: -10px;
+		font-size: 1.15rem;
+		color: var(--ink-dim);
+		text-decoration: none;
 	}
-	.gear:hover { color: var(--ink); }
+	.gear:hover {
+		color: var(--ink);
+	}
 
 	/*
 	 * Wide viewports spend the extra room on MORE SONGS, not longer rows. Only song rows flow into
@@ -1259,82 +1339,241 @@
 			grid-column: auto;
 		}
 	}
-	.searchbox { display: flex; align-items: center; gap: 10px; padding: 12px 14px; margin-bottom: 10px; min-height: 52px; }
-	.searchbox input { border: 0; background: transparent; color: var(--ink); font-size: 1rem; width: 100%; }
-	.chips { display: flex; gap: 7px; margin-bottom: 14px; }
-	/* One collapsed row where two facet rails used to render inline and reshuffle as you typed. */
-	.browse { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
-	.browse-toggle {
-		min-height: 44px; display: inline-flex; align-items: center; gap: 7px;
-		background: none; border: 0; padding: 0 2px; cursor: pointer;
-		color: var(--ink-dim); font-size: 0.68rem; font-weight: 700;
-		letter-spacing: 0.14em; text-transform: uppercase;
+	.searchbox {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 12px 14px;
+		margin-bottom: 10px;
+		min-height: 52px;
 	}
-	.browse-toggle:hover { color: var(--ink); }
+	.searchbox input {
+		border: 0;
+		background: transparent;
+		color: var(--ink);
+		font-size: 1rem;
+		width: 100%;
+	}
+	.chips {
+		display: flex;
+		gap: 7px;
+		margin-bottom: 14px;
+	}
+	/* One collapsed row where two facet rails used to render inline and reshuffle as you typed. */
+	.browse {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		margin-bottom: 8px;
+	}
+	.browse-toggle {
+		min-height: 44px;
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		background: none;
+		border: 0;
+		padding: 0 2px;
+		cursor: pointer;
+		color: var(--ink-dim);
+		font-size: 0.68rem;
+		font-weight: 700;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+	}
+	.browse-toggle:hover {
+		color: var(--ink);
+	}
 	/* Names the active facet on the collapsed row, so a narrowed list always shows its cause. */
-	.browse-active { color: var(--accent2); text-transform: none; letter-spacing: 0; font-size: 0.8rem; }
+	.browse-active {
+		color: var(--accent2);
+		text-transform: none;
+		letter-spacing: 0;
+		font-size: 0.8rem;
+	}
 	/* browse facet rails: horizontally scrollable so a 20-artist library cannot push the
 	   song list off the screen on a phone. */
 	.facets {
-		display: flex; align-items: center; gap: 7px; margin-bottom: 8px;
-		overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch;
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		margin-bottom: 8px;
+		overflow-x: auto;
+		scrollbar-width: none;
+		-webkit-overflow-scrolling: touch;
 	}
-	.facets::-webkit-scrollbar { display: none; }
-	.facets .chip { flex: none; }
+	.facets::-webkit-scrollbar {
+		display: none;
+	}
+	.facets .chip {
+		flex: none;
+	}
 	.facet-label {
-		flex: none; font-size: .68rem; letter-spacing: .14em; text-transform: uppercase;
-		color: var(--ink-dim); padding-right: 2px;
+		flex: none;
+		font-size: 0.68rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+		padding-right: 2px;
 	}
-	.facet-count { opacity: .55; font-variant-numeric: tabular-nums; }
+	.facet-count {
+		opacity: 0.55;
+		font-variant-numeric: tabular-nums;
+	}
 	.chip {
 		/* 44px, matching the queue actions and the row buttons. These were ~30px: above the 24px WCAG
 		   floor, but below the threshold this app had already set for itself everywhere else — and the
 		   readiness chips are the most-tapped controls on the screen. */
 		min-height: 44px;
-		display: inline-flex; align-items: center; gap: 6px;
-		padding: 7px 14px; border-radius: 22px; font-size: 0.82rem; font-weight: 600; cursor: pointer;
-		background: var(--card); border: 1px solid var(--line); color: var(--ink-dim);
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		padding: 7px 14px;
+		border-radius: 22px;
+		font-size: 0.82rem;
+		font-weight: 600;
+		cursor: pointer;
+		background: var(--card);
+		border: 1px solid var(--line);
+		color: var(--ink-dim);
 	}
-	.chip.ok { color: var(--ok); }
-	.chip.warn { color: var(--warn); }
-	.chip.active { background: var(--accent-strong); border-color: transparent; color: var(--on-accent); }
+	.chip.ok {
+		color: var(--ok);
+	}
+	.chip.warn {
+		color: var(--warn);
+	}
+	.chip.active {
+		background: var(--accent-strong);
+		border-color: transparent;
+		color: var(--on-accent);
+	}
 	/* any label that leads with a mark rather than a word */
-	.chip-icon { display: inline-flex; align-items: center; gap: 6px; }
-	.search-mark { display: grid; place-items: center; color: var(--ink-dim); }
-	.grouphead-mark { display: flex; align-items: center; gap: 7px; }
-	.chip:active { transform: scale(0.95); }
-	.grouphead {
-		font-size: 0.68rem; letter-spacing: 0.14em; text-transform: uppercase;
-		color: var(--ink-dim); font-weight: 700; margin: 16px 4px 8px;
+	.chip-icon {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
 	}
-	.grouphead:first-of-type { margin-top: 4px; }
-	.grouphead.ok { color: var(--ok); }
-	.grouphead.warn { color: var(--warn); }
-	.empty { color: var(--ink-dim); padding: 0 4px; font-size: 0.9rem; }
+	.search-mark {
+		display: grid;
+		place-items: center;
+		color: var(--ink-dim);
+	}
+	.grouphead-mark {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+	}
+	.chip:active {
+		transform: scale(0.95);
+	}
+	.grouphead {
+		font-size: 0.68rem;
+		letter-spacing: 0.14em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+		font-weight: 700;
+		margin: 16px 4px 8px;
+	}
+	.grouphead:first-of-type {
+		margin-top: 4px;
+	}
+	.grouphead.ok {
+		color: var(--ok);
+	}
+	.grouphead.warn {
+		color: var(--warn);
+	}
+	.empty {
+		color: var(--ink-dim);
+		padding: 0 4px;
+		font-size: 0.9rem;
+	}
 
 	/* playback controls, rendered into the sheet's peek */
-	.ic { width: 44px; height: 44px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--line); background: var(--card); color: var(--ink); font-size: 1rem; cursor: pointer; }
+	.ic {
+		width: 44px;
+		height: 44px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		border: 1px solid var(--line);
+		background: var(--card);
+		color: var(--ink);
+		font-size: 1rem;
+		cursor: pointer;
+	}
 	/* The one filled transport control. Solid accent + paired ink, because in stage 1 the glyph became
 	   an SVG drawn with currentColor — on --grad that mark sat at 2.84:1, under the 3:1 non-text floor. */
-	.ic.play { background: var(--accent-strong); color: var(--on-accent); border-color: transparent; width: 44px; height: 44px; }
-	.ic:active { transform: scale(0.92); }
+	.ic.play {
+		background: var(--accent-strong);
+		color: var(--on-accent);
+		border-color: transparent;
+		width: 44px;
+		height: 44px;
+	}
+	.ic:active {
+		transform: scale(0.92);
+	}
 	/* Reads as unavailable rather than merely dim: a 44px target that still looks pressable but does
 	   nothing is worse than one that plainly cannot be pressed. The cursor changes too, since this
 	   surface is also opened on a laptop. */
-	.ic:disabled { opacity: 0.4; cursor: not-allowed; }
-	.ic:disabled:active { transform: none; }
+	.ic:disabled {
+		opacity: 0.4;
+		cursor: not-allowed;
+	}
+	.ic:disabled:active {
+		transform: none;
+	}
 
-	.key { display: flex; gap: 6px; margin: 6px 0 2px; align-items: center; }
-	.key.disabled { opacity: 0.5; }
-	.key .lab { font-size: 0.7rem; color: var(--ink-dim); letter-spacing: 0.1em; text-transform: uppercase; }
-	.key.shifted .lab { color: var(--warn); }
-	.key button { flex: 1; border: 1px dashed var(--line-strong); background: transparent; color: var(--ink-dim); border-radius: var(--radius-btn); padding: 6px; font-size: 0.8rem; cursor: pointer; min-height: 44px; }
+	.key {
+		display: flex;
+		gap: 6px;
+		margin: 6px 0 2px;
+		align-items: center;
+	}
+	.key.disabled {
+		opacity: 0.5;
+	}
+	.key .lab {
+		font-size: 0.7rem;
+		color: var(--ink-dim);
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+	}
+	.key.shifted .lab {
+		color: var(--warn);
+	}
+	.key button {
+		flex: 1;
+		border: 1px dashed var(--line-strong);
+		background: transparent;
+		color: var(--ink-dim);
+		border-radius: var(--radius-btn);
+		padding: 6px;
+		font-size: 0.8rem;
+		cursor: pointer;
+		min-height: 44px;
+	}
 	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
 	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
-	.key-btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
-	.key:not(.disabled) button:not(:disabled) { border-style: solid; border-color: var(--line); color: var(--ink); }
-	.key:not(.disabled) button:not(:disabled):active { transform: scale(0.95); }
-	.key button:disabled { cursor: default; }
+	.key-btn {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 6px;
+	}
+	.key:not(.disabled) button:not(:disabled) {
+		border-style: solid;
+		border-color: var(--line);
+		color: var(--ink);
+	}
+	.key:not(.disabled) button:not(:disabled):active {
+		transform: scale(0.95);
+	}
+	.key button:disabled {
+		cursor: default;
+	}
 
 	/*
 	 * The key head line. Sits ABOVE the ± buttons (see the markup comment for why it cannot be inline).
@@ -1351,19 +1590,39 @@
 		gap: 8px;
 		margin: 8px 0 0;
 	}
-	.key-vals { display: inline-flex; align-items: center; gap: 7px; font-variant-numeric: tabular-nums; }
-	.key-orig { font-size: 0.85rem; font-weight: 700; color: var(--ink); }
+	.key-vals {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		font-variant-numeric: tabular-nums;
+	}
+	.key-orig {
+		font-size: 0.85rem;
+		font-weight: 700;
+		color: var(--ink);
+	}
 	/* The arrow is an Icon (banned as a glyph); size it to the text and dim it so the keys read as the
 	   content and the arrow as mere connective tissue. */
-	.key-arrow { display: inline-grid; place-items: center; color: var(--ink-dim); font-size: 0.8rem; }
-	.key-sound { font-size: 0.85rem; font-weight: 700; color: var(--warn); }
+	.key-arrow {
+		display: inline-grid;
+		place-items: center;
+		color: var(--ink-dim);
+		font-size: 0.8rem;
+	}
+	.key-sound {
+		font-size: 0.85rem;
+		font-weight: 700;
+		color: var(--warn);
+	}
 
 	/*
 	 * The vocal-range disclosure. Mirrors the .browse toggle: a 44px min-height button, an uppercase
 	 * label, a chevron that swaps down/right with the open state, and a peek of the range value on the
 	 * collapsed row so the section states its headline fact without being opened.
 	 */
-	.range { margin: 8px 0 2px; }
+	.range {
+		margin: 8px 0 2px;
+	}
 	.range-toggle {
 		width: 100%;
 		min-height: 44px;
@@ -1380,7 +1639,9 @@
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 	}
-	.range-toggle:hover { color: var(--ink); }
+	.range-toggle:hover {
+		color: var(--ink);
+	}
 	/* The collapsed-row peek of the range, pushed to the right. Not uppercase — it is data, not a label. */
 	.range-peek {
 		margin-left: auto;
@@ -1390,32 +1651,88 @@
 		font-size: 0.8rem;
 		font-variant-numeric: tabular-nums;
 	}
-	.range-body { padding: 2px 2px 4px; }
-	.range-facts { display: flex; align-items: baseline; gap: 10px; }
-	.range-label { font-size: 0.95rem; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
-	.range-oct { font-size: 0.72rem; color: var(--ink-dim); font-variant-numeric: tabular-nums; }
-	.range-band { font-size: 0.72rem; color: var(--ink-dim); margin: 4px 0 0; }
-
+	.range-body {
+		padding: 2px 2px 4px;
+	}
+	.range-facts {
+		display: flex;
+		align-items: baseline;
+		gap: 10px;
+	}
+	.range-label {
+		font-size: 0.95rem;
+		font-weight: 700;
+		color: var(--ink);
+		font-variant-numeric: tabular-nums;
+	}
+	.range-oct {
+		font-size: 0.72rem;
+		color: var(--ink-dim);
+		font-variant-numeric: tabular-nums;
+	}
+	.range-band {
+		font-size: 0.72rem;
+		color: var(--ink-dim);
+		margin: 4px 0 0;
+	}
 
 	.search-spinner {
-		width: 15px; height: 15px; flex: none; border-radius: 50%;
-		border: 2px solid var(--line); border-top-color: var(--accent2);
+		width: 15px;
+		height: 15px;
+		flex: none;
+		border-radius: 50%;
+		border: 2px solid var(--line);
+		border-top-color: var(--accent2);
 		animation: spin 0.7s linear infinite;
 	}
-	@keyframes spin { to { transform: rotate(360deg); } }
+	@keyframes spin {
+		to {
+			transform: rotate(360deg);
+		}
+	}
 	.skel-row {
-		display: flex; align-items: center; gap: 12px; padding: 12px 14px; margin-bottom: 8px;
-		border-radius: 14px; background: var(--card); border: 1px solid var(--line);
+		display: flex;
+		align-items: center;
+		gap: 12px;
+		padding: 12px 14px;
+		margin-bottom: 8px;
+		border-radius: 14px;
+		background: var(--card);
+		border: 1px solid var(--line);
 	}
-	.skel-thumb { width: 44px; height: 44px; flex: none; border-radius: var(--radius-btn); }
-	.skel-text { flex: 1; display: flex; flex-direction: column; gap: 8px; }
-	.skel-line { height: 12px; border-radius: 6px; }
-	.skel-line.short { width: 55%; }
-	.skel-thumb, .skel-line {
+	.skel-thumb {
+		width: 44px;
+		height: 44px;
+		flex: none;
+		border-radius: var(--radius-btn);
+	}
+	.skel-text {
+		flex: 1;
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+	}
+	.skel-line {
+		height: 12px;
+		border-radius: 6px;
+	}
+	.skel-line.short {
+		width: 55%;
+	}
+	.skel-thumb,
+	.skel-line {
 		background: linear-gradient(90deg, var(--card2) 25%, var(--line) 37%, var(--card2) 63%);
-		background-size: 400% 100%; animation: shimmer 1.3s ease-in-out infinite;
+		background-size: 400% 100%;
+		animation: shimmer 1.3s ease-in-out infinite;
 	}
-	@keyframes shimmer { 0% { background-position: 100% 0; } 100% { background-position: -100% 0; } }
+	@keyframes shimmer {
+		0% {
+			background-position: 100% 0;
+		}
+		100% {
+			background-position: -100% 0;
+		}
+	}
 	/*
 	 * Docked-toast stacking, measured UP from the queue sheet's peek. --peek-h is bound to the peek's
 	 * clientHeight, and the peek's own padding already includes env(safe-area-inset-bottom), so the
@@ -1434,10 +1751,23 @@
 		--error-dock: calc(var(--undo-dock) + var(--undo-h, 0px) + 14px);
 	}
 	.undo-toast {
-		position: fixed; left: 0; right: 0; bottom: var(--undo-dock); margin-inline: auto; width: fit-content;
-		display: flex; align-items: center; gap: 14px; z-index: 30;
-		background: var(--card2); border: 1px solid var(--line); border-radius: 14px;
-		padding: 12px 16px; box-shadow: var(--shadow); font-size: 0.9rem; max-width: 90vw;
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: var(--undo-dock);
+		margin-inline: auto;
+		width: fit-content;
+		display: flex;
+		align-items: center;
+		gap: 14px;
+		z-index: 30;
+		background: var(--card2);
+		border: 1px solid var(--line);
+		border-radius: 14px;
+		padding: 12px 16px;
+		box-shadow: var(--shadow);
+		font-size: 0.9rem;
+		max-width: 90vw;
 	}
 	.undo-toast button {
 		/* The only interactive control on the phone that fell under the app's own 44px floor — and the
@@ -1445,47 +1775,99 @@
 		   row is align-items:center, so it grows to fit and nothing else shifts); the padding-only box
 		   it had (6px 12px) slipped past the generic touch-target guard, which only flags an explicit
 		   height. touch-targets.test.ts now covers padding-only controls too. */
-		display: inline-flex; align-items: center; justify-content: center; min-height: 44px;
-		border: 0; background: var(--accent-strong); color: var(--on-accent); font-weight: 700;
-		border-radius: 8px; padding: 6px 14px; cursor: pointer;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 44px;
+		border: 0;
+		background: var(--accent-strong);
+		color: var(--on-accent);
+		font-weight: 700;
+		border-radius: 8px;
+		padding: 6px 14px;
+		cursor: pointer;
 	}
 	.error-toast {
 		/* Offset above the undo toast: both sat at the same bottom and z-index, so one drew over the
 		   other and a guest saw only whichever rendered last. */
-		position: fixed; left: 0; right: 0; bottom: var(--error-dock); margin-inline: auto; width: fit-content; z-index: 30;
-		background: var(--danger-bg); color: var(--danger-ink); border: 1px solid var(--danger-line);
-		padding: 11px 16px; border-radius: var(--radius-sm); font-size: 0.88rem; max-width: 90vw;
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: var(--error-dock);
+		margin-inline: auto;
+		width: fit-content;
+		z-index: 30;
+		background: var(--danger-bg);
+		color: var(--danger-ink);
+		border: 1px solid var(--danger-line);
+		padding: 11px 16px;
+		border-radius: var(--radius-sm);
+		font-size: 0.88rem;
+		max-width: 90vw;
 	}
 
 	/* Matches the gear beside it: a real 44px target, not text that happens to be tappable. An anchor
 	   now (it navigates to /settings?tab=you), so the underline a link would default to is dropped —
 	   the tappable affordance here is the 44px box and the colour dot, as it was as a button. */
 	.me-btn {
-		display: inline-flex; align-items: center; gap: 8px; min-width: 0;
-		min-height: 44px; padding: 0 6px;
-		background: none; border: 0; cursor: pointer;
-		color: inherit; font: inherit; text-decoration: none;
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		min-width: 0;
+		min-height: 44px;
+		padding: 0 6px;
+		background: none;
+		border: 0;
+		cursor: pointer;
+		color: inherit;
+		font: inherit;
+		text-decoration: none;
 	}
-	.me-btn:active { opacity: 0.7; }
+	.me-btn:active {
+		opacity: 0.7;
+	}
 
 	/* --warn, not --danger: a dropped socket is a transient degraded state that self-heals on the next
 	   backoff tick, not a failure the guest has to act on. */
 	.offline-pill {
-		display: inline-flex; align-items: center; gap: 6px;
-		color: var(--warn); border: 1px solid var(--line-strong); border-radius: var(--radius-pill);
-		padding: 4px 10px; font-size: 0.78rem; white-space: nowrap;
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		color: var(--warn);
+		border: 1px solid var(--line-strong);
+		border-radius: var(--radius-pill);
+		padding: 4px 10px;
+		font-size: 0.78rem;
+		white-space: nowrap;
 	}
 
 	/* Base header padding, declared here (not inline) so the short-viewport rule below can shrink it —
 	   an inline style would outrank the media query and silently defeat it. The flex layout lives here
 	   too, off the inline style, so the header joins the token layer instead of pinning raw px. */
-	.topbar { display: flex; align-items: center; gap: 10px; padding: 16px 18px 8px; }
+	.topbar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		padding: 16px 18px 8px;
+	}
 	/* The name + gear cluster, pushed to the trailing edge. Static styling classed (not inline) so it
 	   inherits the responsive layer rather than freezing raw px. */
-	.me-cluster { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--ink-dim); }
+	.me-cluster {
+		margin-left: auto;
+		min-width: 0;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 0.85rem;
+		color: var(--ink-dim);
+	}
 	/* Centres the "Show all" way-back button under an empty Ready filter. Classed, not inline, so the
 	   one-off row is not stranded outside the responsive rules with hard px. */
-	.showall-row { display: flex; justify-content: center; padding: 0 0 8px; }
+	.showall-row {
+		display: flex;
+		justify-content: center;
+		padding: 0 0 8px;
+	}
 
 	/*
 	 * Respect a reduced-motion preference. Both remaining animations otherwise run unguarded and
@@ -1508,12 +1890,29 @@
 	 * mount, but on a short screen a smaller fallback still buys rows before that measurement lands.
 	 */
 	@media (max-height: 480px) {
-		:root { --peek-h: 84px; }
-		.topbar { padding: 6px 18px 4px; }
-		main { padding-top: 2px; }
-		.searchbox { min-height: 42px; padding: 8px 14px; margin-bottom: 6px; }
-		.chips { margin-bottom: 8px; }
-		.browse, .facets { margin-bottom: 4px; }
-		.grouphead { margin: 8px 4px 4px; }
+		:root {
+			--peek-h: 84px;
+		}
+		.topbar {
+			padding: 6px 18px 4px;
+		}
+		main {
+			padding-top: 2px;
+		}
+		.searchbox {
+			min-height: 42px;
+			padding: 8px 14px;
+			margin-bottom: 6px;
+		}
+		.chips {
+			margin-bottom: 8px;
+		}
+		.browse,
+		.facets {
+			margin-bottom: 4px;
+		}
+		.grouphead {
+			margin: 8px 4px 4px;
+		}
 	}
 </style>

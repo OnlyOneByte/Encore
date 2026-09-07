@@ -13,7 +13,13 @@ import type { WorkerCommand, ServerEvent, Media, WorkerHost } from '@encore/shar
 const T0 = 1_700_000_000_000;
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', ...over
+	id,
+	source: 'youtube',
+	sourceRef: 'vid-' + id,
+	title: id,
+	durationSec: 200,
+	stemStatus: 'none',
+	...over
 });
 
 const HOST: WorkerHost = {
@@ -60,7 +66,11 @@ const statuses = (broadcasts: ServerEvent[]) =>
 test('a reported host is stored on the session, so the core can stop guessing at hardware', () => {
 	const { hub, registry } = harness();
 	hub.handle({
-		type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1',
+		type: 'worker:hello',
+		workerId: 'w1',
+		capabilities: ['stems'],
+		concurrency: 1,
+		version: '1',
 		host: HOST
 	});
 	// estimateCookSeconds takes a hardwareFactor that nothing ever supplied — this is the value that
@@ -83,11 +93,19 @@ test('a reconnect REPLACES the reported hardware rather than keeping the stale r
 	// core plans against a machine that no longer exists.
 	const { hub, registry } = harness();
 	hub.handle({
-		type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1',
+		type: 'worker:hello',
+		workerId: 'w1',
+		capabilities: ['stems'],
+		concurrency: 1,
+		version: '1',
 		host: HOST
 	});
 	hub.handle({
-		type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1',
+		type: 'worker:hello',
+		workerId: 'w1',
+		capabilities: ['stems'],
+		concurrency: 1,
+		version: '1',
 		host: { ...HOST, accelerator: 'cpu', deviceName: '', vramBytes: null }
 	});
 	expect(registry.get('w1')!.host!.accelerator).toBe('cpu');

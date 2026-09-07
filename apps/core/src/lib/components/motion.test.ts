@@ -208,9 +208,7 @@ function ruleBlocks(css: string): Rule[] {
 		if (c === '{') {
 			const prelude = css.slice(preludeStart, i).trim();
 			const isAt = prelude.startsWith('@');
-			const reduce =
-				(stack.length ? stack[stack.length - 1]!.reduce : false) ||
-				isUnconditionalReduce(prelude);
+			const reduce = (stack.length ? stack[stack.length - 1]!.reduce : false) || isUnconditionalReduce(prelude);
 			stack.push({ prelude, reduce });
 			if (!isAt) {
 				// a plain style rule — record it (bodyEnd filled in on the matching `}`)

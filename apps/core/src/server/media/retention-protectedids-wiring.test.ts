@@ -35,7 +35,9 @@ test('app.ts builds protectedIds from the hydrated queue plus the currently-play
 	expect(start).toBeGreaterThanOrEqual(0);
 	const window = APP.slice(start, start + 500);
 	// Every queued entry's media id.
-	expect(window).toMatch(/const\s+protectedIds\s*=\s*new\s+Set<string>\(\s*entries\.map\(\s*\(e\)\s*=>\s*e\.mediaId\s*\)\s*\)/);
+	expect(window).toMatch(
+		/const\s+protectedIds\s*=\s*new\s+Set<string>\(\s*entries\.map\(\s*\(e\)\s*=>\s*e\.mediaId\s*\)\s*\)/
+	);
 	// The currently-playing entry's media id, resolved from playback.currentEntryId, added to the set.
 	expect(window).toMatch(/entries\.find\(\s*\(e\)\s*=>\s*e\.id\s*===\s*playback\.currentEntryId\s*\)\?\.mediaId/);
 	expect(window).toMatch(/protectedIds\.add\(\s*currentMediaId\s*\)/);

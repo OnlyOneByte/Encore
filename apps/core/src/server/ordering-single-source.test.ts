@@ -27,9 +27,7 @@ import { join } from 'node:path';
 // repo's stripComments convention (session-cookie-attributes.test.ts et al.).
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/\/\/[^\n]*/g, blank);
+	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
 // import.meta.dir === apps/core/src/server.

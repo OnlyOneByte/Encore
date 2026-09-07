@@ -21,8 +21,7 @@ export interface LyricsDoc {
 	words: LyricWord[];
 }
 
-const num = (v: unknown): number | null =>
-	typeof v === 'number' && Number.isFinite(v) ? v : null;
+const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
 /**
  * Parse an untrusted `/media/*.json` payload into a LyricsDoc, dropping malformed lines/words.
@@ -48,10 +47,7 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 			words.push(word);
 			flat.push(word);
 		}
-		const text =
-			typeof l.text === 'string' && l.text.trim()
-				? l.text
-				: words.map((w) => w.word).join(' ');
+		const text = typeof l.text === 'string' && l.text.trim() ? l.text : words.map((w) => w.word).join(' ');
 		if (!text.trim() && words.length === 0) continue;
 		lines.push({ start: num(l.start), end: num(l.end), text, words });
 	}
@@ -216,8 +212,6 @@ function coalesceOrphans(input: LyricLine[]): LyricLine[] {
 	}
 	return out;
 }
-
-
 
 /** [start,end] of a line — its own bounds, else derived from its first/last word. null if unknown. */
 export function lineBounds(line: LyricLine): [number, number] | null {

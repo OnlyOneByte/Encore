@@ -1,10 +1,15 @@
 // Reorder MY entries; server re-resolves seq; other clients see canonical order.
 import { test, expect } from 'bun:test';
 import { AuthoritativeState } from './store';
-import { ulid, type QueueEntry } from '@encore/shared';
+import { type QueueEntry } from '@encore/shared';
 
 const e = (id: string, singerId: string, addedAt: number): QueueEntry => ({
-	id, mediaId: 'm-' + id, singerId, status: 'queued', rotationSeq: -1, addedAt
+	id,
+	mediaId: 'm-' + id,
+	singerId,
+	status: 'queued',
+	rotationSeq: -1,
+	addedAt
 });
 
 test('reorder within a singer swaps which song holds which rotation slot', () => {
@@ -22,7 +27,7 @@ test('reorder within a singer swaps which song holds which rotation slot', () =>
 	expect(s.entries.map((x) => x.id)).toEqual(['C', 'X', 'A', 'B']);
 });
 
-test('reorder does not disturb other singers\' positions', () => {
+test("reorder does not disturb other singers' positions", () => {
 	const s = new AuthoritativeState();
 	s.applyQueueOp({ op: 'add', entry: e('a1', 'a', 1) });
 	s.applyQueueOp({ op: 'add', entry: e('b1', 'b', 2) });

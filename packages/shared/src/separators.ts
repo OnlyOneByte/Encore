@@ -118,7 +118,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				note: 'Fastest. The default — singable in seconds.',
 				rank: 10,
 				// 50s for a 171.5s song, measured end to end.
-				cost: { rtFactor: 0.29, cpuPrecision: 'fp32', provenance: 'measured' },
+				cost: { rtFactor: 0.29, cpuPrecision: 'fp32', provenance: 'measured' }
 			},
 			{
 				id: 'htdemucs_ft',
@@ -126,7 +126,7 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				note: 'Fine-tuned 4-model bag. ~2× slower, cleaner.',
 				rank: 20,
 				// 95s for the same 171.5s song, measured end to end.
-				cost: { rtFactor: 0.55, cpuPrecision: 'fp32', provenance: 'measured' },
+				cost: { rtFactor: 0.55, cpuPrecision: 'fp32', provenance: 'measured' }
 			},
 			{
 				id: 'htdemucs_6s',
@@ -134,9 +134,9 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				note: 'Adds piano/guitar stems.',
 				rank: 15,
 				// NOT benchmarked: one pass like htdemucs but resolving six sources instead of four.
-				cost: { rtFactor: 0.4, cpuPrecision: 'fp32', provenance: 'estimated' },
-			},
-		],
+				cost: { rtFactor: 0.4, cpuPrecision: 'fp32', provenance: 'estimated' }
+			}
+		]
 	},
 	{
 		id: 'roformer',
@@ -160,9 +160,9 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				 * not a free win like the dtype.
 				 */
 				rank: 35,
-				cost: { rtFactor: 8.28, overlap: 4, cpuPrecision: 'bf16', provenance: 'measured' },
-			},
-		],
+				cost: { rtFactor: 8.28, overlap: 4, cpuPrecision: 'bf16', provenance: 'measured' }
+			}
+		]
 	},
 	{
 		id: 'ensemble',
@@ -178,17 +178,17 @@ export const SEPARATOR_ENGINES: readonly SeparatorEngine[] = [
 				rank: 45,
 				// NOT benchmarked, and no ensemble worker exists yet: two roformer-class passes plus a
 				// blend, so at least twice a single roformer cook.
-				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' },
+				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' }
 			},
 			{
 				id: 'instrumental_full',
 				label: 'Instrumental (full)',
 				note: 'Maximum instrument preservation.',
 				rank: 40,
-				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' },
-			},
-		],
-	},
+				cost: { rtFactor: 18, overlap: 4, cpuPrecision: 'bf16', provenance: 'estimated' }
+			}
+		]
+	}
 ] as const;
 
 /** The live default a fresh room cooks with until someone changes the setting. */

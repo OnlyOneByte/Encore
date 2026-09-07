@@ -48,7 +48,14 @@
 		models: ModelRow[];
 		asr: AsrRow[];
 		stages: { stage: string; n: number; meanMs: number | null }[];
-		slowestCooks: { cookId: string; mediaId: string; title?: string | null; totalMs: number; workMs: number; steps: number }[];
+		slowestCooks: {
+			cookId: string;
+			mediaId: string;
+			title?: string | null;
+			totalMs: number;
+			workMs: number;
+			steps: number;
+		}[];
 		workers: { workerId: string; capabilities: string[]; slotsFree: number; host: Record<string, unknown> | null }[];
 	}
 
@@ -144,39 +151,41 @@
 				<p class="note">Nothing processed yet.</p>
 			{:else}
 				<div class="scroller">
-				<table>
-					<thead>
-						<tr>
-							<th scope="col">step</th>
-							<th scope="col">runs</th>
-							<th scope="col">average</th>
-							<th scope="col">typical</th>
-							<th scope="col">worst</th>
-							<th scope="col">waited</th>
-							<th scope="col">speed</th>
-							<th scope="col">failed</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each m.steps as s (s.jobType)}
+					<table>
+						<thead>
 							<tr>
-								<td class="name">{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</td>
-								<td>{s.n}</td>
-								<td class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</td>
-								<td>{dur(s.p50Ms)}</td>
-								<td>{dur(s.p95Ms)}</td>
-								<td>{dur(s.meanQueueWaitMs)}</td>
-								<td>{rt(s.meanRtFactor)}</td>
-								<td>{s.failed + s.abandoned}</td>
+								<th scope="col">step</th>
+								<th scope="col">runs</th>
+								<th scope="col">average</th>
+								<th scope="col">typical</th>
+								<th scope="col">worst</th>
+								<th scope="col">waited</th>
+								<th scope="col">speed</th>
+								<th scope="col">failed</th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							{#each m.steps as s (s.jobType)}
+								<tr>
+									<td class="name"
+										>{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</td
+									>
+									<td>{s.n}</td>
+									<td class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</td>
+									<td>{dur(s.p50Ms)}</td>
+									<td>{dur(s.p95Ms)}</td>
+									<td>{dur(s.meanQueueWaitMs)}</td>
+									<td>{rt(s.meanRtFactor)}</td>
+									<td>{s.failed + s.abandoned}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				</div>
 				<p class="note">
 					Times are work only — <strong>waited</strong> is time sitting in the queue.
-					<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as
-					the music. <strong>failed</strong> runs are left out of the averages.
+					<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as the music.
+					<strong>failed</strong> runs are left out of the averages.
 				</p>
 			{/if}
 		</div>
@@ -187,37 +196,40 @@
 				<p class="note">No vocals removed yet.</p>
 			{:else}
 				<div class="scroller">
-				<table>
-					<thead>
-						<tr>
-							<th scope="col">model</th>
-							<th scope="col">runs</th>
-							<th scope="col">here</th>
-							<th scope="col">benchmark</th>
-							<th scope="col">vs</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each m.models as r (String(r.engine) + String(r.model))}
+					<table>
+						<thead>
 							<tr>
-								<td class="name">{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td>
-								<td>{r.n}</td>
-								<td>{rt(r.meanRtFactor)}</td>
-								<td>{r.declared ? `${r.declared.rtFactor.toFixed(2)}×` : '—'}</td>
-								<td
-									class:slower={(r.ratioToDeclared ?? 1) > 1.5}
-									class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
-								>{r.ratioToDeclared === null ? '—' : `${r.ratioToDeclared.toFixed(2)}×`}</td>
+								<th scope="col">model</th>
+								<th scope="col">runs</th>
+								<th scope="col">here</th>
+								<th scope="col">benchmark</th>
+								<th scope="col">vs</th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							{#each m.models as r (String(r.engine) + String(r.model))}
+								<tr>
+									<td class="name"
+										>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td
+									>
+									<td>{r.n}</td>
+									<td>{rt(r.meanRtFactor)}</td>
+									<td>{r.declared ? `${r.declared.rtFactor.toFixed(2)}×` : '—'}</td>
+									<td
+										class:slower={(r.ratioToDeclared ?? 1) > 1.5}
+										class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
+										>{r.ratioToDeclared === null ? '—' : `${r.ratioToDeclared.toFixed(2)}×`}</td
+									>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				</div>
 				<p class="note">
 					<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
-					<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is
-					slower here, <span class="faster">under 0.67×</span> means the benchmark was too pessimistic.
-					Use it to plan, not to pass or fail.
+					<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is slower here,
+					<span class="faster">under 0.67×</span> means the benchmark was too pessimistic. Use it to plan, not to pass or
+					fail.
 				</p>
 			{/if}
 		</div>
@@ -228,37 +240,49 @@
 				<p class="note">No lyrics timed yet.</p>
 			{:else}
 				<div class="scroller">
-				<table>
-					<thead>
-						<tr>
-							<th scope="col">model</th>
-							<th scope="col">timing</th>
-							<th scope="col">runs</th>
-							<th scope="col">average</th>
-							<th scope="col">speed</th>
-						</tr>
-					</thead>
-					<tbody>
-						{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
+					<table>
+						<thead>
 							<tr>
-								<td class="name">{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td>
-								<td class="name">{r.syncMode ?? '—'}</td>
-								<td>{r.n}</td>
-								<td>{dur(r.meanMs)}</td>
-								<td>{rt(r.meanRtFactor)}</td>
+								<th scope="col">model</th>
+								<th scope="col">timing</th>
+								<th scope="col">runs</th>
+								<th scope="col">average</th>
+								<th scope="col">speed</th>
 							</tr>
-						{/each}
-					</tbody>
-				</table>
+						</thead>
+						<tbody>
+							{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
+								<tr>
+									<td class="name"
+										>{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td
+									>
+									<td class="name">{r.syncMode ?? '—'}</td>
+									<td>{r.n}</td>
+									<td>{dur(r.meanMs)}</td>
+									<td>{rt(r.meanRtFactor)}</td>
+								</tr>
+							{/each}
+						</tbody>
+					</table>
 				</div>
-				<p class="note">These models have never been timed anywhere, so there is no benchmark to compare against. This is the first measurement.</p>
+				<p class="note">
+					These models have never been timed anywhere, so there is no benchmark to compare against. This is the first
+					measurement.
+				</p>
 			{/if}
 		</div>
 
 		{#if m.stages.length}
 			<div class="card">
 				<h2>Where the time goes</h2>
-				<Bars rows={m.stages.map((s) => ({ label: stageLabel(s.stage), value: Math.round((s.meanMs ?? 0) / 1000), hint: `${s.n} runs` }))} unit="s avg" />
+				<Bars
+					rows={m.stages.map((s) => ({
+						label: stageLabel(s.stage),
+						value: Math.round((s.meanMs ?? 0) / 1000),
+						hint: `${s.n} runs`
+					}))}
+					unit="s avg"
+				/>
 				<p class="note">Measured by the worker inside each step.</p>
 			</div>
 		{/if}
@@ -293,7 +317,10 @@
 							{#if facts.length}
 								<dl class="facts">
 									{#each facts as [k, v] (k)}
-										<div><dt>{k}</dt><dd>{v}</dd></div>
+										<div>
+											<dt>{k}</dt>
+											<dd>{v}</dd>
+										</div>
 									{/each}
 								</dl>
 							{/if}

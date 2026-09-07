@@ -191,7 +191,7 @@ try {
 	if ((await tv.count(SEL.attract)) === 0) {
 		console.error(
 			'\nThe TV left the attract screen while this flow was measuring it, which means the room was\n' +
-				'not empty after all — a previous run\'s guests arrived over the socket. Restart the server\n' +
+				"not empty after all — a previous run's guests arrived over the socket. Restart the server\n" +
 				'and re-run.'
 		);
 		browser.close();
@@ -233,9 +233,7 @@ try {
 	const ada = await joinAs('Ada', { hue: 150 });
 	check('two guests joined in isolated sessions', true);
 
-	const adaColour = await ada.evaluate(
-		`(async () => (await (await fetch('/api/me')).json())?.singer?.color ?? '')()`
-	);
+	const adaColour = await ada.evaluate(`(async () => (await (await fetch('/api/me')).json())?.singer?.color ?? '')()`);
 	check(
 		'a wheel hue survives the round trip instead of collapsing to a preset',
 		/^#[0-9a-f]{6}$/.test(adaColour) && adaColour !== '#7c5cff',

@@ -32,7 +32,17 @@ import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
 import { existsSync } from 'node:fs';
 import { markLyricsQueued, reportTerminalFailure } from './jobs/make-karaoke';
-import { readSidecar, writeSidecar, sidecarFromMedia, rebuildIndexFromMeta, backfillSidecars, browseArtist, lookupTitle, readAllSidecars, clearArtifacts } from './media/sidecar';
+import {
+	readSidecar,
+	writeSidecar,
+	sidecarFromMedia,
+	rebuildIndexFromMeta,
+	backfillSidecars,
+	browseArtist,
+	lookupTitle,
+	readAllSidecars,
+	clearArtifacts
+} from './media/sidecar';
 import { media as mediaTable } from './db/schema';
 import { eq } from 'drizzle-orm';
 import { createPopularityTracker, type PopularityTracker } from './media/popularity';
@@ -136,7 +146,8 @@ export function getApp(): EncoreApp {
 					(layout.skipped ? `, ${layout.skipped} skipped` : '') +
 					(layout.failed ? `, ${layout.failed} FAILED` : '')
 			);
-			for (const f of layout.failures.slice(0, 5)) console.warn(`[core] storage layout could not move ${f.from}: ${f.reason}`);
+			for (const f of layout.failures.slice(0, 5))
+				console.warn(`[core] storage layout could not move ${f.from}: ${f.reason}`);
 		}
 	} catch (err) {
 		console.warn(`[core] storage layout migration skipped: ${(err as Error).message} — running on the existing layout`);
@@ -170,9 +181,7 @@ export function getApp(): EncoreApp {
 	if (introEnv !== undefined && !settings.hasRoom()) {
 		const ms = Math.max(0, Number(introEnv));
 		settings.setRoom(
-			Number.isFinite(ms) && ms === 0
-				? { songIntroEnabled: false }
-				: { songIntroEnabled: true, songIntroMs: ms }
+			Number.isFinite(ms) && ms === 0 ? { songIntroEnabled: false } : { songIntroEnabled: true, songIntroMs: ms }
 		);
 	}
 	const workers = new WorkerRegistry();
@@ -186,10 +195,9 @@ export function getApp(): EncoreApp {
 	// sidecar present on disk but missing from the index is restored below. Together those give the
 	// volume the property that matters: it describes itself, so losing the SQLite file costs an
 	// index rebuild rather than every title and artifact link.
-	// eslint-disable-next-line prefer-const -- the persist callback closes over this, and only ever runs
-	// after an await, so the binding is initialised by the time it is read.
-	let mediaRepo: MediaRepository;
-	mediaRepo = new MediaRepository(db, (m) => {
+	// The persist callback closes over mediaRepo and only ever runs after an await, so the const
+	// binding is fully initialised by the time the callback reads it.
+	const mediaRepo = new MediaRepository(db, (m) => {
 		void (async () => {
 			try {
 				const prev = await readSidecar(m.id);
@@ -198,7 +206,12 @@ export function getApp(): EncoreApp {
 				// Mirror the sidecar's canonical metadata into the INDEX so browse can group by
 				// it. `browseArtist` returns null for a low-confidence parse, so an uncertain guess is
 				// stored as NULL rather than becoming a library heading that is simply wrong.
-				mediaRepo.setCanonical(m.id, { artist: browseArtist(next), title: lookupTitle(next), album: next.canonical.album, year: next.canonical.year });
+				mediaRepo.setCanonical(m.id, {
+					artist: browseArtist(next),
+					title: lookupTitle(next),
+					album: next.canonical.album,
+					year: next.canonical.year
+				});
 				mediaRepo.setTags(m.id, 'genre', next.canonical.genre);
 				if (next.library.tags.length) mediaRepo.setTags(m.id, 'tag', next.library.tags);
 			} catch {
@@ -252,7 +265,12 @@ export function getApp(): EncoreApp {
 				// it browse would only see songs touched since the process started.
 				let indexed = 0;
 				for (const sc of await readAllSidecars()) {
-					mediaRepo.setCanonical(sc.id, { artist: browseArtist(sc), title: lookupTitle(sc), album: sc.canonical.album, year: sc.canonical.year });
+					mediaRepo.setCanonical(sc.id, {
+						artist: browseArtist(sc),
+						title: lookupTitle(sc),
+						album: sc.canonical.album,
+						year: sc.canonical.year
+					});
 					if (sc.canonical.genre.length) mediaRepo.setTags(sc.id, 'genre', sc.canonical.genre);
 					// ...and into the RUNTIME map, not just the index. hydrateMediaCatalog above ran
 					// synchronously at boot while this pass is async, so mirroring only to the DB left every
@@ -319,7 +337,9 @@ export function getApp(): EncoreApp {
 					);
 				}
 				if (res.missing > 0) {
-					console.log(`[core] guiding track: ${res.missing} cooked song(s) have no vocals stem on disk (re-cook to add one)`);
+					console.log(
+						`[core] guiding track: ${res.missing} cooked song(s) have no vocals stem on disk (re-cook to add one)`
+					);
 				}
 			}
 		},
@@ -394,9 +414,7 @@ export function getApp(): EncoreApp {
 				// queue and playback BEFORE this pass, so a restart mid-party with the cap set could otherwise
 				// evict the playing/queued song. Protect every queued media id plus the currently-playing one.
 				const protectedIds = new Set<string>(entries.map((e) => e.mediaId));
-				const currentMediaId = playback
-					? entries.find((e) => e.id === playback.currentEntryId)?.mediaId
-					: undefined;
+				const currentMediaId = playback ? entries.find((e) => e.id === playback.currentEntryId)?.mediaId : undefined;
 				if (currentMediaId) protectedIds.add(currentMediaId);
 				const doomed = planEviction(candidates, cap, protectedIds);
 				let freed = 0;
@@ -416,7 +434,9 @@ export function getApp(): EncoreApp {
 					await clearArtifacts(id);
 				}
 				if (doomed.length > 0) {
-					console.log(`[core] retention: evicted derived artifacts for ${doomed.length} songs, freed ${(freed / 1e6).toFixed(1)} MB (cap ${(cap / 1e9).toFixed(1)} GB)`);
+					console.log(
+						`[core] retention: evicted derived artifacts for ${doomed.length} songs, freed ${(freed / 1e6).toFixed(1)} MB (cap ${(cap / 1e9).toFixed(1)} GB)`
+					);
 				}
 			}
 		}
@@ -501,7 +521,14 @@ export function getApp(): EncoreApp {
 		// instrumental key) + ready status — otherwise the TV's cached media stays 'queued' and sits
 		// on the WAITING screen (the "big gap" between cook-finish and playback) until a later sync.
 		onMediaReady: () => {
-			app.publish(syncEvent(state, { mediaById, listSingers: () => app.singers.listPublic(), listOnline: () => app.presence.online(), getSettings: () => app.settings.getEffective() }));
+			app.publish(
+				syncEvent(state, {
+					mediaById,
+					listSingers: () => app.singers.listPublic(),
+					listOnline: () => app.presence.online(),
+					getSettings: () => app.settings.getEffective()
+				})
+			);
 			// listSingers + getSettings are not optional garnish here: reconcileOnReady picks what plays
 			// next, so without them it would pick using fair rotation while every client is looking at a
 			// queue ordered by whatever the room actually chose.

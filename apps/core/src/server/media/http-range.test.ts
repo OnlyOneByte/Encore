@@ -1,12 +1,7 @@
 // The range parser's contract. These are the shapes real media elements actually send — including the
 // two-byte WebKit probe whose mishandling was the whole bug.
 import { describe, test, expect } from 'bun:test';
-import {
-	parseRangeHeader,
-	contentRange,
-	unsatisfiedContentRange,
-	type RangeDecision
-} from './http-range';
+import { parseRangeHeader, contentRange, unsatisfiedContentRange, type RangeDecision } from './http-range';
 
 const SIZE = 26_218_241; // a real cooked instrumental FLAC, for realism
 
@@ -25,7 +20,7 @@ describe('no range asked for', () => {
 	});
 });
 
-describe("the WebKit probe — the request this route used to answer with the whole file", () => {
+describe('the WebKit probe — the request this route used to answer with the whole file', () => {
 	test('bytes=0-1 yields exactly two bytes', () => {
 		expect(partial(parseRangeHeader('bytes=0-1', SIZE))).toEqual({ start: 0, end: 1 });
 	});

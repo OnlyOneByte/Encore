@@ -191,7 +191,7 @@ describe('attempt ledger — model attribution', () => {
 		expect(a.engine).toBe('roformer'); // untouched by a partial report
 	});
 
-	it('leaves a step\'s inapplicable fields null rather than inventing them', () => {
+	it("leaves a step's inapplicable fields null rather than inventing them", () => {
 		const { jobs, ledger } = wired();
 		const job = jobs.enqueue('m1', 'align', 0, T0);
 		jobs.assign(job.id, 'w1', null, T0, { asrModel: 'base', syncMode: 'forced' });

@@ -131,9 +131,7 @@ describe('reelOffset — the sung row stays on the reel (#270)', () => {
 		expect(top + rh).toBeLessThanOrEqual(BAND + 0.001); // bottom edge not below the band
 		expect(visibleFraction(g.rowTop, rh, BAND, off)).toBe(1);
 	});
-
 });
-
 
 // The clamp lives in a pure module, but the fix only takes effect if LyricsOverlay.svelte's measureReel
 // actually CONSUMES it with the measured band. Reverting that call site restores the pre-fix inline

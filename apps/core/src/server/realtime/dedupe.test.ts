@@ -2,10 +2,20 @@
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from './hub';
 import { AuthoritativeState } from '../state/store';
-import { ulid, type ServerEvent, type Media, type ClientCommand } from '@encore/shared';
+import { type ServerEvent, type Media, type ClientCommand } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
+const media = (id: string): Media => ({
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
+});
 
 function harness() {
 	const published: ServerEvent[] = [];
@@ -15,7 +25,11 @@ function harness() {
 		state,
 		publish: (e) => published.push(e),
 		mediaById: new Map([['m1', media('m1')]]),
-		seenOp: (id) => { if (seen.has(id)) return true; seen.add(id); return false; },
+		seenOp: (id) => {
+			if (seen.has(id)) return true;
+			seen.add(id);
+			return false;
+		},
 		hasOp: (id) => seen.has(id), // non-recording peek — mirrors server.ts (#490)
 		actorSingerId: 's1'
 	};
@@ -24,7 +38,10 @@ function harness() {
 
 const addCmd = (clientOpId: string, entryId: string): ClientCommand => ({
 	clientOpId,
-	op: { op: 'add', entry: { id: entryId, mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } }
+	op: {
+		op: 'add',
+		entry: { id: entryId, mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 }
+	}
 });
 
 test('resent command (same clientOpId) does not double-apply', () => {
@@ -46,7 +63,10 @@ test('resend re-acks with causedBy so the originator clears pending', () => {
 	handleQueueCommand(cmd, deps);
 	const beforeCount = published.length;
 	handleQueueCommand(cmd, deps);
-	const reAck = published.slice(beforeCount).find((e) => e.type === 'queue:patch') as Extract<ServerEvent, { type: 'queue:patch' }>;
+	const reAck = published.slice(beforeCount).find((e) => e.type === 'queue:patch') as Extract<
+		ServerEvent,
+		{ type: 'queue:patch' }
+	>;
 	expect(reAck).toBeDefined();
 	expect(reAck.patch.causedBy).toBe('op-1');
 	expect(reAck.patch.ops).toEqual([]); // empty — no state change, just an ack
@@ -88,7 +108,10 @@ test('#490 Finding 1: a resent already-applied REMOVE is re-acked, not rejected 
 	// Re-acked, NOT rejected: no op:reject to the originator; a queue:patch re-ack with causedBy + [].
 	expect(sent.some((e) => e.type === 'op:reject')).toBe(false);
 	expect(patch).toBeNull(); // re-ack path returns null (no fresh apply)
-	const reAck = published.slice(before).find((e) => e.type === 'queue:patch') as Extract<ServerEvent, { type: 'queue:patch' }>;
+	const reAck = published.slice(before).find((e) => e.type === 'queue:patch') as Extract<
+		ServerEvent,
+		{ type: 'queue:patch' }
+	>;
 	expect(reAck).toBeDefined();
 	expect(reAck.patch.causedBy).toBe('k-rm');
 	expect(reAck.patch.ops).toEqual([]);
@@ -112,7 +135,10 @@ test('#490 Finding 2: a resent already-applied ADD is re-acked once its entry ha
 
 	expect(sent.some((e) => e.type === 'op:reject')).toBe(false);
 	expect(patch).toBeNull();
-	const reAck = published.slice(before).find((e) => e.type === 'queue:patch') as Extract<ServerEvent, { type: 'queue:patch' }>;
+	const reAck = published.slice(before).find((e) => e.type === 'queue:patch') as Extract<
+		ServerEvent,
+		{ type: 'queue:patch' }
+	>;
 	expect(reAck).toBeDefined();
 	expect(reAck.patch.causedBy).toBe('k1');
 	expect(reAck.patch.ops).toEqual([]);

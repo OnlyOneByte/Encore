@@ -39,7 +39,7 @@ const SLIDERS: { id: string; field: string; div100?: boolean }[] = [
 	{ id: 'lyrics-lead', field: 'lyricsLeadMs' },
 	{ id: 'lyrics-before', field: 'lyricsLinesBefore' },
 	{ id: 'lyrics-after', field: 'lyricsLinesAfter' },
-	{ id: 'guide-default', field: 'guideLevelDefault', div100: true },
+	{ id: 'guide-default', field: 'guideLevelDefault', div100: true }
 ];
 
 // The <input …> element carrying a given id, across newlines. Self-closing.
@@ -57,9 +57,7 @@ for (const { id, field, div100 } of SLIDERS) {
 		const el = inputElement(src, id);
 		// A live handler that calls liveRoom with THIS field. The value arg differs only for the
 		// percent-vs-fraction guide slider, so match liveRoom('<field>', … ) loosely on the value.
-		const live = new RegExp(
-			`oninput=\\{\\(e\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`
-		);
+		const live = new RegExp(`oninput=\\{\\(e\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`);
 		expect(
 			live.test(el),
 			`#${id} has no oninput={(e) => liveRoom('${field}', …)} — its readout will hold the pre-drag ` +
@@ -86,7 +84,9 @@ test('liveRoom moves a room field on screen without a network write (#134)', () 
 	// A local optimistic update of settings.room only — no fetch/patch/onroom inside it. Its body is
 	// exactly the room-scope spread patch() applies optimistically, minus the commit.
 	expect(
-		/function liveRoom<[\s\S]*?>\([\s\S]*?\)\s*\{[\s\S]*?settings\s*=\s*\{\s*\.\.\.settings,\s*room:\s*\{\s*\.\.\.settings\.room,\s*\[field\]:\s*value\s*\}\s*\}[\s\S]*?\}/.test(src),
+		/function liveRoom<[\s\S]*?>\([\s\S]*?\)\s*\{[\s\S]*?settings\s*=\s*\{\s*\.\.\.settings,\s*room:\s*\{\s*\.\.\.settings\.room,\s*\[field\]:\s*value\s*\}\s*\}[\s\S]*?\}/.test(
+			src
+		),
 		'liveRoom must locally spread settings.room with the one changed field and issue no write'
 	).toBe(true);
 });
@@ -102,7 +102,9 @@ test('a rejected commit rolls back to the server-confirmed value, not the dragge
 	).toBe(true);
 	// committed advances only on a confirmed response …
 	expect(
-		/if \(!res\.ok\) throw new Error\('rejected'\);\s*settings = await res\.json\(\);\s*committed = settings;/.test(src),
+		/if \(!res\.ok\) throw new Error\('rejected'\);\s*settings = await res\.json\(\);\s*committed = settings;/.test(
+			src
+		),
 		'committed must be set to the server response on a successful commit'
 	).toBe(true);
 	// … and on a load re-adopt, so an external write moves the rollback baseline too.

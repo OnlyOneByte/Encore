@@ -68,8 +68,7 @@ function markupControls(src: string): { tags: Set<string>; classes: Set<string> 
 		// a checkbox/radio is a platform glyph sized by the UA; its tap target is delegated to the
 		// wrapping <label> (see `.check` in settings, which itself carries min-height: var(--tap)), so
 		// its own 18px box is not the control and would be a false offender.
-		const isGlyphInput =
-			tag === 'input' && /(^|\s)type\s*=\s*["'](?:checkbox|radio)["']/.test(attrs);
+		const isGlyphInput = tag === 'input' && /(^|\s)type\s*=\s*["'](?:checkbox|radio)["']/.test(attrs);
 		const isFormControl = (tag === 'input' || tag === 'select' || tag === 'textarea') && !isGlyphInput;
 		if (!(hasHandler || isButtonRole || isTabbable || isLink || isFormControl)) continue;
 		// only honour a BARE element selector for tags whose box rules are written element-only here
@@ -190,10 +189,7 @@ test('the controls that previously fell short declare 44px explicitly', () => {
 	// the stage-colour hue slider was 22px tall with a 28px thumb — a 28px hit area (issue #133).
 	// Pinned by the exact selector so reverting the input box to a hard sub-44px height reds this,
 	// which the structural test above can miss because it waves through any var()-driven height.
-	const hue = new RegExp(
-		`input\\[type=['"]range['"]\\]\\.hue\\s*\\{[^}]*height:\\s*${SIZE}`,
-		's'
-	);
+	const hue = new RegExp(`input\\[type=['"]range['"]\\]\\.hue\\s*\\{[^}]*height:\\s*${SIZE}`, 's');
 	expect(hue.test(settings)).toBe(true);
 });
 

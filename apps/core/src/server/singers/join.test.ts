@@ -44,7 +44,14 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		settings: new SettingsRepository(db),
 		reaper: new JobReaper(jobs),
 		workers,
-		workerHub: new WorkerHub({ jobs, registry: workers, mediaById, toWorker: () => {}, broadcast: () => {}, now: () => 1_700_000_000_000 }),
+		workerHub: new WorkerHub({
+			jobs,
+			registry: workers,
+			mediaById,
+			toWorker: () => {},
+			broadcast: () => {},
+			now: () => 1_700_000_000_000
+		}),
 		mediaById,
 		media: new MediaRepository(db),
 		localLibrary: new LocalLibrary(),

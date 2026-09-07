@@ -25,7 +25,9 @@ function stripComments(src: string): string {
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
 
 test('server.ts imports reprioritizeCookForMedia (#179)', () => {
-	expect(SERVER).toMatch(/import\s*\{\s*reprioritizeCookForMedia\s*\}\s*from\s*'\.\/src\/server\/jobs\/reprioritize-cook'/);
+	expect(SERVER).toMatch(
+		/import\s*\{\s*reprioritizeCookForMedia\s*\}\s*from\s*'\.\/src\/server\/jobs\/reprioritize-cook'/
+	);
 });
 
 test('server.ts wires HubDeps.onEntryAdded to reprioritizeCookForMedia (#179)', () => {

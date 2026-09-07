@@ -17,7 +17,7 @@
  * Exit: 0 all defensible findings hold, 1 a real defect surfaced, 2 the environment could not host.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 const PORT = Number(process.env.PORT ?? 5225);
@@ -142,9 +142,15 @@ async function searchLocal(q) {
 			const r = await fetchNoKeepalive(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
 			const d = await r.json();
 			const hit = [...d.ready, ...d.cooking, ...d.results].find((x) => x.source === 'local');
-			if (!hit) throw new Error(`no local match for "${q}" — ready=${d.ready.length} cooking=${d.cooking.length} results=${d.results.length}`);
+			if (!hit)
+				throw new Error(
+					`no local match for "${q}" — ready=${d.ready.length} cooking=${d.cooking.length} results=${d.results.length}`
+				);
 			return hit;
-		} catch (e) { lastErr = e; await sleep(500); }
+		} catch (e) {
+			lastErr = e;
+			await sleep(500);
+		}
 	}
 	throw lastErr;
 }
@@ -162,7 +168,14 @@ async function queueViaWs(phone, singerId, mediaId) {
 			clientOpId,
 			op: {
 				op: 'add',
-				entry: { id: entryId, mediaId, singerId, status: 'queued', rotationSeq: Number.MAX_SAFE_INTEGER, addedAt: Date.now() }
+				entry: {
+					id: entryId,
+					mediaId,
+					singerId,
+					status: 'queued',
+					rotationSeq: Number.MAX_SAFE_INTEGER,
+					addedAt: Date.now()
+				}
 			}
 		}
 	});
@@ -171,7 +184,9 @@ async function queueViaWs(phone, singerId, mediaId) {
 	while (Date.now() < deadline) {
 		const rej = phone.events.find((e) => e.type === 'op:reject' && e.clientOpId === clientOpId);
 		if (rej) throw new Error(`queue add rejected: ${rej.reason}`);
-		const applied = phone.events.some((e) => e.type === 'queue:patch' && (e.patch?.entries ?? []).some((x) => x.id === entryId));
+		const applied = phone.events.some(
+			(e) => e.type === 'queue:patch' && (e.patch?.entries ?? []).some((x) => x.id === entryId)
+		);
 		if (applied) return entryId;
 		await sleep(50);
 	}
@@ -190,9 +205,9 @@ async function queueRemoveViaWs(phone, entryId) {
 	while (Date.now() < deadline) {
 		const rej = phone.events.find((e) => e.type === 'op:reject' && e.clientOpId === clientOpId);
 		if (rej) throw new Error(`queue remove rejected: ${rej.reason}`);
-		const patched = phone.events.slice(marker).some(
-			(e) => e.type === 'queue:patch' && !(e.patch?.entries ?? []).some((x) => x.id === entryId)
-		);
+		const patched = phone.events
+			.slice(marker)
+			.some((e) => e.type === 'queue:patch' && !(e.patch?.entries ?? []).some((x) => x.id === entryId));
 		if (patched) return;
 		await sleep(50);
 	}
@@ -226,7 +241,9 @@ async function openAuthedPhoneSocket(cookie) {
 		ws.onerror = (e) => reject(new Error(`ws open error: ${e?.message ?? e}`));
 	});
 	ws.onmessage = (m) => {
-		try { events.push(JSON.parse(String(m.data))); } catch {}
+		try {
+			events.push(JSON.parse(String(m.data)));
+		} catch {}
 	};
 	ws.send(JSON.stringify({ type: 'hello' }));
 	await sleep(100);
@@ -251,13 +268,20 @@ async function waitForStatus(phone, mediaId, predicate, timeoutMs = 15000, label
 		if (last && predicate(last)) return last;
 		await sleep(100);
 	}
-	const seen = phone.statusOf(mediaId).map((e) => `${e.status}@${e.pct ?? '?'}%`).join(' → ');
+	const seen = phone
+		.statusOf(mediaId)
+		.map((e) => `${e.status}@${e.pct ?? '?'}%`)
+		.join(' → ');
 	throw new Error(`waitForStatus timeout${label ? ' (' + label + ')' : ''}: mediaId=${mediaId} seen: [${seen}]`);
 }
 
 async function cleanupScenario(server, worker) {
-	try { worker?.proc.kill('SIGKILL'); } catch {}
-	try { server?.proc.kill('SIGKILL'); } catch {}
+	try {
+		worker?.proc.kill('SIGKILL');
+	} catch {}
+	try {
+		server?.proc.kill('SIGKILL');
+	} catch {}
 	// Longer than a keep-alive: Bun's HTTP client pools sockets for 1-2s and a POST to a killed
 	// server surfaces as "Unable to connect" against the fresh boot on the next scenario.
 	await sleep(1500);
@@ -283,8 +307,13 @@ async function scenario1_silentInstrumental() {
 		const media = await searchLocal('caroline');
 		const r = await requestCook(cookie, media.id);
 		if (!r.ok) throw new Error(`make-karaoke failed: ${r.status} ${await r.text()}`);
-		const last = await waitForStatus(phone, media.id,
-			(e) => e.status === 'ready' || e.status === 'failed', 10000, 'silent-ins terminal');
+		const last = await waitForStatus(
+			phone,
+			media.id,
+			(e) => e.status === 'ready' || e.status === 'failed',
+			10000,
+			'silent-ins terminal'
+		);
 		// Independent server-side proof: /api/library will list a "cooked" song as ready.
 		const lib = await (await fetchNoKeepalive(`${BASE}/api/library`)).json();
 		const inReady = lib.library.some((m) => m.id === media.id);
@@ -299,11 +328,15 @@ async function scenario1_silentInstrumental() {
 			allZeroAudio = view.every((b) => b === 0);
 		}
 		if (last.status === 'ready' && inReady && allZeroAudio) {
-			record('HIGH',
+			record(
+				'HIGH',
 				'silent instrumental published as READY with no defense-in-depth in the core',
 				'The worker wrote a floor-level WAV, reported it as stems.instrumental, and worker-hub#onComplete called markMediaReady unconditionally. media:status="ready" was broadcast to the phone; /api/library lists the song as ready. Nothing in the core measured the audio content of the reported instrumental — the ffmpeg loudness probe is only wired for boot-time vocals BACKFILL (app.ts:257-297), not for a live worker publish. The design note in setMediaVocals says the WORKER owns the content check, and the fake worker deliberately does not, but the harness table explicitly frames this as "the guard must refuse to publish it" — that guard is absent on the core side. A worker regression that removed its own silence check would silently ship a room-plays-nothing outage with no signal.',
 				[
-					`observed: media:status = "${last.status}" pct=${last.pct}, phone.events transitions=[${phone.statusOf(media.id).map(e => e.status).join(', ')}]`,
+					`observed: media:status = "${last.status}" pct=${last.pct}, phone.events transitions=[${phone
+						.statusOf(media.id)
+						.map((e) => e.status)
+						.join(', ')}]`,
 					`observed: /api/library.library contains ${media.id}: ${inReady}`,
 					`observed: on-disk stem ${stemBytes} bytes, samples all-zero: ${allZeroAudio}`,
 					'apps/core/src/server/jobs/worker-hub.ts:158-186 — #onComplete calls markMediaReady with reportedUri, no loudness check',
@@ -311,13 +344,20 @@ async function scenario1_silentInstrumental() {
 					'apps/core/src/server/app.ts:257-297 — probe ONLY invoked for backfill, never for live publish',
 					'apps/core/src/server/jobs/make-karaoke.ts:220-238 — markMediaReady only defends against a downrank, not a silent artifact',
 					'ENV: this host has decode-only ffmpeg (no volumedetect), so even a wired guard would return null=unmeasurable=not-silent — a fix must therefore delegate content assurance to the worker OR ship a full ffmpeg with the core'
-				]);
+				]
+			);
 		} else if (last.status === 'failed') {
-			record('LOW', 'silent instrumental defense works',
-				`terminal status = failed, /api/library.contains=${inReady}, disk allZeroAudio=${allZeroAudio}`);
+			record(
+				'LOW',
+				'silent instrumental defense works',
+				`terminal status = failed, /api/library.contains=${inReady}, disk allZeroAudio=${allZeroAudio}`
+			);
 		} else {
-			record('MEDIUM', 'silent instrumental behavior is ambiguous',
-				`terminal status=${last.status}, /api/library.contains=${inReady}, allZeroAudio=${allZeroAudio}, stemBytes=${stemBytes}`);
+			record(
+				'MEDIUM',
+				'silent instrumental behavior is ambiguous',
+				`terminal status=${last.status}, /api/library.contains=${inReady}, allZeroAudio=${allZeroAudio}, stemBytes=${stemBytes}`
+			);
 		}
 		phone.close();
 	} finally {
@@ -344,19 +384,28 @@ async function scenario2_silentVocals() {
 			// content check, so an all-nulls stem still linked here matches the docstring intent.
 			const catalog = lib.library.find((m) => m.id === media.id);
 			const vocRef = catalog?.vocalsRef ?? null;
-			record('LOW',
+			record(
+				'LOW',
 				'silent vocals do not fail the cook — instrumental gate satisfied, song still singable',
 				`ready reached; vocalsRef=${vocRef}. Guide track is trusted from the worker (setMediaVocals docstring). Real Python worker would have measured silence and omitted the ref; the fake worker does not, so this test proves ONLY that the CORE completes cleanly with a silent-vocals report — content-side guarding is the worker's responsibility.`,
 				[
 					`observed: terminal status=${last.status}, /api/library.contains=${inReady}`,
 					`observed: vocalsRef=${vocRef} — a workers-trust design (setMediaVocals docstring)`,
 					'apps/core/src/server/jobs/make-karaoke.ts:410-421 — setMediaVocals trusts the worker report, does not probe content'
-				]);
+				]
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'silent vocals broke the cook — the guide track is optional per docs',
 				`observed terminal status=${last.status}. This contradicts setMediaVocals: "a song is perfectly playable with only the instrumental".`,
-				[`observed transitions: [${phone.statusOf(media.id).map(e => e.status).join(', ')}]`]);
+				[
+					`observed transitions: [${phone
+						.statusOf(media.id)
+						.map((e) => e.status)
+						.join(', ')}]`
+				]
+			);
 		}
 		phone.close();
 	} finally {
@@ -382,23 +431,34 @@ async function scenario3_skipWrite() {
 			headers: { range: 'bytes=0-1' }
 		});
 		if (last.status === 'ready' && !onDisk && mediaResp.status === 404) {
-			record('HIGH',
+			record(
+				'HIGH',
 				'unservable artifact — song published READY, /media 404s the instrumental',
 				`worker-hub trusts the reported ref (markMediaReady, make-karaoke.ts:229). It does not fs.exists the ref, so a worker with a filesystem fault (partial write, wrong volume, race with an eviction) can flip the media to ready with a phantom path. The TV mounts <audio src=/media/...> and the range probe returns 404 — the TV shows no error class (see playback.mjs assumptions about the error field: many browsers just sit at readyState=0), and the phone shows the row as READY. The fault is invisible to every UI surface until a singer taps play.`,
 				[
 					`observed: terminal media:status = "${last.status}"`,
 					`observed: on-disk file exists: ${onDisk}`,
 					`observed: HTTP /media/... range=0-1 -> ${mediaResp.status}`,
-					`observed: phone transitions [${phone.statusOf(media.id).map(e => e.status).join(', ')}]`,
+					`observed: phone transitions [${phone
+						.statusOf(media.id)
+						.map((e) => e.status)
+						.join(', ')}]`,
 					'apps/core/src/server/jobs/make-karaoke.ts:220-238 — markMediaReady sets stemStatus=ready + instrumentalRef, no fs.exists check',
 					'apps/core/src/routes/media/[...path]/+server.ts:35, 46, 51, 70 — 404 responses are silent (no room broadcast, no automated re-cook)'
-				]);
+				]
+			);
 		} else if (last.status === 'failed') {
-			record('LOW', 'skip-write was caught somewhere',
-				`terminal=${last.status}, onDisk=${onDisk}, mediaHttp=${mediaResp.status}`);
+			record(
+				'LOW',
+				'skip-write was caught somewhere',
+				`terminal=${last.status}, onDisk=${onDisk}, mediaHttp=${mediaResp.status}`
+			);
 		} else {
-			record('MEDIUM', 'skip-write behavior ambiguous',
-				`terminal=${last.status}, onDisk=${onDisk}, mediaHttp=${mediaResp.status}`);
+			record(
+				'MEDIUM',
+				'skip-write behavior ambiguous',
+				`terminal=${last.status}, onDisk=${onDisk}, mediaHttp=${mediaResp.status}`
+			);
 		}
 		phone.close();
 	} finally {
@@ -420,19 +480,28 @@ async function scenario4_noProfile() {
 		const lib = await (await fetchNoKeepalive(`${BASE}/api/library`)).json();
 		const cat = lib.library.find((m) => m.id === media.id);
 		if (last.status === 'ready' && cat) {
-			record('LOW',
+			record(
+				'LOW',
 				'no songProfile → normalized to EMPTY_SONG_PROFILE, gate satisfied, no deadlock',
 				`ready reached, song listed in /api/library. setMediaSongProfile normalizes the absent record to EMPTY_SONG_PROFILE by design.`,
 				[
 					`observed: terminal status=${last.status}, catalog.songProfile=${JSON.stringify(cat.songProfile ?? null)}`,
 					'apps/core/src/server/jobs/make-karaoke.ts:437-476 — setMediaSongProfile ALWAYS writes; presence, not content, satisfies the gate',
 					'packages/shared/src/gates.ts:52-76 — stems gate checks stemStatus + instrumentalRef only, not the profile'
-				]);
+				]
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'absent songProfile deadlocked or failed the cook',
 				`terminal=${last.status}; contradicts gates.ts contract (profile is NOT a gate) and the make-karaoke docstring which explicitly avoids this class.`,
-				[`observed transitions: [${phone.statusOf(media.id).map(e => e.status).join(', ')}]`]);
+				[
+					`observed transitions: [${phone
+						.statusOf(media.id)
+						.map((e) => e.status)
+						.join(', ')}]`
+				]
+			);
 		}
 		phone.close();
 	} finally {
@@ -450,8 +519,13 @@ async function scenario5_failStems() {
 		const media = await searchLocal('caroline');
 		const r = await requestCook(cookie, media.id);
 		if (!r.ok) throw new Error(`make-karaoke failed: ${r.status} ${await r.text()}`);
-		const last = await waitForStatus(phone, media.id,
-			(e) => e.status === 'failed' || e.status === 'ready', 15000, 'fail-stems terminal');
+		const last = await waitForStatus(
+			phone,
+			media.id,
+			(e) => e.status === 'failed' || e.status === 'ready',
+			15000,
+			'fail-stems terminal'
+		);
 		// After settleStemsGate, /api/search must return the song as re-cookable (unacquired, or at
 		// least NOT ready/cooking) so the singer can retry.
 		const search = await (await fetchNoKeepalive(`${BASE}/api/search?q=caroline`)).json();
@@ -464,11 +538,15 @@ async function scenario5_failStems() {
 		const retryOk = retry.ok;
 		const retryBody = await retry.json().catch(() => ({}));
 		if (last.status === 'failed' && !inReady && !inCooking && inRaw && retryOk) {
-			record('LOW',
+			record(
+				'LOW',
 				'failed cook surfaces visibly, media settles to un-cooked, retry is accepted',
 				`terminal status=failed reached the phone; /api/search puts the song back in .results (un-cooked); a second make-karaoke returns 200 with a fresh job.`,
 				[
-					`observed: WS media:status transitions = [${phone.statusOf(media.id).map(e => e.status).join(', ')}]`,
+					`observed: WS media:status transitions = [${phone
+						.statusOf(media.id)
+						.map((e) => e.status)
+						.join(', ')}]`,
 					`observed: /api/search after fail — ready=${inReady} cooking=${inCooking} results=${inRaw}`,
 					`observed: retry POST /api/make-karaoke -> ${retry.status}, jobId=${retryBody?.job?.id ?? 'null'}`,
 					'apps/core/src/server/jobs/worker-hub.ts:225-252 — #onFailed calls settleStemsGate for fetch|stems',
@@ -476,12 +554,20 @@ async function scenario5_failStems() {
 					'apps/core/src/routes/+page.svelte:309-324 — cookingRows INCLUDES failed entries so the row is visible with a retry button',
 					'apps/core/src/lib/components/SongRow.svelte:159-162 — readiness===failed renders the failure chip',
 					'apps/core/src/lib/readiness.ts:34-44 — displayReadiness returns "failed" when live.status=failed and !readyToSing'
-				]);
+				]
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'failed cook did not surface / settle / retry cleanly',
 				`terminal=${last.status}; search.ready=${inReady} cooking=${inCooking} results=${inRaw}; retry status=${retry.status}`,
-				[`observed transitions: [${phone.statusOf(media.id).map(e => e.status).join(', ')}]`]);
+				[
+					`observed transitions: [${phone
+						.statusOf(media.id)
+						.map((e) => e.status)
+						.join(', ')}]`
+				]
+			);
 		}
 		phone.close();
 	} finally {
@@ -506,24 +592,36 @@ async function scenario6_removeMidCook() {
 		if (!rc.ok) throw new Error(`make-karaoke failed: ${rc.status} ${await rc.text()}`);
 		// Wait until the worker has actually reported progress (an in-flight stems job). Otherwise the
 		// cancel arrives before findLive can find anything, and cancelJobsForMedia is a no-op.
-		await waitForStatus(phone, media.id,
+		await waitForStatus(
+			phone,
+			media.id,
 			(e) => (e.status === 'separating' || e.status === 'downloading') && (e.pct ?? 0) > 0,
-			10000, 'first worker progress frame');
+			10000,
+			'first worker progress frame'
+		);
 		// Now REMOVE — onEntryRemoved → cancelJobsForMedia → job:cancel + settleStemsGate + broadcast.
 		await queueRemoveViaWs(phone, entryId);
 		// Watch for the canceled broadcast. FAKE_SLOW_MS=5000 so the next progress frame is up to 5s
 		// out; give the settle broadcast up to 8s.
 		let last;
 		try {
-			last = await waitForStatus(phone, media.id,
+			last = await waitForStatus(
+				phone,
+				media.id,
 				(e) => e.status === 'canceled' || e.status === 'failed' || e.status === 'ready',
-				8000, 'post-remove settle');
-		} catch (e) {
+				8000,
+				'post-remove settle'
+			);
+		} catch {
 			last = phone.lastStatus(media.id) ?? { status: '<none>' };
 		}
-		const transitions = phone.statusOf(media.id).map((e) => e.status).join(' → ');
+		const transitions = phone
+			.statusOf(media.id)
+			.map((e) => e.status)
+			.join(' → ');
 		if (last.status === 'canceled') {
-			record('LOW',
+			record(
+				'LOW',
 				'mid-cook remove settles to CANCELED, not FAILED',
 				`the phone received media:status=canceled after the queue remove; cancelJobsForMedia broadcasts a dedicated 'canceled' event instead of lying to the guest with 'failed'.`,
 				[
@@ -532,19 +630,22 @@ async function scenario6_removeMidCook() {
 					'apps/core/src/server/jobs/cancel.ts:117-133 — cancelJobsForMedia broadcasts { type:media:status, status:canceled } after settleStemsGate',
 					'apps/core/src/lib/readiness.ts:41-43 — displayReadiness treats "canceled" as terminal and returns to catalog readiness (un-cooked), NOT "failed"',
 					'apps/core/src/routes/+page.svelte:314-316 — cookingRows deliberately EXCLUDES canceled entries; the removed row does not linger'
-				]);
+				]
+			);
 		} else if (last.status === 'failed') {
-			record('CRITICAL',
+			record(
+				'CRITICAL',
 				'mid-cook remove lied to the guest — status=FAILED instead of CANCELED',
 				`the guest deliberately removed their song and the phone told them the cook broke. Regresses the fix in cancel.ts:117-133.`,
-				[`observed: transitions = ${transitions}`,
-				 `observed: last media:status = ${JSON.stringify(last)}`]);
+				[`observed: transitions = ${transitions}`, `observed: last media:status = ${JSON.stringify(last)}`]
+			);
 		} else {
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'mid-cook remove: settle status did not arrive within 8s',
 				`terminal=${last.status}. Transitions observed: ${transitions}. This may indicate a race where the cancel arrived before findLive could locate the running job, OR the media:status:canceled broadcast is not being sent for this scenario shape. See ${worker.log} for the worker's view.`,
-				[`observed transitions: ${transitions}`,
-				 'apps/core/src/server/jobs/cancel.ts:117-133 — settle broadcast']);
+				[`observed transitions: ${transitions}`, 'apps/core/src/server/jobs/cancel.ts:117-133 — settle broadcast']
+			);
 		}
 		phone.close();
 	} finally {
@@ -581,14 +682,21 @@ async function scenario7_killWorker() {
 		while (Date.now() < deadline) {
 			const events = phone.statusOf(media.id);
 			const terminalEvt = events.find((e) => e.status === 'failed' || e.status === 'ready');
-			if (terminalEvt) { terminal = terminalEvt.status; break; }
+			if (terminalEvt) {
+				terminal = terminalEvt.status;
+				break;
+			}
 			const requeue = events.find((e) => e.unservable === true || e.status === 'queued');
-			if (requeue) { requeuedSignal = requeue; break; }
+			if (requeue) {
+				requeuedSignal = requeue;
+				break;
+			}
 			await sleep(500);
 		}
 		const elapsed = Math.round((Date.now() - killedAt) / 1000);
 		if (requeuedSignal || terminal === 'failed') {
-			record('LOW',
+			record(
+				'LOW',
 				`reaper handled the dead worker (${elapsed}s after SIGKILL)`,
 				`After SIGKILL on the running worker, the progress lease expired and the reaper produced a recovery action. No forever-stranded job.`,
 				[
@@ -596,18 +704,21 @@ async function scenario7_killWorker() {
 					'apps/core/src/server/jobs/reaper.ts:38-52 — tick() applies sweep actions on lease expiry',
 					'apps/core/src/server/jobs/leases.ts:20-22 — DEFAULT_LEASE_CONFIG progressLeaseMs=30_000',
 					'apps/core/src/server/jobs/leases.ts:56-77 — sweep bumps attempts on progress-lease-expired'
-				]);
+				]
+			);
 		} else {
 			// Look at the server log for the reaper trace so a reader can see whether the tick ran.
-			const log = existsSync(server.log)
-				? readdirSync(SCRATCH).filter(Boolean)
-				: [];
-			record('HIGH',
+			const log = existsSync(server.log) ? readdirSync(SCRATCH).filter(Boolean) : [];
+			record(
+				'HIGH',
 				`worker kill did not trigger reaper recovery within 90s — job may be stranded`,
 				`terminal=${terminal}, last media:status = ${JSON.stringify(phone.lastStatus(media.id))}. Server log: ${server.log}. This may be Bun-serve WS idle timeout (30s) + progress lease (30s) racing on a slow host.`,
-				[`observed: elapsed=${elapsed}s, files in SCRATCH: ${log.join(',')}`,
-				 'apps/core/src/server/jobs/leases.ts:20-22 — progress lease is 30s',
-				 'apps/core/server.ts:79 — Bun.serve idleTimeout: 30']);
+				[
+					`observed: elapsed=${elapsed}s, files in SCRATCH: ${log.join(',')}`,
+					'apps/core/src/server/jobs/leases.ts:20-22 — progress lease is 30s',
+					'apps/core/server.ts:79 — Bun.serve idleTimeout: 30'
+				]
+			);
 		}
 		phone.close();
 	} finally {
@@ -626,14 +737,19 @@ async function scenario8_perSingerCap() {
 		const queries = ['caroline', 'believin', 'bohemian', 'prayer'];
 		const medias = [];
 		for (const q of queries) {
-			try { medias.push(await searchLocal(q)); }
-			catch (e) { console.log(`  · skip "${q}": ${e.message}`); }
+			try {
+				medias.push(await searchLocal(q));
+			} catch (e) {
+				console.log(`  · skip "${q}": ${e.message}`);
+			}
 		}
 		if (medias.length < 4) {
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'per-singer cap could not be exercised — fewer than 4 local songs in the library',
 				`only ${medias.length} local songs indexed; the cap is 3, so 4 distinct medias are needed. Seed the missing tracks under $MEDIA_DIR/library/ and re-run.`,
-				['apps/core/src/server/jobs/make-karaoke.ts:56-64 — MAX_CONCURRENT_COOKS_PER_SINGER = 3']);
+				['apps/core/src/server/jobs/make-karaoke.ts:56-64 — MAX_CONCURRENT_COOKS_PER_SINGER = 3']
+			);
 			phone.close();
 			return;
 		}
@@ -647,8 +763,11 @@ async function scenario8_perSingerCap() {
 		}
 		const okCount = rs.filter((r) => r.ok).length;
 		if (okCount !== 3) {
-			record('HIGH', 'per-singer cap: could not stage 3 concurrent cooks',
-				`only ${okCount}/3 accepted; statuses=${rs.map((r) => r.status).join(',')}`);
+			record(
+				'HIGH',
+				'per-singer cap: could not stage 3 concurrent cooks',
+				`only ${okCount}/3 accepted; statuses=${rs.map((r) => r.status).join(',')}`
+			);
 			phone.close();
 			return;
 		}
@@ -657,8 +776,14 @@ async function scenario8_perSingerCap() {
 		await queueViaWs(phone, singerId, medias[3].id);
 		const fourth = await requestCook(cookie, medias[3].id);
 		const body = await fourth.json().catch(() => ({}));
-		if (fourth.status === 429 && body?.reason === 'over-limit' && typeof body?.error === 'string' && body.error.length > 0) {
-			record('LOW',
+		if (
+			fourth.status === 429 &&
+			body?.reason === 'over-limit' &&
+			typeof body?.error === 'string' &&
+			body.error.length > 0
+		) {
+			record(
+				'LOW',
 				'per-singer concurrent-cook cap: fourth tap is refused with 429 + human reason',
 				`the API returned 429 with { reason:"over-limit", error:"${body.error}" } — a phone can render the message verbatim.`,
 				[
@@ -666,21 +791,28 @@ async function scenario8_perSingerCap() {
 					`observed: 4th tap status=${fourth.status}, body=${JSON.stringify(body)}`,
 					'apps/core/src/routes/api/make-karaoke/+server.ts:31-40 — 429 branch names reason:"over-limit"',
 					'apps/core/src/server/jobs/make-karaoke.ts:56-64,73-89 — MAX_CONCURRENT_COOKS_PER_SINGER + countInFlightCooks (attribution via queue entries)'
-				]);
+				]
+			);
 		} else if (fourth.status === 429) {
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'per-singer cap returned 429 but the body is not the documented shape',
-				`status=429 but body=${JSON.stringify(body)}. The phone reads reason:"over-limit" + error string; without the reason, generic 429 handling would fire.`);
+				`status=429 but body=${JSON.stringify(body)}. The phone reads reason:"over-limit" + error string; without the reason, generic 429 handling would fire.`
+			);
 		} else {
 			// Cap did not fire — worth breaking down WHY. countInFlightCooks iterates queue entries; if
 			// the queue adds were rejected the cap can never see this singer.
 			const patches = phone.events.filter((e) => e.type === 'queue:patch');
 			const totalEntries = patches[patches.length - 1]?.patch?.entries?.length ?? 0;
-			record('HIGH',
+			record(
+				'HIGH',
 				'per-singer cap did not fire when queue-then-cook was reproduced',
 				`4th tap status=${fourth.status}, body=${JSON.stringify(body)}. Queue entries observed on last patch: ${totalEntries} (need ≥3 for the cap to trigger). NOTE: the cap only attributes cooks through singer queue entries (make-karaoke.ts:73-89 docstring). A direct API caller who never queues bypasses the cap by design — worth flagging on its own if that is undesired.`,
-				['apps/core/src/server/jobs/make-karaoke.ts:56-64 — cap constant',
-				 'apps/core/src/server/jobs/make-karaoke.ts:73-89 — attribution IS through queue entries, so a raw POST /api/make-karaoke without queueing bypasses the cap']);
+				[
+					'apps/core/src/server/jobs/make-karaoke.ts:56-64 — cap constant',
+					'apps/core/src/server/jobs/make-karaoke.ts:73-89 — attribution IS through queue entries, so a raw POST /api/make-karaoke without queueing bypasses the cap'
+				]
+			);
 		}
 		phone.close();
 	} finally {
@@ -713,8 +845,9 @@ async function main() {
 	];
 
 	for (const s of scenarios) {
-		try { await s(); }
-		catch (e) {
+		try {
+			await s();
+		} catch (e) {
 			record('CRITICAL', `${s.name} threw during execution`, String(e?.stack ?? e));
 		}
 	}

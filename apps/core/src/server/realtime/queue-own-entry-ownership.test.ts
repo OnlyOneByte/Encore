@@ -27,13 +27,24 @@ import { AuthoritativeState } from '../state/store';
 import { EMPTY_SONG_PROFILE, type Media, type QueueEntry, type ClientCommand } from '@encore/shared';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac',
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	songProfile: EMPTY_SONG_PROFILE
 });
 
 const entry = (id: string, singerId: string): QueueEntry => ({
-	id, mediaId: 'm1', singerId, status: 'queued', rotationSeq: 0, addedAt: 1
+	id,
+	mediaId: 'm1',
+	singerId,
+	status: 'queued',
+	rotationSeq: 0,
+	addedAt: 1
 });
 
 function harness(actorSingerId = 's-self') {
@@ -112,9 +123,7 @@ function switchArm(src: string, op: string): string {
 // by brace-matching from the `{` that follows the match. Returns [openIdx, closeIdx) or null.
 function enclosingOwnershipBlock(arm: string, actorVar: string): [number, number] | null {
 	// `if (<var>.singerId !== deps.actorSingerId) {`  (ENCLOSING form only — the `{` is required)
-	const openRe = new RegExp(
-		`if\\s*\\(\\s*${actorVar}\\.singerId\\s*!==\\s*deps\\.actorSingerId\\s*\\)\\s*\\{`
-	);
+	const openRe = new RegExp(`if\\s*\\(\\s*${actorVar}\\.singerId\\s*!==\\s*deps\\.actorSingerId\\s*\\)\\s*\\{`);
 	const m = openRe.exec(arm);
 	if (!m) return null;
 	// The matched text ends with the opening brace; brace-match from there.

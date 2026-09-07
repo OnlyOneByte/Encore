@@ -12,7 +12,14 @@
 // purpose, because a cooked instrumental is a durable library asset anyone can reuse, whereas an
 // explicit remove is a person saying "stop this one now". Two different acts, kept different.
 
-import { isTerminalJob, type JobType, type QueueEntry, type WorkerCommand, type ServerEvent, type Media } from '@encore/shared';
+import {
+	isTerminalJob,
+	type JobType,
+	type QueueEntry,
+	type WorkerCommand,
+	type ServerEvent,
+	type Media
+} from '@encore/shared';
 import type { JobRepository } from './repository';
 import { settleLyricsGate, settleStemsGate } from './make-karaoke';
 

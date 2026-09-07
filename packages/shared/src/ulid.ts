@@ -11,15 +11,15 @@ const TIME_LEN = 10;
 const RAND_LEN = 16;
 
 export function ulid(seedTimeMs?: number): string {
-  const time = seedTimeMs ?? Date.now();
-  let t = time;
-  let out = '';
-  for (let i = TIME_LEN - 1; i >= 0; i--) {
-    out = ENCODING[t % 32] + out;
-    t = Math.floor(t / 32);
-  }
-  for (let i = 0; i < RAND_LEN; i++) {
-    out += ENCODING[Math.floor(Math.random() * 32)];
-  }
-  return out;
+	const time = seedTimeMs ?? Date.now();
+	let t = time;
+	let out = '';
+	for (let i = TIME_LEN - 1; i >= 0; i--) {
+		out = ENCODING[t % 32] + out;
+		t = Math.floor(t / 32);
+	}
+	for (let i = 0; i < RAND_LEN; i++) {
+		out += ENCODING[Math.floor(Math.random() * 32)];
+	}
+	return out;
 }

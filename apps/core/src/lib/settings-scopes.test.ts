@@ -34,9 +34,7 @@ function stripComments(src: string): string {
 }
 
 test('the name field exists in exactly one place', () => {
-	const owners = svelteFiles(SRC).filter((f) =>
-		stripComments(readFileSync(f, 'utf8')).includes('id="profile-name"')
-	);
+	const owners = svelteFiles(SRC).filter((f) => stripComments(readFileSync(f, 'utf8')).includes('id="profile-name"'));
 
 	expect(owners.map((f) => f.replace(SRC, 'src'))).toEqual(['src/routes/settings/+page.svelte']);
 });
@@ -45,9 +43,7 @@ test('the leave-the-room action exists in exactly one place', () => {
 	// Same reasoning as the name field, and the stakes are higher: a leave clears the cookie and forgets
 	// the singer, so there is nothing to undo with. Two paths to it is two places to get the confirm
 	// wrong, and the confirm is the only thing standing between a tap and a lost queue.
-	const owners = svelteFiles(SRC).filter((f) =>
-		stripComments(readFileSync(f, 'utf8')).includes('Leave the room')
-	);
+	const owners = svelteFiles(SRC).filter((f) => stripComments(readFileSync(f, 'utf8')).includes('Leave the room'));
 
 	expect(owners.map((f) => f.replace(SRC, 'src'))).toEqual(['src/routes/settings/+page.svelte']);
 });
@@ -81,9 +77,7 @@ test('every scope tab controls a panel that exists, and vice versa', () => {
 		expect(src, `panel-${id} is missing`).toContain(`id="panel-${id}"`);
 		expect(src, `panel-${id} is not labelled by its tab`).toContain(`aria-labelledby="tab-${id}"`);
 		// And the branch that renders it. A tab that selects nothing renders an empty page.
-		expect(src, `no branch renders the ${id} panel`).toMatch(
-			new RegExp(`tab === '${id}'|\\{:else\\}`)
-		);
+		expect(src, `no branch renders the ${id} panel`).toMatch(new RegExp(`tab === '${id}'|\\{:else\\}`));
 	}
 
 	// The server resolves the tab so first paint is already correct; its list must match the page's.

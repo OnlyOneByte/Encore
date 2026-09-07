@@ -19,9 +19,7 @@ import { HOOKS, PRESET_COLOUR_NAMES, SEL } from './contract';
 const CORE = join(import.meta.dir, '..');
 
 test('every file the e2e depends on still exists', () => {
-	const missing = HOOKS.filter((h) => !existsSync(join(CORE, h.file))).map(
-		(h) => `${h.id}: ${h.file}`
-	);
+	const missing = HOOKS.filter((h) => !existsSync(join(CORE, h.file))).map((h) => `${h.id}: ${h.file}`);
 	expect(missing).toEqual([]);
 });
 
@@ -198,7 +196,10 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 	 * correct selector; requiring one proves the read can land.
 	 */
 	if (selector.includes(',')) {
-		const branches = selector.split(',').map((s) => s.trim()).filter(Boolean);
+		const branches = selector
+			.split(',')
+			.map((s) => s.trim())
+			.filter(Boolean);
 		if (branches.length === 0) return null;
 		const resolved = branches.map((b) => selectorResolves(b, sources));
 		if (resolved.some((r) => r === true)) return true;
@@ -427,28 +428,20 @@ const DRIVERS = allDrivers();
  * is the plan to close it. Do NOT add to this map to silence a new literal — put the selector in SEL.
  */
 const KNOWN_OFFENDERS: Record<string, string[]> = {
-	'fuzz.mjs': [
-		'#ff5cae',
-		'[aria-label=',
-	],
+	'fuzz.mjs': ['#ff5cae', '[aria-label='],
 	'lobby-overlap.mjs': [
 		// Hex swatch colours the probe drives the picker with — caught by the shape rule, not selectors.
 		'#a855f7',
 		'#ec4899',
 		'#f43f5e',
-		'#f59e0b',
+		'#f59e0b'
 	],
-	'playback.mjs': [
-		'video,audio',
-	],
-	'probes/lower-third.mjs': [
-		'#ff5cae',
-		'audio,video',
-	],
+	'playback.mjs': ['video,audio'],
+	'probes/lower-third.mjs': ['#ff5cae', 'audio,video'],
 	'probes/p1-gapless.mjs': [
 		// Not selectors: a hex colour caught by the shape rule, and the bare media-element liveness union.
 		'#ff5cae',
-		'audio,video',
+		'audio,video'
 	],
 	'probes/p10-scaling.mjs': [
 		// STAYS - a bare tag query, not a UI hook.
@@ -471,7 +464,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'.lower-third .ls-song',
 		'.roster',
 		'.up-label',
-		'.up-song',
+		'.up-song'
 	],
 	'probes/p11-dashboards.mjs': [
 		'.card',
@@ -481,7 +474,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'body',
 		'h1',
 		'h2',
-		'table th',
+		'table th'
 	],
 	'probes/p12-search.mjs': [
 		// Hex swatch colour (shape rule), not a selector.
@@ -489,30 +482,24 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		// DEFERRED to the #494 tail follow-up: '.chips button.ok' contains the bare tag `button`, which the
 		// SEL-resolution guard cannot model as a class anchor, so it cannot move to SEL without changing the
 		// probe to address the chip by a class alone. Tracked, not silenced.
-		'.chips button.ok',
+		'.chips button.ok'
 	],
 	'probes/p13-tap-to-start.mjs': [
 		' + JSON.stringify(SEL.queueRow) + ',
 		' + JSON.stringify(SEL.search) + ',
 		' + JSON.stringify(SEL.songRow) + ',
-		'video,audio',
+		'video,audio'
 	],
-	'probes/p14-playhead-vs-cook.mjs': [
-		'#ff5cae',
-		'audio',
-	],
-	'probes/p2-guiding-track.mjs': [
-		'#ff5cae',
-		'audio,video',
-	],
+	'probes/p14-playhead-vs-cook.mjs': ['#ff5cae', 'audio'],
+	'probes/p2-guiding-track.mjs': ['#ff5cae', 'audio,video'],
 	'probes/p3-key-shift.mjs': [
 		// Media-element liveness union, not a UI selector (see SEL.mediaEl).
-		'video,audio',
+		'video,audio'
 	],
 	'probes/p4-transport.mjs': [
 		// Tag-only / attribute-fragment reads, deliberately NOT selectors:
-		'[aria-label=',   // truncated attribute-selector fragment built by string concat
-		'audio',           // a bare tag query for the media element (see SEL.mediaEl for the union form)
+		'[aria-label=', // truncated attribute-selector fragment built by string concat
+		'audio' // a bare tag query for the media element (see SEL.mediaEl for the union form)
 		// Group A of the #494 tail (#513) migrated the two combinator/descendant selectors that used to
 		// sit here into SEL (slotVisibleAudio, seekFill), extending the resolver to model a `>` child
 		// combinator and a bare-tag descendant. Groups B–E (#544–#547) track the rest of the tail.
@@ -521,21 +508,18 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		// Liveness reads, deliberately NOT in SEL: a bare tag-union existence check for a media element,
 		// not a UI selector (the same rationale as SEL.mediaEl's `video, audio`).
 		'video, audio',
-		'video,audio',
+		'video,audio'
 	],
 	'probes/p8-presence-resilience.mjs': [
 		// Tag-only / attribute-fragment reads, deliberately NOT selectors moved to SEL:
-		'[aria-label=',   // a truncated attribute-selector fragment built by string concat, not a whole selector
-		'button',          // a bare tag query for "any button", not a UI-specific hook
+		'[aria-label=', // a truncated attribute-selector fragment built by string concat, not a whole selector
+		'button', // a bare tag query for "any button", not a UI-specific hook
 		// DEFERRED to the #494 tail follow-up: '.err[role=alert]' is a class+unquoted-attribute compound the
 		// SEL-resolution guard's attribute matcher (which requires quoted values) cannot model, so it cannot
 		// move to SEL as-is. Tracked, not silenced.
-		'.err[role=alert]',
+		'.err[role=alert]'
 	],
-	'probes/tv-audiocontext-resume.mjs': [
-		'audio,video',
-	],
-
+	'probes/tv-audiocontext-resume.mjs': ['audio,video']
 };
 
 /**
@@ -606,7 +590,7 @@ test('no driver spells a selector out for itself — every one comes from the co
 			 * inside backticks is exactly as unguarded as a plain string, and was one of the eight found
 			 * here.
 			 */
-			for (const m of line.matchAll(/(['"`])((?:[.#][A-Za-z][\w$.{}\-]*)|(?:\[[a-zA-Z-]+\^?=[^'"`\]]*\]))\1/g)) {
+			for (const m of line.matchAll(/(['"`])((?:[.#][A-Za-z][\w$.{}-]*)|(?:\[[a-zA-Z-]+\^?=[^'"`\]]*\]))\1/g)) {
 				const literal = m[2]!;
 				const interpolated = /\$\{/.test(literal);
 				if (!interpolated && literal in NOT_A_SELECTOR) continue;

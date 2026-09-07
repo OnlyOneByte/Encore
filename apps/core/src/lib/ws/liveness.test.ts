@@ -226,7 +226,7 @@ test('the surviving socket keeps its heartbeat after a wake-orphaned socket clos
 	h.fire(10); // backoff -> socket #1 CONNECTING
 	h.client.wake(); // one lifecycle event mid-connect -> socket #2
 	h.sockets[2]!.fireOpen(); // the live socket opens and beats
-	h.client.connected && expect(h.client.connected).toBe(true);
+	if (h.client.connected) expect(h.client.connected).toBe(true);
 
 	// The discarded socket #1 has its handlers detached, so even if the real server later closes it,
 	// that close must NOT tear down the live socket's timers or flip us offline.

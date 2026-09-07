@@ -110,9 +110,7 @@ describe('normalizeRoomSettings guideLevelDefault', () => {
 	it('keeps the room CURRENT value on a junk write, not the hardcoded default', () => {
 		const base = { ...DEFAULT_ROOM_SETTINGS, guideLevelDefault: 0.3 };
 		expect(normalizeRoomSettings({ guideLevelDefault: NaN }, base).guideLevelDefault).toBe(0.3);
-		expect(
-			normalizeRoomSettings({ guideLevelDefault: 'loud' as unknown as number }, base).guideLevelDefault
-		).toBe(0.3);
+		expect(normalizeRoomSettings({ guideLevelDefault: 'loud' as unknown as number }, base).guideLevelDefault).toBe(0.3);
 	});
 
 	it('an omitted field is a patch, not a reset', () => {

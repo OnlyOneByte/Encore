@@ -111,7 +111,7 @@ describe('play log — wired to the tracker that already dedupes emits', () => {
 });
 
 describe('play log — per-song history', () => {
-	it('returns one song\'s plays newest first', () => {
+	it("returns one song's plays newest first", () => {
 		const l = log();
 		l.record('m1', 'e1', T0);
 		l.record('m1', 'e2', T0 + DAY);

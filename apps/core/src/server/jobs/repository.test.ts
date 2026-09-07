@@ -93,12 +93,28 @@ test('the DB partial unique index enforces dedup even if the app check is bypass
 	expect(() =>
 		db
 			.insert(jobs)
-			.values({ id: 'dup', mediaId: 'media-1', jobType: 'stems', status: 'queued', priority: 0, createdAt: T0, updatedAt: T0 })
+			.values({
+				id: 'dup',
+				mediaId: 'media-1',
+				jobType: 'stems',
+				status: 'queued',
+				priority: 0,
+				createdAt: T0,
+				updatedAt: T0
+			})
 			.run()
 	).toThrow();
 	// but a row for the SAME key in a terminal status is allowed (index is partial)
 	db.insert(jobs)
-		.values({ id: 'old', mediaId: 'media-1', jobType: 'stems', status: 'failed', priority: 0, createdAt: T0, updatedAt: T0 })
+		.values({
+			id: 'old',
+			mediaId: 'media-1',
+			jobType: 'stems',
+			status: 'failed',
+			priority: 0,
+			createdAt: T0,
+			updatedAt: T0
+		})
 		.run();
 	expect(repo.findLive('media-1', 'stems')!.id).toBe(live.id); // still the one live job
 });

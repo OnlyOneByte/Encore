@@ -36,3 +36,4 @@ __pycache__/
 
 # agent scratch — working specs and notes live here, never committed
 .kiro
+.eslintcache

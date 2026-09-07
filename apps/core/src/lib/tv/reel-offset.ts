@@ -59,7 +59,8 @@ export function reelOffset(inp: ReelOffsetInputs): number {
 		return -(rowTop + rowHeight / 2 - band / 2);
 	}
 	const top = rowTop + offset;
-	if (top < 0) offset += -top; // current row's top fell above the band — pull it back to the top
+	if (top < 0)
+		offset += -top; // current row's top fell above the band — pull it back to the top
 	else if (top + rowHeight > band) offset -= top + rowHeight - band; // bottom fell below — pull it up
 	return offset;
 }

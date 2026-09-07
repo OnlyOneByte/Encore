@@ -9,17 +9,38 @@ import { AuthoritativeState } from '../state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
+const media = (id: string): Media => ({
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
+});
 let _s = 0;
 const addCmd = (id: string, mediaId: string): ClientCommand => ({
 	clientOpId: 'op-' + id,
-	op: { op: 'add', entry: { id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_s } as QueueEntry }
+	op: {
+		op: 'add',
+		entry: { id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_s } as QueueEntry
+	}
 });
 
 function harness() {
 	const published: ServerEvent[] = [];
 	const state = new AuthoritativeState();
-	const deps: HubDeps = { state, publish: (e) => published.push(e), mediaById: new Map([['m1', media('m1')], ['m2', media('m2')]]), actorSingerId: 's1' };
+	const deps: HubDeps = {
+		state,
+		publish: (e) => published.push(e),
+		mediaById: new Map([
+			['m1', media('m1')],
+			['m2', media('m2')]
+		]),
+		actorSingerId: 's1'
+	};
 	return { published, state, deps };
 }
 
@@ -39,7 +60,10 @@ test('first song queued into an idle room auto-starts playback', () => {
 	expect(state.playback.isPlaying).toBe(true);
 	expect(state.entries.find((e) => e.id === 'q1')!.status).toBe('playing');
 	// the TV learns to leave attract via nowplaying:changed carrying the current entry
-	const np = published.filter((e) => e.type === 'nowplaying:changed').at(-1) as Extract<ServerEvent, { type: 'nowplaying:changed' }>;
+	const np = published.filter((e) => e.type === 'nowplaying:changed').at(-1) as Extract<
+		ServerEvent,
+		{ type: 'nowplaying:changed' }
+	>;
 	expect(np.current?.id).toBe('q1');
 });
 

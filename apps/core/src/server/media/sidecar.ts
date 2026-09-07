@@ -132,7 +132,11 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 		},
 		canonical: {
 			mbid: m.mbid ?? prev?.canonical.mbid ?? null,
-			artist: cited ? (m.artistCanonical ?? parsed.artist) : keepCited('artist') ? prev!.canonical.artist : parsed.artist,
+			artist: cited
+				? (m.artistCanonical ?? parsed.artist)
+				: keepCited('artist')
+					? prev!.canonical.artist
+					: parsed.artist,
 			// Not subject to `cited`/`keepCited`: the credit describes the UPLOAD's billing, which a
 			// recording-level citation has no better answer for. Preserved across writes so a
 			// re-annotated song does not lose it.
@@ -147,7 +151,10 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 		provenance: {
 			...(prev?.provenance ?? {}),
 			...(cited
-				? { artist: { by: 'musicbrainz' as const, confidence: cited.confidence }, title: { by: 'musicbrainz' as const, confidence: cited.confidence } }
+				? {
+						artist: { by: 'musicbrainz' as const, confidence: cited.confidence },
+						title: { by: 'musicbrainz' as const, confidence: cited.confidence }
+					}
 				: {
 						...(keepCited('artist') ? {} : { artist: { by: parsed.by, confidence: parsed.confidence } }),
 						...(keepCited('title') ? {} : { title: { by: parsed.by, confidence: parsed.confidence } })
@@ -325,7 +332,9 @@ export async function readSidecar(mediaId: string): Promise<MediaSidecar | null>
 		// a hand edit that kept only `id`). Still corruption of the authoritative record: returning it
 		// would let a boot maintenance pass throw on a missing section and, with no per-pass isolation,
 		// abort every later pass. Treat it like a parse failure, not like an absent file.
-		console.warn(`[sidecar] authoritative record ${path} exists but failed the shape check (not a complete sidecar); returning null`);
+		console.warn(
+			`[sidecar] authoritative record ${path} exists but failed the shape check (not a complete sidecar); returning null`
+		);
 		return null;
 	} catch (err) {
 		if (existed) {

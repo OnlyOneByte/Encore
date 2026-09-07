@@ -18,17 +18,17 @@ import { orderQueue, type Ordering } from './queue-order';
  * Does NOT mutate; returns a new array. Caller assigns rotationSeq from the index.
  */
 export function rotate(entries: QueueEntry[], ordering: Ordering = {}): QueueEntry[] {
-  return orderQueue(entries, ordering);
+	return orderQueue(entries, ordering);
 }
 
 /** Assign contiguous rotationSeq values (0-based) from rotate() order. */
 export function assignSeqs(entries: QueueEntry[], ordering: Ordering = {}): QueueEntry[] {
-  return rotate(entries, ordering).map((e, i) => ({ ...e, rotationSeq: i }));
+	return rotate(entries, ordering).map((e, i) => ({ ...e, rotationSeq: i }));
 }
 
 /** Terminal entries no longer participate in the rotation (played to completion). */
 export function isTerminal(e: QueueEntry): boolean {
-  return e.status === 'done';
+	return e.status === 'done';
 }
 
 /**
@@ -49,19 +49,22 @@ export function isTerminal(e: QueueEntry): boolean {
  * `shuffle`, which ranks by entry id, a move is a legal no-op (see `respectsAddedAt`).
  */
 export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Ordering = {}): QueueEntry[] {
-  const applied = op.op === 'move' ? reorderWithinSinger(entries, op.id, op.toSeq) : applyOp(entries, op);
-  return assignSeqs(applied.filter((e) => !isTerminal(e)), ordering);
+	const applied = op.op === 'move' ? reorderWithinSinger(entries, op.id, op.toSeq) : applyOp(entries, op);
+	return assignSeqs(
+		applied.filter((e) => !isTerminal(e)),
+		ordering
+	);
 }
 
 /** Reorder one entry to index `toIdx` within its own singer's picks by permuting addedAt stamps. */
 export function reorderWithinSinger(entries: QueueEntry[], id: string, toIdx: number): QueueEntry[] {
-  const moving = entries.find((e) => e.id === id);
-  if (!moving) return entries.slice();
-  const mine = entries.filter((e) => e.singerId === moving.singerId).sort((a, b) => a.addedAt - b.addedAt);
-  const stamps = mine.map((e) => e.addedAt); // stable timestamp slots for this singer
-  const from = mine.findIndex((e) => e.id === id);
-  const clamped = Math.max(0, Math.min(toIdx, mine.length - 1));
-  mine.splice(clamped, 0, mine.splice(from, 1)[0]!);
-  const reStamp = new Map(mine.map((e, i) => [e.id, stamps[i]!]));
-  return entries.map((e) => (reStamp.has(e.id) ? { ...e, addedAt: reStamp.get(e.id)! } : e));
+	const moving = entries.find((e) => e.id === id);
+	if (!moving) return entries.slice();
+	const mine = entries.filter((e) => e.singerId === moving.singerId).sort((a, b) => a.addedAt - b.addedAt);
+	const stamps = mine.map((e) => e.addedAt); // stable timestamp slots for this singer
+	const from = mine.findIndex((e) => e.id === id);
+	const clamped = Math.max(0, Math.min(toIdx, mine.length - 1));
+	mine.splice(clamped, 0, mine.splice(from, 1)[0]!);
+	const reStamp = new Map(mine.map((e, i) => [e.id, stamps[i]!]));
+	return entries.map((e) => (reStamp.has(e.id) ? { ...e, addedAt: reStamp.get(e.id)! } : e));
 }

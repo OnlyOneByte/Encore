@@ -1,7 +1,7 @@
 // Client-side mirror of the server's readiness axis (src/server/media/readiness.ts). Duplicated
 // rather than imported because @encore/shared is the client/server contract and this is a derived
 // view concern — but the classification MUST agree with the server's, so it is unit-tested here too.
-import { isCooking, isPlayable, readyToSing, type Media, type MediaStatus } from '@encore/shared';
+import { isCooking, readyToSing, type Media, type MediaStatus } from '@encore/shared';
 
 export type Readiness = 'ready' | 'cooking' | 'failed' | 'unacquired';
 
@@ -72,7 +72,11 @@ export interface ReadyEmptyState {
 	showAllCount: number | null;
 }
 
-export function readyEmptyState(opts: { searchActive: boolean; libraryCount: number; query?: string }): ReadyEmptyState {
+export function readyEmptyState(opts: {
+	searchActive: boolean;
+	libraryCount: number;
+	query?: string;
+}): ReadyEmptyState {
 	const { searchActive, libraryCount } = opts;
 	// A genuinely empty library — the original copy is correct here, and only here.
 	if (libraryCount === 0) {
@@ -101,17 +105,13 @@ export function readyEmptyState(opts: { searchActive: boolean; libraryCount: num
 	return { message: `Your ${libraryCount} karaoke songs are ready to sing.`, showAllCount: null };
 }
 
-
 /**
  * Will this entry's media actually play right now? Client mirror of the server's
  * `rotation/isEntryReady` — the two MUST agree or the phone narrates a different rotation than the
  * TV performs. A live `media:status` wins over the catalog copy, which is a beat stale right after
  * a "✨ Karaoke" tap.
  */
-export function entryPlayable(
-	media: Media | undefined,
-	live?: { status: MediaStatus }
-): boolean {
+export function entryPlayable(media: Media | undefined, live?: { status: MediaStatus }): boolean {
 	// A live status decides in both directions: `ready` means the cook just landed and the catalog
 	// copy hasn't caught up; anything else mid-flight means still cooking. `failed` and `canceled` are
 	// terminal and say nothing about playability, so the catalog answers for both.

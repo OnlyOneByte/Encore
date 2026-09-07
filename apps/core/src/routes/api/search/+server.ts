@@ -79,9 +79,7 @@ export const GET: RequestHandler = async ({ url }) => {
 	// origin identity) is what keeps a cooked song from reappearing as a second, raw row — see
 	// Media.sourceRef, which is immutable for exactly this reason.
 	const materialized: Media[] = [...local, ...yt].map((r) => {
-		const existing = [...app.mediaById.values()].find(
-			(m) => m.source === r.source && m.sourceRef === r.sourceRef
-		);
+		const existing = [...app.mediaById.values()].find((m) => m.source === r.source && m.sourceRef === r.sourceRef);
 		if (existing) return refreshDisplayFields(existing, r, (m) => app.media.upsert(m));
 		const media = resultToMedia(ulid(), r);
 		app.mediaById.set(media.id, media);

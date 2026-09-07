@@ -79,7 +79,11 @@
 
 		<div class="card">
 			<h2>Most sung</h2>
-			<Bars rows={stats.topSongs.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" empty="Nobody has sung yet" />
+			<Bars
+				rows={stats.topSongs.map((s) => ({ label: s.title, value: s.plays }))}
+				unit="sings"
+				empty="Nobody has sung yet"
+			/>
 		</div>
 
 		{#if recentDiffers}
@@ -92,7 +96,11 @@
 
 		<div class="card">
 			<h2>Top artists</h2>
-			<Bars rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))} unit="sings" empty="No artists identified yet" />
+			<Bars
+				rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))}
+				unit="sings"
+				empty="No artists identified yet"
+			/>
 			<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
 			     guessing a low-confidence artist, so some sung songs cannot be attributed at all. -->
 			<p class="note">Songs we couldn't match to an artist aren't counted.</p>

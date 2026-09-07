@@ -188,7 +188,11 @@ try {
 			`currentTime went ${a.currentTime.toFixed(2)} → ${b.currentTime.toFixed(2)} (+${dTime.toFixed(2)}s) over 3s`
 		);
 		check('the master is not paused while the room is playing', b.paused === false, `paused=${b.paused}`);
-		check('the master is audible (not muted, volume > 0)', b.muted === false && b.volume > 0, `muted=${b.muted} volume=${b.volume}`);
+		check(
+			'the master is audible (not muted, volume > 0)',
+			b.muted === false && b.volume > 0,
+			`muted=${b.muted} volume=${b.volume}`
+		);
 	}
 
 	// ── transport: pause must hold position, not reload to zero ────────────────
@@ -206,7 +210,11 @@ try {
 	await phone.clickByLabel('play/pause');
 	await sleep(2000);
 	const resumed = pick(await tv.evaluate(probe));
-	check('resume starts decoding again', resumed && !resumed.paused && (resumed.decoded ?? 0) > (paused?.decoded ?? 0), JSON.stringify(resumed));
+	check(
+		'resume starts decoding again',
+		resumed && !resumed.paused && (resumed.decoded ?? 0) > (paused?.decoded ?? 0),
+		JSON.stringify(resumed)
+	);
 	check(
 		'resume continues from where it paused, not from the top',
 		resumed && resumed.currentTime >= (paused?.currentTime ?? 0) - 0.5,

@@ -34,20 +34,22 @@ import { join } from 'node:path';
 // any reported offset still lines up. Matches the repo's stripComments convention.
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/\/\/[^\n]*/g, blank);
+	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
 // import.meta.dir === apps/core/src/server/realtime.
-const EVENTS = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', '..', '..', 'packages', 'shared', 'src', 'events.ts'), 'utf8'));
+const EVENTS = stripComments(
+	readFileSync(join(import.meta.dir, '..', '..', '..', '..', '..', 'packages', 'shared', 'src', 'events.ts'), 'utf8')
+);
 const PLAYER = stripComments(readFileSync(join(import.meta.dir, 'player.ts'), 'utf8'));
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
 // The client-side producer of the frame (#280). It declares its OWN copy of the wire type
 // (`TelemetryFrame`) and builds the object literal that gets JSON.stringify'd to the server — so the
 // shared union is never applied to the value and typecheck cannot catch a field added to both this
 // interface and this literal. import.meta.dir === apps/core/src/server/realtime; four up is apps/core.
-const PRODUCER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'src', 'lib', 'tv', 'telemetry.ts'), 'utf8'));
+const PRODUCER = stripComments(
+	readFileSync(join(import.meta.dir, '..', '..', '..', 'src', 'lib', 'tv', 'telemetry.ts'), 'utf8')
+);
 
 // The tv:telemetry ClientEvent variant, isolated so a durationSec/bufferedNextPct on some OTHER event
 // (or the legitimate Media.durationSec) does not falsely trip these checks.

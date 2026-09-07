@@ -12,7 +12,14 @@
 	is the only thing telling two singers apart besides the name).
 -->
 <script lang="ts">
-	import { SINGER_COLORS, SINGER_HUE_STEP, hueToHex, nearestSingerHue, nextSwatchIndex, presetTabStopIndex } from '@encore/shared';
+	import {
+		SINGER_COLORS,
+		SINGER_HUE_STEP,
+		hueToHex,
+		nearestSingerHue,
+		nextSwatchIndex,
+		presetTabStopIndex
+	} from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 
 	interface Props {
@@ -42,10 +49,26 @@
 	 */
 	const PRESET_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'];
 	const HUE_NAMES = [
-		'red', 'vermilion', 'orange', 'amber', 'yellow', 'lime',
-		'green', 'emerald', 'teal', 'cyan', 'sky', 'azure',
-		'blue', 'indigo', 'violet', 'purple', 'magenta', 'pink',
-		'rose', 'crimson'
+		'red',
+		'vermilion',
+		'orange',
+		'amber',
+		'yellow',
+		'lime',
+		'green',
+		'emerald',
+		'teal',
+		'cyan',
+		'sky',
+		'azure',
+		'blue',
+		'indigo',
+		'violet',
+		'purple',
+		'magenta',
+		'pink',
+		'rose',
+		'crimson'
 	];
 
 	function hueName(h: number): string {
@@ -57,9 +80,7 @@
 	let hue = $state(nearestSingerHue(value));
 
 	/** The label for whatever is currently selected, preset or wheel pick. */
-	const colorLabel = $derived(
-		presetIndex(value) !== -1 ? PRESET_NAMES[presetIndex(value)]! : hueName(hue)
-	);
+	const colorLabel = $derived(presetIndex(value) !== -1 ? PRESET_NAMES[presetIndex(value)]! : hueName(hue));
 
 	/**
 	 * Maps a preset hex to its position in the shared SINGER_COLORS array — the one place the
@@ -158,15 +179,54 @@
 </div>
 
 <style>
-	.picker { display: flex; flex-direction: column; gap: 10px; }
-	.swatches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+	.picker {
+		display: flex;
+		flex-direction: column;
+		gap: 10px;
+	}
+	.swatches {
+		display: grid;
+		grid-template-columns: repeat(4, 1fr);
+		gap: 12px;
+	}
 	/* The selected colour, named and shown — a hue off the wheel has no swatch to point at. */
-	.colour-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-	.field-label { font-size: 0.78rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--ink-dim); }
-	.field-hint { margin: -4px 0 0; font-size: 0.8rem; color: var(--ink-dim); }
-	.colour-now { display: inline-flex; align-items: center; gap: 7px; font-size: 0.85rem; color: var(--ink); }
-	.colour-chip { width: 14px; height: 14px; border-radius: 50%; background: var(--singer); flex: 0 0 auto; }
-	.hue { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }
+	.colour-head {
+		display: flex;
+		align-items: baseline;
+		justify-content: space-between;
+		gap: 12px;
+	}
+	.field-label {
+		font-size: 0.78rem;
+		letter-spacing: 0.12em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+	.field-hint {
+		margin: -4px 0 0;
+		font-size: 0.8rem;
+		color: var(--ink-dim);
+	}
+	.colour-now {
+		display: inline-flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 0.85rem;
+		color: var(--ink);
+	}
+	.colour-chip {
+		width: 14px;
+		height: 14px;
+		border-radius: 50%;
+		background: var(--singer);
+		flex: 0 0 auto;
+	}
+	.hue {
+		display: flex;
+		flex-direction: column;
+		gap: 8px;
+		margin-top: 4px;
+	}
 	/*
 	 * The track shows the actual reachable colours rather than a generic rainbow, so what you drag
 	 * through is what you can get. Built from the same pinned lightness and chroma the picker emits.
@@ -193,8 +253,14 @@
 		border: 1px solid var(--line);
 		background: linear-gradient(
 			to right,
-			oklch(0.7 0.16 0), oklch(0.7 0.16 45), oklch(0.7 0.16 90), oklch(0.7 0.16 135),
-			oklch(0.7 0.16 180), oklch(0.7 0.16 225), oklch(0.7 0.16 270), oklch(0.7 0.16 315),
+			oklch(0.7 0.16 0),
+			oklch(0.7 0.16 45),
+			oklch(0.7 0.16 90),
+			oklch(0.7 0.16 135),
+			oklch(0.7 0.16 180),
+			oklch(0.7 0.16 225),
+			oklch(0.7 0.16 270),
+			oklch(0.7 0.16 315),
 			oklch(0.7 0.16 360)
 		);
 	}
@@ -204,8 +270,14 @@
 		border: 1px solid var(--line);
 		background: linear-gradient(
 			to right,
-			oklch(0.7 0.16 0), oklch(0.7 0.16 45), oklch(0.7 0.16 90), oklch(0.7 0.16 135),
-			oklch(0.7 0.16 180), oklch(0.7 0.16 225), oklch(0.7 0.16 270), oklch(0.7 0.16 315),
+			oklch(0.7 0.16 0),
+			oklch(0.7 0.16 45),
+			oklch(0.7 0.16 90),
+			oklch(0.7 0.16 135),
+			oklch(0.7 0.16 180),
+			oklch(0.7 0.16 225),
+			oklch(0.7 0.16 270),
+			oklch(0.7 0.16 315),
 			oklch(0.7 0.16 360)
 		);
 	}
@@ -233,11 +305,23 @@
 		cursor: pointer;
 	}
 	.swatch {
-		height: 54px; border-radius: var(--radius-sm); border: 3px solid transparent;
-		cursor: pointer; transition: transform 0.12s;
-		display: grid; place-items: center;
+		height: 54px;
+		border-radius: var(--radius-sm);
+		border: 3px solid transparent;
+		cursor: pointer;
+		transition: transform 0.12s;
+		display: grid;
+		place-items: center;
 	}
-	.swatch.sel { border-color: var(--ink); }
+	.swatch.sel {
+		border-color: var(--ink);
+	}
 	/* Dark tick on a light swatch, with a faint light halo so it survives the darker presets too. */
-	.tick { color: var(--bg); font-size: 1.3rem; display: grid; place-items: center; filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.5)); }
+	.tick {
+		color: var(--bg);
+		font-size: 1.3rem;
+		display: grid;
+		place-items: center;
+		filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.5));
+	}
 </style>

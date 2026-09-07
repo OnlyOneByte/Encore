@@ -11,7 +11,10 @@ declare const self: ServiceWorkerGlobalScope;
 
 self.addEventListener('install', (event) => {
 	event.waitUntil(
-		caches.open(CACHE).then((cache) => cache.addAll(PRECACHE)).then(() => self.skipWaiting())
+		caches
+			.open(CACHE)
+			.then((cache) => cache.addAll(PRECACHE))
+			.then(() => self.skipWaiting())
 	);
 });
 
@@ -40,7 +43,7 @@ self.addEventListener('fetch', (event) => {
 		fetch(request)
 			.then((res) => {
 				const copy = res.clone();
-				caches.open(CACHE).then((c) => c.put(request, copy));
+				void caches.open(CACHE).then((c) => c.put(request, copy));
 				return res;
 			})
 			.catch(() => caches.match(request).then((hit) => hit ?? caches.match('/')) as Promise<Response>)

@@ -139,8 +139,7 @@ export function perCook(attempts: JobAttempt[], windowStartMs: number | null = n
 		// A cook enqueued before the window opened may be missing its earliest steps: its span is then
 		// measured from the wrong start and its completeness cannot be trusted. Flag it, never complete.
 		const clipped = windowStartMs !== null && start < windowStartMs;
-		const complete =
-			!clipped && sealed.length === list.length && sealed.every((a) => a.outcome === 'ready');
+		const complete = !clipped && sealed.length === list.length && sealed.every((a) => a.outcome === 'ready');
 		out.push({
 			cookId,
 			mediaId: sealed[0].mediaId,

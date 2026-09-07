@@ -18,20 +18,20 @@ const media = (over: Partial<Media> = {}): Media => ({
 	title: 'Toto - Africa (Lyrics)',
 	artist: 'Vibe Music',
 	durationSec: 295,
-	stemStatus: 'ready', lyricsStatus: 'ready',
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
 	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	...over
 });
 
-const cand = (source: string, timing: string, over: Partial<LyricsCandidate> = {}): LyricsCandidate =>
-	({
-		ref: `derived/lyrics/m1-${source}.json`,
-		textSource: source as LyricsCandidate['textSource'],
-		timing: timing as LyricsCandidate['timing'],
-		textConfidence: source === 'asr' ? 'low' : 'high',
-		createdAt: 1,
-		...over
-	});
+const cand = (source: string, timing: string, over: Partial<LyricsCandidate> = {}): LyricsCandidate => ({
+	ref: `derived/lyrics/m1-${source}.json`,
+	textSource: source as LyricsCandidate['textSource'],
+	timing: timing as LyricsCandidate['timing'],
+	textConfidence: source === 'asr' ? 'low' : 'high',
+	createdAt: 1,
+	...over
+});
 
 function withMedia(m: Media) {
 	return new Map<string, Media>([[m.id, m]]);

@@ -9,24 +9,42 @@ import { runCapturing } from './spawn-capture';
 // hung ffmpeg. `stdout`/`stderr` are empty streams so the Response reads resolve.
 function hungSpawn() {
 	let resolveExited: (code: number) => void;
-	const exited = new Promise<number>((r) => { resolveExited = r; });
-	const empty = () => new ReadableStream<Uint8Array>({ start(c) { c.close(); } });
+	const exited = new Promise<number>((r) => {
+		resolveExited = r;
+	});
+	const empty = () =>
+		new ReadableStream<Uint8Array>({
+			start(c) {
+				c.close();
+			}
+		});
 	const proc = {
 		exited,
-		get exitCode() { return null as number | null; },
+		get exitCode() {
+			return null as number | null;
+		},
 		stdout: empty(),
 		stderr: empty(),
-		kill: () => { resolveExited(143); } // SIGTERM-ish; the point is it only ends BECAUSE we killed it
+		kill: () => {
+			resolveExited(143);
+		} // SIGTERM-ish; the point is it only ends BECAUSE we killed it
 	};
 	return proc as unknown as ReturnType<typeof Bun.spawn>;
 }
 
 function quickSpawn(code: number, stderrText = '') {
 	const one = (text: string) =>
-		new ReadableStream<Uint8Array>({ start(c) { if (text) c.enqueue(new TextEncoder().encode(text)); c.close(); } });
+		new ReadableStream<Uint8Array>({
+			start(c) {
+				if (text) c.enqueue(new TextEncoder().encode(text));
+				c.close();
+			}
+		});
 	const proc = {
 		exited: Promise.resolve(code),
-		get exitCode() { return code; },
+		get exitCode() {
+			return code;
+		},
 		stdout: one(''),
 		stderr: one(stderrText),
 		kill: () => {}

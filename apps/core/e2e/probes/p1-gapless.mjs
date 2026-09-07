@@ -82,18 +82,6 @@ function parseSessionCookie(setCookie) {
 	const m = /encore_singer=([^;]+)/.exec(setCookie);
 	return m ? m[1] : null;
 }
-const ulid = () => {
-	const E = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
-	let t = Date.now();
-	let s = '';
-	for (let i = 9; i >= 0; i--) {
-		s = E[t % 32] + s;
-		t = Math.floor(t / 32);
-	}
-	for (let i = 0; i < 16; i++) s += E[Math.floor(Math.random() * 32)];
-	return s;
-};
-
 // ── findings sink ──────────────────────────────────────────────────────────────────────────────
 const findings = []; // {sev, id, title, evidence, path}
 function record(sev, id, title, evidence, path = '') {
@@ -154,8 +142,8 @@ async function joinSinger(name, color) {
 	const body = await res.json();
 	return { name, singerId: body.singer.id, cookie: `encore_singer=${token}` };
 }
-const alice = await joinSinger(`Alice-${(Date.now() % 100000)}`, '#ff5cae');
-const bob = await joinSinger(`Bob-${(Date.now() % 100000)}`, '#66d1ff');
+const alice = await joinSinger(`Alice-${Date.now() % 100000}`, '#ff5cae');
+const bob = await joinSinger(`Bob-${Date.now() % 100000}`, '#66d1ff');
 console.log(`joined ${alice.name} ${alice.singerId} and ${bob.name} ${bob.singerId}`);
 
 // ── cook both songs ─────────────────────────────────────────────────────────────────────────────
@@ -310,11 +298,10 @@ try {
 	})()`;
 
 	const t0 = Date.now();
-	const t0Mono = (await tv.evaluate('performance.now()'));
+	const t0Mono = await tv.evaluate('performance.now()');
 	const deadline = t0 + OBSERVE_TIMEOUT_MS;
 	let sawFirstSong = false;
 	let sawSecondSong = false;
-	let seenAttractAfter = false;
 	while (Date.now() < deadline) {
 		const s = await tv.evaluate(probe);
 		s.wallMs = Date.now() - t0;
@@ -332,7 +319,6 @@ try {
 			sawSecondSong = true;
 		}
 		if (sawSecondSong && s.attract) {
-			seenAttractAfter = true;
 			// give it one more sample window so we lock in the terminal state
 			await sleep(SAMPLE_MS);
 			timeline.push({ ...(await tv.evaluate(probe)), wallMs: Date.now() - t0, relMono: 0 });
@@ -353,7 +339,13 @@ try {
 	writeFileSync(join(artDir, 'timeline.json'), JSON.stringify(timeline, null, 1));
 	console.log(`timeline: ${join(artDir, 'timeline.json')}`);
 } catch (err) {
-	record('CRITICAL', 'PROBE-CRASH', 'the probe itself blew up', String(err?.stack ?? err), 'apps/core/e2e/probes/p1-gapless.mjs');
+	record(
+		'CRITICAL',
+		'PROBE-CRASH',
+		'the probe itself blew up',
+		String(err?.stack ?? err),
+		'apps/core/e2e/probes/p1-gapless.mjs'
+	);
 } finally {
 	browser?.close();
 	proc.kill();
@@ -395,7 +387,13 @@ function decodingWindow(tl, srcMatch) {
  */
 function analyze(tl, ctx) {
 	if (tl.length === 0) {
-		record('CRITICAL', 'P1-NO-SAMPLES', 'no timeline samples were collected', '', 'apps/core/e2e/probes/p1-gapless.mjs');
+		record(
+			'CRITICAL',
+			'P1-NO-SAMPLES',
+			'no timeline samples were collected',
+			'',
+			'apps/core/e2e/probes/p1-gapless.mjs'
+		);
 		return;
 	}
 	const { song1, song2 } = ctx;
@@ -513,9 +511,13 @@ function analyze(tl, ctx) {
 			'P1-F4-DOUBLE-AUDIO',
 			`both slots grew their decoded counters in ${simulRows} window(s) (~${dur}ms)`,
 			`first simultaneous-growth window at wall+${firstSimulT}ms. max simultaneous srcs in one window = ${maxSimul}. ` +
-				`${simulRows === 1 ? 'ONE such window is likely a sampling artifact — the counters both moved between the same two reads.' :
-				  simulRows === 2 || simulRows === 3 ? 'a short burst — could be a decoder flush during the swap, worth ear-testing.' :
-				  'a sustained overlap — the room would hear two songs at once.'}`,
+				`${
+					simulRows === 1
+						? 'ONE such window is likely a sampling artifact — the counters both moved between the same two reads.'
+						: simulRows === 2 || simulRows === 3
+							? 'a short burst — could be a decoder flush during the swap, worth ear-testing.'
+							: 'a sustained overlap — the room would hear two songs at once.'
+				}`,
 			'src/lib/tv/transport.ts + src/lib/tv/TvPlayer.svelte (hidden slot must be paused before swap)'
 		);
 	}
@@ -632,9 +634,7 @@ function analyze(tl, ctx) {
 			);
 		} else {
 			// Where did it actually flip? Find first sample where name differs from the song-1 name.
-			const flipI = tl.findIndex(
-				(r, i) => i >= w1.first && r.lowerThird.name && r.lowerThird.name !== nameDuringSong1
-			);
+			const flipI = tl.findIndex((r, i) => i >= w1.first && r.lowerThird.name && r.lowerThird.name !== nameDuringSong1);
 			const flipT = flipI >= 0 ? tl[flipI].wallMs : null;
 			const w2StartT = tl[w2.first].wallMs;
 			const drift = flipT !== null ? flipT - w2StartT : null;
@@ -655,7 +655,9 @@ function analyze(tl, ctx) {
 		const tailStart = Math.min(w2.lastClimb + 1, tl.length - 1);
 		const tail = tl.slice(tailStart);
 		const sawAttract = tail.some((r) => r.attract);
-		const stillDecoding = tail.some((r) => r.elems.some((e) => (e.decoded ?? 0) > (tl[tailStart - 1]?.elems.find((p) => p.src === e.src)?.decoded ?? 0)));
+		const stillDecoding = tail.some((r) =>
+			r.elems.some((e) => (e.decoded ?? 0) > (tl[tailStart - 1]?.elems.find((p) => p.src === e.src)?.decoded ?? 0))
+		);
 		if (sawAttract && !stillDecoding) {
 			record(
 				'LOW',

@@ -94,32 +94,32 @@
 
 <div class="lobby">
 	<div class="stack-region">
-	<div class="stack">
-		{#if unreachable}
-			<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size="var(--tv-qr)" unreachable={true} />
-		{:else}
-			<!--
+		<div class="stack">
+			{#if unreachable}
+				<JoinBadge qrDataUrl={qrDataUrl} joinUrl={joinUrl} placement="hero" size="var(--tv-qr)" unreachable={true} />
+			{:else}
+				<!--
 				ORDER: instruction, then the QR, then the typed address beneath it.
 				The QR used to come first with the copy underneath, which read as "here is a code, and
 				some text about it". Leading with the instruction and captioning the code with its own
 				address makes the pair one object — and it is the same object, at a smaller scale, that
 				sits in the corner during a song, so a guest recognises it across states.
 			-->
-			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
-			<div class="copy">
-				<h1>{headline}</h1>
-				<p class="sub">{sub}</p>
-			</div>
-			<JoinBadge {qrDataUrl} {joinUrl} placement="hero" size="var(--tv-qr)" unreachable={false} />
-			<!--
+				<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
+				<div class="copy">
+					<h1>{headline}</h1>
+					<p class="sub">{sub}</p>
+				</div>
+				<JoinBadge qrDataUrl={qrDataUrl} joinUrl={joinUrl} placement="hero" size="var(--tv-qr)" unreachable={false} />
+				<!--
 				The address in text as well as in the QR. The attract screen prints it and this screen did
 				not, which left the lobby — the state a latecomer actually walks in on — with no way to join
 				when a camera will not scan the code. Same treatment as attract so the two screens do not
 				disagree about what the address looks like.
 			-->
-			<p class="url">{joinShort}</p>
-		{/if}
-	</div>
+				<p class="url">{joinShort}</p>
+			{/if}
+		</div>
 	</div>
 
 	{#if roster.length > 0}

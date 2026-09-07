@@ -144,9 +144,7 @@ async function scope(page, id) {
 async function fitViewport(page, width, { min = 600, max = 2000, pad = 40 } = {}) {
 	await page.viewport(width, min, 1);
 	await sleep(300);
-	const h = await page.evaluate(
-		`Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)`
-	);
+	const h = await page.evaluate(`Math.max(document.documentElement.scrollHeight, document.body.scrollHeight)`);
 	const height = Math.max(min, Math.min(max, Math.ceil(h) + pad));
 	await page.viewport(width, height, 1);
 	await sleep(250);
@@ -179,12 +177,17 @@ async function kickPlayback(tv) {
 	return report;
 }
 
-/** Is the TV's media actually moving? The only trustworthy answer is: look twice. */async function positionAdvancing(tv, overMs = 1600) {
+/** Is the TV's media actually moving? The only trustworthy answer is: look twice. */ async function positionAdvancing(
+	tv,
+	overMs = 1600
+) {
 	const read = () =>
 		// `video, audio` — the master is an <audio> (TvPlayer plays an instrumental, which has no picture).
 		// Pinned to a bare 'video' this read returned -1 forever, which reads as "not advancing" and would
 		// quietly cost every playing-state frame in the gallery.
-		tv.evaluate(`(() => { const v = document.querySelector(${JSON.stringify(SEL.mediaEl)}); return v ? v.currentTime : -1; })()`);
+		tv.evaluate(
+			`(() => { const v = document.querySelector(${JSON.stringify(SEL.mediaEl)}); return v ? v.currentTime : -1; })()`
+		);
 	const a = await read();
 	await sleep(overMs);
 	const b = await read();
@@ -643,9 +646,7 @@ try {
 	});
 
 	await frame('metrics-per-song', async () => {
-		const first = await ada.evaluate(
-			`(document.querySelector('a[href^="/metrics/"]')?.getAttribute('href') ?? '')`
-		);
+		const first = await ada.evaluate(`(document.querySelector('a[href^="/metrics/"]')?.getAttribute('href') ?? '')`);
 		if (!first) throw new Error('no per-song audit link on /metrics (no cooks recorded yet)');
 		await ada.goto(`${base}${first}`);
 		await sleep(800);

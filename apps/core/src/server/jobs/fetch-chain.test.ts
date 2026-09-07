@@ -120,7 +120,12 @@ test('a fetch sends no track without an artist — the worker needs both or it d
 test('a CONFIDENT canonical is never overwritten by the guess', () => {
 	const p = assignParams(
 		'fetch',
-		media({ title: 'a-ha - Take On Me (Official Video)', artist: 'SomeChannel', artistCanonical: 'a-ha', titleCanonical: 'Take On Me' }),
+		media({
+			title: 'a-ha - Take On Me (Official Video)',
+			artist: 'SomeChannel',
+			artistCanonical: 'a-ha',
+			titleCanonical: 'Take On Me'
+		}),
 		settings()
 	);
 	expect(p.artist).toBe('a-ha');

@@ -4,8 +4,8 @@ Self-hosted karaoke for a room full of phones. Scan a QR, queue anything from Yo
 library, and sing — Encore strips the vocals itself, times the words to the music, and keeps the
 rotation fair. One container to run it; a second if you want it making karaoke tracks for you.
 
-| Phone remote | TV stage |
-|---|---|
+| Phone remote                                                            | TV stage                                                                             |
+| ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
 | ![the phone remote, searching](docs/mocks/tour-phone-search-eyeson.png) | ![the TV mid-song with word-timed lyrics](docs/mocks/tour-tv-lyrics-word-eyeson.png) |
 
 Every surface has a frame in [`docs/mocks/`](docs/mocks/) — 30 of them, each one the real app driven
@@ -65,12 +65,12 @@ PATH="$PWD/.venv/bin:$PATH" \
 Those two variables are the whole configuration — the worker measures the rest and prints what it
 found, including one line per capability with the evidence for it. A capability whose tool is
 **missing** is reported as loudly as one that is present, because that line is what explains a song
-stuck at 0%. `ENCORE_WORKER_CAPABILITIES` can only *narrow* what it advertises, never widen it. The
+stuck at 0%. `ENCORE_WORKER_CAPABILITIES` can only _narrow_ what it advertises, never widen it. The
 full model is in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §7.
 
 The worker **dials home** to core, never the reverse, and shells out to `yt-dlp`, `ffmpeg` and
 `demucs` **by name via PATH** — hence the `PATH` prefix above, and why capabilities are probed against
-PATH too. `MEDIA_DIR` must point at the *same* directory core is using, or core will mark a job
+PATH too. `MEDIA_DIR` must point at the _same_ directory core is using, or core will mark a job
 complete for a file it cannot serve. Expect **~1–2 min/song** on CPU;
 `ENCORE_WORKER_CONCURRENCY` (default `1`) sets how many cook at once.
 
@@ -96,7 +96,7 @@ would want it for.
 ## What it does
 
 - **Phone remote** — scan to join (name and a colour off a hue wheel, no signup), one search box over
-  YouTube and your library ordered by whether you can sing it *now*, one-tap queue, drag-reorder,
+  YouTube and your library ordered by whether you can sing it _now_, one-tap queue, drag-reorder,
   remove with undo, now-playing transport, and a pull-up rotation sheet.
 - **TV stage** — four room states (attract → lobby → waiting → playing), gapless two-player video, a
   "now singing" lower third, and a song-intro card between turns.
@@ -104,7 +104,7 @@ would want it for.
   their rotation slot while it cooks.
 - **Word-timed lyrics** — WhisperX timings drive a bouncing-ball overlay; marker, highlight, size,
   font, case and row counts are all room settings. When a song has several releases, Encore grades
-  each candidate set of words against what is *actually audible* and the closest one wins, so
+  each candidate set of words against what is _actually audible_ and the closest one wins, so
   "Telephone (feat. Beyoncé)" stops singing the lyrics of "Telephone". Words it had to transcribe
   itself are labelled as such on screen. How the grading works:
   [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §8.
@@ -133,7 +133,7 @@ would want it for.
 > ⚠️ **Encore has no operator identity. Treat it as trusted-LAN-only software.**
 >
 > - Any device that can reach the port can join as a singer, and **any joined phone can `PUT
->   /api/settings`** — which includes the separator engine and which Whisper weights the fleet loads.
+/api/settings`** — which includes the separator engine and which Whisper weights the fleet loads.
 > - **Set `ENCORE_WORKER_TOKEN`.** Without it, `role=worker` WebSocket upgrades are unauthenticated:
 >   anything that can reach the port can register as a worker and start receiving job assignments.
 >   Core logs one loud warning at startup when it is unset.
@@ -172,30 +172,30 @@ docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; deploy/ benchmarks/ m
 
 **Core**
 
-| Env | Default | Purpose |
-|---|---|---|
-| `PORT` | `3000` | HTTP + WS port |
-| `HOST` | `0.0.0.0` | bind address (use `127.0.0.1` to keep it off the network) |
-| `ENCORE_WORKER_TOKEN` | unset | shared secret required on `role=worker` WS upgrades; a worker without a matching `token` gets `401`. **Unset means worker registration is unauthenticated** — see Security |
-| `ENCORE_PUBLIC_ORIGIN` | unset | address the TV's join QR advertises, e.g. `http://10.69.1.169:3000`. Unset = derive from the request. Set it when the machine showing `/tv` cannot reach its own public address (a WSL2 host, or a proxy that forwards no `X-Forwarded-*`). This is the *boot-time* declaration; **Global → Joining** in settings overrides it at runtime with no restart |
-| `DATA_DIR` | `./data` | SQLite (WAL) location — created if missing |
-| `MEDIA_DIR` | `./media` | root of the media volume — created if missing |
-| `MEDIA_STORE` | `local` | `local` volume or `object` (MinIO/S3, for remote workers) |
-| `ENCORE_SONG_INTRO_MS` | seeds `2500` | song-intro card duration, seeded into the room on **first boot only** (`0` seeds it off, for a pure gapless hard-cut). `INTERSTITIAL_MS` is still read as a deprecated alias. Both the duration and the on/off toggle live in **Settings → Room** afterwards |
-| `ENCORE_LYRICS_BACKFILL` | on | set `0` to skip the boot-time lyrics backfill for already-cooked songs |
-| `ENCORE_VOCALS_BACKFILL` | on | set `0` to skip the boot-time guiding-track (vocals stem) backfill |
-| `ENCORE_EPHEMERAL` | unset | `1` → in-memory DB; nothing persists (handy for a throwaway instance) |
-| `FFMPEG_BIN` | `ffmpeg` | ffmpeg binary used for recompression |
+| Env                      | Default      | Purpose                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------ | ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`                   | `3000`       | HTTP + WS port                                                                                                                                                                                                                                                                                                                                            |
+| `HOST`                   | `0.0.0.0`    | bind address (use `127.0.0.1` to keep it off the network)                                                                                                                                                                                                                                                                                                 |
+| `ENCORE_WORKER_TOKEN`    | unset        | shared secret required on `role=worker` WS upgrades; a worker without a matching `token` gets `401`. **Unset means worker registration is unauthenticated** — see Security                                                                                                                                                                                |
+| `ENCORE_PUBLIC_ORIGIN`   | unset        | address the TV's join QR advertises, e.g. `http://10.69.1.169:3000`. Unset = derive from the request. Set it when the machine showing `/tv` cannot reach its own public address (a WSL2 host, or a proxy that forwards no `X-Forwarded-*`). This is the _boot-time_ declaration; **Global → Joining** in settings overrides it at runtime with no restart |
+| `DATA_DIR`               | `./data`     | SQLite (WAL) location — created if missing                                                                                                                                                                                                                                                                                                                |
+| `MEDIA_DIR`              | `./media`    | root of the media volume — created if missing                                                                                                                                                                                                                                                                                                             |
+| `MEDIA_STORE`            | `local`      | `local` volume or `object` (MinIO/S3, for remote workers)                                                                                                                                                                                                                                                                                                 |
+| `ENCORE_SONG_INTRO_MS`   | seeds `2500` | song-intro card duration, seeded into the room on **first boot only** (`0` seeds it off, for a pure gapless hard-cut). `INTERSTITIAL_MS` is still read as a deprecated alias. Both the duration and the on/off toggle live in **Settings → Room** afterwards                                                                                              |
+| `ENCORE_LYRICS_BACKFILL` | on           | set `0` to skip the boot-time lyrics backfill for already-cooked songs                                                                                                                                                                                                                                                                                    |
+| `ENCORE_VOCALS_BACKFILL` | on           | set `0` to skip the boot-time guiding-track (vocals stem) backfill                                                                                                                                                                                                                                                                                        |
+| `ENCORE_EPHEMERAL`       | unset        | `1` → in-memory DB; nothing persists (handy for a throwaway instance)                                                                                                                                                                                                                                                                                     |
+| `FFMPEG_BIN`             | `ffmpeg`     | ffmpeg binary used for recompression                                                                                                                                                                                                                                                                                                                      |
 
-**Storage classes** — split by *replaceability* so they can live on different volumes (see
+**Storage classes** — split by _replaceability_ so they can live on different volumes (see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) §6). Each defaults under `MEDIA_DIR`.
 
-| Env | Default | Holds |
-|---|---|---|
-| `ENCORE_AUDIO_DIR` | `$MEDIA_DIR/audio` | raw originals — **not regenerable; back this up** |
-| `ENCORE_DERIVED_DIR` | `$MEDIA_DIR/derived` | stems, lyrics, thumbs — safe to delete |
-| `ENCORE_META_DIR` | `$MEDIA_DIR/meta` | sidecar records — the authoritative library index |
-| `ENCORE_MEDIA_MAX_GB` | unset | soft cap; evicts `derived/` LRU-first. Unset = never delete |
+| Env                   | Default              | Holds                                                       |
+| --------------------- | -------------------- | ----------------------------------------------------------- |
+| `ENCORE_AUDIO_DIR`    | `$MEDIA_DIR/audio`   | raw originals — **not regenerable; back this up**           |
+| `ENCORE_DERIVED_DIR`  | `$MEDIA_DIR/derived` | stems, lyrics, thumbs — safe to delete                      |
+| `ENCORE_META_DIR`     | `$MEDIA_DIR/meta`    | sidecar records — the authoritative library index           |
+| `ENCORE_MEDIA_MAX_GB` | unset                | soft cap; evicts `derived/` LRU-first. Unset = never delete |
 
 **Object store** (only when `MEDIA_STORE=object`) — `S3_BUCKET` (required), `S3_ENDPOINT`,
 `S3_REGION`, `S3_PREFIX`. Credentials come from the standard `AWS_*` env vars, which `Bun.S3Client`
@@ -203,10 +203,10 @@ reads directly. A missing bucket falls back to `local` rather than failing to bo
 
 **Worker** — two settings, and everything else is measured.
 
-| Env | Purpose |
-|---|---|
-| `ENCORE_CORE_WS` | where core is. No probe can guess this |
-| `MEDIA_DIR` | the volume core is also using. Must match, or core serves a file that isn't there |
+| Env              | Purpose                                                                           |
+| ---------------- | --------------------------------------------------------------------------------- |
+| `ENCORE_CORE_WS` | where core is. No probe can guess this                                            |
+| `MEDIA_DIR`      | the volume core is also using. Must match, or core serves a file that isn't there |
 
 Everything else is an **override**, unset by default and present only for when a measurement is wrong
 or you want to deliberately limit a box:
@@ -218,7 +218,7 @@ or you want to deliberately limit a box:
   does `cpu`/`cuda` and nothing else), `ENCORE_TORCH_THREADS`. `ENCORE_DEMUCS_DEVICE` is a deprecated
   alias of `ENCORE_DEVICE` and now sets the device for the whole worker
 - **Separation** — `ENCORE_DEMUCS_MODEL`, `ENCORE_DEMUCS_JOBS` (auto-derived from usable cores),
-  `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT` (auto-derived from *free* accelerator memory)/`_SHIFTS`, `ENCORE_FLAC_LEVEL`
+  `ENCORE_DEMUCS_OVERLAP`/`_SEGMENT` (auto-derived from _free_ accelerator memory)/`_SHIFTS`, `ENCORE_FLAC_LEVEL`
   (`8`)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is

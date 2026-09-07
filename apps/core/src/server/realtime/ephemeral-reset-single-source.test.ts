@@ -8,12 +8,9 @@ import { readFileSync } from 'node:fs';
 // has no behavioural test that can red (the suite is green before and after), so this is a source
 // scan. Comments are STRIPPED first so the prose that describes the old shape (or the historical
 // keyShift leak) can neither satisfy nor trip the assertions.
-const strip = (s: string): string =>
-	s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+const strip = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
 
-const playerSrc = strip(
-	readFileSync(new URL('./player.ts', import.meta.url), 'utf8')
-);
+const playerSrc = strip(readFileSync(new URL('./player.ts', import.meta.url), 'utf8'));
 
 test('player.ts is the file under test and still has its reset call sites (not-vacuous)', () => {
 	// If player.ts is moved/renamed/emptied, these sentinels fail loudly rather than the scan

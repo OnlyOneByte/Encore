@@ -23,11 +23,7 @@ import { makeRegistry } from './registry';
 import { DEFAULT_QUEUE_ORDER, isQueueOrder, type QueueOrderId } from './queue-order';
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
 import { SINGER_HUE_STEP } from './colors';
-import {
-	DEFAULT_PRESENCE_GRACE_MINUTES,
-	MAX_PRESENCE_GRACE_MINUTES,
-	MIN_PRESENCE_GRACE_MINUTES
-} from './membership';
+import { DEFAULT_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES, MIN_PRESENCE_GRACE_MINUTES } from './membership';
 import {
 	DEFAULT_ASR_MODEL,
 	DEFAULT_LYRICS_BALL,
@@ -485,12 +481,7 @@ export function normalizeRoomSettings(
 	// lyrics-engines.ts (a legibility floor, or a row count past which the type must shrink to fit).
 	const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
 		typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback;
-	const lyricsScalePct = clampInt(
-		input?.lyricsScalePct,
-		MIN_LYRICS_SCALE_PCT,
-		MAX_LYRICS_SCALE_PCT,
-		d.lyricsScalePct
-	);
+	const lyricsScalePct = clampInt(input?.lyricsScalePct, MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT, d.lyricsScalePct);
 	// Zero is a legitimate value for both: a room may want no history, or nothing revealed ahead.
 	const lyricsLinesBefore = clampInt(input?.lyricsLinesBefore, 0, MAX_LYRICS_LINES_BEFORE, d.lyricsLinesBefore);
 	const lyricsLinesAfter = clampInt(input?.lyricsLinesAfter, 0, MAX_LYRICS_LINES_AFTER, d.lyricsLinesAfter);

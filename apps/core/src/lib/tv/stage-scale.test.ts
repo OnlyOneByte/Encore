@@ -79,9 +79,7 @@ test('nothing on the stage is docked to an edge with a fixed pixel offset', () =
 		for (const m of src.matchAll(/(?:^|[;{\s])(top|right|bottom|left):\s*(-?[0-9.]+)px/g)) {
 			// 0 is full-bleed, which is intentional (scrims, the fixed .tv shell, mask layers)
 			if (Number(m[2]) === 0) continue;
-			offenders.push(
-				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[1]}: ${m[2]}px — use var(--tv-safe-x|y)`
-			);
+			offenders.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[1]}: ${m[2]}px — use var(--tv-safe-x|y)`);
 		}
 	}
 	expect(offenders).toEqual([]);
@@ -260,7 +258,7 @@ test('the measured card height overrides --tv-chrome-h on the stage', () => {
  * phone already uses, so phone and TV describe the same pipeline state identically.
  */
 test('the TV cook wording comes from cook-phrasing, not a hand-written string', () => {
-	for (const [name, src] of [
+	for (const [, src] of [
 		['routes/tv/+page.svelte', TV_ROUTE],
 		['lib/tv/TvLobby.svelte', TV_LOBBY]
 	] as const) {
@@ -360,16 +358,8 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
  * why the guard is structural: one variable per state, set on the root, read by the rules. A future
  * edit that reaches for a deeper selector instead of an override trips this.
  */
-const LYRICS_OVERLAY = stripComments(
-	readFileSync(join(SRC, 'lib', 'tv', 'LyricsOverlay.svelte'), 'utf8')
-);
-const REEL_STATE_VARS = [
-	'--reel-current',
-	'--reel-ahead',
-	'--reel-done',
-	'--reel-line',
-	'--reel-now'
-] as const;
+const LYRICS_OVERLAY = stripComments(readFileSync(join(SRC, 'lib', 'tv', 'LyricsOverlay.svelte'), 'utf8'));
+const REEL_STATE_VARS = ['--reel-current', '--reel-ahead', '--reel-done', '--reel-line', '--reel-now'] as const;
 
 test('every reel colour state is declared once as a variable and consumed through it', () => {
 	const root = /\.lyrics\s*\{([^}]*)\}/.exec(LYRICS_OVERLAY)?.[1] ?? '';
@@ -403,9 +393,7 @@ test('the unverified tint overrides variables only — it never re-selects a wor
 	expect(block).not.toContain('--reel-now:');
 	// No descendant selector may carry the tint. That is the shape that out-specified the word ladder
 	// and flattened sung/unsung to one colour.
-	const descendants = [...LYRICS_OVERLAY.matchAll(/\.lyrics\.unverified\s+[^{]+\{/g)].map((m) =>
-		m[0].trim()
-	);
+	const descendants = [...LYRICS_OVERLAY.matchAll(/\.lyrics\.unverified\s+[^{]+\{/g)].map((m) => m[0].trim());
 	expect(descendants).toEqual([]);
 });
 

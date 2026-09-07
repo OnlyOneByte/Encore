@@ -49,7 +49,14 @@ interface AuditAttempt {
 	queueWaitMs: number | null;
 	processingMs: number | null;
 	rtFactor: number | null;
-	models: { engine: string | null; model: string | null; backend: string | null; device: string | null; asrModel: string | null; syncMode: string | null };
+	models: {
+		engine: string | null;
+		model: string | null;
+		backend: string | null;
+		device: string | null;
+		asrModel: string | null;
+		syncMode: string | null;
+	};
 	stages: { stage: string; ms: number }[];
 }
 

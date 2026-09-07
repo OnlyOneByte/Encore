@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { applyOp, type QueueOp } from './ops';
+import { applyOp } from './ops';
 import { applyAndReseq } from './rotation';
 import type { QueueEntry } from './types';
 

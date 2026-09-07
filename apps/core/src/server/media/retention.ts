@@ -91,8 +91,18 @@ export const transcodeDiagnostics: { lastError: string } = { lastError: '' };
  * and the source is only deleted once the destination exists and is non-empty — losing a playable
  * instrumental to a half-written encode would be far worse than keeping a large file.
  */
-export async function recompressLegacyStems(targets: RecompressTarget[], transcode: Transcoder): Promise<RecompressResult> {
-	const res: RecompressResult = { converted: 0, bytesBefore: 0, bytesAfter: 0, skipped: 0, failed: 0, newRefs: new Map() };
+export async function recompressLegacyStems(
+	targets: RecompressTarget[],
+	transcode: Transcoder
+): Promise<RecompressResult> {
+	const res: RecompressResult = {
+		converted: 0,
+		bytesBefore: 0,
+		bytesAfter: 0,
+		skipped: 0,
+		failed: 0,
+		newRefs: new Map()
+	};
 
 	for (const t of targets) {
 		const absFrom = safeMediaPath(t.from);
@@ -110,7 +120,7 @@ export async function recompressLegacyStems(targets: RecompressTarget[], transco
 		}
 
 		const before = statSync(absFrom).size;
-		let ok = false;
+		let ok: boolean;
 		try {
 			ok = await transcode(absFrom, absTo);
 		} catch {

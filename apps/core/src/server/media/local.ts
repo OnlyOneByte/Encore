@@ -40,9 +40,7 @@ export class LocalLibrary implements MediaResolver {
 	/** Replace the index with a fresh set (called after a disk scan). */
 	index(tracks: LocalTrack[]): void {
 		this.#fts.exec('DELETE FROM tracks;');
-		const ins = this.#fts.prepare(
-			'INSERT INTO tracks (source_ref, title, artist, duration_sec) VALUES (?, ?, ?, ?)'
-		);
+		const ins = this.#fts.prepare('INSERT INTO tracks (source_ref, title, artist, duration_sec) VALUES (?, ?, ?, ?)');
 		const tx = this.#fts.transaction((rows: LocalTrack[]) => {
 			for (const t of rows) ins.run(t.sourceRef, t.title, t.artist ?? '', t.durationSec);
 		});

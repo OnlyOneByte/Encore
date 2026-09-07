@@ -27,10 +27,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const cancelSrc = readFileSync(join(import.meta.dir, 'cancel.ts'), 'utf8');
-const typesSrc = readFileSync(
-	join(import.meta.dir, '../../../../../packages/shared/src/types.ts'),
-	'utf8'
-);
+const typesSrc = readFileSync(join(import.meta.dir, '../../../../../packages/shared/src/types.ts'), 'utf8');
 
 /** Strip line and block comments so prose describing the old layout cannot satisfy or trip a scan. */
 function stripComments(s: string): string {
@@ -57,9 +54,7 @@ describe('cancel.ts job-type table is exhaustive over JobType', () => {
 		const members = jobTypeMembers();
 		// Isolate the record body so a key mentioned elsewhere (e.g. a string literal in the loop)
 		// cannot vacuously satisfy the check.
-		const rec = cancelNoComments.match(
-			/CANCELLABLE_JOB_TYPES\s*:\s*Record<JobType,\s*true>\s*=\s*\{([\s\S]*?)\}/
-		);
+		const rec = cancelNoComments.match(/CANCELLABLE_JOB_TYPES\s*:\s*Record<JobType,\s*true>\s*=\s*\{([\s\S]*?)\}/);
 		expect(rec, 'CANCELLABLE_JOB_TYPES: Record<JobType, true> literal must exist in cancel.ts').not.toBeNull();
 		const body = rec![1];
 		for (const member of members) {

@@ -81,10 +81,7 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 const searchInit = await fetch(`${base}/api/search?q=caroline`).then((r) => r.json());
 const cookedIds = new Set((searchInit.ready ?? []).map((r) => r.id));
 if (cookedIds.size === 0) {
-	bail(
-		'no READY song in the library — nothing to play.\n' +
-			'  Seed + cook one first (HARNESS.md §Cook a song).'
-	);
+	bail('no READY song in the library — nothing to play.\n' + '  Seed + cook one first (HARNESS.md §Cook a song).');
 }
 // The first ready row is what the TV will pick up when a singer queues it.
 const firstReady = (searchInit.ready ?? [])[0];
@@ -260,9 +257,7 @@ try {
 	for (const q of ['bohemian', 'believin', 'happy', 'imagine', 'don', 'stand']) {
 		try {
 			const r = await fetch(`${base}/api/search?q=${encodeURIComponent(q)}`).then((x) => x.json());
-			const alt = (r.ready ?? []).find(
-				(row) => row.id !== firstReady.id && !extras.some((e) => e.id === row.id)
-			);
+			const alt = (r.ready ?? []).find((row) => row.id !== firstReady.id && !extras.some((e) => e.id === row.id));
 			if (alt) extras.push(alt);
 		} catch {}
 		if (extras.length >= 2) break;
@@ -353,8 +348,7 @@ try {
 	record(
 		'CRITICAL',
 		'T3a · server PlaybackState.positionSec tracks the TV (not pinned at 0)',
-		srvAtPause.state.positionSec >= 1 &&
-			Math.abs(srvAtPause.state.positionSec - afterPause.currentTime) < 3,
+		srvAtPause.state.positionSec >= 1 && Math.abs(srvAtPause.state.positionSec - afterPause.currentTime) < 3,
 		`server.positionSec=${srvAtPause.state.positionSec}, tv.currentTime=${afterPause.currentTime.toFixed(2)}`
 	);
 	record(
@@ -469,8 +463,7 @@ try {
 	record(
 		'CRITICAL',
 		'T2b · decoding continues past the seek (bytes climb from post-seek baseline)',
-		(afterSeekPlay.decoded ?? 0) > (afterSeek.decoded ?? 0) &&
-			afterSeekPlay.currentTime > afterSeek.currentTime + 1.0,
+		(afterSeekPlay.decoded ?? 0) > (afterSeek.decoded ?? 0) && afterSeekPlay.currentTime > afterSeek.currentTime + 1.0,
 		`decoded ${afterSeek.decoded} → ${afterSeekPlay.decoded}, currentTime ${afterSeek.currentTime.toFixed(2)} → ${afterSeekPlay.currentTime.toFixed(2)}`
 	);
 	// The 206 assertion is served directly against the /media route so a fake-passing "the seek
@@ -575,11 +568,7 @@ try {
 				`before.current=${curBeforeOob}, after.current=${srvAfterOob.state.currentEntryId}, isPlaying=${srvAfterOob.state.isPlaying} — expected: seek is clamped or ignored; observed: the queue advanced`
 			);
 		} else {
-			record(
-				'INFO',
-				'T2-oob skipped: no current song to seek against',
-				true
-			);
+			record('INFO', 'T2-oob skipped: no current song to seek against', true);
 		}
 
 		// ── T6 · SKIP through the rest of the queue until empty ─────────────
@@ -628,11 +617,7 @@ try {
 			srvAfterSkip.state.currentEntryId === null,
 			`currentEntryId=${srvAfterSkip.state.currentEntryId}, isPlaying=${srvAfterSkip.state.isPlaying}`
 		);
-		record(
-			'INFO',
-			'T1e/T1f/T2-oob skipped: only ONE cooked song in the fixture — no next song to skip TO',
-			true
-		);
+		record('INFO', 'T1e/T1f/T2-oob skipped: only ONE cooked song in the fixture — no next song to skip TO', true);
 	}
 
 	// ── T5 · disabled controls on an empty room ──────────────────────────────
@@ -685,6 +670,7 @@ const failed = findings.filter((f) => !f.ok);
 console.log(`\n${findings.length - failed.length}/${findings.length} passed`);
 if (failed.length) {
 	console.log('\nfailures:');
-	for (const f of failed) console.log(`  ${f.severity.padEnd(8)}${f.name}${f.detail ? `\n           ${f.detail}` : ''}`);
+	for (const f of failed)
+		console.log(`  ${f.severity.padEnd(8)}${f.name}${f.detail ? `\n           ${f.detail}` : ''}`);
 }
 process.exit(failed.length ? 1 : 0);

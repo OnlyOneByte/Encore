@@ -70,7 +70,11 @@ export async function serveThumb(url: string): Promise<Response> {
 		const bytes = await res.arrayBuffer();
 		await Bun.write(path, bytes);
 		return new Response(bytes, {
-			headers: { 'content-type': res.headers.get('content-type') ?? contentTypeFor(path), 'cache-control': IMMUTABLE, 'x-cache': 'MISS' }
+			headers: {
+				'content-type': res.headers.get('content-type') ?? contentTypeFor(path),
+				'cache-control': IMMUTABLE,
+				'x-cache': 'MISS'
+			}
 		});
 	} catch {
 		return new Response('fetch failed', { status: 502 });

@@ -20,7 +20,6 @@
 		resolveLyricsPresentation
 	} from '@encore/shared';
 	import type { LyricsCandidate } from '@encore/shared';
-	import type { PublicSinger } from '@encore/shared';
 
 	/*
 	 * Fixture singer colours, taken from the shared palette by INDEX rather than retyped as hexes.
@@ -53,7 +52,9 @@
 						const x = i % 8;
 						const y = Math.floor(i / 8);
 						// deterministic checker-ish blocks so it reads as a QR without pretending to scan
-						return (x * 7 + y * 13) % 3 === 0 ? `<rect x="${x * 8}" y="${y * 8}" width="8" height="8" fill="#0b0b12"/>` : '';
+						return (x * 7 + y * 13) % 3 === 0
+							? `<rect x="${x * 8}" y="${y * 8}" width="8" height="8" fill="#0b0b12"/>`
+							: '';
 					})
 					.join('') +
 				`</svg>`
@@ -92,187 +93,187 @@
 	// Demo: a word-timed fixture + an auto-advancing position so the karaoke sweep is visible
 	// here in the dev gallery (the real /tv route feeds position from player telemetry).
 	const demoLyrics: LyricsDoc = {
-	  "language": "en",
-	  "lines": [
-	    {
-	      "start": 0.0,
-	      "end": 2.6,
-	      "text": "Is this the real life",
-	      "words": [
-	        {
-	          "word": "Is",
-	          "start": 0.0,
-	          "end": 0.408
-	        },
-	        {
-	          "word": "this",
-	          "start": 0.48,
-	          "end": 0.888
-	        },
-	        {
-	          "word": "the",
-	          "start": 0.96,
-	          "end": 1.368
-	        },
-	        {
-	          "word": "real",
-	          "start": 1.44,
-	          "end": 1.848
-	        },
-	        {
-	          "word": "life",
-	          "start": 1.92,
-	          "end": 2.328
-	        }
-	      ]
-	    },
-	    {
-	      "start": 3.0,
-	      "end": 5.6,
-	      "text": "Is this just fantasy",
-	      "words": [
-	        {
-	          "word": "Is",
-	          "start": 3.0,
-	          "end": 3.51
-	        },
-	        {
-	          "word": "this",
-	          "start": 3.6,
-	          "end": 4.11
-	        },
-	        {
-	          "word": "just",
-	          "start": 4.2,
-	          "end": 4.71
-	        },
-	        {
-	          "word": "fantasy",
-	          "start": 4.8,
-	          "end": 5.31
-	        }
-	      ]
-	    },
-	    {
-	      "start": 6.0,
-	      "end": 8.6,
-	      "text": "Caught in a landslide",
-	      "words": [
-	        {
-	          "word": "Caught",
-	          "start": 6.0,
-	          "end": 6.51
-	        },
-	        {
-	          "word": "in",
-	          "start": 6.6,
-	          "end": 7.11
-	        },
-	        {
-	          "word": "a",
-	          "start": 7.2,
-	          "end": 7.71
-	        },
-	        {
-	          "word": "landslide",
-	          "start": 7.8,
-	          "end": 8.31
-	        }
-	      ]
-	    },
-	    {
-	      "start": 9.0,
-	      "end": 11.6,
-	      "text": "No escape from reality",
-	      "words": [
-	        {
-	          "word": "No",
-	          "start": 9.0,
-	          "end": 9.51
-	        },
-	        {
-	          "word": "escape",
-	          "start": 9.6,
-	          "end": 10.11
-	        },
-	        {
-	          "word": "from",
-	          "start": 10.2,
-	          "end": 10.71
-	        },
-	        {
-	          "word": "reality",
-	          "start": 10.8,
-	          "end": 11.31
-	        }
-	      ]
-	    },
-	    {
-	      "start": 12.0,
-	      "end": 14.6,
-	      "text": "Open your eyes",
-	      "words": [
-	        {
-	          "word": "Open",
-	          "start": 12.0,
-	          "end": 12.68
-	        },
-	        {
-	          "word": "your",
-	          "start": 12.8,
-	          "end": 13.48
-	        },
-	        {
-	          "word": "eyes",
-	          "start": 13.6,
-	          "end": 14.28
-	        }
-	      ]
-	    },
-	    {
-	      "start": 15.0,
-	      "end": 17.6,
-	      "text": "Look up to the skies and see",
-	      "words": [
-	        {
-	          "word": "Look",
-	          "start": 15.0,
-	          "end": 15.291
-	        },
-	        {
-	          "word": "up",
-	          "start": 15.343,
-	          "end": 15.634
-	        },
-	        {
-	          "word": "to",
-	          "start": 15.686,
-	          "end": 15.977
-	        },
-	        {
-	          "word": "the",
-	          "start": 16.029,
-	          "end": 16.32
-	        },
-	        {
-	          "word": "skies",
-	          "start": 16.371,
-	          "end": 16.663
-	        },
-	        {
-	          "word": "and",
-	          "start": 16.714,
-	          "end": 17.006
-	        },
-	        {
-	          "word": "see",
-	          "start": 17.057,
-	          "end": 17.349
-	        }
-	      ]
-	    }
-	  ],
-	  "words": []
+		language: 'en',
+		lines: [
+			{
+				start: 0.0,
+				end: 2.6,
+				text: 'Is this the real life',
+				words: [
+					{
+						word: 'Is',
+						start: 0.0,
+						end: 0.408
+					},
+					{
+						word: 'this',
+						start: 0.48,
+						end: 0.888
+					},
+					{
+						word: 'the',
+						start: 0.96,
+						end: 1.368
+					},
+					{
+						word: 'real',
+						start: 1.44,
+						end: 1.848
+					},
+					{
+						word: 'life',
+						start: 1.92,
+						end: 2.328
+					}
+				]
+			},
+			{
+				start: 3.0,
+				end: 5.6,
+				text: 'Is this just fantasy',
+				words: [
+					{
+						word: 'Is',
+						start: 3.0,
+						end: 3.51
+					},
+					{
+						word: 'this',
+						start: 3.6,
+						end: 4.11
+					},
+					{
+						word: 'just',
+						start: 4.2,
+						end: 4.71
+					},
+					{
+						word: 'fantasy',
+						start: 4.8,
+						end: 5.31
+					}
+				]
+			},
+			{
+				start: 6.0,
+				end: 8.6,
+				text: 'Caught in a landslide',
+				words: [
+					{
+						word: 'Caught',
+						start: 6.0,
+						end: 6.51
+					},
+					{
+						word: 'in',
+						start: 6.6,
+						end: 7.11
+					},
+					{
+						word: 'a',
+						start: 7.2,
+						end: 7.71
+					},
+					{
+						word: 'landslide',
+						start: 7.8,
+						end: 8.31
+					}
+				]
+			},
+			{
+				start: 9.0,
+				end: 11.6,
+				text: 'No escape from reality',
+				words: [
+					{
+						word: 'No',
+						start: 9.0,
+						end: 9.51
+					},
+					{
+						word: 'escape',
+						start: 9.6,
+						end: 10.11
+					},
+					{
+						word: 'from',
+						start: 10.2,
+						end: 10.71
+					},
+					{
+						word: 'reality',
+						start: 10.8,
+						end: 11.31
+					}
+				]
+			},
+			{
+				start: 12.0,
+				end: 14.6,
+				text: 'Open your eyes',
+				words: [
+					{
+						word: 'Open',
+						start: 12.0,
+						end: 12.68
+					},
+					{
+						word: 'your',
+						start: 12.8,
+						end: 13.48
+					},
+					{
+						word: 'eyes',
+						start: 13.6,
+						end: 14.28
+					}
+				]
+			},
+			{
+				start: 15.0,
+				end: 17.6,
+				text: 'Look up to the skies and see',
+				words: [
+					{
+						word: 'Look',
+						start: 15.0,
+						end: 15.291
+					},
+					{
+						word: 'up',
+						start: 15.343,
+						end: 15.634
+					},
+					{
+						word: 'to',
+						start: 15.686,
+						end: 15.977
+					},
+					{
+						word: 'the',
+						start: 16.029,
+						end: 16.32
+					},
+					{
+						word: 'skies',
+						start: 16.371,
+						end: 16.663
+					},
+					{
+						word: 'and',
+						start: 16.714,
+						end: 17.006
+					},
+					{
+						word: 'see',
+						start: 17.057,
+						end: 17.349
+					}
+				]
+			}
+		],
+		words: []
 	};
 
 	// The line-sync floor: same lines, no per-word timings — what an un-alignable LRC renders as.
@@ -343,13 +344,6 @@
 
 	// FIXTURE: a stand-in singer for the profile sheet — this is DATA, not styling. The colour is a
 	// singer's chosen accent, deliberately a literal.
-	const demoSinger: PublicSinger = {
-		id: 'demo',
-		displayName: 'Dana',
-		color: PINK,
-		joinedAt: Date.now()
-	};
-
 	// The picker and the sheet are bindable/stateful. Keep the gallery interactive so their real
 	// behaviour (preset-vs-slider agreement, open/close, drag) can be exercised, not just posed. The
 	// sheet defaults CLOSED so it does not cover the gallery it is being reviewed in — the toggle
@@ -365,17 +359,46 @@
 		ytThumbnailUrl), served through /api/thumb — so on a box with no route to the internet these
 		render the gradient placeholder rather than a broken image, which is itself worth seeing here.
 	-->
-	<SongRow title="a-ha - Take On Me (Official Video)" artistCanonical="a-ha" artist="a-ha" readiness="ready"
-		thumbnail="https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg" durationSec={225} viewCount={1892000000} />
-	<SongRow title="a-ha - Take On Me (Official Video)" artistCanonical="a-ha" artist="a-ha" readiness="ready" inQueue
-		thumbnail="https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg" durationSec={225} viewCount={1892000000} />
+	<SongRow
+		title="a-ha - Take On Me (Official Video)"
+		artistCanonical="a-ha"
+		artist="a-ha"
+		readiness="ready"
+		thumbnail="https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg"
+		durationSec={225}
+		viewCount={1892000000}
+	/>
+	<SongRow
+		title="a-ha - Take On Me (Official Video)"
+		artistCanonical="a-ha"
+		artist="a-ha"
+		readiness="ready"
+		inQueue
+		thumbnail="https://i.ytimg.com/vi/djV11Xbc914/mqdefault.jpg"
+		durationSec={225}
+		viewCount={1892000000}
+	/>
 	<!-- Ready row carrying a detected KEY chip (the chip is ready-only; a cooking/raw row never shows it). -->
-	<SongRow title="Journey - Don't Stop Believin' (Official Video)" artistCanonical="Journey" artist="Journey" readiness="ready"
-		thumbnail="https://i.ytimg.com/vi/1k8craCGpgs/mqdefault.jpg" durationSec={251} viewCount={789000000} keyName="E major" />
-	<SongRow title="Queen — Bohemian Rhapsody (Sub. Español / Lyrics)"
-		artistCanonical="Queen" artist="Richie Lyrics" readiness="cooking"
-		thumbnail="https://i.ytimg.com/vi/AlmHSUirAOs/mqdefault.jpg" durationSec={358} viewCount={265947}
-		pct={68} />
+	<SongRow
+		title="Journey - Don't Stop Believin' (Official Video)"
+		artistCanonical="Journey"
+		artist="Journey"
+		readiness="ready"
+		thumbnail="https://i.ytimg.com/vi/1k8craCGpgs/mqdefault.jpg"
+		durationSec={251}
+		viewCount={789000000}
+		keyName="E major"
+	/>
+	<SongRow
+		title="Queen — Bohemian Rhapsody (Sub. Español / Lyrics)"
+		artistCanonical="Queen"
+		artist="Richie Lyrics"
+		readiness="cooking"
+		thumbnail="https://i.ytimg.com/vi/AlmHSUirAOs/mqdefault.jpg"
+		durationSec={358}
+		viewCount={265947}
+		pct={68}
+	/>
 	<!--
 		#334 SPARKLE-HUG, made visible. The three cooking rows above all carry a title long enough to
 		wrap to two lines, so none of them shows the case #334 is about: a SHORT title where the clamp
@@ -385,9 +408,16 @@
 		the wrapped rows above barely move — which is exactly why the eyes-on gallery could not see it
 		before. No status/etaSec: a short cooking title mid-fetch is a real, un-decorated state.
 	-->
-	<SongRow title="Africa" artistCanonical="Toto" artist="Toto" readiness="cooking"
-		thumbnail="https://i.ytimg.com/vi/FTQbiNvZqaY/mqdefault.jpg" durationSec={295} viewCount={630000000}
-		pct={42} />
+	<SongRow
+		title="Africa"
+		artistCanonical="Toto"
+		artist="Toto"
+		readiness="cooking"
+		thumbnail="https://i.ytimg.com/vi/FTQbiNvZqaY/mqdefault.jpg"
+		durationSec={295}
+		viewCount={630000000}
+		pct={42}
+	/>
 	<!--
 		THE #80 BUG STATE, made visible. `status="downloading" pct={100}` is the exact instant this
 		issue names: the FETCH step reports 100% while separating/aligning/ready are unstarted. With the
@@ -395,21 +425,41 @@
 		band) and the readout says "20%", NOT the solid "100%" the raw per-step number produced before.
 		A row without a status (the fixture above) is unchanged — it still shows the raw pct.
 	-->
-	<SongRow title="Sweet Caroline — Neil Diamond (first step at 100%, cook barely started)"
-		artistCanonical="Neil Diamond" artist="Neil Diamond" readiness="cooking"
-		thumbnail="https://i.ytimg.com/vi/1vhFnTjia_I/mqdefault.jpg" durationSec={201} viewCount={12345678}
-		status="downloading" pct={100} />
+	<SongRow
+		title="Sweet Caroline — Neil Diamond (first step at 100%, cook barely started)"
+		artistCanonical="Neil Diamond"
+		artist="Neil Diamond"
+		readiness="cooking"
+		thumbnail="https://i.ytimg.com/vi/1vhFnTjia_I/mqdefault.jpg"
+		durationSec={201}
+		viewCount={12345678}
+		status="downloading"
+		pct={100}
+	/>
 	<!--
 		#80 ROUNDING check, committed. `status="separating" pct={68}` gives overallCookPct ~67.6 (a
 		band-interpolated FLOAT), so the readout MUST print a rounded "68%", never "67.6%". The bar keeps
 		the unrounded fraction for a smooth transition. This is the fractional case the two band-edge
 		fixtures (downloading pct=100 -> exactly 20; statusless control -> raw 68) could not exercise.
 	-->
-	<SongRow title="Bohemian Rhapsody — Queen (mid-separation, fractional overall pct)"
-		artistCanonical="Queen" artist="Queen" readiness="cooking"
-		status="separating" pct={68} />
-	<SongRow title="The Killers - Mr. Brightside" artistCanonical="The Killers" artist="TheKillersMusic" readiness="unacquired" onmake={() => {}}
-		thumbnail="https://i.ytimg.com/vi/gGdGFtwCNBE/mqdefault.jpg" durationSec={228} viewCount={648760065} />
+	<SongRow
+		title="Bohemian Rhapsody — Queen (mid-separation, fractional overall pct)"
+		artistCanonical="Queen"
+		artist="Queen"
+		readiness="cooking"
+		status="separating"
+		pct={68}
+	/>
+	<SongRow
+		title="The Killers - Mr. Brightside"
+		artistCanonical="The Killers"
+		artist="TheKillersMusic"
+		readiness="unacquired"
+		onmake={() => {}}
+		thumbnail="https://i.ytimg.com/vi/gGdGFtwCNBE/mqdefault.jpg"
+		durationSec={228}
+		viewCount={648760065}
+	/>
 
 	<h2 class="section">SongRow · telling one song's uploads apart</h2>
 	<!--
@@ -417,19 +467,54 @@
 		six read as the same song: the version marker was truncated, there was no duration, and the
 		thumbnail was a grey gradient. Rows 5 and 6 are a movie trailer and a 22-minute concert rip.
 	-->
-	<SongRow title="Queen – Bohemian Rhapsody (Official Video Remastered)"
-		artistCanonical="Queen" artist="Queen Official" readiness="unacquired"
-		thumbnail="https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg" durationSec={360} viewCount={2093310583} onmake={() => {}} />
-	<SongRow title="Queen - Bohemian Rhapsody (Lyrics)"
-		artistCanonical="Queen" artist="Vibe Tracks" readiness="unacquired"
-		thumbnail="https://i.ytimg.com/vi/Vsum-2Cs2gI/mqdefault.jpg" durationSec={361} viewCount={3105203} onmake={() => {}} />
-	<SongRow title="Queen - Bohemian Rhapsody (Live Aid 1985)"
-		artistCanonical="Queen" artist="Live Aid and Queen Official" readiness="unacquired"
-		thumbnail="https://i.ytimg.com/vi/vbvyNnw8Qjg/mqdefault.jpg" durationSec={165} viewCount={306017891} onmake={() => {}} />
-	<SongRow title="Bohemian Rhapsody | Official Trailer [HD] | 20th Century FOX" artist="20th Century Studios" readiness="unacquired"
-		thumbnail="https://i.ytimg.com/vi/mP0VHJYFOAU/mqdefault.jpg" durationSec={151} viewCount={40878083} onmake={() => {}} />
-	<SongRow title="Bohemian Rhapsody 2018 BONUS Complete Live Aid Performance 1080p BluRay" artist="Rulli Haerul" readiness="unacquired"
-		thumbnail="https://i.ytimg.com/vi/QXbqiAZgeCE/mqdefault.jpg" durationSec={1316} viewCount={7866057} onmake={() => {}} />
+	<SongRow
+		title="Queen – Bohemian Rhapsody (Official Video Remastered)"
+		artistCanonical="Queen"
+		artist="Queen Official"
+		readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/fJ9rUzIMcZQ/mqdefault.jpg"
+		durationSec={360}
+		viewCount={2093310583}
+		onmake={() => {}}
+	/>
+	<SongRow
+		title="Queen - Bohemian Rhapsody (Lyrics)"
+		artistCanonical="Queen"
+		artist="Vibe Tracks"
+		readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/Vsum-2Cs2gI/mqdefault.jpg"
+		durationSec={361}
+		viewCount={3105203}
+		onmake={() => {}}
+	/>
+	<SongRow
+		title="Queen - Bohemian Rhapsody (Live Aid 1985)"
+		artistCanonical="Queen"
+		artist="Live Aid and Queen Official"
+		readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/vbvyNnw8Qjg/mqdefault.jpg"
+		durationSec={165}
+		viewCount={306017891}
+		onmake={() => {}}
+	/>
+	<SongRow
+		title="Bohemian Rhapsody | Official Trailer [HD] | 20th Century FOX"
+		artist="20th Century Studios"
+		readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/mP0VHJYFOAU/mqdefault.jpg"
+		durationSec={151}
+		viewCount={40878083}
+		onmake={() => {}}
+	/>
+	<SongRow
+		title="Bohemian Rhapsody 2018 BONUS Complete Live Aid Performance 1080p BluRay"
+		artist="Rulli Haerul"
+		readiness="unacquired"
+		thumbnail="https://i.ytimg.com/vi/QXbqiAZgeCE/mqdefault.jpg"
+		durationSec={1316}
+		viewCount={7866057}
+		onmake={() => {}}
+	/>
 	<!-- No thumbnail, no duration, no views — a local library file. Must degrade, not break. -->
 	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
@@ -443,7 +528,14 @@
 	<!-- issue #89: a 32-char name (the profile-name maxlength) overflows the byline. The identity dot
 	     (.who i) must keep its 10px width — it is flex:0 0 auto, not a shrinkable flex item — so the
 	     singer's colour survives on the very row where the truncated name least disambiguates them. -->
-	<QueueRow seq={6} title="Africa" singerName="Christopher Alexander Montgomery" singerColor={PINK} mine subtitle="after Liam" />
+	<QueueRow
+		seq={6}
+		title="Africa"
+		singerName="Christopher Alexander Montgomery"
+		singerColor={PINK}
+		mine
+		subtitle="after Liam"
+	/>
 
 	<h2 class="section">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
@@ -451,15 +543,31 @@
 	<!-- The bug this fixed: an early stage (downloading) at pct=100. Old code filled the bar solid and
 	     read 100%; overallCookPct maps it to the downloading band top (20%), so this card is the one that
 	     makes the fix self-evident to a human eyes-on. -->
-	<ProcessingCard seq={2} title="Africa (downloading complete)" singerName="You" singerColor={PINK} status="downloading" pct={100} />
+	<ProcessingCard
+		seq={2}
+		title="Africa (downloading complete)"
+		singerName="You"
+		singerColor={PINK}
+		status="downloading"
+		pct={100}
+	/>
 
 	<!-- A cooking song is still a queue entry, so it carries the SAME controls as a ready row. Paired
 	     with the QueueRow below deliberately: the two reorder/remove button groups must line up, so a
 	     song finishing its cook doesn't visually reshuffle its own buttons. -->
 	<ProcessingCard
-		seq={3} title="Toto - Africa (Lyrics)" singerName="You" singerColor={PINK}
-		status="separating" pct={16}
-		reorderable canUp canDown onremove={() => {}} onup={() => {}} ondown={() => {}}
+		seq={3}
+		title="Toto - Africa (Lyrics)"
+		singerName="You"
+		singerColor={PINK}
+		status="separating"
+		pct={16}
+		reorderable
+		canUp
+		canDown
+		onremove={() => {}}
+		onup={() => {}}
+		ondown={() => {}}
 	/>
 	<!-- Coverage gap closed (issues #216, #335): the only long-name fixture used to be a QueueRow, so
 	     the narrower `.who` on a cooking card WITH its queue controls was never eyes-on. This is the
@@ -469,13 +577,30 @@
 	     was filed to keep on demo (a spaced name would only shrink it to ~5.45px, an easy-to-miss
 	     witness). ChristopherAlexanderMontgomeryJr is 32 chars, exactly the profile-name maxlength. -->
 	<ProcessingCard
-		seq={5} title="Toto - Africa (Lyrics)" singerName="ChristopherAlexanderMontgomeryJr" singerColor={PINK}
-		status="separating" pct={16}
-		reorderable canUp canDown onremove={() => {}} onup={() => {}} ondown={() => {}}
+		seq={5}
+		title="Toto - Africa (Lyrics)"
+		singerName="ChristopherAlexanderMontgomeryJr"
+		singerColor={PINK}
+		status="separating"
+		pct={16}
+		reorderable
+		canUp
+		canDown
+		onremove={() => {}}
+		onup={() => {}}
+		ondown={() => {}}
 	/>
 	<QueueRow
-		seq={4} title="Gwen Stefani - Rich Girl" singerName="You" singerColor={PINK} mine
-		subtitle="up next" removable reorderable canUp canDown
+		seq={4}
+		title="Gwen Stefani - Rich Girl"
+		singerName="You"
+		singerColor={PINK}
+		mine
+		subtitle="up next"
+		removable
+		reorderable
+		canUp
+		canDown
 	/>
 
 	<h2 class="section">GuidingTrack · every state</h2>
@@ -529,7 +654,11 @@
 	     state so the preset-vs-slider agreement (picking a swatch moves the wheel, and vice versa) can
 	     actually be exercised here, not just posed. The bound value IS a singer colour = fixture data. -->
 	<div style="max-width:420px;">
-		<ColourPicker bind:value={demoColour} label="Your color" hint="How you'll spot yourself in the queue and on the TV." />
+		<ColourPicker
+			bind:value={demoColour}
+			label="Your color"
+			hint="How you'll spot yourself in the queue and on the TV."
+		/>
 	</div>
 
 	<!--
@@ -560,23 +689,38 @@
 
 	<h2 class="section">LyricsOverlay (TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
-		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible
-			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
+		<LyricsOverlay
+			doc={demoLyrics}
+			positionSec={demoPos}
+			playing
+			visible
+			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }}
+		/>
 	</div>
 
 	<!-- The same doc, same perfect sweep, but the words are a GUESS. The pair is the point —
 	     without the caption these two are visually indistinguishable, which is exactly the problem. -->
 	<h2 class="section">LyricsOverlay · AUTO-TRANSCRIBED</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
-		<LyricsOverlay doc={demoLyrics} positionSec={demoPos} playing visible
-			provenance={{ textSource: 'asr', textConfidence: 'low', timing: 'word' }} />
+		<LyricsOverlay
+			doc={demoLyrics}
+			positionSec={demoPos}
+			playing
+			visible
+			provenance={{ textSource: 'asr', textConfidence: 'low', timing: 'word' }}
+		/>
 	</div>
 
 	<!-- The FLOOR: authoritative words, line-level timing only. Whole-line highlight, no ball. -->
 	<h2 class="section">LyricsOverlay · LINE-SYNC floor (no word timings)</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
-		<LyricsOverlay doc={demoLineOnly} positionSec={demoPos} playing visible
-			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'line' }} />
+		<LyricsOverlay
+			doc={demoLineOnly}
+			positionSec={demoPos}
+			playing
+			visible
+			provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'line' }}
+		/>
 	</div>
 
 	<!--
@@ -604,13 +748,20 @@
 		{lineOnlyResolved.ball}{lineOnlyResolved.clamped ? ' (clamped)' : ''}
 	</h2>
 	<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:{stageBg};">
-		<LyricsOverlay doc={demoLineOnly} positionSec={0.8} leadSec={0.3} playing={false} visible
-			ball={lineOnlyResolved.ball} highlight={lineOnlyResolved.highlight}
+		<LyricsOverlay
+			doc={demoLineOnly}
+			positionSec={0.8}
+			leadSec={0.3}
+			playing={false}
+			visible
+			ball={lineOnlyResolved.ball}
+			highlight={lineOnlyResolved.highlight}
 			provenance={{
 				textSource: lineOnlyCandidate.textSource,
 				textConfidence: lineOnlyCandidate.textConfidence,
 				timing: lineOnlyCandidate.timing
-			}} />
+			}}
+		/>
 	</div>
 
 	<!--
@@ -633,16 +784,32 @@
 	{#each LYRICS_BALL_STYLES as s (s.id)}
 		<h2 class="section">LyricsOverlay · marker: {s.label}</h2>
 		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:{stageBg};">
-			<LyricsOverlay doc={demoLyrics} positionSec={0.8} leadSec={0.3} playing={false} visible ball={s.id} highlight="word"
-				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
+			<LyricsOverlay
+				doc={demoLyrics}
+				positionSec={0.8}
+				leadSec={0.3}
+				playing={false}
+				visible
+				ball={s.id}
+				highlight="word"
+				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }}
+			/>
 		</div>
 	{/each}
 
 	{#each LYRICS_HIGHLIGHTS as h (h.id)}
 		<h2 class="section">LyricsOverlay · highlight: {h.label}</h2>
 		<div style="position:relative;height:500px;border-radius:16px;overflow:hidden;background:{stageBg};">
-			<LyricsOverlay doc={demoLyrics} positionSec={0.8} leadSec={0.3} playing={false} visible ball="off" highlight={h.id}
-				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} />
+			<LyricsOverlay
+				doc={demoLyrics}
+				positionSec={0.8}
+				leadSec={0.3}
+				playing={false}
+				visible
+				ball="off"
+				highlight={h.id}
+				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }}
+			/>
 		</div>
 	{/each}
 
@@ -660,19 +827,7 @@
 		doc's limit, not the reel's — the exact row counts and offsets are asserted numerically against
 		the DOM rather than read off these frames.
 	-->
-	{#each [
-		{ what: 'size 100% (the neutral legibility floor)', props: { scalePct: 100 }, h: 500, short: false },
-		{ what: 'size 300% (the ceiling)', props: { scalePct: 300 }, h: 900, short: false },
-		{ what: 'case ALL CAPS — note the extra wrapping', props: { textCase: 'upper' as const }, h: 500, short: false },
-		{ what: 'case all lowercase', props: { textCase: 'lower' as const }, h: 500, short: false },
-		{ what: 'font serif', props: { font: 'serif' as const }, h: 500, short: false },
-		{ what: 'font monospace — fewest words per row', props: { font: 'mono' as const }, h: 500, short: false },
-		{ what: 'rows 0 before / 2 after — no history', props: { linesBefore: 0, linesAfter: 2 }, h: 460, short: true },
-		{ what: 'rows 2 before / 0 after — nothing revealed ahead', props: { linesBefore: 2, linesAfter: 0 }, h: 460, short: true },
-		{ what: 'rows 2 before / 2 after — the default, for comparison', props: { linesBefore: 2, linesAfter: 2 }, h: 700, short: true },
-		{ what: 'rows 1 before / 4 after — asymmetric, current line sits high', props: { linesBefore: 1, linesAfter: 4 }, h: 820, short: true },
-		{ what: 'rows 3 before / 4 after — the maximum reel', props: { linesBefore: 3, linesAfter: 4 }, h: 1080, short: true }
-	] as c (c.what)}
+	{#each [{ what: 'size 100% (the neutral legibility floor)', props: { scalePct: 100 }, h: 500, short: false }, { what: 'size 300% (the ceiling)', props: { scalePct: 300 }, h: 900, short: false }, { what: 'case ALL CAPS — note the extra wrapping', props: { textCase: 'upper' as const }, h: 500, short: false }, { what: 'case all lowercase', props: { textCase: 'lower' as const }, h: 500, short: false }, { what: 'font serif', props: { font: 'serif' as const }, h: 500, short: false }, { what: 'font monospace — fewest words per row', props: { font: 'mono' as const }, h: 500, short: false }, { what: 'rows 0 before / 2 after — no history', props: { linesBefore: 0, linesAfter: 2 }, h: 460, short: true }, { what: 'rows 2 before / 0 after — nothing revealed ahead', props: { linesBefore: 2, linesAfter: 0 }, h: 460, short: true }, { what: 'rows 2 before / 2 after — the default, for comparison', props: { linesBefore: 2, linesAfter: 2 }, h: 700, short: true }, { what: 'rows 1 before / 4 after — asymmetric, current line sits high', props: { linesBefore: 1, linesAfter: 4 }, h: 820, short: true }, { what: 'rows 3 before / 4 after — the maximum reel', props: { linesBefore: 3, linesAfter: 4 }, h: 1080, short: true }] as c (c.what)}
 		<h2 class="section">LyricsOverlay · {c.what}</h2>
 		<div style="position:relative;height:{c.h}px;border-radius:16px;overflow:hidden;background:{stageBg};">
 			<!--
@@ -680,8 +835,16 @@
 				after. Pinning at 0.8s (as the marker cards do) sits on line 0, where "2 lines before" has
 				nothing to show and the card proves nothing — which is exactly how it read first time.
 			-->
-			<LyricsOverlay doc={c.short ? demoShort : demoLyrics} positionSec={9.5} playing={false} visible highlight="word" ball="bounce"
-				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }} {...c.props} />
+			<LyricsOverlay
+				doc={c.short ? demoShort : demoLyrics}
+				positionSec={9.5}
+				playing={false}
+				visible
+				highlight="word"
+				ball="bounce"
+				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }}
+				{...c.props}
+			/>
 		</div>
 	{/each}
 
@@ -705,7 +868,10 @@
 	<div style="position:relative;height:300px;margin-top:10px;border-radius:16px;overflow:hidden;background:{stageBg};">
 		<!-- Faint decorative placeholder standing in for the paused music video behind the join badge;
 		     a low-opacity white with no matching semantic token, so left as a literal rgba. -->
-		<span style="position:absolute;inset:0;display:grid;place-items:center;font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.22);">music video</span>
+		<span
+			style="position:absolute;inset:0;display:grid;place-items:center;font-size:.8rem;letter-spacing:.3em;text-transform:uppercase;color:rgba(255,255,255,.22);"
+			>music video</span
+		>
 		<JoinBadge qrDataUrl={demoQr} joinUrl="encore.local/join" placement="corner" onlineCount={4} />
 	</div>
 
@@ -718,7 +884,11 @@
 	<div style="display:grid;gap:12px;">
 		{#each TV_PROGRESS_STYLES as p (p.id)}
 			<div>
-				<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;">{p.label}</div>
+				<div
+					style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;"
+				>
+					{p.label}
+				</div>
 				{#if p.id === 'card'}
 					<!-- Inline placement: a stand-in for the now-singing card. This surface CARRIES TEXT
 					     (the time readouts), so it uses --accent-strong + --on-accent, never --grad
@@ -743,7 +913,11 @@
 	<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:10px;">
 		{#each TV_VISUALIZERS as v (v.id)}
 			<div>
-				<div style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;">{v.label}</div>
+				<div
+					style="font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-dim);margin-bottom:4px;"
+				>
+					{v.label}
+				</div>
 				<div style="position:relative;height:200px;border-radius:16px;overflow:hidden;background:var(--bg);">
 					<VisualizerStage variant={v.id} hue={265} playing />
 				</div>

@@ -27,8 +27,15 @@ import { EMPTY_SONG_PROFILE } from '@encore/shared';
 import { queueEntries } from '../db/schema';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `derived/stems/${id}-instrumental.flac`, songProfile: EMPTY_SONG_PROFILE
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: `derived/stems/${id}-instrumental.flac`,
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 function harness() {
@@ -48,7 +55,18 @@ function harness() {
 // an earlier one (id / singerId / mediaId all valid).
 const add = (overrides: Partial<QueueEntry>): ClientCommand => ({
 	clientOpId: 'c1',
-	op: { op: 'add', entry: { id: 'e1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: 1, ...overrides } as QueueEntry }
+	op: {
+		op: 'add',
+		entry: {
+			id: 'e1',
+			mediaId: 'm1',
+			singerId: 's1',
+			status: 'queued',
+			rotationSeq: 0,
+			addedAt: 1,
+			...overrides
+		} as QueueEntry
+	}
 });
 
 test('validateCommand rejects a non-finite addedAt (would crash the write-behind flush)', () => {
@@ -61,10 +79,12 @@ test('validateCommand rejects a non-finite addedAt (would crash the write-behind
 test('validateCommand rejects an off-enum status (NOT NULL enum column)', () => {
 	const { deps } = harness();
 	expect(validateCommand(add({ status: 'obliterated' as QueueEntry['status'] }), deps)).toContain('invalid status');
-	expect(validateCommand(add({ status: undefined as unknown as QueueEntry['status'] }), deps)).toContain('invalid status');
+	expect(validateCommand(add({ status: undefined as unknown as QueueEntry['status'] }), deps)).toContain(
+		'invalid status'
+	);
 });
 
-test('a client add may only mint status:\'queued\' — every other lifecycle status is rejected', () => {
+test("a client add may only mint status:'queued' — every other lifecycle status is rejected", () => {
 	// The invariant, not an implementation: a phone has no business asserting a lifecycle status. The
 	// only add producer in the repo (lib/stores/queue.ts) mints 'queued'; 'playing'/'done' are
 	// server-owned. So 'queued' is the sole legal client-minted value and the guard is NOT over-broad.
@@ -93,7 +113,7 @@ test('a bad-shape add is NOT applied to the queue and NOT broadcast — the pois
 	}
 });
 
-test('a client add accepts only \'queued\' out of the whole queue_entries.status enum, and rejects off-enum too', () => {
+test("a client add accepts only 'queued' out of the whole queue_entries.status enum, and rejects off-enum too", () => {
 	// Sourced from the column enum so this cannot drift: 'queued' is the ONE legal client-minted value,
 	// EVERY other enum value (playing/waiting/done/skipped — all server-owned) is rejected, and so is a
 	// value not in the column at all. This pins the INVARIANT (a client may only mint 'queued'), not the
@@ -106,5 +126,7 @@ test('a client add accepts only \'queued\' out of the whole queue_entries.status
 	for (const s of colEnum.filter((v) => v !== 'queued')) {
 		expect(validateCommand(add({ status: s as QueueEntry['status'] }), deps)).toContain('invalid status');
 	}
-	expect(validateCommand(add({ status: 'not-a-real-status' as QueueEntry['status'] }), deps)).toContain('invalid status');
+	expect(validateCommand(add({ status: 'not-a-real-status' as QueueEntry['status'] }), deps)).toContain(
+		'invalid status'
+	);
 });

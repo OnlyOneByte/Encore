@@ -23,12 +23,7 @@
 	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
 	import { isAutoTranscribed } from '$lib/tv/lyrics';
 	import { cookStageLabel } from '$lib/cook-phrasing';
-	import {
-		mergeCatalog,
-		snapshot,
-		cookIsTerminal,
-		type PlaybackSnapshot
-	} from '$lib/tv/catalog';
+	import { mergeCatalog, snapshot, cookIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
 
 	let { data } = $props();
 
@@ -102,9 +97,7 @@
 	// null override is indistinguishable from "explicitly off", which is the distinction that lets a
 	// room default survive a song change.
 	let guideOverride = $state<number | null>(null);
-	const guideLevel = $derived(
-		effectiveGuideLevel({ guideLevel: guideOverride }, settings.room.guideLevelDefault)
-	);
+	const guideLevel = $derived(effectiveGuideLevel({ guideLevel: guideOverride }, settings.room.guideLevelDefault));
 	// Current transpose in semitones (±), straight from playback:state. The TV now HONOURS this: the
 	// player shifts pitch in the browser (see pitch-shift.ts), so there is no pre-rendered variant to
 	// 404 on — which is why it was ignored before.
@@ -579,13 +572,25 @@
 		playing={isPlaying}
 		seekSec={seekSec}
 		seekRev={seekRev}
-		{keyShift}
-		{guideLevel}
-		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); playbackFailedReason = null; }}
-		onprewarmed={() => { ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
+		keyShift={keyShift}
+		guideLevel={guideLevel}
+		onready={() => {
+			ctl.onVisibleReady();
+			tvState = ctl.state;
+			onFirstSongReady();
+			playbackFailedReason = null;
+		}}
+		onprewarmed={() => {
+			ctl.onHiddenReady(slotMedia.A?.id ?? '');
+			tvState = ctl.state;
+		}}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
-		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s); }}
+		onposition={(s, d) => {
+			positionSec = s;
+			durationSec = d;
+			sendTelemetry('playing', s);
+		}}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
@@ -598,13 +603,25 @@
 		playing={isPlaying}
 		seekSec={seekSec}
 		seekRev={seekRev}
-		{keyShift}
-		{guideLevel}
-		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); playbackFailedReason = null; }}
-		onprewarmed={() => { ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
+		keyShift={keyShift}
+		guideLevel={guideLevel}
+		onready={() => {
+			ctl.onVisibleReady();
+			tvState = ctl.state;
+			onFirstSongReady();
+			playbackFailedReason = null;
+		}}
+		onprewarmed={() => {
+			ctl.onHiddenReady(slotMedia.B?.id ?? '');
+			tvState = ctl.state;
+		}}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
-		onposition={(s, d) => { positionSec = s; durationSec = d; sendTelemetry('playing', s); }}
+		onposition={(s, d) => {
+			positionSec = s;
+			durationSec = d;
+			sendTelemetry('playing', s);
+		}}
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
@@ -615,7 +632,7 @@
 	<LyricsOverlay
 		lyricsRef={mediaOf(current)?.lyricsRef}
 		provenance={lyricsProvenance}
-		{positionSec}
+		positionSec={positionSec}
 		playing={lyricsPlaying}
 		visible={lyricsActive}
 		ball={lyricsStyle.ball}
@@ -640,10 +657,22 @@
 			<div class="idle">
 				<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
 				{#if joinUnreachable}
-					<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size="var(--tv-qr)" unreachable={true} />
+					<JoinBadge
+						qrDataUrl={data.qrDataUrl}
+						joinUrl={data.joinUrl}
+						placement="hero"
+						size="var(--tv-qr)"
+						unreachable={true}
+					/>
 				{:else}
 					<h1 class="idle-head">Scan to <span class="grad">join the party</span></h1>
-					<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="hero" size="var(--tv-qr)" unreachable={false} />
+					<JoinBadge
+						qrDataUrl={data.qrDataUrl}
+						joinUrl={data.joinUrl}
+						placement="hero"
+						size="var(--tv-qr)"
+						unreachable={false}
+					/>
 					<!-- The typed fallback for a camera that will not scan. PRIMARY content here, so it
 					     takes its own tier rather than the corner-chrome one. -->
 					<p class="idle-url">{joinShort}</p>
@@ -661,7 +690,7 @@
 			joinUrl={data.joinUrl}
 			roster={roster.shown}
 			overflow={roster.overflow}
-			{pendingCount}
+			pendingCount={pendingCount}
 			unreachable={joinUnreachable}
 		/>
 	{:else}
@@ -681,8 +710,9 @@
 		-->
 		<div class="lower-third" bind:this={lowerThirdEl}>
 			<span class="ls-name"
-				><span class="ls-dot" style="--singer: {currentSingerColor ?? 'var(--accent2)'}"
-				></span>{singerName(current?.singerId)}</span
+				><span class="ls-dot" style="--singer: {currentSingerColor ?? 'var(--accent2)'}"></span>{singerName(
+					current?.singerId
+				)}</span
 			>
 			<!--
 				Artist only when a confident parse produced one — never the uploader. Inline with the title
@@ -712,11 +742,11 @@
 				<span class="ls-asr">Auto-Transcribed lyrics</span>
 			{/if}
 			{#if tvProgressStyle === 'card'}
-				<TvProgress style="card" elapsedSec={positionSec} {durationSec} />
+				<TvProgress style="card" elapsedSec={positionSec} durationSec={durationSec} />
 			{/if}
 		</div>
 		{#if tvProgressStyle !== 'card'}
-			<TvProgress style={tvProgressStyle} elapsedSec={positionSec} {durationSec} />
+			<TvProgress style={tvProgressStyle} elapsedSec={positionSec} durationSec={durationSec} />
 		{/if}
 		<!--
 			WHOSE TURN IS NEXT — top-right, and permanent.
@@ -738,12 +768,7 @@
 			</div>
 		{/if}
 		<!-- The join QR stays reachable mid-song, bottom-right (the only free corner) -->
-		<JoinBadge
-			qrDataUrl={data.qrDataUrl}
-			joinUrl={data.joinUrl}
-			placement="corner"
-			unreachable={joinUnreachable}
-		/>
+		<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" unreachable={joinUnreachable} />
 	{/if}
 
 	<!--
@@ -837,7 +862,9 @@
 		<div class="silent-room" role="status" aria-live="polite">
 			<span class="sr-mark"><Icon name="warning" /></span>
 			<span class="sr-head">This song <span class="grad">won’t play</span></span>
-			<span class="sr-sub">The audio could not be started ({playbackFailedReason}) — the room is silent. The next song may play normally.</span>
+			<span class="sr-sub"
+				>The audio could not be started ({playbackFailedReason}) — the room is silent. The next song may play normally.</span
+			>
 		</div>
 	{/if}
 
@@ -894,17 +921,35 @@
 		opacity: 0;
 		transition: opacity 0.25s ease;
 	}
-	.stage-bg.shown { opacity: 1; }
+	.stage-bg.shown {
+		opacity: 1;
+	}
 	.attract {
-		position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center;
-		justify-content: center; z-index: 5;
+		position: absolute;
+		inset: 0;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		z-index: 5;
 		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
 	.brand {
-		position: absolute; top: var(--tv-safe-y); left: var(--tv-safe-x);
-		font-weight: 800; font-size: var(--tv-name); display: inline-flex; align-items: center; gap: 12px;
+		position: absolute;
+		top: var(--tv-safe-y);
+		left: var(--tv-safe-x);
+		font-weight: 800;
+		font-size: var(--tv-name);
+		display: inline-flex;
+		align-items: center;
+		gap: 12px;
 	}
-	.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+	.grad {
+		background: var(--grad);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+	}
 	/*
 	 * THE IDLE STACK, shared in shape by both idle screens: wordmark, one instruction, the QR, the typed
 	 * fallback. Centred as a column so the QR is centred on the screen and the URL reads as its caption
@@ -912,10 +957,16 @@
 	 * legible as the same thing shrunk.
 	 */
 	.idle {
-		display: flex; flex-direction: column; align-items: center; text-align: center;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		text-align: center;
 	}
 	/* In flow here, not pinned to the corner: on the idle screens the wordmark heads the stack. */
-	.idle .brand { position: static; font-size: var(--tv-name); }
+	.idle .brand {
+		position: static;
+		font-size: var(--tv-name);
+	}
 	/*
 	 * The rhythm is deliberately UNEVEN — wordmark, a beat, the instruction, a bigger beat, then the
 	 * thing you point a phone at — so it cannot come from one flex `gap`, which would force all three
@@ -926,13 +977,21 @@
 	 * along to, and taking it down is what pays for the room above the QR.
 	 */
 	.idle-head {
-		font-size: var(--tv-hero); font-weight: 900; line-height: 1.04; margin: 5.2vh 0 0;
+		font-size: var(--tv-hero);
+		font-weight: 900;
+		line-height: 1.04;
+		margin: 5.2vh 0 0;
 		max-width: 22ch;
 	}
-	.idle :global(.hero) { margin-top: 6.2vh; }
+	.idle :global(.hero) {
+		margin-top: 6.2vh;
+	}
 	.idle-url {
-		font-size: var(--tv-joinurl); font-weight: 800; color: var(--ink);
-		margin: 3vh 0 0; overflow-wrap: anywhere;
+		font-size: var(--tv-joinurl);
+		font-weight: 800;
+		color: var(--ink);
+		margin: 3vh 0 0;
+		overflow-wrap: anywhere;
 	}
 	/*
 	 * The bottom strip. Full-bleed background so it reaches the panel edge, content inset with the
@@ -941,19 +1000,39 @@
 	 * them trailing off into black.
 	 */
 	.idle-strip {
-		position: absolute; left: 0; right: 0; bottom: 0; z-index: 6;
-		display: flex; align-items: baseline; justify-content: center; gap: 1.2em; flex-wrap: wrap;
+		position: absolute;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 6;
+		display: flex;
+		align-items: baseline;
+		justify-content: center;
+		gap: 1.2em;
+		flex-wrap: wrap;
 		padding: 2vh var(--tv-safe-x) var(--tv-safe-y);
 		background: linear-gradient(0deg, rgba(3, 3, 8, 0.9), rgba(3, 3, 8, 0));
 	}
-	.is-label { font-size: var(--tv-eyebrow); letter-spacing: 0.2em; text-transform: uppercase;
-		color: var(--ink-dim); font-weight: 700; }
-	.is-copy { font-size: var(--tv-body); font-weight: 600; }
+	.is-label {
+		font-size: var(--tv-eyebrow);
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+		font-weight: 700;
+	}
+	.is-copy {
+		font-size: var(--tv-body);
+		font-weight: 600;
+	}
 	.lower-third {
 		/* Capped: unbounded, a long title or singer name grew this rightward into the join QR at
 		   bottom-right. 46vw leaves the QR its corner on every aspect ratio. */
-		position: absolute; left: var(--tv-safe-x); bottom: var(--tv-safe-y); z-index: 7;
-		display: flex; flex-direction: column;
+		position: absolute;
+		left: var(--tv-safe-x);
+		bottom: var(--tv-safe-y);
+		z-index: 7;
+		display: flex;
+		flex-direction: column;
 		max-width: 46vw;
 		gap: 2px;
 		/*
@@ -969,22 +1048,37 @@
 	/* The singer's own colour, as a dot rather than a fill. It is their identity everywhere else in
 	   the app, and a dot carries that at a size that cannot compete with the words. */
 	.ls-dot {
-		display: inline-block; width: 0.52em; height: 0.52em; border-radius: 50%;
-		margin-right: 0.42em; vertical-align: baseline;
+		display: inline-block;
+		width: 0.52em;
+		height: 0.52em;
+		border-radius: 50%;
+		margin-right: 0.42em;
+		vertical-align: baseline;
 		/* --singer, not an inline background: the colour has to be composable (a glow, a border, a
 		   gradient stop) and singer-color.test.ts enforces the custom-property form. */
 		background: var(--singer);
 	}
-	.ls-name { font-size: var(--tv-name); font-weight: 800; line-height: 1.05;
-		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.ls-name {
+		font-size: var(--tv-name);
+		font-weight: 800;
+		line-height: 1.05;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+	}
 	/*
 	 * Clamp the title to two lines. An UNPARSED long raw title (no canonical title to shorten it) would
 	 * otherwise grow the block upward without bound. -webkit-line-clamp is the only cross-browser
 	 * two-line clamp; it needs the -webkit box display and hidden overflow to take effect.
 	 */
 	.ls-song {
-		font-size: var(--tv-body); font-weight: 600; opacity: 0.97;
-		display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2;
+		font-size: var(--tv-body);
+		font-weight: 600;
+		opacity: 0.97;
+		display: -webkit-box;
+		-webkit-box-orient: vertical;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
 		overflow: hidden;
 	}
 	/*
@@ -996,15 +1090,30 @@
 	 * gets hard-clipped mid-word with no ellipsis. Truncation belongs to .ls-song's 2-line
 	 * -webkit-line-clamp, which absorbs an over-long credit WITH an ellipsis — see #127.
 	 */
-	.ls-artist { font-size: var(--tv-body); color: var(--ink-dim); font-weight: 500; }
+	.ls-artist {
+		font-size: var(--tv-body);
+		color: var(--ink-dim);
+		font-weight: 500;
+	}
 	/* Metadata, not a heading: sized and dimmed like the eyebrow so it sits under the title quietly. */
-	.ls-key { font-size: var(--tv-label); color: var(--ink-dim); font-weight: 600; letter-spacing: 0.04em; opacity: 0.82; margin-top: 2px; }
+	.ls-key {
+		font-size: var(--tv-label);
+		color: var(--ink-dim);
+		font-weight: 600;
+		letter-spacing: 0.04em;
+		opacity: 0.82;
+		margin-top: 2px;
+	}
 	/*
 	 * The provenance label, in the caution family so it matches the amber tint the reel puts on the
 	 * words themselves. Not uppercase and not letter-spaced: it is a short label read once, and the
 	 * tracked-out version of this string is precisely what read as debris before.
 	 */
-	.ls-asr { font-size: var(--tv-label); color: var(--warn); font-weight: 700; }
+	.ls-asr {
+		font-size: var(--tv-label);
+		color: var(--warn);
+		font-weight: 700;
+	}
 
 	/*
 	 * UP NEXT — top-right, dim, and small. It answers "am I soon?" for the one person who needs it and
@@ -1014,22 +1123,59 @@
 	 * with the panel instead of being correct only at 1080p.
 	 */
 	.upnext {
-		position: absolute; right: var(--tv-safe-x); top: calc(var(--tv-safe-y) + 2.6vh); z-index: 7;
-		display: flex; flex-direction: column; align-items: flex-end; gap: 1px;
-		max-width: 32vw; text-align: right;
+		position: absolute;
+		right: var(--tv-safe-x);
+		top: calc(var(--tv-safe-y) + 2.6vh);
+		z-index: 7;
+		display: flex;
+		flex-direction: column;
+		align-items: flex-end;
+		gap: 1px;
+		max-width: 32vw;
+		text-align: right;
 		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
 	}
-	.un-label { font-size: var(--tv-eyebrow); letter-spacing: 0.18em; text-transform: uppercase;
-		color: var(--ink-dim); font-weight: 700; }
-	.un-name { font-size: var(--tv-body); font-weight: 800;
-		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 32vw; }
-	.un-dot { display: inline-block; width: 0.5em; height: 0.5em; border-radius: 50%;
-		margin-right: 0.4em; background: var(--singer); }
-	.un-song { font-size: var(--tv-label); color: var(--ink-dim); font-weight: 600;
-		overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 32vw; }
+	.un-label {
+		font-size: var(--tv-eyebrow);
+		letter-spacing: 0.18em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+		font-weight: 700;
+	}
+	.un-name {
+		font-size: var(--tv-body);
+		font-weight: 800;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 32vw;
+	}
+	.un-dot {
+		display: inline-block;
+		width: 0.5em;
+		height: 0.5em;
+		border-radius: 50%;
+		margin-right: 0.4em;
+		background: var(--singer);
+	}
+	.un-song {
+		font-size: var(--tv-label);
+		color: var(--ink-dim);
+		font-weight: 600;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		white-space: nowrap;
+		max-width: 32vw;
+	}
 	.interstitial {
-		position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center;
-		justify-content: center; gap: 12px;
+		position: absolute;
+		inset: 0;
+		z-index: 8;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
 		/*
 		 * A SCRIM, not a wash. This was --bg at 94%, which blanked the room's chosen backdrop — a
 		 * gradient, the singer's colour, or an animated visualiser — for every song change and every
@@ -1049,16 +1195,37 @@
 		padding: var(--tv-safe-y) var(--tv-safe-x);
 		text-align: center;
 	}
-	.up-label { font-size: var(--tv-eyebrow); letter-spacing: 0.2em; text-transform: uppercase; color: var(--ink-dim); }
-	.up-name { font-size: var(--tv-hero); font-weight: 900; line-height: 1.02; }
-	.up-song { font-size: var(--tv-name); }
+	.up-label {
+		font-size: var(--tv-eyebrow);
+		letter-spacing: 0.2em;
+		text-transform: uppercase;
+		color: var(--ink-dim);
+	}
+	.up-name {
+		font-size: var(--tv-hero);
+		font-weight: 900;
+		line-height: 1.02;
+	}
+	.up-song {
+		font-size: var(--tv-name);
+	}
 	/* Secondary to the title: it disambiguates rather than identifies, so it must not compete with it. */
-	.up-artist { font-size: var(--tv-body); color: var(--ink-dim); margin-top: 6px; }
+	.up-artist {
+		font-size: var(--tv-body);
+		color: var(--ink-dim);
+		margin-top: 6px;
+	}
 	/* A mark large enough to be the first thing read, since it is what distinguishes these states. */
-	.state-mark { font-size: var(--tv-hero); line-height: 1; margin-bottom: 4px; }
+	.state-mark {
+		font-size: var(--tv-hero);
+		line-height: 1;
+		margin-bottom: 4px;
+	}
 
 	/* Affirmative: something good is about to happen. */
-	.state-next .up-song { color: var(--accent2); }
+	.state-next .up-song {
+		color: var(--accent2);
+	}
 
 	/*
 	 * Failure — and the ONE state that keeps the full opaque wash.
@@ -1068,26 +1235,49 @@
 	 * surface already fixed once. Distinct family AND a distinct eyebrow, so colour is not the only
 	 * carrier. rgba(42,27,34,0.95) was --danger-bg at 95%; color-mix keeps it themeable.
 	 */
-	.state-error { background: color-mix(in srgb, var(--danger-bg) 95%, transparent); }
-	.state-error .state-mark { color: var(--danger); }
-	.state-error .up-label { color: var(--danger-ink); }
-	.state-error .up-song { color: var(--danger-ink); }
+	.state-error {
+		background: color-mix(in srgb, var(--danger-bg) 95%, transparent);
+	}
+	.state-error .state-mark {
+		color: var(--danger);
+	}
+	.state-error .up-label {
+		color: var(--danger-ink);
+	}
+	.state-error .up-song {
+		color: var(--danger-ink);
+	}
 
 	/* Work in progress: neither affirmative nor broken. */
-	.state-waiting .state-mark { color: var(--warn); }
-	.state-waiting .up-label { color: var(--warn); }
-	.state-waiting .up-song { color: var(--ink); }
+	.state-waiting .state-mark {
+		color: var(--warn);
+	}
+	.state-waiting .up-label {
+		color: var(--warn);
+	}
+	.state-waiting .up-song {
+		color: var(--ink);
+	}
 
 	/*
 	 * Connection telemetry. Larger than the old 12px and pulled inside the safe area — at 12px in a
 	 * corner a TV may clip it informed nobody, and anyone who did see it read it as a stuck pixel.
 	 */
 	.status {
-		position: absolute; top: var(--tv-safe-y); right: var(--tv-safe-x);
-		width: 16px; height: 16px; border-radius: 50%; background: var(--ink-dim); z-index: 9;
+		position: absolute;
+		top: var(--tv-safe-y);
+		right: var(--tv-safe-x);
+		width: 16px;
+		height: 16px;
+		border-radius: 50%;
+		background: var(--ink-dim);
+		z-index: 9;
 	}
 	/* rgba(51,214,166,0.18) was --ok at 18%; color-mix keeps the ring on the theme's ok colour. */
-	.status.on { background: var(--ok); box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 18%, transparent); }
+	.status.on {
+		background: var(--ok);
+		box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 18%, transparent);
+	}
 
 	/*
 	 * The autoplay affordance. A full-screen button so a tap anywhere authorises playback, sitting above
