@@ -17,7 +17,7 @@
 	} from '@encore/shared';
 	import { stageBackgroundCss } from '$lib/tv/background';
 	import VisualizerStage from '$lib/tv/VisualizerStage.svelte';
-	import { trySend } from '$lib/ws/send';
+	import { WsClient } from '$lib/ws/client';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
@@ -112,11 +112,12 @@
 		B: null
 	});
 
-	let ws: WebSocket | undefined;
+	// The TV's realtime channel is the shared, tested WsClient (heartbeat, liveness watchdog,
+	// capped-backoff reconnect, page-lifecycle rebinding). The TV runs unattended for hours on a
+	// set-top browser, so the watchdog for a socket that stops answering but never fires `close`
+	// (WsClient.#presumeDead) matters most here. Telemetry keeps its silent-drop path via `quiet`.
+	let ws: WsClient | undefined;
 	let interstitialTimer: ReturnType<typeof setTimeout> | undefined;
-	let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
-	let reconnectAttempt = 0;
-	let disposed = false;
 
 	/*
 	 * The catalog writer and the snapshot seam both live in `$lib/tv/catalog.ts` — see that module for
@@ -179,7 +180,9 @@
 		// The frame — including the entry stamp the server's #70/#125 guard needs on EVERY frame — is
 		// built by the pure `telemetryFrame()` in $lib/tv/telemetry.ts, so the stamp is unit-tested
 		// behaviourally rather than only by scanning this .svelte source for a literal.
-		trySend(ws, JSON.stringify(telemetryFrame(status, current, positionSec)));
+		// SILENT drop when the socket is not open (~4 Hz stream) — `quiet` suppresses WsClient's
+		// per-drop warning, which would otherwise flood the console during any reconnect.
+		ws?.send(telemetryFrame(status, current, positionSec), { quiet: true });
 	}
 
 	function onVisibleError() {
@@ -244,121 +247,110 @@
 		}, songIntroMs);
 	}
 
-	function connect() {
-		const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-		ws = new WebSocket(`${proto}://${location.host}/ws?role=tv`);
-		ws.onopen = () => {
-			connected = true;
-			reconnectAttempt = 0;
-			// resync handshake — gets queue:sync; nowplaying re-derives on next change.
-			ws!.send(JSON.stringify({ type: 'hello', lastRev: 0 }));
-		};
-		ws.onclose = () => {
-			connected = false;
-			// IMPORTANT: the video/iframe keeps playing through a socket drop — playback never stops.
-			// We only re-establish the control channel with capped backoff and resync.
-			if (disposed) return;
-			const delay = Math.min(500 * 2 ** reconnectAttempt, 5000);
-			reconnectAttempt++;
-			reconnectTimer = setTimeout(connect, delay);
-		};
-		ws.onmessage = (ev) => {
-			const e: ServerEvent = JSON.parse(ev.data);
-			if (e.type === 'queue:sync') {
-				entries = e.entries;
-				if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
-				if (e.media) mediaCatalog = mergeCatalog(mediaCatalog, e.media);
-				// only adopt presence when the server actually sent it — an omitted `online` means
-				// "no info", not "nobody here", and must not blank a roster we already have.
-				if (e.online) online = e.online;
-				if (e.away) away = e.away;
+	/** Apply one server event to the TV's local state. Fed by WsClient.onEvent. */
+	function handleEvent(e: ServerEvent) {
+		if (e.type === 'queue:sync') {
+			entries = e.entries;
+			if (e.singers) singers = new Map(e.singers.map((s) => [s.id, s]));
+			if (e.media) mediaCatalog = mergeCatalog(mediaCatalog, e.media);
+			// only adopt presence when the server actually sent it — an omitted `online` means
+			// "no info", not "nobody here", and must not blank a roster we already have.
+			if (e.online) online = e.online;
+			if (e.away) away = e.away;
+		}
+		if (e.type === 'singer:presence') {
+			online = e.online;
+			away = e.away;
+		}
+		// Room settings are live: a change on a phone applies without reloading the TV. One
+		// assignment, so a new setting needs no edit here.
+		if (e.type === 'settings:changed') {
+			settings = e.settings;
+			// The join address is the one setting the TV cannot apply in place: the QR is a
+			// server-rendered image, and the whole point of the setting is that the TV's own URL is
+			// not the address to advertise. An empty setting means "fall back", which resolves to the
+			// value the load already computed — so compare resolved-to-resolved and re-run the load
+			// only when the address actually moved, rather than on every unrelated settings write.
+			const nextOrigin = e.settings.global.joinOrigin || data.joinFallbackOrigin;
+			if (nextOrigin !== data.joinOrigin) invalidateAll();
+		}
+		if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
+		// pause/resume from the phone (playback:state.isPlaying) -> drives the player slots
+		if (e.type === 'playback:state') {
+			isPlaying = e.state.isPlaying;
+			seekSec = e.state.positionSec;
+			seekRev = e.rev;
+			// Per-song background override; null hands the song back to the room default.
+			backgroundOverride = e.state.background;
+			guideOverride = e.state.guideLevel;
+			// keyShift is now honoured — the player transposes in the browser. See `keyShift` state.
+			keyShift = e.state.keyShift;
+		}
+		/*
+		 * COOK LIFECYCLE — and note what is NOT here any more (#396).
+		 *
+		 * This handler used to write the catalog: `new Map(mediaCatalog).set(id, {...m, stemStatus})`,
+		 * on EVERY progress tick, minting a fresh Media identity and inventing a `stemStatus` the
+		 * server never sent (anything not `ready`/`failed` was written as `queued`, which made the
+		 * PLAYING song locally unplayable for a moment). That write is the coupling this issue is
+		 * about: it is how a cook for one song reached the playhead of another.
+		 *
+		 * It is gone, and nothing replaced it, because nothing needed it:
+		 *
+		 *   • the READY flip is server-driven. `onMediaReady` publishes a full `queue:sync` (real
+		 *     server truth, through `mergeCatalog`) AND `nowplaying:changed`, so the TV leaves
+		 *     `waiting` on an explicit playback event. The old comment here claimed these local
+		 *     catalog writes were what made the TV "leave WAITING promptly" — that was never true;
+		 *     the only exit this handler ever owned is the terminal-failure one below.
+		 *   • cook PROGRESS has no consumer on the TV. The TV renders "Making the karaoke", not a
+		 *     percentage, so a tick had nothing to update and churned the render tree for free.
+		 *
+		 * What remains is a pure lifecycle decision, and no state of its own.
+		 */
+		if (e.type === 'media:status') {
+			// A cook that FAILED, or a job NO connected worker can ever run (`unservable`), will never
+			// become playable — and enterWaiting() sets no timer, so if this is the entry the room is
+			// holding on, the party stares at "Making the karaoke" forever. Leave WAITING the same way
+			// the dead-media path does: say so on screen via the error treatment, tell the server the
+			// entry ended so it advances authoritatively, and drop out of the waiting hold.
+			// Defensive: this fires purely on the wire signal and does not assume the server TTL fix
+			// has landed.
+			const stuck = cookIsTerminal(e);
+			if (stuck && tvState === 'waiting' && current && current.mediaId === e.mediaId) {
+				const who = singerName(current.singerId);
+				skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
+				setTimeout(() => (skipNotice = ''), 4000);
+				// onVisibleEnded() already sends the single `ended` frame (#70).
+				onVisibleEnded();
 			}
-			if (e.type === 'singer:presence') {
-				online = e.online;
-				away = e.away;
-			}
-			// Room settings are live: a change on a phone applies without reloading the TV. One
-			// assignment, so a new setting needs no edit here.
-			if (e.type === 'settings:changed') {
-				settings = e.settings;
-				// The join address is the one setting the TV cannot apply in place: the QR is a
-				// server-rendered image, and the whole point of the setting is that the TV's own URL is
-				// not the address to advertise. An empty setting means "fall back", which resolves to the
-				// value the load already computed — so compare resolved-to-resolved and re-run the load
-				// only when the address actually moved, rather than on every unrelated settings write.
-				const nextOrigin = e.settings.global.joinOrigin || data.joinFallbackOrigin;
-				if (nextOrigin !== data.joinOrigin) invalidateAll();
-			}
-			if (e.type === 'nowplaying:changed') applyNowPlaying(e.current, e.upNext);
-			// pause/resume from the phone (playback:state.isPlaying) -> drives the player slots
-			if (e.type === 'playback:state') {
-				isPlaying = e.state.isPlaying;
-				seekSec = e.state.positionSec;
-				seekRev = e.rev;
-				// Per-song background override; null hands the song back to the room default.
-				backgroundOverride = e.state.background;
-				guideOverride = e.state.guideLevel;
-				// keyShift is now honoured — the player transposes in the browser. See `keyShift` state.
-				keyShift = e.state.keyShift;
-			}
-			/*
-			 * COOK LIFECYCLE — and note what is NOT here any more (#396).
-			 *
-			 * This handler used to write the catalog: `new Map(mediaCatalog).set(id, {...m, stemStatus})`,
-			 * on EVERY progress tick, minting a fresh Media identity and inventing a `stemStatus` the
-			 * server never sent (anything not `ready`/`failed` was written as `queued`, which made the
-			 * PLAYING song locally unplayable for a moment). That write is the coupling this issue is
-			 * about: it is how a cook for one song reached the playhead of another.
-			 *
-			 * It is gone, and nothing replaced it, because nothing needed it:
-			 *
-			 *   • the READY flip is server-driven. `onMediaReady` publishes a full `queue:sync` (real
-			 *     server truth, through `mergeCatalog`) AND `nowplaying:changed`, so the TV leaves
-			 *     `waiting` on an explicit playback event. The old comment here claimed these local
-			 *     catalog writes were what made the TV "leave WAITING promptly" — that was never true;
-			 *     the only exit this handler ever owned is the terminal-failure one below.
-			 *   • cook PROGRESS has no consumer on the TV. The TV renders "Making the karaoke", not a
-			 *     percentage, so a tick had nothing to update and churned the render tree for free.
-			 *
-			 * What remains is a pure lifecycle decision, and no state of its own.
-			 */
-			if (e.type === 'media:status') {
-				// A cook that FAILED, or a job NO connected worker can ever run (`unservable`), will never
-				// become playable — and enterWaiting() sets no timer, so if this is the entry the room is
-				// holding on, the party stares at "Making the karaoke" forever. Leave WAITING the same way
-				// the dead-media path does: say so on screen via the error treatment, tell the server the
-				// entry ended so it advances authoritatively, and drop out of the waiting hold.
-				// Defensive: this fires purely on the wire signal and does not assume the server TTL fix
-				// has landed.
-				const stuck = cookIsTerminal(e);
-				if (stuck && tvState === 'waiting' && current && current.mediaId === e.mediaId) {
-					const who = singerName(current.singerId);
-					skipNotice = `Couldn't make the karaoke for ${who}'s song — skipping`;
-					setTimeout(() => (skipNotice = ''), 4000);
-					// onVisibleEnded() already sends the single `ended` frame (#70).
-					onVisibleEnded();
-				}
-			}
-			// learn singers who join AFTER our initial sync, or the lower-third shows "Someone" for
-			// late joiners instead of their real name (mirrors the phone).
-			if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
-			// A rename has to reach the TV or the roster chip and the "Now singing" lower-third keep the old
-			// name until the next full sync, which on a quiet room is not until someone touches the queue.
-			if (e.type === 'singer:updated') singers = new Map(singers).set(e.singer.id, e.singer);
-			if (e.type === 'singer:left') {
-				online = online.filter((id) => id !== e.singerId);
-				away = away.filter((id) => id !== e.singerId);
-			}
-		};
+		}
+		// learn singers who join AFTER our initial sync, or the lower-third shows "Someone" for
+		// late joiners instead of their real name (mirrors the phone).
+		if (e.type === 'singer:joined') singers = new Map(singers).set(e.singer.id, e.singer);
+		// A rename has to reach the TV or the roster chip and the "Now singing" lower-third keep the old
+		// name until the next full sync, which on a quiet room is not until someone touches the queue.
+		if (e.type === 'singer:updated') singers = new Map(singers).set(e.singer.id, e.singer);
+		if (e.type === 'singer:left') {
+			online = online.filter((id) => id !== e.singerId);
+			away = away.filter((id) => id !== e.singerId);
+		}
 	}
 
 	onMount(() => {
-		connect();
-		return () => {
-			disposed = true;
-			clearTimeout(reconnectTimer);
-			ws?.close();
-		};
+		ws = new WsClient({
+			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv`,
+			// The TV holds no queue rev of its own — it never handles queue:patch and adopts server
+			// truth wholesale from each queue:sync — so the hello handshake always sends lastRev 0,
+			// exactly as the bespoke socket did.
+			getLastRev: () => 0,
+			onConnectionChange: (c) => (connected = c),
+			onEvent: handleEvent
+		});
+		// The video/iframe keeps playing through a socket drop — WsClient only re-establishes the
+		// control channel (capped backoff + resync), and now also runs the liveness watchdog and
+		// page-lifecycle rebinding the hand-rolled socket lacked.
+		ws.open();
+		return () => ws?.close();
 	});
 
 	/*
