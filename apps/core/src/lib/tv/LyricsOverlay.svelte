@@ -183,12 +183,24 @@
 		// sized against. `reelOffset()` applies the asymmetric bias AND clamps the result to keep the sung
 		// row inside that visible band — the whole of issue #270 lives in that clamp, so it is a pure,
 		// unit-tested function rather than inline maths here.
+		// The reel FADES one row (--lyrics-row-h, 1.9em) to transparent at each edge that has context
+		// rows, so the region a singer can actually read is the band minus those two ramps. #671: pass the
+		// rendered ramp depths in px so the clamp targets that unmasked window, not the raw band — else the
+		// sung row parks congruent with a ramp and renders fainter than the line after it.
+		//
+		// oneRow is 1.9em resolved on a real row (line-height is `var(--lyrics-row-h)`), and the depth is
+		// capped by the SAME `min(row-h, (band - row-h) / 2)` the stylesheet applies (see --lyrics-fade-*),
+		// so JS and CSS agree on the window. On/off keys on the same >0 flags that drive the mask vars.
+		const oneRow = parseFloat(getComputedStyle(row).lineHeight) || row.offsetHeight;
+		const fadeCap = Math.max(0, Math.min(oneRow, (viewportEl.clientHeight - oneRow) / 2));
 		reelOffset = reelOffsetFor({
 			rowTop: row.offsetTop,
 			rowHeight: row.offsetHeight,
 			band: viewportEl.clientHeight,
 			linesBefore,
-			linesAfter
+			linesAfter,
+			fadeTop: linesBefore > 0 ? fadeCap : 0,
+			fadeBot: linesAfter > 0 ? fadeCap : 0
 		});
 	}
 	$effect(() => {
@@ -418,8 +430,16 @@
 		 * two edges are separate variables rather than one. There is nothing there to fade away to.
 		 */
 		--lyrics-row-h: 1.9em;
-		--lyrics-fade-top: calc(var(--lyrics-row-h) * var(--lyrics-fade-top-on, 1));
-		--lyrics-fade-bot: calc(var(--lyrics-row-h) * var(--lyrics-fade-bot-on, 1));
+		/*
+		 * Each ramp is one row deep, BUT capped so the two ramps can never eat the whole box: at an extreme
+		 * Text size on a short panel `fadeTop + fadeBot` could exceed the height, leaving no fully-opaque
+		 * plateau for the sung row anywhere (#671 F2). `min(row-h, (100% - row-h) / 2)` guarantees the
+		 * unmasked window `[fadeTop, height - fadeBot]` always holds at least one row. `100%` is this box`s
+		 * own (post-cap) height, so measureReel mirrors this exact cap in px against clientHeight.
+		 */
+		--lyrics-fade-cap: min(var(--lyrics-row-h), calc((100% - var(--lyrics-row-h)) / 2));
+		--lyrics-fade-top: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-top-on, 1));
+		--lyrics-fade-bot: calc(var(--lyrics-fade-cap) * var(--lyrics-fade-bot-on, 1));
 		height: calc(var(--lyrics-rows, 5) * var(--lyrics-row-h));
 		/*
 		 * A ceiling so an EXTREME setting cannot outgrow the freed space above the chrome band. At the
