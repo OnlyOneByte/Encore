@@ -379,17 +379,23 @@ export class WorkerHub {
 		this.#unservableSince.delete(msg.jobId); // terminal or requeue — prune stale unservable tracking
 		const attempts = job.attempts + 1;
 		if (msg.retryable && !attemptsExhausted(attempts, job.maxAttempts)) {
-			// The terminal `failed` branch below frees the slot through the machine's slot-release hook
-			// (FAIL is a worker-reported releasing event, #524). This RETRYABLE requeue cannot: it rides
-			// `LEASE_EXPIRED`, the ONE requeue event the machine deliberately does not treat as a release
-			// because the reaper's dead-worker requeue shares it and must NOT double-free a slot the
-			// registry will reclaim on the next heartbeat. Here the worker is demonstrably alive (it just
-			// sent this frame), so its slot IS free now and the immediate redispatch needs it back — the
-			// one worker-reported requeue that stays an explicit release at the call site.
+			// Both branches release the slot EXPLICITLY here, at the one call site that is provably a
+			// worker report: the `job.workerId === msg.workerId` guard above means the worker that owns
+			// the slot just sent this frame and is demonstrably alive, so its slot IS free now and the
+			// immediate redispatch needs it back. The machine's slot-release hook deliberately does NOT
+			// fire for FAIL (or for this requeue's LEASE_EXPIRED): the reaper's dead-worker fail/requeue
+			// share those events and must not double-free a slot the registry reclaims on the next
+			// heartbeat (issue #555). This RETRYABLE requeue rides `LEASE_EXPIRED`; the release stays at
+			// the call site.
 			this.#d.registry.releaseSlot(msg.workerId);
 			this.#d.jobs.requeue(msg.jobId, attempts, this.#d.now());
 			this.dispatch();
 		} else {
+			// Terminal worker-reported failure: free the slot explicitly, for the same reason as the
+			// retryable branch — FAIL is not exclusively worker-reported (the reaper and unservable-TTL
+			// paths also call fail()), so the machine no longer releases off the FAIL event (#555). The
+			// `workerId === msg.workerId` guard proves this failure IS the live owner's own report.
+			this.#d.registry.releaseSlot(msg.workerId);
 			const updated = this.#d.jobs.fail(msg.jobId, msg.error, this.#d.now(), attempts);
 			// A permanently failed cook must not hold the song hostage. Now that singing waits for the
 			// stems/lyrics gates, leaving one unsettled means a single broken step — a worker OOM, a
