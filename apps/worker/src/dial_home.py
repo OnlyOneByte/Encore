@@ -38,6 +38,30 @@ CAPABILITIES = list(CONFIG.capabilities)
 MEDIA_DIR = CONFIG.media_dir
 VERSION = CONFIG.version
 RECONNECT_BACKOFF_SEC = 3.0
+
+# Drains detached from a dropped connection so the reconnect loop does not BLOCK on them (#459).
+# A drop while a run_blocking step is mid-pass (native torch, uninterruptible — runner.py awaits
+# the thread) made the old inline `await client.drain(cancel=True)` hold the loop for up to a
+# full align before redialling, so the worker was both absent AND still doing the duplicate work
+# the drain is meant to stop. Detaching lets redial proceed immediately while the cancelled tasks
+# settle in the background; the set pins the tasks so they are not GC'd mid-flight, and each
+# self-removes on completion. The cancel itself is synchronous, so the GeneratorExit that kills a
+# subprocess step still propagates the instant the socket drops.
+_DETACHED_DRAINS: set[asyncio.Task] = set()
+
+
+def _on_detached_drain_done(task: asyncio.Task) -> None:
+    """Discard the finished detached drain AND retrieve its exception, so a drain that raised is logged
+    rather than surfacing only as asyncio's "Task exception was never retrieved" at GC (#459 advisory;
+    the #444/#475 silent-failure family). CancelledError is expected and stays quiet."""
+    _DETACHED_DRAINS.discard(task)
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        print(f"[worker] detached drain raised ({exc!r})", flush=True)
+
+
 # Fallback heartbeat cadence if worker:welcome never carried one (older core, or a welcome that
 # predates heartbeatIntervalSec). The real value is the core's progressLeaseMs/1000 handed over at
 # handshake; this is only the floor so the leg is never fully silent. Kept below the 30s lease so a
@@ -202,6 +226,19 @@ class WorkerClient:
             print(f"[worker] rejecting {job_type} job {job_id!r}: {reason}", flush=True)
             await self._send(protocol.reject(self.state.worker_id, job_id, reason))
             return
+        # `params` is the last required field with no parse layer, unlike jobId/jobType/mediaId above.
+        # A non-dict here (a core bug, a malformed frame) reaches JobSpec.params: dict untyped and then
+        # `**params`-style access downstream would raise mid-cook, escaping into the reconnect handler.
+        # Reject it job-scoped at the boundary — the same shape as the checks above — so the one check
+        # here makes the two defensive `isinstance(job.params, dict)` re-guards downstream (runner.py,
+        # ctx.py) dead (issue #459). Absent `params` is fine: `.get` defaults to {} below.
+        params = msg.get("params", {})
+        if not isinstance(params, dict):
+            print(f"[worker] rejecting malformed job:assign {job_id!r} (params not an object)", flush=True)
+            await self._send(
+                protocol.reject(self.state.worker_id, job_id, "malformed assign: params must be an object")
+            )
+            return
         ok, reason = self.state.can_accept(job_type)
         if not ok:
             await self._send(protocol.reject(self.state.worker_id, job_id, reason))
@@ -213,7 +250,7 @@ class WorkerClient:
             media_id=media_id,
             job_type=job_type,
             source_uri=msg.get("sourceUri", ""),
-            params=msg.get("params", {}),
+            params=params,
             media_dir=self._media_dir,
             # Trace id for this cook (#472). Absent on a frame from a core that predates it -> "".
             cook_id=msg.get("cookId", ""),
@@ -319,6 +356,17 @@ class WorkerClient:
             task.cancel()
             return  # the task's finally frees the slot; do not double-finish
         self.state.finish(job_id)
+
+    def cancel_now(self) -> None:
+        """Synchronously cancel all in-flight job tasks WITHOUT awaiting them.
+
+        The cancel propagates GeneratorExit into each processor immediately (subprocess_runner kills
+        the child), so a dropped socket stops the duplicate work at once — but a run_blocking step
+        awaits its uninterruptible thread, so the tasks are not DONE when this returns. Pair it with a
+        detached `drain()` (see _run_forever's finally, #459) to settle them off the reconnect path.
+        """
+        for task in list(self._tasks.values()):
+            task.cancel()
 
     async def drain(self, *, cancel: bool = False) -> None:
         """Settle this client's in-flight job tasks so none outlive the client.
@@ -732,8 +780,23 @@ async def _run_forever() -> None:
             # abandoned. Cancel them rather than let them run to completion against a socket that is
             # already closed: an orphaned cook loses its result AND races the core's reaper, which has
             # requeued the same job — cancelling is what stops the duplicate GPU work for one song.
+            #
+            # Cancel SYNCHRONOUSLY here (the GeneratorExit that kills a subprocess step must propagate
+            # the instant the socket drops), but settle the tasks in a DETACHED background task rather
+            # than awaiting them inline (#459): a run_blocking step awaits an uninterruptible native
+            # thread, so an inline `await drain` would hold this loop — and thus block redial — for up
+            # to a full align pass, leaving the worker both disconnected AND still running the duplicate
+            # work. Detaching lets the `while True` redial immediately while the cancelled tasks settle.
             if client is not None:
-                await client.drain(cancel=True)
+                # NOTE (#459 advisory): detaching the drain means the NEXT client announces a full,
+                # fresh WorkerState while a cancelled run_blocking step may still hold the GPU on its
+                # uninterruptible native thread — so on concurrency=1 the worker can briefly run two
+                # passes for one song. The old inline await avoided that by blocking redial until the
+                # settle finished; the reconnect-latency fix trades that for a short capacity overlap.
+                client.cancel_now()
+                settle = asyncio.ensure_future(client.drain(cancel=True))
+                _DETACHED_DRAINS.add(settle)
+                settle.add_done_callback(_on_detached_drain_done)
 
 
 if __name__ == "__main__":

@@ -280,6 +280,15 @@ export interface JobArtifacts {
    */
   lyrics?: { uri: string; candidates?: LyricsCandidate[] };
   pitch?: { uri: string }; // reference pitch-track JSON — drives server-side mic scoring
+  /**
+   * What a `fetch` job retained as the ORIGINAL audio — the one storage class that cannot be
+   * regenerated (see steps/metadata.py PublishOriginal). The core consumes the fetch result through
+   * `media_uri`, not this key, so nothing reads it today; it is declared here so it is not the last
+   * UNDECLARED key riding this frame. An undeclared key is exactly what stalled every cook while
+   * `songProfile` shipped one level too deep — declaring `source` makes any future reader a typed one
+   * and the parity guard below asserts every worker-written key is a member of this interface (#459).
+   */
+  source?: { audio: string };
 }
 
 export * from './ops';

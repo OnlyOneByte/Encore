@@ -66,7 +66,8 @@ class PlanRunner:
         ctx = Ctx(
             job=job,
             work=scratch_for(job),
-            engines=self._resolve_engines(job.params if isinstance(job.params, dict) else {}),
+            # params is validated to be a dict at the inbound boundary (dial_home._on_assign, #459).
+            engines=self._resolve_engines(job.params),
         )
         os.makedirs(ctx.work, exist_ok=True)
         ctx.runner = self._runner  # steps run subprocesses through this
