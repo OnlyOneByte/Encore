@@ -973,7 +973,7 @@ if (!chromium) {
 		// readyEmptyState fires the "None of your N karaoke songs match X" copy + "Show all" button.
 		await phone.fill(SEL.search, 'xyznotasongxyz');
 		await sleep(400);
-		await phone.click('.chips button.ok'); // pick the Ready chip (class .ok distinguishes it)
+		await phone.click(SEL.readyChip); // pick the Ready readiness filter chip
 		await sleep(200);
 		const readyEmpty = await phone.evaluate(
 			`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`
