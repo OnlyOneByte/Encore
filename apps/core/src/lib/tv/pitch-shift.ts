@@ -420,7 +420,14 @@ export class PitchShiftGraph {
 	}
 
 	private async build(): Promise<void> {
-		if (this.routed || this.degraded) return;
+		// Once the element is routed there is nothing to rebuild — the MediaElementSource is permanent.
+		// `degraded`, however, records only that the LAST attempt could not run a context (no gesture
+		// yet); it must NOT be terminal, or the instrumental never shifts again after the first pre-
+		// gesture press (#527). Clear it here and retry: the irreversible createMediaElementSource stays
+		// behind the confirmed `state === 'running'` check below, so a retry that fails again simply
+		// closes its context and re-arms `degraded`, leaving the element audible on its native output.
+		if (this.routed) return;
+		this.degraded = false;
 		try {
 			const Ctor: typeof AudioContext =
 				(window as unknown as { AudioContext: typeof AudioContext }).AudioContext ??
