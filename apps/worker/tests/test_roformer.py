@@ -190,6 +190,7 @@ import os as _os  # noqa: E402
 from src import plans  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.retry_policy import is_retryable  # noqa: E402
+from tests.cli_fakes import fake_cli_runner  # noqa: E402
 
 
 def _roformer_fake_runner(
@@ -200,43 +201,31 @@ def _roformer_fake_runner(
     (input WAV alone in its own dir, --store_dir a DIFFERENT dir from --input_folder), and writes the
     stems bs-roformer-infer would into --store_dir under names the engine could NOT have derived from the
     model token — so a passing discovery proves globbing, not a name template. `write_vocals=False`
-    simulates a roformer run that produced the instrumental but not the vocals stem (best-effort path)."""
+    simulates a roformer run that produced the instrumental but not the vocals stem (best-effort path).
+
+    The acquisition / volumedetect / encode branches (including the volumedetect branch that makes the
+    silence probe real) live in the shared `fake_cli_runner` (issue #455); only the bs-roformer-infer
+    writes + tqdm progress are here."""
     calls: list[list[str]] = []
 
-    async def run(argv):
-        calls.append(list(argv))
-        binary = argv[0]
-        if binary == "yt-dlp":
-            out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
-            _os.makedirs(_os.path.dirname(out), exist_ok=True)
-            Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
-        elif binary == "ffmpeg" and "volumedetect" in argv:
-            # a measuring call (ends in `-f null -`), no output file; report NOT-silent
-            yield "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
-            return
-        elif binary == "ffmpeg":
-            out = argv[-1]
-            _os.makedirs(_os.path.dirname(out), exist_ok=True)
-            Path(out).write_bytes(b"FAKE_ENCODED")
-        elif binary == "bs-roformer-infer":
-            store = argv[argv.index("--store_dir") + 1]
-            _os.makedirs(store, exist_ok=True)
-            if store_writes:
-                # names that the engine's find_outputs must DISCOVER by globbing — the model slug in the
-                # filename is NOT something find_roformer_* derives, so a match proves discovery.
-                Path(_os.path.join(store, f"input_(Instrumental)_{model_in_name}.wav")).write_bytes(
-                    b"FAKE_INST"
-                )
-                if write_vocals:
-                    Path(_os.path.join(store, f"input_(Vocals)_{model_in_name}.wav")).write_bytes(b"FAKE_VOX")
-            # coarse tqdm progress — parse_progress returns None by design, so the step emits [0, 100]
-            yield "  0%|          | 0/1 [00:00<?, ?it/s]"
-            # an INTERMEDIATE tqdm pct — if RoformerEngine.parse_progress ever parsed tqdm (it must not,
-            # tqdm is not a stable source), 47 would leak into the separating stream and red the coarse
-            # assertion below. parse_progress returns None by design, so the step emits only 0 then 100.
-            yield " 47%|████▋     | 1/2 [22:00<22:00]"
-            yield "100%|██████████| 1/1 [45:00<00:00]"
+    async def roformer_handler(argv):
+        store = argv[argv.index("--store_dir") + 1]
+        _os.makedirs(store, exist_ok=True)
+        if store_writes:
+            # names that the engine's find_outputs must DISCOVER by globbing — the model slug in the
+            # filename is NOT something find_roformer_* derives, so a match proves discovery.
+            Path(_os.path.join(store, f"input_(Instrumental)_{model_in_name}.wav")).write_bytes(b"FAKE_INST")
+            if write_vocals:
+                Path(_os.path.join(store, f"input_(Vocals)_{model_in_name}.wav")).write_bytes(b"FAKE_VOX")
+        # coarse tqdm progress — parse_progress returns None by design, so the step emits [0, 100]
+        yield "  0%|          | 0/1 [00:00<?, ?it/s]"
+        # an INTERMEDIATE tqdm pct — if RoformerEngine.parse_progress ever parsed tqdm (it must not,
+        # tqdm is not a stable source), 47 would leak into the separating stream and red the coarse
+        # assertion below. parse_progress returns None by design, so the step emits only 0 then 100.
+        yield " 47%|████▋     | 1/2 [22:00<22:00]"
+        yield "100%|██████████| 1/1 [45:00<00:00]"
 
+    run = fake_cli_runner(handlers={"bs-roformer-infer": roformer_handler}, record=calls)
     return run, calls
 
 

@@ -15,6 +15,7 @@ from src import plans  # noqa: E402
 from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.separation import demucs  # noqa: E402
+from tests.cli_fakes import fake_cli_runner  # noqa: E402
 
 
 # ── pure helpers ──────────────────────────────────────────────────────────────────
@@ -101,39 +102,29 @@ def fake_runner(
     """Build a runner that emits canned lines keyed by the binary name (argv[0]), optionally raising
     a ProcessError for one binary. It also CREATES the files the real CLIs would, so the processor's
     existence checks + move succeed. `--two-stems=vocals` writes BOTH stems; `write_vocals=False`
-    simulates a run that produced the instrumental but not the vocals (best-effort path)."""
+    simulates a run that produced the instrumental but not the vocals (best-effort path).
 
-    async def run(argv):
-        binary = argv[0]
-        if binary == "yt-dlp":
-            # the -o target is a %(ext)s template (no wav transcode), so pick a concrete extension
-            out = argv[argv.index("-o") + 1].replace("%(ext)s", "webm")
-            os.makedirs(os.path.dirname(out), exist_ok=True)
-            Path(out).write_bytes(b"FAKE_NATIVE_AUDIO")
-        elif binary == "ffmpeg" and "volumedetect" in argv:
-            # A measuring call, not a writing one: it ends in `-f null -`, so there is no output file.
-            # Treating it like an encode wrote to dirname("-") == "" and raised, which the probe's
-            # try/except then swallowed — so these tests never actually exercised the silence probe.
-            yield "[Parsed_volumedetect_0 @ 0x1] max_volume: -1.2 dB"
-            return
-        elif binary == "ffmpeg":
-            out = argv[-1]
-            os.makedirs(os.path.dirname(out), exist_ok=True)
-            Path(out).write_bytes(b"FAKE_ENCODED")
-        elif binary == "demucs":
-            out_dir = argv[argv.index("-o") + 1]
-            model = argv[argv.index("-n") + 1]
-            inst = demucs.demucs_no_vocals_path(out_dir, model)
-            os.makedirs(os.path.dirname(inst), exist_ok=True)
-            Path(inst).write_bytes(b"FAKE_INSTRUMENTAL")
-            if write_vocals:
-                Path(demucs.demucs_vocals_path(out_dir, model)).write_bytes(b"FAKE_VOCALS")
-        for line in scripted.get(binary, []):
-            yield line
-        if fail_on == binary:
-            raise demucs.ProcessError(argv, 1, exit_text)
+    The acquisition / volumedetect / encode branches (and the volumedetect branch that makes the silence
+    probe real) live in the shared `fake_cli_runner` (issue #455); only the demucs-specific writes are
+    here."""
 
-    return run
+    async def demucs_handler(argv):
+        out_dir = argv[argv.index("-o") + 1]
+        model = argv[argv.index("-n") + 1]
+        inst = demucs.demucs_no_vocals_path(out_dir, model)
+        os.makedirs(os.path.dirname(inst), exist_ok=True)
+        Path(inst).write_bytes(b"FAKE_INSTRUMENTAL")
+        if write_vocals:
+            Path(demucs.demucs_vocals_path(out_dir, model)).write_bytes(b"FAKE_VOCALS")
+        return
+        yield  # pragma: no cover — makes this an async generator; the return above wins
+
+    return fake_cli_runner(
+        scripted=scripted,
+        fail_on=fail_on,
+        exit_text=exit_text,
+        handlers={"demucs": demucs_handler},
+    )
 
 
 def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):
