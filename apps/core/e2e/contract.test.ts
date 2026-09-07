@@ -256,6 +256,20 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 			// A bare-tag part inside a descendant/child selector (the `audio` in `.slot.visible audio`,
 			// the `i` in `.seekrow .track > i`).
 			if (/^[a-z][a-z0-9]*$/.test(part)) return tagResolves(part, sources);
+			// A TAG.CLASS compound part — a bare tag anchored by one or more classes, e.g. the
+			// `button.ok` in `.chips button.ok` (the readiness Ready chip is `<button class="chip ok">`;
+			// the `button` distinguishes it from a `<span class="chip ... ok">` state chip a SongRow's
+			// own `.chips` row also renders, so the tag is load-bearing, not decorative). Require BOTH
+			// that the tag is rendered somewhere AND every `.token` resolves as a class — the same
+			// non-vacuity the `.err[role=alert]` branch keeps: a `button.nope` still fails because no
+			// source carries the `.nope` class, and a `marquee.ok` fails because no source renders that tag.
+			const tagClass = /^([a-z][a-z0-9]*)((?:\.[A-Za-z][\w-]*)+)$/.exec(part);
+			if (tagClass) {
+				const [, tag, classPortion] = tagClass;
+				if (!tagResolves(tag, sources)) return false;
+				const classTokens = classPortion.split('.').filter(Boolean);
+				return classTokens.every((tok) => sources.some((s) => classPresent(s, tok)));
+			}
 			// Any other part shape (a universal token, a `:not()` chain, an unquoted attribute) is one
 			// this resolver does not model — surface it as unmodelled rather than silently pass.
 			return null;
@@ -497,11 +511,9 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	],
 	'probes/p12-search.mjs': [
 		// Hex swatch colour (shape rule), not a selector.
-		'#ff5cae',
-		// DEFERRED to the #494 tail follow-up: '.chips button.ok' contains the bare tag `button`, which the
-		// SEL-resolution guard cannot model as a class anchor, so it cannot move to SEL without changing the
-		// probe to address the chip by a class alone. Tracked, not silenced.
-		'.chips button.ok'
+		'#ff5cae'
+		// '.chips button.ok' MIGRATED to SEL.readyChip (Group C of #513, tail of #494): the guard now
+		// models a `tag.class` compound part, so the bare-tag `button` resolves as a tag anchor.
 	],
 	'probes/p13-tap-to-start.mjs': [
 		' + JSON.stringify(SEL.queueRow) + ',
@@ -704,4 +716,30 @@ test('#544 Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS i
 	expect(selectorResolves('.err[role=nope]', sources)).toBe(false);
 	expect(selectorResolves('.nope-not-a-class[role=alert]', sources)).toBe(false);
 	expect(selectorResolves('.err[data-x=alert]', sources)).toBe(false);
+});
+
+test('#545 Group C — p12-search .chips button.ok moved from KNOWN_OFFENDERS into SEL', () => {
+	// Half 1: the tag.class compound is no longer quarantined for p12-search. On base it sat in
+	// KNOWN_OFFENDERS (the probe spelled it out); after the migration the only honest place it may live
+	// is SEL, so KNOWN_OFFENDERS must no longer wave it through.
+	const p12 = KNOWN_OFFENDERS['probes/p12-search.mjs'] ?? [];
+	expect(p12).not.toContain('.chips button.ok');
+
+	// Half 2: it now lives in SEL with its exact value, and the resolver — extended here to model a
+	// TAG.CLASS compound part (a bare tag `button` anchored by the class `.ok`, mid-selector) — resolves
+	// it against real source. The anchor is `<button class="chip ok">` inside the `.chips` readiness
+	// group in routes/+page.svelte, so a green false/null here would mean the SEL entry points at markup
+	// no component renders.
+	expect(SEL.readyChip).toBe('.chips button.ok');
+	const sources = guardSources();
+	expect(selectorResolves(SEL.readyChip, sources)).toBe(true);
+
+	// The resolver extension must be REAL, not a widening that accepts any `tag.class` shape:
+	//   • a wrong CLASS must still fail — no source renders a `button.nope-not-a-class`;
+	//   • a wrong TAG must still fail — no component renders a `<marquee`, so `.chips marquee.ok` fails;
+	//   • the bare-tag part is load-bearing — `.chips .ok` (class-only) is a DIFFERENT selector that
+	//     also matches a SongRow `<span class="chip state ok">`, which is exactly why the migration keeps
+	//     the `button` anchor rather than dropping to a class-only handle.
+	expect(selectorResolves('.chips button.nope-not-a-class', sources)).toBe(false);
+	expect(selectorResolves('.chips marquee.ok', sources)).toBe(false);
 });
