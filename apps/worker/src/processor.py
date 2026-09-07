@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from . import protocol
+from .ffmpeg import ffmpeg_argv
 
 # Stored stem formats — BOTH stems are lossless FLAC (#480):
 #   instrumental -> FLAC (lossless). It comes out of the speakers at volume, and it is the one place
@@ -145,18 +146,11 @@ SILENCE_FLOOR_DB = -90.0
 
 def volumedetect_argv(path: str, ffmpeg_bin: str = "ffmpeg") -> list[str]:
     """ffmpeg argv that measures a file's mean/max volume and writes nothing."""
-    return [
-        ffmpeg_bin,
-        "-hide_banner",
-        "-nostats",
-        "-i",
-        path,
-        "-af",
-        "volumedetect",
-        "-f",
-        "null",
-        "-",
-    ]
+    # quiet=False keeps the -nostats preamble WITHOUT -loglevel error: volumedetect writes its
+    # max_volume summary to stderr at ffmpeg's INFO level, which -loglevel error would suppress.
+    return ffmpeg_argv(
+        ffmpeg_bin, path, ["-af", "volumedetect"], ["-f", "null", "-"], quiet=False, overwrite=False
+    )
 
 
 def parse_max_volume_db(output: str) -> float | None:

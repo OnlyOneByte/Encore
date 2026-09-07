@@ -54,15 +54,27 @@ NEEDS_AUTHORED_CUES = "authored_cues"
 NEEDS_MACHINE_CUES = "machine_cues"
 
 
+#: The ONE place a requirement name is tied to the property of the request that satisfies it. This used
+#: to be rebuilt as a fresh dict inside `unmet` on every call, parallel to the NEEDS_* constants above —
+#: two copies of the same five-way mapping that could drift with nothing comparing them. A single
+#: (name, predicate) table folds both into one: the constants name the requirements, this pairs each with
+#: its check, and `unmet` reads it. `test_every_spec_declares_a_role_...` and the build path are unchanged.
+_REQUIREMENT_PREDICATES: tuple[tuple[str, Callable[[LyricsRequest], bool]], ...] = (
+    (NEEDS_METADATA, lambda req: bool(req.artist and req.track)),
+    (NEEDS_VOCALS_STEM, lambda req: bool(req.vocals_path)),
+    (NEEDS_AUDIO, lambda req: bool(req.audio_path)),
+    (NEEDS_AUTHORED_CUES, lambda req: bool(req.caption_segments)),
+    (NEEDS_MACHINE_CUES, lambda req: bool(req.auto_caption_segments)),
+)
+
+
 def unmet(requirements: frozenset[str], req: LyricsRequest) -> list[str]:
-    """Which of these requirements this request does not satisfy."""
-    have = {
-        NEEDS_METADATA: bool(req.artist and req.track),
-        NEEDS_VOCALS_STEM: bool(req.vocals_path),
-        NEEDS_AUDIO: bool(req.audio_path),
-        NEEDS_AUTHORED_CUES: bool(req.caption_segments),
-        NEEDS_MACHINE_CUES: bool(req.auto_caption_segments),
-    }
+    """Which of these requirements this request does not satisfy.
+
+    Fail-open on a name not in the table (`.get(r, True)`): a requirement nothing knows how to check is
+    treated as MET rather than silently excluding a source — the same defensive default the inline dict
+    carried."""
+    have = {name: predicate(req) for name, predicate in _REQUIREMENT_PREDICATES}
     return sorted(r for r in requirements if not have.get(r, True))
 
 
