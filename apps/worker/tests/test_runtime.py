@@ -32,6 +32,7 @@ from src.runtime import (  # noqa: E402
 )
 from src.runtime import runner as runner_mod  # noqa: E402
 from src.vocabulary import Stage  # noqa: E402
+from tests.conftest import drain  # noqa: E402
 
 
 def job(tmp_path, job_type="align") -> JobSpec:
@@ -66,10 +67,6 @@ class Writes(Step):
             if leaf:
                 setattr(getattr(ctx, root), leaf, "written")
         yield ProgressEvent(stage=self.stage, pct=100)
-
-
-async def drain(proc, spec):
-    return [ev async for ev in proc.process(spec)]
 
 
 # ── E1: a plan is well-formed, or it fails at validation ─────────────────────────

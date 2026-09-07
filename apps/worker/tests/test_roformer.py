@@ -11,6 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from src.separation import roformer  # noqa: E402
+from tests.conftest import drain as _drain  # noqa: E402
 
 
 def test_every_whitelist_token_resolves_to_a_real_registry_slug():
@@ -239,13 +240,6 @@ def _rspec(tmp_path, **params):
         params=params,
         media_dir=str(tmp_path),
     )
-
-
-async def _drain(processor, job):
-    events = []
-    async for ev in processor.process(job):
-        events.append(ev)
-    return events
 
 
 @pytest.mark.asyncio

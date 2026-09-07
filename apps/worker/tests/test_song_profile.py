@@ -18,6 +18,7 @@ from src.analysis import song_profile  # noqa: E402
 from src.processor import CompleteResult, JobSpec  # noqa: E402
 from src.separation import demucs  # noqa: E402
 from tests.cli_fakes import fake_cli_runner  # noqa: E402
+from tests.conftest import drain as _drain  # noqa: E402
 
 WIRE_KEYS = {"keyTonic", "keyMode", "keyConfidence", "lowMidi", "highMidi", "p05Midi", "p95Midi", "histogram"}
 
@@ -111,10 +112,6 @@ def _demucs_fake_runner(tmp_path):
         yield  # pragma: no cover — makes this an async generator; the return above wins
 
     return fake_cli_runner(handlers={"demucs": demucs_handler})
-
-
-async def _drain(proc, job):
-    return [ev async for ev in proc.process(job)]
 
 
 @pytest.mark.asyncio

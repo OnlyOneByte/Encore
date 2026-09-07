@@ -23,6 +23,7 @@ from src import plans  # noqa: E402
 from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.vocabulary import Fetcher  # noqa: E402
+from tests.conftest import drain  # noqa: E402
 
 
 def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m1", **params):
@@ -49,10 +50,6 @@ def fake_runner(lines, *, writes: tuple[str, str] | None = None):
             yield ln
 
     return run
-
-
-async def drain(proc, job):
-    return [ev async for ev in proc.process(job)]
 
 
 def test_fetcher_is_declared_never_inferred_from_the_uri():
