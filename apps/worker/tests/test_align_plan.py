@@ -1073,6 +1073,7 @@ from src.lyrics.chain import (  # noqa: E402
     SUSPECT_AGREEMENT,
     agreement_score,
     composite_score,
+    lyrics_tokens,
 )
 
 _SUNG = "we could be heroes just for one day standing by the wall guns above our heads and we kissed"
@@ -1113,6 +1114,30 @@ def test_agreement_score_matches_the_TS_semantics():
     assert agreement_score(_SUNG, other) < SUSPECT_AGREEMENT
     # too short to judge → None, NOT 0: an instrumental must not condemn a correct lookup
     assert agreement_score("la la la", _SUNG) is None
+
+
+def test_lyrics_tokens_fold_unicode_form_so_form_variants_match():
+    """NFKC folding (#540): text differing only in Unicode FORM must tokenise identically, and the
+    all-ASCII path must be byte-for-byte unchanged so the calibrated 0.25 threshold is preserved.
+
+    RED ON BASE: before the fold, .lower() left the two forms as distinct codepoints, so these pairs
+    produced disjoint token sets. Each assertion below fails on origin/main and passes with the fold.
+    """
+    # composed vs decomposed: "Beyoncé" (e + U+0301 combining acute) vs "Beyoncé" (U+00E9)
+    assert lyrics_tokens("Beyonce\u0301") == lyrics_tokens("Beyonc\u00e9")
+    # full-width vs half-width Latin: "Ｈｅｌｌｏ" (H e l l o) folds to "hello"
+    assert lyrics_tokens("\uff28\uff45\uff4c\uff4c\uff4f") == ["hello"]
+    # ligature: "ﬁ" (U+FB01 fi) folds to "fi", so "ﬁnd" == "find"
+    assert lyrics_tokens("\ufb01nd") == ["find"]
+
+    # BEHAVIOR-PRESERVING on ASCII: identical output to the plain lowercase+strip on ASCII lyrics.
+    ascii_text = "[00:12.50]Hello, World! [Chorus] don't stop the music"
+    assert lyrics_tokens(ascii_text) == ["hello", "world", "don't", "stop", "the", "music"]
+
+    # The whole calibration corpus is ASCII, so a real same-song comparison is unchanged and still
+    # scores far above SUSPECT_AGREEMENT (0.25) — proving the fold did not disturb the threshold.
+    near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
+    assert agreement_score(_SUNG, near) > 0.7
 
 
 def test_composite_is_the_MEAN_over_baselines_that_can_speak():
