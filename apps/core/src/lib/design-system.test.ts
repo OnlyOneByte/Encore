@@ -122,6 +122,42 @@ test('no component hard-codes a colour the palette already owns', () => {
 	expect(offences).toEqual([]);
 });
 
+test('no component hard-codes an rgb()/rgba() colour the palette already owns', () => {
+	// SIBLING of the #hex scan above, for the rgb()/rgba() FORM. The hex scan is blind to functional
+	// notation, which is exactly how the attract-screen fade drifted: `linear-gradient(..., rgba(3,3,8,
+	// 0.9), ...)` in tv/+page.svelte duplicates `--bg` (#0b0b12 fades to a different black than its twin
+	// TvLobby fade, which was converted to color-mix(var(--bg)) for this reason) while the #hex guard
+	// never sees it. This scan owns the rgb()/rgba() form: a literal whose R,G,B equals a palette
+	// token's is an offence regardless of its alpha (the alpha is a fade depth, the RGB is the colour
+	// that must track the theme). Comment-stripped source only, same as the hex scan.
+	const byRgb = new Map<string, string>();
+	for (const [hex, name] of palette()) {
+		const h = hex.slice(1);
+		const r = parseInt(h.slice(0, 2), 16);
+		const g = parseInt(h.slice(2, 4), 16);
+		const b = parseInt(h.slice(4, 6), 16);
+		byRgb.set(`${r},${g},${b}`, name);
+	}
+	expect(byRgb.size).toBeGreaterThan(10);
+	// #ffffff / #000000 are universal (see the hex scan); rgb(255,255,255)/rgb(0,0,0) are not owned.
+	const UNIVERSAL_RGB = new Set(['255,255,255', '0,0,0']);
+	const offences: string[] = [];
+	const RGB_RE = /rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,[^)]*)?\)/g;
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const m of src.matchAll(RGB_RE)) {
+			const key = `${Number(m[1])},${Number(m[2])},${Number(m[3])}`;
+			if (UNIVERSAL_RGB.has(key)) continue;
+			const tokenName = byRgb.get(key);
+			if (!tokenName) continue;
+			offences.push(
+				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[0]} duplicates var(--${tokenName}); use color-mix(in srgb, var(--${tokenName}) ...) so it tracks the theme`
+			);
+		}
+	}
+	expect(offences).toEqual([]);
+});
+
 test('every token a component references is actually defined', () => {
 	// A typo resolves to nothing and paints transparent rather than erroring, which is how /metrics'
 	// worker-down banner -- the one state that invalidates every number under it -- rendered as bare
@@ -308,6 +344,24 @@ test('a bottom-docked sheet clears the home indicator', () => {
 	expect(peek![0]).toMatch(/env\(safe-area-inset-bottom/);
 });
 
+test('QueueSheet tears down its --peek-h documentElement write on unmount (#460 sec.14)', () => {
+	// THE BUG THIS EXISTS FOR (#460 sec.14). QueueSheet writes `--peek-h` onto documentElement in an
+	// $effect but returned no cleanup, so the inline property OUTLIVED the component on the root element
+	// and kept beating the `@media (height <= 480px)` rule after the sheet unmounted. A documentElement
+	// custom-property write is app-global mutable state; leaving it set is a leak. Source scan because
+	// bun:test has no DOM to mount-and-unmount; comments stripped so the rationale prose cannot satisfy
+	// or trip it. Reverting the $effect teardown reds this.
+	//
+	// SCOPE: pinned to QueueSheet's --peek-h, the audit's stated subject. routes/+page.svelte carries
+	// the same shape for --undo-h (also unguarded); that sibling is deferred to the #460 tail rather
+	// than widened into this PR.
+	const src = stripComments(readFileSync(join(SRC, 'lib/components/QueueSheet.svelte'), 'utf8'));
+	const writes = src.match(/documentElement\.style\.setProperty\(\s*['"]--peek-h['"]/);
+	expect(writes, 'QueueSheet must still be the component that writes --peek-h').not.toBeNull();
+	expect(src, 'the --peek-h $effect must return a cleanup that removeProperty(--peek-h) on unmount').toMatch(
+		/removeProperty\(\s*['"]--peek-h['"]\s*\)/
+	);
+});
 test('the phone header truncates a long display name instead of growing the row (#109)', () => {
 	// THE BUG (#109): the header is a nowrap flex row and the ONE child whose width is user-supplied --
 	// the display name -- rendered raw with no truncation. A single unbroken token has a min-content

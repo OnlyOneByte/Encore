@@ -181,6 +181,30 @@ test('play-from-idle also broadcasts the queue (the entry left `queued`)', () =>
 	).toBe('playing');
 });
 
+// ── (currentEntryId, isPlaying) must never reach (null, true) — a reachable illegal state ──
+// Reported: `play` in an idle room with nothing playable fell through to setPlayback({isPlaying:true})
+// while currentEntryId stayed null. It persists (store hydrate only clears the DANGLING non-null case),
+// so the phone transport shows a pause icon in an idle room until one tap clears it.
+test('THE BUG: play in an idle room with nothing playable stays stopped, not (null, isPlaying:true)', () => {
+	const { state, deps } = harness();
+	// no entries added, nothing to play
+	handlePlayerCommand({ cmd: 'play' }, deps);
+	expect(state.playback.currentEntryId).toBeNull();
+	expect(state.playback.isPlaying).toBe(false); // NOT true — (null, true) is illegal
+});
+
+test('play still RESUMES a loaded-but-paused song (currentEntryId set) to isPlaying:true', () => {
+	const { state, deps } = harness();
+	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
+	handlePlayerCommand({ cmd: 'play' }, deps); // q1 becomes current + playing
+	handlePlayerCommand({ cmd: 'pause' }, deps); // paused, currentEntryId still q1
+	expect(state.playback.currentEntryId).toBe('q1');
+	expect(state.playback.isPlaying).toBe(false);
+	handlePlayerCommand({ cmd: 'play' }, deps); // resume the loaded song
+	expect(state.playback.currentEntryId).toBe('q1');
+	expect(state.playback.isPlaying).toBe(true);
+});
+
 test('pause/seek do NOT emit a queue:patch (nothing about the queue changed)', () => {
 	const { state, deps, published } = harness();
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
