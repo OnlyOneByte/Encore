@@ -1,0 +1,15 @@
+{
+	// Type gate for the out-of-program e2e + scripts .mjs drivers (issue #553, deferred from #438).
+	// Extends the server config for the same strictness. PR-1 covers only the shared spine
+	// (cdp.mjs driver, contract.ts selector registry, scripts/shot.mjs); the ~760 per-probe
+	// implicit-any errors are brought in by the per-driver follow-up issues, one batch at a time,
+	// each adding its files to `include` below.
+	"extends": "./tsconfig.server.json",
+	"compilerOptions": {
+		"allowJs": true,
+		"checkJs": true,
+		"allowImportingTsExtensions": true
+	},
+	"include": ["e2e/cdp.mjs", "e2e/contract.ts", "scripts/shot.mjs", "scripts/playwright-core.d.ts"],
+	"exclude": ["build", "node_modules"]
+}
