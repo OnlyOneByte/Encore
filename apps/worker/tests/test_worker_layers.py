@@ -385,6 +385,39 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
     )
 
 
+# ── E9b: a step never mutates a domain dataclass attribute in place (#605) ─────────
+
+
+def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
+    """#605: the step layer must not reach into a domain LyricsText and rewrite a field on the caller's
+    object — it publishes copies via dataclasses.replace instead.
+
+    The specific offender this pins: `sel.publish[0].text_confidence = "low"` in GradeAndSelect, which
+    assigned an attribute on an object subscripted out of the selection — a cross-layer, in-place mutation
+    of a caller-owned domain dataclass. AST, not a substring scan, because "text_confidence" appears all
+    over this module in reads and in `replace(..., text_confidence=...)`; only an assignment whose TARGET
+    is `<subscript>.attr` is the reaching-in shape.
+    """
+    steps = Path(__file__).resolve().parents[1] / "src" / "steps" / "lyrics.py"
+    tree = ast.parse(steps.read_text(encoding="utf-8"))
+
+    offenders: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign):
+            continue
+        for target in node.targets:
+            # `x[i].attr = ...` — an attribute write onto a subscripted (indexed) object. That object is a
+            # domain LyricsText pulled out of sel.publish/ctx.lyrics.texts; mutating it in place is the
+            # cross-layer write. `replace(...)` produces a new value assigned back to the slot instead.
+            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Subscript):
+                offenders.append(f"steps/lyrics.py:{target.lineno} assigns .{target.attr} on a subscript")
+
+    assert not offenders, (
+        "a step is mutating a domain dataclass attribute in place through a subscript — use "
+        "dataclasses.replace and assign the copy back to the list slot instead: " + "; ".join(offenders)
+    )
+
+
 # ── E10: a step reaches blocking work ONLY through run_blocking / run_stage ────────
 
 #: The blocking primitives a Step must never touch directly. Reaching any of these on the event loop
