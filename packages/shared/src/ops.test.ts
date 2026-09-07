@@ -77,3 +77,27 @@ test('applyAndReseq(add) and (remove) also leave the input untouched', () => {
 	applyAndReseq(rem0, { op: 'remove', id: 'b' });
 	expect(JSON.stringify(rem0)).toBe(remFrozen);
 });
+
+// Issue #638: the wire-contract additions are type-only lines, so nothing BEHAVIOURAL reds if they
+// come back removed (the reducer arms carry the behaviour and are pinned by the applyOp tests above
+// and the rotation tests). This source-scan is the load-bearing trap for the vocabulary itself, in
+// the same spirit as entrystatus-members-352.test.ts.
+import { readFileSync } from 'node:fs';
+const stripC = (s: string): string => s.replace(/\/\*[\s\S]*?\*\//g, '').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+
+test('#638: the QueueOp union carries move-global and unpin', () => {
+	const src = stripC(readFileSync(new URL('./ops.ts', import.meta.url), 'utf8'));
+	const m = src.match(/export type QueueOp =[\s\S]*?status: EntryStatus \};/);
+	expect(m).not.toBeNull(); // not-vacuous: the union must exist
+	const decl = m![0];
+	expect(decl).toContain("op: 'move-global'");
+	expect(decl).toMatch(/'move-global';\s*id: string;\s*toSeq: number/);
+	expect(decl).toContain("op: 'unpin'");
+});
+
+test('#638: QueueEntry carries a nullable pinnedSeq', () => {
+	const src = stripC(readFileSync(new URL('./types.ts', import.meta.url), 'utf8'));
+	const m = src.match(/export interface QueueEntry \{[\s\S]*?\n\}/);
+	expect(m).not.toBeNull();
+	expect(m![0]).toMatch(/pinnedSeq\?:\s*number\s*\|\s*null/);
+});

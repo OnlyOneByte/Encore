@@ -21,7 +21,11 @@ export function sqlitePersistence(db: DB): StatePersistence {
 								singerId: e.singerId,
 								status: e.status,
 								rotationSeq: e.rotationSeq,
-								addedAt: e.addedAt
+								addedAt: e.addedAt,
+								// A durable host pin (issue #638). `?? null` because the column is nullable and the
+								// domain field optional — an unpinned entry stores NULL, read back as "follows policy".
+								// Persisting it is what makes a pin survive a restart.
+								pinnedSeq: e.pinnedSeq ?? null
 							}))
 						)
 						.run();

@@ -132,7 +132,8 @@ CREATE TABLE `queue_entries` (
 	`singer_id` text NOT NULL,
 	`status` text DEFAULT 'queued' NOT NULL,
 	`rotation_seq` integer NOT NULL,
-	`added_at` integer NOT NULL
+	`added_at` integer NOT NULL,
+	`pinned_seq` integer
 );
 --> statement-breakpoint
 CREATE TABLE `room_settings` (
