@@ -25,11 +25,11 @@
  * height is measuring a different design.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
+import { findChromium } from './lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #564, following the
@@ -55,18 +55,6 @@ const ID = process.env.CAPTURE_ID ?? 'tour';
 const PHONE = [430, 860];
 /** @type {readonly [number, number]} */
 const TV = [1920, 1080];
-
-function findChromium() {
-	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
-	for (const b of ['chromium-1232', 'chromium-1228']) {
-		const p = join(homedir(), '.cache', 'ms-playwright', b, 'chrome-linux', 'chrome');
-		if (existsSync(p)) return p;
-	}
-	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
-		if (existsSync(p)) return p;
-	}
-	return null;
-}
 
 const chromium = findChromium();
 if (!chromium) {

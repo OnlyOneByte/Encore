@@ -42,10 +42,10 @@
 
 import { spawn } from 'node:child_process';
 import { existsSync, readdirSync, unlinkSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
+import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #562, following the
@@ -919,19 +919,6 @@ try {
 // S9 -- UI: one-tap action per row, and the empty-state copy.
 // Requires Chromium.
 // ═════════════════════════════════════════════════════════════════════════════
-
-function findChromium() {
-	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
-	const cache = join(homedir(), '.cache', 'ms-playwright');
-	for (const build of ['chromium-1232', 'chromium-1228']) {
-		const p = join(cache, build, 'chrome-linux', 'chrome');
-		if (existsSync(p)) return p;
-	}
-	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
-		if (existsSync(p)) return p;
-	}
-	return null;
-}
 
 const chromium = findChromium();
 if (!chromium) {
