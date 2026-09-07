@@ -8,14 +8,22 @@ import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
 import { can } from '$server/auth/capabilities';
 import { mediaFor } from '$server/realtime/hub';
+import { DEFAULT_ROOM_ID } from '$server/state/settings-repository';
 import type { RoomSettings } from '@encore/shared';
 
-export const PUT: RequestHandler = async ({ request, cookies }) => {
+export const PUT: RequestHandler = async ({ request, cookies, url }) => {
 	const app = getApp();
 	const singer = app.singers.bySessionToken(cookies.get(SESSION_COOKIE));
 	// Routed through can() rather than an inline truthiness check so the room-settings gate moves with
 	// every other capability the day one of them narrows.
 	if (!can({ singerId: singer?.id }, 'settings:write-room')) return json({ error: 'join first' }, { status: 401 });
+
+	// Which room this write addresses. The repository has always been keyed by room id; only this
+	// endpoint dropped it, so every write landed on the default room. `?roomId=` threads it back
+	// through, defaulting to DEFAULT_ROOM_ID so existing callers (no param) are unchanged. Read from
+	// the query string rather than the body so the JSON payload stays a pure Partial<RoomSettings>
+	// that flows straight into the normalizer.
+	const roomId = url.searchParams.get('roomId') ?? DEFAULT_ROOM_ID;
 
 	let body: Partial<RoomSettings>;
 	try {
@@ -24,8 +32,8 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
 		return json({ error: 'invalid json' }, { status: 400 });
 	}
 
-	app.settings.setRoom(body);
-	const settings = app.settings.getEffective();
+	app.settings.setRoom(body, roomId);
+	const settings = app.settings.getEffective(roomId);
 	app.publish({ type: 'settings:changed', settings });
 
 	// `queueOrder` is the one room setting that is not purely a render-time choice: `rotationSeq` is
