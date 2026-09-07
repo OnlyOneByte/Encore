@@ -426,3 +426,73 @@ async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
         assert seen[0][0] == configured, (
             f"{step.name} argv[0] must be the configured ENCORE_YTDLP_BIN, got {seen[0][0]!r}"
         )
+
+
+# ── issue #670: the raw caption track survives job-scratch teardown when opted in ─────────────────────
+# The caption fetch writes the raw `.vtt` into per-job scratch (`ctx.work/<kind>/`), which
+# `dial_home._run_job` rmtrees when the job ends — so only the PARSED cues survive, and a
+# caption-parsing defect (#539/#542-class) can never be re-examined from the source bytes after a cook.
+# `ENCORE_KEEP_RAW_CAPTIONS=1` copies the raw track out to the durable `derived/` store BEFORE teardown,
+# keeping the authored/machine distinction structural (a directory), off by default so the footprint of
+# an ordinary cook does not change.
+
+from src.processor import raw_caption_path  # noqa: E402
+
+
+async def test_the_raw_caption_track_is_NOT_retained_by_default(tmp_path, monkeypatch):
+    """DEFAULT footprint is unchanged — the durable path stays empty unless opted in (#670)."""
+    monkeypatch.delenv("ENCORE_KEEP_RAW_CAPTIONS", raising=False)
+    ctx = _ctx_for_captions(tmp_path)
+
+    await _drain(FetchCaptions(AUTHORED), ctx)
+
+    dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, AUTHORED, "vtt")
+    assert not os.path.exists(dest), (
+        "with the flag off the raw track must NOT be copied into derived/ — the default footprint "
+        "must not change"
+    )
+
+
+async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted_in(tmp_path, monkeypatch):
+    """THE PIN — issue #670.
+
+    With `ENCORE_KEEP_RAW_CAPTIONS=1`, after the fetch step runs the RAW caption track is retrievable
+    from a durable `derived/` path — not only from the scratch directory that is torn down with the
+    job. This is what lets a caption-parsing bug be diagnosed from the exact bytes production parsed,
+    long after the cook that produced it has finished and its scratch is gone.
+
+    Drives the real `FetchCaptions` step against the same no-overwrite yt-dlp stand-in the #96 guarantee
+    uses, so the retained bytes are exactly what `read_captions` was handed. Asserts both tiers land in
+    their OWN durable directory (the authored/machine split stays structural, never a filename guess)
+    and that the retained bytes are byte-identical to the scratch source.
+    """
+    monkeypatch.setenv("ENCORE_KEEP_RAW_CAPTIONS", "1")
+    ctx = _ctx_for_captions(tmp_path)
+
+    await _drain(FetchCaptions(AUTHORED), ctx)
+    await _drain(FetchCaptions(MACHINE), ctx)
+
+    authored_dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, AUTHORED, "vtt")
+    machine_dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, MACHINE, "vtt")
+
+    # 1. Both tiers were retained to the DURABLE derived/ store, each in its own directory — the same
+    #    structural split the scratch fetch keeps, so the two kinds cannot be confused post-cook.
+    assert os.path.exists(authored_dest), "authored raw track must be retained to derived/"
+    assert os.path.exists(machine_dest), "machine raw track must be retained to derived/"
+    assert os.path.dirname(authored_dest) != os.path.dirname(machine_dest), (
+        "authored and machine raw tracks must live in SEPARATE durable directories"
+    )
+    assert os.sep + "derived" + os.sep in authored_dest, "must land under the derived/ storage class"
+
+    # 2. The durable bytes are IDENTICAL to what landed in scratch — i.e. exactly what the parser saw,
+    #    which is the whole point of retaining the source rather than the parsed cues.
+    authored_scratch = os.path.join(ctx.work, AUTHORED, "captions.en.vtt")
+    machine_scratch = os.path.join(ctx.work, MACHINE, "captions.en.vtt")
+    assert Path(authored_dest).read_text(encoding="utf-8") == Path(authored_scratch).read_text(
+        encoding="utf-8"
+    )
+    assert Path(machine_dest).read_text(encoding="utf-8") == Path(machine_scratch).read_text(encoding="utf-8")
+
+    # 3. The two retained tracks are the two DIFFERENT tracks (authored candidate vs machine baseline),
+    #    not one track copied twice — the structural split is meaningful, not cosmetic.
+    assert Path(authored_dest).read_text(encoding="utf-8") != Path(machine_dest).read_text(encoding="utf-8")

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import time
 from collections.abc import AsyncIterator
 from dataclasses import replace
@@ -39,12 +40,13 @@ from ..lyrics import (
     select_by_baselines,
     validate_timing,
 )
+from ..lyrics.captions import find_caption_file
 
 # _opening_window_indices moved to lyrics/validate.py (#456); re-imported so `_opens_for`'s
 # fallback works and the #459 guard tests can still do `from src.steps.lyrics import
 # _opening_window_indices`.
 from ..lyrics.validate import _opening_window_indices
-from ..processor import ProgressEvent
+from ..processor import ProgressEvent, raw_caption_path
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_blocking, run_stage
 from ..runtime.step import Outcome, Step, StepResult
@@ -54,6 +56,15 @@ from ..vocabulary import Stage, SyncMode
 #: fetched separately into separate directories so the distinction cannot come down to a filename guess.
 AUTHORED = "captions"
 MACHINE = "auto-captions"
+
+#: Retain the RAW caption track for post-cook diagnosis (#670). Off by default: the raw `.vtt`
+#: is otherwise written into per-job scratch (`ctx.work`) and destroyed with it, so a
+#: caption-parsing defect (#539/#542-class) can never be re-examined from the source bytes after a
+#: cook, and re-fetching needs the network and a still-live upload. When set, the winning raw track
+#: is copied to `derived/captions/<kind>/` before teardown -- the same storage class as the other
+#: retained artifacts, with the authored/machine split kept structural by directory. Read on call
+#: (not snapshot at import) so the align suite can toggle it per test via the environment.
+KEEP_RAW_CAPTIONS_ENV = "ENCORE_KEEP_RAW_CAPTIONS"
 
 
 class FetchCaptions(Step):
@@ -99,6 +110,12 @@ class FetchCaptions(Step):
         except Exception as exc:  # noqa: BLE001 — no track / no yt-dlp / no network: all the same miss
             ctx.note(f"{self.name}: none ({exc})")
 
+        # Persist the raw track before the scratch it lives in is torn down (#670). Off unless the
+        # operator opted in; done here rather than at teardown because this step is the only place
+        # that knows which directory the track landed in and which tier it belongs to.
+        if os.environ.get(KEEP_RAW_CAPTIONS_ENV):
+            self._retain_raw(ctx, out_dir)
+
         cues = read_captions(out_dir)
         if self.auto:
             ctx.lyrics.machine_cues = cues
@@ -107,6 +124,30 @@ class FetchCaptions(Step):
         if cues:
             role = "a BASELINE for grading" if self.auto else "an authoritative CANDIDATE"
             ctx.note(f"{self.name}: {len(cues)} lines — using as {role}")
+
+    def _retain_raw(self, ctx: Ctx, out_dir: str) -> None:
+        """Copy the RAW caption track out of scratch into the durable `derived/` store (#670).
+
+        Copies the SAME file the parser chose (`find_caption_file`), so the retained bytes are
+        exactly what produced this cook's cues — the point is to diagnose the parser, so any other
+        candidate in the directory would be the wrong evidence. `self.kind` is the storage tier, so
+        the authored/machine split stays structural (a directory), never a filename heuristic.
+
+        Best-effort: a copy failure must never fail an align job, exactly as the fetch miss above
+        does not. The extension is preserved from the winning file (`.vtt`/`.srt`) so the durable
+        artifact is byte-identical to the source.
+        """
+        raw = find_caption_file(out_dir)
+        if raw is None:
+            return
+        ext = os.path.splitext(raw)[1].lstrip(".") or "vtt"
+        dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, self.kind, ext)
+        try:
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.copyfile(raw, dest)
+            ctx.note(f"{self.name}: retained raw track → {dest}")
+        except OSError as exc:
+            ctx.note(f"{self.name}: raw retain failed ({exc})")
 
 
 class AcquireTexts(Step):
