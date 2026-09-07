@@ -14,6 +14,14 @@
 		singerColor?: string;
 		/** The singer who queued this is in the room but unreachable (locked phone, pocket). */
 		singerAway?: boolean;
+		/**
+		 * The optimistic add of this entry has not yet been confirmed by the server. Mirrors QueueRow's
+		 * `pending` (issue #304): the primary ✨ Sing flow produces a COOKING entry, so the ProcessingCard
+		 * is what actually renders during an add — the unconfirmed state has to survive here or it is
+		 * invisible on the exact path that creates it. Dims the card, appends an `adding…` marker, and
+		 * hides the remove/reorder cluster until the server acks.
+		 */
+		pending?: boolean;
 		status: MediaStatus; // queued|downloading|separating|aligning|ready|failed
 		pct: number;
 		// A cooking song is still a QUEUE ENTRY, so it gets the same controls a ready row does: remove
@@ -33,6 +41,7 @@
 		singerName,
 		singerColor = SINGER_COLORS[0],
 		singerAway = false,
+		pending = false,
 		status,
 		pct,
 		onremove,
@@ -53,7 +62,7 @@
 	const overall = $derived(overallCookPct(status, pct));
 </script>
 
-<div class="qrow proc card list-row">
+<div class="qrow proc card list-row" class:pending={pending}>
 	<div class="seq">
 		{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
 	</div>
@@ -70,11 +79,13 @@
 				     one line above the .stage row that already says exactly that, from the shared source.
 				     Redundant AND divergent, so it is gone. -->
 				<i class:dim={singerAway} style="--singer:{singerColor}"></i>
-				{singerName}{#if singerAway}<span class="away">· away</span>{/if}
+				{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if pending}{' · '}<span class="adding"
+						>adding…</span
+					>{/if}
 			</div>
 		{/if}
 	</div>
-	{#if onremove || reorderable}
+	{#if !pending && (onremove || reorderable)}
 		<div class="actions">
 			{#if reorderable}
 				<button class="act icon-btn" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
@@ -117,6 +128,14 @@
 	.proc {
 		background: linear-gradient(var(--card), var(--card-tint));
 		border-color: var(--line-tint);
+	}
+	/* Optimistic-add markers, matching QueueRow (issue #304): dim the whole card and warn-tint the
+	   appended `adding…` word so an unconfirmed cooking entry reads as not-yet-committed. */
+	.pending {
+		opacity: 0.55;
+	}
+	.adding {
+		color: var(--warn);
 	}
 	.seq {
 		width: 26px;

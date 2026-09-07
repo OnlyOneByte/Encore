@@ -82,6 +82,22 @@ export class QueueStore {
 		return this.#pending.size;
 	}
 
+	/**
+	 * Entry ids of still-pending optimistic ADDs — a row is "unconfirmed" between addSong() and the
+	 * server ack/reject of that add. This is the truth the QueueRow `pending` affordance was meant to
+	 * read (issue #304): the earlier call site tested the placeholder rotationSeq === MAX_SAFE_INTEGER,
+	 * but #optimistic runs applyAndReseq (which reseqs every entry to a contiguous 0-based index)
+	 * BEFORE it emits, so no subscriber ever observed the placeholder and the state was structurally
+	 * dead. Only `add` ops mark a row: a pending move/remove does not make an entry newly unconfirmed.
+	 */
+	get unconfirmedAddIds(): Set<string> {
+		const ids = new Set<string>();
+		for (const p of this.#pending.values()) {
+			if (p.op.op === 'add') ids.add(p.op.entry.id);
+		}
+		return ids;
+	}
+
 	subscribe(fn: (entries: QueueEntry[]) => void): () => void {
 		this.#subs.add(fn);
 		fn(this.entries);
