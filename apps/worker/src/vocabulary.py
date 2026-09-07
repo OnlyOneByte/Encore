@@ -142,6 +142,30 @@ class Timing(_StrEnum):
     NONE = "none"
 
 
+# ── ROLES: the two-tier grading split ─────────────────────────────────────────────
+#
+# The axis that decides HOW a lyrics text is judged, orthogonal to WHERE it came from (TextSource).
+# A BASELINE is evidence of what is heard in this audio — the ruler, never scored. A CANDIDATE is
+# authored text claiming to be the song's words — scored against every baseline; the winner is what
+# gets PUBLISHED. See lyrics/chain.py for the full rationale.
+#
+# Promoted here beside TextSource/Timing (from bare module strings in chain.py) so all the lyrics
+# vocabulary lives in one place; chain.py re-exports them under the same names, so its importers are
+# unchanged. Left as plain string constants rather than a _StrEnum: unlike TextSource/Timing these have
+# NO packages/shared mirror to bilaterally parity-check against — role is a worker-internal grading
+# axis the core never sees.
+#
+# UNSPECIFIED is a fail-CLOSED default (see LyricsText.role). It belongs to NEITHER candidates_of nor
+# baselines_of, so a text built without an explicit role is neither published as the song's words nor
+# used as grading evidence — it simply does not participate until a role is stamped. This closes the
+# fail-OPEN hole where the old default (ROLE_CANDIDATE, the publishable tier) let an unspecified hand-
+# built or rehydrated text silently publish. Every real path stamps a role via the registry's
+# SourceSpec; the default only reaches hand-built texts (tests, disk rehydration).
+ROLE_BASELINE = "baseline"
+ROLE_CANDIDATE = "candidate"
+ROLE_UNSPECIFIED = "unspecified"
+
+
 class Backend(_StrEnum):
     """HOW an engine executes on this particular worker.
 

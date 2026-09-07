@@ -14,7 +14,16 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from src.lyrics import ROLE_BASELINE, ROLE_CANDIDATE, LyricsRequest  # noqa: E402
+from src.lyrics import (  # noqa: E402
+    ROLE_BASELINE,
+    ROLE_CANDIDATE,
+    ROLE_UNSPECIFIED,
+    LyricsRequest,
+    LyricsText,
+    baselines_of,
+    candidates_of,
+    select_by_baselines,
+)
 from src.lyrics.registry import (  # noqa: E402
     NEEDS_AUTHORED_CUES,
     NEEDS_MACHINE_CUES,
@@ -116,3 +125,48 @@ def test_the_registry_still_holds_two_candidates_and_three_baselines():
     the reverse) changes what can be chosen as the song's words."""
     assert sum(1 for s in SPECS if not s.is_baseline) == 2
     assert sum(1 for s in SPECS if s.is_baseline) == 3
+
+
+
+def test_a_hand_built_text_with_no_role_is_NON_publishable_fail_closed():
+    """#605: the LyricsText.role default is fail-CLOSED. A text built without an explicit role (a test,
+    or one rehydrated from disk) must NOT be treated as publishable — it belongs to neither the candidate
+    tier (whose winner is published as the song's words) nor the baseline tier (grading evidence). It
+    simply does not participate until a role is stamped.
+
+    RED ON BASE: base defaulted `role` to ROLE_CANDIDATE — the publishable tier — so an unspecified text
+    silently landed in candidates_of and could be published as the song's words. That is the fail-OPEN
+    hole this pins shut."""
+    t = LyricsText(text_source="whatever")
+    assert t.role == ROLE_UNSPECIFIED
+    assert t.role not in {ROLE_CANDIDATE, ROLE_BASELINE}
+    # the load-bearing consequence: not in EITHER tier
+    assert candidates_of([t]) == [], "an unspecified-role text must not be a publishable candidate"
+    assert baselines_of([t]) == [], "an unspecified-role text must not be counted as grading evidence"
+
+
+def test_an_unspecified_text_is_never_published_by_select_by_baselines():
+    """The same fail-closed property proved end-to-end through the selector: a lone unspecified text
+    yields nothing to publish, rather than being published as the winner. On base (default CANDIDATE) it
+    would have been the sole candidate and published."""
+    sel = select_by_baselines([LyricsText(text_source="lrclib", segments=[{"text": "some words here"}])])
+    assert sel.publish == [], "an unspecified-role text must not be selected for publication"
+
+
+def test_select_by_baselines_does_not_mutate_a_caller_held_candidate_alternates():
+    """#605: `select_by_baselines` used to do `winner.alternates = []` on a caller-owned object, reaching
+    across a module boundary to clear a field on the very list the caller passed in. It now copies via
+    dataclasses.replace, so the caller's objects are untouched.
+
+    RED ON BASE: on base the in-place assignment empties `winner.alternates`, so the caller's candidate
+    loses its alternates after selection."""
+    alt = LyricsText(text_source="lrclib", role=ROLE_CANDIDATE, variant="v2",
+                     segments=[{"text": "other version words"}])
+    cand = LyricsText(text_source="lrclib", role=ROLE_CANDIDATE, variant="v1",
+                      segments=[{"text": "the winning words"}], alternates=[alt])
+    baseline = LyricsText(text_source="asr", role=ROLE_BASELINE, baseline_rank=0,
+                          segments=[{"text": "the winning words"}])
+    before = list(cand.alternates)
+    select_by_baselines([cand, baseline])
+    assert cand.alternates == before, "selection must not clear the caller's candidate.alternates in place"
+    assert len(cand.alternates) == 1

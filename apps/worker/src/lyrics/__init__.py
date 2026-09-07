@@ -31,6 +31,7 @@ from .chain import (
     MIN_TOKENS_TO_COMPARE,
     ROLE_BASELINE,
     ROLE_CANDIDATE,
+    ROLE_UNSPECIFIED,
     SOURCE_ASR,
     SOURCE_CAPTIONS,
     SOURCE_LRCLIB,
@@ -83,6 +84,7 @@ __all__ = [
     # roles + vocabulary
     "ROLE_BASELINE",
     "ROLE_CANDIDATE",
+    "ROLE_UNSPECIFIED",
     "SOURCE_ASR",
     "SOURCE_CAPTIONS",
     "SOURCE_LRCLIB",
