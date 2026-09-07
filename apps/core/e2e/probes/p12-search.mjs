@@ -47,6 +47,40 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #562, following the
+ * #557/#558/#559/#560/#561 pattern). Browser/Page are derived from cdp.mjs's own return types (#553).
+ * fetch().json() and page.evaluate() are Promise<any>, so API-shaped results are typed via the Media
+ * row shape and the SearchBody/LibraryBody response shapes below, cast at the call site.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'PASS'} Severity
+ *
+ * One finding row: a pass/fail check with its severity and evidence.
+ * @typedef {{ sev: Severity, name: string, ok: boolean, detail: string, evidence: string }} Finding
+ *
+ * A media row as returned by /api/search and /api/library (the fields this probe reads).
+ * @typedef {{
+ *   id: string, source?: string, sourceRef?: string, stemStatus?: string, title?: string,
+ *   instrumentalRef?: string, status?: string, artist?: string, artistCanonical?: string,
+ *   count?: number, media?: { id: string }
+ * }} Media
+ *
+ * The /api/search response shape (buckets are arrays of Media; recent/popular on an empty query).
+ * @typedef {{
+ *   ready: Media[], cooking: Media[], results: Media[], recent?: Media[], popular?: Media[]
+ * } & Record<string, any>} SearchBody
+ *
+ * The /api/library response shape.
+ * @typedef {{
+ *   library: Media[], cooking?: Media[], facets?: { artists?: { artist: string, count: number }[] }
+ * } & Record<string, any>} LibraryBody
+ *
+ * One media:status event seen over the WebSocket.
+ * @typedef {{ status: string, pct: number }} StatusEvent
+ */
+
 const PORT = process.env.PORT ?? process.env.EPORT ?? '5232';
 const base = `http://127.0.0.1:${PORT}`;
 const wsBase = `ws://127.0.0.1:${PORT}/ws`;
@@ -54,7 +88,15 @@ const MEDIA_DIR = process.env.MEDIA_DIR ?? '';
 
 // Each finding is a structured record; severities per HARNESS: real defect vs environment limit.
 // path:line evidence points at the SOURCE that would need to change.
+/** @type {Finding[]} */
 const findings = [];
+/**
+ * @param {Severity} sev
+ * @param {string} name
+ * @param {unknown} ok
+ * @param {string} [detail]
+ * @param {string} [evidence]
+ */
 function record(sev, name, ok, detail, evidence) {
 	findings.push({ sev, name, ok: !!ok, detail: detail ?? '', evidence: evidence ?? '' });
 	const badge = ok ? 'PASS' : sev.padEnd(8);
@@ -94,6 +136,7 @@ if (MEDIA_DIR) {
 
 // Join once as a probe singer. Cookie jar is a live Map<string,string>; the search API is
 // unauthenticated but /api/make-karaoke is not, so we keep the session cookie for the cook triggers.
+/** @param {string} name @param {string} [color] */
 async function joinRoom(name, color = '#ff5cae') {
 	const res = await fetch(`${base}/api/join`, {
 		method: 'POST',
@@ -113,15 +156,18 @@ const session = await joinRoom(`P12-${Date.now()}`);
 if (!session) process.exit(1);
 const bearer = { headers: { cookie: session.cookies, 'content-type': 'application/json' } };
 
+/** @param {string} q @param {Record<string, string>} [extra] @returns {Promise<{ status: number, body: SearchBody }>} */
 async function search(q, extra = {}) {
 	const qs = new URLSearchParams({ q, ...extra });
 	const res = await fetch(`${base}/api/search?${qs}`);
 	return { status: res.status, body: await res.json().catch(() => null) };
 }
+/** @param {string} [qs] @returns {Promise<{ status: number, body: LibraryBody }>} */
 async function library(qs = '') {
 	const res = await fetch(`${base}/api/library${qs}`);
 	return { status: res.status, body: await res.json().catch(() => null) };
 }
+/** @param {string} mediaId */
 async function makeKaraoke(mediaId) {
 	const res = await fetch(`${base}/api/make-karaoke`, {
 		method: 'POST',
@@ -132,6 +178,7 @@ async function makeKaraoke(mediaId) {
 }
 
 /** Poll an async predicate until it returns truthy (or timeout). Never sleeps blind. */
+/** @param {() => Promise<any>} fn @param {{ timeoutMs?: number, everyMs?: number, name?: string }} [opts] */
 async function waitFor(fn, { timeoutMs = 10_000, everyMs = 200, name = 'condition' } = {}) {
 	const deadline = Date.now() + timeoutMs;
 	let last;
@@ -257,7 +304,9 @@ record(
 // Also: the entry stays queueable throughout (rotation HOLDS a cooking slot).
 // ═════════════════════════════════════════════════════════════════════════════
 
+/** @param {string} mediaId @param {number} [timeoutMs] */
 async function subscribeMediaStatus(mediaId, timeoutMs = 20_000) {
+	/** @type {StatusEvent[]} */
 	const events = [];
 	const ws = new WebSocket(`${wsBase}?role=phone`);
 	const settled = new Promise((resolve) => {
@@ -359,7 +408,7 @@ if (cookableCandidate) {
 		let sawCooking = false;
 		let queueableWhileCooking = false;
 		for (let i = 0; i < 25; i++) {
-			const snap = await search(cookableCandidate.title.split(/\s+/)[0]);
+			const snap = await search((cookableCandidate.title ?? '').split(/\s+/)[0]);
 			const asCooking = snap.body.cooking?.find((m) => m.id === cookableCandidate.id);
 			const asReady = snap.body.ready?.find((m) => m.id === cookableCandidate.id);
 			if (asCooking) {
@@ -822,7 +871,7 @@ try {
 				// resets stemStatus, readinessOf falls back to 'unacquired').
 				await sleep(300);
 				const post = await library();
-				const stillInCooking = post.body.cooking?.some((c) => c.media.id === failCandidate.id);
+				const stillInCooking = post.body.cooking?.some((c) => c.media?.id === failCandidate.id);
 				record(
 					'MEDIUM',
 					'S8c-failed-cleared-from-catalog',
@@ -944,8 +993,10 @@ if (!chromium) {
 		);
 
 		// A ready row must show .add; a raw row must show .sing.
-		const readyRowsOk = perRow.every((r) => r.readiness !== 'ready' || (r.add === 1 && r.sing === 0));
-		const rawRowsOk = perRow.every((r) => r.readiness === 'ready' || r.sing === 1 || r.add === 1);
+		const readyRowsOk = perRow.every(
+			(/** @type {any} */ r) => r.readiness !== 'ready' || (r.add === 1 && r.sing === 0)
+		);
+		const rawRowsOk = perRow.every((/** @type {any} */ r) => r.readiness === 'ready' || r.sing === 1 || r.add === 1);
 		record(
 			'HIGH',
 			'S9b-action-matches-readiness',
@@ -997,6 +1048,7 @@ if (!chromium) {
 // ─── report ──────────────────────────────────────────────────────────────────
 
 console.log('\n═══ P12 findings ═══');
+/** @type {Record<string, Finding[]>} */
 const bySev = { CRITICAL: [], HIGH: [], MEDIUM: [], LOW: [], PASS: [] };
 for (const f of findings) (bySev[f.ok ? 'PASS' : f.sev] ??= []).push(f);
 for (const sev of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']) {
