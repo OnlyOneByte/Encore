@@ -559,20 +559,19 @@ describe('SettingsRepository room scope: the ordering algorithm', () => {
 		expect(repo.setRoom({ songIntroMs: 1000 }).queueOrder).toBe('shuffle');
 	});
 
-	it('the columns live in the SINGLE baseline, not a follow-on migration', () => {
-		// This feature was built while main still carried thirteen incremental migrations, so it shipped
-		// its own numbered one. Main then collapsed the chain to one pre-release baseline, and these two
-		// columns were FOLDED INTO it rather than re-added on top — there is no production database yet, so
-		// a second migration would be history nobody needs to replay.
-		//
-		// Asserted against the SQL rather than the live DB because a fresh DB would read correct either
-		// way; what matters is that the baseline is the only file, so an old dev DB cannot be migrated
-		// forward (see the file's own header) and nothing silently re-adds a column.
+	it('the baseline is never edited in place; a schema addition is an additive follow-on migration', () => {
+		// These two columns were folded into the pre-release baseline (0000) when main collapsed its
+		// thirteen-migration chain, and 0000 must NOT be re-edited afterwards: a running box keeps its DB
+		// across restarts (app.ts persists to a file), and boot re-runs runMigrations, so editing 0000 in
+		// place makes drizzle replay it and throw on CREATE TABLE of an already-existing table (#669 —
+		// reproduced end to end). So the rule is: 0000 stays as shipped and CARRIES these columns, while any
+		// later schema change arrives as a NEW numbered file that only ALTERs. This asserts both halves.
 		const folder = process.env.ENCORE_MIGRATIONS_DIR ?? join(import.meta.dir, '..', '..', '..', 'drizzle');
 		const journal = JSON.parse(readFileSync(join(folder, 'meta', '_journal.json'), 'utf8')) as {
 			entries: { idx: number; tag: string }[];
 		};
-		expect(journal.entries.map((e) => e.tag)).toEqual(['0000_baseline']);
+		// 0000 is the baseline and is entry 0, whatever else follows it.
+		expect(journal.entries[0]?.tag).toBe('0000_baseline');
 		const sql = readFileSync(join(folder, '0000_baseline.sql'), 'utf8');
 		expect(sql).toContain("`queue_order` text DEFAULT 'fair' NOT NULL");
 		expect(sql).toContain('`last_sung_at` integer');
@@ -580,5 +579,11 @@ describe('SettingsRepository room scope: the ordering algorithm', () => {
 		expect(sql).not.toContain('`last_sung_at` integer NOT NULL');
 		// and the provenance header survived the regeneration, or the next person re-adds the chain
 		expect(sql).toContain('SINGLE PRE-RELEASE BASELINE');
+		// Any migration AFTER the baseline must be additive only — never a second CREATE TABLE (that is a
+		// baseline replay, the exact boot failure the incremental form avoids).
+		for (const e of journal.entries.slice(1)) {
+			const body = readFileSync(join(folder, `${e.tag}.sql`), 'utf8');
+			expect(body).not.toMatch(/create\s+table/i);
+		}
 	});
 });

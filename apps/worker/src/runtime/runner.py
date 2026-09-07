@@ -115,7 +115,12 @@ class PlanRunner:
             _flush_notes()
 
         ctx.out.facts.setdefault("stepTimingsSec", dict(ctx.out.timings_sec))
-        yield CompleteResult(media_uri=ctx.out.media_uri, artifacts=ctx.out.artifacts, facts=ctx.out.facts)
+        yield CompleteResult(
+            media_uri=ctx.out.media_uri,
+            artifacts=ctx.out.artifacts,
+            facts=ctx.out.facts,
+            selection=ctx.out.selection,
+        )
 
 
 async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> AsyncIterator[ProgressEvent]:

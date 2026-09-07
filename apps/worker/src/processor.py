@@ -50,6 +50,11 @@ class CompleteResult:
     # different checkpoint, or fall back to CPU when the requested backend will not load. Defaults
     # empty so a processor that reports nothing simply leaves the core's dispatched values standing.
     facts: dict = field(default_factory=dict)
+    # WHY the published lyric won over the rejected candidates: per-candidate label + composite score
+    # + decided_by + baseline vote count (#669). Distinct from `artifacts` (the winner's sidecar
+    # entry, library identity) — this is run history and lands in the job_attempts audit trail. None
+    # on any job that made no lyrics selection.
+    selection: dict | None = None
 
 
 @dataclass

@@ -2064,3 +2064,77 @@ def test_459_TimeTexts_run_uses_opens_for_at_the_call_site_not_inline_rederivati
         "TimeTexts.run calls _opening_window_indices DIRECTLY — that is the base behaviour that ignores "
         "the emitted opens map. The re-derivation must live behind _opens_for's fallback only (#459)"
     )
+
+
+@pytest.mark.asyncio
+async def test_the_variant_pick_provenance_reaches_ctx_out_selection_and_the_CompleteResult_669(tmp_path):
+    """#669 — the align job must carry WHY the lyric won, not just which one, all the way to the
+    CompleteResult, so the core can persist it to the durable audit trail. This pins the worker emit
+    chain: TimeTexts writes ctx.out.selection from the Selection report, and the runner carries it onto
+    the CompleteResult. RED on base: neither ctx.out.selection nor the runner passthrough exists, so
+    done.selection is absent even when a real choice among versions was made.
+
+    The candidate carries an ALTERNATE version, so grading actually chooses between two — which is the
+    only case that produces a VariantChoice, and exactly the case a mis-pick needs explaining.
+    """
+    from dataclasses import replace as _replace
+
+    from src.lyrics.chain import LyricsText
+
+    right = _candidate(_SUNG)
+    wrong_body = "never gonna give you up let down run around desert cry say goodbye tell lie hurt now"
+    worse = LyricsText(
+        text_source=SOURCE_LRCLIB,
+        timing=TIMING_LINE,
+        text_confidence="high",
+        role=ROLE_CANDIDATE,
+        variant="lrclib-alt",
+        segments=[{"start": 0.0, "end": 4.0, "text": wrong_body}],
+    )
+    cand = _replace(right, variant="lrclib-main", alternates=[worse])
+    asr = FakeSource(SOURCE_ASR, _baseline(_SUNG))
+    proc = plans.align_runner(
+        runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[FakeSource(SOURCE_LRCLIB, cand), asr]
+    )
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+
+    assert done.selection is not None, "the CompleteResult must carry the selection provenance"
+    choices = done.selection["choices"]
+    assert len(choices) >= 1
+    lrc_choice = next(c for c in choices if c["textSource"] == SOURCE_LRCLIB)
+    assert lrc_choice["considered"] == 2  # two versions were weighed
+    # The two facts that make a mis-pick diagnosable: what basis decided it, and how many baselines voted.
+    assert lrc_choice["decidedBy"] == "agreement"
+    assert lrc_choice["votes"] >= 1
+    # Every rejected version is retained with its score — the evidence gone today (#669). NOT the bodies.
+    assert len(lrc_choice["rejected"]) == 1
+    label, sc = lrc_choice["rejected"][0]["label"], lrc_choice["rejected"][0]["score"]
+    assert label == "lrclib-alt"
+    assert sc is None or isinstance(sc, float)
+
+
+def test_Selection_to_record_carries_every_rejected_label_and_score_669():
+    """#669 — the durable record VariantChoice/Selection produce is the same facts summary() logs, as
+    data. Pins the shape the wire and the audit trail depend on, including the unjudgeable (None) score."""
+    from src.lyrics.chain import Selection, VariantChoice
+
+    vc = VariantChoice(
+        text_source="lrclib",
+        considered=3,
+        chosen="lrclib-synced",
+        chosen_score=0.94,
+        rejected=[("lrclib-plain", 0.61), ("captions-stub", None)],
+        decided_by="agreement",
+        votes=2,
+    )
+    rec = Selection(choices=[vc], winner_score=0.94).to_record()
+    assert rec is not None
+    c = rec["choices"][0]
+    assert c["textSource"] == "lrclib" and c["chosen"] == "lrclib-synced"
+    assert c["decidedBy"] == "agreement" and c["votes"] == 2
+    assert c["rejected"] == [
+        {"label": "lrclib-plain", "score": 0.61},
+        {"label": "captions-stub", "score": None},
+    ]
+    # No choices → nothing to explain → None, not an empty shell.
+    assert Selection().to_record() is None

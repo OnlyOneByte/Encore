@@ -1285,3 +1285,58 @@ async def test_cancel_now_cancels_in_flight_without_awaiting_issue_459(tmp_path)
     with pytest.raises(asyncio.CancelledError):
         await t
     assert t.cancelled()
+
+
+def test_protocol_complete_emits_selection_only_when_present_669():
+    """#669 — the complete message carries the variant-pick provenance so the core can persist it. Pins
+    protocol.complete: selection is emitted when given and omitted when None (mirrors stages). RED on
+    base: the function has no selection parameter, so the key never appears."""
+    rec = {"choices": [{"textSource": "lrclib", "chosen": "v1", "decidedBy": "agreement", "votes": 2}]}
+    msg = protocol.complete("w1", "j1", "derived/lyrics/m1.json", selection=rec)
+    assert msg["selection"] == rec
+    assert "selection" not in protocol.complete("w1", "j1", "u")
+
+
+@pytest.mark.asyncio
+async def test_worker_forwards_the_processor_selection_onto_the_complete_message_669(tmp_path):
+    """#669 — dial_home must forward the CompleteResult.selection the processor produced onto the wire.
+    Pins the last link of the worker emit chain (dial_home: selection=result.selection). RED on base:
+    CompleteResult has no selection field and complete() takes no selection, so nothing crosses."""
+    rec = {
+        "baselineFallback": False,
+        "winnerSuspect": False,
+        "winnerScore": 0.94,
+        "choices": [
+            {
+                "textSource": "lrclib",
+                "considered": 2,
+                "chosen": "lrclib-main",
+                "chosenScore": 0.94,
+                "decidedBy": "agreement",
+                "votes": 2,
+                "rejected": [{"label": "lrclib-alt", "score": 0.61}],
+            }
+        ],
+    }
+
+    class _SelProc:
+        async def process(self, job):
+            yield ProgressEvent(stage="aligning", pct=100)
+            yield CompleteResult(media_uri="derived/lyrics/m1.json", artifacts={}, selection=rec)
+
+    sock = FakeSocket()
+    client = WorkerClient(
+        sock.send,
+        _SelProc(),
+        worker_id="w1",
+        capabilities=["align"],
+        concurrency=1,
+        media_dir=str(tmp_path),
+        version="test",
+    )
+    await client.handle(assign(job_type="align"))
+    await client.drain()
+
+    completes = sock.of_type(protocol.COMPLETE)
+    assert len(completes) == 1
+    assert completes[0]["selection"] == rec

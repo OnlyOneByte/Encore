@@ -6,7 +6,7 @@
 //   4. one cook's steps grouped without blending in a re-cook or an upgrade
 
 import { describe, expect, it } from 'bun:test';
-import { realtimeFactor } from '@encore/shared';
+import { realtimeFactor, attemptSelection } from '@encore/shared';
 import { AttemptLedger } from './attempts';
 import { JobRepository } from './repository';
 import { inheritsCook } from './dispatch';
@@ -303,5 +303,63 @@ describe('the removed row-count window stays removed (#556)', () => {
 	it('still exposes its window-based replacements (not vacuous — a rename or empty read reds here)', () => {
 		expect(SRC).toMatch(/\bfinishedSince\b/);
 		expect(SRC).toMatch(/\bcountFinished\b/);
+	});
+});
+
+// #669 — the variant-pick provenance must reach DURABLE state, not just the cook log. This bites the
+// whole worker→core persist mapping at the ledger seam: AttemptFacts.selection, pickFacts carrying it,
+// the open() null default, and the new job_attempts.selection column (regenerated baseline). RED on
+// base: no such field on AttemptFacts, no column — reportFacts drops it and the read comes back null.
+describe('attempt ledger — variant-pick provenance (#669)', () => {
+	const RECORD = JSON.stringify({
+		baselineFallback: false,
+		winnerSuspect: false,
+		winnerScore: 0.94,
+		choices: [
+			{
+				textSource: 'lrclib',
+				considered: 3,
+				chosen: 'lrclib-synced',
+				chosenScore: 0.94,
+				decidedBy: 'agreement',
+				votes: 2,
+				rejected: [
+					{ label: 'lrclib-plain', score: 0.61 },
+					{ label: 'captions-stub', score: null }
+				]
+			}
+		]
+	});
+
+	it('persists the serialized selection reported on complete, and defaults it null', () => {
+		const { jobs, ledger } = wired();
+		const job = jobs.enqueue('m1', 'align', 0, T0);
+		// Freshly opened: null, never undefined — the column exists and starts empty.
+		expect(ledger.openFor(job.id)!.selection).toBeNull();
+
+		jobs.assign(job.id, 'w1', null, T0 + 1_000);
+		jobs.accept(job.id, null, T0 + 2_000);
+		ledger.reportFacts(job.id, { selection: RECORD });
+		jobs.complete(job.id, T0 + 3_000);
+
+		const [a] = ledger.byMedia('m1');
+		expect(a.selection).toBe(RECORD); // survived to durable state, byte-for-byte
+		const parsed = attemptSelection(a);
+		expect(parsed!.choices[0].rejected).toEqual([
+			{ label: 'lrclib-plain', score: 0.61 },
+			{ label: 'captions-stub', score: null }
+		]);
+		expect(parsed!.choices[0].decidedBy).toBe('agreement');
+		expect(parsed!.choices[0].votes).toBe(2);
+	});
+
+	it('leaves selection null on an attempt that reported none (a non-align step)', () => {
+		const { jobs, ledger } = wired();
+		const job = jobs.enqueue('m1', 'stems', 0, T0);
+		jobs.assign(job.id, 'w1', null, T0 + 1_000);
+		jobs.accept(job.id, null, T0 + 2_000);
+		ledger.reportFacts(job.id, { engine: 'demucs' }); // no selection reported
+		jobs.complete(job.id, T0 + 3_000);
+		expect(ledger.byMedia('m1')[0].selection).toBeNull();
 	});
 });

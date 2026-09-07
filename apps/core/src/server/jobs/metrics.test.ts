@@ -41,6 +41,7 @@ function attempt(over: Partial<JobAttempt> = {}): JobAttempt {
 		syncMode: null,
 		audioSec: null,
 		stages: null,
+		selection: null,
 		...over
 	};
 }

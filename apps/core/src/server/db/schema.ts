@@ -359,7 +359,12 @@ export const jobAttempts = sqliteTable(
 		// One JSON column rather than a stage_timings table on the same reasoning as media.lyricsCandidates:
 		// nothing queries INSIDE it — it is read whole to render one attempt's breakdown — so a table
 		// would buy a join and a migration for no query it enables.
-		stages: text('stages')
+		stages: text('stages'),
+		// WHY the published lyric was chosen, as JSON: rejected labels + composite scores + decided_by +
+		// baseline vote count (#669). One JSON column on the SAME reasoning as `stages` above: read whole
+		// to explain one align attempt, never queried inside, so a table would buy a join and a migration
+		// for no query. Null on every non-align attempt and on an align that made no pick. See SelectionRecord.
+		selection: text('selection')
 	},
 	(t) => ({
 		// the per-song audit page: every attempt for one song, newest last
