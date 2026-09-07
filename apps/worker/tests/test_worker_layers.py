@@ -356,8 +356,8 @@ def test_the_pipeline_doc_matches_what_the_plans_actually_declare():
 def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
     """The tier a source speaks in belongs to its SourceSpec, and to nothing else.
 
-    Before this, `chain.py`'s four sources each set `role=` (and AsrSource re-derived `baseline_rank=` from
-    its audio argument) on the text they returned, while `registry.py` declared the same two facts in SPECS
+    Before this, the lyrics sources each set `role=` (and AsrSource re-derived `baseline_rank=` from its
+    audio argument) on the text they returned, while `registry.py` declared the same two facts in SPECS
     — read by nothing but the registry's own self-consistency tests. Two copies, no reader, no way to
     notice a disagreement: a source quietly returning CANDIDATE would become eligible to be published as
     the song's words while every test stayed green.
@@ -365,20 +365,35 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
     AST, not a substring scan, because the words appear in this repo's prose constantly — the docstring
     above says `role=` twice. The np.correlate guard learned this the same way: a text search over source
     passes on a comment that says the right thing while the code does the wrong one.
+
+    Scans the WHOLE `src/lyrics` package, not one hardcoded file (#628): `b026147` (#456) moved the source
+    classes out of `chain.py` into `sources.py`, so a guard pinned to `chain.py` scanned a file with zero
+    `LyricsText(...)` constructions and could never fire. The non-vacuity floor below fails loudly if the
+    package ever stops constructing LyricsText where this guard can see it, so the scan cannot silently
+    empty out again.
     """
-    chain = Path(__file__).resolve().parents[1] / "src" / "lyrics" / "chain.py"
-    tree = ast.parse(chain.read_text(encoding="utf-8"))
+    lyrics_dir = Path(__file__).resolve().parents[1] / "src" / "lyrics"
 
     offenders: list[str] = []
-    for node in ast.walk(tree):
-        # Only LyricsText(...) construction matters. Assigning to a LyricsText the caller already owns is
-        # what the registry itself does, and that is the one place allowed to.
-        if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "LyricsText"):
+    constructions = 0
+    for path in sorted(lyrics_dir.rglob("*.py")):
+        if "__pycache__" in path.parts:
             continue
-        for kw in node.keywords:
-            if kw.arg in {"role", "baseline_rank"}:
-                offenders.append(f"chain.py:{node.lineno} passes {kw.arg}= to LyricsText")
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            # Only LyricsText(...) construction matters. Assigning to a LyricsText the caller already owns
+            # is what the registry itself does, and that is the one place allowed to.
+            if not (isinstance(node, ast.Call) and getattr(node.func, "id", None) == "LyricsText"):
+                continue
+            constructions += 1
+            for kw in node.keywords:
+                if kw.arg in {"role", "baseline_rank"}:
+                    offenders.append(f"{path.name}:{node.lineno} passes {kw.arg}= to LyricsText")
 
+    assert constructions, (
+        "no LyricsText(...) construction found under src/lyrics — the tier guard has stopped guarding "
+        "(the sources moved and this scan no longer reaches them, exactly the #628 regression)"
+    )
     assert not offenders, (
         "a lyrics source is deciding its own tier again — that belongs to its SourceSpec in "
         "lyrics/registry.py, which stamps it in _Classified.fetch: " + "; ".join(offenders)
@@ -394,27 +409,49 @@ def test_no_step_mutates_a_published_lyrics_text_attribute_in_place():
 
     The specific offender this pins: `sel.publish[0].text_confidence = "low"` in GradeAndSelect, which
     assigned an attribute on an object subscripted out of the selection — a cross-layer, in-place mutation
-    of a caller-owned domain dataclass. AST, not a substring scan, because "text_confidence" appears all
-    over this module in reads and in `replace(..., text_confidence=...)`; only an assignment whose TARGET
-    is `<subscript>.attr` is the reaching-in shape.
+    of a caller-owned domain dataclass.
+
+    Recognises the reaching-in write by its TARGET, in any of the spellings that share the blind spot
+    (#628 — the original guard saw only `<subscript>.attr`, so `x = sel.publish[0]; x.text_confidence =
+    ...` walked straight past it): any assignment whose target is `<expr>.<field>` where `<field>` is a
+    real LyricsText field name and `<expr>` is NOT a bare `self`. `self.<x> = ...` is a step owning its
+    OWN attribute in a constructor and is allowed; every other object bearing a LyricsText field in a step
+    module is a domain dataclass the step does not own. The forbidden field names are read from the
+    LyricsText dataclass itself so this cannot drift as fields are added. AST, not a substring scan,
+    because these names appear all over the module in reads and in `replace(..., text_confidence=...)`.
+
+    Scans ALL of `src/steps` via `_py_files` (which carries its own #453 non-vacuity floor), not one
+    hardcoded file, so a step added elsewhere in the layer is covered too.
     """
-    steps = Path(__file__).resolve().parents[1] / "src" / "steps" / "lyrics.py"
-    tree = ast.parse(steps.read_text(encoding="utf-8"))
+    from src.lyrics.chain import LyricsText
+
+    fields = {f.name for f in __import__("dataclasses").fields(LyricsText)}
+
+    def _is_self(expr: ast.expr) -> bool:
+        return isinstance(expr, ast.Name) and expr.id == "self"
 
     offenders: list[str] = []
-    for node in ast.walk(tree):
-        if not isinstance(node, ast.Assign):
-            continue
-        for target in node.targets:
-            # `x[i].attr = ...` — an attribute write onto a subscripted (indexed) object. That object is a
-            # domain LyricsText pulled out of sel.publish/ctx.lyrics.texts; mutating it in place is the
-            # cross-layer write. `replace(...)` produces a new value assigned back to the slot instead.
-            if isinstance(target, ast.Attribute) and isinstance(target.value, ast.Subscript):
-                offenders.append(f"steps/lyrics.py:{target.lineno} assigns .{target.attr} on a subscript")
+    for path in _py_files("steps"):
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            targets: list[ast.expr] = []
+            if isinstance(node, ast.Assign):
+                targets = list(node.targets)
+            elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+                targets = [node.target]
+            for target in targets:
+                # `<expr>.<field> = ...` where <field> is a LyricsText field and <expr> is not `self`.
+                # `sel.publish[0].text_confidence = ...` (subscript base), `x.text_confidence = ...`
+                # (aliased local) and `obj.role = ...` all match; `self.role = ...` does not.
+                if isinstance(target, ast.Attribute) and target.attr in fields and not _is_self(target.value):
+                    offenders.append(
+                        f"{path.name}:{target.lineno} assigns .{target.attr} on a non-self object"
+                    )
 
     assert not offenders, (
-        "a step is mutating a domain dataclass attribute in place through a subscript — use "
-        "dataclasses.replace and assign the copy back to the list slot instead: " + "; ".join(offenders)
+        "a step is mutating a domain LyricsText field in place — use dataclasses.replace and assign the "
+        "copy back to the list slot (or a local) instead of rewriting a caller-owned object: "
+        + "; ".join(offenders)
     )
 
 
