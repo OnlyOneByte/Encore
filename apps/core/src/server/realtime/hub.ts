@@ -217,6 +217,18 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			}
 			return null;
 		}
+		case 'move-global':
+		case 'unpin': {
+			// A HOST reorder (issue #638). Unlike `move` above, the ownership of the target is irrelevant:
+			// pinning ANY entry — even your own — to a GLOBAL slot rearranges the whole room's order and can
+			// jump other singers, which is precisely the power `queue:reorder-any` gates. So this always
+			// consults can(), never the owner short-circuit. Every joined singer is a host today
+			// (capabilities.ts, same seam as player:control); narrowing to a real host role is an edit THERE.
+			const target = deps.state.entries.find((e) => e.id === op.id);
+			if (!target) return `unknown entry: ${op.id}`;
+			if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder the queue';
+			return null;
+		}
 		case 'status':
 			// SERVER-OWNED, never accepted from the wire. The only two producers of a `status` op in the
 			// whole repo are the server itself — player.ts beginSinging ('playing') and advance ('done') —

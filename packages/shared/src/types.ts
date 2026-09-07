@@ -199,6 +199,18 @@ export interface QueueEntry {
 	status: EntryStatus;
 	rotationSeq: number; // server-owned fairness position (round-robin)
 	addedAt: number;
+	/**
+	 * A HOST's durable global pin: the index in the whole queued list this entry has been dragged to,
+	 * or `null`/absent when it follows the room's ordering policy like every unpinned entry.
+	 *
+	 * The ordering layer honours it as a post-pass AFTER a policy runs (see rotation.ts `placePins`), so
+	 * the pin survives `assignSeqs` re-derivation and the next add under all four orderings — which a
+	 * `rotationSeq` write cannot, since that field is recomputed on every mutation. `null` is a real
+	 * value here (an explicit clear via the `unpin` op), distinct from absent on a row that never carried
+	 * one; both mean "unpinned", and the placement pass treats them identically. Set by `move-global`,
+	 * cleared by `unpin`, and never auto-cleared — a pin persists until a host removes it (owner ruling).
+	 */
+	pinnedSeq?: number | null;
 }
 
 export interface PlaybackState {

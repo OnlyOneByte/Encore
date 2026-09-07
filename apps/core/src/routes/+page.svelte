@@ -94,6 +94,11 @@
 	// Reordering your own picks is meaningless under `shuffle` (rank comes from the entry id), so the
 	// arrows are hidden rather than offered as a control that silently does nothing.
 	const canReorder = $derived(reorderIsMeaningful(settings.room.queueOrder));
+	// HOST reorder (issue #638): a host can drag ANY song to any global slot, not just reorder their
+	// own picks. Every joined singer is a host today (mirrors player:control — see capabilities.ts),
+	// so this is "am I in the room"; narrowing to a real host role is one edit here + in capabilities.
+	// Still gated on the policy respecting order, since a pin under shuffle would fight the hash rank.
+	const canHostReorder = $derived(canReorder && !!me?.id);
 	// The list heading named the order "rotation" unconditionally, which stops being true the moment
 	// the room picks anything else. Eyes-on: it still said ROTATION with the room on first-come-first-served.
 	const orderLabel = $derived(queueOrderLabel(settings.room.queueOrder));
@@ -641,6 +646,23 @@
 		store?.moveEntry(id, i + delta);
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
+	/** The entry's index in the WHOLE queued list (what a host pin's toSeq counts). */
+	function globalIdx(id: string): number {
+		return queued.findIndex((e) => e.id === id);
+	}
+	/**
+	 * HOST global reorder (issue #638): pin the entry one slot up/down across the WHOLE queue, crossing
+	 * singers — the power `move`/moveMine deliberately cannot express. Clamped to the queue bounds so the
+	 * top row cannot move up and the bottom row cannot move down (mirrors moveMine's canUp/canDown).
+	 */
+	function moveGlobal(id: string, delta: number) {
+		const i = globalIdx(id);
+		if (i < 0) return;
+		const to = Math.max(0, Math.min(i + delta, queued.length - 1));
+		if (to === i) return;
+		store?.pinEntry(id, to);
+		if (navigator.vibrate) navigator.vibrate(8);
+	}
 	/** Live processing state for an entry's media, or null if it isn't cooking. */
 	function cooking(mediaId: string): { status: MediaStatus; pct: number; etaSec?: number } | null {
 		const s = mediaStatus.get(mediaId);
@@ -1162,11 +1184,13 @@
 					pct={proc.pct}
 					pending={unconfirmed.has(e.id)}
 					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-					reorderable={canReorder && e.singerId === me?.id && myPicks.length > 1}
-					canUp={myIdx(e.id) > 0}
-					canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
-					onup={() => moveMine(e.id, -1)}
-					ondown={() => moveMine(e.id, 1)}
+					reorderable={canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1}
+					canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
+					canDown={canHostReorder
+						? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
+						: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+					onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
+					ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
 				/>
 			{:else}
 				<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
@@ -1183,12 +1207,14 @@
 					pending={unconfirmed.has(e.id)}
 					subtitle={e.id === nextPlayableId ? 'up next' : ''}
 					removable={e.singerId === me?.id}
-					reorderable={canReorder && e.singerId === me?.id && myPicks.length > 1}
-					canUp={myIdx(e.id) > 0}
-					canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+					reorderable={canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1}
+					canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
+					canDown={canHostReorder
+						? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
+						: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
 					onremove={() => removeWithUndo(e)}
-					onup={() => moveMine(e.id, -1)}
-					ondown={() => moveMine(e.id, 1)}
+					onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
+					ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
 				/>
 			{/if}
 		{/each}

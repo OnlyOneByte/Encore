@@ -129,6 +129,20 @@ export class QueueStore {
 	moveEntry(id: string, toSeq: number): void {
 		this.#optimistic({ op: 'move', id, toSeq });
 	}
+	/**
+	 * HOST reorder (issue #638): pin an entry to a GLOBAL queue index, which can cross singers — unlike
+	 * moveEntry, whose toSeq is an index into the caller's OWN picks. Runs through the same optimistic
+	 * applyAndReseq path, so the pinned row lands at its real slot this frame and the server commits the
+	 * identical order. The pin is durable (a `pinnedSeq` column) and survives adds/reshuffles until
+	 * unpinEntry clears it.
+	 */
+	pinEntry(id: string, toSeq: number): void {
+		this.#optimistic({ op: 'move-global', id, toSeq });
+	}
+	/** Clear a host pin, returning the entry to the room's ordering policy. */
+	unpinEntry(id: string): void {
+		this.#optimistic({ op: 'unpin', id });
+	}
 
 	/**
 	 * Monotonic add timestamp. addedAt is the round-robin tiebreaker (rotate sorts each singer's
