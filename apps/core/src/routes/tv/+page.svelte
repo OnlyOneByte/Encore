@@ -21,7 +21,7 @@
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
-	import { isAutoTranscribed } from '$lib/tv/lyrics';
+	import { isAutoTranscribed, provenanceLabel } from '$lib/tv/lyrics';
 	import { cookStageLabel } from '$lib/cook-phrasing';
 	import { mergeCatalog, snapshot, cookIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
 
@@ -486,6 +486,11 @@
 	 */
 	const lyricsUnverified = $derived(isAutoTranscribed(lyricsProvenance));
 	/*
+	 * The provenance TAG shown on the now-playing card (issue #635): names the source of the words
+	 * for EVERY kind, not just ASR. `null` for a pre-candidate artifact, so the card says nothing.
+	 */
+	const lyricsSourceLabel = $derived(provenanceLabel(lyricsProvenance));
+	/*
 	 * What the reel actually draws, clamped against BOTH bounds — see `resolveLyricsPresentation`.
 	 *
 	 * This lives HERE, below `lyricsProvenance`, because it now depends on it. It used to sit beside
@@ -738,8 +743,8 @@
 				debris. In flow inside this block it cannot overlap anything, and it is about THIS song,
 				which is what this block is about.
 			-->
-			{#if lyricsUnverified}
-				<span class="ls-asr">Auto-Transcribed lyrics</span>
+			{#if lyricsSourceLabel}
+				<span class="ls-source" class:ls-asr={lyricsUnverified}>{lyricsSourceLabel}</span>
 			{/if}
 			{#if tvProgressStyle === 'card'}
 				<TvProgress style="card" elapsedSec={positionSec} durationSec={durationSec} />
@@ -1105,14 +1110,23 @@
 		margin-top: 2px;
 	}
 	/*
-	 * The provenance label, in the caution family so it matches the amber tint the reel puts on the
-	 * words themselves. Not uppercase and not letter-spaced: it is a short label read once, and the
-	 * tracked-out version of this string is precisely what read as debris before.
+	 * The provenance label naming WHERE the words came from (#635). Neutral dim by default -- it is a
+	 * source tag, not a warning, so a trustworthy source (LRCLIB, hand-pasted) must not read as one.
+	 * Not uppercase and not letter-spaced: a short label read once; the tracked-out version of this
+	 * string is precisely what read as debris before.
 	 */
-	.ls-asr {
+	.ls-source {
 		font-size: var(--tv-label);
-		color: var(--warn);
+		color: var(--ink-dim);
 		font-weight: 700;
+	}
+	/*
+	 * When the words are a machine's guess the tag joins the caution family, matching the amber tint
+	 * the reel already puts on those words. Still provenance-only text -- the colour is the same
+	 * honesty signal the reel carries, not a separate confidence score.
+	 */
+	.ls-source.ls-asr {
+		color: var(--warn);
 	}
 
 	/*
