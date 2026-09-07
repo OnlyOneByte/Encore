@@ -12,9 +12,9 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { TAP } from '../lib/test-helpers';
 
 const PAGE = join(import.meta.dir, '+page.svelte');
-const TAP = 44;
 
 /** Body of the first `<style>`-scoped rule whose selector matches `sel`. */
 function ruleBody(src: string, sel: string): string | null {
