@@ -377,6 +377,18 @@
 		thumbnail="https://i.ytimg.com/vi/AlmHSUirAOs/mqdefault.jpg" durationSec={358} viewCount={265947}
 		pct={68} etaSec={70} />
 	<!--
+		#334 SPARKLE-HUG, made visible. The three cooking rows above all carry a title long enough to
+		wrap to two lines, so none of them shows the case #334 is about: a SHORT title where the clamp
+		box must SHRINK to hug its text (flex: 0 1 auto) so the cooking sparkle sits right beside the
+		title instead of floating out at the metadata column’s right edge. Reopen #334 (.t { flex: 1 },
+		in the base rule OR the <=380px @media rule) and the sparkle jumps ~80px away on this row while
+		the wrapped rows above barely move — which is exactly why the eyes-on gallery could not see it
+		before. No status/etaSec: a short cooking title mid-fetch is a real, un-decorated state.
+	-->
+	<SongRow title="Africa" artistCanonical="Toto" artist="Toto" readiness="cooking"
+		thumbnail="https://i.ytimg.com/vi/FTQbiNvZqaY/mqdefault.jpg" durationSec={295} viewCount={630000000}
+		pct={42} />
+	<!--
 		THE #80 BUG STATE, made visible. `status="downloading" pct={100}` is the exact instant this
 		issue names: the FETCH step reports 100% while separating/aligning/ready are unstarted. With the
 		live status threaded in, the bar reads OVERALL cook completion (~20% — the top of the downloading
