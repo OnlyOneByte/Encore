@@ -45,3 +45,52 @@ test('null / undefined media degrade to an empty title and no artist, never thro
 	expect(songDisplay(null)).toEqual({ title: '', artist: null });
 	expect(songDisplay(undefined)).toEqual({ title: '', artist: null });
 });
+
+// guard: the display-title rule (`titleCanonical ?? …title`) lives ONLY in songDisplay — the two API
+// routes that used to open-code it must go through the helper, so the next change to "what title a
+// guest sees" is a single edit. songDisplay opens by calling itself "the single migration point";
+// this makes that claim machine-checkable (#530). A behavioural test cannot red for this — all
+// copies agree today, so the suite does not move when they are consolidated — hence a comment-
+// stripped source scan.
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// import.meta.dir === packages/shared/src. The two routes live under apps/core, four levels up.
+const REPO = join(import.meta.dir, '..', '..', '..');
+const SELF = join(import.meta.dir, 'song-display.ts');
+const STATS = join(REPO, 'apps/core/src/routes/api/stats/+server.ts');
+const METRICS = join(REPO, 'apps/core/src/routes/api/metrics/+server.ts');
+
+// The loose pattern matters: song-display.ts states the rule in prose without an object prefix, so a
+// stricter `\w+\.title` would count raw == stripped there and not prove stripping works. This one
+// counts raw 2 / stripped 1 in song-display.ts, so comment-stripping is provably load-bearing.
+const DISPLAY_TITLE = /titleCanonical\s*\?\?\s*[A-Za-z_$.?]*title/g;
+
+function stripComments(src: string): string {
+	// block comments first, then line comments — good enough for TS source with no regex/string
+	// literals containing `//` in these files (verified).
+	return src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+}
+function count(path: string): number {
+	return (stripComments(readFileSync(path, 'utf8')).match(DISPLAY_TITLE) ?? []).length;
+}
+
+test('the display-title rule appears exactly once in the codebase — inside songDisplay itself', () => {
+	// Sentinel: count===1 PLUS the anchor, so a rename/move of songDisplay fails loudly here rather
+	// than passing on a vanished symbol.
+	const self = readFileSync(SELF, 'utf8');
+	expect(self).toContain('export function songDisplay');
+	expect(count(SELF)).toBe(1);
+});
+
+test('the /api/stats route does not re-implement the display-title rule — it calls songDisplay()', () => {
+	// `songDisplay(` not the bare identifier: a mutation reverting to raw m.title while leaving an
+	// unused import behind passes on the bare id but reds on the call form (measured).
+	expect(count(STATS)).toBe(0);
+	expect(readFileSync(STATS, 'utf8')).toContain('songDisplay(');
+});
+
+test('the /api/metrics route does not re-implement the display-title rule — it calls songDisplay()', () => {
+	expect(count(METRICS)).toBe(0);
+	expect(readFileSync(METRICS, 'utf8')).toContain('songDisplay(');
+});

@@ -19,3 +19,4 @@ export * from './lyrics-engines';
 export * from './ulid';
 export * from './colors';
 export * from './song-display';
+export * from './days-window';
