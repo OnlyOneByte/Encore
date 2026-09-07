@@ -1094,3 +1094,62 @@ def test_run_forever_starts_the_periodic_scratch_sweep():
         "_run_forever never starts _scratch_sweep_loop — an exhausted-retry job's preserved scratch "
         "would leak until the worker restarts (#469)"
     )
+
+
+@pytest.mark.asyncio
+async def test_cook_id_from_assign_frame_reaches_the_job_spec(tmp_path):
+    """#472: the assign frame now carries cookId so the worker can tag its own logs/notes with the
+    same trace id the operator sees on /metrics/<mediaId>. Capture the JobSpec the processor is
+    handed and prove the id threaded through."""
+    captured: list[JobSpec] = []
+
+    class CapturingProcessor:
+        async def process(self, job: JobSpec):
+            captured.append(job)
+            yield CompleteResult(media_uri=str(Path(tmp_path) / "out.flac"), artifacts={})
+
+    sock = FakeSocket()
+    client = WorkerClient(
+        sock.send,
+        CapturingProcessor(),
+        worker_id="w1",
+        capabilities=["stems"],
+        concurrency=1,
+        media_dir=str(tmp_path),
+        version="test",
+    )
+    frame = assign()
+    frame["cookId"] = "cook-xyz"
+    await client.handle(frame)
+    await client.drain()
+
+    assert len(captured) == 1
+    assert captured[0].cook_id == "cook-xyz"
+
+
+@pytest.mark.asyncio
+async def test_cook_id_defaults_empty_for_a_legacy_frame_without_it(tmp_path):
+    """A core that predates the field sends no cookId; the worker must not KeyError, it defaults to
+    the empty string (the ledger's own sentinel for a pre-cookId row)."""
+    captured: list[JobSpec] = []
+
+    class CapturingProcessor:
+        async def process(self, job: JobSpec):
+            captured.append(job)
+            yield CompleteResult(media_uri=str(Path(tmp_path) / "out.flac"), artifacts={})
+
+    sock = FakeSocket()
+    client = WorkerClient(
+        sock.send,
+        CapturingProcessor(),
+        worker_id="w1",
+        capabilities=["stems"],
+        concurrency=1,
+        media_dir=str(tmp_path),
+        version="test",
+    )
+    await client.handle(assign())  # no cookId key
+    await client.drain()
+
+    assert len(captured) == 1
+    assert captured[0].cook_id == ""

@@ -215,6 +215,8 @@ class WorkerClient:
             source_uri=msg.get("sourceUri", ""),
             params=msg.get("params", {}),
             media_dir=self._media_dir,
+            # Trace id for this cook (#472). Absent on a frame from a core that predates it -> "".
+            cook_id=msg.get("cookId", ""),
         )
         # run processing concurrently so the loop keeps reading ping/cancel
         task = asyncio.ensure_future(self._run_job(job))

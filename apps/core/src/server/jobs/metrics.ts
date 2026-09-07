@@ -109,13 +109,20 @@ export interface CookStats {
 	workMs: number;
 	steps: number;
 	complete: boolean;
+	/**
+	 * TRUE when this cook straddles the older edge of the read window, so some earlier steps may
+	 * have finished before the window opened and were never fetched. Its span is then UNDER-counted
+	 * (measured from the earliest surviving step) and its completeness cannot be trusted, so it is
+	 * never reported as complete and the aggregate refuses to count it (#472).
+	 */
+	clipped: boolean;
 }
 
 /**
  * One row per cook. Only cooks whose every attempt is sealed are reported: a cook still in flight has
  * no end, and treating "now" as its end would report a falling duration as it runs.
  */
-export function perCook(attempts: JobAttempt[]): CookStats[] {
+export function perCook(attempts: JobAttempt[], windowStartMs: number | null = null): CookStats[] {
 	const byCook = new Map<string, JobAttempt[]>();
 	for (const a of attempts) {
 		if (!a.cookId) continue; // rows written before cook ids existed cannot be grouped
@@ -127,24 +134,33 @@ export function perCook(attempts: JobAttempt[]): CookStats[] {
 	for (const [cookId, list] of byCook) {
 		const sealed = list.filter((a) => a.finishedAt !== null);
 		if (sealed.length === 0) continue;
-		const complete = sealed.length === list.length && sealed.every((a) => a.outcome === 'ready');
 		const start = Math.min(...sealed.map((a) => a.enqueuedAt));
 		const end = Math.max(...sealed.map((a) => a.finishedAt!));
+		// A cook enqueued before the window opened may be missing its earliest steps: its span is then
+		// measured from the wrong start and its completeness cannot be trusted. Flag it, never complete.
+		const clipped = windowStartMs !== null && start < windowStartMs;
+		const complete =
+			!clipped && sealed.length === list.length && sealed.every((a) => a.outcome === 'ready');
 		out.push({
 			cookId,
 			mediaId: sealed[0].mediaId,
 			totalMs: Math.max(0, end - start),
 			workMs: sealed.reduce((s, a) => s + (processingMs(a) ?? 0), 0),
 			steps: sealed.length,
-			complete
+			complete,
+			clipped
 		});
 	}
 	return out.sort((a, b) => b.totalMs - a.totalMs);
 }
 
 /** Aggregate end-to-end, over COMPLETE cooks only. */
-export function e2e(attempts: JobAttempt[]): { n: number; meanMs: number | null; p50Ms: number | null; p95Ms: number | null } {
-	const totals = perCook(attempts)
+export function e2e(
+	attempts: JobAttempt[],
+	windowStartMs: number | null = null
+): { n: number; meanMs: number | null; p50Ms: number | null; p95Ms: number | null } {
+	// A clipped boundary cook is not complete, so it never enters this aggregate (#472).
+	const totals = perCook(attempts, windowStartMs)
 		.filter((c) => c.complete)
 		.map((c) => c.totalMs);
 	return { n: totals.length, meanMs: mean(totals), p50Ms: percentile(totals, 50), p95Ms: percentile(totals, 95) };
