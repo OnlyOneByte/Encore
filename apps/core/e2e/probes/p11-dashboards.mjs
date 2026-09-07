@@ -27,6 +27,7 @@ import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
+import { SEL } from '../contract.ts';
 
 // ── configuration ──────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT ?? 5231);
@@ -879,12 +880,13 @@ async function main() {
 			//     BY DESIGN — a capability is an identifier the operator wires up, not a step name
 			//     translated for a reader — so leaks there are expected and NOT this check's target.
 			// Isolate the two by pulling text out of the tables only.
-			const inTables = await dompage.evaluate(`(() => [...document.querySelectorAll('.card table')]
+			const inTables =
+				await dompage.evaluate(`(() => [...document.querySelectorAll(${JSON.stringify(SEL.dashCardTable)})]
 				.map((t) => t.textContent).join('\\n'))()`);
-			await dompage.evaluate(`(() => document.querySelector('.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)')
+			await dompage.evaluate(`(() => document.querySelector(${JSON.stringify(SEL.dashChartOrBody)})
 				?.textContent ?? '')()`);
 			const stagesLabelsText = await dompage.evaluate(`(() => {
-				const cards = [...document.querySelectorAll('.card')];
+				const cards = [...document.querySelectorAll(${JSON.stringify(SEL.dashCard)})];
 				const staged = cards.find((c) => c.querySelector('h2')?.textContent?.trim() === 'Where the time goes');
 				return staged?.textContent ?? '';
 			})()`);
@@ -1071,9 +1073,9 @@ async function main() {
 				const p = await browser2.newPage();
 				await p.viewport(1440, 900, 1);
 				await p.goto(`${BASE}/stats`);
-				await p.waitFor(`document.querySelector('.tile .n') !== null`, { timeout: 8000 });
+				await p.waitFor(`document.querySelector(${JSON.stringify(SEL.dashTileNumber)}) !== null`, { timeout: 8000 });
 				await sleep(400);
-				const tiles = await p.texts('.tile .n');
+				const tiles = await p.texts(SEL.dashTileNumber);
 				// Order in DOM: songs sung, ready to sing, different songs (see /stats markup).
 				const shownTotal = Number(tiles[0]);
 				const shownReady = Number(tiles[1]);
