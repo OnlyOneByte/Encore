@@ -73,12 +73,17 @@ const OFFICIAL = [
 	'official hd video'
 ];
 
-/** Word-bounded, case-insensitive containment. Avoids "live" matching "delivery" / "Olive". */
-function hasTerm(haystack: string, term: string): boolean {
-	// Escape the term: the vocabulary is our own literals today, but a regex metacharacter appearing in
-	// one later must not silently change what the pattern means.
-	const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, 'i').test(haystack);
+/**
+ * Compile a vocabulary list into ONE word-bounded, case-insensitive alternation, built once at module
+ * load instead of a fresh RegExp per term per title. `TERMS.some((t) => hasTerm(title, t))` and a
+ * single `(^|[^a-z0-9])(term1|term2|…)([^a-z0-9]|$)` are equivalent for `.test()` — the boundary
+ * wrappers are identical and the body is a disjunction — so this is a pure precompute, not a rule
+ * change. Each alternative is escaped individually: the vocabulary is our own literals today, but a
+ * regex metacharacter appearing in one later must not silently change what the pattern means.
+ */
+function compileTerms(terms: readonly string[]): RegExp {
+	const body = terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+	return new RegExp(`(^|[^a-z0-9])(?:${body})([^a-z0-9]|$)`, 'i');
 }
 
 /**
@@ -88,13 +93,20 @@ function hasTerm(haystack: string, term: string): boolean {
  */
 const BARE_LIVE = /[([]\s*live\b[^)\]]*[)\]]/i;
 
+// Precompiled once at module load — see compileTerms. The precedence order (suspect > live > lyric >
+// official) is unchanged and remains the point of this module, asserted by its tests.
+const SUSPECT_RE = compileTerms(SUSPECT);
+const LIVE_RE = compileTerms(LIVE);
+const LYRIC_RE = compileTerms(LYRIC);
+const OFFICIAL_RE = compileTerms(OFFICIAL);
+
 /** Guess which kind of upload a title describes. `unknown` when nothing is recognised — never a lie. */
 export function classifyVideoKind(title: string): VideoKind {
 	const t = title ?? '';
-	if (SUSPECT.some((term) => hasTerm(t, term))) return 'suspect';
-	if (BARE_LIVE.test(t) || LIVE.some((term) => hasTerm(t, term))) return 'live';
-	if (LYRIC.some((term) => hasTerm(t, term))) return 'lyric';
-	if (OFFICIAL.some((term) => hasTerm(t, term))) return 'official';
+	if (SUSPECT_RE.test(t)) return 'suspect';
+	if (BARE_LIVE.test(t) || LIVE_RE.test(t)) return 'live';
+	if (LYRIC_RE.test(t)) return 'lyric';
+	if (OFFICIAL_RE.test(t)) return 'official';
 	return 'unknown';
 }
 
