@@ -2,7 +2,8 @@
 // semitones.
 //
 // ROOT CAUSE (owner-triaged at 9b07153, confirmed by reading the code): a PitchShiftGraph binds a
-// PERMANENT MediaElementAudioSourceNode to its element (pitch-shift.ts:492-497). The master audio
+// PERMANENT MediaElementAudioSourceNode to its element (see createMediaElementSource in
+// PitchShiftGraph.build, pitch-shift.ts). The master audio
 // element is mounted unconditionally and lives as long as the SLOT, but TvPlayer per-song reset
 // effect used to detach() its graph on every song change. detach() cannot restore the native path,
 // so the still-captured element was left feeding a disconnected node = silent instrumental. A later
