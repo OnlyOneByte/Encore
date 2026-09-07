@@ -174,6 +174,17 @@ function classPresent(src: string, token: string): boolean {
 }
 
 /**
+ * Does a bare TAG appear in the source? `body`/`html` are guaranteed by HTML itself and appear in no
+ * component; any other tag must be rendered somewhere or the read is aimed at an element the app does
+ * not produce. Shared by the top-level bare-tag branch and the descendant-part branch below (a
+ * `.slot.visible audio` ends in a tag, not a class).
+ */
+function tagResolves(tag: string, sources: string[]): boolean {
+	if (tag === 'body' || tag === 'html') return true;
+	return sources.some((s) => new RegExp(`<${tag}\\b`).test(s));
+}
+
+/**
  * Turn one SEL selector string into the source anchor(s) it needs, and report whether any source file
  * carries it. Returns null for a shape this resolver does not model, so the caller can flag it rather
  * than silently pass it.
@@ -205,23 +216,40 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 		const anchor = `${name}="${value}`;
 		return sources.some((s) => s.includes(anchor));
 	}
-	// A CSS class selector, possibly compound (`.row .t`, `.lyrics .word.active`). EVERY class token in
-	// it must exist somewhere — a compound selector that names a dropped descendant is still broken.
+	// A CSS class selector, possibly compound and possibly with descendant/child structure
+	// (`.row .t`, `.lyrics .word.active`, `.seekrow .track > i`, `.slot.visible audio`). Split into the
+	// selector's structural PARTS — on descendant whitespace AND the child combinator, which for a
+	// source-existence check ask the same question: does every part's anchor exist somewhere. EVERY
+	// part must resolve; a compound that names a dropped descendant is still broken. A part is either a
+	// bare tag (`audio`, `i` — resolve as a tag) or a class-compound (`.slot.visible` — every `.token`
+	// must be a class). The leading part starts with `.`, so this branch owns any selector beginning
+	// with a class even when a later part is a tag.
 	if (selector.startsWith('.')) {
-		const tokens = selector
-			.split(/\s+/)
-			.flatMap((part) => part.split('.').filter(Boolean));
-		if (tokens.length === 0) return null;
-		return tokens.every((tok) => sources.some((s) => classPresent(s, tok)));
+		const parts = selector.split(/\s*>\s*|\s+/).filter(Boolean);
+		if (parts.length === 0) return null;
+		const partResults = parts.map((part): boolean | null => {
+			if (part.startsWith('.')) {
+				const tokens = part.split('.').filter(Boolean);
+				if (tokens.length === 0) return null;
+				return tokens.every((tok) => sources.some((s) => classPresent(s, tok)));
+			}
+			// A bare-tag part inside a descendant/child selector (the `audio` in `.slot.visible audio`,
+			// the `i` in `.seekrow .track > i`).
+			if (/^[a-z][a-z0-9]*$/.test(part)) return tagResolves(part, sources);
+			// Any other part shape (a universal token, a `:not()` chain, an unquoted attribute) is one
+			// this resolver does not model — surface it as unmodelled rather than silently pass.
+			return null;
+		});
+		if (partResults.some((r) => r === false)) return false;
+		if (partResults.some((r) => r === null)) return null;
+		return true;
 	}
 	/*
-	 * A bare TAG selector. `body` and `html` are guaranteed by HTML itself and appear in no component,
-	 * so they need no source anchor; any other tag must actually be rendered somewhere, or the read is
+	 * A bare TAG selector. Any tag must actually be rendered somewhere (see tagResolves), or the read is
 	 * aimed at an element the app does not produce.
 	 */
 	if (/^[a-z][a-z0-9]*$/.test(selector)) {
-		if (selector === 'body' || selector === 'html') return true;
-		return sources.some((s) => new RegExp(`<${selector}\\b`).test(s));
+		return tagResolves(selector, sources);
 	}
 	return null;
 }
@@ -485,10 +513,9 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		// Tag-only / attribute-fragment reads, deliberately NOT selectors:
 		'[aria-label=',   // truncated attribute-selector fragment built by string concat
 		'audio',           // a bare tag query for the media element (see SEL.mediaEl for the union form)
-		// DEFERRED to the #494 tail follow-up — combinator/descendant shapes the SEL-resolution guard cannot
-		// model (a `>` child combinator; a tag-descendant `audio` that is not a class anchor). Tracked.
-		'.seekrow .track > i',
-		'.slot.visible audio',
+		// Group A of the #494 tail (#513) migrated the two combinator/descendant selectors that used to
+		// sit here into SEL (slotVisibleAudio, seekFill), extending the resolver to model a `>` child
+		// combinator and a bare-tag descendant. Groups B–E (#544–#547) track the rest of the tail.
 	],
 	'probes/p6-lyrics.mjs': [
 		// Liveness reads, deliberately NOT in SEL: a bare tag-union existence check for a media element,
@@ -623,4 +650,29 @@ test('the driver ban is not vacuous — it covers every driver, not a shrunk lis
 	expect(DRIVERS).toContain('capture.mjs');
 	// And a spot-check that the walk reaches into probes/, the subtree the old list never covered.
 	expect(DRIVERS.some((d) => d.startsWith('probes/'))).toBe(true);
+});
+
+test('#513 Group A — p4-transport combinator/descendant selectors moved from KNOWN_OFFENDERS into SEL', () => {
+	// Half 1: the two selectors are no longer quarantined for p4-transport. On base they sat in
+	// KNOWN_OFFENDERS (the driver spelled them out); after the migration the ONLY honest place they may
+	// live is SEL, so KNOWN_OFFENDERS must no longer wave them through.
+	const p4 = KNOWN_OFFENDERS['probes/p4-transport.mjs'] ?? [];
+	expect(p4).not.toContain('.slot.visible audio');
+	expect(p4).not.toContain('.seekrow .track > i');
+
+	// Half 2: the two selectors now live in SEL with their exact values, and the resolver — extended
+	// here to model a bare-tag descendant and a `>` child combinator — resolves each against real
+	// source (a green null/false would mean the SEL entry points at markup no component renders).
+	expect(SEL.slotVisibleAudio).toBe('.slot.visible audio');
+	expect(SEL.seekFill).toBe('.seekrow .track > i');
+	const sources = guardSources();
+	expect(selectorResolves(SEL.slotVisibleAudio, sources)).toBe(true);
+	expect(selectorResolves(SEL.seekFill, sources)).toBe(true);
+
+	// The resolver extension must be REAL, not a widening that passes anything: a descendant/child
+	// selector whose tag part names an element no component renders must still FAIL to resolve, and a
+	// class part that names a dropped class must still fail. This is what keeps the ban non-vacuous.
+	expect(selectorResolves('.slot.visible marquee', sources)).toBe(false);
+	expect(selectorResolves('.seekrow .track > blink', sources)).toBe(false);
+	expect(selectorResolves('.nope-not-a-class audio', sources)).toBe(false);
 });
