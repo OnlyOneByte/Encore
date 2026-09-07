@@ -434,10 +434,64 @@ describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at ef
 		expect(tv.split('alignGuidePreroll()').length - 1).toBeGreaterThanOrEqual(3);
 	});
 
-	it('re-takes the lock-on on the guide canplay, when the buffer is primed', () => {
+	it('re-takes the lock-on INSIDE the guide canplay handler body, when the buffer is primed', () => {
 		// The heart of the fix: the comparison is taken when the guide can actually play, so the
 		// seek->audible gap is a primed-buffer flush and the master has not run away from it.
+		// #586/A1: a whole-file `toContain('alignGuidePreroll()')` is satisfied by the OTHER two call
+		// sites (the transport effect and the gesture handler), so gutting the canplay handler body
+		// would leave the old guard green. Slice the `oncanplay={...}` block and assert the call lives
+		// INSIDE it, so the on-buffer-primed lock-on cannot be silently removed.
 		expect(tv).toContain('oncanplay={');
-		expect(tv).toContain('alignGuidePreroll()');
+		const canplay = tv.split('oncanplay={')[1]?.split('}}')[0] ?? '';
+		expect(canplay).not.toBe('');
+		expect(canplay).toContain('alignGuidePreroll()');
+	});
+});
+
+/*
+ * A source guard, because #586 lives in WIRING: the mount condition and the readiness/level gate are
+ * two things that must be DIFFERENT expressions. The defect was one `wantsGuide` derived (level-gated)
+ * driving BOTH the {#if} mount AND the ready-report, so a guide-level slider drag through 0 (step="1"
+ * from min="0") flipped the mount false-then-true and UNMOUNTED/REMOUNTED the guide <audio> mid-song,
+ * re-paying the canplay pre-roll lock-on. The fix splits mount-worthiness (level-independent) from the
+ * level gate, and — trap #1 of #578 — keeps the ready-report on the level-gated condition so a level-0
+ * room never waits on the guide buffer. These assertions red on base (single level-gated wantsGuide
+ * driving the mount) and pin the split.
+ */
+describe('TvPlayer mounts the guide on mount-worthiness, gates readiness on the level (#586)', () => {
+	const tv = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
+
+	it('mount-worthiness is a distinct, level-INDEPENDENT derived', () => {
+		// A named mount-worthiness derived exists and does NOT read the level. Reds on base, where the
+		// only guide condition is a single level-gated `wantsGuide`.
+		expect(tv).toContain('guideMountable');
+		const decl = tv.split('const guideMountable = $derived(')[1]?.split(');')[0] ?? '';
+		expect(decl).not.toBe('');
+		// Mount-worthiness is "a playable song has a guide ref" — it must NOT consult the level, or a
+		// drag through 0 would still unmount.
+		expect(decl).toContain('guideRef');
+		expect(decl).toContain('isPlayable(media)');
+		expect(decl).not.toContain('effectiveGuide');
+		expect(decl).not.toContain('guideLevel');
+	});
+
+	it('the guide <audio> mounts on mount-worthiness, not on the level gate', () => {
+		// The markup {#if} that wraps the guide element must gate on guideMountable — so passing the
+		// level through 0 never tears the element down. Reds on base: there the {#if} is `wantsGuide`.
+		expect(tv).toContain('{#if guideMountable && guideRef}');
+		expect(tv).not.toContain('{#if wantsGuide && guideRef}');
+	});
+
+	it('the level gate stays on effectiveGuide > 0 and still guards the ready-report (trap #1)', () => {
+		// wantsGuide keeps its level meaning...
+		const wg = tv.split('const wantsGuide = $derived(')[1]?.split(');')[0] ?? '';
+		expect(wg).not.toBe('');
+		expect(wg).toContain('effectiveGuide > 0');
+		// ...and the two ready-report effects + the guide-settle timeout still gate on the LEVEL
+		// (wantsGuide), never on the relaxed mount condition — a level-0 room must not wait on the
+		// guide buffer to announce ready. Guarding these on guideMountable is exactly trap #1.
+		expect(tv).toContain('(guideSettled || !wantsGuide) && !prewarmedFired');
+		expect(tv).toContain('(guideSettled || !wantsGuide) && !visibleReadyFired');
+		expect(tv).toContain('if (!wantsGuide || guideSettled) return;');
 	});
 });
