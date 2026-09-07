@@ -11,21 +11,11 @@
 // a paragraph) is out of scope — this looks for rules that set a height or padding and therefore have
 // already taken a position on how big the target is.
 import { test, expect } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { TAP, svelteFiles } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..'); // src/
-const TAP = 44;
-
-function svelteFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, ent.name);
-		if (ent.isDirectory()) out.push(...svelteFiles(p));
-		else if (ent.name.endsWith('.svelte')) out.push(p);
-	}
-	return out;
-}
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

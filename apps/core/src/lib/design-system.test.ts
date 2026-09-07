@@ -18,8 +18,9 @@
 // genuinely token-less colour, and needs no hand-maintained list -- add a token and the guard starts
 // enforcing it everywhere by itself.
 import { test, expect } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { svelteFiles } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..');
 // Read app.css comment-stripped: the `defined`-token set and the palette are built from this text and
@@ -28,15 +29,6 @@ const SRC = join(import.meta.dir, '..');
 const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
 
 /** Every .svelte under src, recursively. */
-function svelteFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const e of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, e.name);
-		if (e.isDirectory()) out.push(...svelteFiles(p));
-		else if (e.name.endsWith('.svelte')) out.push(p);
-	}
-	return out;
-}
 
 /**
  * Strip comments before scanning. A comment explaining WHY a literal was kept must not itself trip

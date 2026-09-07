@@ -5,6 +5,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { svelteFiles } from '../test-helpers';
 
 // ALLOWLIST, not a denylist (issue #290): the file header states the rule positively —
 // animations/transitions may touch ONLY GPU-composited properties. Flag anything animated
@@ -19,16 +20,6 @@ const COMPOSITED_PROPS = new Set([
 	'color',
 	'box-shadow'
 ]);
-
-function svelteFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, ent.name);
-		if (ent.isDirectory()) out.push(...svelteFiles(p));
-		else if (ent.name.endsWith('.svelte')) out.push(p);
-	}
-	return out;
-}
 
 // every .svelte AND .css file under a directory — the CSS lives in both component <style> blocks
 // and the shared design system (src/app.css), so a scan restricted to .svelte is blind to app.css.

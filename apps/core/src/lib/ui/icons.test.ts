@@ -22,6 +22,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ICON_NAMES, ICON_PATHS } from './icons';
+import { svelteFiles } from '../test-helpers';
 
 const SRC = join(import.meta.dir, '..', '..');
 
@@ -85,16 +86,6 @@ function emojiIn(src: string): { index: number; cp: string }[] {
 		i += width;
 	}
 	return hits;
-}
-
-function svelteFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, ent.name);
-		if (ent.isDirectory()) out.push(...svelteFiles(p));
-		else if (ent.name.endsWith('.svelte')) out.push(p);
-	}
-	return out;
 }
 
 /** Client-side .ts, excluding tests — test files hold emoji as fixtures on purpose. */

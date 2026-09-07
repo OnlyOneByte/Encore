@@ -12,21 +12,12 @@
 // invisible to svelte-check and to every unit test, and it degrades exactly one class of user -- a
 // screen-reader user, who is also the least likely to be sitting next to the developer.
 import { test, expect } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { svelteFiles } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..');
 const SETTINGS = join(SRC, 'routes/settings/+page.svelte');
-
-function svelteFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const e of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, e.name);
-		if (e.isDirectory()) out.push(...svelteFiles(p));
-		else if (e.name.endsWith('.svelte')) out.push(p);
-	}
-	return out;
-}
 
 /** Comments naming the retired sheet are documentation, not a second editor. */
 function stripComments(src: string): string {
