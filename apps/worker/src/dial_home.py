@@ -653,6 +653,14 @@ async def _run_forever() -> None:
     for warning in oversubscription_warnings(cfg, report.cpus, report.memory_bytes):
         print(f"[worker] config warning: {warning}", flush=True)
 
+    # Probe the optional line-bounder ONCE and say which of absent / broken / available it resolved to
+    # (#475). Left silent, "not installed" and "installed but the shim broke" are one observation: the
+    # deploy box installs karaoke-lyrics-processor --no-deps while the dev box has it absent, so a
+    # regression on deploy would look exactly like the always-absent dev box. This line makes it legible.
+    from .lyrics import klp_probe_line
+
+    print(f"[worker] {klp_probe_line()}", flush=True)
+
     processor: Processor = _build_processor(cfg)
 
     # Reclaim AGED-OUT orphaned scratch for the whole process lifetime (#469). A retryable failure on

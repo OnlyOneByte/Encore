@@ -1153,3 +1153,28 @@ async def test_cook_id_defaults_empty_for_a_legacy_frame_without_it(tmp_path):
 
     assert len(captured) == 1
     assert captured[0].cook_id == ""
+
+
+def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
+    # #475 wiring guard. `klp_probe_line()` behaves correctly (proven in test_lyrics_presplit) but that
+    # is worthless unless _run_forever actually CALLS it — deleting the one startup print line would
+    # otherwise leave every unit test green with the silent-disable back (this repo's most-repeated
+    # defect: a mechanism built + tested + never wired). Source-level AST guard, no network/torch:
+    # assert _run_forever's body contains a Call to `klp_probe_line`.
+    import ast
+
+    src = Path(dh.__file__).read_text(encoding="utf-8")
+    fn = next(
+        n
+        for n in ast.walk(ast.parse(src))
+        if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "_run_forever"
+    )
+    calls_probe = any(
+        isinstance(node, ast.Call)
+        and (
+            (isinstance(node.func, ast.Name) and node.func.id == "klp_probe_line")
+            or (isinstance(node.func, ast.Attribute) and node.func.attr == "klp_probe_line")
+        )
+        for node in ast.walk(fn)
+    )
+    assert calls_probe, "_run_forever must call klp_probe_line() to report the line-bounder state (#475)"

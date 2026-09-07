@@ -6,6 +6,7 @@ installed and no network. One test exercises the real package when it IS present
 
 import re
 import sys
+import types
 from pathlib import Path
 
 import pytest
@@ -560,3 +561,111 @@ def test_presplit_leaves_a_SHORT_alternate_unwindowed_246():
 
     assert out[0].align_windows is None
     assert out[0].alternates[0].align_windows is None
+
+
+# ── #475: absent / broken / no-op must be THREE distinguishable observations, not one ────────────
+#
+# The defect: `_load_klp` cached `_KLP = None` on ANY failure with no report, so "package absent",
+# "stub broke on import" and "no line was over-long" (a legitimate no-op of a WORKING package) all
+# looked identical to an operator — the same "a dead provider looks like a song with no lyrics"
+# conflation #444 killed for LRCLIB. klp is installed --no-deps on the deploy box and absent on the
+# dev box, so a regression on deploy would look exactly like the always-absent dev box. The fix keeps
+# the three facts distinct in `klp_status()` and reports one at startup via `klp_probe_line()`.
+
+
+def _reset_klp_cache(monkeypatch):
+    """Force the next `_load_klp` to re-probe from scratch (the import is cached across the run)."""
+    monkeypatch.setattr(lp, "_KLP", lp._UNSET)
+    monkeypatch.setattr(lp, "_KLP_STATUS", None)
+    monkeypatch.setattr(lp, "_KLP_DETAIL", "")
+
+
+def test_klp_status_ABSENT_when_the_package_is_not_installed(monkeypatch):
+    # find_spec says None AND the import raises ModuleNotFoundError -> not installed. This is the
+    # normal dev-box state and an EXPECTED degrade, not a fault.
+    _reset_klp_cache(monkeypatch)
+    monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: None)
+    monkeypatch.delitem(sys.modules, "karaoke_lyrics_processor", raising=False)
+
+    assert lp._load_klp() is None
+    status, detail = lp.klp_status()
+    assert status == "absent"
+    assert "not installed" in detail
+
+
+def test_klp_status_BROKEN_when_installed_but_the_import_raises(monkeypatch):
+    # find_spec finds it (installed) but importing raises (a shim/version regression). This is the
+    # one an operator MUST be able to see, because on base it is indistinguishable from "absent".
+    _reset_klp_cache(monkeypatch)
+    # Pretend the package IS installed...
+    monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: object())
+
+    # ...but importing it raises. A module object whose attribute access raises makes
+    # `from karaoke_lyrics_processor import KaraokeLyricsProcessor` fail at the attribute bind.
+    class _Broken(types.ModuleType):
+        def __getattr__(self, _n):
+            raise ImportError("stub broke: KaraokeLyricsProcessor renamed upstream")
+
+    monkeypatch.setitem(sys.modules, "karaoke_lyrics_processor", _Broken("karaoke_lyrics_processor"))
+
+    assert lp._load_klp() is None
+    status, detail = lp.klp_status()
+    assert status == "broken"
+    assert "failed to import" in detail
+
+
+def test_klp_status_AVAILABLE_when_it_imports(monkeypatch):
+    # find_spec finds it and the class imports -> available. bound_lines will actually run.
+    _reset_klp_cache(monkeypatch)
+    monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: object())
+
+    class _KLPClass:
+        def __init__(self, **_kw):
+            raise AssertionError("not instantiated in this test")
+
+    fake = types.ModuleType("karaoke_lyrics_processor")
+    fake.KaraokeLyricsProcessor = _KLPClass  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "karaoke_lyrics_processor", fake)
+
+    assert lp._load_klp() is _KLPClass
+    status, _detail = lp.klp_status()
+    assert status == "available"
+
+
+def test_the_three_klp_outcomes_are_ALL_DISTINGUISHABLE(monkeypatch):
+    # THE #475 BITE in one place: absent, broken and available must yield three DIFFERENT status
+    # strings. On base there is no klp_status at all (the three collapse to one silent `None`), so
+    # this fails at import; with the fix the set has exactly three members.
+    def _status_for(*, spec, module):
+        _reset_klp_cache(monkeypatch)
+        monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _n: spec)
+        if module is None:
+            monkeypatch.delitem(sys.modules, "karaoke_lyrics_processor", raising=False)
+        else:
+            monkeypatch.setitem(sys.modules, "karaoke_lyrics_processor", module)
+        return lp.klp_status()[0]
+
+    class _Broken(types.ModuleType):
+        def __getattr__(self, _n):
+            raise ImportError("boom")
+
+    good = types.ModuleType("karaoke_lyrics_processor")
+    good.KaraokeLyricsProcessor = type("K", (), {})  # type: ignore[attr-defined]
+
+    absent = _status_for(spec=None, module=None)
+    broken = _status_for(spec=object(), module=_Broken("karaoke_lyrics_processor"))
+    available = _status_for(spec=object(), module=good)
+
+    assert {absent, broken, available} == {"absent", "broken", "available"}
+
+
+def test_klp_probe_line_names_the_resolved_state(monkeypatch):
+    # The startup line an operator reads (wired into dial_home._run_forever next to the other probed
+    # lines). It must carry the resolved status word, not a bare "disabled".
+    _reset_klp_cache(monkeypatch)
+    monkeypatch.setattr(lp.importlib.util, "find_spec", lambda _name: None)
+    monkeypatch.delitem(sys.modules, "karaoke_lyrics_processor", raising=False)
+
+    line = lp.klp_probe_line()
+    assert "karaoke-lyrics-processor" in line
+    assert "absent" in line
