@@ -6,7 +6,7 @@ import type { Media } from '@encore/shared';
 import { parseTrackTitle } from './track-title';
 
 export interface SearchResult {
-	source: 'youtube' | 'local';
+	source: 'youtube' | 'local' | 'spotify';
 	sourceRef: string; // local file key, or youtube video id
 	title: string;
 	artist?: string;
@@ -17,7 +17,7 @@ export interface SearchResult {
 }
 
 export interface MediaResolver {
-	readonly kind: 'youtube' | 'local';
+	readonly kind: 'youtube' | 'local' | 'spotify';
 	/** Search this source for a query; returns lightweight results (not yet persisted Media). */
 	search(query: string, limit: number): Promise<SearchResult[]>;
 }

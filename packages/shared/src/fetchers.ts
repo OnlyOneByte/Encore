@@ -75,6 +75,14 @@ export function isValidFetcher(id: string): id is FetcherId {
  */
 export function fetcherFor(source: MediaSource, defaultFetcher: string = DEFAULT_FETCHER): FetcherId {
 	if (source === 'local') return 'local';
+	// `spotify` is a SEARCH / metadata source only: there is deliberately no `fetch:spotify` fetcher,
+	// so its bytes are never pulled from Spotify. A spotify-sourced result is an annotation that
+	// improves a query the audio is still acquired for from YouTube (docs/DECISIONS.md, the annotator
+	// pattern). It falls back to the default downloader here ONLY as a defensive floor; in practice a
+	// spotify SearchResult is not materialised into a queueable media (see /api/search), precisely so
+	// this path is never taken and no `youtube.com/watch?v=<spotify-track-id>` URI is ever formed - the
+	// exact shape-inference bug this whole registry exists to kill (see the header comment).
+	if (source === 'spotify') return DEFAULT_FETCHER;
 	return isValidFetcher(defaultFetcher) && defaultFetcher !== 'local' ? defaultFetcher : DEFAULT_FETCHER;
 }
 

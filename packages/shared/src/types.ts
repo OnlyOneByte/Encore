@@ -5,7 +5,17 @@ import type { LyricsCandidate } from './lyrics';
 import type { SongProfile } from './song-profile';
 import type { TvBackgroundStyle } from './tv-background';
 
-export type MediaSource = 'youtube' | 'local';
+/**
+ * Where a song ORIGIN metadata came from.
+ *
+ * `youtube` and `local` are also ACQUIRABLE - a fetcher knows how to pull their bytes (see
+ * fetchers.ts). `spotify` is a SEARCH / metadata source ONLY: Spotify gives clean canonical
+ * artist/title/duration where a YouTube upload title has to be reverse-engineered, but its bytes
+ * are never fetched from Spotify. The audio is still acquired from YouTube (the annotator pattern,
+ * docs/DECISIONS.md), so a spotify-sourced media is not directly cookable - `fetcherFor` refuses it.
+ * This needs no DB migration (the column is plain text, no CHECK) and no fetch:spotify capability.
+ */
+export type MediaSource = 'youtube' | 'local' | 'spotify';
 export type StemStatus = 'none' | 'queued' | 'ready';
 
 /**

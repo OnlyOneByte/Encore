@@ -40,7 +40,10 @@ export const singers = sqliteTable(
 
 export const media = sqliteTable('media', {
 	id: text('id').primaryKey(),
-	source: text('source', { enum: ['youtube', 'local'] }).notNull(),
+	// 'spotify' is a SEARCH / metadata source only (issue #427); its bytes are never fetched. The
+	// underlying column is plain TEXT with no SQL CHECK, so widening this Drizzle enum needs no
+	// migration — it only teaches the type the value that can already be stored.
+	source: text('source', { enum: ['youtube', 'local', 'spotify'] }).notNull(),
 	sourceRef: text('source_ref').notNull(),
 	title: text('title').notNull(),
 	artist: text('artist'),

@@ -151,6 +151,12 @@ export function cookState(
 export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps, singerId?: string): Job | null {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return null;
+	// Spotify is a SEARCH / metadata source only (docs/DECISIONS.md, the annotator pattern): its
+	// sourceRef is a Spotify track id, NOT anything a fetcher can pull, so cooking one would enqueue a
+	// fetch that forms `youtube.com/watch?v=<spotify-track-id>` and dies at ffmpeg — the exact
+	// shape-inference bug the fetcher registry exists to kill. A Spotify hit sharpens the query; the
+	// singer queues the YouTube result. Refuse the cook here rather than let a broken URI through.
+	if (media.source === 'spotify') return null;
 
 	const state = cookState(mediaId, deps, singerId);
 	if (state === 'playing') return null; // would disrupt the live song

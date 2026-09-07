@@ -14,6 +14,8 @@ import { sqlitePersistence } from './state/persistence';
 import { SettingsRepository } from './state/settings-repository';
 import { LocalLibrary } from './media/local';
 import { YouTubeResolver } from './media/youtube';
+import { SpotifyResolver } from './media/spotify-resolver';
+import { spotifySearch } from './media/spotify';
 import { ytDlpSearch } from './media/ytdlp';
 import { MediaRepository, hydrateMediaCatalog } from './media/repository';
 import { migrateStorageLayout } from './media/migrate-layout';
@@ -88,6 +90,8 @@ export interface EncoreApp {
 	media: MediaRepository;
 	localLibrary: LocalLibrary;
 	youtube: YouTubeResolver;
+	/** Spotify SEARCH / metadata source (annotator only; no acquisition). No-op when creds unset. */
+	spotify: SpotifyResolver;
 	popularity: PopularityTracker;
 	mediaStore: MediaStore; // local volume (default) or object-store (S3/MinIO) — ARCHITECTURE §2
 	mediaStoreConfig: MediaStoreConfig; // the resolved config sent to remote workers in worker:welcome
@@ -469,6 +473,7 @@ export function getApp(): EncoreApp {
 		media: mediaRepo,
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(ytDlpSearch),
+		spotify: new SpotifyResolver((q, n) => spotifySearch(q, n)),
 		popularity: createPopularityTracker(),
 		mediaStore,
 		mediaStoreConfig,

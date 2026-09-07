@@ -65,3 +65,13 @@ test('sourceUriFor replaces the core-side source conditional', () => {
 	);
 	expect(sourceUriFor({ source: 'local', sourceRef: 'library/sweet-caroline.mp4' })).toBe('library/sweet-caroline.mp4');
 });
+
+test('spotify is a SEARCH-only source: no fetch:spotify capability, and fetcherFor never yields it', () => {
+	// The librespot ACQUISITION half stays parked (issue #427) — there is deliberately no spotify
+	// fetcher, so its bytes are never pulled. A spotify-sourced media falls back to the default
+	// downloader here as a defensive floor, but in practice a spotify result is never queued.
+	expect(FETCHERS.some((f) => f.capability === 'fetch:spotify')).toBe(false);
+	expect(getFetcher('spotify')).toBeUndefined();
+	// Crucially, fetcherFor('spotify') must NOT invent a spotify fetcher — it resolves to the default.
+	expect(fetcherFor('spotify')).toBe(DEFAULT_FETCHER);
+});

@@ -421,3 +421,14 @@ test('#135: a dropped-add cook is attributed to its requester in the ledger, and
 	const aliceJob = d.jobs.listByStatus('queued').find((j) => j.mediaId === 'a1');
 	expect(aliceJob!.singerId).toBe('alice');
 });
+
+test('a spotify-sourced media is refused a cook (search-only; audio comes from YouTube)', () => {
+	// Cooking a spotify media would enqueue a fetch that forms youtube.com/watch?v=<spotify-track-id>
+	// and die at ffmpeg — the shape-inference bug the fetcher registry exists to kill. #427: Spotify
+	// is a metadata source only; the singer queues the YouTube result instead.
+	const d = deps();
+	const m = media('sp1', { source: 'spotify', sourceRef: '4uLU6hMCjMI75M1A2tKUQC' });
+	d.mediaById.set('sp1', m);
+	expect(requestMakeKaraoke('sp1', d)).toBeNull();
+	expect(m.stemStatus).toBe('none'); // never flipped to queued
+});
