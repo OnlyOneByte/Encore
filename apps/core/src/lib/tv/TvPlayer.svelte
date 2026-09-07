@@ -205,7 +205,8 @@
 		resetForId = id;
 		// Per-song graph handling. A PitchShiftGraph binds a PERMANENT MediaElementAudioSourceNode to
 		// its element: once captured, the element outputs ONLY through the graph, and detach() frees the
-		// context but CANNOT restore the native path (pitch-shift.ts:492-497). So the reset strategy has
+		// context but CANNOT restore the native path (`createMediaElementSource` in `PitchShiftGraph.build`
+		// is an irreversible capture; the permanence is documented on `PitchShiftGraph.detach`). So the reset strategy has
 		// to match each element's LIFETIME, not the media's:
 		//
 		//   • MASTER lives as long as the SLOT — the <audio bind:this={master}> below is mounted
@@ -213,7 +214,8 @@
 		//     element feeding a disconnected node: the instrumental went silent and stayed silent until a
 		//     keyShift rebuilt a graph on it (issue #477). We must NOT detach it. Instead reset it to
 		//     ratio 1 via setShift(0): on a routed graph that keeps source→node→gain→destination intact
-		//     and merely posts ratio 1 (pitch-shift.ts:150), so the element stays audible on the new song;
+		//     and merely posts ratio 1 (`PitchShiftGraph.setShift` posts the ratio to the worklet via
+		//     `postMessage`), so the element stays audible on the new song;
 		//     on an un-built graph it is a documented no-op. Teardown happens only on slot unmount (the
 		//     destroy effect below).
 		//   • GUIDE lives as long as the SONG — its <audio> sits behind {#if wantsGuide && guideRef} and

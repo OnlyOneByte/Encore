@@ -15,15 +15,15 @@ import { join } from 'node:path';
 const TV = import.meta.dir;
 const PITCH = join(TV, 'pitch-shift.ts');
 const LIFETIME = join(TV, 'pitch-shift-graph-lifetime.test.ts');
+const TVPLAYER = join(TV, 'TvPlayer.svelte');
 
 const pitchSrc = readFileSync(PITCH, 'utf8');
 
-// The files whose comments cite pitch-shift.ts. #567 is landed in two parts: pitch-shift.ts and this
-// test file are fixed here; TvPlayer.svelte carries two more rotted line citations (:492-497 and :150)
-// but is owner-owned by in-flight #396, so those are deferred to a follow-up that will ADD TvPlayer.svelte
-// to this list once #396 lands (see the follow-up issue that references this file). Keep this list and
-// the SCANNED.length sentinel in sync when TvPlayer.svelte is added.
-const SCANNED = [PITCH, LIFETIME];
+// The files whose comments cite pitch-shift.ts. #567 landed in two parts: PR #580 fixed pitch-shift.ts
+// and this test file; #581 fixed TvPlayer.svelte's two remaining rotted line citations (the deferral
+// behind owner-owned #396 is now lifted, #396 having merged) and ADDED it here. Keep this list and the
+// SCANNED.length sentinel in sync if another citing file appears.
+const SCANNED = [PITCH, LIFETIME, TVPLAYER];
 
 test('arm 1 — every PitchShiftGraph member named in prose exists on the class', () => {
 	// Real member surface: tab-indented declarations after `export class PitchShiftGraph`, so the
@@ -69,7 +69,7 @@ test('arm 2 — no comment cites pitch-shift.ts by line coordinate', () => {
 		expect(commentText.length, `${base}: comment text too short — extraction broke`).toBeGreaterThan(200);
 		for (const m of commentText.matchAll(new RegExp(re, 'g'))) offenders.push(`${base}: ${m[0]}`);
 	}
-	// Sentinel: exactly the two files fixed in this partial land are scanned (widened to 3 with TvPlayer.svelte behind #396).
-	expect(SCANNED.length).toBe(2);
+	// Sentinel: all three citing files are scanned (pitch-shift.ts, its lifetime test, and TvPlayer.svelte).
+	expect(SCANNED.length).toBe(3);
 	expect(offenders, offenders.join(' | ')).toEqual([]);
 });
