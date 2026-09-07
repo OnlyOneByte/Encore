@@ -131,7 +131,8 @@ class Ctx:
 
     @property
     def params(self) -> dict[str, Any]:
-        return self.job.params if isinstance(self.job.params, dict) else {}
+        # Guaranteed a dict by the inbound boundary check (dial_home._on_assign, #459); no re-guard.
+        return self.job.params
 
     def note(self, line: str) -> None:
         """Record something an operator would want in the log. The runner prints it."""

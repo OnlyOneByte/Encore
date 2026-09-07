@@ -255,6 +255,24 @@ class GradeAndSelect(Step):
         yield  # pragma: no cover - makes this an async generator
 
 
+def _opens_for(text: Any) -> list[int]:
+    """Opening-window index per human segment for the version fit.
+
+    Prefer the `align_window_opens` presplit EMITTED beside the windows (issue #459): it knew the
+    segment->window map when it built them, so it is EXACT. Only fall back to re-deriving by
+    start-equality (`_opening_window_indices`) for a hand-built text (a test) that set `align_windows`
+    without the opens map — a fallback that strands every line after one start that fails to match to
+    1e-6, which is the very fragility the emitted map removes.
+    """
+    opens: list[int] | None = getattr(text, "align_window_opens", None)
+    if opens is not None:
+        # The emitter's invariant (one open per human segment). Assert it here so a future producer that
+        # emits a mismatched map fails LOUD rather than as a silent index mismatch downstream (#459).
+        if len(opens) == len(text.segments):
+            return opens
+    return _opening_window_indices(text.align_windows, text.segments)
+
+
 def _opening_window_indices(windows: list[dict], segments: list[dict]) -> list[int]:
     """Indices into `windows` of the window that OPENS each human line.
 
@@ -430,7 +448,7 @@ class TimeTexts(Step):
                 # opening windows (real human starts) against the aligned lines at those same indices:
                 # two independent time series over the same human lines, which is what the fit needs.
                 if getattr(text, "align_windows", None):
-                    opens = _opening_window_indices(text.align_windows, text.segments)
+                    opens = _opens_for(text)
                     # Pair by the line's own text, NOT its position: `doc` is normalize_lyrics output,
                     # which can DROP a line, and a positional index into it would shift every later
                     # pairing after a drop — re-opening #336 (spurious "slipped") and #217 (inert on a

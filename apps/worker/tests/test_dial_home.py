@@ -926,6 +926,67 @@ def test_run_forever_cancels_the_heartbeat_task_in_a_finally():
     )
 
 
+def test_run_forever_finally_cancels_in_flight_synchronously_and_does_NOT_await_drain_inline_459():
+    # #459 blocking: the whole drain/redial fix lives in _run_forever's finally — cancel the in-flight
+    # tasks SYNCHRONOUSLY (cancel_now) and settle them in a DETACHED task, never `await client.drain(...)`
+    # inline (which held the reconnect loop for a full uninterruptible ML pass while the core reaper had
+    # already requeued the job). cancel_now() has a unit test, but nothing pinned that the finally USES
+    # it — reverting the finally to the base inline `await client.drain(cancel=True)` left the whole
+    # suite green (the repo's most-repeated defect: mechanism built + tested + never wired). This is the
+    # source-level wiring guard, in the _run_forever_ast idiom already used for #132/#469/#475 above.
+    fn = _run_forever_ast()
+    finalies = [n for n in _ast.walk(fn) if isinstance(n, _ast.Try) and n.finalbody]
+    assert finalies, "_run_forever has no try/finally"
+    calls_cancel_now = False
+    awaits_drain_inline = False
+    for node in finalies:
+        mod = _ast.Module(body=node.finalbody, type_ignores=[])
+        for stmt in _ast.walk(mod):
+            if isinstance(stmt, _ast.Call) and getattr(stmt.func, "attr", None) == "cancel_now":
+                calls_cancel_now = True
+            # An `await <x>.drain(...)` directly in the finally is the base behaviour that blocks redial.
+            if isinstance(stmt, _ast.Await):
+                inner = stmt.value
+                if isinstance(inner, _ast.Call) and getattr(inner.func, "attr", None) == "drain":
+                    awaits_drain_inline = True
+    assert calls_cancel_now, (
+        "_run_forever's finally never calls client.cancel_now() — the synchronous cancel that lets "
+        "redial proceed without awaiting an uninterruptible ML pass would be gone (issue #459)"
+    )
+    assert not awaits_drain_inline, (
+        "_run_forever's finally awaits client.drain(...) INLINE — that is exactly the base defect "
+        "#459 fixed: the reconnect loop is held for a full align while the reaper has requeued the job. "
+        "The drain must be DETACHED (scheduled, not awaited) so redial is concurrent with the settle"
+    )
+
+
+def test_run_forever_detaches_the_drain_rather_than_awaiting_it_459():
+    # The other half of #459's finally: the drain is scheduled onto a background task and pinned in a
+    # module-level set so it is not GC'd. Deleting _DETACHED_DRAINS (R6) or dropping the ensure_future
+    # both revert this to a blocking shape; pin that the finally SCHEDULES the drain (ensure_future/
+    # create_task on a client.drain(...) call) and references the tracking set.
+    fn = _run_forever_ast()
+    schedules_drain = False
+    for node in _ast.walk(fn):
+        if isinstance(node, _ast.Call) and getattr(node.func, "attr", None) in (
+            "ensure_future",
+            "create_task",
+        ):
+            for a in node.args:
+                if isinstance(a, _ast.Call) and getattr(a.func, "attr", None) == "drain":
+                    schedules_drain = True
+    assert schedules_drain, (
+        "_run_forever never SCHEDULES client.drain(...) as a detached task — the settle must run in "
+        "the background so redial is not blocked by it (issue #459)"
+    )
+    # The tracking set that keeps the detached task alive must be referenced by name in dial_home.
+    src = _Path(dh.__file__).read_text(encoding="utf-8")
+    assert "_DETACHED_DRAINS" in src, (
+        "the _DETACHED_DRAINS tracking set is gone — a detached drain task could be GC'd mid-flight "
+        "(issue #459)"
+    )
+
+
 @pytest.mark.asyncio
 async def test_build_processor_threads_ENCORE_YTDLP_BIN_into_the_align_plan(tmp_path):
     """Issue #192 — the wiring seam. `_build_processor` builds the align runner from a WorkerConfig; the
@@ -1178,3 +1239,49 @@ def test_run_forever_reports_the_klp_line_bounder_state_at_startup():
         for node in ast.walk(fn)
     )
     assert calls_probe, "_run_forever must call klp_probe_line() to report the line-bounder state (#475)"
+
+
+@pytest.mark.asyncio
+async def test_reject_when_params_is_not_an_object_issue_459(tmp_path):
+    # `params` is the last required assign field with no parse layer at the boundary (jobId/jobType/
+    # mediaId already reject). A non-dict reaches JobSpec.params: dict untyped and would raise deeper
+    # in the cook, escaping into the reconnect handler and tearing down the socket for one bad frame.
+    # It must be rejected job-scoped here, the same shape as the checks above (#459).
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+    bad = assign()
+    bad["params"] = ["not", "an", "object"]
+    await client.handle(bad)
+    await client.drain()
+    rejects = sock.of_type(protocol.REJECT)
+    assert len(rejects) == 1, f"expected exactly one reject, got {sock.types()}"
+    assert rejects[0]["jobId"] == "j1"
+    assert "params" in rejects[0]["reason"]
+    # never accepted, never started a task, slot untouched
+    assert protocol.ACCEPT not in sock.types()
+    assert client.state.slots_free == 1
+
+
+@pytest.mark.asyncio
+async def test_cancel_now_cancels_in_flight_without_awaiting_issue_459(tmp_path):
+    # #459: the reconnect finally must cancel in-flight tasks SYNCHRONOUSLY (so a subprocess step's
+    # GeneratorExit fires at once) but NOT block the loop awaiting an uninterruptible run_blocking
+    # thread. cancel_now() is the synchronous half: it requests cancellation on every tracked task and
+    # returns immediately, leaving the settle to a detached drain.
+    sock = FakeSocket()
+    client = make_client(sock, tmp_path)
+
+    async def _never():
+        await asyncio.sleep(3600)
+
+    t = asyncio.ensure_future(_never())
+    client._tasks["stuck"] = t
+    # Give the task one loop turn to actually start awaiting the sleep before we cancel it.
+    await asyncio.sleep(0)
+    client.cancel_now()
+    # cancel_now returns without awaiting — the task is not settled yet, only asked to stop.
+    assert not t.done()
+    # ...and the cancellation it requested does land when the task is finally awaited.
+    with pytest.raises(asyncio.CancelledError):
+        await t
+    assert t.cancelled()

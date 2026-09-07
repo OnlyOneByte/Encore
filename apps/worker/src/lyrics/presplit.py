@@ -435,9 +435,49 @@ def bound_blob_text(
     the aligner simply searches `segments`.
     """
     bound = bounder if bounder is not None else bound_lines
-    windows = _relineate_segments(text, max_chars, lambda body: bound([body], max_chars)).segments
+    lineator = lambda body: bound([body], max_chars)  # noqa: E731 — one-line adapter, matches call sites
+    # Build the windows AND record where each human segment opens, in the SAME walk that produces them,
+    # so the opening index of every line is a KNOWN fact rather than one re-derived downstream by
+    # float-equality (issue #459: a single start that fails to match to 1e-6 strands every later line).
+    # `opens[i]` is the index in `windows` of the first window contributed by `text.segments[i]`; a
+    # segment passed through whole contributes exactly one, and a subdivided one opens at the block head.
+    windows, opens = _relineate_with_opens(text, lineator)
     same = windows == list(text.segments)
-    return replace(text, align_windows=None if same else windows)
+    if same:
+        return replace(text, align_windows=None, align_window_opens=None)
+    return replace(text, align_windows=windows, align_window_opens=opens)
+
+
+def _relineate_with_opens(
+    text: LyricsText, lineator: Callable[[str], list[str]]
+) -> tuple[list[dict[str, Any]], list[int]]:
+    """Re-lineate every text-only segment and, in the same walk, record each segment's opening index.
+
+    Mirrors `_relineate_segments` exactly (a segment with word timings or a <=1-piece body passes
+    through as ONE window), but also returns `opens`: for each input segment, the index in the output
+    at which its window block begins. This is the segment->window map `_opening_window_indices` used to
+    reconstruct by matching starts to 1e-6 — emitting it here makes that reconstruction, and its
+    float-fragility, unnecessary.
+    """
+    windows: list[dict[str, Any]] = []
+    opens: list[int] = []
+    for seg in text.segments:
+        if not isinstance(seg, dict):
+            # Not a real segment; still record where the (absent) block would open so indices stay
+            # aligned 1:1 with text.segments for any caller pairing by position.
+            opens.append(len(windows))
+            continue
+        opens.append(len(windows))
+        body = seg.get("text")
+        if seg.get("words") or not isinstance(body, str) or not body.strip():
+            windows.append(seg)
+            continue
+        pieces = [p for p in lineator(body) if p.strip()]
+        if len(pieces) <= 1:
+            windows.append(seg)
+            continue
+        windows.extend(_subdivide(seg, pieces))
+    return windows, opens
 
 
 def presplit_texts(
