@@ -383,6 +383,25 @@ def resolve(cfg: WorkerConfig, *, device: str | None = None) -> tuple[WorkerConf
         ytdlp_bin=cfg.ytdlp_bin,
         demucs_bin=cfg.demucs_bin,
     )
+
+    # HONESTY: `caps` proves `stems` from demucs being importable, but #119 made the resolved separator
+    # backend DRIVE which demucs engine runs, and only `torch` has an implementation. So a box that
+    # proves `stems` but resolves its backend to one with no engine (an Apple-Silicon box with
+    # `demucs-mlx` importable auto-selects `mlx`) would advertise `stems` and then fail every cook it is
+    # handed at plan selection. Narrow the set HERE — the one place that both has the proven capability
+    # set and can resolve the backend — so the box refuses the work at boot instead. The backend is
+    # resolved SILENTLY (`_build_processor` owns the single startup print of it); this only needs its
+    # value to decide, and only bothers when a stems capability was actually proven.
+    if "stems" in caps:
+        from .backends import resolve_backend
+        from .vocabulary import Engine
+
+        resolved_backend = resolve_backend(
+            cfg.separator_backend, engine=Engine.DEMUCS, device=cfg.device
+        ).backend.value
+        caps, backend_warnings = caps_mod.narrow_for_backend(caps, resolved_backend)
+        warnings.extend(backend_warnings)
+
     resolved = replace(
         cfg,
         capabilities=caps,

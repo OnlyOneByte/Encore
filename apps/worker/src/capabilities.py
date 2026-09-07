@@ -172,3 +172,44 @@ def resolve(
     # Sorted so the advertised set is stable across restarts: an unordered set would make the core's
     # logs and the worker's differ run to run for no reason.
     return tuple(sorted(caps)), probes, warnings
+
+
+def narrow_for_backend(
+    capabilities: tuple[str, ...], backend: str | None
+) -> tuple[tuple[str, ...], list[str]]:
+    """Drop any stems capability the RESOLVED separator backend cannot build an engine for.
+
+    Returns (narrowed_capabilities, warnings). This is the second half of the honesty contract the
+    module header describes, and it runs at the ONE site that has both the proven capability set and
+    the resolved backend in hand (`dial_home._build_processor`, right after `resolve_backend`). It
+    must, because ordering forbids folding it into `resolve` above: the backend is resolved AFTER the
+    capability set is fixed (the backend probe depends on `cfg.separator_backend`/`cfg.device`, and
+    resolving it eagerly for a fetch-only box would be work that box never needs).
+
+    Why it is needed at all: `resolve` proves `stems` from `_either("demucs", demucs_bin)` — the
+    module or CLI is present — but #119 made the resolved backend DRIVE which demucs engine runs, and
+    only `torch` has an implementation. So an Apple-Silicon box with `demucs` importable AND
+    `demucs-mlx` importable proves `stems`, AUTO-resolves the backend to `mlx`, and advertises `stems`
+    anyway — then kills every cook it is handed when `engine_for("demucs", backend="mlx")` raises at
+    plan selection (the advertise→cook→die failure this module exists to remove). Narrowing here makes
+    the box refuse the work at boot instead: honest, and diagnosable from the startup log.
+
+    Only `stems` is backend-driven. `stems:roformer` runs through its own CLI regardless of the demucs
+    backend, so it is untouched; `stems:ensemble` is already never advertised (no ensemble engine).
+    Mirrors the two in-repo precedents for an unimplemented executor (`stems:ensemble`, `OPENVINO`):
+    the token stays in the vocabulary, it just never reports available on this box. No new token is
+    introduced — capabilities key on the engine, not the backend (test_architecture_capability_tokens).
+    """
+    from .separation.engines import demucs_engine_backed_by
+
+    if "stems" not in capabilities or demucs_engine_backed_by(backend):
+        return capabilities, []
+
+    narrowed = tuple(c for c in capabilities if c != "stems")
+    warning = (
+        f"dropping capability 'stems': the resolved separator backend {backend!r} has no demucs "
+        "engine implementation, so this box would accept stems cooks and then fail every one of them "
+        "non-retryably at plan selection. Set ENCORE_SEPARATOR_BACKEND=torch to run the portable "
+        "engine, or leave it unset to auto-select an available backend."
+    )
+    return narrowed, [warning]
