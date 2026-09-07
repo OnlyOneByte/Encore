@@ -68,6 +68,12 @@ export interface EncoreApp {
 	singers: SingerRepository;
 	/** Room lifecycle: create a party (mint id + join code) and look one up by code. */
 	rooms: RoomRepository;
+	/**
+	 * The id of the party a join lands in when no room code is given — the single room #654 mints.
+	 * The join path resolves an explicit code against {@link rooms}; this is the fallback identity
+	 * for a bare `/join`, and the room whose code the TV QR advertises.
+	 */
+	activeRoomId: string;
 	/** Who holds a live socket right now. Populated by server.ts's WS open/close. */
 	presence: PresenceTracker;
 	/**
@@ -166,6 +172,10 @@ export function getApp(): EncoreApp {
 	const settings = new SettingsRepository(db);
 	const singers = new SingerRepository(db);
 	const rooms = new RoomRepository(db);
+	// Mint the party's identity on first boot (reuse it on every boot after). Until #654 nothing wrote
+	// the rooms table, so a fresh box had a real singers/queue/playback state but no room to name it;
+	// this gives the QR a code to advertise and the join path a room to land an unqualified join in.
+	const activeRoomId = rooms.ensureActive(Date.now()).id;
 	const state = new AuthoritativeState(sqlitePersistence(db), 250, () =>
 		orderingOf({ getSettings: () => settings.getEffective(), listSingers: () => singers.listPublic() })
 	);
@@ -459,6 +469,7 @@ export function getApp(): EncoreApp {
 		state,
 		singers,
 		rooms,
+		activeRoomId,
 		presence: new PresenceTracker(),
 		// Set just below — the sink needs `app` to reach the media catalog.
 		plays: null as never,
