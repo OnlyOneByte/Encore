@@ -383,3 +383,120 @@ def test_no_lyrics_SOURCE_stamps_its_own_role_or_baseline_rank():
         "a lyrics source is deciding its own tier again — that belongs to its SourceSpec in "
         "lyrics/registry.py, which stamps it in _Classified.fetch: " + "; ".join(offenders)
     )
+
+
+# ── E10: a step reaches blocking work ONLY through run_blocking / run_stage ────────
+
+#: The blocking primitives a Step must never touch directly. Reaching any of these on the event loop
+#: freezes it: the worker stops answering the websocket keepalive AND stops emitting job:progress, so
+#: the core's 30 s progressLease (apps/core/src/server/jobs/leases.ts) expires and the reaper requeues a
+#: HEALTHY cook — runner.py documents both failures as observed on a live cook. The ML stack names come
+#: from apps/worker/pyproject.toml's mypy `ignore_missing_imports` overrides (the untyped C-extension
+#: dependencies), plus the blocking HTTP/subprocess std-lib surfaces.
+_BLOCKING_IMPORT_ROOTS = frozenset(
+    {
+        "torch",
+        "torchaudio",
+        "intel_extension_for_pytorch",
+        "whisperx",
+        "whisper",
+        "numpy",
+        "requests",
+        "httpx",
+        "aiohttp",
+        "urllib",  # urllib.request is a blocking fetch; matched at the root so .request/.error both count
+    }
+)
+
+
+def _blocking_offenders_in(path: Path) -> list[str]:
+    """Every place a step module reaches blocking work directly instead of through a wrapper.
+
+    Two shapes, both AST — a substring scan passes on the docstrings and comments these very step files
+    carry ("in-process numpy", "asyncio.to_thread here emitted NOTHING", "subprocess-with-progress"):
+
+      1. an IMPORT of a blocking ML / network module (torch, whisperx, numpy, requests, urllib, ...).
+         Steps delegate that work to a domain function passed to `run_blocking`, so the import belongs in
+         `analysis/`, `lyrics/`, `metadata/` — never in `steps/`.
+      2. a CALL to a blocking primitive the runtime owns: `asyncio.to_thread(...)` (run_blocking is the
+         one legitimate caller, and it lives in runtime/, not here), `subprocess.*` /
+         `asyncio.create_subprocess_exec|_shell` (steps shell out through `ctx.runner` / `run_stage`),
+         or `os.system(...)`.
+    """
+    tree = ast.parse(path.read_text(encoding="utf-8"))
+    out: list[str] = []
+    for node in ast.walk(tree):
+        # ── shape 1: importing a blocking module ──
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[0] in _BLOCKING_IMPORT_ROOTS:
+                    out.append(f"line {node.lineno}: import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            if node.level == 0 and node.module and node.module.split(".")[0] in _BLOCKING_IMPORT_ROOTS:
+                out.append(f"line {node.lineno}: from {node.module} import ...")
+        # ── shape 2: calling a blocking primitive directly ──
+        elif isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            attr = node.func.attr
+            base = ast.unparse(node.func.value)
+            if base == "asyncio" and attr == "to_thread":
+                out.append(f"line {node.lineno}: asyncio.to_thread(...) — route through run_blocking")
+            elif base == "asyncio" and attr in {"create_subprocess_exec", "create_subprocess_shell"}:
+                out.append(f"line {node.lineno}: asyncio.{attr}(...) — shell out through ctx.runner")
+            elif base == "subprocess" or base.startswith("subprocess."):
+                out.append(f"line {node.lineno}: subprocess.{attr}(...) — shell out through ctx.runner")
+            elif base == "os" and attr == "system":
+                out.append(f"line {node.lineno}: os.system(...) — shell out through ctx.runner")
+    return out
+
+
+def test_no_step_reaches_blocking_work_outside_run_blocking_or_run_stage():
+    """The lease keepalive only fires if a step ROUTES through `run_blocking` / `run_stage`; nothing
+    stopped a new step from calling torch, whisperx or a blocking HTTP client directly, freezing the loop
+    and getting its healthy job reaped at the 30 s progress lease (issue #470). This is the repo's
+    characteristic failure mode — a mechanism that exists, is tested, and can be silently bypassed — so
+    it is ENFORCED, not trusted.
+
+    The two wrappers are the only sanctioned routes and both live in `runtime/runner.py`, not here:
+    `run_blocking` runs the in-process ML call in a thread (it owns the single `asyncio.to_thread`) and
+    keepalives it; `run_stage` / `ctx.runner` run a subprocess and keepalive it. So a step that reaches a
+    blocking primitive directly is exactly the bypass.
+
+    Prove it bites by adding `import torch` (or an `asyncio.to_thread(...)` call) to any step and watching
+    this red, then remove it — same recipe the issue prescribes.
+    """
+    steps = _py_files("steps")
+    offenders = {str(p.relative_to(SRC)): bad for p in steps if (bad := _blocking_offenders_in(p))}
+    assert not offenders, (
+        "a step reaches blocking work directly instead of through run_blocking / run_stage, so its "
+        "keepalive never fires and a healthy cook is reaped at the 30 s progress lease "
+        "(docs/ARCHITECTURE.md §7.1; issue #470): "
+        + "; ".join(f"{rel} -> {found}" for rel, found in sorted(offenders.items()))
+    )
+
+
+def test_the_blocking_bypass_guard_actually_detects_a_direct_call(tmp_path: Path):
+    """Non-vacuity floor (the E8 `assert writers` idiom): a matcher that finds nothing because its AST
+    shapes are wrong would leave `offenders` empty and pass while guarding nothing. Feed it a synthetic
+    step that both imports torch and calls asyncio.to_thread directly, and confirm every intended shape
+    is reported — so the guard above fails on a real bypass, not merely on today's clean tree.
+    """
+    fake = tmp_path / "bypass_step.py"
+    fake.write_text(
+        "import torch\n"
+        "import asyncio\n"
+        "import subprocess\n"
+        "from urllib.request import urlopen\n"
+        "\n"
+        "async def run(ctx):\n"
+        "    asyncio.to_thread(lambda: torch.zeros(1))\n"
+        "    subprocess.run(['ffmpeg'])\n"
+        "    proc = await asyncio.create_subprocess_exec('yt-dlp')\n",
+        encoding="utf-8",
+    )
+    found = _blocking_offenders_in(fake)
+    joined = " | ".join(found)
+    assert any("import torch" in f for f in found), f"missed a blocking import: {joined}"
+    assert any("from urllib" in f for f in found), f"missed a blocking urllib import: {joined}"
+    assert any("to_thread" in f for f in found), f"missed asyncio.to_thread: {joined}"
+    assert any("subprocess.run" in f for f in found), f"missed subprocess.run: {joined}"
+    assert any("create_subprocess_exec" in f for f in found), f"missed create_subprocess_exec: {joined}"
