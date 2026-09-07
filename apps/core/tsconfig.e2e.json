@@ -19,7 +19,8 @@
 		"e2e/probes/p11-dashboards.mjs",
 		"e2e/probes/p10-scaling.mjs",
 		"e2e/probes/p5-cook-lifecycle.mjs",
-		"e2e/probes/p14-playhead-vs-cook.mjs"
+		"e2e/probes/p14-playhead-vs-cook.mjs",
+		"e2e/probes/p9-settings.mjs"
 	],
 	"exclude": ["build", "node_modules"]
 }
