@@ -29,6 +29,27 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { SEL, PRESET_COLOUR_NAMES } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #563, following the
+ * #553/#557/#558/#559/#560/#561/#562 pattern). This probe grows its OWN thin CDP client (Cdp/CdpPage)
+ * rather than reusing cdp.mjs's Page, so the types are declared on those classes directly. page.evaluate()
+ * returns Promise<any>, so DOM-shaped reads are cast at the call site via the domain typedefs below.
+ *
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'ENV' | 'PASS'} Level
+ *
+ * One queue row the phone reads out of its own DOM.
+ * @typedef {{ title: string, away: boolean, pending: boolean }} QueueRow
+ *
+ * The phone's authoritative room snapshot returned by getState().
+ * @typedef {{ rows: QueueRow[], count: number }} RoomState
+ *
+ * One TV roster chip read off the presence strip.
+ * @typedef {{ name: string, away: boolean, more: boolean, text: string }} RosterChip
+ *
+ * The TV roster snapshot returned by tvRoster().
+ * @typedef {{ chips: RosterChip[], screen: ("transient" | "playing" | "lobby" | "attract") }} TvRoster
+ */
+
 // ── config ────────────────────────────────────────────────────────────────
 const PORT = process.env.EPORT ?? '5228';
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -46,8 +67,14 @@ const PHONE_NAMES = ['Ada', 'Bea', 'Cai', 'Deb', 'Eve', 'Fin', 'Gio', 'Han', 'Ir
 // ── findings ──────────────────────────────────────────────────────────────
 /** @type {{level:'CRITICAL'|'HIGH'|'MEDIUM'|'LOW'|'ENV'|'PASS', title:string, detail:string, evidence?:string}[]} */
 const findings = [];
+/**
+ * @param {Level} level
+ * @param {string} title
+ * @param {string} [detail]
+ * @param {string} [evidence]
+ */
 function report(level, title, detail, evidence) {
-	findings.push({ level, title, detail, evidence });
+	findings.push({ level, title, detail: detail ?? '', evidence });
 	console.log(`[${level}]  ${title}${detail ? '\n        ' + detail : ''}${evidence ? '\n        ' + evidence : ''}`);
 }
 
@@ -74,36 +101,49 @@ function findChromium() {
  * grows its own thin driver instead of a passthrough on top of cdp.mjs.
  */
 class Cdp {
+	/** @param {number} cdpPort */
 	constructor(cdpPort) {
 		this.cdpPort = cdpPort;
+		/** @type {WebSocket | null} */
 		this.ws = null;
+		/** @type {Map<number, { resolve: (v: any) => void, reject: (e: Error) => void }>} */
 		this.pending = new Map();
 		this.next = 1;
+		/** @type {string[]} */
 		this.contexts = [];
+		/** @type {Set<string>} */
 		this.targets = new Set();
 	}
 	async connect() {
 		const v = await fetch(`http://127.0.0.1:${this.cdpPort}/json/version`).then((r) => r.json());
-		this.ws = new WebSocket(v.webSocketDebuggerUrl);
+		const ws = new WebSocket(v.webSocketDebuggerUrl);
+		this.ws = ws;
 		await new Promise((resolve, reject) => {
-			this.ws.addEventListener('open', resolve, { once: true });
-			this.ws.addEventListener('error', () => reject(new Error('cdp open failed')), { once: true });
+			ws.addEventListener('open', resolve, { once: true });
+			ws.addEventListener('error', () => reject(new Error('cdp open failed')), { once: true });
 		});
-		this.ws.addEventListener('message', (ev) => {
-			const msg = JSON.parse(ev.data);
-			if (msg.id && this.pending.has(msg.id)) {
-				const { resolve, reject } = this.pending.get(msg.id);
+		ws.addEventListener('message', (/** @type {MessageEvent} */ ev) => {
+			const msg = JSON.parse(String(ev.data));
+			const entry = msg.id ? this.pending.get(msg.id) : undefined;
+			if (entry) {
+				const { resolve, reject } = entry;
 				this.pending.delete(msg.id);
 				if (msg.error) reject(new Error(`${msg.error.message} :: ${JSON.stringify(msg.error.data ?? {})}`));
 				else resolve(msg.result);
 			}
 		});
 	}
+	/**
+	 * @param {string} method
+	 * @param {Record<string, unknown>} [params]
+	 * @param {string} [sessionId]
+	 * @returns {Promise<any>}
+	 */
 	send(method, params = {}, sessionId) {
 		const id = this.next++;
 		return new Promise((resolve, reject) => {
 			this.pending.set(id, { resolve, reject });
-			this.ws.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
+			this.ws?.send(JSON.stringify({ id, method, params, ...(sessionId ? { sessionId } : {}) }));
 			setTimeout(() => {
 				if (this.pending.delete(id)) reject(new Error(`CDP ${method} timed out (15s)`));
 			}, 15_000);
@@ -112,6 +152,7 @@ class Cdp {
 	close() {
 		this.ws?.close();
 	}
+	/** @param {string | null} [instrumentJs] */
 	async newContextPage(instrumentJs = null) {
 		const { browserContextId } = await this.send('Target.createBrowserContext');
 		this.contexts.push(browserContextId);
@@ -131,12 +172,19 @@ class Cdp {
 }
 
 class CdpPage {
+	/**
+	 * @param {Cdp} cdp
+	 * @param {string} sessionId
+	 * @param {string} targetId
+	 * @param {string} browserContextId
+	 */
 	constructor(cdp, sessionId, targetId, browserContextId) {
 		this.cdp = cdp;
 		this.sessionId = sessionId;
 		this.targetId = targetId;
 		this.browserContextId = browserContextId;
 	}
+	/** @param {string} expression @returns {Promise<any>} */
 	async evaluate(expression) {
 		const res = await this.cdp.send(
 			'Runtime.evaluate',
@@ -148,10 +196,12 @@ class CdpPage {
 		}
 		return res.result?.value;
 	}
+	/** @param {string} url */
 	async goto(url) {
 		await this.cdp.send('Page.navigate', { url }, this.sessionId);
 		await this.waitFor(`document.readyState === "complete"`, 15_000);
 	}
+	/** @param {string} expr @param {number} [timeout] @param {number} [every] */
 	async waitFor(expr, timeout = 10_000, every = 100) {
 		const deadline = Date.now() + timeout;
 		let last;
@@ -166,6 +216,7 @@ class CdpPage {
 		}
 		throw new Error(`waitFor timeout: ${expr}\n  last=${JSON.stringify(last)}`);
 	}
+	/** @param {string} path @param {{ fullPage?: boolean }} [opts] */
 	async screenshot(path, { fullPage = false } = {}) {
 		const { data } = await this.cdp.send(
 			'Page.captureScreenshot',
@@ -175,6 +226,7 @@ class CdpPage {
 		writeFileSync(path, Buffer.from(data, 'base64'));
 		return path;
 	}
+	/** @param {number} width @param {number} height @param {number} [dsf] */
 	async viewport(width, height, dsf = 1) {
 		await this.cdp.send(
 			'Emulation.setDeviceMetricsOverride',
@@ -182,6 +234,7 @@ class CdpPage {
 			this.sessionId
 		);
 	}
+	/** @param {boolean} offline */
 	async setOffline(offline) {
 		// Network conditions across the whole target: the phone's WebSocket loses its underlying TCP
 		// connection without the app calling close(), which is the exact scenario the WsClient's
@@ -247,6 +300,11 @@ const INSTRUMENT = `
 `;
 
 // ── join helpers ──────────────────────────────────────────────────────────
+/**
+ * @param {Cdp} cdp
+ * @param {string} name
+ * @param {string} [colourName]
+ */
 async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
 	const page = await cdp.newContextPage(INSTRUMENT);
 	await page.viewport(390, 844, 1); // an iPhone-ish portrait, without the 2000px screenshot ceiling risk
@@ -296,6 +354,7 @@ async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
 	return { page, name, outcome };
 }
 
+/** @param {CdpPage} page @returns {Promise<RoomState>} */
 async function getState(page) {
 	return page.evaluate(
 		`(() => {
@@ -317,6 +376,7 @@ async function getState(page) {
 // was losing rows — the queue was fine, the search just hadn't returned yet.
 const SEARCH_TERM = process.env.P8_SEARCH ?? 'bohemian';
 
+/** @param {CdpPage} page @param {string} [term] */
 async function searchAndQueue(page, term = SEARCH_TERM) {
 	await page.evaluate(
 		`(() => {
@@ -386,6 +446,7 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 }
 
 // ── TV helpers ────────────────────────────────────────────────────────────
+/** @param {CdpPage} tv @returns {Promise<TvRoster>} */
 async function tvRoster(tv) {
 	return tv.evaluate(
 		`(() => {
@@ -1046,7 +1107,7 @@ async function main() {
 			);
 		}
 	} catch (err) {
-		report('CRITICAL', 'probe threw before finishing', String(err.stack || err));
+		report('CRITICAL', 'probe threw before finishing', String(err instanceof Error ? err.stack : err));
 	} finally {
 		// Take one final TV shot to make the frame ordering legible even if a later step failed.
 		try {
@@ -1061,14 +1122,18 @@ async function main() {
 	}
 
 	// ── Report ────────────────────────────────────────────────────────────
-	const summary = findings.reduce((m, f) => ((m[f.level] = (m[f.level] || 0) + 1), m), {});
+	/** @type {Partial<Record<Level, number>>} */
+	const summary = findings.reduce(
+		(/** @type {Partial<Record<Level, number>>} */ m, f) => ((m[f.level] = (m[f.level] || 0) + 1), m),
+		{}
+	);
 	console.log(`\n── SUMMARY ────────────────────────────────────────`);
-	for (const level of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'ENV', 'PASS']) {
+	for (const level of /** @type {Level[]} */ (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW', 'ENV', 'PASS'])) {
 		if (summary[level]) console.log(`  ${level}: ${summary[level]}`);
 	}
 	console.log(`  evidence: ${OUT_DIR}`);
 
-	const real = ['CRITICAL', 'HIGH'].reduce((n, l) => n + (summary[l] || 0), 0);
+	const real = /** @type {Level[]} */ (['CRITICAL', 'HIGH']).reduce((n, l) => n + (summary[l] || 0), 0);
 	const env = summary['ENV'] || 0;
 	// A run that only produced ENV items is EXIT 2 (harness gap), not 0 — the whole point of the
 	// exit-code convention is that a green result must mean "we asserted and nothing failed".
