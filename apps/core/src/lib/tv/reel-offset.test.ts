@@ -133,6 +133,182 @@ describe('reelOffset — the sung row stays on the reel (#270)', () => {
 	});
 });
 
+// ---------------------------------------------------------------------------------------------------
+// #671: the sung row must land in the UNMASKED window, not merely inside the band. The band includes
+// the two edge-fade ramps (LyricsOverlay masks 1.9em == one row to transparent at each edge that HAS
+// context rows). #270 clamped to [0, band] and so parked the sung row congruent with a ramp, so the
+// line being sung rendered fainter than the line after it. This guard measures the row against the
+// readable region [fadeTop, band - fadeBot], computed a DIFFERENT way from reelOffset own arithmetic,
+// so a pass means the sung words are on fully-opaque pixels, not the formula returned what it returns.
+
+// Fraction of the current row inside the UNMASKED window [fadeTop, band - fadeBot], given the offset.
+function unmaskedFraction(
+	rowTop: number,
+	rowHeight: number,
+	band: number,
+	fadeTop: number,
+	fadeBot: number,
+	offset: number
+): number {
+	const top = rowTop + offset;
+	const bottom = top + rowHeight;
+	const winTop = fadeTop;
+	const winBot = band - fadeBot;
+	const visible = Math.max(0, Math.min(bottom, winBot) - Math.max(top, winTop));
+	return visible / rowHeight;
+}
+
+// The rendered ramp depth per edge. The fade is 1.9em == ONE single-line row, so its px depth is one
+// rowHeight, ON iff that edge has context rows. Two models:
+//   base (CSS as shipped): the ramp is an uncapped 1.9em, so two ramps can invert the window.
+//   fix (CSS after this PR): the ramp is min(row-h, (band - row-h) / 2), so the window always holds one
+//     row, the same cap measureReel mirrors in px. The FIX also passes these depths to reelOffset.
+function fadeUncapped(rowHeight: number, on: boolean): number {
+	return on ? rowHeight : 0;
+}
+function fadeCapped(rowHeight: number, band: number, on: boolean): number {
+	return on ? Math.max(0, Math.min(rowHeight, (band - rowHeight) / 2)) : 0;
+}
+
+// Base reality: the clamp reasons about [0, band] with NO fade awareness (reelOffset called with no
+// fadeTop/fadeBot). Reproduced here so the before-row measures shipped behaviour, not the fixed fn.
+function baseOffsetBandClamp(rowTop: number, rowHeight: number, band: number, before: number, after: number): number {
+	const bias = ((before - after) / 2) * rowHeight;
+	let offset = -(rowTop + rowHeight / 2 - band / 2 - bias);
+	if (rowHeight >= band) return -(rowTop + rowHeight / 2 - band / 2);
+	const top = rowTop + offset;
+	if (top < 0) offset += -top;
+	else if (top + rowHeight > band) offset -= top + rowHeight - band;
+	return offset;
+}
+
+describe('reelOffset - the sung row lands in the UNMASKED window, not inside a fade ramp (#671)', () => {
+	it('keeps a NON-ZERO fully-opaque fraction of the sung row across the whole legal grid', () => {
+		for (const before of [0, 1, 2, 3]) {
+			for (const after of [0, 1, 2, 3, 4]) {
+				for (const scale of Object.keys(ROW_AT_SCALE).map(Number)) {
+					const rh = ROW_AT_SCALE[scale];
+					const fadeTop = fadeCapped(rh, BAND, before > 0);
+					const fadeBot = fadeCapped(rh, BAND, after > 0);
+					const off = reelOffset({
+						rowTop: before * rh,
+						rowHeight: rh,
+						band: BAND,
+						linesBefore: before,
+						linesAfter: after,
+						fadeTop,
+						fadeBot
+					});
+					const frac = unmaskedFraction(before * rh, rh, BAND, fadeTop, fadeBot, off);
+					expect(frac).toBeGreaterThan(0);
+				}
+			}
+		}
+	});
+
+	it('BEFORE-ROW: the shipped [0, band] clamp parks 21 grid cells with ZERO opaque sung-row pixels', () => {
+		const offenders: Array<[number, number, number]> = [
+			[1, 1, 300],
+			[1, 2, 300],
+			[1, 3, 200],
+			[1, 3, 250],
+			[1, 3, 300],
+			[1, 4, 150],
+			[1, 4, 200],
+			[1, 4, 250],
+			[1, 4, 300],
+			[2, 1, 300],
+			[2, 2, 300],
+			[2, 3, 300],
+			[2, 4, 200],
+			[2, 4, 250],
+			[2, 4, 300],
+			[3, 1, 200],
+			[3, 1, 250],
+			[3, 1, 300],
+			[3, 2, 300],
+			[3, 3, 300],
+			[3, 4, 300]
+		];
+		for (const [before, after, scale] of offenders) {
+			const rh = ROW_AT_SCALE[scale];
+			const fadeTop = fadeUncapped(rh, before > 0);
+			const fadeBot = fadeUncapped(rh, after > 0);
+			const off = baseOffsetBandClamp(before * rh, rh, BAND, before, after);
+			const frac = unmaskedFraction(before * rh, rh, BAND, fadeTop, fadeBot, off);
+			expect(frac).toBe(0);
+		}
+	});
+
+	it('the DEFAULT 2/2 split reaches the defect too (2/2 at 300% is an offender), and the fix opens it', () => {
+		const rh = ROW_AT_SCALE[300];
+		const baseOff = baseOffsetBandClamp(2 * rh, rh, BAND, 2, 2);
+		expect(unmaskedFraction(2 * rh, rh, BAND, fadeUncapped(rh, true), fadeUncapped(rh, true), baseOff)).toBe(0);
+		const fT = fadeCapped(rh, BAND, true);
+		const fB = fadeCapped(rh, BAND, true);
+		const fixOff = reelOffset({
+			rowTop: 2 * rh,
+			rowHeight: rh,
+			band: BAND,
+			linesBefore: 2,
+			linesAfter: 2,
+			fadeTop: fT,
+			fadeBot: fB
+		});
+		expect(unmaskedFraction(2 * rh, rh, BAND, fT, fB, fixOff)).toBeGreaterThan(0);
+	});
+
+	it('gives the BOTTOM ramp its own guard (before>after biases the row DOWN into the bottom fade)', () => {
+		const rh = ROW_AT_SCALE[300];
+		const fadeTop = fadeCapped(rh, BAND, true);
+		const fadeBot = fadeCapped(rh, BAND, true);
+		const off = reelOffset({
+			rowTop: 3 * rh,
+			rowHeight: rh,
+			band: BAND,
+			linesBefore: 3,
+			linesAfter: 1,
+			fadeTop,
+			fadeBot
+		});
+		const top = 3 * rh + off;
+		expect(top).toBeGreaterThanOrEqual(fadeTop - 0.001);
+		expect(top + rh).toBeLessThanOrEqual(BAND - fadeBot + 0.001);
+		const baseOff = baseOffsetBandClamp(3 * rh, rh, BAND, 3, 1);
+		expect(unmaskedFraction(3 * rh, rh, BAND, fadeUncapped(rh, true), fadeUncapped(rh, true), baseOff)).toBe(0);
+	});
+
+	it('a NO-CONTEXT edge is not faded, so its pinned row is fully opaque (negative control)', () => {
+		const rh = ROW_AT_SCALE[300];
+		const fadeTop = fadeCapped(rh, BAND, true);
+		const fadeBot = fadeCapped(rh, BAND, false);
+		const off = reelOffset({
+			rowTop: 2 * rh,
+			rowHeight: rh,
+			band: BAND,
+			linesBefore: 2,
+			linesAfter: 0,
+			fadeTop,
+			fadeBot
+		});
+		const frac = unmaskedFraction(2 * rh, rh, BAND, fadeTop, fadeBot, off);
+		expect(frac).toBeGreaterThan(0);
+	});
+
+	it('with both fades 0 the clamp is EXACTLY #270 [0, band] (no regression of the earlier fix)', () => {
+		for (const before of [0, 1, 2, 3]) {
+			for (const after of [0, 1, 2, 3, 4]) {
+				for (const scale of Object.keys(ROW_AT_SCALE).map(Number)) {
+					const rh = ROW_AT_SCALE[scale];
+					const g = geom(before, after, rh, BAND);
+					const withFadesZero = reelOffset({ ...g, fadeTop: 0, fadeBot: 0 });
+					expect(withFadesZero).toBeCloseTo(reelOffset(g), 9);
+				}
+			}
+		}
+	});
+});
+
 // The clamp lives in a pure module, but the fix only takes effect if LyricsOverlay.svelte's measureReel
 // actually CONSUMES it with the measured band. Reverting that call site restores the pre-fix inline
 // arithmetic with every gate green (the pure function keeps passing its own tests while nothing on the
@@ -168,5 +344,25 @@ describe('LyricsOverlay is wired to the clamp (#270 — the fix must stay on the
 		// this negative arm bans the inline expression: reelOffset assigned from an inline `- bias)` form.
 		expect(/reelOffset\s*=\s*-\(/.test(CODE)).toBe(false);
 		expect(/-\s*viewportEl\.clientHeight\s*\/\s*2\s*-\s*bias\s*\)/.test(CODE)).toBe(false);
+	});
+
+	// #671 render-path wiring: reelOffset now takes the rendered ramp depths, and the pure clamp only
+	// insets the sung row out of a ramp if measureReel actually PASSES them. Reverting measureReel to the
+	// pre-#671 call (no fadeTop/fadeBot) leaves the grid test green (the args default to 0 => [0, band]),
+	// this repo's built-but-unwired shape — so pin the two args at the call site by source scan.
+	it('measureReel passes fadeTop AND fadeBot to reelOffset (the #671 depths reach the clamp)', () => {
+		expect(/fadeTop\s*:/.test(CODE)).toBe(true);
+		expect(/fadeBot\s*:/.test(CODE)).toBe(true);
+		// keyed on the context-row flags, not a blind 1.9em: a no-context edge stays unfaded (0).
+		expect(/fadeTop\s*:\s*linesBefore\s*>\s*0\s*\?/.test(CODE)).toBe(true);
+		expect(/fadeBot\s*:\s*linesAfter\s*>\s*0\s*\?/.test(CODE)).toBe(true);
+	});
+
+	// #671 F2: the two ramps must be CAPPED so they cannot consume the whole band and leave no opaque
+	// plateau. Pin the capped fade var; reverting to the uncapped `--lyrics-row-h * on` form reds this.
+	it('caps each edge-fade ramp so the unmasked window can always hold one row (F2)', () => {
+		expect(/--lyrics-fade-cap\s*:\s*min\(/.test(CODE)).toBe(true);
+		expect(/--lyrics-fade-top\s*:\s*calc\(var\(--lyrics-fade-cap\)/.test(CODE)).toBe(true);
+		expect(/--lyrics-fade-bot\s*:\s*calc\(var\(--lyrics-fade-cap\)/.test(CODE)).toBe(true);
 	});
 });
