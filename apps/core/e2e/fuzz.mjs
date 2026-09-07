@@ -78,6 +78,37 @@ import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL } from './contract.ts';
 
+/**
+ * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (issue #557); the shapes
+ * below are derived from cdp.mjs's own return types (#553) so they cannot drift from the driver.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {'I1' | 'I2' | 'I3' | 'I4' | 'I5' | 'I6'} InvariantId
+ * @typedef {keyof typeof BASE_WEIGHT} InputName
+ *
+ * A driven input as recorded in the sequence. `evaluate`-derived fields stay loose on purpose: the CDP
+ * bridge returns protocol-shaped values (cdp.mjs types `evaluate` as `Promise<any>`), so call sites cast.
+ * @typedef {{ who: string, input: string, detail: string, noop?: boolean, seam?: string | null }} Step
+ *
+ * @typedef {{ present: boolean, disabled: boolean }} TransportState
+ *
+ * One violation record, or null when the invariant held / was skipped.
+ * @typedef {{ id: InvariantId, title: string, observed: string, expected: string, context: string }} Violation
+ *
+ * A single audio/video element as read back by TV_PROBE.
+ * @typedef {{ tag: string, src: string, readyState: number, paused: boolean, muted: boolean, volume: number, currentTime: number, duration: number, decoded: number | null, error: { code: number, message: string } | null }} MediaRow
+ *
+ * The server's own snapshot, read off a probe socket.
+ * @typedef {{ rev?: number, entries?: any[], media?: any[], settings?: any, playback?: any }} ServerSnapshot
+ *
+ * The reduced world the weighting/seam functions read.
+ * @typedef {{ current: any, waiting: number, cooking: number }} WorldLite
+ *
+ * The full world one readWorld() call produces.
+ * @typedef {{ srv: ServerSnapshot, tv: any, cat: { ready: any[], cooking: any[], raw: any[] }, mediaById: Map<any, any>, current: any, curMedia: any, master: MediaRow | null, masterHow: string, waiting: number, playing: any[], cooking: number }} World
+ */
+
 // ── seed and policy: the FIRST line of output, before anything can fail ───────────────────────────
 const SEED = Number.isFinite(Number(process.env.FUZZ_SEED))
 	? Number(process.env.FUZZ_SEED) >>> 0
@@ -93,6 +124,7 @@ console.log(
  * mulberry32 — 32 bits of state, four lines, no dependency. Every random decision this run makes goes
  * through `rnd`, so a seed reproduces the sequence exactly; nothing reads Math.random or the clock.
  */
+/** @param {number} a */
 function mulberry32(a) {
 	return function () {
 		a = (a + 0x6d2b79f5) | 0;
@@ -102,7 +134,9 @@ function mulberry32(a) {
 	};
 }
 const rnd = mulberry32(SEED);
+/** @type {<T>(arr: T[]) => T} */
 const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+/** @type {(lo: number, hi: number) => number} */
 const int = (lo, hi) => lo + Math.floor(rnd() * (hi - lo + 1));
 /** A deterministic Crockford-ish id, so even the clientOpIds a replay sends are identical. */
 let idCounter = 0;
@@ -117,6 +151,7 @@ const CDP_PORT = Number(process.env.CDP_PORT ?? 9461);
 
 // ── output ───────────────────────────────────────────────────────────────────────────────────────
 /** Everything driven so far, in order — this list IS the reproduction recipe. */
+/** @type {Step[]} */
 const sequence = [];
 /** Per-invariant bookkeeping, so the summary can say which invariants actually got to fire. */
 const stats = {
@@ -127,20 +162,34 @@ const stats = {
 	I5: { checked: 0, skipped: 0, why: new Set() },
 	I6: { checked: 0, skipped: 0, why: new Set() }
 };
+/**
+ * @param {InvariantId} id
+ * @param {string} why
+ */
 function skip(id, why) {
 	stats[id].skipped++;
 	stats[id].why.add(why);
 	return null;
 }
+/** @param {InvariantId} id */
 function ok(id) {
 	stats[id].checked++;
 	return null;
 }
+/**
+ * @param {InvariantId} id
+ * @param {string} title
+ * @param {string} observed
+ * @param {string} expected
+ * @param {string} [context]
+ * @returns {Violation}
+ */
 function violation(id, title, observed, expected, context = '') {
 	return { id, title, observed, expected, context };
 }
 
 /** Processes and directories THIS run created — requirement 9 is about what we own, not what we found. */
+/** @type {{ procs: import('node:child_process').ChildProcess[], dirs: string[] }} */
 const owned = { procs: [], dirs: [] };
 let cleanedUp = false;
 function cleanup() {
@@ -166,6 +215,7 @@ process.on('SIGTERM', () => {
 	process.exit(2);
 });
 
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	cleanup();
@@ -188,6 +238,7 @@ function findChromium() {
 }
 
 // ── the room: attach to one, or boot a private one and own it ────────────────────────────────────
+/** @param {string | number} port */
 async function healthy(port) {
 	try {
 		const r = await fetch(`http://127.0.0.1:${port}/health`, { signal: AbortSignal.timeout(1500) });
@@ -198,12 +249,14 @@ async function healthy(port) {
 }
 
 /** A port nothing is listening on. Bound and released, because two agents share this box. */
+/** @param {number} from */
 async function freePort(from) {
 	for (let p = from; p < from + 60; p++) {
 		if (await portFree(p)) return p;
 	}
 	return null;
 }
+/** @param {number} p */
 async function portFree(p) {
 	try {
 		const s = Bun.listen({ hostname: '127.0.0.1', port: p, socket: { data() {} } });
@@ -229,6 +282,7 @@ async function bootRoom() {
 	 * against a server that had never heard of it. Silently driving somebody else's room is worse than
 	 * refusing to start.
 	 */
+	/** @type {number | null} */
 	let port = Number(process.env.FUZZ_PORT) || 0;
 	if (port) {
 		if (!(await portFree(port)))
@@ -321,12 +375,15 @@ const wsBase = `ws://127.0.0.1:${PORT}`;
  * in flight, and therefore the only way the RESTART-DURING-COOK seam becomes reachable.
  */
 const RAW_PROBE_TERMS = ['a', 'e', 'i', 'o', 'u', 's', 'b', 'd', 'l', 'm', 'n', 'r', 't', 'w'];
+/** @type {Map<string, any> | null} */
 let rawSeen = null;
 
 async function catalog() {
 	const lib = await fetch(`${base}/api/library`).then((x) => x.json());
-	const ready = (lib.library ?? []).filter((m) => m.source === 'local');
-	const cooking = (lib.cooking ?? []).map((c) => c.media).filter((m) => m && m.source === 'local');
+	const ready = (lib.library ?? []).filter((/** @type {any} */ m) => m.source === 'local');
+	const cooking = (lib.cooking ?? [])
+		.map((/** @type {any} */ c) => c.media)
+		.filter((/** @type {any} */ m) => m && m.source === 'local');
 	const known = new Set([...ready, ...cooking].map((m) => m.id));
 
 	if (rawSeen === null) {
@@ -359,9 +416,10 @@ const NONCE = Date.now().toString(36).toUpperCase().slice(-5);
  * about. Fewer than one and no playback invariant means anything, which is an exit-2 environment
  * problem rather than a green run.
  */
+/** @param {number} want */
 async function cookSongs(want) {
 	const c0 = await catalog();
-	if (c0.ready.filter((r) => r.lyricsRef).length >= want) return c0.ready;
+	if (c0.ready.filter((/** @type {any} */ r) => r.lyricsRef).length >= want) return c0.ready;
 
 	const joinRes = await fetch(`${base}/api/join`, {
 		method: 'POST',
@@ -389,11 +447,11 @@ async function cookSongs(want) {
 	);
 	// The stems job chains an align job, so readiness arrives a few seconds later.
 	for (let i = 0; i < 60; i++) {
-		const now = (await catalog()).ready.filter((r) => r.lyricsRef);
+		const now = (await catalog()).ready.filter((/** @type {any} */ r) => r.lyricsRef);
 		if (now.length >= Math.min(want, 2)) return now;
 		await sleep(700);
 	}
-	return (await catalog()).ready.filter((r) => r.lyricsRef);
+	return (await catalog()).ready.filter((/** @type {any} */ r) => r.lyricsRef);
 }
 
 const cookedRows = await cookSongs(3);
@@ -403,8 +461,8 @@ if (cookedRows.length === 0) {
 {
 	const c = await catalog();
 	console.log(
-		`fixture: ${cookedRows.length} cooked (${cookedRows.map((r) => r.title).join(', ')}), ` +
-			`${c.raw.length} raw left for the cook seam${c.raw.length === 0 ? ' — RESTART-DURING-COOK will NOT be reachable this run' : ` (${c.raw.map((r) => r.title).join(', ')})`}`
+		`fixture: ${cookedRows.length} cooked (${cookedRows.map((/** @type {any} */ r) => r.title).join(', ')}), ` +
+			`${c.raw.length} raw left for the cook seam${c.raw.length === 0 ? ' — RESTART-DURING-COOK will NOT be reachable this run' : ` (${c.raw.map((/** @type {any} */ r) => r.title).join(', ')})`}`
 	);
 }
 
@@ -415,11 +473,17 @@ if (cookedRows.length === 0) {
  * rather than mirrored from a long-lived one: a mirror has to re-implement the rev/patch reconciliation
  * the clients do, and a bug in the mirror would look exactly like a bug in the room.
  */
+/**
+ * @param {number} [timeoutMs]
+ * @returns {Promise<ServerSnapshot>}
+ */
 function serverSnapshot(timeoutMs = 4000) {
 	return new Promise((resolve, reject) => {
 		const ws = new WebSocket(`${wsBase}/ws?role=probe`);
+		/** @type {ServerSnapshot} */
 		const out = {};
 		let done = false;
+		/** @param {Error} [err] */
 		const finish = (err) => {
 			if (done) return;
 			done = true;
@@ -458,6 +522,7 @@ const LEAD_SEC = Number.isFinite(probe0?.settings?.lyricsLeadMs) ? probe0.settin
 
 /** Lyrics docs, fetched once per ref from the same /media route the TV overlay reads. */
 const lyricsCache = new Map();
+/** @param {string | null | undefined} ref */
 async function lyricsFor(ref) {
 	if (!ref) return null;
 	if (lyricsCache.has(ref)) return lyricsCache.get(ref);
@@ -500,10 +565,15 @@ owned.procs.push(chrome);
  * entry it says is current. When that cannot be resolved the fallback is the furthest-advanced
  * instrumental element, and the reason is recorded so a skipped check is never read as a pass.
  */
+/**
+ * @param {MediaRow[]} rows
+ * @param {string | undefined} wantRef
+ * @returns {{ master: MediaRow | null, how: string }}
+ */
 function pickMaster(rows, wantRef) {
 	const instrumentals = rows.filter((r) => r.src.includes('instrumental'));
 	if (wantRef) {
-		const matched = instrumentals.filter((r) => r.src.includes(wantRef));
+		const matched = instrumentals.filter((r) => wantRef && r.src.includes(wantRef));
 		if (matched.length === 1) return { master: matched[0], how: 'src matches server instrumentalRef' };
 		if (matched.length > 1) {
 			// Two elements on the same song: the pre-warm slot for a repeat. Take the advanced one.
@@ -557,8 +627,11 @@ const TV_PROBE = `(() => {
 	};
 })()`;
 
+/** @type {Browser | undefined} */
 let browser;
+/** @type {Page} */
 let tv;
+/** @type {Page[]} */
 const phones = [];
 
 /**
@@ -571,6 +644,7 @@ const phones = [];
  * cookie and runs the same authorization. `__fzRev` tracks the rev so a queue command carries a real
  * baseRev instead of a made-up one.
  */
+/** @param {Page} page */
 async function openWire(page) {
 	await page.evaluate(`(() => new Promise((res, rej) => {
 		if (window.__fz && window.__fz.readyState === 1) return res('reused');
@@ -592,6 +666,10 @@ async function openWire(page) {
 	}))()`);
 }
 
+/**
+ * @param {Page} page
+ * @param {Record<string, unknown>} command
+ */
 async function wirePlayer(page, command) {
 	return page.evaluate(`(() => {
 		if (!window.__fz || window.__fz.readyState !== 1) return 'closed';
@@ -600,6 +678,11 @@ async function wirePlayer(page, command) {
 	})()`);
 }
 
+/**
+ * @param {Page} page
+ * @param {Record<string, unknown>} op
+ * @param {string} opId
+ */
 async function wireQueueOp(page, op, opId) {
 	return page.evaluate(`(() => {
 		if (!window.__fz || window.__fz.readyState !== 1) return 'closed';
@@ -617,6 +700,7 @@ async function wireQueueOp(page, op, opId) {
  * PlayerCommand, no control, no previous-entry concept), so it is not silently mapped onto something
  * else — see the header. Weights are a starting point that the adjacency bias below then reshapes.
  */
+/** @type {Set<InputName>} */
 const TRANSPORT = new Set(['pause', 'resume', 'skip', 'restart', 'seek']);
 const BASE_WEIGHT = {
 	pause: 3,
@@ -640,6 +724,11 @@ const BASE_WEIGHT = {
  *   • SKIP-AT-LAST-ENTRY — nothing waiting behind the current song makes `skip` far more likely.
  *   • RESTART-THEN-PAUSE — the reachable stand-in for the specified back-then-pause seam.
  */
+/**
+ * @param {InputName | null} prev
+ * @param {WorldLite} world
+ * @returns {Record<InputName, number>}
+ */
 function weightsFor(prev, world) {
 	const w = { ...BASE_WEIGHT };
 	if (prev && TRANSPORT.has(prev)) for (const k of TRANSPORT) w[k] *= 3;
@@ -651,14 +740,19 @@ function weightsFor(prev, world) {
 	if (prev === 'restart') w.pause *= 6;
 	if (world.waiting + (world.current ? 1 : 0) === 0) {
 		// An empty room can only meaningfully be filled.
-		for (const k of Object.keys(w)) w[k] = k === 'queue-add' ? 10 : 0;
+		for (const k of /** @type {InputName[]} */ (Object.keys(w))) w[k] = k === 'queue-add' ? 10 : 0;
 	}
 	return w;
 }
 
+/**
+ * @param {InputName | null} prev
+ * @param {WorldLite} world
+ * @returns {InputName}
+ */
 function drawInput(prev, world) {
 	const w = weightsFor(prev, world);
-	const keys = Object.keys(w).filter((k) => w[k] > 0);
+	const keys = /** @type {InputName[]} */ (Object.keys(w)).filter((k) => w[k] > 0);
 	const total = keys.reduce((s, k) => s + w[k], 0);
 	let r = rnd() * total;
 	for (const k of keys) {
@@ -669,6 +763,12 @@ function drawInput(prev, world) {
 }
 
 /** Which seam, if any, this draw was biased toward — printed in the sequence so a replay reads clearly. */
+/**
+ * @param {InputName} input
+ * @param {InputName | null} prev
+ * @param {WorldLite} world
+ * @returns {string | null}
+ */
 function seamLabel(input, prev, world) {
 	if (input === 'restart' && world.cooking > 0) return 'RESTART-DURING-COOK';
 	if (input === 'skip' && world.current && world.waiting === 0) return 'SKIP-AT-LAST-ENTRY';
@@ -679,15 +779,17 @@ function seamLabel(input, prev, world) {
 
 // ── invariants ───────────────────────────────────────────────────────────────────────────────────
 /** currentTime may only fall across an intentional discontinuity. */
+/** @type {{ entryId: string | null, t: number | null }} */
 let lastPos = { entryId: null, t: null };
 const RESETS_POSITION = new Set(['seek', 'restart', 'skip']);
 
+/** @returns {Promise<World>} */
 async function readWorld() {
 	const srv = await serverSnapshot();
 	const tvState = await tv.evaluate(TV_PROBE);
 	const cat = await catalog();
-	const mediaById = new Map((srv.media ?? []).map((m) => [m.id, m]));
-	const cur = (srv.entries ?? []).find((e) => e.id === srv.playback?.currentEntryId) ?? null;
+	const mediaById = new Map((srv.media ?? []).map((/** @type {any} */ m) => [m.id, m]));
+	const cur = (srv.entries ?? []).find((/** @type {any} */ e) => e.id === srv.playback?.currentEntryId) ?? null;
 	const curMedia = cur ? (mediaById.get(cur.mediaId) ?? null) : null;
 	const { master, how } = pickMaster(tvState.rows, curMedia?.instrumentalRef);
 	return {
@@ -699,21 +801,22 @@ async function readWorld() {
 		curMedia,
 		master,
 		masterHow: how,
-		waiting: (srv.entries ?? []).filter((e) => e.status === 'queued').length,
-		playing: (srv.entries ?? []).filter((e) => e.status === 'playing'),
+		waiting: (srv.entries ?? []).filter((/** @type {any} */ e) => e.status === 'queued').length,
+		playing: (srv.entries ?? []).filter((/** @type {any} */ e) => e.status === 'playing'),
 		// The SERVER's own cooking verdict, not a guess at what a stemStatus string means.
 		cooking: cat.cooking.length
 	};
 }
 
 /** I2 · exactly one entry is `playing` — not zero while the TV renders a song, not two. */
+/** @param {World} w */
 function checkI2(w) {
 	const n = w.playing.length;
 	if (n > 1) {
 		return violation(
 			'I2',
 			'two or more queue entries are in state `playing` at once',
-			`${n} playing: ${w.playing.map((e) => `${e.id}(seq ${e.rotationSeq})`).join(', ')}`,
+			`${n} playing: ${w.playing.map((/** @type {any} */ e) => `${e.id}(seq ${e.rotationSeq})`).join(', ')}`,
 			'exactly one entry may be `playing`'
 		);
 	}
@@ -733,6 +836,7 @@ function checkI2(w) {
 }
 
 /** I3 · the TV's RENDERED now-playing equals the SERVER's currentEntryId. */
+/** @param {World} w */
 function checkI3(w) {
 	if (!w.current) {
 		if (w.tv.nowSong) {
@@ -778,6 +882,7 @@ function checkI3(w) {
 }
 
 /** I5 · no entry is both playing and waiting, and the phones' rotation agrees with the server. */
+/** @param {World} w */
 async function checkI5(w) {
 	// The server models status as ONE field, so "both at once" can only appear as a disagreement:
 	// either the current entry is not marked playing, or something marked playing is not the current.
@@ -810,7 +915,7 @@ async function checkI5(w) {
 				`phone${i + 1}'s rendered rotation disagrees with the server's waiting set`,
 				`phone${i + 1} renders ${n} ${SEL.queueRow} rows`,
 				`server has ${w.waiting} entries with status=queued`,
-				`server entries: ${(w.srv.entries ?? []).map((e) => `${e.id.slice(-6)}:${e.status}`).join(' ')}`
+				`server entries: ${(w.srv.entries ?? []).map((/** @type {any} */ e) => `${e.id.slice(-6)}:${e.status}`).join(' ')}`
 			);
 		}
 	}
@@ -818,6 +923,10 @@ async function checkI5(w) {
 }
 
 /** I1 · currentTime monotonic within a song. */
+/**
+ * @param {World} w
+ * @param {InputName} lastInput
+ */
 function checkI1(w, lastInput) {
 	if (!w.master) return skip('I1', 'no master element on stage to measure');
 	const t = w.master.currentTime;
@@ -845,11 +954,13 @@ function checkI1(w, lastInput) {
  * check that reads the decoder or the playhead has nothing to measure and must SKIP with that reason
  * named rather than judge a frozen playhead as a defect. Shared by I4 and I6 so the two cannot drift.
  */
+/** @param {World} w */
 function autoplayRefused(w) {
 	return !AUTOPLAY && w.master?.paused === true && w.master?.currentTime === 0;
 }
 
 /** I4 · the lyrics active index is consistent with currentTime. */
+/** @param {World} w */
 async function checkI4(w) {
 	if (!w.master) return skip('I4', 'no master element on stage to measure');
 	if (autoplayRefused(w))
@@ -862,9 +973,10 @@ async function checkI4(w) {
 	const doc = await lyricsFor(w.curMedia.lyricsRef);
 	if (!doc) return skip('I4', 'the lyrics artifact could not be read');
 	// The rendered ACTIVE WORD identifies the active line — the contract names the word, not the row.
+	/** @type {number[]} */
 	const hits = [];
-	doc.lines.forEach((l, i) => {
-		if ((l.words ?? []).some((x) => String(x.word).trim() === w.tv.activeWord)) hits.push(i);
+	doc.lines.forEach((/** @type {any} */ l, /** @type {number} */ i) => {
+		if ((l.words ?? []).some((/** @type {any} */ x) => String(x.word).trim() === w.tv.activeWord)) hits.push(i);
 	});
 	if (hits.length === 0) {
 		return violation(
@@ -913,6 +1025,7 @@ async function checkI4(w) {
  * conflation exit code 2 exists to prevent, one category over. With autoplay granted there is no
  * refusal left to blame, so a paused master under a playing room is a real violation.
  */
+/** @param {World} w */
 async function checkI6(w) {
 	const roomClaimsPlaying = w.srv.playback?.isPlaying === true && !!w.current;
 	if (!roomClaimsPlaying) return skip('I6', 'the room does not claim to be playing, so it claims nothing about audio');
@@ -957,17 +1070,21 @@ async function checkI6(w) {
 function snapshotStats() {
 	return Object.fromEntries(Object.entries(stats).map(([k, v]) => [k, { checked: v.checked, skipped: v.skipped }]));
 }
+/** @param {Record<string, { checked: number, skipped: number }>} snap */
 function restoreStats(snap) {
-	for (const [k, v] of Object.entries(snap)) {
+	for (const [k, v] of /** @type {[InvariantId, { checked: number, skipped: number }][]} */ (Object.entries(snap))) {
 		stats[k].checked = v.checked;
 		stats[k].skipped = v.skipped;
 	}
 }
 
+/** @param {InputName} lastInput */
 async function checkAll(lastInput) {
 	const deadline = Date.now() + CROSS_MS;
 	const before = snapshotStats();
+	/** @type {World} */
 	let world;
+	/** @type {Violation | null} */
 	let cross;
 	for (;;) {
 		// Each retry is a DISCARDED reading, so its bookkeeping is rolled back — otherwise a value that
@@ -987,6 +1104,10 @@ async function checkAll(lastInput) {
 }
 
 // ── the inputs, driven ───────────────────────────────────────────────────────────────────────────
+/**
+ * @param {InputName} input
+ * @param {World} world
+ */
 async function driveInput(input, world) {
 	const phoneIdx = int(0, phones.length - 1); // interleaved between the two phones on purpose
 	const page = phones[phoneIdx];
@@ -999,6 +1120,7 @@ async function driveInput(input, world) {
 	 * on a disabled button does precisely nothing and throws nothing. Recording "clicked" for one of
 	 * those would put a beat in the reproduction recipe that never happened, so the state is read first.
 	 */
+	/** @param {string} label */
 	async function tapTransport(label) {
 		const state = await page.evaluate(`(() => {
 			const el = document.querySelector('[aria-label=' + ${JSON.stringify(JSON.stringify(label))} + ']');
@@ -1082,7 +1204,9 @@ async function driveInput(input, world) {
 			// may remove any entry (capabilities.ts: every joined singer is a host), so the fuzzer is
 			// allowed to remove a turn it did not add — including the one that is playing, which is the
 			// dangling-current-entry seam.
-			const candidates = (world.srv.entries ?? []).filter((e) => e.status === 'queued' || e.status === 'playing');
+			const candidates = (world.srv.entries ?? []).filter(
+				(/** @type {any} */ e) => e.status === 'queued' || e.status === 'playing'
+			);
 			if (candidates.length === 0) return { who, input, detail: 'no-op (nothing in the queue)', noop: true };
 			const target = pick(candidates);
 			const r = await wireQueueOp(page, { op: 'remove', id: target.id }, fuzzId());
@@ -1100,6 +1224,7 @@ async function driveInput(input, world) {
 }
 
 // ── report ───────────────────────────────────────────────────────────────────────────────────────
+/** @param {boolean} markLast */
 function printSequence(markLast) {
 	for (let i = 0; i < sequence.length; i++) {
 		const s = sequence[i];
@@ -1112,6 +1237,10 @@ function printSequence(markLast) {
 	}
 }
 
+/**
+ * @param {Violation} v
+ * @param {World} world
+ */
 function reportViolation(v, world) {
 	console.log('');
 	console.log('════════════════════════════════════════════════════════════════════════════');
@@ -1132,7 +1261,7 @@ function reportViolation(v, world) {
 		`    server    rev=${world.srv.rev} currentEntryId=${world.srv.playback?.currentEntryId} isPlaying=${world.srv.playback?.isPlaying} positionSec=${world.srv.playback?.positionSec} keyShift=${world.srv.playback?.keyShift} guideLevel=${world.srv.playback?.guideLevel}`
 	);
 	console.log(
-		`    entries   ${(world.srv.entries ?? []).map((e) => `${e.id.slice(-6)}:${e.status}@${e.rotationSeq}`).join(' ') || '(none)'}`
+		`    entries   ${(world.srv.entries ?? []).map((/** @type {any} */ e) => `${e.id.slice(-6)}:${e.status}@${e.rotationSeq}`).join(' ') || '(none)'}`
 	);
 	console.log(
 		`    tv        nowSong=${JSON.stringify(world.tv.nowSong)} nowName=${JSON.stringify(world.tv.nowName)} attract=${world.tv.attract} activeWord=${JSON.stringify(world.tv.activeWord)}`
@@ -1150,6 +1279,7 @@ function printSummary() {
 	);
 	console.log('');
 	console.log('invariant   checked  skipped  why it was skipped');
+	/** @type {Record<InvariantId, string>} */
 	const titles = {
 		I1: 'currentTime monotonic within a song',
 		I2: 'exactly one entry is `playing`',
@@ -1158,7 +1288,7 @@ function printSummary() {
 		I5: 'no entry both playing and waiting; rotation agrees',
 		I6: 'decoded bytes climbing while the UI claims to play'
 	};
-	for (const id of ['I1', 'I2', 'I3', 'I4', 'I5', 'I6']) {
+	for (const id of /** @type {InvariantId[]} */ (['I1', 'I2', 'I3', 'I4', 'I5', 'I6'])) {
 		const s = stats[id];
 		console.log(
 			`  ${id}       ${String(s.checked).padStart(6)}   ${String(s.skipped).padStart(6)}  ${[...s.why].join(' | ') || '—'}`
@@ -1178,8 +1308,9 @@ try {
 	// Two phones, each its own isolated context and therefore its own session — two genuinely
 	// different guests, not one guest in two tabs. That is the whole point of the topology: a
 	// single-client sequence cannot produce a cross-surface disagreement.
+	/** @param {string} name @returns {Promise<Page>} */
 	async function newPhone(name) {
-		const page = await browser.newPage();
+		const page = await /** @type {Browser} */ (browser).newPage();
 		await page.viewport(390, 844);
 		await page.goto(`${base}/join`);
 		await page.fill(SEL.nameInput, name);
@@ -1241,7 +1372,7 @@ try {
 } catch (err) {
 	// An error in the DRIVER is an environment problem, not a room defect — reporting it as a violation
 	// would be exactly the conflation requirement 8 forbids, one category over.
-	console.error(`\nENVIRONMENT: the fuzzer could not complete its run: ${err?.stack ?? err}`);
+	console.error(`\nENVIRONMENT: the fuzzer could not complete its run: ${/** @type {any} */ (err)?.stack ?? err}`);
 	if (sequence.length) {
 		console.error('  sequence so far:');
 		printSequence(false);
