@@ -22,6 +22,23 @@ LRCLIB_BASE = "https://lrclib.net"
 # LRCLIB asks non-browser clients to identify themselves + a contact/link (their docs).
 USER_AGENT = "Encore/0.2 (+https://github.com/OnlyOneByte/Encore)"
 
+#: LRCLIB is a small free service; a burst reads as abuse. Pace requests process-globally (the limit is
+#: a property of the source IP, not of a client object) at one per second — the same interval its
+#: MusicBrainz twin uses (metadata/annotate.py). This corp box DNS-sinkholes lrclib.net so the gate
+#: only ever bites on the deploy box, but the asymmetry the issue names — the twin has a gate and this
+#: did not — is what let a single transient 5xx silently cost a cook its authoritative lyrics.
+MIN_INTERVAL_SEC = 1.0
+
+#: A transient failure (503 "busy / over the limit", 429 "too many requests") is retried with
+#: exponential backoff so one blip does not lose the lyrics for that song; bounded so a genuinely
+#: down/blocked service degrades to a legible LyricsFetchError rather than hammering it forever.
+MAX_ATTEMPTS = 3
+BACKOFF_BASE_SEC = 1.0
+#: The statuses worth retrying. MusicBrainz's twin only ever sees 503; LRCLIB documents 429 for its
+#: own rate limit, so both count as "wait and try again" here. A 404 is a miss and 4xx/5xx outside
+#: this set is a hard LyricsFetchError — neither is retried.
+RETRY_STATUSES = frozenset({503, 429})
+
 # A line-level LRC timestamp: [mm:ss], [mm:ss.xx], [mm:ss.xxx], or the [mm:ss:xx] colon variant.
 # Anchored per-scan so we can peel MULTIPLE leading stamps off one line ([00:12][00:47]repeat).
 _LRC_STAMP_RE = re.compile(r"\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?\]")
@@ -292,6 +309,98 @@ def rank_lrclib_candidates(
     return keep[: max(0, limit)]
 
 
+# ── the rate gate: process-global, serialised (mirrors metadata/annotate.py's RateLimiter) ─────────
+class RateLimiter:
+    """One gate every LRCLIB call passes through, one at a time.
+
+    Serialised and process-global for the same reason its MusicBrainz twin is: the limit is per SOURCE
+    IP, so two client instances pacing themselves independently still fire two requests in one second,
+    and with ``ENCORE_WORKER_CONCURRENCY`` > 1 two fetch jobs can reach here at once. An unlocked
+    "has enough time passed?" check lets both read the same timestamp, both decide yes, and both fire.
+    The lock is held across the REQUEST as well as the wait — two requests in flight at once is exactly
+    what is being prevented — and retries happen INSIDE the lock so a throttled box does not pile every
+    queued caller onto the request already being refused.
+
+    ``now``/``sleep`` are injectable purely so tests are hermetic (no wall-clock wait, no network);
+    production shares one gate with the real monotonic clock.
+    """
+
+    def __init__(
+        self,
+        min_interval: float = MIN_INTERVAL_SEC,
+        *,
+        retry_statuses: frozenset[int] | set[int] = RETRY_STATUSES,
+        now: Callable[[], float] | None = None,
+        sleep: Callable[[float], None] | None = None,
+    ) -> None:
+        import threading
+        import time as _time
+
+        self._min_interval = min_interval
+        self._retry_statuses = frozenset(retry_statuses)
+        self._lock = threading.Lock()
+        self._now = now or _time.monotonic
+        self._sleep = sleep or _time.sleep
+        # None, not 0.0: "never called" must be distinguishable from "called at t=0" (0.0 is falsy, so
+        # a truthiness check would skip the very first pacing interval by luck).
+        self._last_call: float | None = None
+        self.calls = 0
+        self.retries = 0
+        self.throttled = 0
+        self.waited_sec = 0.0
+
+    def _pace(self) -> None:
+        if self._last_call is not None:
+            elapsed = self._now() - self._last_call
+            if elapsed < self._min_interval:
+                wait = self._min_interval - elapsed
+                self.waited_sec += wait
+                self._sleep(wait)
+        self._last_call = self._now()
+
+    def run(self, call: Callable[[], tuple[int, str]]) -> tuple[int, str]:
+        """Execute one paced request under the gate, retrying a transient status with backoff.
+
+        Returns the last (status, body) seen — the caller's status ladder decides what a retried-out
+        failure means (LRCLIB: a still-transient status becomes a LyricsFetchError).
+        """
+        with self._lock:
+            status, body = 0, ""
+            for attempt in range(1, MAX_ATTEMPTS + 1):
+                self._pace()
+                self.calls += 1
+                status, body = call()
+                if status not in self._retry_statuses:
+                    return status, body
+                # over the limit / service busy: same remedy either way — wait longer.
+                self.throttled += 1
+                if attempt == MAX_ATTEMPTS:
+                    return status, body
+                self.retries += 1
+                backoff = BACKOFF_BASE_SEC * (2 ** (attempt - 1))
+                self.waited_sec += backoff
+                self._sleep(backoff)
+            return status, body  # unreachable, kept for the type checker's benefit
+
+    def stats(self) -> dict[str, Any]:
+        return {
+            "calls": self.calls,
+            "retries": self.retries,
+            "throttled": self.throttled,
+            "waited_sec": round(self.waited_sec, 2),
+        }
+
+
+#: The process-wide gate. Every client shares it by default — a per-instance limiter would let two
+#: clients in one process burst past a per-IP limit.
+_LIMITER = RateLimiter()
+
+
+def limiter() -> RateLimiter:
+    """The shared gate, for a worker that wants to log how much LRCLIB has been throttling it."""
+    return _LIMITER
+
+
 class LrclibClient:
     """Thin LRCLIB client over /api/get (one best-guess record) and /api/search (every record).
 
@@ -300,15 +409,25 @@ class LrclibClient:
     whole client unit-tests with canned JSON.
     """
 
-    def __init__(self, fetcher: Fetcher | None = None, base_url: str = LRCLIB_BASE) -> None:
+    def __init__(
+        self,
+        fetcher: Fetcher | None = None,
+        base_url: str = LRCLIB_BASE,
+        *,
+        rate_limiter: RateLimiter | None = None,
+    ) -> None:
         self._fetch = fetcher or _urllib_fetch
         self._base = base_url
+        # Every request is paced through the process-global gate; injectable purely so tests are
+        # hermetic. See RateLimiter — production always shares one.
+        self._limiter = rate_limiter or _LIMITER
 
     def get(
         self, artist: str, track: str, duration: float | None = None, album: str | None = None
     ) -> LrclibResult | None:
         url = lrclib_get_url(self._base, artist, track, duration, album)
-        status, body = self._fetch(url, {"User-Agent": USER_AGENT, "Accept": "application/json"})
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        status, body = self._limiter.run(lambda: self._fetch(url, headers))
         if status == 404:
             return None
         if status != 200:
@@ -329,7 +448,8 @@ class LrclibClient:
         swallowing that one class in one place.
         """
         url = lrclib_search_url(self._base, artist, track)
-        status, body = self._fetch(url, {"User-Agent": USER_AGENT, "Accept": "application/json"})
+        headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        status, body = self._limiter.run(lambda: self._fetch(url, headers))
         if status == 404:
             return []
         if status != 200:

@@ -240,3 +240,124 @@ def test_urllib_fetch_still_maps_httperror_to_its_status(monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", http503)
     status, body = ls._urllib_fetch("https://lrclib.net/api/get?x=1", {"User-Agent": ls.USER_AGENT})
     assert status == 503 and body == ""
+
+
+# ── retry + rate gate (issue #474: LRCLIB lacked the retry/rate gate its MusicBrainz twin has) ──────
+#
+# All hermetic: an injected fetcher scripts the transport, an injected clock/sleep drives the gate so
+# nothing touches the wall clock or the network. Mirrors the injectable-clock pattern used to test
+# metadata/annotate.py's RateLimiter.
+
+
+def _scripted_fetcher(statuses):
+    """A fetcher that returns each (status, body) in turn, recording how many times it was called.
+    The last entry repeats once exhausted, so a 3-attempt retry chain over [503,503,503] stays 503."""
+    calls = {"n": 0}
+    seq = list(statuses)
+
+    def fetch(url, headers):
+        i = min(calls["n"], len(seq) - 1)
+        calls["n"] += 1
+        status, body = seq[i]
+        return status, body
+
+    fetch.calls = calls
+    return fetch
+
+
+class _FakeClock:
+    """Injectable monotonic clock + sleep for the gate: sleep advances the clock, so pacing is
+    observable (via elapsed) without any real wait."""
+
+    def __init__(self):
+        self.t = 0.0
+        self.slept = []
+
+    def now(self):
+        return self.t
+
+    def sleep(self, s):
+        self.slept.append(s)
+        self.t += s
+
+
+def _limiter(clock, **kw):
+    return ls.RateLimiter(now=clock.now, sleep=clock.sleep, **kw)
+
+
+def test_retry_gives_up_after_cap_then_raises():
+    # A persistently-transient LRCLIB (503 every attempt) retries to MAX_ATTEMPTS then the client's
+    # status ladder turns the exhausted 503 into a LyricsFetchError — not an infinite loop, not a
+    # swallowed miss. RED on base: base LrclibClient calls _fetch once and 503 raises immediately with
+    # ONE call and no backoff sleeps.
+    clock = _FakeClock()
+    lim = _limiter(clock)
+    fetch = _scripted_fetcher([(503, "")] * 5)
+    client = ls.LrclibClient(fetcher=fetch, rate_limiter=lim)
+    with pytest.raises(ls.LyricsFetchError):
+        client.get("Lady Gaga", "Telephone")
+    assert fetch.calls["n"] == ls.MAX_ATTEMPTS  # tried exactly the cap, no more
+    assert lim.stats()["throttled"] == ls.MAX_ATTEMPTS
+    assert lim.stats()["retries"] == ls.MAX_ATTEMPTS - 1
+    # backoff between attempts: BACKOFF_BASE * 2**0, *2**1 (no sleep after the final attempt)
+    assert clock.slept == [ls.BACKOFF_BASE_SEC, ls.BACKOFF_BASE_SEC * 2]
+
+
+def test_retry_recovers_on_a_later_attempt():
+    # A transient 503 that clears on the 2nd attempt yields the eventual 200 body — the retry RECOVERS
+    # the lyrics instead of losing them. RED on base: base retries nothing, so the first 503 raises.
+    clock = _FakeClock()
+    lim = _limiter(clock)
+    body = '{"id":1,"syncedLyrics":"[00:01.00]hi","instrumental":false}'
+    fetch = _scripted_fetcher([(503, ""), (200, body)])
+    client = ls.LrclibClient(fetcher=fetch, rate_limiter=lim)
+    res = client.get("Lady Gaga", "Telephone")
+    assert res is not None and res.has_synced
+    assert fetch.calls["n"] == 2
+    assert lim.stats()["retries"] == 1
+
+
+def test_429_is_a_retryable_status():
+    # 429 (Too Many Requests) is LRCLIB's documented rate-limit signal and must retry like 503. On
+    # base a 429 is a non-200 non-404 and raises on the first call with no retry.
+    clock = _FakeClock()
+    lim = _limiter(clock)
+    fetch = _scripted_fetcher([(429, ""), (429, ""), (200, "[]")])
+    client = ls.LrclibClient(fetcher=fetch, rate_limiter=lim)
+    assert client.search("x", "y") == []  # empty array = a clean miss after recovery
+    assert fetch.calls["n"] == 3
+    assert lim.stats()["throttled"] == 2
+
+
+def test_rate_gate_paces_successive_calls():
+    # The gate paces two back-to-back successful calls at least MIN_INTERVAL_SEC apart (injected clock,
+    # no real wait). On base there is no gate at all, so nothing sleeps between calls.
+    clock = _FakeClock()
+    lim = _limiter(clock)
+    fetch = _scripted_fetcher([(404, "")])  # 404 = miss, no retry, so each call is exactly one fetch
+    client = ls.LrclibClient(fetcher=fetch, rate_limiter=lim)
+    assert client.get("a", "b") is None  # first call: no prior timestamp, no pacing wait
+    assert clock.slept == []
+    assert client.get("a", "b") is None  # second call within the interval: paced
+    assert clock.slept == [pytest.approx(ls.MIN_INTERVAL_SEC)]
+    assert lim.stats()["waited_sec"] == pytest.approx(ls.MIN_INTERVAL_SEC)
+
+
+def test_non_retryable_5xx_still_raises_immediately():
+    # A 500 is NOT in RETRY_STATUSES: it must raise on the first attempt with no backoff, so a hard
+    # server error is not mistaken for a transient one and hammered.
+    clock = _FakeClock()
+    lim = _limiter(clock)
+    fetch = _scripted_fetcher([(500, "")])
+    client = ls.LrclibClient(fetcher=fetch, rate_limiter=lim)
+    with pytest.raises(ls.LyricsFetchError):
+        client.search("x", "y")
+    assert fetch.calls["n"] == 1
+    assert clock.slept == []
+
+
+def test_default_client_shares_the_process_global_gate():
+    # A client built without an explicit limiter uses the shared _LIMITER — the whole point of a
+    # per-IP gate is that every client in the process paces through the same one.
+    assert ls.LrclibClient()._limiter is ls.limiter()
+    assert ls.limiter() is ls._LIMITER
