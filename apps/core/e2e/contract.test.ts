@@ -230,6 +230,25 @@ function selectorResolves(selector: string, sources: string[]): boolean | null {
 		if (parts.length === 0) return null;
 		const partResults = parts.map((part): boolean | null => {
 			if (part.startsWith('.')) {
+				// A class-compound part may carry a trailing UNQUOTED attribute selector, e.g. the
+				// `.err[role=alert]` the p8-presence probe reads (a class + `[role=alert]`, no quotes).
+				// Peel that suffix off and require BOTH the class token(s) AND the attribute's source
+				// anchor: `[name=value]` renders as `name="value"` in source, so `name="value` is the
+				// anchor — the same shape the quoted `[name="value"]` branch above resolves. Requiring
+				// the real anchor (not merely accepting the shape) is what keeps this non-vacuous: a
+				// `.err[role=nope]` must still fail because no source carries `role="nope`.
+				// Accept either spelling of the value — `[role=alert]` (the p8 probe's unquoted form) and
+				// `[role="alert"]` — since both render as `role="alert"` in source. The `["']?` bracket a
+				// value that carries no quote of its own, so the capture is the bare value in both cases.
+				const attrMatch = /^(\.[A-Za-z][\w.-]*)?\[([a-zA-Z-]+)(\^?)=["']?([^"'\]]+)["']?\]$/.exec(part);
+				if (attrMatch) {
+					const [, classPortion, attrName, prefix, attrValue] = attrMatch;
+					void prefix; // `^=`/`=` share the `name="value` anchor, as in the quoted branch above.
+					const anchorOk = sources.some((s) => s.includes(`${attrName}="${attrValue}`));
+					if (!anchorOk) return false;
+					const classTokens = (classPortion ?? '').split('.').filter(Boolean);
+					return classTokens.every((tok) => sources.some((s) => classPresent(s, tok)));
+				}
 				const tokens = part.split('.').filter(Boolean);
 				if (tokens.length === 0) return null;
 				return tokens.every((tok) => sources.some((s) => classPresent(s, tok)));
@@ -513,11 +532,10 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	'probes/p8-presence-resilience.mjs': [
 		// Tag-only / attribute-fragment reads, deliberately NOT selectors moved to SEL:
 		'[aria-label=', // a truncated attribute-selector fragment built by string concat, not a whole selector
-		'button', // a bare tag query for "any button", not a UI-specific hook
-		// DEFERRED to the #494 tail follow-up: '.err[role=alert]' is a class+unquoted-attribute compound the
-		// SEL-resolution guard's attribute matcher (which requires quoted values) cannot model, so it cannot
-		// move to SEL as-is. Tracked, not silenced.
-		'.err[role=alert]'
+		'button' // a bare tag query for "any button", not a UI-specific hook
+		// '.err[role=alert]' MIGRATED to SEL.joinError in #544 (Group B of the #513 per-driver split):
+		// selectorResolves now models a class + unquoted-attribute compound, so the probe reads it from
+		// the contract instead of spelling it out here.
 	],
 	'probes/tv-audiocontext-resume.mjs': ['audio,video']
 };
@@ -659,4 +677,31 @@ test('#513 Group A — p4-transport combinator/descendant selectors moved from K
 	expect(selectorResolves('.slot.visible marquee', sources)).toBe(false);
 	expect(selectorResolves('.seekrow .track > blink', sources)).toBe(false);
 	expect(selectorResolves('.nope-not-a-class audio', sources)).toBe(false);
+});
+
+test('#544 Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS into SEL', () => {
+	// Half 1: the class + UNQUOTED-attribute compound is no longer quarantined for p8-presence. On base
+	// it sat in KNOWN_OFFENDERS (the probe spelled it out); after the migration the only honest place it
+	// may live is SEL, so KNOWN_OFFENDERS must no longer wave it through.
+	const p8 = KNOWN_OFFENDERS['probes/p8-presence-resilience.mjs'] ?? [];
+	expect(p8).not.toContain('.err[role=alert]');
+
+	// Half 2: it now lives in SEL with its exact value, and the resolver — extended here to model a
+	// class + unquoted-attribute compound (`[role=alert]`, not `[role="alert"]`) — resolves it against
+	// real source. The anchor is `<div class="err" role="alert">` in routes/join/+page.svelte, so a
+	// green false/null here would mean the SEL entry points at markup no component renders.
+	expect(SEL.joinError).toBe('.err[role=alert]');
+	const sources = guardSources();
+	expect(selectorResolves(SEL.joinError, sources)).toBe(true);
+	// The QUOTED spelling of the same selector resolves too — the source anchor `role="alert` is shared.
+	expect(selectorResolves('.err[role="alert"]', sources)).toBe(true);
+
+	// The resolver extension must be REAL, not a widening that accepts any `.class[attr=val]` shape:
+	//   • a wrong ATTRIBUTE VALUE must still fail — no source carries `role="nope`;
+	//   • a wrong CLASS must still fail — no component renders a `.nope-not-a-class`;
+	//   • a wrong ATTRIBUTE NAME must still fail — the `data-x="alert` anchor is not in source.
+	// This is what keeps the ban non-vacuous: the compound only passes when BOTH real anchors exist.
+	expect(selectorResolves('.err[role=nope]', sources)).toBe(false);
+	expect(selectorResolves('.nope-not-a-class[role=alert]', sources)).toBe(false);
+	expect(selectorResolves('.err[data-x=alert]', sources)).toBe(false);
 });

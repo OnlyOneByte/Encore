@@ -48,6 +48,13 @@ export const SEL = {
 	swatch: (colourName: string) => ({ role: 'radio' as const, name: colourName }),
 	hueSlider: 'input[type="range"]',
 	submit: /Start singing/,
+	/*
+	 * The join-page error announcement: `<div class="err" role="alert">` (routes/join/+page.svelte).
+	 * A class + UNQUOTED attribute compound the p8-presence probe reads to tell a duplicate-name
+	 * rejection (form sits on /join with this alert) from a clean join (lands on / with the search box).
+	 * Migrated here from KNOWN_OFFENDERS as Group B of the #513 per-driver SEL split (tail of #494).
+	 */
+	joinError: '.err[role=alert]',
 
 	// ── phone remote ──────────────────────────────────────────────────────
 	search: 'input[aria-label="Search a song or artist"]',
