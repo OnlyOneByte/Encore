@@ -159,12 +159,43 @@ test('@keyframes animate only GPU-composited properties', () => {
 function stripComments(css: string): string {
 	return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
-// True when a media prelude fires ONLY when motion is allowed, never under Reduce Motion (issue #481).
+// True when a media prelude fires ONLY when motion is allowed, never under Reduce Motion
+// (issue #481). A media query LIST is an OR (issue #590): `@media (prefers-reduced-motion:
+// no-preference), (min-width: 700px)` fires when EITHER branch matches, so on any >=700px viewport
+// it fires under Reduce Motion — exactly the state the block must not fire in, and every TV is
+// >=700px wide. A list is therefore motion-allowed only when EVERY top-level-comma branch is;
+// one reduce-hostile branch (order irrelevant) disqualifies the whole list.
 function firesOnlyWhenMotionAllowed(prelude: string): boolean {
-	const negated = /\bnot\b/.test(prelude);
-	if (/prefers-reduced-motion:\s*no-preference/.test(prelude)) return !negated;
-	if (/prefers-reduced-motion:\s*reduce/.test(prelude)) return negated;
+	return splitTopLevelCommas(prelude).every(branchFiresOnlyWhenMotionAllowed);
+}
+// One comma-branch of a media prelude. The `not` test is scoped to the prefers-reduced-motion FEATURE
+// query, not the whole branch (issue #590 §3): `(prefers-reduced-motion: no-preference) and
+// (not (min-width: 700px))` fires only when motion is allowed and must stay accepted, so a `not(...)`
+// on an unrelated feature must not flip the verdict.
+function branchFiresOnlyWhenMotionAllowed(branch: string): boolean {
+	const noPref = /(\bnot\b\s*\(\s*)?prefers-reduced-motion:\s*no-preference/.exec(branch);
+	if (noPref) return noPref[1] === undefined; // `not (…no-preference…)` inverts to a reduce-carrier
+	const reduce = /(\bnot\b\s*\(\s*)?prefers-reduced-motion:\s*reduce/.exec(branch);
+	if (reduce) return reduce[1] !== undefined; // `not (…reduce…)` fires when motion is allowed
 	return false;
+}
+// Split a media prelude on TOP-LEVEL commas only — commas inside `(…)` (a value list, a `not(...)`
+// group) are not query-list separators.
+function splitTopLevelCommas(prelude: string): string[] {
+	const parts: string[] = [];
+	let depth = 0;
+	let start = 0;
+	for (let i = 0; i < prelude.length; i++) {
+		const c = prelude[i];
+		if (c === '(') depth++;
+		else if (c === ')') depth--;
+		else if (c === ',' && depth === 0) {
+			parts.push(prelude.slice(start, i));
+			start = i + 1;
+		}
+	}
+	parts.push(prelude.slice(start));
+	return parts;
 }
 function noPreferenceSpans(css: string): Array<[number, number]> {
 	const spans: Array<[number, number]> = [];
@@ -302,10 +333,23 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		const rules = ruleBlocks(css);
 		const resetSelectors = reduceResetSelectors(css, rules);
 		// match `animation:` / `animation-name:` shorthand declarations (not @keyframes, not the guard media queries)
-		for (const m of css.matchAll(/(^|[;{\s])(?:-(?:webkit|moz)-)?animation(-name)?:\s*([^;}]+)/g)) {
+		// The boundary class carries `"` and `'` so an inline `style="animation: …"` in markup is seen
+		// (issue #590 §2): the char before `animation` in a style attribute is the opening/closing quote
+		// of a prior declaration or the attribute itself, which start-of-string, `;`, `{` and whitespace
+		// all miss. When that boundary char is a quote the declaration lives in an inline attribute, which
+		// no `@media` wrapper or reduce reset can ever cover — so it is reported directly.
+		for (const m of css.matchAll(/(^|[;{"'\s])(?:-(?:webkit|moz)-)?animation(-name)?:\s*([^;}]+)/g)) {
 			const value = m[3]!.trim();
 			if (/^none\b/.test(value)) continue; // the reset itself
 			const at = m.index! + m[1]!.length;
+			if (m[1] === '"' || m[1] === "'") {
+				// an inline style attribute — no media wrapper or reduce reset applies to it, so it can
+				// never honour Reduce Motion (issue #590 §2).
+				offenders.push(
+					`${f}: animation in an inline style attribute (cannot honour Reduce Motion): ${value.slice(0, 40)}`
+				);
+				continue;
+			}
 			const guarded = spans.some(([s, e]) => at >= s && at < e);
 			// exempt only when the declaration's OWN selector has a reduce reset (issue #242): a reset
 			// for one selector no longer waves the whole file through. A grouped owner `.a, .b` is
