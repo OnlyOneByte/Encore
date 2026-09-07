@@ -277,8 +277,11 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 	// `(` (method shorthand) OR `=` (an arrow class property — `isHere = (id) => …`), which is the form
 	// #347's blocking review proved escaped a `(`-only collector. A leading access/declaration modifier
 	// (`public`/`private`/`protected`/`readonly`/`static`) is SKIPPED before the name capture — without
-	// that skip the collector harvests the modifier itself as the member name (`public sockets(…)` →
-	// `public`), a false RED unrelated to any membership predicate (#417). Interface fields and private
+	// that skip a leading modifier makes the WHOLE declaration invisible to the collector: the name
+	// candidate becomes the modifier (`public sockets(…)` → `public`), immediately followed by a SPACE
+	// rather than `(`/`=`, so the match fails at that position and the member drops out of the harvested
+	// set entirely — a false EXEMPT (a smuggled member goes unseen by the allowlist), not a false RED
+	// (#417). Interface fields and private
 	// #members are not matched (# prefix, and the interface lives above the class start). Reads names off
 	// the source so the test cannot derive its expectation the way the class does.
 	const MEMBER_MODIFIERS = /(?:public|private|protected|readonly|static)\s+/.source;
@@ -312,8 +315,13 @@ describe('membership: the discredited socket-count predicate stays deleted', () 
 		// (name allowed, comparison text on a different line from `sockets`) and the allowlist (the name is
 		// legitimate). Bind the local to the `sockets` read, then require a return/arrow comparison on that
 		// SAME identifier; `[\s\S]*?` (lazy) lets the two sit on different lines within the method body.
+		// #465: an optional `const b = a;` rebind hop is followed so the two-hop smuggle
+		// (`const a = …sockets…; const b = a; return b > 0;`) also reds; and a negative lookahead on the
+		// binding RHS exempts a list-returning combinator (`const n = […].filter(…).length; return n > 0;`
+		// counts online singers — an honest list op, not a per-singer membership bool), matching the
+		// exemption BARE_MEMBERSHIP_BOOL already carries.
 		const CONST_INDIRECTION_BOOL =
-			/const\s+([A-Za-z_$][\w$]*)\s*=\s*[^\n;]*\bsockets\b[^\n;]*;[\s\S]*?(?:return\s+|=>\s*)\1\s*(?:>\s*0|>=\s*1|!==?\s*0)/;
+			/const\s+([A-Za-z_$][\w$]*)\s*=\s*(?![^\n;]*\.(?:filter|map|some|every|reduce|find)\s*\()[^\n;]*\bsockets\b[^\n;]*;(?:[\s\S]*?const\s+([A-Za-z_$][\w$]*)\s*=\s*\1\s*;)?[\s\S]*?(?:return\s+|=>\s*)(?:\2|\1)\s*(?:>\s*0|>=\s*1|!==?\s*0)/;
 		expect(source).not.toMatch(BARE_MEMBERSHIP_BOOL);
 		expect(source).not.toMatch(BOOLEAN_WRAP);
 		expect(source).not.toMatch(CONST_INDIRECTION_BOOL);
