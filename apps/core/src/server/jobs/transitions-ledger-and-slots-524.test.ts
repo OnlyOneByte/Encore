@@ -102,18 +102,27 @@ function ownedRunning(jobs: JobRepository): Job {
 	return jobs.accept(job.id, null, T0 + 2); // assigned → running
 }
 
-test('#524 step3: COMPLETE/FAIL fire the slot-release hook with the owning worker', () => {
-	for (const [event, patch] of [
-		['COMPLETE', { progressPct: 100, leaseExpiresAt: null, workerId: null }],
-		['FAIL', { error: 'x', leaseExpiresAt: null, workerId: null }]
-	] as const) {
-		const { jobs } = wired();
-		const released: string[] = [];
-		jobs.setSlotReleaseHook((wid) => released.push(wid));
-		const job = ownedRunning(jobs);
-		jobs.transition(job.id, event, patch, T0 + 3);
-		expect(released).toEqual(['w1']); // owner read from the pre-write row
-	}
+test('#524 step3: COMPLETE fires the slot-release hook with the owning worker', () => {
+	const { jobs } = wired();
+	const released: string[] = [];
+	jobs.setSlotReleaseHook((wid) => released.push(wid));
+	const job = ownedRunning(jobs);
+	jobs.transition(job.id, 'COMPLETE', { progressPct: 100, leaseExpiresAt: null, workerId: null }, T0 + 3);
+	expect(released).toEqual(['w1']); // owner read from the pre-write row
+});
+
+// #555: FAIL is NOT a machine-release event, because it is not exclusively worker-reported — the
+// reaper's exhausted-attempts branch and the unservable-TTL branch also call fail(). Releasing off
+// the FAIL event freed the slot of a worker that was still holding the job whenever the reaper fired.
+// The worker-REPORTED terminal FAIL releases explicitly at its one call site (#onFailed's terminal
+// branch), so a raw FAIL transition through the machine must free NOTHING here.
+test('#555 step3: FAIL does NOT fire the machine slot-release hook (released at the worker-report call site)', () => {
+	const { jobs } = wired();
+	const released: string[] = [];
+	jobs.setSlotReleaseHook((wid) => released.push(wid));
+	const job = ownedRunning(jobs);
+	jobs.transition(job.id, 'FAIL', { error: 'x', leaseExpiresAt: null, workerId: null }, T0 + 3);
+	expect(released).toEqual([]); // reaper/unservable fail must not over-free a live worker's slot
 });
 
 test('#524 step3: REJECT (assigned→queued) releases the slot though the patch clears workerId', () => {

@@ -56,17 +56,27 @@ const OUTCOME_FOR_EVENT: Partial<Record<JobEvent, AttemptOutcome>> = {
 const REQUEUE_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'LEASE_EXPIRED', 'RECOVER']);
 
 // The WORKER-REPORTED events that hand a worker's concurrency slot back — a live worker over its WS
-// session declined (REJECT), finished (COMPLETE) or failed (FAIL) the job it held, so its slot is
-// free NOW. Reaper/boot events (LEASE_EXPIRED, RECOVER) are deliberately ABSENT: they fire when the
-// worker is presumed dead and its session gone, so the registry reclaims its slots on the next
-// heartbeat or session drop rather than the machine double-freeing against an in-flight completion.
+// session declined (REJECT) or finished (COMPLETE) the job it held, so its slot is free NOW.
+// Reaper/boot events (LEASE_EXPIRED, RECOVER) are deliberately ABSENT: they fire when the worker is
+// presumed dead and its session gone, so the registry reclaims its slots on the next heartbeat or
+// session drop rather than the machine double-freeing against an in-flight completion.
+//
+// FAIL is ABSENT even though a worker-reported terminal failure DOES free a live slot, because FAIL
+// is NOT exclusively worker-reported: it also arrives from the reaper's exhausted-attempts branch
+// (reaper.ts, `fail()` on a `running` job whose progress lease lapsed — the worker is presumed dead)
+// and from the unservable-TTL branch (worker-hub.ts, on a still-`queued` job). Keying release off the
+// FAIL event alone freed the slot of a worker that still holds the job whenever the reaper fired,
+// driving an assign/reject storm (issue #555). Release for the worker-reported terminal FAIL is
+// therefore made explicitly at its ONE worker-report call site — `#onFailed`'s terminal branch in
+// worker-hub.ts, guarded by `job.workerId === msg.workerId` so the worker is provably alive — exactly
+// as that handler's retryable branch already does its own explicit release (both are the one true
+// worker report). The reaper's own dead-worker fail then correctly frees nothing: the registry
+// reclaims that slot on the next heartbeat or session drop.
+//
 // CANCEL is ABSENT for the same double-free reason cancel.ts documents: after cancel() clears
 // `workerId` there is no owner to notify, and a proactive release could race a completion that is
-// already in flight — the worker frees its own slot and the registry catches up. Slot accounting
-// thus rides the ENTRY into the released state (fired off the event inside `transition`), so a
-// fifth worker-reported terminal path cannot forget to release, exactly as settleGatesForFailedJob
-// centralised gate-settling (#90).
-const SLOT_RELEASING_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'COMPLETE', 'FAIL']);
+// already in flight — the worker frees its own slot and the registry catches up.
+const SLOT_RELEASING_EVENTS: ReadonlySet<JobEvent> = new Set<JobEvent>(['REJECT', 'COMPLETE']);
 
 export class JobRepository {
 	#db: DB;
