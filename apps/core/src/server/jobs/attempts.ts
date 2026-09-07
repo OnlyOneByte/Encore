@@ -12,7 +12,7 @@
 // bypasses the helpers and calls `transition` directly is invisible here, which is why the helpers
 // are the only supported lifecycle API.
 
-import { and, asc, desc, eq, isNotNull, isNull } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, isNotNull, isNull, sql } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { jobAttempts } from '../db/schema';
 import { ulid, type AttemptOutcome, type Job, type JobAttempt } from '@encore/shared';
@@ -158,6 +158,34 @@ export class AttemptLedger {
 			.orderBy(desc(jobAttempts.finishedAt))
 			.limit(limit)
 			.all();
+	}
+
+	/**
+	 * Sealed attempts finished at or after `sinceMs`, newest first, capped at `limit`. A TIME window
+	 * rather than a bare row count: the row-count window (`allFinished`) silently dropped a cook's
+	 * older steps at the cap, so the cook straddling the boundary reported `complete: true` and
+	 * measured its span from only the surviving rows — understating that cook's duration (#472). The
+	 * caller pairs the window edge (`sinceMs`) with `perCook(rows, sinceMs)` so a boundary-straddling
+	 * cook is flagged `clipped` and excluded rather than counted low.
+	 */
+	finishedSince(sinceMs: number, limit = 20_000): JobAttempt[] {
+		return this.#db
+			.select()
+			.from(jobAttempts)
+			.where(and(isNotNull(jobAttempts.outcome), gte(jobAttempts.finishedAt, sinceMs)))
+			.orderBy(desc(jobAttempts.finishedAt))
+			.limit(limit)
+			.all();
+	}
+
+	/** How many sealed attempts exist in total — the honest denominator behind a windowed sample. */
+	countFinished(): number {
+		const row = this.#db
+			.select({ n: sql<number>`count(*)` })
+			.from(jobAttempts)
+			.where(isNotNull(jobAttempts.outcome))
+			.all();
+		return row[0]?.n ?? 0;
 	}
 
 	#findOpen(jobId: string): JobAttempt | undefined {

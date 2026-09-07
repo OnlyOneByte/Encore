@@ -230,3 +230,48 @@ describe('sample-size honesty', () => {
 		expect(isAnecdote(CONFIDENT_SAMPLE)).toBe(false);
 	});
 });
+
+describe('#472 — the read window no longer understates the boundary cook', () => {
+	// A cook whose earlier steps finished before the window opened is handed to perCook missing those
+	// rows. Its span would then be measured from the earliest SURVIVING step (too short) while still
+	// passing the sealed===list completeness test over the rows that happened to be fetched. That is
+	// the silent under-count. The window edge lets perCook detect and refuse it.
+	const boundary = T0 + 100_000; // the older edge of the read window
+
+	function clippedCook(): JobAttempt[] {
+		// The real cook ran fetch (enqueued at T0) then stems; only the stems row survived the window.
+		return [
+			attempt({ jobType: 'stems', cookId: 'boundary', enqueuedAt: T0, finishedAt: boundary + 60_000 })
+		];
+	}
+
+	it('flags a cook that began before the window as clipped, and never complete', () => {
+		const [c] = perCook(clippedCook(), boundary);
+		expect(c.clipped).toBe(true);
+		expect(c.complete).toBe(false);
+	});
+
+	it('keeps a clipped boundary cook out of the end-to-end aggregate', () => {
+		// Base behaviour (no window arg) counts the truncated cook and averages its understated span in.
+		// With the window edge, the aggregate refuses it rather than reporting a low number.
+		const stats = e2e(clippedCook(), boundary);
+		expect(stats.n).toBe(0);
+	});
+
+	it('still reports a cook that lives entirely inside the window as complete', () => {
+		const inside = [
+			attempt({ jobType: 'fetch', cookId: 'inside', enqueuedAt: boundary + 1_000, startedAt: boundary + 1_000, finishedAt: boundary + 5_000 }),
+			attempt({ jobType: 'stems', cookId: 'inside', enqueuedAt: boundary + 5_000, startedAt: boundary + 5_000, finishedAt: boundary + 65_000 })
+		];
+		const [c] = perCook(inside, boundary);
+		expect(c.clipped).toBe(false);
+		expect(c.complete).toBe(true);
+		expect(c.totalMs).toBe(64_000);
+		expect(e2e(inside, boundary).n).toBe(1);
+	});
+
+	it('with no window (whole ledger read) nothing is clipped', () => {
+		const [c] = perCook(clippedCook());
+		expect(c.clipped).toBe(false);
+	});
+});

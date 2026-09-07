@@ -60,6 +60,11 @@ class JobSpec:
     params: dict
     # where the worker writes outputs (the shared /media volume in single-box mode)
     media_dir: str
+    # The cook this job belongs to: the trace id the core mints (repository.ts) and threads through a
+    # chained run, so the worker can correlate its own logs to the cook the operator sees on
+    # /metrics/<mediaId> (#472). Empty for a core that predates carrying it on the assign frame; a
+    # trailing default so it does not disturb the positional constructors in the test suite.
+    cook_id: str = ""
 
 
 class Processor(Protocol):

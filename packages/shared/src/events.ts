@@ -233,7 +233,7 @@ export interface JobParams {
 // core -> worker
 export type WorkerCommand =
   | { type: 'worker:welcome'; heartbeatIntervalSec: number; ackTimeoutSec: number; mediaStore: MediaStoreConfig }
-  | { type: 'job:assign'; jobId: string; mediaId: string; jobType: JobType; sourceUri: string; params: JobParams }
+  | { type: 'job:assign'; jobId: string; cookId: string; mediaId: string; jobType: JobType; sourceUri: string; params: JobParams }
   | { type: 'job:cancel'; jobId: string; reason: string }
   | { type: 'ping' };
 

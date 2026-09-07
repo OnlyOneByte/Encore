@@ -462,6 +462,10 @@ export class WorkerHub {
 			this.#d.toWorker(workerId, {
 				type: 'job:assign',
 				jobId: job.id,
+				// The cook this job belongs to, so the worker can tag its own logs and notes with the
+				// same trace id the operator sees on /metrics/<mediaId> (#472). jobId is the span id;
+				// cookId is the trace id across a chained fetch->stems->align run.
+				cookId: job.cookId,
 				mediaId: job.mediaId,
 				jobType: job.jobType,
 				sourceUri: media ? sourceUriFor(media, this.#d.getSettings?.()?.global.defaultFetcher) : '',
