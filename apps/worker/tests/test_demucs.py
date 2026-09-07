@@ -563,7 +563,7 @@ def test_engine_for_mlx_backend_refuses_rather_than_silently_building_torch():
     from src.retry_policy import PermanentError
     from src.separation.engines import engine_for
 
-    with pytest.raises(PermanentError, match="mlx backend selected but the demucs-mlx engine is not implemented"):
+    with pytest.raises(PermanentError, match="demucs-mlx engine is not implemented"):
         engine_for("demucs", backend="mlx")
     # torch (and the None default) still build the real engine, so the portable path is untouched.
     assert engine_for("demucs", backend="torch").backend == "torch"
@@ -574,9 +574,7 @@ def test_engine_for_mlx_backend_refuses_rather_than_silently_building_torch():
 async def test_a_torch_stems_cook_records_torch_because_torch_ran(tmp_path):
     """End-to-end: a stems cook resolved to the torch backend records `facts.backend == 'torch'`, and
     the value came from the backend threaded through stems_runner, not a constant."""
-    runner = fake_runner(
-        {"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]}
-    )
+    runner = fake_runner({"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]})
     proc = plans.stems_runner(runner=runner, backend="torch")
     events = await drain(proc, spec(tmp_path))
     completes = [e for e in events if isinstance(e, CompleteResult)]
@@ -597,9 +595,11 @@ async def test_an_mlx_resolved_stems_cook_fails_loudly_instead_of_running_torch(
 
     ran: list[str] = []
 
+    inner = fake_runner({"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]})
+
     async def tracking_runner(argv):
         ran.append(argv[0])
-        async for line in fake_runner({"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]})(argv):
+        async for line in inner(argv):
             yield line
 
     proc = plans.stems_runner(runner=tracking_runner, backend="mlx")

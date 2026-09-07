@@ -127,12 +127,32 @@ class MlxDemucsEngine:
     """
 
     id = "demucs"
+    backend = "mlx"
 
     def __init__(self, **_kwargs: object) -> None:
         raise PermanentError(
             "mlx backend selected but the demucs-mlx engine is not implemented; "
             "set ENCORE_SEPARATOR_BACKEND=torch, or leave it unset to auto-select an available backend"
         )
+
+    # The SeparatorEngine protocol members below are declared so this class conforms to the seam's type
+    # (engine_for returns a SeparatorEngine), but they are UNREACHABLE: __init__ raises, so no instance
+    # ever exists to call them. They exist to make "this is a real engine slot, not yet implemented"
+    # a type-checked statement rather than a comment.
+    def resolve_model(self, params: dict) -> str:  # pragma: no cover - construction always raises
+        raise PermanentError("demucs-mlx engine is not implemented")
+
+    def input_wav(self, work: str) -> str:  # pragma: no cover - construction always raises
+        raise PermanentError("demucs-mlx engine is not implemented")
+
+    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:  # pragma: no cover
+        raise PermanentError("demucs-mlx engine is not implemented")
+
+    def parse_progress(self, line: str) -> int | None:  # pragma: no cover - construction always raises
+        raise PermanentError("demucs-mlx engine is not implemented")
+
+    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]:  # pragma: no cover
+        raise PermanentError("demucs-mlx engine is not implemented")
 
 
 class RoformerEngine:

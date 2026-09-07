@@ -208,7 +208,6 @@ def stems_runner(
     ytdlp_bin: str = "yt-dlp",
     flac_level: int = 8,
     device: str | None = None,
-    backend: str | None = None,
     jobs: int | None = None,
     overlap: float | None = None,
     segment: int | None = None,
@@ -219,11 +218,6 @@ def stems_runner(
     The engine is chosen per JOB from `params.engine` (plan selection, §5.2c), so one runner serves both
     demucs and roformer cooks — `EngineRouter`'s dispatch collapsed into `engine_for` inside the Separate
     step. Passing `engine` overrides that entirely, which is how a test drives a fake separator.
-
-    `backend` is the hardware backend `backends.resolve_backend` resolved for this worker (torch/mlx),
-    resolved once in `dial_home`. It is threaded into `engine_for` so it drives the engine that actually
-    runs and is recorded into `facts.backend` — before #119 the resolved backend reached only a startup
-    print, so a Mac announcing `mlx` still ran torch demucs and recorded `torch`.
     """
     from .runtime.runner import PlanRunner
     from .separation.engines import engine_for
@@ -234,7 +228,6 @@ def stems_runner(
     def pick(job: Any, engines: ResolvedEngines) -> LinearPlan:
         eng = engine or engine_for(
             engines.separator,
-            backend=backend,
             demucs_model=demucs_model or None,
             demucs_bin=demucs_bin,
             device=device,
