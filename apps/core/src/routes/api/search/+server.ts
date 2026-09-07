@@ -70,15 +70,20 @@ export const GET: RequestHandler = async ({ url }) => {
 		return json({ ready: [], cooking: [], results: [], recent, popular });
 	}
 
-	const [yt, local] = await Promise.all([
-		only === 'local' ? [] : safeSearch(app.youtube, q),
-		only === 'youtube' ? [] : safeSearch(app.localLibrary, q)
+	const [yt, local, spotify] = await Promise.all([
+		only === 'local' || only === 'spotify' ? [] : safeSearch(app.youtube, q),
+		only === 'youtube' || only === 'spotify' ? [] : safeSearch(app.localLibrary, q),
+		// Spotify is a SEARCH / metadata source only (annotator pattern): its hits surface clean
+		// canonical artist/title/duration and appear in the merged output, but their bytes are never
+		// pulled from Spotify — a spotify-sourced media is not cookable (see requestMakeKaraoke, and
+		// fetcherFor which refuses it). No-op when creds are unset; safeSearch tolerates a dead source.
+		only === 'youtube' || only === 'local' ? [] : safeSearch(app.spotify, q)
 	]);
 
 	// Materialize every hit into a queue-able Media. Recognising a song we have SEEN BEFORE (by its
 	// origin identity) is what keeps a cooked song from reappearing as a second, raw row — see
 	// Media.sourceRef, which is immutable for exactly this reason.
-	const materialized: Media[] = [...local, ...yt].map((r) => {
+	const materialized: Media[] = [...local, ...yt, ...spotify].map((r) => {
 		const existing = [...app.mediaById.values()].find((m) => m.source === r.source && m.sourceRef === r.sourceRef);
 		if (existing) return refreshDisplayFields(existing, r, (m) => app.media.upsert(m));
 		const media = resultToMedia(ulid(), r);

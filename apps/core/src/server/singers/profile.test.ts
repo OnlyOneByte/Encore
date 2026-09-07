@@ -12,6 +12,7 @@ import { RoomRepository } from '../rooms/repository';
 import { SINGER_COLORS, type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
+import { SpotifyResolver } from '../media/spotify-resolver';
 import { createPopularityTracker } from '../media/popularity';
 import { MediaRepository } from '../media/repository';
 import { JobRepository } from '../jobs/repository';
@@ -56,6 +57,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		media: new MediaRepository(db),
 		localLibrary: new LocalLibrary(),
 		youtube: new YouTubeResolver(async () => []),
+		spotify: new SpotifyResolver(async () => []),
 		popularity: createPopularityTracker(),
 		mediaStore: new LocalMediaStore(),
 		mediaStoreConfig: { kind: 'local' },
