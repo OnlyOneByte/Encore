@@ -62,7 +62,7 @@ export class AuthoritativeState {
 
 	/** Seed from durable storage on boot (does NOT bump rev or schedule a flush). */
 	hydrate(entries: QueueEntry[], playback: PlaybackState | null): void {
-		// drop terminal (done/skipped) rows and normalize the room's ordering on load
+		// drop terminal (done) rows and normalize the room's ordering on load
 		this.#entries = assignSeqs(entries.filter((e) => !isTerminal(e)), this.#orderingOf());
 		// Seed the monotonic addedAt counter above every stamp we just loaded (terminal rows filtered
 		// above are still counted here — a later add must not collide with a done entry's stamp either).
