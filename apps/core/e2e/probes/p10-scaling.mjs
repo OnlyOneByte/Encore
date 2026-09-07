@@ -269,11 +269,11 @@ async function measureTv(label, w, h) {
 	const contrastPairs = await page.evaluate(`(() => {
 		// Contrast target pairs [foreground, background]. In-scope selectors for #547 (Group E) are
 		// interpolated from SEL so the guard reads them from the contract; out-of-scope descendant
-		// selectors (".badqr-b b", ".lower-third .ls-artist/.ls-key", ".attract .brand/.idle-title/
-		// .idle-url", ".corner .t/.u") keep their literals — they carry a space so the guard's shape
-		// rule never flagged them, and they belong to selectors tracked separately, not this group.
-		// ".roster" stays a literal: it is a quarantined dead selector (no ".roster" anchor exists in
-		// any component), so it cannot enter SEL — see KNOWN_OFFENDERS in contract.test.ts.
+		// selectors (".badqr-b b", ".lower-third .ls-artist/.ls-key", ".attract .brand/.idle-url",
+		// ".corner .t/.u") keep their literals — they carry a space so the guard's shape rule never
+		// flagged them, and they belong to selectors tracked separately, not this group. The attract
+		// instruction line reads SEL.stageHeadline (".idle-head") — #682 repointed it from the dead
+		// ".attract .idle-title" (a class no component declares), and dropped the dead ".roster" target.
 		const targets = [
 			[${JSON.stringify(SEL.badQrTitle)}, ${JSON.stringify(SEL.badQrTitle)}],
 			[${JSON.stringify(SEL.badQrBody)}, ${JSON.stringify(SEL.badQrBody)}],
@@ -286,11 +286,10 @@ async function measureTv(label, w, h) {
 			[${JSON.stringify(SEL.upLabel)}, ${JSON.stringify(SEL.upLabel)}],
 			[${JSON.stringify(SEL.upSong)}, ${JSON.stringify(SEL.upSong)}],
 			['.attract .brand', ${JSON.stringify(SEL.attract)}],
-			['.attract .idle-title', ${JSON.stringify(SEL.attract)}],
+			[${JSON.stringify(SEL.stageHeadline)}, ${JSON.stringify(SEL.attract)}],
 			['.attract .idle-url', ${JSON.stringify(SEL.attract)}],
 			['.corner .t', 'body'],
-			['.corner .u', 'body'],
-			['.roster', 'body']
+			['.corner .u', 'body']
 		];
 		const out = {};
 		for (const [selFg, selBg] of targets) {
@@ -426,10 +425,10 @@ async function measureRemote(label, w, h) {
 	const contrastPairs = await page.evaluate(`(() => {
 		// Remote contrast targets. #547 (Group E) interpolates the two in-scope class hooks from SEL
 		// (.chip -> SEL.chip, .card -> SEL.dashCard); bare tags (h1/h2/p/a) and descendant selectors
-		// (.searchbox input, .row .*, .qrow .t) are not selector hooks the guard tracks here. '.filter-chip'
-		// and '.b' stay literals: both are quarantined DEAD selectors (no matching class in any component),
-		// so they cannot enter SEL — see KNOWN_OFFENDERS in contract.test.ts.
-		const targets = ['h1','h2','.searchbox input','.searchbox button','.row .t','.row .a','.row .add','.row .sing','.qrow .t','.filter-chip',${JSON.stringify(SEL.chip)},${JSON.stringify(SEL.dashCard)},'p','.b','a'];
+		// (.searchbox input, .row .*, .qrow .t) are not selector hooks the guard tracks here. #682
+		// repointed the dead '.row .a' to '.row .byline' (SongRow renders <div class="byline">, never .a)
+		// and dropped the dead '.filter-chip' and '.b' targets (no component declares either class).
+		const targets = ['h1','h2','.searchbox input','.searchbox button','.row .t','.row .byline','.row .add','.row .sing','.qrow .t',${JSON.stringify(SEL.chip)},${JSON.stringify(SEL.dashCard)},'p','a'];
 		const out = {};
 		for (const sel of targets) {
 			const els = [...document.querySelectorAll(sel)];
