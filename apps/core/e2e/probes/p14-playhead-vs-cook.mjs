@@ -27,6 +27,23 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #559, following the
+ * #557/#558 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they cannot
+ * drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped results
+ * are cast at the call site.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {import('node:child_process').ChildProcess} Child
+ *
+ * A media row as returned by /api/search (the fields this probe reads).
+ * @typedef {{ id: string, title: string, source: string }} Media
+ *
+ * The audio-element readout evaluated in the TV page by READ.
+ * @typedef {{ t: number, src: string, bytes: number, paused: boolean }} Readout
+ */
+
 const PORT = Number(process.env.PORT ?? 5241);
 const CDP_PORT = Number(process.env.CDP_PORT ?? PORT + 100);
 const BASE = `http://127.0.0.1:${PORT}`;
@@ -34,7 +51,13 @@ const SCRATCH = process.env.SCRATCH ?? join('/tmp', `e2e-${PORT}`);
 const MEDIA_DIR = join(SCRATCH, 'media');
 const CORE = resolve(new URL('../..', import.meta.url).pathname);
 
+/** @type {Child[]} */
 const children = [];
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {import('node:child_process').SpawnOptions} [opts]
+ */
 function launch(cmd, args, opts = {}) {
 	const p = spawn(cmd, args, { stdio: 'ignore', ...opts });
 	children.push(p);
@@ -44,11 +67,12 @@ function stopChildren() {
 	while (children.length) {
 		const p = children.pop();
 		try {
-			p.kill('SIGKILL');
+			p?.kill('SIGKILL');
 		} catch {}
 	}
 }
 process.on('exit', stopChildren);
+/** @param {string} m @returns {never} */
 const bail = (m) => {
 	console.error(`\nENVIRONMENT: ${m}`);
 	process.exit(2);
@@ -57,7 +81,7 @@ const bail = (m) => {
 function findChromium() {
 	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
 	for (const b of ['chromium-1232', 'chromium-1228']) {
-		const p = join(process.env.HOME, '.cache', 'ms-playwright', b, 'chrome-linux', 'chrome');
+		const p = join(process.env.HOME ?? '', '.cache', 'ms-playwright', b, 'chrome-linux', 'chrome');
 		if (existsSync(p)) return p;
 	}
 	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
@@ -66,6 +90,7 @@ function findChromium() {
 	return null;
 }
 
+/** @param {string} path @returns {Promise<any>} */
 const jget = async (path) => (await fetch(BASE + path)).json();
 
 // ── boot a private instance ────────────────────────────────────────────────
@@ -108,23 +133,30 @@ await sleep(1500);
 // Search matches on title, so one query does not surface the whole seeded library. Union across the
 // four demo titles (seed-media.mjs) and de-duplicate by id.
 const QUERIES = ['caroline', 'believin', 'rhapsody', 'prayer'];
+/** @type {Map<string, Media>} */
 const found = new Map();
 for (const q of QUERIES) {
 	const d = await jget(`/api/search?q=${q}`);
-	for (const m of [...(d.ready ?? []), ...(d.results ?? [])]) {
+	for (const m of /** @type {Media[]} */ ([...(d.ready ?? []), ...(d.results ?? [])])) {
 		if (m.source === 'local' && !found.has(m.id)) found.set(m.id, m);
 	}
 }
 const uniq = [...found.values()];
 if (uniq.length < 2) bail(`need 2 distinct local fixtures, found ${uniq.length}`);
 const [songA, songB] = uniq;
+/** @param {Media} song @returns {string} */
 const qOf = (song) => QUERIES.find((q) => song.title.toLowerCase().includes(q)) ?? QUERIES[0];
 const qA = qOf(songA);
 const qB = qOf(songB);
 /** Has this media id become playable? Asked per-title, for the same reason the fixtures were. */
+/**
+ * @param {string} id
+ * @param {string} q
+ * @returns {Promise<boolean>}
+ */
 async function isReady(id, q) {
 	const d = await jget(`/api/search?q=${q}`);
-	return (d.ready ?? []).some((m) => m.id === id);
+	return (d.ready ?? []).some(/** @param {Media} m */ (m) => m.id === id);
 }
 console.log(`fixture A (plays): ${songA.title} [${songA.id}]`);
 console.log(`fixture B (cooks): ${songB.title} [${songB.id}]\n`);
@@ -145,12 +177,15 @@ launch(chromium, [
 ]);
 await sleep(2500);
 
-let browser;
+/** @type {Browser | undefined} */
+let browserMaybe;
 try {
-	browser = await connect(CDP_PORT);
+	browserMaybe = await connect(CDP_PORT);
 } catch (err) {
-	bail(`could not attach to Chromium: ${err.message}`);
+	bail(`could not attach to Chromium: ${/** @type {Error} */ (err).message}`);
 }
+if (!browserMaybe) bail('could not attach to Chromium');
+const browser = browserMaybe;
 // A PHONE first: the singer session and the queue socket both have to be a real client, because the
 // queue validator requires entry.singerId to equal the acting session's singer.
 const phone = await browser.newPage();
@@ -176,6 +211,7 @@ async function ensureProbeWs() {
     window.probeWs = ws;
   })()`);
 }
+/** @param {string} mediaId */
 async function queueAdd(mediaId) {
 	await ensureProbeWs();
 	const now = Date.now();
@@ -196,6 +232,7 @@ async function queueAdd(mediaId) {
 	);
 	await sleep(300);
 }
+/** @param {string} mediaId @returns {Promise<number>} */
 const cook = (mediaId) =>
 	phone.evaluate(`fetch('/api/make-karaoke', {
     method: 'POST',
@@ -229,10 +266,10 @@ try {
 	// Past SEEK_JUMP_SEC (1.5s) by a clear margin, so a stale-anchor re-seek is unambiguous.
 	await page.waitFor(`(${READ})?.t > 3`, { timeout: 60000 });
 } catch (err) {
-	bail(`song A never reached a playhead past 3s — nothing to perturb. ${err.message}`);
+	bail(`song A never reached a playhead past 3s — nothing to perturb. ${/** @type {Error} */ (err).message}`);
 }
 
-const before = await page.evaluate(READ);
+const before = /** @type {Readout} */ (await page.evaluate(READ));
 console.log(`A playing: t=${before.t.toFixed(2)}s decoded=${before.bytes}B paused=${before.paused}`);
 if (before.bytes <= 32768) bail(`A is not really decoding (${before.bytes}B) — a held playhead would prove nothing`);
 
@@ -246,6 +283,7 @@ await cook(songB.id);
 const srcA = before.src;
 let prev = before.t;
 let worstDrop = 0;
+/** @type {{ from: number, to: number } | null} */
 let worstAt = null;
 let readyB = false;
 let readyAtT = null;
@@ -289,7 +327,7 @@ console.log(
 const TOL = 0.25;
 if (worstDrop > TOL) {
 	console.error(`\nFAIL — A's playhead moved BACKWARDS ${worstDrop.toFixed(2)}s during B's cook`);
-	console.error(`  ${worstAt.from.toFixed(2)}s -> ${worstAt.to.toFixed(2)}s`);
+	if (worstAt) console.error(`  ${worstAt.from.toFixed(2)}s -> ${worstAt.to.toFixed(2)}s`);
 	console.error('  Processing another song perturbed the playing song. This is #396.');
 	process.exit(1);
 }
