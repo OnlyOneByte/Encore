@@ -276,7 +276,7 @@ async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
 	const outcome = await page.waitFor(
 		`(() => {
 			if (location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.search)})) return 'joined';
-			const err = document.querySelector('.err[role=alert]');
+			const err = document.querySelector(${JSON.stringify(SEL.joinError)});
 			if (err) return 'err:' + (err.textContent || '').trim();
 			return null;
 		})()`,
@@ -576,7 +576,7 @@ async function main() {
 					const usable = await dup.page.evaluate(
 						`(() => {
 							const nameEl = document.querySelector(${JSON.stringify(SEL.nameInput)});
-							const alertEl = document.querySelector('.err[role=alert]');
+							const alertEl = document.querySelector(${JSON.stringify(SEL.joinError)});
 							const btn = [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('Start singing') || b.textContent.trim().startsWith('Joining'));
 							return {
 								nameStillEditable: !!nameEl && !nameEl.disabled,
