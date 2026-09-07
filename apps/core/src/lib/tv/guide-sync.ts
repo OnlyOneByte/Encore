@@ -30,9 +30,11 @@ export const GUIDE_RATE_GAIN = GUIDE_MAX_RATE_TRIM / GUIDE_RESEEK_SEC;
  * Pre-roll and discontinuity alignment tolerance — how close the guide has to be to the instrumental
  * before a seek is not worth its decoder flush.
  *
- * Lives here rather than in the component because TWO paths need the same answer: the pre-roll
- * alignment before the guide starts, and the re-alignment after a jump. Two copies of one tolerance is
- * this repo's oldest habit and the reason the guide's transport once drifted from the master's.
+ * Lives here rather than in the component because THREE paths need the same answer: the pre-roll
+ * alignment taken when the guide can actually play (`prerollSeekTarget`), the re-alignment after a
+ * jump (`seekPlan`), and the tolerance the drift governor's reseek band shares. Copies of one
+ * tolerance is this repo's oldest habit and the reason the guide's transport once drifted from the
+ * master's.
  */
 export const GUIDE_PREROLL_ALIGN_SEC = 0.04;
 
@@ -130,4 +132,31 @@ export function guideCorrection(guideSec: number, masterSec: number): GuideCorre
 	// Ahead → slow down (<1), behind → speed up (>1).
 	const trim = Math.max(-GUIDE_MAX_RATE_TRIM, Math.min(GUIDE_MAX_RATE_TRIM, -drift * GUIDE_RATE_GAIN));
 	return { kind: 'trim', rate: 1 + trim };
+}
+
+/**
+ * The pre-roll alignment decision — the START half of guide sync, and the fix for #578.
+ *
+ * The guide must be at the master's playhead AT THE MOMENT IT BECOMES AUDIBLE. The old wiring aligned
+ * it when the transport effect ran and then called `play()`: the guide's decoder spin-up is not free,
+ * so the master advanced by the guide's start latency (~150-250ms) before the first guide frame
+ * emerged, and the guide entered that much behind. A residual that size lands in the governor's TRIM
+ * band (0.015-0.3s), where policy is a <=2% tempo trim closing it at ~15s per e-fold — "starts late
+ * and stays late" (#578). The remedy is not a wider tolerance (that silences the comparison while the
+ * guide is still audibly late); it is to TAKE the comparison later — on the guide's `canplay`, against
+ * the master's playhead THEN — so the seek→audible gap is a primed-buffer flush, not a cold start.
+ *
+ * This owns only the decision, mirroring `seekPlan`/`guideCorrection`: the component owns the elements
+ * and does the seek. `seek` is false inside `GUIDE_PREROLL_ALIGN_SEC` so an already-aligned guide is
+ * never flushed for nothing — the same cost `guideCorrection` refuses to pay on ordinary drift — and
+ * false on a non-finite playhead, because a NaN reaching `currentTime` throws and seeking on a guess is
+ * never right.
+ *
+ * @param guideSec  the guide's playhead at the moment it can play
+ * @param masterSec the instrumental's playhead at that same moment — the reference to lock onto
+ * @returns whether to seek the guide, and the fixed target to seek it to
+ */
+export function prerollSeekTarget(guideSec: number, masterSec: number): { seek: boolean; target: number } {
+	if (!Number.isFinite(guideSec) || !Number.isFinite(masterSec)) return { seek: false, target: masterSec };
+	return { seek: Math.abs(guideSec - masterSec) > GUIDE_PREROLL_ALIGN_SEC, target: masterSec };
 }
