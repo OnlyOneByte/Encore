@@ -691,7 +691,8 @@ async def _run_forever() -> None:
                 await client.hello()
                 _current["client"] = client  # the sweep loop's live-set reads THIS connected client
                 print(
-                    f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})"
+                    f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})",
+                    flush=True,
                 )
                 # The message pump below only ever REACTS to inbound frames (async for raw in ws), so a
                 # periodic heartbeat has to run as its own task alongside it — otherwise worker:heartbeat
@@ -708,7 +709,7 @@ async def _run_forever() -> None:
                     except Exception as exc:  # noqa: BLE001 — contain a bad frame; keep the socket up
                         print(f"[worker] dropped a bad frame ({exc!r})", flush=True)
         except Exception as exc:  # noqa: BLE001 — connection dropped; back off and redial
-            print(f"[worker] disconnected ({exc!r}); reconnecting in {RECONNECT_BACKOFF_SEC}s")
+            print(f"[worker] disconnected ({exc!r}); reconnecting in {RECONNECT_BACKOFF_SEC}s", flush=True)
             await asyncio.sleep(RECONNECT_BACKOFF_SEC)
         finally:
             # The client for this socket is going away; the sweep loop must fall back to an empty live
