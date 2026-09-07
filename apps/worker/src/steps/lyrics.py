@@ -30,7 +30,6 @@ from ..lyrics import (
     fit_lrc_to_aligned,
     is_line_synced,
     is_valid_lyrics,
-    line_starts,
     line_synced_lyrics,
     lrclib_to_segments,
     normalize_lyrics,
@@ -447,16 +446,24 @@ class TimeTexts(Step):
                 # sits at a char-count fraction of a span that includes the following rest. So pair the
                 # opening windows (real human starts) against the aligned lines at those same indices:
                 # two independent time series over the same human lines, which is what the fit needs.
-                if getattr(text, "align_windows", None):
+                # Pair by the line's own text, NOT its position: `doc` is normalize_lyrics output,
+                # which can DROP a line, and a positional index into it would shift every later
+                # pairing after a drop — re-opening #336 (spurious "slipped") and #217 (inert on a
+                # wrong master). Text is the stable key both _subdivide and normalize_lyrics keep.
+                # Both branches route through the same drop-tolerant pairing: when presplit set
+                # `align_windows`, only the OPENING window of each line carries a real source start;
+                # when it did not, the segments ARE the windows and every index is an opening. Feeding
+                # the no-windows branch two independent positional series (the old `line_starts` pair)
+                # made a single dropped aligned line diverge the counts, so `fit_lrc_to_aligned` went
+                # `inconclusive` and the check went silently inert on a wrong master (#217) — the exact
+                # index-fragility #410's text-keyed pairing removed, applied there too (#534 F2).
+                windows = getattr(text, "align_windows", None)
+                if windows:
                     opens = _opens_for(text)
-                    # Pair by the line's own text, NOT its position: `doc` is normalize_lyrics output,
-                    # which can DROP a line, and a positional index into it would shift every later
-                    # pairing after a drop — re-opening #336 (spurious "slipped") and #217 (inert on a
-                    # wrong master). Text is the stable key both _subdivide and normalize_lyrics keep.
-                    lrc_starts, aligned_starts = _pair_openings_to_aligned(text.align_windows, opens, doc)
-                    fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)
                 else:
-                    fit = fit_lrc_to_aligned(line_starts({"segments": text.segments}), line_starts(doc))
+                    windows, opens = text.segments, list(range(len(text.segments)))
+                lrc_starts, aligned_starts = _pair_openings_to_aligned(windows, opens, doc)
+                fit = fit_lrc_to_aligned(lrc_starts, aligned_starts)
                 if fit.verdict == "different_version":
                     ctx.note(
                         f"{text.text_source}: its own line timings do NOT fit this recording "
@@ -464,7 +471,7 @@ class TimeTexts(Step):
                         "different release. Published timings come from the aligner, so they are right "
                         "for this audio; the WORDS may belong to another version."
                     )
-                elif fit.pairs:
+                elif fit.verdict == "same_version":
                     # same_version, so the LRC does match. Report the fitted (offset, scale): the offset
                     # is how far the LRC sits from the aligner timing we actually publish, and the scale
                     # is the master-tempo ratio. Both are DIAGNOSTIC only — the published timings are the
