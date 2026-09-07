@@ -23,7 +23,10 @@ export class GaplessController {
 	#current: string | null = null; // entryId in the visible slot
 	#warmingId: string | null = null; // entryId the hidden slot is loading
 	#readyId: string | null = null; // entryId the hidden slot has buffered (gapless-ready)
-	state: TvState = 'attract';
+	// The screen state is OWNED by this controller and only ever set through its own transition
+	// methods. Exposed read-only (the TV page reads `ctl.state` to render); a public writable
+	// field let any caller stomp the state machine from outside, which no caller does or should.
+	#state: TvState = 'attract';
 
 	get visible(): Slot {
 		return this.#visible;
@@ -33,6 +36,9 @@ export class GaplessController {
 	}
 	get currentId(): string | null {
 		return this.#current;
+	}
+	get state(): TvState {
+		return this.#state;
 	}
 
 	assignment(): SlotAssignment {
@@ -48,12 +54,12 @@ export class GaplessController {
 	onNowPlaying(current: QueueEntry | null, upNext: QueueEntry | null): void {
 		if (!current) {
 			this.#current = null;
-			this.state = 'attract';
+			this.#state = 'attract';
 			return;
 		}
 		if (current.id !== this.#current) {
 			this.#current = current.id;
-			this.state = 'loading'; // visible slot must (re)load the new current
+			this.#state = 'loading'; // visible slot must (re)load the new current
 		}
 		// pre-warm the hidden slot for upNext (unless already warming/ready for it)
 		if (upNext && upNext.id !== this.#warmingId && upNext.id !== this.#readyId) {
@@ -67,7 +73,7 @@ export class GaplessController {
 
 	/** Visible slot reports it can play through. */
 	onVisibleReady(): void {
-		if (this.state === 'loading') this.state = 'playing';
+		if (this.#state === 'loading') this.#state = 'playing';
 	}
 
 	/** Hidden slot reports it's buffered for its warming target. */
@@ -90,7 +96,7 @@ export class GaplessController {
 	onEnded(upNext: QueueEntry | null): TvState {
 		if (!upNext) {
 			this.#current = null;
-			this.state = 'attract';
+			this.#state = 'attract';
 			return this.state;
 		}
 		if (this.isNextReady(upNext.id)) {
@@ -99,18 +105,18 @@ export class GaplessController {
 			this.#current = upNext.id;
 			this.#warmingId = null;
 			this.#readyId = null;
-			this.state = 'interstitial'; // page shows brief "Next up", then -> playing
+			this.#state = 'interstitial'; // page shows brief "Next up", then -> playing
 		} else {
 			// missed the window: load upNext into (new) visible slot now
 			this.#current = upNext.id;
-			this.state = 'loading';
+			this.#state = 'loading';
 		}
 		return this.state;
 	}
 
 	/** Interstitial timer elapsed → playing. */
 	onInterstitialDone(): void {
-		if (this.state === 'interstitial') this.state = 'playing';
+		if (this.#state === 'interstitial') this.#state = 'playing';
 	}
 
 	/**
@@ -121,11 +127,11 @@ export class GaplessController {
 	 * song where nobody knows whose turn it is is the one song that plays unannounced.
 	 */
 	enterInterstitial(): void {
-		if (this.state === 'playing' || this.state === 'loading') this.state = 'interstitial';
+		if (this.#state === 'playing' || this.#state === 'loading') this.#state = 'interstitial';
 	}
 
 	/** Mark the current entry's media as not-ready (held slot): show waiting. */
 	enterWaiting(): void {
-		this.state = 'waiting';
+		this.#state = 'waiting';
 	}
 }

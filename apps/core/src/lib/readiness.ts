@@ -6,7 +6,7 @@ import { isCooking, readyToSing, type Media, type MediaStatus } from '@encore/sh
 export type Readiness = 'ready' | 'cooking' | 'failed' | 'unacquired';
 
 export function readinessOf(m: Media): Readiness {
-	// Gate-driven, and MUST stay byte-identical to the client's copy (apps/core/src/lib/readiness.ts).
+	// Gate-driven, and MUST stay byte-identical to the SERVER's copy (src/server/media/readiness.ts).
 	// `isCooking` reads the cook gates rather than a single `stemStatus === 'queued'` check, so a song
 	// mid-align (stems ready, lyrics queued) reads as cooking instead of falling through to unacquired.
 	//
