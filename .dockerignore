@@ -9,3 +9,6 @@ media
 docs/mocks/*.png
 **/__pycache__
 .venv
+apps/worker/wheelhouse/
+*.whl
+*.tar.gz

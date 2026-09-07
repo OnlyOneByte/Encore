@@ -37,3 +37,8 @@ __pycache__/
 # agent scratch — working specs and notes live here, never committed
 .kiro
 .eslintcache
+
+# python wheels — never committed; a local wheelhouse for offline installs lives here
+apps/worker/wheelhouse/
+*.whl
+*.tar.gz
