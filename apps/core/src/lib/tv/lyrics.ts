@@ -14,6 +14,12 @@ export interface LyricLine {
 	end: number | null;
 	text: string;
 	words: LyricWord[];
+	/**
+	 * A second-script rendering of this line the source shipped alongside the original — the pinyin
+	 * under a Chinese line (issue #431). Present ONLY when the LRCLIB record interleaved one; a
+	 * single-script line leaves it undefined. Display-only: it carries no timings and drives no ball.
+	 */
+	romanization?: string;
 }
 export interface LyricsDoc {
 	language: string | null;
@@ -49,7 +55,9 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 		}
 		const text = typeof l.text === 'string' && l.text.trim() ? l.text : words.map((w) => w.word).join(' ');
 		if (!text.trim() && words.length === 0) continue;
-		lines.push({ start: num(l.start), end: num(l.end), text, words });
+		const line: LyricLine = { start: num(l.start), end: num(l.end), text, words };
+		if (typeof l.romanization === 'string' && l.romanization.trim()) line.romanization = l.romanization;
+		lines.push(line);
 	}
 	if (lines.length === 0) return null;
 	const resegmented = lines.flatMap((l) => resegmentLine(l));

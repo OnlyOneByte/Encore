@@ -361,3 +361,71 @@ def test_default_client_shares_the_process_global_gate():
     # per-IP gate is that every client in the process paces through the same one.
     assert ls.LrclibClient()._limiter is ls.limiter()
     assert ls.limiter() is ls._LIMITER
+
+
+# ── issue #431: interleaved second script (Chinese characters + pinyin) ─────────────
+# A bilingual LRCLIB record ships the romanization INLINE under the same [mm:ss] stamp as the
+# characters (LRCLIB has no romanization field). fold_romanization_entries pairs them so BOTH
+# scripts reach the doc; a single-script record is untouched.
+BILINGUAL_LRC = """[ti:Yi Jian Mei]
+[00:27.00]真情像草原广阔
+[00:27.00]zhēn qíng xiàng cǎo yuán guǎng kuò
+[00:31.50]层层風雨不能阻隔
+[00:31.50]céng céng fēng yǔ bù néng zǔ gé
+"""
+
+MONOLINGUAL_LRC = """[ti:Take On Me]
+[00:18.50]Talking away
+[00:21.90]I don't know what I'm to say
+"""
+
+
+def test_fold_romanization_pairs_same_stamp_cjk_and_pinyin():
+    folded = ls.fold_romanization_entries(ls.parse_lrc(BILINGUAL_LRC))
+    # two logical lines, each carrying the characters as text and the pinyin as romanization
+    assert [e.text for e in folded] == ["真情像草原广阔", "层层風雨不能阻隔"]
+    assert [e.romanization for e in folded] == [
+        "zhēn qíng xiàng cǎo yuán guǎng kuò",
+        "céng céng fēng yǔ bù néng zǔ gé",
+    ]
+
+
+def test_fold_romanization_leaves_monolingual_record_single_script():
+    folded = ls.fold_romanization_entries(ls.parse_lrc(MONOLINGUAL_LRC))
+    assert [e.text for e in folded] == ["Talking away", "I don't know what I'm to say"]
+    assert all(e.romanization is None for e in folded)  # never fabricated — if-available only
+
+
+def test_fold_romanization_handles_romanization_first_order():
+    # some uploads put the Latin line first; the CJK line is still the words, the Latin its romanization
+    lrc = "[00:05.00]pinyin line here\n[00:05.00]中文歌词\n"
+    folded = ls.fold_romanization_entries(ls.parse_lrc(lrc))
+    assert len(folded) == 1
+    assert folded[0].text == "中文歌词"
+    assert folded[0].romanization == "pinyin line here"
+
+
+def test_fold_romanization_does_not_fold_same_script_same_stamp():
+    # two Latin lines at one stamp (a doubled/chorus stamp) are NOT a transliteration pair
+    lrc = "[00:10.00]same line\n[00:10.00]same line\n"
+    folded = ls.fold_romanization_entries(ls.parse_lrc(lrc))
+    assert len(folded) == 2
+    assert all(e.romanization is None for e in folded)
+
+
+def test_lrclib_to_segments_threads_romanization_end_to_end():
+    from src.lyrics import artifact as art
+
+    res = ls.LrclibResult(id=1, instrumental=False, synced_lyrics=BILINGUAL_LRC, plain_lyrics=None)
+    segs = art.lrclib_to_segments(res, total_duration=40.0)
+    assert [s["text"] for s in segs] == ["真情像草原广阔", "层层風雨不能阻隔"]
+    assert [s.get("romanization") for s in segs] == [
+        "zhēn qíng xiàng cǎo yuán guǎng kuò",
+        "céng céng fēng yǔ bù néng zǔ gé",
+    ]
+    # the line-synced doc carries the romanization through to what the TV reads
+    doc = ls.line_synced_lyrics(segs, language="zh")
+    assert [ln.get("romanization") for ln in doc["lines"]] == [
+        "zhēn qíng xiàng cǎo yuán guǎng kuò",
+        "céng céng fēng yǔ bù néng zǔ gé",
+    ]

@@ -375,3 +375,35 @@ test('leading the position selects the NEXT word sooner (what the knob is for)',
 	expect(activeWordIndex(line, 0.45)).toBe(0);
 	expect(activeWordIndex(line, 0.45 + LYRICS_LEAD_SEC)).toBe(1);
 });
+
+// ── issue #431: dual-script (romanization) pass-through ──────────────────────────
+// A Chinese line-synced doc carries a per-line `romanization` (the pinyin the LRCLIB record
+// interleaved). parseLyricsDoc must surface it onto the line; a line without one leaves it
+// undefined (single-script, unchanged behaviour). Display-only — it carries no timings.
+test('parseLyricsDoc surfaces per-line romanization when the doc carries it', () => {
+	const doc = parseLyricsDoc({
+		language: 'zh',
+		lines: [
+			{ start: 0, end: 2, text: '真情像草原广阔', words: [], romanization: 'zhēn qíng xiàng cǎo yuán guǎng kuò' },
+			{ start: 2, end: 4, text: 'a line with no second script', words: [] }
+		],
+		words: []
+	});
+	expect(doc).not.toBeNull();
+	expect(doc!.lines[0]!.romanization).toBe('zhēn qíng xiàng cǎo yuán guǎng kuò');
+	expect(doc!.lines[1]!.romanization).toBeUndefined();
+});
+
+test('parseLyricsDoc ignores a blank/non-string romanization (if-available, never fabricated)', () => {
+	const doc = parseLyricsDoc({
+		language: 'zh',
+		lines: [
+			{ start: 0, end: 2, text: '中文歌词', words: [], romanization: '   ' },
+			{ start: 2, end: 4, text: '更多歌词', words: [], romanization: 42 }
+		],
+		words: []
+	});
+	expect(doc).not.toBeNull();
+	expect(doc!.lines[0]!.romanization).toBeUndefined();
+	expect(doc!.lines[1]!.romanization).toBeUndefined();
+});

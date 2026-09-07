@@ -268,6 +268,15 @@
 							-->
 							{l.text}
 						{/if}
+						{#if l.romanization}
+							<!--
+								SECOND SCRIPT (issue #431): a Chinese record ships the pinyin alongside the
+								characters, so someone who cannot read Hanzi can still sing along. Shown ONLY when
+								the source provided it; a single-script line renders exactly as before. Display-only
+								and dimmer than the original — the characters are the words, this is the aid.
+							-->
+							<div class="romanization">{l.romanization}</div>
+						{/if}
 					</div>
 				{/each}
 			</div>
@@ -482,6 +491,19 @@
 	}
 	.row.past {
 		color: rgba(255, 255, 255, 0.2); /* already sung — present for continuity, not for reading */
+	}
+	/*
+	 * The romanization sub-row (issue #431): the pinyin under a Chinese line. Smaller and dimmer than
+	 * the original script above it — the characters are the words being sung, this is a reading aid for
+	 * anyone who cannot read them. It inherits the row's color transition so it fades in step with its
+	 * line (upcoming / current / past) rather than sitting at one fixed brightness.
+	 */
+	.romanization {
+		font-size: 0.62em;
+		line-height: 1.25;
+		margin-top: 0.15em;
+		opacity: 0.78;
+		letter-spacing: 0.01em;
 	}
 	/*
 	 * The current line, when it is rendered as ONE text node rather than word spans.
