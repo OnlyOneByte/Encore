@@ -105,10 +105,15 @@ export class WsClient {
 	 * deliberately not a retry queue: replaying a queued `pause` after a reconnect could act on a
 	 * different song than the one the user was looking at, so the honest failure is to drop it and say
 	 * so. The reconnect path already resyncs authoritative state, which is what corrects the phone.
+	 *
+	 * `quiet` suppresses that warning for a caller whose drop is expected and high-rate: the TV's
+	 * ~4 Hz `tv:telemetry` stream drops SILENTLY (the next frame is 250 ms away), so warning per drop
+	 * would flood the console through any reconnect. The frame is still dropped when the socket is not
+	 * open — `quiet` changes only whether the drop is logged, never whether it is sent.
 	 */
-	send(e: ClientEvent): boolean {
+	send(e: ClientEvent, opts?: { quiet?: boolean }): boolean {
 		const sent = trySend(this.#sock, JSON.stringify(e));
-		if (!sent) console.warn(`[ws] dropped ${e.type} — socket not open`);
+		if (!sent && !opts?.quiet) console.warn(`[ws] dropped ${e.type} — socket not open`);
 		return sent;
 	}
 
