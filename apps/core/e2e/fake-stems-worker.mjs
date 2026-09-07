@@ -184,7 +184,7 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 				jobId,
 				mediaUri: ref,
 				// `candidates` is what makes provenance work. The core picks `chosen` from this set, and
-				// the TV decides whether to show the "Auto-Transcribed" label and the amber unverified
+				// the TV decides which provenance label to show (here "Auto-transcribed") and the amber unverified
 				// tint from the chosen candidate — so publishing only `uri` leaves chosenCandidate()
 				// null and the honesty labelling untestable. asr + low confidence is what an
 				// auto-transcription actually is, and it is exactly the case the label exists for.

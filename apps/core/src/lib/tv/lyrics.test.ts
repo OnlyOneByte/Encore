@@ -104,7 +104,7 @@ test('activeWordIndex: the "ball" sits on the word being sung, -1 between words'
 // ── honesty about auto-transcribed words ──────────────────────────────
 // Force-aligned ASR renders a PERFECT bouncing ball over words that may be wrong — the most
 // misleading state the overlay can be in. The notice exists because the result looks finished.
-import { isAutoTranscribed, type LyricsProvenance } from './lyrics';
+import { isAutoTranscribed, provenanceLabel, type LyricsProvenance } from './lyrics';
 
 const prov = (over: Partial<LyricsProvenance> = {}): LyricsProvenance => ({
 	textSource: 'lrclib',
@@ -137,6 +137,40 @@ test('UNKNOWN provenance says nothing — never claims verified OR guessed', () 
 
 test('coarse LINE timing alone is not flagged unverified when text is authoritative', () => {
 	expect(isAutoTranscribed(prov({ timing: 'line' }))).toBe(false);
+});
+
+// ── provenance TAG: name the source for EVERY kind, not just ASR (#635) ────────────────
+//
+// Owner ruling (a): provenance ONLY -- a source label, never a confidence/quality score. Today the
+// card names a source in exactly ONE case (ASR); these pin that it names the source in ALL of them,
+// and stays silent when provenance is unknown. Each asserts a DISTINCT string, so a map that folds
+// two sources onto one label reds.
+test('LRCLIB / authored record is named', () => {
+	expect(provenanceLabel(prov({ textSource: 'lrclib' }))).toBe('LRCLIB');
+});
+
+test('a caption track is named as the video captions', () => {
+	expect(provenanceLabel(prov({ textSource: 'captions' }))).toBe('From the video captions');
+});
+
+test('ASR is named auto-transcribed', () => {
+	expect(provenanceLabel(prov({ textSource: 'asr', textConfidence: 'low' }))).toBe('Auto-transcribed');
+});
+
+test('hand-pasted text is named as pasted by hand', () => {
+	expect(provenanceLabel(prov({ textSource: 'manual' }))).toBe('Pasted by hand');
+});
+
+test('UNKNOWN provenance (pre-candidate artifact) renders NO tag -- not "unknown"', () => {
+	expect(provenanceLabel(null)).toBeNull();
+	expect(provenanceLabel(undefined)).toBeNull();
+});
+
+test('every source kind gets a DISTINCT, non-empty label -- none collide', () => {
+	const kinds = ['lrclib', 'captions', 'asr', 'manual'] as const;
+	const labels = kinds.map((k) => provenanceLabel(prov({ textSource: k })));
+	for (const l of labels) expect(typeof l === 'string' && l.length > 0).toBe(true);
+	expect(new Set(labels).size).toBe(kinds.length);
 });
 
 // ── pause-based line splitting (whisper segments are not lyric lines) ──────────

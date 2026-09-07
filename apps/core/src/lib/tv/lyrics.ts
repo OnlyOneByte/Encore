@@ -261,3 +261,30 @@ export type LyricsProvenance = Pick<LyricsCandidate, 'textSource' | 'textConfide
 export function isAutoTranscribed(p: LyricsProvenance | null | undefined): boolean {
 	return !!p && !isAuthoritativeText(p);
 }
+
+/**
+ * The provenance TAG for the now-playing card -- names WHERE the words came from, so "these lyrics
+ * are wrong" and "these lyrics are a guess" stop looking the same (issue #635, owner ruling (a):
+ * provenance only, never a confidence/quality score, never interactive).
+ *
+ * `textSource` is the whole answer: LRCLIB and hand-pasted text are authored records, captions and
+ * ASR are machine guesses, and each gets its own honest words. The amber "not verified" tint is a
+ * SEPARATE axis (`isAutoTranscribed`, driven by confidence) -- this only says the source.
+ *
+ * Returns `null` for UNKNOWN provenance (a pre-candidate artifact, where `chosenCandidate` honestly
+ * returns null): the card must then say NOTHING, not "unknown". We do not assert a source we cannot
+ * trace, exactly as the amber tint stays off for the same case.
+ */
+export function provenanceLabel(p: LyricsProvenance | null | undefined): string | null {
+	if (!p) return null;
+	switch (p.textSource) {
+		case 'lrclib':
+			return 'LRCLIB';
+		case 'captions':
+			return 'From the video captions';
+		case 'asr':
+			return 'Auto-transcribed';
+		case 'manual':
+			return 'Pasted by hand';
+	}
+}
