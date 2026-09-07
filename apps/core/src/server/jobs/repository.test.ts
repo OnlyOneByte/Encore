@@ -103,6 +103,30 @@ test('the DB partial unique index enforces dedup even if the app check is bypass
 	expect(repo.findLive('media-1', 'stems')!.id).toBe(live.id); // still the one live job
 });
 
+test('requeue distinguishes REJECT from LEASE_EXPIRED through the machine (#471)', () => {
+	const { repo } = makeRepo();
+
+	// A worker REJECT is only legal from `assigned` — the machine now knows it is a distinct event,
+	// not the same `assigned → queued` status pair an ack-timeout LEASE_EXPIRED produces.
+	const rejected = repo.enqueue('m-reject', 'stems', 0, T0);
+	repo.assign(rejected.id, 'w', T0 + 10_000, T0 + 1);
+	expect(repo.requeue(rejected.id, rejected.attempts, T0 + 2, 'REJECT').status).toBe('queued');
+
+	// The same requeue as an ack-timeout LEASE_EXPIRED — also legal from `assigned`, same landing.
+	const timedOut = repo.enqueue('m-timeout', 'stems', 0, T0);
+	repo.assign(timedOut.id, 'w', T0 + 10_000, T0 + 1);
+	expect(repo.requeue(timedOut.id, timedOut.attempts, T0 + 2, 'LEASE_EXPIRED').status).toBe('queued');
+
+	// But a REJECT is refused from `running` — a worker cannot decline work it already accepted. The
+	// escape a status-pair machine allowed (any `running → queued` write) is now typed shut.
+	const running = repo.enqueue('m-running', 'stems', 0, T0);
+	repo.assign(running.id, 'w', T0 + 10_000, T0 + 1);
+	repo.accept(running.id, T0 + 30_000, T0 + 2);
+	expect(() => repo.requeue(running.id, 1, T0 + 3, 'REJECT')).toThrow('no event REJECT from running');
+	// …while a progress-lease expiry and a boot RECOVER ARE legal from `running`.
+	expect(repo.requeue(running.id, 1, T0 + 4, 'LEASE_EXPIRED').status).toBe('queued');
+});
+
 test('requeue clears ownership/lease; attempts is caller-controlled', () => {
 	const { repo } = makeRepo();
 	const job = repo.enqueue('media-1', 'stems', 0, T0);
@@ -120,15 +144,15 @@ test('requeue clears ownership/lease; attempts is caller-controlled', () => {
 test('illegal transitions throw (state machine is enforced through the repo)', () => {
 	const { repo } = makeRepo();
 	const job = repo.enqueue('media-1', 'stems', 0, T0);
-	expect(() => repo.complete(job.id, T0 + 1)).toThrow('no edge queued → ready'); // can't skip to ready
-	expect(() => repo.transition(job.id, 'running', {}, T0 + 1)).toThrow('no edge queued → running');
+	expect(() => repo.complete(job.id, T0 + 1)).toThrow('no event COMPLETE from queued'); // can't skip to ready
+	expect(() => repo.transition(job.id, 'ACCEPT', {}, T0 + 1)).toThrow('no event ACCEPT from queued');
 	repo.cancel(job.id, T0 + 2);
 	expect(() => repo.accept(job.id, null, T0 + 3)).toThrow('canceled is terminal');
 });
 
 test('unknown job id throws', () => {
 	const { repo } = makeRepo();
-	expect(() => repo.transition('nope', 'assigned', {}, T0)).toThrow('unknown job: nope');
+	expect(() => repo.transition('nope', 'DISPATCH', {}, T0)).toThrow('unknown job: nope');
 	expect(repo.byId('nope')).toBeNull();
 });
 
@@ -253,6 +277,32 @@ test('reprioritize refuses a terminal job (no scheduling future)', () => {
 	const after = repo.reprioritize(job.id, 0, T0 + 4);
 	expect(after.status).toBe('ready');
 	expect(after.priority).toBe(5); // untouched — a finished cook has no queue position to fix
+});
+
+test('reprioritize works on an ASSIGNED job (regression #471/#525): the reconnect add lands during the ack window', () => {
+	// The starvation feature exists for a cook already in flight when the singer's queue `add`
+	// finally lands. "In flight" includes ASSIGNED (offered to a worker, ack still pending). Before
+	// the event-typed machine this was a raw db.update that never consulted the table; after it,
+	// reprioritize() routes through transition('REPRIORITIZE', …), so `assigned` MUST carry a
+	// REPRIORITIZE self-loop or the whole onEntryAdded → reprioritizeCookForMedia path throws and the
+	// queue:patch broadcast is dropped (clients silently diverge). This is that guard.
+	const { repo } = makeRepo();
+	const job = repo.enqueue('m-assigned', 'stems', Number.MAX_SAFE_INTEGER, T0); // NO_QUEUE_PRIORITY
+	repo.assign(job.id, 'w', T0 + 10_000, T0 + 1); // assigned, ack lease pending
+	expect(repo.byId(job.id)!.status).toBe('assigned');
+	const after = repo.reprioritize(job.id, 1, T0 + 2); // must NOT throw
+	expect(after.status).toBe('assigned'); // scheduling-only: status unchanged
+	expect(after.priority).toBe(1); // pulled to the singer's rotation position
+	expect(after.updatedAt).toBe(T0 + 2);
+});
+
+test('reprioritize on an assigned job still honours the only-lower guard', () => {
+	const { repo } = makeRepo();
+	const job = repo.enqueue('m-assigned2', 'stems', 3, T0);
+	repo.assign(job.id, 'w', T0 + 10_000, T0 + 1);
+	expect(repo.reprioritize(job.id, 5, T0 + 2).priority).toBe(3); // higher — refused, no throw
+	expect(repo.reprioritize(job.id, 1, T0 + 3).priority).toBe(1); // lower — applied
+	expect(repo.byId(job.id)!.status).toBe('assigned'); // never a lifecycle change
 });
 
 test('reprioritize works on an in-flight (running) job too, not only queued', () => {

@@ -246,6 +246,30 @@ export function clampKeyShift(semitones: number): number {
 export type JobType = 'fetch' | 'stems' | 'align' | 'stems-upgrade';
 export type JobStatus = 'queued' | 'assigned' | 'running' | 'ready' | 'failed' | 'canceled';
 
+/**
+ * The wire vocabulary that CAUSES a job status change — the event, not the destination status.
+ *
+ * A status pair is event-lossy: `assigned → queued` is both a worker REJECT and an ack-timeout
+ * LEASE_EXPIRED, and `running → queued` is both a progress-lease expiry and boot RECOVER — the
+ * machine could not tell them apart, so the ledger had to hook seven hand-written wrappers instead
+ * of the machine itself (see attempts.ts). Keying transitions on the event restores the distinction
+ * and lets `REPRIORITIZE` (a status-free scheduling write) be a legal internal edge rather than an
+ * escape hatch outside the machine (repository.ts). Drawn from the §5 wire protocol.
+ */
+export const JOB_EVENTS = [
+  'DISPATCH', // queued → assigned: offered to a worker
+  'ACCEPT', // assigned → running: worker accepted, processing begins
+  'PROGRESS', // running → running: heartbeat / stage update (the named self-loop)
+  'REJECT', // assigned → queued: worker declined (no attempt burned)
+  'LEASE_EXPIRED', // assigned|running → queued: ack-timeout or progress-lease expiry
+  'COMPLETE', // running → ready: worker finished (terminal ✅)
+  'FAIL', // queued|running → failed: attempts exhausted / non-retryable (terminal ❌)
+  'CANCEL', // any non-terminal → canceled: song removed before finish (terminal)
+  'RECOVER', // assigned|running → queued: boot recovery re-queues an interrupted attempt
+  'REPRIORITIZE' // queued|assigned|running → same: lower scheduling priority, no status change
+] as const;
+export type JobEvent = (typeof JOB_EVENTS)[number];
+
 // Terminal states never leave; the dedup index ignores them so a song can be re-processed after
 // a failure/cancel. See docs/ARCHITECTURE.md.
 export const TERMINAL_JOB_STATUSES = ['ready', 'failed', 'canceled'] as const;

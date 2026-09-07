@@ -238,7 +238,7 @@ export class WorkerHub {
 	#onReject(msg: Extract<WorkerMessage, { type: 'job:reject' }>): void {
 		const job = this.#d.jobs.byId(msg.jobId);
 		if (!job || job.status !== 'assigned' || job.workerId !== msg.workerId) return;
-		this.#d.jobs.requeue(msg.jobId, job.attempts, this.#d.now()); // no attempt burned (never ran)
+		this.#d.jobs.requeue(msg.jobId, job.attempts, this.#d.now(), 'REJECT'); // worker declined; no attempt burned (never ran)
 		this.#d.registry.releaseSlot(msg.workerId);
 		this.dispatch();
 	}
