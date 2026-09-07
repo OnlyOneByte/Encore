@@ -10,6 +10,14 @@ import { ulid, type Singer } from '@encore/shared';
 
 export const SESSION_COOKIE = 'encore_singer';
 
+/**
+ * The room a phone joined. Set by /api/join alongside the session cookie (#654) so the identity of
+ * WHICH party this device belongs to survives every later request without re-resolving a join code.
+ * The room-scoping chain (#655/#656) reads it; today it is written but nothing downstream is yet
+ * scoped to it.
+ */
+export const ROOM_COOKIE = 'encore_room';
+
 /** Cryptographically-strong, URL-safe session token (NOT the ulid helper — that's for entry ids). */
 export function mintSessionToken(): string {
 	return randomBytes(24).toString('base64url');

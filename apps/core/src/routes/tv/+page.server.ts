@@ -17,7 +17,17 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	// What an empty setting resolves to (env, else this request). The TV needs it to recognise a
 	// settings change that CLEARED the address, which moves the QR back to this value.
 	const fallback = fallbackJoinOrigin(request, url);
-	const joinUrl = `${origin}/join`;
+	// Advertise THIS room's join code in the QR (#654), so a scan lands the phone in this party rather
+	// than at a bare /join. The code is a query param the /join page reads and forwards to /api/join.
+	// Absent only if the app singleton is unavailable (prerender/unit load), where a plain /join is the
+	// honest fallback.
+	let roomCode = '';
+	try {
+		roomCode = getApp().rooms.byId(getApp().activeRoomId)?.code ?? '';
+	} catch {
+		// No app singleton under prerender/unit load — fall back to a code-less join URL.
+	}
+	const joinUrl = roomCode ? `${origin}/join?room=${encodeURIComponent(roomCode)}` : `${origin}/join`;
 	const qrDataUrl = await QRCode.toDataURL(joinUrl, {
 		margin: 1,
 		width: 320,

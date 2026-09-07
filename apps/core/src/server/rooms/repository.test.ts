@@ -98,3 +98,27 @@ test('mintRoomCode yields a code over the unambiguous alphabet only', () => {
 		expect(c).toMatch(/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/);
 	}
 });
+
+// ── ensureActive: the single-room mint-or-reuse the join path lands a bare join in (#654) ──────────
+test('ensureActive mints a room on first boot', () => {
+	const { db, repo } = freshRepo();
+	expect(db.select().from(rooms).all()).toHaveLength(0);
+	const room = repo.ensureActive(1);
+	expect(room.code).toHaveLength(6);
+	expect(db.select().from(rooms).all()).toHaveLength(1);
+});
+
+test('ensureActive REUSES the existing room on every boot after — a restart keeps the same code', () => {
+	const { repo } = freshRepo();
+	const first = repo.ensureActive(1);
+	const second = repo.ensureActive(2);
+	expect(second.id).toBe(first.id);
+	expect(second.code).toBe(first.code);
+});
+
+test('ensureActive resolves deterministically to the OLDEST room if several exist', () => {
+	const { db, repo } = freshRepo();
+	db.insert(rooms).values({ id: 'old', code: 'OLDER1', createdAt: 10 }).run();
+	db.insert(rooms).values({ id: 'new', code: 'NEWER1', createdAt: 20 }).run();
+	expect(repo.ensureActive(30).id).toBe('old');
+});

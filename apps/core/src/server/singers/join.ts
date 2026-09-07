@@ -7,10 +7,19 @@ import type { EncoreApp } from '../app';
 export interface JoinInput {
 	displayName: string;
 	color: string;
+	/**
+	 * The room join code (from the TV QR or typed on the phone). Absent = an unqualified join, which
+	 * lands in the core's single active room ({@link EncoreApp.activeRoomId}). Present = join THAT
+	 * room specifically, resolved against the rooms table; an unknown code is refused, never silently
+	 * routed to the default, so a mistyped code cannot drop a guest into the wrong party.
+	 */
+	code?: string;
 }
 
 export interface JoinResult {
 	singer: Singer;
+	/** The room this join landed in — the room identity the session then carries (#654). */
+	roomId: string;
 }
 
 /** Thrown when the requested display name is already held by someone still in the room. */
@@ -24,8 +33,23 @@ export class NameTakenError extends Error {
 	}
 }
 
+/** Thrown when a join names a room code that resolves to no room — a mistyped or stale code. */
+export class RoomNotFoundError extends Error {
+	readonly code: string;
+	constructor(code: string) {
+		super(`no room with code "${code}"`);
+		this.code = code;
+	}
+}
+
 /** Case- and whitespace-insensitive, because "dana" and "Dana " are the same person to everyone else. */
 export const nameKey = (name: string): string => name.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Codes are minted uppercase (see RoomRepository's CODE_ALPHABET), but a guest types one off a TV,
+ * so accept any case and surrounding whitespace and canonicalise to the stored form before lookup.
+ */
+export const normalizeRoomCode = (code: string): string => code.trim().toUpperCase();
 
 /**
  * Refuse a name already held by someone still IN THE ROOM.
@@ -56,6 +80,20 @@ export function hasPendingSongs(app: EncoreApp, singerId: string): boolean {
 
 /** Validate + create a singer, then broadcast singer:joined. Throws on invalid input. */
 export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
+	// Resolve WHICH room this join lands in first — a bad code fails before we create a singer, so a
+	// mistyped code never leaves an orphaned row behind. A code names a room explicitly; its absence
+	// means the single active room this core minted at boot.
+	const rawCode = (input.code ?? '').trim();
+	let room;
+	if (rawCode) {
+		room = app.rooms.byCode(normalizeRoomCode(rawCode));
+		if (!room) throw new RoomNotFoundError(rawCode);
+	} else {
+		room = app.rooms.byId(app.activeRoomId);
+		// The active room is minted at boot, so this is a should-never-happen guard rather than a path.
+		if (!room) throw new Error('no active room');
+	}
+
 	const name = (input.displayName ?? '').trim();
 	if (!name) throw new Error('display name required');
 	assertNameFree(app, name);
@@ -86,5 +124,5 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	app.presence.disconnect(singer.id, app.now());
 
 	app.publish({ type: 'singer:joined', singer });
-	return { singer };
+	return { singer, roomId: room.id };
 }
