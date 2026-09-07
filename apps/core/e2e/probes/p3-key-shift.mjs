@@ -45,6 +45,40 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #562, following the
+ * #557/#558/#559/#560/#561 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so
+ * they cannot drift from the driver. page.evaluate() is typed Promise<any> by cdp.mjs, so DOM/API-shaped
+ * results are cast at the call site.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
+ *
+ * One finding row: a pass/fail/env check with its severity and evidence.
+ * @typedef {{ severity: Severity, name: string, ok: boolean, detail: string, env: boolean }} Finding
+ *
+ * One <video>/<audio> element read out of the TV page per MEDIA_PROBE sample.
+ * @typedef {{
+ *   i: number, tag: string, src: string, readyState: number, paused: boolean, muted: boolean,
+ *   volume: number, currentTime: number, duration: number, decoded: number | null,
+ *   error: { code: number, message: string } | null
+ * }} MediaEl
+ *
+ * The serialisable HOOK_STATE snapshot (node references stripped for logging).
+ * @typedef {{
+ *   contexts: number, contextStates: string[], gains: number, worklets: string[],
+ *   sources: { tag: string, src: string }[], reachedDestination: boolean,
+ *   resumeCalls: number, taps: number
+ * }} HookState
+ *
+ * One analyser read: RMS + the dominant-partial spectrum returned by READ_TAP_SRC.
+ * @typedef {{
+ *   ok: boolean, why?: string, rms: number, peakHz: number, peakDb: number, binHz: number,
+ *   sampleRate: number, partials: { hz: number, db: number }[]
+ * }} TapRead
+ */
+
 const PORT = process.env.EPORT ?? process.env.PORT ?? '5223';
 const base = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9503);
@@ -58,13 +92,22 @@ const SCRATCH = process.env.KIROCREW_SCRATCH ?? '/tmp';
 // wrong. Environment limits (env=true) are neither pass nor fail — they say
 // "the probe couldn't reach this shore" and print separately so a reader
 // never confuses them with a defect.
+/** @type {Finding[]} */
 const findings = [];
+/**
+ * @param {Severity} severity
+ * @param {string} name
+ * @param {unknown} ok
+ * @param {string} [detail]
+ * @param {boolean} [env]
+ */
 function record(severity, name, ok, detail = '', env = false) {
 	findings.push({ severity, name, ok: !!ok, detail, env });
 	const tag = env ? 'ENV  ' : ok ? 'PASS ' : 'FAIL ';
 	const sev = env ? '     ' : severity.padEnd(8, ' ');
 	console.log(`${tag} ${sev} ${name}${!detail ? '' : `\n           ${detail}`}`);
 }
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	process.exit(2);
@@ -114,7 +157,10 @@ async function ensureSecondReady() {
 	if (!list) return null;
 	const already = list.ready ?? [];
 	// Pick a NON-cooked LOCAL track other than the first fixture as the second cook target.
-	const raw = (list.results ?? []).find((r) => r.source === 'local' && !already.some((a) => a.id === r.id));
+	const raw = /** @type {any[]} */ (list.results ?? []).find(
+		(/** @type {any} */ r) =>
+			r.source === 'local' && !(/** @type {any[]} */ (already).some((/** @type {any} */ a) => a.id === r.id))
+	);
 	if (already.length >= 2) return already[1];
 	if (!raw) return null;
 	const jr = await fetch(`${base}/api/join`, {
@@ -133,7 +179,7 @@ async function ensureSecondReady() {
 		const l = await fetch(`${base}/api/search?q=a`)
 			.then((r) => r.json())
 			.catch(() => null);
-		if ((l?.ready ?? []).some((r) => r.id === raw.id)) return raw;
+		if (/** @type {any[]} */ (l?.ready ?? []).some((/** @type {any} */ r) => r.id === raw.id)) return raw;
 		await sleep(500);
 	}
 	return null;
@@ -354,8 +400,11 @@ const HOOK_STATE = `(() => {
 	};
 })()`;
 
+/** @type {Browser | undefined} */
 let browser;
+/** @type {Page | undefined} */
 let phone;
+/** @type {Page | undefined} */
 let tv;
 try {
 	browser = await connect(CDP_PORT);
@@ -393,11 +442,12 @@ try {
 	} catch {
 		await tv.evaluate(MEDIA_PROBE);
 	}
+	/** @param {MediaEl[]} set @returns {MediaEl | undefined} */
 	const pick = (set) => set.find((e) => e.src.includes('instrumental')) ?? set.find((e) => e.src);
 
-	const t0 = pick(await tv.evaluate(MEDIA_PROBE));
+	const t0 = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 	await sleep(2500);
-	const t1 = pick(await tv.evaluate(MEDIA_PROBE));
+	const t1 = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 	const decoded0 = (t1?.decoded ?? 0) - (t0?.decoded ?? 0) > 0;
 	const advanced0 = (t1?.currentTime ?? 0) - (t0?.currentTime ?? 0) > 1.2;
 	record(
@@ -406,7 +456,7 @@ try {
 		decoded0 && advanced0,
 		`decoded ${t0?.decoded} → ${t1?.decoded}, currentTime ${t0?.currentTime?.toFixed(2)} → ${t1?.currentTime?.toFixed(2)}`
 	);
-	const noGraphAt0 = await tv.evaluate(HOOK_STATE);
+	const noGraphAt0 = /** @type {HookState | null} */ (await tv.evaluate(HOOK_STATE));
 	record(
 		'LOW',
 		'baseline: no AudioContext is constructed at shift 0',
@@ -418,20 +468,22 @@ try {
 	// Send +1 through the real UI (via the sendPlayer WS message the button emits).
 	// The plus button is the second .key-btn under .key; we click it programmatically to avoid
 	// hit-testing the tiny inline SVG.
+	/** @param {'plus' | 'minus'} sign */
 	async function clickKey(sign) {
 		const idx = sign === 'plus' ? 1 : 0;
-		await phone.evaluate(`
+		await /** @type {Page} */ (phone).evaluate(`
 			(() => {
 				const btns = document.querySelectorAll(${JSON.stringify(SEL.keyBtn)});
 				if (btns[${idx}]) btns[${idx}].click();
 			})()
 		`);
 	}
+	/** @param {number} target @returns {Promise<boolean>} */
 	async function targetShift(target) {
 		// Read current from the phone's rendered label — the source of truth is the server-broadcast
 		// playback.keyShift, and that is exactly what "Key · +N" prints.
 		async function readCurrent() {
-			return await phone.evaluate(`(() => {
+			return await /** @type {Page} */ (phone).evaluate(`(() => {
 				const lab = document.querySelector(${JSON.stringify(SEL.keyLabel)});
 				if (!lab) return null;
 				const txt = lab.textContent.trim();
@@ -471,11 +523,11 @@ try {
 
 	// Give the TV time to receive the state, run the shift-wiring effect, build the graph, and resume.
 	await sleep(1500);
-	const stateAfter1 = await tv.evaluate(HOOK_STATE);
+	const stateAfter1 = /** @type {HookState | null} */ (await tv.evaluate(HOOK_STATE));
 	record(
 		'CRITICAL',
 		'a WebAudio graph is constructed the first time a shift engages',
-		stateAfter1?.contexts >= 1 && stateAfter1?.gains >= 1,
+		(stateAfter1?.contexts ?? 0) >= 1 && (stateAfter1?.gains ?? 0) >= 1,
 		`hook: ${JSON.stringify(stateAfter1)}`
 	);
 	record(
@@ -498,9 +550,9 @@ try {
 	);
 
 	// ── (3) decoding continues while shift is engaged ─────────────────────
-	const tS1a = pick(await tv.evaluate(MEDIA_PROBE));
+	const tS1a = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 	await sleep(2500);
-	const tS1b = pick(await tv.evaluate(MEDIA_PROBE));
+	const tS1b = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 	const decodedS1 = (tS1b?.decoded ?? 0) - (tS1a?.decoded ?? 0) > 0;
 	record(
 		'CRITICAL',
@@ -516,7 +568,7 @@ try {
 	// Also loop the fixture (it is 8s, positionSec could be near end).
 	// Restart the song for a clean read window.
 	async function restart() {
-		await phone.evaluate(`
+		await /** @type {Page} */ (phone).evaluate(`
 			(() => {
 				const btn = document.querySelector('[aria-label="restart"]');
 				if (btn) btn.click();
@@ -525,7 +577,7 @@ try {
 	}
 	await restart();
 	await sleep(700);
-	const meas1 = await tv.evaluate(READ_TAP_SRC);
+	const meas1 = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
 	// Now switch to 0 (ratio-1 passthrough on the same graph) so the "baseline" is measured through
 	// the same tap as +N. This is what gives the ratio check its cleanness.
 	const shiftedTo0 = await targetShift(0);
@@ -533,17 +585,19 @@ try {
 	await sleep(800);
 	await restart();
 	await sleep(700);
-	const meas0 = await tv.evaluate(READ_TAP_SRC);
+	const meas0 = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
 
 	// Now +2, +3, -1, -3 in turn.
+	/** @param {number} target @returns {Promise<TapRead>} */
 	async function measureAtShift(target) {
 		await targetShift(target);
 		await sleep(600);
 		await restart();
 		await sleep(700);
-		return await tv.evaluate(READ_TAP_SRC);
+		return /** @type {TapRead} */ (await /** @type {Page} */ (tv).evaluate(READ_TAP_SRC));
 	}
 
+	/** @type {Record<number, TapRead>} */
 	const measurements = { 0: meas0, 1: meas1 };
 	for (const s of [2, 3, -1, -3, 5]) {
 		measurements[s] = await measureAtShift(s);
@@ -556,13 +610,16 @@ try {
 	// different partials. Instead: for each shift, look at the TOP TWO or THREE partials returned
 	// (they are sorted by dB) and expect them to be close to the fixture partials multiplied by
 	// semitonesToRatio(N).
+	/** @param {number} n @returns {number} */
 	function ratio(n) {
 		return Math.pow(2, n / 12);
 	}
 	const FIXTURE = [220, 277.18, 329.63];
+	/** @param {number} n @returns {number[]} */
 	function expected(n) {
 		return FIXTURE.map((f) => f * ratio(n));
 	}
+	/** @param {{ hz: number, db: number }[]} measured @param {number[]} expectedHz @param {number} [tolPct] */
 	function matches(measured, expectedHz, tolPct = 3) {
 		// Return true iff at least TWO of the expected partials are within tolPct% of some measured partial.
 		let hits = 0;
@@ -572,6 +629,7 @@ try {
 		return hits >= 2;
 	}
 
+	/** @param {number} n @param {TapRead | undefined} m @returns {string} */
 	function summarise(n, m) {
 		if (!m?.ok) return `n/a: ${m?.why ?? 'no reading'}`;
 		const top = (m.partials || [])
@@ -641,6 +699,7 @@ try {
 			const measuredRatio = b.peakHz / a.peakHz;
 			// Nearest-match ratio: for each fixture partial, find the measured (at 0) and (at +2) partial
 			// closest to it and its ratio, then average.
+			/** @param {number} freq @param {{ hz: number, db: number }[]} arr */
 			const closest = (freq, arr) =>
 				arr.reduce((best, p) => (Math.abs(p.hz - freq) < Math.abs(best.hz - freq) ? p : best), arr[0]);
 			let sum = 0,
@@ -709,11 +768,11 @@ try {
 		await sleep(600);
 		await restart(); // ensures we are inside the 8s fixture
 		await sleep(700);
-		const meas2a = await tv.evaluate(READ_TAP_SRC);
+		const meas2a = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
 		// pause
 		await phone.clickByLabel('play/pause');
 		await sleep(700);
-		const pausedEls = pick(await tv.evaluate(MEDIA_PROBE));
+		const pausedEls = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 		record(
 			'MEDIUM',
 			'shift +2: pause halts the master',
@@ -723,14 +782,14 @@ try {
 		// resume
 		await phone.clickByLabel('play/pause');
 		await sleep(1200);
-		const resumedEls = pick(await tv.evaluate(MEDIA_PROBE));
+		const resumedEls = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 		record(
 			'MEDIUM',
 			'shift +2: resume keeps decoding',
 			(resumedEls?.decoded ?? 0) > (pausedEls?.decoded ?? 0) && !resumedEls?.paused,
 			`decoded ${pausedEls?.decoded} → ${resumedEls?.decoded}`
 		);
-		const meas2b = await tv.evaluate(READ_TAP_SRC);
+		const meas2b = /** @type {TapRead} */ (await tv.evaluate(READ_TAP_SRC));
 		record(
 			'HIGH',
 			'shift +2: the pitch survives pause/resume (top partial matches expected within 3%)',
@@ -780,9 +839,9 @@ try {
 			);
 			// The reset effect on the TV detaches the graphs; at shift 0, no new graph is built. Audio
 			// must still decode through the native path on the fresh song.
-			const advA = pick(await tv.evaluate(MEDIA_PROBE));
+			const advA = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 			await sleep(1800);
-			const advB = pick(await tv.evaluate(MEDIA_PROBE));
+			const advB = pick(/** @type {MediaEl[]} */ (await tv.evaluate(MEDIA_PROBE)));
 			const bothPresent = advA && advB;
 			record(
 				'CRITICAL',
@@ -792,7 +851,7 @@ try {
 					? `decoded ${advA.decoded} → ${advB.decoded} on the second song`
 					: `no <audio> mounted after advance (advA=${!!advA}, advB=${!!advB}) — the queue likely emptied`
 			);
-			const stateAfterChange = await tv.evaluate(HOOK_STATE);
+			const stateAfterChange = /** @type {HookState | null} */ (await tv.evaluate(HOOK_STATE));
 			// The previous song's context should be closed by detach(); if the new song stayed at shift 0
 			// no new context is built. Log for the record.
 			record(
@@ -814,7 +873,7 @@ try {
 				labelAfter === 'Key',
 				`.key .lab after advance: ${JSON.stringify(labelAfter)}`
 			);
-			const stateAfterChange = await tv.evaluate(HOOK_STATE);
+			const stateAfterChange = /** @type {HookState | null} */ (await tv.evaluate(HOOK_STATE));
 			record(
 				'MEDIUM',
 				"song-end: the shifted song's AudioContext was closed by detach()",
@@ -837,10 +896,10 @@ try {
 	await tv.screenshot(shot);
 	console.log(`\nTV frame: ${shot}`);
 	const finalMedia = await tv.evaluate(MEDIA_PROBE);
-	const finalHook = await tv.evaluate(HOOK_STATE);
+	const finalHook = /** @type {HookState | null} */ (await tv.evaluate(HOOK_STATE));
 	console.log('final media state:', JSON.stringify(finalMedia, null, 1));
 	console.log('final hook state:', JSON.stringify(finalHook, null, 1));
-} catch (err) {
+} catch (/** @type {any} */ err) {
 	record('CRITICAL', 'the flow ran to completion', false, String(err?.stack ?? err));
 } finally {
 	browser?.close();
@@ -855,9 +914,10 @@ console.log('');
 console.log(`${passes.length}/${passes.length + defects.length} checks passed  ·  ${envs.length} environment limits`);
 if (defects.length) {
 	console.log('\nDEFECTS:');
+	/** @type {Record<Severity, Finding[]>} */
 	const bySeverity = { CRITICAL: [], HIGH: [], MEDIUM: [], LOW: [] };
 	for (const f of defects) (bySeverity[f.severity] ?? []).push(f);
-	for (const sev of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']) {
+	for (const sev of /** @type {Severity[]} */ (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])) {
 		if (!bySeverity[sev].length) continue;
 		console.log(`  ${sev}:`);
 		for (const f of bySeverity[sev]) {
