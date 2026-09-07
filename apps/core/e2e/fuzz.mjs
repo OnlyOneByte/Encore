@@ -782,6 +782,10 @@ function seamLabel(input, prev, world) {
 /** @type {{ entryId: string | null, t: number | null }} */
 let lastPos = { entryId: null, t: null };
 const RESETS_POSITION = new Set(['seek', 'restart', 'skip']);
+/** The entry id I4 last evaluated against — the lyrics reel re-syncs off a broadcast after a song
+ * change, so the first read on a new entry sees the OLD reel and is propagation, not a defect.
+ * @type {string | null} */
+let lastLyricsEntry = null;
 
 /** @returns {Promise<World>} */
 async function readWorld() {
@@ -792,6 +796,12 @@ async function readWorld() {
 	const cur = (srv.entries ?? []).find((/** @type {any} */ e) => e.id === srv.playback?.currentEntryId) ?? null;
 	const curMedia = cur ? (mediaById.get(cur.mediaId) ?? null) : null;
 	const { master, how } = pickMaster(tvState.rows, curMedia?.instrumentalRef);
+	// Record the FIRST decoded byte-count seen for this src — the preload burst a blocked TV never
+	// exceeds. atPreloadFloor() reads this to tell an un-started TV from one that is genuinely playing,
+	// which is what makes the refusal excuse survive a seek without crying wolf (#591 A).
+	if (master && master.decoded !== null && master.decoded !== undefined && !preloadFloor.has(master.src)) {
+		preloadFloor.set(master.src, master.decoded);
+	}
 	return {
 		srv,
 		tv: tvState,
@@ -949,25 +959,73 @@ function checkI1(w, lastInput) {
 }
 
 /**
- * The launch policy decides whether a master paused at t=0 is excusable. Gestureless, an autoplay
- * refusal is what a real television does (paused at 0 with only its preload burst decoded), so any
- * check that reads the decoder or the playhead has nothing to measure and must SKIP with that reason
- * named rather than judge a frozen playhead as a defect. Shared by I4 and I6 so the two cannot drift.
+ * The launch policy decides whether a master that is not making sound is excusable. Gestureless and
+ * BEFORE the run's one real tap, an autoplay refusal is what a real television does (paused, only its
+ * preload burst decoded), so any check that reads the decoder or the playhead has nothing to measure
+ * and must SKIP with that reason named rather than judge it a defect. Shared by I4 and I6 so the two
+ * cannot drift.
+ *
+ * The honest predicate for "this television has not been started yet" is NOT `currentTime === 0`: a
+ * `seek` on a still-blocked master moves the playhead off 0 while the element stays paused and the
+ * decoder stays at its preload floor (issue #591 A), so keying on currentTime turns every gestureless
+ * seek into a phantom I6. Key instead on what is actually true of an un-started element: its decoder
+ * has not advanced past the preload burst it recorded the first time it saw this src (`atPreloadFloor`).
+ * That is honest across a transport too — a skip mounts a fresh element that sits at its OWN preload
+ * floor until it is started, so the excuse follows the element, not a run-level flag. maybeDeliverTap
+ * keeps the current master started (re-applying the one gesture as a real TV’s sticky activation would);
+ * once the decoder climbs past the floor, there is no refusal left to blame and a silent room is a real defect.
  */
+/** First decoded byte-count seen for each src — the preload burst floor a blocked TV never exceeds. */
+const preloadFloor = new Map();
+/** Set true once maybeDeliverTap() delivers the run's single real gesture. */
+let tapped = false;
+/** @param {World} w */
+function atPreloadFloor(w) {
+	const m = w.master;
+	if (!m) return false;
+	const d = m.decoded;
+	// A missing decoder counter means neither caller can claim the element is at its preload floor, so
+	// this returns false: autoplayRefused stops EXCUSING the master and maybeDeliverTap stops RE-TAPPING
+	// it, and it falls through to a real I6 evaluation. That is deliberate — fail toward measuring audio
+	// rather than toward silently excusing a state we cannot read.
+	if (d === null || d === undefined) return false;
+	const floor = preloadFloor.get(m.src);
+	return floor !== undefined && d <= floor;
+}
 /** @param {World} w */
 function autoplayRefused(w) {
-	return !AUTOPLAY && w.master?.paused === true && w.master?.currentTime === 0;
+	return !AUTOPLAY && w.master?.paused === true && atPreloadFloor(w);
 }
 
 /** I4 · the lyrics active index is consistent with currentTime. */
-/** @param {World} w */
-async function checkI4(w) {
+/**
+ * @param {World} w
+ * @param {InputName} lastInput
+ */
+async function checkI4(w, lastInput) {
 	if (!w.master) return skip('I4', 'no master element on stage to measure');
 	if (autoplayRefused(w))
 		return skip(
 			'I4',
-			'gestureless: the browser refused autoplay (paused at 0, preload burst only) — exactly what a real TV does, so the reel advances off the server intent while the playhead is frozen; nothing about the highlight vs currentTime is testable under this policy'
+			'gestureless, before the tap: the browser refused autoplay (paused, decoder still at its preload floor) — exactly what a real TV does before someone taps it, so the reel advances off the server intent while audio has not started; nothing about the highlight vs currentTime is testable yet'
 		);
+	// The lyrics reel re-syncs to a new song off a broadcast, ASYNCHRONOUSLY — exactly like the
+	// cross-surface invariants. So the first read after the current entry changes (or after any
+	// position-resetting transport) sees the OLD reel against a playhead that just snapped to ~0,
+	// which is propagation lag, not a highlight defect. Skip that one read with its reason named,
+	// the same way I1 skips a currentTime fall across an entry change (#591 B made this reachable).
+	{
+		const id = w.current?.id ?? null;
+		const changed = id !== lastLyricsEntry;
+		lastLyricsEntry = id;
+		if (changed)
+			return skip(
+				'I4',
+				'the current entry just changed; the lyrics reel re-syncs off a broadcast, so this first read still shows the previous song'
+			);
+		if (RESETS_POSITION.has(lastInput))
+			return skip('I4', `the input was \`${lastInput}\`, a position discontinuity the reel re-syncs to asynchronously`);
+	}
 	if (!w.curMedia?.lyricsRef) return skip('I4', 'the current song has no lyrics artifact');
 	if (!w.tv.activeWord) return skip('I4', 'no active word rendered (between words, or word-highlight is off)');
 	const doc = await lyricsFor(w.curMedia.lyricsRef);
@@ -1034,7 +1092,7 @@ async function checkI6(w) {
 	if (autoplayRefused(w)) {
 		return skip(
 			'I6',
-			'gestureless: the browser refused autoplay (paused at 0, preload burst only) — exactly what a real TV does, so nothing about the decoder is testable under this policy'
+			'gestureless, before the tap: the browser refused autoplay (paused, decoder still at its preload floor) — exactly what a real TV does before someone taps it, so nothing about the decoder is testable yet'
 		);
 	}
 	const before = { decoded: w.master.decoded, t: w.master.currentTime, src: w.master.src, paused: w.master.paused };
@@ -1054,7 +1112,7 @@ async function checkI6(w) {
 			'strictly more decoded bytes at the second sample',
 			`server isPlaying=true, currentEntryId=${w.current.id}, positionSec=${w.srv.playback?.positionSec}. ` +
 				(m2.paused === true
-					? 'The element is PAUSED while the room believes it is playing — no sound, no timeupdate, no telemetry, and a server position frozen at 0.'
+					? `The element is PAUSED while the room believes it is playing — no sound, no timeupdate, no telemetry, while the server position reads ${w.srv.playback?.positionSec}.`
 					: '`paused === false` reports INTENT, not progress; a failed decode looks exactly like this.')
 		);
 	}
@@ -1099,7 +1157,7 @@ async function checkAll(lastInput) {
 	// I6 is evaluated BEFORE I4 deliberately, even though the spec numbers it last. A silent room makes
 	// the lyrics reel drift, so the drift is a downstream SYMPTOM of the decoder finding — reporting the
 	// symptom first would send a reader to LyricsOverlay when the fault is in the player.
-	const single = checkI1(world, lastInput) ?? (await checkI6(world)) ?? (await checkI4(world));
+	const single = checkI1(world, lastInput) ?? (await checkI6(world)) ?? (await checkI4(world, lastInput));
 	return { v: single, world };
 }
 
@@ -1300,6 +1358,44 @@ function printSummary() {
 	printSequence(false);
 }
 
+/**
+ * THE GESTURE, DELIVERED — AND KEPT. #332 added a trusted real tap to the driver (cdp.mjs realClick,
+ * proven 7/7 by p13-tap-to-start.mjs), but this randomised driver never called it — so gesturelessly
+ * the TV never started and I4/I6 could only ever SKIP (#591 B). Deliver the real tap the first time
+ * the room has a mounted master on the current song and claims to be playing, and re-apply it whenever
+ * the CURRENT master is paused at its own preload floor under a playing room. No --autoplay-policy flag
+ * is granted, so this is still a television; a viewer’s tap is the one gesture a living-room TV gets,
+ * and on a real TV that gesture’s user activation is STICKY — it carries across the auto-advance a
+ * skip triggers, so the next song plays without a second tap. Headless mounts a fresh <audio> per
+ * entry and does not always re-apply that activation on its own, so re-tapping models the real TV
+ * rather than inventing a permission: the tap is only ever re-applied to a master ALREADY sitting at
+ * its preload floor, which is exactly the un-started state a real sticky activation would have cleared.
+ *
+ * The FIRST tap is recorded in the sequence as an explicit input so a replay stays faithful; later
+ * re-applications are silent recovery of the same one gesture, not new inputs.
+ *
+ * autoplay-granted (NOT-A-TV) runs skip the tap entirely: the browser already needs no gesture there,
+ * and the whole point of that policy is that it is not a television.
+ * @param {World} world
+ */
+async function maybeDeliverTap(world) {
+	if (AUTOPLAY) return;
+	if (!world.master || !world.current) return;
+	if (world.srv.playback?.isPlaying !== true) return;
+	// Nothing to do once this master is genuinely playing (decoder past its floor).
+	if (tapped && !(world.master.paused === true && atPreloadFloor(world))) return;
+	await tv.realClick(960, 540); // trusted CDP Input gesture — the only thing that unblocks autoplay
+	if (!tapped) {
+		tapped = true;
+		sequence.push({
+			who: 'TV',
+			input: 'real-tap',
+			detail: 'the one real tap a viewer makes to start a gestureless TV (#591 B)'
+		});
+	}
+	await sleep(1200); // let the decoder begin climbing before the next invariant read
+}
+
 // ── run ──────────────────────────────────────────────────────────────────────────────────────────
 let exitCode = 0;
 try {
@@ -1340,6 +1436,7 @@ try {
 		const first = await driveInput('queue-add', world);
 		sequence.push({ ...first, detail: `${first.detail} (opening add)` });
 		await sleep(1200);
+		await maybeDeliverTap(await readWorld());
 	}
 
 	let prev = null;
@@ -1350,6 +1447,9 @@ try {
 			waiting: world.waiting,
 			cooking: world.cooking
 		};
+		// The one real tap lands as soon as the room is playing a mounted master (#591 B). Faithful to a
+		// living-room TV, and what makes I4/I6 measurable at all under the gestureless default.
+		await maybeDeliverTap(world);
 		const input = drawInput(prev, w);
 		const seam = seamLabel(input, prev, w);
 		const rec = await driveInput(input, world);
@@ -1367,7 +1467,18 @@ try {
 
 	if (exitCode === 0) {
 		printSummary();
-		console.log('\nall six invariants held after every input.');
+		// NON-VACUITY FLOOR (#591 B). I6 is the invariant this file calls the one that cannot be dropped;
+		// a run that never got to evaluate it measured nothing about audio and must NOT wear a green badge.
+		// Exit 2 ("the environment could not host the run") is the file’s own contract for a run that
+		// proved nothing — never 0. Never conflate 2 with 0; that conflation is how the original hole hid.
+		if (stats.I6.checked === 0) {
+			console.log(
+				'\nNON-VACUITY: I6 (decoded bytes climbing while the room claims to play) never evaluated — this run measured nothing about audio, so it cannot report green. Exiting 2.'
+			);
+			exitCode = 2;
+		} else {
+			console.log('\nall six invariants held after every input.');
+		}
 	}
 } catch (err) {
 	// An error in the DRIVER is an environment problem, not a room defect — reporting it as a violation
