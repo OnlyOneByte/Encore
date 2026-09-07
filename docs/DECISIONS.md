@@ -60,9 +60,19 @@ tier already arrives line-broken by a human, and a splitter can only damage thos
 `textract-py3` drags SpeechRecognition, pdfminer.six, python-pptx, oletools, cryptography, easygui,
 xlrd; all serving `.doc`/`.rtf` ingestion we never call. Unused weight, not a version conflict.
 
-**Not adopted.** `flacfetch`'s lossless sources (private trackers, Spotify via `librespot`) would
-attack the real source-audio ceiling — YouTube gives us ~130–150 kbps lossy — but it needs a
-Transmission daemon plus tracker credentials, and the sourcing question is the **owner's call**.
+**Partially superseded (2026-09-07, issue #427).** `flacfetch`'s lossless sources (private trackers,
+Spotify via `librespot`) would attack the real source-audio ceiling — YouTube gives us ~130–150 kbps
+lossy — but that ACQUISITION path needs a Transmission daemon plus tracker credentials and stays
+**parked** (still the owner's call). What the owner DID adopt is **Spotify as a SEARCH / metadata
+source only**: a Spotify resolver joins the `/api/search` fan-out and surfaces clean canonical
+artist/title/duration (where a YouTube upload title has to be reverse-engineered), but its bytes are
+never pulled from Spotify — the audio is still acquired from YouTube, consistent with the annotator
+rule below. There is deliberately no `fetch:spotify` worker capability and no `librespot`; a
+spotify-sourced media is not cookable (`fetcherFor` refuses it, `requestMakeKaraoke` declines it).
+Credentials, if the Spotify search API needs them, live in worker/core **env vars**
+(`SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET`), matching LRCLIB and every existing knob — this app
+stores no secrets in the DB and this does not become the first. So the librespot ACQUISITION half of
+this line remains not adopted; only the search half is superseded.
 
 ---
 
