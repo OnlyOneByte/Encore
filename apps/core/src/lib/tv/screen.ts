@@ -8,6 +8,7 @@
 // Pure (no Svelte, no DOM) so the precedence rules are unit-testable; `+page.svelte` renders it.
 
 import type { QueueEntry } from '@encore/shared';
+import type { TvState } from './gapless';
 
 /**
  * What the TV should be showing.
@@ -25,7 +26,7 @@ export type TvScreen = 'attract' | 'lobby' | 'waiting' | 'playing';
 
 export interface TvScreenInput {
 	/** The gapless controller's own state — 'waiting' is authoritative when set. */
-	playerState: string;
+	playerState: TvState;
 	/** The current entry, if the server has handed us one. */
 	current: QueueEntry | null;
 	/** Every queue entry the TV knows about (used to tell "empty" from "queued but not playable"). */
@@ -80,7 +81,7 @@ export function tvScreen(input: TvScreenInput): TvScreen {
  */
 export function lyricsAdvancing(
 	screen: TvScreen,
-	tvState: string,
+	tvState: TvState,
 	isPlaying: boolean,
 	elementAdvancing: boolean
 ): boolean {

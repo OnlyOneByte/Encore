@@ -120,8 +120,17 @@ export const EMPTY_SONG_PROFILE: SongProfile = {
 	histogram: null
 };
 
-/** Does this profile carry a key worth showing? Confidence floor applied here, once. */
-export function hasKey(p: SongProfile | null | undefined): boolean {
+/** A profile whose key fields are all present — what {@link hasKey} narrows to. */
+export type ProfileWithKey = SongProfile & { keyTonic: PitchClass; keyMode: KeyMode; keyConfidence: number };
+
+/**
+ * Does this profile carry a key worth showing? Confidence floor applied here, once.
+ *
+ * A TYPE PREDICATE: a true result narrows `p` to {@link ProfileWithKey}, so callers read
+ * `p.keyTonic` / `p.keyMode` directly instead of asserting each field non-null. The runtime check is
+ * unchanged from the previous `boolean` version.
+ */
+export function hasKey(p: SongProfile | null | undefined): p is ProfileWithKey {
 	return (
 		!!p &&
 		p.keyTonic !== null &&
@@ -131,8 +140,16 @@ export function hasKey(p: SongProfile | null | undefined): boolean {
 	);
 }
 
-/** Does this profile carry a usable vocal range? The percentiles are what the bar needs. */
-export function hasVocalRange(p: SongProfile | null | undefined): boolean {
+/** A profile whose range fields are all present — what {@link hasVocalRange} narrows to. */
+export type ProfileWithRange = SongProfile & { lowMidi: number; highMidi: number; p05Midi: number; p95Midi: number };
+
+/**
+ * Does this profile carry a usable vocal range? The percentiles are what the bar needs.
+ *
+ * A TYPE PREDICATE: a true result narrows `p` to {@link ProfileWithRange}, so callers read the four
+ * range fields directly instead of asserting each non-null. The runtime check is unchanged.
+ */
+export function hasVocalRange(p: SongProfile | null | undefined): p is ProfileWithRange {
 	return !!p && p.lowMidi !== null && p.highMidi !== null && p.p05Midi !== null && p.p95Midi !== null;
 }
 
@@ -162,12 +179,12 @@ export function keyLabel(tonic: PitchClass, mode: KeyMode, accidental: Accidenta
 export function soundingKeyLabel(p: SongProfile | null | undefined, keyShift: number): string | null {
 	if (!hasKey(p)) return null;
 	const shift = Math.trunc(keyShift);
-	return keyLabel(transposePitchClass(p!.keyTonic!, shift), p!.keyMode!, shift < 0 ? 'flat' : 'sharp');
+	return keyLabel(transposePitchClass(p.keyTonic, shift), p.keyMode, shift < 0 ? 'flat' : 'sharp');
 }
 
 /** The song's ORIGINAL key, unshifted — `null` when undetected or below the confidence floor. */
 export function originalKeyLabel(p: SongProfile | null | undefined): string | null {
-	return hasKey(p) ? keyLabel(p!.keyTonic!, p!.keyMode!) : null;
+	return hasKey(p) ? keyLabel(p.keyTonic, p.keyMode) : null;
 }
 
 // ── note names ────────────────────────────────────────────────────────────────────
@@ -191,13 +208,13 @@ export function midiToNoteName(midi: number): string {
 export function rangeLabel(p: SongProfile | null | undefined, semitones = 0): string | null {
 	if (!hasVocalRange(p)) return null;
 	const shift = Math.trunc(semitones);
-	return `${midiToNoteName(p!.p05Midi! + shift)} - ${midiToNoteName(p!.p95Midi! + shift)}`;
+	return `${midiToNoteName(p.p05Midi + shift)} - ${midiToNoteName(p.p95Midi + shift)}`;
 }
 
 /** How many octaves the sung range spans, to one decimal — the "is this a big sing" number. */
 export function rangeOctaves(p: SongProfile | null | undefined): number | null {
 	if (!hasVocalRange(p)) return null;
-	return Math.round(((p!.highMidi! - p!.lowMidi!) / 12) * 10) / 10;
+	return Math.round(((p.highMidi - p.lowMidi) / 12) * 10) / 10;
 }
 
 // ── voice bands ───────────────────────────────────────────────────────────────────
@@ -290,7 +307,7 @@ export function voiceBandZones(): { id: VoiceBandId; label: string; lowMidi: num
 export function voiceBandFor(p: SongProfile | null | undefined, semitones = 0): VoiceBand | null {
 	if (!hasVocalRange(p)) return null;
 	const shift = Math.trunc(semitones);
-	const songCentre = (p!.p05Midi! + p!.p95Midi!) / 2 + shift;
+	const songCentre = (p.p05Midi + p.p95Midi) / 2 + shift;
 	let best = VOICE_BANDS[0];
 	let bestDist = Infinity;
 	for (const b of VOICE_BANDS) {
@@ -325,10 +342,10 @@ export function rangeBarFractions(
 	const span = AXIS_HIGH_MIDI - AXIS_LOW_MIDI;
 	const at = (midi: number) => Math.max(0, Math.min(1, (midi + shift - AXIS_LOW_MIDI) / span));
 	return {
-		lo: at(p!.lowMidi!),
-		hi: at(p!.highMidi!),
-		blockLo: at(p!.p05Midi!),
-		blockHi: at(p!.p95Midi!)
+		lo: at(p.lowMidi),
+		hi: at(p.highMidi),
+		blockLo: at(p.p05Midi),
+		blockHi: at(p.p95Midi)
 	};
 }
 
