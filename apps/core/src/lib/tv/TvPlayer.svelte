@@ -144,12 +144,25 @@
 
 	const guideRef = $derived(media?.vocalsRef ?? null);
 	/**
-	 * The guide element is mounted only while it is actually wanted. That is what keeps the default
-	 * free: the feature ships at 0, and a room that never turns it on must not pay to decode a second
-	 * stream in silence. A room that DOES set a default pays one extra preload per slot — which is
-	 * exactly what it asked for.
+	 * Mount-worthiness, split from level-gating (#586, §3 of #578). The guide <audio> stays mounted
+	 * whenever THIS song CAN have a guide — a guide ref exists and the song is playable — regardless of
+	 * the current level. It deliberately does NOT read `effectiveGuide`: the guide-level slider is
+	 * `step="1"` from `min="0"`, so dragging it through the left end used to flip a level-gated mount
+	 * false-then-true and UNMOUNT/REMOUNT the element mid-song, re-paying the pre-roll lock-on (the
+	 * `canplay` alignment) on every pass through 0. Keeping the element mounted through 0 means passing
+	 * through 0 gates the audio to silent (see the level effect: `vocals.volume`/`guideGraph.setGain`)
+	 * without ever tearing the buffered/aligned element down.
 	 */
-	const wantsGuide = $derived(!!guideRef && !!media && isPlayable(media) && effectiveGuide > 0);
+	const guideMountable = $derived(!!guideRef && !!media && isPlayable(media));
+	/**
+	 * Level-gating for READINESS, kept on the ORIGINAL condition (`effectiveGuide > 0`) — trap #1 of
+	 * #578. This is what keeps the default free: the feature ships at 0, and a room that never turns it
+	 * on must NOT wait on `guideSettled` before announcing ready, i.e. must not pay to decode a second
+	 * stream in silence just to leave `loading`. So the ready-report effects below gate on `wantsGuide`
+	 * (level > 0), NOT on `guideMountable`. A room that DOES set a default pays one extra preload per
+	 * slot — exactly what it asked for.
+	 */
+	const wantsGuide = $derived(guideMountable && effectiveGuide > 0);
 
 	// ── readiness ──────────────────────────────────────────────────────────────
 	// The slot is ready for a gapless swap only when everything it will play can play. Announcing on
@@ -218,10 +231,13 @@
 		//     `postMessage`), so the element stays audible on the new song;
 		//     on an un-built graph it is a documented no-op. Teardown happens only on slot unmount (the
 		//     destroy effect below).
-		//   • GUIDE lives as long as the SONG — its <audio> sits behind {#if wantsGuide && guideRef} and
-		//     is remounted per song, so the previous graph's captured element is already gone. Detach the
-		//     stale graph and drop the reference; the shift-wiring effect rebuilds against the fresh
-		//     `vocals` element.
+		//   • GUIDE lives as long as the SONG — its <audio> sits behind {#if guideMountable && guideRef}
+		//     (mount-worthiness: a playable song with a guide ref, INDEPENDENT of the level — #586). It is
+		//     no longer torn down by a slider drag through level 0; the only thing that unmounts it is a
+		//     song change (or a non-playable/ref-less song), which is exactly this per-song reset. So on the
+		//     path that reaches here the previous graph's captured element is still gone — the guide is
+		//     remounted for the NEW song — and detaching the stale graph + dropping the reference remains
+		//     correct: the shift-wiring effect rebuilds against the fresh `vocals` element.
 		void masterGraph?.setShift(0);
 		guideGraph?.detach();
 		guideGraph = undefined;
@@ -677,7 +693,7 @@
 				syncGuide();
 			}}
 		></audio>
-		{#if wantsGuide && guideRef}
+		{#if guideMountable && guideRef}
 			<!-- The guiding track: the isolated vocals, following the master. Never the position source
 			     for anything — telemetry, lyrics and progress all read the instrumental. -->
 			<audio
