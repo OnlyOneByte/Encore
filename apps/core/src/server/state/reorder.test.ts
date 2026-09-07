@@ -54,3 +54,20 @@ test('move of unknown id is a safe no-op', () => {
 	s.applyQueueOp({ op: 'move', id: 'ghost', toSeq: 0 });
 	expect(s.entries.map((x) => x.id)).toEqual(before);
 });
+
+// #637: when the moving singer has a PLAYING entry, reorder-DOWN on their FIRST queued pick
+// (the next-to-play song) must swap it with the following pick. Before the fix, the server counted
+// the playing entry as index 0, so the client's toSeq (queued-index + 1) landed on the pick's own
+// slot — a silent no-op. RED on base for this fixture; the earlier tests use queued-only rosters.
+test('#637 reorder-DOWN on the next-to-play song moves it (singer has a playing entry)', () => {
+	const s = new AuthoritativeState();
+	// One singer: P (will be playing), then q0 (next-to-play), then q1.
+	s.applyQueueOp({ op: 'add', entry: e('P', 's', 1) });
+	s.applyQueueOp({ op: 'add', entry: e('q0', 's', 2) });
+	s.applyQueueOp({ op: 'add', entry: e('q1', 's', 3) });
+	s.applyQueueOp({ op: 'status', id: 'P', status: 'playing' });
+	// Queued picks the phone would show: [q0, q1]. DOWN on q0 -> toSeq = 0 + 1 = 1.
+	s.applyQueueOp({ op: 'move', id: 'q0', toSeq: 1 });
+	const queued = s.entries.filter((x) => x.status === 'queued').map((x) => x.id);
+	expect(queued).toEqual(['q1', 'q0']); // was ['q0','q1'] before the fix
+});

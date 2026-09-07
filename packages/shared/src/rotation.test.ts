@@ -114,3 +114,35 @@ test('isTerminal classifies done vs live', () => {
 	expect(isTerminal({ ...e('x', 'a', 1), status: 'playing' })).toBe(false);
 	expect(isTerminal({ ...e('x', 'a', 1), status: 'done' })).toBe(true);
 });
+
+// ── #637: reorder-DOWN on the next-to-play song ────────────────────────────────
+// The moving singer has a PLAYING entry. reorderWithinSinger must index over the singer's
+// QUEUED picks only, matching the client (+page.svelte myPicks = queued.filter(mine)). If it
+// counted the playing entry it would occupy index 0, every index would be off by one, and the
+// singer's first queued pick (toSeq = 0 + 1 = 1) would resolve onto its OWN slot — a silent no-op.
+test('#637 reorder-DOWN on next-to-play swaps with the following song (playing entry present)', () => {
+	// P is playing; q0 is the next-to-play (singer's FIRST queued pick), q1 follows. All one singer.
+	const base = assignSeqs([
+		{ ...e('q0', 's', 2) },
+		{ ...e('q1', 's', 3) },
+		{ ...e('P', 's', 1), status: 'playing' as const }
+	]);
+	const queuedBefore = base.filter((x) => x.status === 'queued').map((x) => x.id);
+	expect(queuedBefore).toEqual(['q0', 'q1']);
+	// DOWN on q0: client sends toSeq = myIdx(q0) + 1 = 0 + 1 = 1 (index over queued picks only).
+	const out = applyAndReseq(base, { op: 'move', id: 'q0', toSeq: 1 });
+	const queuedAfter = out.filter((x) => x.status === 'queued').map((x) => x.id);
+	expect(queuedAfter).toEqual(['q1', 'q0']); // RED on base: was ['q0','q1'] (no-op)
+	// The playing entry never moved and never lost its slot.
+	expect(out.find((x) => x.id === 'P')!.status).toBe('playing');
+});
+
+test('#637 reorder-UP on the following song (the old workaround) still works', () => {
+	const base = assignSeqs([
+		{ ...e('q0', 's', 2) },
+		{ ...e('q1', 's', 3) },
+		{ ...e('P', 's', 1), status: 'playing' as const }
+	]);
+	const out = applyAndReseq(base, { op: 'move', id: 'q1', toSeq: 0 });
+	expect(out.filter((x) => x.status === 'queued').map((x) => x.id)).toEqual(['q1', 'q0']);
+});
