@@ -58,7 +58,10 @@ class DecodeToWav(Step):
             # Guaranteed non-empty by AcquireAudio, which raises if it cannot retain the original.
             # The old `or ""` would hand ffmpeg an empty input and die as the opaque
             # "ffmpeg: : No such file or directory"; name the missing key instead.
-            raise RuntimeError("decode-to-wav: audio.path is empty (AcquireAudio did not run or failed)")
+            # PermanentError (retryable=False): a step running out of order with no audio.path is a
+            # deterministic plan error — every retry re-runs the same passes and fails identically, so
+            # it must fail fast rather than burn three attempts (#583, same class as #571).
+            raise PermanentError("decode-to-wav: audio.path is empty (AcquireAudio did not run or failed)")
         await run_quiet(ctx.runner, decode_argv(ctx.audio.path, out, self._ffmpeg))
         ctx.audio.decoded_wav = out
         return
@@ -200,7 +203,10 @@ class PublishStems(Step):
             # Guaranteed present by Separate (raises when no instrumental is produced) and by
             # ProbeSilence (raises on a silent instrumental). The old `or ""` would encode an
             # empty path into "ffmpeg: : No such file or directory"; name the missing key instead.
-            raise RuntimeError("publish-stems: stems.raw['instrumental'] is missing (Separate did not run)")
+            # PermanentError (retryable=False): a missing instrumental key is a deterministic plan
+            # error — every retry re-runs the same passes and fails identically, so it must fail fast
+            # rather than burn three attempts (#583, same class as #571).
+            raise PermanentError("publish-stems: stems.raw['instrumental'] is missing (Separate did not run)")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
         await run_quiet(ctx.runner, encode_flac_argv(raw_inst, final, self._ffmpeg, self._flac_level))
