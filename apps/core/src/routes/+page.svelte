@@ -536,11 +536,10 @@
 	let library = $state<Media[]>([]);
 	// Browse: facets describe the WHOLE ready library (never the current filter), so picking an
 	// artist cannot collapse the rail to that one artist and strand you with no way back.
-	let facets = $state<{ artists: { artist: string; count: number }[]; genres: { genre: string; count: number }[] }>({
-		artists: [],
-		genres: []
+	let facets = $state<{ artists: { artist: string; count: number }[] }>({
+		artists: []
 	});
-	let browseFilter = $state<{ artist?: string; genre?: string } | null>(null);
+	let browseFilter = $state<{ artist?: string } | null>(null);
 	/*
 	 * Browse starts collapsed so the readiness spine is the only filter on screen at rest. It opens
 	 * itself when a facet is active, because a filter narrowing the list while its control is hidden
@@ -551,22 +550,17 @@
 		if (browseFilter) browseOpen = true;
 	});
 
-	function setBrowse(kind: 'artist' | 'genre' | null, value: string) {
+	function setBrowse(kind: 'artist' | null, value: string) {
 		// tapping the active chip again clears it — a filter you cannot undo is a trap
-		const same =
-			kind === 'artist' ? browseFilter?.artist === value : kind === 'genre' ? browseFilter?.genre === value : false;
-		browseFilter = kind === null || same ? null : kind === 'artist' ? { artist: value } : { genre: value };
+		const same = kind === 'artist' ? browseFilter?.artist === value : false;
+		browseFilter = kind === null || same ? null : { artist: value };
 		if (navigator.vibrate) navigator.vibrate(8);
 		loadLibrary();
 	}
 
 	async function loadLibrary() {
 		try {
-			const qs = browseFilter?.artist
-				? `?artist=${encodeURIComponent(browseFilter.artist)}`
-				: browseFilter?.genre
-					? `?genre=${encodeURIComponent(browseFilter.genre)}`
-					: '';
+			const qs = browseFilter?.artist ? `?artist=${encodeURIComponent(browseFilter.artist)}` : '';
 			const j = await (await fetch(`/api/library${qs}`)).json();
 			if (j.facets) facets = j.facets;
 			library = j.library ?? [];
@@ -859,12 +853,12 @@
 		  so the control row changed shape while you were using it. One collapsed row keeps the readiness
 		  spine primary and the control set stable.
 		-->
-		{#if !searchActive && (facets.artists.length > 1 || facets.genres.length > 1)}
+		{#if !searchActive && facets.artists.length > 1}
 			<div class="browse">
 				<button class="browse-toggle" aria-expanded={browseOpen} onclick={() => (browseOpen = !browseOpen)}>
 					<Icon name={browseOpen ? 'chevron-down' : 'chevron-right'} />
 					Browse
-					{#if browseFilter}<span class="browse-active">{browseFilter.artist ?? browseFilter.genre}</span>{/if}
+					{#if browseFilter}<span class="browse-active">{browseFilter.artist}</span>{/if}
 				</button>
 				<!-- Clearing stays reachable while collapsed: a filter you cannot see is a filter you
 				     cannot undo, and an empty-looking list with no visible cause is the result. -->
@@ -887,20 +881,6 @@
 						{/each}
 					</div>
 				{/if}
-				{#if facets.genres.length > 1}
-					<div class="facets" role="group" aria-label="Browse by genre">
-						<span class="facet-label">Genre</span>
-						{#each facets.genres as f (f.genre)}
-							<button
-								class="chip ok"
-								class:active={browseFilter?.genre === f.genre}
-								onclick={() => setBrowse('genre', f.genre)}
-							>
-								{f.genre}&nbsp;<span class="facet-count">{f.count}</span>
-							</button>
-						{/each}
-					</div>
-				{/if}
 			{/if}
 		{/if}
 		{#if readyList.length}
@@ -908,7 +888,7 @@
 			{#if showGroupHeads || facetHead}
 				<h2 class="grouphead ok">
 					{facetHead
-						? `${browseFilter?.artist ?? browseFilter?.genre} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
+						? `${browseFilter?.artist} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
 						: 'Ready to sing · no wait'}
 				</h2>
 			{/if}
