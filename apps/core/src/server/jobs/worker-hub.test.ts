@@ -741,3 +741,63 @@ test('#90 TTL: a dead align cook settles the LYRICS gate on an already-playable 
 	expect(mediaById.get('m1')!.lyricsStatus).toBe('ready'); // gate settled → the song can be sung
 	expect(mediaById.get('m1')!.stemStatus).toBe('ready'); // playable instrumental untouched
 });
+
+test('#524: a worker-reported release frees EXACTLY one slot — never double-frees via both machine and handler', () => {
+	// Slot release now rides the machine (transition), so the handlers dropped their explicit
+	// registry.releaseSlot() calls. A concurrency=2 worker holding TWO in-flight jobs makes a double
+	// free observable that a concurrency=1 worker's Math.min clamp would hide: completing ONE job must
+	// leave slotsFree at 1 (one slot back), not 2 (both, which a machine-release PLUS a re-added
+	// handler-release would produce). Pins the release-removal hunks in #onComplete/#onReject.
+	const { hub, jobs, registry, setClock } = harness();
+	const a = jobs.enqueue('m1', 'stems', 0, T0);
+	const b = jobs.enqueue('m2', 'stems', 1, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 2, version: '1' });
+	// Both jobs dispatched to the two-slot worker.
+	expect(registry.get('w1')!.slotsFree).toBe(0); // both slots claimed
+
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: a.id });
+	setClock(T0 + 1000);
+	hub.handle({
+		type: 'job:complete', workerId: 'w1', jobId: a.id, mediaUri: 'x',
+		artifacts: { stems: { instrumental: 'derived/stems/m1-instrumental.flac' } }
+	});
+	expect(jobs.byId(a.id)!.status).toBe('ready');
+	expect(registry.get('w1')!.slotsFree).toBe(1); // EXACTLY one freed — a double-free would read 2
+	expect(jobs.byId(b.id)!.status).toBe('assigned'); // the other job still held by w1 (dispatched, not yet accepted)
+});
+
+test('#524: job:reject frees EXACTLY one slot on a two-slot worker (no double-free via machine + handler)', () => {
+	// Same double-free probe as the complete case, on the REJECT path (#onReject). On a concurrency=2
+	// worker holding two assigned jobs, a reject of ONE must return slotsFree to 1 net — the rejected
+	// job's slot back, then reclaimed by the redispatch of the SAME job to the still-free second slot.
+	// A double-free (machine release + a re-added handler release) would over-count. Pins the
+	// #onReject release-removal hunks (comment + dropped registry.releaseSlot).
+	const { hub, jobs, registry } = harness();
+	const a = jobs.enqueue('m1', 'stems', 0, T0);
+	jobs.enqueue('m2', 'stems', 1, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 2, version: '1' });
+	expect(registry.get('w1')!.slotsFree).toBe(0); // both slots claimed
+
+	hub.handle({ type: 'job:reject', workerId: 'w1', jobId: a.id, reason: 'busy' });
+	// a released (→queued, slotsFree 1) then immediately redispatched to w1's free slot (→0 again).
+	// The net is 0, NOT 1: a double-free on reject would leave slotsFree at 1 with a phantom slot.
+	expect(registry.get('w1')!.slotsFree).toBe(0);
+	expect(jobs.byId(a.id)!.status).toBe('assigned'); // redispatched, still owned by w1
+});
+
+test('#524: a terminal job:failed frees EXACTLY one slot on a two-slot worker (no double-free)', () => {
+	// The terminal (non-retryable) #onFailed branch releases through the machine (FAIL). On a
+	// concurrency=2 worker holding two jobs, failing ONE non-retryably must leave slotsFree at 1, not
+	// 2. Pins the #onFailed release-removal hunk (the explicit release dropped from the shared prologue).
+	const { hub, jobs, registry, setClock } = harness();
+	const a = jobs.enqueue('m1', 'stems', 0, T0);
+	jobs.enqueue('m2', 'stems', 1, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 2, version: '1' });
+	expect(registry.get('w1')!.slotsFree).toBe(0);
+
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: a.id });
+	setClock(T0 + 1000);
+	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: a.id, error: 'source gone (404)', retryable: false });
+	expect(jobs.byId(a.id)!.status).toBe('failed');
+	expect(registry.get('w1')!.slotsFree).toBe(1); // EXACTLY one freed
+});
