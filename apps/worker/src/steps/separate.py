@@ -27,7 +27,7 @@ from ..processor import (
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_stage
 from ..runtime.step import Step, StepResult
-from ..separation.demucs import STEM_BITRATE, decode_argv, encode_flac_argv
+from ..separation.demucs import decode_argv, encode_flac_argv
 from ..separation.engines import SeparatorEngine, engine_for
 from ..vocabulary import Stage
 
@@ -186,10 +186,9 @@ class PublishStems(Step):
     reads = frozenset({"job", "stems.raw", "stems", "runner"})
     writes = frozenset({"stems.published", "out"})
 
-    def __init__(self, ffmpeg_bin: str = "ffmpeg", flac_level: int = 8, bitrate: str = STEM_BITRATE) -> None:
+    def __init__(self, ffmpeg_bin: str = "ffmpeg", flac_level: int = 8) -> None:
         self._ffmpeg = ffmpeg_bin
         self._flac_level = flac_level
-        self._bitrate = bitrate
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         job = ctx.job
