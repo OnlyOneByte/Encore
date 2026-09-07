@@ -1852,3 +1852,84 @@ async def test_410_wrong_master_is_still_detected_when_two_lines_drop(tmp_path):
 
     assert any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
     assert any("may belong to another version" in n for n in ctx.out.notes)
+
+
+# ── #459: the version fit selected its opening-window indices by re-deriving them from window starts
+# via float-equality (_opening_window_indices), which strands every line after one start that fails to
+# match to 1e-6 — a latent trap the moment a producer stops rounding to 3 dp. presplit now EMITS the
+# exact segment->window map as `align_window_opens`, and the consumer prefers it (see _opens_for). ──
+
+
+def test_459_opens_for_prefers_the_emitted_map_and_is_immune_to_a_perturbed_start():
+    from src.steps.lyrics import _opening_window_indices, _opens_for
+
+    text = _instrumental_break_text_336()
+    assert text.align_window_opens is not None and len(text.align_window_opens) == len(text.segments)
+
+    # Perturb the SECOND line's opening-window start by 2e-6 — invisible to the emitted map, but enough
+    # to defeat the float-equality re-derivation.
+    windows = [dict(w) for w in text.align_windows]
+    op1 = text.align_window_opens[1]
+    windows[op1] = {**windows[op1], "start": windows[op1]["start"] + 2e-6}
+    from dataclasses import replace as _dc_replace
+
+    perturbed = _dc_replace(text, align_windows=windows)
+
+    # Ground truth: on the perturbed windows the OLD re-derivation strands (returns fewer than one
+    # index per segment) — this is the base defect made concrete.
+    stranded = _opening_window_indices(perturbed.align_windows, perturbed.segments)
+    assert len(stranded) < len(perturbed.segments), (
+        "the re-derivation must strand under a 2e-6 perturbation for this test to bite"
+    )
+
+    # FAILING ON BASE (base has no _opens_for / always re-derives): the consumer must return the EMITTED
+    # map, one exact index per human segment, unaffected by the perturbed start.
+    got = _opens_for(perturbed)
+    assert got == perturbed.align_window_opens == list(text.align_window_opens)
+    assert len(got) == len(perturbed.segments)
+
+
+def test_459_opens_for_falls_back_to_rederivation_for_a_hand_built_text_without_the_map():
+    # A hand-built LyricsText (a test, or one rehydrated from disk) may set align_windows without the
+    # emitted opens map; the consumer must still work by re-deriving. The windows here match segment
+    # starts exactly (no perturbation), so the re-derivation is correct.
+    from src.steps.lyrics import _opening_window_indices, _opens_for
+
+    text = _instrumental_break_text_336()
+    from dataclasses import replace as _dc_replace
+
+    no_map = _dc_replace(text, align_window_opens=None)
+    assert _opens_for(no_map) == _opening_window_indices(no_map.align_windows, no_map.segments)
+
+
+def test_459_TimeTexts_run_uses_opens_for_at_the_call_site_not_inline_rederivation():
+    # #459 blocking: the fix for #12 is the CALL SITE — `opens = _opens_for(text)` in TimeTexts.run.
+    # _opens_for + the emitter both have direct tests, but nothing pinned that the consumer USES the
+    # emitted map: reverting the call site to `_opening_window_indices(text.align_windows, text.segments)`
+    # left every #12 test green while the version fit was back on the float-equality path that strands
+    # a line after one start misses by 1e-6 — the fix present, tested, and not in use. Source-level pin:
+    # TimeTexts.run must CALL _opens_for and must NOT call _opening_window_indices directly.
+    import ast
+    from pathlib import Path
+
+    from src.steps import lyrics as _lyr
+
+    tree = ast.parse(Path(_lyr.__file__).read_text(encoding="utf-8"))
+    run_fn = None
+    for cls in ast.walk(tree):
+        if isinstance(cls, ast.ClassDef) and cls.name == "TimeTexts":
+            for n in ast.walk(cls):
+                if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef)) and n.name == "run":
+                    run_fn = n
+                    break
+    assert run_fn is not None, "TimeTexts.run not found"
+    calls = [n for n in ast.walk(run_fn) if isinstance(n, ast.Call)]
+    names = {n.func.id for n in calls if isinstance(n.func, ast.Name)}
+    assert "_opens_for" in names, (
+        "TimeTexts.run does not call _opens_for — the consumer is not using the emitted "
+        "align_window_opens map; the version fit would re-derive by float-equality and strand lines (#459)"
+    )
+    assert "_opening_window_indices" not in names, (
+        "TimeTexts.run calls _opening_window_indices DIRECTLY — that is the base behaviour that ignores "
+        "the emitted opens map. The re-derivation must live behind _opens_for's fallback only (#459)"
+    )

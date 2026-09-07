@@ -15,7 +15,7 @@
  * interpreter and run inside the ordinary `bun test` gate — a drift reds a check instead of a party.
  */
 import { describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/shared';
 import type { JobType } from '@encore/shared';
@@ -93,6 +93,47 @@ describe('artifact envelope parity (worker yield vs core read)', () => {
 		expect(hub).toContain('artifacts?.songProfile');
 		// The exact drift that shipped once. Guard the shape, not just the presence of a read.
 		expect(hub).not.toMatch(/artifacts[^\n]*\.stems[^\n]*songProfile/);
+	});
+});
+
+/**
+ * Every artifact key the worker WRITES must be a member of `JobArtifacts` — the whole class of drift
+ * that stalled cooks when `songProfile` shipped undeclared and, most recently, `source` (a `fetch`
+ * job's retained-original key) rode this frame written, undeclared and unread (#459). This scan is
+ * broader than the `songProfile`-placement guard above: it covers ALL `steps/*.py`, not just
+ * `separate.py`, and asserts subset-of-`JobArtifacts` rather than one hard-coded key. Reads both sides
+ * as TEXT so it runs in the ordinary `bun test` gate with no Python interpreter and no `@encore/shared`
+ * import on the worker side.
+ */
+describe('every worker-written artifact key is declared in JobArtifacts', () => {
+	// Top-level field names of `interface JobArtifacts { ... }`, read from the source as text. Matches
+	// `name?:` / `name:` at the start of an indented line inside the interface body — the same
+	// read-source-as-text idiom used above, so no build step is needed to know the declared set.
+	function declaredArtifactKeys(): Set<string> {
+		const events = readFileSync(join(WORKER_SRC, '../../../packages/shared/src/events.ts'), 'utf8');
+		const m = events.match(/export interface JobArtifacts \{([\s\S]*?)\n\}/);
+		expect(m, 'JobArtifacts interface not found in events.ts').toBeTruthy();
+		const body = m![1]!;
+		// Field lines only: a two-space indent then an identifier then optional `?` then `:`. Nested
+		// object members are more deeply indented and by design NOT top-level keys, so they are skipped.
+		return new Set([...body.matchAll(/^ {2}(\w+)\??:/gm)].map((x) => x[1]!));
+	}
+
+	test('no steps/*.py writes an artifacts key absent from JobArtifacts', () => {
+		const declared = declaredArtifactKeys();
+		expect(declared.has('stems'), 'sanity: JobArtifacts parsed').toBe(true);
+		const stepsDir = join(WORKER_SRC, 'steps');
+		const pyFiles = readdirSync(stepsDir).filter((f) => f.endsWith('.py'));
+		expect(pyFiles.length, 'no steps/*.py found — did the package move?').toBeGreaterThan(0);
+		const offenders: string[] = [];
+		for (const f of pyFiles) {
+			const src = readFileSync(join(stepsDir, f), 'utf8');
+			for (const mm of src.matchAll(/(?:out|ctx\.out)\.artifacts\[["'](\w+)["']\]\s*=/g)) {
+				const key = mm[1]!;
+				if (!declared.has(key)) offenders.push(`steps/${f}: artifacts["${key}"]`);
+			}
+		}
+		expect(offenders, `worker writes artifact keys not declared in JobArtifacts: ${offenders.join(', ')}`).toEqual([]);
 	});
 });
 

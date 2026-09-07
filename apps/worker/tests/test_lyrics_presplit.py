@@ -669,3 +669,37 @@ def test_klp_probe_line_names_the_resolved_state(monkeypatch):
     line = lp.klp_probe_line()
     assert "karaoke-lyrics-processor" in line
     assert "absent" in line
+
+
+def test_bound_blob_text_emits_align_window_opens_mapping_each_segment_to_its_opening_window():
+    # #459: presplit KNOWS the segment->window map as it subdivides, so it emits `align_window_opens`
+    # (the index of each human segment's OPENING window) beside `align_windows`. The consumer then uses
+    # this exact map instead of re-deriving it by float-equality on window starts — a re-derivation that
+    # strands every later line the moment one start fails to match to 1e-6.
+    segs, t = [], 0.0
+    for i in range(4):
+        txt = f"a very long human authored karaoke lyric line that overflows a tv row number {i} here"
+        segs.append({"start": round(t, 3), "end": round(t + 18.0, 3), "text": txt, "words": []})
+        t += 18.0
+    text = LyricsText(text_source=SOURCE_LRCLIB, segments=segs, timing=TIMING_LINE, text_confidence="high")
+    out = lp.bound_blob_text(text, max_chars=42, bounder=bound_only)
+    assert out.align_windows is not None and len(out.align_windows) > len(out.segments)
+    assert out.align_window_opens is not None
+    # one open per human segment...
+    assert len(out.align_window_opens) == len(out.segments)
+    # ...strictly increasing, first at 0, and each opening window's start equals its segment's start
+    # (the opening window is the one carrying the source's own timestamp).
+    assert out.align_window_opens[0] == 0
+    assert out.align_window_opens == sorted(out.align_window_opens)
+    for seg_i, win_i in enumerate(out.align_window_opens):
+        assert out.align_windows[win_i]["start"] == segs[seg_i]["start"]
+
+
+def test_bound_blob_text_leaves_opens_None_when_no_line_overflows():
+    # When nothing overflows a row, align_windows is None (the aligner searches segments as-is), so the
+    # opens map is None too — there are no windows to index into.
+    seg = {"start": 0.0, "end": 4.0, "text": "and I will wait for you", "words": []}
+    lrclib = LyricsText(text_source=SOURCE_LRCLIB, segments=[seg], timing=TIMING_LINE, text_confidence="high")
+    out = lp.bound_blob_text(lrclib, bounder=bound_only)
+    assert out.align_windows is None
+    assert out.align_window_opens is None

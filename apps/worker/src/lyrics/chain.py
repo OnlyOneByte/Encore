@@ -163,6 +163,13 @@ class LyricsText:
     #: means "the aligner searches `segments` as-is" — the ASR tier, where line structure is invented
     #: anyway, subdivides `segments` directly and leaves this None.
     align_windows: list[dict[str, Any]] | None = None
+    #: Index into ``align_windows`` of the OPENING window of each human segment — the one window
+    #: per line that carries the source's own timestamp (its ``start`` equals the segment start
+    #: exactly). Emitted by ``bound_blob_text`` when it builds the windows, because that is where
+    #: the segment->window mapping is KNOWN; re-deriving it later by float-equality strands every
+    #: line after the first start that fails to match to 1e-6 (issue #459). ``len`` equals the
+    #: number of segments, and index ``i`` opens segment ``i``. None whenever ``align_windows`` is.
+    align_window_opens: list[int] | None = None
 
     @property
     def plain_text(self) -> str:
