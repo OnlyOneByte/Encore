@@ -511,25 +511,33 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	'probes/p10-scaling.mjs': [
 		// STAYS - a bare tag query, not a UI hook.
 		'button',
-		// DEFERRED to the #494 tail follow-up: read from p10 SELECTORS/targets DATA arrays, not single
-		// query call-sites, and several have no natural SEL home yet or are compound/tag/universal shapes
-		// the SEL-resolution guard cannot model. The clean single-query selectors in this file (.row/.add/
-		// .sing/.qrow/.badqr/.lower-third/.lyrics/.lyrics .word.active/.app-shell/.state-*/.lobby) ARE
-		// migrated to SEL and removed from this list.
-		'.attract',
+		// #547 (Group E of the #513 per-driver split, tail of #494) migrated the ten resolvable
+		// selectors this driver used to spell out into SEL and rewrote the p10 data arrays to
+		// interpolate them, so they are gone from this list: the attract screen, the row card, the
+		// row chip, the three badqr notice lines, the two scoped lower-third lines, and the two
+		// up-next lines.
+		//
+		// The four below STAY quarantined, each with the reason it cannot enter SEL:
+		//
+		//   the badqr universal-child read — a badqr container followed by the UNIVERSAL child token.
+		//     The SEL-resolution guard models class / tag / tag.class / attribute / combinator parts,
+		//     but not a bare universal token: it has no anchor to resolve against (it matches every
+		//     element), so putting it in SEL would either fail the resolver or force a widening that
+		//     waves anything through. p10 reads it only to enumerate the notice card's descendants for
+		//     an overflow check; it stays a literal.
+		//
+		//   the single-letter, filter-chip and roster reads — DEAD selectors: no matching class exists
+		//     in any .svelte component (verified by source scan and git log -S; the readiness filter
+		//     chips render under the chips group, not a filter-chip class, and roster appears only as
+		//     a JS prop name / prose in TvLobby). They match nothing at runtime (the contrast loops
+		//     skip a null query), so they cannot be migrated into SEL, which requires every entry to
+		//     resolve to a real source anchor. They are left in the p10 contrast targets as harmless
+		//     dead entries and quarantined here rather than deleted, keeping this PR a pure migration;
+		//     pruning them is a separate cleanup.
 		'.b',
 		'.badqr *',
-		'.badqr-b',
-		'.badqr-fix',
-		'.badqr-t',
-		'.card',
-		'.chip',
 		'.filter-chip',
-		'.lower-third .ls-name',
-		'.lower-third .ls-song',
-		'.roster',
-		'.up-label',
-		'.up-song'
+		'.roster'
 	],
 	'probes/p11-dashboards.mjs': [
 		// Bare tags / a tag descendant, deliberately NOT UI selectors: `body`/`h1`/`h2` are structural
@@ -827,4 +835,77 @@ test('#546 Group D — p11-dashboards card/tile/chart selectors moved from KNOWN
 	expect(selectorResolves('.nope-card h2 + .bars', sources)).toBe(false);
 	expect(selectorResolves('.card .nope-base:not(table)', sources)).toBe(false);
 	expect(selectorResolves('.card h2 + :not(marquee)', sources)).toBe(true);
+});
+
+test('#547 Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDERS into SEL', () => {
+	// Half 1: the ten resolvable selectors this driver used to spell out are no longer quarantined for
+	// p10-scaling. On base they sat in KNOWN_OFFENDERS (the probe spelled them out in its contrast
+	// targets/data arrays); after the migration the only honest place they may live is SEL, so
+	// KNOWN_OFFENDERS must no longer wave them through.
+	const p10 = KNOWN_OFFENDERS['probes/p10-scaling.mjs'] ?? [];
+	for (const gone of [
+		'.attract',
+		'.card',
+		'.chip',
+		'.badqr-t',
+		'.badqr-b',
+		'.badqr-fix',
+		'.lower-third .ls-name',
+		'.lower-third .ls-song',
+		'.up-label',
+		'.up-song'
+	]) {
+		expect(p10).not.toContain(gone);
+	}
+
+	// Half 2: the ten now come from SEL. Four reuse entries #494 already added (attract/dashCard/
+	// scoped lower-third/up lines); four are new #547 entries (chip + the three badqr notice lines).
+	// Each resolves against real source — a green false/null would mean the SEL entry points at markup
+	// no component renders.
+	expect(SEL.attract).toBe('.attract');
+	expect(SEL.dashCard).toBe('.card');
+	expect(SEL.chip).toBe('.chip');
+	expect(SEL.badQrTitle).toBe('.badqr-t');
+	expect(SEL.badQrBody).toBe('.badqr-b');
+	expect(SEL.badQrFix).toBe('.badqr-fix');
+	expect(SEL.nowNameScoped).toBe('.lower-third .ls-name');
+	expect(SEL.nowSongScoped).toBe('.lower-third .ls-song');
+	expect(SEL.upLabel).toBe('.up-label');
+	expect(SEL.upSong).toBe('.up-song');
+	const sources = guardSources();
+	for (const key of [
+		'attract',
+		'dashCard',
+		'chip',
+		'badQrTitle',
+		'badQrBody',
+		'badQrFix',
+		'nowNameScoped',
+		'nowSongScoped',
+		'upLabel',
+		'upSong'
+	] as const) {
+		expect(selectorResolves(SEL[key] as string, sources), key).toBe(true);
+	}
+
+	// Half 3: the four DEFERRED selectors STAY quarantined, and this proves the deferral is not an
+	// excuse — each genuinely cannot enter SEL, so KNOWN_OFFENDERS is still the only honest home.
+	for (const kept of ['.badqr *', '.b', '.filter-chip', '.roster']) {
+		expect(p10).toContain(kept);
+	}
+	// '.badqr *' is UNMODELLABLE: the universal-child token has no source anchor, so the resolver
+	// returns null (not true, not false) — putting it in SEL would fail the every-SEL-resolves guard.
+	expect(selectorResolves('.badqr *', sources)).toBeNull();
+	// '.filter-chip' and '.roster' are DEAD: no component renders either class (the readiness filter
+	// chips live under the .chips group, and .roster is only a JS prop name / prose in TvLobby), so the
+	// resolver returns FALSE. A selector that resolves false cannot be a SEL entry (it would red the
+	// every-SEL-resolves guard), which is exactly why they stay quarantined rather than migrated.
+	expect(selectorResolves('.filter-chip', sources)).toBe(false);
+	expect(selectorResolves('.roster', sources)).toBe(false);
+	// '.b' is also dead at runtime (no element carries a bare `b` class) but the resolver SPURIOUSLY
+	// reports it resolvable: classPresent matches a word-boundary `b` inside the `badqr-b` class token
+	// (the hyphen is a word boundary). That false positive is a SECOND reason '.b' must not migrate: a
+	// SEL entry of '.b' would pass the every-SEL-resolves guard yet querySelector('.b') matches nothing.
+	// Assert the observed verdict so this test documents the trap instead of hiding it.
+	expect(selectorResolves('.b', sources)).toBe(true);
 });
