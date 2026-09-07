@@ -68,6 +68,12 @@
 	// surface an on-screen affordance; TvPlayer arms a document-wide gesture listener that re-attempts
 	// playback and clears this the moment the room recovers. Only the active+visible slot reports here.
 	let autoplayBlocked = $state(false);
+	// The instrumental refused to start with an error NO gesture can lift (decode failure, AbortError) —
+	// distinct from `autoplayBlocked`, which a tap recovers. There is no recovery here, so the page must
+	// SAY the room is silent on screen rather than leave the only trace in the TV's devtools console
+	// (#473). Cleared when a fresh song loads (onready) or the element actually starts advancing, so a
+	// later good song retracts the panel. Holds the error name for the on-screen detail.
+	let playbackFailedReason: string | null = $state(null);
 	// Whether the MASTER element is actually running, reported up from the active+visible
 	// TvPlayer's own play/pause/ended (#393). The honest counterpart to `isPlaying`, which is the
 	// ROOM'S INTENT from the server: the room can intend to play while the element does not (a TV
@@ -575,7 +581,7 @@
 		seekRev={seekRev}
 		{keyShift}
 		{guideLevel}
-		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); }}
+		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); playbackFailedReason = null; }}
 		onprewarmed={() => { ctl.onHiddenReady(slotMedia.A?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
@@ -583,6 +589,7 @@
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
+		onplaybackfailed={(reason) => (playbackFailedReason = reason)}
 	/>
 	<TvPlayer
 		media={slotMedia.B}
@@ -593,7 +600,7 @@
 		seekRev={seekRev}
 		{keyShift}
 		{guideLevel}
-		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); }}
+		onready={() => { ctl.onVisibleReady(); tvState = ctl.state; onFirstSongReady(); playbackFailedReason = null; }}
 		onprewarmed={() => { ctl.onHiddenReady(slotMedia.B?.id ?? ''); tvState = ctl.state; }}
 		onended={onVisibleEnded}
 		onerror={onVisibleError}
@@ -601,6 +608,7 @@
 		onautoplayblocked={() => (autoplayBlocked = true)}
 		onautoplayrecovered={() => (autoplayBlocked = false)}
 		onplayingchange={(p) => (masterAdvancing = p)}
+		onplaybackfailed={(reason) => (playbackFailedReason = reason)}
 	/>
 
 	<!-- Word-timed karaoke lyrics over the active player -->
@@ -815,6 +823,22 @@
 			<span class="ah-head">Tap anywhere to <span class="grad">start the music</span></span>
 			<span class="ah-sub">This TV needs one tap before it can play sound</span>
 		</button>
+	{/if}
+
+	<!--
+		PLAYBACK FAILED — the instrumental refused to start with an error a tap CANNOT lift (a decode
+		failure, an AbortError). Unlike the autoplay block above there is no gesture recovery, so this is
+		NOT a button: it is a plain on-screen SAY that the room is silent, the only operator-visible trace
+		of a failure whose sole prior signal was a TV-console warn nobody at a party reads (#473). It sits
+		at z 8 (the transient-overlay tier) so a genuinely gesture-liftable block (z 10) always wins if both
+		somehow raise. Cleared when a fresh song loads or the element starts advancing again.
+	-->
+	{#if playbackFailedReason}
+		<div class="silent-room" role="status" aria-live="polite">
+			<span class="sr-mark"><Icon name="warning" /></span>
+			<span class="sr-head">This song <span class="grad">won’t play</span></span>
+			<span class="sr-sub">The audio could not be started ({playbackFailedReason}) — the room is silent. The next song may play normally.</span>
+		</div>
 	{/if}
 
 	<div class="status" class:on={connected}></div>
@@ -1107,6 +1131,48 @@
 	.ah-sub {
 		font-size: var(--tv-body, clamp(16px, 2.4vmin, 32px));
 		color: var(--ink-dim);
+		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+	}
+	/*
+	 * The silent-room panel. A transient full-screen overlay (z 8, the documented interstitial tier) that
+	 * reports an unrecoverable playback failure. Not interactive — informational, so no button, no cursor.
+	 * Same dark scrim and safe-area/type tokens as the affordance above so it sizes on a wall.
+	 */
+	.silent-room {
+		position: absolute;
+		inset: 0;
+		z-index: 8;
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		justify-content: center;
+		gap: 2.2vh;
+		padding: var(--tv-safe-y) var(--tv-safe-x);
+		color: var(--ink);
+		text-align: center;
+		background: color-mix(in srgb, var(--bg) 82%, transparent);
+		backdrop-filter: blur(6px);
+		-webkit-backdrop-filter: blur(6px);
+	}
+	.sr-mark {
+		display: grid;
+		place-items: center;
+		width: clamp(64px, 12vmin, 160px);
+		height: clamp(64px, 12vmin, 160px);
+		border-radius: 50%;
+		background: color-mix(in srgb, var(--warn, #e0a63a) 26%, transparent);
+		font-size: clamp(32px, 6vmin, 84px);
+	}
+	.sr-head {
+		font-size: var(--tv-hero);
+		font-weight: 800;
+		line-height: 1.1;
+		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+	}
+	.sr-sub {
+		font-size: var(--tv-body, clamp(16px, 2.4vmin, 32px));
+		color: var(--ink-dim);
+		max-width: 60ch;
 		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 	}
 </style>
