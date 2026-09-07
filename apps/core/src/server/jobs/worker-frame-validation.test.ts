@@ -12,16 +12,14 @@
 // Each test is RED on base: validateWorkerMessage does not exist there (import fails), and the
 // gate() mirror throws exactly as production did.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { WorkerHub, validateWorkerMessage } from './worker-hub';
 import { WorkerRegistry } from './registry';
 import { JobRepository } from './repository';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import type { WorkerMessage } from '@encore/shared';
 
 function harness() {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const sent: unknown[] = [];
 	const hub = new WorkerHub({

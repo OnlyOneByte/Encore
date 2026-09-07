@@ -4,11 +4,10 @@
 // at all. The rules worth pinning are the ones that are easy to get subtly wrong — a rename colliding
 // with itself, and a leave taking the song currently on screen with it.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { doJoin, assertNameFree, NameTakenError } from './join';
 import { doLeave, removableOnLeave } from './leave';
 import { SingerRepository } from './repository';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { SINGER_COLORS, type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
@@ -28,8 +27,7 @@ import type { EncoreApp } from '../app';
 const NOW = 1_700_000_000_000;
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const published: ServerEvent[] = [];
 	const jobs = new JobRepository(db);
 	const workers = new WorkerRegistry();

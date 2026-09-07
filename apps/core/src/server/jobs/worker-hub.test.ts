@@ -2,12 +2,11 @@
 // dispatch-on-hello, progress→media:status rebroadcast, reject/requeue, retryable vs terminal
 // failure, and need-ordered dispatch across workers. No real socket — sinks capture the effects.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { WorkerHub } from './worker-hub';
 import { WorkerRegistry } from './registry';
 import { JobRepository } from './repository';
 import { AttemptLedger } from './attempts';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import {
 	attemptStages,
 	realtimeFactor,
@@ -31,8 +30,7 @@ const media = (id: string, over: Partial<Media> = {}): Media => ({
 });
 
 function harness() {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const attempts = new AttemptLedger(db);
 	const jobs = new JobRepository(db, attempts);
 	const registry = new WorkerRegistry();
@@ -80,8 +78,7 @@ test('hello → welcome handshake + dispatch of a waiting job', () => {
 });
 
 test('welcome carries the object-store config so a remote worker pulls/pushes via S3', () => {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const hub = new WorkerHub({
@@ -697,8 +694,7 @@ test('an ACCEPTED stems-upgrade DOES swap the artifacts (the guard is not over-e
 // must lower BOTH the assigned engine/model AND the capability the stems job is routed by.
 
 function hubWithSettings(getSettings: () => EffectiveSettings) {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const registry = new WorkerRegistry();
 	const mediaById = new Map<string, Media>([['m1', media('m1')]]);

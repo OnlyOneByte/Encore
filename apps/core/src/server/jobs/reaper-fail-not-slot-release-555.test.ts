@@ -16,16 +16,13 @@
 // fires the machine's release hook, so slotsFree goes 0 → 1 and planAssignments lands a job on the
 // still-busy worker.
 import { test, expect } from 'bun:test';
-import { Database } from 'bun:sqlite';
-import { drizzle } from 'drizzle-orm/bun-sqlite';
-import { migrate } from 'drizzle-orm/bun-sqlite/migrator';
 import { JobRepository } from './repository';
 import { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
 import { JobReaper } from './reaper';
 import { planAssignments } from './dispatch';
 import { progressDeadline, DEFAULT_LEASE_CONFIG } from './leases';
-import type { DB } from '../db/index';
+import { migratedDb } from '../db/test-db';
 
 const T0 = 1_700_000_000_000;
 
@@ -34,8 +31,7 @@ const T0 = 1_700_000_000_000;
  * registry, so a release event visibly moves the owning worker's slotsFree.
  */
 function fleet() {
-	const db = drizzle(new Database(':memory:')) as unknown as DB;
-	migrate(db, { migrationsFolder: new URL('../../../drizzle', import.meta.url).pathname });
+	const db = migratedDb();
 	const ledger = new AttemptLedger(db);
 	const jobs = new JobRepository(db, ledger);
 	const registry = new WorkerRegistry();

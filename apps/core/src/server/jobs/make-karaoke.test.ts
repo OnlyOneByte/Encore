@@ -2,6 +2,7 @@
 // a stems job at need-priority, dedups repeats, and refuses to disrupt the live song. markMediaReady
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import {
 	requestMakeKaraoke,
 	markMediaReady,
@@ -19,8 +20,6 @@ import { pendingGates, EMPTY_SONG_PROFILE } from '@encore/shared';
 import { JobRepository } from './repository';
 import { AuthoritativeState } from '../state/store';
 import { nextPlayable, isEntryReady } from '../rotation/index';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { playbackRef, type Media, type QueueEntry } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
@@ -44,8 +43,7 @@ const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({
 });
 
 function deps(): MakeKaraokeDeps & { mediaById: Map<string, Media> } {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	return { jobs: new JobRepository(db), mediaById: new Map(), state: new AuthoritativeState(), now: () => T0 };
 }
 

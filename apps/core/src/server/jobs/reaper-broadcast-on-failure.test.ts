@@ -12,11 +12,10 @@
 // reaper.test.ts asserts the media STATE after the settle, but nothing about a broadcast — there was
 // no broadcast seam before this fix.
 import { test, expect, spyOn } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { JobReaper } from './reaper';
 import { JobRepository } from './repository';
 import { ackDeadline, progressDeadline } from './leases';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { reportTerminalFailure } from './make-karaoke';
 import type { Media, ServerEvent } from '@encore/shared';
 
@@ -34,8 +33,7 @@ const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({
 
 function exhaust(jobType: 'stems' | 'align' | 'stems-upgrade', over: Partial<Media> = {}) {
 	let clock = T0;
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const mediaById = new Map<string, Media>([['m1', mkMedia('m1', over)]]);
 	const broadcasts: ServerEvent[] = [];

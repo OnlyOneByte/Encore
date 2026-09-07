@@ -1,9 +1,8 @@
 // join -> singer:joined broadcast -> singer appears (validated via doJoin).
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { doJoin, NameTakenError } from './join';
 import { SingerRepository } from './repository';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { SINGER_COLORS, SINGER_HUES, hueToHex, type ServerEvent } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
@@ -23,8 +22,7 @@ import { AttemptLedger } from '../jobs/attempts';
 import { PlayLog } from '../media/play-log';
 
 function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const published: ServerEvent[] = [];
 	const attempts = new AttemptLedger(db);
 	const jobs = new JobRepository(db, attempts);
