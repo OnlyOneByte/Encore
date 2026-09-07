@@ -14,6 +14,7 @@
 	},
 	"include": [
 		"e2e/cdp.mjs",
+		"e2e/lib/chromium.mjs",
 		"e2e/fuzz.mjs",
 		"e2e/contract.ts",
 		"scripts/shot.mjs",

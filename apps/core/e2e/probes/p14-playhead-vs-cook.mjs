@@ -23,9 +23,10 @@
  * starts on its own (that is p13's job); it says only what a cook does to a song already playing.
  */
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
+import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #559, following the
@@ -77,18 +78,6 @@ const bail = (m) => {
 	console.error(`\nENVIRONMENT: ${m}`);
 	process.exit(2);
 };
-
-function findChromium() {
-	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
-	for (const b of ['chromium-1232', 'chromium-1228']) {
-		const p = join(process.env.HOME ?? '', '.cache', 'ms-playwright', b, 'chrome-linux', 'chrome');
-		if (existsSync(p)) return p;
-	}
-	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
-		if (existsSync(p)) return p;
-	}
-	return null;
-}
 
 /** @param {string} path @returns {Promise<any>} */
 const jget = async (path) => (await fetch(BASE + path)).json();

@@ -23,11 +23,11 @@
  */
 
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { SEL, PRESET_COLOUR_NAMES } from '../contract.ts';
+import { findChromium } from '../lib/chromium.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #563, following the
@@ -79,18 +79,6 @@ function report(level, title, detail, evidence) {
 }
 
 // ── Chromium discovery ────────────────────────────────────────────────────
-function findChromium() {
-	if (process.env.PW_CHROMIUM) return process.env.PW_CHROMIUM;
-	const cache = join(homedir(), '.cache', 'ms-playwright');
-	for (const build of ['chromium-1232', 'chromium-1228']) {
-		const p = join(cache, build, 'chrome-linux', 'chrome');
-		if (existsSync(p)) return p;
-	}
-	for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']) {
-		if (existsSync(p)) return p;
-	}
-	return null;
-}
 
 // ── minimal raw CDP client ────────────────────────────────────────────────
 /*
