@@ -32,19 +32,33 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (issue #558, following
+ * the #557 fuzz.mjs pattern). Browser/Page derive from cdp.mjs's own return types (#553); every
+ * page.evaluate() result is protocol-shaped and stays loose (cdp.mjs types evaluate as Promise<any>),
+ * cast at the call site.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {{ r: number, g: number, b: number, a?: number }} Rgb
+ */
+
 const PORT = Number(process.env.PORT || 5230);
 const CDPPORT = Number(process.env.CDPPORT || 9230);
 const SCRATCH = process.env.SCRATCH || `${process.env.KIROCREW_SCRATCH || '/tmp'}/e2e-${PORT}`;
 const OUT = join(SCRATCH, 'shots', 'p10');
 mkdirSync(OUT, { recursive: true });
 
+/** @type {any[]} */ // each record() call carries a differently-shaped measurement object
 const findings = [];
+/** @param {Record<string, unknown>} obj */
 const record = (obj) => {
 	findings.push(obj);
 	console.log(JSON.stringify(obj));
 };
 
 // WCAG relative luminance / contrast — feed it the CSS rgb strings.
+/** @param {string | null | undefined} s @returns {Rgb | null} */
 function parseRgb(s) {
 	if (!s) return null;
 	const m = String(s).match(/rgba?\(([^)]+)\)/i);
@@ -52,13 +66,15 @@ function parseRgb(s) {
 	const parts = m[1].split(',').map((x) => parseFloat(x.trim()));
 	return { r: parts[0], g: parts[1], b: parts[2], a: parts[3] ?? 1 };
 }
+/** @param {Rgb} rgb */
 function relLum({ r, g, b }) {
-	const f = (v) => {
+	const f = (/** @type {number} */ v) => {
 		const s = v / 255;
 		return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 	};
 	return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
 }
+/** @param {Rgb | null} fg @param {Rgb | null} bg @returns {number | null} */
 function contrastRatio(fg, bg) {
 	if (!fg || !bg) return null;
 	const L1 = relLum(fg);
@@ -121,6 +137,7 @@ const TV_SIZES = [
 	{ label: '2160p', w: 3840, h: 2160 }
 ];
 
+/** @param {string} label @param {number} w @param {number} h */
 async function measureTv(label, w, h) {
 	const page = await browser.newPage();
 	// deviceScaleFactor=1 keeps the pixel measurement clean and the screenshot within Kiro's 2000px
@@ -303,6 +320,7 @@ async function measureTv(label, w, h) {
 	})()`);
 
 	// Compute contrast externally so we don't spam the page eval with math.
+	/** @type {Record<string, any>} */
 	const contrastReport = {};
 	for (const [sel, info] of Object.entries(contrastPairs)) {
 		const fg = parseRgb(info.fg);
@@ -363,6 +381,7 @@ const REMOTE_SIZES = [
 	{ label: '2400w', w: 2400, h: 1200 }
 ];
 
+/** @param {string} label @param {number} w @param {number} h */
 async function measureRemote(label, w, h) {
 	const page = await browser.newPage();
 	await page.viewport(w, h, 1);
@@ -430,6 +449,7 @@ async function measureRemote(label, w, h) {
 		}
 		return out;
 	})()`);
+	/** @type {Record<string, any>} */
 	const contrastReport = {};
 	for (const [k, info] of Object.entries(contrastPairs)) {
 		const fg = parseRgb(info.fg);
