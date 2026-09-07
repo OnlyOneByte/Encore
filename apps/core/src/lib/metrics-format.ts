@@ -31,6 +31,16 @@ export function dur(ms: number | null): string {
 }
 
 /**
+ * A realtime factor reads as `0.29×`. Null renders as an em dash, never as `0.00×` — a rate that was
+ * never measured is "no data", not "instant". Extracted here alongside `dur` so the metrics list and
+ * the per-song audit cannot drift apart on how a rate reads: both pages had open-coded this glyph and
+ * precision, at four sites across the two files.
+ */
+export function rate(v: number | null): string {
+	return v === null ? '—' : `${v.toFixed(2)}×`;
+}
+
+/**
  * Plain names for the internal job types. `fetch`/`stems`/`align` are what the code calls them and
  * what the database stores; they describe the implementation, not what the step DOES, and these
  * pages are read by a person. An unmapped type falls through to its raw name rather than vanishing.

@@ -10,7 +10,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
-	import { dur, stepLabel, stageLabel } from '$lib/metrics-format';
+	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
 
 	interface StepRow {
 		jobType: string;
@@ -81,12 +81,6 @@
 			failed = true;
 		}
 	});
-
-	/** ms to a human duration. Extracted to $lib/metrics-format so this page and the per-song audit
-	    cannot drift apart on how a duration reads. */
-	function rt(v: number | null): string {
-		return v === null ? '—' : `${v.toFixed(2)}×`;
-	}
 
 	/**
 	 * The useful worker `host` keys as labelled pairs, replacing a raw JSON.stringify dump on the
@@ -175,7 +169,7 @@
 									<td>{dur(s.p50Ms)}</td>
 									<td>{dur(s.p95Ms)}</td>
 									<td>{dur(s.meanQueueWaitMs)}</td>
-									<td>{rt(s.meanRtFactor)}</td>
+									<td>{rate(s.meanRtFactor)}</td>
 									<td>{s.failed + s.abandoned}</td>
 								</tr>
 							{/each}
@@ -213,12 +207,11 @@
 										>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td
 									>
 									<td>{r.n}</td>
-									<td>{rt(r.meanRtFactor)}</td>
-									<td>{r.declared ? `${r.declared.rtFactor.toFixed(2)}×` : '—'}</td>
+									<td>{rate(r.meanRtFactor)}</td>
+									<td>{rate(r.declared?.rtFactor ?? null)}</td>
 									<td
 										class:slower={(r.ratioToDeclared ?? 1) > 1.5}
-										class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
-										>{r.ratioToDeclared === null ? '—' : `${r.ratioToDeclared.toFixed(2)}×`}</td
+										class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}>{rate(r.ratioToDeclared)}</td
 									>
 								</tr>
 							{/each}
@@ -259,7 +252,7 @@
 									<td class="name">{r.syncMode ?? '—'}</td>
 									<td>{r.n}</td>
 									<td>{dur(r.meanMs)}</td>
-									<td>{rt(r.meanRtFactor)}</td>
+									<td>{rate(r.meanRtFactor)}</td>
 								</tr>
 							{/each}
 						</tbody>

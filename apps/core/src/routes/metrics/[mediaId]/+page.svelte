@@ -10,7 +10,8 @@
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
 	import Icon from '$lib/ui/Icon.svelte';
-	import { dur, stepLabel, stageLabel, localStamp } from '$lib/metrics-format';
+	import { dur, stepLabel, stageLabel, localStamp, rate } from '$lib/metrics-format';
+	import { formatClock } from '$lib/clock';
 
 	interface AuditAttempt {
 		id: string;
@@ -98,11 +99,6 @@
 	const factLabel = (k: string) => FACT_LABELS[k] ?? k;
 
 	// STAGE_LABELS/stageLabel moved to $lib/metrics-format (shared with /metrics).
-
-	/** A song length reads as 4:14, not 254s. */
-	function songLength(sec: number): string {
-		return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
-	}
 </script>
 
 <svelte:head><title>Encore — audit {mediaId}</title></svelte:head>
@@ -118,7 +114,7 @@
 		<h1>{audit.media?.titleCanonical ?? audit.media?.title ?? mediaId}</h1>
 		{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
 		<p class="note">
-			{#if audit.media}{songLength(audit.media.durationSec)} long ·
+			{#if audit.media}{formatClock(audit.media.durationSec)} long ·
 			{/if}sung {audit.plays.length} times
 		</p>
 
@@ -158,7 +154,7 @@
 							<div class="metrics-row">
 								<span class="ran">{dur(a.processingMs)}</span>
 								<span class="secondary">waited {dur(a.queueWaitMs)}</span>
-								{#if a.rtFactor !== null}<span class="secondary">{a.rtFactor.toFixed(2)}× song length</span>{/if}
+								{#if a.rtFactor !== null}<span class="secondary">{rate(a.rtFactor)} song length</span>{/if}
 								{#if a.workerId}<span class="secondary">on {a.workerId}</span>{/if}
 							</div>
 							{#if usedModels(a.models).length}
