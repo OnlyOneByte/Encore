@@ -3,6 +3,7 @@ import { test, expect } from 'bun:test';
 import { migratedDb } from '../db/test-db';
 import { doJoin, NameTakenError } from './join';
 import { SingerRepository } from './repository';
+import { RoomRepository } from '../rooms/repository';
 import { SINGER_COLORS, SINGER_HUES, hueToHex, type ServerEvent } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
@@ -34,6 +35,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		// owner still holds a turn.
 		state: new AuthoritativeState(),
 		singers: new SingerRepository(db),
+		rooms: new RoomRepository(db),
 		presence: new PresenceTracker(),
 		plays: new PlayTracker(() => {}),
 		jobs,

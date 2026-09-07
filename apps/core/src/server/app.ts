@@ -5,6 +5,7 @@
 
 import { AuthoritativeState } from './state/store';
 import { SingerRepository } from './singers/repository';
+import { RoomRepository } from './rooms/repository';
 import { PresenceTracker } from './realtime/presence';
 import { PlayTracker, bumpPlay } from './media/plays';
 import { openDb, defaultDbPath, type DB } from './db/index';
@@ -63,6 +64,8 @@ export interface EncoreApp {
 	db: DB;
 	state: AuthoritativeState;
 	singers: SingerRepository;
+	/** Room lifecycle: create a party (mint id + join code) and look one up by code. */
+	rooms: RoomRepository;
 	/** Who holds a live socket right now. Populated by server.ts's WS open/close. */
 	presence: PresenceTracker;
 	/**
@@ -158,6 +161,7 @@ export function getApp(): EncoreApp {
 	// mid-party and the sing history moves every time a song starts.
 	const settings = new SettingsRepository(db);
 	const singers = new SingerRepository(db);
+	const rooms = new RoomRepository(db);
 	const state = new AuthoritativeState(sqlitePersistence(db), 250, () =>
 		orderingOf({ getSettings: () => settings.getEffective(), listSingers: () => singers.listPublic() })
 	);
@@ -450,6 +454,7 @@ export function getApp(): EncoreApp {
 		db,
 		state,
 		singers,
+		rooms,
 		presence: new PresenceTracker(),
 		// Set just below — the sink needs `app` to reach the media catalog.
 		plays: null as never,
