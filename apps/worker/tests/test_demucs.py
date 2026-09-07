@@ -16,6 +16,7 @@ from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.separation import demucs  # noqa: E402
 from tests.cli_fakes import fake_cli_runner  # noqa: E402
+from tests.conftest import drain  # noqa: E402
 
 
 # ── pure helpers ──────────────────────────────────────────────────────────────────
@@ -136,13 +137,6 @@ def spec(tmp_path, source_uri="https://www.youtube.com/watch?v=abc", media_id="m
         params=params,
         media_dir=str(tmp_path),
     )
-
-
-async def drain(processor, job):
-    events = []
-    async for ev in processor.process(job):
-        events.append(ev)
-    return events
 
 
 @pytest.mark.asyncio

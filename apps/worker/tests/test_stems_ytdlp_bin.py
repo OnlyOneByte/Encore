@@ -33,10 +33,6 @@ from src.processor import JobSpec  # noqa: E402
 from src.steps.acquire import AcquireAudio  # noqa: E402
 
 
-async def _drain(proc, job):
-    return [ev async for ev in proc.process(job)]
-
-
 @pytest.mark.asyncio
 async def test_configured_ytdlp_binary_reaches_the_stems_download_argv(tmp_path):
     """Drive the REAL `plans.stems_runner(ytdlp_bin=...)` and pull its stems plan's AcquireAudio step,

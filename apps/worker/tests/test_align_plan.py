@@ -24,6 +24,7 @@ from src import plans  # noqa: E402
 from src.lyrics.source import LrclibResult  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.runtime import runner as runner_mod  # noqa: E402
+from tests.conftest import drain  # noqa: E402
 
 
 def test_lyrics_key():
@@ -238,10 +239,6 @@ def spec(tmp_path, source_uri="https://yt/x", media_id="m1", **params):
         params=p,
         media_dir=str(tmp_path),
     )
-
-
-async def drain(proc, job):
-    return [ev async for ev in proc.process(job)]
 
 
 @pytest.mark.asyncio
