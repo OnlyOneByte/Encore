@@ -49,7 +49,8 @@ function styleFiles(dir: string): string[] {
 // strip BOTH comment forms before a whole-file scan: CSS `/* … */` AND HTML `<!-- … -->`. Tests 1 and 2
 // read entire .svelte files (markup + <style>), so a `transition:` written in prose inside an HTML
 // comment (e.g. tv/+page.svelte's 'not a transition: work in progress' note) must not false-positive
-// (issue #287 gap 1 / #290 :55,:67). Test 3 keeps the CSS-only stripComments — its scan is CSS-scoped.
+// (issue #287 gap 1 / #290 :55,:67). All three tests use this stripper — test 3 now scans Svelte
+// markup for `style:animation` directives too, so it needs `<!-- -->` blanked (issue #615 advisory 1).
 function stripAllComments(src: string): string {
 	return src.replace(/<!--[\s\S]*?-->/g, '').replace(/\/\*[\s\S]*?\*\//g, '');
 }
@@ -60,9 +61,31 @@ function stripAllComments(src: string): string {
 // declaration. The longhand `transition-property: a, b` lists bare property names directly.
 function animatedProps(css: string): string[] {
 	const props: string[] = [];
-	// captures both the shorthand and the longhand; the value after the colon runs to `;` or `}`.
-	for (const m of css.matchAll(/transition(-property)?:\s*([^;}]+)/g)) {
-		for (const entry of m[2]!.split(',')) {
+	// captures three spellings, all read into the same first-identifier-per-comma-entry check:
+	//   • CSS shorthand/longhand `transition: …` / `transition-property: …` (value runs to `;` or `}`)
+	//   • Svelte's inline `style:transition="…"` / `style:transition-property="…"` directive (issue #615
+	//     §2): the char after `transition` there is `=`, not `:`, so the CSS pattern never matches it —
+	//     yet it sets a real inline transition no `@media` wrapper can cover. Read its quoted value the
+	//     same way. `style:transition` is the directive form of the SAME declaration `style="transition:…"`
+	//     (already caught, quote-boundary), just as `style:animation` mirrors the inline animation attr.
+	// The `style:transition` directive, like `style:animation`, has four spellings (issue #615
+	// advisory 2): `="…"`, `='…'`, `={expr}`, and the bare shorthand `style:transition`. A quoted /
+	// braced value is read into the same first-identifier check; an EXPRESSION or SHORTHAND value is
+	// opaque at scan time, but it is still a real inline transition that can animate a layout property
+	// no `@media` can cover, so it is reported via a sentinel property name (never in COMPOSITED_PROPS).
+	for (const m of css.matchAll(
+		/transition(?:-property)?:\s*([^;}]+)|style:transition(?:-property)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g
+	)) {
+		const isDirective = m[0].startsWith('style:');
+		const readable = m[1] ?? m[2] ?? m[3] ?? m[4];
+		if (!isDirective && readable === undefined) continue; // a stray CSS `transition` with no value
+		if (isDirective && (readable === undefined || readable.trim() === '')) {
+			// opaque `style:transition={expr}` / shorthand — cannot classify the property, so flag it
+			props.push('style-transition-directive');
+			continue;
+		}
+		const value = readable!;
+		for (const entry of value.split(',')) {
 			// the property is the FIRST identifier of each comma entry (timing/easing follow it in the
 			// shorthand; the longhand lists bare property names, so the same rule reads both)
 			const id = entry.trim().match(/^[a-z-]+/);
@@ -78,8 +101,9 @@ test('no transition animates a layout-triggering property (transform/opacity onl
 	// scan every .svelte + .css under src/ — including src/lib/tv, src/lib/ui and src/app.css
 	const files = styleFiles(join(import.meta.dir, '..', '..'));
 	// count floor (issue #287 gap 3): a directory rename / moved src / glob typo would make this
-	// scan pass VACUOUSLY. Pin it around the current scanned-file count (16 today) so a broken walk
-	// reds instead of silently passing — the exact failure mode #140 shipped under.
+	// scan pass VACUOUSLY. The asserted floor (>= 24) is the guard — a broken walk reds instead of
+	// silently passing, the exact failure mode #140 shipped under. (No live count in prose: issue #615
+	// advisory 3 — the parenthetical drifted across #575/#590/#615, so the assertion is the only number.)
 	expect(files.length).toBeGreaterThanOrEqual(24);
 	assertScanIntact(files);
 	const offenders: string[] = [];
@@ -156,9 +180,6 @@ test('@keyframes animate only GPU-composited properties', () => {
 // selector still reds — the reset no longer waves the whole file through. Mutation proof: unguarding
 // any animation (moving it out of the no-preference block, dropping its reduce reset, or adding a new
 // animation on a selector no reduce block covers) reds this test.
-function stripComments(css: string): string {
-	return css.replace(/\/\*[\s\S]*?\*\//g, '');
-}
 // True when a media prelude fires ONLY when motion is allowed, never under Reduce Motion
 // (issue #481). A media query LIST is an OR (issue #590): `@media (prefers-reduced-motion:
 // no-preference), (min-width: 700px)` fires when EITHER branch matches, so on any >=700px viewport
@@ -168,15 +189,47 @@ function stripComments(css: string): string {
 function firesOnlyWhenMotionAllowed(prelude: string): boolean {
 	return splitTopLevelCommas(prelude).every(branchFiresOnlyWhenMotionAllowed);
 }
-// One comma-branch of a media prelude. The `not` test is scoped to the prefers-reduced-motion FEATURE
-// query, not the whole branch (issue #590 §3): `(prefers-reduced-motion: no-preference) and
-// (not (min-width: 700px))` fires only when motion is allowed and must stay accepted, so a `not(...)`
-// on an unrelated feature must not flip the verdict.
+// True when a `not` operator negates the prefers-reduced-motion FEATURE query that opens at
+// `featureParenIdx` — i.e. the `not` binds to THIS feature, not to some sibling feature in the same
+// branch (issue #615 §1, corrected for #615's own regression). Three spellings put a `not` in front
+// of a feature `(…)`, and all three must be recognised while a `not` on an UNRELATED feature must not
+// flip the verdict (issue #590 §3 gate 9: `(prefers-reduced-motion: no-preference) and
+// (not (min-width: 700px))` — the `not` there governs min-width, so the reduce feature is un-negated):
+//   • MQ4 adjacent:       `not (prefers-reduced-motion: …)`
+//   • MQ4 parenthesised:  `(not (prefers-reduced-motion: …))`  ← the regression: an opening `(` sits
+//                          before `not`, so a branch-LEADING `^not` anchor could not see it.
+//   • MQ3 legacy:         `not all and (prefers-reduced-motion: …)` / `not screen and (…)`
+// The deciding text is what sits immediately LEFT of this feature's `(`, ignoring only opening parens
+// and whitespace: a `not` reachable across `not (`, `not all and (`, or `((not (` negates the feature;
+// anything else (a bare `(`, `and (`, `,`, another feature) leaves it un-negated. We therefore read the
+// prelude backward from `(` over `(`/whitespace, then require the immediately-preceding token to be
+// `not` OR a `not <media-type> and` head.
+function featureIsNegated(prelude: string, featureParenIdx: number): boolean {
+	// text strictly before the feature's opening paren
+	const before = prelude.slice(0, featureParenIdx);
+	// MQ4: `not` then only `(`/whitespace up to our `(` — e.g. `not (`, `(not (`, `and (not (`
+	if (/\bnot\s*\(*\s*$/.test(before)) return true;
+	// MQ3: `not <media-type> and` immediately before the feature `(` — `not all and (`, `not screen and (`
+	if (/\bnot\s+[a-z-]+\s+and\s*\(*\s*$/.test(before)) return true;
+	return false;
+}
+// One comma-branch of a media prelude. A branch fires only when motion is allowed when its
+// prefers-reduced-motion feature resolves that way: a NON-negated `no-preference` (fires only when
+// motion is allowed → accept) or a NEGATED `reduce` (fires when motion is allowed → accept). The
+// mirror cases fire under Reduce Motion and must be reported: a NEGATED `no-preference` (fires under
+// Reduce Motion) and a non-negated `reduce`. Negation is decided per-FEATURE by `featureIsNegated`,
+// so all three `not` spellings are caught and a `not` on an unrelated feature does not flip it.
 function branchFiresOnlyWhenMotionAllowed(branch: string): boolean {
-	const noPref = /(\bnot\b\s*\(\s*)?prefers-reduced-motion:\s*no-preference/.exec(branch);
-	if (noPref) return noPref[1] === undefined; // `not (…no-preference…)` inverts to a reduce-carrier
-	const reduce = /(\bnot\b\s*\(\s*)?prefers-reduced-motion:\s*reduce/.exec(branch);
-	if (reduce) return reduce[1] !== undefined; // `not (…reduce…)` fires when motion is allowed
+	const noPref = /prefers-reduced-motion:\s*no-preference/.exec(branch);
+	if (noPref) {
+		const paren = branch.lastIndexOf('(', noPref.index);
+		return !featureIsNegated(branch, paren);
+	}
+	const reduce = /prefers-reduced-motion:\s*reduce/.exec(branch);
+	if (reduce) {
+		const paren = branch.lastIndexOf('(', reduce.index);
+		return featureIsNegated(branch, paren);
+	}
 	return false;
 }
 // Split a media prelude on TOP-LEVEL commas only — commas inside `(…)` (a value list, a `not(...)`
@@ -328,7 +381,11 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 	assertScanIntact(files);
 	const offenders: string[] = [];
 	for (const f of files) {
-		const css = stripComments(readFileSync(f, 'utf8'));
+		// strip BOTH comment forms (issue #615 advisory 1): test 3 now scans Svelte markup for
+		// `style:animation` directives, and markup comments are `<!-- -->`, not `/* */`. The CSS-only
+		// strip left a directive written inside an HTML comment to false-RED; stripAllComments (used by
+		// tests 1 and 2 for the same reason) blanks `<!-- -->` and `/* */`, preserving newlines.
+		const css = stripAllComments(readFileSync(f, 'utf8'));
 		const spans = noPreferenceSpans(css);
 		const rules = ruleBlocks(css);
 		const resetSelectors = reduceResetSelectors(css, rules);
@@ -366,6 +423,25 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 					return resetAt !== undefined && resetAt > at;
 				});
 			if (!guarded && !reset) offenders.push(`${f}: unguarded animation: ${value.slice(0, 40)}`);
+		}
+		// Svelte's `style:animation` / `style:animation-name` directive is the SAME inline-style
+		// declaration as the quoted `style="animation: …"` attribute above (issue #615 §2), but the char
+		// before `animation` there is `:` (the `style:` prefix), which the boundary class above misses, so
+		// it escapes the scan entirely. Like any inline style it can never be covered by an `@media`
+		// wrapper or a reduce reset, so route it into the SAME direct-report branch #590 §2 built, with the
+		// SAME message text — two spellings of one defect must not read as two different causes.
+		// The match is VALUE-AGNOSTIC (issue #615 advisory 2): Svelte writes a directive four ways —
+		// `style:animation="…"`, `style:animation='…'`, the expression form `style:animation={expr}`, and
+		// the shorthand `style:animation` (reads a same-named variable). All four set a real inline
+		// animation, so match the property name and report UNLESS the value is provably `none` — pinning one
+		// quoted spelling and waving the expression form through would just be a narrower version of the
+		// same hole this issue exists to close.
+		for (const m of css.matchAll(/style:animation(?:-name)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g)) {
+			const value = (m[1] ?? m[2] ?? m[3] ?? '').trim();
+			if (/^none\b/.test(value) || /^'none'$|^"none"$/.test(value)) continue; // the reset itself
+			offenders.push(
+				`${f}: animation in an inline style attribute (cannot honour Reduce Motion): ${(value || '<shorthand>').slice(0, 40)}`
+			);
 		}
 	}
 	expect(offenders).toEqual([]);
