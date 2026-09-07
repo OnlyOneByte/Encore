@@ -22,6 +22,45 @@ function stripComments(src: string): string {
 
 const src = stripComments(readFileSync(join(import.meta.dir, 'SongRow.svelte'), 'utf8'));
 
+// Collect EVERY rule for a class selector, matching the selector repeatedly and brace-matching each
+// body — the same read tests 2 and 3 rely on. Returns one entry per rule with its declaration body.
+//
+// #482 established the reason this must read every rule, not the first: SongRow declares its layout
+// selectors more than once — a base rule PLUS a redeclaration inside `@media (max-width: 380px)` that
+// WINS the cascade at <=380px (same specificity, later in source). A first/any-match check is blind to
+// the override branch, so a media-query redeclaration can reopen a fixed defect with the gate green.
+//
+// `sel` is a literal class token; the `(^|[^-\w])` prefix stops `.t` matching inside `.title-line` and
+// keeps each selector distinct. `lastIndex` resumes past each body so a nested `{` cannot misalign.
+function collectRules(sel: string): { body: string; index: number }[] {
+	const re = new RegExp('(^|[^-\\w])' + sel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*\\{', 'gm');
+	const out: { body: string; index: number }[] = [];
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(src)) !== null) {
+		const braceOpen = src.indexOf('{', m.index);
+		const braceClose = src.indexOf('}', braceOpen);
+		expect(braceClose).toBeGreaterThan(braceOpen);
+		out.push({ body: src.slice(braceOpen + 1, braceClose), index: braceOpen });
+		re.lastIndex = braceClose; // resume past this rule's body so nested `{` inside can't misalign
+	}
+	return out;
+}
+
+// Read the effective flex-grow / flex-shrink a rule DECLARES, or null if it declares no flex axis.
+function flexOf(body: string): { grow: string | null; shrink: string | null; declares: boolean } {
+	const shorthand = body.match(/(?:^|;)\s*flex\s*:\s*([^;]+)/);
+	const growLong = body.match(/(?:^|;)\s*flex-grow\s*:\s*([^;]+)/);
+	const shrinkLong = body.match(/(?:^|;)\s*flex-shrink\s*:\s*([^;]+)/);
+	const declares = !!(shorthand || growLong || shrinkLong);
+	// flex-grow: explicit flex-grow, else the FIRST value of the `flex` shorthand.
+	const grow = growLong ? growLong[1].trim() : shorthand ? shorthand[1].trim().split(/\s+/)[0] : null;
+	// flex-shrink: explicit flex-shrink, else the SECOND value of the `flex` shorthand. A shorthand
+	// with only one <number> (e.g. `flex: 0`) leaves shrink at its CSS default of 1, so a missing
+	// second token means shrink 1 — but only when a shorthand is actually present.
+	const shrink = shrinkLong ? shrinkLong[1].trim() : shorthand ? (shorthand[1].trim().split(/\s+/)[1] ?? '1') : null;
+	return { grow, shrink, declares };
+}
+
 test('the cooking sparkle is a sibling of .t inside .title-line, never nested in the clamped .t', () => {
 	// not-vacuous: the elements the invariant is about must actually exist.
 	const titleLineOpen = src.indexOf('class="title-line"');
@@ -75,10 +114,56 @@ test('the cooking sparkle is a sibling of .t inside .title-line, never nested in
 	expect(sparkleAt).toBeLessThan(titleLineClose); // still inside .title-line
 });
 
-test('.title-line is a flex row and .sparkle is a non-shrinking flex item', () => {
-	// the layout contract that keeps the mark off the clamped line: a flex row whose mark cannot shrink.
-	expect(src).toMatch(/\.title-line\s*\{[^}]*display:\s*flex/);
-	expect(src).toMatch(/\.sparkle\s*\{[^}]*flex:\s*0\s+0\s+auto/);
+test('.title-line stays a flex row and .sparkle stays a non-shrinking flex item, on EVERY rule (issue #551)', () => {
+	// The layout contract that keeps the mark off the clamped line: a flex ROW whose mark cannot grow.
+	//
+	// #482 named the hole and #523 closed it for `.t` only (see test 3): every `.t` rule is now read.
+	// The other two selectors in the SAME contract were left on any-match `toMatch`, satisfied forever
+	// by the base rules at `.title-line`/`.sparkle`. So a redeclaration inside `@media (max-width: 380px)`
+	// — this file's established idiom, the block already redeclares six selectors — was invisible:
+	//   • `.title-line { flex-direction: column }` (or `display: block`/`grid`) drops the mark onto its
+	//     OWN line, reading as a metadata bullet rather than a mark on the title — #194's loss by another
+	//     route.
+	//   • `.sparkle { flex: 1 1 auto }` lets the inline-grid box grow and floats the centred glyph into
+	//     the empty tail — #334's exact symptom.
+	// Both left the old test at 3 pass / 0 fail. Read EVERY rule (collectRules) and hold each to its
+	// contract, mirroring test 3's `.t` widening.
+
+	// --- .title-line: must be a flex row, and no rule may turn it into a column/block/grid ---------
+	const titleLineRules = collectRules('.title-line');
+	// not-vacuous, keyed on the selector examined (NOT a raw count elsewhere): the base rule must exist.
+	expect(titleLineRules.length).toBeGreaterThanOrEqual(1);
+
+	// at least one rule must establish the flex row (the base rule) — otherwise the contract is unpinned.
+	const titleLineFlexRow = titleLineRules.filter((r) => /display:\s*flex/.test(r.body));
+	expect(titleLineFlexRow.length).toBeGreaterThanOrEqual(1);
+
+	for (const r of titleLineRules) {
+		// Any rule that sets `display` at all must set it to flex — a `display: block`/`grid` override
+		// stacks the mark under the title (Finding 1). Rules that do not touch display inherit the base.
+		const display = r.body.match(/(?:^|;)\s*display\s*:\s*([^;]+)/);
+		if (display) expect(display[1].trim()).toBe('flex');
+		// The flex row must stay a ROW. `flex-direction: column` puts the mark on its own line below the
+		// title (Finding 1). `row` (the initial value) is fine; anything else reds.
+		const dir = r.body.match(/(?:^|;)\s*flex-direction\s*:\s*([^;]+)/);
+		if (dir) expect(dir[1].trim()).toBe('row');
+	}
+
+	// --- .sparkle: must not GROW, on every rule that declares a flex axis --------------------------
+	const sparkleRules = collectRules('.sparkle');
+	expect(sparkleRules.length).toBeGreaterThanOrEqual(1);
+
+	// the base rule pins the full `flex: 0 0 auto` (grow 0, shrink 0 — the mark neither grows nor shrinks).
+	const sparkleDeclaring = sparkleRules.filter((r) => flexOf(r.body).declares);
+	expect(sparkleDeclaring.length).toBeGreaterThanOrEqual(1);
+
+	for (const r of sparkleDeclaring) {
+		const { grow } = flexOf(r.body);
+		// grow MUST be 0: `.sparkle` is `display: inline-grid; place-items: center`, so any grow lets the
+		// box swell and centres the glyph out in the empty tail, separating it from the title (Finding 2,
+		// #334's symptom). `flex: 1 1 auto` => grow "1" reds here where the any-match guard let it pass.
+		expect(grow).toBe('0');
+	}
 });
 
 test('.t does not grow and always shrinks — the clamp box hugs its text so the mark stays adjacent, on EVERY .t rule (issue #334)', () => {
@@ -97,35 +182,11 @@ test('.t does not grow and always shrinks — the clamp box hugs its text so the
 	// was invisible. Read EVERY .t rule by matching the selector repeatedly, brace-match each body, and
 	// hold every rule that declares a flex axis to the same grow-0 / shrink->0 contract. A rule that
 	// declares no flex is fine — it inherits the base rule's flex, so it cannot reopen #334 on its own.
-	const tRe = /(^|[^-\w])\.t\s*\{/gm;
-	const bodies: { body: string; index: number }[] = [];
-	let m: RegExpExecArray | null;
-	while ((m = tRe.exec(src)) !== null) {
-		const braceOpen = src.indexOf('{', m.index);
-		const braceClose = src.indexOf('}', braceOpen);
-		expect(braceClose).toBeGreaterThan(braceOpen);
-		bodies.push({ body: src.slice(braceOpen + 1, braceClose), index: braceOpen });
-		tRe.lastIndex = braceClose; // resume past this rule's body so nested `{` inside can't misalign
-	}
+	const bodies = collectRules('.t');
 	// not-vacuous: SongRow declares .t at least TWICE today (base + @media). A floor on the count means a
 	// future edit that stops one rule matching (renamed selector, merged rules) cannot silently shrink the
 	// set the contract is applied to and slip a regression through an unexamined rule.
 	expect(bodies.length).toBeGreaterThanOrEqual(2);
-
-	// read the effective flex-grow / flex-shrink a rule DECLARES, or null if it declares no flex axis.
-	function flexOf(body: string): { grow: string | null; shrink: string | null; declares: boolean } {
-		const shorthand = body.match(/(?:^|;)\s*flex\s*:\s*([^;]+)/);
-		const growLong = body.match(/(?:^|;)\s*flex-grow\s*:\s*([^;]+)/);
-		const shrinkLong = body.match(/(?:^|;)\s*flex-shrink\s*:\s*([^;]+)/);
-		const declares = !!(shorthand || growLong || shrinkLong);
-		// flex-grow: explicit flex-grow, else the FIRST value of the `flex` shorthand.
-		const grow = growLong ? growLong[1].trim() : shorthand ? shorthand[1].trim().split(/\s+/)[0] : null;
-		// flex-shrink: explicit flex-shrink, else the SECOND value of the `flex` shorthand. A shorthand
-		// with only one <number> (e.g. `flex: 0`) leaves shrink at its CSS default of 1, so a missing
-		// second token means shrink 1 — but only when a shorthand is actually present.
-		const shrink = shrinkLong ? shrinkLong[1].trim() : shorthand ? (shorthand[1].trim().split(/\s+/)[1] ?? '1') : null;
-		return { grow, shrink, declares };
-	}
 
 	// at least ONE .t rule must declare its flex explicitly (the base rule) — a repo with zero flex on
 	// any .t rule would leave the whole contract unpinned.
