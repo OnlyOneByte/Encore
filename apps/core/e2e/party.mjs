@@ -36,6 +36,14 @@ import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 
+/**
+ * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {{ name: string, ok: boolean }} Check
+ */
+
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9333);
@@ -46,7 +54,9 @@ const CDP_PORT = Number(process.env.CDP_PORT ?? 9333);
  */
 const SYNC_SETTLE_MS = Number(process.env.SYNC_SETTLE_MS ?? 800);
 
+/** @type {Check[]} */
 const checks = [];
+/** @param {string} name @param {unknown} ok @param {string} [detail] */
 function check(name, ok, detail = '') {
 	checks.push({ name, ok: !!ok });
 	console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `\n        ${detail}`}`);
@@ -92,9 +102,11 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
+/** @type {Browser | undefined} */
 let browser;
 try {
-	browser = await connect(CDP_PORT);
+	const browser0 = await connect(CDP_PORT);
+	browser = browser0;
 
 	// ── the TV, BEFORE anyone joins ───────────────────────────────────────────
 	// Order matters. The attract layout only exists while the room is EMPTY, so asserting on it after two
@@ -102,7 +114,7 @@ try {
 	// first run of this rewrite did. The stage scale and safe area are stage 3's whole point, so they are
 	// asserted on the RENDERED result: a token can be declared correctly and still not reach the element
 	// it was meant for.
-	const tv = await browser.newPage();
+	const tv = await browser0.newPage();
 	await tv.goto(`${base}/tv`);
 
 	/*
@@ -139,7 +151,7 @@ try {
 		.catch(() => false);
 	if (!socketUp) {
 		console.error(`\nThe TV never opened its WebSocket to ${base}. Is the server still running?`);
-		browser.close();
+		browser0.close();
 		proc.kill();
 		process.exit(2);
 	}
@@ -158,7 +170,7 @@ try {
 				'and a previous run leaves its guests behind. Restart the server and re-run:\n' +
 				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start`
 		);
-		browser.close();
+		browser0.close();
 		proc.kill();
 		process.exit(2);
 	}
@@ -171,7 +183,7 @@ try {
 				'routable origin and re-run:\n' +
 				`  ENCORE_EPHEMERAL=1 PORT=${PORT} MEDIA_DIR=<seeded dir> ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start`
 		);
-		browser.close();
+		browser0.close();
 		proc.kill();
 		process.exit(2);
 	}
@@ -194,7 +206,7 @@ try {
 				"not empty after all — a previous run's guests arrived over the socket. Restart the server\n" +
 				'and re-run.'
 		);
-		browser.close();
+		browser0.close();
 		proc.kill();
 		process.exit(2);
 	}
@@ -215,8 +227,9 @@ try {
 	);
 
 	// ── two guests join, one by preset and one off the hue wheel ─────────────
+	/** @param {string} name @param {{ colourName?: string, hue?: number }} [opts] @returns {Promise<Page>} */
 	async function joinAs(name, { colourName, hue } = {}) {
-		const page = await browser.newPage();
+		const page = await browser0.newPage();
 		await page.goto(`${base}/join`);
 		await page.fill(SEL.nameInput, name);
 		if (colourName) await page.clickByLabel(SEL.swatch(colourName).name);

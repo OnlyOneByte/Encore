@@ -18,6 +18,14 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {{ n: string, ok: boolean }} Check
+ */
+
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
 const CDP = Number(process.env.CDP_PORT ?? 9390);
@@ -32,6 +40,7 @@ if (!chrome) {
 }
 
 // Two singers, each with a cooked song, so rotation has a real handover to perform.
+/** @param {string} name @returns {Promise<{ name: string, cookie: string }>} */
 async function joinSinger(name) {
 	const r = await fetch(`${base}/api/join`, {
 		method: 'POST',
@@ -67,9 +76,11 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
+/** @type {Browser | undefined} */
 let browser;
+/** @type {Check[]} */
 const checks = [];
-const check = (n, ok, d = '') => {
+const check = (/** @type {string} */ n, /** @type {boolean} */ ok, d = '') => {
 	checks.push({ n, ok });
 	console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${ok || !d ? '' : `\n        ${d}`}`);
 };
@@ -144,7 +155,7 @@ try {
 		);
 	}
 } catch (e) {
-	check('the flow ran', false, String(e?.stack ?? e));
+	check('the flow ran', false, String(e instanceof Error ? e.stack : e));
 } finally {
 	browser?.close();
 	proc.kill();

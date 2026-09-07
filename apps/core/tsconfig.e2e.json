@@ -3,7 +3,9 @@
 	// Extends the server config for the same strictness. PR-1 covers only the shared spine
 	// (cdp.mjs driver, contract.ts selector registry, scripts/shot.mjs); the ~760 per-probe
 	// implicit-any errors are brought in by the per-driver follow-up issues, one batch at a time,
-	// each adding its files to `include` below.
+	// each adding its files to `include` below. As of #564 the whole out-of-program e2e set is in the
+	// gate: this final batch brought in the transport + capture + remaining probes/drivers, and the two
+	// already-clean helpers (seed-media.mjs, wav.mjs) so nothing e2e is left untypechecked.
 	"extends": "./tsconfig.server.json",
 	"compilerOptions": {
 		"allowJs": true,
@@ -26,7 +28,19 @@
 		"e2e/probes/p3-key-shift.mjs",
 		"e2e/probes/p12-search.mjs",
 		"e2e/probes/p6-lyrics.mjs",
-		"e2e/probes/p8-presence-resilience.mjs"
+		"e2e/probes/p8-presence-resilience.mjs",
+		"e2e/probes/p4-transport.mjs",
+		"e2e/capture.mjs",
+		"e2e/playback.mjs",
+		"e2e/fake-stems-worker.mjs",
+		"e2e/lobby-overlap.mjs",
+		"e2e/party.mjs",
+		"e2e/probes/p13-tap-to-start.mjs",
+		"e2e/probes/tv-audiocontext-resume.mjs",
+		"e2e/probes/lower-third.mjs",
+		"e2e/fake-align-worker.mjs",
+		"e2e/seed-media.mjs",
+		"e2e/wav.mjs"
 	],
 	"exclude": ["build", "node_modules"]
 }
