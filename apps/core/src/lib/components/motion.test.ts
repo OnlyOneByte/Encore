@@ -32,6 +32,10 @@ function svelteFiles(dir: string): string[] {
 
 // every .svelte AND .css file under a directory — the CSS lives in both component <style> blocks
 // and the shared design system (src/app.css), so a scan restricted to .svelte is blind to app.css.
+function assertScanIntact(files: string[]): void {
+	expect(files.some((f) => f.endsWith('app.css'))).toBe(true);
+	expect(files.some((f) => f.includes(join('lib', 'tv')) && f.endsWith('.svelte'))).toBe(true);
+}
 function styleFiles(dir: string): string[] {
 	const out: string[] = [];
 	for (const ent of readdirSync(dir, { withFileTypes: true })) {
@@ -76,7 +80,8 @@ test('no transition animates a layout-triggering property (transform/opacity onl
 	// count floor (issue #287 gap 3): a directory rename / moved src / glob typo would make this
 	// scan pass VACUOUSLY. Pin it around the current scanned-file count (16 today) so a broken walk
 	// reds instead of silently passing — the exact failure mode #140 shipped under.
-	expect(files.length).toBeGreaterThanOrEqual(12);
+	expect(files.length).toBeGreaterThanOrEqual(24);
+	assertScanIntact(files);
 	const offenders: string[] = [];
 	for (const f of files) {
 		// strip comments first (issue #287 gap 1): a `transition:` in a `/* … */` or `<!-- … -->` comment
@@ -96,7 +101,7 @@ test('no transition animates a layout-triggering property (transform/opacity onl
 // immune to what sits between the inner stops. Comments are stripped by the caller first.
 function keyframeBodies(css: string): string[] {
 	const bodies: string[] = [];
-	const re = /@keyframes[^{]*\{/g;
+	const re = /@(?:-(?:webkit|moz)-)?keyframes[^{]*\{/g;
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(css))) {
 		let depth = 1;
@@ -121,7 +126,8 @@ function keyframeProps(body: string): string[] {
 
 test('@keyframes animate only GPU-composited properties', () => {
 	const files = styleFiles(join(import.meta.dir, '..', '..'));
-	expect(files.length).toBeGreaterThanOrEqual(12);
+	expect(files.length).toBeGreaterThanOrEqual(24);
+	assertScanIntact(files);
 	const bad: string[] = [];
 	for (const f of files) {
 		// strip comments first so (a) a trailing comment can't defeat the block capture and (b) a
@@ -153,10 +159,16 @@ test('@keyframes animate only GPU-composited properties', () => {
 function stripComments(css: string): string {
 	return css.replace(/\/\*[\s\S]*?\*\//g, '');
 }
-// spans of every `@media (prefers-reduced-motion: no-preference)` block, as [start, end) offsets
+// True when a media prelude fires ONLY when motion is allowed, never under Reduce Motion (issue #481).
+function firesOnlyWhenMotionAllowed(prelude: string): boolean {
+	const negated = /\bnot\b/.test(prelude);
+	if (/prefers-reduced-motion:\s*no-preference/.test(prelude)) return !negated;
+	if (/prefers-reduced-motion:\s*reduce/.test(prelude)) return negated;
+	return false;
+}
 function noPreferenceSpans(css: string): Array<[number, number]> {
 	const spans: Array<[number, number]> = [];
-	const re = /@media[^{]*prefers-reduced-motion:\s*no-preference[^{]*\{/g;
+	const re = /@media([^{]*)\{/g;
 	let m: RegExpExecArray | null;
 	while ((m = re.exec(css))) {
 		// walk braces from the opening `{` to its match
@@ -166,7 +178,7 @@ function noPreferenceSpans(css: string): Array<[number, number]> {
 			if (css[i] === '{') depth++;
 			else if (css[i] === '}') depth--;
 		}
-		spans.push([m.index, i]);
+		if (firesOnlyWhenMotionAllowed(m[1]!)) spans.push([m.index, i]);
 	}
 	return spans;
 }
@@ -279,6 +291,10 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		...svelteFiles(join(import.meta.dir, '..', '..', 'routes'))
 	];
 	const files = [...svelte, join(import.meta.dir, '..', '..', 'app.css')];
+	// test 3 had NO count floor (issue #481 finding 4): the exact vacuity gap #287 gap 3 added to
+	// tests 1 and 2 was left out here. Give it the same real-count floor + which-files sentinel.
+	expect(files.length).toBeGreaterThanOrEqual(24);
+	assertScanIntact(files);
 	const offenders: string[] = [];
 	for (const f of files) {
 		const css = stripComments(readFileSync(f, 'utf8'));
@@ -286,7 +302,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		const rules = ruleBlocks(css);
 		const resetSelectors = reduceResetSelectors(css, rules);
 		// match `animation:` / `animation-name:` shorthand declarations (not @keyframes, not the guard media queries)
-		for (const m of css.matchAll(/(^|[;{\s])animation(-name)?:\s*([^;}]+)/g)) {
+		for (const m of css.matchAll(/(^|[;{\s])(?:-(?:webkit|moz)-)?animation(-name)?:\s*([^;}]+)/g)) {
 			const value = m[3]!.trim();
 			if (/^none\b/.test(value)) continue; // the reset itself
 			const at = m.index! + m[1]!.length;
