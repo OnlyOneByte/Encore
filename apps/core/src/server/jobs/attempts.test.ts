@@ -14,6 +14,8 @@ import { AttemptLedger } from './attempts';
 import { JobRepository } from './repository';
 import { inheritsCook } from './dispatch';
 import type { DB } from '../db/index';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 
 const T0 = 1_700_000_000_000;
 
@@ -279,5 +281,30 @@ describe('the ledger is observability, never a failure mode', () => {
 		jobs.complete(job.id, T0 + 1_000); // seals attempt 1
 		expect(() => ledger.reportFacts(job.id, { device: 'cuda' })).not.toThrow();
 		expect(ledger.byMedia('m1')[0].device).toBeNull(); // sealed rows stay sealed
+	});
+});
+
+// `AttemptLedger.allFinished` was removed in #556: it had zero callers since #472 replaced its
+// bare-row-count window with the time window `finishedSince` + `countFinished`, and the semantics it
+// still offered are the ones #472 measured as wrong (a straddling cook reports complete with an
+// understated span). A public method on an exported class is invisible to the unused-EXPORT sweep
+// (#554), so nothing else in the repo would catch its reintroduction. This source scan does: it reds
+// on base, where `allFinished(` still exists at attempts.ts:142. Comments are blanked so the two
+// surviving textual references (the `finishedSince` docstring and the metrics-route comment, both
+// explaining why the time window replaced it) cannot satisfy the match.
+describe('the removed row-count window stays removed (#556)', () => {
+	const stripComments = (src: string): string => {
+		const blank = (m: string) => m.replace(/[^\n]/g, ' ');
+		return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
+	};
+	const SRC = stripComments(readFileSync(join(import.meta.dir, 'attempts.ts'), 'utf8'));
+
+	it('exposes no `allFinished` method outside comments', () => {
+		expect(SRC).not.toMatch(/\ballFinished\b/);
+	});
+
+	it('still exposes its window-based replacements (not vacuous — a rename or empty read reds here)', () => {
+		expect(SRC).toMatch(/\bfinishedSince\b/);
+		expect(SRC).toMatch(/\bcountFinished\b/);
 	});
 });

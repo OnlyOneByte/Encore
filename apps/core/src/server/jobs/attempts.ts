@@ -138,17 +138,6 @@ export class AttemptLedger {
 		return this.#findOpen(jobId) ?? null;
 	}
 
-	/** Every sealed attempt regardless of outcome, newest first — feeds failure-rate reporting. */
-	allFinished(limit = 5000): JobAttempt[] {
-		return this.#db
-			.select()
-			.from(jobAttempts)
-			.where(isNotNull(jobAttempts.outcome))
-			.orderBy(desc(jobAttempts.finishedAt))
-			.limit(limit)
-			.all();
-	}
-
 	/**
 	 * Sealed attempts finished at or after `sinceMs`, newest first, capped at `limit`. A TIME window
 	 * rather than a bare row count: the row-count window (`allFinished`) silently dropped a cook's
