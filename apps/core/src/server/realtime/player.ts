@@ -181,7 +181,12 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 			state.setPlayback({ isPlaying: false });
 			break;
 		case 'restart':
-			state.setPlayback({ positionSec: 0, isPlaying: true });
+			// Mirror `play`'s idle-room guard onto its sibling branch: there is nothing to restart when
+			// no song is loaded, so a `restart` on a null currentEntryId must settle stopped rather than
+			// latch the (currentEntryId, isPlaying) === (null, true) illegal state that store hydrate does
+			// not self-heal (it only clears the DANGLING non-null case). A loaded song still restarts to
+			// (positionSec: 0, isPlaying: true) unchanged.
+			state.setPlayback({ positionSec: 0, isPlaying: !!state.playback.currentEntryId });
 			break;
 		case 'seek':
 			// cmd.positionSec is an unvalidated number off the wire. Math.max(0, NaN) is NaN, and NaN
