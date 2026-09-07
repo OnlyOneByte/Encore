@@ -163,6 +163,7 @@ CREATE TABLE `rooms` (
 	`created_at` integer NOT NULL
 );
 --> statement-breakpoint
+CREATE UNIQUE INDEX `rooms_code_idx` ON `rooms` (`code`);--> statement-breakpoint
 CREATE TABLE `singers` (
 	`id` text PRIMARY KEY NOT NULL,
 	`display_name` text NOT NULL,

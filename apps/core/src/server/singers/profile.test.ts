@@ -8,6 +8,7 @@ import { migratedDb } from '../db/test-db';
 import { doJoin, assertNameFree, NameTakenError } from './join';
 import { doLeave, removableOnLeave } from './leave';
 import { SingerRepository } from './repository';
+import { RoomRepository } from '../rooms/repository';
 import { SINGER_COLORS, type ServerEvent, type Media, type QueueEntry } from '@encore/shared';
 import { LocalLibrary } from '../media/local';
 import { YouTubeResolver } from '../media/youtube';
@@ -36,6 +37,7 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		db,
 		state: new AuthoritativeState(),
 		singers: new SingerRepository(db),
+		rooms: new RoomRepository(db),
 		presence: new PresenceTracker(),
 		plays: new PlayTracker(() => {}),
 		jobs,
