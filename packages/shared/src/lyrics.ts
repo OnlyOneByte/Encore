@@ -159,6 +159,7 @@ export function mergeLyricsCandidate(
 /** Words, lowercased, punctuation stripped. Deliberately crude — this compares CONTENT, not form. */
 export function lyricsTokens(text: string): string[] {
 	return text
+		.normalize('NFKC') // fold form-variants (full/half-width, composed/decomposed) so they tokenise alike; mirrors the Python side
 		.toLowerCase()
 		.replace(/\[[^\]]*\]/g, ' ') // LRC timestamps / [Chorus] markers
 		.replace(/[^\p{L}\p{N}\s']/gu, ' ')
