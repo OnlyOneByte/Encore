@@ -158,12 +158,28 @@ function allSvelte(dir: string): string[] {
  * Does `token` appear as a CLASS anywhere in `src`? A class is reached three ways in Svelte source —
  * a static `class="a b c"` list, a `class:token` directive, or a `.token` rule in <style> — and the
  * flow's `.token` query matches an element that got the class by ANY of them, so all three count.
- * Matched on a word boundary so `.row` is not satisfied by `.rowdy`.
+ *
+ * The class="..." arm compares WHOLE tokens, not a `\b…\b` substring (#682). A word boundary treats
+ * `-` as a break, so `class="badqr-b"` used to resolve the bare token `b`, and a Svelte
+ * interpolation `class="pill {a.outcome}"` used to resolve the JS identifier `a` — both are dead
+ * classes no element carries, yet the guard whose job is to red on a vanished anchor waved them
+ * through. So split the quoted value into real tokens: blank out `{…}` interpolations first (the
+ * expression names a variable, not a static class), then split on whitespace and match `token`
+ * exactly. The `class:token` directive and `.token` <style> arms already name the class in full, so
+ * a `\b` boundary is exact for them (it only differs from an exact match on a following `-`, and no
+ * `class:foo-bar` / `.foo-bar` rule can satisfy a query for `foo`); they are unchanged.
  */
 function classPresent(src: string, token: string): boolean {
 	const t = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	// inside a class="..." attribute (token as a whole word within the quoted list)
-	if (new RegExp(`class="[^"]*\\b${t}\\b[^"]*"`).test(src)) return true;
+	// inside a class="..." attribute: exact token match against the whitespace-split value, with
+	// `{…}` interpolations blanked so an interpolated expression cannot masquerade as a static class.
+	for (const m of src.matchAll(/class="([^"]*)"/g)) {
+		const tokens = m[1]
+			.replace(/\{[^}]*\}/g, ' ')
+			.split(/\s+/)
+			.filter(Boolean);
+		if (tokens.includes(token)) return true;
+	}
 	// class:token directive
 	if (new RegExp(`class:${t}\\b`).test(src)) return true;
 	// a .token rule in <style>
@@ -517,7 +533,7 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		// row chip, the three badqr notice lines, the two scoped lower-third lines, and the two
 		// up-next lines.
 		//
-		// The four below STAY quarantined, each with the reason it cannot enter SEL:
+		// One entry STAYS quarantined:
 		//
 		//   the badqr universal-child read — a badqr container followed by the UNIVERSAL child token.
 		//     The SEL-resolution guard models class / tag / tag.class / attribute / combinator parts,
@@ -526,18 +542,14 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		//     waves anything through. p10 reads it only to enumerate the notice card's descendants for
 		//     an overflow check; it stays a literal.
 		//
-		//   the single-letter, filter-chip and roster reads — DEAD selectors: no matching class exists
-		//     in any .svelte component (verified by source scan and git log -S; the readiness filter
-		//     chips render under the chips group, not a filter-chip class, and roster appears only as
-		//     a JS prop name / prose in TvLobby). They match nothing at runtime (the contrast loops
-		//     skip a null query), so they cannot be migrated into SEL, which requires every entry to
-		//     resolve to a real source anchor. They are left in the p10 contrast targets as harmless
-		//     dead entries and quarantined here rather than deleted, keeping this PR a pure migration;
-		//     pruning them is a separate cleanup.
-		'.b',
-		'.badqr *',
-		'.filter-chip',
-		'.roster'
+		// #682 completed #547's deferred cleanup of the three DEAD reads that were quarantined here:
+		// '.b', '.filter-chip' and '.roster' named classes no component ever declared, so they were
+		// removed from p10's contrast targets outright ('.attract .idle-title' was repointed to
+		// SEL.stageHeadline and '.row .a' to '.row .byline'). They are no longer in the data arrays and
+		// so no longer need a quarantine entry. The G1 guard below now reds if a p10 target ever again
+		// names an unresolvable class, and #682 also tightened classPresent so '.b' can no longer
+		// spuriously resolve against the 'badqr-b' fragment.
+		'.badqr *'
 	],
 	'probes/p11-dashboards.mjs': [
 		// Bare tags / a tag descendant, deliberately NOT UI selectors: `body`/`h1`/`h2` are structural
@@ -888,24 +900,127 @@ test('#547 Group E — p10-scaling data-array selectors moved from KNOWN_OFFENDE
 		expect(selectorResolves(SEL[key] as string, sources), key).toBe(true);
 	}
 
-	// Half 3: the four DEFERRED selectors STAY quarantined, and this proves the deferral is not an
-	// excuse — each genuinely cannot enter SEL, so KNOWN_OFFENDERS is still the only honest home.
-	for (const kept of ['.badqr *', '.b', '.filter-chip', '.roster']) {
+	// Half 3: only '.badqr *' stays quarantined. #682 completed #547's deferred cleanup — the three
+	// DEAD reads ('.b', '.filter-chip', '.roster') were removed from p10's contrast targets outright,
+	// so they no longer need — and no longer have — a quarantine entry here.
+	for (const kept of ['.badqr *']) {
 		expect(p10).toContain(kept);
+	}
+	for (const gone of ['.b', '.filter-chip', '.roster']) {
+		expect(p10).not.toContain(gone);
 	}
 	// '.badqr *' is UNMODELLABLE: the universal-child token has no source anchor, so the resolver
 	// returns null (not true, not false) — putting it in SEL would fail the every-SEL-resolves guard.
 	expect(selectorResolves('.badqr *', sources)).toBeNull();
-	// '.filter-chip' and '.roster' are DEAD: no component renders either class (the readiness filter
-	// chips live under the .chips group, and .roster is only a JS prop name / prose in TvLobby), so the
-	// resolver returns FALSE. A selector that resolves false cannot be a SEL entry (it would red the
-	// every-SEL-resolves guard), which is exactly why they stay quarantined rather than migrated.
+	// The three former offenders all resolve FALSE now: '.filter-chip' and '.roster' name classes no
+	// component renders, and '.b' — which the resolver used to wave through by matching a word-boundary
+	// `b` inside the `badqr-b` fragment — is rejected after #682 tightened classPresent to exact-token
+	// matching. A dead read that reds instead of silently resolving is the whole point of §2.
 	expect(selectorResolves('.filter-chip', sources)).toBe(false);
 	expect(selectorResolves('.roster', sources)).toBe(false);
-	// '.b' is also dead at runtime (no element carries a bare `b` class) but the resolver SPURIOUSLY
-	// reports it resolvable: classPresent matches a word-boundary `b` inside the `badqr-b` class token
-	// (the hyphen is a word boundary). That false positive is a SECOND reason '.b' must not migrate: a
-	// SEL entry of '.b' would pass the every-SEL-resolves guard yet querySelector('.b') matches nothing.
-	// Assert the observed verdict so this test documents the trap instead of hiding it.
-	expect(selectorResolves('.b', sources)).toBe(true);
+	expect(selectorResolves('.b', sources)).toBe(false);
+});
+
+/*
+ * #682 — G1: every string-literal contrast target in p10-scaling.mjs must resolve to a real source
+ * anchor. The two `targets` arrays live inside `page.evaluate(`…`)` template literals in the driver,
+ * which is outside `bun test` and so never runs here; nothing catches a target that names a class no
+ * component declares (the loops skip a null querySelector, and p10 always exits 0). Five did exactly
+ * that — `.attract .idle-title`, `.roster`, `.row .a`, `.filter-chip`, `.b` — so this pins the
+ * invariant in the always-on suite, reusing the same `selectorResolves`/`guardSources`/`stripComments`
+ * the SEL-resolution guard uses. Interpolated entries (`${JSON.stringify(SEL.x)}`) are covered by the
+ * every-SEL-resolves guard, so only the raw string literals are checked here.
+ */
+function p10TargetLiterals(): { arrays: string[]; lits: string[] } {
+	// Blank comments so a `// '.roster' stays a literal` note cannot leak a literal into the scan; the
+	// stripping is load-bearing on the p10 side because these literals also appear raw in prose above
+	// the arrays (`.roster` 3× raw / 1× stripped).
+	const src = stripComments(readFileSync(join(import.meta.dir, 'probes/p10-scaling.mjs'), 'utf8'));
+	const arrays: string[] = [];
+	for (const m of src.matchAll(/const targets = \[/g)) {
+		let depth = 0;
+		let i = m.index! + m[0].length - 1; // sit on the opening '['
+		const start = i;
+		for (; i < src.length; i++) {
+			if (src[i] === '[') depth++;
+			else if (src[i] === ']') {
+				depth--;
+				if (depth === 0) break;
+			}
+		}
+		arrays.push(src.slice(start, i + 1));
+	}
+	const lits: string[] = [];
+	for (const body of arrays) {
+		// Drop `${…}` interpolations (SEL entries — checked by the SEL guard) before pulling literals.
+		const stripped = body.replace(/\$\{[^}]*\}/g, ' ');
+		for (const lm of stripped.matchAll(/'([^']*)'/g)) lits.push(lm[1]);
+	}
+	return { arrays, lits };
+}
+
+test('#682 G1 — every literal p10-scaling contrast target resolves to a real anchor', () => {
+	const { arrays, lits } = p10TargetLiterals();
+	const sources = guardSources();
+
+	// Sentinel A: both target arrays were actually found and their literals extracted. Replacing the
+	// arrays with `[]` (or a rename that hides them from the scan) makes the main arm pass vacuously —
+	// this floor reds instead. 19 distinct live literals across the two arrays as of #682.
+	expect(arrays.length).toBe(2);
+	expect(lits.length).toBeGreaterThanOrEqual(19);
+
+	// Sentinel B: known-live anchors the arrays name must resolve, so a resolver that rejects
+	// everything (or a broken guardSources) fails here rather than passing the main arm vacuously.
+	for (const live of [
+		'.badqr-b b',
+		'.lower-third .ls-artist',
+		'.attract .brand',
+		'.row .byline',
+		'.qrow .t',
+		'body',
+		'h1',
+		'a'
+	]) {
+		expect(selectorResolves(live, sources), live).toBe(true);
+	}
+
+	// Sentinel C: at least six of the literals resolve as CLASS selectors specifically (not just as
+	// bare tags), so a class-blind resolver that only ever checked tags cannot pass this.
+	const classLits = [
+		'.badqr-b b',
+		'.lower-third .ls-key',
+		'.attract .idle-url',
+		'.row .t',
+		'.row .byline',
+		'.searchbox input'
+	];
+	for (const c of classLits) expect(selectorResolves(c, sources), c).toBe(true);
+
+	// Main arm: EVERY literal target resolves. A `false` means the target names a class/tag no
+	// component declares (the §1 defect); a `null` means an unmodelled shape slipped into the arrays.
+	const dead = lits.filter((l) => selectorResolves(l, sources) !== true);
+	expect(dead).toEqual([]);
+});
+
+/*
+ * #682 — G2: classPresent must reject a token that only appears as a fragment of a longer class or as
+ * an interpolated JS identifier. The old `class="[^"]*\b${t}\b[^"]*"` arm treated `-` as a word
+ * boundary, so `class="badqr-b"` resolved the bare token `b`, and `class="pill {a.outcome}"` resolved
+ * the variable `a`. Both are dead classes no element carries, yet the guard whose job is to red on a
+ * vanished anchor waved them through. Each assertion is red on base and pinned against a real anchor
+ * in the SAME source so the arm cannot be "fixed" by rejecting everything.
+ */
+test('#682 G2 — classPresent rejects a hyphen-fragment or interpolated-identifier token', () => {
+	const joinBadge = readFileSync(join(CORE, 'src/lib/tv/JoinBadge.svelte'), 'utf8');
+	const auditPage = readFileSync(join(CORE, 'src/routes/metrics/[mediaId]/+page.svelte'), 'utf8');
+
+	// `b` only ever appears as the `-b` tail of `badqr-b` — not a class any element carries.
+	expect(classPresent(joinBadge, 'b')).toBe(false);
+	// but the real class `badqr-b` still resolves (non-vacuity: the arm did not just start rejecting all).
+	expect(classPresent(joinBadge, 'badqr-b')).toBe(true);
+
+	// `a` only appears as the JS identifier inside `class="pill {a.outcome ?? 'running'}"`.
+	expect(classPresent(auditPage, 'a')).toBe(false);
+	// but the real static class `pill` on that same element still resolves.
+	expect(classPresent(auditPage, 'pill')).toBe(true);
 });
