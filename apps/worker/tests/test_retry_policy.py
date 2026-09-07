@@ -26,8 +26,12 @@ from src import dial_home as dh  # noqa: E402
 from src import retry_policy  # noqa: E402
 from src.dial_home import _is_retryable  # noqa: E402
 from src.runtime.plan import PlanError  # noqa: E402
-from src.separation.demucs import ProcessError  # noqa: E402
+from src.separation.demucs import (
+    ProcessError,  # noqa: E402
+    resolve_demucs_model,  # noqa: E402
+)
 from src.separation.engines import engine_for  # noqa: E402
+from src.separation.roformer import resolve_roformer_slug  # noqa: E402
 from src.vocabulary import (  # noqa: E402
     parse_action,
     parse_asr_model,
@@ -156,3 +160,72 @@ def test_dial_home_keeps_no_private_classification_table():
     assert "not found" not in src.split("def _is_retryable")[1].split("def ", 1)[0], (
         "dial_home._is_retryable must not carry its own permanent-marker substrings"
     )
+
+
+# ── #651: the two SEPARATOR MODEL RESOLVERS are boundary failures too ───────────────────────────────
+# An explicit-but-unknown model token is a permanent config error (retrying re-resolves the same bad
+# token forever, burning cook attempts). Both resolvers must fail NON-retryable through is_retryable.
+# On base, roformer.resolve_roformer_slug raised a bare ValueError (.retryable=None → is_retryable
+# defaulted it retryable), so the roformer row REDS on base; the demucs row already routed through
+# BoundaryError (#497) and PASSES on base — it is the not-vacuous sentinel that keeps this test honest
+# if the anchor for the demucs side ever moves.
+@pytest.mark.parametrize(
+    "resolve",
+    [
+        pytest.param(lambda: resolve_roformer_slug({"model": "htdemucs"}), id="roformer-unknown-model"),
+        pytest.param(lambda: resolve_demucs_model({"model": "bs-roformer-1297"}), id="demucs-unknown-model"),
+    ],
+)
+def test_unknown_separator_model_is_non_retryable(resolve):
+    from src.retry_policy import BoundaryError
+
+    exc = _raised(resolve)
+    assert isinstance(exc, ValueError), "must stay a ValueError drop-in for existing pytest.raises"
+    assert isinstance(exc, BoundaryError), f"{type(exc).__name__} should be a BoundaryError"
+    assert exc.retryable is False
+    assert _is_retryable(exc) is False
+
+
+def test_every_separation_raise_carries_a_structured_retryable():
+    """CLOSE THE CLASS (#651): every `raise` in apps/worker/src/separation/*.py must raise an
+    exception type that carries a structured `retryable` flag — never a bare Exception/ValueError/
+    RuntimeError whose retryability falls to the message heuristic. On base this AST census finds
+    exactly one offender, roformer.py's bare `ValueError`, so it REDS on base; after the fix it finds
+    none. Using ast.parse means comments and docstrings are dropped by construction, so the prose in
+    these files can neither satisfy nor trip the scan (same reasoning #650 recorded).
+    """
+    sep_dir = Path(retry_policy.__file__).resolve().parent / "separation"
+
+    # Exception TYPES that carry a structured `.retryable` (self-classifying) — the allowlist of
+    # constructors a `raise` in this domain may use. Anything else falls through to the heuristic.
+    STRUCTURED = {"BoundaryError", "PermanentError", "ProcessError", "ProcessTimeout"}
+
+    def raised_name(node: ast.Raise) -> str | None:
+        exc = node.exc
+        if exc is None:  # bare `raise` re-raises the active exception — carries whatever it already had
+            return None
+        call = exc if isinstance(exc, ast.Call) else None
+        target = call.func if call is not None else exc
+        if isinstance(target, ast.Name):
+            return target.id
+        if isinstance(target, ast.Attribute):
+            return target.attr
+        return None
+
+    offenders: list[str] = []
+    raise_sites = 0
+    for path in sorted(sep_dir.glob("*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Raise):
+                name = raised_name(node)
+                if name is None:  # bare re-raise
+                    continue
+                raise_sites += 1
+                if name not in STRUCTURED:
+                    offenders.append(f"{path.name}:{node.lineno} raise {name}")
+
+    # Not-vacuous sentinel: the census must actually have SEEN the domain's raise sites (§1 lists 11),
+    # so an empty scan (wrong glob, moved dir) fails loudly instead of passing on nothing.
+    assert raise_sites >= 8, f"census saw only {raise_sites} raise sites — scan is not reaching the domain"
+    assert offenders == [], f"unstructured raise(s) in src/separation that skip retry_policy: {offenders}"
