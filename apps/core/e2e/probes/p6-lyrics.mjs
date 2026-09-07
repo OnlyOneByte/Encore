@@ -28,6 +28,42 @@ import { join, resolve } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #563, following the
+ * #553/#557/#558/#559/#560/#561/#562 pattern). Browser/Page are derived from cdp.mjs's own return types
+ * (#553) so they cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so
+ * DOM/API-shaped results are cast at the call site via the domain typedefs below.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
+ *
+ * One finding row: a pass/fail check with its id, severity and evidence.
+ * @typedef {{ id: string, sev: Severity, ok: boolean, name: string, detail: string }} Finding
+ *
+ * The raw-CDP surface openRawCdp() returns — a second connection kept alongside cdp.mjs's own.
+ * @typedef {{
+ *   send: (method: string, params?: Record<string, unknown>, sessionId?: string) => Promise<any>,
+ *   attachToUrlContaining: (urlSubstring: string) => Promise<string | null>,
+ *   close: () => void
+ * }} RawCdp
+ *
+ * One search-result / ready row from /api/search (only the fields this probe reads).
+ * @typedef {{ id: string, title: string, source: string, lyricsRef?: string }} SongRow
+ *
+ * The /api/search response body.
+ * @typedef {{ results: SongRow[], ready: SongRow[] }} SearchBody
+ *
+ * One tracking sample read out of the TV overlay.
+ * @typedef {{
+ *   wall: number, currentTime: number, active: string | null, current: string | null,
+ *   reelTransform: string
+ * }} TrackSample
+ *
+ * The expected-word entry the fake-worker timing table yields for a given time.
+ * @typedef {{ word: string, start: number, end: number } | null} ExpectedWord
+ */
+
 const PORT = process.env.EPORT ?? '5226';
 const base = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9426);
@@ -37,6 +73,7 @@ const MEDIA_DIR = resolve(process.env.MEDIA_DIR ?? './media');
  * intentionally keeps its surface small (newPage/close/evaluate/goto/waitFor) and does NOT expose
  * raw `send`, so cache-affecting commands (Network.setCacheDisabled) live here in the probe. Same
  * debugger port, independent socket. */
+/** @param {number} port @returns {Promise<RawCdp>} */
 async function openRawCdp(port) {
 	const v = await fetch(`http://127.0.0.1:${port}/json/version`).then((r) => r.json());
 	const ws = new WebSocket(v.webSocketDebuggerUrl);
@@ -52,6 +89,7 @@ async function openRawCdp(port) {
 			else resolve(m.result);
 		}
 	});
+	/** @param {string} method @param {Record<string, unknown>} [params] @param {string} [sessionId] */
 	function send(method, params = {}, sessionId) {
 		const id = nextId++;
 		return new Promise((resolve, reject) => {
@@ -60,9 +98,13 @@ async function openRawCdp(port) {
 			setTimeout(() => pending.delete(id) && reject(new Error(`${method} timed out`)), 8_000);
 		});
 	}
+	/** @param {string} urlSubstring */
 	async function attachToUrlContaining(urlSubstring) {
 		const targets = await send('Target.getTargets');
-		const t = targets.targetInfos.find((tt) => tt.type === 'page' && tt.url.includes(urlSubstring));
+		const t = targets.targetInfos.find(
+			(/** @type {{ type: string, url: string, targetId: string }} */ tt) =>
+				tt.type === 'page' && tt.url.includes(urlSubstring)
+		);
 		if (!t) return null;
 		const { sessionId } = await send('Target.attachToTarget', {
 			targetId: t.targetId,
@@ -74,13 +116,22 @@ async function openRawCdp(port) {
 	return { send, attachToUrlContaining, close: () => ws.close() };
 }
 
-/** Findings, printed at the end grouped by severity. */
+/** Findings, printed at the end grouped by severity.
+ * @type {Finding[]} */
 const findings = [];
+/**
+ * @param {string} id
+ * @param {Severity} sev
+ * @param {unknown} ok
+ * @param {string} name
+ * @param {string} [detail]
+ */
 function record(id, sev, ok, name, detail = '') {
 	findings.push({ id, sev, ok: !!ok, name, detail });
 	const badge = ok ? 'PASS' : sev;
 	console.log(`${badge.padEnd(9)} ${id}  ${name}${ok || !detail ? '' : `\n           ${detail}`}`);
 }
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	process.exit(2);
@@ -143,8 +194,15 @@ await fetch(`${base}/api/join`, {
 const cookieHeader = existsSync(jar) ? readFileSync(jar, 'utf8') : '';
 
 /** Cook a fresh song by title-fragment, returning its media id when the align artifact lands. */
+/**
+ * @param {string} query
+ * @param {{ waitForAlign?: boolean, timeoutMs?: number }} [opts]
+ * @returns {Promise<{ id: string, row: SongRow }>}
+ */
 async function cookAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = {}) {
-	const found = await fetch(`${base}/api/search?q=${encodeURIComponent(query)}`).then((r) => r.json());
+	const found = /** @type {SearchBody} */ (
+		await fetch(`${base}/api/search?q=${encodeURIComponent(query)}`).then((r) => r.json())
+	);
 	const raw = [...found.results, ...found.ready].find((x) => x.source === 'local');
 	if (!raw) throw new Error(`no local song matching "${query}"`);
 	if (!found.ready.some((r) => r.id === raw.id)) {
@@ -156,7 +214,9 @@ async function cookAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = 
 	}
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		const s = await fetch(`${base}/api/search?q=${encodeURIComponent(query)}`).then((r) => r.json());
+		const s = /** @type {SearchBody} */ (
+			await fetch(`${base}/api/search?q=${encodeURIComponent(query)}`).then((r) => r.json())
+		);
 		const row = s.ready.find((r) => r.id === raw.id);
 		if (row && (!waitForAlign || row.lyricsRef)) return { id: raw.id, row };
 		await sleep(400);
@@ -164,11 +224,12 @@ async function cookAndWait(query, { waitForAlign = true, timeoutMs = 15_000 } = 
 	throw new Error(`song "${query}" never reached ready state`);
 }
 
+/** @type {{ id: string, row: SongRow }} */
 let cooked;
 try {
 	cooked = await cookAndWait('caroline');
 } catch (err) {
-	bail(`could not cook a probe song: ${err.message}`);
+	bail(`could not cook a probe song: ${err instanceof Error ? err.message : String(err)}`);
 }
 console.log(`cooked: "${cooked.row.title}" id=${cooked.id} lyricsRef=${cooked.row.lyricsRef}\n`);
 
@@ -192,6 +253,7 @@ const proc = spawn(
 
 /** Kick the media element once — headless refuses unmuted autoplay without either a gesture
  * or the CLI flag above, and this is the same one-shot the capture flow uses. */
+/** @param {Page} tv */
 async function kickPlayback(tv) {
 	return tv.evaluate(`(async () => {
 		const out = [];
@@ -202,6 +264,7 @@ async function kickPlayback(tv) {
 		return out.join(',') || 'no media element with a src';
 	})()`);
 }
+/** @param {Page} tv @param {number} [overMs] */
 async function positionAdvancing(tv, overMs = 1500) {
 	const read = () =>
 		tv.evaluate(`(() => { const v = document.querySelector('video, audio'); return v ? v.currentTime : -1; })()`);
@@ -210,6 +273,7 @@ async function positionAdvancing(tv, overMs = 1500) {
 	const b = await read();
 	return { advanced: b > a + 0.2, a, b };
 }
+/** @param {Page} tv @param {Page} phone @param {number} [attempts] */
 async function ensurePlaying(tv, phone, attempts = 4) {
 	let lastReport = '';
 	for (let i = 0; i < attempts; i++) {
@@ -225,6 +289,7 @@ async function ensurePlaying(tv, phone, attempts = 4) {
 	return { ok: false, report: lastReport };
 }
 /** Seek the current media back to 0 by clicking restart on the phone; kick again if needed. */
+/** @param {Page} tv @param {Page} phone */
 async function seekToStart(tv, phone) {
 	try {
 		await phone.clickByLabel(SEL.restart.name);
@@ -267,7 +332,7 @@ try {
 		try {
 			await rawCdp.send('Network.setCacheDisabled', { cacheDisabled: true }, tvSession);
 		} catch (e) {
-			console.warn(`WARN could not disable HTTP cache on TV: ${e.message}`);
+			console.warn(`WARN could not disable HTTP cache on TV: ${e instanceof Error ? e.message : String(e)}`);
 		}
 	}
 
@@ -370,6 +435,11 @@ try {
 	// If the fixture shape is wrong the highlight cannot exist AT ALL, so measure two
 	// scenarios: (a) as-is, and (b) after we override the artifact with a well-shaped
 	// version and reload.
+	/**
+	 * @param {string} tag
+	 * @param {(t: number) => ExpectedWord} expectedByTime
+	 * @returns {Promise<{ tag: string, samples: TrackSample[], lags: { t: number, word: string, lagSec: number }[] }>}
+	 */
 	async function sampleTracking(tag, expectedByTime) {
 		const samples = [];
 		const start = Date.now();
@@ -405,6 +475,7 @@ try {
 		// audio has moved past the word's start (the highlight is late, or the sample landed
 		// AFTER the ball moved onto the word); with LYRICS_LEAD_SEC=0.3 the ball moves onto a
 		// word 0.3s BEFORE the audio reaches its start, so the natural lag ≈ +300..+700ms.
+		/** @type {{ t: number, word: string, lagSec: number }[]} */
 		const lags = [];
 		for (const s of samples) {
 			if (!s.active || s.currentTime < 0) continue;
@@ -420,7 +491,7 @@ try {
 	// The fake worker's timing table (see fake-stems-worker.mjs align branch): 9 words
 	// at 0.8s intervals, each of length 0.7s. i.e. word i covers [i*0.8, i*0.8+0.7).
 	const fakeWords = ['Sing', 'along', 'with', 'the', 'tone', 'now', 'here', 'we', 'go'];
-	const expectedByFakeTime = (t) => {
+	const expectedByFakeTime = (/** @type {number} */ t) => {
 		const idx = Math.floor(t / 0.8);
 		if (idx < 0 || idx >= fakeWords.length) return null;
 		return { word: fakeWords[idx], start: idx * 0.8, end: idx * 0.8 + 0.7 };
@@ -444,6 +515,7 @@ try {
 	// ── Override the artifact file with the CORRECT shape, so we can measure real
 	// tracking behavior of the overlay itself. Field names {start,end,word} match the
 	// real Python worker at apps/worker/src/lyrics/artifact.py.
+	if (!cooked.row.lyricsRef) throw new Error('cooked song has no lyricsRef');
 	const lyricsPath = join(MEDIA_DIR, cooked.row.lyricsRef);
 	const correctedDoc = {
 		language: 'en',
@@ -457,7 +529,7 @@ try {
 	try {
 		writeFileSync(lyricsPath, JSON.stringify(correctedDoc, null, 1));
 	} catch (err) {
-		console.warn(`WARN could not overwrite ${lyricsPath}: ${err.message}`);
+		console.warn(`WARN could not overwrite ${lyricsPath}: ${err instanceof Error ? err.message : String(err)}`);
 	}
 	// Force the overlay to re-fetch: reload the TV route.
 	await tv.goto(`${base}/tv`);
@@ -618,13 +690,15 @@ try {
 	// The stage is pure black under the lyrics (see .tv rule in +page.svelte). The
 	// component defines white/amber as ink; both are >4.5:1 vs #000 by construction, and
 	// the >=7:1 check here catches an accidental drop to a mid-grey.
+	/** @param {number[]} rgb */
 	function relLum(rgb) {
-		const [r, g, b] = rgb.map((c) => {
+		const [r, g, b] = rgb.map((/** @type {number} */ c) => {
 			const s = c / 255;
 			return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
 		});
 		return 0.2126 * r + 0.7152 * g + 0.0722 * b;
 	}
+	/** @param {string} css @returns {number[] | null} */
 	function parseRgb(css) {
 		const m = css?.match(/rgba?\((\d+)[^\d]+(\d+)[^\d]+(\d+)/);
 		return m ? [+m[1], +m[2], +m[3]] : null;
@@ -707,6 +781,7 @@ try {
 	await sleep(400);
 	const settingsHaveSong = await ensureSongOnStage();
 	if (!settingsHaveSong) console.warn('WARN: could not restore a playing song before settings sweep');
+	/** @param {Record<string, unknown>} body */
 	async function putRoom(body) {
 		// Use the phone's browser context — it holds the real singer session cookie set by the
 		// /join redirect, and settings API auth rides on that cookie.
@@ -715,6 +790,7 @@ try {
 			body: ${JSON.stringify(JSON.stringify(body))}
 		}).then(r => r.ok).catch(() => false)`);
 	}
+	/** @param {Record<string, unknown>} body */
 	async function putGlobal(body) {
 		return phone.evaluate(`fetch('/api/settings', {
 			method: 'PUT', headers: {'content-type': 'application/json'},
@@ -915,7 +991,7 @@ try {
 			: `.lyrics present=${emptyState.present}, rows=${emptyState.rows}, hasCurrent=${emptyState.hasCurrent}, textLen=${emptyState.hasText} — the overlay should silently no-op.`
 	);
 } catch (err) {
-	record('P6-flow', 'CRITICAL', false, 'probe ran to completion', String(err?.stack ?? err));
+	record('P6-flow', 'CRITICAL', false, 'probe ran to completion', String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
 	rawCdp?.close();
@@ -926,9 +1002,10 @@ try {
 const pass = findings.filter((f) => f.ok).length;
 const total = findings.length;
 console.log(`\n${'─'.repeat(72)}\n${pass}/${total} passed\n`);
+/** @type {Record<Severity, Finding[]>} */
 const bySev = { CRITICAL: [], HIGH: [], MEDIUM: [], LOW: [] };
 for (const f of findings) if (!f.ok) (bySev[f.sev] ??= []).push(f);
-for (const sev of ['CRITICAL', 'HIGH', 'MEDIUM']) {
+for (const sev of /** @type {Severity[]} */ (['CRITICAL', 'HIGH', 'MEDIUM'])) {
 	if (!bySev[sev]?.length) continue;
 	console.log(`${sev}:`);
 	for (const f of bySev[sev]) console.log(`  - ${f.id} ${f.name}`);
