@@ -2,10 +2,7 @@
 // it survives persistence, changing it re-derives the live queue, and the sing-history stamp lands
 // BEFORE the reseq that reads it.
 import { test, expect } from 'bun:test';
-import { Database } from 'bun:sqlite';
-import { drizzle } from 'drizzle-orm/bun-sqlite';
-import { runMigrations } from '../db/migrate';
-import * as schema from '../db/schema';
+import { migratedDb } from '../db/test-db';
 import { SettingsRepository } from '../state/settings-repository';
 import { SingerRepository } from '../singers/repository';
 import { AuthoritativeState } from '../state/store';
@@ -43,9 +40,7 @@ const entry = (id: string, singerId: string, addedAt: number, mediaId = 'm1'): Q
 
 /** A real DB + the same wiring app.ts builds, so this exercises the actual seam, not a mock of it. */
 function harness(order: QueueOrderId = 'fair') {
-	const sqlite = new Database(':memory:');
-	const db = drizzle(sqlite, { schema });
-	runMigrations(db);
+	const db = migratedDb();
 	const settings = new SettingsRepository(db);
 	const singers = new SingerRepository(db);
 	settings.setRoom({ queueOrder: order });

@@ -9,16 +9,14 @@
 // migrated DB to pin that split, and source-scans the corrected comments so the belief cannot creep
 // back in (the hazard §3 of the review charter names: a credible-sounding rationale read as fact).
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import { rooms, singers, media, queueEntries } from '../db/schema';
 
 // A migrated in-memory DB seeded with the FK parents a queue_entries row needs.
-function migratedDb() {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+function seededDb() {
+	const db = migratedDb();
 	const now = 1_700_000_000_000;
 	db.insert(rooms).values({ id: 'r1', code: 'PARTY', createdAt: now }).run();
 	db.insert(singers).values({ id: 's1', displayName: 'Maya', color: '#fff', sessionToken: 'tok', joinedAt: now }).run();
@@ -31,7 +29,7 @@ function migratedDb() {
 // Insert one queue_entries row exactly as the write-behind flush would (persistence.ts), with the
 // one field under test overridden. Returns 'throw' or the persisted row.
 function persist(
-	db: ReturnType<typeof migratedDb>,
+	db: ReturnType<typeof seededDb>,
 	over: Record<string, unknown>
 ): { threw: boolean; row: Record<string, unknown> | null } {
 	const base = { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: 1, ...over };
@@ -48,26 +46,26 @@ function persist(
 
 test('the column enforces NOT NULL alone — never the enum, never finiteness (and a missing status DEFAULTs, not throws)', () => {
 	// THE THREE THAT CRASH — all by NOT NULL, none by the enum, none by finiteness.
-	expect(persist(migratedDb(), { addedAt: NaN }).threw).toBe(true);
-	expect(persist(migratedDb(), { addedAt: undefined }).threw).toBe(true);
-	expect(persist(migratedDb(), { status: null }).threw).toBe(true);
+	expect(persist(seededDb(), { addedAt: NaN }).threw).toBe(true);
+	expect(persist(seededDb(), { addedAt: undefined }).threw).toBe(true);
+	expect(persist(seededDb(), { status: null }).threw).toBe(true);
 
 	// THE THREE THAT PERSIST SILENTLY — the belief the old comment got wrong.
 	// Infinity: representable-but-garbage addedAt, coerced past NOT NULL (no throw).
-	const inf = persist(migratedDb(), { addedAt: Infinity });
+	const inf = persist(seededDb(), { addedAt: Infinity });
 	expect(inf.threw).toBe(false);
 	// off-enum status: no CHECK constraint, stored VERBATIM.
-	const obl = persist(migratedDb(), { status: 'obliterated' });
+	const obl = persist(seededDb(), { status: 'obliterated' });
 	expect(obl.threw).toBe(false);
 	expect(obl.row?.status).toBe('obliterated');
 	// undefined status: key omitted, column DEFAULT 'queued' applies (no throw).
-	const undef = persist(migratedDb(), { status: undefined });
+	const undef = persist(seededDb(), { status: undefined });
 	expect(undef.threw).toBe(false);
 	expect(undef.row?.status).toBe('queued');
 });
 
 test('the migrated status column has NO CHECK constraint (drizzle enum is compile-time only)', () => {
-	const db = migratedDb();
+	const db = seededDb();
 	// bun:sqlite: read the table DDL back from sqlite_master and prove there is no CHECK on it.
 	const ddl = String(
 		(db as unknown as { $client: { query: (s: string) => { get: () => { sql?: string } } } }).$client

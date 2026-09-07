@@ -17,20 +17,16 @@
 //           progress-lease-expiry branch (leases.sweep) and the worker-hub `job:failed` handler,
 //           which on base spelled the same policy as the complement `attempts < job.maxAttempts`.
 import { test, expect } from 'bun:test';
-import { Database } from 'bun:sqlite';
-import { drizzle } from 'drizzle-orm/bun-sqlite';
-import { migrate } from 'drizzle-orm/bun-sqlite/migrator';
 import { JobRepository } from './repository';
 import { AttemptLedger } from './attempts';
 import { attemptsExhausted, sweep } from './leases';
-import type { DB } from '../db/index';
+import { migratedDb } from '../db/test-db';
 import type { Job } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 
 function wired(): { jobs: JobRepository; ledger: AttemptLedger } {
-	const db = drizzle(new Database(':memory:')) as unknown as DB;
-	migrate(db, { migrationsFolder: new URL('../../../drizzle', import.meta.url).pathname });
+	const db = migratedDb();
 	const ledger = new AttemptLedger(db);
 	return { jobs: new JobRepository(db, ledger), ledger };
 }

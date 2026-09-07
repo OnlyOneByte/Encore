@@ -2,8 +2,7 @@
 // for 7 cooked songs on the live box), so the invariant under test is that browse only ever shows
 // songs you can actually SING, and that an uncertain artist never becomes a heading.
 import { beforeEach, describe, expect, it } from 'bun:test';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
+import { migratedDb } from '../db/test-db';
 import { MediaRepository } from './repository';
 import type { Media } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
@@ -32,8 +31,7 @@ const cooked = (id: string, over: Partial<Media> = {}) =>
 let repo: MediaRepository;
 
 beforeEach(() => {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	repo = new MediaRepository(db);
 });
 
@@ -58,8 +56,7 @@ describe('canonical metadata in the index', () => {
 		// With the undefined-skip guard, omitting them means "do not touch".
 		const { media } = await import('../db/schema');
 		const { eq } = await import('drizzle-orm');
-		const { db } = openDb(':memory:');
-		runMigrations(db);
+		const db = migratedDb();
 		const r = new MediaRepository(db);
 		r.upsert(cooked('a'));
 
@@ -77,8 +74,7 @@ describe('canonical metadata in the index', () => {
 	it('an EXPLICIT null album/year still clears (a full authoritative mirror can un-set)', async () => {
 		const { media } = await import('../db/schema');
 		const { eq } = await import('drizzle-orm');
-		const { db } = openDb(':memory:');
-		runMigrations(db);
+		const db = migratedDb();
 		const r = new MediaRepository(db);
 		r.upsert(cooked('a'));
 		r.setCanonical('a', { artist: 'X', album: 'Y', year: 1999 });

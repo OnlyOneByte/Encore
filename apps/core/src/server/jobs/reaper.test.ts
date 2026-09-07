@@ -1,15 +1,13 @@
 // Done-when: a stalled job requeues; boot recovery clears in-flight. Drives the real
 // JobRepository (in-memory sqlite) through the reaper with an injected clock — no wall-clock waits.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { JobReaper } from './reaper';
 import { JobRepository } from './repository';
 import { ackDeadline, progressDeadline } from './leases';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 
 function setup(now: () => number, onReaped?: () => void) {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const reaper = new JobReaper(jobs, { now, onReaped, tickMs: 1_000_000 }); // tick only when we call it
 	return { jobs, reaper };
@@ -148,8 +146,7 @@ const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({
 
 function exhaustToFailed(jobType: 'stems' | 'align', over: Partial<Media> = {}) {
 	let clock = T0;
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const jobs = new JobRepository(db);
 	const mediaById = new Map<string, Media>([['m1', mkMedia('m1', over)]]);
 	// The exact wiring app.ts uses: the reaper hands the failed job up, we settle its gate.

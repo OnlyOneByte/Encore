@@ -1,9 +1,9 @@
 // Mutate -> rev bumps -> async persist -> reload-from-db equals memory.
 import { test, expect } from 'bun:test';
+import { migratedDb } from '../db/test-db';
 import { AuthoritativeState } from './store';
 import { sqlitePersistence } from './persistence';
-import { openDb } from '../db/index';
-import { runMigrations, hydrate } from '../db/migrate';
+import { hydrate } from '../db/migrate';
 import { ulid, type QueueEntry, type PlaybackState } from '@encore/shared';
 
 const entry = (singerId: string, addedAt: number): QueueEntry => ({
@@ -49,8 +49,7 @@ test('entries getter returns a defensive copy (caller cannot mutate authoritativ
 });
 
 test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const s = new AuthoritativeState(sqlitePersistence(db), 10_000); // long delay; we force flush
 
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
@@ -74,8 +73,7 @@ test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND f
 	// takes the onConflictDoUpdate `set` arm. That arm is a hand-duplicated copy of the `.values()`
 	// field list; a field added to one and forgotten in the other would persist once and then freeze
 	// at its boot value, with every other test (all single-flush) still green. This drives the arm.
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const s = new AuthoritativeState(sqlitePersistence(db), 10_000);
 
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
@@ -120,8 +118,7 @@ test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND f
 });
 
 test('debounced flush coalesces a burst into persisted state', async () => {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const s = new AuthoritativeState(sqlitePersistence(db), 20);
 	for (let i = 1; i <= 5; i++) s.applyQueueOp({ op: 'add', entry: entry('a', i) });
 	await new Promise((r) => setTimeout(r, 60)); // let the debounce fire

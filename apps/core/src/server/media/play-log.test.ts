@@ -1,7 +1,6 @@
 // The play log exists for the one question a counter cannot answer: WHEN.
 import { describe, expect, it } from 'bun:test';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
+import { migratedDb } from '../db/test-db';
 import { PlayLog } from './play-log';
 import { PlayTracker } from './plays';
 
@@ -9,8 +8,7 @@ const T0 = Date.UTC(2026, 8, 4, 12, 0, 0); // 2026-09-04T12:00:00Z
 const DAY = 86_400_000;
 
 function log(): PlayLog {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	return new PlayLog(db);
 }
 

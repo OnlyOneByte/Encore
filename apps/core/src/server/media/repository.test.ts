@@ -1,11 +1,10 @@
 import { instrumentalKey } from './paths';
+import { migratedDb } from '../db/test-db';
 // The durable media catalog. Search results and cooked songs are persisted so the catalog
 // survives a restart — which is what lets the saved-karaoke library exist and what stops
 // requestMakeKaraoke from re-cooking an instrumental that's already on disk.
 import { test, expect } from 'bun:test';
 import { MediaRepository, hydrateMediaCatalog } from './repository';
-import { openDb } from '../db/index';
-import { runMigrations } from '../db/migrate';
 import type { Media } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
@@ -32,8 +31,7 @@ const cooked = (id: string, over: Partial<Media> = {}): Media =>
 	});
 
 function repo(): MediaRepository {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	return new MediaRepository(db);
 }
 
@@ -151,8 +149,7 @@ test('hydrateMediaCatalog never clobbers a live runtime object other code holds 
 });
 
 test('BOOT ROUND TRIP: a song cooked last night is in the catalog + library after a restart', () => {
-	const { db } = openDb(':memory:'); // one DB, two "processes"
-	runMigrations(db);
+	const db = migratedDb(); // one DB, two "processes"
 
 	// last night: searched (iframe), then cooked → both writes land
 	const before = new MediaRepository(db);
@@ -200,8 +197,7 @@ test('setTags is atomic: a throw between delete and insert leaves the ORIGINAL t
 	// setTags deletes every tag of a kind, then re-inserts. Without a transaction, a throw between the
 	// two statements would leave the media with the old tags gone and the new ones never written —
 	// silent, unbounded tag loss. Wrapping both in one transaction makes it all-or-nothing.
-	const { db } = openDb(':memory:');
-	runMigrations(db);
+	const db = migratedDb();
 	const r = new MediaRepository(db);
 	r.upsert(cooked('m1'));
 	r.setTags('m1', 'genre', ['rock', 'pop']);
