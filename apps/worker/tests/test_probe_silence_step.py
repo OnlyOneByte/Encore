@@ -18,6 +18,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src import retry_policy  # noqa: E402
 from src.processor import JobSpec  # noqa: E402
 from src.runtime import Ctx  # noqa: E402
 from src.steps.separate import ProbeSilence  # noqa: E402
@@ -158,3 +159,19 @@ async def test_a_raising_instrumental_probe_fails_the_job():
     ctx.stems.raw = {"instrumental": "/w/inst.wav"}
     with pytest.raises(FileNotFoundError):
         await drive(ctx)
+
+
+async def test_a_silent_INSTRUMENTAL_failure_is_classified_non_retryable():
+    """#571: a silent instrumental is DETERMINISTIC — the same decoded WAV re-measures the same silence
+    every attempt, so retrying burns two more full separator passes (up to 2h11m each on roformer) to
+    rediscover a source that can never succeed. The raise must therefore carry a non-retryable
+    classification so the core fails it after one pass instead of three. Asserts the CLASSIFICATION,
+    not the exception type: PermanentError IS-A RuntimeError, so on base (a bare RuntimeError) the
+    exception still matches but `is_retryable` returns True and this assertion reds."""
+    ctx = ctx_with(
+        {"instrumental": "/w/inst.wav", "vocals": "/w/vox.wav"},
+        {"/w/inst.wav": SILENT, "/w/vox.wav": HEALTHY},
+    )
+    with pytest.raises(RuntimeError) as exc:  # PermanentError IS-A RuntimeError
+        await drive(ctx)
+    assert retry_policy.is_retryable(exc.value) is False

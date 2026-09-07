@@ -24,6 +24,7 @@ from ..processor import (
     vocals_path,
     volumedetect_argv,
 )
+from ..retry_policy import PermanentError
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_capture, run_quiet, run_stage
 from ..runtime.step import Step, StepResult
@@ -96,7 +97,7 @@ class Separate(Step):
 
         found = engine.find_outputs(out_dir, model)
         if not found.get("instrumental"):
-            raise RuntimeError(f"{engine.id} produced no instrumental in {out_dir}")
+            raise PermanentError(f"{engine.id} produced no instrumental in {out_dir}")
         ctx.stems.raw = {k: v for k, v in found.items() if v}
         ctx.out.facts.update({"engine": engine.id, "model": model, "backend": engine.backend})
 
@@ -148,7 +149,7 @@ class ProbeSilence(Step):
             # No try/except: unlike the guide, a probe that cannot answer must not be read as "fine".
             # An ffmpeg that fails here would fail the encode in PublishStems anyway.
             if await self._is_silent(ctx, instrumental):
-                raise RuntimeError(
+                raise PermanentError(
                     "instrumental stem is digital silence — refusing to publish a song that would "
                     "play as four minutes of nothing"
                 )

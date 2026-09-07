@@ -189,6 +189,7 @@ import os as _os  # noqa: E402
 
 from src import plans  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
+from src.retry_policy import is_retryable  # noqa: E402
 
 
 def _roformer_fake_runner(
@@ -337,6 +338,20 @@ async def test_a_roformer_cook_that_produces_no_instrumental_fails_loudly(tmp_pa
     proc = plans.stems_runner(runner=runner)
     with pytest.raises(RuntimeError, match="roformer produced no instrumental"):
         await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
+
+
+@pytest.mark.asyncio
+async def test_a_roformer_no_instrumental_failure_is_classified_non_retryable(tmp_path):
+    """#571: reaching Separate's "produced no instrumental" raise means the CLI exited 0 and its
+    output-filename contract is wrong — deterministic for that engine build, so every retry re-runs the
+    same 2h11m pass and fails identically. The raise must be non-retryable so the core stops after one
+    pass. Asserts the classification (PermanentError IS-A RuntimeError); reds on base where the bare
+    RuntimeError classifies retryable=True."""
+    runner, _ = _roformer_fake_runner(store_writes=False)
+    proc = plans.stems_runner(runner=runner)
+    with pytest.raises(RuntimeError) as exc:  # PermanentError IS-A RuntimeError
+        await _drain(proc, _rspec(tmp_path, model="bs-roformer-1297"))
+    assert is_retryable(exc.value) is False
 
 
 @pytest.mark.asyncio
