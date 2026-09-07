@@ -2,7 +2,7 @@
 //
 // Two jobs, separated because they have different costs:
 //   1. RECOMPRESS legacy formats. Songs cooked before the current audio policy have WAV stems, ~8x
-//      larger than today's AAC. Transcoded IN PLACE (bytes already on disk, no download, no Demucs
+//      larger than today's FLAC. Transcoded IN PLACE (bytes already on disk, no download, no Demucs
 //      run, song never leaves the library) — the right tool for reclaiming pre-policy space, not
 //      eviction.
 //   2. EVICT derived artifacts when over a soft cap. Derived data is regenerable from `audio/`, so
@@ -48,7 +48,7 @@ export interface RecompressTarget {
 	mediaId: string;
 	/** The existing (legacy) ref, e.g. derived/stems/<id>-instrumental.wav */
 	from: string;
-	/** The ref it becomes, e.g. derived/stems/<id>-instrumental.m4a */
+	/** The ref it becomes, e.g. derived/stems/<id>-instrumental.flac */
 	to: string;
 	kind: 'instrumental' | 'vocals';
 }
@@ -285,20 +285,20 @@ export function derivedBytesOf(m: Media): number {
 const TRANSCODE_TIMEOUT_MS = 120_000;
 
 /**
- * ffmpeg-backed transcoder: stereo AAC at the same bitrate the worker uses, so a recompressed legacy
- * stem is indistinguishable from a freshly cooked one.
- *
- * `-movflags +faststart` (moov atom first, so a browser can play before full download) is attempted
- * but NOT required: the host ffmpeg can be leaner than the worker container's, and one was — it
- * rejected the flag with "Unrecognized option 'movflags'", failing all 12 conversions. So a rejected
- * flag degrades to a plain encode rather than abandoning the file.
+ * ffmpeg-backed transcoder: lossless stereo FLAC, matching the worker's `encode_flac_argv` (#480), so
+ * a recompressed legacy stem lands in the SAME codec and container a freshly cooked one does. The
+ * destination is a `.flac` ref (INSTRUMENTAL_EXT/VOCALS_EXT, paths.ts), and a legacy WAV stem is
+ * itself lossless — FLAC recompresses it without a second lossy generation, exactly what the FLAC
+ * policy protects (a native-ffmpeg AAC re-encode would smear the crash-cymbal transients this stem
+ * carries; see paths.ts and worker processor.py). AAC into a `.flac` container is a codec/container
+ * mismatch the FLAC muxer rejects, so the encoder MUST be FLAC to match the name.
  *
  * Returns false (not throws) when ffmpeg is absent or genuinely fails, so the caller keeps the
  * larger-but-playable original.
  */
 export function ffmpegTranscoder(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg'): Transcoder {
 	const base = ['-hide_banner', '-loglevel', 'error', '-y'];
-	const encode = ['-c:a', 'aac', '-b:a', '192k', '-ac', '2'];
+	const encode = ['-c:a', 'flac', '-compression_level', '8', '-sample_fmt', 's16', '-ac', '2'];
 
 	const run = async (argv: string[]): Promise<{ ok: boolean; err: string }> => {
 		// Killed after TRANSCODE_TIMEOUT_MS: the recompress pass runs on the DETACHED boot chain, so a
@@ -310,16 +310,12 @@ export function ffmpegTranscoder(ffmpegBin = process.env.FFMPEG_BIN ?? 'ffmpeg')
 
 	return async (absFrom, absTo) => {
 		try {
-			const withFast = await run([ffmpegBin, ...base, '-i', absFrom, ...encode, '-movflags', '+faststart', absTo]);
-			if (withFast.ok) return true;
-			// Only retry for an option the build does not know — a real encode error must not be masked.
-			if (!/unrecognized option|option not found/i.test(withFast.err)) {
-				transcodeDiagnostics.lastError = withFast.err.trim().split('\n')[0] ?? '';
-				return false;
-			}
-			const plain = await run([ffmpegBin, ...base, '-i', absFrom, ...encode, absTo]);
-			if (!plain.ok) transcodeDiagnostics.lastError = plain.err.trim().split('\n')[0] ?? '';
-			return plain.ok;
+			// FLAC has no moov atom, so the MP4-era `-movflags +faststart` (and its "unrecognized
+			// option" degrade path) is gone with the AAC encoder — a single FLAC encode into the .flac
+			// destination is the whole operation.
+			const r = await run([ffmpegBin, ...base, '-i', absFrom, ...encode, absTo]);
+			if (!r.ok) transcodeDiagnostics.lastError = r.err.trim().split('\n')[0] ?? '';
+			return r.ok;
 		} catch (err) {
 			transcodeDiagnostics.lastError = `could not run ${ffmpegBin}: ${(err as Error).message}`;
 			return false; // ffmpeg absent — nothing to do but leave the file alone
