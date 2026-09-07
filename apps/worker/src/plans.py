@@ -29,7 +29,7 @@ from .steps.lyrics import (
 )
 from .steps.metadata import Annotate, PublishOriginal
 from .steps.separate import DecodeToWav, ProbeSilence, PublishStems, Separate
-from .vocabulary import Action, AsrModel, SyncMode, parse_asr_model, parse_sync_mode
+from .vocabulary import Action, AsrModel, Engine, SyncMode, parse_asr_model, parse_engine, parse_sync_mode
 
 
 def align_plan(
@@ -134,14 +134,16 @@ def resolve_engines(params: dict[str, Any], defaults: ResolvedEngines | None = N
 
     `defaults` is the worker's own env fallback (ENCORE_ASR_MODEL / ENCORE_SYNC_MODE), which is only
     consulted for a job that carries neither — the core normally sends its global settings on every align
-    job so an operator changing the model takes effect on the next cook with no restart. An unknown or
-    de-whitelisted value falls back rather than failing the job, so an older or newer core changes nothing.
+    job so an operator changing the model takes effect on the next cook with no restart. Every field is
+    parsed at this boundary (asrModel, syncMode, engine): an unknown or de-whitelisted value RAISES a
+    BoundaryError here rather than reaching a step and failing opaquely deeper in — the same fail-at-the-
+    edge contract every parse_* enforces. A field the job omits keeps the worker's own configured default.
     """
     base = defaults or ResolvedEngines()
     return ResolvedEngines(
         asr_model=parse_asr_model(params.get("asrModel"), AsrModel(base.asr_model)).value,
         sync_mode=parse_sync_mode(params.get("syncMode"), base.sync_mode),
-        separator=str(params.get("engine") or base.separator),
+        separator=str(parse_engine(params.get("engine"), Engine(base.separator))),
         separator_model=params.get("model") or base.separator_model,
         device=params.get("device") or base.device,
     )

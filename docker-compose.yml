@@ -44,6 +44,11 @@ services:
 
   worker:
     <<: *hardening
+    # PID-1 zombie reaping (#538/#459). The worker runs `python -m src.dial_home` as PID 1, and
+    # demucs/ffmpeg grandchildren reparent to it when their intermediate parent exits. Python is
+    # not an init and does not reap them, so they accumulate as zombies over a long-running
+    # worker. `init: true` interposes Docker's tiny init (tini) as PID 1 to reap them. No app change.
+    init: true
     build:
       context: .
       dockerfile: apps/worker/Dockerfile
