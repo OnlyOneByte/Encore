@@ -52,36 +52,50 @@ function stripAllComments(src: string): string {
 // declaration. The longhand `transition-property: a, b` lists bare property names directly.
 function animatedProps(css: string): string[] {
 	const props: string[] = [];
-	// captures three spellings, all read into the same first-identifier-per-comma-entry check:
-	//   • CSS shorthand/longhand `transition: …` / `transition-property: …` (value runs to `;` or `}`)
-	//   • Svelte's inline `style:transition="…"` / `style:transition-property="…"` directive (issue #615
-	//     §2): the char after `transition` there is `=`, not `:`, so the CSS pattern never matches it —
-	//     yet it sets a real inline transition no `@media` wrapper can cover. Read its quoted value the
-	//     same way. `style:transition` is the directive form of the SAME declaration `style="transition:…"`
-	//     (already caught, quote-boundary), just as `style:animation` mirrors the inline animation attr.
-	// The `style:transition` directive, like `style:animation`, has four spellings (issue #615
-	// advisory 2): `="…"`, `='…'`, `={expr}`, and the bare shorthand `style:transition`. A quoted /
-	// braced value is read into the same first-identifier check; an EXPRESSION or SHORTHAND value is
-	// opaque at scan time, but it is still a real inline transition that can animate a layout property
-	// no `@media` can cover, so it is reported via a sentinel property name (never in COMPOSITED_PROPS).
-	for (const m of css.matchAll(
-		/transition(?:-property)?:\s*([^;}]+)|style:transition(?:-property)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g
-	)) {
-		const isDirective = m[0].startsWith('style:');
-		const readable = m[1] ?? m[2] ?? m[3] ?? m[4];
-		if (!isDirective && readable === undefined) continue; // a stray CSS `transition` with no value
-		if (isDirective && (readable === undefined || readable.trim() === '')) {
-			// opaque `style:transition={expr}` / shorthand — cannot classify the property, so flag it
+	// CSS `transition:` declarations and Svelte `transition:` DIRECTIVES are lexically ambiguous — both
+	// can be preceded by whitespace (`<div transition:slide>` vs a rule body's `transition: transform`),
+	// so a left boundary alone cannot tell them apart (issue #648 §2). They live in different places: a
+	// CSS declaration is inside a `<style>` block or `.css` file; a directive is in MARKUP. The CSS scan
+	// therefore runs over TAG-STRIPPED text (every `<...>` blanked, which drops `<div transition:slide>`
+	// and the `<style>`/`</style>` tags themselves while leaving each rule body intact), so a markup
+	// directive can never be misread as a CSS property `slide` — it is caught, by name, by test 3.
+	// (An inline `style="transition:…"` ATTRIBUTE is inside a tag too, so the tag-strip blanks it from
+	// this scan — it is read back from the un-stripped `css` by a dedicated loop below, issue #648 review.)
+	const styleText = css.replace(/<[^>]*>/g, ' ');
+	for (const m of styleText.matchAll(/(?:^|[;{\s])transition(?:-property)?:\s*([^;}]+)/g)) {
+		for (const entry of m[1]!.split(',')) {
+			const id = entry.trim().match(/^[a-z-]+/);
+			if (!id) continue;
+			if (id[0] === 'none') continue;
+			props.push(id[0]);
+		}
+	}
+	// Svelte's inline `style:transition` directive (issue #615 §2) lives INSIDE a tag, so the tag-strip
+	// above removes it — read it from the original `css`. Four spellings (issue #615 advisory 2):
+	// `="…"`, `='…'`, `={expr}`, and the bare shorthand; a quoted value is classified, an opaque
+	// expression/shorthand is flagged via a sentinel property name (never in COMPOSITED_PROPS).
+	for (const m of css.matchAll(/style:transition(?:-property)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g)) {
+		const readable = m[1] ?? m[2] ?? m[3];
+		if (readable === undefined || readable.trim() === '') {
 			props.push('style-transition-directive');
 			continue;
 		}
-		const value = readable!;
-		for (const entry of value.split(',')) {
-			// the property is the FIRST identifier of each comma entry (timing/easing follow it in the
-			// shorthand; the longhand lists bare property names, so the same rule reads both)
+		for (const entry of readable.split(',')) {
 			const id = entry.trim().match(/^[a-z-]+/);
 			if (!id) continue;
-			if (id[0] === 'none') continue; // `transition: none` animates nothing
+			if (id[0] === 'none') continue;
+			props.push(id[0]);
+		}
+	}
+	// An inline `style="transition: …"` / `style='…'` ATTRIBUTE also lives inside a tag, so the tag-strip
+	// above blanks it from the CSS scan (issue #648 review of §2). It is a real inline transition no
+	// `@media`/reduce can cover — the #590 §2 / #615 §2 class — so read it, like the `style:transition`
+	// directive above, from the ORIGINAL `css` with the same first-identifier-per-comma-entry rule.
+	for (const m of css.matchAll(/style=(?:"[^"]*?|'[^']*?)\btransition(?:-property)?:\s*([^;"']+)/g)) {
+		for (const entry of m[1]!.split(',')) {
+			const id = entry.trim().match(/^[a-z-]+/);
+			if (!id) continue;
+			if (id[0] === 'none') continue;
 			props.push(id[0]);
 		}
 	}
@@ -433,6 +447,28 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 			offenders.push(
 				`${f}: animation in an inline style attribute (cannot honour Reduce Motion): ${(value || '<shorthand>').slice(0, 40)}`
 			);
+		}
+		// Svelte's OWN motion API — the `transition:` / `in:` / `out:` / `animate:` directives — is unread
+		// by every CSS-declaration scan (issue #648 §1). These are NOT CSS: Svelte compiles them to a
+		// runtime-generated keyframes rule plus an inline `animation`, so the animated property list cannot
+		// be recovered from the call site (`slide` animates height/padding/margin/border — none composited),
+		// and the transition runtime never consults `prefers-reduced-motion`, so a directive runs at full
+		// motion under Reduce Motion unless hand-gated — the #148 defect in another spelling. Like an inline
+		// style, no `@media` wrapper or reduce reset can cover a directive, so the DIRECTIVE is what is
+		// rejected (not its properties, which do not exist in source), in the same direct-report shape
+		// #590 §2 / #615 §2 built. `transition:` alone was previously caught by ACCIDENT (test 1's CSS scan
+		// had no left boundary and misread the function name `slide` as a property); §2 moved that scan to
+		// tag-stripped text, so THIS scan is what replaces it, with a message that names the DIRECTIVE.
+		// Scan MARKUP ONLY: strip `<style>…</style>` first, so a compact CSS `transition:transform` can
+		// never be misread as a directive (`animate:`/`in:`/`out:` have no CSS form; only `transition:`
+		// overlaps CSS, and the strip resolves it). Match the four prefixes on a markup boundary with a
+		// function-name letter after the colon; modifier/parameter forms (`transition:slide|global`,
+		// `in:fly={{ y: 200 }}`) share this prefix and are caught too.
+		if (f.endsWith('.svelte')) {
+			const markup = css.replace(/<style[\s\S]*?<\/style>/gi, '');
+			for (const m of markup.matchAll(/(^|\s)(transition|in|out|animate):([a-z][a-zA-Z0-9]*)/g)) {
+				offenders.push(`${f}: Svelte motion directive (cannot honour Reduce Motion): ${m[2]}:${m[3]}`);
+			}
 		}
 	}
 	expect(offenders).toEqual([]);
