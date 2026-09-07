@@ -193,3 +193,110 @@ def test_advertised_order_is_stable_across_restarts(monkeypatch, tmp_path):
     first, _p, _w = capabilities.resolve()
     second, _p2, _w2 = capabilities.resolve()
     assert first == second == tuple(sorted(first))
+
+
+# ── issue #606: advertise `stems` only when the RESOLVED backend has a demucs engine ──────────────
+def test_stems_is_dropped_when_the_resolved_backend_has_no_engine(monkeypatch):
+    """Issue #606. `resolve` proves `stems` from demucs being importable, but #119 made the resolved
+    separator backend DRIVE which demucs engine runs, and only `torch` has an implementation. So an
+    Apple-Silicon box with `demucs` AND `demucs-mlx` importable proves `stems`, AUTO-resolves its
+    backend to `mlx`, and — on base — advertises `stems` anyway, then kills every cook it is handed
+    when `engine_for("demucs", backend="mlx")` raises PermanentError at plan selection (advertise ->
+    cook -> die). `config.resolve` must narrow the set so this box does NOT advertise `stems`, and warn.
+
+    RED ON BASE: base has no `narrow_for_backend`, so `config.resolve` returns `stems` here (measured).
+
+    Simulates the box exactly as test_backends.py does: patch platform to Darwin/arm64 and make the
+    module probe report `demucs_mlx` importable. `stems:roformer`/`stems:ensemble` are intentionally
+    not exercised — only `stems` (the demucs family) is backend-driven.
+    """
+    from src import backends, config
+    from src.config import WorkerConfig
+
+    monkeypatch.setattr("platform.system", lambda: "Darwin")
+    monkeypatch.setattr("platform.machine", lambda: "arm64")
+    # demucs + demucs_mlx importable; no separator binary on PATH so only the module path counts.
+    monkeypatch.setattr(
+        backends, "_module_available", lambda name: name in ("demucs", "demucs_mlx", "whisperx")
+    )
+    monkeypatch.setattr(
+        capabilities, "_module_available", lambda name: name in ("demucs", "demucs_mlx", "whisperx")
+    )
+
+    # AUTO backend selection (no ENCORE_SEPARATOR_BACKEND) — the reachable trigger with no operator action.
+    cfg = WorkerConfig(demucs_bin="__no_such_bin__", ytdlp_bin="__no_such_bin__")
+    resolved, warnings = config.resolve(cfg, device=None)
+
+    # sanity: the backend genuinely resolves to mlx on this simulated box
+    assert backends.resolve_backend(None).backend.value == "mlx"
+
+    assert "stems" not in resolved.capabilities, (
+        "an mlx-resolved box has no demucs engine, so it must NOT advertise stems "
+        "(it would accept cooks then fail every one at plan selection)"
+    )
+    # align survives — it does not depend on the demucs backend
+    assert "align" in resolved.capabilities
+    dropped = [w for w in warnings if "dropping capability 'stems'" in w]
+    assert dropped, "the drop must be announced so the operator can diagnose it from the startup log"
+    assert "mlx" in dropped[0] and "ENCORE_SEPARATOR_BACKEND=torch" in dropped[0]
+
+
+def test_stems_survives_on_a_torch_box(monkeypatch):
+    """The complement: a box whose backend resolves to torch (the portable default with a real engine)
+    keeps `stems` and gets no drop warning — the narrowing must not fire when an engine backs the
+    resolved backend."""
+    from src import backends, config
+    from src.config import WorkerConfig
+
+    # Linux/x86_64, demucs importable, NO demucs_mlx -> AUTO resolves to torch.
+    monkeypatch.setattr("platform.system", lambda: "Linux")
+    monkeypatch.setattr("platform.machine", lambda: "x86_64")
+    monkeypatch.setattr(backends, "_module_available", lambda name: name in ("demucs", "whisperx"))
+    monkeypatch.setattr(capabilities, "_module_available", lambda name: name in ("demucs", "whisperx"))
+    monkeypatch.setattr(backends, "torch_device_available", lambda d: d in ("", "cpu"))
+
+    cfg = WorkerConfig(demucs_bin="__no_such_bin__", ytdlp_bin="__no_such_bin__")
+    resolved, warnings = config.resolve(cfg, device=None)
+
+    assert backends.resolve_backend(None).backend.value == "torch"
+    assert "stems" in resolved.capabilities
+    assert not [w for w in warnings if "dropping capability 'stems'" in w]
+
+
+def test_narrow_for_backend_keys_on_a_real_engine_impl():
+    """Unit pin on the narrowing primitive and its source of truth. `demucs_engine_backed_by` decides
+    which backends have an engine, and it cannot drift from `engine_for`: it returns False for exactly
+    the backends `engine_for("demucs", backend=b)` refuses on."""
+    from src.retry_policy import PermanentError
+    from src.separation.engines import demucs_engine_backed_by, engine_for
+
+    # Only torch (and None, the portable default) build a real demucs engine.
+    assert demucs_engine_backed_by("torch") is True
+    assert demucs_engine_backed_by(None) is True
+    assert demucs_engine_backed_by("mlx") is False
+    # A backend name no engine implements is not backed either (openvino is registered in the enum but
+    # has no runtime; it can never be a RESOLVED backend — resolve_backend raises before narrowing —
+    # but the predicate is conservative rather than trusting that).
+    assert demucs_engine_backed_by("openvino") is False
+
+    # The one backend `engine_for` actively REFUSES is mlx (MlxDemucsEngine raises at construction);
+    # torch builds the real engine. `demucs_engine_backed_by` agrees on both, so the predicate the
+    # capability site reads cannot drift from the engine the cook actually builds for mlx vs torch.
+    assert engine_for("demucs", backend="torch").backend == "torch"
+    try:
+        engine_for("demucs", backend="mlx")
+        mlx_raised = False
+    except PermanentError:
+        mlx_raised = True
+    assert mlx_raised is True and demucs_engine_backed_by("mlx") is False
+
+    # narrow_for_backend drops `stems` iff the backend is not backed, and leaves other tokens alone.
+    caps = ("align", "fetch:ytdlp", "stems", "stems:roformer")
+    kept, warns = capabilities.narrow_for_backend(caps, "torch")
+    assert kept == caps and warns == []
+    dropped, warns = capabilities.narrow_for_backend(caps, "mlx")
+    assert "stems" not in dropped
+    assert set(dropped) == {"align", "fetch:ytdlp", "stems:roformer"}  # only bare `stems` is backend-driven
+    assert warns and "mlx" in warns[0]
+    # a box that never proved `stems` is untouched even on an unbacked backend
+    assert capabilities.narrow_for_backend(("align",), "mlx") == (("align",), [])

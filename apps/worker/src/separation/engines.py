@@ -122,8 +122,15 @@ class MlxDemucsEngine:
     implementation is tracked as a needs-owner / needs-repro follow-up.
 
     PermanentError (retryable=False, #443/#571/#583): an unimplemented backend is a deterministic
-    configuration state — every retry fails identically — so it must fail fast and loud at worker
-    startup rather than burn three attempts or, worse, downgrade silently to CPU torch.
+    configuration state — every retry fails identically — so it refuses fast and loud at CONSTRUCTION
+    (plan selection, when a cook resolves to this engine) rather than burn three attempts or, worse,
+    downgrade silently to CPU torch. It does NOT refuse at worker startup — nothing constructs a
+    separator engine then (`engine_for`'s only callers are `plans.py` at plan selection and the
+    `steps/separate.py` fallback). What keeps a cook from ever reaching this refusal is upstream: a box
+    whose resolved backend has no demucs engine (`separation.engines.demucs_engine_backed_by`) does not
+    advertise `stems` at all (`config.resolve` -> `capabilities.narrow_for_backend`, #606), so the core
+    never routes it a stems cook. This construction-time refusal is the backstop for the paths that
+    bypass that narrowing — the docgen/test fallback, or any future caller.
     """
 
     id = "demucs"
@@ -247,3 +254,21 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     # only has demucs, a typo — cannot be honoured by retrying. Subclasses RuntimeError so the
     # message and the exception type callers/tests match on are unchanged; #443.
     raise PermanentError(f"no separator engine: {name}")
+
+
+def demucs_engine_backed_by(backend: str | None) -> bool:
+    """Whether a demucs `SeparatorEngine` can actually be CONSTRUCTED through `backend`.
+
+    The single source of truth for "does this backend have a demucs engine implementation", read by
+    the capability-declaration site so the worker never advertises `stems` on a box whose resolved
+    backend cannot build one. `torch` (and None, the portable default) build the real `DemucsEngine`;
+    `mlx` builds `MlxDemucsEngine`, which raises `PermanentError` at construction until its runtime
+    lands, so it is NOT backed; any other/unknown backend is not backed either.
+
+    Kept next to `engine_for` on purpose: `engine_for("demucs", backend=b)` raises for exactly the
+    values this returns False for, so the two cannot drift — a new demucs backend adds a branch to
+    both. Deliberately does NOT construct the engine (that would import torch just to answer a probe),
+    so it stays cheap enough to run in the dial-home process alongside the import-free capability
+    probes.
+    """
+    return backend in (None, "torch")
