@@ -1,3 +1,4 @@
+// @ts-check
 /*
  * P11 — STATS, METRICS AND AUDIT, WITH REAL DATA BEHIND THEM.
  *
@@ -29,6 +30,26 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (issue #558, following
+ * the #557 fuzz.mjs pattern). The Browser/Page shapes are derived from cdp.mjs's own return types
+ * (#553) so they cannot drift from the driver; every JSON endpoint and page.evaluate() result is
+ * protocol-/API-shaped and stays loose (cdp.mjs types evaluate as Promise<any>), cast at the call site.
+ *
+ * @typedef {Awaited<ReturnType<typeof import('../cdp.mjs').connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW'} Severity
+ *
+ * One finding row as pushed by record(). detail/evidence are optional at the call boundary.
+ * @typedef {{ severity: Severity, title: string, detail?: string, evidence?: string[] }} Finding
+ *
+ * A spawned child process handle (node:child_process). We only touch pid/killed and kill it.
+ * @typedef {import('node:child_process').ChildProcess} Child
+ *
+ * A queue entry as driven in step 4 — entryId is filled in after the row is sent.
+ * @typedef {{ mediaId: string, label: string, entryId?: string }} DriveEntry
+ */
+
 // ── configuration ──────────────────────────────────────────────────────────
 const PORT = Number(process.env.PORT ?? 5231);
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9343);
@@ -39,25 +60,40 @@ const SHOTS_DIR = join(SCRATCH, 'shots');
 const REPO = resolve(new URL('../..', import.meta.url).pathname); // apps/core
 
 // ── finding recorder ───────────────────────────────────────────────────────
+/** @type {Finding[]} */
 const findings = [];
+/**
+ * @param {Severity} severity
+ * @param {string} title
+ * @param {string} [detail]
+ * @param {string[]} [evidence]
+ */
 function record(severity, title, detail, evidence = []) {
 	findings.push({ severity, title, detail, evidence });
 	console.log(`\n[${severity}] ${title}`);
 	if (detail) console.log(`  ${detail}`);
 	for (const e of evidence) console.log(`  · ${e}`);
 }
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	process.exit(2);
 }
 
 // ── process management ─────────────────────────────────────────────────────
+/** @type {Child[]} */
 const spawned = [];
+/**
+ * @param {string} cmd
+ * @param {string[]} args
+ * @param {import('node:child_process').SpawnOptions} [opts]
+ */
 function launch(cmd, args, opts = {}) {
 	const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'], ...opts });
 	spawned.push(p);
 	return p;
 }
+/** @param {Child | null | undefined} p */
 function killProc(p) {
 	try {
 		if (p?.pid && !p.killed) process.kill(p.pid, 'SIGKILL');
@@ -73,6 +109,7 @@ process.on('SIGINT', () => {
 	process.exit(130);
 });
 
+/** @param {number} ms */
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── environment sniff ──────────────────────────────────────────────────────
@@ -102,6 +139,11 @@ async function waitForHealth(timeoutMs = 15000) {
 }
 
 // ── HTTP helpers (cookie-jar-lite) ─────────────────────────────────────────
+/**
+ * @param {string} name
+ * @param {string} [color]
+ * @returns {Promise<{ cookie: string, singerId: string }>}
+ */
 async function joinRoom(name, color = 'violet') {
 	const r = await fetch(`${BASE}/api/join`, {
 		method: 'POST',
@@ -116,14 +158,22 @@ async function joinRoom(name, color = 'violet') {
 	return { cookie: `encore_singer=${m[1]}`, singerId: body.singer.id };
 }
 
+/**
+ * @param {string} q
+ * @returns {Promise<any>} an API-shaped media hit (source, id, durationSec, …)
+ */
 async function searchLocal(q) {
 	const r = await fetch(`${BASE}/api/search?q=${encodeURIComponent(q)}`);
 	const d = await r.json();
-	const hit = [...d.ready, ...d.cooking, ...d.results].find((x) => x.source === 'local');
+	const hit = [...d.ready, ...d.cooking, ...d.results].find((/** @type {any} */ x) => x.source === 'local');
 	if (!hit) throw new Error(`no local match for "${q}"`);
 	return hit;
 }
 
+/**
+ * @param {string} cookie
+ * @param {string} mediaId
+ */
 async function requestCook(cookie, mediaId) {
 	return fetch(`${BASE}/api/make-karaoke`, {
 		method: 'POST',
@@ -136,18 +186,27 @@ async function requestCook(cookie, mediaId) {
 // Bun's global WebSocket accepts a `headers` option, which is what carries the session cookie
 // through the WS upgrade so queue commands validate as this singer. Falls back to unauthed if the
 // constructor rejects headers on some builds — read-only assertions still work in that case.
+/**
+ * @param {string} cookie
+ */
 async function openPhone(cookie) {
+	/** @type {any[]} */ // server WS frames are protocol-shaped JSON, decoded loose
 	const events = [];
 	let ws;
 	try {
-		ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`, { headers: { cookie } });
+		// Bun's WebSocket takes a `headers` option the DOM lib does not model — carry the cookie through.
+		ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`, /** @type {any} */ ({ headers: { cookie } }));
 	} catch {
 		ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`);
 	}
-	await new Promise((resolve, reject) => {
-		ws.onopen = () => resolve();
-		ws.onerror = (e) => reject(new Error(`ws open error: ${e?.message ?? e}`));
-	});
+	await new Promise(
+		/** @type {(resolve: (value?: unknown) => void, reject: (reason?: unknown) => void) => void} */ (
+			(resolve, reject) => {
+				ws.onopen = () => resolve();
+				ws.onerror = (e) => reject(new Error(`ws open error: ${/** @type {any} */ (e)?.message ?? e}`));
+			}
+		)
+	);
 	ws.onmessage = (m) => {
 		try {
 			events.push(JSON.parse(String(m.data)));
@@ -158,16 +217,24 @@ async function openPhone(cookie) {
 	return {
 		ws,
 		events,
-		send: (obj) => ws.send(JSON.stringify(obj)),
+		send: (/** @type {any} */ obj) => ws.send(JSON.stringify(obj)),
 		close: () => ws.close(),
-		statusOf: (mediaId) => events.filter((e) => e.type === 'media:status' && e.mediaId === mediaId),
-		lastStatus: (mediaId) => {
-			const list = events.filter((e) => e.type === 'media:status' && e.mediaId === mediaId);
+		statusOf: (/** @type {string} */ mediaId) =>
+			events.filter((/** @type {any} */ e) => e.type === 'media:status' && e.mediaId === mediaId),
+		lastStatus: (/** @type {string} */ mediaId) => {
+			const list = events.filter((/** @type {any} */ e) => e.type === 'media:status' && e.mediaId === mediaId);
 			return list[list.length - 1];
 		}
 	};
 }
 
+/**
+ * @param {Awaited<ReturnType<typeof openPhone>>} phone
+ * @param {string} mediaId
+ * @param {(e: any) => boolean} predicate
+ * @param {number} timeoutMs
+ * @param {string} [label]
+ */
 async function waitForStatus(phone, mediaId, predicate, timeoutMs, label) {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
@@ -177,12 +244,13 @@ async function waitForStatus(phone, mediaId, predicate, timeoutMs, label) {
 	}
 	const seen = phone
 		.statusOf(mediaId)
-		.map((e) => `${e.status}@${e.pct ?? '?'}%`)
+		.map((/** @type {any} */ e) => `${e.status}@${e.pct ?? '?'}%`)
 		.join(' → ');
 	throw new Error(`waitForStatus timeout (${label ?? ''}): media=${mediaId} seen=[${seen}]`);
 }
 
 // ── boot: server + workers ─────────────────────────────────────────────────
+/** @type {string} */
 let serverLogPath;
 
 async function bootServer() {
@@ -210,11 +278,15 @@ async function bootServer() {
 			MEDIA_DIR
 		}
 	});
-	p.stdout.on('data', (d) => w.write(d));
-	p.stderr.on('data', (d) => w.write(d));
+	p.stdout?.on('data', (/** @type {Buffer} */ d) => w.write(d));
+	p.stderr?.on('data', (/** @type {Buffer} */ d) => w.write(d));
 	if (!(await waitForHealth())) bail(`server did not come up on :${PORT}; see ${serverLogPath}`);
 }
 
+/**
+ * @param {Record<string, string>} env
+ * @param {string} tag
+ */
 function bootWorker(env, tag) {
 	const workerLog = join(SCRATCH, `${tag}.log`);
 	const w = Bun.file(workerLog).writer();
@@ -222,11 +294,16 @@ function bootWorker(env, tag) {
 		cwd: REPO,
 		env: { ...process.env, EPORT: String(PORT), MEDIA_DIR, FAKE_WORKER_ID: tag, ...env }
 	});
-	p.stdout.on('data', (d) => w.write(d));
-	p.stderr.on('data', (d) => w.write(d));
+	p.stdout?.on('data', (/** @type {Buffer} */ d) => w.write(d));
+	p.stderr?.on('data', (/** @type {Buffer} */ d) => w.write(d));
 	return { proc: p, log: workerLog };
 }
 
+/**
+ * @param {(workers: any[]) => boolean} capsPredicate
+ * @param {number} [timeoutMs]
+ * @param {string} [label]
+ */
 async function waitForWorkerCapabilities(capsPredicate, timeoutMs = 5000, label = 'worker caps') {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
@@ -271,15 +348,19 @@ async function main() {
 	// ─────────────────────────────────────────────────────────────────────
 	console.log('\n[step 1] two normal cooks');
 	let normal = bootWorker({ FAKE_SLOW_MS: '100' }, 'normal-1');
-	await waitForWorkerCapabilities((ws) => ws.some((w) => w.workerId === 'normal-1'), 5000, 'normal-1');
+	await waitForWorkerCapabilities(
+		(ws) => ws.some((/** @type {any} */ w) => w.workerId === 'normal-1'),
+		5000,
+		'normal-1'
+	);
 
 	const c1 = await requestCook(cookie, caroline.id);
 	if (!c1.ok) throw new Error(`caroline cook failed: ${c1.status} ${await c1.text()}`);
-	await waitForStatus(phone, caroline.id, (e) => e.status === 'ready', 10000, 'caroline ready');
+	await waitForStatus(phone, caroline.id, (/** @type {any} */ e) => e.status === 'ready', 10000, 'caroline ready');
 
 	const c2 = await requestCook(cookie, dontstop.id);
 	if (!c2.ok) throw new Error(`dontstop cook failed: ${c2.status} ${await c2.text()}`);
-	await waitForStatus(phone, dontstop.id, (e) => e.status === 'ready', 10000, 'dontstop ready');
+	await waitForStatus(phone, dontstop.id, (/** @type {any} */ e) => e.status === 'ready', 10000, 'dontstop ready');
 
 	// Stop the normal worker before starting the failing one so dispatch does not race the FAKE_FAIL
 	// worker into taking a normal-cook job we did not ask it to fail.
@@ -293,14 +374,18 @@ async function main() {
 	// ─────────────────────────────────────────────────────────────────────
 	console.log('\n[step 2] one FAILED cook via FAKE_FAIL=stems');
 	const failer = bootWorker({ FAKE_FAIL: 'stems', FAKE_SLOW_MS: '100' }, 'fail-stems-2');
-	await waitForWorkerCapabilities((ws) => ws.some((w) => w.workerId === 'fail-stems-2'), 5000, 'fail-stems-2');
+	await waitForWorkerCapabilities(
+		(ws) => ws.some((/** @type {any} */ w) => w.workerId === 'fail-stems-2'),
+		5000,
+		'fail-stems-2'
+	);
 
 	const c3 = await requestCook(cookie, bohemian.id);
 	if (!c3.ok) throw new Error(`bohemian cook failed: ${c3.status} ${await c3.text()}`);
 	await waitForStatus(
 		phone,
 		bohemian.id,
-		(e) => e.status === 'failed' || e.status === 'ready',
+		(/** @type {any} */ e) => e.status === 'failed' || e.status === 'ready',
 		10000,
 		'bohemian terminal'
 	);
@@ -326,7 +411,11 @@ async function main() {
 	// ─────────────────────────────────────────────────────────────────────
 	console.log('\n[step 3] one RETRIED cook via kill-mid-cook + progress-lease expiry (~30s)');
 	const doomed = bootWorker({ FAKE_SLOW_MS: '45000' }, 'doomed-3');
-	await waitForWorkerCapabilities((ws) => ws.some((w) => w.workerId === 'doomed-3'), 5000, 'doomed-3');
+	await waitForWorkerCapabilities(
+		(ws) => ws.some((/** @type {any} */ w) => w.workerId === 'doomed-3'),
+		5000,
+		'doomed-3'
+	);
 
 	const c4 = await requestCook(cookie, prayer.id);
 	if (!c4.ok) throw new Error(`prayer cook failed: ${c4.status} ${await c4.text()}`);
@@ -334,7 +423,13 @@ async function main() {
 	// the doomed worker. Without this, killing during 'downloading' produces an ack-timeout for the
 	// STEMS handoff (queued → assigned to a worker that never gets there because it's gone), and the
 	// reaper's ack-timeout path does NOT bump attempts and does NOT close an attempt as abandoned.
-	await waitForStatus(phone, prayer.id, (e) => e.status === 'separating', 30000, 'prayer separating');
+	await waitForStatus(
+		phone,
+		prayer.id,
+		(/** @type {any} */ e) => e.status === 'separating',
+		30000,
+		'prayer separating'
+	);
 	console.log('  SIGKILLing doomed worker while stems is running');
 	killProc(doomed.proc);
 
@@ -342,9 +437,19 @@ async function main() {
 	// Bring up the replacement worker RIGHT AWAY so it is ready to accept the requeue the instant
 	// the lease expires; otherwise the recovered job sits queued while we do nothing.
 	bootWorker({ FAKE_SLOW_MS: '100' }, 'rescue-3');
-	await waitForWorkerCapabilities((ws) => ws.some((w) => w.workerId === 'rescue-3'), 5000, 'rescue-3');
+	await waitForWorkerCapabilities(
+		(ws) => ws.some((/** @type {any} */ w) => w.workerId === 'rescue-3'),
+		5000,
+		'rescue-3'
+	);
 	// 30s progress lease + 3s reaper tick + ~10s slack for retry + follow-up align + broadcast.
-	await waitForStatus(phone, prayer.id, (e) => e.status === 'ready' || e.status === 'failed', 60000, 'prayer terminal');
+	await waitForStatus(
+		phone,
+		prayer.id,
+		(/** @type {any} */ e) => e.status === 'ready' || e.status === 'failed',
+		60000,
+		'prayer terminal'
+	);
 
 	// ─────────────────────────────────────────────────────────────────────
 	// STEP 4. Queue four entries so the play log has real content:
@@ -356,6 +461,7 @@ async function main() {
 	console.log('\n[step 4] queue four entries and drive plays');
 
 	let addedAt = Date.now();
+	/** @param {string} mediaId @returns {string} */
 	function queueEntry(mediaId) {
 		// A full QueueEntry (packages/shared/src/types.ts:185): id + mediaId + singerId + status +
 		// rotationSeq + addedAt. Missing addedAt trips the queue_entries.added_at NOT NULL
@@ -390,6 +496,7 @@ async function main() {
 		return entryId;
 	}
 
+	/** @type {DriveEntry[]} */
 	const entries = [
 		{ mediaId: caroline.id, label: 'caroline#1' },
 		{ mediaId: dontstop.id, label: 'dontstop#1' },
@@ -467,8 +574,8 @@ async function main() {
 		const dump = JSON.stringify(stats);
 		const hasBadNum =
 			/"perDay":\[.*"(NaN|Infinity|-Infinity)"/.test(dump) ||
-			Object.values(stats.sings ?? {}).some((v) => typeof v === 'number' && !Number.isFinite(v)) ||
-			stats.topSongs.some((s) => typeof s.plays !== 'number' || !Number.isFinite(s.plays));
+			Object.values(stats.sings ?? {}).some((/** @type {any} */ v) => typeof v === 'number' && !Number.isFinite(v)) ||
+			stats.topSongs.some((/** @type {any} */ s) => typeof s.plays !== 'number' || !Number.isFinite(s.plays));
 		if (hasBadNum) {
 			record(
 				'HIGH',
@@ -481,7 +588,7 @@ async function main() {
 	// topSongs shape: caroline=2, then dontstop=1 and prayer=1 (tied). Order among ties is
 	// implementation-defined; assert the SET rather than the order.
 	{
-		const bySong = new Map(stats.topSongs.map((s) => [s.mediaId, s.plays]));
+		const bySong = new Map(stats.topSongs.map((/** @type {any} */ s) => [s.mediaId, s.plays]));
 		const car = bySong.get(caroline.id) ?? 0;
 		const ds = bySong.get(dontstop.id) ?? 0;
 		const pr = bySong.get(prayer.id) ?? 0;
@@ -503,13 +610,15 @@ async function main() {
 	// perDay: exactly one bar today (all 4 plays), no earlier days, no NaN/Infinity.
 	{
 		const today = new Date().toISOString().slice(0, 10);
-		const todayEntry = stats.perDay.find((d) => d.day === today);
-		const hasBadNum = stats.perDay.some((d) => typeof d.plays !== 'number' || !Number.isFinite(d.plays));
+		const todayEntry = stats.perDay.find((/** @type {any} */ d) => d.day === today);
+		const hasBadNum = stats.perDay.some(
+			(/** @type {any} */ d) => typeof d.plays !== 'number' || !Number.isFinite(d.plays)
+		);
 		if (todayEntry && todayEntry.plays === 4 && !hasBadNum && stats.perDay.length === 1) {
 			record(
 				'LOW',
 				'the /stats trend line has exactly one bar today with 4 plays',
-				`perDay=[${stats.perDay.map((d) => `${d.day}:${d.plays}`).join(', ')}] — the log has no zero-fill (an absent day = "we can't tell if it was quiet or the server was off"), so a fresh install shows one bar and honest copy`,
+				`perDay=[${stats.perDay.map((/** @type {any} */ d) => `${d.day}:${d.plays}`).join(', ')}] — the log has no zero-fill (an absent day = "we can't tell if it was quiet or the server was off"), so a fresh install shows one bar and honest copy`,
 				[
 					'src/server/media/play-log.ts:75-88 — perDay omits days with no plays rather than 0-filling',
 					'src/routes/stats/+page.svelte:95-100 — footnote makes the ambiguity explicit'
@@ -519,7 +628,7 @@ async function main() {
 			record(
 				'MEDIUM',
 				'the /stats trend line does not match the play log',
-				`observed perDay=[${stats.perDay.map((d) => `${d.day}:${d.plays}`).join(', ')}], today=${todayEntry ? JSON.stringify(todayEntry) : '(missing)'}, hasBadNum=${hasBadNum}`
+				`observed perDay=[${stats.perDay.map((/** @type {any} */ d) => `${d.day}:${d.plays}`).join(', ')}], today=${todayEntry ? JSON.stringify(todayEntry) : '(missing)'}, hasBadNum=${hasBadNum}`
 			);
 		}
 	}
@@ -528,7 +637,8 @@ async function main() {
 		const steps = metrics.steps;
 		// Every step row must carry both meanMs (work) and meanQueueWaitMs (wait) — separately.
 		const bothPopulated =
-			steps.length > 0 && steps.every((s) => typeof s.meanMs === 'number' && typeof s.meanQueueWaitMs === 'number');
+			steps.length > 0 &&
+			steps.every((/** @type {any} */ s) => typeof s.meanMs === 'number' && typeof s.meanQueueWaitMs === 'number');
 		// And they must not be equal by accident — queue wait, on a single-worker box with cheap work,
 		// is usually SMALLER than processing time, but occasionally can be similar. What matters is
 		// that the FIELDS exist as distinct columns in the payload, and the audit endpoint splits them
@@ -563,9 +673,11 @@ async function main() {
 	//   dontstop: 1 cook, 2 attempts (stems ready, align ready)
 	//   bohemian: 1 cook, 1 attempt  (stems failed) — cook outcome=failed, no align chain
 	//   prayer:   1 cook, 3 attempts (stems abandoned, stems ready, align ready) — cook outcome=ready
+	/** @param {any} audit */
 	function summarizeAudit(audit) {
 		const cook = audit.cooks[0];
 		if (!cook) return { cookOutcome: null, byType: {} };
+		/** @type {Record<string, string[]>} */
 		const byType = {};
 		for (const a of cook.attempts) {
 			(byType[a.jobType] ??= []).push(a.outcome);
@@ -633,7 +745,7 @@ async function main() {
 		// The error message on the failed stems attempt must survive the round trip — the audit
 		// page shows it in the `.err` block. An empty string here would silently drop the reason
 		// the operator opens the page for.
-		const stemsFailed = auditBohemian.cooks[0]?.attempts?.find((a) => a.jobType === 'stems');
+		const stemsFailed = auditBohemian.cooks[0]?.attempts?.find((/** @type {any} */ a) => a.jobType === 'stems');
 		const hasReason = typeof stemsFailed?.error === 'string' && stemsFailed.error.length > 0;
 		if (boOk && hasReason) {
 			record(
@@ -651,10 +763,10 @@ async function main() {
 	}
 	{
 		// The retried cook: 2 stems attempts (abandoned then ready), then align ready.
-		const stemsAttempts = auditPrayer.cooks[0]?.attempts?.filter((a) => a.jobType === 'stems') ?? [];
-		const outcomes = stemsAttempts.map((a) => a.outcome);
+		const stemsAttempts = auditPrayer.cooks[0]?.attempts?.filter((/** @type {any} */ a) => a.jobType === 'stems') ?? [];
+		const outcomes = stemsAttempts.map((/** @type {any} */ a) => a.outcome);
 		// Also: the retried stems attempt must have attempt=2 (1-based, from AttemptLedger.open).
-		const attemptNumbers = stemsAttempts.map((a) => a.attempt);
+		const attemptNumbers = stemsAttempts.map((/** @type {any} */ a) => a.attempt);
 		const retryOk =
 			prA.cookOutcome === 'ready' &&
 			prA.attempts === 3 &&
@@ -680,7 +792,7 @@ async function main() {
 	// Cross-check: metrics.slowestCooks lists the same cookIds as audit knows about, and each
 	// per-attempt processingMs the audit reports adds up to a positive number.
 	{
-		const cooksInMetrics = new Set(metrics.slowestCooks.map((c) => c.cookId));
+		const cooksInMetrics = new Set(metrics.slowestCooks.map((/** @type {any} */ c) => c.cookId));
 		const auditPrayerCookId = auditPrayer.cooks[0]?.cookId;
 		const auditCarolineCookId = auditCaroline.cooks[0]?.cookId;
 		const auditDontstopCookId = auditDontstop.cooks[0]?.cookId;
@@ -735,7 +847,9 @@ async function main() {
 	// carries the rounding — worth flagging because a fast-worker or a small-fake-cook fleet WILL
 	// hit this floor and misread the entire "where the time goes" section as broken.
 	{
-		const anyStageSubSecond = metrics.stages.some((s) => (s.meanMs ?? 0) > 0 && (s.meanMs ?? 0) < 500);
+		const anyStageSubSecond = metrics.stages.some(
+			(/** @type {any} */ s) => (s.meanMs ?? 0) > 0 && (s.meanMs ?? 0) < 500
+		);
 		if (anyStageSubSecond) {
 			record(
 				'MEDIUM',
@@ -755,12 +869,12 @@ async function main() {
 	// still ship the row so the operator sees a measurement was taken.
 	{
 		const models = metrics.models;
-		const fake = models.find((m) => m.engine === 'fake-separator' && m.model === 'e2e-tone');
+		const fake = models.find((/** @type {any} */ m) => m.engine === 'fake-separator' && m.model === 'e2e-tone');
 		if (!fake) {
 			record(
 				'HIGH',
 				'metrics.models is missing the fake-separator/e2e-tone row',
-				`this measurement is the only per-model data on the box. Models seen: ${models.map((m) => `${m.engine}/${m.model}`).join(', ') || '(none)'}`
+				`this measurement is the only per-model data on the box. Models seen: ${models.map((/** @type {any} */ m) => `${m.engine}/${m.model}`).join(', ') || '(none)'}`
 			);
 		} else if (fake.declared !== undefined && fake.declared !== null) {
 			record(
@@ -825,6 +939,12 @@ async function main() {
 	const { connect } = await import('../cdp.mjs');
 	const browser = await connect(CDP_PORT);
 	try {
+		/**
+		 * @param {string} path
+		 * @param {string} url
+		 * @param {number} w
+		 * @param {number} h
+		 */
 		async function shoot(path, url, w, h) {
 			const page = await browser.newPage();
 			await page.viewport(w, h, 1);
@@ -837,18 +957,23 @@ async function main() {
 			return path;
 		}
 
+		/** @type {{ name: string, size: string, path: string, url: string }[]} */
 		const shots = [];
-		for (const [name, path] of [
+		/** @type {[string, string][]} */
+		const pages = [
 			['stats', '/stats'],
 			['metrics', '/metrics'],
 			['audit-caroline', `/metrics/${caroline.id}`],
 			['audit-prayer-retried', `/metrics/${prayer.id}`],
 			['audit-bohemian-failed', `/metrics/${bohemian.id}`]
-		]) {
-			for (const [size, w, h] of [
-				['390', 390, 900],
-				['1440', 1440, 900]
-			]) {
+		];
+		/** @type {[string, number, number][]} */
+		const sizes = [
+			['390', 390, 900],
+			['1440', 1440, 900]
+		];
+		for (const [name, path] of pages) {
+			for (const [size, w, h] of sizes) {
 				const outfile = join(SHOTS_DIR, `${name}-${size}.png`);
 				try {
 					await shoot(outfile, `${BASE}${path}`, w, h);
@@ -1007,6 +1132,7 @@ async function main() {
 	// Verify by hitting them with NO cookie and confirming a 200. What they expose is the honest
 	// finding to record for the reader.
 	{
+		/** @type {Record<string, string>} */
 		const noCookieHeaders = {}; // no cookie
 		const mRes = await fetch(`${BASE}/api/metrics`, { headers: noCookieHeaders });
 		const aRes = await fetch(`${BASE}/api/audit/${caroline.id}`, { headers: noCookieHeaders });
@@ -1015,8 +1141,10 @@ async function main() {
 			// One song, so we can name the exact shape.
 			const m = await mRes.json();
 			const a = await aRes.json();
-			const workerIds = m.workers.map((w) => w.workerId);
-			const errStrings = a.cooks.flatMap((c) => c.attempts.map((att) => att.error)).filter(Boolean);
+			const workerIds = m.workers.map((/** @type {any} */ w) => w.workerId);
+			const errStrings = a.cooks
+				.flatMap((/** @type {any} */ c) => c.attempts.map((/** @type {any} */ att) => att.error))
+				.filter(Boolean);
 			record(
 				'MEDIUM',
 				'/api/metrics and /api/audit/<id> are UNGATED, as documented',
@@ -1028,7 +1156,7 @@ async function main() {
 					`example error strings on the box: ${
 						errStrings
 							.slice(0, 2)
-							.map((e) => JSON.stringify(e))
+							.map((/** @type {any} */ e) => JSON.stringify(e))
 							.join(', ') || '(none on this run)'
 					}`,
 					'src/routes/api/metrics/+server.ts:1-13 — decision to bind the server to a trusted interface or add a token',
@@ -1110,14 +1238,15 @@ async function main() {
 try {
 	await main();
 } catch (err) {
-	record('CRITICAL', 'probe threw during execution', String(err?.stack ?? err));
+	record('CRITICAL', 'probe threw during execution', String(/** @type {any} */ (err)?.stack ?? err));
 }
 
 // ── summary ─────────────────────────────────────────────────────────────────
 console.log('\n\n=== P11 SUMMARY ===');
+/** @type {Record<Severity, Finding[]>} */
 const bySev = { CRITICAL: [], HIGH: [], MEDIUM: [], LOW: [] };
 for (const f of findings) (bySev[f.severity] ?? []).push(f);
-for (const s of ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW']) {
+for (const s of /** @type {Severity[]} */ (['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'])) {
 	if (bySev[s].length) {
 		console.log(`\n${s}: ${bySev[s].length}`);
 		for (const f of bySev[s]) console.log(`  • ${f.title}`);
