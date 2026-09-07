@@ -159,9 +159,14 @@ export const queueEntries = sqliteTable('queue_entries', {
 	pinnedSeq: integer('pinned_seq')
 });
 
-// single-row table holding authoritative playback (id always 'singleton')
+// Authoritative playback, KEYED BY ROOM (#655). Was a single-row table whose `id` defaulted to the
+// literal 'singleton' — one now-playing / position / key-shift / background per DEPLOYMENT, so two
+// rooms could never each be playing. `room_id` is the primary key now: one row per room, minted
+// alongside the room (rooms.id), so concurrent parties hold independent playback. Mirrors
+// `room_settings`, which is already keyed the same way (a bare `room_id` PK, no emitted FK — FK
+// enforcement is off for this bun:sqlite DB, so a declared reference would emit DDL nothing checks).
 export const playbackState = sqliteTable('playback_state', {
-	id: text('id').primaryKey().default('singleton'),
+	roomId: text('room_id').primaryKey(),
 	currentEntryId: text('current_entry_id'),
 	positionSec: integer('position_sec').notNull().default(0),
 	isPlaying: integer('is_playing', { mode: 'boolean' }).notNull().default(false),
@@ -176,7 +181,7 @@ export const playbackState = sqliteTable('playback_state', {
 	guideLevel: real('guide_level')
 });
 
-// Room-level separator settings. Single-row ('singleton') like playback_state: these govern
+// Room-level separator settings. A single-row ('singleton') table: these govern
 // cooks EVERYONE shares, so they are authoritative room state, not a per-phone preference. Read
 // whole / written whole; the shared @encore/shared RoomSettings type is the source of truth for the
 // field set, and normalizeRoomSettings() gates writes so a bad payload can never persist.

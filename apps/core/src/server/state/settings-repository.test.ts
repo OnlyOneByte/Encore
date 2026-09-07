@@ -579,11 +579,25 @@ describe('SettingsRepository room scope: the ordering algorithm', () => {
 		expect(sql).not.toContain('`last_sung_at` integer NOT NULL');
 		// and the provenance header survived the regeneration, or the next person re-adds the chain
 		expect(sql).toContain('SINGLE PRE-RELEASE BASELINE');
-		// Any migration AFTER the baseline must be additive only — never a second CREATE TABLE (that is a
-		// baseline replay, the exact boot failure the incremental form avoids).
+		// Any migration AFTER the baseline must never REPLAY a baseline table — a `CREATE TABLE <foo>`
+		// for a table 0000 already created throws on an existing DB (the #669 boot failure). SQLite's
+		// only way to change a primary key, though, is the create-copy-drop-rename dance on a `__new_*`
+		// TEMP table that is renamed into place (#655's playback re-key), which is NOT a replay: the
+		// temp name never collides with a live table. So the rule is: forbid a CREATE TABLE of a
+		// baseline table name; allow the `__new_*` rebuild idiom.
+		const baselineSql = readFileSync(join(folder, '0000_baseline.sql'), 'utf8');
+		const baselineTables = new Set(
+			[...baselineSql.matchAll(/create\s+table\s+`?([a-z_]+)`?/gi)].map((m) => m[1]!.toLowerCase())
+		);
 		for (const e of journal.entries.slice(1)) {
 			const body = readFileSync(join(folder, `${e.tag}.sql`), 'utf8');
-			expect(body).not.toMatch(/create\s+table/i);
+			for (const m of body.matchAll(/create\s+table\s+`?([a-z_0-9]+)`?/gi)) {
+				const name = m[1]!.toLowerCase();
+				// A `__new_*` temp table renamed into place is the SQLite PK-change idiom, not a replay.
+				const isRebuildTemp =
+					name.startsWith('__new_') && new RegExp(`alter\\s+table\\s+\`?${name}\`?\\s+rename\\s+to`, 'i').test(body);
+				expect(isRebuildTemp || !baselineTables.has(name)).toBe(true);
+			}
 		}
 	});
 });

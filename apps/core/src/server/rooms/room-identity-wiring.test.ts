@@ -39,3 +39,14 @@ test('the phone /join page reads the ?room= code and forwards it to /api/join (#
 	// and forwards it in the /api/join body as `code` — drop this and a scanned QR joins the default room.
 	expect(JOIN_PAGE).toMatch(/code:\s*roomCode/);
 });
+
+test('app.ts binds the playback store + boot-hydrate to the ACTIVE room, not a constant (#655)', () => {
+	// #655 advisory 1: this is the one seam the db/state unit tests cannot cover — they each construct
+	// their own sqlitePersistence(db, TEST_ROOM) / hydrate(db, 'room1'), so nothing exercises getApp()
+	// binding the single authoritative store to the room the box actually minted. Replacing both
+	// arguments with a literal leaves every other test green; this scan reds instead.
+	// The write-behind sink is keyed to activeRoomId (drop it -> a constant room could shadow another).
+	expect(APP).toMatch(/sqlitePersistence\(db,\s*activeRoomId\)/);
+	// Boot-hydrate reads THAT room's playback row (drop it -> boot could seed the wrong room's state).
+	expect(APP).toMatch(/hydrate\(db,\s*activeRoomId\)/);
+});
