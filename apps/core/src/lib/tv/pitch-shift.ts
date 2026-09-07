@@ -36,7 +36,8 @@
 //     (a pass-through that copies input to output) and leave the graph in place. The element stays
 //     routed through WebAudio, but at ratio 1 that is audibly identical to the bypass path.
 //
-// See PitchShiftGraph.attach / detach for the concrete teardown strategy.
+// See PitchShiftGraph.setShift (reset to ratio 1) / detach (context release) for the concrete
+// teardown strategy.
 
 // ── pure ratio + framing maths (unit-tested; no DOM, no AudioContext) ─────────────────────────────
 
@@ -374,11 +375,12 @@ registerProcessor('encore-pitch-shift', PitchShiftProcessor);
  * Wraps ONE HTMLMediaElement in a lazily-built pitch-shift graph.
  *
  * Lifecycle mirrors the trap documented at the top of this file:
- *   attach(shift): idempotent. At shift 0 it is a no-op and no graph is built. At a non-zero shift it
- *     builds the AudioContext + MediaElementSource + worklet ONCE, resumes the context, and either
- *     applies the ratio (resume succeeded) or falls back to unshifted playback (resume failed).
- *   setShift(shift): change the ratio on an already-attached element. Returning to 0 sets ratio 1
- *     (bypass) rather than tearing anything down — see below.
+ *   setShift(shift): the SOLE entry point, and idempotent. It is also what builds the graph: the
+ *     FIRST non-zero shift lazily builds the AudioContext + MediaElementSource + worklet ONCE (in
+ *     the private build()), resumes the context, and either applies the ratio (resume succeeded) or
+ *     falls back to unshifted playback (resume failed). Later calls just change the ratio on the
+ *     already-built graph. At shift 0 with no graph yet it is a no-op — nothing is built. Returning
+ *     to 0 on a built graph sets ratio 1 (bypass) rather than tearing anything down — see below.
  *   detach(): best-effort disconnect on element teardown. It CANNOT restore the pre-WebAudio path
  *     (a MediaElementSource is permanent) but at ratio 1 the graph is already transparent, so this is
  *     only about releasing the AudioContext when the element goes away.

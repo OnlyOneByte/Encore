@@ -1,0 +1,75 @@
+// #567 — pitch-shift.ts is the most heavily cross-referenced module in the TV tree, and its own
+// comments (plus its callers') cite it by coordinate and by identifier. Both idioms rot: a documented
+// method can be renamed or never have existed (the lifecycle docstring named a phantom `attach()`),
+// and a `pitch-shift.ts:<line>` citation drifts the moment a line is inserted above it. This is the
+// #318/#376/#395/#465 untrue-comment / rotted-citation class. This guard makes both machine-checkable.
+//
+// Comment stripping is INVERTED here, on purpose: the defect lives IN the comments, so stripping them
+// would blind the guard to its whole subject — same reasoning doc-accuracy.test.ts states in its header.
+// The guard scans comment text only, and asserts it against the CODE surface it is checked against.
+import { test, expect } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+// import.meta.dir === apps/core/src/lib/tv.
+const TV = import.meta.dir;
+const PITCH = join(TV, 'pitch-shift.ts');
+const LIFETIME = join(TV, 'pitch-shift-graph-lifetime.test.ts');
+
+const pitchSrc = readFileSync(PITCH, 'utf8');
+
+// The files whose comments cite pitch-shift.ts. #567 is landed in two parts: pitch-shift.ts and this
+// test file are fixed here; TvPlayer.svelte carries two more rotted line citations (:492-497 and :150)
+// but is owner-owned by in-flight #396, so those are deferred to a follow-up that will ADD TvPlayer.svelte
+// to this list once #396 lands (see the follow-up issue that references this file). Keep this list and
+// the SCANNED.length sentinel in sync when TvPlayer.svelte is added.
+const SCANNED = [PITCH, LIFETIME];
+
+test('arm 1 — every PitchShiftGraph member named in prose exists on the class', () => {
+	// Real member surface: tab-indented declarations after `export class PitchShiftGraph`, so the
+	// worklet-string class defined ABOVE cannot contribute names.
+	const classIdx = pitchSrc.indexOf('export class PitchShiftGraph');
+	expect(classIdx).toBeGreaterThan(-1);
+	const classBody = pitchSrc.slice(classIdx);
+	const memberRe = /^\t(?:async\s+|get\s+)?([a-zA-Z_]\w*)\s*\(/gm;
+	const members = new Set<string>();
+	for (const m of classBody.matchAll(memberRe)) members.add(m[1]);
+	// Sentinels: extraction must be real.
+	expect(members.size).toBeGreaterThanOrEqual(4);
+	expect(members.has('setShift')).toBe(true);
+	expect(members.has('detach')).toBe(true);
+
+	// Names prose CLAIMS: lifecycle-list entries `^\*   name(` plus any `PitchShiftGraph.name`.
+	const named = new Set<string>();
+	for (const m of pitchSrc.matchAll(/^\s*\*\s{3,}([a-zA-Z_]\w*)\(/gm)) named.add(m[1]);
+	for (const m of pitchSrc.matchAll(/PitchShiftGraph\.([a-zA-Z_]\w*)/g)) named.add(m[1]);
+	expect(named.size).toBeGreaterThanOrEqual(2);
+
+	const phantom = [...named].filter((n) => !members.has(n));
+	expect(phantom.length, `docs name PitchShiftGraph.${phantom.join('(), ')}() but the class has no such member`).toBe(
+		0
+	);
+});
+
+test('arm 2 — no comment cites pitch-shift.ts by line coordinate', () => {
+	const re = /pitch-shift\.ts:(\d+)(?:-(\d+))?/;
+	const offenders: string[] = [];
+	for (const file of SCANNED) {
+		const src = readFileSync(file, 'utf8');
+		const base = file.split('/').pop();
+		// Comment text only.
+		const commentText = src
+			.split('\n')
+			.filter((l) => {
+				const t = l.trim();
+				return t.startsWith('//') || t.startsWith('*') || t.startsWith('/*');
+			})
+			.join('\n');
+		// Sentinel: each file's extracted comment text must be substantial.
+		expect(commentText.length, `${base}: comment text too short — extraction broke`).toBeGreaterThan(200);
+		for (const m of commentText.matchAll(new RegExp(re, 'g'))) offenders.push(`${base}: ${m[0]}`);
+	}
+	// Sentinel: exactly the two files fixed in this partial land are scanned (widened to 3 with TvPlayer.svelte behind #396).
+	expect(SCANNED.length).toBe(2);
+	expect(offenders, offenders.join(' | ')).toEqual([]);
+});
