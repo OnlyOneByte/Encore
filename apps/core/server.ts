@@ -370,14 +370,19 @@ function gracefulShutdown(signal: string): void {
 	if (shuttingDown) return;
 	shuttingDown = true;
 	console.log(`[core] ${signal} received — flushing state and shutting down.`);
+	// A failed flush is exactly the case a supervisor needs to hear about: pending queue/playback state
+	// was lost. exit(0) here would tell Docker/systemd the stop was clean and falsify that signal, so the
+	// catch records failure and we exit non-zero — the log line alone is invisible to an out-of-band probe.
+	let ok = true;
 	try {
 		state.flushNow();
 		app.reaper.stop();
 		server.stop();
 	} catch (err) {
+		ok = false;
 		console.error('[core] error during graceful shutdown:', err);
 	}
-	process.exit(0);
+	process.exit(ok ? 0 : 1);
 }
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 process.on('SIGINT', () => gracefulShutdown('SIGINT'));

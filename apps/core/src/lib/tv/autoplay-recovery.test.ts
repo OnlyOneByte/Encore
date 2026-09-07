@@ -127,3 +127,60 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 	expect(body).toMatch(/inset:\s*0/);
 	expect(body).toMatch(/z-index:\s*10/);
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #473: the silent-room case must be VISIBLE to the operator, not just logged.
+//
+// THE DEFECT. The else branch of the play()-rejection catch (a decode failure, an AbortError from a
+// real src change — anything NOT NotAllowedError) is the ONE case where the room goes silent with no
+// recovery: a tap cannot lift it. Its only trace was `console.warn('… the room will be silent')`,
+// which lands in the TV's devtools console that nobody at a party is looking at. There was no latch,
+// no callback, and no on-screen state — a user-visible failure with zero operator signal.
+//
+// THE FIX. TvPlayer fires a new `onplaybackfailed(reason)` from that else branch (active+visible slot
+// only, mirroring onautoplayblocked so the hidden pre-warming slot cannot raise a phantom), and the
+// /tv route renders an on-screen "the room is silent" panel from a `playbackFailedReason` $state fed
+// only by those callbacks. These are source-scan guards for the same reason as the #64 ones above:
+// no jsdom, so the wiring is a property of the component text.
+
+test('TvPlayer FIRES onplaybackfailed from the non-recoverable else branch, active+visible only (#473)', () => {
+	const src = stripComments(readFileSync(TV_PLAYER, 'utf8'));
+	// The callback is a real destructured prop, not merely declared in the interface — so the parent's
+	// handler is the one invoked. A trailing comma OR end-of-list entry.
+	expect(src).toMatch(/onplaybackfailed\s*[,\n]/);
+	// It fires from the else branch — the region AFTER the NotAllowedError branch closes — and is gated
+	// on active+visible exactly like onautoplayblocked, so the hidden slot cannot report a phantom
+	// failure. Slice from the else's own log line (the anchor that marks the non-recoverable branch) to
+	// the end of the catch, and prove the guarded fire lives there.
+	const silentLog = src.indexOf('the room will be silent');
+	expect(silentLog, 'the else-branch marker not found').toBeGreaterThan(-1);
+	const elseRegion = src.slice(silentLog);
+	expect(elseRegion).toMatch(/if\s*\(\s*active\s*&&\s*visible\s*\)\s*onplaybackfailed\?\.\(/);
+});
+
+test('the /tv route renders an on-screen silent-room panel fed only by the slots, and clears it (#473)', () => {
+	const src = stripComments(readFileSync(TV_ROUTE, 'utf8'));
+	// A page-level latch holding the failure reason — a real $state so the {#if} tracks it.
+	expect(src).toMatch(/let\s+playbackFailedReason\s*:\s*string\s*\|\s*null\s*=\s*\$state\(null\)/);
+	// The panel renders ONLY when a failure is latched, so a healthy room never shows it.
+	expect(src).toMatch(/\{#if\s+playbackFailedReason\s*\}/);
+	// Both TvPlayer slots report the failure up — one per slot.
+	const failed = src.match(/onplaybackfailed=/g) ?? [];
+	expect(failed.length, 'both TvPlayer slots must wire onplaybackfailed').toBe(2);
+	// The latch is CLEARED so the next song retracts the panel: on onready (a fresh song loaded), one
+	// per slot. The else-branch failure is non-recoverable by definition (a tap cannot lift it — that is
+	// what separates it from the NotAllowedError branch), so the honest clear point is a NEW song, not a
+	// resume of the failed one. Two occurrences — one per TvPlayer slot's onready.
+	const clears = src.match(/playbackFailedReason\s*=\s*null/g) ?? [];
+	expect(clears.length, 'the panel must be cleared on onready in BOTH slots').toBe(2);
+	// The panel must be an actual STYLED full-screen overlay, not an unstyled span a wall viewer cannot
+	// read. Pins the .silent-room CSS: it must exist, cover the viewport (inset: 0), and be positioned
+	// (z-index applies only to a positioned box). It sits at z 8 (transient-overlay tier) so a genuinely
+	// gesture-liftable autoplay block (z 10) always wins if both somehow raise.
+	const rule = src.match(/\.silent-room\s*\{([^}]*)\}/);
+	expect(rule, 'the .silent-room style rule must exist').not.toBeNull();
+	const body = rule ? rule[1] : '';
+	expect(body).toMatch(/position:\s*absolute/);
+	expect(body).toMatch(/inset:\s*0/);
+	expect(body).toMatch(/z-index:\s*8/);
+});

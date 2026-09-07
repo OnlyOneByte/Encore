@@ -68,6 +68,13 @@
 		// so the reel freezes when the element is not advancing (autoplay refused, or media not playable)
 		// even though the server still says the room intends to play.
 		onplayingchange?: (playing: boolean) => void;
+		// The instrumental refused to start with an error that a gesture CANNOT lift (a decode failure, an
+		// AbortError from a real src change) — the room will be silent and, unlike a NotAllowedError, no tap
+		// recovers it. The only prior trace was a TV-console warn nobody at a party reads, so the page needs
+		// this to render an on-screen "the room is silent" state. Fires ONLY from the active+visible slot
+		// (like `onautoplayblocked`) so the hidden pre-warming slot cannot raise a phantom failure. `reason`
+		// is the error name, for the operator-facing surface.
+		onplaybackfailed?: (reason: string) => void;
 	}
 	let {
 		media,
@@ -85,7 +92,8 @@
 		onposition,
 		onautoplayblocked,
 		onautoplayrecovered,
-		onplayingchange
+		onplayingchange,
+		onplaybackfailed
 	}: Props = $props();
 
 	let master: HTMLAudioElement | undefined = $state();
@@ -362,7 +370,10 @@
 					if (active && visible) onautoplayblocked?.();
 				}
 			} else {
+				// Not gesture-liftable — the room is silent and stays silent. A console warn is invisible at a
+				// party, so tell the page (active+visible slot only) to render the on-screen silent-room state.
 				console.warn(`[tv] the instrumental refused to start (${name}) — the room will be silent`);
+				if (active && visible) onplaybackfailed?.(name);
 			}
 		}
 	}
