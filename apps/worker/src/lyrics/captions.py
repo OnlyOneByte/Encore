@@ -83,6 +83,74 @@ _ANNOTATION_RE = re.compile(r"^\s*(?:[\[(][^\])]*[\])]|[♪♫\s]+)\s*$")
 #: without reaching across the gap to a chorus line that recurs later in the song.
 _ROLLING_ADJACENCY_SEC = 0.5
 
+#: Minimum WORD overlap for the SCROLL collapse below. YouTube's rolling window does not only grow, it
+#: SCROLLS: once full, words drop off the FRONT as new ones append at the back, so a line is no longer a
+#: growing prefix of the one before it — its HEAD instead repeats the previous line's TAIL. The
+#: prefix-extend fold in `parse_vtt` cannot reach that shape.
+#:
+#: The length is load-bearing, not belt-and-braces. Every scroll pair on a real track is already
+#: time-adjacent (`_ROLLING_ADJACENCY_SEC` cannot discriminate them), so the overlap length is the ONLY
+#: signal separating a genuine scroll from a coincidence — one shared word at a line boundary is not
+#: proof of a scroll. On the reference fixture the overlap curve is >=1 -> 106 pairs, >=2 -> 98,
+#: >=3 -> 90, and the mode is 8 words, so 3 sits in a wide safe valley: it collapses every scroll pair
+#: while sparing the single-word coincidences that a fold-on-any-shared-word rule would silently eat.
+_SCROLL_MIN_OVERLAP_WORDS = 3
+
+
+def _head_tail_overlap_words(prev: str, incoming: str) -> int:
+    """Words of `incoming`'s HEAD that repeat `prev`'s TAIL: the longest suffix of `prev` that is a
+    prefix of `incoming`, counted in whole words. 0 when they do not meet on a word boundary.
+
+    Word granularity, not characters, on purpose — the window scrolls by whole words, and a character
+    measure would false-match a shared word fragment across a real boundary.
+    """
+    a, b = prev.split(), incoming.split()
+    for k in range(min(len(a), len(b)), 0, -1):
+        if a[-k:] == b[:k]:
+            return k
+    return 0
+
+
+def _collapse_scroll_overlap(segs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Trim the repeated head off each SCROLL line, leaving one window per real line.
+
+    Runs AFTER `parse_vtt`'s held/prefix-extend fold (which this deliberately leaves untouched, so the
+    #539/#686 collapse is unchanged). For each time-adjacent pair whose incoming head repeats the
+    running line's tail by at least `_SCROLL_MIN_OVERLAP_WORDS`, drop the overlapping head words and keep
+    only the non-overlapping remainder as its own line. TRIMMING rather than merging preserves per-line
+    windows, which the forced aligner and word-level highlighting both consume; merging the run into one
+    line would also blow the `100 <= len(segs) <= 150` guard on a real track.
+
+    Iterated to a FIXPOINT because a scrolled cue's own text can carry the repeated phrase TWICE (a real
+    YouTube artifact where the phrase is held across the window boundary), which one left-to-right pass
+    removes only one copy of. Each pass strictly removes words or changes nothing, so it converges in a
+    couple of passes. The time-adjacency bound means a chorus line that genuinely recurs LATER in the
+    song — separated in time — is never trimmed against an earlier one.
+
+    `start`s are never advanced: on a real rolling track every incoming cue already begins at or after
+    the previous line's end, so trimming the head does not create a line whose words predate its start.
+    `parse_vtt` emits only {start, end, text}, so if a track ever DID overlap in time, the per-word
+    timings needed to re-time a trimmed line would not be available at this seam — hence the assert
+    in the test rather than silent timestamp repair here.
+    """
+    while True:
+        result: list[dict[str, Any]] = []
+        for seg in segs:
+            if result and seg["start"] <= result[-1]["end"] + _ROLLING_ADJACENCY_SEC:
+                overlap = _head_tail_overlap_words(result[-1]["text"], seg["text"])
+                if overlap >= _SCROLL_MIN_OVERLAP_WORDS:
+                    tail = " ".join(seg["text"].split()[overlap:]).strip()
+                    if not tail:
+                        # Wholly contained in the running line's tail (a pure re-hold): extend the window.
+                        result[-1]["end"] = max(result[-1]["end"], seg["end"])
+                        continue
+                    result.append({"start": seg["start"], "end": seg["end"], "text": tail})
+                    continue
+            result.append(dict(seg))
+        if result == segs:
+            return result
+        segs = result
+
 
 def _cue_seconds(hh: str | None, mm: str, ss: str, frac: str) -> float:
     total = int(mm) * 60 + int(ss)
@@ -125,11 +193,19 @@ def parse_vtt(text: str) -> list[dict[str, Any]]:
     exist on a real 350s auto track — every one of which a forced aligner then has to place, and which
     the TV shows on the baseline-fallback path.
 
-    Both are collapsed here: when a cue's text is the previous line verbatim (held) OR extends it as a
-    prefix (rolling), the run is folded into one line, keeping the longest (final) text and stretching
-    its window over the whole run. The fold is bounded by TIME-ADJACENCY — the new cue must begin at or
-    before the running line's end — so a chorus line that genuinely recurs later in the song, separated
-    by other cues, is never merged into an earlier one.
+    Held and prefix-extend duplicates are collapsed HERE: when a cue's text is the previous line verbatim
+    (held) OR extends it as a prefix (the window still growing), the run is folded into one line, keeping
+    the longest (final) text and stretching its window over the whole run.
+
+    A rolling window also SCROLLS: once full, words drop off the FRONT as new ones append, so a line is
+    no longer a growing prefix of the one before — its HEAD instead repeats the previous line's TAIL, and
+    neither fold arm above fires. That residual is trimmed in a separate pass by `_collapse_scroll_overlap`
+    (applied to the returned segments) rather than in this loop, so the held/prefix collapse stays exactly
+    as #539/#686 shipped it.
+
+    Both mechanisms are bounded by TIME-ADJACENCY — the new cue must begin at or before the running line's
+    end plus a small slack — so a chorus line that genuinely recurs later in the song, separated in time,
+    is never folded into an earlier one.
 
     (The old rationale here claimed the point was to stop the transcript "scoring its own text as far
     more repetitive"; that is wrong on its own terms — `agreement_score` is Jaccard over token SETS, so
@@ -166,7 +242,9 @@ def parse_vtt(text: str) -> list[dict[str, Any]]:
             continue
         out.append({"start": start, "end": end, "text": body})
     out.sort(key=lambda s: s["start"])
-    return out
+    # The fold above collapses HELD and PREFIX-EXTEND rolling duplicates. A scrolled window is neither —
+    # its head repeats the previous line's tail — so a second, isolated pass trims that overlap.
+    return _collapse_scroll_overlap(out)
 
 
 def caption_argv(
