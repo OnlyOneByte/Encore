@@ -405,6 +405,16 @@ export class PitchShiftGraph {
 	private routed = false;
 	/** True if we tried to build the graph and could not resume — we are in audible-fallback mode. */
 	private degraded = false;
+	/**
+	 * The single in-flight build() promise, or null when no build is running. Memoised so two
+	 * setShift(non-zero) calls landing inside the async window before `routed` flips (e.g. two
+	 * `playback:state` broadcasts ~10ms apart from a guest double-tapping ±key) SHARE one build
+	 * rather than each opening its own AudioContext and each calling the irreversible
+	 * createMediaElementSource on the same element — the second of which throws, is swallowed, and
+	 * strands a second context. Cleared once the build settles so a FINISHED failed attempt is still
+	 * retryable (the #527 degraded-retry property).
+	 */
+	#building: Promise<void> | null = null;
 
 	constructor(el: HTMLMediaElement) {
 		this.el = el;
@@ -426,7 +436,24 @@ export class PitchShiftGraph {
 		}
 	}
 
-	private async build(): Promise<void> {
+	/**
+	 * Build the graph if it is not built yet, coalescing concurrent callers onto ONE attempt.
+	 * Returns the shared in-flight promise while a build runs; starts a fresh one otherwise. The
+	 * promise is cleared when it settles, so a build that failed (degraded, no gesture yet) can be
+	 * retried on the next non-zero shift — #buildOnce keeps the createMediaElementSource behind the
+	 * confirmed running-context check, so a retry never double-captures the element.
+	 */
+	private build(): Promise<void> {
+		if (this.routed) return Promise.resolve();
+		if (this.#building) return this.#building;
+		const p = this.#buildOnce().finally(() => {
+			if (this.#building === p) this.#building = null;
+		});
+		this.#building = p;
+		return p;
+	}
+
+	async #buildOnce(): Promise<void> {
 		// Once the element is routed there is nothing to rebuild — the MediaElementSource is permanent.
 		// `degraded`, however, records only that the LAST attempt could not run a context (no gesture
 		// yet); it must NOT be terminal, or the instrumental never shifts again after the first pre-

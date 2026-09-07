@@ -166,7 +166,14 @@ export function handlePlayerCommand(cmd: PlayerCommand, deps: HubDeps): void {
 					publishQueue(deps); // it just left `queued`
 					break;
 				}
+				// Idle room, nothing playable: `play` must NOT latch isPlaying:true onto a null
+				// currentEntryId — that is a reachable illegal state (the phone shows a pause icon in an
+				// idle room until one tap clears it) that store hydrate does not self-heal (it only clears
+				// the DANGLING non-null case). There is nothing to play, so stay stopped.
+				state.setPlayback({ isPlaying: false });
+				break;
 			}
+			// currentEntryId is set: resuming the loaded song.
 			state.setPlayback({ isPlaying: true });
 			break;
 		}

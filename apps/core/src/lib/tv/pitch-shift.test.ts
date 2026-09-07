@@ -11,7 +11,8 @@ import {
 	grainLookahead,
 	readLag,
 	ALIGN_SEARCH,
-	sampleAt
+	sampleAt,
+	PitchShiftGraph
 } from './pitch-shift';
 
 test('semitonesToRatio: 0 is EXACTLY 1 (bit-exact bypass check)', () => {
@@ -120,4 +121,108 @@ test('sampleAt: linear interpolation between neighbours, clamped at the edges', 
 	expect(sampleAt(buf, -5)).toBe(0);
 	expect(sampleAt(buf, 99)).toBe(30);
 	expect(sampleAt(new Float32Array(0), 3)).toBe(0);
+});
+
+// ── §1 (#460): setShift must have an in-flight guard so a double transpose builds ONE graph ──────
+// The AUDIBLE path can't run in bun (no audio hardware), but the re-entrancy defect is pure control
+// flow: build() reads `routed` at entry, but `routed` only flips AFTER `await ctx.resume()` and
+// `await addModule(...)`. Two setShift(non-zero) calls landing in that async window (two playback:state
+// broadcasts ~10ms apart from a guest double-tapping ±key) both passed the guard, so both called the
+// irreversible createMediaElementSource — the second throws and strands a second AudioContext. The fix
+// memoises the in-flight build() promise (#building) so concurrent callers share one attempt.
+//
+// We inject minimal fake WebAudio globals whose resume()/addModule() resolve on a later microtask, so
+// two setShift calls genuinely interleave inside build(). We then count createMediaElementSource.
+function withFakeAudio<T>(run: () => Promise<T>): Promise<T> {
+	const g = globalThis as unknown as Record<string, unknown>;
+	const saved: Record<string, unknown> = {};
+	let sourceCreations = 0;
+	let ctxCreations = 0;
+	const later = () => new Promise<void>((r) => setTimeout(r, 0)); // defer past the current microtask run
+	class FakeCtx {
+		state = 'suspended';
+		destination = {};
+		audioWorklet = {
+			addModule: async () => {
+				await later();
+			}
+		};
+		constructor() {
+			ctxCreations++;
+		}
+		async resume() {
+			await later();
+			this.state = 'running';
+		}
+		async close() {
+			this.state = 'closed';
+		}
+		createMediaElementSource() {
+			sourceCreations++;
+			// mirror the platform: a second capture of the same element throws
+			if (sourceCreations > 1) throw new DOMException('already connected', 'InvalidStateError');
+			return { connect: (n: unknown) => n } as unknown;
+		}
+		createGain() {
+			return { gain: { value: 1 }, connect: (n: unknown) => n } as unknown;
+		}
+	}
+	for (const [k, v] of Object.entries({
+		window: { AudioContext: FakeCtx },
+		AudioContext: FakeCtx,
+		AudioWorkletNode: class {
+			port = { postMessage() {} };
+			connect(n: unknown) {
+				return n;
+			}
+		},
+		Blob: class {
+			constructor(_: unknown[]) {}
+		},
+		URL: { createObjectURL: () => 'blob:fake', revokeObjectURL() {} },
+		DOMException:
+			(globalThis as unknown as { DOMException?: unknown }).DOMException ??
+			class extends Error {
+				constructor(
+					m: string,
+					public name2 = 'Error'
+				) {
+					super(m);
+				}
+			}
+	})) {
+		saved[k] = g[k];
+		g[k] = v;
+	}
+	// expose the counters for the assertion
+	(g as Record<string, unknown>).__counts = {
+		get source() {
+			return sourceCreations;
+		},
+		get ctx() {
+			return ctxCreations;
+		}
+	};
+	return run().finally(() => {
+		for (const k of Object.keys(saved)) {
+			if (saved[k] === undefined) delete g[k];
+			else g[k] = saved[k];
+		}
+		delete (g as Record<string, unknown>).__counts;
+	});
+}
+
+test('two concurrent setShift(non-zero) calls build the graph ONCE (no double createMediaElementSource)', async () => {
+	await withFakeAudio(async () => {
+		const el = {} as HTMLMediaElement;
+		const graph = new PitchShiftGraph(el);
+		// fire two transposes without awaiting the first — the second must join the in-flight build
+		const a = graph.setShift(2);
+		const b = graph.setShift(4);
+		await Promise.all([a, b]);
+		const counts = (globalThis as unknown as { __counts: { source: number; ctx: number } }).__counts;
+		expect(counts.source).toBe(1); // exactly one element capture, not two
+		expect(counts.ctx).toBe(1); // and exactly one AudioContext, none stranded
+		expect(graph.isRouted).toBe(true);
+	});
 });

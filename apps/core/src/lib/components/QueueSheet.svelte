@@ -58,6 +58,13 @@
 	let peekH = $state(0);
 	$effect(() => {
 		if (peekH > 0) document.documentElement.style.setProperty('--peek-h', `${peekH}px`);
+		// Tear the inline property down on unmount. Without this it OUTLIVES the component on
+		// documentElement, so a stale --peek-h keeps beating the `@media (height <= 480px)` rule long
+		// after the sheet is gone. Only clear it when this effect is the current writer (peekH > 0),
+		// mirroring the write condition so a never-measured mount removes nothing it did not set.
+		return () => {
+			if (peekH > 0) document.documentElement.style.removeProperty('--peek-h');
+		};
 	});
 
 	function onPointerDown(e: PointerEvent) {
