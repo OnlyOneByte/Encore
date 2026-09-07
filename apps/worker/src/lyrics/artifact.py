@@ -21,12 +21,36 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..vocabulary import Timing
 from .source import entries_to_segments, parse_lrc, plain_lyrics_to_segments
 
 
-def lyrics_key(media_id: str) -> str:
-    """Deterministic MediaStore key (Media-relative) for a media's aligned-lyrics artifact."""
-    return f"derived/lyrics/{media_id}.json"
+def candidate_key(
+    media_id: str, text_source: str, timing: str = Timing.WORD.value, tag: str | None = None
+) -> str:
+    """Artifact key per (text source, TAG, TIMING TIER), so texts coexist instead of overwriting.
+
+    The single `derived/lyrics/<id>.json` key could hold exactly one answer, which is what forced the
+    old "pick one winner" design. One file per source is what makes the upgrade path possible: a
+    baseline lands first, LRCLIB is re-tried later, neither clobbers the other.
+
+    The TIMING tier is in the key too, because source alone still allowed a regression WITHIN a source:
+    a re-run whose aligner failed would write line-level output over the same key and replace perfectly
+    good word timings — the never-regress guarantee held across sources but not within one. Separate
+    keys mean the word-level artifact survives on disk and in the candidate set, and `pickBestLyrics`
+    keeps choosing it.
+
+    The TAG exists because a source is no longer one text. Two baselines are both `asr` (one reads the
+    vocals stem, one the mix) and two caption tiers are both `captions` (one authored, one automatic), so
+    without it the second write of a pair would silently destroy the first — and destroy exactly the
+    independence that makes averaging baselines worth doing.
+
+    Moved here from lyrics/chain.py (#456): the artifact key belongs beside the artifact shape this
+    module owns, not in the acquisition/grading module. It was the second artifact-key builder — the
+    first, a dead single-file `lyrics_key`, was removed in the same change.
+    """
+    parts = [media_id, text_source] + ([tag] if tag else []) + [timing]
+    return f"derived/lyrics/{'-'.join(parts)}.json"
 
 
 def _round_ms(x: Any) -> float | None:
