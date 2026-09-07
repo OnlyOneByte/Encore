@@ -158,7 +158,7 @@ const masterProbe = `(() => {
 		currentTime: el.currentTime, duration: el.duration,
 		decoded: el.webkitAudioDecodedByteCount ?? null,
 		error: el.error ? { code: el.error.code, message: el.error.message } : null,
-		visible: el.closest('.slot')?.classList.contains('visible') ?? false
+		visible: el.closest(${JSON.stringify(SEL.slot)})?.classList.contains('visible') ?? false
 	}));
 	// Prefer the visible slot's master; fall back to any instrumental element (early boot before the
 	// slot has been marked visible), then to any element with a src.
@@ -191,7 +191,7 @@ async function readMasterOrRetry(tv, tries = 6, everyMs = 200) {
 // scaleX is normalised 0..1 against durationSec.
 async function readPhoneProgress(phone) {
 	return await phone.evaluate(`(() => {
-		const timeEl = document.querySelector('.seekrow .time');
+		const timeEl = document.querySelector(${JSON.stringify(SEL.seekTime)});
 		const fillEl = document.querySelector('.seekrow .track > i');
 		const elapsedText = timeEl?.textContent?.trim() ?? null;
 		let scaleX = null;
@@ -239,7 +239,7 @@ try {
 	// better and future controls will need it.
 	async function openSheet(page) {
 		// The sheet's peek is a role=button on `.peek`; a mouse click on it toggles.
-		await page.click('.peek');
+		await page.click(SEL.peek);
 	}
 
 	// Queue a cooked song from a phone. Uses the real UI: search, then click .add on a ready row.
@@ -445,10 +445,10 @@ try {
 	// DEBUG: capture TV DOM shape and authoritative server state right after the seek.
 	const tvDebug = await tv.evaluate(`(() => ({
 		audioCount: document.querySelectorAll('audio').length,
-		slotsCount: document.querySelectorAll('.slot').length,
-		slotVisibleCount: document.querySelectorAll('.slot.visible').length,
-		attractPresent: !!document.querySelector('.attract'),
-		lobbyPresent: !!document.querySelector('.lobby')
+		slotsCount: document.querySelectorAll(${JSON.stringify(SEL.slot)}).length,
+		slotVisibleCount: document.querySelectorAll(${JSON.stringify(SEL.slotVisible)}).length,
+		attractPresent: !!document.querySelector(${JSON.stringify(SEL.attract)}),
+		lobbyPresent: !!document.querySelector(${JSON.stringify(SEL.lobby)})
 	}))()`);
 	console.log(`  [debug post-seek TV DOM]  ${JSON.stringify(tvDebug)}`);
 	const srvAfterSeekDbg = await readServerPlayback().catch((e) => ({ err: String(e) }));

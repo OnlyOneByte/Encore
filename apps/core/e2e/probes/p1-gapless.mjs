@@ -216,7 +216,7 @@ try {
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 	// Guard: the TV route must render its own DOM.
-	await tv.waitFor('document.querySelector(".tv") !== null');
+	await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`);
 
 	// Now the two singers on their own contexts — a fresh browser context is fresh cookies, which is
 	// the whole reason they land as distinct sessions. We ALREADY joined them via /api/join above
@@ -266,9 +266,9 @@ try {
 	await sleep(400);
 	const probe = `(() => {
 		const t = performance.now();
-		const slotEls = [...document.querySelectorAll('.slot')];
+		const slotEls = [...document.querySelectorAll(${JSON.stringify(SEL.slot)})];
 		const els = [...document.querySelectorAll('audio,video')].map((el) => {
-			const slot = el.closest('.slot');
+			const slot = el.closest(${JSON.stringify(SEL.slot)});
 			const slotIdx = slot ? slotEls.indexOf(slot) : -1;
 			return {
 				tag: el.tagName, src: el.currentSrc || el.getAttribute('src') || '',
@@ -280,12 +280,12 @@ try {
 				slotVisible: (slot?.classList.contains('visible')) ?? null
 			};
 		});
-		const lt = document.querySelector('.lower-third');
-		const upEl = document.querySelector('.interstitial');
-		const upNameEl = upEl?.querySelector('.up-name');
-		const upSongEl = upEl?.querySelector('.up-song');
-		const upLabelEl = upEl?.querySelector('.up-label');
-		const attractEl = document.querySelector('.attract');
+		const lt = document.querySelector(${JSON.stringify(SEL.lowerThird)});
+		const upEl = document.querySelector(${JSON.stringify(SEL.interstitial)});
+		const upNameEl = upEl?.querySelector(${JSON.stringify(SEL.upName)});
+		const upSongEl = upEl?.querySelector(${JSON.stringify(SEL.upSong)});
+		const upLabelEl = upEl?.querySelector(${JSON.stringify(SEL.upLabel)});
+		const attractEl = document.querySelector(${JSON.stringify(SEL.attract)});
 		return {
 			t,
 			slotCount: slotEls.length,
@@ -293,8 +293,8 @@ try {
 			elems: els,
 			lowerThird: {
 				visible: !!lt,
-				name: (lt?.querySelector('.ls-name')?.textContent ?? '').trim(),
-				song: (lt?.querySelector('.ls-song')?.textContent ?? '').trim()
+				name: (lt?.querySelector(${JSON.stringify(SEL.nowName)})?.textContent ?? '').trim(),
+				song: (lt?.querySelector(${JSON.stringify(SEL.nowSong)})?.textContent ?? '').trim()
 			},
 			upNext: {
 				visible: !!upEl,

@@ -83,18 +83,18 @@ async function driveRoomToPlaying() {
 	await phone.evaluate(`[...document.querySelectorAll('button')].find(b=>/start singing/i.test(b.textContent||''))?.click()`);
 	await phone.waitFor(`location.pathname === '/'`, { timeout: 5000 });
 	// Add the ready song to the queue (whichever action is offered — .add on ready songs).
-	await phone.waitFor(`document.querySelector('.row') != null`, { timeout: 6000 });
+	await phone.waitFor(`document.querySelector(${JSON.stringify(SEL.songRow)}) != null`, { timeout: 6000 });
 	const clicked = await phone.evaluate(`(() => {
-		const row = document.querySelector('.row');
+		const row = document.querySelector(${JSON.stringify(SEL.songRow)});
 		if (!row) return 'no-row';
-		const add = row.querySelector('.add');
-		const sing = row.querySelector('.sing');
+		const add = row.querySelector(${JSON.stringify(SEL.addAction)});
+		const sing = row.querySelector(${JSON.stringify(SEL.singAction)});
 		(add||sing)?.click();
 		return add ? 'add' : (sing ? 'sing' : 'nothing');
 	})()`);
 	console.log('phone queue action:', clicked);
 	// Wait for the queue to actually contain a row.
-	await phone.waitFor(`document.querySelectorAll('.qrow').length > 0`, { timeout: 6000 });
+	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`, { timeout: 6000 });
 	// Hit play/pause.
 	await phone.evaluate(`document.querySelector('[aria-label="play/pause"]')?.click()`);
 	await sleep(1200);
@@ -127,7 +127,7 @@ async function measureTv(label, w, h) {
 	await page.goto(`http://127.0.0.1:${PORT}/tv`);
 	// Wait for either the badqr operator notice, a QR image, or the playing overlay.
 	await page.waitFor(
-		`(document.querySelector('.badqr') || document.querySelector('img[alt="QR code to join Encore"]') || document.querySelector('.lower-third')) != null`,
+		`(document.querySelector(${JSON.stringify(SEL.badQr)}) || document.querySelector('img[alt="QR code to join Encore"]') || document.querySelector(${JSON.stringify(SEL.lowerThird)})) != null`,
 		{ timeout: 8000 }
 	);
 	await sleep(400); // let hydration + one paint settle
@@ -178,13 +178,13 @@ async function measureTv(label, w, h) {
 			})(),
 			// Lyrics current-word (only present when playing)
 			lyricsWord: (() => {
-				const el = document.querySelector('.lyrics .word.active') || document.querySelector('.lyrics');
+				const el = document.querySelector(${JSON.stringify(SEL.activeWord)}) || document.querySelector(${JSON.stringify(SEL.lyrics)});
 				if (!el) return null;
 				const cs = getComputedStyle(el);
 				return { ...rect(el), fontSizePx: parseFloat(cs.fontSize) };
 			})(),
 			// Lower third
-			lowerThird: rect(document.querySelector('.lower-third')),
+			lowerThird: rect(document.querySelector(${JSON.stringify(SEL.lowerThird)})),
 			lowerThirdName: (() => {
 				const el = document.querySelector('.lower-third .ls-name');
 				if (!el) return null;
@@ -197,7 +197,7 @@ async function measureTv(label, w, h) {
 			})(),
 			// The badqr operator notice (attract & lobby screens on 127.0.0.1 origin)
 			badqr: (() => {
-				const el = document.querySelector('.badqr');
+				const el = document.querySelector(${JSON.stringify(SEL.badQr)});
 				if (!el) return null;
 				const cs = getComputedStyle(el);
 				const r = rect(el);
@@ -216,7 +216,7 @@ async function measureTv(label, w, h) {
 			// Every direct text descendant of .badqr, so we can see if a child word ran off the box.
 			badqrChildren: [...document.querySelectorAll('.badqr *')].map((el) => {
 				const r = el.getBoundingClientRect();
-				const parent = el.closest('.badqr');
+				const parent = el.closest(${JSON.stringify(SEL.badQr)});
 				const pr = parent?.getBoundingClientRect();
 				return {
 					tag: el.tagName.toLowerCase(),
@@ -229,14 +229,14 @@ async function measureTv(label, w, h) {
 				};
 			}),
 			// Transient states
-			stateNext: rect(document.querySelector('.state-next')),
-			stateError: rect(document.querySelector('.state-error')),
-			stateWaiting: rect(document.querySelector('.state-waiting')),
+			stateNext: rect(document.querySelector(${JSON.stringify(SEL.stateNext)})),
+			stateError: rect(document.querySelector(${JSON.stringify(SEL.stateError)})),
+			stateWaiting: rect(document.querySelector(${JSON.stringify(SEL.stateWaiting)})),
 			screenLabel: (() => {
 				if (document.querySelector('.attract')) return 'attract';
-				if (document.querySelector('.lobby')) return 'lobby';
-				if (document.querySelector('.state-waiting')) return 'waiting';
-				if (document.querySelector('.lower-third')) return 'playing';
+				if (document.querySelector(${JSON.stringify(SEL.lobby)})) return 'lobby';
+				if (document.querySelector(${JSON.stringify(SEL.stateWaiting)})) return 'waiting';
+				if (document.querySelector(${JSON.stringify(SEL.lowerThird)})) return 'playing';
 				return 'unknown';
 			})()
 		};
@@ -370,7 +370,7 @@ async function measureRemote(label, w, h) {
 
 	const m = await page.evaluate(`(() => {
 		const rect = (el) => { if (!el) return null; const r=el.getBoundingClientRect(); return {x:r.x,y:r.y,w:r.width,h:r.height,right:r.right,bottom:r.bottom}; };
-		const shell = document.querySelector('.app-shell');
+		const shell = document.querySelector(${JSON.stringify(SEL.appShell)});
 		const shellRect = rect(shell);
 		const overflow = { horizontal: document.documentElement.scrollWidth > document.documentElement.clientWidth,
 		                   scrollWidth: document.documentElement.scrollWidth,

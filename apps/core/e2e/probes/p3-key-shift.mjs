@@ -368,7 +368,7 @@ try {
 	await phone.fill(SEL.search, 'caroline');
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const hasAdd = await phone.count(SEL.addTurn);
-	if (hasAdd === 0) bail('cooked song offered no ".add" — the seeder+worker sequence probably did not finish');
+	if (hasAdd === 0) bail(`cooked song offered no ${SEL.addTurn} action — the seeder+worker sequence probably did not finish`);
 	await phone.click(SEL.addTurn);
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
 
@@ -420,7 +420,7 @@ try {
 		const idx = sign === 'plus' ? 1 : 0;
 		await phone.evaluate(`
 			(() => {
-				const btns = document.querySelectorAll('.key .key-btn');
+				const btns = document.querySelectorAll(${JSON.stringify(SEL.keyBtn)});
 				if (btns[${idx}]) btns[${idx}].click();
 			})()
 		`);
@@ -430,7 +430,7 @@ try {
 		// playback.keyShift, and that is exactly what "Key · +N" prints.
 		async function readCurrent() {
 			return await phone.evaluate(`(() => {
-				const lab = document.querySelector('.key .lab');
+				const lab = document.querySelector(${JSON.stringify(SEL.keyLabel)});
 				if (!lab) return null;
 				const txt = lab.textContent.trim();
 				if (txt === 'Key') return 0;
@@ -665,7 +665,7 @@ try {
 	{
 		await targetShift(2);
 		await sleep(200);
-		const label2 = await phone.text('.key .lab');
+		const label2 = await phone.text(SEL.keyLabel);
 		record(
 			'HIGH',
 			'phone key label matches +2 shift',
@@ -674,7 +674,7 @@ try {
 		);
 		await targetShift(-3);
 		await sleep(200);
-		const labelN3 = await phone.text('.key .lab');
+		const labelN3 = await phone.text(SEL.keyLabel);
 		record(
 			'HIGH',
 			'phone key label matches -3 shift',
@@ -742,10 +742,10 @@ try {
 			);
 			await phone.evaluate(`
 				(async () => {
-					const rows = [...document.querySelectorAll('.row')];
+					const rows = [...document.querySelectorAll(${JSON.stringify(SEL.songRow)})];
 					const row = rows.find((r) => r.textContent.includes(${JSON.stringify(secondReady.title)}));
-					const add = row?.querySelector('.add');
-					const sing = row?.querySelector('.sing');
+					const add = row?.querySelector(${JSON.stringify(SEL.addAction)});
+					const sing = row?.querySelector(${JSON.stringify(SEL.singAction)});
 					(add || sing)?.click();
 				})()
 			`);
@@ -754,7 +754,7 @@ try {
 			await phone.clickByLabel('skip');
 			await sleep(2500);
 			// The server resets keyShift on advance, so the phone label should return to 'Key'.
-			const labelAfter = await phone.text('.key .lab');
+			const labelAfter = await phone.text(SEL.keyLabel);
 			record(
 				'HIGH',
 				'song change: server resets keyShift to 0 on advance',
@@ -790,7 +790,7 @@ try {
 			// verify (a) label resets, (b) the shift graph tore down (context.state === 'closed').
 			await phone.clickByLabel('skip');
 			await sleep(2000);
-			const labelAfter = await phone.text('.key .lab');
+			const labelAfter = await phone.text(SEL.keyLabel);
 			record(
 				'HIGH',
 				'song-end reset: server resets keyShift to 0 when the queue empties',
