@@ -151,7 +151,7 @@ const proc = spawn(
 // 'instrumental' src can pick the pre-warm one (paused, currentTime 0, decoded 24576 = initial
 // buffer) instead of the one on stage. Scoping to `.slot.visible audio` picks the audible master.
 const masterProbe = `(() => {
-	const visible = document.querySelector('.slot.visible audio');
+	const visible = document.querySelector(${JSON.stringify(SEL.slotVisibleAudio)});
 	const rows = [...document.querySelectorAll('audio')].map((el) => ({
 		src: el.currentSrc || el.src || '',
 		readyState: el.readyState, paused: el.paused, muted: el.muted, volume: el.volume,
@@ -192,7 +192,7 @@ async function readMasterOrRetry(tv, tries = 6, everyMs = 200) {
 async function readPhoneProgress(phone) {
 	return await phone.evaluate(`(() => {
 		const timeEl = document.querySelector(${JSON.stringify(SEL.seekTime)});
-		const fillEl = document.querySelector('.seekrow .track > i');
+		const fillEl = document.querySelector(${JSON.stringify(SEL.seekFill)});
 		const elapsedText = timeEl?.textContent?.trim() ?? null;
 		let scaleX = null;
 		if (fillEl) {
