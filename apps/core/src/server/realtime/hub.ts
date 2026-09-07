@@ -166,8 +166,9 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// right. Same seam as the singerId crash above and the telemetry positionSec one. Reject here so
 			// nothing bad — whether it would crash the flush or slip past it — is ever applied or persisted.
 			//
-			// #324: enum-MEMBERSHIP is too broad for a CLIENT-MINTED status. 'playing'/'waiting'/'done'/
-			// 'skipped' are all in VALID_ENTRY_STATUSES but are SERVER-OWNED lifecycle values — beginSinging
+			// #324: enum-MEMBERSHIP is too broad for a CLIENT-MINTED status. 'playing' and 'done' are both
+			// in VALID_ENTRY_STATUSES (the enum is ['queued','playing','done']) but are SERVER-OWNED
+			// lifecycle values, so admitting the whole enum admits them — beginSinging
 			// mints 'playing', advance mints 'done', both via applyQueueOp DIRECTLY, never this wire seam. The
 			// ONLY add producer in the repo (lib/stores/queue.ts addSong) hardcodes status:'queued'. So a
 			// client's legal set is exactly {'queued'}, and admitting the whole enum re-opened #195's
