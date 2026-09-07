@@ -85,6 +85,16 @@ export const SEL = {
 	addOrSing: '.add,.sing',
 	rowTitle: '.t',
 	empty: '.empty',
+	/*
+	 * The Ready readiness filter chip: `<button class="chip ok">` inside the `.chips` readiness
+	 * group (routes/+page.svelte). The `button` tag is load-bearing, not decorative — a SongRow's
+	 * own `.chips` row renders a `<span class="chip state ok">` state chip, so `.chips .ok` alone
+	 * would also match that span; `button.ok` scopes the read to the clickable filter control.
+	 * p12-search clicks this to exercise the Ready-filter empty state. Migrated here from
+	 * KNOWN_OFFENDERS as Group C of the #513 per-driver SEL split (tail of #494); the guard now
+	 * models a `tag.class` compound part (bare-tag mid-selector anchor) to resolve it.
+	 */
+	readyChip: '.chips button.ok',
 	away: '.away',
 	isLabel: '.is-label',
 	strip: '.strip',
