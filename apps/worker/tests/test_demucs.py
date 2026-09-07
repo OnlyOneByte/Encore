@@ -529,3 +529,80 @@ def test_resolve_demucs_model_unknown_is_structurally_non_retryable():
     assert isinstance(excinfo.value, retry_policy.BoundaryError)
     assert excinfo.value.retryable is False
     assert retry_policy.is_retryable(excinfo.value) is False
+
+
+# ── #119: the resolved backend must DRIVE the run, not just reach a log line ───────
+# Before this fix, backends.resolve_backend picked a backend (mlx on an Apple-Silicon box) that
+# reached nothing but a startup print: stems_runner had no backend parameter, engine_for always built
+# the torch DemucsEngine, and facts.backend was the hardcoded class attribute "torch". So a Mac
+# announced "separator backend: mlx" at startup and then recorded "torch" for every cook — the log
+# lied. These pin the two halves of the wire: torch is recorded because it RAN, and an mlx resolution
+# builds the (unimplemented) MLX engine that refuses loudly rather than a torch cook wearing an mlx label.
+def test_demucs_engine_backend_is_the_resolved_value_not_a_hardcoded_constant():
+    """The engine reports the backend it was CONSTRUCTED with, so facts.backend follows the resolution.
+
+    Red on base: `DemucsEngine.backend` was a class attribute `= "torch"` and `__init__` took no
+    `backend`, so this constructor call raised TypeError and the attribute could never be anything but
+    "torch" regardless of what backends.resolve_backend chose.
+    """
+    from src.separation.engines import DemucsEngine
+
+    assert DemucsEngine().backend == "torch"  # the portable default, unchanged
+    # A distinct sentinel proves the value is THREADED from the arg, not read from a constant.
+    assert DemucsEngine(backend="a-resolved-backend").backend == "a-resolved-backend"
+
+
+def test_engine_for_mlx_backend_refuses_rather_than_silently_building_torch():
+    """`engine_for('demucs', backend='mlx')` builds the MLX engine, which refuses at construction — it
+    NEVER returns a torch DemucsEngine under an mlx label.
+
+    Red on base: `engine_for` ignored the backend entirely and returned a `DemucsEngine` whose
+    `.backend` was "torch". This is the machine-checkable form of the log-lies-to-you bug: an mlx
+    resolution silently produced a torch cook.
+    """
+    from src.retry_policy import PermanentError
+    from src.separation.engines import engine_for
+
+    with pytest.raises(PermanentError, match="demucs-mlx engine is not implemented"):
+        engine_for("demucs", backend="mlx")
+    # torch (and the None default) still build the real engine, so the portable path is untouched.
+    assert engine_for("demucs", backend="torch").backend == "torch"
+    assert engine_for("demucs").backend == "torch"
+
+
+@pytest.mark.asyncio
+async def test_a_torch_stems_cook_records_torch_because_torch_ran(tmp_path):
+    """End-to-end: a stems cook resolved to the torch backend records `facts.backend == 'torch'`, and
+    the value came from the backend threaded through stems_runner, not a constant."""
+    runner = fake_runner({"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]})
+    proc = plans.stems_runner(runner=runner, backend="torch")
+    events = await drain(proc, spec(tmp_path))
+    completes = [e for e in events if isinstance(e, CompleteResult)]
+    assert len(completes) == 1
+    assert completes[0].facts["backend"] == "torch"
+    assert completes[0].facts["engine"] == "demucs"
+
+
+@pytest.mark.asyncio
+async def test_an_mlx_resolved_stems_cook_fails_loudly_instead_of_running_torch(tmp_path):
+    """The wire, end-to-end: stems_runner(backend='mlx') fails the cook at engine construction and the
+    demucs CLI NEVER runs, so a Mac announcing mlx cannot silently produce a torch cook.
+
+    Red on base: stems_runner took no `backend`, so this cook completed, ran the demucs CLI, and
+    recorded facts.backend == 'torch' — the exact contradiction #119 is about.
+    """
+    from src.retry_policy import PermanentError
+
+    ran: list[str] = []
+
+    inner = fake_runner({"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]})
+
+    async def tracking_runner(argv):
+        ran.append(argv[0])
+        async for line in inner(argv):
+            yield line
+
+    proc = plans.stems_runner(runner=tracking_runner, backend="mlx")
+    with pytest.raises(PermanentError, match="demucs-mlx engine is not implemented"):
+        await drain(proc, spec(tmp_path))
+    assert "demucs" not in ran, "the torch demucs CLI must never run for an mlx-resolved cook"
