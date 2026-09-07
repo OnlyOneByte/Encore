@@ -220,9 +220,10 @@ const server = Bun.serve<SocketData>({
 			// Workers are NOT room subscribers — they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
 			ws.subscribe(ROOM_TOPIC);
-			// route the shared app's broadcasts through Bun's native pub/sub (e.g. singer:joined
-			// from the /api/join route reaches every socket).
-			setPublish((e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)));
+			// The app's broadcast sink is routed through Bun's native pub/sub ONCE at boot (see the
+			// setPublish(broadcast) call below Bun.serve) — not per open. Every socket subscribes to the
+			// same ROOM_TOPIC, so one publish reaches them all; reassigning the sink on every connect wrote
+			// the identical closure N times for no effect.
 			// Announce only on the 0→1 transition so a second tab doesn't spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
 		},
@@ -260,7 +261,7 @@ const server = Bun.serve<SocketData>({
 			}
 			const deps: HubDeps = {
 				state,
-				publish: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e)),
+				publish: broadcast,
 				mediaById,
 				listSingers: () => app.singers.listPublic(),
 				listOnline: () => membership.here,
@@ -281,7 +282,7 @@ const server = Bun.serve<SocketData>({
 						remainingEntries,
 						now: app.now,
 						mediaById: app.mediaById,
-						broadcast: (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e))
+						broadcast
 					}),
 				// The add-side mirror of onEntryRemoved. A song's cook can be filed at NO_QUEUE_PRIORITY when
 				// the make-karaoke POST beat the singer's queue add over a reconnecting socket; once the turn
@@ -366,9 +367,13 @@ const server = Bun.serve<SocketData>({
 	}
 });
 
-export function publishToRoom(payload: unknown): void {
-	server.publish(ROOM_TOPIC, JSON.stringify(payload));
-}
+// The room broadcast sink: publish one ServerEvent to every subscribed socket over Bun's native
+// pub/sub. Defined ONCE here (server is in scope) and wired into the shared app a single time at
+// boot, rather than reassigned inside websocket.open on every connect. handleQueueCommand and the
+// cook-cancel path reuse this same reference through `deps`.
+const broadcast = (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e));
+// Route the shared app's broadcasts (e.g. singer:joined from the /api/join route) through pub/sub.
+setPublish(broadcast);
 
 // Expiry to `gone` is elapsed time, so nothing else in the process can announce it.
 setInterval(refreshMembership, MEMBERSHIP_SWEEP_MS).unref?.();
