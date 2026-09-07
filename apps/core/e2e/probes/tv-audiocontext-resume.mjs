@@ -37,6 +37,8 @@ if (!chrome) {
 	console.error('no chromium');
 	process.exit(2);
 }
+/** @type {string} the guard above narrows `chrome`; capture it so the nested runUnder() closure keeps the narrowing */
+const chromeBin = chrome;
 
 const ready = await fetch(`${base}/api/search?q=sweet`)
 	.then((r) => r.json())
@@ -72,9 +74,10 @@ const READ = `(() => {
   };
 })()`;
 
+/** @param {string} label @param {string[]} extraFlags @param {number} cdpPort */
 async function runUnder(label, extraFlags, cdpPort) {
 	const proc = spawn(
-		chrome,
+		chromeBin,
 		[
 			`--remote-debugging-port=${cdpPort}`,
 			'--headless=new',
@@ -88,6 +91,7 @@ async function runUnder(label, extraFlags, cdpPort) {
 		{ stdio: 'ignore' }
 	);
 
+	/** @type {Awaited<ReturnType<typeof connect>> | undefined} */
 	let browser;
 	try {
 		browser = await connect(cdpPort);
@@ -161,7 +165,7 @@ const g = gestureless;
 if (g.contexts === 0) {
 	console.log('No AudioContext was ever constructed under a shift of +2.');
 	console.log('→ hypothesis 2/3: the graph never built. Look at `active` for the audible slot.');
-} else if (g.states.every((s) => s === 'suspended')) {
+} else if (g.states.every((/** @type {string} */ s) => s === 'suspended')) {
 	console.log('AudioContext exists and is SUSPENDED with no gesture available.');
 	console.log('→ CONFIRMS hypothesis 1: audio plays UNSHIFTED and the ± buttons appear dead.');
 	console.log('→ The fix is a gesture affordance on /tv, NOT a change to the shifter.');

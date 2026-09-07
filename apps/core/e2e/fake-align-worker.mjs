@@ -25,7 +25,7 @@ ws.onopen = () => {
 	);
 };
 
-ws.onmessage = (ev) => {
+ws.onmessage = (/** @type {MessageEvent} */ ev) => {
 	const msg = JSON.parse(String(ev.data));
 	if (msg.type === 'job:assign') {
 		clearTimeout(timer);
@@ -36,7 +36,7 @@ ws.onmessage = (ev) => {
 		process.exit(0);
 	}
 };
-ws.onerror = (e) => {
-	console.log('ws error', e.message ?? e);
+ws.onerror = (/** @type {Event} */ e) => {
+	console.log('ws error', e instanceof ErrorEvent ? e.message : e.type);
 	process.exit(1);
 };

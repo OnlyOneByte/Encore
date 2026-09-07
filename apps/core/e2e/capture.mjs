@@ -31,6 +31,16 @@ import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #564, following the
+ * #553/#557–#563 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they
+ * cannot drift from the driver. page.evaluate() comes back Promise<any>, so DOM-shaped results are
+ * cast at the call site.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ */
+
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
 const OUT = process.argv[2] ?? join(import.meta.dir, '..', '..', '..', 'docs', 'mocks');
@@ -41,7 +51,9 @@ const CDP_PORT = Number(process.env.CDP_PORT ?? 9500);
  */
 const ID = process.env.CAPTURE_ID ?? 'tour';
 
+/** @type {readonly [number, number]} */
 const PHONE = [430, 860];
+/** @type {readonly [number, number]} */
 const TV = [1920, 1080];
 
 function findChromium() {
@@ -67,7 +79,9 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 }
 
 mkdirSync(OUT, { recursive: true });
+/** @type {{ name: string, note: string }[]} */
 const shots = [];
+/** @type {{ name: string, why: string }[]} */
 const skipped = [];
 
 const proc = spawn(
@@ -87,6 +101,7 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
+/** @param {Page} page @param {string} name @param {string} note */
 async function shoot(page, name, note) {
 	const path = join(OUT, `${ID}-${name}-eyeson.png`);
 	await page.screenshot(path);
@@ -102,6 +117,7 @@ async function shoot(page, name, note) {
  * mixed between old and new. Each frame is therefore attempted independently and a failure is
  * recorded and reported at the end, so one broken step yields one missing frame plus a named reason.
  */
+/** @param {string} name @param {() => Promise<void> | void} fn */
 async function frame(name, fn) {
 	try {
 		await fn();
@@ -112,6 +128,7 @@ async function frame(name, fn) {
 }
 
 /** Change a room/global setting through its real <select>, then let the socket carry it to the TV. */
+/** @param {Page} page @param {string} id @param {string} value @param {number} [settleMs] */
 async function setSetting(page, id, value, settleMs = 700) {
 	await page.fill(SEL.setting(id), value);
 	await sleep(settleMs);
@@ -125,6 +142,7 @@ async function setSetting(page, id, value, settleMs = 700) {
  * both the thing a screen reader reads and the thing that flips only once the panel has actually
  * swapped — a fixed sleep here is how a frame ends up shot against the outgoing tab.
  */
+/** @param {Page} page @param {string} id */
 async function scope(page, id) {
 	await page.click(SEL.settingsTab(id));
 	await page.waitFor(
@@ -141,6 +159,7 @@ async function scope(page, id) {
  * which reads as a rendering bug rather than a small library. Capped at 2000px because a frame past
  * that cannot be read back by the agent tooling that reviews these (see docs/mocks/README.md).
  */
+/** @param {Page} page @param {number} width @param {{ min?: number, max?: number, pad?: number }} [opts] */
 async function fitViewport(page, width, { min = 600, max = 2000, pad = 40 } = {}) {
 	await page.viewport(width, min, 1);
 	await sleep(300);
@@ -165,6 +184,7 @@ async function fitViewport(page, width, { min = 600, max = 2000, pad = 40 } = {}
  * The lyrics reel is driven by the element's own timeupdate (via TvPlayer's onposition telemetry),
  * so nothing about the words moves until this succeeds.
  */
+/** @param {Page} tv @returns {Promise<string>} */
 async function kickPlayback(tv) {
 	const report = await tv.evaluate(`(async () => {
     const out = [];
@@ -177,10 +197,9 @@ async function kickPlayback(tv) {
 	return report;
 }
 
-/** Is the TV's media actually moving? The only trustworthy answer is: look twice. */ async function positionAdvancing(
-	tv,
-	overMs = 1600
-) {
+/** Is the TV's media actually moving? The only trustworthy answer is: look twice.
+ * @param {Page} tv @param {number} [overMs] @returns {Promise<boolean>} */
+async function positionAdvancing(tv, overMs = 1600) {
 	const read = () =>
 		// `video, audio` — the master is an <audio> (TvPlayer plays an instrumental, which has no picture).
 		// Pinned to a bare 'video' this read returned -1 forever, which reads as "not advancing" and would
@@ -204,6 +223,7 @@ async function kickPlayback(tv) {
  * on line one, silently, including all twenty style variants. So: toggle, kick the element past the
  * headless autoplay block, and only accept it once the position has actually moved.
  */
+/** @param {Page} tv @param {Page} phone @param {{ attempts?: number }} [opts] @returns {Promise<boolean>} */
 async function ensurePlaying(tv, phone, { attempts = 3 } = {}) {
 	for (let i = 0; i < attempts; i++) {
 		await kickPlayback(tv);
@@ -216,12 +236,14 @@ async function ensurePlaying(tv, phone, { attempts = 3 } = {}) {
 	return false;
 }
 
+/** @type {Browser | undefined} */
 let browser;
 try {
-	browser = await connect(CDP_PORT);
+	const browser0 = await connect(CDP_PORT);
+	browser = browser0;
 
 	// ── TV first: attract only exists while the room is empty ─────────────────
-	const tv = await browser.newPage();
+	const tv = await browser0.newPage();
 	await tv.viewport(...TV, 1);
 	await tv.goto(`${base}/tv`);
 	/*
@@ -235,7 +257,7 @@ try {
 	await frame('tv-attract', () => shoot(tv, 'tv-attract', 'nobody here yet — the QR owns the screen'));
 
 	// ── join, both ways of picking a colour ──────────────────────────────────
-	const maya = await browser.newPage();
+	const maya = await browser0.newPage();
 	await maya.viewport(...PHONE);
 	await maya.goto(`${base}/join`);
 	await frame('join-presets', () => shoot(maya, 'join-presets', 'presets, with the violet default selected'));
@@ -301,7 +323,7 @@ try {
 	});
 
 	// ── a second guest, so the roster and cross-client sync are visible ──────
-	const ada = await browser.newPage();
+	const ada = await browser0.newPage();
 	await ada.viewport(...PHONE);
 	await ada.goto(`${base}/join`);
 	await ada.fill(SEL.nameInput, 'Ada');
@@ -656,7 +678,7 @@ try {
 
 	// ── the component gallery ────────────────────────────────────────────────
 	await frame('gallery', async () => {
-		const gallery = await browser.newPage();
+		const gallery = await browser0.newPage();
 		await gallery.goto(`${base}/components`);
 		await sleep(1400);
 		await fitViewport(gallery, 1280);

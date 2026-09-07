@@ -30,6 +30,20 @@ import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL } from './contract.ts';
 
+/**
+ * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {{ name: string, ok: boolean }} Check
+ *
+ * The measurement the overlap-probe evaluate returns.
+ * @typedef {{
+ *   overlap: number, painted: string | null, inStrip: boolean, strip: number | null,
+ *   clipped: boolean, chipsCut: number, moreShown: boolean
+ * }} OverlapReading
+ */
+
 const PORT = process.env.EPORT ?? '5188';
 const base = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9339);
@@ -52,6 +66,7 @@ const HUES = ['#8b5cf6', '#ec4899', '#22c55e', '#f59e0b', '#3b82f6', '#f43f5e', 
 // Long, ~10-char names so the roster wraps to multiple rows at 720p (the reachable worst case: names
 // are user-typed). Unique per case — the singers table is append-only, so a reused name is refused
 // with 409 and would abort the run.
+/** @param {string} prefix @param {number} n @returns {string[]} */
 function longNames(prefix, n) {
 	// 32 chars — the ceiling repository.ts admits (displayName.trim().slice(0, 32)). Unique per case.
 	return Array.from({ length: n }, (_, i) => `Guest${i}${prefix}`.padEnd(32, 'x').slice(0, 32));
@@ -59,18 +74,22 @@ function longNames(prefix, n) {
 
 // Each case is [label, names[], overflowExtra] — overflowExtra > 0 adds people past the cap so the
 // component receives a non-zero `overflow` and renders the "+N more" chip.
+/** @type {[string, string[], number][]} */
 const CASES = [
 	['n=3', longNames('A', 3), 0],
 	['n=8 (the cap)', longNames('B', 8), 0],
 	['n=8 long names + overflow chip', longNames('C', 8), 1]
 ];
+/** @type {[number, number, boolean][]} */
 const VIEWPORTS = [
 	[1280, 720, true],
 	[1366, 768, true],
 	[1920, 1080, false] // non-regression floor: never overlapped even before the fix
 ];
 
+/** @type {Check[]} */
 const checks = [];
+/** @param {string} name @param {unknown} ok @param {string} [detail] */
 function check(name, ok, detail = '') {
 	checks.push({ name, ok: !!ok });
 	console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `\n        ${detail}`}`);
@@ -102,10 +121,13 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
+/** @type {Browser | undefined} */
 let browser;
+/** @type {WebSocket[]} */
 const sockets = [];
 try {
-	browser = await connect(CDP_PORT);
+	const browser0 = await connect(CDP_PORT);
+	browser = browser0;
 	for (const [label, names, overflowExtra] of CASES) {
 		// seed presence: join each name, then hold a phone socket per singer
 		const total = names.length + overflowExtra;
@@ -128,7 +150,9 @@ try {
 		}
 		const caseSockets = [];
 		for (const c of cookies) {
-			const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`, { headers: { Cookie: c } });
+			const ws = new /** @type {new (url: string, opts?: { headers?: Record<string, string> }) => WebSocket} */ (
+				WebSocket
+			)(`ws://127.0.0.1:${PORT}/ws?role=phone`, { headers: { Cookie: c } });
 			await new Promise((ok, err) => {
 				ws.addEventListener('open', ok, { once: true });
 				ws.addEventListener('error', err, { once: true });
@@ -139,7 +163,7 @@ try {
 		await sleep(500);
 
 		for (const [w, h] of VIEWPORTS) {
-			const tv = await browser.newPage();
+			const tv = await browser0.newPage();
 			await tv.viewport(w, h, 1);
 			await tv.goto(`${base}/tv`);
 			const rendered = await tv
@@ -150,7 +174,8 @@ try {
 				continue;
 			}
 			await sleep(800);
-			const m = await tv.evaluate(`(() => {
+			const m = /** @type {OverlapReading} */ (
+				await tv.evaluate(`(() => {
 				const url = document.querySelector(${JSON.stringify(SEL.lobbyUrl)}); const strip = document.querySelector(${JSON.stringify(SEL.lobbyStrip)});
 				const ub = url.getBoundingClientRect(); const sb = strip ? strip.getBoundingClientRect() : null;
 				const cx = ub.left + ub.width / 2, cy = ub.top + ub.height / 2;
@@ -167,7 +192,8 @@ try {
 					chipsCut: cut,
 					moreShown: !!more
 				};
-			})()`);
+			})()`)
+			);
 			// The address must not intersect the strip AND must be the element painted at its own centre.
 			// The address must be clear AND painted AND the strip must not clip any roster member: the
 			// #98 fix must not trade the burial for silently dropping the people it names.

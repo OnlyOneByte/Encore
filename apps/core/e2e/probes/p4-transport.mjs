@@ -42,18 +42,53 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #564, following the
+ * #553/#557–#563 pattern). Browser/Page are derived from cdp.mjs's own return types (#553) so they
+ * cannot drift from the driver. page.evaluate()/fetch().json() come back Promise<any>, so DOM/API-shaped
+ * results are cast at the call site via the domain typedefs below.
+ *
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {'CRITICAL' | 'HIGH' | 'MEDIUM' | 'LOW' | 'INFO'} Severity
+ *
+ * One finding row: a pass/fail check with its severity, name and evidence.
+ * @typedef {{ severity: Severity, name: string, ok: boolean, detail: string }} Finding
+ *
+ * One ready/search row from /api/search (only the fields this probe reads).
+ * @typedef {{ id: string, title: string, instrumentalRef: string }} ReadyRow
+ *
+ * The master <audio> reading the masterProbe returns for one element.
+ * @typedef {{
+ *   src: string, readyState?: number, paused: boolean | null, muted?: boolean, volume?: number,
+ *   currentTime: number, duration: number, decoded: number | null,
+ *   error?: { code: number, message: string } | null, visible?: boolean
+ * }} Master
+ *
+ * The authoritative server PlaybackState this probe reads over a raw WS.
+ * @typedef {{ positionSec: number, isPlaying: boolean, currentEntryId: string | null }} PlaybackState
+ * @typedef {{ state: PlaybackState, rev: number }} ServerPlayback
+ */
+
 const PORT = process.env.EPORT ?? '5224';
 const base = `http://127.0.0.1:${PORT}`;
 const wsBase = `ws://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9424);
 
+/** @type {Finding[]} */
 const findings = [];
-/** severity: CRITICAL | HIGH | MEDIUM | LOW | INFO. */
+/**
+ * @param {Severity} severity
+ * @param {string} name
+ * @param {unknown} ok
+ * @param {string} [detail]
+ */
 function record(severity, name, ok, detail = '') {
 	findings.push({ severity, name, ok: !!ok, detail });
 	const badge = ok ? 'PASS' : severity;
 	console.log(`${badge.padEnd(8)}${name}${ok || !detail ? '' : `\n        ${detail}`}`);
 }
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	process.exit(2);
@@ -79,7 +114,7 @@ if (!(await fetch(`${base}/health`).catch(() => null))?.ok) {
 	bail(`no Encore server on ${base}. See apps/core/e2e/HARNESS.md for boot instructions.`);
 }
 const searchInit = await fetch(`${base}/api/search?q=caroline`).then((r) => r.json());
-const cookedIds = new Set((searchInit.ready ?? []).map((r) => r.id));
+const cookedIds = new Set((searchInit.ready ?? []).map((/** @type {ReadyRow} */ r) => r.id));
 if (cookedIds.size === 0) {
 	bail('no READY song in the library — nothing to play.\n' + '  Seed + cook one first (HARNESS.md §Cook a song).');
 }
@@ -90,6 +125,7 @@ console.log(`fixture: "${firstReady.title}" → ${firstReady.instrumentalRef}\n`
 // ── raw WS probe: read authoritative state without a joined singer ──────────────────────────────
 // A `hello` frame gets back queue:sync + playback:state + nowplaying:changed. We only need the last
 // playback:state, which is the authoritative positionSec the server thinks the TV is at.
+/** @param {number} [timeoutMs] @returns {Promise<ServerPlayback>} */
 async function readServerPlayback(timeoutMs = 2500) {
 	return new Promise((resolve, reject) => {
 		const ws = new WebSocket(`${wsBase}/ws?role=probe`);
@@ -167,10 +203,12 @@ const masterProbe = `(() => {
 	return { rows, master };
 })()`;
 
+/** @param {Page} tv @returns {Promise<Master | null>} */
 async function readMaster(tv) {
 	const r = await tv.evaluate(masterProbe);
 	return r.master;
 }
+/** @param {Page} tv @param {number} [tries] @param {number} [everyMs] @returns {Promise<Master>} */
 async function readMasterOrRetry(tv, tries = 6, everyMs = 200) {
 	for (let i = 0; i < tries; i++) {
 		const m = await readMaster(tv);
@@ -186,6 +224,7 @@ async function readMasterOrRetry(tv, tries = 6, everyMs = 200) {
 // The phone renders the progress bar's elapsed side as `.seekrow .time` (m:ss). Fall back to the
 // scaleX transform on the fill for a fractional check when a coarse m:ss is not enough. The
 // scaleX is normalised 0..1 against durationSec.
+/** @param {Page} phone @returns {Promise<{ elapsedText: string | null, scaleX: number | null }>} */
 async function readPhoneProgress(phone) {
 	return await phone.evaluate(`(() => {
 		const timeEl = document.querySelector(${JSON.stringify(SEL.seekTime)});
@@ -202,6 +241,7 @@ async function readPhoneProgress(phone) {
 
 // Convert an m:ss (or h:mm:ss) rendered by formatClock() back to seconds. The phone's elapsed side
 // rounds DOWN (see clock.ts), so a value of "0:04" means "at least 4s, less than 5s".
+/** @param {string | null} text @returns {number | null} */
 function parseClock(text) {
 	if (!text) return null;
 	const parts = text.split(':').map(Number);
@@ -211,13 +251,16 @@ function parseClock(text) {
 	return null;
 }
 
+/** @type {Browser | undefined} */
 let browser;
 try {
-	browser = await connect(CDP_PORT);
+	const b = await connect(CDP_PORT);
+	browser = b;
 
 	// ── two phones, each its own singer ───────────────────────────────────────────
+	/** @param {string} name @returns {Promise<Page>} */
 	async function newPhone(name) {
-		const page = await browser.newPage();
+		const page = await b.newPage();
 		await page.viewport(390, 844);
 		await page.goto(`${base}/join`);
 		await page.fill(SEL.nameInput, name);
@@ -234,12 +277,14 @@ try {
 	// from `playback.positionSec` + the current media's `durationSec`. The peek stays visible whether
 	// the sheet is expanded or not; expanding is not strictly required, but the aria-label reads
 	// better and future controls will need it.
+	/** @param {Page} page */
 	async function openSheet(page) {
 		// The sheet's peek is a role=button on `.peek`; a mouse click on it toggles.
 		await page.click(SEL.peek);
 	}
 
 	// Queue a cooked song from a phone. Uses the real UI: search, then click .add on a ready row.
+	/** @param {Page} page @param {string} q */
 	async function queueSong(page, q) {
 		await page.fill(SEL.search, q);
 		await page.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
@@ -253,11 +298,14 @@ try {
 	// Additional cooked songs give us: Song 1 (caroline) — the primary transport target; Song 2
 	// (bohemian) — the skip-to-next target; Song 3 (believin) — a headroom song so the OOB seek test
 	// can consume ONE song without leaving the queue empty for the last-song skip test.
+	/** @type {ReadyRow[]} */
 	const extras = [];
 	for (const q of ['bohemian', 'believin', 'happy', 'imagine', 'don', 'stand']) {
 		try {
 			const r = await fetch(`${base}/api/search?q=${encodeURIComponent(q)}`).then((x) => x.json());
-			const alt = (r.ready ?? []).find((row) => row.id !== firstReady.id && !extras.some((e) => e.id === row.id));
+			const alt = (r.ready ?? []).find(
+				(/** @type {ReadyRow} */ row) => row.id !== firstReady.id && !extras.some((e) => e.id === row.id)
+			);
 			if (alt) extras.push(alt);
 		} catch {}
 		if (extras.length >= 2) break;
@@ -273,7 +321,7 @@ try {
 	if (thirdReadyId) await queueSong(phone1, thirdReadyTitle.split(' ')[0]);
 
 	// ── the TV ─────────────────────────────────────────────────────────────────
-	const tv = await browser.newPage();
+	const tv = await b.newPage();
 	await tv.viewport(1920, 1080, 1);
 	await tv.goto(`${base}/tv`);
 
@@ -298,7 +346,7 @@ try {
 
 	// Wait long enough for audio to actually start decoding, then confirm.
 	await sleep(2500);
-	const m1 = await readMaster(tv);
+	const m1 = /** @type {Master} */ (await readMaster(tv));
 	const dDecoded = (m1.decoded ?? 0) - (m0.decoded ?? 0);
 	record(
 		'CRITICAL',
@@ -322,10 +370,10 @@ try {
 
 	// ── T1 · PAUSE ────────────────────────────────────────────────────────────
 	// Establish the "before pause" TV state, then click phone1's play/pause button.
-	const beforePause = await readMaster(tv);
+	const beforePause = /** @type {Master} */ (await readMaster(tv));
 	await phone1.clickByLabel('play/pause');
 	await sleep(800);
-	const afterPause = await readMaster(tv);
+	const afterPause = /** @type {Master} */ (await readMaster(tv));
 	record(
 		'CRITICAL',
 		'T1a · phone play/pause pauses the master element',
@@ -389,7 +437,7 @@ try {
 	// ── T1 · RESUME ───────────────────────────────────────────────────────────
 	await phone1.clickByLabel('play/pause');
 	await sleep(1600);
-	const afterResume = await readMaster(tv);
+	const afterResume = /** @type {Master} */ (await readMaster(tv));
 	record(
 		'CRITICAL',
 		'T1c · phone play/pause resumes the master element',
@@ -655,7 +703,7 @@ try {
 	await tv.screenshot(shot);
 	console.log(`\nTV final frame: ${shot}`);
 } catch (err) {
-	record('CRITICAL', 'the probe ran to completion', false, String(err?.stack ?? err));
+	record('CRITICAL', 'the probe ran to completion', false, String(err instanceof Error ? err.stack : err));
 } finally {
 	try {
 		browser?.close();
