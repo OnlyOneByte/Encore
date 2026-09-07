@@ -13,7 +13,9 @@ import {
 	recompressLegacyStems,
 	planEviction,
 	evictDerived,
-	derivedBytesOf
+	derivedBytesOf,
+	ffmpegTranscoder,
+	transcodeDiagnostics
 } from './retention';
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
@@ -375,5 +377,95 @@ describe('#496 §2 — the vocals ref is derived in exactly one place', () => {
 		expect(fn).not.toBeNull();
 		expect(fn![0]).toContain('candidateVocalsRefs'); // BASE FAILS: re-derived inline
 		expect(fn![0]).toContain('m.vocalsRef'); // #480 regression guard — passes today
+	});
+});
+
+// ── #601: the recompress encoder must emit FLAC into the .flac destination it plans ──
+// The suite's fakeTranscode writes bytes at `to` and returns true, IGNORING the destination extension
+// and the codec entirely — so before this block, mutating the production argv to `-c:a aac` (or any
+// codec) left the whole suite green (issue #601 §3, mutation-proven). These tests exercise the REAL
+// `ffmpegTranscoder` end-to-end by pointing it at a fake `ffmpeg` executable that records the argv it
+// is handed, so the codec the production builder emits is asserted rather than assumed. ffmpeg need
+// not be installed on the box: the fake IS the ffmpeg the transcoder spawns.
+import { chmodSync as _chmodSync } from 'node:fs';
+
+describe('#601 — the legacy-stem recompress encoder matches its .flac destination', () => {
+	// Write a fake `ffmpeg` that appends every argv it receives (one JSON array per invocation) to
+	// $argvLog, then produces the requested output file so the transcoder's success path runs. Returns
+	// the absolute path to the fake bin.
+	const writeFakeFfmpeg = (argvLog: string): string => {
+		const bin = join(root, 'fake-ffmpeg.sh');
+		// Record the argv robustly: one arg per line, then a lone "---" marker terminating the
+		// invocation, then produce the output file (last arg) so the transcoder's success path runs.
+		// A line-per-arg log sidesteps shell quoting entirely (no JSON hand-encoding in bash).
+		writeFileSync(
+			bin,
+			[
+				'#!/usr/bin/env bash',
+				'set -euo pipefail',
+				`for a in "$@"; do printf '%s\\n' "$a" >> "${argvLog}"; done`,
+				`printf -- '---\\n' >> "${argvLog}"`,
+				'out="${@: -1}"',
+				'printf "FLACfake" > "$out"',
+				''
+			].join('\n')
+		);
+		_chmodSync(bin, 0o755);
+		return bin;
+	};
+
+	it('builds a FLAC encode for a .flac destination — NOT AAC (mutation-proven on the real argv)', async () => {
+		const argvLog = join(root, 'argv.log');
+		const fakeBin = writeFakeFfmpeg(argvLog);
+		put('derived/stems/a-instrumental.wav', 1000);
+
+		const transcode = ffmpegTranscoder(fakeBin);
+		const ok = await transcode(
+			join(root, 'derived/stems/a-instrumental.wav'),
+			join(root, 'derived/stems/a-instrumental.flac')
+		);
+		expect(ok).toBe(true);
+
+		const invocations = readFileSync(argvLog, 'utf8')
+			.split('---\n')
+			.map((chunk) => chunk.split('\n').filter((l) => l.length > 0))
+			.filter((argvv) => argvv.length > 0);
+		expect(invocations.length).toBeGreaterThan(0); // the transcoder actually spawned the encoder
+		const argv = invocations[0];
+
+		// The destination is a .flac ref, so the codec MUST be flac. BASE FAILS: base emits `-c:a aac`.
+		const ca = argv.indexOf('-c:a');
+		expect(ca).toBeGreaterThan(-1);
+		expect(argv[ca + 1]).toBe('flac');
+
+		// And it must NOT carry the retired AAC encoder or its bitrate knob (#502) into a .flac container.
+		expect(argv).not.toContain('aac');
+		expect(argv).not.toContain('192k');
+		// `-movflags +faststart` is an MP4/MOV concern that is dead once the output is FLAC.
+		expect(argv).not.toContain('-movflags');
+
+		// The planned destination really is .flac, so the codec/container agree.
+		const out = argv[argv.length - 1];
+		expect(out.endsWith('.flac')).toBe(true);
+	});
+
+	it('reports failure and leaves the source WAV when the encoder genuinely fails', async () => {
+		// A fake ffmpeg that exits non-zero (a real encode error, not a missing binary) must degrade to
+		// keeping the larger-but-playable original — the caller's failure contract is unchanged by the
+		// codec fix. Also confirms the single-invocation path (no MP4 faststart retry) still reports.
+		transcodeDiagnostics.lastError = '';
+		const failBin = join(root, 'fail-ffmpeg.sh');
+		writeFileSync(failBin, '#!/usr/bin/env bash\necho "boom" >&2\nexit 1\n');
+		_chmodSync(failBin, 0o755);
+		put('derived/stems/a-instrumental.wav', 1000);
+
+		const transcode = ffmpegTranscoder(failBin);
+		const ok = await transcode(
+			join(root, 'derived/stems/a-instrumental.wav'),
+			join(root, 'derived/stems/a-instrumental.flac')
+		);
+		expect(ok).toBe(false);
+		expect(existsSync(join(root, 'derived/stems/a-instrumental.wav'))).toBe(true); // still playable
+		expect(transcodeDiagnostics.lastError).toContain('boom');
 	});
 });
