@@ -16,6 +16,7 @@ import json
 import os
 import shutil
 import time
+from collections.abc import Callable
 from typing import Any
 
 from . import protocol
@@ -42,6 +43,14 @@ RECONNECT_BACKOFF_SEC = 3.0
 # handshake; this is only the floor so the leg is never fully silent. Kept below the 30s lease so a
 # reconciling frame always lands before a lease can expire.
 DEFAULT_HEARTBEAT_INTERVAL_SEC = 10.0
+# Orphaned-scratch reclaim (#469). A retryable failure on the LAST attempt is terminal but the worker
+# cannot see it (no attempt count on the wire), so _run_job preserves that scratch and this sweep is
+# the only thing that reclaims it. Two knobs make the sweep SAFE on a media volume shared by several
+# workers: it runs PERIODICALLY (so a long-lived worker reclaims without a restart) and it only
+# removes a dir whose newest file is older than SCRATCH_MIN_AGE_SEC — a live job writes continuously,
+# so its scratch is always fresher than the threshold and can never be swept, even by another worker.
+SCRATCH_SWEEP_INTERVAL_SEC = 1800.0  # every 30 min
+SCRATCH_MIN_AGE_SEC = 6 * 3600.0  # only reclaim scratch untouched for 6h — far longer than any cook
 
 
 class WorkerClient:
@@ -217,6 +226,15 @@ class WorkerClient:
         task.add_done_callback(_pop_task)
 
     async def _run_job(self, job: JobSpec) -> None:
+        # Retry reuse (#469): a core retry requeues the SAME jobId (JobRepository.requeue transitions
+        # the job row in place — it does not mint a new id), so scratch_for(job) resolves to the SAME
+        # work/<jobId> dir on the next attempt. Preserving it across a RETRYABLE failure lets the
+        # steps' own "my output is already on disk" guards (AcquireAudio.find_downloaded,
+        # Separate/ProbeSilence reading the raw stems, etc.) skip the work attempt 1 already finished,
+        # instead of re-downloading, re-decoding and re-separating from step 1 — three 45-minute
+        # roformer passes for one job in the worst case. Resumption stays a STEP property (issue's
+        # scope note): the runner is untouched; only the cleanup decision moves off "always".
+        preserve_scratch = False
         try:
             result: CompleteResult | None = None
             # Time each stage from the progress stream the processor already emits. Nothing inside the
@@ -244,6 +262,17 @@ class WorkerClient:
             )
         except Exception as exc:  # noqa: BLE001 — report ANY failure to the core, which decides retry
             retryable = _is_retryable(exc)
+            # A retryable failure MAY be re-dispatched by the core under the SAME jobId, so keep the
+            # partial scratch for that attempt to reuse. A permanent (non-retryable) failure is
+            # terminal — nothing will re-run — so it falls through to the cleanup like a success does.
+            #
+            # The one gap this cannot close from here: the LAST retryable attempt (retries exhausted)
+            # is ALSO terminal, but the worker cannot tell it apart — JobSpec and the wire carry no
+            # attempt/maxAttempts, that is core-side state (#469 review). So an exhausted-retry job's
+            # scratch is preserved here and would leak; sweep_orphaned_scratch() at worker startup is
+            # what reclaims it (see _run_forever). preserve_scratch is thus "keep for a POSSIBLE retry",
+            # and the startup sweep is the backstop for the attempts that turned out to be the last.
+            preserve_scratch = retryable
             # LOG it too: reporting only over the wire made a retry loop invisible from both ends — a
             # job failing at 99% every attempt looked identical to one still cooking.
             print(
@@ -260,7 +289,19 @@ class WorkerClient:
             # its own umask. ignore_errors: tidying must never turn a completed job into a failed one.
             # Delete EXACTLY what the runner created — call scratch_for, don't rebuild its layout by
             # hand: a hand-rebuilt copy silently drifts from the producer and leaks every job's scratch.
-            shutil.rmtree(scratch_for(job), ignore_errors=True)
+            #
+            # ...but NOT between attempts of the same job (#469): on a retryable failure the scratch is
+            # this attempt's completed work, and the next attempt reuses it in place. Cleaned on every
+            # outcome the worker can SEE as terminal: success, permanent (non-retryable) failure, and a
+            # cancel (CancelledError derives from BaseException, so `except Exception` above does not
+            # catch it — preserve_scratch stays False and this rmtree runs, which is the intended
+            # terminal-cleanup, made explicit here rather than left to that inheritance detail).
+            #
+            # The one terminal outcome it CANNOT see is a retryable failure that was the LAST attempt:
+            # no retry follows, but the worker has no attempt count to know that, so that scratch is
+            # kept here and reclaimed instead by sweep_orphaned_scratch() at the next worker startup.
+            if not preserve_scratch:
+                shutil.rmtree(scratch_for(job), ignore_errors=True)
 
     def _on_cancel(self, msg: dict[str, Any]) -> None:
         # Cancel the in-flight task for this job. With subprocess_runner's kill-on-GeneratorExit, the
@@ -299,12 +340,105 @@ class WorkerClient:
         await asyncio.gather(*tasks, return_exceptions=True)
 
 
+def _newest_mtime(path: str) -> float:
+    """The most-recent mtime anywhere under `path` (the dir itself and every descendant).
+
+    A separation writes ONE large file deep inside work/<jobId> over many minutes; that does not bump
+    the top dir's own mtime, so testing only os.path.getmtime(path) would call an actively-written
+    scratch "old" and sweep it. Walking for the newest mtime is what makes the age bound actually
+    track liveness. Best-effort: a file that vanishes mid-walk (a cook cleaning up) is skipped."""
+    newest = 0.0
+    try:
+        newest = os.stat(path).st_mtime
+    except OSError:
+        return newest
+    for root, dirs, files in os.walk(path):
+        for name in (*dirs, *files):
+            try:
+                m = os.stat(os.path.join(root, name)).st_mtime
+            except OSError:
+                continue  # raced with a delete — ignore
+            if m > newest:
+                newest = m
+    return newest
+
+
+def sweep_orphaned_scratch(
+    media_dir: str,
+    live_job_ids: frozenset[str],
+    *,
+    min_age_sec: float = SCRATCH_MIN_AGE_SEC,
+    now: float | None = None,
+) -> list[str]:
+    """Reclaim work/<jobId> scratch dirs that no longer belong to a job, returning what was removed.
+
+    The worker's per-job finally (_run_job) cleans scratch on every TERMINAL outcome it can see, but
+    it cannot see one: a retryable failure that was the LAST attempt (retries exhausted) is terminal,
+    yet the worker has no attempt count on the wire to know that, so it preserves that scratch for a
+    retry that never comes. Nothing else reclaims it — the runner's makedirs(exist_ok=True) is what
+    makes resume work so it must NOT rmtree, a re-request mints a fresh jobId (a new work/<jobId>),
+    and core retention bounds only derived/, never work/. So without this, one exhausted-retry job
+    leaks its decoded WAV + separated stems — the pipeline's biggest intermediates — forever (#469).
+
+    TWO guards keep it safe on a media volume SHARED by several workers (docker-compose mounts the
+    same volume into core and every worker), where "orphan for THIS worker" is not "orphan for the
+    fleet" — an early version passed frozenset() and would delete another worker's in-flight scratch:
+
+      * AGE. Only a dir whose NEWEST file is older than `min_age_sec` (default 6h, far longer than any
+        cook) is removed. A live job writes its scratch continuously, so it is always fresher than the
+        threshold and can never be swept — by this worker OR another one. This is the load-bearing
+        guard on a shared volume, because it needs no cross-worker knowledge.
+      * LIVE SET. A jobId in `live_job_ids` is skipped outright. THIS worker's own in-flight jobs, so
+        a job that legitimately runs longer than the age bound is still never swept from under itself.
+
+    Runs in the worker, which owns the uid that created these dirs — a core-side sweep would get
+    EACCES in a two-container deploy (see _run_job's finally)."""
+    work_root = os.path.join(media_dir, "work")
+    removed: list[str] = []
+    try:
+        entries = os.listdir(work_root)
+    except FileNotFoundError:
+        return removed  # no work/ yet — nothing to reclaim
+    cutoff = (time.time() if now is None else now) - min_age_sec
+    for name in entries:
+        if name in live_job_ids:
+            continue  # THIS worker's in-flight job — never touch a live scratch
+        path = os.path.join(work_root, name)
+        if not os.path.isdir(path):
+            continue
+        if _newest_mtime(path) > cutoff:
+            continue  # touched recently — could be ANOTHER worker's live job on a shared volume
+        shutil.rmtree(path, ignore_errors=True)  # tidying must never crash the worker
+        removed.append(name)
+    return removed
+
+
+async def _scratch_sweep_loop(media_dir: str, live_job_ids: Callable[[], frozenset[str]]) -> None:
+    """Periodically reclaim aged-out orphaned scratch for the process's whole lifetime (#469).
+
+    A one-shot startup sweep left a long-lived worker (restart: unless-stopped can mean weeks of
+    uptime) accumulating one orphaned scratch dir per exhausted-retry job until it restarted. Running
+    on an interval closes that. `live_job_ids` is a callable so each pass reads the CURRENT in-flight
+    set rather than a snapshot taken when the loop started."""
+    while True:
+        await asyncio.sleep(SCRATCH_SWEEP_INTERVAL_SEC)
+        reclaimed = sweep_orphaned_scratch(media_dir, live_job_ids())
+        if reclaimed:
+            print(f"[worker] reclaimed {len(reclaimed)} aged scratch dir(s): {reclaimed}", flush=True)
+
+
 def _is_retryable(exc: Exception) -> bool:
     # The retry decision lives in ONE place now: retry_policy.is_retryable (#443). It prefers a
     # structured `.retryable` flag (ProcessError/ProcessTimeout, and the boundary errors that carry
     # retryable=False) and otherwise falls back to the canonical permanent-marker table — so this
     # module no longer keeps its own divergent four-substring copy that defaulted the four boundary
     # failures (unknown fetcher/ASR model/engine, no plan) to retryable and cost the room 3 attempts.
+    #
+    # SECOND CONSUMER (#469): this now also decides SCRATCH LIFETIME in _run_job — a retryable failure
+    # keeps its scratch for a possible retry, a permanent one cleans it. So widening the classifier
+    # (more errors -> retryable) also keeps more scratch around until the startup sweep reclaims it,
+    # and narrowing it cleans scratch for errors nobody was thinking of as a disk decision. Weigh both
+    # effects when editing the marker table.
     return is_retryable(exc)
 
 
@@ -519,6 +653,25 @@ async def _run_forever() -> None:
         print(f"[worker] config warning: {warning}", flush=True)
 
     processor: Processor = _build_processor(cfg)
+
+    # Reclaim AGED-OUT orphaned scratch for the whole process lifetime (#469). A retryable failure on
+    # the final attempt is terminal but the worker cannot see it, so _run_job preserves that scratch;
+    # this periodic, age-bounded sweep is the only thing that reclaims it. It NEVER touches a live job:
+    # the 6h age bound means a scratch being actively written cannot qualify, so it is safe even though
+    # docker-compose mounts one media volume across several workers. `_active` gives each pass the
+    # CURRENT worker's in-flight ids as a second guard (a legitimately-long cook of THIS worker). The
+    # task lives for the process, above the reconnect loop; the live-set closure reads whichever client
+    # is connected right now, or an empty set between connections.
+    _current: dict[str, WorkerClient | None] = {"client": None}
+
+    def _active() -> frozenset[str]:
+        c = _current["client"]
+        return frozenset(c.state.running) if c is not None else frozenset()
+
+    # Lives for the whole process — the reconnect loop below never exits, so there is no teardown path
+    # to cancel it from, and a leaked reference would only pin it. Fire-and-forget on purpose.
+    asyncio.ensure_future(_scratch_sweep_loop(cfg.media_dir, _active))
+
     while True:
         client: WorkerClient | None = None
         heartbeat_task: asyncio.Task | None = None
@@ -536,6 +689,7 @@ async def _run_forever() -> None:
                     version=cfg.version,
                 )
                 await client.hello()
+                _current["client"] = client  # the sweep loop's live-set reads THIS connected client
                 print(
                     f"[worker] {cfg.worker_id} connected to {cfg.core_ws} (caps={client.state.capabilities})"
                 )
@@ -557,6 +711,9 @@ async def _run_forever() -> None:
             print(f"[worker] disconnected ({exc!r}); reconnecting in {RECONNECT_BACKOFF_SEC}s")
             await asyncio.sleep(RECONNECT_BACKOFF_SEC)
         finally:
+            # The client for this socket is going away; the sweep loop must fall back to an empty live
+            # set between connections rather than read a stale client's `running`.
+            _current["client"] = None
             # Stop the per-socket heartbeat first: it is bound to this connection and the next loop
             # starts a fresh one. Cancelling a never-started task (connect itself failed) is a no-op.
             if heartbeat_task is not None:
