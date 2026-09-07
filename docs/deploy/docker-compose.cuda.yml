@@ -21,6 +21,9 @@
 
 services:
   worker:
+    # PID-1 zombie reaping (#538/#459) — see the note in the base docker-compose.yml. Restated
+    # here because a reader of this override should not have to know Compose merge rules to see it.
+    init: true
     build:
       args:
         # The whole CUDA change. cu128 carries the exact versions requirements.txt already pins

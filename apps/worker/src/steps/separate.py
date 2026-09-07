@@ -53,7 +53,12 @@ class DecodeToWav(Step):
         engine = self._engine or _engine(ctx)
         out = engine.input_wav(ctx.work)
         os.makedirs(os.path.dirname(out), exist_ok=True)
-        async for _line in ctx.runner(decode_argv(ctx.audio.path or "", out, self._ffmpeg)):
+        if not ctx.audio.path:
+            # Guaranteed non-empty by AcquireAudio, which raises if it cannot retain the original.
+            # The old `or ""` would hand ffmpeg an empty input and die as the opaque
+            # "ffmpeg: : No such file or directory"; name the missing key instead.
+            raise RuntimeError("decode-to-wav: audio.path is empty (AcquireAudio did not run or failed)")
+        async for _line in ctx.runner(decode_argv(ctx.audio.path, out, self._ffmpeg)):
             pass
         ctx.audio.decoded_wav = out
         return
@@ -193,11 +198,14 @@ class PublishStems(Step):
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         job = ctx.job
         raw_inst = ctx.stems.raw.get("instrumental")
+        if not raw_inst:
+            # Guaranteed present by Separate (raises when no instrumental is produced) and by
+            # ProbeSilence (raises on a silent instrumental). The old `or ""` would encode an
+            # empty path into "ffmpeg: : No such file or directory"; name the missing key instead.
+            raise RuntimeError("publish-stems: stems.raw['instrumental'] is missing (Separate did not run)")
         final = instrumental_path(job.media_dir, job.media_id)
         os.makedirs(os.path.dirname(final), exist_ok=True)
-        async for _line in ctx.runner(
-            encode_flac_argv(raw_inst or "", final, self._ffmpeg, self._flac_level)
-        ):
+        async for _line in ctx.runner(encode_flac_argv(raw_inst, final, self._ffmpeg, self._flac_level)):
             pass
         ctx.stems.published["instrumental"] = final
 
