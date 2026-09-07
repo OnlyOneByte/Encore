@@ -45,7 +45,6 @@ class DemucsEngine:
     """htdemucs via the Demucs CLI. The default, and the fastest measured on CPU."""
 
     id = "demucs"
-    backend = "torch"
 
     def __init__(
         self,
@@ -57,6 +56,7 @@ class DemucsEngine:
         overlap: float | None = None,
         segment: int | None = None,
         shifts: int | None = None,
+        backend: str = "torch",
     ) -> None:
         self._default_model = default_model
         self._bin = demucs_bin
@@ -65,6 +65,11 @@ class DemucsEngine:
         self._overlap = overlap
         self._segment = segment
         self._shifts = shifts
+        # `backend` is the RESOLVED hardware backend this cook runs through (backends.resolve_backend),
+        # recorded into facts so the ledger matches the startup log — not a hardcoded class constant. The
+        # torch CLI is the only demucs backend actually implemented here; MLX resolves to MlxDemucsEngine,
+        # which refuses at construction rather than reaching this class under an "mlx" label (#119).
+        self.backend = backend
 
     def resolve_model(self, params: dict) -> str:
         """The checkpoint is per-JOB (the room's chosen model rides in params), not a worker constant.
@@ -97,6 +102,57 @@ class DemucsEngine:
             "instrumental": inst if os.path.exists(inst) else None,
             "vocals": vox if os.path.exists(vox) else None,
         }
+
+
+class MlxDemucsEngine:
+    """The demucs family through `demucs-mlx` — Apple-Silicon Metal execution of the SAME htdemucs
+    checkpoints, selected by `backends.resolve_backend` when MLX is available (Apple Silicon + the
+    `demucs_mlx` package importable).
+
+    NOT YET IMPLEMENTED, and it refuses at construction on purpose (#119). The backend selection is now
+    genuinely wired — a Mac that resolves `mlx` builds THIS engine rather than silently building
+    `DemucsEngine` under an "mlx" label, which was the whole defect: the startup log announced `mlx`
+    while `facts.backend` recorded `torch`, and the accelerated path never ran.
+
+    The runtime is deferred because its CLI output contract cannot be verified without a real
+    Apple-Silicon Mac with `demucs-mlx` installed: `demucs-mlx` may accept `--two-stems vocals` and
+    yield the 2-stem `<model>/{vocals,no_vocals}.wav` layout the rest of the pipeline expects, OR it may
+    emit four stems (vocals/drums/bass/other) with the instrumental derived as a mix-minus-vocals ffmpeg
+    pass. Guessing that contract wrong would ship a broken instrumental on every Mac worker, so the
+    implementation is tracked as a needs-owner / needs-repro follow-up.
+
+    PermanentError (retryable=False, #443/#571/#583): an unimplemented backend is a deterministic
+    configuration state — every retry fails identically — so it must fail fast and loud at worker
+    startup rather than burn three attempts or, worse, downgrade silently to CPU torch.
+    """
+
+    id = "demucs"
+    backend = "mlx"
+
+    def __init__(self, **_kwargs: object) -> None:
+        raise PermanentError(
+            "mlx backend selected but the demucs-mlx engine is not implemented; "
+            "set ENCORE_SEPARATOR_BACKEND=torch, or leave it unset to auto-select an available backend"
+        )
+
+    # The SeparatorEngine protocol members below are declared so this class conforms to the seam's type
+    # (engine_for returns a SeparatorEngine), but they are UNREACHABLE: __init__ raises, so no instance
+    # ever exists to call them. They exist to make "this is a real engine slot, not yet implemented"
+    # a type-checked statement rather than a comment.
+    def resolve_model(self, params: dict) -> str:  # pragma: no cover - construction always raises
+        raise PermanentError("demucs-mlx engine is not implemented")
+
+    def input_wav(self, work: str) -> str:  # pragma: no cover - construction always raises
+        raise PermanentError("demucs-mlx engine is not implemented")
+
+    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:  # pragma: no cover
+        raise PermanentError("demucs-mlx engine is not implemented")
+
+    def parse_progress(self, line: str) -> int | None:  # pragma: no cover - construction always raises
+        raise PermanentError("demucs-mlx engine is not implemented")
+
+    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]:  # pragma: no cover
+        raise PermanentError("demucs-mlx engine is not implemented")
 
 
 class RoformerEngine:
@@ -143,11 +199,19 @@ class RoformerEngine:
         }
 
 
-def engine_for(name: str, **kwargs) -> SeparatorEngine:
-    """The engine this job resolved to.
+def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorEngine:
+    """The engine this job resolved to, executed through the resolved `backend`.
 
     Unknown names raise — the CORE only routes a roformer cook to a worker advertising `stems:roformer`, so
     an unknown name here is a routing bug rather than a user choice.
+
+    `backend` is the hardware backend `backends.resolve_backend` picked for THIS worker (torch/mlx). It
+    selects WHICH demucs implementation runs and is recorded into `facts.backend`, so the ledger matches
+    the backend the startup log announced (#119). Before this it reached nothing but a print, so a Mac
+    resolving `mlx` still built the torch `DemucsEngine` and recorded `torch` — the log lied. `mlx` now
+    builds `MlxDemucsEngine`, which refuses loudly at construction until the demucs-mlx runtime is
+    implemented; `torch` (or None, the portable default) builds the real `DemucsEngine`. Roformer runs
+    only through its own CLI, so a backend other than that impl is not applicable to it.
 
     None-valued kwargs are DROPPED, not forwarded. A caller that has no opinion about `jobs` or a model
     passes None, and forwarding it would override the engine's own default with nothing — and for the model
@@ -168,11 +232,17 @@ def engine_for(name: str, **kwargs) -> SeparatorEngine:
             kw["default_model"] = given["roformer_model"]
         return RoformerEngine(**kw)
     if name == DemucsEngine.id:
+        if backend == "mlx":
+            # Wired, not silent: an mlx-resolved cook builds the MLX engine, which raises at construction
+            # until its runtime lands. This is what makes facts.backend honest — a torch DemucsEngine can
+            # never be built under an "mlx" label (#119).
+            return MlxDemucsEngine()
         allowed = {"demucs_bin", "device", "jobs", "overlap", "segment", "shifts"}
         kw = {k: v for k, v in given.items() if k in allowed}
         if "demucs_model" in given:
             kw["default_model"] = given["demucs_model"]
-        return DemucsEngine(**kw)
+        # `backend` reaches facts unchanged (defaults to "torch"); an mlx cook never gets here.
+        return DemucsEngine(backend=backend or "torch", **kw)
     # PermanentError (retryable=False): a name with no registered engine — "ensemble" on a box that
     # only has demucs, a typo — cannot be honoured by retrying. Subclasses RuntimeError so the
     # message and the exception type callers/tests match on are unchanged; #443.
