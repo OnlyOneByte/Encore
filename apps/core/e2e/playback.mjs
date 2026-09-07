@@ -27,15 +27,33 @@ import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL } from './contract.ts';
 
+/**
+ * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {{ name: string, ok: boolean }} Check
+ *
+ * One media element reading the `probe` evaluate returns.
+ * @typedef {{
+ *   i: number, tag: string, src: string, readyState: number, paused: boolean, muted: boolean,
+ *   volume: number, currentTime: number, duration: number, decoded: number | null,
+ *   videoDecoded: number | null, error: { code: number, message: string } | null, display: string
+ * }} El
+ */
+
 const PORT = process.env.EPORT ?? '3000';
 const base = `http://127.0.0.1:${PORT}`;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9344);
 
+/** @type {Check[]} */
 const checks = [];
+/** @param {string} name @param {unknown} ok @param {string} [detail] */
 function check(name, ok, detail = '') {
 	checks.push({ name, ok: !!ok });
 	console.log(`${ok ? 'PASS' : 'FAIL'}  ${name}${ok || !detail ? '' : `\n        ${detail}`}`);
 }
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error(`\nENVIRONMENT: ${msg}`);
 	process.exit(2);
@@ -90,6 +108,7 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
+/** @type {Browser | undefined} */
 let browser;
 try {
 	browser = await connect(CDP_PORT);
@@ -133,14 +152,17 @@ try {
 	})()`;
 
 	// Playback must begin with NO gesture on the TV. Poll for a master that has a src at all.
+	/** @type {El[]} */
 	let els = [];
 	try {
-		els = await tv.waitFor(
-			`(() => { const e=[...document.querySelectorAll('video,audio')].filter(x=>x.currentSrc||x.src); return e.length ? ${probe} : null; })()`,
-			{ timeout: 25000 }
+		els = /** @type {El[]} */ (
+			await tv.waitFor(
+				`(() => { const e=[...document.querySelectorAll('video,audio')].filter(x=>x.currentSrc||x.src); return e.length ? ${probe} : null; })()`,
+				{ timeout: 25000 }
+			)
 		);
 	} catch {
-		els = await tv.evaluate(probe);
+		els = /** @type {El[]} */ (await tv.evaluate(probe));
 	}
 	check(
 		'the TV mounts a media element with a source, unprompted',
@@ -164,9 +186,10 @@ try {
 	}
 
 	// ── the assertion that matters: decoded bytes climbing ─────────────────────
-	const t0 = await tv.evaluate(probe);
+	const t0 = /** @type {El[]} */ (await tv.evaluate(probe));
 	await sleep(3000);
-	const t1 = await tv.evaluate(probe);
+	const t1 = /** @type {El[]} */ (await tv.evaluate(probe));
+	/** @param {El[]} set */
 	const pick = (set) => set.find((e) => e.src.includes('instrumental')) ?? set.find((e) => e.src);
 	const a = pick(t0);
 	const b = pick(t1);
@@ -196,20 +219,20 @@ try {
 	}
 
 	// ── transport: pause must hold position, not reload to zero ────────────────
-	const before = pick(await tv.evaluate(probe));
+	const before = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
 	await phone.clickByLabel('play/pause');
 	await sleep(1200);
-	const paused = pick(await tv.evaluate(probe));
+	const paused = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
 	check('pause actually pauses the master element', paused?.paused === true, `paused=${paused?.paused}`);
 	check(
 		'pause holds the playhead instead of resetting it',
-		paused && paused.currentTime > 0.5 && Math.abs(paused.currentTime - before.currentTime) < 2.5,
+		before && paused && paused.currentTime > 0.5 && Math.abs(paused.currentTime - before.currentTime) < 2.5,
 		`was ${before?.currentTime?.toFixed(2)}s, after pause ${paused?.currentTime?.toFixed(2)}s — a jump to 0 is the reload bug`
 	);
 
 	await phone.clickByLabel('play/pause');
 	await sleep(2000);
-	const resumed = pick(await tv.evaluate(probe));
+	const resumed = pick(/** @type {El[]} */ (await tv.evaluate(probe)));
 	check(
 		'resume starts decoding again',
 		resumed && !resumed.paused && (resumed.decoded ?? 0) > (paused?.decoded ?? 0),
@@ -226,7 +249,7 @@ try {
 	console.log(`\nTV frame: ${shot}`);
 	console.log('final element state:', JSON.stringify(await tv.evaluate(probe), null, 1));
 } catch (err) {
-	check('the flow ran to completion', false, String(err?.stack ?? err));
+	check('the flow ran to completion', false, String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
 	proc.kill();

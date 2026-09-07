@@ -19,17 +19,28 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 
+/**
+ * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
+ * cdp.mjs's return types so they cannot drift; page.evaluate() is Promise<any>, cast at the call site.
+ * @typedef {Awaited<ReturnType<typeof connect>>} Browser
+ * @typedef {Awaited<ReturnType<Browser['newPage']>>} Page
+ * @typedef {{ name: string, ok: boolean }} Check
+ */
+
 const PORT = process.env.EPORT ?? '3000';
 const base = 'http://127.0.0.1:' + PORT;
 const CDP_PORT = Number(process.env.CDP_PORT ?? 9347);
 const SCRATCH = process.env.E2E_SCRATCH ?? '/tmp';
 
+/** @type {Check[]} */
 const checks = [];
+/** @param {string} name @param {unknown} ok @param {string} [detail] */
 function check(name, ok, detail) {
 	detail = detail || '';
 	checks.push({ name, ok: !!ok });
 	console.log((ok ? 'PASS' : 'FAIL') + '  ' + name + (ok || !detail ? '' : '\n        ' + detail));
 }
+/** @param {string} msg @returns {never} */
 function bail(msg) {
 	console.error('\nENVIRONMENT: ' + msg);
 	process.exit(2);
@@ -79,6 +90,7 @@ const proc = spawn(
 	{ stdio: 'ignore' }
 );
 
+/** @type {Browser | undefined} */
 let browser;
 try {
 	browser = await connect(CDP_PORT);
@@ -179,7 +191,7 @@ try {
 		);
 	}
 } catch (err) {
-	check('the flow ran to completion', false, String(err?.stack ?? err));
+	check('the flow ran to completion', false, String(err instanceof Error ? err.stack : err));
 } finally {
 	browser?.close();
 	proc.kill();

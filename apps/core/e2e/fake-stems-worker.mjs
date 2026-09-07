@@ -30,16 +30,20 @@ const mediaRoot = resolve(process.env.MEDIA_DIR ?? './media');
 const workerId = process.env.FAKE_WORKER_ID ?? 'fake-stems-1';
 const slowMs = Number(process.env.FAKE_SLOW_MS ?? 120);
 const failType = process.env.FAKE_FAIL ?? '';
-const log = (...a) => console.log('[fake-worker]', ...a);
+const log = (/** @type {unknown[]} */ ...a) => console.log('[fake-worker]', ...a);
 
 // Storage classes may each be pointed at their own volume; mirror paths.ts rather than assuming
 // everything sits under MEDIA_DIR, or the worker writes where core will not look.
+/** @param {string} cls @returns {string} */
 const classDir = (cls) => {
-	const env = { audio: 'ENCORE_AUDIO_DIR', derived: 'ENCORE_DERIVED_DIR', meta: 'ENCORE_META_DIR' }[cls];
+	/** @type {Record<string, string>} */
+	const envByClass = { audio: 'ENCORE_AUDIO_DIR', derived: 'ENCORE_DERIVED_DIR', meta: 'ENCORE_META_DIR' };
+	const env = envByClass[cls];
 	const v = env && process.env[env]?.trim();
 	return v ? resolve(v) : join(mediaRoot, cls);
 };
 /** Write bytes for a relative ref like "derived/stems/<id>-instrumental.wav". */
+/** @param {string} ref @param {Uint8Array} bytes @returns {string} */
 function writeRef(ref, bytes) {
 	const [head, ...rest] = ref.split('/');
 	const abs = join(classDir(head), rest.join('/'));
@@ -52,8 +56,8 @@ function writeRef(ref, bytes) {
 const ws = new WebSocket(
 	`ws://127.0.0.1:${port}/ws?role=worker${process.env.ENCORE_WORKER_TOKEN ? `&token=${process.env.ENCORE_WORKER_TOKEN}` : ''}`
 );
-const send = (m) => ws.send(JSON.stringify(m));
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const send = (/** @type {unknown} */ m) => ws.send(JSON.stringify(m));
+const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 
 ws.onopen = () => {
 	log(`connected to :${port}, media root ${mediaRoot}`);
@@ -69,7 +73,7 @@ ws.onopen = () => {
 	setInterval(() => send({ type: 'worker:heartbeat', workerId, slotsFree: 1, runningJobIds: [] }), 5000);
 };
 
-ws.onmessage = async (ev) => {
+ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 	const msg = JSON.parse(String(ev.data));
 	if (msg.type === 'worker:welcome') return log('welcomed; mediaStore =', JSON.stringify(msg.mediaStore));
 	if (msg.type !== 'job:assign') return;
@@ -85,7 +89,7 @@ ws.onmessage = async (ev) => {
 	}
 
 	// Progress frames drive the phone's cooking bar and refresh the lease, so send real ones.
-	const progress = async (stage, pct) => {
+	const progress = async (/** @type {string} */ stage, /** @type {number} */ pct) => {
 		send({ type: 'job:progress', workerId, jobId, stage, pct });
 		await sleep(slowMs);
 	};
@@ -120,6 +124,7 @@ ws.onmessage = async (ev) => {
 				writeRef(vocRef, process.env.FAKE_SILENT_VOCALS ? silence() : tone({ seconds: 8, hz: [440], amp: 0.2 }));
 			}
 			await progress('separating', 90);
+			/** @type {{ stems: { instrumental: string, vocals: string }, songProfile?: Record<string, unknown> }} */
 			const artifacts = { stems: { instrumental: insRef, vocals: vocRef } };
 			// songProfile is a SIBLING of stems, never a member — the shape drift that once stalled
 			// every cook at "Separating vocals" forever. Publishing it correctly here is the point.
@@ -214,5 +219,5 @@ ws.onmessage = async (ev) => {
 	}
 };
 
-ws.onerror = (e) => log('ws error', e?.message ?? e);
+ws.onerror = (/** @type {Event} */ e) => log('ws error', e instanceof ErrorEvent ? e.message : e.type);
 ws.onclose = () => log('disconnected');
