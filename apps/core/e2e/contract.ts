@@ -149,8 +149,16 @@ export const SEL = {
 	interstitial: '.interstitial',
 	slot: '.slot',
 	slotVisible: '.slot.visible',
+	/** The master audio element inside the visible slot — the audible stage master (p4 scopes past the
+	 *  pre-warm slot's paused <audio>). A descendant selector ending in a bare tag; the resolver models
+	 *  the `.slot.visible` class-compound part and the `audio` tag part. */
+	slotVisibleAudio: '.slot.visible audio',
 	/** The transport's elapsed-time readout inside the seek row (p4 reads its text). */
 	seekTime: '.seekrow .time',
+	/** The seek-row fill bar's inner element — p4 reads its scaleX transform for a fractional progress
+	 *  check. A `>` child combinator into a bare tag; the resolver models the `.seekrow .track`
+	 *  class-compound parts and the `i` tag part. */
+	seekFill: '.seekrow .track > i',
 	upLabel: '.up-label',
 	upName: '.up-name',
 	upSong: '.up-song',
