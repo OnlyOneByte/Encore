@@ -222,8 +222,9 @@
 		// is an irreversible capture; the permanence is documented on `PitchShiftGraph.detach`). So the reset strategy has
 		// to match each element's LIFETIME, not the media's:
 		//
-		//   • MASTER lives as long as the SLOT — the <audio bind:this={master}> below is mounted
-		//     unconditionally. Detaching its graph on a song change left the persistent, already-captured
+		//   • MASTER lives as long as `media && isPlayable(media)` — the <audio bind:this={master}> below
+		//     sits behind that {#if} (NOT mounted unconditionally: a drained room UNMOUNTS it, which is what
+		//     #674 turns on). Detaching its graph on a song change left the persistent, already-captured
 		//     element feeding a disconnected node: the instrumental went silent and stayed silent until a
 		//     keyShift rebuilt a graph on it (issue #477). We must NOT detach it. Instead reset it to
 		//     ratio 1 via setShift(0): on a routed graph that keeps source→node→gain→destination intact
@@ -245,13 +246,16 @@
 		guideSettled = false;
 		prewarmedFired = false;
 		visibleReadyFired = false;
-		// NOTE: `currentSrc` is deliberately NOT cleared here. It used to be, to cover a slot whose
-		// element had been remounted (fresh element, no src, but a stale `currentSrc` claiming otherwise)
-		// — and that clearing is what reloaded the playing song on every identity change, because the
-		// assign effect then rewrote a byte-identical src and `HTMLMediaElement.src` reloads and resets
-		// currentTime to 0 even when the string is unchanged. The assign effect now compares against what
-		// the ELEMENT actually holds, so a remount is detected from the element itself and no shadow copy
-		// can go stale.
+		// NOTE: `currentSrc` is NOT cleared on a song CHANGE here (this effect keys on the id value, and the
+		// element is still mounted and holding the old src) — clearing it on every identity churn is what
+		// reloaded the playing song, because the assign effect then rewrote a byte-identical src and
+		// `HTMLMediaElement.src` reloads and resets currentTime to 0 even when the string is unchanged.
+		// Only the ASSIGN effect was converted to compare against what the ELEMENT holds
+		// (`master.getAttribute('src')`); the TRANSPORT reader at the `slotHoldsSrc(currentSrc, …)` derived
+		// still reads this shadow, so it CAN go stale across a remount — and it did, across exactly the
+		// drain-then-re-add-the-same-song remount (#674). That stale case is handled by the dedicated
+		// unmount effect above (`if (!master) currentSrc = ''`), which clears the shadow when the element is
+		// GONE — distinct from this per-song-change reset, where the element is still present.
 	});
 
 	// Component destroy: release whatever is still wired. Its own effect, with no tracked dependencies,
@@ -350,6 +354,23 @@
 		void tryPlayMaster();
 	});
 
+	// A DRAINED room UNMOUNTS the master. The `<audio bind:this={master}>` below sits behind
+	// `{#if media && isPlayable(media)}`, so when the queue empties the element is destroyed and `master`
+	// binds to `undefined` — but `currentSrc` is a component-level shadow that OUTLIVES it. Re-adding the
+	// SAME song then resolves `fileSrc(media)` to the byte-identical string, and the transport's
+	// `slotHoldsSrc(currentSrc, …)` reads `true` on a FRESH, src-less element (#674). The derived is then
+	// `'play'` on its first pass, `tryPlayMaster()` runs before the assign effect has written the src, and
+	// that write aborts the pending play(); since the derived value never changed, the effect never re-ran
+	// and the room stayed silent while every surface said it was playing. Clear the shadow on the unmount
+	// so a remounted element reads `hasSrc:false` and the transport takes a genuine `idle -> play` edge
+	// once the assign effect lands the new src. This is NOT the #251 not-playable churn pass (the element
+	// is still bound there and the current song must be kept) — this fires only when the element is GONE.
+	// A bare `master` attribute read would register no reactive dependency, which is why the shadow exists;
+	// tracking the binding's presence is the reactive signal that a remount happened.
+	$effect(() => {
+		if (!master) currentSrc = '';
+	});
+
 	/**
 	 * Play the master, tracking whether the browser's autoplay policy refused it.
 	 *
@@ -387,9 +408,24 @@
 					console.warn('[tv] autoplay was blocked (NotAllowedError) — waiting for a tap to start the music');
 					if (active && visible) onautoplayblocked?.();
 				}
+			} else if (master && master.paused) {
+				// A NON-NotAllowedError rejection (an AbortError from a src assignment racing the play(), a
+				// decode stumble) that LEAVES THE ELEMENT PAUSED is not terminal: the room believes it is
+				// playing, so silence here is a dead end, not a settled state (#674). Treating it as final is
+				// what left a re-queued just-ended song silent with no `.autoplay-hint` and no armed listener,
+				// so two real taps on the TV changed nothing. Arm the SAME recovery the NotAllowedError path
+				// uses — the gesture listener re-attempts `tryPlayMaster()`, which now succeeds because the
+				// element is holding its src by the time a gesture arrives (the shadow-clear on remount removed
+				// the src-less first pass that caused the abort). Naming the reason is still worth doing.
+				console.warn(`[tv] the instrumental was interrupted (${name}) — arming a tap to restart the music`);
+				if (!autoplayBlocked) {
+					autoplayBlocked = true;
+					if (active && visible) onautoplayblocked?.();
+				}
 			} else {
-				// Not gesture-liftable — the room is silent and stays silent. A console warn is invisible at a
-				// party, so tell the page (active+visible slot only) to render the on-screen silent-room state.
+				// A rejection that did NOT leave the element paused (the src really did change out from under a
+				// genuine interruption, so a later pass will play the new song) is not this bug — log it and let
+				// the transport effect's own re-run handle the new src. The room is not stuck.
 				console.warn(`[tv] the instrumental refused to start (${name}) — the room will be silent`);
 				if (active && visible) onplaybackfailed?.(name);
 			}
