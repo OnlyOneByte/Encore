@@ -22,7 +22,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..vocabulary import Timing
-from .source import entries_to_segments, parse_lrc, plain_lyrics_to_segments
+from .source import entries_to_segments, fold_romanization_entries, parse_lrc, plain_lyrics_to_segments
 
 
 def candidate_key(
@@ -104,7 +104,16 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
             l_end = words[-1]["end"]
         if not words and (l_start is None or l_end is None):
             continue
-        lines.append({"start": l_start, "end": l_end, "text": line_text, "words": words})
+        line: dict[str, Any] = {"start": l_start, "end": l_end, "text": line_text, "words": words}
+        # A romanization is a per-line SECOND SCRIPT the source shipped (issue #431). The aligner does
+        # not re-time it and does not preserve it, so it rides through only when the segments handed to
+        # this normalizer already carry it — the pre-align word-timed path (segments straight from the
+        # source) and, via re-attachment by the caller, the line-sync path. Never fabricated: absent key
+        # → single-script line, unchanged behaviour.
+        romanization = seg.get("romanization")
+        if isinstance(romanization, str) and romanization.strip():
+            line["romanization"] = romanization.strip()
+        lines.append(line)
 
     return {"language": language, "lines": lines, "words": flat_words}
 
@@ -124,7 +133,9 @@ def lrclib_to_segments(res: Any, total_duration: float | None) -> list[dict[str,
     if res is None or getattr(res, "instrumental", False):
         return []
     if getattr(res, "has_synced", False):
-        return entries_to_segments(parse_lrc(res.synced_lyrics), total_duration)
+        # Fold any interleaved second script (pinyin under the characters) into each line before
+        # segmenting, so a Chinese record carries BOTH scripts through to the doc (issue #431).
+        return entries_to_segments(fold_romanization_entries(parse_lrc(res.synced_lyrics)), total_duration)
     if getattr(res, "has_plain", False):
         return plain_lyrics_to_segments(res.plain_lyrics, total_duration)
     return []
