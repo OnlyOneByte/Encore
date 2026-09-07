@@ -117,17 +117,6 @@ class PlanRunner:
         ctx.out.facts.setdefault("stepTimingsSec", dict(ctx.out.timings_sec))
         yield CompleteResult(media_uri=ctx.out.media_uri, artifacts=ctx.out.artifacts, facts=ctx.out.facts)
 
-    # ── the two things a step cannot do for itself ─────────────────────────────────
-
-    async def run_stage(
-        self, ctx: Ctx, stage: Any, argv: list[str], parse: Any
-    ) -> AsyncIterator[ProgressEvent]:
-        """Deprecated shim: delegates to the module-level `run_stage`. Kept so an existing caller that
-        already holds a PlanRunner needs no change; a Step should call the free function instead, since
-        it is handed only a `ctx` and never the runner that drives it."""
-        async for ev in run_stage(self._runner, stage, argv, parse):
-            yield ev
-
 
 async def run_stage(runner: Any, stage: Any, argv: list[str], parse: Any) -> AsyncIterator[ProgressEvent]:
     """Run a CLI, translating its output into progress for one stage.
