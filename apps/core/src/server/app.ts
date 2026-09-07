@@ -212,7 +212,6 @@ export function getApp(): EncoreApp {
 					album: next.canonical.album,
 					year: next.canonical.year
 				});
-				mediaRepo.setTags(m.id, 'genre', next.canonical.genre);
 				if (next.library.tags.length) mediaRepo.setTags(m.id, 'tag', next.library.tags);
 			} catch {
 				/* the sidecar is the durable record, not the live one — never fail a flip over it */
@@ -260,7 +259,7 @@ export function getApp(): EncoreApp {
 		{
 			name: 'browse index sync',
 			run: async () => {
-				// Mirror canonical artist/album/year + genres from every sidecar into the browse index.
+				// Mirror canonical artist/album/year from every sidecar into the browse index.
 				// Needed as its own pass because backfilling a sidecar does not go through upsert, so without
 				// it browse would only see songs touched since the process started.
 				let indexed = 0;
@@ -271,7 +270,6 @@ export function getApp(): EncoreApp {
 						album: sc.canonical.album,
 						year: sc.canonical.year
 					});
-					if (sc.canonical.genre.length) mediaRepo.setTags(sc.id, 'genre', sc.canonical.genre);
 					// ...and into the RUNTIME map, not just the index. hydrateMediaCatalog above ran
 					// synchronously at boot while this pass is async, so mirroring only to the DB left every
 					// in-memory Media without its canonicals for the whole process lifetime — invisible to
