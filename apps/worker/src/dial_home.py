@@ -32,11 +32,11 @@ from .runtime import scratch_for
 # at startup, which is why this is the raw config and not the effective one.
 CONFIG = WorkerConfig.from_env()
 
-WORKER_ID = CONFIG.worker_id
-CONCURRENCY = CONFIG.concurrency
-CAPABILITIES = list(CONFIG.capabilities)
-MEDIA_DIR = CONFIG.media_dir
-VERSION = CONFIG.version
+# No module-level snapshots of CONFIG fields here. The five that used to live at import
+# (WORKER_ID / CONCURRENCY / CAPABILITIES / MEDIA_DIR / VERSION) were read on the client's
+# __init__ defaults, which contradicted the "config read ON CALL" rule the rest of this
+# module follows — CAPABILITIES in particular was frozen to [] at import (default caps are
+# () until config.resolve() fills them on a NEW object). __init__ now reads CONFIG directly.
 RECONNECT_BACKOFF_SEC = 3.0
 
 # Drains detached from a dropped connection so the reconnect loop does not BLOCK on them (#459).
@@ -87,13 +87,21 @@ class WorkerClient:
         send,
         processor: Processor,
         *,
-        worker_id: str = WORKER_ID,
+        worker_id: str | None = None,
         capabilities: list[str] | None = None,
-        concurrency: int = CONCURRENCY,
-        media_dir: str = MEDIA_DIR,
-        version: str = VERSION,
+        concurrency: int | None = None,
+        media_dir: str | None = None,
+        version: str | None = None,
         can_publish_object: bool = False,
     ) -> None:
+        # Read config ON CALL, not captured at import: default each kwarg to None and
+        # resolve it against CONFIG here, so a test (or a future caller) that constructs a
+        # client without an argument still gets the worker's configured value — and there is
+        # no module-level snapshot to drift from CONFIG. Production passes all five explicitly.
+        worker_id = worker_id if worker_id is not None else CONFIG.worker_id
+        concurrency = concurrency if concurrency is not None else CONFIG.concurrency
+        media_dir = media_dir if media_dir is not None else CONFIG.media_dir
+        version = version if version is not None else CONFIG.version
         self._send = send
         self._processor = processor
         self._media_dir = media_dir
@@ -110,7 +118,7 @@ class WorkerClient:
         self._can_publish_object = can_publish_object
         self.state = protocol.WorkerState(
             worker_id=worker_id,
-            capabilities=list(capabilities or CAPABILITIES),
+            capabilities=list(capabilities if capabilities is not None else CONFIG.capabilities),
             concurrency=concurrency,
         )
         # jobId -> its in-flight processing task, so a cancel can reach the RIGHT task (and through
@@ -153,7 +161,19 @@ class WorkerClient:
         """
         while True:
             await asyncio.sleep(max(0.1, self.heartbeat_interval_sec))
-            await self.send_heartbeat()
+            try:
+                await self.send_heartbeat()
+            except asyncio.CancelledError:
+                # The finally in _run_forever cancels this task on disconnect; let it stop the loop.
+                raise
+            except Exception as exc:  # noqa: BLE001
+                # A send on a half-closed socket raises here. WITHOUT this guard the exception
+                # ends the task body and — because _run_forever cancels but never retrieves it —
+                # surfaces only as asyncio's "Task exception was never retrieved" at GC, on an
+                # already-noisy reconnect. The pump side (`async for raw in ws`) sees the same
+                # dead socket and drives the real reconnect + cancel; this leg just keeps ticking
+                # (the interval floor bounds the retry) until that teardown cancels it.
+                print(f"[worker] heartbeat send failed ({exc!r}); will retry next tick", flush=True)
 
     async def handle(self, msg: dict[str, Any]) -> None:
         """Dispatch one inbound core->worker command."""
