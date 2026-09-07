@@ -375,7 +375,7 @@
 	<SongRow title="Queen — Bohemian Rhapsody (Sub. Español / Lyrics)"
 		artistCanonical="Queen" artist="Richie Lyrics" readiness="cooking"
 		thumbnail="https://i.ytimg.com/vi/AlmHSUirAOs/mqdefault.jpg" durationSec={358} viewCount={265947}
-		pct={68} etaSec={70} />
+		pct={68} />
 	<!--
 		#334 SPARKLE-HUG, made visible. The three cooking rows above all carry a title long enough to
 		wrap to two lines, so none of them shows the case #334 is about: a SHORT title where the clamp
@@ -398,7 +398,7 @@
 	<SongRow title="Sweet Caroline — Neil Diamond (first step at 100%, cook barely started)"
 		artistCanonical="Neil Diamond" artist="Neil Diamond" readiness="cooking"
 		thumbnail="https://i.ytimg.com/vi/1vhFnTjia_I/mqdefault.jpg" durationSec={201} viewCount={12345678}
-		status="downloading" pct={100} etaSec={90} />
+		status="downloading" pct={100} />
 	<!--
 		#80 ROUNDING check, committed. `status="separating" pct={68}` gives overallCookPct ~67.6 (a
 		band-interpolated FLOAT), so the readout MUST print a rounded "68%", never "67.6%". The bar keeps
@@ -407,7 +407,7 @@
 	-->
 	<SongRow title="Bohemian Rhapsody — Queen (mid-separation, fractional overall pct)"
 		artistCanonical="Queen" artist="Queen" readiness="cooking"
-		status="separating" pct={68} etaSec={70} />
+		status="separating" pct={68} />
 	<SongRow title="The Killers - Mr. Brightside" artistCanonical="The Killers" artist="TheKillersMusic" readiness="unacquired" onmake={() => {}}
 		thumbnail="https://i.ytimg.com/vi/gGdGFtwCNBE/mqdefault.jpg" durationSec={228} viewCount={648760065} />
 

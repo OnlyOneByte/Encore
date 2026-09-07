@@ -13,19 +13,14 @@ describe('cookStageLabel', () => {
 		}
 	});
 
-	it('appends percent and ETA when given, in that order', () => {
+	it('appends percent when given', () => {
 		expect(cookStageLabel('separating', { pct: 68 })).toBe('Making karaoke… 68%');
-		expect(cookStageLabel('separating', { pct: 68, etaSec: 90 })).toBe('Making karaoke… 68% · ~2 min left');
 	});
 
-	it('rounds ETA up to at least one minute and drops a non-positive ETA', () => {
-		expect(cookStageLabel('separating', { pct: 10, etaSec: 20 })).toBe('Making karaoke… 10% · ~1 min left');
-		expect(cookStageLabel('separating', { pct: 10, etaSec: 0 })).toBe('Making karaoke… 10%');
-	});
 
 	it('never leaks the musician vocabulary a guest found confusing', () => {
 		for (const s of ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed'] as const) {
-			const line = cookStageLabel(s, { pct: 40, etaSec: 60 }).toLowerCase();
+			const line = cookStageLabel(s, { pct: 40 }).toLowerCase();
 			expect(line).not.toContain('vocal');
 			expect(line).not.toContain('instrumental');
 			expect(line).not.toContain('separat');
