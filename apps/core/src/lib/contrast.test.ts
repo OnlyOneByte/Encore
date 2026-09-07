@@ -8,8 +8,9 @@
 // Why a source scan and not a rendered check: contrast is a property of the token VALUES, so it is
 // decidable from the stylesheet. A browser is not needed and would only add flake.
 import { test, expect } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { svelteFiles } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..');
 const css = readFileSync(join(SRC, 'app.css'), 'utf8');
@@ -168,13 +169,3 @@ test('no rule puts a text color on var(--grad)', () => {
 	}
 	expect(offenders).toEqual([]);
 });
-
-function svelteFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, ent.name);
-		if (ent.isDirectory()) out.push(...svelteFiles(p));
-		else if (ent.name.endsWith('.svelte')) out.push(p);
-	}
-	return out;
-}

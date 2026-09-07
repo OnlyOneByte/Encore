@@ -9,21 +9,12 @@
 //
 // Both classes of defect are decidable from the stylesheet, so this is a source scan.
 import { test, expect } from 'bun:test';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { svelteFiles } from '../test-helpers';
 
 const SRC = join(import.meta.dir, '..', '..');
 const TV_DIRS = [join(SRC, 'lib', 'tv'), join(SRC, 'routes', 'tv')];
-
-function svelteFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, ent.name);
-		if (ent.isDirectory()) out.push(...svelteFiles(p));
-		else if (ent.name.endsWith('.svelte')) out.push(p);
-	}
-	return out;
-}
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');

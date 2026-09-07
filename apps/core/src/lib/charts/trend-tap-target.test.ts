@@ -10,12 +10,12 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { TAP } from '../test-helpers';
 
 const SRC = join(import.meta.dir, '..', '..'); // src/
 const TREND = readFileSync(join(SRC, 'lib', 'charts', 'Trend.svelte'), 'utf8');
 const CSS = readFileSync(join(SRC, 'app.css'), 'utf8');
 const STATS = readFileSync(join(SRC, 'routes', 'stats', '+page.svelte'), 'utf8');
-const TAP = 44;
 
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
