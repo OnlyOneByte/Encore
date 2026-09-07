@@ -44,11 +44,19 @@ function bail(msg) {
 async function api(method, path, { cookie, body, expectJson = true } = {}) {
 	const headers = { 'content-type': 'application/json' };
 	if (cookie) headers.Cookie = cookie;
-	const res = await fetch(`${BASE}${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+	const res = await fetch(`${BASE}${path}`, {
+		method,
+		headers,
+		body: body === undefined ? undefined : JSON.stringify(body)
+	});
 	const text = await res.text();
 	let parsed = null;
 	if (expectJson && text) {
-		try { parsed = JSON.parse(text); } catch { /* left null */ }
+		try {
+			parsed = JSON.parse(text);
+		} catch {
+			/* left null */
+		}
 	}
 	return { status: res.status, headers: res.headers, text, body: parsed, setCookie: res.headers.get('set-cookie') };
 }
@@ -78,7 +86,11 @@ function openPhoneWs(cookie) {
 	const events = [];
 	const ws = new WebSocket(`${WS_BASE}/ws?role=phone`, { headers: { Cookie: cookie } });
 	ws.onmessage = (ev) => {
-		try { events.push(JSON.parse(String(ev.data))); } catch { /* ignore malformed */ }
+		try {
+			events.push(JSON.parse(String(ev.data)));
+		} catch {
+			/* ignore malformed */
+		}
 	};
 	const opened = new Promise((resolve, reject) => {
 		ws.onopen = resolve;
@@ -102,11 +114,19 @@ console.log(`[p9] driving ${BASE}\n`);
 //   Evidence: apps/core/src/routes/api/settings/room/+server.ts:15
 {
 	const g = await api('PUT', '/api/settings', { body: { syncMode: 'lines' } });
-	add(g.status === 401 ? 'PASS' : 'HIGH', 'auth', 'anonymous PUT /api/settings refused',
-		`HTTP ${g.status} — server.ts routes/api/settings/+server.ts:23`);
+	add(
+		g.status === 401 ? 'PASS' : 'HIGH',
+		'auth',
+		'anonymous PUT /api/settings refused',
+		`HTTP ${g.status} — server.ts routes/api/settings/+server.ts:23`
+	);
 	const r = await api('PUT', '/api/settings/room', { body: { queueOrder: 'fcfs' } });
-	add(r.status === 401 ? 'PASS' : 'HIGH', 'auth', 'anonymous PUT /api/settings/room refused',
-		`HTTP ${r.status} — routes/api/settings/room/+server.ts:15`);
+	add(
+		r.status === 401 ? 'PASS' : 'HIGH',
+		'auth',
+		'anonymous PUT /api/settings/room refused',
+		`HTTP ${r.status} — routes/api/settings/room/+server.ts:15`
+	);
 }
 
 // ═══ 2. Persistence — every SEL.SETTING_IDS control roundtrips. ═════════════
@@ -117,28 +137,47 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	// Coverage assertion: every id the contract names must be exercised by this probe. Anything left
 	// uncovered is a hole this suite MUST NOT report as green.
 	const COVERED_IDS = new Set([
-		'join-origin', 'sync-mode',                                                          // global
-		'queue-order', 'tv-progress', 'tv-background', 'tv-visualizer',                       // room, staging
-		'lyrics-highlight', 'lyrics-ball', 'lyrics-font', 'lyrics-case'                       // room, lyrics
+		'join-origin',
+		'sync-mode', // global
+		'queue-order',
+		'tv-progress',
+		'tv-background',
+		'tv-visualizer', // room, staging
+		'lyrics-highlight',
+		'lyrics-ball',
+		'lyrics-font',
+		'lyrics-case' // room, lyrics
 	]);
 	const missing = SEL.SETTING_IDS.filter((id) => !COVERED_IDS.has(id));
-	add(missing.length === 0 ? 'PASS' : 'HIGH', 'coverage',
+	add(
+		missing.length === 0 ? 'PASS' : 'HIGH',
+		'coverage',
 		`persistence probe covers every SEL.SETTING_IDS entry (${SEL.SETTING_IDS.length})`,
-		missing.length ? `uncovered: ${missing.join(', ')}` : `apps/core/e2e/contract.ts:104-115`);
+		missing.length ? `uncovered: ${missing.join(', ')}` : `apps/core/e2e/contract.ts:104-115`
+	);
 
 	const start = await getSettings();
 	// join-origin (global) — non-empty must persist, then be clearable.
-	const patch1 = await api('PUT', '/api/settings', { cookie: aliceCookie, body: { joinOrigin: 'http://phones.example:8080' } });
+	const patch1 = await api('PUT', '/api/settings', {
+		cookie: aliceCookie,
+		body: { joinOrigin: 'http://phones.example:8080' }
+	});
 	const gotJoin = patch1.body?.global?.joinOrigin;
-	add(gotJoin === 'http://phones.example:8080' ? 'PASS' : 'HIGH', 'persistence',
+	add(
+		gotJoin === 'http://phones.example:8080' ? 'PASS' : 'HIGH',
+		'persistence',
 		'#join-origin persists via PUT /api/settings',
-		`stored=${JSON.stringify(gotJoin)}  — packages/shared/src/settings.ts:normalizeJoinOrigin`);
+		`stored=${JSON.stringify(gotJoin)}  — packages/shared/src/settings.ts:normalizeJoinOrigin`
+	);
 
 	// sync-mode (global) — a real GlobalSettings field with two live modes.
 	const patch2 = await api('PUT', '/api/settings', { cookie: aliceCookie, body: { syncMode: 'lines' } });
-	add(patch2.body?.global?.syncMode === 'lines' ? 'PASS' : 'HIGH', 'persistence',
+	add(
+		patch2.body?.global?.syncMode === 'lines' ? 'PASS' : 'HIGH',
+		'persistence',
 		'#sync-mode persists via PUT /api/settings',
-		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — packages/shared/src/lyrics-engines.ts:118`);
+		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — packages/shared/src/lyrics-engines.ts:118`
+	);
 
 	// All room-scope SEL.SETTING_IDS in one write to prove the persistence contract; per-field errors
 	// come out of the normalizer as reject-to-current, so a full round-trip check is decisive.
@@ -154,25 +193,49 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	};
 	const rroom = await api('PUT', '/api/settings/room', { cookie: aliceCookie, body: roomWrite });
 	const room = rroom.body?.room ?? {};
-	for (const id of ['queue-order', 'tv-progress', 'tv-background', 'tv-visualizer', 'lyrics-highlight', 'lyrics-ball', 'lyrics-font', 'lyrics-case']) {
-		const camel = { 'queue-order': 'queueOrder', 'tv-progress': 'tvProgressStyle', 'tv-background': 'tvBackgroundStyle',
-			'tv-visualizer': 'tvVisualizer', 'lyrics-highlight': 'lyricsHighlight', 'lyrics-ball': 'lyricsBall',
-			'lyrics-font': 'lyricsFont', 'lyrics-case': 'lyricsCase' }[id];
+	for (const id of [
+		'queue-order',
+		'tv-progress',
+		'tv-background',
+		'tv-visualizer',
+		'lyrics-highlight',
+		'lyrics-ball',
+		'lyrics-font',
+		'lyrics-case'
+	]) {
+		const camel = {
+			'queue-order': 'queueOrder',
+			'tv-progress': 'tvProgressStyle',
+			'tv-background': 'tvBackgroundStyle',
+			'tv-visualizer': 'tvVisualizer',
+			'lyrics-highlight': 'lyricsHighlight',
+			'lyrics-ball': 'lyricsBall',
+			'lyrics-font': 'lyricsFont',
+			'lyrics-case': 'lyricsCase'
+		}[id];
 		const want = roomWrite[camel];
 		const got = room[camel];
-		add(got === want ? 'PASS' : 'HIGH', 'persistence',
+		add(
+			got === want ? 'PASS' : 'HIGH',
+			'persistence',
 			`#${id} persists via PUT /api/settings/room`,
-			`stored=${JSON.stringify(got)} wanted=${JSON.stringify(want)}`);
+			`stored=${JSON.stringify(got)} wanted=${JSON.stringify(want)}`
+		);
 	}
 
 	// Cross-process roundtrip via a follow-up GET — proves the write reached SQLite, not just the
 	// in-memory reply of the write endpoint.
 	const roundtrip = await getSettings();
-	const persisted = roundtrip.room.queueOrder === 'fcfs' && roundtrip.global.syncMode === 'lines'
-		&& roundtrip.global.joinOrigin === 'http://phones.example:8080';
-	add(persisted ? 'PASS' : 'HIGH', 'persistence',
+	const persisted =
+		roundtrip.room.queueOrder === 'fcfs' &&
+		roundtrip.global.syncMode === 'lines' &&
+		roundtrip.global.joinOrigin === 'http://phones.example:8080';
+	add(
+		persisted ? 'PASS' : 'HIGH',
+		'persistence',
 		'follow-up GET returns the values just written (SQLite, not memory)',
-		`GET /api/settings queueOrder=${roundtrip.room.queueOrder} syncMode=${roundtrip.global.syncMode} joinOrigin=${roundtrip.global.joinOrigin}`);
+		`GET /api/settings queueOrder=${roundtrip.room.queueOrder} syncMode=${roundtrip.global.syncMode} joinOrigin=${roundtrip.global.joinOrigin}`
+	);
 
 	// Restore something close to a clean-ish state so downstream steps are not fighting a wonky room.
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { syncMode: 'forced', joinOrigin: '' } });
@@ -190,11 +253,26 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	const garbage = [
 		{ scope: 'global', body: { syncMode: 'no-thanks' }, field: 'syncMode', expect: baseline.global.syncMode },
 		{ scope: 'global', body: { asrModel: '../../etc/passwd' }, field: 'asrModel', expect: baseline.global.asrModel },
-		{ scope: 'global', body: { defaultEngine: 'roformer', defaultModel: 'nope-9000' }, field: 'defaultModel', expect: baseline.global.defaultModel },
-		{ scope: 'global', body: { joinOrigin: 'javascript:alert(1)' }, field: 'joinOrigin', expect: baseline.global.joinOrigin },
+		{
+			scope: 'global',
+			body: { defaultEngine: 'roformer', defaultModel: 'nope-9000' },
+			field: 'defaultModel',
+			expect: baseline.global.defaultModel
+		},
+		{
+			scope: 'global',
+			body: { joinOrigin: 'javascript:alert(1)' },
+			field: 'joinOrigin',
+			expect: baseline.global.joinOrigin
+		},
 		{ scope: 'global', body: { joinOrigin: 'not a url' }, field: 'joinOrigin', expect: baseline.global.joinOrigin },
 		{ scope: 'room', body: { queueOrder: 'fifo' }, field: 'queueOrder', expect: baseline.room.queueOrder },
-		{ scope: 'room', body: { tvProgressStyle: 'DROP TABLE' }, field: 'tvProgressStyle', expect: baseline.room.tvProgressStyle },
+		{
+			scope: 'room',
+			body: { tvProgressStyle: 'DROP TABLE' },
+			field: 'tvProgressStyle',
+			expect: baseline.room.tvProgressStyle
+		},
 		{ scope: 'room', body: { tvBackgroundHue: NaN }, field: 'tvBackgroundHue', expect: baseline.room.tvBackgroundHue },
 		{ scope: 'room', body: { lyricsBall: 'wormhole' }, field: 'lyricsBall', expect: baseline.room.lyricsBall },
 		{ scope: 'room', body: { songIntroMs: -99999 }, field: 'songIntroMs', expect: 500 /* MIN_SONG_INTRO_MS */ },
@@ -206,27 +284,43 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		const bucket = g.scope === 'global' ? r.body?.global : r.body?.room;
 		const got = bucket?.[g.field];
 		const ok = got === g.expect || (Number.isNaN(g.expect) && Number.isNaN(got));
-		add(ok ? 'PASS' : 'HIGH', 'validation',
+		add(
+			ok ? 'PASS' : 'HIGH',
+			'validation',
 			`${g.scope}.${g.field} garbage ${JSON.stringify(g.body[g.field])} degrades to ${JSON.stringify(g.expect)}`,
-			`server returned ${JSON.stringify(got)}`);
+			`server returned ${JSON.stringify(got)}`
+		);
 	}
 
 	// Malformed body — the endpoints declare a JSON contract, so a non-JSON body must 400 (see
 	// routes/api/settings/+server.ts:27) rather than crash the server or persist junk.
-	const bad = await fetch(`${BASE}/api/settings`, { method: 'PUT', headers: { 'content-type': 'application/json', Cookie: aliceCookie }, body: 'not-json' });
-	add(bad.status === 400 ? 'PASS' : 'MEDIUM', 'validation',
+	const bad = await fetch(`${BASE}/api/settings`, {
+		method: 'PUT',
+		headers: { 'content-type': 'application/json', Cookie: aliceCookie },
+		body: 'not-json'
+	});
+	add(
+		bad.status === 400 ? 'PASS' : 'MEDIUM',
+		'validation',
 		'malformed JSON body returns 400 rather than a 500',
-		`HTTP ${bad.status} — routes/api/settings/+server.ts:27`);
+		`HTTP ${bad.status} — routes/api/settings/+server.ts:27`
+	);
 	// Whole-body types the type declares Partial<GlobalSettings> for — but the reader is
 	// `request.json()`, so `null`, an array, or a top-level string all parse. Watch for a crash.
 	const nullBody = await api('PUT', '/api/settings', { cookie: aliceCookie, body: null });
-	add(nullBody.status < 500 ? 'PASS' : 'HIGH', 'validation',
+	add(
+		nullBody.status < 500 ? 'PASS' : 'HIGH',
+		'validation',
 		'top-level JSON `null` body handled without a 500',
-		`HTTP ${nullBody.status}  — settings-repository.ts:setGlobal(null|undefined)`);
+		`HTTP ${nullBody.status}  — settings-repository.ts:setGlobal(null|undefined)`
+	);
 	const arrBody = await api('PUT', '/api/settings', { cookie: aliceCookie, body: [1, 2, 3] });
-	add(arrBody.status < 500 ? 'PASS' : 'MEDIUM', 'validation',
+	add(
+		arrBody.status < 500 ? 'PASS' : 'MEDIUM',
+		'validation',
 		'top-level JSON array body handled without a 500',
-		`HTTP ${arrBody.status}`);
+		`HTTP ${arrBody.status}`
+	);
 }
 
 // ═══ 4. join-origin runtime override — no restart. ═══════════════════════════
@@ -238,9 +332,12 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { joinOrigin: setNew } });
 	const tvHtmlA = await (await fetch(`${BASE}/tv`)).text();
 	const joinUrlA = tvHtmlA.match(/"joinUrl":"([^"]+)"/)?.[1] ?? extractJoinFromHtml(tvHtmlA);
-	add(joinUrlA?.startsWith(setNew) ? 'PASS' : 'HIGH', 'join-origin',
+	add(
+		joinUrlA?.startsWith(setNew) ? 'PASS' : 'HIGH',
+		'join-origin',
 		'runtime PUT joinOrigin changes /tv joinUrl with no restart',
-		`joinUrl=${joinUrlA} setting=${setNew}  — server/public-origin.ts:joinOrigin`);
+		`joinUrl=${joinUrlA} setting=${setNew}  — server/public-origin.ts:joinOrigin`
+	);
 
 	// Clear it: the fallback rule (setting → env → request) must serve the env if one was booted,
 	// otherwise the request-derived origin. `EXPECTED_ENV_ORIGIN` is the caller's declaration of what
@@ -249,13 +346,19 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 	const tvHtmlB = await (await fetch(`${BASE}/tv`)).text();
 	const joinUrlB = tvHtmlB.match(/"joinUrl":"([^"]+)"/)?.[1] ?? extractJoinFromHtml(tvHtmlB);
 	if (serverHasEnvOrigin) {
-		add(joinUrlB?.startsWith(serverHasEnvOrigin) ? 'PASS' : 'HIGH', 'join-origin',
+		add(
+			joinUrlB?.startsWith(serverHasEnvOrigin) ? 'PASS' : 'HIGH',
+			'join-origin',
 			`clearing joinOrigin falls back to ENCORE_PUBLIC_ORIGIN=${serverHasEnvOrigin}`,
-			`joinUrl=${joinUrlB}  — server/public-origin.ts:configuredOrigin`);
+			`joinUrl=${joinUrlB}  — server/public-origin.ts:configuredOrigin`
+		);
 	} else {
-		add('INFO', 'join-origin',
+		add(
+			'INFO',
+			'join-origin',
 			'after clearing joinOrigin (no env-origin declared by harness), fell back to request-derived origin',
-			`joinUrl=${joinUrlB}  — pass EXPECTED_ENV_ORIGIN to assert setting > env`);
+			`joinUrl=${joinUrlB}  — pass EXPECTED_ENV_ORIGIN to assert setting > env`
+		);
 	}
 }
 function extractJoinFromHtml(html) {
@@ -281,13 +384,20 @@ function extractJoinFromHtml(html) {
 	await sleep(200);
 	const aliceGotIt = alice.events.find((e) => e.type === 'settings:changed');
 	const bobGotIt = bob.events.find((e) => e.type === 'settings:changed');
-	add(aliceGotIt && bobGotIt ? 'PASS' : 'HIGH', 'broadcast',
+	add(
+		aliceGotIt && bobGotIt ? 'PASS' : 'HIGH',
+		'broadcast',
 		'a room-scope write fans out to every connected phone',
-		`alice=${!!aliceGotIt} bob=${!!bobGotIt}  — routes/api/settings/room/+server.ts:29`);
-	const converged = aliceGotIt?.settings?.room?.tvProgressStyle === 'off' && bobGotIt?.settings?.room?.tvProgressStyle === 'off';
-	add(converged ? 'PASS' : 'HIGH', 'broadcast',
+		`alice=${!!aliceGotIt} bob=${!!bobGotIt}  — routes/api/settings/room/+server.ts:29`
+	);
+	const converged =
+		aliceGotIt?.settings?.room?.tvProgressStyle === 'off' && bobGotIt?.settings?.room?.tvProgressStyle === 'off';
+	add(
+		converged ? 'PASS' : 'HIGH',
+		'broadcast',
 		'two phones open on /settings converge to the same effective payload after one writes',
-		`alice.tvProgress=${aliceGotIt?.settings?.room?.tvProgressStyle} bob.tvProgress=${bobGotIt?.settings?.room?.tvProgressStyle}`);
+		`alice.tvProgress=${aliceGotIt?.settings?.room?.tvProgressStyle} bob.tvProgress=${bobGotIt?.settings?.room?.tvProgressStyle}`
+	);
 
 	// Global write is broadcast too — proves the two endpoints publish the same event shape.
 	alice.events.length = 0;
@@ -296,10 +406,14 @@ function extractJoinFromHtml(html) {
 	await sleep(200);
 	const aliceGlobal = alice.events.find((e) => e.type === 'settings:changed');
 	const bobGlobal = bob.events.find((e) => e.type === 'settings:changed');
-	const globalConverged = aliceGlobal?.settings?.global?.asrModel === 'small' && bobGlobal?.settings?.global?.asrModel === 'small';
-	add(globalConverged ? 'PASS' : 'HIGH', 'broadcast',
+	const globalConverged =
+		aliceGlobal?.settings?.global?.asrModel === 'small' && bobGlobal?.settings?.global?.asrModel === 'small';
+	add(
+		globalConverged ? 'PASS' : 'HIGH',
+		'broadcast',
 		'a global-scope write also fans out via settings:changed',
-		`alice.asrModel=${aliceGlobal?.settings?.global?.asrModel} bob.asrModel=${bobGlobal?.settings?.global?.asrModel}`);
+		`alice.asrModel=${aliceGlobal?.settings?.global?.asrModel} bob.asrModel=${bobGlobal?.settings?.global?.asrModel}`
+	);
 
 	// Room-scope house-rule changes have EXTRA broadcast obligations: `queueOrder` is stored on each
 	// queue entry as `rotationSeq`, so a write must also re-derive the queue and broadcast a
@@ -311,9 +425,12 @@ function extractJoinFromHtml(html) {
 	const alsoQueuePatch = alice.events.some((e) => e.type === 'queue:patch');
 	// With an empty queue, `reorder()` returns null (no change) and no queue:patch fires — that is
 	// correct, not a defect. State the observed shape rather than pretending it fired.
-	add(alice.events.some((e) => e.type === 'settings:changed') ? 'PASS' : 'HIGH', 'broadcast',
+	add(
+		alice.events.some((e) => e.type === 'settings:changed') ? 'PASS' : 'HIGH',
+		'broadcast',
 		'a room house-rule change fans out',
-		`settings:changed=yes queue:patch=${alsoQueuePatch} (queue:patch only fires when the order actually changes; empty queues emit only settings:changed)`);
+		`settings:changed=yes queue:patch=${alsoQueuePatch} (queue:patch only fires when the order actually changes; empty queues emit only settings:changed)`
+	);
 
 	alice.ws.close();
 	bob.ws.close();
@@ -337,8 +454,12 @@ async function runWireProbe() {
 	}
 	const raw = [...seen.values()].filter((m) => !m.instrumentalRef && m.stemStatus !== 'ready');
 	if (raw.length === 0) {
-		add('LOW', 'wire', 'no raw local song to cook — skipped wire probe',
-			`fixture has ${seen.size} local songs, all already cooked. Re-seed with a fresh MEDIA_DIR.`);
+		add(
+			'LOW',
+			'wire',
+			'no raw local song to cook — skipped wire probe',
+			`fixture has ${seen.size} local songs, all already cooked. Re-seed with a fresh MEDIA_DIR.`
+		);
 		return;
 	}
 	const rawCand = raw[0];
@@ -348,7 +469,6 @@ async function runWireProbe() {
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'medium', syncMode: 'lines' } });
 
 	// Start a stems worker (fetch,stems only — leave align to the align-worker below).
-	const stemsLog = pathJoin(SCRATCH, `p9-stems-${Date.now()}.log`);
 	const stems = spawn('bun', [pathJoin(process.cwd(), 'e2e/fake-stems-worker.mjs')], {
 		env: { ...process.env, EPORT: PORT, MEDIA_DIR: process.env.MEDIA_DIR ?? './media', FAKE_CAPS: 'fetch,stems' },
 		stdio: ['ignore', 'pipe', 'pipe']
@@ -381,23 +501,39 @@ async function runWireProbe() {
 	// Wait for the align worker to receive and exit. It has its own 15s watchdog; give it a bit more.
 	const alignExit = await new Promise((resolve) => {
 		const t = setTimeout(() => resolve('timeout'), 20000);
-		alignA.on('exit', (code) => { clearTimeout(t); resolve(`exit=${code}`); });
+		alignA.on('exit', (code) => {
+			clearTimeout(t);
+			resolve(`exit=${code}`);
+		});
 	});
 	const alignOutJoined = alignOutA.join('');
 	const paramsMatch = /params\s*=\s*(\{[^\n]+\})/m.exec(alignOutJoined);
 	let alignParams = null;
-	if (paramsMatch) { try { alignParams = JSON.parse(paramsMatch[1]); } catch { /* left null */ } }
-	add(alignParams?.asrModel === 'medium' && alignParams?.syncMode === 'lines' ? 'PASS' : 'HIGH', 'wire',
+	if (paramsMatch) {
+		try {
+			alignParams = JSON.parse(paramsMatch[1]);
+		} catch {
+			/* left null */
+		}
+	}
+	add(
+		alignParams?.asrModel === 'medium' && alignParams?.syncMode === 'lines' ? 'PASS' : 'HIGH',
+		'wire',
 		'align job:assign carries the settings live at assign time (run A: medium/lines)',
-		`fake-align exit=${alignExit} asrModel=${alignParams?.asrModel} syncMode=${alignParams?.syncMode}  — server/jobs/dispatch.ts:82`);
+		`fake-align exit=${alignExit} asrModel=${alignParams?.asrModel} syncMode=${alignParams?.syncMode}  — server/jobs/dispatch.ts:82`
+	);
 
 	// Second cook to prove LIVE reading. Change settings, cook another song, expect the NEW values in
 	// the align assign. Params are computed at assign time (dispatch.ts:52), so a change made between
 	// enqueue and dispatch must reach the worker; a change made mid-song must not perturb the running
 	// one.
 	if (!otherRaw) {
-		add('LOW', 'wire', 'only one raw song available — skipped run B (live-update assertion)',
-			'a second uncooked song is needed to trigger a second align at a different setting');
+		add(
+			'LOW',
+			'wire',
+			'only one raw song available — skipped run B (live-update assertion)',
+			'a second uncooked song is needed to trigger a second align at a different setting'
+		);
 	} else {
 		await api('PUT', '/api/settings', { cookie: aliceCookie, body: { asrModel: 'tiny', syncMode: 'forced' } });
 		// Fresh one-shot align worker.
@@ -416,15 +552,27 @@ async function runWireProbe() {
 		} else {
 			const alignExitB = await new Promise((resolve) => {
 				const t = setTimeout(() => resolve('timeout'), 20000);
-				alignB.on('exit', (code) => { clearTimeout(t); resolve(`exit=${code}`); });
+				alignB.on('exit', (code) => {
+					clearTimeout(t);
+					resolve(`exit=${code}`);
+				});
 			});
 			const outB = alignOutB.join('');
 			const pB = /params\s*=\s*(\{[^\n]+\})/m.exec(outB);
 			let paramsB = null;
-			if (pB) { try { paramsB = JSON.parse(pB[1]); } catch { /* left null */ } }
-			add(paramsB?.asrModel === 'tiny' && paramsB?.syncMode === 'forced' ? 'PASS' : 'HIGH', 'wire',
+			if (pB) {
+				try {
+					paramsB = JSON.parse(pB[1]);
+				} catch {
+					/* left null */
+				}
+			}
+			add(
+				paramsB?.asrModel === 'tiny' && paramsB?.syncMode === 'forced' ? 'PASS' : 'HIGH',
+				'wire',
 				'a global-settings change BETWEEN cooks reaches the NEXT align:assign (live, no restart)',
-				`fake-align exit=${alignExitB} asrModel=${paramsB?.asrModel} syncMode=${paramsB?.syncMode}  — dispatch.ts:assignParams`);
+				`fake-align exit=${alignExitB} asrModel=${paramsB?.asrModel} syncMode=${paramsB?.syncMode}  — dispatch.ts:assignParams`
+			);
 		}
 	}
 
@@ -434,10 +582,10 @@ async function runWireProbe() {
 	writeFileSync(pathJoin(SCRATCH, `p9-wire-stems.log`), stemsOut.join(''));
 	writeFileSync(pathJoin(SCRATCH, `p9-wire-alignA.log`), alignOutA.join(''));
 }
-try { await runWireProbe(); }
-catch (err) {
-	add('LOW', 'wire', 'wire probe threw — environment issue',
-		`${err.message ?? err}. Bun + fake workers required.`);
+try {
+	await runWireProbe();
+} catch (err) {
+	add('LOW', 'wire', 'wire probe threw — environment issue', `${err.message ?? err}. Bun + fake workers required.`);
 }
 
 // ═══ 7. Security — the room's blast radius. ══════════════════════════════════
@@ -448,14 +596,20 @@ catch (err) {
 	const { cookie: guestCookie } = await joinAs('CarolProbe');
 	// (a) A totally unrelated singer can PUT global settings.
 	const r = await api('PUT', '/api/settings', { cookie: guestCookie, body: { asrModel: 'large-v3' } });
-	add(r.status === 200 && r.body?.global?.asrModel === 'large-v3' ? 'HIGH' : 'PASS', 'security',
-		'ANY joined singer can PUT global settings — sets the fleet\'s Whisper checkpoint (1550M weights)',
-		`HTTP ${r.status} stored=${r.body?.global?.asrModel}  — server/auth/capabilities.ts:can() returns true for any singerId`);
+	add(
+		r.status === 200 && r.body?.global?.asrModel === 'large-v3' ? 'HIGH' : 'PASS',
+		'security',
+		"ANY joined singer can PUT global settings — sets the fleet's Whisper checkpoint (1550M weights)",
+		`HTTP ${r.status} stored=${r.body?.global?.asrModel}  — server/auth/capabilities.ts:can() returns true for any singerId`
+	);
 	// (b) A guest can flip the JOIN QR to point at an attacker origin.
 	const rQ = await api('PUT', '/api/settings', { cookie: guestCookie, body: { joinOrigin: 'http://evil.example:80' } });
-	add(rQ.body?.global?.joinOrigin === 'http://evil.example' ? 'HIGH' : 'PASS', 'security',
+	add(
+		rQ.body?.global?.joinOrigin === 'http://evil.example' ? 'HIGH' : 'PASS',
+		'security',
 		'ANY joined singer can retarget the join QR to an attacker origin — party phishing vector for later joiners',
-		`stored=${rQ.body?.global?.joinOrigin}  — TV re-renders on next request, no restart`);
+		`stored=${rQ.body?.global?.joinOrigin}  — TV re-renders on next request, no restart`
+	);
 	// Restore before moving on.
 	await api('PUT', '/api/settings', { cookie: aliceCookie, body: { joinOrigin: '', asrModel: 'base' } });
 
@@ -463,18 +617,24 @@ catch (err) {
 	// stating. It reveals worker ids, engine/model names, error strings.
 	const met = await api('GET', '/api/metrics');
 	const bodyKb = ((met.text?.length ?? 0) / 1024).toFixed(1);
-	add(met.status === 200 ? 'HIGH' : 'PASS', 'security',
+	add(
+		met.status === 200 ? 'HIGH' : 'PASS',
+		'security',
 		'/api/metrics is UNGATED (worker ids, model names, error strings)',
-		`HTTP ${met.status} body=${bodyKb} KB  — routes/api/metrics/+server.ts:8-11 (documented as intentional)`);
+		`HTTP ${met.status} body=${bodyKb} KB  — routes/api/metrics/+server.ts:8-11 (documented as intentional)`
+	);
 
 	// (d) /api/audit/[mediaId] ungated — same reasoning. Pick any indexed media.
 	const idxSearch = await (await fetch(`${BASE}/api/search?q=caroline`)).json().catch(() => ({}));
 	const someone = [...(idxSearch.ready ?? []), ...(idxSearch.results ?? [])][0];
 	if (someone) {
 		const aud = await api('GET', `/api/audit/${encodeURIComponent(someone.id)}`);
-		add(aud.status === 200 ? 'HIGH' : 'PASS', 'security',
+		add(
+			aud.status === 200 ? 'HIGH' : 'PASS',
+			'security',
 			`/api/audit/${someone.id} is UNGATED (per-song attempt history + errors)`,
-			`HTTP ${aud.status}  — routes/api/audit/[mediaId]/+server.ts:8-9 (documented as intentional)`);
+			`HTTP ${aud.status}  — routes/api/audit/[mediaId]/+server.ts:8-9 (documented as intentional)`
+		);
 	}
 
 	// (e) Worker WS: connecting with role=worker with no token succeeds unless ENCORE_WORKER_TOKEN is
@@ -490,11 +650,14 @@ catch (err) {
 	if (workerOpened) wws.close();
 	// This is only a finding if the operator has NOT set ENCORE_WORKER_TOKEN. When one is set the
 	// upgrade returns 401 (server.ts:161-163). Report the state observed rather than an opinion.
-	add(workerOpened ? 'MEDIUM' : 'PASS', 'security',
+	add(
+		workerOpened ? 'MEDIUM' : 'PASS',
+		'security',
 		workerOpened
 			? 'role=worker socket accepted without a token — dispatch authority on the LAN. Set ENCORE_WORKER_TOKEN to gate it.'
 			: 'role=worker socket refused without a token (ENCORE_WORKER_TOKEN set)',
-		`server.ts:161-163`);
+		`server.ts:161-163`
+	);
 }
 
 // ═══ 8. Summary ══════════════════════════════════════════════════════════════

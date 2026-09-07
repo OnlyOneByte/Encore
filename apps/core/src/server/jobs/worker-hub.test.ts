@@ -8,12 +8,26 @@ import { JobRepository } from './repository';
 import { AttemptLedger } from './attempts';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
-import { attemptStages, realtimeFactor, DEFAULT_EFFECTIVE_SETTINGS, type EffectiveSettings, type WorkerCommand, type ServerEvent, type Media } from '@encore/shared';
+import {
+	attemptStages,
+	realtimeFactor,
+	DEFAULT_EFFECTIVE_SETTINGS,
+	type EffectiveSettings,
+	type WorkerCommand,
+	type ServerEvent,
+	type Media
+} from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 
 const media = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', ...over
+	id,
+	source: 'youtube',
+	sourceRef: 'vid-' + id,
+	title: id,
+	durationSec: 200,
+	stemStatus: 'none',
+	...over
 });
 
 function harness() {
@@ -22,7 +36,10 @@ function harness() {
 	const attempts = new AttemptLedger(db);
 	const jobs = new JobRepository(db, attempts);
 	const registry = new WorkerRegistry();
-	const mediaById = new Map<string, Media>([['m1', media('m1')], ['m2', media('m2')]]);
+	const mediaById = new Map<string, Media>([
+		['m1', media('m1')],
+		['m2', media('m2')]
+	]);
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const broadcasts: ServerEvent[] = [];
 	let clock = T0;
@@ -78,7 +95,12 @@ test('welcome carries the object-store config so a remote worker pulls/pushes vi
 	});
 	hub.handle({ type: 'worker:hello', workerId: 'remote-w', capabilities: ['stems'], concurrency: 1, version: '1' });
 	const welcome = cmdsOfType(sent, 'worker:welcome')[0] as Extract<WorkerCommand, { type: 'worker:welcome' }>;
-	expect(welcome.mediaStore).toEqual({ kind: 'object', bucket: 'encore-media', endpoint: 'https://minio.lan:9000', prefix: 'encore/' });
+	expect(welcome.mediaStore).toEqual({
+		kind: 'object',
+		bucket: 'encore-media',
+		endpoint: 'https://minio.lan:9000',
+		prefix: 'encore/'
+	});
 });
 
 test('FULL LIFECYCLE: hello → assign → accept → progress → complete drives the job to ready', () => {
@@ -214,8 +236,11 @@ test('guard arm — #onComplete workerId: a ZOMBIE worker cannot publish over th
 	// arm is the ONLY guard. If it were weakened the zombie's instrumental would be published PERMANENTLY
 	// and w2's real completion then silently dropped (status already 'ready').
 	hub.handle({
-		type: 'job:complete', workerId: 'w1', jobId,
-		mediaUri: 'zombie', artifacts: { stems: { instrumental: 'derived/stems/m1-ZOMBIE.flac' } }
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId,
+		mediaUri: 'zombie',
+		artifacts: { stems: { instrumental: 'derived/stems/m1-ZOMBIE.flac' } }
 	});
 	expect(jobs.byId(jobId)!.status).toBe('running'); // NOT flipped to ready by the zombie
 	expect(mediaById.get('m1')!.stemStatus).toBe('none'); // no stale instrumental published
@@ -303,7 +328,10 @@ test('guard arm — #onComplete !job: a complete naming an unknown jobId is swal
 	const { hub, jobs, mediaById, broadcasts, readied } = harness();
 	expect(() =>
 		hub.handle({
-			type: 'job:complete', workerId: 'w1', jobId: GHOST, mediaUri: 'x',
+			type: 'job:complete',
+			workerId: 'w1',
+			jobId: GHOST,
+			mediaUri: 'x',
 			artifacts: { stems: { instrumental: 'derived/stems/GHOST-instrumental.flac' } }
 		})
 	).not.toThrow();
@@ -565,7 +593,13 @@ test('a terminally failed FETCH also settles the media — the common stranding 
 	const job = jobs.enqueue('m1', 'fetch', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['fetch:ytdlp'], concurrency: 1, version: '1' });
 	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
-	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: job.id, error: 'Requested format is not available', retryable: false });
+	hub.handle({
+		type: 'job:failed',
+		workerId: 'w1',
+		jobId: job.id,
+		error: 'Requested format is not available',
+		retryable: false
+	});
 
 	expect(mediaById.get('m1')!.stemStatus).toBe('none');
 });
@@ -580,16 +614,25 @@ test('a refused stems-upgrade leaves the key, range, vocals and instrumental unt
 	// A song already cooked at the TOP of the quality ladder (ensemble, rank 45), with a real key +
 	// range profile and a guiding-vocals ref.
 	const profile = {
-		keyTonic: 3, keyMode: 'major', keyConfidence: 0.9,
-		lowMidi: 50, highMidi: 72, p05Midi: 55, p95Midi: 67, histogram: [1, 2, 3]
+		keyTonic: 3,
+		keyMode: 'major',
+		keyConfidence: 0.9,
+		lowMidi: 50,
+		highMidi: 72,
+		p05Midi: 55,
+		p95Midi: 67,
+		histogram: [1, 2, 3]
 	};
-	mediaById.set('m1', media('m1', {
-		stemStatus: 'ready',
-		instrumentalRef: 'derived/stems/m1-instrumental.flac',
-		separator: { engine: 'ensemble', model: 'instrumental_clean' }, // rank 45
-		vocalsRef: 'derived/stems/m1-vocals.flac',
-		songProfile: profile as unknown as Media['songProfile']
-	}));
+	mediaById.set(
+		'm1',
+		media('m1', {
+			stemStatus: 'ready',
+			instrumentalRef: 'derived/stems/m1-instrumental.flac',
+			separator: { engine: 'ensemble', model: 'instrumental_clean' }, // rank 45
+			vocalsRef: 'derived/stems/m1-vocals.flac',
+			songProfile: profile as unknown as Media['songProfile']
+		})
+	);
 	// A stems-upgrade completes. With no settings the harness resolves the upgrade to the default
 	// roformer:bs-roformer-1297 (rank 35), which does NOT outrank the published ensemble — so
 	// markMediaReady refuses it.
@@ -602,7 +645,10 @@ test('a refused stems-upgrade leaves the key, range, vocals and instrumental unt
 		jobId: job.id,
 		mediaUri: 'x',
 		artifacts: {
-			stems: { instrumental: 'derived/stems/m1-instrumental-UPGRADE.flac', vocals: 'derived/stems/m1-vocals-UPGRADE.flac' }
+			stems: {
+				instrumental: 'derived/stems/m1-instrumental-UPGRADE.flac',
+				vocals: 'derived/stems/m1-vocals-UPGRADE.flac'
+			}
 			// no songProfile on this frame — the exact condition that used to normalize to EMPTY and wipe
 		}
 	});
@@ -619,11 +665,14 @@ test('an ACCEPTED stems-upgrade DOES swap the artifacts (the guard is not over-e
 	const { hub, jobs, mediaById } = harness();
 	// Published at the BOTTOM of the ladder (demucs htdemucs, rank 10); the default upgrade (roformer,
 	// rank 35) outranks it, so markMediaReady accepts and the setters run.
-	mediaById.set('m1', media('m1', {
-		stemStatus: 'ready',
-		instrumentalRef: 'derived/stems/m1-instrumental.flac',
-		separator: { engine: 'demucs', model: 'htdemucs' } // rank 10
-	}));
+	mediaById.set(
+		'm1',
+		media('m1', {
+			stemStatus: 'ready',
+			instrumentalRef: 'derived/stems/m1-instrumental.flac',
+			separator: { engine: 'demucs', model: 'htdemucs' } // rank 10
+		})
+	);
 	const job = jobs.enqueue('m1', 'stems-upgrade', 0, T0);
 	// The default upgrade engine is roformer, so the job routes to a stems:roformer worker.
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems:roformer'], concurrency: 1, version: '1' });
@@ -655,7 +704,9 @@ function hubWithSettings(getSettings: () => EffectiveSettings) {
 	const mediaById = new Map<string, Media>([['m1', media('m1')]]);
 	const sent: { workerId: string; cmd: WorkerCommand }[] = [];
 	const hub = new WorkerHub({
-		jobs, registry, mediaById,
+		jobs,
+		registry,
+		mediaById,
 		toWorker: (workerId, cmd) => sent.push({ workerId, cmd }),
 		broadcast: () => {},
 		getSettings,
@@ -665,7 +716,10 @@ function hubWithSettings(getSettings: () => EffectiveSettings) {
 }
 
 const assignOf = (sent: { cmd: WorkerCommand }[]) =>
-	sent.filter((s) => s.cmd.type === 'job:assign').map((s) => s.cmd)[0] as Extract<WorkerCommand, { type: 'job:assign' }>;
+	sent.filter((s) => s.cmd.type === 'job:assign').map((s) => s.cmd)[0] as Extract<
+		WorkerCommand,
+		{ type: 'job:assign' }
+	>;
 
 test('a room quality ceiling LOWERS the stems engine, model, and routing capability', () => {
 	// Global default is a high-tier roformer cook; the room caps quality down to the demucs tier.
@@ -693,7 +747,13 @@ test('with NO room cap, dispatch uses the global default unchanged (ceiling is d
 	const { hub, jobs, sent } = hubWithSettings(() => effective);
 	jobs.enqueue('m1', 'stems', 0, T0);
 	// The roformer worker is required now: an uncapped high-tier cook must route to 'stems:roformer'.
-	hub.handle({ type: 'worker:hello', workerId: 'w-rof', capabilities: ['stems:roformer'], concurrency: 1, version: '1' });
+	hub.handle({
+		type: 'worker:hello',
+		workerId: 'w-rof',
+		capabilities: ['stems:roformer'],
+		concurrency: 1,
+		version: '1'
+	});
 
 	const assign = assignOf(sent);
 	expect(assign).toBeTruthy();
@@ -726,11 +786,14 @@ test('#90 TTL: a dead stems cook settles the STEMS gate back to un-cooked', () =
 test('#90 TTL: a dead align cook settles the LYRICS gate on an already-playable song', () => {
 	const { hub, jobs, mediaById, setClock } = harness();
 	// Instrumental on disk, song plays; only the align follow-up is unservable.
-	mediaById.set('m1', media('m1', {
-		stemStatus: 'ready',
-		instrumentalRef: 'derived/stems/m1-instrumental.flac',
-		lyricsStatus: 'queued'
-	}));
+	mediaById.set(
+		'm1',
+		media('m1', {
+			stemStatus: 'ready',
+			instrumentalRef: 'derived/stems/m1-instrumental.flac',
+			lyricsStatus: 'queued'
+		})
+	);
 	const job = jobs.enqueue('m1', 'align', 0, T0);
 	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems'], concurrency: 1, version: '1' });
 	setClock(T0 + 1_000);
@@ -758,7 +821,10 @@ test('#524: a worker-reported release frees EXACTLY one slot — never double-fr
 	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: a.id });
 	setClock(T0 + 1000);
 	hub.handle({
-		type: 'job:complete', workerId: 'w1', jobId: a.id, mediaUri: 'x',
+		type: 'job:complete',
+		workerId: 'w1',
+		jobId: a.id,
+		mediaUri: 'x',
 		artifacts: { stems: { instrumental: 'derived/stems/m1-instrumental.flac' } }
 	});
 	expect(jobs.byId(a.id)!.status).toBe('ready');

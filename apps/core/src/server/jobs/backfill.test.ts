@@ -12,7 +12,8 @@ const media = (over: Partial<Media> = {}): Media => ({
 	sourceRef: `v${n}`,
 	title: `song ${n}`,
 	durationSec: 200,
-	stemStatus: 'ready', lyricsStatus: 'ready',
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
 	instrumentalRef: 'derived/stems/i-instrumental.flac',
 	...over
 });

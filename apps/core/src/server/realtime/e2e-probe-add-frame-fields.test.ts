@@ -158,7 +158,8 @@ test('every e2e .mjs add frame mints status: a member of the queue_entries enum,
 			if (!m) continue;
 			const status = m[1];
 			if (!enumValues.includes(status)) offenders.push(`${rel}: off-enum status '${status}'`);
-			else if (status !== 'queued') offenders.push(`${rel}: server-owned status '${status}' (a client may only add 'queued')`);
+			else if (status !== 'queued')
+				offenders.push(`${rel}: server-owned status '${status}' (a client may only add 'queued')`);
 		}
 	}
 	expect(offenders).toEqual([]);

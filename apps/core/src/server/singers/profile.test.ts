@@ -44,7 +44,14 @@ function appHarness(): { app: EncoreApp; published: ServerEvent[] } {
 		settings: new SettingsRepository(db),
 		reaper: new JobReaper(jobs),
 		workers,
-		workerHub: new WorkerHub({ jobs, registry: workers, mediaById, toWorker: () => {}, broadcast: () => {}, now: () => NOW }),
+		workerHub: new WorkerHub({
+			jobs,
+			registry: workers,
+			mediaById,
+			toWorker: () => {},
+			broadcast: () => {},
+			now: () => NOW
+		}),
 		mediaById,
 		media: new MediaRepository(db),
 		localLibrary: new LocalLibrary(),
@@ -162,5 +169,9 @@ test('removableOnLeave is what the confirm counts, and it excludes the playing e
 	app.state.applyQueueOp({ op: 'add', entry: entry('p', dana.id, 'playing') });
 	app.state.applyQueueOp({ op: 'add', entry: entry('q1', dana.id) });
 	app.state.applyQueueOp({ op: 'add', entry: entry('q2', dana.id) });
-	expect(removableOnLeave(app, dana.id).map((e) => e.id).sort()).toEqual(['q1', 'q2']);
+	expect(
+		removableOnLeave(app, dana.id)
+			.map((e) => e.id)
+			.sort()
+	).toEqual(['q1', 'q2']);
 });

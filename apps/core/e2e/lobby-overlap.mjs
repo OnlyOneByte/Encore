@@ -78,14 +78,29 @@ function check(name, ok, detail = '') {
 
 const res = await fetch(`${base}/health`).catch(() => null);
 if (!res?.ok) {
-	console.error(`No Encore server on ${base}. Start one (ENCORE_EPHEMERAL=1 PORT=${PORT} ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start) and re-run.`);
+	console.error(
+		`No Encore server on ${base}. Start one (ENCORE_EPHEMERAL=1 PORT=${PORT} ENCORE_PUBLIC_ORIGIN=http://<lan-ip>:${PORT} bun run start) and re-run.`
+	);
 	process.exit(2);
 }
 const chromium = findChromium();
-if (!chromium) { console.error('No Chromium found. Set PW_CHROMIUM.'); process.exit(2); }
+if (!chromium) {
+	console.error('No Chromium found. Set PW_CHROMIUM.');
+	process.exit(2);
+}
 
-const proc = spawn(chromium, ['--headless=new', '--no-sandbox', '--disable-gpu',
-	`--remote-debugging-port=${CDP_PORT}`, '--remote-allow-origins=*', 'about:blank'], { stdio: 'ignore' });
+const proc = spawn(
+	chromium,
+	[
+		'--headless=new',
+		'--no-sandbox',
+		'--disable-gpu',
+		`--remote-debugging-port=${CDP_PORT}`,
+		'--remote-allow-origins=*',
+		'about:blank'
+	],
+	{ stdio: 'ignore' }
+);
 
 let browser;
 const sockets = [];
@@ -94,27 +109,46 @@ try {
 	for (const [label, names, overflowExtra] of CASES) {
 		// seed presence: join each name, then hold a phone socket per singer
 		const total = names.length + overflowExtra;
-		const roster = Array.from({ length: total }, (_, i) => [names[i] ?? `${label.replace(/[^a-z]/gi,'')}Extra${i}`, HUES[i % HUES.length]]);
+		const roster = Array.from({ length: total }, (_, i) => [
+			names[i] ?? `${label.replace(/[^a-z]/gi, '')}Extra${i}`,
+			HUES[i % HUES.length]
+		]);
 		const cookies = [];
 		for (const [displayName, color] of roster) {
-			const r = await fetch(`${base}/api/join`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ displayName, color }) });
-			if (!r.ok) { console.error(`join failed (${label}) ${displayName}: ${r.status} ${await r.text()}`); process.exit(2); }
+			const r = await fetch(`${base}/api/join`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ displayName, color })
+			});
+			if (!r.ok) {
+				console.error(`join failed (${label}) ${displayName}: ${r.status} ${await r.text()}`);
+				process.exit(2);
+			}
 			cookies.push((r.headers.get('set-cookie') || '').split(';')[0]);
 		}
 		const caseSockets = [];
 		for (const c of cookies) {
 			const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`, { headers: { Cookie: c } });
-			await new Promise((ok, err) => { ws.addEventListener('open', ok, { once: true }); ws.addEventListener('error', err, { once: true }); });
-			caseSockets.push(ws); sockets.push(ws);
+			await new Promise((ok, err) => {
+				ws.addEventListener('open', ok, { once: true });
+				ws.addEventListener('error', err, { once: true });
+			});
+			caseSockets.push(ws);
+			sockets.push(ws);
 		}
 		await sleep(500);
 
-		for (const [w, h, isShort] of VIEWPORTS) {
+		for (const [w, h] of VIEWPORTS) {
 			const tv = await browser.newPage();
 			await tv.viewport(w, h, 1);
 			await tv.goto(`${base}/tv`);
-			const rendered = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.lobbyUrl)}) !== null`, { timeout: 8000 }).catch(() => false);
-			if (!rendered) { check(`${label} @ ${w}x${h} rendered the lobby`, false, 'no .lobby .url — roster did not sync'); continue; }
+			const rendered = await tv
+				.waitFor(`document.querySelector(${JSON.stringify(SEL.lobbyUrl)}) !== null`, { timeout: 8000 })
+				.catch(() => false);
+			if (!rendered) {
+				check(`${label} @ ${w}x${h} rendered the lobby`, false, 'no .lobby .url — roster did not sync');
+				continue;
+			}
 			await sleep(800);
 			const m = await tv.evaluate(`(() => {
 				const url = document.querySelector(${JSON.stringify(SEL.lobbyUrl)}); const strip = document.querySelector(${JSON.stringify(SEL.lobbyStrip)});
@@ -138,17 +172,30 @@ try {
 			// The address must be clear AND painted AND the strip must not clip any roster member: the
 			// #98 fix must not trade the burial for silently dropping the people it names.
 			const ok = m.overlap === 0 && m.painted === SEL.lobbyAddress && !m.inStrip && !m.clipped && m.chipsCut === 0;
-			check(`${label} @ ${w}x${h}: address clear + roster not clipped`, ok,
-				`overlap=${m.overlap}px painted=${m.painted} inStrip=${m.inStrip} clipped=${m.clipped} chipsCut=${m.chipsCut} moreShown=${m.moreShown} stripH=${m.strip}`);
+			check(
+				`${label} @ ${w}x${h}: address clear + roster not clipped`,
+				ok,
+				`overlap=${m.overlap}px painted=${m.painted} inStrip=${m.inStrip} clipped=${m.clipped} chipsCut=${m.chipsCut} moreShown=${m.moreShown} stripH=${m.strip}`
+			);
 		}
 
-		for (const s of caseSockets) { try { s.close(); } catch {} }
+		for (const s of caseSockets) {
+			try {
+				s.close();
+			} catch {}
+		}
 		await sleep(300); // let presence drop before the next case's room
 	}
 } finally {
-	try { browser?.close(); } catch {}
+	try {
+		browser?.close();
+	} catch {}
 	proc.kill();
-	for (const s of sockets) { try { s.close(); } catch {} }
+	for (const s of sockets) {
+		try {
+			s.close();
+		} catch {}
+	}
 }
 
 const failed = checks.filter((c) => !c.ok);

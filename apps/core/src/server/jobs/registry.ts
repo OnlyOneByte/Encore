@@ -3,7 +3,6 @@
 // in-flight jobs are reclaimed by the reaper via lease expiry. Tracks free slots so the
 // dispatcher can pick the least-loaded eligible worker (§4).
 
-
 import type { WorkerHost } from '@encore/shared';
 
 export interface WorkerSession {

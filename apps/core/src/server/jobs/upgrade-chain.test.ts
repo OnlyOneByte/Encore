@@ -1,7 +1,13 @@
 import { test, expect } from 'bun:test';
 import { followUps, separatorFor } from './dispatch';
 import { markMediaReady } from './make-karaoke';
-import { isQualityUpgrade, qualityRank, DEFAULT_GLOBAL_SETTINGS, type Media, type GlobalSettings } from '@encore/shared';
+import {
+	isQualityUpgrade,
+	qualityRank,
+	DEFAULT_GLOBAL_SETTINGS,
+	type Media,
+	type GlobalSettings
+} from '@encore/shared';
 
 const settings = (o: Partial<GlobalSettings> = {}): GlobalSettings => ({
 	...DEFAULT_GLOBAL_SETTINGS,
@@ -66,7 +72,9 @@ test('separatorFor reports the pairing a separation job used, and nothing for ot
 
 test('a first cook publishes and records its separator', () => {
 	const byId = new Map([['m1', media()]]);
-	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'demucs', model: 'htdemucs' })).toBe(true);
+	expect(
+		markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'demucs', model: 'htdemucs' })
+	).toBe(true);
 	const m = byId.get('m1')!;
 	expect(m.stemStatus).toBe('ready');
 	expect(m.separator).toEqual({ engine: 'demucs', model: 'htdemucs' });
@@ -74,19 +82,42 @@ test('a first cook publishes and records its separator', () => {
 
 test('a BETTER upgrade replaces the instrumental and its provenance', () => {
 	const byId = new Map([
-		['m1', media({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', separator: { engine: 'demucs', model: 'htdemucs' } })]
+		[
+			'm1',
+			media({
+				stemStatus: 'ready',
+				lyricsStatus: 'ready',
+				instrumentalRef: 'derived/stems/m1-instrumental.flac',
+				separator: { engine: 'demucs', model: 'htdemucs' }
+			})
+		]
 	]);
-	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'roformer', model: 'bs-roformer-1297' })).toBe(true);
+	expect(
+		markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', {
+			engine: 'roformer',
+			model: 'bs-roformer-1297'
+		})
+	).toBe(true);
 	expect(byId.get('m1')!.separator).toEqual({ engine: 'roformer', model: 'bs-roformer-1297' });
 });
 
 test('THE INVARIANT: a worse or equal result never replaces a published instrumental', () => {
 	const published = { engine: 'roformer', model: 'bs-roformer-1297' };
 	const byId = new Map([
-		['m1', media({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', separator: published })]
+		[
+			'm1',
+			media({
+				stemStatus: 'ready',
+				lyricsStatus: 'ready',
+				instrumentalRef: 'derived/stems/m1-instrumental.flac',
+				separator: published
+			})
+		]
 	]);
 	// a worse engine result arriving late (e.g. a re-queued plain cook) is refused
-	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'demucs', model: 'htdemucs' })).toBe(false);
+	expect(
+		markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', { engine: 'demucs', model: 'htdemucs' })
+	).toBe(false);
 	expect(byId.get('m1')!.separator).toEqual(published); // unchanged
 	// and an identical re-cook is a no-op rather than a churn
 	expect(markMediaReady('m1', byId, '/abs/derived/stems/m1-instrumental.flac', published)).toBe(false);

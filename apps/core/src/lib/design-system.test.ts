@@ -64,7 +64,11 @@ function lineOf(src: string, index: number): number {
 /** #abc and #AABBCC normalise to the same key so a shade match cannot hide behind formatting. */
 function normaliseHex(hex: string): string {
 	let h = hex.replace('#', '').toLowerCase();
-	if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+	if (h.length === 3)
+		h = h
+			.split('')
+			.map((c) => c + c)
+			.join('');
 	return `#${h}`;
 }
 
@@ -111,9 +115,7 @@ test('no component hard-codes a colour the palette already owns', () => {
 			if (SVG_PAINT.test(src.slice(Math.max(0, m.index! - 14), m.index!))) continue;
 			const tokenName = known.get(hex);
 			if (!tokenName) continue;
-			offences.push(
-				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[0]} is var(--${tokenName})`
-			);
+			offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[0]} is var(--${tokenName})`);
 		}
 	}
 
@@ -233,7 +235,7 @@ test('no component leaks a stray comment terminator into the page', () => {
 		const src = readFileSync(f, 'utf8');
 		let depth = 0;
 		let line = 1;
-		for (let i = 0; i < src.length; ) {
+		for (let i = 0; i < src.length;) {
 			if (src.startsWith('<!--', i)) {
 				depth++;
 				i += 4;
@@ -273,9 +275,7 @@ test('form controls never sit below the 16px iOS zoom threshold', () => {
 			const [n, unit] = [Number(fs[1]), fs[2]];
 			const px = unit === 'px' ? n : n * 16;
 			if (px < 16) {
-				offences.push(
-					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${sel.trim()} is ${fs[1]}${unit} (${px}px)`
-				);
+				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${sel.trim()} is ${fs[1]}${unit} (${px}px)`);
 			}
 		}
 	}
@@ -466,10 +466,16 @@ test('a keydown handler that preventDefault()s on a snippet host early-returns o
 				if (src[i] === '{') depth++;
 				else if (src[i] === '}') {
 					depth--;
-					if (depth === 0) { end = i; break; }
+					if (depth === 0) {
+						end = i;
+						break;
+					}
 				}
 			}
-			if (end === -1) { offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: unbalanced onkeydown body`); continue; }
+			if (end === -1) {
+				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: unbalanced onkeydown body`);
+				continue;
+			}
 			// Strip // line comments from the body too: the rationale comment on the fixed handler
 			// mentions preventDefault()/e.target in prose, which would otherwise skew the index checks
 			// below. (design-system's stripComments only removes /* */ and <!-- -->.)
@@ -478,13 +484,19 @@ test('a keydown handler that preventDefault()s on a snippet host early-returns o
 			scanned++;
 			// The guard clause must be a target-identity early-return, and it must sit BEFORE the first
 			// preventDefault() so a foreign target is dropped before anything is cancelled.
-			const guardRe = new RegExp(`if\\s*\\(\\s*${evName}\\.target\\s*!==\\s*${evName}\\.currentTarget\\s*\\)\\s*return\\b`);
+			const guardRe = new RegExp(
+				`if\\s*\\(\\s*${evName}\\.target\\s*!==\\s*${evName}\\.currentTarget\\s*\\)\\s*return\\b`
+			);
 			const guardIdx = body.search(guardRe);
 			const pdIdx = body.indexOf('preventDefault(');
 			if (guardIdx === -1) {
-				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: onkeydown preventDefault()s but never early-returns on ${evName}.target !== ${evName}.currentTarget — a nested control's Enter/Space is swallowed (#301)`);
+				offences.push(
+					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: onkeydown preventDefault()s but never early-returns on ${evName}.target !== ${evName}.currentTarget — a nested control's Enter/Space is swallowed (#301)`
+				);
 			} else if (guardIdx > pdIdx) {
-				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: the ${evName}.target identity guard sits AFTER preventDefault() — move it first so a foreign target is dropped before the event is cancelled (#301)`);
+				offences.push(
+					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: the ${evName}.target identity guard sits AFTER preventDefault() — move it first so a foreign target is dropped before the event is cancelled (#301)`
+				);
 			}
 		}
 	}

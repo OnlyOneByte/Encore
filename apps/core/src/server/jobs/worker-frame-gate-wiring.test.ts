@@ -24,7 +24,9 @@ function stripComments(src: string): string {
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
 
 test('#433: server.ts imports validateWorkerMessage from worker-hub', () => {
-	expect(SERVER).toMatch(/import\s*\{[^}]*\bvalidateWorkerMessage\b[^}]*\}\s*from\s*'\.\/src\/server\/jobs\/worker-hub'/);
+	expect(SERVER).toMatch(
+		/import\s*\{[^}]*\bvalidateWorkerMessage\b[^}]*\}\s*from\s*'\.\/src\/server\/jobs\/worker-hub'/
+	);
 });
 
 test('#433: server.ts runs validateWorkerMessage as a reject-gate (non-null → return)', () => {

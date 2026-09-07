@@ -5,16 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, rmSync, chmodSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-	audioKey,
-	instrumentalKey,
-	vocalsKey,
-	lyricsKey,
-	metaKey,
-	classOf,
-	toRelativeKey,
-	mediaRoot
-} from './paths';
+import { audioKey, instrumentalKey, vocalsKey, lyricsKey, metaKey, classOf, toRelativeKey, mediaRoot } from './paths';
 import { planMigration, applyMigration, ensureLayout } from './migrate-layout';
 
 // What `migrateStorageLayout` itself checks -- asserted the same way here, so the test cannot pass
@@ -73,8 +64,7 @@ describe('toRelativeKey — the absolute-path bug', () => {
 		expect(toRelativeKey(abs)).toBe('derived/lyrics/m1.json');
 	});
 
-	it('passes a relative ref through untouched', () => {
-	});
+	it('passes a relative ref through untouched', () => {});
 
 	it('returns null for a path outside every storage class', () => {
 		// a worker writing somewhere we do not serve is a config error, not something to persist
@@ -93,9 +83,13 @@ describe('toRelativeKey — the absolute-path bug', () => {
 
 describe('safeMediaPath is class-aware and still traversal-proof', () => {
 	it('resolves a derived ref under the derived root', () => {
-		expect(safeMediaPath('derived/stems/m1-instrumental.m4a')).toBe(join(root, 'derived', 'stems', 'm1-instrumental.m4a'));
+		expect(safeMediaPath('derived/stems/m1-instrumental.m4a')).toBe(
+			join(root, 'derived', 'stems', 'm1-instrumental.m4a')
+		);
 		// a legacy .wav ref from before the audio policy must still resolve
-		expect(safeMediaPath('derived/stems/m1-instrumental.wav')).toBe(join(root, 'derived', 'stems', 'm1-instrumental.wav'));
+		expect(safeMediaPath('derived/stems/m1-instrumental.wav')).toBe(
+			join(root, 'derived', 'stems', 'm1-instrumental.wav')
+		);
 	});
 
 	it('resolves a class dir on another volume', () => {
@@ -204,7 +198,10 @@ describe('migration off the legacy layout', () => {
 		seedLegacy();
 		const plan = planMigration(root);
 		const bogus = join(root, 'stems', '_work', 'ghost', 'source.wav');
-		const withBadEntry = { ...plan, moves: [[bogus, join(root, 'audio', 'ghost.wav')] as [string, string], ...plan.moves] };
+		const withBadEntry = {
+			...plan,
+			moves: [[bogus, join(root, 'audio', 'ghost.wav')] as [string, string], ...plan.moves]
+		};
 		const res = applyMigration(withBadEntry);
 		// the missing one is skipped, everything real still moved
 		expect(res.skipped).toBeGreaterThan(0);

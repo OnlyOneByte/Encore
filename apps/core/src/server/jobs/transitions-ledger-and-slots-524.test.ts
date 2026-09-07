@@ -160,7 +160,14 @@ test('#524 step4: the reaper progress-lease-expiry branch routes its exhaustion 
 	// A running job with a dead lease and attempts one below max: the shared predicate says NOT
 	// exhausted, so sweep requeues rather than fails; at max it fails. This pins that leases.sweep
 	// and worker-hub agree on the SAME ceiling.
-	const base = { id: 'j', mediaId: 'm', jobType: 'stems', workerId: 'w', status: 'running', leaseExpiresAt: T0 } as unknown as Job;
+	const base = {
+		id: 'j',
+		mediaId: 'm',
+		jobType: 'stems',
+		workerId: 'w',
+		status: 'running',
+		leaseExpiresAt: T0
+	} as unknown as Job;
 	const notYet = sweep([{ ...base, attempts: 1, maxAttempts: 3 }], T0 + 1);
 	expect(notYet[0].kind).toBe('requeue'); // attempts→2, !exhausted(2,3)
 	const dead = sweep([{ ...base, attempts: 2, maxAttempts: 3 }], T0 + 1);

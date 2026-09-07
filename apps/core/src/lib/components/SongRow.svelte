@@ -282,7 +282,8 @@
 			class="sing"
 			aria-label={actionLabel}
 			title="Take a turn now and strip the vocals — you keep your place in line while it cooks"
-			onclick={() => onmake?.()}><Icon name="sparkle" /></button>
+			onclick={() => onmake?.()}><Icon name="sparkle" /></button
+		>
 	{:else}
 		<button
 			class="add"
@@ -290,17 +291,26 @@
 			aria-label={actionLabel}
 			title={inQueue ? 'Already in the queue' : 'Add a turn'}
 			disabled={inQueue}
-			onclick={() => onadd?.()}>{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}</button>
+			onclick={() => onadd?.()}
+			>{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}</button
+		>
 	{/if}
 </div>
 
 <style>
 	/* Geometry comes from .list-row in app.css, shared with the two queue rows -- this row had drifted
 	   to gap 11 / padding 10 against their 12 / 11px 12px. */
-	.row { transition: background 0.12s ease; }
+	.row {
+		transition: background 0.12s ease;
+	}
 	/* readiness is legible at a glance from the border alone, before any text is read */
-	.row.ready { border-color: var(--ok); }
-	.row.cooking { background: linear-gradient(var(--card), var(--card-tint)); border-color: var(--line-tint); }
+	.row.ready {
+		border-color: var(--ok);
+	}
+	.row.cooking {
+		background: linear-gradient(var(--card), var(--card-tint));
+		border-color: var(--line-tint);
+	}
 
 	/*
 	 * 84×47 is 16:9, matching the derived `mqdefault` source (320×180) so nothing is letterboxed or
@@ -309,16 +319,31 @@
 	 */
 	.thumb {
 		position: relative;
-		width: 84px; height: 47px; border-radius: 8px; flex: 0 0 auto; overflow: hidden;
+		width: 84px;
+		height: 47px;
+		border-radius: 8px;
+		flex: 0 0 auto;
+		overflow: hidden;
 		background: linear-gradient(135deg, var(--track-bg), var(--card));
-		display: grid; place-items: center;
+		display: grid;
+		place-items: center;
 	}
-	.thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+	.thumb img {
+		display: block;
+		width: 100%;
+		height: 100%;
+		object-fit: cover;
+	}
 	/*
 	 * The play badge was `content: '▶'` on a pseudo-element — a codepoint in CSS, which is the one place
 	 * a naive attribute-level scan for stray glyphs would never have found it. It is a real mark now.
 	 */
-	.ph { color: rgba(255, 255, 255, 0.55); font-size: 0.9rem; display: grid; place-items: center; }
+	.ph {
+		color: rgba(255, 255, 255, 0.55);
+		font-size: 0.9rem;
+		display: grid;
+		place-items: center;
+	}
 	/* Translucent white kept as a literal on purpose: it is a wash over the thumbnail slot (a photo
 	   when one loads), the same photo-overlay exception as the duration badge's ink — not a theme colour. */
 
@@ -328,21 +353,34 @@
 	 * it legible on top of an arbitrary photograph.
 	 */
 	.dur {
-		position: absolute; right: 3px; bottom: 3px;
+		position: absolute;
+		right: 3px;
+		bottom: 3px;
 		/* The near-black wash is the shared --scrim-strong (0.85 ≈ the old 0.84, reads identically).
 		   The ink stays a literal #fff on purpose: this sits on an arbitrary video frame, not a theme
 		   surface, so white is a deliberate photo-overlay exception rather than a themeable colour. */
-		background: var(--scrim-strong); color: #fff;
-		font-size: 0.62rem; font-weight: 700; padding: 1px 4px; border-radius: 4px;
-		font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+		background: var(--scrim-strong);
+		color: #fff;
+		font-size: 0.62rem;
+		font-weight: 700;
+		padding: 1px 4px;
+		border-radius: 4px;
+		font-variant-numeric: tabular-nums;
+		letter-spacing: 0.01em;
 	}
 	/* Dark ink on the danger fill, not white. White on #ff6b6b is 2.78:1 — below AA for this
 	   0.62rem/700 badge (normal-size, needs 4.5:1). --danger-bg (#2a1b22) is the danger family's
 	   dark surface and measures 5.92:1 here, AA with margin. It reuses a token rather than
 	   inventing a hex, and pairs the badge with the same ink the sibling .chip.odd-dur uses. */
-	.dur.odd { background: var(--danger); color: var(--danger-bg); }
+	.dur.odd {
+		background: var(--danger);
+		color: var(--danger-bg);
+	}
 
-	.meta { min-width: 0; flex: 1; }
+	.meta {
+		min-width: 0;
+		flex: 1;
+	}
 	/*
 	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)". The title text
 	 * shares .title-line with the cooking mark; min-width:0 + the two-line clamp bound ONLY the title
@@ -352,11 +390,21 @@
 	 * a short title it marks (issue #334). flex-grow:0 lets the box shrink to its text so the mark hugs
 	 * the title, while flex-shrink:1 still keeps a long title clamped to two lines.
 	 */
-	.title-line { display: flex; align-items: flex-start; }
+	.title-line {
+		display: flex;
+		align-items: flex-start;
+	}
 	.t {
-		flex: 0 1 auto; min-width: 0;
-		font-weight: 600; font-size: 0.9rem; line-height: 1.28;
-		display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+		flex: 0 1 auto;
+		min-width: 0;
+		font-weight: 600;
+		font-size: 0.9rem;
+		line-height: 1.28;
+		display: -webkit-box;
+		-webkit-line-clamp: 2;
+		line-clamp: 2;
+		-webkit-box-orient: vertical;
+		overflow: hidden;
 	}
 	/*
 	 * The cooking marker, a flex:0 0 auto SIBLING of .t on .title-line — so it always paints and never
@@ -365,18 +413,39 @@
 	 * collapsed away by the flex layout, so the gap has to be a margin. margin-top nudges the mark down to
 	 * sit on the first title line rather than at the flex row's top edge.
 	 */
-	.sparkle { flex: 0 0 auto; color: var(--warn); display: inline-grid; place-items: center; margin-left: 5px; margin-top: 2px; }
+	.sparkle {
+		flex: 0 0 auto;
+		color: var(--warn);
+		display: inline-grid;
+		place-items: center;
+		margin-left: 5px;
+		margin-top: 2px;
+	}
 
 	/* The uploader / canonical artist, alone on its line so it is never truncated by prose beside it. */
 	.byline {
-		font-size: 0.74rem; color: var(--ink-dim); margin-top: 2px;
-		white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+		font-size: 0.74rem;
+		color: var(--ink-dim);
+		margin-top: 2px;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 
-	.chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+	.chips {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 5px;
+		margin-top: 6px;
+	}
 	.chip {
-		font-size: 0.65rem; font-weight: 600; padding: 2px 7px; border-radius: 999px;
-		border: 1px solid var(--line); background: var(--card2); color: var(--ink-dim);
+		font-size: 0.65rem;
+		font-weight: 600;
+		padding: 2px 7px;
+		border-radius: 999px;
+		border: 1px solid var(--line);
+		background: var(--card2);
+		color: var(--ink-dim);
 		white-space: nowrap;
 	}
 	/*
@@ -384,27 +453,75 @@
 	 * narrow row nowrap would clip the trailing percent — the one moving part a singer standing there
 	 * waiting is watching. Letting it wrap keeps the whole line, and the percent, visible.
 	 */
-	.chip.state { white-space: normal; }
-	.chip.state.ok { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
-	.chip.state.warn { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
+	.chip.state {
+		white-space: normal;
+	}
+	.chip.state.ok {
+		background: var(--ok-bg);
+		border-color: var(--ok-line);
+		color: var(--ok);
+	}
+	.chip.state.warn {
+		background: var(--warn-bg);
+		border-color: var(--warn-line);
+		color: var(--warn);
+	}
 	/* A dead cook, not a slow one. `warn` already means "in flight" on this chip, so reusing it would
 	   have made a failure look like progress — the whole defect this state exists to end. */
-	.chip.state.bad { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
+	.chip.state.bad {
+		background: var(--danger-bg);
+		border-color: var(--danger-line);
+		color: var(--danger-ink);
+	}
 	/*
 	 * One colour per kind, and they are semantic rather than decorative: green = the studio recording
 	 * you probably want, purple = a lyric video, amber = a different recording (live), red = probably
 	 * not a song at all. The label carries the meaning on its own, so colour is reinforcement — never
 	 * the only cue.
 	 */
-	.chip.kind.official { background: var(--ok-bg); border-color: var(--ok-line); color: var(--ok); }
-	.chip.kind.lyric { background: var(--card-tint2); border-color: var(--line-tint); color: var(--accent-ink); }
-	.chip.kind.live { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
-	.chip.kind.suspect { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
+	.chip.kind.official {
+		background: var(--ok-bg);
+		border-color: var(--ok-line);
+		color: var(--ok);
+	}
+	.chip.kind.lyric {
+		background: var(--card-tint2);
+		border-color: var(--line-tint);
+		color: var(--accent-ink);
+	}
+	.chip.kind.live {
+		background: var(--warn-bg);
+		border-color: var(--warn-line);
+		color: var(--warn);
+	}
+	.chip.kind.suspect {
+		background: var(--danger-bg);
+		border-color: var(--danger-line);
+		color: var(--danger-ink);
+	}
 	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
-	.chip.odd-dur { background: var(--danger-bg); border-color: var(--danger-line); color: var(--danger-ink); }
+	.chip.odd-dur {
+		background: var(--danger-bg);
+		border-color: var(--danger-line);
+		color: var(--danger-ink);
+	}
 
-	.bar { height: 4px; border-radius: 4px; background: var(--card-tint2); overflow: hidden; margin-top: 7px; }
-	.bar > i { display: block; height: 100%; width: 100%; background: var(--grad); border-radius: 4px; transform-origin: left center; transition: transform 0.4s ease; }
+	.bar {
+		height: 4px;
+		border-radius: 4px;
+		background: var(--card-tint2);
+		overflow: hidden;
+		margin-top: 7px;
+	}
+	.bar > i {
+		display: block;
+		height: 100%;
+		width: 100%;
+		background: var(--grad);
+		border-radius: 4px;
+		transform-origin: left center;
+		transition: transform 0.4s ease;
+	}
 
 	/*
 	 * The actions. 44×44 is the project's minimum touch target and is why the button is square rather
@@ -418,12 +535,20 @@
 	 */
 	.sing,
 	.add {
-		width: 44px; height: 44px; flex: 0 0 auto;
-		border: 0; border-radius: 12px; cursor: pointer;
-		display: grid; place-items: center; font-size: 20px; /* Icon defaults to 1em */
+		width: 44px;
+		height: 44px;
+		flex: 0 0 auto;
+		border: 0;
+		border-radius: 12px;
+		cursor: pointer;
+		display: grid;
+		place-items: center;
+		font-size: 20px; /* Icon defaults to 1em */
 	}
 	.sing:active,
-	.add:active { transform: scale(0.94); }
+	.add:active {
+		transform: scale(0.94);
+	}
 	/*
 	 * The raw row's single primary action takes the accent fill because it IS the primary intent on this
 	 * row — and because the weight used to sit on the wrong button: `.add` was the dead end (a turn that
@@ -434,10 +559,21 @@
 	 * accent means "this cooks for a minute", `plus` outlined in green means "queue it now". Giving both
 	 * the same glyph would re-create the inversion in a new form.
 	 */
-	.sing { background: var(--accent-strong); color: var(--on-accent); }
-	.add { background: var(--card2); border: 1px solid var(--ok); color: var(--ok); }
-	.add.queued { opacity: 0.7; }
-	.add:disabled { cursor: default; }
+	.sing {
+		background: var(--accent-strong);
+		color: var(--on-accent);
+	}
+	.add {
+		background: var(--card2);
+		border: 1px solid var(--ok);
+		color: var(--ok);
+	}
+	.add.queued {
+		opacity: 0.7;
+	}
+	.add:disabled {
+		cursor: default;
+	}
 
 	/*
 	 * Below ~380px the 84px thumbnail starves the title: at 320px "Bohemian Rhapsody (Remastered)"
@@ -446,18 +582,36 @@
 	 * small phone.
 	 */
 	@media (max-width: 380px) {
-		.thumb { width: 64px; height: 36px; }
-		.t { -webkit-line-clamp: 3; line-clamp: 3; }
-		.row { gap: 9px; }
+		.thumb {
+			width: 64px;
+			height: 36px;
+		}
+		.t {
+			-webkit-line-clamp: 3;
+			line-clamp: 3;
+		}
+		.row {
+			gap: 9px;
+		}
 		/*
 		 * Claw back height. A guest reviewing the 320px frame could see only about four songs before
 		 * the player bar and called it irritating to scroll — and comparing uploads is the entire point,
 		 * so how many fit at once IS the feature. Smaller chips and tighter gaps buy roughly a fifth of
 		 * a row back without shrinking the title or the 44px target.
 		 */
-		.chip { font-size: 0.62rem; padding: 1px 6px; }
-		.chips { gap: 4px; margin-top: 5px; }
-		.byline { font-size: 0.72rem; }
-		.row { padding: 8px; }
+		.chip {
+			font-size: 0.62rem;
+			padding: 1px 6px;
+		}
+		.chips {
+			gap: 4px;
+			margin-top: 5px;
+		}
+		.byline {
+			font-size: 0.72rem;
+		}
+		.row {
+			padding: 8px;
+		}
 	}
 </style>

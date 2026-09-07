@@ -1,0 +1,6 @@
+node_modules
+apps/core/build
+apps/core/.svelte-kit
+apps/core/dist
+**/*.min.js
+bun.lock

@@ -4,7 +4,18 @@
 // (worker-hub.ts) applies the assignments: marks the job assigned + sends job:assign.
 
 import type { Job, JobParams, JobType, Media, GlobalSettings } from '@encore/shared';
-import { DEFAULT_ENGINE, DEFAULT_MODEL, DEFAULT_GLOBAL_SETTINGS, DEFAULT_FETCHER, DEFAULT_ASR_MODEL, DEFAULT_SYNC_MODE, getEngine, getFetcher, fetcherFor, isQualityUpgrade } from '@encore/shared';
+import {
+	DEFAULT_ENGINE,
+	DEFAULT_MODEL,
+	DEFAULT_GLOBAL_SETTINGS,
+	DEFAULT_FETCHER,
+	DEFAULT_ASR_MODEL,
+	DEFAULT_SYNC_MODE,
+	getEngine,
+	getFetcher,
+	fetcherFor,
+	isQualityUpgrade
+} from '@encore/shared';
 import type { WorkerSession } from './registry';
 import { parseTrackTitle } from '../media/track-title';
 
@@ -30,10 +41,13 @@ export function followUps(jobType: JobType, settings?: GlobalSettings): JobType[
 	// raw audio, so it costs CPU but no re-download, and `markMediaReady` refuses to publish its
 	// result unless it actually outranks what is already there. Off unless a setting asks for it, so
 	// it is background work on a finished song rather than part of the cook.
-	if (settings?.enqueueUpgrade && isQualityUpgrade(
-		{ engine: settings.defaultEngine, model: settings.defaultModel },
-		{ engine: settings.upgradeEngine, model: settings.upgradeModel }
-	)) {
+	if (
+		settings?.enqueueUpgrade &&
+		isQualityUpgrade(
+			{ engine: settings.defaultEngine, model: settings.defaultModel },
+			{ engine: settings.upgradeEngine, model: settings.upgradeModel }
+		)
+	) {
 		next.push('stems-upgrade');
 	}
 	return next;
@@ -63,7 +77,11 @@ export function assignParams(jobType: JobType, media: Media | undefined, setting
 	// shared defaults when no settings are provided (e.g. a unit test), so the worker still gets a
 	// valid pairing.
 	if (jobType === 'stems') {
-		return { fetcher, engine: settings?.defaultEngine ?? DEFAULT_ENGINE, model: settings?.defaultModel ?? DEFAULT_MODEL };
+		return {
+			fetcher,
+			engine: settings?.defaultEngine ?? DEFAULT_ENGINE,
+			model: settings?.defaultModel ?? DEFAULT_MODEL
+		};
 	}
 	if (jobType === 'stems-upgrade') {
 		return {
@@ -249,7 +267,6 @@ export function planAssignments(
 ): Assignment[] {
 	// local slot view so we don't over-assign within a single planning pass
 	const slots = new Map(workers.map((w) => [w.workerId, w.slotsFree]));
-	const byId = new Map(workers.map((w) => [w.workerId, w]));
 
 	const jobs = [...queued].sort((a, b) => a.priority - b.priority || a.createdAt - b.createdAt);
 	const assignments: Assignment[] = [];

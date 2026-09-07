@@ -320,9 +320,7 @@ describe('TvPlayer applies the seek plan to BOTH elements', () => {
 		// Strip comments before asserting: a `seekRev` mentioned only in a comment does NOT register a
 		// reactive dependency, so a guard that matched comment text would be mutation-blind (it would
 		// stay green with the executable read deleted). Assert on CODE.
-		const effectCode = seekTrigger
-			.replace(/\/\*[\s\S]*?\*\//g, '')
-			.replace(/\/\/.*$/gm, '');
+		const effectCode = seekTrigger.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 		// The effect must READ seekRev in executable position (a bare read registers the dep in runes mode).
 		expect(effectCode).toContain('seekRev');
 		// And the prop must exist and be plumbed from playback:state's rev on the page.

@@ -20,8 +20,15 @@ import { ulid, type ServerEvent, type Media, type QueueEntry, type ClientCommand
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `derived/stems/${id}-instrumental.flac`, songProfile: EMPTY_SONG_PROFILE
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: `derived/stems/${id}-instrumental.flac`,
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 // A room with q1 genuinely playing (server-driven) and q2 a normal QUEUED entry belonging to bob.
@@ -31,14 +38,23 @@ function harness(opts: { onEntryRemoved?: HubDeps['onEntryRemoved'] } = {}) {
 	const published: ServerEvent[] = [];
 	const state = new AuthoritativeState();
 	// Seed the two entries via the SERVER's own paths, the way real playback does.
-	state.applyQueueOp({ op: 'add', entry: { id: 'q1', mediaId: 'm1', singerId: 'alice', status: 'queued', rotationSeq: -1, addedAt: 1 } });
-	state.applyQueueOp({ op: 'add', entry: { id: 'q2', mediaId: 'm2', singerId: 'bob', status: 'queued', rotationSeq: -1, addedAt: 2 } });
+	state.applyQueueOp({
+		op: 'add',
+		entry: { id: 'q1', mediaId: 'm1', singerId: 'alice', status: 'queued', rotationSeq: -1, addedAt: 1 }
+	});
+	state.applyQueueOp({
+		op: 'add',
+		entry: { id: 'q2', mediaId: 'm2', singerId: 'bob', status: 'queued', rotationSeq: -1, addedAt: 2 }
+	});
 	state.applyQueueOp({ op: 'status', id: 'q1', status: 'playing' }); // server-driven, like player.beginSinging
 	state.setPlayback({ currentEntryId: 'q1', isPlaying: true });
 	const deps: HubDeps = {
 		state,
 		publish: (e) => published.push(e),
-		mediaById: new Map([['m1', media('m1')], ['m2', media('m2')]]),
+		mediaById: new Map([
+			['m1', media('m1')],
+			['m2', media('m2')]
+		]),
 		actorSingerId: 'alice',
 		onEntryRemoved: opts.onEntryRemoved
 	};

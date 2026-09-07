@@ -3,16 +3,40 @@ import { test, expect } from 'bun:test';
 import { handlePlayerCommand } from './player';
 import { AuthoritativeState } from '../state/store';
 import { type HubDeps } from './hub';
-import { ulid, type ServerEvent, type Media, type QueueEntry, EMPTY_SONG_PROFILE } from '@encore/shared';
+import { type ServerEvent, type Media, type QueueEntry, EMPTY_SONG_PROFILE } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
+const media = (id: string): Media => ({
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
+});
 let _seq = 0;
-const entry = (id: string, mediaId: string): QueueEntry => ({ id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_seq });
+const entry = (id: string, mediaId: string): QueueEntry => ({
+	id,
+	mediaId,
+	singerId: 's1',
+	status: 'queued',
+	rotationSeq: -1,
+	addedAt: ++_seq
+});
 
 function harness() {
 	const published: ServerEvent[] = [];
 	const state = new AuthoritativeState();
-	const deps: HubDeps = { state, publish: (e) => published.push(e), mediaById: new Map([['m1', media('m1')], ['m2', media('m2')]]) };
+	const deps: HubDeps = {
+		state,
+		publish: (e) => published.push(e),
+		mediaById: new Map([
+			['m1', media('m1')],
+			['m2', media('m2')]
+		])
+	};
 	return { published, state, deps };
 }
 
@@ -48,7 +72,7 @@ test('seek sets clamped position', () => {
 // as NULL and throws out of the write-behind timer, killing the process long after the frame. Both a
 // NaN and an Infinity seek must leave playback untouched — and never persist a non-finite value.
 test('a NaN seek is ignored and leaves playback unchanged', () => {
-	const { state, deps } = harness();
+	const { deps } = harness();
 	handlePlayerCommand({ cmd: 'seek', positionSec: 42 }, deps); // a good position first
 	const persisted: unknown[] = [];
 	// wire a persistence sink so we can assert nothing non-finite is ever written through
@@ -150,7 +174,11 @@ test('play-from-idle also broadcasts the queue (the entry left `queued`)', () =>
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	published.length = 0;
 	handlePlayerCommand({ cmd: 'play' }, deps);
-	expect(queuePatches(published).at(-1)!.patch.entries!.find((e) => e.id === 'q1')?.status).toBe('playing');
+	expect(
+		queuePatches(published)
+			.at(-1)!
+			.patch.entries!.find((e) => e.id === 'q1')?.status
+	).toBe('playing');
 });
 
 test('pause/seek do NOT emit a queue:patch (nothing about the queue changed)', () => {

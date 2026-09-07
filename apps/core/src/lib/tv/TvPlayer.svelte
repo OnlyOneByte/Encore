@@ -634,7 +634,7 @@
 	}
 </script>
 
-<div class="slot" class:visible style="z-index:{visible ? 2 : 1}">
+<div class="slot" class:visible={visible} style="z-index:{visible ? 2 : 1}">
 	{#if media && isPlayable(media)}
 		<!--
 			THE MASTER. An <audio>, not a <video> — see the note at the top of this file. It owns the clock:

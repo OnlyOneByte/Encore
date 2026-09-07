@@ -20,9 +20,7 @@ function stripComments(src: string): string {
 		.replace(/(^|[^:])\/\/[^\n]*/g, '$1');
 }
 
-const src = stripComments(
-	readFileSync(join(import.meta.dir, 'SongRow.svelte'), 'utf8')
-);
+const src = stripComments(readFileSync(join(import.meta.dir, 'SongRow.svelte'), 'utf8'));
 
 test('the cooking sparkle is a sibling of .t inside .title-line, never nested in the clamped .t', () => {
 	// not-vacuous: the elements the invariant is about must actually exist.
@@ -121,19 +119,11 @@ test('.t does not grow and always shrinks — the clamp box hugs its text so the
 		const shrinkLong = body.match(/(?:^|;)\s*flex-shrink\s*:\s*([^;]+)/);
 		const declares = !!(shorthand || growLong || shrinkLong);
 		// flex-grow: explicit flex-grow, else the FIRST value of the `flex` shorthand.
-		const grow = growLong
-			? growLong[1].trim()
-			: shorthand
-				? shorthand[1].trim().split(/\s+/)[0]
-				: null;
+		const grow = growLong ? growLong[1].trim() : shorthand ? shorthand[1].trim().split(/\s+/)[0] : null;
 		// flex-shrink: explicit flex-shrink, else the SECOND value of the `flex` shorthand. A shorthand
 		// with only one <number> (e.g. `flex: 0`) leaves shrink at its CSS default of 1, so a missing
 		// second token means shrink 1 — but only when a shorthand is actually present.
-		const shrink = shrinkLong
-			? shrinkLong[1].trim()
-			: shorthand
-				? (shorthand[1].trim().split(/\s+/)[1] ?? '1')
-				: null;
+		const shrink = shrinkLong ? shrinkLong[1].trim() : shorthand ? (shorthand[1].trim().split(/\s+/)[1] ?? '1') : null;
 		return { grow, shrink, declares };
 	}
 

@@ -6,7 +6,15 @@ import { ulid, type ServerEvent, type Media, type ClientCommand } from '@encore/
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 function harness() {
@@ -136,7 +144,10 @@ test('#345: a forged below-everyone addedAt does NOT put the forger at the head 
 
 	// Under fair rotation the order is by first-pick addedAt. If the client's forged 0 were trusted,
 	// s2 (q2) would sit at seq 0. Server-stamping makes q2's real stamp LATER than q1's, so s1 leads.
-	const order = state.entries.slice().sort((a, b) => a.rotationSeq - b.rotationSeq).map((e) => e.id);
+	const order = state.entries
+		.slice()
+		.sort((a, b) => a.rotationSeq - b.rotationSeq)
+		.map((e) => e.id);
 	expect(order).toEqual(['q1', 'q2']);
 });
 
@@ -147,7 +158,10 @@ test('#345: a legitimate later add still lands AFTER an earlier one (fix is not 
 	handleQueueCommand(addCmdWith('q2', 'm2', 's2', 1700000000005), mk('s2'));
 	// The server stamp is monotonic in call order, so the earlier add ranks first — a fix that
 	// pinned every add to a single constant, or rejected the second, would break this.
-	const order = state.entries.slice().sort((a, b) => a.rotationSeq - b.rotationSeq).map((e) => e.id);
+	const order = state.entries
+		.slice()
+		.sort((a, b) => a.rotationSeq - b.rotationSeq)
+		.map((e) => e.id);
 	expect(order).toEqual(['q1', 'q2']);
 	expect(state.entries).toHaveLength(2);
 });
@@ -156,8 +170,10 @@ test('#345: server stamps are strictly increasing across two adds in the same si
 	const { state, deps } = harness();
 	const p1 = handleQueueCommand(addCmd('q1'), deps)!;
 	const p2 = handleQueueCommand(addCmd('q2'), deps)!;
-	const a1 = (p1.patch.ops[0] as Extract<ServerEvent, { type: 'queue:patch' }>['patch']['ops'][number] & { op: 'add' }).entry.addedAt;
-	const a2 = (p2.patch.ops[0] as Extract<ServerEvent, { type: 'queue:patch' }>['patch']['ops'][number] & { op: 'add' }).entry.addedAt;
+	const a1 = (p1.patch.ops[0] as Extract<ServerEvent, { type: 'queue:patch' }>['patch']['ops'][number] & { op: 'add' })
+		.entry.addedAt;
+	const a2 = (p2.patch.ops[0] as Extract<ServerEvent, { type: 'queue:patch' }>['patch']['ops'][number] & { op: 'add' })
+		.entry.addedAt;
 	// Distinct + increasing even if both landed in the same millisecond (Finding #4 monotonicity).
 	expect(a2).toBeGreaterThan(a1);
 	// And the client's minted addedAt (1) was NOT what got stored — the server owns it now.

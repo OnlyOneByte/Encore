@@ -29,25 +29,25 @@ export type LyricsTiming = 'word' | 'line' | 'none';
 export type LyricsConfidence = 'high' | 'medium' | 'low';
 
 export interface LyricsCandidate {
-  /** MediaStore key of this candidate's lyrics JSON. */
-  ref: string;
-  textSource: LyricsTextSource;
-  timing: LyricsTiming;
-  /**
-   * Confidence in the TEXT. Load-bearing beyond display: auto-generated YouTube captions are
-   * recorded `low` precisely because they are ASR wearing a caption's clothes, and that is what stops
-   * them being treated as authoritative (see `isAuthoritativeText`).
-   */
-  textConfidence: LyricsConfidence;
-  /** Confidence in the TIMINGS (an aligner can return word timings it isn't sure of). */
-  timingConfidence?: LyricsConfidence;
-  language?: string | null;
-  createdAt: number;
-  /**
-   * 0..1 agreement between this candidate's text and an ASR transcript of the same audio, when both
-   * exist. `undefined` = never compared or not comparable. See `agreementScore`.
-   */
-  agreement?: number;
+	/** MediaStore key of this candidate's lyrics JSON. */
+	ref: string;
+	textSource: LyricsTextSource;
+	timing: LyricsTiming;
+	/**
+	 * Confidence in the TEXT. Load-bearing beyond display: auto-generated YouTube captions are
+	 * recorded `low` precisely because they are ASR wearing a caption's clothes, and that is what stops
+	 * them being treated as authoritative (see `isAuthoritativeText`).
+	 */
+	textConfidence: LyricsConfidence;
+	/** Confidence in the TIMINGS (an aligner can return word timings it isn't sure of). */
+	timingConfidence?: LyricsConfidence;
+	language?: string | null;
+	createdAt: number;
+	/**
+	 * 0..1 agreement between this candidate's text and an ASR transcript of the same audio, when both
+	 * exist. `undefined` = never compared or not comparable. See `agreementScore`.
+	 */
+	agreement?: number;
 }
 
 /**
@@ -58,12 +58,12 @@ export interface LyricsCandidate {
  * same standing as ASR despite arriving through the "captions" door.
  */
 export function isAuthoritativeText(c: Pick<LyricsCandidate, 'textSource' | 'textConfidence'>): boolean {
-  return c.textSource !== 'asr' && c.textConfidence !== 'low';
+	return c.textSource !== 'asr' && c.textConfidence !== 'low';
 }
 
 /** Does this candidate carry timings good enough to sync anything at all? */
 export function hasUsableTiming(c: LyricsCandidate): boolean {
-  return c.timing === 'word' || c.timing === 'line';
+	return c.timing === 'word' || c.timing === 'line';
 }
 
 /**
@@ -90,12 +90,12 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  * alongside it worth anything.
  */
 export function lyricsRank(c: LyricsCandidate): number {
-  if (!hasUsableTiming(c)) return 0;
-  if (isLikelyWrongSong(c.agreement)) return 1;
-  const authoritative = isAuthoritativeText(c);
-  const word = c.timing === 'word';
-  if (authoritative) return word ? 5 : 4;
-  return word ? 3 : 2;
+	if (!hasUsableTiming(c)) return 0;
+	if (isLikelyWrongSong(c.agreement)) return 1;
+	const authoritative = isAuthoritativeText(c);
+	const word = c.timing === 'word';
+	if (authoritative) return word ? 5 : 4;
+	return word ? 3 : 2;
 }
 
 /**
@@ -105,17 +105,17 @@ export function lyricsRank(c: LyricsCandidate): number {
  * says so rather than rendering a blank overlay or a wall of unsynced text. Ties break via `breaksTie`.
  */
 export function pickBestLyrics(candidates: readonly LyricsCandidate[]): LyricsCandidate | null {
-  let best: LyricsCandidate | null = null;
-  let bestRank = 0;
-  for (const c of candidates) {
-    const rank = lyricsRank(c);
-    if (rank === 0) continue;
-    if (!best || rank > bestRank || (rank === bestRank && breaksTie(c, best))) {
-      best = c;
-      bestRank = rank;
-    }
-  }
-  return best;
+	let best: LyricsCandidate | null = null;
+	let bestRank = 0;
+	for (const c of candidates) {
+		const rank = lyricsRank(c);
+		if (rank === 0) continue;
+		if (!best || rank > bestRank || (rank === bestRank && breaksTie(c, best))) {
+			best = c;
+			bestRank = rank;
+		}
+	}
+	return best;
 }
 
 const CONF_ORDER: Record<LyricsConfidence, number> = { low: 0, medium: 1, high: 2 };
@@ -124,11 +124,11 @@ const CONF_ORDER: Record<LyricsConfidence, number> = { low: 0, medium: 1, high: 
  *  a re-run at equal rank is presumed an improvement (better model, corrected text), so preferring
  *  the older one would make re-alignment pointless. */
 function breaksTie(c: LyricsCandidate, incumbent: LyricsCandidate): boolean {
-  const conf = CONF_ORDER[c.timingConfidence ?? 'medium'] - CONF_ORDER[incumbent.timingConfidence ?? 'medium'];
-  if (conf !== 0) return conf > 0;
-  const agree = (c.agreement ?? -1) - (incumbent.agreement ?? -1);
-  if (agree !== 0) return agree > 0;
-  return c.createdAt > incumbent.createdAt;
+	const conf = CONF_ORDER[c.timingConfidence ?? 'medium'] - CONF_ORDER[incumbent.timingConfidence ?? 'medium'];
+	if (conf !== 0) return conf > 0;
+	const agree = (c.agreement ?? -1) - (incumbent.agreement ?? -1);
+	if (agree !== 0) return agree > 0;
+	return c.createdAt > incumbent.createdAt;
 }
 
 /**
@@ -141,12 +141,12 @@ function breaksTie(c: LyricsCandidate, incumbent: LyricsCandidate): boolean {
  * write would have done.
  */
 export function mergeLyricsCandidate(
-  existing: readonly LyricsCandidate[],
-  incoming: LyricsCandidate
+	existing: readonly LyricsCandidate[],
+	incoming: LyricsCandidate
 ): LyricsCandidate[] {
-  const out = existing.filter((c) => c.ref !== incoming.ref);
-  out.push(incoming);
-  return out;
+	const out = existing.filter((c) => c.ref !== incoming.ref);
+	out.push(incoming);
+	return out;
 }
 
 // ── ASR agreement: catching a confidently WRONG lookup ────────────────────────────
@@ -158,12 +158,12 @@ export function mergeLyricsCandidate(
 
 /** Words, lowercased, punctuation stripped. Deliberately crude — this compares CONTENT, not form. */
 export function lyricsTokens(text: string): string[] {
-  return text
-    .toLowerCase()
-    .replace(/\[[^\]]*\]/g, ' ') // LRC timestamps / [Chorus] markers
-    .replace(/[^\p{L}\p{N}\s']/gu, ' ')
-    .split(/\s+/)
-    .filter(Boolean);
+	return text
+		.toLowerCase()
+		.replace(/\[[^\]]*\]/g, ' ') // LRC timestamps / [Chorus] markers
+		.replace(/[^\p{L}\p{N}\s']/gu, ' ')
+		.split(/\s+/)
+		.filter(Boolean);
 }
 
 /** Fewer shared tokens than this and a comparison says nothing useful either way. */
@@ -183,13 +183,13 @@ export const SUSPECT_AGREEMENT = 0.25;
  * lookup. "I cannot tell" and "these differ" must not be the same answer.
  */
 export function agreementScore(a: string, b: string): number | null {
-  const setA = new Set(lyricsTokens(a));
-  const setB = new Set(lyricsTokens(b));
-  if (setA.size < MIN_TOKENS_TO_COMPARE || setB.size < MIN_TOKENS_TO_COMPARE) return null;
-  let shared = 0;
-  for (const t of setA) if (setB.has(t)) shared++;
-  const union = setA.size + setB.size - shared;
-  return union === 0 ? null : shared / union;
+	const setA = new Set(lyricsTokens(a));
+	const setB = new Set(lyricsTokens(b));
+	if (setA.size < MIN_TOKENS_TO_COMPARE || setB.size < MIN_TOKENS_TO_COMPARE) return null;
+	let shared = 0;
+	for (const t of setA) if (setB.has(t)) shared++;
+	const union = setA.size + setB.size - shared;
+	return union === 0 ? null : shared / union;
 }
 
 /**
@@ -197,5 +197,5 @@ export function agreementScore(a: string, b: string): number | null {
  * comparison could not be made — an unknown must never be reported as a detected mismatch.
  */
 export function isLikelyWrongSong(agreement: number | null | undefined): boolean {
-  return typeof agreement === 'number' && agreement < SUSPECT_AGREEMENT;
+	return typeof agreement === 'number' && agreement < SUSPECT_AGREEMENT;
 }

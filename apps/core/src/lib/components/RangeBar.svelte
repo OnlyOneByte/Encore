@@ -11,13 +11,7 @@
 	// per-semitone histogram weight, the lives-here block, the whisker extremes) and the phone renders
 	// it inside a disclosure while the /components gallery renders it in six states. One component is
 	// the only way those two callers cannot drift.
-	import {
-		voiceBandZones,
-		rangeBarFractions,
-		AXIS_LOW_MIDI,
-		AXIS_HIGH_MIDI,
-		type SongProfile
-	} from '@encore/shared';
+	import { voiceBandZones, rangeBarFractions, AXIS_LOW_MIDI, AXIS_HIGH_MIDI, type SongProfile } from '@encore/shared';
 
 	interface Props {
 		/** The song's analysis. `null`/absent, or a profile with no range, renders NOTHING (see below). */
@@ -148,11 +142,21 @@
 		top: 0;
 		bottom: 0;
 	}
-	.zone.bass { background: color-mix(in srgb, var(--accent) 14%, transparent); }
-	.zone.baritone { background: color-mix(in srgb, var(--accent) 9%, transparent); }
-	.zone.tenor { background: color-mix(in srgb, var(--ink) 5%, transparent); }
-	.zone.alto { background: color-mix(in srgb, var(--accent2) 9%, transparent); }
-	.zone.soprano { background: color-mix(in srgb, var(--accent2) 15%, transparent); }
+	.zone.bass {
+		background: color-mix(in srgb, var(--accent) 14%, transparent);
+	}
+	.zone.baritone {
+		background: color-mix(in srgb, var(--accent) 9%, transparent);
+	}
+	.zone.tenor {
+		background: color-mix(in srgb, var(--ink) 5%, transparent);
+	}
+	.zone.alto {
+		background: color-mix(in srgb, var(--accent2) 9%, transparent);
+	}
+	.zone.soprano {
+		background: color-mix(in srgb, var(--accent2) 15%, transparent);
+	}
 
 	/* The axis hairline, centred vertically. */
 	.track {

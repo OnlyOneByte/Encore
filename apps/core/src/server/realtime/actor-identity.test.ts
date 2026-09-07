@@ -8,8 +8,15 @@ import { ulid, type ServerEvent, type Media, type ClientCommand } from '@encore/
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 function harness(actorSingerId?: string) {

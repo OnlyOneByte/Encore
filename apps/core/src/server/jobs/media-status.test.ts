@@ -22,16 +22,42 @@ import { JobRepository } from './repository';
 import { openDb } from '../db/index';
 import { runMigrations } from '../db/migrate';
 import { completedStatusFor, jobStageFloor, mediaStatusFor, shouldBroadcastCook } from './media-status';
-import { mediaStagePosition, pendingGates, GATES, MEDIA_STAGES, type Job, type Media, type ServerEvent } from '@encore/shared';
+import {
+	mediaStagePosition,
+	pendingGates,
+	GATES,
+	MEDIA_STAGES,
+	type Job,
+	type Media,
+	type ServerEvent
+} from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 
 const media = (over: Partial<Media> = {}): Media => ({
-	id: 'm1', source: 'youtube', sourceRef: 'vid1', title: 'song', durationSec: 200, stemStatus: 'none', ...over
+	id: 'm1',
+	source: 'youtube',
+	sourceRef: 'vid1',
+	title: 'song',
+	durationSec: 200,
+	stemStatus: 'none',
+	...over
 });
 
 const job = (over: Partial<Job> = {}): Job =>
-	({ id: 'j1', mediaId: 'm1', jobType: 'stems', status: 'running', priority: 0, attempts: 0, maxAttempts: 3, progressPct: 0, createdAt: T0, updatedAt: T0, ...over }) as Job;
+	({
+		id: 'j1',
+		mediaId: 'm1',
+		jobType: 'stems',
+		status: 'running',
+		priority: 0,
+		attempts: 0,
+		maxAttempts: 3,
+		progressPct: 0,
+		createdAt: T0,
+		updatedAt: T0,
+		...over
+	}) as Job;
 
 function harness(startMedia: Media = media({ stemStatus: 'queued' })) {
 	const { db } = openDb(':memory:');
@@ -72,8 +98,11 @@ test('THE INVARIANT: a cook never reports a stage it has already passed', () => 
 	const h = harness();
 	h.jobs.enqueue('m1', 'fetch', 0, T0);
 	h.hub.handle({
-		type: 'worker:hello', workerId: 'w1',
-		capabilities: ['fetch:ytdlp', 'stems', 'stems:demucs', 'align'], concurrency: 1, version: '1'
+		type: 'worker:hello',
+		workerId: 'w1',
+		capabilities: ['fetch:ytdlp', 'stems', 'stems:demucs', 'align'],
+		concurrency: 1,
+		version: '1'
 	});
 
 	// The stage plans are the worker's real ones (apps/worker/src/vocabulary.py STAGE_PLANS): stems and
@@ -88,15 +117,15 @@ test('THE INVARIANT: a cook never reports a stage it has already passed', () => 
 	expect(seq).toEqual([
 		'downloading', // fetch accepted
 		'downloading', // fetch progress
-		'separating',  // fetch complete → now waiting on separation, NOT 'ready'
-		'separating',  // stems accepted
-		'separating',  // stems' OWN download — clamped to its floor, no longer a jump back to 'Fetched'
-		'separating',  // stems progress
-		'aligning',    // stems complete → waiting on lyrics, NOT 'ready'
-		'aligning',    // align accepted
-		'aligning',    // align's OWN download — clamped
-		'aligning',    // align progress
-		'ready'        // align complete → every gate satisfied, and only NOW
+		'separating', // fetch complete → now waiting on separation, NOT 'ready'
+		'separating', // stems accepted
+		'separating', // stems' OWN download — clamped to its floor, no longer a jump back to 'Fetched'
+		'separating', // stems progress
+		'aligning', // stems complete → waiting on lyrics, NOT 'ready'
+		'aligning', // align accepted
+		'aligning', // align's OWN download — clamped
+		'aligning', // align progress
+		'ready' // align complete → every gate satisfied, and only NOW
 	]);
 
 	// Stated as the invariant too, so a future step added to the chain is checked by intent rather than
@@ -120,19 +149,27 @@ test('a completed fetch reports the step it is WAITING on, not the step it finis
 });
 
 test("a completed stems reports 'aligning' while the lyrics gate is outstanding", () => {
-	const m = media({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', lyricsStatus: 'queued' });
+	const m = media({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'queued'
+	});
 	expect(completedStatusFor(job({ jobType: 'stems', status: 'ready' }), m)).toBe('aligning');
 });
 
 test("only the media's own gates can say 'ready'", () => {
-	const finished = media({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', lyricsStatus: 'ready' });
+	const finished = media({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'ready'
+	});
 	expect(completedStatusFor(job({ jobType: 'align', status: 'ready' }), finished)).toBe('ready');
 	// An align that completes WITHOUT satisfying its gate must not walk back to 'separating' either.
 	const stalled = media({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac' });
 	expect(completedStatusFor(job({ jobType: 'align', status: 'ready' }), stalled)).toBe('aligning');
 });
 
-test("a completed align whose EARLIER gate is still outstanding is clamped, not walked back below its floor", () => {
+test('a completed align whose EARLIER gate is still outstanding is clamped, not walked back below its floor', () => {
 	// The monotonic clamp at the end of completedStatusFor — the `: floor` branch — is the only thing
 	// that pins this, and no other test in this file constructs its input. Every other completed-path
 	// case has `pendingGates(media)[0].stage` at or ABOVE the completed step's floor, so the `nextStatus`
@@ -192,10 +229,20 @@ test('a background stems-upgrade stays silent on an already-singable song', () =
 });
 
 test('the hub suppresses an upgrade broadcast end to end', () => {
-	const finished = media({ stemStatus: 'ready', instrumentalRef: 'derived/stems/m1-instrumental.flac', lyricsStatus: 'ready' });
+	const finished = media({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'ready'
+	});
 	const h = harness(finished);
 	const j = h.jobs.enqueue('m1', 'stems-upgrade', 0, T0);
-	h.hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['stems', 'stems:demucs'], concurrency: 1, version: '1' });
+	h.hub.handle({
+		type: 'worker:hello',
+		workerId: 'w1',
+		capabilities: ['stems', 'stems:demucs'],
+		concurrency: 1,
+		version: '1'
+	});
 	h.hub.handle({ type: 'job:accept', workerId: 'w1', jobId: j.id });
 	h.hub.handle({ type: 'job:progress', workerId: 'w1', jobId: j.id, stage: 'separating', pct: 40 });
 	expect(h.statuses()).toEqual([]); // the ready row never flickers back to cooking

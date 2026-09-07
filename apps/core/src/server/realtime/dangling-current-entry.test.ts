@@ -16,18 +16,39 @@ import { AuthoritativeState } from '../state/store';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand, type PlaybackState } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
-const media = (id: string): Media => ({ id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100, stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
+const media = (id: string): Media => ({
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: 'derived/stems/i-instrumental.flac',
+	songProfile: EMPTY_SONG_PROFILE
+});
 let _s = 0;
 const addCmd = (id: string, mediaId: string): ClientCommand => ({
 	clientOpId: 'add-' + id + '-' + ++_s,
-	op: { op: 'add', entry: { id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_s } as QueueEntry }
+	op: {
+		op: 'add',
+		entry: { id, mediaId, singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: ++_s } as QueueEntry
+	}
 });
 const removeCmd = (id: string): ClientCommand => ({ clientOpId: 'rm-' + id + '-' + ++_s, op: { op: 'remove', id } });
 
 function harness() {
 	const published: ServerEvent[] = [];
 	const state = new AuthoritativeState();
-	const deps: HubDeps = { state, publish: (e) => published.push(e), mediaById: new Map([['m1', media('m1')], ['m2', media('m2')]]), actorSingerId: 's1' };
+	const deps: HubDeps = {
+		state,
+		publish: (e) => published.push(e),
+		mediaById: new Map([
+			['m1', media('m1')],
+			['m2', media('m2')]
+		]),
+		actorSingerId: 's1'
+	};
 	return { published, state, deps };
 }
 
@@ -54,7 +75,10 @@ test('removing the PLAYING entry advances the rotation to the next singer', () =
 	expect(state.playback.isPlaying).toBe(true);
 	expect(state.entries.find((e) => e.id === 'q2')!.status).toBe('playing');
 	// The room does not falsely claim to be playing a now-deleted song.
-	const np = published.filter((e) => e.type === 'nowplaying:changed').at(-1) as Extract<ServerEvent, { type: 'nowplaying:changed' }>;
+	const np = published.filter((e) => e.type === 'nowplaying:changed').at(-1) as Extract<
+		ServerEvent,
+		{ type: 'nowplaying:changed' }
+	>;
 	expect(np.current?.id).toBe('q2');
 });
 
@@ -69,7 +93,10 @@ test('removing the PLAYING entry when it is the only one settles the room to gen
 	// add will auto-start again.
 	expect(state.playback.currentEntryId).toBeNull();
 	expect(state.playback.isPlaying).toBe(false);
-	const np = published.filter((e) => e.type === 'nowplaying:changed').at(-1) as Extract<ServerEvent, { type: 'nowplaying:changed' }>;
+	const np = published.filter((e) => e.type === 'nowplaying:changed').at(-1) as Extract<
+		ServerEvent,
+		{ type: 'nowplaying:changed' }
+	>;
 	expect(np.current).toBeNull();
 
 	// Proof the room actually unstuck: a fresh add auto-starts, which a dangling id would have blocked.
@@ -105,7 +132,14 @@ test('hydrate() leaves a currentEntryId that DOES resolve untouched', () => {
 	const entries: QueueEntry[] = [
 		{ id: 'q1', mediaId: 'm1', singerId: 's1', status: 'playing', rotationSeq: 0, addedAt: 1 } as QueueEntry
 	];
-	const playback: PlaybackState = { currentEntryId: 'q1', positionSec: 10, isPlaying: true, keyShift: 0, background: null, guideLevel: null };
+	const playback: PlaybackState = {
+		currentEntryId: 'q1',
+		positionSec: 10,
+		isPlaying: true,
+		keyShift: 0,
+		background: null,
+		guideLevel: null
+	};
 	state.hydrate(entries, playback);
 	expect(state.playback.currentEntryId).toBe('q1');
 	expect(state.playback.isPlaying).toBe(true);

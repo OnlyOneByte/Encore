@@ -89,10 +89,10 @@ export async function ytDlpSearch(query: string, limit: number): Promise<SearchR
 	if (!(await ytDlpAvailable())) return []; // graceful degrade
 	// query is passed as a single argv element (not shell-interpolated) so it can't inject flags
 	// or commands; ytsearchN: treats the remainder as a literal search string.
-	const proc = Bun.spawn(
-		['yt-dlp', `ytsearch${limit}:${query}`, '--dump-json', '--flat-playlist', '--no-warnings'],
-		{ stdout: 'pipe', stderr: 'ignore' }
-	);
+	const proc = Bun.spawn(['yt-dlp', `ytsearch${limit}:${query}`, '--dump-json', '--flat-playlist', '--no-warnings'], {
+		stdout: 'pipe',
+		stderr: 'ignore'
+	});
 	const killer = setTimeout(() => proc.kill(), SEARCH_TIMEOUT_MS);
 	try {
 		const text = await new Response(proc.stdout).text();

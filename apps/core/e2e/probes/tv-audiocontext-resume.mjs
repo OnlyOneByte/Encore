@@ -33,10 +33,18 @@ const chrome = [
 	pathJoin(homedir(), '.cache/ms-playwright/chromium-1232/chrome-linux/chrome'),
 	pathJoin(homedir(), '.cache/ms-playwright/chromium-1228/chrome-linux/chrome')
 ].find(existsSync);
-if (!chrome) { console.error('no chromium'); process.exit(2); }
+if (!chrome) {
+	console.error('no chromium');
+	process.exit(2);
+}
 
-const ready = await fetch(`${base}/api/search?q=sweet`).then((r) => r.json()).then((d) => d.ready ?? []);
-if (!ready.length) { console.error('need a cooked song'); process.exit(2); }
+const ready = await fetch(`${base}/api/search?q=sweet`)
+	.then((r) => r.json())
+	.then((d) => d.ready ?? []);
+if (!ready.length) {
+	console.error('need a cooked song');
+	process.exit(2);
+}
 
 /**
  * Instrument the page BEFORE it runs any script, so every AudioContext the app constructs is
@@ -65,11 +73,20 @@ const READ = `(() => {
 })()`;
 
 async function runUnder(label, extraFlags, cdpPort) {
-	const proc = spawn(chrome, [
-		`--remote-debugging-port=${cdpPort}`, '--headless=new', '--no-sandbox', '--disable-gpu',
-		'--no-first-run', `--user-data-dir=${process.env.KIROCREW_SCRATCH ?? '/tmp'}/tv-actx-${cdpPort}`,
-		...extraFlags, 'about:blank'
-	], { stdio: 'ignore' });
+	const proc = spawn(
+		chrome,
+		[
+			`--remote-debugging-port=${cdpPort}`,
+			'--headless=new',
+			'--no-sandbox',
+			'--disable-gpu',
+			'--no-first-run',
+			`--user-data-dir=${process.env.KIROCREW_SCRATCH ?? '/tmp'}/tv-actx-${cdpPort}`,
+			...extraFlags,
+			'about:blank'
+		],
+		{ stdio: 'ignore' }
+	);
 
 	let browser;
 	try {
@@ -97,22 +114,31 @@ async function runUnder(label, extraFlags, cdpPort) {
 		await tv.evaluate(HOOK); // idempotent; also covers the post-navigation context
 		// Wait for a media element to actually exist, so a null reading means "no context" and not
 		// "nothing was playing".
-		await tv.waitFor(`[...document.querySelectorAll('audio,video')].some(e => e.currentSrc || e.src)`, { timeout: 20000 }).catch(() => {});
+		await tv
+			.waitFor(`[...document.querySelectorAll('audio,video')].some(e => e.currentSrc || e.src)`, { timeout: 20000 })
+			.catch(() => {});
 		await sleep(2000);
 
 		const before = await tv.evaluate(READ);
 
 		// Ask for a non-zero shift the way a phone does, then give the graph time to build.
 		const ws = new WebSocket(`ws://127.0.0.1:${PORT}/ws?role=phone`);
-		await new Promise((r) => { ws.onopen = r; ws.onerror = r; });
+		await new Promise((r) => {
+			ws.onopen = r;
+			ws.onerror = r;
+		});
 		ws.send(JSON.stringify({ type: 'player:command', command: { cmd: 'key', semitones: 2 } }));
 		await sleep(3500);
 		const after = await tv.evaluate(READ);
 		ws.close();
 
 		console.log(`\n── ${label} ──`);
-		console.log(`  before shift: contexts=${before.contexts} states=${JSON.stringify(before.states)} audible=${JSON.stringify(before.audible)}`);
-		console.log(`  after  shift: contexts=${after.contexts} states=${JSON.stringify(after.states)} keyLabel="${after.keyLabel}"`);
+		console.log(
+			`  before shift: contexts=${before.contexts} states=${JSON.stringify(before.states)} audible=${JSON.stringify(before.audible)}`
+		);
+		console.log(
+			`  after  shift: contexts=${after.contexts} states=${JSON.stringify(after.states)} keyLabel="${after.keyLabel}"`
+		);
 		console.log(`                audible=${JSON.stringify(after.audible)}`);
 		return after;
 	} finally {
@@ -124,7 +150,11 @@ async function runUnder(label, extraFlags, cdpPort) {
 // The real living room: no autoplay grant, no gesture.
 const gestureless = await runUnder('GESTURELESS (what a real TV is)', [], 9401);
 // The earlier probe's environment, for contrast.
-const granted = await runUnder('AUTOPLAY GRANTED (what the earlier probe measured)', ['--autoplay-policy=no-user-gesture-required'], 9402);
+const granted = await runUnder(
+	'AUTOPLAY GRANTED (what the earlier probe measured)',
+	['--autoplay-policy=no-user-gesture-required'],
+	9402
+);
 
 console.log('\n════════ VERDICT ════════');
 const g = gestureless;

@@ -2,7 +2,19 @@
 // a stems job at need-priority, dedups repeats, and refuses to disrupt the live song. markMediaReady
 // flips to the playable instrumental. Plus the round-trip: cook → held → ready → plays at its slot.
 import { test, expect } from 'bun:test';
-import { requestMakeKaraoke, markMediaReady, setMediaLyrics, instrumentalKey, soonestSeqFor, isCooked, cookState, settleStemsGate, countInFlightCooks, MAX_CONCURRENT_COOKS_PER_SINGER, type MakeKaraokeDeps } from './make-karaoke';
+import {
+	requestMakeKaraoke,
+	markMediaReady,
+	setMediaLyrics,
+	instrumentalKey,
+	soonestSeqFor,
+	isCooked,
+	cookState,
+	settleStemsGate,
+	countInFlightCooks,
+	MAX_CONCURRENT_COOKS_PER_SINGER,
+	type MakeKaraokeDeps
+} from './make-karaoke';
 import { pendingGates, EMPTY_SONG_PROFILE } from '@encore/shared';
 import { JobRepository } from './repository';
 import { AuthoritativeState } from '../state/store';
@@ -13,10 +25,23 @@ import { playbackRef, type Media, type QueueEntry } from '@encore/shared';
 
 const T0 = 1_700_000_000_000;
 const media = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', ...over
+	id,
+	source: 'youtube',
+	sourceRef: 'vid-' + id,
+	title: id,
+	durationSec: 200,
+	stemStatus: 'none',
+	...over
 });
 let _s = 0;
-const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({ id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: ++_s });
+const entry = (id: string, mediaId: string, singerId = 's1'): QueueEntry => ({
+	id,
+	mediaId,
+	singerId,
+	status: 'queued',
+	rotationSeq: -1,
+	addedAt: ++_s
+});
 
 function deps(): MakeKaraokeDeps & { mediaById: Map<string, Media> } {
 	const { db } = openDb(':memory:');
@@ -111,12 +136,19 @@ test('setMediaLyrics attaches the align artifact uri, and no-ops without one', (
 	expect(setMediaLyrics('ghost', 'x.json', d.mediaById)).toBe(false);
 });
 
-
 test('ROUND TRIP: cook → held while another plays → ready → plays at its preserved slot', () => {
 	const d = deps();
 	// two singers: a wants make-karaoke on m1 (queued first → seq 0), b has an already-cooked m2
 	d.mediaById.set('m1', media('m1'));
-	d.mediaById.set('m2', media('m2', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: { ...EMPTY_SONG_PROFILE } }));
+	d.mediaById.set(
+		'm2',
+		media('m2', {
+			stemStatus: 'ready',
+			lyricsStatus: 'ready',
+			instrumentalRef: 'derived/stems/i-instrumental.flac',
+			songProfile: { ...EMPTY_SONG_PROFILE }
+		})
+	);
 	d.state.applyQueueOp({ op: 'add', entry: entry('q-a', 'm1', 'a') });
 	d.state.applyQueueOp({ op: 'add', entry: entry('q-b', 'm2', 'b') });
 
@@ -144,7 +176,11 @@ test('ROUND TRIP: cook → held while another plays → ready → plays at its p
 // ── dedupe to already-separated stems (the durable catalog's payoff) ────────────────────
 
 test('isCooked is true only when a ready status has an instrumental to show for it', () => {
-	expect(isCooked(media('m1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }))).toBe(true);
+	expect(
+		isCooked(
+			media('m1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })
+		)
+	).toBe(true);
 	expect(isCooked(media('m1', { stemStatus: 'queued' }))).toBe(false);
 	// status ran ahead of the artifact — playing this would hand the TV an empty source
 	expect(isCooked(media('m1', { stemStatus: 'ready', lyricsStatus: 'ready' }))).toBe(false);
@@ -158,7 +194,10 @@ test('cookState distinguishes unknown / playing / ready / cooking / cookable', (
 	d.mediaById.set('plain', media('plain'));
 	expect(cookState('plain', d)).toBe('cookable');
 
-	d.mediaById.set('done', media('done', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' }));
+	d.mediaById.set(
+		'done',
+		media('done', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac' })
+	);
 	expect(cookState('done', d)).toBe('ready');
 
 	d.mediaById.set('wip', media('wip', { stemStatus: 'queued' }));
@@ -173,7 +212,15 @@ test('cookState distinguishes unknown / playing / ready / cooking / cookable', (
 test('an already-cooked song is NEVER re-cooked (no second job, no wasted separation)', () => {
 	const d = deps();
 	// exactly the shape hydrated from disk on boot: file + ready + the instrumental key + the profile
-	d.mediaById.set('m1', media('m1', { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: instrumentalKey('m1'), songProfile: { ...EMPTY_SONG_PROFILE } }));
+	d.mediaById.set(
+		'm1',
+		media('m1', {
+			stemStatus: 'ready',
+			lyricsStatus: 'ready',
+			instrumentalRef: instrumentalKey('m1'),
+			songProfile: { ...EMPTY_SONG_PROFILE }
+		})
+	);
 
 	expect(requestMakeKaraoke('m1', d)).toBeNull();
 	expect(d.jobs.listByStatus('queued')).toHaveLength(0);

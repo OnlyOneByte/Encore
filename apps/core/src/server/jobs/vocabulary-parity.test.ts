@@ -21,13 +21,7 @@ import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/sha
 import type { JobType } from '@encore/shared';
 import { requiredCapability } from './dispatch';
 import { DEFAULT_LEASE_CONFIG } from './leases';
-import {
-	INSTRUMENTAL_EXT,
-	VOCALS_EXT,
-	audioKey,
-	instrumentalKey,
-	vocalsKey
-} from '../media/paths';
+import { INSTRUMENTAL_EXT, VOCALS_EXT, audioKey, instrumentalKey, vocalsKey } from '../media/paths';
 
 const WORKER_SRC = join(import.meta.dir, '../../../../worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
@@ -114,9 +108,9 @@ describe('every worker-written artifact key is declared in JobArtifacts', () => 
 		const m = events.match(/export interface JobArtifacts \{([\s\S]*?)\n\}/);
 		expect(m, 'JobArtifacts interface not found in events.ts').toBeTruthy();
 		const body = m![1]!;
-		// Field lines only: a two-space indent then an identifier then optional `?` then `:`. Nested
+		// Field lines only: a single-tab indent then an identifier then optional `?` then `:`. Nested
 		// object members are more deeply indented and by design NOT top-level keys, so they are skipped.
-		return new Set([...body.matchAll(/^ {2}(\w+)\??:/gm)].map((x) => x[1]!));
+		return new Set([...body.matchAll(/^\t(\w+)\??:/gm)].map((x) => x[1]!));
 	}
 
 	test('no steps/*.py writes an artifacts key absent from JobArtifacts', () => {
@@ -191,9 +185,7 @@ describe('TS↔Python vocabulary parity', () => {
 	});
 
 	test('separator engines match the worker Engine enum', () => {
-		expect(pyEnumValues(vocabulary, 'Engine').sort()).toEqual(
-			SEPARATOR_ENGINES.map((e) => e.id).sort()
-		);
+		expect(pyEnumValues(vocabulary, 'Engine').sort()).toEqual(SEPARATOR_ENGINES.map((e) => e.id).sort());
 	});
 
 	test('fetchers match the worker Fetcher enum', () => {
@@ -205,9 +197,7 @@ describe('TS↔Python vocabulary parity', () => {
 	// artifact-envelope block guards its per-file reads, so a moved file names itself.
 	test('vocabulary.py is where the parity reads expect it', () => {
 		const path = join(WORKER_SRC, 'vocabulary.py');
-		expect(existsSync(path), `vocabulary.py not found under ${WORKER_SRC} — did the module move?`).toBe(
-			true
-		);
+		expect(existsSync(path), `vocabulary.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
 	});
 
 	test('lyrics text sources match the worker TextSource enum', () => {
@@ -308,15 +298,7 @@ describe('TS↔Python vocabulary parity', () => {
 	 * not equality: `queued`/`ready`/`failed`/`canceled` are core-side states no worker emits.
 	 */
 	test('worker stages are all valid MediaStatus values', () => {
-		const tsMediaStatuses = [
-			'queued',
-			'downloading',
-			'separating',
-			'aligning',
-			'ready',
-			'failed',
-			'canceled'
-		] as const;
+		const tsMediaStatuses = ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed', 'canceled'] as const;
 		const _exhaustive: readonly import('@encore/shared').MediaStatus[] = tsMediaStatuses;
 		void _exhaustive;
 		const stages = pyEnumValues(vocabulary, 'Stage');
@@ -326,9 +308,7 @@ describe('TS↔Python vocabulary parity', () => {
 
 	test('protocol.py is where the wire-verb read expects it', () => {
 		const path = join(WORKER_SRC, 'protocol.py');
-		expect(existsSync(path), `protocol.py not found under ${WORKER_SRC} — did the module move?`).toBe(
-			true
-		);
+		expect(existsSync(path), `protocol.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
 	});
 });
 
@@ -355,7 +335,10 @@ describe('roformer token ↔ checkpoint identity', () => {
 		// at module scope and a comment begins with `#`, so a `# ROFORMER_MODELS = {...}` line above
 		// the live table can no longer be the first (unanchored) match and mask a real divergence.
 		const block = roformerPy.match(/^ROFORMER_MODELS\s*=\s*\{([\s\S]*?)\n\}/m);
-		if (!block) throw new Error('ROFORMER_MODELS not found at module level in roformer.py — did the table move or get commented out?');
+		if (!block)
+			throw new Error(
+				'ROFORMER_MODELS not found at module level in roformer.py — did the table move or get commented out?'
+			);
 		const out: Record<string, string> = {};
 		for (const m of block[1]!.matchAll(/"([^"]+)"\s*:\s*"([^"]+)"/g)) out[m[1]!] = m[2]!;
 		return out;
@@ -364,9 +347,7 @@ describe('roformer token ↔ checkpoint identity', () => {
 	test('every roformer model the UI offers resolves to a slug the worker can run', () => {
 		const mapped = pyRoformerModels();
 		expect(Object.keys(mapped).length).toBeGreaterThan(0);
-		const offered = SEPARATOR_ENGINES.filter((e) => e.id === 'roformer').flatMap((e) =>
-			e.models.map((m) => m.id)
-		);
+		const offered = SEPARATOR_ENGINES.filter((e) => e.id === 'roformer').flatMap((e) => e.models.map((m) => m.id));
 		expect(offered.length).toBeGreaterThan(0);
 		expect(offered.filter((id) => !mapped[id])).toEqual([]);
 	});
@@ -374,12 +355,9 @@ describe('roformer token ↔ checkpoint identity', () => {
 	test('bs-roformer-1297 still resolves to the KNOWN-MISMATCHED slug, not the benchmarked one', () => {
 		// Change this only together with the rtFactor/rank in separators.ts and the comment in
 		// roformer.py — the point of the pin is that the three move as one.
-		expect(pyRoformerModels()['bs-roformer-1297']).toBe(
-			'roformer-model-bs-roformer-sw-by-jarredou'
-		);
+		expect(pyRoformerModels()['bs-roformer-1297']).toBe('roformer-model-bs-roformer-sw-by-jarredou');
 	});
 });
-
 
 /**
  * The WORKER'S ML KEEPALIVE and the CORE'S PROGRESS LEASE are a cross-service invariant that nothing
@@ -445,7 +423,10 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 		const m = /heartbeatIntervalSec:\s*Math\.floor\(\s*this\.#config\.progressLeaseMs\s*((?:\/\s*\d+\s*)+)\)/.exec(
 			hubStripped
 		);
-		expect(m, 'heartbeatIntervalSec advertisement not found in worker-hub.ts — did it move or stop deriving from progressLeaseMs?').not.toBeNull();
+		expect(
+			m,
+			'heartbeatIntervalSec advertisement not found in worker-hub.ts — did it move or stop deriving from progressLeaseMs?'
+		).not.toBeNull();
 	});
 
 	test('the advertised heartbeat interval sits comfortably under the core progress lease', () => {
@@ -457,9 +438,7 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 		// the only free variable, so a dropped `/ 2` reds this.
 		const divisors = m![1].match(/\d+/g)!.map(Number);
 		expect(divisors.length).toBeGreaterThan(0); // a vacuous parse would divide by nothing
-		const advertisedSec = Math.floor(
-			divisors.reduce((acc, d) => acc / d, DEFAULT_LEASE_CONFIG.progressLeaseMs)
-		);
+		const advertisedSec = Math.floor(divisors.reduce((acc, d) => acc / d, DEFAULT_LEASE_CONFIG.progressLeaseMs));
 		const advertisedMs = advertisedSec * 1000;
 		// AT MOST half the lease. Half is the margin: a worker honouring 15s emits its next tick at
 		// 30s == the deadline after one dropped tick, so it does not breach; the full lease (30s) does.
@@ -468,8 +447,6 @@ describe('worker ML keepalive stays under the core progress lease', () => {
 		expect(advertisedMs).toBeLessThanOrEqual(DEFAULT_LEASE_CONFIG.progressLeaseMs / 2);
 	});
 });
-
-
 
 /**
  * The STEM EXTENSION / KEY MIRROR is the last cross-language contract in the media layer guarded only
@@ -555,10 +532,9 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 	}
 
 	test('processor.py is where the parity read expects it', () => {
-		expect(
-			existsSync(processorPath),
-			`${PROCESSOR_REL} not found under ${WORKER_SRC} — did the module move?`
-		).toBe(true);
+		expect(existsSync(processorPath), `${PROCESSOR_REL} not found under ${WORKER_SRC} — did the module move?`).toBe(
+			true
+		);
 	});
 
 	test('INSTRUMENTAL_EXT / VOCALS_EXT agree across the seam', () => {
@@ -600,10 +576,8 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 		expect(voc).toMatch(/^derived\/stems\/.+-vocals\..+$/);
 		expect(pyStrConst('INSTRUMENTAL_EXT').length).toBeGreaterThan(0);
 		expect(pyStrConst('VOCALS_EXT').length).toBeGreaterThan(0);
-
 	});
 });
-
 
 /**
  * The DEMUCS_MODELS WHITELIST is the roformer table's twin, and until now the ONLY half of the
@@ -632,7 +606,10 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
 		// would parse the comment and pass on a genuine drift — a false EXEMPT on the exact divergence
 		// this guard exists to catch. A `#`-commented line cannot start at column 0, so it is skipped.
 		const block = demucsPy.match(/^DEMUCS_MODELS\s*=\s*\(([\s\S]*?)\)/m);
-		if (!block) throw new Error('DEMUCS_MODELS not found at module level in demucs.py — did the tuple move or get commented out?');
+		if (!block)
+			throw new Error(
+				'DEMUCS_MODELS not found at module level in demucs.py — did the tuple move or get commented out?'
+			);
 		return [...block[1]!.matchAll(/"([^"]+)"/g)].map((m) => m[1]!);
 	}
 
@@ -647,7 +624,10 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
 		// Non-vacuity floor: a silent empty parse on either side would let the equality pass with
 		// nothing in it, exactly the trap the roformer/stage guards above call out.
 		expect(worker.length, 'DEMUCS_MODELS parsed empty from demucs.py — did the tuple change shape?').toBeGreaterThan(0);
-		expect(offered.length, 'the demucs engine offers no models in separators.ts — did the registry move?').toBeGreaterThan(0);
+		expect(
+			offered.length,
+			'the demucs engine offers no models in separators.ts — did the registry move?'
+		).toBeGreaterThan(0);
 		// Set equality both directions: a model selectable in room settings the worker will reject
 		// (offered ⊄ worker) parks every cook of it on a non-retryable ValueError; a worker checkpoint
 		// no UI offers (worker ⊄ offered) is dead config that drifts unnoticed.
@@ -656,8 +636,6 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
 
 	test('demucs.py is where the whitelist read expects it', () => {
 		const path = join(WORKER_SRC, 'separation/demucs.py');
-		expect(existsSync(path), `demucs.py not found under ${WORKER_SRC} — did the module move?`).toBe(
-			true
-		);
+		expect(existsSync(path), `demucs.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
 	});
 });

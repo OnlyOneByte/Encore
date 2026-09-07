@@ -1,12 +1,7 @@
 // The guiding-track backfill: which cooked songs need a vocals ref, and the existence-then-loudness
 // scan that links them. Fully injected IO — no disk, no ffmpeg.
 import { describe, it, expect } from 'bun:test';
-import {
-	needsVocalsBackfill,
-	candidateVocalsRefs,
-	backfillVocalsRefs,
-	type VocalsBackfillIO
-} from './vocals-backfill';
+import { needsVocalsBackfill, candidateVocalsRefs, backfillVocalsRefs, type VocalsBackfillIO } from './vocals-backfill';
 import type { Media } from '@encore/shared';
 
 const m = (id: string, over: Partial<Media> = {}): Media => ({
@@ -152,7 +147,8 @@ describe('backfillVocalsRefs', () => {
 		expect(linked.map(([id]) => id)).toEqual(['a', 'b']); // linked anyway
 	});
 
-	it('mixes all three outcomes in one pass, and is a no-op for already-linked songs', async () => {		const { io: deps, linked } = io({
+	it('mixes all three outcomes in one pass, and is a no-op for already-linked songs', async () => {
+		const { io: deps, linked } = io({
 			exists: (abs) => !abs.includes('gone'),
 			measure: async (abs) => (abs.includes('silent') ? 'silent' : 'audible')
 		});

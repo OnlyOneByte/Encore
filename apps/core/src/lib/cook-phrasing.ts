@@ -23,4 +23,3 @@ export function cookStageLabel(status: MediaStatus, opts: { pct?: number } = {})
 	const pct = typeof opts.pct === 'number' ? ` ${opts.pct}%` : '';
 	return `Making karaoke…${pct}`;
 }
-

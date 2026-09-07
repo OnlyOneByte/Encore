@@ -48,7 +48,8 @@ async function openRawCdp(port) {
 		if (m.id && pending.has(m.id)) {
 			const { resolve, reject } = pending.get(m.id);
 			pending.delete(m.id);
-			m.error ? reject(new Error(m.error.message)) : resolve(m.result);
+			if (m.error) reject(new Error(m.error.message));
+			else resolve(m.result);
 		}
 	});
 	function send(method, params = {}, sessionId) {
@@ -112,14 +113,10 @@ console.log(`\nP6 lyrics probe — server ${base}, media ${MEDIA_DIR}\n`);
 // looking at moving pixels.
 const parserCheck = await (async () => {
 	const raw = {
-		lines: [
-			{ start: 0, end: 1, text: 'x', words: [{ word: 'x', start: 0, end: 1 }] }
-		]
+		lines: [{ start: 0, end: 1, text: 'x', words: [{ word: 'x', start: 0, end: 1 }] }]
 	};
 	const bad = {
-		lines: [
-			{ startSec: 0, endSec: 1, text: 'x', words: [{ text: 'x', startSec: 0, endSec: 1 }] }
-		]
+		lines: [{ startSec: 0, endSec: 1, text: 'x', words: [{ text: 'x', startSec: 0, endSec: 1 }] }]
 	};
 	const mod = await import(new URL('../../src/lib/tv/lyrics.ts', import.meta.url).href);
 	const parseLyricsDoc = mod.parseLyricsDoc;
@@ -128,10 +125,7 @@ const parserCheck = await (async () => {
 	return {
 		goodOk: !!good && good.lines.length === 1 && good.lines[0].words.length === 1,
 		badWordsDropped: !!badParsed && badParsed.lines[0].words.length === 0,
-		badLineBoundsNull:
-			!!badParsed &&
-			badParsed.lines[0].start === null &&
-			badParsed.lines[0].end === null
+		badLineBoundsNull: !!badParsed && badParsed.lines[0].start === null && badParsed.lines[0].end === null
 	};
 })();
 const fixtureShapeMatchesParser = !parserCheck.badWordsDropped;
@@ -278,12 +272,14 @@ try {
 	}
 
 	// Wait for a media element with a src so we know the stage is up.
-	await tv.waitFor(
-		`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`,
-		{ timeout: 20_000 }
-	).catch(() => {});
+	await tv
+		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 })
+		.catch(() => {});
 	const kicked = await ensurePlaying(tv, phone);
-	if (!kicked.ok) console.warn(`WARN: playback never started — subsequent findings may all be N/A. last kick report: ${kicked.report}`);
+	if (!kicked.ok)
+		console.warn(
+			`WARN: playback never started — subsequent findings may all be N/A. last kick report: ${kicked.report}`
+		);
 
 	// ── FINDING (1): the reel appears without a reload ────────────────────
 	// The overlay fetches /media/<ref> on mount and re-fetches when lyricsRef changes; a
@@ -330,9 +326,7 @@ try {
 		'HIGH',
 		reelPresent,
 		'lyrics overlay renders once the align artifact is available, without a reload',
-		reelPresent
-			? ''
-			: 'no .lyrics element ever appeared on /tv while a cooked song with lyricsRef was current'
+		reelPresent ? '' : 'no .lyrics element ever appeared on /tv while a cooked song with lyricsRef was current'
 	);
 
 	// Under what state exactly does it render? Useful context for the visual finding.
@@ -365,10 +359,10 @@ try {
 		fixtureShapeMatchesParser
 			? ''
 			: `apps/core/e2e/fake-stems-worker.mjs:196-207 writes {startSec,endSec,text} but ` +
-				`apps/core/src/lib/tv/lyrics.ts:31-51 reads {start,end,word}. ` +
-				`Every word entry is dropped by parseLyricsDoc; line bounds resolve to null; ` +
-				`activeLineIndex returns 0 forever. Real Python worker (apps/worker/src/lyrics/artifact.py:6-7) ` +
-				`writes the correct shape — this is a FIXTURE bug in the e2e harness, not an overlay defect.`
+					`apps/core/src/lib/tv/lyrics.ts:31-51 reads {start,end,word}. ` +
+					`Every word entry is dropped by parseLyricsDoc; line bounds resolve to null; ` +
+					`activeLineIndex returns 0 forever. Real Python worker (apps/worker/src/lyrics/artifact.py:6-7) ` +
+					`writes the correct shape — this is a FIXTURE bug in the e2e harness, not an overlay defect.`
 	);
 
 	// ── FINDING (2): does the active word track the clock? ────────────────
@@ -444,7 +438,7 @@ try {
 		activeSeenAsIs > 0
 			? `${activeSeenAsIs}/${asIsTracking.samples.length} samples had a .word.active`
 			: `not once did .word.active exist. All ${asIsTracking.samples.length} samples were null. ` +
-				`Root cause: fixture/parser schema mismatch above — no word timings survive parseLyricsDoc.`
+					`Root cause: fixture/parser schema mismatch above — no word timings survive parseLyricsDoc.`
 	);
 
 	// ── Override the artifact file with the CORRECT shape, so we can measure real
@@ -467,10 +461,9 @@ try {
 	}
 	// Force the overlay to re-fetch: reload the TV route.
 	await tv.goto(`${base}/tv`);
-	await tv.waitFor(
-		`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`,
-		{ timeout: 20_000 }
-	).catch(() => {});
+	await tv
+		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, { timeout: 20_000 })
+		.catch(() => {});
 	await ensurePlaying(tv, phone);
 	await seekToStart(tv, phone);
 	await sleep(300);
@@ -484,16 +477,19 @@ try {
 	await kickPlayback(tv);
 	const correctedTracking = await sampleTracking('corrected', expectedByFakeTime);
 	const activeSeenCorrected = correctedTracking.samples.filter((s) => s.active).length;
-	console.log(
-		'  corrected samples (last 6):',
-		JSON.stringify(correctedTracking.samples.slice(-6), null, 1)
-	);
+	console.log('  corrected samples (last 6):', JSON.stringify(correctedTracking.samples.slice(-6), null, 1));
 	// After sampling, verify what the browser is actually seeing on disk.
 	const fileNow = (() => {
-		try { return readFileSync(lyricsPath, 'utf8').slice(0, 200); } catch { return '<missing>'; }
+		try {
+			return readFileSync(lyricsPath, 'utf8').slice(0, 200);
+		} catch {
+			return '<missing>';
+		}
 	})();
 	console.log('  lyrics file (first 200):', fileNow);
-	const fetchedByBrowser = await tv.evaluate(`fetch('/media/${cooked.row.lyricsRef}').then(r => r.text()).then(t => t.slice(0, 200))`);
+	const fetchedByBrowser = await tv.evaluate(
+		`fetch('/media/${cooked.row.lyricsRef}').then(r => r.text()).then(t => t.slice(0, 200))`
+	);
 	console.log('  lyrics file as browser sees:', fetchedByBrowser);
 	record(
 		'P6-2b',
@@ -503,16 +499,14 @@ try {
 		activeSeenCorrected > 0
 			? `${activeSeenCorrected}/${correctedTracking.samples.length} samples had .word.active`
 			: `still no .word.active with the corrected fixture (${JSON.stringify(correctedTracking.samples.slice(0, 3))}) — ` +
-				`this would be a real overlay defect, not an env limit.`
+					`this would be a real overlay defect, not an env limit.`
 	);
 
 	// Report lag / drift, only if any lags landed on the expected word.
 	if (correctedTracking.lags.length > 0) {
 		const lagsMs = correctedTracking.lags.map((l) => Math.round(l.lagSec * 1000));
 		const meanLag = Math.round(lagsMs.reduce((a, b) => a + b, 0) / lagsMs.length);
-		const varLag = Math.round(
-			Math.sqrt(lagsMs.reduce((a, b) => a + (b - meanLag) ** 2, 0) / lagsMs.length)
-		);
+		const varLag = Math.round(Math.sqrt(lagsMs.reduce((a, b) => a + (b - meanLag) ** 2, 0) / lagsMs.length));
 		// The overlay adds LYRICS_LEAD_SEC=0.3s to cuePos, so the highlight is expected to
 		// LEAD the audio: `currentTime - word.start` should sit near +LYRICS_LEAD (positive
 		// = ahead of audio) when the ball reaches a word. So a good lag is around +300ms.
@@ -564,9 +558,11 @@ try {
 
 	// Explicit reconciliation: audio advancing AND reel frozen is one bug shape; reel
 	// moving AND audio stalled is another. Distinguish them.
-	const audioAdvanced = correctedTracking.samples.length >= 2 &&
+	const audioAdvanced =
+		correctedTracking.samples.length >= 2 &&
 		correctedTracking.samples[correctedTracking.samples.length - 1].currentTime -
-			correctedTracking.samples[0].currentTime > 1.0;
+			correctedTracking.samples[0].currentTime >
+			1.0;
 	record(
 		'P6-3c',
 		'MEDIUM',
@@ -577,7 +573,9 @@ try {
 			: `currentTime moved only ${(
 					correctedTracking.samples[correctedTracking.samples.length - 1]?.currentTime -
 					correctedTracking.samples[0]?.currentTime
-				).toFixed(3)}s across ${correctedTracking.samples.length} samples — the reel-frozen finding above is CAUSED by silent audio, not by the overlay.`
+				).toFixed(
+					3
+				)}s across ${correctedTracking.samples.length} samples — the reel-frozen finding above is CAUSED by silent audio, not by the overlay.`
 	);
 
 	// ── FINDING (4): readability at 1920x1080 ─────────────────────────────
@@ -639,7 +637,9 @@ try {
 		'MEDIUM',
 		contrastOk,
 		`text contrast vs stage floor is high (${ratio?.toFixed(1) ?? 'n/a'}:1)`,
-		contrastOk ? '' : `ink colour ${geom?.currentColor} lands at ${ratio?.toFixed(1)}:1 — below the WCAG AAA 7:1 target for large text.`
+		contrastOk
+			? ''
+			: `ink colour ${geom?.currentColor} lands at ${ratio?.toFixed(1)}:1 — below the WCAG AAA 7:1 target for large text.`
 	);
 
 	// ── FINDING (5): provenance label for transcribed words ───────────────
@@ -667,10 +667,10 @@ try {
 		provOk
 			? ''
 			: `no .ls-asr label rendered and .lyrics.unverified=${provState.unverified}. ` +
-				`ROOT CAUSE (env limit): fake-stems-worker.mjs align branch does not send ` +
-				`artifacts.lyrics.candidates; worker-hub.ts:245 calls setMediaLyrics without candidates; ` +
-				`chosenCandidate(media) returns null; isAutoTranscribed(null)=false. ` +
-				`Real workers via apps/worker do send candidates, so this surface works in a real cook.`
+					`ROOT CAUSE (env limit): fake-stems-worker.mjs align branch does not send ` +
+					`artifacts.lyrics.candidates; worker-hub.ts:245 calls setMediaLyrics without candidates; ` +
+					`chosenCandidate(media) returns null; isAutoTranscribed(null)=false. ` +
+					`Real workers via apps/worker do send candidates, so this surface works in a real cook.`
 	);
 
 	// ── FINDING (6): live settings changes take effect with NO restart ────
@@ -690,10 +690,9 @@ try {
 		// Fall back to re-queueing.
 		await phone.fill(SEL.search, 'caroline');
 		await sleep(300);
-		await phone.waitFor(
-			`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`,
-			{ timeout: 5000 }
-		).catch(() => {});
+		await phone
+			.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 5000 })
+			.catch(() => {});
 		const canAdd = await phone.count(SEL.addTurn);
 		if (canAdd > 0) await phone.click(SEL.addTurn);
 		else if ((await phone.count(SEL.sing)) > 0) await phone.click(SEL.sing);
@@ -778,9 +777,7 @@ try {
 	await sleep(700);
 	const afterHlWord = await readAfterFlip();
 	const hlLive =
-		afterHlLine?.hlClass === 'hl-line' &&
-		afterHlOff?.hlClass === 'hl-off' &&
-		afterHlWord?.hlClass === 'hl-word';
+		afterHlLine?.hlClass === 'hl-line' && afterHlOff?.hlClass === 'hl-off' && afterHlWord?.hlClass === 'hl-word';
 	record(
 		'P6-6a',
 		'HIGH',
@@ -853,16 +850,13 @@ try {
 	await putRoom({ lyricsCase: 'natural' });
 	await sleep(700);
 	const afterCaseNatural = await readAfterFlip();
-	const caseLive =
-		afterCaseUpper?.textTransform === 'uppercase' && afterCaseNatural?.textTransform !== 'uppercase';
+	const caseLive = afterCaseUpper?.textTransform === 'uppercase' && afterCaseNatural?.textTransform !== 'uppercase';
 	record(
 		'P6-6d',
 		'MEDIUM',
 		caseLive,
 		'lyrics-case (natural / upper / …) applies via text-transform live',
-		caseLive
-			? ''
-			: `upper=${afterCaseUpper?.textTransform}, natural=${afterCaseNatural?.textTransform}`
+		caseLive ? '' : `upper=${afterCaseUpper?.textTransform}, natural=${afterCaseNatural?.textTransform}`
 	);
 
 	// sync-mode — flipping to `lines` should CLAMP the highlight/ball; overlay should not
@@ -877,8 +871,7 @@ try {
 	const syncSurvives = !!afterSyncLines && !!afterSyncForced;
 	// Under `lines`, resolveLyricsPresentation clamps `word` → `line`, so hlClass should be
 	// `hl-line`; under `forced` it goes back to `hl-word`.
-	const syncEffective =
-		afterSyncLines?.hlClass === 'hl-line' && afterSyncForced?.hlClass === 'hl-word';
+	const syncEffective = afterSyncLines?.hlClass === 'hl-line' && afterSyncForced?.hlClass === 'hl-word';
 	record(
 		'P6-6e',
 		'HIGH',
@@ -895,9 +888,11 @@ try {
 	// portably, replace the file with `null`-parsing JSON and reload the TV.
 	writeFileSync(lyricsPath, '{}');
 	await tv.goto(`${base}/tv`);
-	await tv.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, {
-		timeout: 15_000
-	}).catch(() => {});
+	await tv
+		.waitFor(`[...document.querySelectorAll('video,audio')].some(e => e.currentSrc || e.src)`, {
+			timeout: 15_000
+		})
+		.catch(() => {});
 	await sleep(1500);
 	const emptyState = await tv.evaluate(`(() => {
 		const l = document.querySelector(${JSON.stringify(SEL.lyrics)});

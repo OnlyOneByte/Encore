@@ -25,8 +25,15 @@ function makeRepo() {
 }
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'queued', lyricsStatus: 'queued', instrumentalRef: undefined, songProfile: EMPTY_SONG_PROFILE
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'queued',
+	lyricsStatus: 'queued',
+	instrumentalRef: undefined,
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 let _s = 0;
@@ -35,8 +42,14 @@ const addCmd = (id: string, mediaId: string, singerId = 's1'): ClientCommand => 
 	op: { op: 'add', entry: { id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: ++_s } as QueueEntry }
 });
 
-const worker = (id: string, slotsFree: number): WorkerSession =>
-	({ workerId: id, capabilities: ['fetch', 'stems', 'align'], concurrency: slotsFree, version: '1', slotsFree, lastSeen: T0 });
+const worker = (id: string, slotsFree: number): WorkerSession => ({
+	workerId: id,
+	capabilities: ['fetch', 'stems', 'align'],
+	concurrency: slotsFree,
+	version: '1',
+	slotsFree,
+	lastSeen: T0
+});
 
 // Build the hub deps EXACTLY as server.ts composes them for the add side: wire onEntryAdded to the
 // real reprioritizeCookForMedia over the real repo. dispatch() is a spy so we can assert the kick.
@@ -47,10 +60,20 @@ function harness(jobs: JobRepository) {
 	const deps: HubDeps = {
 		state,
 		publish: (e) => published.push(e),
-		mediaById: new Map([['m-starved', media('m-starved')], ['m-other', media('m-other')]]),
+		mediaById: new Map([
+			['m-starved', media('m-starved')],
+			['m-other', media('m-other')]
+		]),
 		actorSingerId: 's1',
 		onEntryAdded: (mediaId, entries) =>
-			reprioritizeCookForMedia(mediaId, { jobs, entries, now: () => T0 + 100, dispatch: () => { dispatched++; } })
+			reprioritizeCookForMedia(mediaId, {
+				jobs,
+				entries,
+				now: () => T0 + 100,
+				dispatch: () => {
+					dispatched++;
+				}
+			})
 	};
 	return { published, state, deps, dispatched: () => dispatched };
 }
@@ -112,7 +135,14 @@ test('reprioritizeCookForMedia is a no-op when the cook already sits at its turn
 		{ id: 'e1', mediaId: 'm-starved', singerId: 's1', status: 'queued', rotationSeq: 5, addedAt: 1 } as QueueEntry
 	];
 	let kicked = 0;
-	const changed = reprioritizeCookForMedia('m-starved', { jobs, entries, now: () => T0 + 1, dispatch: () => { kicked++; } });
+	const changed = reprioritizeCookForMedia('m-starved', {
+		jobs,
+		entries,
+		now: () => T0 + 1,
+		dispatch: () => {
+			kicked++;
+		}
+	});
 	expect(changed).toBe(false); // soonest turn (5) is WORSE than current (2) → nothing to do
 	expect(jobs.byId(healthy.id)!.priority).toBe(2);
 	expect(kicked).toBe(0);

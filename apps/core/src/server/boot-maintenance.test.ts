@@ -12,10 +12,31 @@ test('a pass that throws does NOT skip the passes after it (the whole point of #
 	const ran: string[] = [];
 	const warnings: string[] = [];
 	const tasks: BootTask[] = [
-		{ name: 'first', run: async () => { ran.push('first'); } },
-		{ name: 'exploder', run: async () => { ran.push('exploder'); throw new Error('one hand-edited sidecar'); } },
-		{ name: 'third', run: async () => { ran.push('third'); } },
-		{ name: 'fourth', run: async () => { ran.push('fourth'); } }
+		{
+			name: 'first',
+			run: async () => {
+				ran.push('first');
+			}
+		},
+		{
+			name: 'exploder',
+			run: async () => {
+				ran.push('exploder');
+				throw new Error('one hand-edited sidecar');
+			}
+		},
+		{
+			name: 'third',
+			run: async () => {
+				ran.push('third');
+			}
+		},
+		{
+			name: 'fourth',
+			run: async () => {
+				ran.push('fourth');
+			}
+		}
 	];
 
 	const { failed } = await runBootMaintenance(tasks, (m) => warnings.push(m));
@@ -30,7 +51,12 @@ test('a failed pass surfaces a NAMED, non-silent note that keeps the stack', asy
 	const warnings: string[] = [];
 	const boom = new Error('instrumental is undefined');
 	const tasks: BootTask[] = [
-		{ name: 'guiding-track backfill', run: async () => { throw boom; } }
+		{
+			name: 'guiding-track backfill',
+			run: async () => {
+				throw boom;
+			}
+		}
 	];
 
 	await runBootMaintenance(tasks, (m) => warnings.push(m));
@@ -48,7 +74,12 @@ test('a thrown non-Error is reported as text, never "[object Object]"', async ()
 	const tasks: BootTask[] = [
 		// The old catch did `(err as Error)?.message ?? err`; a thrown object has no .message, so it
 		// interpolated as "[object Object]".
-		{ name: 'weird', run: async () => { throw { code: 'ENOSPC' }; } }
+		{
+			name: 'weird',
+			run: async () => {
+				throw { code: 'ENOSPC' };
+			}
+		}
 	];
 	await runBootMaintenance(tasks, (m) => warnings.push(m));
 	expect(warnings[0]).not.toContain('[object Object]');
@@ -59,8 +90,19 @@ test('a disabled pass is skipped silently (not counted as a failure)', async () 
 	const ran: string[] = [];
 	const warnings: string[] = [];
 	const tasks: BootTask[] = [
-		{ name: 'off', enabled: () => false, run: async () => { ran.push('off'); } },
-		{ name: 'on', run: async () => { ran.push('on'); } }
+		{
+			name: 'off',
+			enabled: () => false,
+			run: async () => {
+				ran.push('off');
+			}
+		},
+		{
+			name: 'on',
+			run: async () => {
+				ran.push('on');
+			}
+		}
 	];
 	const { failed } = await runBootMaintenance(tasks, (m) => warnings.push(m));
 	expect(ran).toEqual(['on']);

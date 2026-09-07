@@ -29,10 +29,7 @@ import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const hubSrc = readFileSync(
-	fileURLToPath(new URL('../realtime/hub.ts', import.meta.url)),
-	'utf-8'
-);
+const hubSrc = readFileSync(fileURLToPath(new URL('../realtime/hub.ts', import.meta.url)), 'utf-8');
 
 // Strip // line comments and /* */ block comments so prose mentioning a capability string (the remove
 // arm's own comment literally contains `queue:remove-any`) can neither satisfy nor trip an assertion.

@@ -27,18 +27,29 @@
 		ondown?: () => void;
 	}
 	let {
-		seq, title, singerName,
+		seq,
+		title,
+		singerName,
 		// Defaulted to match sibling ProcessingCard: without a fallback, `--singer:{singerColor}`
 		// resolves against `undefined`, `background: var(--singer)` has no value, and the singer
 		// identity dot renders invisible. SINGER_COLORS[0] is the shared canonical fallback.
 		singerColor = SINGER_COLORS[0],
-		mine = false, up = false, singerAway = false,
-		subtitle = '', pending = false, removable = false,
-		reorderable = false, canUp = false, canDown = false, onremove, onup, ondown
+		mine = false,
+		up = false,
+		singerAway = false,
+		subtitle = '',
+		pending = false,
+		removable = false,
+		reorderable = false,
+		canUp = false,
+		canDown = false,
+		onremove,
+		onup,
+		ondown
 	}: Props = $props();
 </script>
 
-<div class="qrow card list-row pop-in" class:mine class:up class:pending>
+<div class="qrow card list-row pop-in" class:mine={mine} class:up={up} class:pending={pending}>
 	<div class="seq">{seq}</div>
 	<div class="meta">
 		<div class="t">{title}</div>
@@ -48,17 +59,24 @@
 			     playing" with the dot welded to the name. The `away` span stays literal on purpose -- it
 			     carries a margin-left of its own, so adding a space there would double the gap. -->
 			<i class:dim={singerAway} style="--singer:{singerColor}"></i>
-			{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">adding…</span>{/if}
+			{singerName}{#if singerAway}<span class="away">· away</span
+				>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">adding…</span>{/if}
 		</div>
 	</div>
 	{#if !pending}
 		<div class="actions">
 			{#if reorderable}
-				<button class="act icon-btn" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}><Icon name="arrow-up" /></button>
-				<button class="act icon-btn" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}><Icon name="arrow-down" /></button>
+				<button class="act icon-btn" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
+					><Icon name="arrow-up" /></button
+				>
+				<button class="act icon-btn" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
+					><Icon name="arrow-down" /></button
+				>
 			{/if}
 			{#if removable}
-				<button class="remove icon-btn" aria-label="remove from queue" onclick={() => onremove?.()}><Icon name="close" /></button>
+				<button class="remove icon-btn" aria-label="remove from queue" onclick={() => onremove?.()}
+					><Icon name="close" /></button
+				>
 			{/if}
 			<!--
 				No grip here. The grip previously rendered ONLY on rows that were neither removable nor
@@ -77,30 +95,93 @@
 	   The entry animation is app.css's .pop-in helper (added to the root class list above), which
 	   is wrapped in @media (prefers-reduced-motion: no-preference) so it honours Reduce Motion.
 	   Do NOT re-declare a local @keyframes pop here: that copy was unguarded (issue #148). */
-	.mine { border-color: var(--line-tint); background: linear-gradient(var(--card), var(--card-tint)); }
-	.pending { opacity: 0.55; }
-	.seq {
-		width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center;
-		font-size: 0.8rem; font-weight: 700; background: var(--card2); color: var(--ink-dim); flex: 0 0 auto;
+	.mine {
+		border-color: var(--line-tint);
+		background: linear-gradient(var(--card), var(--card-tint));
 	}
-	.up .seq { background: var(--accent-strong); color: var(--on-accent); }
-	.meta { min-width: 0; }
-	.t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.pending {
+		opacity: 0.55;
+	}
+	.seq {
+		width: 26px;
+		height: 26px;
+		border-radius: 50%;
+		display: grid;
+		place-items: center;
+		font-size: 0.8rem;
+		font-weight: 700;
+		background: var(--card2);
+		color: var(--ink-dim);
+		flex: 0 0 auto;
+	}
+	.up .seq {
+		background: var(--accent-strong);
+		color: var(--on-accent);
+	}
+	.meta {
+		min-width: 0;
+	}
+	.t {
+		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
 	/* Same truncation as .t: a long name plus an appended away/adding badge could wrap and change the
 	   row's height between states. min-width:0 lets the flex item shrink below its content width. */
-	.who { display: flex; align-items: center; gap: 7px; font-size: 0.78rem; color: var(--ink-dim); margin-top: 2px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+	.who {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		font-size: 0.78rem;
+		color: var(--ink-dim);
+		margin-top: 2px;
+		min-width: 0;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
 	/* flex: 0 0 auto so the identity dot never shrinks: .who is a nowrap/overflow flex container,
 	   and an empty element's automatic minimum size is 0, so under a long name the dot collapsed to 0px
 	   and the singer's colour vanished from their own row (issue #89). Same protection .seq/.actions carry. */
-	.who i { flex: 0 0 auto; width: 10px; height: 10px; border-radius: 50%; display: inline-block; background: var(--singer); }
+	.who i {
+		flex: 0 0 auto;
+		width: 10px;
+		height: 10px;
+		border-radius: 50%;
+		display: inline-block;
+		background: var(--singer);
+	}
 	/* Hue kept (it is the singer's identity), presence dimmed. */
-	.who i.dim { opacity: 0.5; }
-	.away { color: var(--warn); margin-left: 0.35em; }
-	.adding { color: var(--warn); }
-	.actions { margin-left: auto; display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+	.who i.dim {
+		opacity: 0.5;
+	}
+	.away {
+		color: var(--warn);
+		margin-left: 0.35em;
+	}
+	.adding {
+		color: var(--warn);
+	}
+	.actions {
+		margin-left: auto;
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		flex: 0 0 auto;
+	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css -- this block and
 	   ProcessingCard's were byte-identical, each with its own copy of the same rationale. */
-	.act:disabled { opacity: 0.35; cursor: default; }
-	.act:not(:disabled):active { transform: scale(0.9); color: var(--ink); }
-	.remove:active { transform: scale(0.9); color: var(--accent2); }
+	.act:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+	.act:not(:disabled):active {
+		transform: scale(0.9);
+		color: var(--ink);
+	}
+	.remove:active {
+		transform: scale(0.9);
+		color: var(--accent2);
+	}
 </style>

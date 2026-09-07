@@ -65,5 +65,5 @@ test('the error toast docks off the undo toast MEASURED height, not a hand-picke
 	expect(m![1]!, '--error-dock must reference the measured --undo-h').toContain('--undo-h');
 	// And the page must actually bind that height and publish the token, or --undo-h is a dead ref.
 	expect(src, 'undo toast must bind:clientHeight').toMatch(/class="undo-toast"[^>]*bind:clientHeight/);
-	expect(src, "--undo-h must be published from script").toMatch(/setProperty\(\s*['"]--undo-h['"]/);
+	expect(src, '--undo-h must be published from script').toMatch(/setProperty\(\s*['"]--undo-h['"]/);
 });

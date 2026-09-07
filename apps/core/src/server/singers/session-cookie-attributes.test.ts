@@ -28,9 +28,7 @@ import { join } from 'node:path';
 // these are .ts sources. Blanks rather than deletes so any reported offset still lines up.
 function stripComments(src: string): string {
 	const blank = (m: string) => m.replace(/[^\n]/g, ' ');
-	return src
-		.replace(/\/\*[\s\S]*?\*\//g, blank)
-		.replace(/\/\/[^\n]*/g, blank);
+	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
 // import.meta.dir === apps/core/src/server/singers.

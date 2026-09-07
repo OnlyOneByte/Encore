@@ -16,8 +16,15 @@ import type { Media } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `derived/stems/${id}-instrumental.flac`, songProfile: EMPTY_SONG_PROFILE
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: `derived/stems/${id}-instrumental.flac`,
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 function deps(): HubDeps {
@@ -33,7 +40,18 @@ function deps(): HubDeps {
 	} as unknown as HubDeps;
 }
 
-const JUNK = [undefined, null, 0, '', 'add', [], {}, { clientOpId: 'c1' }, { op: { op: 'add' } }, { clientOpId: 'c1', op: 'add' }];
+const JUNK = [
+	undefined,
+	null,
+	0,
+	'',
+	'add',
+	[],
+	{},
+	{ clientOpId: 'c1' },
+	{ op: { op: 'add' } },
+	{ clientOpId: 'c1', op: 'add' }
+];
 
 test('no malformed queue frame can throw out of handleQueueCommand', () => {
 	for (const junk of JUNK) {
@@ -58,7 +76,9 @@ test('an unknown op is rejected rather than falling through as valid', () => {
 
 test('a rejection still reaches the sender when there IS a clientOpId to correlate', () => {
 	const sent: unknown[] = [];
-	handleQueueCommand({ clientOpId: 'c1', op: { op: 'add', entry: { id: 'e1' } } } as never, deps(), (e) => sent.push(e));
+	handleQueueCommand({ clientOpId: 'c1', op: { op: 'add', entry: { id: 'e1' } } } as never, deps(), (e) =>
+		sent.push(e)
+	);
 	expect(sent).toHaveLength(1);
 	expect((sent[0] as { type: string }).type).toBe('op:reject');
 });

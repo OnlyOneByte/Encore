@@ -10,13 +10,7 @@
 // exact text that reaches the browser, so it cannot drift from the implementation the way a
 // reimplementation of the pointer arithmetic would.
 import { test, expect } from 'bun:test';
-import {
-	PITCH_WORKLET_SOURCE,
-	semitonesToRatio,
-	readLag,
-	grainLookahead,
-	ALIGN_SEARCH
-} from './pitch-shift';
+import { PITCH_WORKLET_SOURCE, semitonesToRatio, readLag, grainLookahead, ALIGN_SEARCH } from './pitch-shift';
 
 const RATE = 48000;
 const BLOCK = 128; // what a browser hands an AudioWorkletProcessor
@@ -33,12 +27,11 @@ function loadProcessor(): new () => {
 		port = { onmessage: null as ((e: { data: unknown }) => void) | null };
 	}
 	// eslint-disable-next-line @typescript-eslint/no-implied-eval
-	new Function(
-		'AudioWorkletProcessor',
-		'registerProcessor',
-		'sampleRate',
-		PITCH_WORKLET_SOURCE
-	)(StubProcessor, (_name: string, ctor: unknown) => (registered = ctor), RATE);
+	new Function('AudioWorkletProcessor', 'registerProcessor', 'sampleRate', PITCH_WORKLET_SOURCE)(
+		StubProcessor,
+		(_name: string, ctor: unknown) => (registered = ctor),
+		RATE
+	);
 	if (!registered) throw new Error('worklet source registered no processor');
 	return registered as ReturnType<typeof loadProcessor>;
 }
@@ -70,7 +63,7 @@ function dominantHz(buf: Float32Array, from: number): number {
 	for (let i = from + 1; i < buf.length; i++) {
 		if ((buf[i - 1] <= 0 && buf[i] > 0) || (buf[i - 1] >= 0 && buf[i] < 0)) crossings++;
 	}
-	return (crossings / 2 / ((buf.length - from) / RATE));
+	return crossings / 2 / ((buf.length - from) / RATE);
 }
 
 function rms(buf: Float32Array, from: number): number {

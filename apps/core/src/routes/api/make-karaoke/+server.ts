@@ -39,7 +39,11 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		);
 	}
 
-	const job = requestMakeKaraoke(mediaId, { jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now }, singer.id);
+	const job = requestMakeKaraoke(
+		mediaId,
+		{ jobs: app.jobs, mediaById: app.mediaById, state: app.state, now: app.now },
+		singer.id
+	);
 	if (!job) return json({ error: 'could not start make-karaoke' }, { status: 409 });
 
 	// The media just flipped to a cooking file — persist it so a restart mid-cook still knows this

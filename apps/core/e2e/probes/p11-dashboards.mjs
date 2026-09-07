@@ -23,8 +23,8 @@
  * See ../HARNESS.md for the boot recipe; this file uses port 5231 exclusively so it never collides
  * with the eleven sibling probes.
  */
-import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { spawn } from 'node:child_process';
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 
@@ -67,7 +67,10 @@ function killAll() {
 	spawned.length = 0;
 }
 process.on('exit', killAll);
-process.on('SIGINT', () => { killAll(); process.exit(130); });
+process.on('SIGINT', () => {
+	killAll();
+	process.exit(130);
+});
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -144,7 +147,11 @@ async function openPhone(cookie) {
 		ws.onopen = () => resolve();
 		ws.onerror = (e) => reject(new Error(`ws open error: ${e?.message ?? e}`));
 	});
-	ws.onmessage = (m) => { try { events.push(JSON.parse(String(m.data))); } catch {} };
+	ws.onmessage = (m) => {
+		try {
+			events.push(JSON.parse(String(m.data)));
+		} catch {}
+	};
 	ws.send(JSON.stringify({ type: 'hello' }));
 	await sleep(100);
 	return {
@@ -167,12 +174,15 @@ async function waitForStatus(phone, mediaId, predicate, timeoutMs, label) {
 		if (last && predicate(last)) return last;
 		await sleep(100);
 	}
-	const seen = phone.statusOf(mediaId).map((e) => `${e.status}@${e.pct ?? '?'}%`).join(' → ');
+	const seen = phone
+		.statusOf(mediaId)
+		.map((e) => `${e.status}@${e.pct ?? '?'}%`)
+		.join(' → ');
 	throw new Error(`waitForStatus timeout (${label ?? ''}): media=${mediaId} seen=[${seen}]`);
 }
 
 // ── boot: server + workers ─────────────────────────────────────────────────
-let serverProc, serverLogPath;
+let serverLogPath;
 
 async function bootServer() {
 	if (existsSync(SCRATCH)) rmSync(SCRATCH, { recursive: true, force: true });
@@ -202,7 +212,6 @@ async function bootServer() {
 	p.stdout.on('data', (d) => w.write(d));
 	p.stderr.on('data', (d) => w.write(d));
 	if (!(await waitForHealth())) bail(`server did not come up on :${PORT}; see ${serverLogPath}`);
-	serverProc = p;
 }
 
 function bootWorker(env, tag) {
@@ -220,7 +229,9 @@ function bootWorker(env, tag) {
 async function waitForWorkerCapabilities(capsPredicate, timeoutMs = 5000, label = 'worker caps') {
 	const deadline = Date.now() + timeoutMs;
 	while (Date.now() < deadline) {
-		const r = await fetch(`${BASE}/api/metrics`).then((r) => r.json()).catch(() => null);
+		const r = await fetch(`${BASE}/api/metrics`)
+			.then((r) => r.json())
+			.catch(() => null);
 		if (r?.workers?.length && capsPredicate(r.workers)) return r.workers;
 		await sleep(150);
 	}
@@ -285,7 +296,13 @@ async function main() {
 
 	const c3 = await requestCook(cookie, bohemian.id);
 	if (!c3.ok) throw new Error(`bohemian cook failed: ${c3.status} ${await c3.text()}`);
-	await waitForStatus(phone, bohemian.id, (e) => e.status === 'failed' || e.status === 'ready', 10000, 'bohemian terminal');
+	await waitForStatus(
+		phone,
+		bohemian.id,
+		(e) => e.status === 'failed' || e.status === 'ready',
+		10000,
+		'bohemian terminal'
+	);
 	// Take the failer offline so it cannot pick up prayer's stems below.
 	killProc(failer.proc);
 	await sleep(600);
@@ -323,7 +340,7 @@ async function main() {
 	// The progress lease is 30s (leases.ts DEFAULT_LEASE_CONFIG) and the reaper ticks every 3s.
 	// Bring up the replacement worker RIGHT AWAY so it is ready to accept the requeue the instant
 	// the lease expires; otherwise the recovered job sits queued while we do nothing.
-	const rescue = bootWorker({ FAKE_SLOW_MS: '100' }, 'rescue-3');
+	bootWorker({ FAKE_SLOW_MS: '100' }, 'rescue-3');
 	await waitForWorkerCapabilities((ws) => ws.some((w) => w.workerId === 'rescue-3'), 5000, 'rescue-3');
 	// 30s progress lease + 3s reaper tick + ~10s slack for retry + follow-up align + broadcast.
 	await waitForStatus(phone, prayer.id, (e) => e.status === 'ready' || e.status === 'failed', 60000, 'prayer terminal');
@@ -345,7 +362,11 @@ async function main() {
 		// synchronously, so the persistence exception unwinds through the WS handler and crashes
 		// server.ts. Match the client's shape (src/lib/stores/queue.ts:83-91): rotationSeq is
 		// MAX_SAFE_INTEGER (applyAndReseq assigns the real seq), addedAt is a monotonic wall clock.
-		const entryId = `01M${Math.random().toString(36).slice(2, 10).toUpperCase()}${Date.now().toString(36).toUpperCase().slice(-10)}`.slice(0, 26);
+		const entryId =
+			`01M${Math.random().toString(36).slice(2, 10).toUpperCase()}${Date.now().toString(36).toUpperCase().slice(-10)}`.slice(
+				0,
+				26
+			);
 		const clientOpId = `op_${Math.random().toString(36).slice(2, 12)}`;
 		phone.send({
 			type: 'queue:command',
@@ -421,29 +442,38 @@ async function main() {
 		const distinct = stats.sings?.distinctSongs;
 		const window = stats.sings?.window;
 		if (libReady === 3 && total === 4 && distinct === 3 && window === 4) {
-			record('LOW',
+			record(
+				'LOW',
 				'/api/stats reports the correct library size, total plays and distinct-song count',
 				`library.ready=${libReady}, sings.total=${total}, distinctSongs=${distinct}, window=${window}`,
 				[
 					`we cooked 4 songs — 3 succeeded (caroline, dontstop, prayer) and 1 failed (bohemian) — so library.ready must be 3`,
 					`we queued 4 entries across 3 distinct medias (caroline twice, dontstop once, prayer once); dedup is on entryId, so total plays = 4`
-				]);
+				]
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'/api/stats numbers disagree with what actually happened',
 				`observed library.ready=${libReady} (want 3), sings.total=${total} (want 4), distinctSongs=${distinct} (want 3), window=${window} (want 4)`,
 				[
 					'src/routes/api/stats/+server.ts:22-51 — library.ready reads listReady, sings.* read PlayLog',
 					'src/server/media/plays.ts:24-49 — PlayTracker dedupes on entryId, sink fires once per fresh currentEntryId'
-				]);
+				]
+			);
 		}
 		// Numeric-hygiene check — NaN/Infinity anywhere in the payload is by itself a defect.
 		const dump = JSON.stringify(stats);
-		const hasBadNum = /"perDay":\[.*"(NaN|Infinity|-Infinity)"/.test(dump)
-			|| Object.values(stats.sings ?? {}).some((v) => typeof v === 'number' && !Number.isFinite(v))
-			|| stats.topSongs.some((s) => typeof s.plays !== 'number' || !Number.isFinite(s.plays));
+		const hasBadNum =
+			/"perDay":\[.*"(NaN|Infinity|-Infinity)"/.test(dump) ||
+			Object.values(stats.sings ?? {}).some((v) => typeof v === 'number' && !Number.isFinite(v)) ||
+			stats.topSongs.some((s) => typeof s.plays !== 'number' || !Number.isFinite(s.plays));
 		if (hasBadNum) {
-			record('HIGH', '/api/stats contains a non-finite number', 'a raw NaN or Infinity in a public aggregate is a rendering hazard — see the top of /stats');
+			record(
+				'HIGH',
+				'/api/stats contains a non-finite number',
+				'a raw NaN or Infinity in a public aggregate is a rendering hazard — see the top of /stats'
+			);
 		}
 	}
 
@@ -455,13 +485,17 @@ async function main() {
 		const ds = bySong.get(dontstop.id) ?? 0;
 		const pr = bySong.get(prayer.id) ?? 0;
 		if (car === 2 && ds === 1 && pr === 1) {
-			record('LOW',
+			record(
+				'LOW',
 				'/api/stats topSongs plays match the entry log',
-				`caroline=2, dontstop=1, prayer=1 — one song played through two distinct entries counts as two plays`);
+				`caroline=2, dontstop=1, prayer=1 — one song played through two distinct entries counts as two plays`
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'/api/stats topSongs counts wrong per-song plays',
-				`caroline=${car} (want 2), dontstop=${ds} (want 1), prayer=${pr} (want 1)`);
+				`caroline=${car} (want 2), dontstop=${ds} (want 1), prayer=${pr} (want 1)`
+			);
 		}
 	}
 
@@ -471,40 +505,52 @@ async function main() {
 		const todayEntry = stats.perDay.find((d) => d.day === today);
 		const hasBadNum = stats.perDay.some((d) => typeof d.plays !== 'number' || !Number.isFinite(d.plays));
 		if (todayEntry && todayEntry.plays === 4 && !hasBadNum && stats.perDay.length === 1) {
-			record('LOW',
+			record(
+				'LOW',
 				'the /stats trend line has exactly one bar today with 4 plays',
 				`perDay=[${stats.perDay.map((d) => `${d.day}:${d.plays}`).join(', ')}] — the log has no zero-fill (an absent day = "we can't tell if it was quiet or the server was off"), so a fresh install shows one bar and honest copy`,
 				[
 					'src/server/media/play-log.ts:75-88 — perDay omits days with no plays rather than 0-filling',
 					'src/routes/stats/+page.svelte:95-100 — footnote makes the ambiguity explicit'
-				]);
+				]
+			);
 		} else {
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'the /stats trend line does not match the play log',
-				`observed perDay=[${stats.perDay.map((d) => `${d.day}:${d.plays}`).join(', ')}], today=${todayEntry ? JSON.stringify(todayEntry) : '(missing)'}, hasBadNum=${hasBadNum}`);
+				`observed perDay=[${stats.perDay.map((d) => `${d.day}:${d.plays}`).join(', ')}], today=${todayEntry ? JSON.stringify(todayEntry) : '(missing)'}, hasBadNum=${hasBadNum}`
+			);
 		}
 	}
-
 
 	{
 		const steps = metrics.steps;
 		// Every step row must carry both meanMs (work) and meanQueueWaitMs (wait) — separately.
-		const bothPopulated = steps.length > 0 && steps.every((s) => typeof s.meanMs === 'number' && typeof s.meanQueueWaitMs === 'number');
+		const bothPopulated =
+			steps.length > 0 && steps.every((s) => typeof s.meanMs === 'number' && typeof s.meanQueueWaitMs === 'number');
 		// And they must not be equal by accident — queue wait, on a single-worker box with cheap work,
 		// is usually SMALLER than processing time, but occasionally can be similar. What matters is
 		// that the FIELDS exist as distinct columns in the payload, and the audit endpoint splits them
 		// per-attempt (queueWaitMs vs processingMs). Assert both.
 		const oneAttempt = auditCaroline.cooks[0]?.attempts?.[0];
-		const perAttemptSplit = oneAttempt && 'queueWaitMs' in oneAttempt && 'processingMs' in oneAttempt
-			&& typeof oneAttempt.queueWaitMs === 'number' && typeof oneAttempt.processingMs === 'number';
+		const perAttemptSplit =
+			oneAttempt &&
+			'queueWaitMs' in oneAttempt &&
+			'processingMs' in oneAttempt &&
+			typeof oneAttempt.queueWaitMs === 'number' &&
+			typeof oneAttempt.processingMs === 'number';
 		if (bothPopulated && perAttemptSplit) {
-			record('LOW',
+			record(
+				'LOW',
 				'queue wait is reported alongside — and separately from — processing time',
-				`steps rollup carries meanMs and meanQueueWaitMs as distinct fields; per-attempt audit carries queueWaitMs and processingMs. Example (caroline fetch): queueWait=${oneAttempt.queueWaitMs}ms, processing=${oneAttempt.processingMs}ms`);
+				`steps rollup carries meanMs and meanQueueWaitMs as distinct fields; per-attempt audit carries queueWaitMs and processingMs. Example (caroline fetch): queueWait=${oneAttempt.queueWaitMs}ms, processing=${oneAttempt.processingMs}ms`
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'queue wait and processing time are conflated or missing',
-				`bothPopulated=${bothPopulated}, perAttemptSplit=${perAttemptSplit}, example=${JSON.stringify(oneAttempt)}`);
+				`bothPopulated=${bothPopulated}, perAttemptSplit=${perAttemptSplit}, example=${JSON.stringify(oneAttempt)}`
+			);
 		}
 	}
 
@@ -537,54 +583,69 @@ async function main() {
 	{
 		const noFetchAnywhere = ![carA, dsA, boA, prA].some((a) => Object.keys(a.byType).includes('fetch'));
 		if (noFetchAnywhere) {
-			record('LOW',
+			record(
+				'LOW',
 				'LOCAL-source cooks correctly skip the fetch step',
 				`every audit log for a demo-library song shows 0 fetch attempts. make-karaoke.ts:154 branches on needsFetch(media.source) and starts a local cook directly at the stems step, saving a redundant download of a file that already exists.`,
 				[
 					'src/server/jobs/make-karaoke.ts:154-155 — needsFetch(source) is false for source:"local"',
 					'src/server/jobs/dispatch.ts:53-88 — assignParams still fills fetcher=local for chained stems, without a separate fetch step'
-				]);
+				]
+			);
 		} else {
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'a fetch step ran for a LOCAL-source cook — unexpected',
-				`byType per song: caroline=${JSON.stringify(carA.byType)} dontstop=${JSON.stringify(dsA.byType)} bohemian=${JSON.stringify(boA.byType)} prayer=${JSON.stringify(prA.byType)}`);
+				`byType per song: caroline=${JSON.stringify(carA.byType)} dontstop=${JSON.stringify(dsA.byType)} bohemian=${JSON.stringify(boA.byType)} prayer=${JSON.stringify(prA.byType)}`
+			);
 		}
 	}
 
 	{
-		const carOk = carA.cookOutcome === 'ready'
-			&& carA.attempts === 2
-			&& JSON.stringify(carA.byType) === JSON.stringify({ stems: ['ready'], align: ['ready'] });
-		const dsOk = dsA.cookOutcome === 'ready'
-			&& dsA.attempts === 2
-			&& JSON.stringify(dsA.byType) === JSON.stringify({ stems: ['ready'], align: ['ready'] });
+		const carOk =
+			carA.cookOutcome === 'ready' &&
+			carA.attempts === 2 &&
+			JSON.stringify(carA.byType) === JSON.stringify({ stems: ['ready'], align: ['ready'] });
+		const dsOk =
+			dsA.cookOutcome === 'ready' &&
+			dsA.attempts === 2 &&
+			JSON.stringify(dsA.byType) === JSON.stringify({ stems: ['ready'], align: ['ready'] });
 		if (carOk && dsOk) {
-			record('LOW',
+			record(
+				'LOW',
 				'audit shows 2 attempts / cook for a happy-path LOCAL cook, all outcomes = ready',
-				`caroline ${carA.attempts}× outcome=${carA.cookOutcome}, dontstop ${dsA.attempts}× outcome=${dsA.cookOutcome}. Local sources skip the fetch step (make-karaoke.ts:154 uses needsFetch), which is the correct optimisation but MUST be reflected in every audit expectation.`);
+				`caroline ${carA.attempts}× outcome=${carA.cookOutcome}, dontstop ${dsA.attempts}× outcome=${dsA.cookOutcome}. Local sources skip the fetch step (make-karaoke.ts:154 uses needsFetch), which is the correct optimisation but MUST be reflected in every audit expectation.`
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'audit disagrees with the actual happy-path cook shape',
-				`caroline=${JSON.stringify(carA)}\n         dontstop=${JSON.stringify(dsA)}`);
+				`caroline=${JSON.stringify(carA)}\n         dontstop=${JSON.stringify(dsA)}`
+			);
 		}
 	}
 	{
-		const boOk = boA.cookOutcome === 'failed'
-			&& boA.attempts === 1
-			&& JSON.stringify(boA.byType) === JSON.stringify({ stems: ['failed'] });
+		const boOk =
+			boA.cookOutcome === 'failed' &&
+			boA.attempts === 1 &&
+			JSON.stringify(boA.byType) === JSON.stringify({ stems: ['failed'] });
 		// The error message on the failed stems attempt must survive the round trip — the audit
 		// page shows it in the `.err` block. An empty string here would silently drop the reason
 		// the operator opens the page for.
 		const stemsFailed = auditBohemian.cooks[0]?.attempts?.find((a) => a.jobType === 'stems');
 		const hasReason = typeof stemsFailed?.error === 'string' && stemsFailed.error.length > 0;
 		if (boOk && hasReason) {
-			record('LOW',
+			record(
+				'LOW',
 				'audit records a FAILED cook with per-attempt outcomes and the terminal error string',
-				`bohemian: stems=failed, cook.outcome=failed, error="${stemsFailed.error}"`);
+				`bohemian: stems=failed, cook.outcome=failed, error="${stemsFailed.error}"`
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'audit for a FAILED cook is missing outcomes or the error string',
-				`observed=${JSON.stringify(boA)}, stems.error=${JSON.stringify(stemsFailed?.error)}`);
+				`observed=${JSON.stringify(boA)}, stems.error=${JSON.stringify(stemsFailed?.error)}`
+			);
 		}
 	}
 	{
@@ -593,18 +654,24 @@ async function main() {
 		const outcomes = stemsAttempts.map((a) => a.outcome);
 		// Also: the retried stems attempt must have attempt=2 (1-based, from AttemptLedger.open).
 		const attemptNumbers = stemsAttempts.map((a) => a.attempt);
-		const retryOk = prA.cookOutcome === 'ready'
-			&& prA.attempts === 3
-			&& outcomes.includes('abandoned') && outcomes.includes('ready')
-			&& attemptNumbers.includes(2);
+		const retryOk =
+			prA.cookOutcome === 'ready' &&
+			prA.attempts === 3 &&
+			outcomes.includes('abandoned') &&
+			outcomes.includes('ready') &&
+			attemptNumbers.includes(2);
 		if (retryOk) {
-			record('LOW',
+			record(
+				'LOW',
 				'audit records a RETRIED cook with the abandoned attempt preserved as its own row',
-				`prayer: total=${prA.attempts} attempts, stems outcomes=[${outcomes.join(', ')}], attempt numbers=[${attemptNumbers.join(', ')}], cook.outcome=${prA.cookOutcome}`);
+				`prayer: total=${prA.attempts} attempts, stems outcomes=[${outcomes.join(', ')}], attempt numbers=[${attemptNumbers.join(', ')}], cook.outcome=${prA.cookOutcome}`
+			);
 		} else {
-			record('HIGH',
+			record(
+				'HIGH',
 				'audit for the RETRIED cook is missing the abandoned attempt or the retry lineage',
-				`observed=${JSON.stringify(prA)}, stems outcomes=[${outcomes.join(', ')}], attempts=[${attemptNumbers.join(', ')}]`);
+				`observed=${JSON.stringify(prA)}, stems outcomes=[${outcomes.join(', ')}], attempts=[${attemptNumbers.join(', ')}]`
+			);
 		}
 	}
 
@@ -629,7 +696,8 @@ async function main() {
 		// The two disagree on what a retried cook IS. Metrics excludes it from the totals a reader
 		// uses to judge sizing, so a fleet that succeeds by retrying looks slower + smaller than it is.
 		if (carolineInMetrics && dontstopInMetrics && !prayerInMetrics) {
-			record('HIGH',
+			record(
+				'HIGH',
 				'metrics.perCook treats a retried-then-completed cook as INCOMPLETE — /api/audit disagrees with itself',
 				`the prayer cookId=${auditPrayerCookId} completed successfully after one abandoned attempt (audit.cookOutcome="ready"), but it is ABSENT from metrics.slowestCooks and NOT counted in metrics.e2e (e2e.n=${metrics.e2e.n} vs 3 completed cooks). The audit page reports it as done; the operator dashboard silently drops it from every average and top-10 list, biasing the fleet's reported end-to-end downward.`,
 				[
@@ -639,16 +707,21 @@ async function main() {
 					'src/server/jobs/metrics.ts:127-146 — perCook: `complete = sealed.length === list.length && sealed.every(a => a.outcome === "ready")` — abandoned makes complete=false',
 					'src/routes/api/audit/[mediaId]/+server.ts:71-76 — cookOutcome ignores "abandoned"; a retried cook reads "ready"',
 					'consequence: /metrics "Start to finish" tile understates n by one cook per retried song; slowestCooks omits the retried outliers a person specifically wants to see'
-				]);
+				]
+			);
 		} else if (carolineInMetrics && dontstopInMetrics && prayerInMetrics) {
-			record('LOW',
+			record(
+				'LOW',
 				'metrics.slowestCooks and /api/audit agree on which cooks completed, including retried ones',
-				`overlap=3 cookIds — the retried cook (prayer) is counted alongside the two happy-path ones`);
+				`overlap=3 cookIds — the retried cook (prayer) is counted alongside the two happy-path ones`
+			);
 		} else {
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'metrics.slowestCooks and audit endpoint disagree on which cooks completed (unexpected pattern)',
 				`caroline in metrics=${carolineInMetrics}, dontstop=${dontstopInMetrics}, prayer=${prayerInMetrics}`,
-				['src/server/jobs/metrics.ts:127-146 — perCook filters to complete=every attempt.outcome===ready']);
+				['src/server/jobs/metrics.ts:127-146 — perCook filters to complete=every attempt.outcome===ready']
+			);
 		}
 	}
 
@@ -663,14 +736,16 @@ async function main() {
 	{
 		const anyStageSubSecond = metrics.stages.some((s) => (s.meanMs ?? 0) > 0 && (s.meanMs ?? 0) < 500);
 		if (anyStageSubSecond) {
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'"Where the time goes" bars round sub-second stage means to 0 seconds',
 				`the chart divides meanMs by 1000 and rounds to an integer, so any stage under 500ms displays as "0 s avg" — a reader interprets that as "did not take any time" rather than "took a tiny amount". Every OTHER duration on the page (in the "each step" table, in "Start to finish", in the audit) goes through dur() and formats correctly as "100ms". The chart alone loses fidelity.`,
 				[
 					`observed metrics.stages = ${JSON.stringify(metrics.stages)} — all sub-second`,
 					'src/routes/metrics/+page.svelte:194-196 — Bars value = Math.round((s.meanMs ?? 0) / 1000)',
 					'src/lib/metrics-format.ts:22-32 — dur() renders sub-second as "100ms" — the Bars call bypasses it'
-				]);
+				]
+			);
 		}
 	}
 
@@ -681,38 +756,60 @@ async function main() {
 		const models = metrics.models;
 		const fake = models.find((m) => m.engine === 'fake-separator' && m.model === 'e2e-tone');
 		if (!fake) {
-			record('HIGH',
+			record(
+				'HIGH',
 				'metrics.models is missing the fake-separator/e2e-tone row',
-				`this measurement is the only per-model data on the box. Models seen: ${models.map((m) => `${m.engine}/${m.model}`).join(', ') || '(none)'}`);
+				`this measurement is the only per-model data on the box. Models seen: ${models.map((m) => `${m.engine}/${m.model}`).join(', ') || '(none)'}`
+			);
 		} else if (fake.declared !== undefined && fake.declared !== null) {
-			record('HIGH',
+			record(
+				'HIGH',
 				'fake-separator/e2e-tone declared cost was fabricated — not in the whitelist',
 				`declared=${JSON.stringify(fake.declared)}. separatorCost() should return undefined for this pair.`,
-				['packages/shared/src/separators.ts:227-230 — separatorCost returns undefined for a pair not in the engine list']);
+				[
+					'packages/shared/src/separators.ts:227-230 — separatorCost returns undefined for a pair not in the engine list'
+				]
+			);
 		} else if (fake.ratioToDeclared !== null) {
-			record('HIGH',
+			record(
+				'HIGH',
 				'ratioToDeclared is not null when the declared cost is unknown',
-				`ratio=${fake.ratioToDeclared}. When declared is undefined, the ratio must be null.`);
+				`ratio=${fake.ratioToDeclared}. When declared is undefined, the ratio must be null.`
+			);
 		} else if (fake.meanRtFactor === null || !Number.isFinite(fake.meanRtFactor)) {
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'fake-separator/e2e-tone measured rtFactor is null despite a completed cook',
 				`meanRtFactor=${fake.meanRtFactor}. audioSec is snapshotted from media.durationSec (250 for caroline); this should have been a real number.`,
-				['src/server/jobs/worker-hub.ts:390-401 — audioSec is captured at assign time from media.durationSec']);
+				['src/server/jobs/worker-hub.ts:390-401 — audioSec is captured at assign time from media.durationSec']
+			);
 		} else {
-			record('LOW',
+			record(
+				'LOW',
 				'cost-per-model degrades correctly when the model has no declared rtFactor',
 				`observed fake-separator/e2e-tone: n=${fake.n}, meanRtFactor=${fake.meanRtFactor.toFixed(4)}×, declared=undefined, ratioToDeclared=null — the /metrics table renders "—" in the benchmark and vs columns for this row, which is the documented degradation`,
-				['packages/shared/src/separators.ts:227-230 — separatorCost undefined for an unknown pair',
-				 'src/routes/metrics/+page.svelte:172-176 — "—" for a null declared, "—" for a null ratioToDeclared']);
+				[
+					'packages/shared/src/separators.ts:227-230 — separatorCost undefined for an unknown pair',
+					'src/routes/metrics/+page.svelte:172-176 — "—" for a null declared, "—" for a null ratioToDeclared'
+				]
+			);
 		}
 	}
 
 	// ── (6) SSR + screenshots at 390 & 1440 ──────────────────────────────
 	console.log('\n[step 7] screenshot the three dashboards at 390 and 1440');
-	const chromiumProc = launch(chromium, [
-		'--headless=new', '--no-sandbox', '--disable-gpu',
-		`--remote-debugging-port=${CDP_PORT}`, '--remote-allow-origins=*', 'about:blank'
-	], { stdio: 'ignore' });
+	const chromiumProc = launch(
+		chromium,
+		[
+			'--headless=new',
+			'--no-sandbox',
+			'--disable-gpu',
+			`--remote-debugging-port=${CDP_PORT}`,
+			'--remote-allow-origins=*',
+			'about:blank'
+		],
+		{ stdio: 'ignore' }
+	);
 	// Poll for CDP readiness.
 	let cdpReady = false;
 	for (let i = 0; i < 40 && !cdpReady; i++) {
@@ -747,7 +844,10 @@ async function main() {
 			['audit-prayer-retried', `/metrics/${prayer.id}`],
 			['audit-bohemian-failed', `/metrics/${bohemian.id}`]
 		]) {
-			for (const [size, w, h] of [['390', 390, 900], ['1440', 1440, 900]]) {
+			for (const [size, w, h] of [
+				['390', 390, 900],
+				['1440', 1440, 900]
+			]) {
 				const outfile = join(SHOTS_DIR, `${name}-${size}.png`);
 				try {
 					await shoot(outfile, `${BASE}${path}`, w, h);
@@ -781,7 +881,7 @@ async function main() {
 			// Isolate the two by pulling text out of the tables only.
 			const inTables = await dompage.evaluate(`(() => [...document.querySelectorAll('.card table')]
 				.map((t) => t.textContent).join('\\n'))()`);
-			const stagesBar = await dompage.evaluate(`(() => document.querySelector('.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)')
+			await dompage.evaluate(`(() => document.querySelector('.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)')
 				?.textContent ?? '')()`);
 			const stagesLabelsText = await dompage.evaluate(`(() => {
 				const cards = [...document.querySelectorAll('.card')];
@@ -799,9 +899,11 @@ async function main() {
 			const leaksStageInBar = /\bseparate\b|\balign\b/.test(stagesLabelsText);
 			const speaksHuman = /remove vocals|time lyrics|typical|worst/i.test(bodyText);
 			if (!leaksInternalPercentiles && !leaksStepInTables && !leaksStageInBar && speaksHuman) {
-				record('LOW',
+				record(
+					'LOW',
 					'/metrics uses operator-facing vocabulary — no p50/p95, no raw job-type names in tables, no raw stage names on the chart',
-					`headers=[${headerRow.join(', ')}]; body contains "typical" / "worst" / "remove vocals"`);
+					`headers=[${headerRow.join(', ')}]; body contains "typical" / "worst" / "remove vocals"`
+				);
 			} else if (!leaksInternalPercentiles && !leaksStepInTables && leaksStageInBar) {
 				// The fake worker emits stages "separate"/"align" (short) while the real Python worker's
 				// vocabulary is Stage.SEPARATING/ALIGNING (long, per apps/worker/src/vocabulary.py:48).
@@ -809,7 +911,8 @@ async function main() {
 				// rather than a real UI defect — a genuine cook feeds the map correctly. Flagged at LOW
 				// as an environment note so the operator eyeballing the screenshot knows why the bars
 				// read "separate" and "align" instead of "removing vocals" and "timing lyrics".
-				record('LOW',
+				record(
+					'LOW',
 					'"Where the time goes" bar labels read "separate"/"align" — harness artefact, not a UI defect',
 					`the fake-stems-worker emits short stage tokens in its job:complete stages array, while the real Python worker uses the long forms (apps/worker/src/vocabulary.py:48). STAGE_LABELS is keyed on the long forms, so a real cook renders "removing vocals" / "timing lyrics" as intended. The leak in this probe's screenshots is expected.`,
 					[
@@ -817,12 +920,15 @@ async function main() {
 						'src/lib/metrics-format.ts:52-56 — STAGE_LABELS: downloading / separating / aligning',
 						'apps/worker/src/vocabulary.py:48-50 — Stage.SEPARATING="separating", Stage.ALIGNING="aligning"',
 						'apps/core/e2e/fake-stems-worker.mjs — emits short "separate"/"align" tokens; harness-only'
-					]);
+					]
+				);
 			} else {
-				record('HIGH',
+				record(
+					'HIGH',
 					'/metrics leaks internal identifiers in a user-facing surface',
 					`leaks p50/p95=${leaksInternalPercentiles}, leaks raw step in tables=${leaksStepInTables}, leaks raw stage in bars=${leaksStageInBar}, speaks human=${speaksHuman}`,
-					['src/lib/metrics-format.ts:39-45 — STEP_LABELS map']);
+					['src/lib/metrics-format.ts:39-45 — STEP_LABELS map']
+				);
 			}
 		}
 		// Alignment: every numeric TH in the "each step" table must be text-align:right.
@@ -836,28 +942,34 @@ async function main() {
 			// each of the three tables (steps + models + asr), all-but-the-first should be right.
 			const shouldBeRight = Math.max(0, nHeaders - 3); // 3 tables × 1 leading name column each
 			if (rightAlignedCount >= shouldBeRight) {
-				record('LOW',
+				record(
+					'LOW',
 					'numeric columns on /metrics right-align — a reader can run an eye down a column and compare',
-					`right-aligned th count=${rightAlignedCount}, name-col count subtracted=${shouldBeRight}, total th=${nHeaders}`);
+					`right-aligned th count=${rightAlignedCount}, name-col count subtracted=${shouldBeRight}, total th=${nHeaders}`
+				);
 			} else {
-				record('HIGH',
+				record(
+					'HIGH',
 					'/metrics numeric column alignment is broken — a scan-down comparison is not possible',
-					`right-aligned=${rightAlignedCount}, expected ≥${shouldBeRight}`);
+					`right-aligned=${rightAlignedCount}, expected ≥${shouldBeRight}`
+				);
 			}
 		}
 
 		// Now READ the images — mode:Image on the read tool renders a thumbnail into chat for a person,
 		// but this probe uses their existence + size as evidence and defers to the human running it.
 		for (const s of shots) {
-			const size = existsSync(s.path) ? (await Bun.file(s.path).size) : 0;
+			const size = existsSync(s.path) ? await Bun.file(s.path).size : 0;
 			if (size < 2000) {
 				record('HIGH', `screenshot ${s.name}@${s.size} is suspiciously small`, `${size} bytes at ${s.path}`);
 			}
 		}
-		record('LOW',
+		record(
+			'LOW',
 			'six screenshots written for a human to eyeball',
 			`three pages × two viewports, at ${SHOTS_DIR}`,
-			shots.map((s) => `${s.url}  →  ${s.path}`));
+			shots.map((s) => `${s.url}  →  ${s.path}`)
+		);
 	} finally {
 		browser.close();
 		killProc(chromiumProc);
@@ -872,15 +984,21 @@ async function main() {
 		const dump = JSON.stringify(stats);
 		const suspiciousKeys = /"(singer|singerId|displayName|color|sessionToken)"/i.test(dump);
 		if (!suspiciousKeys) {
-			record('LOW',
+			record(
+				'LOW',
 				'/api/stats is aggregate-only — no singer keys in the payload',
 				`response contains no singer / singerId / displayName / color / sessionToken keys`,
-				['src/server/db/schema.ts — plays table has no singer column',
-				 'src/routes/api/stats/+server.ts — endpoint only reads library, playLog, and popularity']);
+				[
+					'src/server/db/schema.ts — plays table has no singer column',
+					'src/routes/api/stats/+server.ts — endpoint only reads library, playLog, and popularity'
+				]
+			);
 		} else {
-			record('CRITICAL',
+			record(
+				'CRITICAL',
 				'/api/stats contains singer identity fields',
-				`the documented posture is aggregate-only. Payload sample keys: ${Object.keys(stats).join(', ')}`);
+				`the documented posture is aggregate-only. Payload sample keys: ${Object.keys(stats).join(', ')}`
+			);
 		}
 	}
 	// (b) /api/metrics and /api/audit/* are UNGATED (deliberately, per the endpoint header docs).
@@ -897,31 +1015,48 @@ async function main() {
 			const a = await aRes.json();
 			const workerIds = m.workers.map((w) => w.workerId);
 			const errStrings = a.cooks.flatMap((c) => c.attempts.map((att) => att.error)).filter(Boolean);
-			record('MEDIUM',
+			record(
+				'MEDIUM',
 				'/api/metrics and /api/audit/<id> are UNGATED, as documented',
 				`both endpoints return 200 without any cookie — this is the current posture (see the header comment in src/routes/api/metrics/+server.ts).`,
 				[
 					`observed: /api/metrics → 200 without cookie, exposing worker ids: ${JSON.stringify(workerIds)}`,
 					`observed: /api/audit/${caroline.id} → 200 without cookie`,
 					`what is exposed: worker ids, model/backend names, host details, per-attempt terminal error strings`,
-					`example error strings on the box: ${errStrings.slice(0, 2).map((e) => JSON.stringify(e)).join(', ') || '(none on this run)'}`,
+					`example error strings on the box: ${
+						errStrings
+							.slice(0, 2)
+							.map((e) => JSON.stringify(e))
+							.join(', ') || '(none on this run)'
+					}`,
 					'src/routes/api/metrics/+server.ts:1-13 — decision to bind the server to a trusted interface or add a token',
 					'src/routes/api/audit/[mediaId]/+server.ts:11-14 — same posture, one song at a time'
-				]);
+				]
+			);
 		} else {
-			record('CRITICAL',
+			record(
+				'CRITICAL',
 				'/api/metrics or /api/audit is unexpectedly gated',
-				`metrics status=${mRes.status}, audit status=${aRes.status}. The documented posture says both are unauthenticated; a 401/403 here means the header comment is wrong OR a real gate was added silently.`);
+				`metrics status=${mRes.status}, audit status=${aRes.status}. The documented posture says both are unauthenticated; a 401/403 here means the header comment is wrong OR a real gate was added silently.`
+			);
 		}
 	}
 
 	// ── (8) UI parity — the numbers in the page match the API ────────────
 	// Re-open a phone-sized viewport and pull the rendered text; compare it against the API.
 	{
-		const chromium2 = launch(chromium, [
-			'--headless=new', '--no-sandbox', '--disable-gpu',
-			`--remote-debugging-port=${CDP_PORT + 1}`, '--remote-allow-origins=*', 'about:blank'
-		], { stdio: 'ignore' });
+		const chromium2 = launch(
+			chromium,
+			[
+				'--headless=new',
+				'--no-sandbox',
+				'--disable-gpu',
+				`--remote-debugging-port=${CDP_PORT + 1}`,
+				'--remote-allow-origins=*',
+				'about:blank'
+			],
+			{ stdio: 'ignore' }
+		);
 		let cdpReady2 = false;
 		for (let i = 0; i < 40 && !cdpReady2; i++) {
 			try {
@@ -943,14 +1078,22 @@ async function main() {
 				const shownTotal = Number(tiles[0]);
 				const shownReady = Number(tiles[1]);
 				const shownDistinct = Number(tiles[2]);
-				if (shownTotal === stats.sings.total && shownReady === stats.library.ready && shownDistinct === stats.sings.distinctSongs) {
-					record('LOW',
+				if (
+					shownTotal === stats.sings.total &&
+					shownReady === stats.library.ready &&
+					shownDistinct === stats.sings.distinctSongs
+				) {
+					record(
+						'LOW',
 						'the /stats page shows the same numbers /api/stats reports',
-						`page.tiles=[${tiles.join(', ')}], api.sings.total=${stats.sings.total}, api.library.ready=${stats.library.ready}, api.sings.distinctSongs=${stats.sings.distinctSongs}`);
+						`page.tiles=[${tiles.join(', ')}], api.sings.total=${stats.sings.total}, api.library.ready=${stats.library.ready}, api.sings.distinctSongs=${stats.sings.distinctSongs}`
+					);
 				} else {
-					record('HIGH',
+					record(
+						'HIGH',
 						'/stats page numbers disagree with /api/stats payload',
-						`page total=${shownTotal} (api=${stats.sings.total}), page ready=${shownReady} (api=${stats.library.ready}), page distinct=${shownDistinct} (api=${stats.sings.distinctSongs})`);
+						`page total=${shownTotal} (api=${stats.sings.total}), page ready=${shownReady} (api=${stats.library.ready}), page distinct=${shownDistinct} (api=${stats.sings.distinctSongs})`
+					);
 				}
 			} finally {
 				browser2.close();

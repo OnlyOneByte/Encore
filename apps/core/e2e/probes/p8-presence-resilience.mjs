@@ -296,10 +296,6 @@ async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
 	return { page, name, outcome };
 }
 
-async function getMe(page) {
-	return page.evaluate(`fetch('/api/me').then(r => r.status === 200 ? r.json().then(x => x.singer) : null)`);
-}
-
 async function getState(page) {
 	return page.evaluate(
 		`(() => {
@@ -333,9 +329,7 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 	// The search is debounced 150ms and then hits /api/search (which itself may call yt-dlp on
 	// unfamiliar terms). Wait long, and require an ACTIONABLE row (`.add` or `.sing`) — a naked
 	// `.row` with no button is a browse header or a still-hydrating row, not something we can queue.
-	const rowsBefore = await page.evaluate(
-		`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
-	);
+	const rowsBefore = await page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
 	const attemptClick = async () => {
 		return page.evaluate(
 			`(() => {
@@ -348,14 +342,16 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 			})()`
 		);
 	};
-	const clicked = await page.waitFor(
-		`(() => {
+	const clicked = await page
+		.waitFor(
+			`(() => {
 			const row = document.querySelector(${JSON.stringify(SEL.songRow)});
 			if (!row) return null;
 			return row.querySelector(${JSON.stringify(SEL.addOrSing)}) ? 'row-ready' : null;
 		})()`,
-		20_000
-	).catch(() => null);
+			20_000
+		)
+		.catch(() => null);
 	if (!clicked) return { queued: false, reason: 'no actionable row after 20s' };
 	// Two-shot click with verification. A single `.click()` on a Svelte-managed button can fall on the
 	// wrong side of a re-render when search results shuffle in the same tick as the tap — the element
@@ -366,18 +362,12 @@ async function searchAndQueue(page, term = SEARCH_TERM) {
 	// message.
 	let btnClass = await attemptClick();
 	const landed = await page
-		.waitFor(
-			`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`,
-			3_000
-		)
+		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`, 3_000)
 		.catch(() => false);
 	if (!landed) {
 		btnClass = (await attemptClick()) ?? btnClass;
 		const landed2 = await page
-			.waitFor(
-				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`,
-				3_000
-			)
+			.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > ${rowsBefore}`, 3_000)
 			.catch(() => false);
 		if (!landed2) {
 			const diag = await page.evaluate(
@@ -465,9 +455,15 @@ async function main() {
 		// route swaps in a `JoinBadge` "unreachable" card instead — so the guard was matching a
 		// condition that doesn't exist in this harness. `.is-label` renders on both branches of the
 		// attract state and on neither of the other two, so it does the actual job.
-		const attract = await tv.waitFor(`document.querySelector(${JSON.stringify(SEL.isLabel)}) !== null`, 8_000).catch(() => false);
+		const attract = await tv
+			.waitFor(`document.querySelector(${JSON.stringify(SEL.isLabel)}) !== null`, 8_000)
+			.catch(() => false);
 		if (!attract) {
-			report('ENV', 'server was not empty at start of run', 'A prior run left singers or an in-flight state in the room. Restart the ephemeral server between runs (see e2e/HARNESS.md).');
+			report(
+				'ENV',
+				'server was not empty at start of run',
+				'A prior run left singers or an in-flight state in the room. Restart the ephemeral server between runs (see e2e/HARNESS.md).'
+			);
 			throw new Error('bail: not empty');
 		}
 
@@ -609,12 +605,19 @@ async function main() {
 							})()`
 						);
 						const recovered = await dup.page
-							.waitFor(`location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.search)}) !== null`, 8_000)
+							.waitFor(
+								`location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.search)}) !== null`,
+								8_000
+							)
 							.catch(() => false);
 						if (!recovered) {
 							report('HIGH', 'form did not recover after fixing name', `submit did not land in the party`);
 						} else {
-							report('PASS', 'duplicate-name 409 leaves the form recoverable, and retyping works', `error text: ${JSON.stringify(msg)}`);
+							report(
+								'PASS',
+								'duplicate-name 409 leaves the form recoverable, and retyping works',
+								`error text: ${JSON.stringify(msg)}`
+							);
 							// This phone joined as ZZReplay — remember to close it.
 							phones.push({ page: dup.page, name: 'ZZReplay', outcome: 'joined' });
 						}
@@ -630,7 +633,11 @@ async function main() {
 			const before = await victim.page.evaluate(`window.__p8.connectCount`);
 			const dropped = await victim.page.evaluate(`window.__p8.dropLast()`);
 			if (!dropped) {
-				report('MEDIUM', 'could not drop the phone WebSocket via instrumentation', 'sockets was empty or already CLOSED — probe scaffolding, not a defect');
+				report(
+					'MEDIUM',
+					'could not drop the phone WebSocket via instrumentation',
+					'sockets was empty or already CLOSED — probe scaffolding, not a defect'
+				);
 			} else {
 				// The WsClient's reconnect backoff starts at 250ms. Give it enough to complete a full
 				// cycle including the hello -> queue:sync resync handshake.
@@ -667,7 +674,10 @@ async function main() {
 							// witness recorded. A rev at 0 means no op ever hit the state store; a
 							// non-zero rev with 0 rows means the row landed and then something dropped
 							// it before render.
-							const rev = await fetch(`${BASE}/health`).then((r) => r.json()).then((j) => j.rev).catch(() => 'unknown');
+							const rev = await fetch(`${BASE}/health`)
+								.then((r) => r.json())
+								.then((j) => j.rev)
+								.catch(() => 'unknown');
 							report(
 								'HIGH',
 								'queue-add on the witness phone did not produce a row',
@@ -682,7 +692,11 @@ async function main() {
 								`apps/core/src/lib/stores/queue.ts:154 #onSync (rebase on queue:sync)`
 							);
 						} else {
-							report('PASS', 'a hard-dropped phone reconnects and resyncs to the authoritative queue', `victim rows=${victimState.rows.length}, witness=${witnessRows}`);
+							report(
+								'PASS',
+								'a hard-dropped phone reconnects and resyncs to the authoritative queue',
+								`victim rows=${victimState.rows.length}, witness=${witnessRows}`
+							);
 						}
 					}
 				}
@@ -710,20 +724,26 @@ async function main() {
 				const beforeConnects = await away.page.evaluate(`window.__p8.connectCount`);
 				const dropped = await away.page.evaluate(`window.__p8.dropLast()`);
 				if (!dropped) {
-					report('ENV', 'could not sever the away-test socket', 'the instrumentation returned false — no socket to drop');
+					report(
+						'ENV',
+						'could not sever the away-test socket',
+						'the instrumentation returned false — no socket to drop'
+					);
 				}
 				// Now block reconnects — the WsClient reconnects on its own within 250ms, and we want
 				// to observe the room WHILE the phone is unreachable.
 				await away.page.setOffline(true);
 				// The server reacts on socket close; wire this back to the TV via refreshMembership,
 				// which broadcasts singer:presence to the whole room. This should be near-instant.
-				const tvSaidAway = await tv.waitFor(
-					`(() => {
+				const tvSaidAway = await tv
+					.waitFor(
+						`(() => {
 						const chips = [...document.querySelectorAll(${JSON.stringify(SEL.stripPerson)})];
 						return chips.some(c => c.classList.contains('away') && (c.textContent || '').includes(${JSON.stringify(away.name)}));
 					})()`,
-					15_000
-				).catch(() => false);
+						15_000
+					)
+					.catch(() => false);
 				if (!tvSaidAway) {
 					const shot = await tv.screenshot(join(OUT_DIR, '02-tv-away.png'));
 					report(
@@ -759,14 +779,16 @@ async function main() {
 				await away.page.setOffline(false);
 				await away.page.evaluate(`window.dispatchEvent(new Event('online'))`);
 				await away.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, 15_000).catch(() => null);
-				const back = await tv.waitFor(
-					`(() => {
+				const back = await tv
+					.waitFor(
+						`(() => {
 						const chips = [...document.querySelectorAll(${JSON.stringify(SEL.stripPerson)})];
 						const c = chips.find(c => (c.textContent || '').includes(${JSON.stringify(away.name)}));
 						return c && !c.classList.contains('away');
 					})()`,
-					15_000
-				).catch(() => false);
+						15_000
+					)
+					.catch(() => false);
 				if (!back) {
 					report(
 						'MEDIUM',
@@ -785,9 +807,7 @@ async function main() {
 			const p = phones[6];
 			// Baseline count on another phone (source of truth is any other phone's view).
 			const witness = phones[2];
-			const before = await witness.page.evaluate(
-				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
-			);
+			const before = await witness.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
 			// Populate search results FIRST while online — we can't rely on /api/search reaching the
 			// server while offline (setOffline(true) does affect NEW HTTP requests). Row appears; then
 			// we sever and click.
@@ -845,9 +865,7 @@ async function main() {
 				await p.page.evaluate(`window.dispatchEvent(new Event('online'))`);
 				await p.page.waitFor(`window.__p8.connectCount > ${beforeConnects}`, 15_000).catch(() => null);
 				await delay(3000);
-				const after = await witness.page.evaluate(
-					`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
-				);
+				const after = await witness.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
 				const offlineRowsOnP = await p.page.evaluate(
 					`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
 				);
@@ -863,7 +881,11 @@ async function main() {
 							`apps/core/src/lib/stores/queue.ts:150 #onPatch rebase / apps/core/src/lib/stores/queue.ts:154 #onSync rebase`
 						);
 					} else {
-						report('PASS', 'offline queue-add reconciles through resendPending on reconnect', `witness rows delta=+1, origin=${offlineRowsOnP}`);
+						report(
+							'PASS',
+							'offline queue-add reconciles through resendPending on reconnect',
+							`witness rows delta=+1, origin=${offlineRowsOnP}`
+						);
 					}
 				} else if (delta === 0) {
 					if (offlineRowsOnP > 0) {
@@ -924,7 +946,11 @@ async function main() {
 						`apps/core/src/server/singers/leave.ts:40 doLeave`
 					);
 				} else {
-					report('PASS', `/api/leave un-queues that singer\u2019s pending songs`, `removed=${removed}, previewQueued=${preview.queuedCount}, hasPlaying=${preview.hasPlaying}`);
+					report(
+						'PASS',
+						`/api/leave un-queues that singer\u2019s pending songs`,
+						`removed=${removed}, previewQueued=${preview.queuedCount}, hasPlaying=${preview.hasPlaying}`
+					);
 				}
 			}
 			// Mark the leaver's page dead so downstream steps don't count it as a shooter — its /api/me
@@ -958,9 +984,7 @@ async function main() {
 			}
 			// Snapshot the queue on a witness.
 			const witness = shooters[0];
-			const before = await witness.page.evaluate(
-				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`
-			);
+			const before = await witness.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`);
 			// Fire all clicks in the same event-loop turn from the test harness's perspective; each
 			// page mints its own clientOpId + entry.id.
 			await Promise.all(shooters.map((p) => searchAndQueue(p.page, 'caroline')));
@@ -971,9 +995,9 @@ async function main() {
 			// row before the broadcast, and a lost broadcast would still leave the origin looking
 			// correct.
 			const counts = await Promise.all(
-				phones.filter((p) => p.outcome === 'joined').map((p) =>
-					p.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`)
-				)
+				phones
+					.filter((p) => p.outcome === 'joined')
+					.map((p) => p.page.evaluate(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length`))
 			);
 			const uniq = Array.from(new Set(counts));
 			const expected = before + NUM_BURST;
@@ -1004,7 +1028,11 @@ async function main() {
 				);
 				const uniqTitles = new Set(ids);
 				const shot = await tv.screenshot(join(OUT_DIR, '03-tv-burst.png'));
-				report('PASS', 'burst adds converge — no lost updates, no rev conflicts', `every phone reports ${expected} rows; titles=${ids.length}, unique=${uniqTitles.size} (dups are legal — same media queued by different singers); ${shot}`);
+				report(
+					'PASS',
+					'burst adds converge — no lost updates, no rev conflicts',
+					`every phone reports ${expected} rows; titles=${ids.length}, unique=${uniqTitles.size} (dups are legal — same media queued by different singers); ${shot}`
+				);
 			}
 			// Note the design observation: the command envelope carries NO revision context — the
 			// former baseRev field was deleted (#348/#409) because nothing on the server ever read it.

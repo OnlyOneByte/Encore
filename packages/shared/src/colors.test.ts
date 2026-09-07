@@ -46,9 +46,7 @@ test('contrastRatio matches known WCAG values', () => {
 });
 
 test('every wheel hue is visible on both dark surfaces (3:1 non-text)', () => {
-	const weak = SINGER_WHEEL.filter(
-		(c) => contrastRatio(c, BG) < 3 || contrastRatio(c, CARD) < 3
-	);
+	const weak = SINGER_WHEEL.filter((c) => contrastRatio(c, BG) < 3 || contrastRatio(c, CARD) < 3);
 	expect(weak).toEqual([]);
 });
 
@@ -214,7 +212,6 @@ test('every singer preset yields a usable stage, including the two that collapse
 	}
 	expect(stageHueToHex(nearestSingerHue('#33d6a6'))).toBe(stageHueToHex(nearestSingerHue('#5cffd6')));
 });
-
 
 // ── preset roving tab order ──────────────────────────────────────────────────
 // The eight presets are a roving-tabindex radiogroup: exactly one swatch is tabbable and arrow keys

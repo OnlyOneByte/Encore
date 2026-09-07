@@ -308,7 +308,11 @@ describe('resolveCookSeparator', () => {
 		// early (the vacuous case this replaces). Only an out-of-contract global — one
 		// `normalizeGlobalSettings` would refuse — reaches the `liveSelectable` filter, so that is what
 		// is exercised here, asserting the invariant fails CLOSED. Same stance as the `:477` sibling.
-		const global = { ...DEFAULT_GLOBAL_SETTINGS, defaultEngine: 'ensemble' as const, defaultModel: 'instrumental_clean' };
+		const global = {
+			...DEFAULT_GLOBAL_SETTINGS,
+			defaultEngine: 'ensemble' as const,
+			defaultModel: 'instrumental_clean'
+		};
 		// cap 44 skips the early return (ensemble:instrumental_clean ranks 45 > 44) and admits
 		// ensemble:instrumental_full (40); the filter must reject it, leaving roformer (35) as best.
 		const picked = resolveCookSeparator(withCap(44, global));
@@ -811,7 +815,11 @@ describe('tv visualizers', () => {
 	it('the variant is remembered while another background is selected', () => {
 		// Switching away from the visualizer and back must not forget the choice — the same property
 		// tvBackgroundHue has when the style is not `solid`.
-		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'visualizer' as const, tvVisualizer: 'lissajous' as const };
+		const room = {
+			...DEFAULT_ROOM_SETTINGS,
+			tvBackgroundStyle: 'visualizer' as const,
+			tvVisualizer: 'lissajous' as const
+		};
 		const away = normalizeRoomSettings({ tvBackgroundStyle: 'off' }, room);
 		expect(away.tvVisualizer).toBe('lissajous');
 		expect(normalizeRoomSettings({ tvBackgroundStyle: 'visualizer' }, away).tvVisualizer).toBe('lissajous');

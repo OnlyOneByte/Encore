@@ -101,9 +101,9 @@ describe('#396 the catalog boundary — cook churn cannot reach a playing song',
 
 	it('cookIsTerminal admits only the two states that can never become playable', () => {
 		expect(cookIsTerminal({ type: 'media:status', mediaId: 'm', status: 'failed', pct: 0 })).toBe(true);
-		expect(
-			cookIsTerminal({ type: 'media:status', mediaId: 'm', status: 'queued', pct: 0, unservable: true })
-		).toBe(true);
+		expect(cookIsTerminal({ type: 'media:status', mediaId: 'm', status: 'queued', pct: 0, unservable: true })).toBe(
+			true
+		);
 		for (const status of ['queued', 'downloading', 'separating', 'aligning', 'ready'] as const) {
 			expect(cookIsTerminal({ type: 'media:status', mediaId: 'm', status, pct: 50 })).toBe(false);
 		}
@@ -144,7 +144,12 @@ describe('#396 the seek effect depends on playback intent, never on the catalog'
 			player.split('function applySeek(seekTarget: number): void {')[1]?.split('\n\t}')[0] ?? ''
 		);
 		expect(body).not.toBe('');
-		for (const read of ['untrack(() => master)', 'untrack(() => media)', 'untrack(() => active)', 'untrack(() => vocals)']) {
+		for (const read of [
+			'untrack(() => master)',
+			'untrack(() => media)',
+			'untrack(() => active)',
+			'untrack(() => vocals)'
+		]) {
 			expect(body).toContain(read);
 		}
 	});

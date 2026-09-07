@@ -7,11 +7,9 @@ import {
 	clampGuideLevel,
 	hasGuidingTrack,
 	type PlayerCommand,
-	type ServerEvent,
 	type QueueEntry,
 	type PlaybackState
 } from '@encore/shared';
-import type { AuthoritativeState } from '../state/store';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
 import { mediaFor, orderingOf, type HubDeps } from './hub';
 

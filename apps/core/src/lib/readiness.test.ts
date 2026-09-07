@@ -19,13 +19,23 @@ const m = (over: Partial<Media> = {}): Media => ({
 
 const cases: Media[] = [
 	m(),
-	m({ stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE }),
+	m({
+		stemStatus: 'ready',
+		lyricsStatus: 'ready',
+		instrumentalRef: 'derived/stems/i-instrumental.flac',
+		songProfile: EMPTY_SONG_PROFILE
+	}),
 	m({ stemStatus: 'queued' }),
 	m({ source: 'local', stemStatus: 'none' }),
 	m({ stemStatus: 'ready' }), // ready status, no artifact — must classify the same on both sides
 	// Separated, now mid-align: stems done but lyrics still queued. Neither 'ready' nor 'queued' — the
 	// case that used to fall through to 'unacquired' and show a Sing button on a separated song.
-	m({ stemStatus: 'ready', lyricsStatus: 'queued', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE })
+	m({
+		stemStatus: 'ready',
+		lyricsStatus: 'queued',
+		instrumentalRef: 'derived/stems/i-instrumental.flac',
+		songProfile: EMPTY_SONG_PROFILE
+	})
 ];
 
 test('client and server classify readiness identically for every media shape', () => {
@@ -147,7 +157,11 @@ test('a live cooking status beats a catalog copy that still says ready', () => {
 test('separated but lyrics never ran is NOT playable — the gate waits for the whole cook', () => {
 	// The gate change: a song is finished when every required step is done, not when the instrumental
 	// exists. Rotation holds its slot and moves on to whoever IS finished.
-	const noLyrics = m({ stemStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
+	const noLyrics = m({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/i-instrumental.flac',
+		songProfile: EMPTY_SONG_PROFILE
+	});
 	expect(entryPlayable(noLyrics)).toBe(false);
 	expect(entryPlayable({ ...noLyrics, lyricsStatus: 'ready' })).toBe(true);
 });
@@ -158,26 +172,57 @@ test('unknown media is not playable (matches the server returning false)', () =>
 
 test('THE BUG: up-next skips a cooking first entry and names the first READY one', () => {
 	const cook = m({ id: 'cooking', stemStatus: 'queued' });
-	const ready = m({ id: 'ready', stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
-	const byId = new Map([[cook.id, cook], [ready.id, ready]]);
+	const ready = m({
+		id: 'ready',
+		stemStatus: 'ready',
+		lyricsStatus: 'ready',
+		instrumentalRef: 'derived/stems/i-instrumental.flac',
+		songProfile: EMPTY_SONG_PROFILE
+	});
+	const byId = new Map([
+		[cook.id, cook],
+		[ready.id, ready]
+	]);
 	const queued = [entry('e1', 'cooking'), entry('e2', 'ready')];
 
-	const id = nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined);
+	const id = nextPlayableEntryId(
+		queued,
+		(k) => byId.get(k),
+		() => undefined
+	);
 	expect(id).toBe('e2'); // NOT 'e1' — that one is still separating and yields its turn
 });
 
 test('up-next is the first entry when it is already playable', () => {
-	const ready = m({ id: 'ready', stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: 'derived/stems/i-instrumental.flac', songProfile: EMPTY_SONG_PROFILE });
+	const ready = m({
+		id: 'ready',
+		stemStatus: 'ready',
+		lyricsStatus: 'ready',
+		instrumentalRef: 'derived/stems/i-instrumental.flac',
+		songProfile: EMPTY_SONG_PROFILE
+	});
 	const byId = new Map([[ready.id, ready]]);
 	const queued = [entry('e1', 'ready'), entry('e2', 'ready')];
-	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBe('e1');
+	expect(
+		nextPlayableEntryId(
+			queued,
+			(k) => byId.get(k),
+			() => undefined
+		)
+	).toBe('e1');
 });
 
 test('nothing playable → no up-next (the whole queue is cooking)', () => {
 	const cook = m({ id: 'cooking', stemStatus: 'queued' });
 	const byId = new Map([[cook.id, cook]]);
 	const queued = [entry('e1', 'cooking'), entry('e2', 'cooking')];
-	expect(nextPlayableEntryId(queued, (k) => byId.get(k), () => undefined)).toBeNull();
+	expect(
+		nextPlayableEntryId(
+			queued,
+			(k) => byId.get(k),
+			() => undefined
+		)
+	).toBeNull();
 });
 
 // ── a cancel is not a failure ──────────────────────────────────────────────────────────────────

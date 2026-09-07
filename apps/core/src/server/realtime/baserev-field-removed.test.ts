@@ -87,7 +87,6 @@ test('no non-test source under apps/core references baseRev (#348)', () => {
 	expect(offenders).toEqual([]);
 });
 
-
 // The three .ts/.svelte scans above do NOT reach the e2e harness: `apps/core/e2e/**/*.mjs` are
 // live-server scripts invoked by nothing in `bun test`, so #348 left three of them still sending or
 // documenting the dead field (#411). This scan closes that gap — precedent for widening a source-scan

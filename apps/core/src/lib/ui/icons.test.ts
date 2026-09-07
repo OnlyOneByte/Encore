@@ -76,7 +76,7 @@ const EMOJI_RANGES = [
 
 function emojiIn(src: string): { index: number; cp: string }[] {
 	const hits: { index: number; cp: string }[] = [];
-	for (let i = 0; i < src.length; ) {
+	for (let i = 0; i < src.length;) {
 		const cp = src.codePointAt(i)!;
 		const width = cp > 0xffff ? 2 : 1;
 		if (EMOJI_RANGES.some(([lo, hi]) => cp >= lo && cp <= hi)) {
@@ -145,9 +145,7 @@ test('no functional control is a Unicode codepoint (use Icon.svelte)', () => {
 			let i = src.indexOf(cp);
 			while (i !== -1) {
 				const cpHex = cp.codePointAt(0)!.toString(16).toUpperCase().padStart(4, '0');
-				offenders.push(
-					`${f.replace(SRC, 'src')}:${lineOf(src, i)}: U+${cpHex} — use <Icon name="${icon}" />`
-				);
+				offenders.push(`${f.replace(SRC, 'src')}:${lineOf(src, i)}: U+${cpHex} — use <Icon name="${icon}" />`);
 				i = src.indexOf(cp, i + 1);
 			}
 		}

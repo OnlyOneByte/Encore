@@ -16,7 +16,13 @@ const m = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 const ready = (id: string, over: Partial<Media> = {}) =>
-	m(id, { stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `stems/${id}-instrumental.wav`, songProfile: EMPTY_SONG_PROFILE, ...over });
+	m(id, {
+		stemStatus: 'ready',
+		lyricsStatus: 'ready',
+		instrumentalRef: `stems/${id}-instrumental.wav`,
+		songProfile: EMPTY_SONG_PROFILE,
+		...over
+	});
 const cooking = (id: string, over: Partial<Media> = {}) => m(id, { stemStatus: 'queued', ...over });
 
 test('readinessOf classifies the three states a singer actually distinguishes', () => {
@@ -38,7 +44,11 @@ test('matchesQuery covers title and artist, case-insensitively; empty query matc
 });
 
 test('partitions into ready / cooking / unacquired', () => {
-	const catalog = [ready('r1', { title: 'Take On Me' }), cooking('c1', { title: 'Take On Me live' }), m('x1', { title: 'Bohemian' })];
+	const catalog = [
+		ready('r1', { title: 'Take On Me' }),
+		cooking('c1', { title: 'Take On Me live' }),
+		m('x1', { title: 'Bohemian' })
+	];
 	const results = [m('n1', { title: 'Take On Me cover' })];
 	const p = partitionSearch('take on me', catalog, results);
 	expect(p.ready.map((x) => x.id)).toEqual(['r1']);

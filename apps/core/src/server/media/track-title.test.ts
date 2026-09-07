@@ -22,7 +22,10 @@ describe('the live library (the reason this exists)', () => {
 	it('REVERSED: "Ain\'t No Mountain High Enough - Marvin Gaye x Tammi Terrell (Lyrics) 🎵"', () => {
 		// The hard one, and it is real. A naive left-is-artist split makes the SONG the artist. The
 		// "x" collaboration marker sits on the right, which is what reveals the sides are swapped.
-		const p = parseTrackTitle("Ain't No Mountain High Enough - Marvin Gaye x Tammi Terrell (Lyrics) 🎵", 'Musictainment TV 🇺🇸');
+		const p = parseTrackTitle(
+			"Ain't No Mountain High Enough - Marvin Gaye x Tammi Terrell (Lyrics) 🎵",
+			'Musictainment TV 🇺🇸'
+		);
 		expect(p.title).toBe("Ain't No Mountain High Enough");
 		expect(p.artist).toBe('Marvin Gaye');
 		expect(p.artistFull).toBe('Marvin Gaye x Tammi Terrell');

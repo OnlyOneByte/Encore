@@ -113,7 +113,10 @@ test('boot recovery resets every assigned/running job to queued (attempts preser
 test('onReaped fires once per tick that changed ≥1 job, and not on a no-op', () => {
 	let clock = T0;
 	let calls = 0;
-	const { jobs, reaper } = setup(() => clock, () => calls++);
+	const { jobs, reaper } = setup(
+		() => clock,
+		() => calls++
+	);
 	const job = jobs.enqueue('m1', 'stems', 0, T0);
 	jobs.assign(job.id, 'w', ackDeadline(T0), T0);
 
@@ -134,7 +137,13 @@ import { settleGatesForFailedJob } from './make-karaoke';
 import type { Media } from '@encore/shared';
 
 const mkMedia = (id: string, over: Partial<Media> = {}): Media => ({
-	id, source: 'youtube', sourceRef: 'vid-' + id, title: id, durationSec: 200, stemStatus: 'none', ...over
+	id,
+	source: 'youtube',
+	sourceRef: 'vid-' + id,
+	title: id,
+	durationSec: 200,
+	stemStatus: 'none',
+	...over
 });
 
 function exhaustToFailed(jobType: 'stems' | 'align', over: Partial<Media> = {}) {

@@ -19,10 +19,10 @@
 //      Svelte compile + DOM, so a text scan proves the fix is WIRED: after building/keeping the guide
 //      graph, the effect re-applies the room level with setGain(effectiveGuide). Mutation trap:
 //      deleting that call reds it.
-import { test, expect, beforeEach, afterEach } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-import { PitchShiftGraph } from "./pitch-shift";
+import { test, expect, beforeEach, afterEach } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { PitchShiftGraph } from './pitch-shift';
 
 // -- A. Behavioural: a pre-set level lands in the GainNode the moment the graph is built ----------
 
@@ -46,15 +46,15 @@ class StubSource extends StubNode {
 	}
 }
 class StubAudioContext {
-	state: "suspended" | "running" | "closed" = "running";
+	state: 'suspended' | 'running' | 'closed' = 'running';
 	destination = new StubNode();
 	sources: StubSource[] = [];
 	gains: StubGain[] = [];
 	async resume() {
-		this.state = "running";
+		this.state = 'running';
 	}
 	async close() {
-		this.state = "closed";
+		this.state = 'closed';
 	}
 	createMediaElementSource(el: unknown) {
 		const s = new StubSource(el);
@@ -79,15 +79,19 @@ beforeEach(() => {
 	const Ctx = class extends StubAudioContext {
 		constructor() {
 			super();
+			// eslint-disable-next-line @typescript-eslint/no-this-alias -- test mock captures its own instance
 			lastCtx = this;
 		}
 	};
 	G.window = { AudioContext: Ctx };
 	G.AudioWorkletNode = StubNode;
 	G.Blob = class {
-		constructor(public parts: unknown[], public opts: unknown) {}
+		constructor(
+			public parts: unknown[],
+			public opts: unknown
+		) {}
 	};
-	G.URL = { createObjectURL: () => "blob:stub", revokeObjectURL: () => {} };
+	G.URL = { createObjectURL: () => 'blob:stub', revokeObjectURL: () => {} };
 });
 
 afterEach(() => {
@@ -98,7 +102,7 @@ function fakeEl(): HTMLMediaElement {
 	return {} as HTMLMediaElement;
 }
 
-test("#434: a guide level set BEFORE the graph is built lands in the GainNode when a shift builds it", async () => {
+test('#434: a guide level set BEFORE the graph is built lands in the GainNode when a shift builds it', async () => {
 	// Order mirrors the incremental repro: level first (setGain remembers it in desiredGain), then a
 	// transpose builds the graph.
 	const graph = new PitchShiftGraph(fakeEl());
@@ -123,21 +127,21 @@ test("#434 control: WITHOUT the pre-set level, a freshly built graph's GainNode 
 // -- B. Source-scan: the pitch effect re-applies the room level after (re)building the guide graph -
 
 function stripComments(s: string): string {
-	return s.replace(/[/][*][\s\S]*?[*][/]/g, "").replace(/(^|[^:])[/][/][^\n]*/g, "$1");
+	return s.replace(/[/][*][\s\S]*?[*][/]/g, '').replace(/(^|[^:])[/][/][^\n]*/g, '$1');
 }
 
 // The guide branch of the pitch $effect: `if (g) { ... }`, sitting after `masterGraph?.setShift`.
 function guideBranchBody(s: string): string {
-	const anchor = "if (needsShift(shift) && !guideGraph)";
+	const anchor = 'if (needsShift(shift) && !guideGraph)';
 	const at = s.indexOf(anchor);
 	expect(at).toBeGreaterThanOrEqual(0);
 	// Walk back to the opening `{` of the enclosing `if (g) {` and forward to its close.
-	const open = s.lastIndexOf("{", at);
+	const open = s.lastIndexOf('{', at);
 	let i = open;
 	let depth = 0;
 	for (; i < s.length; i++) {
-		if (s[i] === "{") depth++;
-		else if (s[i] === "}") {
+		if (s[i] === '{') depth++;
+		else if (s[i] === '}') {
 			depth--;
 			if (depth === 0) break;
 		}
@@ -145,22 +149,22 @@ function guideBranchBody(s: string): string {
 	return s.slice(open, i + 1);
 }
 
-const TV = readFileSync(join(import.meta.dir, "TvPlayer.svelte"), "utf8");
+const TV = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
 
-test("#434 guard: the pitch effect re-applies the room level to the guide graph via setGain(effectiveGuide)", () => {
+test('#434 guard: the pitch effect re-applies the room level to the guide graph via setGain(effectiveGuide)', () => {
 	const body = stripComments(guideBranchBody(TV));
 	// It must build/keep the graph AND set its gain from the resolved level in the same branch.
 	expect(body).toMatch(/guideGraph\s*=\s*new PitchShiftGraph/);
 	expect(body).toMatch(/guideGraph[?][.]setGain[(]\s*effectiveGuide\s*[)]/);
 });
 
-test("#434 guard (not-vacuous): the level effect still owns the level for the native/pre-build path", () => {
+test('#434 guard (not-vacuous): the level effect still owns the level for the native/pre-build path', () => {
 	// The graph-path reapply (test above) is ADDITIVE: the original gain effect must keep setting the
 	// guide gain too, so the level is applied on the native path and remembered before any graph is
 	// built. Its body reads `vocals` and `effectiveGuide` and sets BOTH the element volume and the
 	// graph gain. This makes test 1's guide-branch assertion a genuinely NEW site, not the only one.
 	const stripped = stripComments(TV);
-	const anchor = "vocals.volume = effectiveGuide";
+	const anchor = 'vocals.volume = effectiveGuide';
 	const at = stripped.indexOf(anchor);
 	expect(at).toBeGreaterThanOrEqual(0);
 	const region = stripped.slice(at, at + 200);

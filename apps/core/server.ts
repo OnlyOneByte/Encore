@@ -68,9 +68,33 @@ const seenOps = new Set<string>();
 // which re-cooks the song and plays the vocal YouTube embed instead of the instrumental.
 const mediaById = app.mediaById;
 for (const m of [
-	{ id: 'demo-takeonme', source: 'youtube', sourceRef: 'djV11Xbc914', title: 'Take On Me', artist: 'a-ha', durationSec: 225, stemStatus: 'none', playMode: 'iframe' },
-	{ id: 'demo-mrbrightside', source: 'youtube', sourceRef: 'gGdGFtwCNBE', title: 'Mr. Brightside', artist: 'The Killers', durationSec: 223, stemStatus: 'none', playMode: 'iframe' },
-	{ id: 'demo-dancingqueen', source: 'youtube', sourceRef: 'xFrGuyw1V8s', title: 'Dancing Queen', artist: 'ABBA', durationSec: 231, stemStatus: 'none', playMode: 'iframe' }
+	{
+		id: 'demo-takeonme',
+		source: 'youtube',
+		sourceRef: 'djV11Xbc914',
+		title: 'Take On Me',
+		artist: 'a-ha',
+		durationSec: 225,
+		stemStatus: 'none'
+	},
+	{
+		id: 'demo-mrbrightside',
+		source: 'youtube',
+		sourceRef: 'gGdGFtwCNBE',
+		title: 'Mr. Brightside',
+		artist: 'The Killers',
+		durationSec: 223,
+		stemStatus: 'none'
+	},
+	{
+		id: 'demo-dancingqueen',
+		source: 'youtube',
+		sourceRef: 'xFrGuyw1V8s',
+		title: 'Dancing Queen',
+		artist: 'ABBA',
+		durationSec: 231,
+		stemStatus: 'none'
+	}
 ] as Media[]) {
 	if (!mediaById.has(m.id)) mediaById.set(m.id, m);
 }
@@ -102,9 +126,14 @@ if (presentLibrary.length < seededLibrary.length) {
 }
 
 // SvelteKit handler from the Bun adapter's build output (guarded so WS still boots pre-build).
-type SvelteHandler = (req: Request, server: import('bun').Server) => Response | Promise<Response>;
+type SvelteHandler = (req: Request, server: import('bun').Server<SocketData>) => Response | Promise<Response>;
 let svelteKitFetch: SvelteHandler | null = null;
 try {
+	// build/handler.js is svelte-adapter-bun's GENERATED output (apps/core/build/ is gitignored, so
+	// it ships no declarations). The cast fixes its shape; @ts-expect-error covers the resolver's
+	// implicit-any on the untyped generated module — expect-error (not ignore) so it self-clears the
+	// day the adapter emits types.
+	// @ts-expect-error — generated, untyped adapter output; shape asserted by the cast below
 	const { getHandler } = (await import('./build/handler.js')) as { getHandler: () => { fetch: SvelteHandler } };
 	svelteKitFetch = getHandler().fetch;
 } catch {
@@ -133,8 +162,7 @@ function refreshMembership(): void {
 		graceMs: graceMsOf(app.settings.getRoom().presenceGraceMinutes),
 		hasPendingSongs
 	});
-	const same =
-		next.here.join() === membership.here.join() && next.away.join() === membership.away.join();
+	const same = next.here.join() === membership.here.join() && next.away.join() === membership.away.join();
 	membership = { here: next.here, away: next.away };
 	if (!same) {
 		server.publish(
@@ -178,7 +206,8 @@ const server = Bun.serve<SocketData>({
 		}
 		// Dev harness — two iframes + live queue JSON to eyeball cross-client sync.
 		if (url.pathname === '/harness') return new Response(harnessHtml(), { headers: { 'content-type': 'text/html' } });
-		if (url.pathname === '/harness/phone') return new Response(phoneHtml(), { headers: { 'content-type': 'text/html' } });
+		if (url.pathname === '/harness/phone')
+			return new Response(phoneHtml(), { headers: { 'content-type': 'text/html' } });
 
 		if (svelteKitFetch) return svelteKitFetch(req, server);
 		return new Response('Encore core up (WS + /health + /harness). Run `bun run build` for the UI.', {
@@ -316,10 +345,7 @@ const server = Bun.serve<SocketData>({
 					handlePlayerCommand(evt.command, deps);
 					break;
 				case 'tv:telemetry':
-					handleTelemetry(
-						{ positionSec: evt.positionSec, ended: evt.status === 'ended', entryId: evt.entryId },
-						deps
-					);
+					handleTelemetry({ positionSec: evt.positionSec, ended: evt.status === 'ended', entryId: evt.entryId }, deps);
 					break;
 			}
 		},

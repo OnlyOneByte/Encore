@@ -12,8 +12,7 @@ export default defineConfig({
 		sveltekit({
 			compilerOptions: {
 				// Force Svelte 5 runes mode project-wide (except node_modules libs).
-				runes: ({ filename }) =>
-					filename.split(/[/\\]/).includes('node_modules') ? undefined : true
+				runes: ({ filename }) => (filename.split(/[/\\]/).includes('node_modules') ? undefined : true)
 			},
 			adapter: adapter(),
 			alias: {

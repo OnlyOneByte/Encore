@@ -18,8 +18,8 @@
 // pitch-shift-graph-lifetime.test.ts) with ONE knob: whether a fresh AudioContext can be resumed.
 // No audio hardware -- the defect is whether the element is ROUTED through the shifter, measured
 // directly on the class.
-import { test, expect, beforeEach, afterEach } from "bun:test";
-import { PitchShiftGraph } from "./pitch-shift";
+import { test, expect, beforeEach, afterEach } from 'bun:test';
+import { PitchShiftGraph } from './pitch-shift';
 
 // resume() reaches `running` iff this flag is set when the context is created. Toggling it models the
 // TV wall being touched (autoplay unblocked) between two setShift() calls on the same graph.
@@ -46,14 +46,14 @@ class StubSource extends StubNode {
 }
 class StubAudioContext {
 	// A context created without a gesture starts suspended; resume() only reaches running when allowed.
-	state: "suspended" | "running" | "closed" = "suspended";
+	state: 'suspended' | 'running' | 'closed' = 'suspended';
 	destination = new StubNode();
 	sources: StubSource[] = [];
 	async resume() {
-		if (canResume) this.state = "running";
+		if (canResume) this.state = 'running';
 	}
 	async close() {
-		this.state = "closed";
+		this.state = 'closed';
 	}
 	createMediaElementSource(el: unknown) {
 		const s = new StubSource(el);
@@ -75,9 +75,12 @@ beforeEach(() => {
 	g.window = { AudioContext: StubAudioContext };
 	g.AudioWorkletNode = StubNode;
 	g.Blob = class {
-		constructor(public parts: unknown[], public opts: unknown) {}
+		constructor(
+			public parts: unknown[],
+			public opts: unknown
+		) {}
 	};
-	g.URL = { createObjectURL: () => "blob:stub", revokeObjectURL: () => {} };
+	g.URL = { createObjectURL: () => 'blob:stub', revokeObjectURL: () => {} };
 });
 
 afterEach(() => {
@@ -88,7 +91,7 @@ function fakeEl(): HTMLMediaElement {
 	return {} as HTMLMediaElement;
 }
 
-test("#527: a graph that degraded pre-gesture RETRIES and routes once a context can resume", async () => {
+test('#527: a graph that degraded pre-gesture RETRIES and routes once a context can resume', async () => {
 	// call chain: setShift(shift) -> build() -> new AudioContext().resume() -> state check.
 	const graph = new PitchShiftGraph(fakeEl());
 
@@ -107,7 +110,7 @@ test("#527: a graph that degraded pre-gesture RETRIES and routes once a context 
 	expect(graph.isDegraded).toBe(false);
 });
 
-test("#527 asymmetry: a FRESH graph (what the guide gets each song) always routes when resumable", async () => {
+test('#527 asymmetry: a FRESH graph (what the guide gets each song) always routes when resumable', async () => {
 	// The guide's per-song fresh graph recovers because it never carries a stale `degraded`. Pinning
 	// this alongside the retry proves the fix removes the asymmetry, not that fresh graphs are special.
 	canResume = true;
@@ -117,7 +120,7 @@ test("#527 asymmetry: a FRESH graph (what the guide gets each song) always route
 	expect(fresh.isDegraded).toBe(false);
 });
 
-test("#527 not-vacuous control: resumable from the start routes on the first shift", async () => {
+test('#527 not-vacuous control: resumable from the start routes on the first shift', async () => {
 	canResume = true;
 	const graph = new PitchShiftGraph(fakeEl());
 	await graph.setShift(2);
@@ -125,7 +128,7 @@ test("#527 not-vacuous control: resumable from the start routes on the first shi
 	expect(graph.isDegraded).toBe(false);
 });
 
-test("#527 safety: a retry that STILL cannot resume stays audible (degraded, not routed, no capture)", async () => {
+test('#527 safety: a retry that STILL cannot resume stays audible (degraded, not routed, no capture)', async () => {
 	// If the gesture never comes, retrying must not create the permanent MediaElementSource into a dead
 	// context (= total silence). It re-arms degraded and leaves the element on its native output.
 	const graph = new PitchShiftGraph(fakeEl());

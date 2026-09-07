@@ -138,17 +138,6 @@ export class AttemptLedger {
 		return this.#findOpen(jobId) ?? null;
 	}
 
-	/** Sealed attempts, newest first — the metrics rollup input. */
-	finished(limit = 5000): JobAttempt[] {
-		return this.#db
-			.select()
-			.from(jobAttempts)
-			.where(eq(jobAttempts.outcome, 'ready'))
-			.orderBy(desc(jobAttempts.finishedAt))
-			.limit(limit)
-			.all();
-	}
-
 	/** Every sealed attempt regardless of outcome, newest first — feeds failure-rate reporting. */
 	allFinished(limit = 5000): JobAttempt[] {
 		return this.#db

@@ -23,12 +23,19 @@ import type { Media, QueueEntry, ClientCommand, ServerEvent } from '@encore/shar
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 
 const media = (id: string): Media => ({
-	id, source: 'youtube', sourceRef: 'x', title: id, durationSec: 100,
-	stemStatus: 'ready', lyricsStatus: 'ready', instrumentalRef: `derived/stems/${id}-instrumental.flac`, songProfile: EMPTY_SONG_PROFILE
+	id,
+	source: 'youtube',
+	sourceRef: 'x',
+	title: id,
+	durationSec: 100,
+	stemStatus: 'ready',
+	lyricsStatus: 'ready',
+	instrumentalRef: `derived/stems/${id}-instrumental.flac`,
+	songProfile: EMPTY_SONG_PROFILE
 });
 
 const entry = (id: string, singerId: string, mediaId: string): QueueEntry =>
-	({ id, mediaId, singerId, status: 'queued', rotationSeq: 0, addedAt: 1 } as QueueEntry);
+	({ id, mediaId, singerId, status: 'queued', rotationSeq: 0, addedAt: 1 }) as QueueEntry;
 
 // Seed q1 = s1/m1, q2 = s2/m2 (the issue's harness). actorSingerId = s2 (the attacker/originator).
 // onEntryRemoved/onEntryAdded are recorded exactly as the hub fires them.
@@ -41,11 +48,15 @@ function harness(actorSingerId = 's2') {
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 's2', 'm2') });
 	const deps = {
 		state,
-		mediaById: new Map([['m1', media('m1')], ['m2', media('m2')]]),
+		mediaById: new Map([
+			['m1', media('m1')],
+			['m2', media('m2')]
+		]),
 		publish: (e: ServerEvent) => published.push(e),
 		now: () => 0,
 		actorSingerId,
-		onEntryRemoved: (mediaId: string, remaining: QueueEntry[]) => removedCalls.push([mediaId, remaining.map((e) => e.id)]),
+		onEntryRemoved: (mediaId: string, remaining: QueueEntry[]) =>
+			removedCalls.push([mediaId, remaining.map((e) => e.id)]),
 		onEntryAdded: (mediaId: string, entries: QueueEntry[]) => addedCalls.push([mediaId, entries.map((e) => e.id)])
 	} as unknown as HubDeps;
 	return { published, removedCalls, addedCalls, state, deps };
@@ -55,7 +66,10 @@ function harness(actorSingerId = 's2') {
 // singerId and a media s2 wants. singerId matches the session, so the :101 impersonation check passes.
 const overwriteQ1 = (mediaId = 'm2'): ClientCommand => ({
 	clientOpId: 'c1',
-	op: { op: 'add', entry: { id: 'q1', mediaId, singerId: 's2', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
+	op: {
+		op: 'add',
+		entry: { id: 'q1', mediaId, singerId: 's2', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry
+	}
 });
 
 test('validateCommand rejects an add whose id is held by a different singer (turn theft)', () => {
@@ -70,7 +84,10 @@ test('validateCommand rejects a same-singer re-point to a different mediaId (orp
 	const { deps } = harness('s1');
 	const selfRepoint: ClientCommand = {
 		clientOpId: 'c2',
-		op: { op: 'add', entry: { id: 'q1', mediaId: 'm2', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
+		op: {
+			op: 'add',
+			entry: { id: 'q1', mediaId: 'm2', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry
+		}
 	};
 	expect(validateCommand(selfRepoint, deps)).toBe('entry id already taken: q1');
 });
@@ -81,7 +98,10 @@ test('the identical-identity re-add is still allowed (originator optimistic row 
 	const { deps } = harness('s1');
 	const identicalReadd: ClientCommand = {
 		clientOpId: 'c3',
-		op: { op: 'add', entry: { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
+		op: {
+			op: 'add',
+			entry: { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry
+		}
 	};
 	expect(validateCommand(identicalReadd, deps)).toBeNull();
 });
@@ -90,7 +110,10 @@ test('a first-time add of a genuinely free id still validates (guard is not over
 	const { deps } = harness();
 	const freshAdd: ClientCommand = {
 		clientOpId: 'c4',
-		op: { op: 'add', entry: { id: 'q3', mediaId: 'm2', singerId: 's2', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
+		op: {
+			op: 'add',
+			entry: { id: 'q3', mediaId: 'm2', singerId: 's2', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry
+		}
 	};
 	expect(validateCommand(freshAdd, deps)).toBeNull();
 });
@@ -181,7 +204,10 @@ import type { EncoreApp } from '../app';
 // s1 re-adds q1 (its OWN live song) with a fresh clientOpId and client-minted status:'queued'.
 const readdLiveQ1: ClientCommand = {
 	clientOpId: 'c6', // fresh — seenOps never fires
-	op: { op: 'add', entry: { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry }
+	op: {
+		op: 'add',
+		entry: { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: -1, addedAt: 1 } as QueueEntry
+	}
 };
 
 // Start q1 the way the server does, then wire the two leave functions to the same state.

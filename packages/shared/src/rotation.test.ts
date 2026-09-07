@@ -12,26 +12,15 @@ const e = (id: string, singerId: string, addedAt: number): QueueEntry => ({
 	addedAt
 });
 
-test('round-robin: everyone\'s 1st pick before anyone\'s 2nd', () => {
+test("round-robin: everyone's 1st pick before anyone's 2nd", () => {
 	// Maya queues 2, then Sam queues 1, then Maya queues another.
-	const entries = [
-		e('maya1', 'maya', 1),
-		e('maya2', 'maya', 2),
-		e('sam1', 'sam', 3),
-		e('maya3', 'maya', 4)
-	];
+	const entries = [e('maya1', 'maya', 1), e('maya2', 'maya', 2), e('sam1', 'sam', 3), e('maya3', 'maya', 4)];
 	// fair order: maya1 (M #1), sam1 (S #1), maya2 (M #2), maya3 (M #3)
 	expect(rotate(entries).map((x) => x.id)).toEqual(['maya1', 'sam1', 'maya2', 'maya3']);
 });
 
 test('three singers interleave by pick-index', () => {
-	const entries = [
-		e('a1', 'a', 1),
-		e('a2', 'a', 2),
-		e('b1', 'b', 3),
-		e('c1', 'c', 4),
-		e('b2', 'b', 5)
-	];
+	const entries = [e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3), e('c1', 'c', 4), e('b2', 'b', 5)];
 	// round0: a1,b1,c1 · round1: a2,b2 · round2: (none)
 	expect(rotate(entries).map((x) => x.id)).toEqual(['a1', 'b1', 'c1', 'a2', 'b2']);
 });
@@ -82,7 +71,14 @@ test('applyAndReseq on add reseqs to fair round-robin (NOT append) — the no-fl
 	const base = assignSeqs([e('maya1', 'maya', 1), e('maya2', 'maya', 2)]);
 	const out = applyAndReseq(base, {
 		op: 'add',
-		entry: { id: 'sam1', mediaId: 'm-sam1', singerId: 'sam', status: 'queued', rotationSeq: Number.MAX_SAFE_INTEGER, addedAt: 3 }
+		entry: {
+			id: 'sam1',
+			mediaId: 'm-sam1',
+			singerId: 'sam',
+			status: 'queued',
+			rotationSeq: Number.MAX_SAFE_INTEGER,
+			addedAt: 3
+		}
 	});
 	expect(out.map((x) => x.id)).toEqual(['maya1', 'sam1', 'maya2']);
 	expect(out.map((x) => x.rotationSeq)).toEqual([0, 1, 2]); // contiguous, server-owned
@@ -106,7 +102,10 @@ test('applyAndReseq move permutes addedAt within singer + survives reseq', () =>
 
 test('CLIENT==SERVER: applyAndReseq is deterministic for identical input (the contract)', () => {
 	const base = assignSeqs([e('a1', 'a', 1), e('b1', 'b', 2)]);
-	const op = { op: 'add' as const, entry: { id: 'a2', mediaId: 'm-a2', singerId: 'a', status: 'queued' as const, rotationSeq: 9e15, addedAt: 3 } };
+	const op = {
+		op: 'add' as const,
+		entry: { id: 'a2', mediaId: 'm-a2', singerId: 'a', status: 'queued' as const, rotationSeq: 9e15, addedAt: 3 }
+	};
 	expect(applyAndReseq(base, op)).toEqual(applyAndReseq(base, op)); // pure + deterministic
 });
 

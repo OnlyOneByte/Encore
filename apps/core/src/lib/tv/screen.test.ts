@@ -23,18 +23,28 @@ describe('tvScreen', () => {
 	});
 
 	it('a song is current → playing, regardless of how many people are in the room', () => {
-		expect(tvScreen({ playerState: 'playing', current: entry('e1'), entries: [entry('e1')], inRoomCount: 0 })).toBe('playing');
-		expect(tvScreen({ playerState: 'playing', current: entry('e1'), entries: [entry('e1')], inRoomCount: 9 })).toBe('playing');
+		expect(tvScreen({ playerState: 'playing', current: entry('e1'), entries: [entry('e1')], inRoomCount: 0 })).toBe(
+			'playing'
+		);
+		expect(tvScreen({ playerState: 'playing', current: entry('e1'), entries: [entry('e1')], inRoomCount: 9 })).toBe(
+			'playing'
+		);
 	});
 
 	it('waiting (stems still cooking) beats the lobby — it is a more specific answer', () => {
-		expect(tvScreen({ playerState: 'waiting', current: entry('e1'), entries: [entry('e1')], inRoomCount: 3 })).toBe('waiting');
+		expect(tvScreen({ playerState: 'waiting', current: entry('e1'), entries: [entry('e1')], inRoomCount: 3 })).toBe(
+			'waiting'
+		);
 		// and it still wins with nobody in the room
-		expect(tvScreen({ playerState: 'waiting', current: entry('e1'), entries: [entry('e1')], inRoomCount: 0 })).toBe('waiting');
+		expect(tvScreen({ playerState: 'waiting', current: entry('e1'), entries: [entry('e1')], inRoomCount: 0 })).toBe(
+			'waiting'
+		);
 	});
 
 	it('interstitial between songs keeps playing (the video surface stays up)', () => {
-		expect(tvScreen({ playerState: 'interstitial', current: entry('e2'), entries: [entry('e2')], inRoomCount: 2 })).toBe('playing');
+		expect(
+			tvScreen({ playerState: 'interstitial', current: entry('e2'), entries: [entry('e2')], inRoomCount: 2 })
+		).toBe('playing');
 	});
 
 	it('a rehydrated queue with nobody reconnected yet shows the lobby, not attract', () => {
@@ -124,7 +134,9 @@ describe('lobbyRoster', () => {
 	});
 
 	it('caps the chips and reports the overflow so a 20-person party cannot flood the screen', () => {
-		const many = new Map(Array.from({ length: 12 }, (_, i) => [`s${i}`, { id: `s${i}`, displayName: `P${i}`, color: '#fff' }]));
+		const many = new Map(
+			Array.from({ length: 12 }, (_, i) => [`s${i}`, { id: `s${i}`, displayName: `P${i}`, color: '#fff' }])
+		);
 		const { shown, overflow } = lobbyRoster([...many.keys()], [], many, 8);
 		expect(shown).toHaveLength(8);
 		expect(overflow).toBe(4);
@@ -137,7 +149,6 @@ describe('lobbyRoster', () => {
 		expect(overflow).toBe(0);
 	});
 });
-
 
 /*
  * #393 the wiring — the honest element-advancing signal reaches the gate.
@@ -174,7 +185,7 @@ describe('#393 the element-advancing signal is wired from the master element to 
 		expect(wires.length).toBe(2);
 	});
 
-	it('TvPlayer reports the MASTER element\'s own play/pause, gated on active+visible', () => {
+	it("TvPlayer reports the MASTER element's own play/pause, gated on active+visible", () => {
 		// The honest source is the <audio>'s native events, not a re-derivation of the intent prop. Gating on
 		// active+visible mirrors onautoplayblocked so the hidden pre-warm slot (deliberately paused) cannot
 		// report the room as stopped.

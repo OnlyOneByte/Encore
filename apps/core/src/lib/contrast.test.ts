@@ -23,7 +23,11 @@ function token(name: string): string {
 
 function channels(hex: string): [number, number, number] {
 	let h = hex.replace('#', '');
-	if (h.length === 3) h = h.split('').map((c) => c + c).join('');
+	if (h.length === 3)
+		h = h
+			.split('')
+			.map((c) => c + c)
+			.join('');
 	return [0, 2, 4].map((i) => parseInt(h.slice(i, i + 2), 16)) as [number, number, number];
 }
 
@@ -88,11 +92,7 @@ test('the accent tokens are not safe as text, and nothing uses them that way', (
 		expect(ratio(token(t), token('card'))).toBeLessThan(AA_TEXT);
 	}
 
-	const files = [
-		join(SRC, 'app.css'),
-		...svelteFiles(join(SRC, 'lib')),
-		...svelteFiles(join(SRC, 'routes'))
-	];
+	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 	const offenders: string[] = [];
 	for (const f of files) {
 		for (const block of readFileSync(f, 'utf8').matchAll(/\{([^{}]*)\}/g)) {
@@ -126,11 +126,7 @@ test('the focus ring is visible against every surface it can appear on', () => {
  * MUTATION-VERIFIED against #149: recolouring either ring to var(--accent) or var(--card2) reds this.
  */
 test('every focus outline is drawn in --focus, not --accent or the surface colour', () => {
-	const files = [
-		join(SRC, 'app.css'),
-		...svelteFiles(join(SRC, 'lib')),
-		...svelteFiles(join(SRC, 'routes'))
-	];
+	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 	const offenders: string[] = [];
 	// A shorthand `outline:` or a longhand `outline-color:` that carries a colour. Not matched:
 	// outline-offset / outline-width / outline-style (no colour), and a bare `outline: none|0` reset.
@@ -156,11 +152,7 @@ test('every focus outline is drawn in --focus, not --accent or the surface colou
  * firing on a bar fill that merely sits near an unrelated color declaration.
  */
 test('no rule puts a text color on var(--grad)', () => {
-	const files = [
-		join(SRC, 'app.css'),
-		...svelteFiles(join(SRC, 'lib')),
-		...svelteFiles(join(SRC, 'routes'))
-	];
+	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 	const offenders: string[] = [];
 	for (const f of files) {
 		for (const block of readFileSync(f, 'utf8').matchAll(/\{([^{}]*)\}/g)) {

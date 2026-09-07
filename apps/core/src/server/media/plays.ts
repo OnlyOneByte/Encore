@@ -48,6 +48,9 @@ export class PlayTracker {
 }
 
 /** The sidecar fields a play updates. Pure, so the increment rule is testable on its own. */
-export function bumpPlay(library: { playCount: number; lastPlayedAt: number | null }, now: number): { playCount: number; lastPlayedAt: number } {
+export function bumpPlay(
+	library: { playCount: number; lastPlayedAt: number | null },
+	now: number
+): { playCount: number; lastPlayedAt: number } {
 	return { playCount: library.playCount + 1, lastPlayedAt: now };
 }

@@ -104,9 +104,7 @@
 	});
 	// The position the reel and highlight are drawn at — a PURE function of `positionSec` (plus the
 	// clock only while playing). Paused → exactly `positionSec`; no rAF state backs it.
-	const displayPos = $derived(
-		drawPosition({ positionSec, playing, anchoredAtMs: anchoredAt, nowMs: now })
-	);
+	const displayPos = $derived(drawPosition({ positionSec, playing, anchoredAtMs: anchoredAt, nowMs: now }));
 
 	// Fetch + parse the lyrics artifact when the ref changes (once per song). Skipped if a doc prop
 	// was supplied directly (dev gallery / tests).
@@ -155,9 +153,6 @@
 	const cuePos = $derived(displayPos + leadSec);
 	const lineIdx = $derived(doc ? activeLineIndex(doc.lines, cuePos) : -1);
 	const curLine = $derived(doc && lineIdx >= 0 ? doc.lines[lineIdx] : null);
-	const nextLine = $derived(
-		doc && lineIdx >= 0 && lineIdx + 1 < doc.lines.length ? doc.lines[lineIdx + 1] : null
-	);
 	const ballWord = $derived(curLine ? activeWordIndex(curLine, cuePos) : -1);
 	const show = $derived(visible && !!curLine);
 	// Reel scrolling: measure where the current row sits and place it. Measured (not row*height) so a
@@ -244,7 +239,7 @@
 </script>
 
 {#if show && doc && curLine}
-	<div class="lyrics hl-{highlight}" class:unverified role="presentation" style={typeStyle}>
+	<div class="lyrics hl-{highlight}" class:unverified={unverified} role="presentation" style={typeStyle}>
 		<!--
 			A SCROLLING REEL, not a two-slot swap. Previously the current line was replaced in place and
 			the "next" line jumped up into it, which read as a hard cut on every line change. Here every
@@ -260,9 +255,8 @@
 						{#if i === lineIdx && l.words.length && wordLevel}
 							{#each l.words as w, wi (wi)}
 								<span class="word" class:done={cuePos >= w.end} class:active={wi === ballWord}>
-									{#if wi === ballWord && ball !== 'off'}<span
-											class="ball {ball}"
-											aria-hidden="true">{ball === 'underline' ? '' : '●'}</span
+									{#if wi === ballWord && ball !== 'off'}<span class="ball {ball}" aria-hidden="true"
+											>{ball === 'underline' ? '' : '●'}</span
 										>{/if}{w.word}
 								</span>{' '}
 							{/each}

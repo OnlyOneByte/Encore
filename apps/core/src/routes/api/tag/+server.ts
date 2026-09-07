@@ -14,7 +14,14 @@ import { readSidecar, writeSidecar, browseArtist, lookupTitle } from '$server/me
 /** Genres are lowercased and trimmed so "Pop", "pop " and "pop" are one bucket, not three. */
 function normalizeValues(input: unknown): string[] | null {
 	if (!Array.isArray(input)) return null;
-	const out = [...new Set(input.filter((v): v is string => typeof v === 'string').map((v) => v.trim().toLowerCase()).filter(Boolean))];
+	const out = [
+		...new Set(
+			input
+				.filter((v): v is string => typeof v === 'string')
+				.map((v) => v.trim().toLowerCase())
+				.filter(Boolean)
+		)
+	];
 	// A cap, because this is free text from a phone and the sidecar is meant to stay readable.
 	return out.length <= 16 ? out.map((v) => v.slice(0, 32)) : null;
 }
@@ -51,7 +58,12 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 	await writeSidecar(sidecar);
 
 	app.media.setTags(mediaId, kind, values);
-	app.media.setCanonical(mediaId, { artist: browseArtist(sidecar), title: lookupTitle(sidecar), album: sidecar.canonical.album, year: sidecar.canonical.year });
+	app.media.setCanonical(mediaId, {
+		artist: browseArtist(sidecar),
+		title: lookupTitle(sidecar),
+		album: sidecar.canonical.album,
+		year: sidecar.canonical.year
+	});
 
 	return json({ ok: true, mediaId, kind, values });
 };

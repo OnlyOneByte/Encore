@@ -66,7 +66,7 @@ export const ASR_MODELS: readonly AsrModel[] = [
 		label: 'Small',
 		params: '244M',
 		speed: 'moderate',
-		note: 'The first size worth trusting with sung words. ~3x base\'s weights for a modest slice of the cook.'
+		note: "The first size worth trusting with sung words. ~3x base's weights for a modest slice of the cook."
 	},
 	{
 		id: 'medium',
@@ -128,7 +128,7 @@ export const SYNC_MODES: readonly SyncMode[] = [
 		label: 'Line sync only',
 		granularity: 'line',
 		usesAligner: false,
-		note: 'Skip alignment and use each source\'s own line timings. No second ML pass, so a cook finishes sooner — but the ball cannot follow individual words. Only as good as the source: an LRC from a different upload of the song is timed for that recording, not this one.'
+		note: "Skip alignment and use each source's own line timings. No second ML pass, so a cook finishes sooner — but the ball cannot follow individual words. Only as good as the source: an LRC from a different upload of the song is timed for that recording, not this one."
 	}
 ];
 

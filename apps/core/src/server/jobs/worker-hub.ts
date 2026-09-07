@@ -22,7 +22,16 @@ import { sourceUriFor, resolveCookSeparator } from '@encore/shared';
 import type { JobRepository } from './repository';
 import type { AttemptLedger } from './attempts';
 import { WorkerRegistry } from './registry';
-import { planAssignments, assignParams, followUps, requiredCapability, separatorFor, publishesInstrumental, inheritsCook, hasCapableWorker } from './dispatch';
+import {
+	planAssignments,
+	assignParams,
+	followUps,
+	requiredCapability,
+	separatorFor,
+	publishesInstrumental,
+	inheritsCook,
+	hasCapableWorker
+} from './dispatch';
 import {
 	markMediaReady,
 	setMediaLyrics,
@@ -256,7 +265,12 @@ export class WorkerHub {
 		if (!job || job.status !== 'running' || job.workerId !== msg.workerId) return;
 		const updated = this.#d.jobs.progress(
 			msg.jobId,
-			{ stage: msg.stage, progressPct: msg.pct, etaSec: msg.etaSec ?? null, leaseExpiresAt: progressDeadline(this.#d.now(), this.#config) },
+			{
+				stage: msg.stage,
+				progressPct: msg.pct,
+				etaSec: msg.etaSec ?? null,
+				leaseExpiresAt: progressDeadline(this.#d.now(), this.#config)
+			},
 			this.#d.now()
 		);
 		this.#emitStatus(updated, msg.stage);
@@ -385,7 +399,10 @@ export class WorkerHub {
 			// and the reaper hook in app.ts), so it lives in ONE place — reportTerminalFailure (issue
 			// #451). settleGatesForFailedJob (#90) is step 1 of it; a fourth fail path cannot reopen the
 			// hole because there is no longer a fourth copy to drift.
-			reportTerminalFailure(updated, 'worker', { broadcast: (e) => this.#d.broadcast(e), mediaById: this.#d.mediaById });
+			reportTerminalFailure(updated, 'worker', {
+				broadcast: (e) => this.#d.broadcast(e),
+				mediaById: this.#d.mediaById
+			});
 		}
 	}
 
@@ -430,7 +447,10 @@ export class WorkerHub {
 					// unservable align/fetch/stems leaves its gate mid-flight forever so readyToSing never
 					// flips, #90), tell the room, log one uniform line (the capability rides in the job's
 					// `reason`), and reclaim scratch — which this branch used to OMIT (issue #451).
-					reportTerminalFailure(updated, 'unservable', { broadcast: (e) => this.#d.broadcast(e), mediaById: this.#d.mediaById });
+					reportTerminalFailure(updated, 'unservable', {
+						broadcast: (e) => this.#d.broadcast(e),
+						mediaById: this.#d.mediaById
+					});
 				}
 				continue; // already warned this stall; nothing else to do until the TTL fires
 			}

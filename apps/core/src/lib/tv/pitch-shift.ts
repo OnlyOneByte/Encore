@@ -139,8 +139,13 @@ export function sampleAt(buf: Float32Array, pos: number): number {
 // ── the AudioWorklet processor, as a self-contained source string ─────────────────────────────────
 //
 // A worklet runs in a SEPARATE global scope (AudioWorkletGlobalScope) and CANNOT import app modules,
-// so the OLA loop is written out in full here rather than importing the helpers above. The maths is
-// the same as the exported functions — kept deliberately simple so the two stay legible side by side.
+// so the OLA loop is written out in full here rather than importing the helpers above. The grain
+// windowing and hop maths mirror the exported `hannWindow`/`synthesisHop`, kept deliberately
+// simple so the two stay legible side by side. One boundary rule is INTENTIONALLY different and
+// must not be "unified": the exported `sampleAt` edge-CLAMPS out-of-range reads (correct for a
+// standalone interpolator), while the worklet's `histSample` returns 0 out of range on purpose —
+// a wrapped/clamped ring read would be unrelated audio (the aliasing the free-running pointer
+// once produced). `sampleAt` is the tested reference for the in-range interpolation only.
 // This string is turned into a Blob URL and passed to `audioWorklet.addModule`, which keeps the whole
 // shifter in ONE file with no separate static asset to serve or cache-bust.
 //

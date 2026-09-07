@@ -159,21 +159,38 @@ async function waitFor(fn, { timeoutMs = 10_000, everyMs = 200, name = 'conditio
 
 const svc = await search('caroline');
 if (!svc.body || !Array.isArray(svc.body.results)) {
-	record('CRITICAL', 'S1a-search-shape', false, `unexpected /api/search body: ${JSON.stringify(svc.body).slice(0, 200)}`);
+	record(
+		'CRITICAL',
+		'S1a-search-shape',
+		false,
+		`unexpected /api/search body: ${JSON.stringify(svc.body).slice(0, 200)}`
+	);
 	process.exit(1);
 }
 const localCaroline = [...(svc.body.ready ?? []), ...(svc.body.results ?? [])].find(
 	(m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline')
 );
 if (!localCaroline) {
-	record('CRITICAL', 'S1a-local-fixture', false, 'local library did not return Sweet Caroline -- seed missing or server did not reindex', 'apps/core/server.ts:84 seededLibrary + apps/core/src/server/media/local.ts');
+	record(
+		'CRITICAL',
+		'S1a-local-fixture',
+		false,
+		'local library did not return Sweet Caroline -- seed missing or server did not reindex',
+		'apps/core/server.ts:84 seededLibrary + apps/core/src/server/media/local.ts'
+	);
 	process.exit(2);
 }
 
 // Cook it (fake worker completes stems + align in ~2s at default FAKE_SLOW_MS=120).
 const mk1 = await makeKaraoke(localCaroline.id);
 if (mk1.status !== 200 || (!mk1.body?.job && !mk1.body?.alreadyReady)) {
-	record('HIGH', 'S1a-cook-start', false, `make-karaoke for ${localCaroline.id} → ${mk1.status} ${JSON.stringify(mk1.body).slice(0, 200)}`, 'apps/core/src/routes/api/make-karaoke/+server.ts:1');
+	record(
+		'HIGH',
+		'S1a-cook-start',
+		false,
+		`make-karaoke for ${localCaroline.id} → ${mk1.status} ${JSON.stringify(mk1.body).slice(0, 200)}`,
+		'apps/core/src/routes/api/make-karaoke/+server.ts:1'
+	);
 }
 try {
 	await waitFor(
@@ -185,7 +202,13 @@ try {
 	);
 	record('PASS', 'S1a-cook-ready', true);
 } catch (e) {
-	record('CRITICAL', 'S1a-cook-ready', false, String(e), 'apps/core/e2e/fake-stems-worker.mjs (must be running with fetch/stems/align caps)');
+	record(
+		'CRITICAL',
+		'S1a-cook-ready',
+		false,
+		String(e),
+		'apps/core/e2e/fake-stems-worker.mjs (must be running with fetch/stems/align caps)'
+	);
 	// If the cook never completes, everything downstream is meaningless.
 	process.exit(2);
 }
@@ -202,7 +225,9 @@ record(
 );
 
 // Dedupe by (source, sourceRef): search a second time and confirm the cooked song appears exactly once.
-const idCount = [...after.body.ready, ...after.body.cooking, ...after.body.results].filter((m) => m.id === localCaroline.id).length;
+const idCount = [...after.body.ready, ...after.body.cooking, ...after.body.results].filter(
+	(m) => m.id === localCaroline.id
+).length;
 record(
 	'HIGH',
 	'S1b-dedupe-by-id',
@@ -261,7 +286,13 @@ const believin = [...(s.body.ready ?? []), ...(s.body.results ?? [])].find(
 	(m) => m.source === 'local' && m.sourceRef?.includes('believin')
 );
 if (!believin) {
-	record('HIGH', 'S2-fixture', false, 'Livin on a Prayer local fixture missing -- expected from seed-media.mjs', 'apps/core/e2e/seed-media.mjs');
+	record(
+		'HIGH',
+		'S2-fixture',
+		false,
+		'Livin on a Prayer local fixture missing -- expected from seed-media.mjs',
+		'apps/core/e2e/seed-media.mjs'
+	);
 } else {
 	// It might already be cooked from a prior run (ENCORE_EPHEMERAL=1 resets state but keeps media
 	// files -- and a repeat run of this probe would already have cooked it once). Cancel + re-cook
@@ -295,7 +326,13 @@ if (!believin) {
 			// Monotonic pct in the separating phase (never regresses on the way to done).
 			const sepPct = sub.events.filter((e) => e.status === 'separating').map((e) => e.pct);
 			const monotonic = sepPct.every((p, i) => i === 0 || p >= sepPct[i - 1]);
-			record('MEDIUM', 'S2b-progress-monotonic', monotonic, 'progress % must not regress within one stage', `separating pct=${JSON.stringify(sepPct)}`);
+			record(
+				'MEDIUM',
+				'S2b-progress-monotonic',
+				monotonic,
+				'progress % must not regress within one stage',
+				`separating pct=${JSON.stringify(sepPct)}`
+			);
 		}
 	} else {
 		record('PASS', 'S2a-ws-transition', true, `skipped -- Livin was already ${preState} from a prior probe run`);
@@ -336,7 +373,13 @@ if (cookableCandidate) {
 			if (asReady) break;
 			await sleep(60);
 		}
-		record('HIGH', 'S2c-cooking-visible', sawCooking, 'a mid-flight song must appear in the `cooking` bucket', 'apps/core/src/server/media/readiness.ts:15 readinessOf + apps/core/src/routes/api/search/+server.ts:83 (partitionSearch groups cooking into its own bucket)');
+		record(
+			'HIGH',
+			'S2c-cooking-visible',
+			sawCooking,
+			'a mid-flight song must appear in the `cooking` bucket',
+			'apps/core/src/server/media/readiness.ts:15 readinessOf + apps/core/src/routes/api/search/+server.ts:83 (partitionSearch groups cooking into its own bucket)'
+		);
 		record(
 			'HIGH',
 			'S2d-cooking-queueable',
@@ -346,16 +389,26 @@ if (cookableCandidate) {
 		);
 		// Let it finish so subsequent probes see a stable ready state.
 		try {
-			await waitFor(
-				async () => (await library()).body?.library?.some((m) => m.id === cookableCandidate.id),
-				{ timeoutMs: 15_000, name: `${cookableCandidate.title} ready` }
-			);
+			await waitFor(async () => (await library()).body?.library?.some((m) => m.id === cookableCandidate.id), {
+				timeoutMs: 15_000,
+				name: `${cookableCandidate.title} ready`
+			});
 		} catch {}
 	} else {
-		record('MEDIUM', 'S2c-cooking-visible', false, `could not start cook for ${cookableCandidate.id}: ${mk.status} ${JSON.stringify(mk.body).slice(0, 120)}`);
+		record(
+			'MEDIUM',
+			'S2c-cooking-visible',
+			false,
+			`could not start cook for ${cookableCandidate.id}: ${mk.status} ${JSON.stringify(mk.body).slice(0, 120)}`
+		);
 	}
 } else {
-	record('LOW', 'S2c-cooking-visible', true, 'skipped -- every local seed was already cooked from a prior run against this MEDIA_DIR; re-run with a fresh $SCRATCH to exercise this path');
+	record(
+		'LOW',
+		'S2c-cooking-visible',
+		true,
+		'skipped -- every local seed was already cooked from a prior run against this MEDIA_DIR; re-run with a fresh $SCRATCH to exercise this path'
+	);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -377,7 +430,7 @@ record(
 	'MEDIUM',
 	'S3a-ready-order-consistency',
 	orderAgrees,
-	"search ready group iterates mediaById in insertion order while /api/library uses desc(id) newest-first -- same songs, different order",
+	'search ready group iterates mediaById in insertion order while /api/library uses desc(id) newest-first -- same songs, different order',
 	`search-ready(caroline shared)=${JSON.stringify(sharedIds)} vs library-ready(shared)=${JSON.stringify(libOrderOnShared)}. See apps/core/src/server/media/readiness.ts:51 partitionSearch (ready group is Map insertion order, not sorted) vs apps/core/src/server/media/repository.ts:149 listReady (orderBy desc(media.id) newest-first ULID).`
 );
 
@@ -405,7 +458,13 @@ const emptyShapeOk =
 	Array.isArray(empty.body.results) &&
 	Array.isArray(empty.body.recent) &&
 	Array.isArray(empty.body.popular);
-record('HIGH', 'S4a-empty-shape', emptyShapeOk, "empty ?q= must still return { ready, cooking, results, recent, popular } for a single render shape", `shape=${JSON.stringify(shape)}. Body keys=${JSON.stringify(Object.keys(empty.body))}.`);
+record(
+	'HIGH',
+	'S4a-empty-shape',
+	emptyShapeOk,
+	'empty ?q= must still return { ready, cooking, results, recent, popular } for a single render shape',
+	`shape=${JSON.stringify(shape)}. Body keys=${JSON.stringify(Object.keys(empty.body))}.`
+);
 
 // A single-space query (URL-encoded) must be treated as empty (server trims). Otherwise the client's
 // searchActive check (query.trim().length>0) diverges from what the server does.
@@ -424,7 +483,13 @@ record(
 const garbage = await search('zzzzzzznotasongzzzzzz');
 const garbageAllEmpty =
 	garbage.body.ready?.length === 0 && garbage.body.cooking?.length === 0 && garbage.body.results?.length === 0;
-record('HIGH', 'S4c-no-results-empty', garbageAllEmpty, "a query with no matches must return three empty arrays", `body=${JSON.stringify(garbage.body).slice(0, 200)}`);
+record(
+	'HIGH',
+	'S4c-no-results-empty',
+	garbageAllEmpty,
+	'a query with no matches must return three empty arrays',
+	`body=${JSON.stringify(garbage.body).slice(0, 200)}`
+);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // S5 -- adversarial queries. None may crash, 500, or persist state.
@@ -485,9 +550,15 @@ record(
 const baseline = await search('caroline');
 const parenised = await search('(caroline)');
 const starred = await search('caroline*');
-const baselineHasLocal = baseline.body.results.concat(baseline.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
-const parenisedHasLocal = parenised.body.results.concat(parenised.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
-const starredHasLocal = starred.body.results.concat(starred.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const baselineHasLocal = baseline.body.results
+	.concat(baseline.body.ready)
+	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const parenisedHasLocal = parenised.body.results
+	.concat(parenised.body.ready)
+	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
+const starredHasLocal = starred.body.results
+	.concat(starred.body.ready)
+	.some((m) => m.source === 'local' && m.sourceRef?.includes('sweet-caroline'));
 record(
 	'HIGH',
 	'S5b-fts-meta-silent-drop',
@@ -504,7 +575,13 @@ record(
 // a `<script>` payload would appear reflected in .body.
 const xss = await search('<script>alert(1)</script>');
 const xssReflected = JSON.stringify(xss.body).includes('<script>alert(1)</script>');
-record('MEDIUM', 'S5c-no-xss-reflect', !xssReflected, 'server must not reflect a raw <script> payload into the response body', xssReflected ? 'reflected in body -- see /api/search response' : '');
+record(
+	'MEDIUM',
+	'S5c-no-xss-reflect',
+	!xssReflected,
+	'server must not reflect a raw <script> payload into the response body',
+	xssReflected ? 'reflected in body -- see /api/search response' : ''
+);
 
 // ═════════════════════════════════════════════════════════════════════════════
 // S6 -- case-insensitive across title AND artist.
@@ -516,7 +593,9 @@ const titleVariants = ['Bohemian', 'bohemian', 'BOHEMIAN', 'BoHeMiAn'];
 const titleHits = [];
 for (const q of titleVariants) {
 	const r = await search(q);
-	const has = r.body.results.concat(r.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
+	const has = r.body.results
+		.concat(r.body.ready)
+		.some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
 	titleHits.push({ q, has });
 }
 record(
@@ -532,7 +611,9 @@ const artistVariants = ['queen', 'Queen', 'QUEEN', 'qUeEn'];
 const artistHits = [];
 for (const q of artistVariants) {
 	const r = await search(q);
-	const has = r.body.results.concat(r.body.ready).some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
+	const has = r.body.results
+		.concat(r.body.ready)
+		.some((m) => m.source === 'local' && m.sourceRef?.includes('bohemian'));
 	artistHits.push({ q, has });
 }
 record(
@@ -601,7 +682,9 @@ if (artistFacet) {
 if (MEDIA_DIR) {
 	const stemsDir = join(MEDIA_DIR, 'derived', 'stems');
 	if (existsSync(stemsDir)) {
-		const instrumental = readdirSync(stemsDir).find((f) => f.includes(localCaroline.id) && f.endsWith('instrumental.wav'));
+		const instrumental = readdirSync(stemsDir).find(
+			(f) => f.includes(localCaroline.id) && f.endsWith('instrumental.wav')
+		);
 		let alreadyMissing = false;
 		if (instrumental) {
 			const abs = join(stemsDir, instrumental);
@@ -637,7 +720,12 @@ if (MEDIA_DIR) {
 			`GET /media/${ref} → ${mediaStatus}. Deleted at ${join(stemsDir, instrumental ?? '(already gone)')}.`
 		);
 	} else {
-		record('LOW', 'S7d-orphan-stem-listed', true, `skipped -- no derived/stems dir under MEDIA_DIR (${MEDIA_DIR}); the cook may not have produced any stems yet.`);
+		record(
+			'LOW',
+			'S7d-orphan-stem-listed',
+			true,
+			`skipped -- no derived/stems dir under MEDIA_DIR (${MEDIA_DIR}); the cook may not have produced any stems yet.`
+		);
 	}
 }
 
@@ -685,24 +773,20 @@ record(
 // the cook completes normally, and we say so as an ENV limit rather than a defect, per HARNESS.md's
 // "never conflate 2 with 0" rule.
 try {
-	const failWorker = spawn(
-		process.execPath.includes('bun') ? process.execPath : 'bun',
-		['../fake-stems-worker.mjs'],
-		{
-			cwd: new URL('.', import.meta.url).pathname,
-			env: {
-				...process.env,
-				EPORT: PORT,
-				MEDIA_DIR,
-				FAKE_FAIL: 'stems',
-				FAKE_CAPS: 'stems',
-				FAKE_WORKER_ID: `p12-fail-${Date.now()}`,
-				FAKE_SLOW_MS: '300'
-			},
-			stdio: 'ignore',
-			detached: true
-		}
-	);
+	const failWorker = spawn(process.execPath.includes('bun') ? process.execPath : 'bun', ['../fake-stems-worker.mjs'], {
+		cwd: new URL('.', import.meta.url).pathname,
+		env: {
+			...process.env,
+			EPORT: PORT,
+			MEDIA_DIR,
+			FAKE_FAIL: 'stems',
+			FAKE_CAPS: 'stems',
+			FAKE_WORKER_ID: `p12-fail-${Date.now()}`,
+			FAKE_SLOW_MS: '300'
+		},
+		stdio: 'ignore',
+		detached: true
+	});
 	failWorker.unref();
 	// Give it a moment to join.
 	await sleep(1200);
@@ -763,10 +847,20 @@ try {
 				);
 			}
 		} else {
-			record('MEDIUM', 'S8b-failed-broadcast', false, `couldn't trigger the fail cook: /api/make-karaoke → ${mk.status} ${JSON.stringify(mk.body).slice(0, 200)}`);
+			record(
+				'MEDIUM',
+				'S8b-failed-broadcast',
+				false,
+				`couldn't trigger the fail cook: /api/make-karaoke → ${mk.status} ${JSON.stringify(mk.body).slice(0, 200)}`
+			);
 		}
 	} else {
-		record('LOW', 'S8b-failed-broadcast', true, 'skipped -- every local seed was already cooked; nothing left to fail-cook. Re-run with a fresh $SCRATCH to exercise this path.');
+		record(
+			'LOW',
+			'S8b-failed-broadcast',
+			true,
+			'skipped -- every local seed was already cooked; nothing left to fail-cook. Re-run with a fresh $SCRATCH to exercise this path.'
+		);
 	}
 } catch (err) {
 	record('MEDIUM', 'S8b-failed-broadcast', false, `spawn fail-worker error: ${String(err)}`);
@@ -792,7 +886,12 @@ function findChromium() {
 
 const chromium = findChromium();
 if (!chromium) {
-	record('LOW', 'S9-ui-checks', false, 'skipped -- no Chromium found; the row-action + empty-state assertions need a real render');
+	record(
+		'LOW',
+		'S9-ui-checks',
+		false,
+		'skipped -- no Chromium found; the row-action + empty-state assertions need a real render'
+	);
 } else {
 	const CDP_PORT = Number(process.env.CDP_PORT ?? 9433);
 	const proc = spawn(
@@ -847,7 +946,13 @@ if (!chromium) {
 		// A ready row must show .add; a raw row must show .sing.
 		const readyRowsOk = perRow.every((r) => r.readiness !== 'ready' || (r.add === 1 && r.sing === 0));
 		const rawRowsOk = perRow.every((r) => r.readiness === 'ready' || r.sing === 1 || r.add === 1);
-		record('HIGH', 'S9b-action-matches-readiness', readyRowsOk && rawRowsOk, 'a ready row offers .add; a raw/cooking row offers .sing (both queue; .sing also cooks)', `perRow=${JSON.stringify(perRow).slice(0, 500)}`);
+		record(
+			'HIGH',
+			'S9b-action-matches-readiness',
+			readyRowsOk && rawRowsOk,
+			'a ready row offers .add; a raw/cooking row offers .sing (both queue; .sing also cooks)',
+			`perRow=${JSON.stringify(perRow).slice(0, 500)}`
+		);
 
 		// Zero-result copy: search a garbage string and read the rendered text.
 		await phone.fill(SEL.search, 'zzzzzzznotasongzzzzzz');
@@ -870,7 +975,9 @@ if (!chromium) {
 		await sleep(400);
 		await phone.click('.chips button.ok'); // pick the Ready chip (class .ok distinguishes it)
 		await sleep(200);
-		const readyEmpty = await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`);
+		const readyEmpty = await phone.evaluate(
+			`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`
+		);
 		const namesTheCount = /None of your \d+ karaoke/.test(readyEmpty);
 		record(
 			'MEDIUM',
