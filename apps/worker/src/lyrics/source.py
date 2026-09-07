@@ -64,6 +64,10 @@ def _stamp_to_sec(mm: str, ss: str, frac: str | None) -> float:
 class LrcEntry:
     start: float
     text: str
+    #: A second-script rendering of the SAME line, when the LRC interleaves one (a Chinese record
+    #: that ships both the characters and the pinyin). None for a single-script line — dual script is
+    #: strictly IF-AVAILABLE (issue #431), never fabricated. Set by ``fold_romanization_entries``.
+    romanization: str | None = None
 
 
 def parse_lrc(lrc_text: str) -> list[LrcEntry]:
@@ -100,6 +104,92 @@ def parse_lrc(lrc_text: str) -> list[LrcEntry]:
     return entries
 
 
+# ── pure: fold an interleaved second script into the line it romanizes (issue #431) ──
+#
+# A Chinese record on LRCLIB (e.g. "Yi Jian Mei") does not carry a romanization FIELD — LRCLIB's API
+# has no such field — it ships the pinyin INTERLEAVED in the same syncedLyrics, as a second line under
+# the SAME [mm:ss] stamp as the characters it romanizes:
+#
+#     [00:27.00]真情像草原广阔
+#     [00:27.00]zhēn qíng xiàng cǎo yuán guǎng kuò
+#
+# `parse_lrc` yields these as two entries with an equal `start` (its sort is stable, so the file's own
+# order — original first — is preserved). Left alone they become a real line plus a zero-span twin that
+# reads as a duplicate. This folds each such same-stamp pair into ONE entry: the CJK/non-Latin member
+# stays `text`, its Latin-script twin becomes `romanization`. Deliberately NOT a per-language parser
+# (issue #431 owner ruling): the ONLY discriminator is script (does the line carry non-Latin letters),
+# which needs no language table and covers any romanized script, not just Mandarin.
+def _is_romanization_of(original: str, other: str) -> bool:
+    """`other` reads as a romanization of `original`: `original` carries a non-Latin letter (the script
+    being romanized) and `other` is written in the Latin script (letters, but none of them non-Latin).
+    Symmetric-stamp pairs that are the SAME script (two Latin lines, two CJK lines) are NOT folded —
+    those are repeats or a chorus stamp, not a transliteration, so both stay as their own lines."""
+    return _has_non_latin_letter(original) and _is_latin_script(other)
+
+
+def _has_non_latin_letter(text: str) -> bool:
+    """Any cased/letter character outside the Basic-Latin + Latin-1 letter range — i.e. a Han glyph,
+    Hangul, Kana, Cyrillic, Greek, Arabic … the script a romanization would transliterate."""
+    for ch in text:
+        if ch.isalpha() and not _is_latin_char(ch):
+            return True
+    return False
+
+
+def _is_latin_script(text: str) -> bool:
+    """At least one letter, and EVERY letter is Latin — the shape a romanization has. A line with no
+    letters at all (pure punctuation / a stamp echo) is not a romanization."""
+    saw_letter = False
+    for ch in text:
+        if ch.isalpha():
+            saw_letter = True
+            if not _is_latin_char(ch):
+                return False
+    return saw_letter
+
+
+def _is_latin_char(ch: str) -> bool:
+    # Basic Latin + Latin-1 Supplement + Latin Extended-A/B cover ASCII and accented pinyin (ā í ǎ ò …).
+    return (
+        "a" <= ch.lower() <= "z"
+        or "\u00c0" <= ch <= "\u024f"  # Latin-1 Supplement + Latin Extended-A/B (accents, tone marks)
+    )
+
+
+def fold_romanization_entries(entries: list[LrcEntry]) -> list[LrcEntry]:
+    """Collapse each run of same-stamp entries into one line carrying its romanization, if any.
+
+    Only a CJK/non-Latin line paired with a Latin twin at the identical `start` is folded (see
+    `_is_romanization_of`); anything else passes through untouched, so a single-script record — the
+    common case — is returned unchanged and no romanization is ever invented. Order-preserving: the
+    original member keeps its position in the returned list."""
+    out: list[LrcEntry] = []
+    i = 0
+    n = len(entries)
+    while i < n:
+        cur = entries[i]
+        nxt = entries[i + 1] if i + 1 < n else None
+        pairable = (
+            nxt is not None
+            and nxt.start == cur.start
+            and cur.romanization is None
+            and nxt.romanization is None
+        )
+        if pairable and nxt is not None:
+            if _is_romanization_of(cur.text, nxt.text):
+                out.append(LrcEntry(start=cur.start, text=cur.text, romanization=nxt.text))
+                i += 2
+                continue
+            if _is_romanization_of(nxt.text, cur.text):
+                # File shipped romanization FIRST — keep the original as `text`, its position aside.
+                out.append(LrcEntry(start=nxt.start, text=nxt.text, romanization=cur.text))
+                i += 2
+                continue
+        out.append(cur)
+        i += 1
+    return out
+
+
 # ── pure: entries → alignment segments + line-synced artifact ────────────────────────
 def entries_to_segments(
     entries: list[LrcEntry], total_duration: float | None = None, min_line_sec: float = 0.5
@@ -118,7 +208,10 @@ def entries_to_segments(
             end = total_duration
         else:
             end = e.start + min_line_sec
-        segs.append({"start": round(e.start, 3), "end": round(end, 3), "text": e.text})
+        seg: dict[str, Any] = {"start": round(e.start, 3), "end": round(end, 3), "text": e.text}
+        if e.romanization:
+            seg["romanization"] = e.romanization
+        segs.append(seg)
     return segs
 
 
@@ -138,7 +231,12 @@ def plain_lyrics_to_segments(plain_text: str, total_duration: float | None) -> l
 def line_synced_lyrics(segments: list[dict[str, Any]], language: str | None = None) -> dict[str, Any]:
     """Wrap alignment segments into the artifact shape with EMPTY word arrays — the line-synced
     fallback the TV can render as a whole-line highlight when word-level alignment isn't available."""
-    lines = [{"start": s["start"], "end": s["end"], "text": s["text"], "words": []} for s in segments]
+    lines: list[dict[str, Any]] = []
+    for seg in segments:
+        line: dict[str, Any] = {"start": seg["start"], "end": seg["end"], "text": seg["text"], "words": []}
+        if seg.get("romanization"):
+            line["romanization"] = seg["romanization"]
+        lines.append(line)
     return {"language": language, "lines": lines, "words": []}
 
 

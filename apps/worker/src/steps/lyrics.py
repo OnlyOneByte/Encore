@@ -457,6 +457,23 @@ def _default_aligner(ctx: Ctx) -> Any:
     return aligner_for(ctx.engines.device or "cpu")
 
 
+def _attach_romanizations(doc: dict[str, Any], source_segments: list[dict[str, Any]]) -> None:
+    """Copy each source segment's ``romanization`` onto the matching doc line, IN PLACE, by position.
+
+    Only touches ``doc`` when the line counts agree, so a mismatch (the aligner split or merged lines)
+    leaves the word-timed doc single-script rather than pairing a romanization with the wrong line.
+    Never adds an empty/absent romanization — dual script stays strictly if-available (issue #431)."""
+    lines = doc.get("lines")
+    if not isinstance(lines, list) or len(lines) != len(source_segments):
+        return
+    for line, seg in zip(lines, source_segments, strict=True):
+        if not isinstance(line, dict) or not isinstance(seg, dict):
+            continue
+        romanization = seg.get("romanization")
+        if isinstance(romanization, str) and romanization.strip():
+            line["romanization"] = romanization.strip()
+
+
 def _time_one(aligner: Any, ctx: Ctx, text: Any, audio: str, language: str) -> tuple[dict, str, str] | None:
     """Turn one acquired text into (doc, timing, timingConfidence), or None if unusable.
 
@@ -507,6 +524,11 @@ def _time_one(aligner: Any, ctx: Ctx, text: Any, audio: str, language: str) -> t
         doc = normalize_lyrics(aligned)
         if not is_valid_lyrics(doc):
             raise RuntimeError("aligner returned no word-timed lyrics")
+        # The aligner re-times the ORIGINAL script and drops the per-line romanization the source
+        # shipped; re-attach it to the word-timed doc by source-line position (issue #431). Best-effort:
+        # when the aligner has split/merged lines so the counts no longer match, the word-timed doc
+        # simply shows single script — the romanization still rides the line-sync fallbacks.
+        _attach_romanizations(doc, text.segments)
         return doc, TIMING_WORD, "high"
     except Exception:  # noqa: BLE001 — degrade, never fail the whole job
         if text.timing != TIMING_LINE:
