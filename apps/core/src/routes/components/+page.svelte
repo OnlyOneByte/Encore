@@ -548,6 +548,23 @@
 	<h2 class="section">ProcessingCard</h2>
 	<ProcessingCard seq={2} title="Bohemian Rhapsody" singerName="You" singerColor={PINK} status="separating" pct={68} />
 
+	<!-- #735: the pending ProcessingCard, which had no fixture at all — the only `pending` surface in
+	     the gallery was the QueueRow above, so the cooking card's unconfirmed state (the one that
+	     actually renders during the primary ✨ Sing flow) had never been eyes-on anywhere. Paired
+	     immediately below its non-pending twin so the state signal is judged as a DIFFERENCE: the warn
+	     tint and border must be obvious, while `Making karaoke… / 68%`, the byline and the singer dot
+	     must stay exactly as legible as they are on the card above. Re-introducing `opacity` on
+	     `.pending` is visible here as all three washing out together. -->
+	<ProcessingCard
+		seq={2}
+		title="Bohemian Rhapsody"
+		singerName="You"
+		singerColor={PINK}
+		status="separating"
+		pct={68}
+		pending
+	/>
+
 	<!-- The bug this fixed: an early stage (downloading) at pct=100. Old code filled the bar solid and
 	     read 100%; overallCookPct maps it to the downloading band top (20%), so this card is the one that
 	     makes the fix self-evident to a human eyes-on. -->
