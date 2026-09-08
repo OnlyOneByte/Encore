@@ -40,6 +40,7 @@ from ..lyrics import (
     normalize_lyrics,
     presplit_texts,
     read_captions,
+    repair_word_spans,
     select_by_baselines,
     validate_timing,
 )
@@ -457,6 +458,14 @@ class TimeTexts(Step):
                         continue  # nothing honest left to publish for this source
                     doc = line_synced_lyrics(text.segments, language=text.language or language)
                     timing, timing_confidence = TIMING_LINE, "low"
+                else:
+                    # ACT on the smears/flashes rep just diagnosed (issue #629, item #2). validate_timing
+                    # reports them; this REPAIRS them in the doc that publishes, provably order-preserving
+                    # so it can never turn a defect into the one disqualifier (an out-of-order word). Only
+                    # on a usable word doc — a degraded line-sync doc has no per-word spans to repair.
+                    fixed = repair_word_spans(doc)
+                    if fixed.changed or fixed.flashed_uncorrectable:
+                        ctx.note(f"timing repaired — {fixed.summary()}")
 
             # IS THIS LRC EVEN FOR THIS RECORDING? Only askable here, and only for a source that brought
             # its OWN line timings (a synced LRCLIB record) and then got force-aligned: that gives two

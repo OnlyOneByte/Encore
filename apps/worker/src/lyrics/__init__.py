@@ -76,7 +76,14 @@ from .source import (
     rank_lrclib_candidates,
 )
 from .timing import ML_LOCK, Aligner, WhisperxForcedAligner, aligner_for
-from .validate import LrcFit, fit_lrc_to_aligned, line_starts, lrc_fit_notes, validate_timing
+from .validate import (
+    LrcFit,
+    fit_lrc_to_aligned,
+    line_starts,
+    lrc_fit_notes,
+    repair_word_spans,
+    validate_timing,
+)
 
 __all__ = [
     "LrcFit",
@@ -141,6 +148,7 @@ __all__ = [
     "presplit_texts",
     "klp_probe_line",
     "klp_status",
+    "repair_word_spans",
     "validate_timing",
     # transcription + timing (the two ML seams)
     "DEFAULT_MODEL",

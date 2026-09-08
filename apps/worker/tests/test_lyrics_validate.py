@@ -10,6 +10,7 @@ from src.lyrics.validate import (
     SUSPECT_RESIDUAL_SEC,
     fit_lrc_to_aligned,
     line_starts,
+    repair_word_spans,
     validate_timing,
 )
 
@@ -44,8 +45,11 @@ def test_clean_timing_is_usable():
 
 
 def test_a_smeared_word_is_reported_but_not_disqualifying():
-    # Measured worst case when aligning against the mix: one word held 5.7s. The rest of the song is
-    # still correctly timed, so line-level sync would be a worse trade than word timing with one smear.
+    # Measured worst case when aligning against the mix: one word held 5.7s. validate_timing still
+    # DETECTS and REPORTS the smear and still does not disqualify on it (order is the only disqualifier).
+    # #629 item #2 reversed what happens NEXT: the smear is no longer LEFT as-is — repair_word_spans
+    # clamps it downstream (see test_repair_clamps_a_smeared_word). Detection lives here; the repair is
+    # a separate function so this diagnostic assertion is unchanged.
     d = doc([("ugly", 10.0, 15.71), ("How", 15.8, 16.0), ("can", 16.0, 16.2)])
     rep = validate_timing(d, duration_sec=17.0)
     assert rep.smeared and rep.smeared[0][0] == "ugly"
@@ -77,6 +81,66 @@ def test_out_of_order_words_are_DISQUALIFYING():
     rep = validate_timing(d, duration_sec=10.0)
     assert rep.out_of_order == 1
     assert not rep.usable
+
+
+# ── repair (issue #629 item #2 — act on smears/flashes, do not merely report them) ───────────────
+
+
+def test_repair_clamps_a_smeared_word():
+    # "ugly" is held 10.0->15.71 (5.71s). MAX_WORD_SEC is 3.0, so its end must be clamped to
+    # 10.0 + 3.0 = 13.0 exactly. Expected value is a hard literal (10.0 + 3.0), NOT re-derived from
+    # MAX_WORD_SEC arithmetic on the smear's own numbers.
+    d = doc([("ugly", 10.0, 15.71), ("How", 15.8, 16.0), ("can", 16.0, 16.2)])
+    report = repair_word_spans(d)
+    assert report.changed
+    assert [w for w, _ in report.smeared_clamped] == ["ugly"]
+    words = d["lines"][0]["words"]
+    assert words[0]["end"] == 13.0  # clamped down to start + MAX_WORD_SEC
+    assert words[0]["start"] == 10.0  # start never moves
+    # the clamp only shrank the span, so it cannot reach "How" at 15.8 — no overlap, no reorder
+    assert words[0]["end"] < words[1]["start"]
+    # non-smeared words untouched
+    assert words[1]["end"] == 16.0 and words[2]["end"] == 16.2
+
+
+def test_repair_leaves_non_smeared_words_alone():
+    d = doc([("Coming", 1.0, 1.3), ("out", 1.3, 1.5), ("of", 1.5, 1.7)])
+    report = repair_word_spans(d)
+    assert not report.changed
+    words = d["lines"][0]["words"]
+    assert [w["end"] for w in words] == [1.3, 1.5, 1.7]  # byte-for-byte unchanged
+
+
+def test_repair_extends_a_flashed_word_when_there_is_room():
+    # "a" flashes at 20ms (1.2->1.22). MIN_WORD_SEC is 0.03, so it must extend to 1.2 + 0.03 = 1.23,
+    # which is still before "kiss" at 1.25, so there IS room. Hard-literal expectation.
+    d = doc([("its", 1.0, 1.2), ("a", 1.2, 1.22), ("kiss", 1.25, 1.6)])
+    report = repair_word_spans(d)
+    assert [w for w, _ in report.flashed_extended] == ["a"]
+    assert not report.flashed_uncorrectable
+    words = d["lines"][0]["words"]
+    assert words[1]["end"] == 1.23  # extended up to start + MIN_WORD_SEC
+    assert words[1]["end"] <= words[2]["start"]  # still no collision with "kiss"
+
+
+def test_repair_leaves_a_flash_uncorrectable_when_it_would_collide():
+    # "a" flashes at 1.20->1.22, but "kiss" starts at 1.225 — extending to 1.23 would overrun it and
+    # create a backwards edge. A flash beats an out-of-order jump, so it is LEFT and reported.
+    d = doc([("its", 1.0, 1.2), ("a", 1.2, 1.22), ("kiss", 1.225, 1.6)])
+    report = repair_word_spans(d)
+    assert not report.flashed_extended
+    assert [w for w, _ in report.flashed_uncorrectable] == ["a"]
+    words = d["lines"][0]["words"]
+    assert words[1]["end"] == 1.22  # untouched — no room
+
+
+def test_repair_never_creates_an_out_of_order_word():
+    # A repaired doc must re-validate with zero order violations — the one defect repair must never mint.
+    d = doc([("ugly", 10.0, 15.71), ("a", 15.8, 15.82), ("How", 15.83, 16.0)])
+    repair_word_spans(d)
+    rep = validate_timing(d, duration_sec=17.0)
+    assert rep.out_of_order == 0
+    assert not rep.smeared  # the 5.71s smear is gone after repair
 
 
 def test_thin_coverage_is_REPORTED_but_still_published():

@@ -172,6 +172,82 @@ def validate_timing(doc: dict[str, Any], duration_sec: float | None) -> TimingRe
     return rep
 
 
+@dataclass
+class RepairReport:
+    """What repair_word_spans actually changed, so the caller can note it honestly."""
+
+    #: (word, original_dur) for each smeared word whose end was clamped down to MAX_WORD_SEC.
+    smeared_clamped: list[tuple[str, float]] = field(default_factory=list)
+    #: (word, original_dur) for each flashed word whose end was extended up toward MIN_WORD_SEC.
+    flashed_extended: list[tuple[str, float]] = field(default_factory=list)
+    #: (word, original_dur) for flashed words left alone because extending them would have collided
+    #: with the next word's start — a flash beats an out-of-order jump, so those are reported, not fixed.
+    flashed_uncorrectable: list[tuple[str, float]] = field(default_factory=list)
+
+    @property
+    def changed(self) -> bool:
+        return bool(self.smeared_clamped or self.flashed_extended)
+
+    def summary(self) -> str:
+        bits: list[str] = []
+        if self.smeared_clamped:
+            worst = self.smeared_clamped[0]
+            bits.append(
+                f"{len(self.smeared_clamped)} smear(s) clamped to {MAX_WORD_SEC:g}s "
+                f"(worst '{worst[0]}' was {worst[1]:.1f}s)"
+            )
+        if self.flashed_extended:
+            bits.append(f"{len(self.flashed_extended)} flash(es) extended to {MIN_WORD_SEC * 1000:.0f}ms")
+        if self.flashed_uncorrectable:
+            bits.append(
+                f"{len(self.flashed_uncorrectable)} flash(es) left — no room before the next word"
+            )
+        return " · ".join(bits)
+
+
+def repair_word_spans(doc: dict[str, Any]) -> RepairReport:
+    """ACT on the smears and flashes validate_timing only reports (issue #629, item #2).
+
+    validate_timing DIAGNOSES; this REPAIRS, and the split is deliberate — the note stays honest about
+    what the aligner produced, and this records what was done about it. Two transforms, both provably
+    order-preserving so a repair can never manufacture the one defect that is genuinely disqualifying
+    (an out-of-order word → backwards highlight):
+
+      SMEAR (dur > MAX_WORD_SEC): a word cannot plausibly be held 3+ seconds; the measured worst was one
+        word smeared across 5.7s. Clamp its `end` DOWN to `start + MAX_WORD_SEC`. This only ever SHRINKS
+        the span, so it cannot reach into the next word (whose start already sat at or after the smear's
+        original, longer end); the reclaimed time becomes a dark gap, which reads far better than a word
+        lit wrongly for seconds. Non-smeared words are untouched.
+
+      FLASH (dur < MIN_WORD_SEC): a ~20ms word is invisible. Extend its `end` UP toward
+        `start + MIN_WORD_SEC`, but ONLY when the extended end does not reach the next word's start
+        (`new_end <= next_start`). When there is no room, the flash is LEFT and reported: a flash beats a
+        backwards jump. Extending never moves `start`, so it cannot reorder either.
+
+    Mutates the word dicts in place and returns what it changed. Operates on the same word list
+    validate_timing walks (`_words_of`), in document order, so `next_start` is well defined.
+    """
+    report = RepairReport()
+    words = _words_of(doc)
+    for i, w in enumerate(words):
+        start, end = float(w["start"]), float(w["end"])
+        dur = end - start
+        name = str(w.get("word", "?")).strip()
+        if dur > MAX_WORD_SEC:
+            w["end"] = start + MAX_WORD_SEC
+            report.smeared_clamped.append((name, dur))
+        elif dur < MIN_WORD_SEC:
+            next_start = float(words[i + 1]["start"]) if i + 1 < len(words) else None
+            target = start + MIN_WORD_SEC
+            if next_start is None or target <= next_start + 1e-9:
+                w["end"] = target
+                report.flashed_extended.append((name, dur))
+            else:
+                report.flashed_uncorrectable.append((name, dur))
+    report.smeared_clamped.sort(key=lambda t: -t[1])
+    return report
+
+
 # ── the LRC as a guide ───────────────────────────────────────────────────────────────────────────
 
 

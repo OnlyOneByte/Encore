@@ -2321,3 +2321,64 @@ def test_build_processor_wires_config_keep_raw_captions_to_the_align_steps():
         assert steps and all(s.keep_raw is flag for s in steps), (
             f"config keep_raw_captions={flag} must reach the steps"
         )
+
+
+
+# -- #629 item #2: the repair actually fires on the PUBLISH path (pins the step call site) ----------
+
+
+class _SmearingAligner:
+    """Force-aligner stand-in that produces exactly one smeared word and NOTHING else wrong. Each line's
+    words are spaced by a fixed 6.0s stride, and the first word of the doc is held for 5.0s (>
+    validate.MAX_WORD_SEC 3.0). Because the stride (6.0s) exceeds the smear (5.0s), the smeared word
+    still ends before the next word begins: the doc stays perfectly in order, so it is ``usable`` and
+    the smear is the ONLY defect -- the reachable state #629 item #2 repairs, not the disqualifying
+    out-of-order state.
+    """
+
+    STRIDE = 6.0
+
+    def align(self, segments, audio_path, language):
+        out = []
+        t = 0.0
+        first = True
+        for s in segments:
+            toks = s["text"].split()
+            words = []
+            for tok in toks:
+                start = round(t, 3)
+                end = round(start + (5.0 if first else 0.4), 3)
+                words.append({"word": tok, "start": start, "end": end})
+                first = False
+                t += self.STRIDE
+            out.append(
+                {"start": words[0]["start"], "end": words[-1]["end"], "text": s["text"], "words": words}
+            )
+        return {"language": language, "segments": out}
+
+
+@pytest.mark.asyncio
+async def test_629_a_smeared_word_is_REPAIRED_on_the_publish_path(tmp_path):
+    """The step-level pin for #629 item #2. A word smeared to 5.0s force-aligns cleanly (in order, so
+    usable), and the PUBLISHED doc must carry it clamped to start + MAX_WORD_SEC (3.0), not held 5.0s.
+    Reverting the repair_word_spans call in TimeTexts.run leaves the 5.0s span in the published doc, so
+    this assertion reds -- which is what proves the repair is reached on the real publish path, not only
+    in a unit test of the function.
+    """
+    text = _six_line_synced_text()
+    ctx = await _drive_time_texts(_SmearingAligner(), text, tmp_path)
+
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    assert len(cands) == 1, cands
+    cand = cands[0]
+    assert cand["timing"] == TIMING_WORD  # a usable word doc, not degraded to line sync
+    doc = json.loads((tmp_path / cand["ref"]).read_text())
+    words = [w for ln in doc["lines"] for w in (ln.get("words") or [])]
+    assert words, doc
+    first = words[0]
+    # The published span of the smeared word is clamped to exactly start + 3.0 (hard literal, not
+    # re-derived from MAX_WORD_SEC), and no published word exceeds 3.0s.
+    assert first["end"] == round(first["start"] + 3.0, 3), first
+    assert all(w["end"] - w["start"] <= 3.0 + 1e-6 for w in words), words
+    # the repair note is emitted so an operator sees it happened
+    assert any("timing repaired" in n for n in ctx.out.notes), ctx.out.notes
