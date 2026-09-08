@@ -2,7 +2,7 @@
 import { test, expect } from 'bun:test';
 import { openDb } from './index';
 import { runMigrations, hydrate } from './migrate';
-import { rooms, singers, media, queueEntries, playbackState, jobs, jobAttempts } from './schema';
+import { rooms, singers, media, queueEntries, playbackState, jobs, jobAttempts, roomSettings } from './schema';
 import { mkdtempSync, mkdirSync, cpSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -72,6 +72,20 @@ test('media defaults: stemStatus none', () => {
 	db.insert(media).values({ id: 'm2', source: 'local', sourceRef: 'f.mp4', title: 'X', durationSec: 100 }).run();
 	const row = db.select().from(media).all()[0]!;
 	expect(row.stemStatus).toBe('none');
+});
+
+// #398: the room_settings.lyrics_ball COLUMN default is 'off' (owner decision C — flip the marker
+// default to No marker, keep the styles). This pins the SQLite column default itself: a raw insert
+// that omits lyrics_ball must read back 'off'. Reverting schema.ts's .default('off') -> 'bounce'
+// reds this. (The app read path never hits this default — getRoom returns DEFAULT_ROOM_SETTINGS for
+// a no-row room and setRoom writes every column — so this guards the migration / hand-edited-DB path
+// the column default actually governs.)
+test('room_settings column defaults: lyrics_ball is off', () => {
+	const { db } = openDb(':memory:');
+	runMigrations(db);
+	db.insert(roomSettings).values({ roomId: 'r1' }).run();
+	const row = db.select().from(roomSettings).all()[0]!;
+	expect(row.lyricsBall).toBe('off');
 });
 
 // Issue #638: a host pin (pinnedSeq) is durable — it must survive a restart, which is the whole point
