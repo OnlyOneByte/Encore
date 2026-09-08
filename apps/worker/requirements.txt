@@ -61,3 +61,16 @@ bs-roformer-infer==0.1.5
 pyperclip==1.11.0
 docx2txt==0.9
 striprtf==0.0.33
+
+# ── loudness analysis (issue #462) ──────────────────────────────────────────────────────
+# pyloudnorm is a small, standard MIT implementation of EBU R128 / ITU-R BS.1770-4 integrated
+# loudness. It runs over the mono float64 array analysis/wav.py already decodes (numpy in, a number
+# out — no ffmpeg, no torch), honouring analysis/__init__.py's "numpy in, dict out, no subprocess"
+# contract. Its only runtime dep is scipy (numpy is already pinned via the torch/whisperx set above).
+pyloudnorm==0.2.0
+# scipy is the ONE genuinely new transitive dep pyloudnorm pulls in — it is NOT already present in
+# this venv (verified: `import scipy` fails on the current worker image). Pinned exactly per the
+# no-bare-latest rule. 1.16.2 ships a prebuilt cp312 manylinux2014_aarch64 wheel (no source build,
+# so the image's toolchain is irrelevant) and its numpy constraint (>=1.25.2,<2.6) is satisfied by
+# the pinned numpy 2.5 — no numpy rebuild, no conflict with the torch 2.8 set.
+scipy==1.16.2
