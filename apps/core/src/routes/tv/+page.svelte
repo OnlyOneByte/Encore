@@ -1008,7 +1008,11 @@
 		gap: 1.2em;
 		flex-wrap: wrap;
 		padding: 2vh var(--tv-safe-x) var(--tv-safe-y);
-		background: linear-gradient(0deg, rgba(3, 3, 8, 0.9), rgba(3, 3, 8, 0));
+		/* Fade to the theme background, matching TvLobby's twin idle fade. This was a hardcoded
+		   rgba(3,3,8,…) that the token sweep missed — a DIFFERENT black from --bg (0b0b12 = rgb(11,11,18)),
+		   so the two idle screens, which are meant to read as the same screen, fell out of sync (#460 §16).
+		   color-mix keeps the fade on --bg like TvLobby; alpha-0 is just transparent. */
+		background: linear-gradient(0deg, color-mix(in srgb, var(--bg) 90%, transparent), transparent);
 	}
 	.is-label {
 		font-size: var(--tv-eyebrow);
