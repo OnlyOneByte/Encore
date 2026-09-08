@@ -9,23 +9,20 @@ import { singers } from '../db/schema';
 import { ulid, type Singer } from '@encore/shared';
 
 /**
- * A singer AS STORED: the wire {@link Singer} plus the `room_id` scoping key (#656). The wire type
- * carries no room (a phone is never told its own room id), but the server reads it off the row to
- * scope the roster and the in-room name-uniqueness check — so the repository's row-returning reads
- * surface it while the public {@link SingerRepository.listPublic} strips it back off.
+ * A singer AS STORED: the wire {@link Singer} plus the `room_id` scoping key (#656). The server reads
+ * the room off the row to scope the roster and the in-room name-uniqueness check, so the repository's
+ * row-returning reads surface it.
+ *
+ * A phone DOES learn its own room id — `/api/join` returns it in the response body, deliberately, so
+ * the device knows which party it is in. What strips `room_id` is the ROSTER: {@link
+ * SingerRepository.listPublic} drops it because a roster entry of somebody else carries no use for it
+ * and the public shape is the wire `Singer`. Any other projection of a `StoredSinger` onto the wire
+ * has to drop it too, for the same reason — `/api/me` does, so its `singer:updated` frame matches
+ * `PublicSinger` (#797).
  */
 export type StoredSinger = Singer & { roomId: string };
 
 export const SESSION_COOKIE = 'encore_singer';
-
-/**
- * The room a phone joined. Set by /api/join alongside the session cookie (#654) so the identity of
- * WHICH party this device belongs to survives every later request without re-resolving a join code.
- * The room-scoping chain reads it: #655 keyed playback by room, and #656 keys the queue + roster —
- * a singer is created IN a room and the roster is listed BY room. Scoping the token that names which
- * room a given socket may act in is #657.
- */
-export const ROOM_COOKIE = 'encore_room';
 
 /** Cryptographically-strong, URL-safe session token (NOT the ulid helper — that's for entry ids). */
 export function mintSessionToken(): string {
@@ -44,8 +41,9 @@ export class SingerRepository {
 	 * `roomId` is the party this singer belongs to — the room the /api/join resolved (an explicit code
 	 * or the active room). It scopes the roster, the `least-recently-sung` ordering, and the presence
 	 * sweep to one party, so two rooms no longer share one roster. The returned {@link Singer} carries
-	 * no room field: the wire contract is unchanged (a phone never needs to be told its own room), so
-	 * the column is a server-side scoping key, not new wire state.
+	 * no room field: the wire `Singer` contract is unchanged, so the column is a server-side scoping
+	 * key rather than new wire state. The joining phone still learns its own room — /api/join returns
+	 * `roomId` beside the singer (#797).
 	 */
 	create(displayName: string, color: string, now: number, roomId: string): Singer {
 		const singer: Singer = {

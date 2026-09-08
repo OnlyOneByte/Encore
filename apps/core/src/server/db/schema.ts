@@ -35,9 +35,11 @@ export const singers = sqliteTable(
 		// deployment-wide because a singer carried no room — two rooms shared one roster. `room_id`
 		// scopes the roster to a room, mirroring how #655 keyed playback: the repository reads/writes
 		// only THIS room's singers, so `least-recently-sung` ranks the right party and the presence
-		// sweep never mixes two rooms. Minted from the room the /api/join landed in (the ROOM_COOKIE
-		// #654 set). NOT NULL: every singer belongs to exactly one room; the migration re-keys existing
-		// rows onto the active room. Which room a socket is scoped to at the wire is #657.
+		// sweep never mixes two rooms. Minted from the room `doJoin` resolved for that request (an
+		// explicit join code, else the active room) — see singers/join.ts, not a cookie: the room cookie
+		// #654 planned for this never had a reader and #797 deleted it. NOT NULL: every singer belongs to
+		// exactly one room; the migration re-keys existing rows onto the active room. Which room a socket
+		// is scoped to at the wire is #657.
 		roomId: text('room_id').notNull()
 	},
 	// Finding #3: session_token is the auth lookup key (bySessionToken on every authed request).

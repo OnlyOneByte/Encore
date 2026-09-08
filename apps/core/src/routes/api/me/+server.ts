@@ -17,7 +17,9 @@ export const GET: RequestHandler = async ({ cookies }) => {
 	const token = cookies.get(SESSION_COOKIE);
 	const singer = getApp().singers.bySessionToken(token);
 	if (!singer) return json({ singer: null }, { status: 401 });
-	const { sessionToken: _t, ...safe } = singer;
+	// `roomId` goes too, not just the token: this projects a StoredSinger onto the wire `Singer`, and
+	// `room_id` is a server-side scoping key (#797). The phone already learned its room from /api/join.
+	const { sessionToken: _t, roomId: _r, ...safe } = singer;
 	return json({ singer: safe });
 };
 
@@ -47,9 +49,13 @@ export const PATCH: RequestHandler = async ({ request, cookies }) => {
 	const updated = app.singers.updateProfile(me.id, displayName, color);
 	if (!updated) return json({ error: 'could not update profile' }, { status: 400 });
 
-	const { sessionToken: _t, ...safe } = updated;
+	const { sessionToken: _t, roomId: _r, ...safe } = updated;
 	// Broadcast, or the TV's roster chip and the "Now singing" lower-third keep the old name until the
 	// next full sync — which on a quiet room is not until someone touches the queue.
+	//
+	// `roomId` is stripped above as well as the token: this frame is typed `PublicSinger`, which has no
+	// room field, and a variable (rather than an inline literal) fires no excess-property check — so
+	// nothing but this strip keeps the wire shape equal to its declared type (#797).
 	app.publish({ type: 'singer:updated', singer: safe });
 	return json({ singer: safe });
 };
