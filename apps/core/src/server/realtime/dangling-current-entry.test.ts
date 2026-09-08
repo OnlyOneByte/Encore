@@ -272,7 +272,7 @@ function collectNonTestSources(): string[] {
 // A reconcileOnReady CALL, distinct from its `export function reconcileOnReady(` DEFINITION (player.ts).
 const RECONCILE_CALL = /(?<!function\s)\breconcileOnReady\s*\(/;
 
-test('reconcileOnReady is called from exactly the two non-boot sites the #254 comment names (#342)', () => {
+test('reconcileOnReady is called from exactly the three non-boot sites: queue:command, onMediaReady, and the #639 entry-delete (#342)', () => {
 	// The set of NON-TEST files in apps/core that CALL reconcileOnReady must be exactly server.ts (the
 	// queue:command gate) and src/server/app.ts (the onMediaReady handler). A reconcile added anywhere
 	// else — e.g. a new boot module — reds this; deleting the last call in app.ts reds it too.
@@ -280,7 +280,7 @@ test('reconcileOnReady is called from exactly the two non-boot sites the #254 co
 		.filter((f) => RECONCILE_CALL.test(stripComments(readFileSync(f, 'utf8'))))
 		.map((f) => relative(CORE_ROOT, f))
 		.sort();
-	expect(sites).toEqual(['server.ts', 'src/server/app.ts']);
+	expect(sites).toEqual(['server.ts', 'src/server/app.ts', 'src/server/media/delete.ts']);
 
 	// The app.ts call must be INSIDE the onMediaReady handler and be the ONLY reconcile in the file.
 	// This is what pins the comment's actual claim: a boot-time reconcile (the quarantined mutation)
