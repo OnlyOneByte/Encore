@@ -20,7 +20,14 @@ Two load-bearing tests hold that up:
 
 from __future__ import annotations
 
-from src.lyrics.captions import caption_argv, find_caption_file, is_translated_track, parse_vtt, read_captions
+from src.lyrics.captions import (
+    _SCROLL_MIN_OVERLAP_WORDS,
+    caption_argv,
+    find_caption_file,
+    is_translated_track,
+    parse_vtt,
+    read_captions,
+)
 
 # A real-shaped WebVTT track: header, a NOTE block, cue identifiers, cue settings, inline markup,
 # an annotation-only cue, and a line held on screen across two cues.
@@ -547,20 +554,48 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
     """
     segs = parse_vtt(_ROLLING_FIXTURE.read_text(encoding="utf-8"))
 
+    # #686 INVARIANT, PRESERVED. The prefix-extend collapse still fires: no adjacent pair where the
+    # earlier line is a strict prefix of the later one AND that later line is long enough to be a real
+    # rolling extend. Base leaves 115 such pairs here; #686 drives them to 0. (Sub-threshold short
+    # leftovers created by the scroll trim below — a 1–2 word line quoted at the head of the next — are
+    # deliberately spared, so this counts only extends of >= _SCROLL_MIN_OVERLAP_WORDS words.)
     prefix_extends = sum(
         1
         for a, b in zip(segs, segs[1:], strict=False)
-        if b["text"] != a["text"] and b["text"].startswith(a["text"])
+        if b["text"] != a["text"]
+        and b["text"].startswith(a["text"])
+        and len(a["text"].split()) >= _SCROLL_MIN_OVERLAP_WORDS
     )
     assert prefix_extends == 0, (
         f"a rolling run survived uncollapsed: {prefix_extends} adjacent pairs where the earlier line is "
         "a strict prefix of the later one (base parse_vtt leaves 115 here)"
     )
 
-    # No exact consecutive duplicate should remain either (the held-repeat rule already covered these).
-    assert not any(a["text"] == b["text"] for a, b in zip(segs, segs[1:], strict=False))
+    # #687 INVARIANT. The SCROLL residual is gone. YouTube's window also scrolls — words drop off the
+    # front — so line N+1's HEAD repeats line N's TAIL without N being a prefix of N+1. Measured on this
+    # fixture the base has 90 adjacent pairs overlapping by >= _SCROLL_MIN_OVERLAP_WORDS words (46.1% of
+    # all words repeat the previous tail). The trim drives that to 0. This is the assertion that reds on
+    # #686's head (its prefix-only fold cannot reach the scroll shape).
+    def _tail_overlap_words(a: str, b: str) -> int:
+        wa, wb = a.split(), b.split()
+        for k in range(min(len(wa), len(wb)), 0, -1):
+            if wa[-k:] == wb[:k]:
+                return k
+        return 0
 
-    # The collapse roughly halves the line count vs. the ~2x-inflated base output (236 lines here).
+    scroll_overlaps = sum(
+        1
+        for a, b in zip(segs, segs[1:], strict=False)
+        if _tail_overlap_words(a["text"], b["text"]) >= _SCROLL_MIN_OVERLAP_WORDS
+    )
+    assert scroll_overlaps == 0, (
+        f"a scroll-window run survived uncollapsed: {scroll_overlaps} adjacent pairs whose head repeats "
+        "the previous tail by >= 3 words (base leaves 90 here — #686's prefix fold does not reach them)"
+    )
+
+    # The trim keeps ONE window per real line rather than merging the run: the line count stays in the
+    # same band #686 produced (122 pre-trim), NOT collapsed toward ~28 as a merge would. This is the
+    # guard that fails for a merge-shaped fix and passes for a trim-shaped one.
     assert 100 <= len(segs) <= 150, f"expected the rolling track to collapse to ~half; got {len(segs)}"
 
     # The triplet's 10ms hold cue must be folded into its run, not left as a degenerate line.
@@ -569,6 +604,54 @@ def test_a_rolling_auto_caption_run_collapses_to_the_real_line_count():
     # Sanity: monotonic, non-empty, and the opening rolled line is fully assembled (not truncated).
     assert segs[0]["text"].startswith("was this week's phone scam. Check it out.")
     assert all(a["start"] <= b["start"] for a, b in zip(segs, segs[1:], strict=False))
+
+
+def test_a_time_separated_repeated_line_is_NOT_collapsed_as_a_scroll():
+    """The scroll trim must not eat a genuine repeat. A chorus line that recurs LATER in the song is a
+    real lyric, not a rolling-window artifact — the only thing keeping the two apart is TIME-ADJACENCY,
+    since their text overlaps fully. Two identical lines separated by a large time gap must both survive.
+    """
+    vtt = (
+        "WEBVTT\n\n"
+        "00:00:10.000 --> 00:00:13.000\nwe will rock you we will rock you\n\n"
+        "00:00:50.000 --> 00:00:53.000\nwe will rock you we will rock you\n\n"
+    )
+    segs = parse_vtt(vtt)
+    assert [s["text"] for s in segs] == [
+        "we will rock you we will rock you",
+        "we will rock you we will rock you",
+    ]
+
+
+def test_a_single_shared_boundary_word_is_NOT_trimmed_as_a_scroll():
+    """The word-overlap threshold is load-bearing. Two adjacent lines can share ONE boundary word by
+    coincidence — the tail of one being the head of the next — without one being a scrolled view of the
+    other. Trimming on any shared word would silently delete a legitimate opening word; the >= 3-word
+    threshold spares it. Here the lines share exactly the word "the" at the boundary and must NOT trim.
+    """
+    vtt = (
+        "WEBVTT\n\n"
+        "00:00:10.000 --> 00:00:12.000\nthe cat sat on the\n\n"
+        "00:00:12.000 --> 00:00:14.000\nthe dog ran away fast\n\n"
+    )
+    segs = parse_vtt(vtt)
+    assert [s["text"] for s in segs] == ["the cat sat on the", "the dog ran away fast"]
+
+
+def test_a_scroll_window_trims_the_repeated_head_and_keeps_the_new_tail():
+    """The core scroll shape, minimal. Line N+1 is line N with words dropped off the FRONT and new words
+    appended at the back — a scrolled window, NOT a prefix of N — so #686's prefix fold leaves it whole.
+    The trim removes the >= 3-word repeated head and keeps only the new tail as its own line, preserving
+    per-line windows (two lines out, not one merged line).
+    """
+    vtt = (
+        "WEBVTT\n\n"
+        "00:00:10.000 --> 00:00:12.000\nJohn Cena defends his title\n\n"
+        "00:00:12.000 --> 00:00:14.000\nCena defends his title in the Super Slam\n\n"
+    )
+    segs = parse_vtt(vtt)
+    assert [s["text"] for s in segs] == ["John Cena defends his title", "in the Super Slam"]
+    assert len(segs) == 2  # trimmed, not merged into one line
 
 
 def test_a_cue_whose_payload_opens_with_a_whitespace_only_line_is_not_dropped():
