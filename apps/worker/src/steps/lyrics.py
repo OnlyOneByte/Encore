@@ -445,6 +445,12 @@ class TimeTexts(Step):
         if not candidates:
             raise RuntimeError("text was acquired but nothing could be timed (no word or line sync)")
         ctx.out.artifacts["lyrics"] = {"candidates": candidates}
+        # Persist WHY this lyric won, not just which one. `sel.choices` already carries every rejected
+        # label with its score, `decided_by` and the baseline vote count; those reach the cook log via
+        # summary() above but the log rotates and is per-container. Crossing them to durable state here
+        # is the whole of #669 — the audit trail can then say which of #542's arms fired for a mis-pick.
+        if sel is not None:
+            ctx.out.selection = sel.to_record()
         yield ProgressEvent(stage=self.stage, pct=100)
 
 

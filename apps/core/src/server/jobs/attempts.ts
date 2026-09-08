@@ -33,6 +33,8 @@ export interface AttemptFacts {
 	audioSec?: number | null;
 	/** Per-stage breakdown, serialized. Set from the worker's `job:complete`. */
 	stages?: string | null;
+	/** Variant-pick provenance, serialized. Set from the worker's `job:complete` on align (#669). */
+	selection?: string | null;
 }
 
 export class AttemptLedger {
@@ -73,7 +75,8 @@ export class AttemptLedger {
 			asrModel: null,
 			syncMode: null,
 			audioSec: null,
-			stages: null
+			stages: null,
+			selection: null
 		};
 		this.#db.insert(jobAttempts).values(row).run();
 		return row;
@@ -194,7 +197,17 @@ export class AttemptLedger {
 /** Drop undefined keys so a partial report patches only what it actually claims. */
 function pickFacts(facts: AttemptFacts): Partial<JobAttempt> {
 	const out: Partial<JobAttempt> = {};
-	for (const k of ['engine', 'model', 'backend', 'device', 'asrModel', 'syncMode', 'audioSec', 'stages'] as const) {
+	for (const k of [
+		'engine',
+		'model',
+		'backend',
+		'device',
+		'asrModel',
+		'syncMode',
+		'audioSec',
+		'stages',
+		'selection'
+	] as const) {
 		if (facts[k] !== undefined) out[k] = facts[k] as never;
 	}
 	return out;

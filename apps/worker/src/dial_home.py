@@ -317,6 +317,7 @@ class WorkerClient:
                     result.artifacts,
                     facts=result.facts,
                     stages=timer.finish(),
+                    selection=result.selection,
                 )
             )
         except Exception as exc:  # noqa: BLE001 — report ANY failure to the core, which decides retry

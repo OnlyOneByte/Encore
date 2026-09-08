@@ -12,6 +12,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import { dur, stepLabel, stageLabel, localStamp, rate } from '$lib/metrics-format';
 	import { formatClock } from '$lib/clock';
+	import type { SelectionRecord } from '@encore/shared';
 
 	interface AuditAttempt {
 		id: string;
@@ -28,6 +29,8 @@
 		rtFactor: number | null;
 		models: Record<string, string | null>;
 		stages: { stage: string; ms: number }[];
+		// WHY the published lyric won, when the align attempt recorded it (#669). Null otherwise.
+		selection: SelectionRecord | null;
 	}
 	interface Cook {
 		cookId: string;
@@ -99,6 +102,16 @@
 	const factLabel = (k: string) => FACT_LABELS[k] ?? k;
 
 	// STAGE_LABELS/stageLabel moved to $lib/metrics-format (shared with /metrics).
+
+	// WHY THE LYRIC WAS PICKED, in words (#669). 'agreement' means a baseline actually voted, so a
+	// wrong pick there is a metric problem; 'metadata' means none could and cheap ordering stood, which
+	// is the arm a new similarity metric does NOT fix — that distinction is the whole point of persisting it.
+	const DECIDED_LABELS: Record<string, string> = {
+		agreement: 'a baseline judged it',
+		metadata: 'no baseline could judge — chosen on metadata'
+	};
+	const decidedLabel = (d: string) => DECIDED_LABELS[d] ?? d;
+	const score = (n: number | null) => (n === null ? '—' : n.toFixed(2));
 </script>
 
 <svelte:head><title>Encore — audit {mediaId}</title></svelte:head>
@@ -170,6 +183,29 @@
 							{#if a.stages.length}
 								<div class="metrics-row">
 									{#each a.stages as s (s.stage)}<span class="secondary">{stageLabel(s.stage)} {dur(s.ms)}</span>{/each}
+								</div>
+							{/if}
+							{#if a.selection}
+								<div class="selection">
+									{#each a.selection.choices as c (c.textSource)}
+										<div class="pick">
+											<span class="kept"
+												>kept <strong>{c.chosen ?? '?'}</strong>{#if c.chosenScore !== null}
+													({score(c.chosenScore)} from {c.votes} baseline{c.votes === 1 ? '' : 's'}){/if}</span
+											>
+											<span class="secondary">{decidedLabel(c.decidedBy)}</span>
+											{#if c.rejected.length}
+												<span class="secondary"
+													>over {#each c.rejected as r, i (r.label ?? i)}{r.label ?? '?'}
+														{score(r.score)}{#if i < c.rejected.length - 1},
+														{/if}{/each}</span
+												>
+											{/if}
+										</div>
+									{/each}
+									{#if a.selection.winnerSuspect}<span class="secondary suspect"
+											>winner disagreed with every baseline — probably the wrong song</span
+										>{/if}
 								</div>
 							{/if}
 							{#if a.error}<p class="err">{a.error}</p>{/if}
@@ -323,6 +359,28 @@
 	.facts dd {
 		margin: 0;
 		color: var(--ink);
+	}
+	/* WHY the lyric was picked (#669): one small block per source, each line dim so it reads as
+	   provenance beside the timings rather than competing with them. */
+	.selection {
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		margin-top: 0.4rem;
+		font-variant-numeric: tabular-nums;
+	}
+	.pick {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.2rem 0.7rem;
+		align-items: baseline;
+	}
+	.kept {
+		font-size: 0.78rem;
+		color: var(--ink);
+	}
+	.suspect {
+		color: var(--warn);
 	}
 	.retry {
 		font-size: 0.72rem;

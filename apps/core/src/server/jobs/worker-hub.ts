@@ -286,7 +286,8 @@ export class WorkerHub {
 		// seals the attempt row, and a sealed row is never written again. Ordering matters here.
 		this.#d.attempts?.reportFacts(msg.jobId, {
 			...(msg.facts ?? {}),
-			stages: msg.stages?.length ? JSON.stringify(msg.stages) : undefined
+			stages: msg.stages?.length ? JSON.stringify(msg.stages) : undefined,
+			selection: msg.selection ? JSON.stringify(msg.selection) : undefined
 		});
 		const updated = this.#d.jobs.complete(msg.jobId, this.#d.now());
 		const settings = this.#cookSettings();
