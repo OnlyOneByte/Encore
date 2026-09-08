@@ -1,7 +1,7 @@
 // WebSocket event vocabulary — the wire contract between core, phones, TV, and workers.
 // See docs/ARCHITECTURE.md.
 
-import type { Media, QueueEntry, Singer, PlaybackState, JobType } from './types';
+import type { Media, QueueEntry, Singer, PlaybackState, JobType, SelectionRecord } from './types';
 import type { ServerPatch, ClientCommand } from './ops';
 import type { LyricsCandidate } from './lyrics';
 import type { SongProfile } from './song-profile';
@@ -134,6 +134,9 @@ export type WorkerMessage =
 			facts?: ResolvedFacts;
 			/** Per-stage wall clock for this job, in the order the stages ran. */
 			stages?: StageTiming[];
+			/** WHY the published lyric was chosen — the align step's variant-pick provenance. Absent on
+			 *  every non-align job and on an align job that made no choice among versions. */
+			selection?: SelectionRecord;
 	  }
 	| { type: 'job:failed'; workerId: string; jobId: string; error: string; retryable: boolean };
 
@@ -164,7 +167,6 @@ export interface StageTiming {
 	stage: string;
 	ms: number;
 }
-
 /** The box a worker runs on. Best-effort and every field optional — a diagnostic must never fail a
  *  handshake, and torch is genuinely absent under ENCORE_PROCESSOR=stub.
  *

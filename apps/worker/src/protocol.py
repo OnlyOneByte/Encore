@@ -102,6 +102,7 @@ def complete(
     artifacts: dict[str, Any] | None = None,
     facts: dict[str, Any] | None = None,
     stages: list[dict[str, Any]] | None = None,
+    selection: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     msg: dict[str, Any] = {"type": COMPLETE, "workerId": worker_id, "jobId": job_id, "mediaUri": media_uri}
     if artifacts is not None:
@@ -118,6 +119,11 @@ def complete(
     # actually changed.
     if stages:
         msg["stages"] = stages
+    # WHY THIS LYRIC WON. `summary()` renders these facts to the cook log, which rotates and is
+    # per-container; this is the same facts as durable data so a mis-pick is answerable from the
+    # audit trail weeks later, not from a log line that is already gone (#669).
+    if selection:
+        msg["selection"] = selection
     return msg
 
 

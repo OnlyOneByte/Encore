@@ -413,6 +413,16 @@ export interface JobAttempt {
 	 * would add a join and a migration without enabling a query. Use `attemptStages()` to read it.
 	 */
 	stages: string | null;
+
+	/**
+	 * WHY the published lyric was chosen, as a JSON string (#669). Present only on `align` attempts
+	 * that made a pick among versions; null everywhere else. Stored whole for the same reason as
+	 * `stages` and `media.lyricsCandidates`: it is read whole to explain one attempt, never queried
+	 * inside, so a table would buy a join and a migration for no query. Parse with `attemptSelection()`.
+	 * The audit trail, not the sidecar, is its home: a rejected candidate is run history, not the
+	 * library identity the sidecar projects into the media row.
+	 */
+	selection: string | null;
 }
 
 /** Parse an attempt's stage breakdown. Returns [] for absent or malformed JSON — a corrupt
@@ -425,6 +435,67 @@ export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; m
 		return parsed.filter((s) => typeof s?.stage === 'string' && Number.isFinite(s?.ms));
 	} catch {
 		return [];
+	}
+}
+
+/**
+ * WHY one lyric candidate won over the others, as durable data (#669).
+ *
+ * The worker's `VariantChoice.summary()` already renders exactly these facts, but only to the cook
+ * log, which rotates and is per-container and is long gone by the time someone notices wrong lyrics on
+ * the TV weeks later. This is that same explanation crossed to the `/metrics/<mediaId>` audit trail so
+ * a mis-pick is answerable from persisted state. Deliberately NOT the rejected lyric BODIES: label +
+ * composite score is enough to say which arm fired (a metadata fallback no baseline could judge versus
+ * a real disagreement the metric ranked), and four full rejected texts per song would multiply the
+ * lyrics footprint for triage-only data.
+ */
+export interface SelectionRecord {
+	/** True when no candidate existed and a baseline is being shown as the answer. */
+	baselineFallback: boolean;
+	/** True when the winner scored below the wrong-song threshold, so it is probably a different song. */
+	winnerSuspect: boolean;
+	/** Composite score of the published winner, or null when nothing could judge it. */
+	winnerScore: number | null;
+	/** One entry per source that offered a choice among versions, in the order considered. */
+	choices: VariantChoiceRecord[];
+}
+
+/** One source's pick among its own versions. `chosen`/`chosenScore` null when nothing could judge. */
+export interface VariantChoiceRecord {
+	textSource: string;
+	considered: number;
+	chosen: string | null;
+	chosenScore: number | null;
+	/** "agreement" when baselines decided it, "metadata" when they could not and cheap ranking stood. */
+	decidedBy: string;
+	/** How many baselines actually voted on the winner. 0 means the mean could not be formed. */
+	votes: number;
+	/** Every version not chosen, with its composite score (null if unjudgeable). */
+	rejected: { label: string | null; score: number | null }[];
+}
+
+/** Parse an attempt's selection provenance. Returns null for absent or malformed JSON, so a corrupt
+ *  diagnostic degrades to "no record" and never throws inside a dashboard render (mirrors attemptStages). */
+export function attemptSelection(a: Pick<JobAttempt, 'selection'>): SelectionRecord | null {
+	if (!a.selection) return null;
+	try {
+		const p = JSON.parse(a.selection);
+		if (!p || typeof p !== 'object' || !Array.isArray(p.choices)) return null;
+		// Every choice must carry a string textSource: the metrics page keys its {#each} on it, so an
+		// element from an older/partial worker missing the field would key on undefined and THROW at
+		// render — the exact outcome this guard exists to prevent. Reject the whole record rather than
+		// render a half one.
+		if (
+			!p.choices.every(
+				(c: unknown) =>
+					c !== null && typeof c === 'object' && typeof (c as { textSource?: unknown }).textSource === 'string'
+			)
+		) {
+			return null;
+		}
+		return p as SelectionRecord;
+	} catch {
+		return null;
 	}
 }
 

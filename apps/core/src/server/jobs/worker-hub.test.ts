@@ -7,6 +7,7 @@ import { WorkerHub } from './worker-hub';
 import { WorkerRegistry } from './registry';
 import { JobRepository } from './repository';
 import { AttemptLedger } from './attempts';
+import { attemptSelection } from '@encore/shared';
 import {
 	attemptStages,
 	realtimeFactor,
@@ -862,4 +863,56 @@ test('#524: a terminal job:failed frees EXACTLY one slot on a two-slot worker (n
 	hub.handle({ type: 'job:failed', workerId: 'w1', jobId: a.id, error: 'source gone (404)', retryable: false });
 	expect(jobs.byId(a.id)!.status).toBe('failed');
 	expect(registry.get('w1')!.slotsFree).toBe(1); // EXACTLY one freed
+});
+
+// #669 — a lyrics mis-pick must be diagnosable from durable state, not just the cook log. The worker
+// carries the VariantChoice provenance on job:complete; the hub must persist it on the align attempt so
+// /metrics/<mediaId> can later say WHICH candidate lost and whether a baseline even voted. On base the
+// wire field is dropped end-to-end (no AttemptFacts.selection, no column, no attemptSelection), so the
+// round-trip below reds: attemptSelection() returns null because nothing was stored.
+test('persists the variant-pick provenance from job:complete so a mis-pick is diagnosable later (#669)', () => {
+	const { hub, jobs, attempts } = harness();
+	const job = jobs.enqueue('m1', 'align', 0, T0);
+	hub.handle({ type: 'worker:hello', workerId: 'w1', capabilities: ['align'], concurrency: 1, version: '1' });
+	hub.handle({ type: 'job:accept', workerId: 'w1', jobId: job.id });
+
+	const selection = {
+		baselineFallback: false,
+		winnerSuspect: false,
+		winnerScore: 0.94,
+		choices: [
+			{
+				textSource: 'lrclib',
+				considered: 3,
+				chosen: 'lrclib-synced',
+				chosenScore: 0.94,
+				decidedBy: 'agreement',
+				votes: 2,
+				// The rejected candidates + their scores — the evidence that existed for one log line and
+				// is gone today. This is what separates #542 arm (b) from arm (c) for a real mis-pick.
+				rejected: [
+					{ label: 'lrclib-plain', score: 0.61 },
+					{ label: 'captions-stub', score: null }
+				]
+			}
+		]
+	};
+
+	hub.handle({ type: 'job:complete', workerId: 'w1', jobId: job.id, mediaUri: 'derived/lyrics/m1.json', selection });
+
+	// Retrievable from DURABLE state after the cook — the whole point of #669.
+	const [a] = attempts.byMedia('m1');
+	const got = attemptSelection(a);
+	expect(got).not.toBeNull();
+	expect(got!.winnerScore).toBe(0.94);
+	expect(got!.choices).toHaveLength(1);
+	const c = got!.choices[0];
+	expect(c.chosen).toBe('lrclib-synced');
+	expect(c.decidedBy).toBe('agreement'); // arm (b) vs (c): a baseline actually voted
+	expect(c.votes).toBe(2); // how many baselines voted — 0 would mean the mean could not form
+	// EVERY rejected label with its score survives to durable state, including the unjudgeable one.
+	expect(c.rejected).toEqual([
+		{ label: 'lrclib-plain', score: 0.61 },
+		{ label: 'captions-stub', score: null }
+	]);
 });

@@ -2,7 +2,7 @@
 import { test, expect } from 'bun:test';
 import { openDb } from './index';
 import { runMigrations, hydrate } from './migrate';
-import { rooms, singers, media, queueEntries, playbackState, jobs } from './schema';
+import { rooms, singers, media, queueEntries, playbackState, jobs, jobAttempts } from './schema';
 import { sqlitePersistence } from '../state/persistence';
 import type { PlaybackState, QueueEntry } from '@encore/shared';
 
@@ -104,4 +104,58 @@ test('a host pin (pinnedSeq) survives persist + hydrate; an unpinned entry store
 	const byId = new Map(entries.map((e) => [e.id, e]));
 	expect(byId.get('q-pin')!.pinnedSeq).toBe(3);
 	expect(byId.get('q-loose')!.pinnedSeq ?? null).toBeNull();
+});
+
+// #669 — the job_attempts.selection column must arrive as an INCREMENTAL migration (0001), not an edit
+// to the baseline. An existing deployment restarts and re-runs runMigrations; drizzle replays only
+// migrations it has not recorded, so a new column belongs in a new numbered file. Editing 0000 in place
+// makes an existing DB replay the baseline and throw on CREATE TABLE of an already-existing table (an
+// availability failure, reproduced by the reviewer on PR #700). This pins the column reaches the schema
+// through migration and round-trips. RED on base: no 0001, so the column is absent and the insert throws.
+test('job_attempts.selection is added by migration and round-trips (#669)', () => {
+	const { db, sqlite } = openDb(':memory:');
+	runMigrations(db);
+
+	const cols = (sqlite.query('PRAGMA table_info(job_attempts)').all() as { name: string }[]).map((c) => c.name);
+	expect(cols).toContain('selection');
+
+	const now = 1_700_000_000_000;
+	const rec = JSON.stringify({
+		baselineFallback: false,
+		winnerSuspect: false,
+		winnerScore: 0.94,
+		choices: [{ textSource: 'lrclib', chosen: 'v1', decidedBy: 'agreement', votes: 2, rejected: [] }]
+	});
+	db.insert(jobAttempts)
+		.values({
+			id: 'a1',
+			jobId: 'j1',
+			mediaId: 'm1',
+			cookId: 'c1',
+			jobType: 'align',
+			attempt: 1,
+			enqueuedAt: now,
+			selection: rec
+		})
+		.run();
+	const [row] = db.select().from(jobAttempts).all();
+	expect(row.selection).toBe(rec);
+	// A row that recorded no selection stores NULL, never undefined — the column is nullable by design.
+	db.insert(jobAttempts)
+		.values({
+			id: 'a2',
+			jobId: 'j2',
+			mediaId: 'm1',
+			cookId: 'c1',
+			jobType: 'stems',
+			attempt: 1,
+			enqueuedAt: now
+		})
+		.run();
+	const a2 = db
+		.select()
+		.from(jobAttempts)
+		.all()
+		.find((r) => r.id === 'a2')!;
+	expect(a2.selection).toBeNull();
 });

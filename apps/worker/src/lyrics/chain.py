@@ -369,6 +369,25 @@ class VariantChoice:
         )
         return head + (f", over {losers}" if losers else "")
 
+    def to_record(self) -> dict[str, object]:
+        """The durable, wire-safe form of this pick — the same facts as `summary()`, as data.
+
+        `summary()` renders these for the cook log, which rotates and is per-container; this crosses
+        the wire and lands in the job_attempts audit trail so a mis-pick is diagnosable from state
+        weeks later (#669). Deliberately NOT the lyric bodies — label + composite score is enough to
+        say which of #542's three arms fired (metadata fallback vs a real disagreement), and storing
+        four rejected full texts per song would multiply the lyrics footprint for triage-only data.
+        """
+        return {
+            "textSource": self.text_source,
+            "considered": self.considered,
+            "chosen": self.chosen,
+            "chosenScore": self.chosen_score,
+            "decidedBy": self.decided_by,
+            "votes": self.votes,
+            "rejected": [{"label": label, "score": score} for label, score in self.rejected],
+        }
+
 
 @dataclass
 class Selection:
@@ -385,6 +404,23 @@ class Selection:
     choices: list[VariantChoice] = field(default_factory=list)
     #: One line per baseline, for the log: which spoke, which abstained.
     baseline_notes: list[str] = field(default_factory=list)
+
+    def to_record(self) -> dict[str, object] | None:
+        """Durable provenance for the whole selection, or None when there was nothing to decide.
+
+        None when no source offered a choice among versions (`choices` empty): there is no pick to
+        explain, so nothing is persisted rather than an empty shell that reads as a lost record. When
+        a decision happened this carries every source's `VariantChoice` plus the two facts that tell
+        #542's arm (b) from arm (c) at a glance: whether a baseline actually voted, and on what basis.
+        """
+        if not self.choices:
+            return None
+        return {
+            "baselineFallback": self.baseline_fallback,
+            "winnerSuspect": self.winner_suspect,
+            "winnerScore": self.winner_score,
+            "choices": [c.to_record() for c in self.choices],
+        }
 
 
 def select_by_baselines(texts: list[LyricsText]) -> Selection:
