@@ -3,7 +3,7 @@
 // instead of re-cooking, and the saved-karaoke library can list every song whose instrumental is on
 // disk. The runtime `mediaById` Map stays the hot read path; this is the write-behind + boot-hydrate
 // store.
-import { eq, and, desc, asc, sql, isNotNull } from 'drizzle-orm';
+import { eq, and, desc, isNotNull, type SQL } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
 import type { Media, LyricsCandidate } from '@encore/shared';
@@ -41,6 +41,22 @@ const toRow = (m: Media): MediaRow => ({
 	artistCredit: m.artistCredit ?? null,
 	titleCanonical: m.titleCanonical ?? null
 });
+
+/**
+ * Tally values into browse-rail order: most songs first, ties alphabetical.
+ *
+ * The rails used to order in SQL (`ORDER BY count(*) DESC, value ASC`). They cannot any more, because
+ * the count must be taken over the gate-filtered set and SQL cannot consult the gate table (#763), so
+ * the ordering moves here with it. Ties break on a plain byte comparison rather than `localeCompare`
+ * to match SQLite's default BINARY collation — the rail's order is unchanged by the move.
+ */
+function facetCounts(values: string[]): Array<{ value: string; count: number }> {
+	const counts = new Map<string, number>();
+	for (const v of values) counts.set(v, (counts.get(v) ?? 0) + 1);
+	return [...counts]
+		.map(([value, count]) => ({ value, count }))
+		.sort((a, b) => b.count - a.count || (a.value < b.value ? -1 : a.value > b.value ? 1 : 0));
+}
 
 /** Parse the stored candidate JSON, tolerating null/garbage — a corrupt blob must not brick a hydrate. */
 function parseCandidates(raw: string | null): LyricsCandidate[] | undefined {
@@ -102,6 +118,66 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	titleCanonical: r.titleCanonical ?? undefined
 });
 
+/**
+ * THE readiness definition for the library list, both browse filters and both browse rails. Every one
+ * of them resolves through this function (or through `readyTagged`, which walks this set), so there is
+ * one answer to "is this song ready" and a sixth reader cannot invent a seventh.
+ *
+ * Two halves, and the split is load-bearing:
+ *
+ * - The SQL is a NARROWING, not the predicate. `stemStatus = 'ready' AND instrumentalRef NOT NULL` is
+ *   the cheap prefix an index can serve.
+ * - `readyToSing` — the gate table in `@encore/shared` — makes the final call, because it also knows
+ *   about the LYRICS gate. A song mid-align is `stemStatus: 'ready'` with its instrumental on disk and
+ *   is still not finished; `gates.ts` names that window in as many words.
+ *
+ * Mistaking the narrowing for the whole predicate is #763: `byArtist` and both facet counts asked only
+ * the narrowing, so the artist filter listed a song the unfiltered library correctly hid, and a tag
+ * chip reading `ballad 1` opened a measured EMPTY list. Keeping the whole predicate in SQL instead had
+ * already split the server's library from the phone's own rules once before that — a song rendered in
+ * the Ready and Cooking groups at the same time. Hence: narrow in SQL, decide in the gate table, in
+ * one place.
+ *
+ * `extra` narrows FURTHER in SQL (the artist filter's index push-down). It cannot relax the gate,
+ * which is applied after it. Newest-first by id, the catalog-discovery order the library shows.
+ */
+function readySongs(db: DB, extra?: SQL): Media[] {
+	const narrowing = and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef));
+	return db
+		.select()
+		.from(media)
+		.where(extra ? and(narrowing, extra) : narrowing)
+		.orderBy(desc(media.id))
+		.all()
+		.map(fromRow)
+		.filter(readyToSing);
+}
+
+/**
+ * Every (ready song, one of its `tag`-kind values) pair, newest-first. `byTag` and `tagFacets` are
+ * both expressed against this, which is what makes a chip's count the length of the list it opens BY
+ * CONSTRUCTION rather than by two queries happening to agree.
+ *
+ * Readiness is not re-asked here: membership of `readySongs()` IS the gate, so a tag on a song that is
+ * not finished simply has no pair, and walking that set also hands the pairs its newest-first order.
+ * `tag` still narrows in SQL on the `media_tags` `byKindValue` index (`WHERE kind = ? AND value = ?`) —
+ * the shape that index exists for — so the filter does not become a scan of every tag row.
+ */
+function readyTagged(db: DB, tag?: string): Array<{ song: Media; tag: string }> {
+	const rows = db
+		.select({ mediaId: mediaTags.mediaId, value: mediaTags.value })
+		.from(mediaTags)
+		.where(tag === undefined ? eq(mediaTags.kind, 'tag') : and(eq(mediaTags.kind, 'tag'), eq(mediaTags.value, tag)))
+		.all();
+	const byMedia = new Map<string, string[]>();
+	for (const r of rows) {
+		const list = byMedia.get(r.mediaId);
+		if (list) list.push(r.value);
+		else byMedia.set(r.mediaId, [r.value]);
+	}
+	return readySongs(db).flatMap((song) => (byMedia.get(song.id) ?? []).map((value) => ({ song, tag: value })));
+}
+
 export class MediaRepository {
 	#db: DB;
 	/** Optional sidecar sink. Injected so the repository stays unit-testable without I/O. */
@@ -154,21 +230,12 @@ export class MediaRepository {
 	 * re-queueing one skips the worker entirely. Ordered newest-first by id (ULIDs are monotonic, so
 	 * this is catalog-discovery order, not cook order).
 	 *
-	 * The SQL narrows to separated songs, then `readyToSing` makes the final call in one place. Keeping
-	 * the whole predicate in SQL is what let the library and the phone drift apart once already: the
-	 * server listed a song the client's own rules said was still cooking, and it rendered in both
-	 * groups at the same time. The gate table is now the only definition of finished, and this query
-	 * defers to it rather than restating it.
+	 * Deliberately a one-liner over `readySongs`: "finished" is defined in exactly one place for every
+	 * reader that lists or counts browsable songs, so the library, the browse filters and the browse
+	 * rails cannot disagree about the same song (#763).
 	 */
 	listReady(): Media[] {
-		return this.#db
-			.select()
-			.from(media)
-			.where(and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef)))
-			.orderBy(desc(media.id))
-			.all()
-			.map(fromRow)
-			.filter(readyToSing);
+		return readySongs(this.#db);
 	}
 
 	// ── browse ───────────────────────────────────────────────────────────────
@@ -229,63 +296,42 @@ export class MediaRepository {
 	}
 
 	/** Browse facet: ready songs grouped by canonical artist, most songs first. NULL artists (a
-	 *  low-confidence parse) are excluded — an "Unknown" bucket of 40 songs is not a useful heading. */
+	 *  low-confidence parse) are excluded — an "Unknown" bucket of 40 songs is not a useful heading.
+	 *  Counts the READY set rather than `count(*)` in SQL: a SQL count cannot consult the gate table,
+	 *  and one that counted the narrowing instead printed `The Band 2` above a list holding one song
+	 *  (#763). The chip's number is now the length of the list it opens. */
 	artistFacets(): Array<{ artist: string; count: number }> {
-		return this.#db
-			.select({ artist: media.artistCanonical, count: sql<number>`count(*)`.as('count') })
-			.from(media)
-			.where(and(eq(media.stemStatus, 'ready'), isNotNull(media.artistCanonical)))
-			.groupBy(media.artistCanonical)
-			.orderBy(desc(sql`count(*)`), asc(media.artistCanonical))
-			.all()
-			.filter((r): r is { artist: string; count: number } => !!r.artist);
+		const artists = readySongs(this.#db, isNotNull(media.artistCanonical))
+			.map((m) => m.artistCanonical)
+			.filter((a): a is string => !!a);
+		return facetCounts(artists).map(({ value, count }) => ({ artist: value, count }));
 	}
 
 	/** Ready songs by canonical artist (exact match on the canonical value the facet returned). */
 	byArtist(artist: string): Media[] {
-		return this.#db
-			.select()
-			.from(media)
-			.where(and(eq(media.stemStatus, 'ready'), eq(media.artistCanonical, artist)))
-			.orderBy(desc(media.id))
-			.all()
-			.map(fromRow);
+		return readySongs(this.#db, eq(media.artistCanonical, artist));
 	}
 
 	/** Browse facet: ready songs grouped by descriptive `tag`, most songs first. Mirrors
-	 *  `artistFacets` but joins the `media_tags` index on the `byKindValue` shape (`kind = 'tag'`),
-	 *  so it reads the SAME index #690's `byTag` filter uses. Tags are the sidecar-written 'tag'-kind
-	 *  values (`setTags(id, 'tag', …)`), already trimmed + lower-cased at the write boundary, so the
-	 *  distinct values need no further normalisation. Only READY songs are counted — a tag on a song
-	 *  you cannot sing yet would offer a browse heading that lands on an empty list. */
+	 *  `artistFacets` and reads the same pairs #690's `byTag` filter reads, so the count and the
+	 *  filter cannot disagree. Tags are the sidecar-written 'tag'-kind values (`setTags(id, 'tag', …)`),
+	 *  already trimmed + lower-cased at the write boundary, so the distinct values need no further
+	 *  normalisation. Only READY songs are counted — a tag on a song you cannot sing yet would offer a
+	 *  browse heading that lands on an empty list, which is precisely what a `count(*)` over the SQL
+	 *  narrowing used to do (#763: a chip reading `ballad 1` opened nothing). */
 	tagFacets(): Array<{ tag: string; count: number }> {
-		return this.#db
-			.select({ tag: mediaTags.value, count: sql<number>`count(*)`.as('count') })
-			.from(mediaTags)
-			.innerJoin(media, eq(mediaTags.mediaId, media.id))
-			.where(and(eq(mediaTags.kind, 'tag'), eq(media.stemStatus, 'ready')))
-			.groupBy(mediaTags.value)
-			.orderBy(desc(sql`count(*)`), asc(mediaTags.value))
-			.all()
-			.filter((r): r is { tag: string; count: number } => !!r.tag);
+		return facetCounts(readyTagged(this.#db).map((p) => p.tag)).map(({ value, count }) => ({ tag: value, count }));
 	}
 
 	/** Ready songs carrying a given descriptive tag (exact match on the value the facet returned).
-	 *  Uses the `media_tags` `byKindValue` index (`WHERE kind = ? AND value = ?`) — the exact query
-	 *  shape that index exists for — rather than a client-side filter over the whole library payload,
-	 *  which works at 9 songs and stops working at 900. Post-filters with `readyToSing` for parity
-	 *  with `listReady`, so a row that is `stemStatus:'ready'` but not actually singable (missing
-	 *  lyrics/instrumental) is excluded here exactly as it is from the unfiltered library. */
+	 *  Narrows on the `media_tags` `byKindValue` index (`WHERE kind = ? AND value = ?`) — the exact
+	 *  query shape that index exists for — rather than a client-side filter over the whole library
+	 *  payload, which works at 9 songs and stops working at 900. Readiness comes from the shared set,
+	 *  so a row that is `stemStatus:'ready'` but not actually singable (mid-align, or missing its
+	 *  instrumental) is excluded here exactly as it is from the unfiltered library and from the count
+	 *  on the chip that opened this list. */
 	byTag(tag: string): Media[] {
-		return this.#db
-			.select({ m: media })
-			.from(mediaTags)
-			.innerJoin(media, eq(mediaTags.mediaId, media.id))
-			.where(and(eq(mediaTags.kind, 'tag'), eq(mediaTags.value, tag), eq(media.stemStatus, 'ready')))
-			.orderBy(desc(media.id))
-			.all()
-			.map((r) => fromRow(r.m))
-			.filter(readyToSing);
+		return readyTagged(this.#db, tag).map((p) => p.song);
 	}
 }
 
