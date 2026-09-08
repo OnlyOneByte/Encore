@@ -45,7 +45,9 @@ export function hydrate(
 	entries: (typeof queueEntries.$inferSelect)[];
 	playback: typeof playbackState.$inferSelect | null;
 } {
-	const entries = db.select().from(queueEntries).all();
+	// The queue is keyed by room now (#656): read only THIS room's entries, not the whole deployment.
+	// Without the filter a boot would hydrate every room's queue into one room's authoritative store.
+	const entries = db.select().from(queueEntries).where(eq(queueEntries.roomId, roomId)).all();
 	// Playback is keyed by room now (#655): read THIS room's row, not whichever came back first. A
 	// room that has never played has no row yet, so null (the caller seeds boot defaults) is normal.
 	const playback = db.select().from(playbackState).where(eq(playbackState.roomId, roomId)).all()[0] ?? null;

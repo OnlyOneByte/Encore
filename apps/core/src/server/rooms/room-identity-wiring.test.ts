@@ -23,6 +23,10 @@ const APP = stripComments(readFileSync(join(import.meta.dir, '..', 'app.ts'), 'u
 const JOIN_PAGE = stripComments(
 	readFileSync(join(import.meta.dir, '..', '..', 'routes', 'join', '+page.svelte'), 'utf8')
 );
+// import.meta.dir === apps/core/src/server/rooms → up two to src, then into routes/api/me.
+const ME_ROUTE = stripComments(
+	readFileSync(join(import.meta.dir, '..', '..', 'routes', 'api', 'me', '+server.ts'), 'utf8')
+);
 
 test('app.ts mints the active room at boot and exposes its id (#654)', () => {
 	// boot mint: activeRoomId comes from rooms.ensureActive(...).id.
@@ -49,4 +53,24 @@ test('app.ts binds the playback store + boot-hydrate to the ACTIVE room, not a c
 	expect(APP).toMatch(/sqlitePersistence\(db,\s*activeRoomId\)/);
 	// Boot-hydrate reads THAT room's playback row (drop it -> boot could seed the wrong room's state).
 	expect(APP).toMatch(/hydrate\(db,\s*activeRoomId\)/);
+});
+
+test('app.ts binds the singer roster read to the ACTIVE room, not an unscoped call (#656)', () => {
+	// #656: listPublic is room-scoped now — it feeds the ordering input and the roster. app.ts is the
+	// deployment seam that must pass the active room into every roster read; a unit harness cannot cover
+	// it because getApp() has none. Reverting a `listPublic(activeRoomId)` back to a bare `listPublic()`
+	// is a TYPE error (the arg is required), so this scan's job is the subtler regression: pinning that
+	// every roster read in app.ts is scoped to the ACTIVE room, never a hard-coded or foreign room id.
+	// Match every listPublic call and assert each names activeRoomId (bare or via app.).
+	const calls = [...APP.matchAll(/listPublic\(([^)]*)\)/g)].map((m) => m[1].trim());
+	expect(calls.length).toBeGreaterThan(0); // not vacuous — app.ts really does read the roster
+	for (const arg of calls) expect(arg).toMatch(/^(app\.)?activeRoomId$/);
+});
+
+test('the /api/me rename scopes the name check to the singer own room (#656)', () => {
+	// The PATCH /api/me rename runs assertNameFree, which is room-scoped now (#656). The route has no
+	// unit harness, so reverting `me.roomId` back to the old unscoped 3-arg call is invisible to every
+	// other test — a rename would then be checked deployment-wide and collide across rooms. Pin that
+	// the route passes me.roomId as the room argument.
+	expect(ME_ROUTE).toMatch(/assertNameFree\(app,\s*me\.roomId,/);
 });

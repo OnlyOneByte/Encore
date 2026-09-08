@@ -8,13 +8,22 @@ import type { DB } from '../db/index';
 import { singers } from '../db/schema';
 import { ulid, type Singer } from '@encore/shared';
 
+/**
+ * A singer AS STORED: the wire {@link Singer} plus the `room_id` scoping key (#656). The wire type
+ * carries no room (a phone is never told its own room id), but the server reads it off the row to
+ * scope the roster and the in-room name-uniqueness check — so the repository's row-returning reads
+ * surface it while the public {@link SingerRepository.listPublic} strips it back off.
+ */
+export type StoredSinger = Singer & { roomId: string };
+
 export const SESSION_COOKIE = 'encore_singer';
 
 /**
  * The room a phone joined. Set by /api/join alongside the session cookie (#654) so the identity of
  * WHICH party this device belongs to survives every later request without re-resolving a join code.
- * The room-scoping chain (#655/#656) reads it; today it is written but nothing downstream is yet
- * scoped to it.
+ * The room-scoping chain reads it: #655 keyed playback by room, and #656 keys the queue + roster —
+ * a singer is created IN a room and the roster is listed BY room. Scoping the token that names which
+ * room a given socket may act in is #657.
  */
 export const ROOM_COOKIE = 'encore_room';
 
@@ -29,8 +38,16 @@ export class SingerRepository {
 		this.#db = db;
 	}
 
-	/** Create a singer, minting id + session token. */
-	create(displayName: string, color: string, now: number): Singer {
+	/**
+	 * Create a singer IN a room, minting id + session token (#656).
+	 *
+	 * `roomId` is the party this singer belongs to — the room the /api/join resolved (an explicit code
+	 * or the active room). It scopes the roster, the `least-recently-sung` ordering, and the presence
+	 * sweep to one party, so two rooms no longer share one roster. The returned {@link Singer} carries
+	 * no room field: the wire contract is unchanged (a phone never needs to be told its own room), so
+	 * the column is a server-side scoping key, not new wire state.
+	 */
+	create(displayName: string, color: string, now: number, roomId: string): Singer {
 		const singer: Singer = {
 			id: ulid(now),
 			displayName: displayName.trim().slice(0, 32) || 'Guest',
@@ -38,18 +55,21 @@ export class SingerRepository {
 			sessionToken: mintSessionToken(),
 			joinedAt: now
 		};
-		this.#db.insert(singers).values(singer).run();
+		this.#db
+			.insert(singers)
+			.values({ ...singer, roomId })
+			.run();
 		return singer;
 	}
 
-	/** Resolve the singer behind a session token (from the cookie), or null. */
-	bySessionToken(token: string | undefined | null): Singer | null {
+	/** Resolve the singer behind a session token (from the cookie), or null. Carries `roomId` (#656). */
+	bySessionToken(token: string | undefined | null): StoredSinger | null {
 		if (!token) return null;
 		const row = this.#db.select().from(singers).where(eq(singers.sessionToken, token)).all()[0];
 		return row ?? null;
 	}
 
-	byId(id: string): Singer | null {
+	byId(id: string): StoredSinger | null {
 		return this.#db.select().from(singers).where(eq(singers.id, id)).all()[0] ?? null;
 	}
 
@@ -60,7 +80,7 @@ export class SingerRepository {
 	 * The session token is deliberately untouched: renaming is not re-joining, so the phone keeps its
 	 * cookie and its place in the rotation.
 	 */
-	updateProfile(id: string, displayName: string, color: string): Singer | null {
+	updateProfile(id: string, displayName: string, color: string): StoredSinger | null {
 		const next = displayName.trim().slice(0, 32);
 		if (!next) return null;
 		this.#db.update(singers).set({ displayName: next, color }).where(eq(singers.id, id)).run();
@@ -78,13 +98,20 @@ export class SingerRepository {
 		this.#db.update(singers).set({ lastSungAt: now }).where(eq(singers.id, singerId)).run();
 	}
 
-	/** All singers, without session tokens (safe to broadcast). */
-	listPublic(): Omit<Singer, 'sessionToken'>[] {
+	/**
+	 * A ROOM's singers, without session tokens (safe to broadcast) (#656).
+	 *
+	 * Scoped by `room_id`: this feeds the room roster, the `least-recently-sung` ordering input, and
+	 * the in-room name-uniqueness check, none of which may see another party's singers. `room_id` is a
+	 * server-side key, so it is stripped alongside `sessionToken` — the public shape is unchanged.
+	 */
+	listPublic(roomId: string): Omit<Singer, 'sessionToken'>[] {
 		return this.#db
 			.select()
 			.from(singers)
+			.where(eq(singers.roomId, roomId))
 			.all()
-			.map(({ sessionToken: _t, ...rest }) => rest);
+			.map(({ sessionToken: _t, roomId: _r, ...rest }) => rest);
 	}
 }
 

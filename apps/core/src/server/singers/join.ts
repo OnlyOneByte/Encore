@@ -60,12 +60,14 @@ export const normalizeRoomCode = (code: string): string => code.trim().toUpperCa
  * owner has actually gone, and stays claimed through the grace window so nobody takes it while she is in
  * the bathroom.
  *
- * `exceptId` is for a RENAME: a singer changing their capitalisation must not collide with themselves.
+ * `roomId` scopes the check to ONE party (#656): a name is only taken if someone still in the SAME
+ * room holds it, so two rooms can each have a Dana. `exceptId` is for a RENAME: a singer changing
+ * their capitalisation must not collide with themselves.
  */
-export function assertNameFree(app: EncoreApp, name: string, exceptId?: string): void {
+export function assertNameFree(app: EncoreApp, roomId: string, name: string, exceptId?: string): void {
 	const key = nameKey(name);
 	const graceMs = graceMsOf(app.settings.getRoom().presenceGraceMinutes);
-	const clash = app.singers.listPublic().some((s) => {
+	const clash = app.singers.listPublic(roomId).some((s) => {
 		if (s.id === exceptId) return false;
 		if (nameKey(s.displayName) !== key) return false;
 		return app.presence.stateOf(s.id, app.now(), graceMs, hasPendingSongs(app, s.id)) !== 'gone';
@@ -96,7 +98,8 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 
 	const name = (input.displayName ?? '').trim();
 	if (!name) throw new Error('display name required');
-	assertNameFree(app, name);
+	// In-room uniqueness (#656): a name is free if no one still in THIS room holds it.
+	assertNameFree(app, room.id, name);
 	/*
 	 * Was `isValidColor(input.color) ? input.color : SINGER_COLORS[0]` — an allowlist of the eight
 	 * presets, so every other hue was silently rewritten to violet and a guest who picked teal joined
@@ -105,7 +108,7 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	 */
 	const color = normalizeSingerColor(input.color);
 
-	const singer = app.singers.create(name, color, app.now());
+	const singer = app.singers.create(name, color, app.now(), room.id);
 
 	// Register the new singer with presence RIGHT NOW, in an away-ish state, so their name is held
 	// through the gap between this HTTP response and their WebSocket actually opening. PR #19 left that

@@ -22,7 +22,9 @@ function seededDb() {
 	const db = migratedDb();
 	const now = 1_700_000_000_000;
 	db.insert(rooms).values({ id: 'r1', code: 'PARTY', createdAt: now }).run();
-	db.insert(singers).values({ id: 's1', displayName: 'Maya', color: '#fff', sessionToken: 'tok', joinedAt: now }).run();
+	db.insert(singers)
+		.values({ id: 's1', displayName: 'Maya', color: '#fff', sessionToken: 'tok', joinedAt: now, roomId: 'r1' })
+		.run();
 	db.insert(media)
 		.values({ id: 'm1', source: 'youtube', sourceRef: 'x', title: 't', durationSec: 100, stemStatus: 'none' })
 		.run();
@@ -35,7 +37,16 @@ function persist(
 	db: ReturnType<typeof seededDb>,
 	over: Record<string, unknown>
 ): { threw: boolean; row: Record<string, unknown> | null } {
-	const base = { id: 'q1', mediaId: 'm1', singerId: 's1', status: 'queued', rotationSeq: 0, addedAt: 1, ...over };
+	const base = {
+		id: 'q1',
+		mediaId: 'm1',
+		singerId: 's1',
+		status: 'queued',
+		rotationSeq: 0,
+		addedAt: 1,
+		roomId: 'r1',
+		...over
+	};
 	try {
 		db.insert(queueEntries)
 			.values(base as never)
