@@ -165,7 +165,7 @@ apps/core/         ← Container 1: Bun + SvelteKit
   src/routes/        phone (+page), /join, /tv, /settings, /stats, /metrics, /api
   e2e/               selector contract + guard, the party flow, the screenshot capture
 apps/worker/       ← Container 2: Python stems/align (dials home; `--profile stems`)
-docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; deploy/ benchmarks/ mocks/ research/
+docs/              ← ARCHITECTURE + HANDOFF + DECISIONS; loop/ deploy/ benchmarks/ mocks/ research/
 ```
 
 ## Configuration
