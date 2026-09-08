@@ -202,11 +202,19 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// inserted verbatim (ops.ts), re-stamps nothing (only addedAt is re-stamped ~168 lines below), and
 			// is bound to the NULLABLE `pinned_seq integer` column (persistence.ts). Same class as move-global's
 			// toSeq (#702) and the addedAt reject above: nothing else on the path guards its shape, so this is
-			// the ONLY line keeping a non-integer out of the pin. A non-number binding (object/array/NaN/
-			// Infinity/float) is refused by bun:sqlite at the un-try'd write-behind flush and takes the core
-			// process down asynchronously; a numeric STRING ('0') is dropped live by placePins' `typeof ===
-			// number` filter (rotation.ts) yet coerced into the integer column by SQLite affinity, so the room
-			// silently re-orders itself on the next restart into an order no client ever showed. `!= null` is
+			// the ONLY line keeping a non-integer out of the pin. The discriminator at the flush is
+			// BINDABILITY, not number-ness and not integer-ness (#738, measured against a real migrated DB):
+			// only an OBJECT/ARRAY is refused by bun:sqlite (`Binding expected string, TypedArray, boolean,
+			// number, bigint or null`) at the un-try'd write-behind flush and takes the core process down
+			// asynchronously. NaN, Infinity and a FLOAT all bind fine and persist SILENTLY — `pinned_seq` is
+			// NULLABLE with no CHECK, so NaN lands as NULL and Infinity/1.5 land as a REAL in the integer
+			// column, violating nothing. placePins' `typeof === number && Number.isFinite` filter
+			// (rotation.ts) then drops a NaN/Infinity pin on the next boot with no error anywhere, and
+			// truncates a float to its floor — so a host's deliberate pin silently stops being honoured. A
+			// numeric STRING ('0') is likewise dropped live by that same filter yet coerced into the integer
+			// column by SQLite affinity, so the room silently re-orders itself on the next restart into an
+			// order no client ever showed. The silent class is the WORSE one, which is why this guard is
+			// deliberately broader than the crash and must not be narrowed to the crashing shapes. `!= null` is
 			// load-bearing: the field is OPTIONAL and every honest add omits it (lib/stores/queue.ts addSong),
 			// so a bare Number.isInteger check would reject 100% of real adds. Negative/huge integers are NOT
 			// rejected — placePins clamps low and high against the growing list (rotation.ts), so they are
