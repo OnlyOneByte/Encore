@@ -235,6 +235,16 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			const target = deps.state.entries.find((e) => e.id === op.id);
 			if (!target) return `unknown entry: ${op.id}`;
 			if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder the queue';
+			// #702: `move-global`'s `toSeq` is the FIRST wire-settable op whose payload value is written
+			// STRAIGHT to a durable column (applyOp stamps `pinnedSeq: op.toSeq` verbatim, the flush binds it
+			// into `pinned_seq integer`). Same class as the addedAt reject above: nothing else on the path
+			// guards its shape, so this is the ONLY line keeping a non-integer out of the pin. An object/array
+			// crashes the un-try'd write-behind flush timer (bun:sqlite refuses the bind, killing the core
+			// process asynchronously); a string/boolean is coerced by SQLite integer affinity into a real
+			// number that only `placePins` HONOURS after a restart, silently reordering the room. Reject at the
+			// seam. `unpin` carries no `toSeq`, so it is exempt — discriminate on `op.op`. Placed AFTER the
+			// can() consult so the #638 source-scan still reads the capability check in this arm.
+			if (op.op === 'move-global' && !Number.isInteger(op.toSeq)) return `invalid toSeq: ${String(op.toSeq)}`;
 			return null;
 		}
 		case 'status':
