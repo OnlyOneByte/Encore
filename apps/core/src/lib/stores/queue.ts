@@ -139,7 +139,17 @@ export class QueueStore {
 	pinEntry(id: string, toSeq: number): void {
 		this.#optimistic({ op: 'move-global', id, toSeq });
 	}
-	/** Clear a host pin, returning the entry to the room's ordering policy. */
+	/**
+	 * Clear a host pin, returning the entry to the room's ordering policy.
+	 *
+	 * NO NON-TEST CALLER, deliberately — no surface renders an "unpin" control (issue #790 F3). What
+	 * makes that acceptable is that the ORDER a pin produces is recoverable without one: after #790 a
+	 * reorder tap visibly moves the row, so tapping the other way sets a new `pinnedSeq` and the room
+	 * reads the way the host wants. What is NOT recoverable from the phone is the entry's PARTICIPATION
+	 * in the policy — a pinned entry holds its queued index through later adds and a queueOrder change
+	 * until this op runs. That is the intended meaning of a host override (see rotation.ts placePins),
+	 * not an oversight; the op stays wired end to end so a surface can adopt it without a wire change.
+	 */
 	unpinEntry(id: string): void {
 		this.#optimistic({ op: 'unpin', id });
 	}
