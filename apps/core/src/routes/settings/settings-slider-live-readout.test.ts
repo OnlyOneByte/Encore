@@ -33,7 +33,6 @@ function stripComments(src: string): string {
 // its live handler divides by 100 exactly as the commit does.
 const SLIDERS: { id: string; field: string; div100?: boolean }[] = [
 	{ id: 'presence-grace', field: 'presenceGraceMinutes' },
-	{ id: 'tv-background-hue', field: 'tvBackgroundHue' },
 	{ id: 'song-intro-ms', field: 'songIntroMs' },
 	{ id: 'lyrics-scale', field: 'lyricsScalePct' },
 	{ id: 'lyrics-lead', field: 'lyricsLeadMs' },
@@ -41,6 +40,13 @@ const SLIDERS: { id: string; field: string; div100?: boolean }[] = [
 	{ id: 'lyrics-after', field: 'lyricsLinesAfter' },
 	{ id: 'guide-default', field: 'guideLevelDefault', div100: true }
 ];
+
+// The stage colour was `tv-background-hue`, a range, until #425 replaced the stored angle with a real
+// colour. It is a `type="color"` now, so it moved out of SLIDERS — but it did NOT leave this guard, and
+// that is deliberate: a native colour picker fires `input` continuously while the user drags inside it,
+// so the live/commit split #134 exists for applies unchanged. Deleting the entry instead of moving it
+// would have quietly dropped the one control on this page whose live readout is a visible swatch.
+const COLOUR_INPUTS: { id: string; field: string }[] = [{ id: 'tv-background-color', field: 'tvBackgroundColor' }];
 
 // The <input …> element carrying a given id, across newlines. Self-closing.
 function inputElement(src: string, id: string): string {
@@ -73,6 +79,26 @@ for (const { id, field, div100 } of SLIDERS) {
 		}
 		// The commit path stays: onchange still calls onroom for this field, so a drag still writes on
 		// release. This keeps the fix from silently dropping the commit while adding the live handler.
+		expect(
+			new RegExp(`onchange=\\{\\(e\\)\\s*=>\\s*onroom\\(\\{\\s*${field}:`).test(el),
+			`#${id} must keep its onchange={(e) => onroom({ ${field}: … })} commit alongside the live handler`
+		).toBe(true);
+	});
+}
+
+for (const { id, field } of COLOUR_INPUTS) {
+	test(`the ${id} colour input updates its swatch live via liveRoom('${field}') (#134/#425)`, () => {
+		const el = inputElement(src, id);
+		// It must actually be a colour input, not a range that happens to carry this id — the whole point
+		// of #425 is that the control widened from one axis to a full picker.
+		expect(/type="color"/.test(el), `#${id} must be an <input type="color">, not a range (#425)`).toBe(true);
+		// A colour input's value IS the field's value, so unlike the sliders there is no Number() coercion.
+		const live = new RegExp(`oninput=\\{\\(e\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`);
+		expect(
+			live.test(el),
+			`#${id} has no oninput={(e) => liveRoom('${field}', …)} — its swatch will hold the previous ` +
+				`colour for the whole drag inside the picker (#134).`
+		).toBe(true);
 		expect(
 			new RegExp(`onchange=\\{\\(e\\)\\s*=>\\s*onroom\\(\\{\\s*${field}:`).test(el),
 			`#${id} must keep its onchange={(e) => onroom({ ${field}: … })} commit alongside the live handler`

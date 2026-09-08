@@ -205,31 +205,44 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		const repo = freshRepo();
 		expect(repo.setRoom({ tvBackgroundStyle: 'singer' }, DEFAULT_ROOM_ID).tvBackgroundStyle).toBe('singer');
 		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundStyle).toBe('singer');
-		expect(repo.setRoom({ tvBackgroundStyle: 'solid', tvBackgroundHue: 165 }, DEFAULT_ROOM_ID).tvBackgroundHue).toBe(
-			165
-		);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundHue).toBe(165);
+		expect(
+			repo.setRoom({ tvBackgroundStyle: 'solid', tvBackgroundColor: '#002215' }, DEFAULT_ROOM_ID).tvBackgroundColor
+		).toBe('#002215');
+		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#002215');
 		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundStyle).toBe('solid');
 	});
 
 	it('a bad background write keeps every unrelated choice the room already made', () => {
 		const repo = freshRepo();
 		repo.setRoom(
-			{ tvBackgroundStyle: 'solid', tvBackgroundHue: 75, songIntroMs: 7000, tvProgressStyle: 'edge' },
+			{ tvBackgroundStyle: 'solid', tvBackgroundColor: '#281600', songIntroMs: 7000, tvProgressStyle: 'edge' },
 			DEFAULT_ROOM_ID
 		);
 		const after = repo.setRoom({ tvBackgroundStyle: 'nonsense' as never }, DEFAULT_ROOM_ID);
 		expect(after.tvBackgroundStyle).toBe('solid');
-		expect(after.tvBackgroundHue).toBe(75);
+		expect(after.tvBackgroundColor).toBe('#281600');
 		expect(after.songIntroMs).toBe(7000);
 		expect(after.tvProgressStyle).toBe('edge');
 	});
 
-	it('the stored hue is always one the wheel can render', () => {
+	// #425 — replaces 'the stored hue is always one the wheel can render'. The column is text now, so
+	// what a round trip has to prove changed: not that the value snapped to a legal angle, but that an
+	// arbitrary colour reaches SQLite and comes back byte-identical (a TEXT column that silently truncated
+	// or a getRoom that forgot the field would both read back as the default), and that a junk write
+	// cannot poison it.
+	it('an arbitrary stage colour survives SQLite verbatim, and junk cannot poison it (#425)', () => {
 		const repo = freshRepo();
-		expect(repo.setRoom({ tvBackgroundHue: 200 }, DEFAULT_ROOM_ID).tvBackgroundHue).toBe(195); // snapped to the step
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundHue).toBe(195);
-		expect(repo.setRoom({ tvBackgroundHue: -30 }, DEFAULT_ROOM_ID).tvBackgroundHue).toBe(330); // wrapped, not rejected
+		// white — unreachable under the retired hue pin, so this also proves the pin is gone end to end
+		expect(repo.setRoom({ tvBackgroundColor: '#ffffff' }, DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#ffffff');
+		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#ffffff');
+		// canonicalised on the way in, so every reader downstream can assume one shape
+		expect(repo.setRoom({ tvBackgroundColor: '#ABC' }, DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#aabbcc');
+		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#aabbcc');
+		// and an unparseable write keeps what is already stored rather than resetting the room's choice
+		expect(repo.setRoom({ tvBackgroundColor: 'rebeccapurple' as never }, DEFAULT_ROOM_ID).tvBackgroundColor).toBe(
+			'#aabbcc'
+		);
+		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#aabbcc');
 	});
 
 	it('a visualizer choice survives the round trip through SQLite', () => {
@@ -287,7 +300,7 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		queueOrder: 'fcfs',
 		tvProgressStyle: 'card',
 		tvBackgroundStyle: 'solid',
-		tvBackgroundHue: 90,
+		tvBackgroundColor: '#241900',
 		tvVisualizer: 'starfield',
 		songIntroEnabled: false,
 		songIntroMs: 5000,
