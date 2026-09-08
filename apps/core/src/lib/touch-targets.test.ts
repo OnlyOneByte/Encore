@@ -178,31 +178,43 @@ test('the controls that previously fell short declare 44px explicitly', () => {
 	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
 	expect(declares(metrics, 'cooks a', 'min-height')).toBe(true);
 
-	// the stage-colour hue slider was 22px tall with a 28px thumb — a 28px hit area (issue #133).
-	// Pinned by the exact selector so reverting the input box to a hard sub-44px height reds this,
-	// which the structural test above can miss because it waves through any var()-driven height.
-	const hue = new RegExp(`input\\[type=['"]range['"]\\]\\.hue\\s*\\{[^}]*height:\\s*${SIZE}`, 's');
-	expect(hue.test(settings)).toBe(true);
+	// The stage-colour control was a 22px-tall hue slider with a 28px thumb — a 28px hit area (issue
+	// #133). #425 replaced it with a native colour input, so the pin moves to that control rather than
+	// being dropped: the underlying mistake (a sub-44px box on the one settings control whose whole job
+	// is being tapped) is just as available to a colour input, whose browser default swatch is smaller
+	// still. Pinned by the exact selector, which the structural test above can miss because it waves
+	// through any var()-driven height.
+	const colour = new RegExp(`input\\[type=['"]color['"]\\]\\.colour\\s*\\{[^}]*height:\\s*${SIZE}`, 's');
+	expect(colour.test(settings)).toBe(true);
 });
 
 /*
- * The tap target and the thumb-centring move INDEPENDENTLY, so pinning only the 44px box lets the
- * exact state issue #133's fix had to correct back in: box raised to 44px, but the 28px WebKit thumb
- * still anchored to the top of its now-off-centre 22px runnable-track, hanging ~3.75px low. A rendered
- * measurement is the ideal instrument, but this repo deliberately does NOT gate on a browser (see
- * e2e/contract.test.ts's header: a test needing a live Chromium skips on any machine missing one, and
- * a permanently-skipped test is indistinguishable from the rot it was meant to catch). So this is a
- * source pin — but pinned to the EXACT centring value, not merely the presence of margin-top, because
- * a wrong value would hang the thumb just as badly as a missing one. The value is not a magic number:
- * it is (track - thumb) / 2 = (22 - 28) / 2 = -3px, the identical arithmetic ColourPicker.svelte:213
- * and the sibling :not(.hue) rule both carry. ::-moz-range-thumb needs none — Gecko centres on the
- * track — so only the WebKit thumb is pinned.
+ * The companion to the pin above, and it changed subject in #425. It used to pin the hue slider's
+ * thumb-CENTRING: the tap box and the thumb offset moved independently, so pinning only the 44px box
+ * let the exact state #133's fix had to correct back in — box raised to 44px, but the 28px WebKit thumb
+ * still anchored to the top of its off-centre 22px runnable-track, hanging ~3.75px low.
+ *
+ * A colour input has no thumb and no runnable-track, so that specific arithmetic has no subject any
+ * more. What survives is the REASON it existed: the stage-colour control must present one full-size
+ * target with nothing smaller inside it. So this now pins the two ways that can regress — a shrunken
+ * box, and a reinstated `.hue` range whose 22px track would reintroduce the sub-44px hit area under a
+ * selector the pin above does not read.
+ *
+ * A rendered measurement would be the ideal instrument, but this repo deliberately does NOT gate on a
+ * browser (see e2e/contract.test.ts's header: a test needing a live Chromium skips on any machine
+ * missing one, and a permanently-skipped test is indistinguishable from the rot it was meant to catch).
+ * So this stays a source pin.
  */
-test('the stage-colour hue thumb is centred on its runnable-track (issue #133)', () => {
+test('the stage-colour control is one full-size target with no sub-44px part (issue #133/#425)', () => {
 	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
-	const webkitThumb = new RegExp(
-		`input\\[type=['"]range['"]\\]\\.hue::-webkit-slider-thumb\\s*\\{[^}]*margin-top:\\s*-3px`,
-		's'
-	);
-	expect(webkitThumb.test(settings)).toBe(true);
+
+	// The control itself is the colour input, and it is padded rather than filled edge to edge, so its
+	// box is the target. Pinned to var(--tap) so it tracks the token instead of a literal that can drift.
+	expect(/input\[type=['"]color['"]\]\.colour\s*\{[^}]*height:\s*var\(--tap\)/s.test(settings)).toBe(true);
+
+	// And the retired hue slider must stay retired. Its 22px runnable-track is what produced the 28px
+	// hit area in the first place; leaving those rules behind would let a future edit reattach a
+	// `class="hue"` range and reproduce #133 under a selector nothing else here reads.
+	expect(/input\[type=['"]range['"]\]\.hue/.test(settings)).toBe(false);
+	expect(/class="hue"/.test(settings)).toBe(false);
 });

@@ -165,11 +165,23 @@ export const SINGER_HUES: readonly number[] = Array.from(
 // is load-bearing rather than taste.
 //
 // A dot is ~12px of fill on a dark card, so SINGER_L = 0.70 is right for it. The stage is the WHOLE
-// SCREEN, and for a make-karaoke song it sits directly behind word-timed lyrics whose only defence
-// is `text-shadow: 0 2px 18px rgba(0,0,0,.85)` (LyricsOverlay.svelte) — a glow tuned against black.
-// Painting the dot palette across that field would wash the reel out. So the stage is pinned far
-// darker and far less saturated, and these two numbers are a LEGIBILITY BOUND: raising them
-// regresses the lyrics, which is why they live here in shared code rather than in a picker.
+// SCREEN, and for a make-karaoke song it sits directly behind word-timed lyrics. Painting the dot
+// palette across that field washes the reel out, so the stage is generated far darker and far less
+// saturated.
+//
+// WHAT THIS TIER NO LONGER DOES, and the change is deliberate (#425). It used to be the room's only
+// way to name a stage colour: the room stored a HUE ANGLE and every stage went through
+// `stageHueToHex`, so the tier doubled as a LEGIBILITY BOUND that no picker could escape. The owner
+// retired that bound and replaced the job it was doing with a different mechanism — the lyric reel
+// now carries its own `-webkit-text-stroke` outline (#750, `b764d92`), so the words survive any
+// field instead of the field being restricted to keep them readable. Protecting the reel beats
+// restricting the choice, and a stroke works over a music video too, which a bound on the stage
+// colour never could.
+//
+// So the tier still generates every colour the room does NOT pick by hand — the `singer` glow (whose
+// hue comes from someone's identity dot) and the visualizer palettes (built by hue arithmetic around
+// the room's colour) — and those keep the bound, because nobody chose them and nobody can see why
+// they came out bright. The room's own `solid` colour is stored verbatim and rendered verbatim.
 
 /** Perceptual lightness for a full-screen stage background. */
 export const STAGE_BG_L = 0.22;
@@ -231,6 +243,41 @@ export function stageHueToHex(hueDeg: number): string {
 	return hueToHex(hueDeg, stageLightnessForHue(hueDeg), STAGE_BG_C);
 }
 
+/**
+ * The stage colour a room starts with — what the old `tvBackgroundHue: 240` default became when #425
+ * replaced the hue angle with a real colour, so an existing box renders byte-identically.
+ *
+ * A LITERAL rather than a `stageHueToHex(240)` call, because the SQLite column default and the 0005
+ * migration's backfill need these exact bytes and SQL cannot run an OKLCH conversion. That duplication
+ * is the risk, so `colors.test.ts` asserts the literal still equals `stageHueToHex(240)` — the
+ * constant cannot drift away from the value it was derived from without reddening a named test.
+ */
+export const DEFAULT_STAGE_COLOR = '#001d31';
+
+/**
+ * The hue angle of an arbitrary colour, in degrees (0–359): the direction of its OKLab chromatic
+ * vector, independent of lightness and chroma. Greys have no direction, so they return 0.
+ *
+ * Needed because #425 made the room's stored stage value a real colour while the VISUALIZERS still
+ * need an ANGLE: every renderer in `apps/core/src/lib/tv/visualizers.ts` builds its palette by hue
+ * ARITHMETIC (`stageHueToHex(hue + deg)`) around the room's colour, which a hex cannot express.
+ *
+ * `nearestSingerHue` cannot serve here, and that was MEASURED rather than assumed: it compares OKLab
+ * (a, b) by euclidean distance against candidates generated at the WHEEL's tier (L 0.70 / C 0.16),
+ * so a stage-tier colour (L 0.22 / C 0.07) has a much shorter chromatic vector and snaps to the wrong
+ * stop for 15 of the 24 legal hues — 135° came back as 180°, 240° as 210°. Using it would have
+ * silently re-coloured the visualizer of every room that had picked one. An `atan2` of the same two
+ * axes is scale-free and round-trips `stageHueToHex(h)` to within 4.2° across all 24 stops, the
+ * residual being 8-bit quantisation of a deliberately dark colour rather than a modelling error.
+ */
+export function hueOfColor(input: string): number {
+	const rgb = parseHex(input);
+	if (!rgb) return 0;
+	const { a, b } = rgbToOklabAb(rgb);
+	const deg = (Math.atan2(b, a) * 180) / Math.PI;
+	return ((deg % 360) + 360) % 360;
+}
+
 // ── validation ─────────────────────────────────────────────────────────────
 
 /**
@@ -262,6 +309,29 @@ export function normalizeSingerColor(input: string): string {
 		if (isLegibleSingerColor(hex)) return hex;
 	}
 	return SINGER_COLORS[0];
+}
+
+/**
+ * Coerce arbitrary input into a STAGE background colour that is safe to store and render.
+ *
+ * The interesting part is what this does NOT do, and it is the whole of #425: there is deliberately
+ * no legibility gate. The sibling `normalizeSingerColor` above rejects an illegible dot because a
+ * vanished identity marker is unrecoverable — a guest cannot see that their dot is invisible on
+ * someone else's TV. A stage colour is the opposite: the room picked it, the room is looking at it,
+ * and the thing it used to endanger (the word-timed lyric reel) now defends itself with a stroked
+ * outline (#750, `b764d92`). So the room may pick white, and the words stay readable.
+ *
+ * What survives from the retired pin is its OTHER stated reason, which was never about brightness:
+ * canonical 6-digit lowercase hex. The value is interpolated straight into a `style` attribute, and a
+ * 3-digit hex concatenated with alpha digits is exactly what silently dropped the singer halo once
+ * already. Everything downstream can assume one shape.
+ *
+ * Unparseable input returns `fallback` — the room keeps the colour it already chose rather than having
+ * an unrelated junk write reset it, matching how every other room setting handles a bad value.
+ */
+export function normalizeStageColor(input: unknown, fallback: string): string {
+	const rgb = typeof input === 'string' ? parseHex(input) : null;
+	return rgb ? toHex(rgb) : fallback;
 }
 
 /**

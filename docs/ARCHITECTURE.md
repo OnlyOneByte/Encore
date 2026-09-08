@@ -223,7 +223,7 @@ legibility bound rather than taste:
 | tier | L / C | used for |
 |---|---|---|
 | singer | 0.70 / 0.16 | the singer dot — small fill on a dark card, needs 3:1 non-text |
-| stage | 0.22 / 0.07 | the full-screen TV background — a colour, a gradient, or a visualizer's palette — sitting **behind word-timed lyrics** |
+| stage | 0.22 / 0.07 | the `singer` glow and the visualizer palettes — **derived** TV colours, sitting **behind word-timed lyrics** |
 
 `stageHueToHex` additionally ramps lightness down toward 0.13 as a hue closes on `--accent2`'s hue
 (345°, the "sing this now" active word) over a 60° band. Without it a pink singer's stage and the
@@ -232,6 +232,15 @@ rather than a threshold, so adjacent wheel stops cannot get wildly different sta
 
 Raising either tier's lightness regresses the lyrics. Tests assert the bound (white clears 4.5:1, the
 active pink clears 3:1, on all 24 wheel stops) rather than any literal hex.
+
+**The stage tier no longer bounds the room's own colour** (#425). The room used to store a hue angle
+and every stage went through `stageHueToHex`, which made the tier an inescapable legibility bound. The
+owner retired that bound and moved the job it was doing onto the thing it protected: the lyric reel
+paints its own `-webkit-text-stroke` outline (#750), which holds on any field *and* over a music video,
+which a bound on the stage colour could never reach. So `RoomSettings.tvBackgroundColor` is a real hex
+rendered verbatim — a room may pick white — while the tier still governs every colour nobody chose by
+hand, because an unasked-for bright field has no explanation. `hueOfColor` recovers an angle from the
+stored hex for the visualizers, which build their palettes by hue arithmetic.
 
 ## 5. Gapless playback
 

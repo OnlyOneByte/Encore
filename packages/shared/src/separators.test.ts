@@ -27,6 +27,7 @@ import {
 	normalizeJoinOrigin,
 	type RoomSettings
 } from './settings';
+import { DEFAULT_STAGE_COLOR, stageHueToHex } from './colors';
 import {
 	LYRICS_BALL_STYLES,
 	LYRICS_HIGHLIGHTS,
@@ -750,38 +751,45 @@ describe('tv background styles', () => {
 	});
 
 	it('rejecting one field never discards an unrelated choice the room already made', () => {
-		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'solid' as const, tvBackgroundHue: 75 };
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundStyle: 'solid' as const, tvBackgroundColor: '#123456' };
 		const out = normalizeRoomSettings({ tvBackgroundStyle: 'garbage' as never }, room);
 		expect(out.tvBackgroundStyle).toBe('solid');
-		expect(out.tvBackgroundHue).toBe(75);
+		expect(out.tvBackgroundColor).toBe('#123456');
 	});
 
-	it('quantises the hue to the wheel step and wraps instead of rejecting', () => {
-		// an angle always has a meaning once wrapped, so clamping beats refusing (song-intro precedent)
-		expect(normalizeRoomSettings({ tvBackgroundHue: 0 }).tvBackgroundHue).toBe(0);
-		expect(normalizeRoomSettings({ tvBackgroundHue: 7 }).tvBackgroundHue).toBe(0); // nearer 0 than 15
-		expect(normalizeRoomSettings({ tvBackgroundHue: 8 }).tvBackgroundHue).toBe(15); // rounds up
-		expect(normalizeRoomSettings({ tvBackgroundHue: 22 }).tvBackgroundHue).toBe(15);
-		expect(normalizeRoomSettings({ tvBackgroundHue: 23 }).tvBackgroundHue).toBe(30);
-		expect(normalizeRoomSettings({ tvBackgroundHue: 360 }).tvBackgroundHue).toBe(0);
-		expect(normalizeRoomSettings({ tvBackgroundHue: 375 }).tvBackgroundHue).toBe(15);
-		expect(normalizeRoomSettings({ tvBackgroundHue: -15 }).tvBackgroundHue).toBe(345);
-		expect(normalizeRoomSettings({ tvBackgroundHue: -370 }).tvBackgroundHue).toBe(345);
+	// #425 replaced the stored hue ANGLE with a real colour, so this block replaces the quantiser
+	// assertions that used to live here. The angle needed wrapping and snapping because every number had
+	// a meaning once wrapped; a colour is either parseable or it is not, so the rule is normalise-or-keep.
+	it('normalises the stage colour to canonical hex rather than storing what was sent (#425)', () => {
+		expect(normalizeRoomSettings({ tvBackgroundColor: '#ABC' }).tvBackgroundColor).toBe('#aabbcc');
+		expect(normalizeRoomSettings({ tvBackgroundColor: '#AABBCC' }).tvBackgroundColor).toBe('#aabbcc');
+		expect(normalizeRoomSettings({ tvBackgroundColor: '#001d31' }).tvBackgroundColor).toBe('#001d31');
 	});
 
-	it('falls back on a hue that is not a usable number', () => {
-		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundHue: 165 };
-		for (const junk of [NaN, Infinity, -Infinity, '90' as never, null as never, undefined]) {
-			expect(normalizeRoomSettings({ tvBackgroundHue: junk as never }, room).tvBackgroundHue).toBe(165);
+	it('accepts a colour the retired hue pin could never have produced (#425)', () => {
+		// the ruling, as an assertion: brightness is no longer bounded here, because the lyric reel now
+		// carries its own stroke (#750) instead of the field being restricted to spare it
+		expect(normalizeRoomSettings({ tvBackgroundColor: '#ffffff' }).tvBackgroundColor).toBe('#ffffff');
+		expect(normalizeRoomSettings({ tvBackgroundColor: '#ff0000' }).tvBackgroundColor).toBe('#ff0000');
+	});
+
+	it('falls back on a stage colour that is not a parseable hex (#425)', () => {
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundColor: '#002215' };
+		for (const junk of ['rebeccapurple', 'rgb(1,2,3)', '#7c5cff30', '#12', '', 240, NaN, null, undefined, {}]) {
+			expect(normalizeRoomSettings({ tvBackgroundColor: junk as never }, room).tvBackgroundColor).toBe('#002215');
 		}
 	});
 
-	it('every normalized hue is one the colour wheel can actually render', () => {
-		for (const raw of [0, 1, 44, 99, 180, 271, 359, 400, -1, -200]) {
-			const h = normalizeRoomSettings({ tvBackgroundHue: raw }).tvBackgroundHue;
-			expect(h % 15).toBe(0);
-			expect(h).toBeGreaterThanOrEqual(0);
-			expect(h).toBeLessThan(360);
+	it('the default stage colour is what the old hue-240 default rendered as (#425)', () => {
+		// an existing box that never opened Settings must look byte-identical after the migration
+		expect(DEFAULT_ROOM_SETTINGS.tvBackgroundColor).toBe(DEFAULT_STAGE_COLOR);
+		expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
+	});
+
+	it('every normalized stage colour is one shape the CSS layer can assume (#425)', () => {
+		for (const raw of ['#abc', '#AABBCC', '#000', '#ffffff', 'junk', '']) {
+			const c = normalizeRoomSettings({ tvBackgroundColor: raw as never }).tvBackgroundColor;
+			expect(c).toMatch(/^#[0-9a-f]{6}$/);
 		}
 	});
 });
@@ -814,7 +822,7 @@ describe('tv visualizers', () => {
 
 	it('the variant is remembered while another background is selected', () => {
 		// Switching away from the visualizer and back must not forget the choice — the same property
-		// tvBackgroundHue has when the style is not `solid`.
+		// tvBackgroundColor has when the style is not `solid`.
 		const room = {
 			...DEFAULT_ROOM_SETTINGS,
 			tvBackgroundStyle: 'visualizer' as const,
@@ -826,10 +834,15 @@ describe('tv visualizers', () => {
 	});
 
 	it('a bad visualizer write never discards an unrelated choice', () => {
-		const room = { ...DEFAULT_ROOM_SETTINGS, tvVisualizer: 'moire' as const, tvBackgroundHue: 75, songIntroMs: 7000 };
+		const room = {
+			...DEFAULT_ROOM_SETTINGS,
+			tvVisualizer: 'moire' as const,
+			tvBackgroundColor: '#281600',
+			songIntroMs: 7000
+		};
 		const out = normalizeRoomSettings({ tvVisualizer: 'garbage' as never }, room);
 		expect(out.tvVisualizer).toBe('moire');
-		expect(out.tvBackgroundHue).toBe(75);
+		expect(out.tvBackgroundColor).toBe('#281600');
 		expect(out.songIntroMs).toBe(7000);
 	});
 

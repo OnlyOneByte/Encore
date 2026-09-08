@@ -70,7 +70,7 @@ export class SettingsRepository {
 			queueOrder: row.queueOrder,
 			tvProgressStyle: row.tvProgressStyle,
 			tvBackgroundStyle: row.tvBackgroundStyle,
-			tvBackgroundHue: row.tvBackgroundHue,
+			tvBackgroundColor: row.tvBackgroundColor,
 			tvVisualizer: row.tvVisualizer,
 			songIntroEnabled: row.songIntroEnabled,
 			songIntroMs: row.songIntroMs,

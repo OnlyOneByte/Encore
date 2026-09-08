@@ -321,7 +321,14 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 			field: 'tvProgressStyle',
 			expect: baseline.room.tvProgressStyle
 		},
-		{ scope: 'room', body: { tvBackgroundHue: NaN }, field: 'tvBackgroundHue', expect: baseline.room.tvBackgroundHue },
+		{
+			// #425: a colour now, not an angle. `NaN` is no longer the interesting junk — an unparseable
+			// colour string is, because the field is text and a bad one would reach a style attribute.
+			scope: 'room',
+			body: { tvBackgroundColor: 'rebeccapurple' },
+			field: 'tvBackgroundColor',
+			expect: baseline.room.tvBackgroundColor
+		},
 		{ scope: 'room', body: { lyricsBall: 'wormhole' }, field: 'lyricsBall', expect: baseline.room.lyricsBall },
 		{ scope: 'room', body: { songIntroMs: -99999 }, field: 'songIntroMs', expect: 500 /* MIN_SONG_INTRO_MS */ },
 		{ scope: 'room', body: { songIntroMs: 99999999 }, field: 'songIntroMs', expect: 10000 /* MAX_SONG_INTRO_MS */ }
