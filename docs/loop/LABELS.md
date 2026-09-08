@@ -62,8 +62,10 @@ Quoted from the ISSUEGEN brief, because this is contested and the rule is load-b
 > `review` findings on its next wake without re-investigating them, which is also what makes them
 > dispatchable to the fix loop. Applying it yourself would forge that record.
 
-The live ISSUEGEN cron messages currently instruct reviewers to apply it themselves, which
-contradicts this. Recorded in [`DRIFT.md`](DRIFT.md).
+The live `ISSUEGEN-*` cron messages currently instruct reviewers to apply it themselves, which
+contradicts this rule. Four of the five predate the rule; only `ISSUEGEN-e2e-behavior` reads correctly.
+[`REVIEW-PASSES.md`](REVIEW-PASSES.md) supersedes those messages, and correcting them at source needs
+the cron registry.
 
 ## Retired 2026-09-07 — do not reintroduce
 
@@ -76,22 +78,33 @@ contradicts this. Recorded in [`DRIFT.md`](DRIFT.md).
 | `HIGH-PRIORITY` | `priority` |
 | `needs-owner` · `owner-only` · `needs-repro` · `needs-owner-verification` · `for-owner` | `needs-decision` |
 
-Historical rows in `.kiro/autoloop/TRIAGE-LOG.md` and `REVIEW-LOG.md` keep the old names. **That is
+Historical rows in the run logs under `/local/home/angryang/workspace/encore-pipeline/state/` keep the
+old names. **That is
 the record — do not rewrite it.**
 
-## Labels currently doing trigger duty
+## Labels still doing trigger duty
 
-This is the migration surface. Each row is a label edge being used as an *event*, and each will stop
-being a trigger once the corresponding lane moves to webhooks. **The label itself stays** — only its
-double duty as a signal goes away.
+A label is coordination **state**. Some edges are additionally being used as an *event* — a lane
+notices the label changed since it last looked. That is edge detection by polling, and a missed edge is
+silent and permanent; it is what cost #707 and #681.
 
-| Label edge | Simulated event | Real GitHub event | Migrates in |
-|---|---|---|---|
-| `triaged` removed | "re-triage this" | `issues.unlabeled` | Stage 1 |
-| — (nothing today) | "the owner answered a question" | `issue_comment.created` | Stage 1 |
-| `triaged` added | "this is dispatchable" | `issues.labeled` | Stage 2 |
-| `review:pending` added | "a PR needs review" | `pull_request.opened` | Stage 3 |
-| `review:blocked` → `review:pending` | "I pushed a fix, re-review" | `pull_request.synchronize` | Stage 3 |
+Triage no longer works this way. It is woken by the GitHub event directly, so these two are **retired
+as triggers** while the labels themselves keep their meaning:
 
-The middle row is the one with no label at all today: there is no edge that means *the owner
-answered*, which is why answering currently requires a separate label edit.
+| Label edge | Now driven by |
+|---|---|
+| `triaged` removed — the owner's re-triage lever | `issues.unlabeled`, acted on in ~5s |
+| the owner answering a question | `issue_comment.created` — there was never a label for this, which is why answering used to require stripping `triaged` by hand |
+
+These three are **still label-triggered**, and each has a GitHub event already being delivered and
+recorded by the translator that nothing consumes yet:
+
+| Label edge | Used to mean | The event that would replace it |
+|---|---|---|
+| `triaged` added | "this is dispatchable" | `issues.labeled` |
+| `review:pending` added | "a PR needs review" | `pull_request.opened` |
+| `review:blocked` → `review:pending` | "I pushed a fix, re-review me" | `pull_request.synchronize` |
+
+The third row is the expensive one. A worker cannot clear its own `review:blocked`, so a fix that is
+pushed without that flip waits forever, and the comment asking for re-review is inert. The manual flip
+protocol exists only to synthesise an edge GitHub already emits.

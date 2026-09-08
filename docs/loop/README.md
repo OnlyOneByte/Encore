@@ -1,69 +1,54 @@
 # The Encore autonomous loop
 
-Encore is maintained partly by a fleet of agents: they read the codebase, file issues, triage them,
-fix them, review the pull requests, and merge. This directory is the **tracked** description of that
-system — what the lanes are, how work reaches each one, and where the design is going.
+Encore is maintained partly by a fleet of agents. They read the codebase and file issues, triage them,
+fix them, review the pull requests, and drive them to a merge.
 
-## Why this directory exists
+**This directory is the steering those agents read.** It is not documentation *about* the loop — it is
+the loop's operating instructions, and editing a file here changes what the agents do.
 
-The operational briefs the agents actually read live in `.kiro/autoloop/`, which is **gitignored**
-(`.gitignore:38` ignores `.kiro` wholesale). That has two consequences worth naming plainly:
+## Why it lives here
 
-- The loop's design has never been reviewable. It cannot be diffed, commented on, or bisected, and
-  a brief edited on one box exists nowhere else.
-- The briefs have drifted against each other and against the live schedule, silently. See
-  [`DRIFT.md`](DRIFT.md) — every entry there was found by reading two sources that disagree.
+The briefs used to live in `.kiro/autoloop/`, which is gitignored. That had two costs. The design of
+the thing writing most of the commits was never reviewable — no diffs, no comments, no bisect — and the
+briefs drifted against each other and against the live configuration with nothing to catch it. Several
+rules in this directory exist because two copies disagreed and the wrong one was followed.
 
-So this directory is the reviewable copy. The briefs stay authoritative for **what an agent is told
-to do**; these docs are authoritative for **how the system is meant to fit together**.
+## One brief per reader
 
-## Read this first, if you read nothing else
+The split is **by reader, not by topic**, and that is load-bearing. Each file is loaded into one kind
+of agent's context, so a rule in the wrong file is a rule some agent will act on when it must not.
 
-The loop's coordination state lives in **GitHub labels**. That part is sound: labels are visible,
-crash-safe, and need no side database.
+| File | Read by |
+|---|---|
+| [`COMMON.md`](COMMON.md) | **every lane** — the shared rules the others point at |
+| [`TRIAGE.md`](TRIAGE.md) | the triage lane (one cron job, `TRIAGE-Unified`) |
+| [`CONDUCTOR.md`](CONDUCTOR.md) | the dev conductor — one supervisor session |
+| [`CODING-BOT.md`](CODING-BOT.md) | each coding worker — up to 5 sessions, seeded verbatim |
+| [`PR-BOT.md`](PR-BOT.md) | each PR reviewer — up to 5 sessions, seeded verbatim |
+| [`REVIEW-PASSES.md`](REVIEW-PASSES.md) | the 5 scheduled `ISSUEGEN-*` passes that file issues |
 
-The problem is that labels are currently doing a *second* job they are bad at — they are also the
-**event bus**. A lane learns there is work to do by noticing that a label changed since the last
-time it looked. That is edge detection by polling, and a missed edge is silent and permanent:
+Two of those are easy to confuse: `PR-BOT.md` reviews **one open pull request** and posts a verdict.
+`REVIEW-PASSES.md` reads **one slice of the codebase** and files new issues. It never touches a PR.
 
-- A freshly-opened PR carrying no label is invisible to the review lane, so the author waits for a
-  verdict that will never come (issue #707).
-- A worker that pushes a fix but leaves `review:blocked` in place waits **forever**; a comment
-  asking for re-review is inert (issue #681).
-- An owner who answers a triage question in a comment has answered nothing, because nothing reads
-  comments. The owner must additionally strip the `triaged` label and wait for the next cron pass.
-
-Every one of those is an event GitHub already emits for free. The migration in
-[`MIGRATION.md`](MIGRATION.md) moves the bus to GitHub webhooks and lets labels go back to being
-state only.
-
-## The lanes
-
-| Lane | What it does | Doc |
-|---|---|---|
-| **Triage** | Categorizes, labels and comments on incoming issues; asks the owner for rulings | [`TRIAGE.md`](TRIAGE.md) |
-| **Issue generation** | Five scheduled code-review passes that *file* new issues from a slice of the codebase | [`REVIEW.md`](REVIEW.md) (Part B) |
-| **Dev / fix** | Claims a triaged issue, builds the fix in its own worktree, opens the PR | [`DEV.md`](DEV.md) |
-| **PR review** | Adversarially reviews an open PR and posts one verdict | [`REVIEW.md`](REVIEW.md) (Part A) |
-
-## Document map
+Reference, not read by a lane:
 
 | File | Contents |
 |---|---|
-| [`ARCHITECTURE.md`](ARCHITECTURE.md) | How the lanes connect; the label-as-bus problem; the target shape |
-| [`LABELS.md`](LABELS.md) | The full label taxonomy, what blocks, what was retired, and which labels are doing trigger duty |
-| [`TRIAGE.md`](TRIAGE.md) | The triage lane in full, including the Decisions-block protocol — **migration stage 1** |
-| [`DEV.md`](DEV.md) | The coding worker: charter, status protocol, gates, proof requirements, governance |
-| [`REVIEW.md`](REVIEW.md) | Both review lanes: the PR reviewer and the ISSUEGEN passes |
-| [`WEBHOOKS.md`](WEBHOOKS.md) | The ingress mechanism and the constraint that shapes it |
-| [`MIGRATION.md`](MIGRATION.md) | The staged plan, with acceptance criteria per stage |
-| [`DRIFT.md`](DRIFT.md) | Contradictions between the briefs, and between a brief and reality |
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | how the lanes connect, and how work reaches each one |
+| [`LABELS.md`](LABELS.md) | the label taxonomy — the loop's coordination state |
+| [`WEBHOOKS.md`](WEBHOOKS.md) | the GitHub ingress: how an event becomes an agent turn |
+| [`pipeline.json`](pipeline.json) | the governance spec — caps, gates, work source |
 
-## Reading conventions
+## Two rules about editing these files
 
-Each lane doc separates two things explicitly, because conflating them is how the briefs rotted:
+**An edit is not a deployment.** A long-lived worker or reviewer session reads its brief **once, at
+creation**, and works from that copy forever. Measured 2026-09-06: an edit to the reviewer brief left
+four live slots emitting the old verdict template across seven consecutive verdicts (#272–#279). So
+either order a re-read at the start of the next work item, or retire the slot. A cron lane is
+different — each run is a fresh session, so a cron brief edit takes effect on the next fire.
 
-- **Today** — what the system actually does right now, verified against the live configuration.
-- **Target** — what it becomes after its migration stage. Not yet true.
-
-A claim marked *unverified* is one nobody has measured. Leave it marked rather than promoting it.
+**Runtime state is not steering and does not belong here.** The append-only run logs, the live fleet
+state and the webhook inbox live outside the repo, under
+`/local/home/angryang/workspace/encore-pipeline/`. Nothing in this directory should point into
+`.kiro/`; the one remaining exception is the `prove_per_hunk.py` proof harness, flagged for a
+follow-up.
