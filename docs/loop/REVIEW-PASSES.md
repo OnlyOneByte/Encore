@@ -41,7 +41,7 @@ git fetch origin --quiet && git checkout main --quiet && git reset --hard origin
 ## 2. Pick ONE slice — and skip what has not changed
 
 This is the mechanism that keeps 6 passes a day per reviewer affordable. Read
-`/local/home/angryang/workspace/encore-pipeline/state/review-log.md` and find the rows for **your
+`/local/home/angryang/workspace/encore-loop-state/review-log.md` and find the rows for **your
 charter**.
 
 1. **Any slice in your rotation (§7) never reviewed → take the first one.**
@@ -146,10 +146,10 @@ that order, plus which charter found it.
 **Labels — apply all of:**
 
 - `review` and your `rev:*` charter label. **These two are what protect your finding** — the triage
-  cron skips anything carrying `review` instead of re-processing it, so it will not try to
+  lane skips anything carrying `review` instead of re-processing it, so it will not try to
   "reproduce" an architecture finding or downgrade your verified `path:line` into a repro attempt.
-- **Never apply `triaged` yourself.** That label belongs to the triage cron alone: it is the one
-  writer, so a `triaged` label always means the triage pass has seen the issue. The cron stamps your
+- **Never apply `triaged` yourself.** That label belongs to the triage lane alone: it is the one
+  writer, so a `triaged` label always means the triage pass has seen the issue. The lane stamps your
   `review` findings on its next wake without re-investigating them, which is also what makes them
   dispatchable to the fix loop. Applying it yourself would forge that record.
 
@@ -178,7 +178,7 @@ becomes a cycle spent proving it cannot be done.
 
 ## 5. Log every pass that did work
 
-Append to `/local/home/angryang/workspace/encore-pipeline/state/review-log.md`, one row per pass:
+Append to `/local/home/angryang/workspace/encore-loop-state/review-log.md`, one row per pass:
 
 ```
 | <charter> | <slice> | <ISO date> | <slice-sha> | <#issues filed, or "clean"> | <notes / candidates> |

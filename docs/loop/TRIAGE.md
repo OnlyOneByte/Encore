@@ -14,17 +14,29 @@ of the reporter's words.
 
 ## How this lane is woken
 
-**A GitHub webhook wakes you about five seconds after the event.** A single cron job,
-`TRIAGE-Unified`, handles both issue events and comment events — there is not one job per event kind.
-The schedule on that job is only a **safety net** for events the webhook missed; it is not the normal
-path, and a scheduled wake with nothing new is a silent stop (§0).
+**An orchestrator session wakes you.** The triage orchestrator patrols on its own loop (~360s), finds
+work, and dispatches one worker session per issue — up to 5 at a time. You are one of those workers:
+you own exactly ONE issue, and you exit when it is triaged.
 
-**Comment-shaped events arrive as one JSON file per event** in
-`/local/home/angryang/workspace/encore-pipeline/inbox/`. The lane **drains** that directory: read each
-file, act on it, and **delete it**. A file left behind is an event that will be processed twice.
+**Work is found by three label queries, and nothing else.** There is no webhook, no event queue and no
+inbox directory. The orchestrator runs these against live GitHub every cycle:
 
-**Every comment you post must begin with the marker in the next section**, on its own first line.
-Without it you wake yourself on your own words — see the measured incident below.
+1. open issues carrying `review` but not `triaged` — a reviewer finding, already investigated with a
+   `path:line`. **Stamp it; do not re-investigate it.**
+2. open issues carrying neither `review` nor `triaged` — classify from scratch.
+3. open issues carrying `needs-decision` **whose newest comment is not bot-authored** — the owner has
+   answered a Decisions block.
+
+**Query 3 is why the marker in the next section is load-bearing twice over.** It is how "the owner
+answered" is told apart from "the lane already replied": once you post a marked comment, the newest
+comment on that issue is a bot comment and the query stops matching. Post an unmarked comment and the
+issue looks permanently unanswered — the orchestrator re-dispatches it every cycle, forever.
+
+This design is deliberately **stateless**. It reads only current GitHub state, so a missed cycle costs
+nothing: the next cycle sees the same thing and acts. There is no delivery to lose and no remembered
+count to go stale. An earlier revision used a GitHub webhook feeding a durable inbox; it was removed
+because everything it delivered is discoverable by polling, and polling is idempotent where delivery
+is not.
 
 ---
 
@@ -36,7 +48,7 @@ Without it you wake yourself on your own words — see the measured incident bel
 <!-- loop-bot lane=triage -->
 ```
 
-This is machinery, not decoration. Issue comments now wake a webhook-driven lane, and that lane
+This is machinery, not decoration. The orchestrator finds owner answers by checking whether an issue with needs-decision has a newest comment that is NOT bot-authored, and that check
 cannot tell your comment from a human's by author — every lane on this repo posts as the same GitHub
 user. The marker is the *only* thing that stops your own comment from waking a triage turn about
 itself. It renders as nothing, so it costs the reader nothing.
@@ -171,10 +183,10 @@ gh issue list --state open --limit 100 --json number,title,labels,author,created
              | select((.labels|map(.name)|index("review")) == null)] | .[] | "#\(.number) \(.title)"'
 ```
 
-Also drain the webhook inbox for comment-shaped events, and delete each file you have handled:
+Also run the third query -- open issues carrying needs-decision whose newest comment is not bot-authored, which means the owner has answered:
 
 ```bash
-ls /local/home/angryang/workspace/encore-pipeline/inbox/
+gh issue list --state open --limit 100 --label needs-decision --json number,comments
 ```
 
 **The `triaged` label is the switch. An issue without it gets looked at, full stop.**
@@ -183,7 +195,7 @@ There is no second condition. If an issue is open and carries no `triaged` label
 whether it was never triaged, or was triaged and someone took the label off. **Removing `triaged` is
 how the owner asks for a re-triage**, and it has to work every time or it is not a lever.
 
-`/local/home/angryang/workspace/encore-pipeline/state/triage-log.md` is the **record, not a veto**. It
+`/local/home/angryang/workspace/encore-loop-state/triage-log.md` is the **record, not a veto**. It
 tells you what a previous pass concluded; it never tells you to skip an issue the label says to look
 at. Consult it for context before re-triaging (below), not to decide whether to.
 
@@ -192,7 +204,7 @@ at. Consult it for context before re-triaging (below), not to decide whether to.
 Before you start on a query (b) issue, look for prior rows. **Match the first column only:**
 
 ```bash
-awk -F'|' -v n="#123" '$2 ~ n' /local/home/angryang/workspace/encore-pipeline/state/triage-log.md
+awk -F'|' -v n="#123" '$2 ~ n' /local/home/angryang/workspace/encore-loop-state/triage-log.md
 ```
 
 Not `grep "#123"`. Verdicts cross-link other issues in their prose, so a bare grep is wrong by a wide
@@ -239,10 +251,10 @@ never re-root-cause one.
 **Query (b) is your real work**, and it excludes `review` mechanically so rule 0 cannot walk you into
 re-opening a reviewer's question.
 
-**If both queries are empty and the inbox is empty: stop immediately.** Say nothing, notify nobody,
+**If all three queries are empty: stop immediately.** Say nothing, notify nobody,
 write nothing. A "nothing new" message trains the owner to ignore this job. Silence is the correct
-output on a quiet wake and it is the common case, because the schedule is only a safety net behind the
-webhook.
+output on a quiet wake and it is the common case, because the orchestrator patrols on a timer and most
+cycles legitimately find nothing.
 
 Cap yourself at **6 issues per run**, oldest first. More than that and the run turns into a
 sprawling context that does all of them badly; the rest wait for the next wake.
@@ -503,7 +515,7 @@ the bounded fix is not sufficient. If a bounded fix *does* exist and merely leav
 open, spec **both** and make them options A and B — that is the owner's tradeoff to make, not yours.
 
 Label it `triaged`, `bug`, `proposal`, `needs-decision`. **Do not add `loop`.** That is the fence: a redesign is an architecture ruling,
-and a lane woken by every webhook event must not authorise one by dispatching it. The issue waits, fully
+and a lane that re-checks every cycle must not authorise one by dispatching it. The issue waits, fully
 specified, until the owner adds `loop` — at which point it dispatches like
 anything else.
 
@@ -561,7 +573,7 @@ verified is covered: a commit that touches the same file is not a fix, so quote 
 
 ## 6. Record it locally — the durable account of every verdict
 
-Append **one line per issue** to `/local/home/angryang/workspace/encore-pipeline/state/triage-log.md`,
+Append **one line per issue** to `/local/home/angryang/workspace/encore-loop-state/triage-log.md`,
 in this shape:
 
 ```
@@ -610,7 +622,7 @@ say that first and plainly, rather than leaving it as line four of a digest.
 ## 8. Never
 
 - Never post a comment whose first line is not `<!-- loop-bot lane=triage -->`.
-- Never leave a handled inbox file in place — delete it, or the event is processed twice.
+- Never post an UNMARKED comment. The marker is how an answered issue is told from an unanswered one, so an unmarked reply makes the issue re-dispatch every cycle forever.
 - Never open a PR, push a branch, or change code. Triage specifies; the loop fixes.
 - Never build a feature because it seemed obvious. `proposal` + `needs-decision` and stop.
 - Never re-triage an issue that **still carries** `triaged`, even if you disagree with the verdict.
