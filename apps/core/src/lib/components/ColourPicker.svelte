@@ -37,15 +37,15 @@
 	 * sighted guest picking off a wheel deserves to know what they landed on too, so this is shown on
 	 * screen as well as announced.
 	 *
-	 * COUPLING (load-bearing, currently unguarded): PRESET_NAMES is mapped to the shared SINGER_COLORS
-	 * BY POSITION — PRESET_NAMES[i] is the name of SINGER_COLORS[i]. Nothing asserts the two arrays
-	 * stay the same length or the same order, so reordering or resizing EITHER (this array here, or
-	 * SINGER_COLORS in packages/shared/src/colors.ts) silently mislabels a colour: a reader would
-	 * announce "green" for the amber dot. This array cannot be reordered without also reordering
-	 * SINGER_COLORS, and vice versa. The single named chokepoint for this mapping is presetIndex()
-	 * below — every read of PRESET_NAMES goes through it. contract.test.ts already pins THIS list's
-	 * exact contents (violet…mint), which is a partial guard; it does NOT check the shared side, so a
-	 * SINGER_COLORS reorder in packages/shared would pass every current test while mislabelling dots.
+	 * COUPLING (load-bearing): PRESET_NAMES is mapped to the shared SINGER_COLORS BY POSITION —
+	 * PRESET_NAMES[i] is the name of SINGER_COLORS[i]. This array cannot be reordered without also
+	 * reordering SINGER_COLORS in packages/shared/src/colors.ts, and vice versa. The single named
+	 * chokepoint for this mapping is presetIndex() below — every read of PRESET_NAMES goes through it.
+	 * Guarded on two sides: contract.test.ts pins THIS list's exact contents (violet…mint), and
+	 * design-system.test.ts ('the colour picker has exactly one name per shared preset colour') asserts
+	 * PRESET_NAMES and SINGER_COLORS stay the SAME LENGTH — so a resize of either that would announce a
+	 * preset as `undefined` reds. Neither can check ORDER (nothing in a hex says "violet"), so a
+	 * consistent same-length REORDER of both still needs a human reading either file.
 	 */
 	const PRESET_NAMES = ['violet', 'pink', 'green', 'amber', 'blue', 'coral', 'purple', 'mint'];
 	const HUE_NAMES = [
