@@ -2,16 +2,17 @@
 //
 // reprioritizeCookForMedia is unit-tested through the hub (reprioritize-cook.test.ts drives
 // handleQueueCommand -> onEntryAdded -> the helper), but the seam it hangs on — HubDeps.onEntryAdded
-// — is optional, and the LIVE composition that fills it lives inside the Bun.serve websocket message
-// closure in apps/core/server.ts. That closure needs a live socket + full app wiring, so it has no
-// unit harness (same file class as the session-cookie live writer, #107, and the autostart gate,
-// #128). Reverting the wiring there leaves every hub test green, because they mirror the seam with a
-// local onEntryAdded — so without this guard the fix could be silently unwired and ship green.
+// — is optional, and the LIVE composition that fills it now lives in app.ts's buildHubDeps factory
+// (#460 §3 folded the per-frame bag into one factory; before that this wiring was in the Bun.serve
+// websocket message closure in server.ts). The hub tests mirror the seam with a local onEntryAdded,
+// so reverting the real wiring leaves them green — without this guard the fix could be silently
+// unwired and ship green.
 //
-// WHY A SOURCE SCAN: the wiring is a decidable property of server.ts (does it pass
+// WHY A SOURCE SCAN: the wiring is a decidable property of the factory (does buildHubDeps pass
 // reprioritizeCookForMedia to onEntryAdded, over app.jobs + app.workerHub.dispatch?), and there is
 // no pure function to exercise instead. This asserts production's own text; comments are blanked so
-// a commented-out wiring cannot satisfy it. Change the seam and this guard moves with it.
+// a commented-out wiring cannot satisfy it. Change the seam and this guard moves with it — which is
+// exactly what happened here when the seam moved from server.ts into the factory.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -21,19 +22,19 @@ function stripComments(src: string): string {
 	return src.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/\/\/[^\n]*/g, blank);
 }
 
-// import.meta.dir === apps/core/src/server/jobs → three levels up to apps/core/server.ts.
-const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
+// import.meta.dir === apps/core/src/server/jobs → one level up to apps/core/src/server/app.ts,
+// where buildHubDeps (the single HubDeps composition site, #460 §3) now wires this seam.
+const APP = stripComments(readFileSync(join(import.meta.dir, '..', 'app.ts'), 'utf8'));
 
-test('server.ts imports reprioritizeCookForMedia (#179)', () => {
-	expect(SERVER).toMatch(
-		/import\s*\{\s*reprioritizeCookForMedia\s*\}\s*from\s*'\.\/src\/server\/jobs\/reprioritize-cook'/
-	);
+test('app.ts imports reprioritizeCookForMedia (#179)', () => {
+	expect(APP).toMatch(/import\s*\{\s*reprioritizeCookForMedia\s*\}\s*from\s*'\.\/jobs\/reprioritize-cook'/);
 });
 
-test('server.ts wires HubDeps.onEntryAdded to reprioritizeCookForMedia (#179)', () => {
+test('app.ts buildHubDeps wires HubDeps.onEntryAdded to reprioritizeCookForMedia (#179)', () => {
 	// The add-side seam must be filled — an unwired onEntryAdded means the cook never gets un-starved.
-	expect(SERVER).toMatch(/onEntryAdded:\s*\(mediaId,\s*entries\)\s*=>/);
-	expect(SERVER).toMatch(/reprioritizeCookForMedia\(mediaId,\s*\{/);
+	// Params carry type annotations in the factory (mediaId: string, entries: QueueEntry[]).
+	expect(APP).toMatch(/onEntryAdded:\s*\(mediaId(?::\s*string)?,\s*entries(?::\s*QueueEntry\[\])?\)\s*=>/);
+	expect(APP).toMatch(/reprioritizeCookForMedia\(mediaId,\s*\{/);
 });
 
 test('the wired hook passes the job ledger, the post-add entries, and a dispatch kick (#179)', () => {
@@ -50,9 +51,11 @@ test('the wired hook passes the job ledger, the post-add entries, and a dispatch
 	// anchored /onFailed:...settleGatesForFailedJob(job, mediaById)/.
 
 	// Not-vacuous sentinel: the hook opening must be present, so a broken/empty read reds here first.
-	expect(SERVER).toMatch(/onEntryAdded:\s*\(mediaId,\s*entries\)\s*=>\s*reprioritizeCookForMedia\(mediaId,\s*\{/);
+	expect(APP).toMatch(
+		/onEntryAdded:\s*\(mediaId(?::\s*string)?,\s*entries(?::\s*QueueEntry\[\])?\)\s*=>\s*reprioritizeCookForMedia\(mediaId,\s*\{/
+	);
 
-	expect(SERVER).toMatch(
-		/onEntryAdded:\s*\(mediaId,\s*entries\)\s*=>\s*reprioritizeCookForMedia\(mediaId,\s*\{\s*jobs:\s*app\.jobs,\s*entries,\s*now:[^,]+,\s*dispatch:\s*\(\)\s*=>\s*app\.workerHub\.dispatch\(\)\s*\}\)/
+	expect(APP).toMatch(
+		/onEntryAdded:\s*\(mediaId(?::\s*string)?,\s*entries(?::\s*QueueEntry\[\])?\)\s*=>\s*reprioritizeCookForMedia\(mediaId,\s*\{\s*jobs:\s*app\.jobs,\s*entries,\s*now:[^,]+,\s*dispatch:\s*\(\)\s*=>\s*app\.workerHub\.dispatch\(\)\s*\}\)/
 	);
 });

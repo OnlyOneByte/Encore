@@ -35,6 +35,8 @@ import { ffmpegLoudnessProbe, isDigitalSilence } from './media/loudness';
 import { safeMediaPath } from './media/local-files';
 import { existsSync } from 'node:fs';
 import { markLyricsQueued, reportTerminalFailure } from './jobs/make-karaoke';
+import { cancelJobsForMedia } from './jobs/cancel';
+import { reprioritizeCookForMedia } from './jobs/reprioritize-cook';
 import {
 	readSidecar,
 	writeSidecar,
@@ -57,10 +59,10 @@ import { WorkerRegistry } from './jobs/registry';
 import { WorkerHub } from './jobs/worker-hub';
 import { runBootMaintenance, type BootTask } from './boot-maintenance';
 import { reconcileOnReady } from './realtime/player';
-import { orderingOf, syncEvent } from './realtime/hub';
+import { orderingOf, syncEvent, type HubDeps, type Publish } from './realtime/hub';
 import { resolveMediaStoreConfig, LocalMediaStore, type MediaStore, type MediaStoreConfig } from './media/store';
 import { ObjectMediaStore, bunS3Client } from './media/object-store';
-import type { ServerEvent, Media, WorkerCommand } from '@encore/shared';
+import type { ServerEvent, Media, WorkerCommand, QueueEntry } from '@encore/shared';
 
 export interface EncoreApp {
 	db: DB;
@@ -593,4 +595,77 @@ export function getApp(): EncoreApp {
 /** server.ts calls this at boot to route broadcasts through Bun.serve's native pub/sub. */
 export function setPublish(fn: (e: ServerEvent) => void): void {
 	getApp().publish = fn;
+}
+
+/**
+ * The genuinely per-socket / per-frame inputs to a HubDeps bag — everything that is NOT derivable from
+ * the shared app. server.ts owns these: the room broadcast sink, the authenticated singer on THIS
+ * socket, the live membership snapshot, and the idempotency ledger. Everything else a hub call needs
+ * is read straight off `app` by {@link buildHubDeps}.
+ */
+export interface HubDepsPerFrame {
+	/** Broadcast to the whole room (Bun pub/sub); the one sink hoisted at boot in server.ts. */
+	broadcast: Publish;
+	/** The singer this socket authenticated as, or undefined for a socket that never joined. */
+	actorSingerId: string | undefined;
+	/** Singer ids holding a live socket right now. */
+	listOnline: () => string[];
+	/** Singer ids in the room but unreachable (locked phone, pocket). */
+	listAway: () => string[];
+	/** Idempotency ledger, RECORD-ON-CHECK — true if already applied, else records it. */
+	seenOp: (clientOpId: string) => boolean;
+	/** NON-RECORDING peek at the same ledger (#490 validation-failure re-ack path). */
+	hasOp: (clientOpId: string) => boolean;
+}
+
+/**
+ * Assemble a complete {@link HubDeps} for one WS frame from the shared app plus the per-frame inputs.
+ *
+ * This is the SINGLE place the hub's optional hooks are wired to their live services, replacing the
+ * hand-assembled bag that server.ts spelled out per frame (#460 §3). The app-derived hooks —
+ * listSingers -> app.singers, getSettings -> app.settings, onNowPlaying -> app.plays, onSang ->
+ * app.singers, recordAdd -> app.popularity, onEntryRemoved -> cancelJobsForMedia, onEntryAdded ->
+ * reprioritizeCookForMedia — are filled HERE, so a new optional hook is wired in one place instead of
+ * at every composition site. The optionality that genuinely varies per call (actorSingerId, the
+ * membership snapshot, the ledger) is passed in via {@link HubDepsPerFrame}. The hubdeps-composition-
+ * parity guard now asserts THIS literal fills every optional HubDeps key, so a dropped hook still reds.
+ */
+export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps {
+	return {
+		state: app.state,
+		publish: perFrame.broadcast,
+		mediaById: app.mediaById,
+		listSingers: () => app.singers.listPublic(),
+		listOnline: perFrame.listOnline,
+		listAway: perFrame.listAway,
+		getSettings: () => app.settings.getEffective(),
+		onNowPlaying: (e) => app.plays.onNowPlaying(e),
+		onSang: (singerId) => app.singers.markSang(singerId, app.now()),
+		recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
+		// An explicit remove of a cooking song stops the cook (subprocess kill + slot release + dedup-slot
+		// free). Settles the media back to un-cooked and tells the room so a search row stops showing a
+		// cook that is no longer running. No-ops when a shared cook is still needed by another entry.
+		onEntryRemoved: (mediaId: string, remainingEntries: QueueEntry[]) =>
+			cancelJobsForMedia(mediaId, {
+				jobs: app.jobs,
+				toWorker: app.toWorker,
+				remainingEntries,
+				now: app.now,
+				mediaById: app.mediaById,
+				broadcast: perFrame.broadcast
+			}),
+		// The add-side mirror: a cook filed at NO_QUEUE_PRIORITY (make-karaoke POST beat the queue add over
+		// a reconnecting socket) is pulled to the turn's rotation position and dispatch kicked, so it stops
+		// sorting behind the lyrics backfill forever. No-ops with no cook in flight (#135 starvation half).
+		onEntryAdded: (mediaId: string, entries: QueueEntry[]) =>
+			reprioritizeCookForMedia(mediaId, {
+				jobs: app.jobs,
+				entries,
+				now: app.now,
+				dispatch: () => app.workerHub.dispatch()
+			}),
+		actorSingerId: perFrame.actorSingerId,
+		seenOp: perFrame.seenOp,
+		hasOp: perFrame.hasOp
+	};
 }
