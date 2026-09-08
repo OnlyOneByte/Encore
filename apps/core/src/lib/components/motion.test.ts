@@ -50,56 +50,101 @@ function stripAllComments(src: string): string {
 // A shorthand may list several comma-separated animations (`transform 0.2s, height 0.2s`), each of
 // whose FIRST identifier is the animated property — so we cannot read only the first token of the
 // declaration. The longhand `transition-property: a, b` lists bare property names directly.
-function animatedProps(css: string): string[] {
+function animatedProps(css: string, isSvelte: boolean): string[] {
 	const props: string[] = [];
-	// CSS `transition:` declarations and Svelte `transition:` DIRECTIVES are lexically ambiguous — both
-	// can be preceded by whitespace (`<div transition:slide>` vs a rule body's `transition: transform`),
-	// so a left boundary alone cannot tell them apart (issue #648 §2). They live in different places: a
-	// CSS declaration is inside a `<style>` block or `.css` file; a directive is in MARKUP. The CSS scan
-	// therefore runs over TAG-STRIPPED text (every `<...>` blanked, which drops `<div transition:slide>`
-	// and the `<style>`/`</style>` tags themselves while leaving each rule body intact), so a markup
-	// directive can never be misread as a CSS property `slide` — it is caught, by name, by test 3.
-	// (An inline `style="transition:…"` ATTRIBUTE is inside a tag too, so the tag-strip blanks it from
-	// this scan — it is read back from the un-stripped `css` by a dedicated loop below, issue #648 review.)
-	const styleText = css.replace(/<[^>]*>/g, ' ');
-	for (const m of styleText.matchAll(/(?:^|[;{\s])transition(?:-property)?:\s*([^;}]+)/g)) {
+	for (const id of transitionPropsInStylesheet(css, isSvelte)) props.push(id);
+	if (isSvelte) for (const id of inlineTransitionProps(css)) props.push(id);
+	return props;
+}
+
+// REGION SPLIT (issue #699). The #648 CSS-vs-markup discriminator was LEXICAL, not regional: it
+// blanked every tag (a less-than-to-greater-than strip) then boundary-scanned the result. That class
+// was UNBOUNDED, so ONE less-than anywhere in a stylesheet blanked every transition: up to the next
+// greater-than, dropping test 1 primary layout catch for the rest of the file (issue #699 finding 1).
+// A stylesheet body and Svelte markup are different REGIONS, not different lexical shapes: partition
+// by region and scan each with the rule that fits it. The stylesheet scan then never sees a less-than
+// to blank nor a directive to misread; the markup scan reads inline motion in every delimiter.
+
+// The stylesheet region: for a .svelte source, the concatenated bodies of its style blocks; a .css
+// source is entirely CSS. Comments are stripped by the caller; the transition scan is boundaried.
+function stylesheetRegion(css: string, isSvelte: boolean): string {
+	if (!isSvelte) return css;
+	const bodies: string[] = [];
+	for (const m of css.matchAll(/<style[^>]*>([\s\S]*?)<\/style>/gi)) bodies.push(m[1]!);
+	return bodies.join('\n');
+}
+
+// The markup region of a .svelte source: everything with style blocks removed. Inline motion
+// (style= attributes in every delimiter, style:transition, or a string built in a script block)
+// lives here. Removing only style (not script) is deliberate: a transition string assigned in the
+// script block (finding 2, mutant 5) must stay visible to the markup scan.
+function markupRegion(css: string): string {
+	return css.replace(/<style[\s\S]*?<\/style>/gi, ' ');
+}
+
+// CSS transition:/transition-property: layout scan over the STYLESHEET region ONLY. With no markup in
+// the region, no directive nor inline style= attribute can reach it, and no less-than exists to blank
+// anything (issue #699 finding 1). Read the first identifier of each comma entry.
+function transitionPropsInStylesheet(css: string, isSvelte: boolean): string[] {
+	const out: string[] = [];
+	const region = stylesheetRegion(css, isSvelte);
+	for (const m of region.matchAll(/(?:^|[;{\s])transition(?:-property)?:\s*([^;}]+)/g)) {
 		for (const entry of m[1]!.split(',')) {
 			const id = entry.trim().match(/^[a-z-]+/);
-			if (!id) continue;
-			if (id[0] === 'none') continue;
-			props.push(id[0]);
+			if (!id || id[0] === 'none') continue;
+			out.push(id[0]);
 		}
 	}
-	// Svelte's inline `style:transition` directive (issue #615 §2) lives INSIDE a tag, so the tag-strip
-	// above removes it — read it from the original `css`. Four spellings (issue #615 advisory 2):
-	// `="…"`, `='…'`, `={expr}`, and the bare shorthand; a quoted value is classified, an opaque
-	// expression/shorthand is flagged via a sentinel property name (never in COMPOSITED_PROPS).
-	for (const m of css.matchAll(/style:transition(?:-property)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g)) {
+	return out;
+}
+
+// Inline transition: in the MARKUP region, DELIMITER-AGNOSTIC (issue #699 finding 2). #648 read only a
+// quote-delimited style= attribute value, so the braced style={...} form (live on tv/+page.svelte:544
+// and LyricsOverlay.svelte:254), a template literal, and a string built in the script block all escaped
+// -- the #590/#615 finding-2 class with nothing watching two of its four spellings. Read every
+// transition: in the markup regardless of surrounding delimiter: classify when the first identifier is
+// a readable CSS property; when opaque (opens with a brace or dollar-brace) report it via the same
+// style-transition-directive sentinel the style:transition loop uses. A bare transition: DIRECTIVE
+// (a function name, no value colon) is not matched by the value patterns below; test 3 names it.
+function inlineTransitionProps(css: string): string[] {
+	const out: string[] = [];
+	const markup = markupRegion(css);
+	// opaque value: transition: immediately followed by an interpolation opener (a brace or dollar-brace).
+	for (const _m of markup.matchAll(/(?<!style)\btransition(?:-property)?:\s*[$]?[{]/g)) {
+		out.push('style-transition-directive');
+	}
+	// readable value: transition: then a value up to the next delimiter (; quote backtick or brace).
+	for (const m of markup.matchAll(/(?<!style)\btransition(?:-property)?:\s*([^;"'`}]+)/g)) {
+		const readable = m[1]!;
+		if (/^[\s]*[{$]/.test(readable)) {
+			out.push('style-transition-directive');
+			continue;
+		}
+		let any = false;
+		for (const entry of readable.split(',')) {
+			const id = entry.trim().match(/^[a-z-]+/);
+			if (!id || id[0] === 'none') continue;
+			out.push(id[0]);
+			any = true;
+		}
+		if (!any) out.push('style-transition-directive');
+	}
+	// Svelte style:transition directive (char after transition is = or nothing), read separately: the
+	// value patterns above require a : after transition, which style:transition lacks. Four spellings
+	// (issue #615 advisory 2): quoted, single-quoted, ={expr}, bare shorthand; quoted classified, opaque flagged.
+	for (const m of markup.matchAll(/style:transition(?:-property)?(?:=(?:"([^"]*)"|'([^']*)'|\{([^}]*)\}))?/g)) {
 		const readable = m[1] ?? m[2] ?? m[3];
 		if (readable === undefined || readable.trim() === '') {
-			props.push('style-transition-directive');
+			out.push('style-transition-directive');
 			continue;
 		}
 		for (const entry of readable.split(',')) {
 			const id = entry.trim().match(/^[a-z-]+/);
-			if (!id) continue;
-			if (id[0] === 'none') continue;
-			props.push(id[0]);
+			if (!id || id[0] === 'none') continue;
+			out.push(id[0]);
 		}
 	}
-	// An inline `style="transition: …"` / `style='…'` ATTRIBUTE also lives inside a tag, so the tag-strip
-	// above blanks it from the CSS scan (issue #648 review of §2). It is a real inline transition no
-	// `@media`/reduce can cover — the #590 §2 / #615 §2 class — so read it, like the `style:transition`
-	// directive above, from the ORIGINAL `css` with the same first-identifier-per-comma-entry rule.
-	for (const m of css.matchAll(/style=(?:"[^"]*?|'[^']*?)\btransition(?:-property)?:\s*([^;"']+)/g)) {
-		for (const entry of m[1]!.split(',')) {
-			const id = entry.trim().match(/^[a-z-]+/);
-			if (!id) continue;
-			if (id[0] === 'none') continue;
-			props.push(id[0]);
-		}
-	}
-	return props;
+	return out;
 }
 
 test('no transition animates a layout-triggering property (transform/opacity only)', () => {
@@ -116,7 +161,7 @@ test('no transition animates a layout-triggering property (transform/opacity onl
 		// strip comments first (issue #287 gap 1): a `transition:` in a `/* … */` or `<!-- … -->` comment
 		// must not false-positive — the #205 source-scan precedent.
 		const css = stripAllComments(readFileSync(f, 'utf8'));
-		for (const prop of animatedProps(css)) {
+		for (const prop of animatedProps(css, f.endsWith('.svelte'))) {
 			if (!COMPOSITED_PROPS.has(prop)) offenders.push(`${f}: transition: ${prop}`);
 		}
 	}
@@ -400,11 +445,11 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		// of a prior declaration or the attribute itself, which start-of-string, `;`, `{` and whitespace
 		// all miss. When that boundary char is a quote the declaration lives in an inline attribute, which
 		// no `@media` wrapper or reduce reset can ever cover — so it is reported directly.
-		for (const m of css.matchAll(/(^|[;{"'\s])(?:-(?:webkit|moz)-)?animation(-name)?:\s*([^;}]+)/g)) {
+		for (const m of css.matchAll(/(^|[;{"'`\s])(?:-(?:webkit|moz)-)?animation(-name)?:\s*([^;}]+)/g)) {
 			const value = m[3]!.trim();
 			if (/^none\b/.test(value)) continue; // the reset itself
 			const at = m.index! + m[1]!.length;
-			if (m[1] === '"' || m[1] === "'") {
+			if (m[1] === '"' || m[1] === "'" || m[1] === '`') {
 				// an inline style attribute — no media wrapper or reduce reset applies to it, so it can
 				// never honour Reduce Motion (issue #590 §2).
 				offenders.push(
@@ -465,7 +510,13 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 		// function-name letter after the colon; modifier/parameter forms (`transition:slide|global`,
 		// `in:fly={{ y: 200 }}`) share this prefix and are caught too.
 		if (f.endsWith('.svelte')) {
-			const markup = css.replace(/<style[\s\S]*?<\/style>/gi, '');
+			// Advisory (issue #699): blank style= attribute VALUE interiors before the directive scan, so an
+			// inline compact style= transition (a space then transition:transform) is not misread as a directive
+			// -- a real directive lives in markup OUTSIDE any style= value and survives the blanking.
+			const markup = markupRegion(css)
+				.replace(/style="[^"]*"/g, (a) => ' '.repeat(a.length))
+				.replace(/style='[^']*'/g, (a) => ' '.repeat(a.length))
+				.replace(/style=\{[^}]*\}/g, (a) => ' '.repeat(a.length));
 			for (const m of markup.matchAll(/(^|\s)(transition|in|out|animate):([a-z][a-zA-Z0-9]*)/g)) {
 				offenders.push(`${f}: Svelte motion directive (cannot honour Reduce Motion): ${m[2]}:${m[3]}`);
 			}
