@@ -24,8 +24,9 @@ import {
 
 const SINGLETON = 'singleton';
 
-/** The single room's id until multi-room lands; every room-scoped call takes an explicit id so
- *  adding rooms is a caller change, not a rewrite. */
+/** The default room's id. Multi-room has landed (#652-#658); every room-scoped call takes a
+ *  required, explicit room id, so the room a caller addresses is visible at the call site rather
+ *  than defaulted invisibly (#728). */
 export const DEFAULT_ROOM_ID = 'main';
 
 export class SettingsRepository {
@@ -62,7 +63,7 @@ export class SettingsRepository {
 	}
 
 	// ── room ──────────────────────────────────────────────────────────────────
-	getRoom(roomId: string = DEFAULT_ROOM_ID): RoomSettings {
+	getRoom(roomId: string): RoomSettings {
 		const row = this.db.select().from(roomSettings).where(eq(roomSettings.roomId, roomId)).all()[0];
 		if (!row) return { ...DEFAULT_ROOM_SETTINGS };
 		return normalizeRoomSettings({
@@ -87,7 +88,7 @@ export class SettingsRepository {
 		});
 	}
 
-	setRoom(input: Partial<RoomSettings> | null | undefined, roomId: string = DEFAULT_ROOM_ID): RoomSettings {
+	setRoom(input: Partial<RoomSettings> | null | undefined, roomId: string): RoomSettings {
 		const current = this.getRoom(roomId);
 		const next = normalizeRoomSettings({ ...current, ...(input ?? {}) }, current);
 		this.db
@@ -99,12 +100,12 @@ export class SettingsRepository {
 	}
 
 	/** Whether this room has ever written settings — lets boot seed a default without stomping a choice. */
-	hasRoom(roomId: string = DEFAULT_ROOM_ID): boolean {
+	hasRoom(roomId: string): boolean {
 		return this.db.select().from(roomSettings).where(eq(roomSettings.roomId, roomId)).all().length > 0;
 	}
 
 	/** Both layers — what `queue:sync` carries and what a client renders. */
-	getEffective(roomId: string = DEFAULT_ROOM_ID): EffectiveSettings {
+	getEffective(roomId: string): EffectiveSettings {
 		return { global: this.getGlobal(), room: this.getRoom(roomId) };
 	}
 }

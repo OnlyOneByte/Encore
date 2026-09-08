@@ -39,7 +39,7 @@ export const load: PageServerLoad = async ({ cookies, request, url }) => {
 	return {
 		me,
 		tab,
-		settings: app.settings.getEffective(),
+		settings: app.settings.getEffective(app.activeRoomId),
 		// What an empty join address resolves to, so the field can show its fallback rather than an empty
 		// box the user has to guess at.
 		joinOriginFallback: fallbackJoinOrigin(request, url),

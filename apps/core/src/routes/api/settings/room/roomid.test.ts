@@ -18,11 +18,13 @@ import { DEFAULT_ROOM_SETTINGS } from '@encore/shared';
 const APP_KEY = Symbol.for('encore.app');
 
 /** Minimal app exposing only what the room PUT handler reads via getApp(), backed by a real repo. */
-function installApp(settings: SettingsRepository) {
+function installApp(settings: SettingsRepository, activeRoomId = 'active-room') {
 	(globalThis as Record<PropertyKey, unknown>)[APP_KEY] = {
 		// A joined singer: can(actor,'settings:write-room') passes iff singerId is truthy.
 		singers: { bySessionToken: () => ({ id: 'singer-1' }) },
 		settings,
+		// An omitted ?roomId= now falls back to the LIVE room, not the literal 'main' (#728).
+		activeRoomId,
 		publish: () => {},
 		// reorder() returning null skips the queue:patch branch — irrelevant to room addressability.
 		state: { reorder: () => null },
@@ -69,10 +71,19 @@ test('the response body reflects the ADDRESSED room, not the default room', asyn
 	expect(payload.room.songIntroMs).toBe(5000);
 });
 
-test('an absent roomId still writes the default room (existing callers unchanged)', async () => {
+test('an absent roomId writes the ACTIVE room, not the literal DEFAULT_ROOM_ID (#728)', async () => {
+	// #728: the phone settings page fetches /api/settings/room with NO ?roomId=. Before #728 that
+	// bare write landed on 'main' while every reader read the active room — the write was silently
+	// discarded (host toggles a control, gets 200, nothing changes). The fallback is now
+	// app.activeRoomId, so the bare write lands where the readers look.
+	const active = 'active-room';
 	const settings = new SettingsRepository(migratedDb());
-	installApp(settings);
+	installApp(settings, active);
 	const res = await putRoom(null, { songIntroMs: 5000 });
 	expect(res.status).toBe(200);
-	expect(settings.getRoom(DEFAULT_ROOM_ID).songIntroMs).toBe(5000);
+	// the write reaches the ACTIVE room …
+	expect(settings.getRoom(active).songIntroMs).toBe(5000);
+	// … and did NOT land on 'main' (the base behaviour that discarded it). Reverting the writer
+	// fallback to DEFAULT_ROOM_ID reds this.
+	expect(settings.getRoom(DEFAULT_ROOM_ID).songIntroMs).toBe(2500);
 });

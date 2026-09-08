@@ -14,7 +14,8 @@ import { can } from '$server/auth/capabilities';
 import type { GlobalSettings } from '@encore/shared';
 
 export const GET: RequestHandler = async () => {
-	return json(getApp().settings.getEffective());
+	const app = getApp();
+	return json(app.settings.getEffective(app.activeRoomId));
 };
 
 export const PUT: RequestHandler = async ({ request, cookies }) => {
@@ -32,7 +33,7 @@ export const PUT: RequestHandler = async ({ request, cookies }) => {
 	// setGlobal re-normalizes over current values, so a partial body is a valid patch and an invalid
 	// engine/model pairing falls back rather than persisting.
 	app.settings.setGlobal(body);
-	const settings = app.settings.getEffective();
+	const settings = app.settings.getEffective(app.activeRoomId);
 	app.publish({ type: 'settings:changed', settings });
 	return json(settings);
 };
