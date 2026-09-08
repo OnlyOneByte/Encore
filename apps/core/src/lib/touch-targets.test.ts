@@ -153,7 +153,9 @@ test('the controls that previously fell short declare 44px explicitly', () => {
 	const phone = readFileSync(join(SRC, 'routes', '+page.svelte'), 'utf8');
 	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
 	const metrics = readFileSync(join(SRC, 'routes', 'metrics', '+page.svelte'), 'utf8');
-	const audit = readFileSync(join(SRC, 'routes', 'metrics', '[mediaId]', '+page.svelte'), 'utf8');
+	// The back link is now a single shared control in PageHeader (issue #644), adopted by /settings,
+	// /stats, /metrics and /metrics/[mediaId]. Its 44px box is pinned here, at its one source.
+	const pageHeader = readFileSync(join(SRC, 'lib', 'ui', 'PageHeader.svelte'), 'utf8');
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8');
 
 	// If --tap ever drifts off the standard, accepting it below would silently lower the bar.
@@ -169,12 +171,12 @@ test('the controls that previously fell short declare 44px explicitly', () => {
 	expect(declares(phone, 'chip', 'min-height')).toBe(true);
 	// the browse disclosure is new and must not repeat the mistake
 	expect(declares(phone, 'browse-toggle', 'min-height')).toBe(true);
-	// the settings back link was ~26px
-	expect(declares(settings, 'back', 'min-(?:width|height)')).toBe(true);
+	// the back link (formerly ~26px in settings and 32px on the audit page, issue #140) is now the
+	// single shared PageHeader control, adopted by /settings /stats /metrics /metrics/[mediaId] (#644)
+	expect(declares(pageHeader, 'back', 'min-(?:width|height)')).toBe(true);
 	// the /metrics slowest-songs links and the audit-page back link were both 32px (issue #140), and
 	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
 	expect(declares(metrics, 'cooks a', 'min-height')).toBe(true);
-	expect(declares(audit, 'back a', 'min-(?:width|height)')).toBe(true);
 
 	// the stage-colour hue slider was 22px tall with a 28px thumb — a 28px hit area (issue #133).
 	// Pinned by the exact selector so reverting the input box to a hard sub-44px height reds this,

@@ -18,6 +18,7 @@
 	import { untrack } from 'svelte';
 	import { goto, replaceState } from '$app/navigation';
 	import Icon from '$lib/ui/Icon.svelte';
+	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import {
 		SEPARATOR_ENGINES,
@@ -449,11 +450,7 @@
 <svelte:head><title>Settings · Encore</title></svelte:head>
 
 <div class="settings-page">
-	<header>
-		<!-- A real link, so back is the browser's back and the route is shareable. -->
-		<a class="back" href="/" aria-label="Back to the remote"><Icon name="arrow-left" /></a>
-		<h1><Icon name="gear" /> Settings</h1>
-	</header>
+	<PageHeader title="Settings" icon="gear" back={{ href: '/', label: 'Back to the remote' }} />
 
 	<main>
 		{#if failed}
@@ -1097,42 +1094,6 @@
 		max-width: none;
 	}
 
-	header {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		padding: 16px 18px 10px;
-		border-bottom: 1px solid var(--line);
-		position: sticky;
-		top: 0;
-		background: var(--bg);
-		z-index: 1;
-	}
-	.back {
-		color: var(--ink-dim);
-		text-decoration: none;
-		font-size: 1.2rem;
-		/* 44px, matching the rest of the app — this was a ~26px box around a bare back glyph. Kept as a
-		   44px literal, not var(--tap): touch-targets.test.ts pins this control by the literal string. */
-		display: grid;
-		place-items: center;
-		min-width: 44px;
-		min-height: 44px;
-		margin-left: -10px;
-		border-radius: 8px;
-	}
-	.back:focus-visible {
-		/* --focus, not --accent: app.css defines a global :focus-visible ring in --focus and this control
-		   is inside its selector list, so ringing in --accent here would contradict every other control. */
-		outline: 2px solid var(--focus);
-	}
-	h1 {
-		margin: 0;
-		font-size: 1.1rem;
-		display: inline-flex;
-		align-items: center;
-		gap: 8px;
-	}
 	main {
 		/* A single readable column. Wider than the 480px phone cap so a desktop operator gets room for
 		   the paired controls, narrower than the shell's 1080px so a select never spans a monitor. */
