@@ -294,8 +294,7 @@ export const SEL = {
 	 * `:not()` branch), and the `+` sibling combinator resolves like `>`/descendant — both sides must
 	 * exist, their relative position is not source-checkable.
 	 */
-	dashChartOrBody: '.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)'
-	,
+	dashChartOrBody: '.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)',
 	// ── admin dashboard (/admin — the #639 entry-delete surface the admin-delete probe drives) ──
 	/** A deletable song row on /admin: <li class="song-row"> (routes/admin/+page.svelte). */
 	adminSongRow: '.song-row',
@@ -645,8 +644,7 @@ export const HOOKS: Hook[] = [
 		file: 'src/routes/settings/+page.svelte',
 		anchor: 'id="lyrics-case"',
 		why: 'capture shoots upper-case words through this picker'
-	}
-	,
+	},
 	{
 		id: 'adminSongRow',
 		file: 'src/routes/admin/+page.svelte',
