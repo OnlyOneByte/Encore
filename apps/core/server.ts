@@ -12,7 +12,7 @@ import {
 	type WorkerCommand
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, orderingOf, type HubDeps } from './src/server/realtime/hub';
-import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './src/server/realtime/player';
+import { handlePlayerCommand, handleTelemetry, reconcileOnReady, emitNowPlaying } from './src/server/realtime/player';
 import { validateWorkerMessage } from './src/server/jobs/worker-hub';
 import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish, buildHubDeps } from './src/server/app';
@@ -345,6 +345,20 @@ const server = Bun.serve<SocketData>({
 					// so the same recovery fires — reconcileOnReady then advances to the next singer, or
 					// settles the room to idle if none is ready.
 					if (!state.entries.some((e) => e.id === state.playback.currentEntryId)) reconcileOnReady(deps);
+					// #636 THE ELSE IS THE FIX, and it is the case the `if` deliberately excludes: the current
+					// entry DOES resolve, so a song is playing and no recovery is due — but the queue just
+					// changed, and "who plays next" is derived from the queue. `handleQueueCommand` publishes
+					// `queue:patch` alone (hub.ts), and `nowplaying:changed` had exactly two broadcast
+					// producers, both playback transitions (player.ts reconcileOnReady/handlePlayerCommand).
+					// So an add/remove/move mid-song left the TV holding the LAST broadcast upNext until the
+					// song ended: it could name a song since removed from the queue, or one that reordering
+					// pushed behind another singer, and `syncSlots` pre-warmed the gapless slot from that same
+					// stale entry (routes/tv/+page.svelte). Re-emit here so the advertised next is re-derived
+					// from state on every queue mutation. `emitNowPlaying` re-derives BOTH values (and
+					// `upNextAfter` applies the held-slot rule, so a still-cooking entry is never advertised),
+					// which makes it idempotent — the `else` only avoids the double emit on the recovery path,
+					// since every reconcileOnReady branch already emits.
+					else emitNowPlaying(deps);
 					// A grace clock starts when someone's last pending song leaves the queue and clears when
 					// they queue another, so a queue change can move membership exactly as a socket can.
 					refreshMembership();

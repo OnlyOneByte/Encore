@@ -8,6 +8,7 @@ import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
 import { can } from '$server/auth/capabilities';
 import { mediaFor } from '$server/realtime/hub';
+import { emitNowPlaying } from '$server/realtime/player';
 import type { RoomSettings } from '@encore/shared';
 
 export const PUT: RequestHandler = async ({ request, cookies, url }) => {
@@ -59,6 +60,19 @@ export const PUT: RequestHandler = async ({ request, cookies, url }) => {
 				entries: reordered.entries,
 				media: mediaFor(reordered.entries, { mediaById: app.mediaById })
 			}
+		});
+		// #636: a queueOrder change re-derives rotationSeq, so it changes who plays NEXT (the comment
+		// above says exactly this). The queue:patch alone left nowplaying:changed stale, so the TV
+		// kept naming the pre-reorder next. Re-broadcast the true next; deps mirror the authoritative
+		// reconcileOnReady bag in app.ts so upNextAfter ranks by the order just chosen. Guarded by
+		// `reordered` so an unchanged order emits nothing.
+		emitNowPlaying({
+			state: app.state,
+			publish: (e) => app.publish(e),
+			mediaById: app.mediaById,
+			listSingers: () => app.singers.listPublic(roomId),
+			getSettings: () => app.settings.getEffective(roomId),
+			onNowPlaying: (e) => app.plays.onNowPlaying(e)
 		});
 	}
 	return json(settings);
