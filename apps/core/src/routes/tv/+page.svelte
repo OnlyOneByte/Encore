@@ -814,6 +814,7 @@
 		textCase={settings.room.lyricsCase}
 		linesBefore={settings.room.lyricsLinesBefore}
 		linesAfter={settings.room.lyricsLinesAfter}
+		singerColor={currentSingerColor}
 	/>
 
 	{#if screen === 'attract'}
