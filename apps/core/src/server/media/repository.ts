@@ -251,6 +251,42 @@ export class MediaRepository {
 			.all()
 			.map(fromRow);
 	}
+
+	/** Browse facet: ready songs grouped by descriptive `tag`, most songs first. Mirrors
+	 *  `artistFacets` but joins the `media_tags` index on the `byKindValue` shape (`kind = 'tag'`),
+	 *  so it reads the SAME index #690's `byTag` filter uses. Tags are the sidecar-written 'tag'-kind
+	 *  values (`setTags(id, 'tag', …)`), already trimmed + lower-cased at the write boundary, so the
+	 *  distinct values need no further normalisation. Only READY songs are counted — a tag on a song
+	 *  you cannot sing yet would offer a browse heading that lands on an empty list. */
+	tagFacets(): Array<{ tag: string; count: number }> {
+		return this.#db
+			.select({ tag: mediaTags.value, count: sql<number>`count(*)`.as('count') })
+			.from(mediaTags)
+			.innerJoin(media, eq(mediaTags.mediaId, media.id))
+			.where(and(eq(mediaTags.kind, 'tag'), eq(media.stemStatus, 'ready')))
+			.groupBy(mediaTags.value)
+			.orderBy(desc(sql`count(*)`), asc(mediaTags.value))
+			.all()
+			.filter((r): r is { tag: string; count: number } => !!r.tag);
+	}
+
+	/** Ready songs carrying a given descriptive tag (exact match on the value the facet returned).
+	 *  Uses the `media_tags` `byKindValue` index (`WHERE kind = ? AND value = ?`) — the exact query
+	 *  shape that index exists for — rather than a client-side filter over the whole library payload,
+	 *  which works at 9 songs and stops working at 900. Post-filters with `readyToSing` for parity
+	 *  with `listReady`, so a row that is `stemStatus:'ready'` but not actually singable (missing
+	 *  lyrics/instrumental) is excluded here exactly as it is from the unfiltered library. */
+	byTag(tag: string): Media[] {
+		return this.#db
+			.select({ m: media })
+			.from(mediaTags)
+			.innerJoin(media, eq(mediaTags.mediaId, media.id))
+			.where(and(eq(mediaTags.kind, 'tag'), eq(mediaTags.value, tag), eq(media.stemStatus, 'ready')))
+			.orderBy(desc(media.id))
+			.all()
+			.map((r) => fromRow(r.m))
+			.filter(readyToSing);
+	}
 }
 
 /**
