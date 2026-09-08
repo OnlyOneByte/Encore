@@ -101,8 +101,10 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 	const src = stripComments(readFileSync(TV_ROUTE, 'utf8'));
 	// A page-level latch, fed only by the slots' callbacks.
 	expect(src).toMatch(/let\s+autoplayBlocked\s*=\s*\$state\(false\)/);
-	// The hint renders ONLY when blocked, so a TV that autoplays fine never shows it.
-	expect(src).toMatch(/\{#if\s+autoplayBlocked\s*\}/);
+	// The hint renders ONLY when blocked, so a TV that autoplays fine never shows it. Read the gate's
+	// whole expression rather than pinning one exact spelling: the block term is what THIS test owns, and
+	// the idle-room term it now sits beside is owned by the #736 test below.
+	expect(src).toMatch(/\{#if\s+[^}]*autoplayBlocked[^}]*\}/);
 	// Both TvPlayer slots report the block up and the recovery back down. Two of each — one per slot.
 	const blocked = src.match(/onautoplayblocked=/g) ?? [];
 	const recovered = src.match(/onautoplayrecovered=/g) ?? [];
@@ -126,6 +128,58 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 	expect(body).toMatch(/position:\s*absolute/);
 	expect(body).toMatch(/inset:\s*0/);
 	expect(body).toMatch(/z-index:\s*10/);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #736: the hint must not outlive the room.
+//
+// THE DEFECT. `{#if autoplayBlocked}` was the ONLY gate on the full-screen tap-to-start overlay — it
+// carried no term for "there is something to play". The latch has exactly two writers, both per-slot
+// props (onautoplayblocked -> true, onautoplayrecovered -> false), so when the room DRAINS — a skip at
+// the last entry, where player.ts advance() finds no nextPlayable and sets currentEntryId null /
+// isPlaying false — both players unmount and NEITHER callback can fire again. The 82%-opaque
+// full-viewport scrim (inset: 0, z-index: 10, pinned above) then sat over the lobby of an EMPTY room
+// indefinitely: measured 1920x1080 with elementFromPoint over the join card returning the hint's own
+// child, so nobody could join off the TV, while its text still promised to "start the music" with
+// nothing queued. Reached gestureless with two inputs and no tap, which is the state a TV wall lives in.
+//
+// THE FIX. Gate the overlay on `!isAttract` too — the SAME derived the player slots, the stage
+// background and the wake lock already use — so it is scoped to the band where a song is on stage. NOT
+// by clearing the latch: the block is a real property of a TV that has still never been tapped, so it
+// must be announced again the moment something reaches the stage, which requires the latch to survive
+// the idle window.
+//
+// Source scan for the same reason as the #64 guards above: no jsdom, so which terms gate a markup
+// block is a property of the component text. The rendered proof (the scrim is gone and the join card is
+// the topmost element at its own centre after the drain) is the CDP capture in the PR body.
+
+test('the /tv autoplay hint is scoped to the on-stage band, so it cannot outlive the room (#736)', () => {
+	const src = stripComments(readFileSync(TV_ROUTE, 'utf8'));
+
+	// Non-vacuity: the derived this guard requires the overlay to consult must exist, and be the room's
+	// one definition of "idle" rather than a second predicate re-derived at the overlay.
+	expect(src).toMatch(/const\s+isAttract\s*=\s*\$derived\(/);
+
+	// The overlay's gate must carry BOTH terms. Read the whole {#if} expression and check each term
+	// separately so the guard is independent of which order they are written in and of any later third
+	// term, while still requiring the idle-room one to be present and NEGATED.
+	const gate = src.match(/\{#if\s+([^}]*autoplayBlocked[^}]*)\}/);
+	expect(gate, 'the autoplay hint must still be gated on the block').not.toBeNull();
+	const expr = gate ? gate[1] : '';
+	expect(expr).toContain('autoplayBlocked');
+	expect(expr, 'the hint must also require the room to be on-stage').toMatch(/!\s*isAttract/);
+
+	// The affirmative above cannot by itself catch a REGRESSION that re-adds an unconditional copy of
+	// the overlay elsewhere in the file, so ban the bare form outright: after the fix no {#if} anywhere
+	// in the route gates on the latch alone. This is the arm that reds if the production hunk is reverted.
+	expect(src, 'no {#if} may gate the hint on the latch alone — that is the #736 defect').not.toMatch(
+		/\{#if\s+autoplayBlocked\s*\}/
+	);
+
+	// It is the SAME band the players use, not a parallel notion of idleness — the overlay was the one
+	// full-screen layer that did not consult the flag every other layer already did. Two slots, one each.
+	const slotGates = src.match(/visible=\{\s*visible\s*===\s*'[AB]'\s*&&\s*!isAttract\s*\}/g) ?? [];
+	expect(slotGates.length, 'both player slots gate visibility on the same !isAttract band').toBe(2);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────

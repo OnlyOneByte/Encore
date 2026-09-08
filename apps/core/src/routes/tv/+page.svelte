@@ -1007,8 +1007,22 @@
 		element: TvPlayer arms a document-wide gesture listener, so any tap/keypress on the page starts the
 		music and clears this via onautoplayrecovered. The overlay is purely the on-screen SAY of what a tap
 		will do; it is also click-dismissable so a viewer who preferred silence can put it away.
+
+		ALSO GATED ON `!isAttract` — the SAME flag the player slots, the stage background and the wake lock
+		use (#736). The latch has only two writers, both per-slot props, so when the room DRAINS (a skip at
+		the last entry: player.ts advance() finds no nextPlayable and sets currentEntryId null / isPlaying
+		false) both players unmount and NEITHER onautoplayblocked NOR onautoplayrecovered can fire again.
+		Without this term the 82%-opaque full-viewport scrim sat over the lobby of an empty room for good,
+		above the join QR and the join address a new singer walks up to read, promising to "start the music"
+		with nothing queued.
+
+		Gating the RENDER rather than clearing the latch is deliberate: the block is a real property of this
+		TV — it has still never been tapped — so it must be announced again the moment something is on stage,
+		and it is, because the latch survives the idle window. On an idle screen there is nothing a tap could
+		start anyway: both slots are `visible={… && !isAttract}` and TvPlayer only raises the block when
+		active AND visible, so no slot can even report one while this term hides the overlay.
 	-->
-	{#if autoplayBlocked}
+	{#if autoplayBlocked && !isAttract}
 		<button
 			type="button"
 			class="autoplay-hint"
