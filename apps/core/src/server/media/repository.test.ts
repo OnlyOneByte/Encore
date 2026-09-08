@@ -51,7 +51,8 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 				highMidi: 72,
 				p05Midi: 52,
 				p95Midi: 67,
-				histogram: [1, 2, 3]
+				histogram: [1, 2, 3],
+				loudnessLufs: -11.5
 			}
 		})
 	);
@@ -64,7 +65,9 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 	expect(got.sourceRef).toBe('vid-m1'); // ORIGIN identity survives the cook (search dedupe key)
 	// the derived artifacts must survive too, or a library song replays with no lyrics
 	expect(got.lyricsRef).toBe('lyrics/m1-aligned.json');
-	// the key/range profile is the third derived artifact — it must survive the JSON round-trip intact
+	// the key/range/level profile is the third derived artifact — it must survive the JSON round-trip
+	// intact, INCLUDING the measured level: this column is the whole persistence path for #462, and a
+	// field dropped at this boundary is a measurement the room can never act on.
 	expect(got.songProfile).toEqual({
 		keyTonic: 7,
 		keyMode: 'major',
@@ -73,7 +76,8 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 		highMidi: 72,
 		p05Midi: 52,
 		p95Midi: 67,
-		histogram: [1, 2, 3]
+		histogram: [1, 2, 3],
+		loudnessLufs: -11.5
 	});
 	expect(r.byId('ghost')).toBeUndefined();
 });

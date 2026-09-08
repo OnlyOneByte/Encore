@@ -23,7 +23,7 @@ import {
 	type SongProfile
 } from './song-profile';
 
-/** A fully-populated profile: G major, living D3-A4, extremes C3-C5. */
+/** A fully-populated profile: G major, living D3-A4, extremes C3-C5, mastered at -12 LUFS. */
 function profile(over: Partial<SongProfile> = {}): SongProfile {
 	return {
 		keyTonic: 7,
@@ -34,6 +34,7 @@ function profile(over: Partial<SongProfile> = {}): SongProfile {
 		p05Midi: 50, // D3
 		p95Midi: 69, // A4
 		histogram: [1, 2, 3],
+		loudnessLufs: -12,
 		...over
 	};
 }
@@ -317,5 +318,65 @@ describe('wire normalization', () => {
 	test('the empty profile is a valid record — "ran, found nothing" survives the wire', () => {
 		// This is the case the cook gate depends on: it must normalize to a present record, not to junk.
 		expect(normalizeSongProfile(EMPTY_SONG_PROFILE)).toEqual(EMPTY_SONG_PROFILE);
+	});
+
+	// ── the measured level (#462) ──────────────────────────────────────────────────
+	// A LEVEL is trusted only inside the window a real BS.1770 measurement can occupy. Every bound
+	// below is hard-coded from the standard rather than computed from the exported constants, so
+	// widening the window in the validator cannot silently widen the test with it.
+
+	test('a real measured level round-trips unrounded', () => {
+		// Not clamped, not rounded: -13.37 is a legitimate integrated measurement and the gain the
+		// room derives is only as good as the number it derives it from.
+		expect(normalizeSongProfile(profile({ loudnessLufs: -13.37 })).loudnessLufs).toBe(-13.37);
+	});
+
+	test('null stays null — an unmeasurable stem never acquires a default level', () => {
+		// The whole tri-state: substituting 0 here would read as a deafening master and attenuate the
+		// song into inaudibility, which is worse than the uneven library the feature exists to fix.
+		expect(normalizeSongProfile(profile({ loudnessLufs: null })).loudnessLufs).toBeNull();
+		expect(normalizeSongProfile({}).loudnessLufs).toBeNull();
+	});
+
+	test('the measurable window is closed at both ends: -70 and 4 in, one step past either out', () => {
+		// -70 LUFS is BS.1770's own absolute gate — below it every gating block is discarded, so there
+		// is no programme left to level. +4 is what K-weighting's stage-1 high shelf can add to
+		// full-scale content, so nothing real integrates above it. Both ends are INCLUSIVE.
+		expect(normalizeSongProfile(profile({ loudnessLufs: -70 })).loudnessLufs).toBe(-70);
+		expect(normalizeSongProfile(profile({ loudnessLufs: 4 })).loudnessLufs).toBe(4);
+		expect(normalizeSongProfile(profile({ loudnessLufs: -70.1 })).loudnessLufs).toBeNull();
+		expect(normalizeSongProfile(profile({ loudnessLufs: 4.1 })).loudnessLufs).toBeNull();
+	});
+
+	test('an out-of-window level is DISCARDED, not clamped into the window', () => {
+		// Clamping would be the wrong failure direction. A bogus -200 clamped to -70 is a number the
+		// room would then attenuate a real song against; null means "not normalizable — leave it
+		// alone", which is the only safe reading of a bad measurement.
+		expect(normalizeSongProfile(profile({ loudnessLufs: -200 })).loudnessLufs).toBeNull();
+		expect(normalizeSongProfile(profile({ loudnessLufs: 120 })).loudnessLufs).toBeNull();
+	});
+
+	test('a non-finite or non-numeric level degrades to null', () => {
+		for (const bad of [NaN, Infinity, -Infinity, '-12' as never, {} as never]) {
+			expect(normalizeSongProfile(profile({ loudnessLufs: bad })).loudnessLufs).toBeNull();
+		}
+	});
+
+	test('the level is its OWN half: a bad key or range does not discard it, nor it them', () => {
+		// Three independent producers now, not two — the key from the instrumental's chromagram, the
+		// range from the vocal stem, the level from the instrumental's samples. One bad reading must
+		// never throw away the other two.
+		const keyBad = normalizeSongProfile(profile({ keyTonic: 99 }));
+		expect(keyBad.keyTonic).toBeNull();
+		expect(keyBad.loudnessLufs).toBe(-12);
+
+		const rangeBad = normalizeSongProfile(profile({ p95Midi: null }));
+		expect(rangeBad.lowMidi).toBeNull();
+		expect(rangeBad.loudnessLufs).toBe(-12);
+
+		const levelBad = normalizeSongProfile(profile({ loudnessLufs: 999 }));
+		expect(levelBad.loudnessLufs).toBeNull();
+		expect(levelBad.keyTonic).toBe(7);
+		expect(levelBad.p05Midi).toBe(50);
 	});
 });

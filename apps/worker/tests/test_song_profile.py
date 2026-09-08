@@ -20,7 +20,17 @@ from src.separation import demucs  # noqa: E402
 from tests.cli_fakes import fake_cli_runner  # noqa: E402
 from tests.conftest import drain as _drain  # noqa: E402
 
-WIRE_KEYS = {"keyTonic", "keyMode", "keyConfidence", "lowMidi", "highMidi", "p05Midi", "p95Midi", "histogram"}
+WIRE_KEYS = {
+    "keyTonic",
+    "keyMode",
+    "keyConfidence",
+    "lowMidi",
+    "highMidi",
+    "p05Midi",
+    "p95Midi",
+    "histogram",
+    "loudnessLufs",
+}
 
 
 def _write_wav(path, samples, sr=22050):
