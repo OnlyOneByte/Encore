@@ -44,7 +44,7 @@
 	} from '$lib/readiness';
 	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
 	import type { MediaStatus } from '@encore/shared';
-	import { isPlayable, hasGuidingTrack, effectiveGuideLevel } from '@encore/shared';
+	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
@@ -995,8 +995,9 @@
 				pct={c.pct}
 				status={c.status}
 				inQueue={inMyQueue(c.id)}
+				cookable={isCookableSource(c.media.source)}
 				onadd={() => addSong(c.id)}
-				onmake={canCook(r) ? () => singThis(c.id) : undefined}
+				onmake={canCook(c.media, r) ? () => singThis(c.id) : undefined}
 			/>
 		{/each}
 	{/if}
@@ -1027,8 +1028,9 @@
 						pct={liveOf(m.id)?.pct ?? 0}
 						status={liveOf(m.id)?.status}
 						inQueue={inMyQueue(m.id)}
+						cookable={isCookableSource(m.source)}
 						onadd={() => addSong(m.id)}
-						onmake={canCook(r) ? () => singThis(m.id) : undefined}
+						onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
 					/>
 				{/each}
 			{/if}
@@ -1048,8 +1050,9 @@
 						pct={liveOf(m.id)?.pct ?? 0}
 						status={liveOf(m.id)?.status}
 						inQueue={inMyQueue(m.id)}
+						cookable={isCookableSource(m.source)}
 						onadd={() => addSong(m.id)}
-						onmake={canCook(r) ? () => singThis(m.id) : undefined}
+						onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
 					/>
 				{/each}
 			{/if}
@@ -1063,8 +1066,9 @@
 						pct={liveOf(m.id)?.pct ?? 0}
 						status={liveOf(m.id)?.status}
 						inQueue={inMyQueue(m.id)}
+						cookable={isCookableSource(m.source)}
 						onadd={() => addSong(m.id)}
-						onmake={canCook(r) ? () => singThis(m.id) : undefined}
+						onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
 					/>
 				{/each}
 			{/if}
