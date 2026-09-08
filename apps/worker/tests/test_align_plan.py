@@ -1449,6 +1449,54 @@ def test_time_one_forced_path_keeps_dual_script_romanization(monkeypatch):
     ]
 
 
+# ── #716: pin the two halves of the artifact.py pass-through invariant (#685's defect class, one ──
+# layer down). The normalize_lyrics comment states the ``romanization`` pass-through at
+# ``artifact.py`` is defensive depth: no TIMING_WORD producer emits a segment carrying ``romanization``,
+# so the copy never fires in production. That was TRUE but UNPINNED — measured on base, both halves
+# could be broken with the whole worker suite staying green (756 passed): deleting the pass-through,
+# or making ``AsrSource`` emit a fifth ``romanization`` key that WOULD make the pass-through live.
+# Each guard below reds exactly one of those mutations; neither reds the other, so both are needed.
+def test_normalize_lyrics_copies_a_segment_romanization_through():
+    """Guard A: normalize_lyrics copies a ``romanization`` off a segment that carries one.
+
+    Reds the mutation that deletes the pass-through at ``artifact.py`` (making the copy dead code).
+    A word-timed segment carrying a second script must surface it on the produced line — this is the
+    only thing keeping the comment's "copies it onto a line ONLY when the input segment already carries
+    it" claim true, and deleting the branch left the whole suite green on base."""
+    raw = {
+        "language": "zh",
+        "segments": [
+            {
+                "start": 0.0,
+                "end": 2.0,
+                "text": "雪花飄飄",
+                "romanization": "xue hua piao piao",
+                "words": [{"word": "雪花飄飄", "start": 0.0, "end": 2.0}],
+            }
+        ],
+    }
+    doc = lyrics_pkg.normalize_lyrics(raw)
+    assert [ln.get("romanization") for ln in doc["lines"]] == ["xue hua piao piao"]
+
+
+def test_asr_source_segment_keys_are_exactly_start_end_text_words():
+    """Guard B: the ASR (TIMING_WORD) source emits segments with EXACTLY start/end/text/words.
+
+    Reds the mutation that adds a fifth ``romanization`` key to ``AsrSource``'s emitted segments —
+    the change that would make the ``artifact.py`` pass-through LIVE for the ASR path and silently
+    falsify the comment's "the ASR source rebuilds segments with only start/end/text/words" claim.
+    The key set is what the comment (and #685's reachability argument) rests on, so pin it by value."""
+    from src.lyrics.chain import LyricsRequest as _LyricsRequest
+
+    t = FakeTranscriber(ASR_RAW)
+    got = AsrSource(t, lyrics_pkg.normalize_lyrics).fetch(
+        _LyricsRequest(media_id="m1", audio_path="/mix.wav", vocals_path="/vocals.m4a")
+    )
+    assert got is not None and got.segments
+    for seg in got.segments:
+        assert set(seg.keys()) == {"start", "end", "text", "words"}
+
+
 # ── #217: the wrong-version fit must be paired with what the aligner SEARCHED ─────────────────────
 # #92 routed the aligner at `steps/lyrics.py` to search `align_windows` (the per-row bounded windows)
 # instead of `segments` when presplit set them. `doc` then carries one aligned line per WINDOW, so it
