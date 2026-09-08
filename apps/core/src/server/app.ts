@@ -178,10 +178,10 @@ export function getApp(): EncoreApp {
 	// the rooms table, so a fresh box had a real singers/queue/playback state but no room to name it;
 	// this gives the QR a code to advertise and the join path a room to land an unqualified join in.
 	const activeRoomId = rooms.ensureActive(Date.now()).id;
-	const state = new AuthoritativeState(sqlitePersistence(db), 250, () =>
+	const state = new AuthoritativeState(sqlitePersistence(db, activeRoomId), 250, () =>
 		orderingOf({ getSettings: () => settings.getEffective(), listSingers: () => singers.listPublic() })
 	);
-	const { entries, playback } = hydrate(db);
+	const { entries, playback } = hydrate(db, activeRoomId);
 	state.hydrate(entries, playback);
 
 	// The attempt ledger is the historical half of the job system: `jobs` holds one live row per

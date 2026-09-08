@@ -5,6 +5,7 @@ import { migrate } from 'drizzle-orm/bun-sqlite/migrator';
 import { existsSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import type { DB } from './index';
+import { eq } from 'drizzle-orm';
 import { queueEntries, playbackState } from './schema';
 
 /**
@@ -37,11 +38,16 @@ export function runMigrations(db: DB, migrationsFolder = findMigrationsDir()): v
  * Boot-hydrate: read durable queue + playback rows back on startup for the state module to seed
  * the authoritative in-memory representation.
  */
-export function hydrate(db: DB): {
+export function hydrate(
+	db: DB,
+	roomId: string
+): {
 	entries: (typeof queueEntries.$inferSelect)[];
 	playback: typeof playbackState.$inferSelect | null;
 } {
 	const entries = db.select().from(queueEntries).all();
-	const playback = db.select().from(playbackState).all()[0] ?? null;
+	// Playback is keyed by room now (#655): read THIS room's row, not whichever came back first. A
+	// room that has never played has no row yet, so null (the caller seeds boot defaults) is normal.
+	const playback = db.select().from(playbackState).where(eq(playbackState.roomId, roomId)).all()[0] ?? null;
 	return { entries, playback };
 }
