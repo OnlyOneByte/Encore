@@ -217,6 +217,32 @@ test('agreement matches the shared cross-language corpus (parity with the Python
 	}
 });
 
+test('the parity corpus keeps a case only MULTIPLICITY can score (#801)', () => {
+	// WHY THIS GUARD EXISTS. The row above pins what `agreement` COMPUTES; this pins that the table still
+	// contains a row capable of telling a multiset intersection from a set one. Without it, deleting that
+	// row leaves every remaining case scoring identically under either overlap, so replacing
+	// `multisetOverlap` — the metric #542 introduced — with a set-based overlap keeps the whole TS suite
+	// green. Measured on base: that mutation was invisible at 26 pass / 0 fail.
+	//
+	// The discriminator is computed here as the DISTINCT shared count — deliberately NOT with the
+	// production overlap, so this cannot agree with a broken implementation. A case discriminates when the
+	// corpus's own hand-computed multiset numerator EXCEEDS what counting distinct tokens can reach.
+	const distinctShared = (candidate: string, baseline: string): number => {
+		const inBaseline = new Set(lyricsTokens(baseline));
+		return [...new Set(lyricsTokens(candidate))].filter((t) => inBaseline.has(t)).length;
+	};
+	const discriminating = AGREEMENT_PARITY_CORPUS.filter(
+		(c) => c.coverage !== null && c.coverage[0] > distinctShared(c.candidate, c.baseline)
+	);
+	expect(discriminating.map((c) => c.name)).not.toEqual([]);
+	for (const c of discriminating) {
+		// A repeated token on BOTH sides is the only shape that produces this, so assert the row really is
+		// that shape rather than a miscounted expectation: more tokens than distinct tokens, on each side.
+		expect(lyricsTokens(c.candidate).length).toBeGreaterThan(new Set(lyricsTokens(c.candidate)).size);
+		expect(lyricsTokens(c.baseline).length).toBeGreaterThan(new Set(lyricsTokens(c.baseline)).size);
+	}
+});
+
 test('too-short text returns null, NOT 0 — an instrumental must not fail a correct lookup', () => {
 	expect(agreementScore('la la la', 'the full authoritative lyrics of some long song here now')).toBeNull();
 	expect(isLikelyWrongSong(null)).toBe(false); // unknown is never a detected mismatch
