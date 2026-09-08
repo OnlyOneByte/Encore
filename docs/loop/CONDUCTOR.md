@@ -95,8 +95,10 @@ labels cleared it described nothing.
 - Seams: `worker-py` / `server-jobs` / `server-api` / `lib-components` / `lib-tv` / `e2e`. Serialize
   same-region work.
 - READ THE BODY, not the title.
-- RE-CHECK LABELS at each dispatch — triage re-labels between passes. Triage is **webhook-driven** and
-  stamps a new issue within about five seconds, so do not wait a poll interval for `triaged` to appear.
+- RE-CHECK LABELS at each dispatch — triage re-labels between passes. Triage is an orchestrator on a
+  ~360s patrol, so a newly filed issue is stamped after that patrol PLUS a triage worker turn — a
+  floor of roughly six minutes, not seconds. Do not
+  assume a just-created issue is already `triaged`; re-read the labels rather than the clock.
 
 Retired rule: the old "owner owns `TvPlayer.svelte` → STANDDOWN" rule is GONE (#396 merged as PR #428,
 `4bc2e00`). `TvPlayer.svelte` and `routes/tv` are normal code, subject to normal file-overlap only.
@@ -116,9 +118,9 @@ Retired rule: the old "owner owns `TvPlayer.svelte` → STANDDOWN" rule is GONE 
      `bun run lint` 0 / `prettier --check`.
 3. Seed the decided fix-direction and the overlap-watch list.
 4. Add the session key to `sessions[]` in
-   `/local/home/angryang/workspace/encore-pipeline/state/probe-config.json`.
+   `/local/home/angryang/workspace/encore-loop-state/probe-config.json`.
 5. `session_ledger_record` (durable state at
-   `/local/home/angryang/workspace/encore-pipeline/state/ledger.md`).
+   `/local/home/angryang/workspace/encore-loop-state/ledger.md`).
 
 ## Intervening, by worker state
 
@@ -282,7 +284,8 @@ These claims appear in the older sources and are now **DEAD**:
   It expects exit 0 / 0 errors / 0 warnings.
 - Any older sidebar folder id. Coding workers → `Encore/dev` (`663b5cc68150`); orchestrators →
   `Encore/orchestrator` (`317ceda16a74`); reviewers → `Encore/review` (`40f9d6902cc4`).
-- Waiting a poll interval for `triaged` to appear. Triage is webhook-driven, ~5s.
+- Assuming triage is webhook-driven and stamps within seconds. It is not: an orchestrator patrols at
+  ~360s and then a worker turn runs. Re-read labels at each dispatch instead of timing them.
 
 ---
 
@@ -300,7 +303,8 @@ by governance: profile denies: capability disabled`, confirmed on retry by cycle
 adversarial review *is* three subagents, so a cron cycle can fix and open a PR but can **never** satisfy
 merge criterion 8. It parks every time. Throughput was never the first problem: the merge path was
 closed. So the fleet must run in a dashboard session, which has spawn authority, and it uses that
-authority twice — once to fix in parallel, once to review in parallel. (Triage stays on cron: it needs no
+authority twice — once to fix in parallel, once to review in parallel. (In that retired shape triage was a cron; it is now an
+orchestrator session like the other two, and needs no
 subagents.)
 
 One wave per wake:

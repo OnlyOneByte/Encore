@@ -21,7 +21,7 @@ of agent's context, so a rule in the wrong file is a rule some agent will act on
 | File | Read by |
 |---|---|
 | [`COMMON.md`](COMMON.md) | **every lane** — the shared rules the others point at |
-| [`TRIAGE.md`](TRIAGE.md) | the triage lane (one cron job, `TRIAGE-Unified`) |
+| [`TRIAGE.md`](TRIAGE.md) | each triage worker — up to 5 sessions, one issue each |
 | [`CONDUCTOR.md`](CONDUCTOR.md) | the dev conductor — one supervisor session |
 | [`CODING-BOT.md`](CODING-BOT.md) | each coding worker — up to 5 sessions, seeded verbatim |
 | [`PR-BOT.md`](PR-BOT.md) | each PR reviewer — up to 5 sessions, seeded verbatim |
@@ -36,7 +36,6 @@ Reference, not read by a lane:
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | how the lanes connect, and how work reaches each one |
 | [`LABELS.md`](LABELS.md) | the label taxonomy — the loop's coordination state |
-| [`WEBHOOKS.md`](WEBHOOKS.md) | the GitHub ingress: how an event becomes an agent turn |
 | [`pipeline.json`](pipeline.json) | the governance spec — caps, gates, work source |
 
 ## Two rules about editing these files
@@ -47,8 +46,8 @@ four live slots emitting the old verdict template across seven consecutive verdi
 either order a re-read at the start of the next work item, or retire the slot. A cron lane is
 different — each run is a fresh session, so a cron brief edit takes effect on the next fire.
 
-**Runtime state is not steering and does not belong here.** The append-only run logs, the live fleet
-state and the webhook inbox live outside the repo, under
-`/local/home/angryang/workspace/encore-pipeline/`. Nothing in this directory should point into
+**Runtime state is not steering and does not belong here.** The append-only run logs and the live fleet
+state live outside the repo, under
+`/local/home/angryang/workspace/encore-loop-state/`. Nothing in this directory should point into
 `.kiro/`; the one remaining exception is the `prove_per_hunk.py` proof harness, flagged for a
 follow-up.
