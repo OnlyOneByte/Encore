@@ -320,14 +320,18 @@ test('the pitch-shift graph teardown runs per song change — and not on media i
 	expect(/media\?\.id/.test(teardown)).toBe(true);
 	// And it must EARLY-RETURN when the id is unchanged, so a new object for the same song is a no-op.
 	expect(/if\s*\(\s*id\s*===\s*resetForId\s*\)\s*return;/.test(teardown)).toBe(true);
-	// #477: the persistent master <audio> lives as long as the SLOT, so its graph must NOT be
-	// detached on a song change (detach() cannot restore the native path -- the element is a
-	// permanent capture -- leaving it feeding a disconnected node = silent instrumental). The reset
-	// resets it to ratio 1 via setShift(0) instead; the guide graph IS still detached (its element is
-	// remounted per song). Stronger lifecycle assertions live in pitch-shift-graph-lifetime.test.ts.
+	// #477 / #694: NEITHER the master NOR the guide graph is detached on a song change. Both their
+	// <audio> elements survive a song-to-song transition -- the master lives as long as the SLOT, and
+	// on a SKIP the guide element stays mounted too (guideMountable holds for both songs, so Svelte
+	// keeps the same element; #694). detach() cannot restore the native path (the element is a
+	// permanent capture), so detaching a still-mounted element leaves it feeding a disconnected node
+	// = silence. The reset resets each to ratio 1 via setShift(0) in place instead; detach() belongs
+	// only where an element genuinely unmounts (the destroy effect and the guideMountable-false
+	// effect). Stronger lifecycle assertions live in pitch-shift-graph-lifetime.test.ts.
 	expect(/masterGraph\?\.setShift\(\s*0\s*\)/.test(teardown)).toBe(true);
 	expect(/masterGraph\?\.detach\(/.test(teardown)).toBe(false);
-	expect(/guideGraph\?\.detach\(/.test(teardown)).toBe(true);
+	expect(/guideGraph\?\.setShift\(\s*0\s*\)/.test(teardown)).toBe(true);
+	expect(/guideGraph\?\.detach\(/.test(teardown)).toBe(false);
 });
 
 /*
