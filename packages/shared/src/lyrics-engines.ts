@@ -200,7 +200,7 @@ export const LYRICS_BALL_STYLES: readonly LyricsBallStyle[] = [
 	}
 ];
 
-export const DEFAULT_LYRICS_BALL: LyricsBallStyleId = 'bounce';
+export const DEFAULT_LYRICS_BALL: LyricsBallStyleId = 'off';
 
 const lyricsBallRegistry = makeRegistry(LYRICS_BALL_STYLES);
 

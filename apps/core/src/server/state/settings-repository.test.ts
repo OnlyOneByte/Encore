@@ -414,11 +414,12 @@ describe('SettingsRepository global scope: join origin', () => {
 });
 
 describe('SettingsRepository room scope: lyrics presentation', () => {
-	it('defaults reproduce the previously-hardcoded TV', () => {
-		// The migration is additive with these as column defaults, so a room that existed before this
-		// feature must read back identical to how it rendered.
+	it('fresh-room defaults: no marker, word highlight, 0.3s lead', () => {
+		// A brand-new room (no stored row) reads the schema column defaults. The ball default was
+		// flipped to 'off' per #398; highlight/lead are unchanged. A room that existed BEFORE this
+		// flip keeps its own stored 'lyrics_ball' value via the shipped baseline migration.
 		const room = freshRepo().getRoom(DEFAULT_ROOM_ID);
-		expect(room.lyricsBall).toBe('bounce');
+		expect(room.lyricsBall).toBe('off');
 		expect(room.lyricsHighlight).toBe('word');
 		expect(room.lyricsLeadMs).toBe(300);
 	});

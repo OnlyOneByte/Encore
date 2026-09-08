@@ -398,7 +398,7 @@ describe('lyrics presentation registries', () => {
 	it('the defaults reproduce the TV that shipped before this setting existed', () => {
 		// A bouncing ball + word-by-word pink + 0.3s lead was hardcoded. Regressing these silently
 		// changes every existing room on upgrade.
-		expect(DEFAULT_LYRICS_BALL).toBe('bounce');
+		expect(DEFAULT_LYRICS_BALL).toBe('off');
 		expect(DEFAULT_LYRICS_HIGHLIGHT).toBe('word');
 		expect(DEFAULT_LYRICS_LEAD_MS).toBe(300);
 	});

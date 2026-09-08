@@ -273,7 +273,7 @@ export const roomSettings = sqliteTable('room_settings', {
 	// so a hand-edited DB cannot smuggle in a style the renderer has no branch for.
 	lyricsBall: text('lyrics_ball', { enum: ['bounce', 'steady', 'underline', 'off'] })
 		.notNull()
-		.default('bounce'),
+		.default('off'),
 	lyricsHighlight: text('lyrics_highlight', { enum: ['word', 'line', 'off'] })
 		.notNull()
 		.default('word'),
