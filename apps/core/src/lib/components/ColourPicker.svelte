@@ -41,7 +41,7 @@
 	 * PRESET_NAMES[i] is the name of SINGER_COLORS[i]. This array cannot be reordered without also
 	 * reordering SINGER_COLORS in packages/shared/src/colors.ts, and vice versa. The single named
 	 * chokepoint for this mapping is presetIndex() below — every read of PRESET_NAMES goes through it.
-	 * Guarded on two sides: contract.test.ts pins THIS list's exact contents (violet…mint), and
+	 * Guarded on two sides: contract.test.ts pins this list against the names the e2e flow queries by, and
 	 * design-system.test.ts ('the colour picker has exactly one name per shared preset colour') asserts
 	 * PRESET_NAMES and SINGER_COLORS stay the SAME LENGTH — so a resize of either that would announce a
 	 * preset as `undefined` reds. Neither can check ORDER (nothing in a hex says "violet"), so a

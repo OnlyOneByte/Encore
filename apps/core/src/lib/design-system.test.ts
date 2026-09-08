@@ -336,7 +336,7 @@ test('a bottom-docked sheet clears the home indicator', () => {
 	expect(peek![0]).toMatch(/env\(safe-area-inset-bottom/);
 });
 
-test('QueueSheet tears down its --peek-h documentElement write on unmount (#460 sec.14)', () => {
+test('both documentElement custom-property writes (--peek-h, --undo-h) tear down on unmount (#460 §14/§17)', () => {
 	// THE BUG THIS EXISTS FOR (#460 sec.14). QueueSheet writes `--peek-h` onto documentElement in an
 	// $effect but returned no cleanup, so the inline property OUTLIVED the component on the root element
 	// and kept beating the `@media (height <= 480px)` rule after the sheet unmounted. A documentElement
@@ -344,15 +344,24 @@ test('QueueSheet tears down its --peek-h documentElement write on unmount (#460 
 	// bun:test has no DOM to mount-and-unmount; comments stripped so the rationale prose cannot satisfy
 	// or trip it. Reverting the $effect teardown reds this.
 	//
-	// SCOPE: pinned to QueueSheet's --peek-h, the audit's stated subject. routes/+page.svelte carries
-	// the same shape for --undo-h (also unguarded); that sibling is deferred to the #460 tail rather
-	// than widened into this PR.
-	const src = stripComments(readFileSync(join(SRC, 'lib/components/QueueSheet.svelte'), 'utf8'));
-	const writes = src.match(/documentElement\.style\.setProperty\(\s*['"]--peek-h['"]/);
-	expect(writes, 'QueueSheet must still be the component that writes --peek-h').not.toBeNull();
-	expect(src, 'the --peek-h $effect must return a cleanup that removeProperty(--peek-h) on unmount').toMatch(
-		/removeProperty\(\s*['"]--peek-h['"]\s*\)/
-	);
+	// SCOPE: both documentElement custom-property writes the audit named. QueueSheet's --peek-h was
+	// fixed in #598; routes/+page.svelte's --undo-h carried the SAME leak shape (a setProperty $effect
+	// with no cleanup, skewing the --error-dock stack after the route unmounts) and is fixed + pinned
+	// here in the #460 tail (§17). Each site must both WRITE its property and RETURN a cleanup that
+	// removeProperty's it; reverting either teardown reds this.
+	const sites: Array<{ file: string; prop: string }> = [
+		{ file: 'lib/components/QueueSheet.svelte', prop: '--peek-h' },
+		{ file: 'routes/+page.svelte', prop: '--undo-h' }
+	];
+	for (const { file, prop } of sites) {
+		const src = stripComments(readFileSync(join(SRC, file), 'utf8'));
+		const setRe = new RegExp(`documentElement\\.style\\.setProperty\\(\\s*['"]${prop}['"]`);
+		const removeRe = new RegExp(`removeProperty\\(\\s*['"]${prop}['"]\\s*\\)`);
+		expect(src.match(setRe), `${file} must still be the writer of ${prop}`).not.toBeNull();
+		expect(src, `the ${prop} $effect in ${file} must return a cleanup that removeProperty(${prop}) on unmount`).toMatch(
+			removeRe
+		);
+	}
 });
 test('the phone header truncates a long display name instead of growing the row (#109)', () => {
 	// THE BUG (#109): the header is a nowrap flex row and the ONE child whose width is user-supplied --

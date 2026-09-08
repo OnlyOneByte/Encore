@@ -508,6 +508,13 @@
 	let undoH = $state(0);
 	$effect(() => {
 		document.documentElement.style.setProperty('--undo-h', `${undo ? undoH : 0}px`);
+		// Tear the inline property down on unmount. Without this it OUTLIVES the page on documentElement,
+		// so a stale --undo-h keeps skewing the --error-dock stack (calc(... + var(--undo-h) ...)) after
+		// this route is gone — the same leak class #598 §14 fixed for --peek-h in QueueSheet. This effect
+		// always writes (0 when no toast), so it always owns the property and clears it unconditionally.
+		return () => {
+			document.documentElement.style.removeProperty('--undo-h');
+		};
 	});
 	function removeWithUndo(entry: QueueEntry) {
 		store?.removeEntry(entry.id);
