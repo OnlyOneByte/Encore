@@ -686,7 +686,11 @@
 		store?.moveEntry(id, i + delta);
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
-	/** The entry's index in the WHOLE queued list (what a host pin's toSeq counts). */
+	/**
+	 * The entry's index in the WHOLE queued list — `queued` above, so the PLAYING entry is not counted.
+	 * That is exactly what a host pin's toSeq means: placePins indexes the queued entries only and
+	 * leaves a playing entry in its policy slot (see rotation.ts, issue #790).
+	 */
 	function globalIdx(id: string): number {
 		return queued.findIndex((e) => e.id === id);
 	}

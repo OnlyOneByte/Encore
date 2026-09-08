@@ -24,6 +24,16 @@ const e = (id: string, singerId: string, addedAt: number, pinnedSeq?: number | n
 	...(pinnedSeq === undefined ? {} : { pinnedSeq })
 });
 
+/**
+ * A PLAYING entry (issue #790). Every roster in this file was queued-only, which is exactly why the
+ * pin's base went unnoticed: with nothing playing, the queued list IS the whole non-terminal list, so
+ * a pin indexed over either one lands in the same place.
+ */
+const playing = (id: string, singerId: string, addedAt: number, pinnedSeq?: number | null): QueueEntry => ({
+	...e(id, singerId, addedAt, pinnedSeq),
+	status: 'playing'
+});
+
 // Fair order for these three-singer sets is first-appearance interleave; asserting the BASE order
 // first makes each pin test show exactly what moved.
 test('baseline fair order (sanity, so the pin deltas below are legible)', () => {
@@ -106,4 +116,73 @@ test('a pin index past the end clamps to the tail rather than dropping the entry
 	const out = assignSeqs(entries);
 	expect(out.map((x) => x.id)).toEqual(['a1', 'b1']);
 	expect(out.length).toBe(2); // never lost
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue #790 — the pin's BASE while a song is playing.
+//
+// The phone computes a reorder target from `queued` (the playing entry excluded) and placePins used
+// to apply it to `rotate(entries)` (the playing entry INCLUDED). One entry playing therefore made
+// every target one short: `move down` sent the row's own index (inert forever) and `move up` sent two
+// below it (jumping the playing song). Same off-by-one #637 fixed for the sibling `move` op, at the
+// pin. These three drive the REAL client arithmetic, so they are about the reported taps.
+// ---------------------------------------------------------------------------------------------
+
+/**
+ * The arithmetic `apps/core/src/routes/+page.svelte` performs on one reorder tap, replayed verbatim:
+ * `queued` is `entries.filter((x) => x.status === 'queued')` sorted by rotationSeq (:627), `globalIdx`
+ * is the index in THAT list (:689-692), and `moveGlobal` sends `i + delta` clamped to
+ * `queued.length - 1` (:698-705) through `store.pinEntry` → the `move-global` op (queue.ts:139).
+ *
+ * Deriving the target the way the caller does — rather than hand-picking a toSeq — is what makes these
+ * guards pin the CONTRACT between the two sides instead of one side's arithmetic.
+ */
+function tap(entries: QueueEntry[], id: string, delta: number, ordering: Ordering = {}): QueueEntry[] {
+	const queued = entries.filter((x) => x.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
+	const i = queued.findIndex((x) => x.id === id);
+	if (i < 0) return entries.slice();
+	const to = Math.max(0, Math.min(i + delta, queued.length - 1));
+	if (to === i) return entries.slice();
+	return applyAndReseq(entries, { op: 'move-global', id, toSeq: to }, ordering);
+}
+
+test('#790 F1 — move down on a queued row MOVES it while a song is playing (was inert)', () => {
+	// One playing + two queued, the room the issue reproduces on. Seeded through assignSeqs so the
+	// rotationSeq the client sorts by is the real one.
+	const base = assignSeqs([playing('p1', 'a', 1), e('a1', 'a', 2), e('a2', 'a', 3)]);
+	expect(base.map((x) => x.id)).toEqual(['p1', 'a1', 'a2']); // sanity: the base order the tap starts from
+
+	// Tap `move down` on the top queued row. Expected order is hard-coded, NOT recomputed from the
+	// same splice the code performs.
+	const out = tap(base, 'a1', 1);
+	expect(out.map((x) => x.id)).toEqual(['p1', 'a2', 'a1']);
+	// Base received ['p1','a1','a2'] — toSeq 1 was a1's OWN slot in the pinned list, so placePins put
+	// it back where it started, on every press, forever.
+	expect(out.map((x) => x.rotationSeq)).toEqual([0, 1, 2]);
+});
+
+test('#790 F2 — move up does NOT jump the playing entry', () => {
+	const base = assignSeqs([playing('p1', 'a', 1), e('a1', 'a', 2), e('a2', 'a', 3)]);
+	const out = tap(base, 'a2', -1);
+	// One slot up means above a1, not above the song on stage. Base received ['a2','p1','a1'], which
+	// ranked two queued entries ahead of the playing song and made later adds land behind both.
+	expect(out.map((x) => x.id)).toEqual(['p1', 'a2', 'a1']);
+	expect(out.find((x) => x.id === 'p1')!.rotationSeq).toBe(0); // the playing song keeps the stage slot
+});
+
+test('#790 — a pin carried BY a playing entry does not displace it from its policy slot', () => {
+	// A pin is durable, so an entry pinned while queued still carries `pinnedSeq` once it starts
+	// playing. A playing entry is not a reorder target, so its stale pin must not move it: base
+	// spliced it to index 1 and produced ['a1','p1','a2'].
+	const out = assignSeqs([playing('p1', 'a', 1, 1), e('a1', 'a', 2), e('a2', 'a', 3)]);
+	expect(out.map((x) => x.id)).toEqual(['p1', 'a1', 'a2']);
+});
+
+test('#790 control — with NOTHING playing the same tap reorders on base too (non-vacuity)', () => {
+	// The only difference from F1 is that no entry is playing. This case passes both before and after
+	// the fix, which is what proves the two guards above are about the playing entry and not about the
+	// tap arithmetic being wrong in general.
+	const base = assignSeqs([e('a1', 'a', 1), e('a2', 'a', 2), e('a3', 'a', 3)]);
+	expect(base.map((x) => x.id)).toEqual(['a1', 'a2', 'a3']);
+	expect(tap(base, 'a1', 1).map((x) => x.id)).toEqual(['a2', 'a1', 'a3']);
 });
