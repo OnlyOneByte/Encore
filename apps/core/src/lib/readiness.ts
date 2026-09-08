@@ -44,6 +44,36 @@ export function displayReadiness(m: Media, live?: { status: MediaStatus }): Read
 }
 
 /**
+ * Which card an entry in the ROTATION gets — the singer's own queue slot, not a search row.
+ *
+ * The bug this fixes (#741): the phone chose between the cook-progress card and a plain queue row on
+ * an "is it in flight" test, and a terminally failed cook is not in flight — so a dead turn rendered
+ * byte-for-byte as an ordinary waiting turn. No progress bar, no chip, no sparkle, nothing that said
+ * the cook had died, while `nextPlayable` held its slot on every pass and it never played. The
+ * information was already on the client: the same live `failed` status drives the search row's
+ * "Couldn't make karaoke" chip and the Cooking group's header. It just never reached the singer's own
+ * card.
+ *
+ * Failure is decided by `displayReadiness`, NOT by a fresh `status === 'failed'` test, so this cannot
+ * disagree with the row and the header that already read it. That also buys the one case a raw status
+ * test gets wrong: a failed lyrics upgrade on an already-singable song reads as 'ready' there, and a
+ * turn that WILL play must not be labelled broken.
+ *
+ * `ready` and `canceled` are plain: both are terminal and settled, the catalog answers for them, and
+ * the entry is an ordinary waiting turn again.
+ */
+export type QueueCardKind = 'cooking' | 'failed' | 'plain';
+
+export function queueCardKind(media: Media | undefined, live?: { status: MediaStatus }): QueueCardKind {
+	if (!live) return 'plain';
+	if (live.status === 'ready' || live.status === 'canceled') return 'plain';
+	// A media missing from the catalog cannot be asked whether it is singable, so the live status is
+	// the only witness — take it at its word rather than silently downgrading a dead cook to plain.
+	if (live.status === 'failed') return media && displayReadiness(media, live) !== 'failed' ? 'plain' : 'failed';
+	return 'cooking';
+}
+
+/**
  * Whether offering "make karaoke" makes sense: only for a song that is neither done nor in flight.
  *
  * A FAILED song qualifies — that is the point of showing the state. The cook settled back to

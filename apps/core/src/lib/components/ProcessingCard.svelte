@@ -54,6 +54,12 @@
 
 	// pct is shown separately in the .stage row, so the line itself omits it.
 	const stageLabel = $derived(cookStageLabel(status));
+	// A terminally failed cook is NOT in flight. It reaches this card (#741) because the singer's own
+	// queue slot must say the cook died — a dead turn used to render as a plain waiting row,
+	// indistinguishable from a turn about to play. On this branch the card drops the progress bar and
+	// the sparkle (there is no progress to show) and tints the stage line as a failure. `failed`
+	// carries the SongRow's Sing retry, not this card, so nothing here re-cooks.
+	const failed = $derived(status === 'failed');
 	// `pct` is the WORKER'S per-step 0-100. The bar shows OVERALL cook completion, not the current
 	// step's own progress — otherwise every step reaching 100% filled the whole bar while three of
 	// five milestones had not started. overallCookPct maps the per-step pct into a per-stage
@@ -62,12 +68,14 @@
 	const overall = $derived(overallCookPct(status, pct));
 </script>
 
-<div class="qrow proc card list-row" class:pending={pending}>
+<div class="qrow proc card list-row" class:pending={pending} class:failed={failed}>
 	<div class="seq">
 		{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
 	</div>
 	<div class="meta">
-		<div class="t">{title}<span class="sparkle"><Icon name="sparkle" /></span></div>
+		<div class="t">
+			{title}{#if !failed}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
+		</div>
 		{#if singerName}
 			<div class="who">
 				<!-- Same away marker as QueueRow: a cook outlives its owner's attention span, and the room
@@ -103,8 +111,15 @@
 		</div>
 	{/if}
 	<div class="progress">
-		<div class="bar"><i style="transform:scaleX({overall / 100})"></i></div>
-		<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
+		{#if failed}
+			<!-- No bar for a dead cook: there is no progress to show, and a bar stuck near 0 reads as a
+			     stalled cook rather than a failed one. The stage line alone carries "Couldn't make
+			     karaoke", tinted as a failure so the card is legible as broken at a glance. -->
+			<div class="stage bad" aria-live="polite"><span>{stageLabel}</span></div>
+		{:else}
+			<div class="bar"><i style="transform:scaleX({overall / 100})"></i></div>
+			<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
+		{/if}
 	</div>
 </div>
 
@@ -128,6 +143,16 @@
 	.proc {
 		background: linear-gradient(var(--card), var(--card-tint));
 		border-color: var(--line-tint);
+	}
+	/* A dead cook (#741). The card's own border reads as broken before the text is, matching the red
+	   "Couldn't make karaoke" chip the search row shows for the same media, and the stage line takes
+	   the danger ink instead of the in-flight --warn. Borrows the shared --danger tokens rather than a
+	   fourth palette. */
+	.proc.failed {
+		border-color: var(--danger-line);
+	}
+	.stage.bad {
+		color: var(--danger-ink);
 	}
 	/* Optimistic-add markers, matching QueueRow (issue #304): dim the whole card and warn-tint the
 	   appended `adding…` word so an unconfirmed cooking entry reads as not-yet-committed. */
