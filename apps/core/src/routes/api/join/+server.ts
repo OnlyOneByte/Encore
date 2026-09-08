@@ -3,7 +3,7 @@ import type { RequestHandler } from '@sveltejs/kit';
 import { json } from '@sveltejs/kit';
 import { getApp } from '$server/app';
 import { doJoin, NameTakenError, RoomNotFoundError } from '$server/singers/join';
-import { SESSION_COOKIE, ROOM_COOKIE } from '$server/singers/repository';
+import { SESSION_COOKIE } from '$server/singers/repository';
 import { publicOriginIsHttps } from '$server/public-origin';
 
 export const POST: RequestHandler = async ({ request, cookies, url }) => {
@@ -28,17 +28,13 @@ export const POST: RequestHandler = async ({ request, cookies, url }) => {
 		secure: publicOriginIsHttps(request, url),
 		maxAge: 60 * 60 * 24 * 30
 	});
-	// The room this join landed in, so every later request from this phone (queue, settings, the
-	// realtime socket) knows its party without re-resolving a code. #654 sets the identity; the chain
-	// that scopes queue/playback to a room (#655/#656) reads it. Not httpOnly-sensitive on its own — it
-	// is an opaque room id, not a credential — but kept server-set and lax alongside the session.
-	cookies.set(ROOM_COOKIE, result.roomId, {
-		path: '/',
-		httpOnly: true,
-		sameSite: 'lax',
-		secure: publicOriginIsHttps(request, url),
-		maxAge: 60 * 60 * 24 * 30
-	});
+	// ONE cookie, deliberately. #654 also set a second one naming the room this join landed in, on the
+	// plan that the room-scoping chain would read it; #657 then chose a different mechanism and the
+	// room cookie was left with no reader at all (#797 deleted it). The scope token IS the session
+	// token: it resolves through the singers row to exactly one `room_id`, which is why a room may not
+	// be read from a client-supplied value — see $server/realtime/room-scope. The phone gets its own
+	// room id from the response body below, which is all it needs.
+	//
 	// don't leak the session token in the body
 	const { sessionToken: _t, ...safe } = result.singer;
 	return json({ singer: safe, roomId: result.roomId });

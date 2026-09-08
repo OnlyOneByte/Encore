@@ -1,14 +1,20 @@
-// POST /api/join must carry a room code through to doJoin, refuse an unknown code with 404, and set the room cookie to the room the join landed in (#654). These drive the REAL POST handler against a
+// POST /api/join must carry a room code through to doJoin, refuse an unknown code with 404, and return
+// the room the join landed in to the caller (#654). These drive the REAL POST handler against a
 // real RoomRepository + SingerRepository on an in-memory migrated DB, so the pinned mechanism is
-// end-to-end: the request's `code` reaches the room resolution and the resolved roomId reaches both
-// the cookie and the response body.
+// end-to-end: the request's `code` reaches the room resolution and the resolved roomId reaches the
+// response body.
 //
-// BASE-RED: on origin/main the route neither reads `code` nor sets a room cookie nor returns a roomId,
-// so every assertion below inverts.
+// #797 removed the second cookie this route used to set (`encore_room`), which had no reader anywhere:
+// the room a socket may act in is derived from the session token via the singers row, never from a
+// client-supplied value (see $server/realtime/room-scope). So the cookie assertions here pin the
+// COOKIE SET ITSELF — exactly one cookie, the session one — rather than naming the deleted constant,
+// which makes re-adding any second cookie on this path red regardless of what it is called.
+//
+// BASE-RED: on origin/main the route neither reads `code` nor returns a roomId, and it sets TWO cookies.
 import { test, expect, afterEach } from 'bun:test';
 import { POST } from './+server';
 import { RoomRepository } from '$server/rooms/repository';
-import { SingerRepository, ROOM_COOKIE, SESSION_COOKIE } from '$server/singers/repository';
+import { SingerRepository, SESSION_COOKIE } from '$server/singers/repository';
 import { PresenceTracker } from '$server/realtime/presence';
 import { AuthoritativeState } from '$server/state/store';
 import { SettingsRepository } from '$server/state/settings-repository';
@@ -55,7 +61,7 @@ function post(body: unknown, cookies: ReturnType<typeof cookieJar>['jar']) {
 	return POST({ request, cookies, url } as never);
 }
 
-test('joining with a room code lands in THAT room — cookie and body both carry its id', async () => {
+test('joining with a room code lands in THAT room — the body carries its id, and only ONE cookie is set', async () => {
 	const db = migratedDb();
 	const rooms = installApp(db, 'ignored-default');
 	const active = rooms.ensureActive(1); // the bare-join default
@@ -68,8 +74,13 @@ test('joining with a room code lands in THAT room — cookie and body both carry
 
 	const payload = (await res.json()) as { roomId: string };
 	expect(payload.roomId).toBe(other.id);
-	expect(set[ROOM_COOKIE]).toBe(other.id);
+	// The room id reaches the phone in the BODY. It must not also be handed back as a cookie: a
+	// client-supplied room id is exactly the mechanism #657 refused, and #654's cookie never had a
+	// reader. Asserting the whole key set (not the absence of one name) catches a re-add under any name.
+	expect(Object.keys(set)).toEqual([SESSION_COOKIE]);
 	expect(set[SESSION_COOKIE]).toBeString();
+	// and the room id specifically is nowhere in the jar
+	expect(Object.values(set)).not.toContain(other.id);
 });
 
 test('an unknown room code is refused with 404 and sets no cookies', async () => {
@@ -80,6 +91,5 @@ test('an unknown room code is refused with 404 and sets no cookies', async () =>
 	const { jar, set } = cookieJar();
 	const res = await post({ displayName: 'Kai', color: '#00aaff', code: 'NOSUCH' }, jar);
 	expect(res.status).toBe(404);
-	expect(set[ROOM_COOKIE]).toBeUndefined();
-	expect(set[SESSION_COOKIE]).toBeUndefined();
+	expect(Object.keys(set)).toEqual([]);
 });
