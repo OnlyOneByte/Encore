@@ -193,7 +193,12 @@ test('the paths retired by the repo-cleanup stay absent from the tree', () => {
 		'docs/archive',
 		'docs/specs',
 		'docs/shots',
-		'temp-screenshots/per-song-word-clamp'
+		'temp-screenshots/per-song-word-clamp',
+		// Re-adding this reinstates a second answer to *how work arrives*, beside the polling
+		// contract in docs/loop/TRIAGE.md and ARCHITECTURE.md. The webhook ingress it documented
+		// was torn down; a revert or a rebase resurrecting the file would put a live-looking
+		// mechanism back in front of every lane.
+		'docs/loop/WEBHOOKS.md'
 	];
 	const present = RETIRED.filter((rel) => existsSync(join(REPO, rel)));
 	expect(present).toEqual([]);

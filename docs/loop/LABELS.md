@@ -57,8 +57,8 @@ indistinguishable from no progress.*
 
 Quoted from the ISSUEGEN brief, because this is contested and the rule is load-bearing:
 
-> **Never apply `triaged` yourself.** That label belongs to the triage cron alone: it is the one
-> writer, so a `triaged` label always means the triage pass has seen the issue. The cron stamps your
+> **Never apply `triaged` yourself.** That label belongs to the triage lane alone: it is the one
+> writer, so a `triaged` label always means the triage pass has seen the issue. The lane stamps your
 > `review` findings on its next wake without re-investigating them, which is also what makes them
 > dispatchable to the fix loop. Applying it yourself would forge that record.
 
@@ -78,7 +78,7 @@ the cron registry.
 | `HIGH-PRIORITY` | `priority` |
 | `needs-owner` · `owner-only` · `needs-repro` · `needs-owner-verification` · `for-owner` | `needs-decision` |
 
-Historical rows in the run logs under `/local/home/angryang/workspace/encore-pipeline/state/` keep the
+Historical rows in the run logs under `/local/home/angryang/workspace/encore-loop-state/` keep the
 old names. **That is
 the record — do not rewrite it.**
 
@@ -88,16 +88,15 @@ A label is coordination **state**. Some edges are additionally being used as an 
 notices the label changed since it last looked. That is edge detection by polling, and a missed edge is
 silent and permanent; it is what cost #707 and #681.
 
-Triage no longer works this way. It is woken by the GitHub event directly, so these two are **retired
+Triage no longer works this way, and it needed no event to stop. It POLLS, so these two are **retired
 as triggers** while the labels themselves keep their meaning:
 
-| Label edge | Now driven by |
+| Label edge | Now found by |
 |---|---|
-| `triaged` removed — the owner's re-triage lever | `issues.unlabeled`, acted on in ~5s |
-| the owner answering a question | `issue_comment.created` — there was never a label for this, which is why answering used to require stripping `triaged` by hand |
+| `triaged` removed — the owner's re-triage lever | the untriaged query, on the next ~360s patrol |
+| the owner answering a question | the `needs-decision` query, whose newest comment is not bot-authored |
 
-These three are **still label-triggered**, and each has a GitHub event already being delivered and
-recorded by the translator that nothing consumes yet:
+These three are **still label-triggered**, and none of them is polled for directly yet:
 
 | Label edge | Used to mean | The event that would replace it |
 |---|---|---|
