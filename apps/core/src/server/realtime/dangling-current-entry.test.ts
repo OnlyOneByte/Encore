@@ -52,11 +52,14 @@ function harness() {
 	return { published, state, deps };
 }
 
-// mirrors the server.ts queue:command handler AFTER the #128 fix: the auto-start/recover gate keys
-// on whether currentEntryId RESOLVES to a live entry, not on it merely being non-null.
+// mirrors the server.ts queue:command handler AFTER #803: the arm calls reconcileOnReady
+// UNCONDITIONALLY and does not re-derive the recovery predicate — reconcileOnReady owns that decision
+// (player.ts), and its tail emitNowPlaying sits outside the recovery block so the "current resolves"
+// case is a re-emit with no double broadcast. The predicate itself is exercised through
+// reconcileOnReady rather than copied here, which is the point of #803.
 function queueThenReconcile(cmd: ClientCommand, deps: HubDeps) {
 	handleQueueCommand(cmd, deps);
-	if (!deps.state.entries.some((e) => e.id === deps.state.playback.currentEntryId)) reconcileOnReady(deps);
+	reconcileOnReady(deps);
 }
 
 test('removing the PLAYING entry advances the rotation to the next singer', () => {
@@ -149,11 +152,13 @@ test('hydrate() leaves a currentEntryId that DOES resolve untouched', () => {
 // SOURCE-SCAN GUARD for the trigger line (server.ts). The behavioural cases above drive a mirror of
 // the server's queue:command composition, so they pin `reconcileOnReady`'s recovery logic but NOT
 // the one production line that FIRES it — apps/core/server.ts is the Bun.serve entry with no unit
-// harness, and reverting its gate to the pre-fix `!currentEntryId` form leaves the whole suite green
-// while resurrecting issue #128 (the recovery never fires on the reported path). This scan pins that
-// gate to key on RESOLUTION rather than nullness, on the live writer, the same technique
-// session-cookie-attributes.test.ts (#107) uses on routes/api/join/+server.ts, a file with the
-// identical no-harness problem. Comments are blanked so a commented-out gate cannot satisfy it.
+// harness, and reverting its call to the pre-fix `if (!currentEntryId)` form leaves the whole suite
+// green while resurrecting issue #128 (the recovery never fires on the reported path). This scan pins
+// that the arm FIRES the recovery, and that the recovery predicate keys on RESOLUTION rather than
+// nullness — the latter now asserted at player.ts, which is where #803 made the predicate live in
+// exactly one place. Same technique as session-cookie-attributes.test.ts (#107) on
+// routes/api/join/+server.ts, a file with the identical no-harness problem. Comments are blanked so a
+// commented-out call cannot satisfy it.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
@@ -164,26 +169,37 @@ function stripComments(src: string): string {
 
 // import.meta.dir === apps/core/src/server/realtime → apps/core/server.ts is three levels up.
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));
+const PLAYER = stripComments(readFileSync(join(import.meta.dir, 'player.ts'), 'utf8'));
 
 test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying on resolution not nullness (#128)', () => {
 	// The recovery must be wired to the client queue path (handleQueueCommand is the sole prune that
 	// can retire the playing entry) and fire reconcileOnReady.
 	expect(SERVER).toMatch(/handleQueueCommand\(/);
 	expect(SERVER).toMatch(/reconcileOnReady\(deps\)/);
-	// THE PINNED LINE: the gate tests whether the current id RESOLVES to a live entry
-	// (`!entries.some((e) => e.id === currentEntryId)`), so a dangling (non-null) id triggers
-	// recovery. The pre-fix `!state.playback.currentEntryId` form — which reads a dangling id as
-	// "busy" and never recovers — must NOT be what guards the call.
-	expect(SERVER).toMatch(
-		/if\s*\(\s*!state\.entries\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*state\.playback\.currentEntryId\s*\)\s*\)\s*reconcileOnReady\(deps\)/
+	// THE PINNED PREDICATE, now at its single home (#803). The gate tests whether the current id
+	// RESOLVES to a live entry (`!entries.some((e) => e.id === currentEntryId)`), so a dangling
+	// (non-null) id triggers recovery. The pre-fix `!state.playback.currentEntryId` form — which reads
+	// a dangling id as "busy" and never recovers — must NOT be what guards the recovery block.
+	// It is asserted on player.ts because #803 deleted server.ts's second copy: server.ts used to
+	// re-derive this same predicate to decide whether to CALL reconcileOnReady, so widening one copy
+	// and not the other was invisible to the suite. The caller now delegates unconditionally.
+	const fnIdx = PLAYER.indexOf('export function reconcileOnReady(');
+	expect(fnIdx).toBeGreaterThanOrEqual(0);
+	const body = PLAYER.slice(fnIdx);
+	expect(body).toMatch(
+		/const currentResolves = state\.entries\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*state\.playback\.currentEntryId\s*\)/
 	);
+	expect(body).toMatch(/if\s*\(\s*!currentResolves\s*\)/);
+	// The caller must NOT carry a second copy of it — that duplication IS #803, and re-adding it makes
+	// the silent-half-edit hazard live again.
+	expect(SERVER).not.toMatch(/\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.]*playback\.currentEntryId/);
 
-	// THE PINNED ORDER (#261): presence of the gate is not enough — it must run AFTER
-	// handleQueueCommand, which is the prune that retires the playing entry. If the gate is hoisted
-	// ABOVE the call it evaluates the PRE-remove state (the playing id still resolves), so recovery
-	// never fires and #128 re-opens with every assertion above still green. Slice the queue:command
-	// arm out of the comment-blanked SERVER and require the gate's index inside that arm to be
-	// greater than the handleQueueCommand(evt.command call's — which also pins the gate is inside the
+	// THE PINNED ORDER (#261): presence of the call is not enough — it must run AFTER
+	// handleQueueCommand, which is the prune that retires the playing entry. If it is hoisted ABOVE
+	// the call it evaluates the PRE-remove state (the playing id still resolves), so recovery never
+	// fires and #128 re-opens with every assertion above still green. Slice the queue:command arm out
+	// of the comment-blanked SERVER and require the reconcile's index inside that arm to be greater
+	// than the handleQueueCommand(evt.command call's — which also pins the reconcile is inside the
 	// queue:command arm at all, not merely somewhere in the file.
 	const caseIdx = SERVER.indexOf("case 'queue:command':");
 	expect(caseIdx).toBeGreaterThanOrEqual(0);
@@ -191,12 +207,10 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 	expect(breakIdx).toBeGreaterThan(caseIdx);
 	const arm = SERVER.slice(caseIdx, breakIdx);
 	const callIdx = arm.search(/handleQueueCommand\(evt\.command/);
-	const gateIdx = arm.search(
-		/if\s*\(\s*!state\.entries\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*state\.playback\.currentEntryId\s*\)\s*\)\s*reconcileOnReady\(deps\)/
-	);
+	const reconcileIdx = arm.search(/reconcileOnReady\(deps\)/);
 	expect(callIdx).toBeGreaterThanOrEqual(0);
-	expect(gateIdx).toBeGreaterThanOrEqual(0);
-	expect(gateIdx).toBeGreaterThan(callIdx);
+	expect(reconcileIdx).toBeGreaterThanOrEqual(0);
+	expect(reconcileIdx).toBeGreaterThan(callIdx);
 });
 
 // SOURCE-SCAN GUARD for the hydrate() heal comment (store.ts) — issue #254.
@@ -274,7 +288,7 @@ const RECONCILE_CALL = /(?<!function\s)\breconcileOnReady\s*\(/;
 
 test('reconcileOnReady is called from exactly the three non-boot sites: queue:command, onMediaReady, and the #639 entry-delete (#342)', () => {
 	// The set of NON-TEST files in apps/core that CALL reconcileOnReady must be exactly server.ts (the
-	// queue:command gate) and src/server/app.ts (the onMediaReady handler). A reconcile added anywhere
+	// queue:command arm) and src/server/app.ts (the onMediaReady handler). A reconcile added anywhere
 	// else — e.g. a new boot module — reds this; deleting the last call in app.ts reds it too.
 	const sites = collectNonTestSources()
 		.filter((f) => RECONCILE_CALL.test(stripComments(readFileSync(f, 'utf8'))))
