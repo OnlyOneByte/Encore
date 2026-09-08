@@ -30,6 +30,7 @@ from ..lyrics import (
     build_sources,
     candidate_key,
     candidate_last_end,
+    candidates_of,
     caption_argv,
     is_line_synced,
     is_valid_lyrics,
@@ -296,23 +297,52 @@ class GradeAndSelect(Step):
         duration_sec = ctx.audio.duration_sec
         sel = select_by_baselines(ctx.lyrics.texts, duration_sec)
         # Report overshoot in the same operator log that already carries timing defects (#667 piece 2),
-        # so a candidate timed past audio-end is visible in the cook log rather than only on the TV. The
-        # note is emitted for whatever was published, whether or not the overshoot was large enough to
-        # change the pick — a small, tolerated overshoot is still worth seeing.
+        # so a candidate timed past audio-end is visible in the cook log rather than only on the TV.
+        #
+        # #731: report from the candidates as they were BEFORE selection, not from `sel.publish`. A
+        # candidate DEMOTED for overshoot (chain.py overshoot_penalized) is not among the survivors, so
+        # iterating `sel.publish` fired the note exactly when the demotion changed nothing and stayed
+        # SILENT exactly when it changed the outcome — the one case #667 piece 2 exists for. Walk every
+        # pre-selection candidate (each source's own text plus its alternates); `select_by_baselines`
+        # does not mutate its input (it rebinds via `replace`), so `ctx.lyrics.texts` still carries them.
+        # Published-vs-demoted is decided by identity against `sel.publish` on (text_source, variant),
+        # which survive the winner's `replace(..., alternates=[])`.
         if duration_sec and duration_sec > 0:
-            for published in sel.publish:
-                last_end = candidate_last_end(published)
-                if last_end is None:
-                    continue
-                over = max(0.0, last_end - duration_sec)
-                if over > 0:
-                    verdict = (
-                        "past the OVERSHOOT limit — a wrong-version pick, demoted in selection"
-                        if over / duration_sec > OVERSHOOT_FRACTION_MAX
-                        else "within tolerance"
-                    )
+            published_keys = {(p.text_source, p.variant) for p in sel.publish}
+            seen_keys: set[tuple[str, str | None]] = set()
+            for candidate in candidates_of(ctx.lyrics.texts):
+                for text in (candidate, *candidate.alternates):
+                    key = (text.text_source, text.variant)
+                    if key in seen_keys:
+                        continue
+                    seen_keys.add(key)
+                    last_end = candidate_last_end(text)
+                    if last_end is None:
+                        continue
+                    over = max(0.0, last_end - duration_sec)
+                    if over <= 0:
+                        continue
+                    is_published = key in published_keys
+                    if over / duration_sec <= OVERSHOOT_FRACTION_MAX:
+                        # A small, tolerated overshoot the demotion did not act on — still worth seeing.
+                        verdict = "within tolerance"
+                    elif is_published:
+                        # Over the limit and it WON: no rival fit the audio, so the wrong version shipped.
+                        # #667's own cost — say so plainly rather than claiming it was demoted.
+                        verdict = (
+                            "past the OVERSHOOT limit — PUBLISHED anyway, "
+                            "no candidate that fits the audio"
+                        )
+                    else:
+                        # Over the limit and demoted — the case #667 piece 2 was written to surface.
+                        winner = (
+                            (sel.publish[0].variant or sel.publish[0].text_source)
+                            if sel.publish
+                            else "none"
+                        )
+                        verdict = f"past the OVERSHOOT limit — DEMOTED, published {winner} instead"
                     ctx.note(
-                        f"lyrics overshoot — {published.variant or published.text_source} runs "
+                        f"lyrics overshoot — {text.variant or text.text_source} runs "
                         f"+{over:.0f}s past audio-end ({over / duration_sec:.0%} of {duration_sec:.0f}s) "
                         f"— {verdict}"
                     )
