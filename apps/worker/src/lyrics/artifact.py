@@ -105,11 +105,20 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         if not words and (l_start is None or l_end is None):
             continue
         line: dict[str, Any] = {"start": l_start, "end": l_end, "text": line_text, "words": words}
-        # A romanization is a per-line SECOND SCRIPT the source shipped (issue #431). The aligner does
-        # not re-time it and does not preserve it, so it rides through only when the segments handed to
-        # this normalizer already carry it — the pre-align word-timed path (segments straight from the
-        # source) and, via re-attachment by the caller, the line-sync path. Never fabricated: absent key
-        # → single-script line, unchanged behaviour.
+        # A romanization is a per-line SECOND SCRIPT the source shipped (issue #431). This pass-through
+        # copies it onto a line ONLY when the input segment already carries it, and it is defensive
+        # depth today, NOT a live carrier: the one site that writes ``romanization`` into a segment is
+        # ``fold_romanization_entries`` on the LRCLIB synced (``TIMING_LINE``) path, and no producer
+        # hands those segments to ``normalize_lyrics``. The two paths that DO surface the second script
+        # each carry it OUTSIDE this function (issue #685):
+        #   - the aligned path (the default ``forced`` sync mode) — the aligner rebuilds every segment
+        #     and drops the field, so ``_time_one`` re-attaches it by source-line position via
+        #     ``_attach_romanizations`` in ``steps/lyrics.py`` AFTER ``normalize_lyrics`` has run;
+        #   - the line-sync path (``lines`` mode / aligner-failure fallback) — ``line_synced_lyrics`` in
+        #     ``source.py`` has its own copy and never calls this normalizer.
+        # The ASR (``TIMING_WORD``) path cannot carry it: whisper emits no romanization and the ASR
+        # source rebuilds segments with only ``start``/``end``/``text``/``words``. Never fabricated:
+        # absent key → single-script line, unchanged behaviour.
         romanization = seg.get("romanization")
         if isinstance(romanization, str) and romanization.strip():
             line["romanization"] = romanization.strip()
