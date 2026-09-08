@@ -368,7 +368,11 @@
 		// The original detected key, spelled and confidence-gated by the shared helper (null below the
 		// floor). Added to the FIXED rowMeta shape so it reaches every SongRow call site — SongRow itself
 		// only paints the chip on a ready row, so a null here (raw/cooking song, or no key) is harmless.
-		keyName: originalKeyLabel(m.songProfile) ?? undefined
+		keyName: originalKeyLabel(m.songProfile) ?? undefined,
+		// The song's descriptive tags, threaded through the ONE shared row shape so every call site
+		// gets them; SongRow paints them on a READY row only, so a raw/cooking row's undefined is
+		// harmless. Reads the map by id — a song with no tags is simply absent from it.
+		tags: libraryTags[m.id]
 	});
 	/** Is this song already in MY part of the rotation? Turns ＋ Turn into a ✓ Queued confirmation. */
 	function inMyQueue(mediaId: string): boolean {
@@ -546,6 +550,10 @@
 
 	// the saved-karaoke library + whatever is cooking, for a client that just loaded
 	let library = $state<Media[]>([]);
+	// A song's descriptive tags, mediaId → its 'tag'-kind values, arriving beside `library` from
+	// /api/library (#689). A parallel map rather than a field on Media because tags live in their own
+	// table and Media is the origin identity; the row reads its own song's entry, absent = no chips.
+	let libraryTags = $state<Record<string, string[]>>({});
 	// Browse: facets describe the WHOLE ready library (never the current filter), so picking an
 	// artist cannot collapse the rail to that one artist and strand you with no way back.
 	let facets = $state<{ artists: { artist: string; count: number }[] }>({
@@ -576,6 +584,7 @@
 			const j = await (await fetch(`/api/library${qs}`)).json();
 			if (j.facets) facets = j.facets;
 			library = j.library ?? [];
+			libraryTags = j.tags ?? {};
 			mergeMedia(library);
 			const cooking: { media: Media; status: MediaStatus; pct: number; etaSec?: number }[] = j.cooking ?? [];
 			if (cooking.length) {
