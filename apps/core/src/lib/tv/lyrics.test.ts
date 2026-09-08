@@ -393,21 +393,25 @@ test('a multi-word short line is never treated as an orphan', () => {
 // ── the lead offset ────────────────────────────────────────────────────────────
 import { LYRICS_LEAD_SEC } from './lyrics';
 
-test('the lead is a positive, sane number of seconds', () => {
-	// a full second would highlight the wrong line; zero reads as perpetually behind
-	expect(LYRICS_LEAD_SEC).toBeGreaterThan(0);
-	expect(LYRICS_LEAD_SEC).toBeLessThan(1);
+test('the default lead is 0 — the global lead is opt-in per room (#629)', () => {
+	// #629 owner ruling: a single global lead is a band-aid, so it ships OFF by default. The per-room
+	// lyricsLeadMs setting is the opt-in. Hard literal, not `.toBe(SOME_CONST)`, so this pins the value
+	// rather than tautologically re-reading whatever the constant happens to be.
+	expect(LYRICS_LEAD_SEC).toBe(0);
 });
 
-test('leading the position selects the NEXT word sooner (what the knob is for)', () => {
+test('a lead selects the NEXT word sooner (what the knob is for)', () => {
 	const line = lineOf([
 		['one', 0, 0.5],
 		['two', 0.5, 1.0],
 		['three', 1.0, 1.5]
 	]);
-	// at 0.45s the audio is still on "one"; with the lead applied the cue has moved to "two"
+	// The mechanism is unchanged by the default flip: at 0.45s the audio is still on "one", and applying
+	// an explicit 0.3s lead moves the cue to "two". Uses a literal lead, NOT LYRICS_LEAD_SEC, so it keeps
+	// proving the knob works after the default became 0.
+	const lead = 0.3;
 	expect(activeWordIndex(line, 0.45)).toBe(0);
-	expect(activeWordIndex(line, 0.45 + LYRICS_LEAD_SEC)).toBe(1);
+	expect(activeWordIndex(line, 0.45 + lead)).toBe(1);
 });
 
 // ── issue #431: dual-script (romanization) pass-through ──────────────────────────
