@@ -83,11 +83,55 @@ export function transportFor({ hasSrc, playable, active, visible, playing }: Tra
  * the current media resolves to now (`fileSrc(media)`), or `null`/`''` when there is no media. They
  * match only when the element is holding the CURRENT song's src, so a song change reads `false` until
  * the assign effect writes the new src — which is exactly the `false -> true` edge that re-arms the
- * transport effect after the src has landed rather than racing it.
+ * transport effect after the src has landed rather than racing it, BUT ONLY WHEN THE RESOLVED SRC
+ * DIFFERS. Two turns of the SAME song resolve to the byte-identical src, so `held === wanted` stays
+ * `true` continuously and there is NO `false -> true` edge across a same-song advance — the element is
+ * paused by `ended` and never re-armed. That same-song hole is #701, and it is why the transport reader
+ * scopes its input to the ENTRY, not the src, via `slotHoldsSong` below.
  *
  * Pure and string-based (no DOM, no `Media` coupling) so it is unit-testable without a real element,
  * matching `video-src.ts` and `transportFor` itself.
  */
 export function slotHoldsSrc(held: string | null | undefined, wanted: string | null | undefined): boolean {
 	return !!held && !!wanted && held === wanted;
+}
+
+/**
+ * Is the element holding the src for THIS QUEUE ENTRY — not merely for a song with this src?
+ *
+ * `slotHoldsSrc` compares src strings, which is blind to the one distinction #701 turns on: two turns
+ * of the SAME song in the queue are two separate `QueueEntry`s with distinct client-minted ids, but
+ * their `fileSrc(media)` resolves to the byte-identical string. So across a same-song advance
+ * `slotHoldsSrc(currentSrc, fileSrc(media))` stays `true` on both sides, the transport `$derived` keeps
+ * the same `'play'` value, and its effect never re-runs — while `ended` has already paused the element
+ * and the byte-identical src reset `currentTime` to 0. The room goes silent at 0 with no affordance.
+ *
+ * The token is `` `${entryId}|${src}` `` — the entry id makes turn 2 a DIFFERENT wanted token from
+ * turn 1 even though the src is unchanged, and the src component keeps every property `slotHoldsSrc`
+ * had (a non-playable / src-less slot has no wanted token and reads `false`, and a genuine
+ * two-different-songs change still differs). `held` is TvPlayer's shadow of the token the element last
+ * settled on (written in the SAME assign effect that writes `currentSrc`, so the two can never
+ * diverge); `wanted` is the token the current entry resolves to now. They match only when the element
+ * has already settled on THIS entry's src, so a same-song advance reads `false` until the assign effect
+ * records the new entry — a genuine `idle -> play` edge WITHOUT rewriting the byte-identical src, which
+ * `TvPlayer.svelte`'s per-song-change note warns reloads the playing song (and is why the shadow is not
+ * simply cleared on a song change).
+ *
+ * Pure and string-based (no DOM, no `Media` coupling), matching `slotHoldsSrc` and `transportFor`.
+ */
+export function slotHoldsSong(held: string | null | undefined, wanted: string | null | undefined): boolean {
+	return !!held && !!wanted && held === wanted;
+}
+
+/**
+ * The token `slotHoldsSong` compares: an entry-scoped identity for the src an element holds or wants.
+ *
+ * `null` when the slot has nothing playable to hold (no entry, or no resolved src) — so the token is
+ * absent exactly when `slotHoldsSrc` would have returned `false` for lack of a `wanted`, preserving
+ * that leg of the decision. When both are present it is `` `${entryId}|${src}` ``, which differs
+ * between two turns of the same song (distinct `entryId`) and between two different songs (distinct
+ * `src`), and is stable for one entry across the identity churn `currentSrc` already survives.
+ */
+export function songToken(entryId: string | null | undefined, src: string | null | undefined): string | null {
+	return entryId && src ? `${entryId}|${src}` : null;
 }
