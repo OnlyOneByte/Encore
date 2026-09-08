@@ -10,9 +10,18 @@ const base = 'http://127.0.0.1:' + PORT;
 const OUT = process.argv[2] || '/tmp/shots-639';
 mkdirSync(OUT, { recursive: true });
 const chromium = findChromium();
-if (!chromium) { console.error('no chromium'); process.exit(2); }
+if (!chromium) {
+	console.error('no chromium');
+	process.exit(2);
+}
 const CDP_PORT = 9639;
-const args = ['--headless=new', '--remote-debugging-port=' + CDP_PORT, '--no-sandbox', '--hide-scrollbars', '--force-color-profile=srgb'];
+const args = [
+	'--headless=new',
+	'--remote-debugging-port=' + CDP_PORT,
+	'--no-sandbox',
+	'--hide-scrollbars',
+	'--force-color-profile=srgb'
+];
 const proc = spawn(chromium, args, { stdio: 'ignore' });
 await sleep(1200);
 let code = 0;
@@ -30,7 +39,8 @@ try {
 	console.log('captured confirm');
 	await browser.close?.();
 } catch (e) {
-	console.error('probe error', e?.message || e); code = 1;
+	console.error('probe error', e?.message || e);
+	code = 1;
 } finally {
 	proc.kill();
 }
