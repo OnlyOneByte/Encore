@@ -179,7 +179,10 @@ export function getApp(): EncoreApp {
 	// this gives the QR a code to advertise and the join path a room to land an unqualified join in.
 	const activeRoomId = rooms.ensureActive(Date.now()).id;
 	const state = new AuthoritativeState(sqlitePersistence(db, activeRoomId), 250, () =>
-		orderingOf({ getSettings: () => settings.getEffective(), listSingers: () => singers.listPublic(activeRoomId) })
+		orderingOf({
+			getSettings: () => settings.getEffective(activeRoomId),
+			listSingers: () => singers.listPublic(activeRoomId)
+		})
 	);
 	const { entries, playback } = hydrate(db, activeRoomId);
 	state.hydrate(entries, playback);
@@ -198,10 +201,11 @@ export function getApp(): EncoreApp {
 	// INTERSTITIAL_MS is still honoured as a deprecated alias so a deployed box does not change behavior
 	// on upgrade, and =0 still means "off" — it now seeds the toggle rather than a sentinel duration.
 	const introEnv = process.env.ENCORE_SONG_INTRO_MS ?? process.env.INTERSTITIAL_MS;
-	if (introEnv !== undefined && !settings.hasRoom()) {
+	if (introEnv !== undefined && !settings.hasRoom(activeRoomId)) {
 		const ms = Math.max(0, Number(introEnv));
 		settings.setRoom(
-			Number.isFinite(ms) && ms === 0 ? { songIntroEnabled: false } : { songIntroEnabled: true, songIntroMs: ms }
+			Number.isFinite(ms) && ms === 0 ? { songIntroEnabled: false } : { songIntroEnabled: true, songIntroMs: ms },
+			activeRoomId
 		);
 	}
 	const workers = new WorkerRegistry();
@@ -529,7 +533,7 @@ export function getApp(): EncoreApp {
 		// A stems/upgrade job carries the room's chosen engine+model, read live at assign time. EFFECTIVE
 		// (global+room) so the room's downward-only quality ceiling actually reaches dispatch — the hub
 		// folds resolveCookSeparator over this before handing the pure dispatch layer its settings.
-		getSettings: () => app.settings.getEffective(),
+		getSettings: () => app.settings.getEffective(app.activeRoomId),
 		// A cooked song is durable — persist the ready flip (instrumental key + lyrics + pitch)
 		// so the next boot lists it in the karaoke library instead of re-cooking it.
 		persistMedia: (mediaId) => {
@@ -547,7 +551,7 @@ export function getApp(): EncoreApp {
 					mediaById,
 					listSingers: () => app.singers.listPublic(app.activeRoomId),
 					listOnline: () => app.presence.online(),
-					getSettings: () => app.settings.getEffective()
+					getSettings: () => app.settings.getEffective(app.activeRoomId)
 				})
 			);
 			// listSingers + getSettings are not optional garnish here: reconcileOnReady picks what plays
@@ -558,7 +562,7 @@ export function getApp(): EncoreApp {
 				publish: (e) => app.publish(e),
 				mediaById,
 				listSingers: () => app.singers.listPublic(app.activeRoomId),
-				getSettings: () => app.settings.getEffective(),
+				getSettings: () => app.settings.getEffective(app.activeRoomId),
 				onNowPlaying: (e) => app.plays.onNowPlaying(e),
 				onSang: (singerId) => app.singers.markSang(singerId, app.now())
 			});
@@ -638,7 +642,7 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 		listSingers: () => app.singers.listPublic(app.activeRoomId),
 		listOnline: perFrame.listOnline,
 		listAway: perFrame.listAway,
-		getSettings: () => app.settings.getEffective(),
+		getSettings: () => app.settings.getEffective(app.activeRoomId),
 		onNowPlaying: (e) => app.plays.onNowPlaying(e),
 		onSang: (singerId) => app.singers.markSang(singerId, app.now()),
 		recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),

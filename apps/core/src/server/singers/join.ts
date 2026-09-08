@@ -66,7 +66,7 @@ export const normalizeRoomCode = (code: string): string => code.trim().toUpperCa
  */
 export function assertNameFree(app: EncoreApp, roomId: string, name: string, exceptId?: string): void {
 	const key = nameKey(name);
-	const graceMs = graceMsOf(app.settings.getRoom().presenceGraceMinutes);
+	const graceMs = graceMsOf(app.settings.getRoom(roomId).presenceGraceMinutes);
 	const clash = app.singers.listPublic(roomId).some((s) => {
 		if (s.id === exceptId) return false;
 		if (nameKey(s.displayName) !== key) return false;

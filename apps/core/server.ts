@@ -161,7 +161,7 @@ function hasPendingSongs(singerId: string): boolean {
 function refreshMembership(): void {
 	const next = app.presence.evaluate({
 		now: app.now(),
-		graceMs: graceMsOf(app.settings.getRoom().presenceGraceMinutes),
+		graceMs: graceMsOf(app.settings.getRoom(app.activeRoomId).presenceGraceMinutes),
 		hasPendingSongs
 	});
 	const same = next.here.join() === membership.here.join() && next.away.join() === membership.away.join();

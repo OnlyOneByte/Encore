@@ -65,7 +65,8 @@ export const load: PageServerLoad = async ({ url, request }) => {
 		room: { ...DEFAULT_EFFECTIVE_SETTINGS.room, ...envRoom }
 	};
 	try {
-		settings = getApp().settings.getEffective();
+		const app = getApp();
+		settings = app.settings.getEffective(app.activeRoomId);
 	} catch {
 		// The app singleton is absent when this route is prerendered or unit-loaded; the env default is
 		// the correct answer there rather than a failed load.
