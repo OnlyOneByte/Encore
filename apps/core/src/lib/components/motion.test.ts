@@ -82,13 +82,45 @@ function markupRegion(css: string): string {
 	return css.replace(/<style[\s\S]*?<\/style>/gi, ' ');
 }
 
+// Blank the interior of every `style={ … }` attribute, brace-BALANCED (issue #719 advisory a). #699's
+// blank used the character class `\{[^}]*\}`, which stops at the FIRST `}` -- in a template literal
+// that is the `}` closing an interpolation `${…}`, so the transition-carrying TAIL survived unblanked
+// and the directive scan below misread it (same declaration, opposite verdict depending only on an
+// earlier interpolation -- the #242/#290/#615/#699 shape). Walk braces from the opening `{` to its
+// true match and blank the whole span so no `transition:`/directive text leaks out of a style value.
+function blankBalancedStyleBraces(markup: string): string {
+	let out = markup;
+	const re = /style=\{/g;
+	let m: RegExpExecArray | null;
+	while ((m = re.exec(out))) {
+		let depth = 1;
+		let i = m.index + m[0].length;
+		for (; i < out.length && depth > 0; i++) {
+			if (out[i] === '{') depth++;
+			else if (out[i] === '}') depth--;
+		}
+		const end = i; // one past the matching `}`
+		out = out.slice(0, m.index) + ' '.repeat(end - m.index) + out.slice(end);
+		re.lastIndex = end;
+	}
+	return out;
+}
+
 // CSS transition:/transition-property: layout scan over the STYLESHEET region ONLY. With no markup in
 // the region, no directive nor inline style= attribute can reach it, and no less-than exists to blank
 // anything (issue #699 finding 1). Read the first identifier of each comma entry.
+//
+// Vendor prefix (issue #719 finding 1): recognise `-webkit-transition`/`-moz-transition` too. #481's
+// scoping decision rested on this scan being "accidentally immune" (its regex once had NO left
+// boundary, so `-webkit-transition: width` matched and redded); #648 added the `[;{\s]` boundary and
+// killed that immunity, since a boundary class cannot match the `-` that precedes `-webkit-transition`.
+// Add the same optional `(?:-(?:webkit|moz)-)?` group that :448 (animation) and :178 (keyframes) already
+// carry, so a prefix-only spelling is caught, not just the unprefixed one. iOS Safari is this app's
+// phone client and every `-webkit-appearance`/`-webkit-line-clamp` site is written prefix-only.
 function transitionPropsInStylesheet(css: string, isSvelte: boolean): string[] {
 	const out: string[] = [];
 	const region = stylesheetRegion(css, isSvelte);
-	for (const m of region.matchAll(/(?:^|[;{\s])transition(?:-property)?:\s*([^;}]+)/g)) {
+	for (const m of region.matchAll(/(?:^|[;{\s])(?:-(?:webkit|moz)-)?transition(?:-property)?:\s*([^;}]+)/g)) {
 		for (const entry of m[1]!.split(',')) {
 			const id = entry.trim().match(/^[a-z-]+/);
 			if (!id || id[0] === 'none') continue;
@@ -109,22 +141,53 @@ function transitionPropsInStylesheet(css: string, isSvelte: boolean): string[] {
 function inlineTransitionProps(css: string): string[] {
 	const out: string[] = [];
 	const markup = markupRegion(css);
-	// opaque value: transition: immediately followed by an interpolation opener (a brace or dollar-brace).
-	for (const _m of markup.matchAll(/(?<!style)\btransition(?:-property)?:\s*[$]?[{]/g)) {
+	// DOM style-object write (issue #719 finding 2): a transition set through the script style object has
+	// NO colon after the property name, so neither value scan below (both require `transition:`) can see
+	// it -- yet it lands as a real inline style, which no @media wrapper or reduce reset can ever cover.
+	// Three spellings: `el.style.transition = ...`, the camelCased `el.style.webkitTransition = ...` /
+	// `el.style.transitionProperty = ...`, and `el.style.setProperty('transition', ...)`
+	// (this repo already writes setProperty on documentElement.style at routes/+page.svelte:510 and
+	// QueueSheet.svelte:60, so a `transition` write is one identifier away from a live idiom). The value
+	// is script-computed and opaque at scan time, so report it via the SAME sentinel a braced directive
+	// uses -- two spellings of one inline-transition defect must not read as two causes.
+	for (const _m of markup.matchAll(/\.style\.(?:transition|webkitTransition|transitionProperty)\s*=/g)) {
 		out.push('style-transition-directive');
 	}
-	// readable value: transition: then a value up to the next delimiter (; quote backtick or brace).
-	for (const m of markup.matchAll(/(?<!style)\btransition(?:-property)?:\s*([^;"'`}]+)/g)) {
+	for (const _m of markup.matchAll(
+		/\.style\.setProperty\(\s*(['"`])(?:-(?:webkit|moz)-)?transition(?:-property)?\1/g
+	)) {
+		out.push('style-transition-directive');
+	}
+	// opaque value: transition: immediately followed by an interpolation opener (a brace or dollar-brace).
+	// Vendor prefix (issue #719 finding 1): recognise `-webkit-transition`/`-moz-transition` inline too.
+	for (const _m of markup.matchAll(/(?<!style)\b(?:-(?:webkit|moz)-)?transition(?:-property)?:\s*[$]?[{]/g)) {
+		out.push('style-transition-directive');
+	}
+	// readable value: transition: then a value up to the next delimiter (; quote backtick brace OR a tag
+	// boundary < >). Bounding at the tag boundary (issue #719 finding 3) is what lets a Svelte
+	// `transition:<fn>` DIRECTIVE be told from a CSS declaration: a real inline CSS value is delimited by a
+	// quote/backtick/brace/semicolon, never by the surrounding element tag, so a value that runs to `>` is
+	// a directive, not a declaration.
+	for (const m of markup.matchAll(/(?<!style)\b(?:-(?:webkit|moz)-)?transition(?:-property)?:\s*([^;"'`}<>]+)/g)) {
 		const readable = m[1]!;
+		// A Svelte `transition:<fn>` DIRECTIVE (issue #719 finding 3): the value is a bare identifier (the
+		// transition function name) and the char immediately after it is a tag boundary (`>`/`/`) or a
+		// directive modifier (`|`). #648 moved directive reporting to test 3's directive scan (:520), which
+		// names the DIRECTIVE; #713's markup value scan then ALSO misread the same `slide` as a CSS property,
+		// so `<div transition:slide>` redded TWICE (once here as `transition: slide`, once there correctly).
+		// Skip it here so test 3 stays its sole, accurate reporter. `transition:color` never doubled only by
+		// coincidence (color is composited); slide/fly/fade/blur/scale all tripped it.
+		const tail = markup.slice((m.index ?? 0) + m[0].length);
+		if (/^[a-z][a-zA-Z0-9]*$/.test(readable.trim()) && /^\s*[>/|]/.test(tail)) continue;
 		if (/^[\s]*[{$]/.test(readable)) {
 			out.push('style-transition-directive');
 			continue;
 		}
 		let any = false;
 		for (const entry of readable.split(',')) {
-			const id = entry.trim().match(/^[a-z-]+/);
-			if (!id || id[0] === 'none') continue;
-			out.push(id[0]);
+			const id = entry.trim().match(/^(?:-(?:webkit|moz)-)?([a-z-]+)/);
+			if (!id || id[1] === 'none' || id[1] === undefined) continue;
+			out.push(id[1]);
 			any = true;
 		}
 		if (!any) out.push('style-transition-directive');
@@ -192,9 +255,13 @@ function keyframeBodies(css: string): string[] {
 }
 
 // every property animated inside a keyframes body: the FIRST identifier of each `prop:` declaration.
+// Vendor prefix (issue #719 advisory c): strip a leading `-webkit-`/`-moz-` before the composited
+// lookup, so `-webkit-transform` (an ALLOWED, GPU-composited property) is not falsely condemned. This
+// is the mirror of finding 1: there a prefix HID a banned transition, here it CONDEMNED an allowed
+// keyframe -- both are the one missing normalisation.
 function keyframeProps(body: string): string[] {
 	const props: string[] = [];
-	for (const m of body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)) props.push(m[1]!);
+	for (const m of body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)) props.push(m[1]!.replace(/^-(?:webkit|moz)-/, ''));
 	return props;
 }
 
@@ -493,6 +560,22 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 				`${f}: animation in an inline style attribute (cannot honour Reduce Motion): ${(value || '<shorthand>').slice(0, 40)}`
 			);
 		}
+		// DOM style-object animation write (issue #719 finding 2, animation half): `el.style.animation = …`,
+		// the camelCased `el.style.webkitAnimation` / `el.style.animationName`, and
+		// `el.style.setProperty('animation', …)` set a real inline animation with NO `animation:` colon, so
+		// the css.matchAll boundary scan above cannot see them. Like every inline style they can never honour
+		// Reduce Motion, so report them through the SAME message #590 §2 built. This is the spelling a
+		// transition-only fix would leave uncaught, which is why the issue's gate 7 pins it separately.
+		for (const _m of css.matchAll(/\.style\.(?:animation|webkitAnimation|animationName)\s*=/g)) {
+			offenders.push(
+				`${f}: animation in an inline style attribute (cannot honour Reduce Motion): <style-object write>`
+			);
+		}
+		for (const _m of css.matchAll(/\.style\.setProperty\(\s*(['"`])(?:-(?:webkit|moz)-)?animation(?:-name)?\1/g)) {
+			offenders.push(
+				`${f}: animation in an inline style attribute (cannot honour Reduce Motion): <style-object write>`
+			);
+		}
 		// Svelte's OWN motion API — the `transition:` / `in:` / `out:` / `animate:` directives — is unread
 		// by every CSS-declaration scan (issue #648 §1). These are NOT CSS: Svelte compiles them to a
 		// runtime-generated keyframes rule plus an inline `animation`, so the animated property list cannot
@@ -513,10 +596,11 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 			// Advisory (issue #699): blank style= attribute VALUE interiors before the directive scan, so an
 			// inline compact style= transition (a space then transition:transform) is not misread as a directive
 			// -- a real directive lives in markup OUTSIDE any style= value and survives the blanking.
-			const markup = markupRegion(css)
-				.replace(/style="[^"]*"/g, (a) => ' '.repeat(a.length))
-				.replace(/style='[^']*'/g, (a) => ' '.repeat(a.length))
-				.replace(/style=\{[^}]*\}/g, (a) => ' '.repeat(a.length));
+			const markup = blankBalancedStyleBraces(
+				markupRegion(css)
+					.replace(/style="[^"]*"/g, (a) => ' '.repeat(a.length))
+					.replace(/style='[^']*'/g, (a) => ' '.repeat(a.length))
+			);
 			for (const m of markup.matchAll(/(^|\s)(transition|in|out|animate):([a-z][a-zA-Z0-9]*)/g)) {
 				offenders.push(`${f}: Svelte motion directive (cannot honour Reduce Motion): ${m[2]}:${m[3]}`);
 			}
