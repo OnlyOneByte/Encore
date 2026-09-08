@@ -20,6 +20,18 @@ Ordered by what a wrong answer costs.
 **`LOOP.md` is stale.** A worker following it would accept nine real type errors as a green gate.
 Two against one, and the newer sources name the issue and PR that closed it.
 
+**Status: FIXED 2026-09-08.** `LOOP.md`'s gate block now reads `exit 0, 0 errors, 0 warnings`, states
+that the old rule is dead and names #56 / PR #73, and carries the two measurement traps that go with
+it: read the `found N errors` line rather than `grep -c error` (which counts the literal string inside
+"found 0 errors"), and remember that `bun run typecheck` chains `typecheck:e2e`, so `svelte-check` can
+print "0 errors" while the chained leg fails. The same edit dropped the pinned "536 worker tests"
+figure that contradicted the block above it — see #10 — rather than replacing it with a number that
+would go stale again.
+
+Worth noting that the section had already asked to be fixed: *"Once a cycle fixes them, **update this
+section and the ledger** so the new baseline is `exit 0`."* The cycle fixed them; nobody updated the
+section. That is the drift mechanism in one sentence.
+
 Compounding trap, from `CODING-BOT.md`: read the `found N errors` line, **not** `grep -c error`,
 which counts the literal string inside "found 0 errors". And `bun run typecheck` chains
 `typecheck:e2e`, so `svelte-check` can print "0 errors" while the chained leg fails.
@@ -36,7 +48,26 @@ signal, and the dispatch gate keys on exactly that label — so an issue can be 
 "triage has seen this" when triage never has.
 
 Of the current fleet, `ISSUEGEN-e2e-behavior` (`d2a58be7`) follows `REVIEW.md` correctly; the others
-were left alone rather than silently rewriting live jobs. **Worth fixing.**
+were left alone rather than silently rewriting live jobs.
+
+**Status: NEUTRALIZED 2026-09-08, not yet fixed at source.** `REVIEW.md` §4 now names the
+contradiction and supersedes it explicitly — it says that a cron message telling you that you are "the
+triage for your own finding" is stale, that this rule wins, and that the contradiction is not licence
+to choose. Because each ISSUEGEN pass runs in a **fresh** session it re-reads `REVIEW.md` every time,
+so this takes effect on the next pass — unlike a brief edit aimed at a long-lived session, which would
+be inert (see #9).
+
+**The four cron messages themselves are still wrong**, and correcting them needs the cron registry,
+which is credential-fenced to every reader available here. Rewriting them blind would have destroyed
+charter text that cannot be read back. That step is the owner's:
+
+> Dashboard → **Schedule**, or `kirocrew cron update <id> --message "<corrected text>"`, for
+> `516cbfbd` (ui-design), `debbdb80` (core-arch), `0593a3f6` (worker-arch) and `997a93c4`
+> (code-quality) — remove the instruction to self-apply `triaged`. `d2a58be7` already reads correctly
+> and is the model to copy.
+
+Until then the SOP supersession is what holds, and that is weaker than agreement: it relies on the
+reviewer reading §4 and preferring it over its own prompt.
 
 ## 3. `max_in_flight` — the stored value and its own comment disagree
 
@@ -49,6 +80,16 @@ were left alone rather than silently rewriting live jobs. **Worth fixing.**
 The scheduler obeys the stored value, so the effective cap is **5** while two documents say 3. Since
 the stated reason for the low cap is that the box is the binding limit — each worker runs
 `bun install`, the full suite and a build — the gap matters.
+
+**Status: RECONCILED 2026-09-08, upward, and one question left open.** The comment now says 5, matching
+the stored value. The direction was deliberate: reconciling *downward* to 3 would have cut dispatch
+throughput as a side effect of a documentation fix, so the running behaviour was preserved and the
+stale prose corrected to match it. `governance` was not touched — `max_in_flight` is still 5.
+
+What that surfaced: there is a **third** value. The conductor's live patrol context tops up toward
+**10**, which is neither 3 nor 5 and is an unratified override. `CONDUCTOR-SEED.md` still says 3. So
+the honest state is that four sources now hold three different numbers, with 5 in the spec and 10 in
+practice. **Which number is right is a call about how hard to push the box, and belongs to the owner.**
 
 ## 4. The scope fence — is anything still fenced off?
 
@@ -136,11 +177,23 @@ zero-dependency CDP driver in `apps/core/e2e/` remains preferred regardless.
 
 Marked **unverified** rather than promoted to either answer. Check `node --version` yourself.
 
-## Suggested order to fix
+## Status summary
 
-1. **#1** — the typecheck baseline in `LOOP.md`. A wrong green gate is the most expensive error here.
-2. **#2** — the four ISSUEGEN cron messages that forge `triaged`.
-3. **#3** — reconcile `max_in_flight` to one number.
-4. **#4** — rule on the scope fence, then make all three sources agree.
-5. **#5**, **#6**, **#10** — corrections of fact, cheap.
-6. **#7**, **#8** — resolved by stages 3 and 2 respectively; fix in the brief only if those slip.
+| # | Item | State |
+|---|---|---|
+| 1 | Typecheck baseline in `LOOP.md` | **Fixed** 2026-09-08 |
+| 2 | ISSUEGEN crons forging `triaged` | **Neutralized** in `REVIEW.md` §4; the four cron messages still need the owner |
+| 3 | `max_in_flight` | **Reconciled** to 5; a third value (10, in the live patrol context) needs the owner's ruling |
+| 4 | The scope fence on `T-4`–`T-7` | Open — needs a ruling, then all three sources aligned |
+| 5 | ISSUEGEN interval | Open — correction of fact |
+| 6 | Triage cron name | Open — correction of fact |
+| 7 | `review:pending` has no writer | Resolved by migration stage 3 |
+| 8 | `PR-BOT.md` §0 | Resolved by migration stage 2 |
+| 9 | Brief edits are inert for a running session | Structural — the reason several of these survived being "fixed" |
+| 10 | Pinned test counts | Partly addressed: `LOOP.md`'s contradicting figure was dropped in #1 |
+| 11 | `playwright-cli` | Open — unverified, needs one measurement |
+
+Two of the three items closed on 2026-09-08 were closed **in a brief**, not in the mechanism. Item 2
+in particular is a supersession rather than an agreement: the cron messages still say the wrong thing
+and are only overridden by an SOP the reviewer also reads. Prefer fixing the mechanism when the
+mechanism is reachable.
