@@ -26,6 +26,20 @@ export const POST: RequestHandler = async ({ request, cookies }) => {
 		return json({ alreadyReady: true, job: null });
 	}
 	if (state === 'unknown') return json({ error: 'unknown media' }, { status: 409 });
+	// A metadata-only source (Spotify): no fetcher can pull its bytes, so this is not a transient
+	// refusal and never becomes one. Named explicitly because it used to fall all the way through to
+	// the generic `could not start make-karaoke` below (#742) — `cookState` answered `'cookable'`, so
+	// none of the honest arms fired, and the singer got a four-second toast that said nothing about the
+	// turn they had just been given, which could never play.
+	if (state === 'not-cookable') {
+		return json(
+			{
+				error: 'that’s a name match, not a playable song — search for it to make karaoke',
+				reason: 'not-cookable'
+			},
+			{ status: 409 }
+		);
+	}
 	if (state === 'playing') return json({ error: 'that song is playing right now' }, { status: 409 });
 	// This singer is already at their concurrent-cook cap. Answer with a real reason the phone can
 	// show, and 429 (Too Many Requests) so the surface can tell a limit apart from a generic refusal.

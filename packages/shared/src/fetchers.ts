@@ -75,15 +75,43 @@ export function isValidFetcher(id: string): id is FetcherId {
  */
 export function fetcherFor(source: MediaSource, defaultFetcher: string = DEFAULT_FETCHER): FetcherId {
 	if (source === 'local') return 'local';
-	// `spotify` is a SEARCH / metadata source only: there is deliberately no `fetch:spotify` fetcher,
-	// so its bytes are never pulled from Spotify. A spotify-sourced result is an annotation that
-	// improves a query the audio is still acquired for from YouTube (docs/DECISIONS.md, the annotator
-	// pattern). It falls back to the default downloader here ONLY as a defensive floor; in practice a
-	// spotify SearchResult is not materialised into a queueable media (see /api/search), precisely so
-	// this path is never taken and no `youtube.com/watch?v=<spotify-track-id>` URI is ever formed - the
-	// exact shape-inference bug this whole registry exists to kill (see the header comment).
+	// `spotify` is a METADATA-ONLY source: there is deliberately no `fetch:spotify` fetcher, so its
+	// bytes are never pulled from Spotify (docs/DECISIONS.md, the annotator pattern). `fetcherFor` does
+	// NOT refuse it — it returns the default downloader as a FLOOR, so callers always get a valid
+	// FetcherId. The refusal lives in `isCookableSource` below, which is the ONE authority every layer
+	// asks. Do NOT read this fallback as proof the branch is unreachable: `/api/search` DOES
+	// materialize a spotify hit into a durable, queueable `Media`, so a caller that skips
+	// `isCookableSource` reaches here and forms `youtube.com/watch?v=<spotify-track-id>` — the exact
+	// shape-inference bug this whole registry exists to kill (see the header comment). That is #742.
 	if (source === 'spotify') return DEFAULT_FETCHER;
 	return isValidFetcher(defaultFetcher) && defaultFetcher !== 'local' ? defaultFetcher : DEFAULT_FETCHER;
+}
+
+/**
+ * Sources that carry METADATA ONLY — no fetcher can pull their bytes, so a song from one can never be
+ * cooked and therefore can never be sung. This is the extension point: a new search-only provider
+ * joins this set, and every layer that already asks `isCookableSource` refuses it with no further
+ * edits.
+ */
+export const METADATA_ONLY_SOURCES: readonly MediaSource[] = ['spotify'];
+
+/**
+ * Can a song from this source be cooked at all?
+ *
+ * The SINGLE authority for the ratified "Spotify is search/metadata only" rule (docs/DECISIONS.md).
+ * It lives here, in the acquisition registry, because the reason is an acquisition fact: no fetcher
+ * knows how to pull these bytes.
+ *
+ * WHY IT IS A SHARED PREDICATE AND NOT A CHECK INSIDE ONE FUNCTION (#742). The rule used to be
+ * enforced at exactly one point — a `media.source === 'spotify'` line inside `requestMakeKaraoke` —
+ * and asserted at five others. Enforcement there is too late: `cookState` still answered `'cookable'`,
+ * so the phone offered Sing, `cookAndQueue` took the singer's turn, and only THEN did the cook get
+ * refused. The turn was left in the rotation with nothing that could ever make it ready: skipped on
+ * every pass, for the rest of the night, with no failure event because no job was ever enqueued.
+ * Every layer that decides whether a cook is possible now asks this one function.
+ */
+export function isCookableSource(source: MediaSource): boolean {
+	return !METADATA_ONLY_SOURCES.includes(source);
 }
 
 /** Does this media need an acquisition job before it can be separated? */

@@ -1,7 +1,7 @@
 // Client-side mirror of the server's readiness axis (src/server/media/readiness.ts). Duplicated
 // rather than imported because @encore/shared is the client/server contract and this is a derived
 // view concern — but the classification MUST agree with the server's, so it is unit-tested here too.
-import { isCooking, readyToSing, type Media, type MediaStatus } from '@encore/shared';
+import { isCooking, isCookableSource, readyToSing, type Media, type MediaStatus } from '@encore/shared';
 
 export type Readiness = 'ready' | 'cooking' | 'failed' | 'unacquired';
 
@@ -74,14 +74,25 @@ export function queueCardKind(media: Media | undefined, live?: { status: MediaSt
 }
 
 /**
- * Whether offering "make karaoke" makes sense: only for a song that is neither done nor in flight.
+ * Whether offering "make karaoke" makes sense: only for a song that is neither done nor in flight,
+ * AND whose audio can actually be acquired.
  *
  * A FAILED song qualifies — that is the point of showing the state. The cook settled back to
  * un-cooked server-side, so a retry is a real action rather than a button that answers "already
  * cooked".
+ *
+ * IT TAKES THE MEDIA, not just its readiness, and that is the fix for #742. Readiness alone cannot
+ * answer this: it is derived from the cook gates, so a metadata-only Spotify hit — which can never be
+ * cooked by anyone — reads as `'unacquired'` exactly like a fresh YouTube upload, and the row offered
+ * Sing. Tapping it took the singer's turn (`cookAndQueue` queues first, by design) and only then did
+ * the server refuse the cook, leaving a turn in the rotation that nothing could ever make ready: held
+ * and skipped on every pass, forever, with no failure event because no job was ever enqueued. This is
+ * the shape COMMON.md names — a per-item capability answered from a check that cannot see the item —
+ * so the check now sees the item. `isCookableSource` is the single shared authority (fetchers.ts); the
+ * server's `cookState` asks the same one.
  */
-export function canCook(r: Readiness): boolean {
-	return r === 'unacquired' || r === 'failed';
+export function canCook(m: Media, r: Readiness): boolean {
+	return isCookableSource(m.source) && (r === 'unacquired' || r === 'failed');
 }
 
 /**

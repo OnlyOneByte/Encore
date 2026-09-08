@@ -56,7 +56,7 @@ test('THE BUG: a separated song mid-align reads as cooking, not unacquired', () 
 	});
 	expect(readinessOf(midAlign)).toBe('cooking');
 	expect(serverReadinessOf(midAlign)).toBe('cooking');
-	expect(canCook(readinessOf(midAlign))).toBe(false); // no Sing/cook button on a separated song
+	expect(canCook(midAlign, readinessOf(midAlign))).toBe(false); // no Sing/cook button on a separated song
 });
 
 test('a live media:status wins over the catalog copy (the row responds to the tap at once)', () => {
@@ -86,12 +86,12 @@ test('a failed cook on an already-singable song is not a failure the guest needs
 });
 
 test('an unacquired or FAILED song can be cooked; one in flight or done cannot', () => {
-	expect(canCook('unacquired')).toBe(true);
+	expect(canCook(m(), 'unacquired')).toBe(true);
 	// The retry path. A failed cook settles back to un-cooked server-side, so offering Sing again is a
 	// real action rather than a button that answers "already cooked".
-	expect(canCook('failed')).toBe(true);
-	expect(canCook('ready')).toBe(false);
-	expect(canCook('cooking')).toBe(false);
+	expect(canCook(m(), 'failed')).toBe(true);
+	expect(canCook(m(), 'ready')).toBe(false);
+	expect(canCook(m(), 'cooking')).toBe(false);
 });
 
 // Regression (reported from a real party session): "when I hit karaoke on a song, it clears the
@@ -237,7 +237,7 @@ test('a canceled cook reads from the catalog, not as a failure', () => {
 });
 
 test('a canceled cook offers Sing again rather than a failure chip', () => {
-	expect(canCook(displayReadiness(m(), { status: 'canceled' }))).toBe(true);
+	expect(canCook(m(), displayReadiness(m(), { status: 'canceled' }))).toBe(true);
 });
 
 test('a canceled status leaves playability to the catalog, like failed', () => {

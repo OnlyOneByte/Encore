@@ -40,8 +40,10 @@ export function spotifyEnv(env: Record<string, string | undefined> = process.env
  * Pure: turn a Spotify /v1/search `tracks.items[]` payload into SearchResults.
  *
  * `source: 'spotify'` MARKS the provenance so the merge/UI can tell where the clean metadata came
- * from; `sourceRef` is the Spotify track id, which is NEVER fetched (fetcherFor refuses a spotify
- * source). `duration_ms` is milliseconds (Spotify), so it is rounded to whole seconds like the rest
+ * from; `sourceRef` is the Spotify track id, which is NEVER fetched — `isCookableSource` (fetchers.ts)
+ * is the one authority that refuses it, and every layer that decides whether a cook is possible asks
+ * that. (`fetcherFor` does NOT refuse a spotify source; it returns the default downloader as a floor.)
+ * `duration_ms` is milliseconds (Spotify), so it is rounded to whole seconds like the rest
  * of the codebase stores. The primary artist is `artists[0].name`; the full billing is joined so a
  * collab reads as the upload wrote it.
  */
