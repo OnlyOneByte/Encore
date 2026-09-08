@@ -59,14 +59,18 @@ from ..vocabulary import Stage, SyncMode
 AUTHORED = "captions"
 MACHINE = "auto-captions"
 
-#: Retain the RAW caption track for post-cook diagnosis (#670). Off by default: the raw `.vtt`
-#: is otherwise written into per-job scratch (`ctx.work`) and destroyed with it, so a
-#: caption-parsing defect (#539/#542-class) can never be re-examined from the source bytes after a
-#: cook, and re-fetching needs the network and a still-live upload. When set, the winning raw track
-#: is copied to `derived/captions/<kind>/` before teardown -- the same storage class as the other
-#: retained artifacts, with the authored/machine split kept structural by directory. Read on call
-#: (not snapshot at import) so the align suite can toggle it per test via the environment.
-KEEP_RAW_CAPTIONS_ENV = "ENCORE_KEEP_RAW_CAPTIONS"
+#: Whether to retain the RAW caption track for post-cook diagnosis (#670). The raw `.vtt`/`.srt` is
+#: otherwise written into per-job scratch (`ctx.work`) and destroyed with it, so a caption-parsing
+#: defect (#539/#542-class) can never be re-examined from the source bytes after a cook, and
+#: re-fetching needs the network and a still-live upload. When on, the winning raw track is copied to
+#: `derived/captions/<kind>/` before teardown -- the same storage class as the other retained
+#: artifacts, with the authored/machine split kept structural by directory.
+#:
+#: RESOLVED AT THE CONFIG BOUNDARY, not here (#709). `ENCORE_KEEP_RAW_CAPTIONS` is parsed once in
+#: `config.WorkerConfig.from_env` with the same false-spelling set every operator boolean uses and
+#: threaded in as `keep_raw`. Off unless the operator opts in -- and crucially off for every spelling
+#: of false (`0`/`false`/`no`/`off`), which a bare `os.environ.get()` truthiness check got wrong:
+#: `ENCORE_KEEP_RAW_CAPTIONS=0` is a non-empty string, so it used to turn retention ON.
 
 
 class FetchCaptions(Step):
@@ -82,12 +86,16 @@ class FetchCaptions(Step):
     stage = Stage.DOWNLOADING
     reads = frozenset({"job", "runner", "work", "audio.is_local"})
 
-    def __init__(self, kind: str, *, ytdlp_bin: str = "yt-dlp") -> None:
+    def __init__(self, kind: str, *, ytdlp_bin: str = "yt-dlp", keep_raw: bool = False) -> None:
         self.kind = kind
         self.auto = kind == MACHINE
         # The worker's configured yt-dlp binary (ENCORE_YTDLP_BIN), threaded from the align plan. Without
         # it every caption fetch shelled out to a bare "yt-dlp" from PATH and silently missed.
         self.ytdlp_bin = ytdlp_bin
+        # Whether to retain the raw caption track (#670). A RESOLVED bool threaded from config via the
+        # align plan -- the step no longer reads the environment, so ENCORE_KEEP_RAW_CAPTIONS=0 is off
+        # like every other worker boolean rather than a truthy non-empty string (#709).
+        self.keep_raw = keep_raw
         self.name = f"fetch-captions:{'machine' if self.auto else 'authored'}"
         self.writes = frozenset({"lyrics.machine_cues" if self.auto else "lyrics.authored_cues"})
 
@@ -115,7 +123,7 @@ class FetchCaptions(Step):
         # Persist the raw track before the scratch it lives in is torn down (#670). Off unless the
         # operator opted in; done here rather than at teardown because this step is the only place
         # that knows which directory the track landed in and which tier it belongs to.
-        if os.environ.get(KEEP_RAW_CAPTIONS_ENV):
+        if self.keep_raw:
             self._retain_raw(ctx, out_dir)
 
         cues = read_captions(out_dir)

@@ -222,7 +222,7 @@ or you want to deliberately limit a box:
   (`8`)
 - **Lyrics and metadata** — `ENCORE_ASR_MODEL` (`base`) and `ENCORE_SYNC_MODE` (`forced`) are only
   fallbacks for a job carrying neither, `ENCORE_LRCLIB_BASE` (point at a mirror when lrclib.net is
-  blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network)
+  blocked), `ENCORE_ANNOTATE` (`1`; set `0` on a box with no outbound network), `ENCORE_KEEP_RAW_CAPTIONS` (`0`; set `1` to retain the raw `.vtt`/`.srt` caption track in `derived/captions/` for post-cook diagnosis — counted and evicted by the `ENCORE_MEDIA_MAX_GB` cap)
 - **Escape hatches** — `ENCORE_PROCESSOR` (`real`/`stub`), `ENCORE_YTDLP_BIN`, `ENCORE_DEMUCS_BIN`,
   `ENCORE_FFMPEG_BIN`
 

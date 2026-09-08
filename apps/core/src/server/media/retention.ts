@@ -14,7 +14,14 @@
 import { existsSync, statSync, rmSync } from 'node:fs';
 import type { Media } from '@encore/shared';
 import { safeMediaPath } from './local-files';
-import { instrumentalKey, vocalsKey, siblingVocalsRef } from './paths';
+import {
+	instrumentalKey,
+	vocalsKey,
+	siblingVocalsRef,
+	rawCaptionKey,
+	CAPTION_KINDS,
+	KNOWN_CAPTION_EXTS
+} from './paths';
 import { candidateVocalsRefs } from './vocals-backfill';
 import { runCapturing } from './spawn-capture';
 
@@ -230,7 +237,16 @@ function derivedRefsOf(m: Media): string[] {
 		...candidateVocalsRefs(m),
 		// Every lyrics candidate's JSON, not just the chosen one (`lyricsRef`). Each source mints a
 		// distinct key, so the others are silently orphaned on eviction unless enumerated here.
-		...(m.lyricsCandidates ?? []).map((c) => c.ref)
+		...(m.lyricsCandidates ?? []).map((c) => c.ref),
+		// The retained RAW caption track (#670). It is NOT stored as a ref on Media — the worker copies it
+		// to a deterministic per-media path (derived/captions/<kind>/<id>.captions.<ext>) gated on
+		// ENCORE_KEEP_RAW_CAPTIONS — so it is enumerated from the id, one key per (kind, ext). Without this
+		// it inherits NONE of the "safe to delete, first to evict" retention its own docstring claims:
+		// derivedBytesOf undercounts and evictDerived orphans the file on disk permanently, the identical
+		// undercount #496/#442 closed for the vocals/lyrics siblings above. Naming both exts per kind is
+		// free: the ext is chosen from the winning file at cook time (.vtt/.srt), and a key whose file is
+		// absent is skipped by the existsSync check below. Callers dedupe with a Set.
+		...CAPTION_KINDS.flatMap((kind) => KNOWN_CAPTION_EXTS.map((ext) => rawCaptionKey(m.id, kind, ext)))
 	].filter((r): r is string => !!r);
 }
 

@@ -692,6 +692,7 @@ def _build_processor(cfg: WorkerConfig | None = None) -> Processor:
             model=cfg.asr_model,
             sync_mode=cfg.sync_mode,
             ytdlp_bin=cfg.ytdlp_bin,
+            keep_raw=cfg.keep_raw_captions,
         )
     return RoutingProcessor(by_type)
 

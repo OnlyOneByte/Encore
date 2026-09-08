@@ -159,6 +159,35 @@ export function legacyVocalsRefs(instrumentalRef: string): string[] {
 export function lyricsKey(mediaId: string): string {
 	return `derived/lyrics/${mediaId}.json`;
 }
+
+/**
+ * Caption tiers, kept STRUCTURAL as a directory segment exactly as the worker insists (yt-dlp names
+ * both tracks identically, so a filename could never tell them apart): an uploader-authored track is
+ * a CANDIDATE for the song's words, a machine track is a BASELINE. MUST match the `kind` the worker's
+ * `raw_caption_path` receives (`AUTHORED` / `MACHINE` in apps/worker/src/steps/lyrics.py).
+ */
+export const CAPTION_KINDS = ['captions', 'auto-captions'] as const;
+
+/**
+ * Every extension a retained raw caption track can carry. The worker copies the WINNING file, whose
+ * extension is preserved from what yt-dlp wrote (`.vtt`/`.srt`, apps/worker/src/steps/lyrics.py). No
+ * ref is stored on Media for it — it is debugging evidence, not a lyrics candidate — so retention must
+ * enumerate every possible key, the same "candidate refs" shape `candidateVocalsRefs` uses for the
+ * legacy vocals exts. A ref whose file is absent is skipped by retention's existsSync check, so
+ * naming both exts per kind is free.
+ */
+export const KNOWN_CAPTION_EXTS = ['vtt', 'srt'] as const;
+
+/**
+ * The retained RAW caption track (#670), keyed per media id. MUST agree byte-for-byte with the
+ * worker's `raw_caption_path` (apps/worker/src/processor.py) — the guard that pins this is in
+ * vocabulary-parity.test.ts. Unlike the stems and lyrics keys this is NOT stored as a ref on Media;
+ * it is regenerated on demand from (mediaId, kind, ext), which is why retention enumerates the kind/ext
+ * matrix from CAPTION_KINDS × KNOWN_CAPTION_EXTS rather than reading a stored ref.
+ */
+export function rawCaptionKey(mediaId: string, kind: string, ext = 'vtt'): string {
+	return `derived/captions/${kind}/${mediaId}.captions.${ext.replace(/^\./, '')}`;
+}
 /** The sidecar record — authoritative per docs/ARCHITECTURE.md. */
 export function metaKey(mediaId: string): string {
 	return `meta/${mediaId}.json`;

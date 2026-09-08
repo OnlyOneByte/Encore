@@ -294,6 +294,37 @@ describe('evictDerived', () => {
 			])
 		);
 	});
+
+	it('counts AND evicts the retained raw caption track the cap claims to bound (#709)', () => {
+		// THE F1 PIN. #684 shipped ENCORE_KEEP_RAW_CAPTIONS retention, whose docstring claims the track
+		// "inherits the retention the cap already bounds" — but eviction here is ref-driven and
+		// derivedRefsOf enumerated no raw-caption key, so derivedBytesOf undercounted (the identical
+		// #496/#442 undercount) and evictDerived orphaned the file on disk PERMANENTLY: retention strips
+		// the song to un-cooked and the raw caption survives the eviction with nothing left pointing at it.
+		// The worker writes it to derived/captions/<kind>/<id>.captions.<ext> keyed per media id (no ref
+		// stored on Media), so derivedRefsOf enumerates CAPTION_KINDS × KNOWN_CAPTION_EXTS via rawCaptionKey.
+		// Removing that enumeration line reds this: bytes drops to 500 and both caption files survive.
+		mkdirSync(join(root, 'derived', 'captions', 'captions'), { recursive: true });
+		mkdirSync(join(root, 'derived', 'captions', 'auto-captions'), { recursive: true });
+		put('derived/stems/a-instrumental.flac', 500);
+		put('derived/captions/captions/a.captions.vtt', 70); // authored, .vtt
+		put('derived/captions/auto-captions/a.captions.srt', 90); // machine, .srt (both known exts covered)
+		const m = media('a', { instrumentalRef: 'derived/stems/a-instrumental.flac' });
+
+		expect(derivedBytesOf(m)).toBe(660); // 500 + 70 + 90, and NOT 500 (raw caption tracks omitted)
+		const { removed, bytes } = evictDerived(m);
+		expect(bytes).toBe(660);
+		// the retained raw tracks are actually reclaimed, not orphaned
+		expect(existsSync(join(root, 'derived/captions/captions/a.captions.vtt'))).toBe(false);
+		expect(existsSync(join(root, 'derived/captions/auto-captions/a.captions.srt'))).toBe(false);
+		expect(new Set(removed)).toEqual(
+			new Set([
+				'derived/stems/a-instrumental.flac',
+				'derived/captions/captions/a.captions.vtt',
+				'derived/captions/auto-captions/a.captions.srt'
+			])
+		);
+	});
 });
 
 // ── #496: retention must report bytes it actually freed, and derive the vocals ref in ONE place ──

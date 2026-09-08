@@ -284,8 +284,11 @@ import os  # noqa: E402
 import sys  # noqa: E402
 from pathlib import Path  # noqa: E402
 
+import pytest  # noqa: E402
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from src.config import WorkerConfig  # noqa: E402
 from src.processor import JobSpec  # noqa: E402
 from src.runtime import Ctx  # noqa: E402
 from src.steps.lyrics import AUTHORED, MACHINE, FetchCaptions  # noqa: E402
@@ -443,14 +446,19 @@ async def test_configured_ytdlp_binary_reaches_the_caption_argv(tmp_path):
 # caption-parsing defect (#539/#542-class) can never be re-examined from the source bytes after a cook.
 # `ENCORE_KEEP_RAW_CAPTIONS=1` copies the raw track out to the durable `derived/` store BEFORE teardown,
 # keeping the authored/machine distinction structural (a directory), off by default so the footprint of
-# an ordinary cook does not change.
+# an ordinary cook does not change. The flag is resolved at the config boundary (#709): the step takes a
+# resolved `keep_raw` bool, and `WorkerConfig.from_env` parses the env with the same false-spelling set
+# every operator boolean uses — so `ENCORE_KEEP_RAW_CAPTIONS=0` is OFF, not a truthy non-empty string.
 
 from src.processor import raw_caption_path  # noqa: E402
 
 
-async def test_the_raw_caption_track_is_NOT_retained_by_default(tmp_path, monkeypatch):
-    """DEFAULT footprint is unchanged — the durable path stays empty unless opted in (#670)."""
-    monkeypatch.delenv("ENCORE_KEEP_RAW_CAPTIONS", raising=False)
+async def test_the_raw_caption_track_is_NOT_retained_by_default(tmp_path):
+    """DEFAULT footprint is unchanged — the durable path stays empty unless opted in (#670).
+
+    The step now takes a RESOLVED `keep_raw` bool (default False); it no longer reads the environment
+    (#709), so the default is exercised by simply not passing keep_raw=True.
+    """
     ctx = _ctx_for_captions(tmp_path)
 
     await _drain(FetchCaptions(AUTHORED), ctx)
@@ -462,7 +470,7 @@ async def test_the_raw_caption_track_is_NOT_retained_by_default(tmp_path, monkey
     )
 
 
-async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted_in(tmp_path, monkeypatch):
+async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted_in(tmp_path):
     """THE PIN — issue #670.
 
     With `ENCORE_KEEP_RAW_CAPTIONS=1`, after the fetch step runs the RAW caption track is retrievable
@@ -475,11 +483,10 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
     their OWN durable directory (the authored/machine split stays structural, never a filename guess)
     and that the retained bytes are byte-identical to the scratch source.
     """
-    monkeypatch.setenv("ENCORE_KEEP_RAW_CAPTIONS", "1")
     ctx = _ctx_for_captions(tmp_path)
 
-    await _drain(FetchCaptions(AUTHORED), ctx)
-    await _drain(FetchCaptions(MACHINE), ctx)
+    await _drain(FetchCaptions(AUTHORED, keep_raw=True), ctx)
+    await _drain(FetchCaptions(MACHINE, keep_raw=True), ctx)
 
     authored_dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, AUTHORED, "vtt")
     machine_dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, MACHINE, "vtt")
@@ -505,6 +512,55 @@ async def test_the_raw_caption_track_is_retained_to_the_durable_store_when_opted
     # 3. The two retained tracks are the two DIFFERENT tracks (authored candidate vs machine baseline),
     #    not one track copied twice — the structural split is meaningful, not cosmetic.
     assert Path(authored_dest).read_text(encoding="utf-8") != Path(machine_dest).read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("value", ["0", "false", "False", "no", "off", "OFF", "", "   "])
+async def test_keep_raw_captions_env_false_spellings_leave_retention_OFF(tmp_path, value):
+    """THE F2 PIN — issue #709.
+
+    `ENCORE_KEEP_RAW_CAPTIONS` is an operator boolean, and every spelling of false must turn retention
+    OFF. Its original form read the raw env string with bare `os.environ.get(...)` truthiness inside the
+    step, so `=0` (this project's own documented way to turn a worker flag off, per README's ENCORE_ANNOTATE
+    guidance) was a NON-EMPTY string and silently turned retention ON — the exact inversion.
+
+    An empty or whitespace-only value counts as false too (#709 A1): `ENCORE_KEEP_RAW_CAPTIONS=` is the
+    .env/compose idiom for "neutralise this", and a default-OFF flag must honour it as OFF.
+
+    Exercised through the REAL boundary, `WorkerConfig.from_env`, which is where #709 moves the parse, then
+    the resolved bool is threaded into the step exactly as the align plan threads it. With any false
+    spelling the durable path must stay empty.
+
+    Red on base: on base the step ignores this resolved bool and reads the env directly, so `=0` lands the
+    file. (WorkerConfig.keep_raw_captions does not even exist on base.)
+    """
+    cfg = WorkerConfig.from_env({"ENCORE_KEEP_RAW_CAPTIONS": value})
+    assert cfg.keep_raw_captions is False, f"{value!r} must resolve to keep_raw_captions=False"
+
+    ctx = _ctx_for_captions(tmp_path)
+    await _drain(FetchCaptions(AUTHORED, keep_raw=cfg.keep_raw_captions), ctx)
+
+    dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, AUTHORED, "vtt")
+    assert not os.path.exists(dest), (
+        f"ENCORE_KEEP_RAW_CAPTIONS={value!r} must leave retention OFF — no raw track in derived/"
+    )
+
+
+@pytest.mark.parametrize("value", ["1", "true", "True", "yes", "on"])
+async def test_keep_raw_captions_env_true_spellings_turn_retention_ON(tmp_path, value):
+    """The affirmative half: true spellings resolve to True and retain the track (#709/#670)."""
+    cfg = WorkerConfig.from_env({"ENCORE_KEEP_RAW_CAPTIONS": value})
+    assert cfg.keep_raw_captions is True, f"{value!r} must resolve to keep_raw_captions=True"
+
+    ctx = _ctx_for_captions(tmp_path)
+    await _drain(FetchCaptions(AUTHORED, keep_raw=cfg.keep_raw_captions), ctx)
+
+    dest = raw_caption_path(ctx.job.media_dir, ctx.job.media_id, AUTHORED, "vtt")
+    assert os.path.exists(dest), f"ENCORE_KEEP_RAW_CAPTIONS={value!r} must retain the raw track"
+
+
+def test_keep_raw_captions_defaults_off_when_unset():
+    """Unset resolves to False — an ordinary cook's footprint is unchanged (#709)."""
+    assert WorkerConfig.from_env({}).keep_raw_captions is False
 
 
 # ── the rolling YouTube auto-caption format, pinned against a REAL captured track ─────────
