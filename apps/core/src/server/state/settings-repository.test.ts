@@ -421,7 +421,7 @@ describe('SettingsRepository room scope: lyrics presentation', () => {
 		const room = freshRepo().getRoom(DEFAULT_ROOM_ID);
 		expect(room.lyricsBall).toBe('off');
 		expect(room.lyricsHighlight).toBe('word');
-		expect(room.lyricsLeadMs).toBe(300);
+		expect(room.lyricsLeadMs).toBe(0); // #629: default lead is now 0
 	});
 
 	it('round-trips all three through a write and a re-read', () => {

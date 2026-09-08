@@ -396,11 +396,11 @@ describe('lyrics presentation registries', () => {
 	});
 
 	it('the defaults reproduce the TV that shipped before this setting existed', () => {
-		// A bouncing ball + word-by-word pink + 0.3s lead was hardcoded. Regressing these silently
+		// A bouncing ball + word-by-word pink was hardcoded; the lead now ships at 0 (#629). Regressing these silently
 		// changes every existing room on upgrade.
 		expect(DEFAULT_LYRICS_BALL).toBe('off');
 		expect(DEFAULT_LYRICS_HIGHLIGHT).toBe('word');
-		expect(DEFAULT_LYRICS_LEAD_MS).toBe(300);
+		expect(DEFAULT_LYRICS_LEAD_MS).toBe(0); // #629: global lead ships OFF by default
 	});
 });
 
@@ -430,7 +430,7 @@ describe('resolveLyricsPresentation', () => {
 
 	it('honours the room exactly when word timings exist', () => {
 		const r = resolveLyricsPresentation(settings('forced', { lyricsBall: 'steady', lyricsHighlight: 'word' }));
-		expect(r).toEqual({ ball: 'steady', highlight: 'word', leadSec: 0.3, clamped: false });
+		expect(r).toEqual({ ball: 'steady', highlight: 'word', leadSec: 0, clamped: false });
 	});
 
 	it('a room may render BELOW the granularity produced — that is a real choice, not a clamp', () => {
@@ -477,7 +477,7 @@ describe('resolveLyricsPresentation', () => {
 
 	it('reports clamped=false when line-only sync can satisfy the room as asked', () => {
 		const r = resolveLyricsPresentation(settings('lines', { lyricsBall: 'off', lyricsHighlight: 'line' }));
-		expect(r).toEqual({ ball: 'off', highlight: 'line', leadSec: 0.3, clamped: false });
+		expect(r).toEqual({ ball: 'off', highlight: 'line', leadSec: 0, clamped: false });
 	});
 
 	it('passes the lead through as seconds regardless of clamping', () => {
@@ -541,7 +541,7 @@ describe('resolveLyricsPresentation — the per-song inner bound', () => {
 		// The case that always worked, pinned so the inner bound cannot over-clamp into it. This is
 		// the branch the pre-existing e2e coverage exercised — and the only one.
 		const r = resolveLyricsPresentation(settings('forced', wordRoom), wordSong.timing);
-		expect(r).toEqual({ ball: 'bounce', highlight: 'word', leadSec: 0.3, clamped: false });
+		expect(r).toEqual({ ball: 'bounce', highlight: 'word', leadSec: 0, clamped: false });
 	});
 
 	it("a song with NO usable timing clamps too — 'none' is not 'word'", () => {
@@ -560,7 +560,7 @@ describe('resolveLyricsPresentation — the per-song inner bound', () => {
 		// `chosenCandidate()` returns null, and the Settings page passes no argument at all.
 		const absent = resolveLyricsPresentation(settings('forced', wordRoom));
 		const explicitNull = resolveLyricsPresentation(settings('forced', wordRoom), null);
-		expect(absent).toEqual({ ball: 'bounce', highlight: 'word', leadSec: 0.3, clamped: false });
+		expect(absent).toEqual({ ball: 'bounce', highlight: 'word', leadSec: 0, clamped: false });
 		expect(explicitNull).toEqual(absent);
 	});
 
