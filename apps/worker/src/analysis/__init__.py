@@ -24,6 +24,7 @@ PURE by construction: numpy in, dict out. No subprocess, no network, no torch.
 from __future__ import annotations
 
 from .key_detect import detect_key
+from .loudness import measure_lufs
 from .song_profile import build_song_profile, empty_profile
 from .vocal_range import PitchFrame, extract_pitch_track, summarize_range
 
@@ -33,5 +34,6 @@ __all__ = [
     "detect_key",
     "empty_profile",
     "extract_pitch_track",
+    "measure_lufs",
     "summarize_range",
 ]

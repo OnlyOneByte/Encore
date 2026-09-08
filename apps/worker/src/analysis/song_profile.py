@@ -16,7 +16,7 @@ must never fail the job.
 
 from __future__ import annotations
 
-from . import key_detect, vocal_range, wav
+from . import key_detect, loudness, vocal_range, wav
 
 # The exact wire shape core validates. Every key is always present; values are null when unknown.
 # Building the null profile from one place means "publish nulls on failure" cannot forget a field.
@@ -71,6 +71,21 @@ def build_song_profile(
                 f"({type(exc).__name__}: {exc}); publishing null key",
                 flush=True,
             )
+
+    # ── loudness (instrumental) ─────────────────────────────────────────────────────
+    # Measure the INSTRUMENTAL's integrated loudness (BS.1770) — the file that plays in the room, so
+    # its level is what room-wide normalization equalizes (issue #462). PR1 measures and reports it;
+    # persistence into the profile + the migration land in PR2, so the value is logged here rather
+    # than added to the wire shape (the exact-8-key guard defends that shape for the coordinated
+    # worker+shared change). Best-effort like the halves above: measure_lufs never raises, and an
+    # unmeasurable stem (silence / too short / unreadable) reports None, never a fabricated level.
+    if instrumental_wav:
+        lufs = loudness.measure_lufs(instrumental_wav)
+        log(
+            f"[worker] instrumental loudness for {media_id}: "
+            f"{'unmeasurable (null)' if lufs is None else f'{lufs:.2f} LUFS'}",
+            flush=True,
+        )
 
     # ── range (vocals) ────────────────────────────────────────────────────────────────
     if vocals_wav:
