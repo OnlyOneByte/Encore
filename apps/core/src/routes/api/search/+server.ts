@@ -75,8 +75,9 @@ export const GET: RequestHandler = async ({ url }) => {
 		only === 'youtube' || only === 'spotify' ? [] : safeSearch(app.localLibrary, q),
 		// Spotify is a SEARCH / metadata source only (annotator pattern): its hits surface clean
 		// canonical artist/title/duration and appear in the merged output, but their bytes are never
-		// pulled from Spotify — a spotify-sourced media is not cookable (see requestMakeKaraoke, and
-		// fetcherFor which refuses it). No-op when creds are unset; safeSearch tolerates a dead source.
+		// pulled from Spotify — a spotify-sourced media is not cookable (`isCookableSource`, the one
+		// authority; asked by `cookState`, by the phone's `canCook`, and by this route's consumers).
+		// No-op when creds are unset; safeSearch tolerates a dead source.
 		only === 'youtube' || only === 'local' ? [] : safeSearch(app.spotify, q)
 	]);
 

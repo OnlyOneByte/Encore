@@ -10,6 +10,7 @@ import {
 	pickBestLyrics,
 	isQualityUpgrade,
 	isPlayable,
+	isCookableSource,
 	needsFetch,
 	normalizeSongProfile
 } from '@encore/shared';
@@ -114,6 +115,7 @@ export function isCooked(media: Media): boolean {
  */
 export type CookState =
 	| 'unknown' // not in the catalog
+	| 'not-cookable' // metadata-only source (Spotify): no fetcher can pull its bytes, so it never can be
 	| 'playing' // the live song; cooking it would yank the video out from under the room
 	| 'ready' // stems already separated (persisted from an earlier session) — no re-cook
 	| 'cooking' // a live job is already working on it; a repeat request dedupes to that job
@@ -127,6 +129,12 @@ export function cookState(
 ): CookState {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return 'unknown';
+	// FIRST, and before any room state: this is a property of the SONG, not of the moment. A
+	// metadata-only source (Spotify) has no fetcher that can pull its bytes, so no sequence of events
+	// can ever make it cookable — answering anything else here is what let the phone offer Sing and
+	// book a turn that could never play (#742). Checked ahead of `playing`/`ready`/`over-limit`
+	// deliberately: those are all states a song passes through, and this one it can never leave.
+	if (!isCookableSource(media.source)) return 'not-cookable';
 	const current = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId);
 	if (current && current.mediaId === mediaId) return 'playing';
 	if (isCooked(media)) return 'ready';
@@ -144,21 +152,26 @@ export function cookState(
 /**
  * Request stem-separation for a media. Idempotent: a repeat request (or two singers queueing the
  * same song) dedupes to the SAME job, and a song whose stems are ALREADY on disk (persisted across
- * restarts) is never re-cooked. Returns the job, or null when there is no work — unknown media, the
- * currently-playing song, already cooked, OR the requesting singer is already at their in-flight cook
- * cap. Callers that need to tell those apart ask `cookState` (pass the same `singerId`).
+ * restarts) is never re-cooked. Returns the job, or null when there is no work — unknown media, a
+ * metadata-only source that can never be cooked, the currently-playing song, already cooked, OR the
+ * requesting singer is already at their in-flight cook cap. Callers that need to tell those apart ask
+ * `cookState` (pass the same `singerId`) — and that promise is now true of EVERY refusal here, which
+ * is the fix for #742: the metadata-only case used to be refused by a standalone check inside this
+ * function, so `cookState` answered `'cookable'` for a song this function would always reject and the
+ * phone booked the singer a turn that could never play.
  */
 export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps, singerId?: string): Job | null {
 	const media = deps.mediaById.get(mediaId);
 	if (!media) return null;
+
+	const state = cookState(mediaId, deps, singerId);
 	// Spotify is a SEARCH / metadata source only (docs/DECISIONS.md, the annotator pattern): its
 	// sourceRef is a Spotify track id, NOT anything a fetcher can pull, so cooking one would enqueue a
 	// fetch that forms `youtube.com/watch?v=<spotify-track-id>` and dies at ffmpeg — the exact
 	// shape-inference bug the fetcher registry exists to kill. A Spotify hit sharpens the query; the
-	// singer queues the YouTube result. Refuse the cook here rather than let a broken URI through.
-	if (media.source === 'spotify') return null;
-
-	const state = cookState(mediaId, deps, singerId);
+	// singer queues the YouTube result. Refused off the STATE now, not off `media.source` directly, so
+	// the refusal is visible to every caller that asks `cookState` before acting.
+	if (state === 'not-cookable') return null;
 	if (state === 'playing') return null; // would disrupt the live song
 	// Stems are already separated (this session or a previous one) — burning 1–2 min of GPU to
 	// recompute an identical instrumental is the exact waste the durable catalog exists to prevent.

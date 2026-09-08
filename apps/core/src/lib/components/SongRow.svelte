@@ -88,6 +88,22 @@
 		status?: MediaStatus;
 		/** Already in the rotation — the add action becomes a confirmation instead of a repeat. */
 		inQueue?: boolean;
+		/**
+		 * Can this song be cooked AT ALL — i.e. can its audio be acquired (`isCookableSource`)?
+		 *
+		 * Defaults true, so every row that CAN be sung is unaffected. False is the metadata-only case: a
+		 * Spotify search hit, which exists to sharpen the query but whose bytes are never pulled, so no
+		 * cook can ever run for it. Both actions have to go, not just Sing (#742): the two branches below
+		 * are an either/or, so dropping `onmake` alone fell straight through to a live `＋ Turn` — and a
+		 * turn on a song that can never be cooked is exactly the dead end this row's one-primary-action
+		 * design exists to remove. It is held in the rotation and skipped on every pass, silently, for
+		 * the rest of the night.
+		 *
+		 * The row still RENDERS: the hit is genuinely useful for finding the right YouTube upload. It
+		 * just stops offering an action it cannot honour, and says why in the chip line rather than only
+		 * in a `title` a phone can never hover.
+		 */
+		cookable?: boolean;
 		onadd?: () => void;
 		/** Request stem separation. Absent when it makes no sense (already ready / already cooking). */
 		onmake?: () => void;
@@ -105,6 +121,7 @@
 		pct = 0,
 		status,
 		inQueue = false,
+		cookable = true,
 		onadd,
 		onmake
 	}: Props = $props();
@@ -201,6 +218,12 @@
 		// line must be an integer — overallCookPct returns a band-interpolated float (e.g. 67.6), and an
 		// unrounded readout prints "67.6%" or "31.200000000000003%" (#80).
 		if (readiness === 'cooking') return cookStageLabel('queued', { pct: Math.round(barPct) });
+		// Metadata-only (#742): the actions are gone, so the row MUST say why. A disabled button with a
+		// `title` is not enough — this is a phone, there is no hover — and an unexplained dead control
+		// reads as the app being broken. Last, after the three readiness branches, so it can never mask
+		// a real cook state (a song that can't be cooked never reaches ready/cooking anyway).
+		// PARTY ENGLISH, per the note above: no "metadata", no "source", no "fetcher".
+		if (!cookable) return 'Name match only — search to sing it';
 		return null;
 	});
 
@@ -220,9 +243,14 @@
 			? 'Try making the karaoke again — you already have a turn for this song'
 			: onmake
 				? 'Sing this — strips the vocals first, takes about a minute'
-				: inQueue
-					? 'Already in the queue'
-					: 'Add a turn'
+				: // Metadata-only (#742). Announced BEFORE the inQueue branch because it is the stronger fact:
+					// this song can never be sung here, so "Already in the queue" would be both wrong and
+					// beside the point. A screen reader gets the reason, not just a disabled control.
+					!cookable
+					? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
+					: inQueue
+						? 'Already in the queue'
+						: 'Add a turn'
 	);
 </script>
 
@@ -320,9 +348,14 @@
 		<button
 			class="add"
 			class:queued={inQueue}
+			class:unavailable={!cookable}
 			aria-label={actionLabel}
-			title={inQueue ? 'Already in the queue' : 'Add a turn'}
-			disabled={inQueue}
+			title={!cookable
+				? 'Can’t sing this one — it’s a name match only. Search for the song to make karaoke.'
+				: inQueue
+					? 'Already in the queue'
+					: 'Add a turn'}
+			disabled={inQueue || !cookable}
 			onclick={() => onadd?.()}
 			>{#if inQueue}<Icon name="check" />{:else}<Icon name="plus" />{/if}</button
 		>
@@ -622,6 +655,22 @@
 	}
 	.add.queued {
 		opacity: 0.7;
+	}
+	/*
+	 * The song can never be cooked, so the control must not wear the "go" clothes (#742). `disabled`
+	 * alone was not enough: `.add`'s green border and green mark are the app's actionable signal, and a
+	 * full-strength green `＋` that does nothing when tapped reads as the app being broken rather than as
+	 * an action that is unavailable. This drops the accent entirely — hairline border, dim ink — so the
+	 * row still shows its place in the list without inviting a tap.
+	 *
+	 * Deliberately NOT the `--danger` family: nothing has gone wrong, and a red row would tell a guest
+	 * their search failed. Distinct from `.queued` too, which is a SUCCESS (your turn is booked) and
+	 * keeps the green with a check.
+	 */
+	.add.unavailable {
+		border-color: var(--line);
+		color: var(--ink-dim);
+		opacity: 0.65;
 	}
 	.add:disabled {
 		cursor: default;
