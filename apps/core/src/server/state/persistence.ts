@@ -2,20 +2,26 @@
 // Replace-the-world per flush is fine — the queue is small (a party), and this never sits on
 // the read/broadcast hot path. See ARCHITECTURE §9.
 
+import { eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { queueEntries, playbackState } from '../db/schema';
 import type { StatePersistence } from './store';
 import type { QueueEntry, PlaybackState } from '@encore/shared';
 
-// `roomId` binds this sink to ONE room's playback row (#655). Playback state used to be a single
-// deployment-wide 'singleton' row; it is keyed by room_id now, so the writer must name the room it
-// snapshots. The single authoritative store persists to the active room today; #656 threads a room
-// per party through the realtime layer above this seam.
+// `roomId` binds this sink to ONE room (#655 playback, #656 queue). Playback state and the queue
+// used to be deployment-wide — a single 'singleton' playback row and a queue table with no room —
+// so two rooms could never each be playing or hold their own queue. Both are keyed by room_id now,
+// so the writer names the room it snapshots: the queue replace and the playback upsert both scope to
+// this room, never touching another room's rows. The single authoritative store persists to the
+// active room today; threading a room per party through the realtime layer above this seam is #657.
 export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 	return {
 		persist({ entries, playback }: { entries: QueueEntry[]; playback: PlaybackState }) {
 			db.transaction((tx) => {
-				tx.delete(queueEntries).run();
+				// Replace-the-world, but only for THIS room (#656): a global `delete` here would wipe
+				// every other room's queue on every flush. Scope the clear to room_id so a room's
+				// write-behind snapshot is self-contained.
+				tx.delete(queueEntries).where(eq(queueEntries.roomId, roomId)).run();
 				if (entries.length) {
 					tx.insert(queueEntries)
 						.values(
@@ -29,7 +35,10 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 								// A durable host pin (issue #638). `?? null` because the column is nullable and the
 								// domain field optional — an unpinned entry stores NULL, read back as "follows policy".
 								// Persisting it is what makes a pin survive a restart.
-								pinnedSeq: e.pinnedSeq ?? null
+								pinnedSeq: e.pinnedSeq ?? null,
+								// The room this snapshot belongs to (#656). The in-memory entries carry no room —
+								// the store holds one room's queue — so it is stamped from the sink's bound room here.
+								roomId
 							}))
 						)
 						.run();

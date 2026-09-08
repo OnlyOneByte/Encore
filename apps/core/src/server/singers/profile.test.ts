@@ -83,8 +83,8 @@ test('a rename does not collide with the singer own current name', () => {
 	const { app } = appHarness();
 	const dana = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] }).singer;
 	app.presence.connect(dana.id);
-	expect(() => assertNameFree(app, 'Dana', dana.id)).not.toThrow();
-	expect(() => assertNameFree(app, 'DANA', dana.id)).not.toThrow();
+	expect(() => assertNameFree(app, app.activeRoomId, 'Dana', dana.id)).not.toThrow();
+	expect(() => assertNameFree(app, app.activeRoomId, 'DANA', dana.id)).not.toThrow();
 });
 
 test('a rename still collides with somebody else in the room', () => {
@@ -93,7 +93,26 @@ test('a rename still collides with somebody else in the room', () => {
 	const maya = doJoin(app, { displayName: 'Maya', color: SINGER_COLORS[1] }).singer;
 	app.presence.connect(dana.id);
 	app.presence.connect(maya.id);
-	expect(() => assertNameFree(app, 'dana', maya.id)).toThrow(NameTakenError);
+	expect(() => assertNameFree(app, app.activeRoomId, 'dana', maya.id)).toThrow(NameTakenError);
+});
+
+// #656: name uniqueness is PER-ROOM. A name held by someone in ANOTHER room does not collide, and the
+// check must be scoped to the room passed, not run deployment-wide over every singer. Bites the
+// room-scoped assertNameFree (and the listPublic(roomId) it now calls): with an unscoped roster this
+// throws NameTakenError because roomB's Dana would be seen from roomA.
+test('#656: a name taken in another room does not collide — uniqueness is per-party', () => {
+	const { app } = appHarness();
+	// A second party on the same core. doJoin resolves a room by code, so mint one and join it.
+	const roomB = app.rooms.create(app.now() + 1);
+	const danaB = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0], code: roomB.code }).singer;
+	app.presence.connect(danaB.id);
+	// roomB has a live Dana; the ACTIVE room (roomA) does not — so 'Dana' is free THERE.
+	expect(() => assertNameFree(app, app.activeRoomId, 'Dana')).not.toThrow();
+	// ...and joining roomA as Dana succeeds, coexisting with roomB's Dana.
+	const danaA = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] }).singer;
+	expect(danaA.id).not.toBe(danaB.id);
+	// The reverse also holds: roomB still refuses a second Dana in ITS OWN room.
+	expect(() => assertNameFree(app, roomB.id, 'Dana')).toThrow(NameTakenError);
 });
 
 test('updateProfile changes name and colour and keeps the session token', () => {
@@ -163,10 +182,10 @@ test('leaving releases the name at once, without waiting out the grace window', 
 	const { app } = appHarness();
 	const dana = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] }).singer;
 	app.presence.connect(dana.id);
-	expect(() => assertNameFree(app, 'Dana')).toThrow(NameTakenError);
+	expect(() => assertNameFree(app, app.activeRoomId, 'Dana')).toThrow(NameTakenError);
 
 	doLeave(app, dana.id);
-	expect(() => assertNameFree(app, 'Dana')).not.toThrow();
+	expect(() => assertNameFree(app, app.activeRoomId, 'Dana')).not.toThrow();
 });
 
 test('removableOnLeave is what the confirm counts, and it excludes the playing entry', () => {
