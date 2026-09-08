@@ -15,6 +15,11 @@ const entry = (singerId: string, addedAt: number): QueueEntry => ({
 	addedAt
 });
 
+// Playback is keyed by room (#655): the write-behind sink and boot-hydrate both name a room. These
+// tests exercise one room, so a single fixed id is enough — the FK is not enforced on this bun:sqlite
+// DB, so no `rooms` row is required for the playback write to land.
+const TEST_ROOM = 'test-room';
+
 test('mutations bump rev monotonically', () => {
 	const s = new AuthoritativeState();
 	expect(s.rev).toBe(0);
@@ -50,7 +55,7 @@ test('entries getter returns a defensive copy (caller cannot mutate authoritativ
 
 test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 	const db = migratedDb();
-	const s = new AuthoritativeState(sqlitePersistence(db), 10_000); // long delay; we force flush
+	const s = new AuthoritativeState(sqlitePersistence(db, TEST_ROOM), 10_000); // long delay; we force flush
 
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
 	s.applyQueueOp({ op: 'add', entry: entry('b', 2) });
@@ -59,7 +64,7 @@ test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 
 	// hydrate a fresh state from the db and compare
 	const reloaded = new AuthoritativeState();
-	const { entries, playback } = hydrate(db);
+	const { entries, playback } = hydrate(db, TEST_ROOM);
 	reloaded.hydrate(entries, playback);
 
 	expect(reloaded.entries.map((e) => e.id)).toEqual(s.entries.map((e) => e.id));
@@ -69,12 +74,12 @@ test('write-behind: flushNow persists; reload-from-db equals in-memory', () => {
 });
 
 test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND flush', () => {
-	// `playback_state.id` is always 'singleton', so the FIRST flush inserts and EVERY later flush
-	// takes the onConflictDoUpdate `set` arm. That arm is a hand-duplicated copy of the `.values()`
+	// `playback_state.room_id` (#655) is the same for every flush in a room, so the FIRST flush
+	// inserts and EVERY later flush takes the onConflictDoUpdate `set` arm. That arm is a hand-duplicated copy of the `.values()`
 	// field list; a field added to one and forgotten in the other would persist once and then freeze
 	// at its boot value, with every other test (all single-flush) still green. This drives the arm.
 	const db = migratedDb();
-	const s = new AuthoritativeState(sqlitePersistence(db), 10_000);
+	const s = new AuthoritativeState(sqlitePersistence(db, TEST_ROOM), 10_000);
 
 	s.applyQueueOp({ op: 'add', entry: entry('a', 1) });
 	s.applyQueueOp({ op: 'add', entry: entry('b', 2) });
@@ -101,13 +106,13 @@ test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND f
 	// Hydrate with the persisted entries alongside playback, exactly as boot does. currentEntryId
 	// names entries[1], so passing the real entries keeps it resolvable — an EMPTY entries array here
 	// would trip hydrate's dangling-id self-heal (issue #128) and null the very field we round-trip.
-	const { entries: reloadedEntries, playback } = hydrate(db);
+	const { entries: reloadedEntries, playback } = hydrate(db, TEST_ROOM);
 	reloaded.hydrate(reloadedEntries as unknown as QueueEntry[], playback);
 
 	// Assert EVERY field of `target` round-tripped. The key list is derived from `target` (a typed
 	// PlaybackState), not hand-written, so a newly-added field the update arm forgets to carry lands
 	// in `target` yet reads back as its boot default here and fails loudly. (We compare per-key rather
-	// than whole-object because hydrate passes the raw db row through, which also carries the `id`
+	// than whole-object because hydrate passes the raw db row through, which also carries the `room_id`
 	// column — that leak is pre-existing and out of scope for this test.)
 	const keys = Object.keys(target) as (keyof PlaybackState)[];
 	for (const k of keys) expect(reloaded.playback[k]).toEqual(target[k]);
@@ -119,10 +124,10 @@ test('write-behind: the UPDATE arm round-trips ALL playback fields on a SECOND f
 
 test('debounced flush coalesces a burst into persisted state', async () => {
 	const db = migratedDb();
-	const s = new AuthoritativeState(sqlitePersistence(db), 20);
+	const s = new AuthoritativeState(sqlitePersistence(db, TEST_ROOM), 20);
 	for (let i = 1; i <= 5; i++) s.applyQueueOp({ op: 'add', entry: entry('a', i) });
 	await new Promise((r) => setTimeout(r, 60)); // let the debounce fire
-	const { entries } = hydrate(db);
+	const { entries } = hydrate(db, TEST_ROOM);
 	expect(entries).toHaveLength(5);
 });
 

@@ -7,7 +7,11 @@ import { queueEntries, playbackState } from '../db/schema';
 import type { StatePersistence } from './store';
 import type { QueueEntry, PlaybackState } from '@encore/shared';
 
-export function sqlitePersistence(db: DB): StatePersistence {
+// `roomId` binds this sink to ONE room's playback row (#655). Playback state used to be a single
+// deployment-wide 'singleton' row; it is keyed by room_id now, so the writer must name the room it
+// snapshots. The single authoritative store persists to the active room today; #656 threads a room
+// per party through the realtime layer above this seam.
+export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 	return {
 		persist({ entries, playback }: { entries: QueueEntry[]; playback: PlaybackState }) {
 			db.transaction((tx) => {
@@ -32,7 +36,7 @@ export function sqlitePersistence(db: DB): StatePersistence {
 				}
 				tx.insert(playbackState)
 					.values({
-						id: 'singleton',
+						roomId,
 						currentEntryId: playback.currentEntryId,
 						positionSec: playback.positionSec,
 						isPlaying: playback.isPlaying,
@@ -41,7 +45,7 @@ export function sqlitePersistence(db: DB): StatePersistence {
 						guideLevel: playback.guideLevel
 					})
 					.onConflictDoUpdate({
-						target: playbackState.id,
+						target: playbackState.roomId,
 						set: {
 							currentEntryId: playback.currentEntryId,
 							positionSec: playback.positionSec,
