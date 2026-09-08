@@ -31,12 +31,13 @@ soundfile>=0.13
 # use its wav2vec2 align() to produce WORD timings, rather than trusting ASR to transcribe sung
 # vocals. 3.8.6 is the modern line that installs on py3.12 and matches faster-whisper 1.2's API.
 whisperx==3.8.6
-# BS-RoFormer separation engine, inference-only. Chosen over python-audio-separator for its
-# load/infer/release session lifecycle (load the ~700MB checkpoint ONCE per long-lived worker, not
-# per cook) and its repointable sha256-verified checkpoint registry. Resolves in 8 small pure-Python
-# deps on the pinned torch 2.8 stack — it rides the existing torch, adds no numpy rebuild. Only a
-# worker that advertises the `stems:roformer` capability loads it, so the default (demucs-only)
-# worker never pays its startup cost.
+# BS-RoFormer separation engine, inference-only. Adopted ALONGSIDE python-audio-separator (issue
+# #483, owner ruling Q1(b): both engines, not one over the other) — kept for its load/infer/release
+# session lifecycle (load the ~700MB checkpoint ONCE per long-lived worker, not per cook) and its
+# repointable sha256-verified checkpoint registry. Resolves in 8 small pure-Python deps on the pinned
+# torch 2.8 stack — it rides the existing torch, adds no numpy rebuild. Only a worker that advertises
+# the `stems:roformer` capability loads it, so the default (demucs-only) worker never pays its startup
+# cost.
 bs-roformer-infer==0.1.5
 
 # ── lyrics line-splitting ──────────────────────────────────────────────────────────────
