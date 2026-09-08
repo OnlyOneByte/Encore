@@ -246,6 +246,16 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
 MIN_TOKENS_TO_COMPARE = 12
 SUSPECT_AGREEMENT = 0.25
 
+#: How far past the end of the audio a candidate's own timings may run before selection DEMOTES it
+#: (#667, owner ruling B). Expressed as a FRACTION of the song's duration, not raw seconds, because
+#: a fixed second-count would be lenient on a 30s clip and harsh on a 7-minute track. The two real
+#: wrong-version cases overshoot by +39% (Total Eclipse, 268s->374s) and +27% (Friends in Low
+#: Places, 281s->357s), so 10% clears both with margin while leaving room for the owner's stated
+#: trap — a legitimate LRC for the SAME recording carrying a short trailing artefact cue, which is
+#: seconds, not tens of percent. PROPOSED FOR REVIEW: Q2 of #667 was ruled "a percentage, proposed
+#: by the implementer" — 0.10 is that proposal. Raise it if a same-recording false positive appears.
+OVERSHOOT_FRACTION_MAX = 0.10
+
 _TOKEN_STRIP = re.compile(r"\[[^\]]*\]")
 _TOKEN_KEEP = re.compile(r"[^\w\s']", re.UNICODE)
 
@@ -316,6 +326,45 @@ def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> tuple
     if not votes:
         return None, []
     return sum(votes) / len(votes), votes
+
+
+def candidate_last_end(candidate: LyricsText) -> float | None:
+    """Latest word/line end time the candidate's OWN timings carry, or None when it is not timed.
+
+    A timed source (lrclib-word, and any TIMING_WORD/TIMING_LINE tier) fills `start`/`end` on its
+    `segments`; a text-only source does not. Overshoot is only defined for the former — a text without
+    its own timings cannot be "timed past the audio" until it is force-aligned, which happens after
+    selection. Reads `end` off segments directly (not the flattened word list) because at SELECTION time
+    the line timing is what a wrong-version LRC carries, and #667's two real cases are `lrclib-word`.
+    """
+    ends = [float(seg["end"]) for seg in candidate.segments if isinstance(seg.get("end"), (int, float))]
+    return max(ends) if ends else None
+
+
+def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float | None) -> float:
+    """The candidate's composite score after DEMOTING it for running past the end of the audio (#667).
+
+    Owner ruling B: a candidate timed well past audio-end is a wrong-version pick — its lyrics belong to
+    a longer master, so a quarter of them can never be sung. It must lose to a rival that fits, without
+    a threshold masquerading as a similarity judgement. The penalty is COMPARATIVE, applied to the same
+    composite score argmax already ranks by, so a clean rival wins on the same axis.
+
+    Below OVERSHOOT_FRACTION_MAX (a fraction of duration) the score is untouched — that band absorbs the
+    owner's stated trap, a same-recording LRC with a short trailing artefact cue. Above it, subtract the
+    overshoot fraction from the score: +39% overshoot turns a 0.45 into ~0.06, which loses to any rival
+    that fits, while a 0.94 wrong-version pick against a 0.55 clean rival (a real measured pair) still
+    flips. `duration_sec` unknown, or the candidate untimed, means no judgement is possible — return the
+    score unchanged, the same fail-open coverage uses for a missing duration.
+    """
+    if not duration_sec or duration_sec <= 0:
+        return score
+    last_end = candidate_last_end(candidate)
+    if last_end is None:
+        return score
+    fraction = max(0.0, last_end - duration_sec) / duration_sec
+    if fraction <= OVERSHOOT_FRACTION_MAX:
+        return score
+    return score - fraction
 
 
 # ── selection: candidates are judged, baselines do the judging ─────────────────────────
@@ -423,14 +472,17 @@ class Selection:
         }
 
 
-def select_by_baselines(texts: list[LyricsText]) -> Selection:
+def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = None) -> Selection:
     """Pick the song's words: grade every candidate against the baselines, then publish.
 
     The whole two-tier design lands here.
 
       1. Split by role. Baselines are evidence of what is audible; candidates are claims about the words.
       2. Score each candidate — and each of its alternate versions — as the MEAN agreement across every
-         baseline that can speak (`composite_score`). Argmax wins; ties keep the better metadata match.
+         baseline that can speak (`composite_score`), then DEMOTE any whose own timings run well past the
+         end of the audio (`overshoot_penalized`, #667). Argmax over the penalised score wins; ties keep
+         the better metadata match. The reported score stays the raw agreement — the penalty steers the
+         COMPARISON, it is not itself a similarity claim about the words.
       3. Publish the winner. Also publish the best baseline when the winner cannot be trusted, so there
          is always something honest to fall back to: either no candidate existed, or the winner scored
          below SUSPECT_AGREEMENT and is probably a different song.
@@ -456,15 +508,27 @@ def select_by_baselines(texts: list[LyricsText]) -> Selection:
 
     best: LyricsText | None = None
     best_score: float | None = None
+    #: The penalised score the picked winner is RANKED by across sources (#667). Kept apart from
+    #: `best_score` so an over-covered winner loses to a clean rival while `winner_score` still reports
+    #: the raw agreement of whatever ultimately wins.
+    best_rank: float | None = None
     for cand in candidates:
         pool = [cand, *cand.alternates]
         scored = [composite_score(c, baselines) for c in pool]
+        # The RANKING key demotes a version timed past audio-end (#667); `scored` itself keeps the raw
+        # agreement so provenance and `winner_score` report what the words actually matched, not the
+        # penalty. A None-scored (unjudgeable) version stays -1.0 and is never penalised into a lower
+        # negative that could reorder the unjudged tail — the penalty only ever touches a real score.
+        ranked = [
+            (overshoot_penalized(sc, c, duration_sec) if sc is not None else None)
+            for c, (sc, _) in zip(pool, scored, strict=False)
+        ]
         pick = 0
-        if any(s is not None for s, _ in scored):
+        if any(s is not None for s in ranked):
             # max on (score, negative index) so an exact tie keeps the earlier — i.e. the better
             # metadata match. `-1.0` sorts an unjudgeable version below every judged one.
             pick = max(
-                range(len(pool)), key=lambda i: (scored[i][0] if scored[i][0] is not None else -1.0, -i)
+                range(len(pool)), key=lambda i: (ranked[i] if ranked[i] is not None else -1.0, -i)
             )
             decided_by = "agreement"
         else:
@@ -492,12 +556,15 @@ def select_by_baselines(texts: list[LyricsText]) -> Selection:
                     votes=len(votes),
                 )
             )
-        # Across sources, the same comparison decides. An unjudged candidate (-1.0) never displaces a
-        # judged one, and among unjudged candidates the first acquired stands.
-        if best is None or (score if score is not None else -1.0) > (
-            best_score if best_score is not None else -1.0
+        # Across sources, the same comparison decides — on the PENALISED rank of the pick, so a source
+        # whose only version overshoots audio-end loses to a source that fits (#667). An unjudged
+        # candidate (-1.0) never displaces a judged one, and among unjudged candidates the first
+        # acquired stands. `best_score` records the winner's RAW agreement for provenance either way.
+        rank = ranked[pick]
+        if best is None or (rank if rank is not None else -1.0) > (
+            best_rank if best_rank is not None else -1.0
         ):
-            best, best_score = winner, score
+            best, best_score, best_rank = winner, score, rank
 
     if best is None:
         # No claim at all. The tiering system picks among the baselines — best evidence first.

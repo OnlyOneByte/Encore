@@ -629,3 +629,105 @@ def test_captions_cannot_be_about_a_different_version_of_the_song():
     )
     assert got is not None
     assert got.alternates == []
+
+
+# ── overshoot demotion: a candidate timed past audio-end loses to one that fits (#667) ─────────────
+#
+# Owner ruling B: a candidate whose own timings run well past the end of the audio is a wrong-version
+# pick (its lyrics belong to a longer master), and it must be DEMOTED during selection so a rival that
+# fits wins. Comparative, not a threshold — the demotion steers the same argmax selection already runs.
+# The two real cases overshoot by +39% and +27% of duration; the tolerance band is OVERSHOOT_FRACTION_MAX.
+
+from src.lyrics.chain import OVERSHOOT_FRACTION_MAX  # noqa: E402
+
+
+def timed(source, body, variant, per_word_end, *, role=ROLE_CANDIDATE):
+    """A candidate whose segments carry real end times, so its overshoot is measurable at selection.
+
+    Each word-line ends at `per_word_end` (the last one is the candidate's last_end), so a caller sets
+    where this candidate's timings STOP relative to the audio duration.
+    """
+    words = body.split(" ")
+    segs = [{"start": 0.0, "end": float(per_word_end), "text": w} for w in words]
+    t = LyricsText(
+        text_source=source,
+        segments=segs,
+        timing=TIMING_LINE,
+        text_confidence="high",
+        role=role,
+        variant=variant,
+    )
+    return t
+
+
+def test_a_candidate_timed_past_audio_end_is_DEMOTED_below_one_that_fits():
+    """The headline fix. Two candidates, DIFFERENT sources; the over-covered one agrees with the audio
+    MORE, so on raw score alone it would win — exactly the '0.94 wrong-version beats 0.55 clean rival'
+    trap the issue describes. Overshoot must flip the pick to the candidate that fits the audio length.
+
+    MECHANISM: on base, overshoot is invisible to selection, so the higher-agreement over-covered
+    candidate wins the argmax and this test reds (asserts the wrong variant). On head the penalty
+    demotes it below the fitting rival. Duration 100s; the over-covered candidate ends at 180s (+80%,
+    far past OVERSHOOT_FRACTION_MAX), the fitting one ends at 90s.
+    """
+    baseline_body = SHARED  # what the audio actually contains
+    over = timed(SOURCE_LRCLIB, f"{SHARED} {GUEST_VERSE}", "wrong-longer-master", per_word_end=180.0)
+    fits = timed(SOURCE_CAPTIONS, SHARED, "fits-the-audio", per_word_end=90.0)
+
+    sel = select_by_baselines([over, fits, base(baseline_body)], duration_sec=100.0)
+
+    assert sel.publish[0].variant == "fits-the-audio"
+
+
+def test_the_same_two_candidates_WITHOUT_a_duration_keep_the_raw_ranking():
+    """Fail-open control: with no duration, overshoot cannot be judged, so raw agreement decides and the
+    over-covered (higher-agreement) candidate wins — proving the demotion is what flips the pick above,
+    not some incidental ordering."""
+    over = timed(SOURCE_LRCLIB, f"{SHARED} {GUEST_VERSE}", "wrong-longer-master", per_word_end=180.0)
+    fits = timed(SOURCE_CAPTIONS, SHARED, "fits-the-audio", per_word_end=90.0)
+
+    sel = select_by_baselines([over, fits, base(f"{SHARED} {GUEST_VERSE}")], duration_sec=None)
+
+    assert sel.publish[0].variant == "wrong-longer-master"
+
+
+def test_a_small_overshoot_within_tolerance_does_not_change_the_pick():
+    """The owner's stated trap: a same-recording LRC with a short trailing artefact cue must NOT be
+    rejected. A candidate ending a hair past duration (well under OVERSHOOT_FRACTION_MAX) still wins on
+    agreement."""
+    assert OVERSHOOT_FRACTION_MAX >= 0.05  # sanity: the tolerance band exists
+    small_over = timed(
+        SOURCE_LRCLIB, f"{SHARED} {GUEST_VERSE}", "same-master-trailing-cue", per_word_end=102.0
+    )
+    fits = timed(SOURCE_CAPTIONS, SHARED, "shorter", per_word_end=90.0)
+
+    sel = select_by_baselines([small_over, fits, base(f"{SHARED} {GUEST_VERSE}")], duration_sec=100.0)
+
+    assert sel.publish[0].variant == "same-master-trailing-cue"
+
+
+def test_winner_score_reports_raw_agreement_not_the_penalty():
+    """Provenance stays honest: the penalty steers the comparison, it is not folded into the reported
+    score. A fitting winner's winner_score is its true agreement in [0, 1]."""
+    over = timed(SOURCE_LRCLIB, f"{SHARED} {GUEST_VERSE}", "wrong-longer-master", per_word_end=180.0)
+    fits = timed(SOURCE_CAPTIONS, SHARED, "fits-the-audio", per_word_end=90.0)
+
+    sel = select_by_baselines([over, fits, base(SHARED)], duration_sec=100.0)
+
+    assert sel.winner_score is not None and 0.0 <= sel.winner_score <= 1.0
+
+
+def test_within_one_source_the_overcovered_ALTERNATE_is_demoted_below_the_fitting_one():
+    """Same source, two versions (a candidate + its alternate). The over-covered version agrees MORE
+    with the audio, so on raw score the WITHIN-POOL argmax picks it — this pins the pool-ranking key
+    specifically (the across-source path uses different sources and cannot reach it). On base the
+    over-covered alternate wins the pool; on head the fitting one does.
+
+    MECHANISM: reverting the pool argmax key from the penalised `ranked` back to raw `scored` reds here,
+    because within one source the penalty is the only thing that can reorder the two versions."""
+    lrclib = timed(SOURCE_LRCLIB, f"{SHARED} {GUEST_VERSE}", "wrong-longer-master", per_word_end=180.0)
+    lrclib.alternates = [timed(SOURCE_LRCLIB, SHARED, "fits-the-audio", per_word_end=90.0)]
+
+    sel = select_by_baselines([lrclib, base(f"{SHARED} {GUEST_VERSE}")], duration_sec=100.0)
+
+    assert sel.publish[0].variant == "fits-the-audio"

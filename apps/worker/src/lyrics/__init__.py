@@ -29,6 +29,7 @@ from .asr import DEFAULT_MODEL, Transcriber, WhisperxTranscriber, transcriber_fo
 from .captions import caption_argv, is_translated_track, parse_vtt, read_captions
 from .chain import (
     MIN_TOKENS_TO_COMPARE,
+    OVERSHOOT_FRACTION_MAX,
     ROLE_BASELINE,
     ROLE_CANDIDATE,
     ROLE_UNSPECIFIED,
@@ -53,6 +54,7 @@ from .chain import (
     acquire_with_notes,
     agreement_score,
     baselines_of,
+    candidate_last_end,
     candidates_of,
     composite_score,
     is_authoritative_text,
@@ -117,9 +119,11 @@ __all__ = [
     "unmet",
     # grading + selection
     "MIN_TOKENS_TO_COMPARE",
+    "OVERSHOOT_FRACTION_MAX",
     "SUSPECT_AGREEMENT",
     "agreement_score",
     "baselines_of",
+    "candidate_last_end",
     "candidates_of",
     "composite_score",
     "lyrics_tokens",
