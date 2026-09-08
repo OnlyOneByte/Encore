@@ -338,7 +338,12 @@
 
 	onMount(() => {
 		ws = new WsClient({
-			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv`,
+			// #658 one-TV-per-room: bind this TV socket to the room the loader resolved (data.roomCode) by
+			// passing it on the WS URL. The server's tvRoomId turns the code into the room id the socket is
+			// scoped to, so the TV is IN-ROOM for that party (subscribeTopicFor, #657) rather than an
+			// unscoped spectator of the served room. A code-less loader (prerender/unavailable app) omits
+			// the param and the server falls back to the served room — unchanged from before #658.
+			url: `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws?role=tv${data.roomCode ? `&room=${encodeURIComponent(data.roomCode)}` : ''}`,
 			// The TV holds no queue rev of its own — it never handles queue:patch and adopts server
 			// truth wholesale from each queue:sync — so the hello handshake always sends lastRev 0,
 			// exactly as the bespoke socket did.

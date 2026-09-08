@@ -19,6 +19,7 @@ import { getApp, setPublish, buildHubDeps } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
 import { can } from './src/server/auth/capabilities';
 import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from './src/server/realtime/room-scope';
+import { tvRoomId } from './src/server/rooms/tv-room';
 import { presentTracks, type LocalTrack } from './src/server/media/local';
 import { safeMediaPath } from './src/server/media/local-files';
 import { existsSync } from 'node:fs';
@@ -204,8 +205,18 @@ const server = Bun.serve<SocketData>({
 			// scope this socket is bound to. The session token is the scope token: it maps to exactly one
 			// room, so a socket cannot present a token for room A and then act on room B.
 			const me = app.singers.bySessionToken(readSessionToken(req.headers.get('cookie')));
-			if (server.upgrade(req, { data: { role, singerId: me?.id, roomId: me?.roomId } }))
-				return undefined as unknown as Response;
+			// #658 one-TV-per-room: a TV carries no cookie/singer, so it cannot get a room from the
+			// session token like a phone does. It carries the join CODE instead (?room=<code>, the same
+			// handle the QR encodes) — tvRoomId turns that into the room id the TV binds to, falling back
+			// to the served room for a bare or unknown code. A bound TV is then IN-ROOM via
+			// subscribeTopicFor (#657) instead of an unscoped spectator, so a TV resolves WHICH room it
+			// shows. A phone's scope still comes from its token (a TV cannot spoof a room it never joined,
+			// because a code only ever RESOLVES a room to VIEW — mutations stay gated by join/player).
+			const roomId =
+				role === 'tv'
+					? tvRoomId(url.searchParams.get('room'), (code) => app.rooms.byCode(code), app.activeRoomId)
+					: me?.roomId;
+			if (server.upgrade(req, { data: { role, singerId: me?.id, roomId } })) return undefined as unknown as Response;
 			return new Response('ws upgrade failed', { status: 400 });
 		}
 		if (url.pathname === '/health') {

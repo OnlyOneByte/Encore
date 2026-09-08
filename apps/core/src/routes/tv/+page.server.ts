@@ -21,9 +21,18 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	// than at a bare /join. The code is a query param the /join page reads and forwards to /api/join.
 	// Absent only if the app singleton is unavailable (prerender/unit load), where a plain /join is the
 	// honest fallback.
+	// #658 one-TV-per-room: resolve WHICH room this TV shows. An explicit ?room=<code> (validated
+	// against the room repo) points the TV at that specific party; a bare /tv falls back to the room
+	// this box serves (activeRoomId), which is the pre-#658 behaviour. The resolved code is both what
+	// the QR advertises AND what the client passes on its WS URL (?room=<code>) so the socket binds to
+	// the same room — see tvRoomId in the WS upgrade. An unknown ?room code falls through to the
+	// served room rather than a code-less TV, so a stale code never dark-screens the display.
 	let roomCode = '';
 	try {
-		roomCode = getApp().rooms.byId(getApp().activeRoomId)?.code ?? '';
+		const app = getApp();
+		const requested = url.searchParams.get('room')?.trim();
+		const named = requested ? app.rooms.byCode(requested) : null;
+		roomCode = (named ?? app.rooms.byId(app.activeRoomId))?.code ?? '';
 	} catch {
 		// No app singleton under prerender/unit load — fall back to a code-less join URL.
 	}
@@ -64,5 +73,5 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	// `joinOrigin` rides along so the TV can tell a settings change that moved the join address from one
 	// that did not: the QR is a server-rendered image, so only that case needs the load to re-run.
 	// The song-intro hold and `tvProgressStyle` are not returned separately — they are in `settings`.
-	return { joinUrl, qrDataUrl, joinOrigin: origin, joinFallbackOrigin: fallback, settings };
+	return { joinUrl, qrDataUrl, joinOrigin: origin, joinFallbackOrigin: fallback, settings, roomCode };
 };

@@ -41,17 +41,31 @@ test('server.ts actually PARSES — a source scan is blind to a SyntaxError in t
 	expect(() => new Bun.Transpiler({ loader: 'ts' }).transformSync(SERVER_RAW)).not.toThrow();
 });
 
-test('server.ts imports the room-scope isolation helpers (#657)', () => {
+test('server.ts imports the room-scope isolation helpers (#657) and the TV-room resolver (#658)', () => {
 	expect(SERVER).toMatch(
 		/import\s*\{[^}]*\bisForeignRoom\b[^}]*\bsubscribeTopicFor\b[^}]*\bbroadcastTopicFor\b[^}]*\}\s*from\s*['"]\.\/src\/server\/realtime\/room-scope['"]/
 	);
+	// #658: the TV-room resolver is imported too — dropping it (while the usage stays) fails to
+	// compile, which a source scan is blind to, so pin the import here alongside the #657 helpers.
+	expect(SERVER).toMatch(/import\s*\{[^}]*\btvRoomId\b[^}]*\}\s*from\s*['"]\.\/src\/server\/rooms\/tv-room['"]/);
 });
 
-test('the WS upgrade captures the singer roomId onto the socket, not just the id (#657)', () => {
-	// The scope key: resolve the whole singer and put BOTH id and roomId on SocketData. Dropping the
-	// roomId capture would leave every socket unscoped, so isForeignRoom could never fire.
+test('the WS upgrade captures a roomId scope onto the socket, not just the id (#657, re-anchored #658)', () => {
+	// The scope key: every socket carries a roomId on SocketData. Dropping the roomId capture would
+	// leave every socket unscoped, so isForeignRoom could never fire. #658 changed where the value
+	// comes from — a phone still gets it from its session token (me?.roomId), but a TV (no cookie)
+	// resolves it from ?room=<code> via tvRoomId — so the value is now a resolved `roomId` local
+	// rather than `me?.roomId` inline. This still pins the scope capture: the upgrade must put a
+	// roomId onto the socket data (shorthand or explicit), and a room-less socket cannot exist.
 	expect(SERVER).toMatch(/roomId\?:\s*string/); // SocketData carries the scope
-	expect(SERVER).toMatch(/data:\s*\{\s*role,\s*singerId:\s*[\w.?]+,\s*roomId:\s*[\w.?]+\s*\}/);
+	// role + singerId are set, and roomId is on the data object (property shorthand `roomId` or an
+	// explicit `roomId: <expr>`). The old inline `roomId: me?.roomId` shape is subsumed by this.
+	expect(SERVER).toMatch(/data:\s*\{\s*role,\s*singerId:\s*[\w.?]+,\s*roomId(\s*:\s*[\w.?]+)?\s*\}/);
+	// #658 seam: the roomId the socket binds to is computed, and the TV branch resolves it via
+	// tvRoomId(...) rather than leaving a TV an unscoped spectator. Reverting the TV branch back to a
+	// bare `me?.roomId` (so a TV is always unscoped again) reds here.
+	expect(SERVER).toMatch(/const\s+roomId\s*=/);
+	expect(SERVER).toMatch(/role\s*===\s*'tv'[\s\S]{0,120}tvRoomId\(/);
 });
 
 test('websocket.open subscribes to the socket own room topic via subscribeTopicFor (#657)', () => {
