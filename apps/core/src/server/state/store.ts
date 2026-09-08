@@ -181,7 +181,13 @@ export class AuthoritativeState {
 		// `NOT NULL playback_state.position_sec` and took the process down from inside the flush timer.
 		// Telemetry is ephemeral: dropping a bad sample costs nothing, crashing the room costs the party.
 		if (!Number.isFinite(positionSec)) return;
-		this.#playback = { ...this.#playback, positionSec: Math.max(0, Math.floor(positionSec)) };
+		// Keep SUB-SECOND precision in the broadcast/in-memory position (#718). Flooring HERE made the
+		// first ~1.25s of every song (and every restart) broadcast an exact `positionSec: 0`, which
+		// `guide-sync.ts`'s `restartToZero` clause reads as an unambiguous rewind — so any command in
+		// that window (key/guide/pause) re-seeked the master and guide back to 0. The `integer`
+		// `position_sec` column still needs a whole number, so the floor moves to the persistence
+		// boundary (persistence.ts); the negative clamp stays here (a negative playhead is nonsense).
+		this.#playback = { ...this.#playback, positionSec: Math.max(0, positionSec) };
 		this.#scheduleFlush(); // still persisted (write-behind) so a resumed session is roughly correct
 	}
 
