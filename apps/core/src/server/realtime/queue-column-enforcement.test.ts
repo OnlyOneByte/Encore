@@ -4,10 +4,13 @@
 // The add-arm guard added by #305 is correct and stays. Its old comment credited the column's
 // constraints with rejecting off-enum/non-finite values. That is measurably false: `queue_entries`
 // has NO CHECK constraint on `status` (drizzle's `enum:` is compile-time only) and stores a garbage
-// `addedAt` past the NOT NULL check — only a MISSING/null value throws. So the guard, not the
-// column, is the only thing keeping the value set honest. This test drives real values into a real
-// migrated DB to pin that split, and source-scans the corrected comments so the belief cannot creep
-// back in (the hazard §3 of the review charter names: a credible-sounding rationale read as fact).
+// `addedAt` past the NOT NULL check — only a MISSING/null value throws. So for STATUS the guard, not
+// the column, is the only thing keeping the value set honest. addedAt is a different case since #345
+// (5acf86d): the server re-stamps every add's addedAt at the applyQueueOp seam, so the guard's
+// finiteness reject on it is a SHAPE reject, not the last line of defence against persisting garbage.
+// This test drives real values into a real migrated DB to pin the column split, source-scans the
+// corrected comments so the belief cannot creep back in (the hazard §3 of the review charter names: a
+// credible-sounding rationale read as fact), and pins which client-minted add fields the server owns.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '../db/test-db';
 import { readFileSync } from 'node:fs';
@@ -107,4 +110,63 @@ test('#395: hub.ts header credits the literal, not enumValues, as the add-arm al
 	// false one absent.
 	expect(src).toContain("allowed set is the single literal 'queued'");
 	expect(src).toMatch(/enumValues are read below ONLY to CLASSIFY/);
+});
+
+// #706 — the add-arm rationale must name EVERY field the code server-owns at the add seam. Since #345
+// (5acf86d) the seam `{ ...cmd.op.entry, addedAt: deps.state.nextAddedAt() }` re-stamps addedAt, so
+// the server owns rotationSeq AND addedAt; the old prose said only rotationSeq. This arm reads hub.ts,
+// extracts the fields the CODE rewrites at the seam, extracts the fields the PROSE declares
+// server-owned, and asserts code ⊆ prose — self-extending, since a third rewritten field reds it too.
+//
+// Comment stripping is INVERTED here on purpose: the defect lives in the PROSE, so the code side is
+// stripped of comments (to read only what the seam literal actually rewrites) while the prose side is
+// read AS comments. In-repo precedent for the inversion: routes/api/leave/doc-accuracy.test.ts and
+// lib/tv/pitch-shift-doc-accuracy.test.ts (#567/#581/#622). Stripping is load-bearing: `addedAt`
+// occurs many times raw but only once in the seam literal, so a whole-file scan would read it as
+// "named" from prose alone.
+test('#706: hub.ts prose names every field the add seam server-owns (rotationSeq AND addedAt)', () => {
+	const src = readFileSync(join(import.meta.dir, 'hub.ts'), 'utf8');
+
+	// Strip line comments so the CODE side reads only executable text.
+	const codeOnly = src
+		.split('\n')
+		.map((l) => l.replace(/\/\/.*$/, ''))
+		.join('\n');
+
+	// SENTINEL 1: the seam and its inputs are present, so this never passes by losing its anchor.
+	expect(codeOnly).toContain('nextAddedAt()');
+	expect(codeOnly).toMatch(/handleQueueCommand/);
+
+	// Extract fields rewritten at the add seam: the `...cmd.op.entry, <field>: ...` object literal.
+	const seam = codeOnly.match(/\{\s*op:\s*'add',\s*entry:\s*\{\s*\.\.\.cmd\.op\.entry\s*,([\s\S]*?)\}\s*\}/);
+	expect(seam).not.toBeNull();
+	const rewritten = [...seam![1].matchAll(/([A-Za-z_$][\w$]*)\s*:/g)].map((m) => m[1]);
+	// SENTINEL 3 (load-bearing stripping): the seam literal names addedAt exactly, from CODE.
+	expect(rewritten).toContain('addedAt');
+	// rotationSeq is server-owned via applyOp (not at this literal); union it in for the subset check.
+	const codeServerOwned = new Set([...rewritten, 'rotationSeq']);
+
+	// Extract fields the PROSE declares server-owned. Read comment lines only.
+	const prose = src
+		.split('\n')
+		.filter((l) => /^\s*\/\//.test(l))
+		.join('\n');
+	// SENTINEL 2: the prose still names rotationSeq, so deleting the server-owned clause reds. The
+	// subset loop below asserts it is present as a server-owned field; this only anchors the token.
+	expect(prose).toContain('rotationSeq');
+	// The corrected prose must declare addedAt server-owned too (this is the red-on-base assertion).
+	expect(prose).toMatch(/addedAt[^\n]{0,80}(re-?stamp|server-?own|nextAddedAt)/i);
+
+	// code ⊆ prose: every field the seam server-owns is named by the prose as server-owned.
+	for (const field of codeServerOwned) {
+		expect(prose).toContain(field);
+	}
+});
+
+// #706 ARM 2: since addedAt is re-stamped, the prose must NOT reassert that the finiteness reject is
+// the ONLY thing keeping a garbage addedAt out of the queue. Base FAILS (the old clause says exactly
+// that); fix PASSES (narrowed to a shape reject).
+test('#706: hub.ts no longer calls the addedAt reject the last line of defence', () => {
+	const src = readFileSync(join(import.meta.dir, 'hub.ts'), 'utf8');
+	expect(src).not.toMatch(/ONLY thing keeping[\s\S]{0,140}addedAt out of the queue/);
 });
