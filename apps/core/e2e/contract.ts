@@ -295,6 +295,15 @@ export const SEL = {
 	 * exist, their relative position is not source-checkable.
 	 */
 	dashChartOrBody: '.card h2 + .bars, .card h2 + :not(table):not(.note):not(.scroller)'
+	,
+	// ── admin dashboard (/admin — the #639 entry-delete surface the admin-delete probe drives) ──
+	/** A deletable song row on /admin: <li class="song-row"> (routes/admin/+page.svelte). */
+	adminSongRow: '.song-row',
+	/** The first-step Delete button on an admin song row: <button class="delete"> — arms the confirm. */
+	adminDelete: '.delete',
+	/** The second-step confirm button: <button class="danger"> inside <span class="confirm"> — the
+	 *  destructive commit, scoped under .confirm so it is distinct from the .delete arm. */
+	adminConfirmDelete: '.confirm .danger'
 } as const;
 
 /**
@@ -636,5 +645,24 @@ export const HOOKS: Hook[] = [
 		file: 'src/routes/settings/+page.svelte',
 		anchor: 'id="lyrics-case"',
 		why: 'capture shoots upper-case words through this picker'
+	}
+	,
+	{
+		id: 'adminSongRow',
+		file: 'src/routes/admin/+page.svelte',
+		anchor: 'class="song-row"',
+		why: 'the admin-delete probe reads deletable rows on /admin from .song-row'
+	},
+	{
+		id: 'adminDelete',
+		file: 'src/routes/admin/+page.svelte',
+		anchor: 'class="delete"',
+		why: 'the probe clicks the first-step Delete button to arm the confirm'
+	},
+	{
+		id: 'adminConfirmDelete',
+		file: 'src/routes/admin/+page.svelte',
+		anchor: 'class="danger"',
+		why: 'the probe waits on the second-step confirm button (.confirm .danger) to shoot the confirm state'
 	}
 ];
