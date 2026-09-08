@@ -106,3 +106,47 @@ def test_step_reports_overshoot_in_the_cook_log_when_the_published_pick_overshoo
 
     assert ctx.lyrics.selection.publish[0].variant == "wrong-longer-master"
     assert any("overshoot" in n.lower() and "+80s" in n for n in notes), notes
+
+
+# --- #731: the overshoot NOTE was silent when the demotion actually fired, and claimed "demoted"
+# for a pick it published. The report iterated sel.publish (survivors); a candidate demoted for
+# overshoot is not a survivor, so no note fired for it, and the winner's note hardcoded "demoted".
+
+
+def test_a_demoted_overshooting_candidate_still_gets_an_overshoot_note_naming_the_demotion(tmp_path):
+    """F1: across-source, the wrong-longer-master demotes to a fitting rival, so it is NOT published.
+    On base the note loop only visited sel.publish, so the demoted loser produced ZERO overshoot notes
+    — the exact case #667 piece 2 exists for. Head must emit a note that names the overshooting LOSER
+    and says it was demoted."""
+    over = _timed(SOURCE_LRCLIB, f"{SHARED} {GUEST}", "wrong-longer-master", per_word_end=180.0)
+    fits = _timed(SOURCE_CAPTIONS, SHARED, "fits-the-audio", per_word_end=90.0)
+    baseline = _timed(SOURCE_ASR, SHARED, "whisper/vocals", per_word_end=90.0, role=ROLE_BASELINE)
+
+    ctx, notes = _run_step([over, fits, baseline], 100.0, tmp_path)
+
+    # the demotion worked: the fitting rival is what publishes
+    assert ctx.lyrics.selection.publish[0].variant == "fits-the-audio"
+    overshoot_notes = [n for n in notes if "overshoot" in n.lower()]
+    assert overshoot_notes, notes  # RED ON BASE: base emits zero overshoot notes here
+    demoted = [n for n in overshoot_notes if "wrong-longer-master" in n and "+80s" in n]
+    assert demoted, overshoot_notes
+    assert "DEMOTED" in demoted[0], demoted[0]
+    assert "fits-the-audio" in demoted[0], demoted[0]
+
+
+def test_an_overshooting_published_pick_is_not_reported_as_demoted(tmp_path):
+    """F2: no rival, so the over-covered candidate is the only claim and still publishes (#667's stated
+    cost). On base its note said "demoted in selection" for a pick that WON and is shown on the TV —
+    false safety in the operator log. Head must NOT claim the published pick was demoted, and must say
+    it published anyway."""
+    over = _timed(SOURCE_LRCLIB, f"{SHARED} {GUEST}", "wrong-longer-master", per_word_end=180.0)
+    baseline = _timed(SOURCE_ASR, SHARED, "whisper/vocals", per_word_end=90.0, role=ROLE_BASELINE)
+
+    ctx, notes = _run_step([over, baseline], 100.0, tmp_path)
+
+    assert ctx.lyrics.selection.publish[0].variant == "wrong-longer-master"
+    overshoot_notes = [n for n in notes if "overshoot" in n.lower() and "+80s" in n]
+    assert overshoot_notes, notes
+    note = overshoot_notes[0]
+    assert "demoted" not in note.lower(), note  # RED ON BASE: base note says "demoted in selection"
+    assert "PUBLISHED anyway" in note, note
