@@ -510,6 +510,76 @@
 			sentinel = null;
 		};
 	});
+
+	/*
+	 * FULL SCREEN on the TV page (#424, owner ruling C).
+	 *
+	 * `/tv` is already `position: fixed; inset: 0`, so it owns the whole VIEWPORT — what it cannot claim
+	 * on its own is the browser's own chrome (URL bar, tab strip) eating the top of an HDMI-plugged
+	 * laptop or a TV browser. The Fullscreen API closes that, but `requestFullscreen()` needs TRANSIENT
+	 * USER ACTIVATION in the TV's own document: there is no autofullscreen on load and no phone-triggered
+	 * fullscreen (a realtime message carries no activation). So every path here is anchored to a real
+	 * gesture ON the TV — the `f` key, the corner button, or the autoplay-recovery tap as a free rider.
+	 */
+	function toggleFullscreen() {
+		if (typeof document === 'undefined' || !document.documentElement?.requestFullscreen) return;
+		// Guarded on `document.fullscreenElement` so the one affordance toggles: enter if we are not
+		// fullscreen, leave if we are. Both promises can reject (a policy denial, no activation) — swallow
+		// it rather than throw out of a key/click handler.
+		if (document.fullscreenElement) {
+			document.exitFullscreen?.().catch(() => {});
+		} else {
+			document.documentElement.requestFullscreen().catch(() => {});
+		}
+	}
+
+	/*
+	 * The corner button self-hides after a few seconds of no input, so it is not persistent chrome on a
+	 * wall (the issue's stated cost for ruling C). ANY pointer or key input on the page reveals it and
+	 * restarts the timer — the same gesture surface the autoplay recovery already listens to.
+	 * `controlsVisible` starts true so the affordance is discoverable when the stage first appears, then
+	 * fades. Mirrors the ResizeObserver / wake-lock idiom above: arm listeners plus a timer, and tear
+	 * both down in the returned cleanup.
+	 */
+	let controlsVisible = $state(true);
+	const CONTROLS_IDLE_MS = 4000;
+	$effect(() => {
+		if (typeof window === 'undefined') return;
+		let hideTimer: ReturnType<typeof setTimeout> | undefined;
+		const arm = () => {
+			if (hideTimer) clearTimeout(hideTimer);
+			hideTimer = setTimeout(() => (controlsVisible = false), CONTROLS_IDLE_MS);
+		};
+		const wake = () => {
+			controlsVisible = true;
+			arm();
+		};
+		const onKey = (e: KeyboardEvent) => {
+			// `f` toggles fullscreen from the keyboard — a real keypress carries the activation
+			// requestFullscreen() needs. Ignore it while typing into a field (defensive; /tv renders none)
+			// and honour a modifier-free `f` only, so browser shortcuts (Ctrl/Cmd combos) are untouched.
+			const t = e.target as HTMLElement | null;
+			const typing = t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName));
+			if (!typing && (e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !e.altKey) {
+				toggleFullscreen();
+			}
+			wake();
+		};
+		// `capture` + `passive` so the reveal sees the gesture even if something downstream stops
+		// propagation, and we never preventDefault — the same shape TvPlayer's recovery listener uses.
+		const opts: AddEventListenerOptions = { capture: true, passive: true };
+		window.addEventListener('pointermove', wake, opts);
+		window.addEventListener('pointerdown', wake, opts);
+		window.addEventListener('keydown', onKey, opts);
+		arm();
+		return () => {
+			if (hideTimer) clearTimeout(hideTimer);
+			window.removeEventListener('pointermove', wake, opts);
+			window.removeEventListener('pointerdown', wake, opts);
+			window.removeEventListener('keydown', onKey, opts);
+		};
+	});
+
 	/*
 	 * The stage background, and the band it is shown in.
 	 *
@@ -936,7 +1006,15 @@
 		<button
 			type="button"
 			class="autoplay-hint"
-			onclick={() => (autoplayBlocked = false)}
+			onclick={() => {
+				// FREE RIDER (#424, ruling C): this tap is a real gesture in the TV's own document, so it
+				// carries the activation `requestFullscreen()` needs. Ask for fullscreen alongside clearing
+				// the hint — best-effort, and it never blocks the music recovery, which TvPlayer's own
+				// document-wide gesture listener performs. It only fires when autoplay was refused, which is
+				// exactly why the hotkey and the corner button are the real path and this is the rider.
+				toggleFullscreen();
+				autoplayBlocked = false;
+			}}
 			aria-label="Tap anywhere to start the music"
 		>
 			<span class="ah-mark"><Icon name="play" /></span>
@@ -963,6 +1041,40 @@
 		</div>
 	{/if}
 
+	<!--
+		FULLSCREEN corner button (#424). Self-hides after a few seconds of no input (`controlsVisible`), so
+		it is not permanent chrome on a wall. z-tier 7 (see the z-scheme below), the persistent-chrome tier:
+		ABOVE the lyrics reel (6) and the player slots so it stays tappable during a song, and BELOW the
+		transient full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares
+		tier 7 with the lower-third and the join QR but sits bottom-RIGHT, overlapping neither; inset with
+		the safe-area tokens so a television's overscan cannot crop it.
+
+		The mark is an INLINE SVG, not a Unicode codepoint: icons.test.ts bans a functional control whose
+		drawing the platform picks (a bare glyph renders as colour emoji on one device and tofu on a
+		stripped-down TV browser), and there is no fullscreen mark in icons.ts to reuse.
+	-->
+	<button
+		type="button"
+		class="fs-btn"
+		class:shown={controlsVisible}
+		onclick={toggleFullscreen}
+		aria-label="Toggle full screen (press f)"
+		title="Full screen (f)"
+	>
+		<svg
+			class="fs-glyph"
+			viewBox="0 0 24 24"
+			fill="none"
+			stroke="currentColor"
+			stroke-width="2"
+			stroke-linecap="round"
+			stroke-linejoin="round"
+			aria-hidden="true"
+		>
+			<path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6" />
+		</svg>
+	</button>
+
 	<div class="status" class:on={connected}></div>
 </div>
 
@@ -979,7 +1091,9 @@
 	 *   5  idle full-screen screens: attract, lobby (.attract, TvLobby .lobby)
 	 *   6  lyrics reel (LyricsOverlay .lyrics — SIBLING-owned, not editable here)
 	 *   7  persistent chrome that must sit ABOVE the reel and the video: lower-third, brand-float,
-	 *      progress bar (TvProgress), join corner/badqr (JoinBadge)
+	 *      progress bar (TvProgress), join corner/badqr (JoinBadge), fullscreen button (.fs-btn, #424 —
+	 *      shares this tier but sits bottom-right, overlapping none of them; a transient overlay at 8 and
+	 *      the autoplay hint at 10 correctly cover it)
 	 *   8  transient full-screen overlays: interstitial / error / waiting / loading (.interstitial) —
 	 *      must cover ALL chrome, which the old shared 7 did only by DOM luck
 	 *   9  connection status dot (.status) — tiny, always visible, never occluded
@@ -1387,6 +1501,47 @@
 		box-shadow: 0 0 0 5px color-mix(in srgb, var(--ok) 18%, transparent);
 	}
 
+	/*
+	 * The fullscreen corner button (#424). Fades between states on opacity so the self-hide is a soft
+	 * dissolve rather than a pop. Sits at z 7 — the documented persistent-chrome tier: ABOVE the lyrics
+	 * reel (6) and the player slots (1/2) so it stays tappable during a song, and BELOW the transient
+	 * full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares the tier
+	 * with the lower-third and the join QR but never overlaps them positionally (bottom-right, the
+	 * opposite corner). Safe-area-inset on both axes so overscan cannot clip it, and `pointer-events`
+	 * drops with the fade so a hidden button can never eat a tap meant for the stage.
+	 *
+	 * The 44px clamp floor is the room's own tap-target minimum (--tap in app.css), which a TV remote's
+	 * pointer needs as much as a thumb does.
+	 */
+	.fs-btn {
+		position: absolute;
+		right: var(--tv-safe-x);
+		bottom: var(--tv-safe-y);
+		z-index: 7;
+		display: grid;
+		place-items: center;
+		width: clamp(44px, 5.2vmin, 88px);
+		height: clamp(44px, 5.2vmin, 88px);
+		border: 0;
+		border-radius: 14px;
+		cursor: pointer;
+		color: var(--ink);
+		background: color-mix(in srgb, var(--bg) 62%, transparent);
+		backdrop-filter: blur(4px);
+		-webkit-backdrop-filter: blur(4px);
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.4s ease;
+	}
+	.fs-btn.shown {
+		opacity: 0.85;
+		pointer-events: auto;
+	}
+	.fs-glyph {
+		display: block;
+		width: clamp(22px, 3vmin, 48px);
+		height: clamp(22px, 3vmin, 48px);
+	}
 	/*
 	 * The autoplay affordance. A full-screen button so a tap anywhere authorises playback, sitting above
 	 * every other layer (z 10). A <button>, not a <div>: it is keyboard-focusable and announces itself,
