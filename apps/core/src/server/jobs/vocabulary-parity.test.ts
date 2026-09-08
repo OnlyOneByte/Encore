@@ -21,7 +21,7 @@ import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/sha
 import type { JobType } from '@encore/shared';
 import { requiredCapability } from './dispatch';
 import { DEFAULT_LEASE_CONFIG } from './leases';
-import { INSTRUMENTAL_EXT, VOCALS_EXT, audioKey, instrumentalKey, vocalsKey } from '../media/paths';
+import { INSTRUMENTAL_EXT, VOCALS_EXT, audioKey, instrumentalKey, vocalsKey, rawCaptionKey } from '../media/paths';
 
 const WORKER_SRC = join(import.meta.dir, '../../../../worker/src');
 const vocabulary = readFileSync(join(WORKER_SRC, 'vocabulary.py'), 'utf8');
@@ -515,6 +515,13 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 			// A bare string segment: "derived", "stems", "audio".
 			const lit = /^"([^"]*)"$/.exec(a);
 			if (lit) return lit[1]!;
+			// A bare identifier segment passed as a runtime argument, e.g. `kind` in raw_caption_path.
+			// It is not a literal in the source; resolve it from the same subs map the caller supplies
+			// so the reconstructed ref uses the concrete value under test.
+			if (/^[A-Za-z_][A-Za-z0-9_]*$/.test(a)) {
+				if (a in subs) return subs[a]!;
+				throw new Error(`${fnName}: bare segment ${a} has no value in subs`);
+			}
 			// An f-string filename: f"{media_id}-instrumental.{INSTRUMENTAL_EXT}" etc. Expand the two
 			// interpolation forms we know: {media_id}[.lstrip(...)] and {<EXT const>}. Anything else is
 			// an unrecognised shape and must fail loudly rather than pass a half-parsed ref.
@@ -564,6 +571,19 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 		expect(worker).toBe(audioKey(ID, 'wav'));
 	});
 
+	test('the retained raw caption key agrees byte-for-byte (#709)', () => {
+		// raw_caption_path(media_dir, media_id, kind, ext="vtt") is the FOURTH path builder that crosses
+		// this seam; #684 shipped it with no parity guard, and retention.ts enumerates it per (kind, ext)
+		// to count and evict the retained track. Check BOTH kinds and BOTH known exts so a drift on either
+		// side of the seam reds this. `kind` is a bare runtime arg, so it is supplied via subs.
+		for (const kind of ['captions', 'auto-captions']) {
+			for (const ext of ['vtt', 'srt']) {
+				const worker = pyPathRef('raw_caption_path', { media_id: ID, kind, ext });
+				expect(worker).toBe(rawCaptionKey(ID, kind, ext));
+			}
+		}
+	});
+
 	test('non-vacuity: the extracted keys are non-empty, stem-shaped derived refs', () => {
 		// A silent empty parse (renamed fn, changed join shape) would let a comparison pass vacuously.
 		// Pin the concrete shape so the guard cannot degrade into asserting '' === ''.
@@ -576,6 +596,10 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
 		expect(voc).toMatch(/^derived\/stems\/.+-vocals\..+$/);
 		expect(pyStrConst('INSTRUMENTAL_EXT').length).toBeGreaterThan(0);
 		expect(pyStrConst('VOCALS_EXT').length).toBeGreaterThan(0);
+		// A renamed segment or dropped `kind` in raw_caption_path would let a bare comparison pass
+		// vacuously; pin the concrete shape (#709).
+		const rawCap = pyPathRef('raw_caption_path', { media_id: ID, kind: 'captions', ext: 'vtt' });
+		expect(rawCap).toMatch(/^derived\/captions\/captions\/.+\.captions\..+$/);
 	});
 });
 

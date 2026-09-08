@@ -135,12 +135,16 @@ def vocals_path(media_dir: str, media_id: str) -> str:
 def raw_caption_path(media_dir: str, media_id: str, kind: str, ext: str = "vtt") -> str:
     """Deterministic key for a media's RAW caption track, retained for post-cook diagnosis (#670).
 
-    Under the `derived/` storage class so it inherits the "safe to delete, regenerable, first to
-    evict" retention the cap already bounds -- a `.vtt` is tens of kilobytes of text, unlike the
-    hundreds of megabytes of decoded audio that made `work/` need cleaning (#469). It is NOT a lyrics
-    candidate and is never recorded in the sidecar; it is debugging evidence of what the parser was
-    handed, which is otherwise destroyed with the job scratch and cannot be re-fetched reliably (the
-    upload may be gone or the box rate-limited).
+    Under the `derived/` storage class so it is "safe to delete, regenerable, first to evict" -- a
+    `.vtt` is tens of kilobytes of text, unlike the hundreds of megabytes of decoded audio that made
+    `work/` need cleaning (#469). Eviction here is REF-DRIVEN, not directory-driven, so a `derived/`
+    file is only bounded by the `ENCORE_MEDIA_MAX_GB` cap once its key is enumerated in the core's
+    `derivedRefsOf`; #709 added that enumeration (this path is keyed per media id, so `derivedRefsOf`
+    reconstructs it from CAPTION_KINDS x KNOWN_CAPTION_EXTS via `rawCaptionKey` in paths.ts). Before
+    #709 it inherited none of that and was orphaned on eviction. It is NOT a lyrics candidate and is
+    never recorded in the sidecar; it is debugging evidence of what the parser was handed, which is
+    otherwise destroyed with the job scratch and cannot be re-fetched reliably (the upload may be gone
+    or the box rate-limited).
 
     `kind` ("captions" authored / "auto-captions" machine) is a directory segment, NOT a filename
     part, so the authored/machine distinction stays STRUCTURAL exactly as `captions.py` insists: yt-dlp
