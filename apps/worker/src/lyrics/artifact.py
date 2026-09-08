@@ -107,9 +107,12 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         line: dict[str, Any] = {"start": l_start, "end": l_end, "text": line_text, "words": words}
         # A romanization is a per-line SECOND SCRIPT the source shipped (issue #431). This pass-through
         # copies it onto a line ONLY when the input segment already carries it, and it is defensive
-        # depth today, NOT a live carrier: the one site that writes ``romanization`` into a segment is
-        # ``fold_romanization_entries`` on the LRCLIB synced (``TIMING_LINE``) path, and no producer
-        # hands those segments to ``normalize_lyrics``. The two paths that DO surface the second script
+        # depth today, NOT a live carrier: the one site that writes ``romanization`` INTO A SEGMENT is
+        # ``entries_to_segments`` (``source.py``: ``seg["romanization"] = e.romanization``), fed the
+        # folded ``LrcEntry`` rows by ``fold_romanization_entries`` on the LRCLIB synced (``TIMING_LINE``)
+        # path — ``fold_romanization_entries`` itself only sets ``romanization`` on an ``LrcEntry``, never
+        # on a segment dict. No producer hands those segments to ``normalize_lyrics``. The two paths that
+        # DO surface the second script
         # each carry it OUTSIDE this function (issue #685):
         #   - the aligned path (the default ``forced`` sync mode) — the aligner rebuilds every segment
         #     and drops the field, so ``_time_one`` re-attaches it by source-line position via
@@ -117,7 +120,10 @@ def normalize_lyrics(raw: dict[str, Any]) -> dict[str, Any]:
         #   - the line-sync path (``lines`` mode / aligner-failure fallback) — ``line_synced_lyrics`` in
         #     ``source.py`` has its own copy and never calls this normalizer.
         # The ASR (``TIMING_WORD``) path cannot carry it: whisper emits no romanization and the ASR
-        # source rebuilds segments with only ``start``/``end``/``text``/``words``. Never fabricated:
+        # source rebuilds segments with only ``start``/``end``/``text``/``words`` (pinned by
+        # ``test_asr_source_segment_keys_are_exactly_start_end_text_words`` — a fifth ``romanization`` key
+        # would make this branch live) and this pass-through's copy is itself pinned by
+        # ``test_normalize_lyrics_copies_a_segment_romanization_through`` (issue #716). Never fabricated:
         # absent key → single-script line, unchanged behaviour.
         romanization = seg.get("romanization")
         if isinstance(romanization, str) and romanization.strip():
