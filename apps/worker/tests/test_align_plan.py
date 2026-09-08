@@ -1075,6 +1075,7 @@ from src.lyrics.chain import (  # noqa: E402
     agreement_score,
     composite_score,
     lyrics_tokens,
+    select_by_baselines,
 )
 
 _SUNG = "we could be heroes just for one day standing by the wall guns above our heads and we kissed"
@@ -1207,6 +1208,71 @@ async def test_an_AGREEING_lookup_keeps_its_authority_and_records_the_score(tmp_
     # A trustworthy winner means the baselines have done their job by grading it — publishing one for its
     # own sake would cost a whole extra alignment pass to produce words nobody shows.
     assert SOURCE_ASR not in bysrc
+
+
+#: Long enough that a THIRD of it still clears MIN_TOKENS_TO_COMPARE (12 distinct tokens) on both sides —
+#: `_SUNG` does not, so a third of it makes the baseline ABSTAIN and nothing is graded at all, which is
+#: not the shape #806 is about. Distinct lines, so coverage is not inflated by a repeated chorus.
+_LONG_SUNG = " ".join(
+    [
+        "we could be heroes just for one day standing by the wall",
+        "guns above our heads and we kissed as though nothing could fall",
+        "though nothing will keep us together we can beat them for ever",
+        "and shame was on the other side oh we can be heroes",
+    ]
+)
+
+
+@pytest.mark.asyncio
+async def test_the_published_candidate_carries_COVERAGE_beside_the_ranking_score_806(tmp_path):
+    """#806 — the artifact must publish the axis the wrong-song judgement is DECIDED on, not only the
+    axis that ranked the candidates.
+
+    #800 moved that judgement from the ranking score onto baseline coverage inside the worker, but the
+    artifact kept carrying only `agreement` (= `winner_score`), and `lyricsRank` thresholds the field it
+    finds there. So on the repo's own NORMAL case — a correct authored lookup graded against a baseline
+    that heard part of the song, because YouTube's ASR suppresses sung vocals — the worker declines to
+    demote (`winner_suspect` False, `textConfidence` still high) while the TV independently convicts the
+    same text as ANOTHER SONG and prefers the machine transcript over the correct words.
+
+    The two axes are therefore asserted to STRADDLE the threshold here: that is the whole defect, and it
+    is what no existing test reached (every TS tier test feeds values where the two axes agree).
+    """
+    third = " ".join(_LONG_SUNG.split()[: len(_LONG_SUNG.split()) // 3])
+    lrc = FakeSource(SOURCE_LRCLIB, _candidate(_LONG_SUNG))
+    asr = FakeSource(SOURCE_ASR, _baseline(third))
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    won = {c["textSource"]: c for c in done.artifacts["lyrics"]["candidates"]}[SOURCE_LRCLIB]
+
+    # The worker's own verdict: correct text, kept authoritative.
+    assert won["textConfidence"] == "high"
+    # RANKING axis, below the threshold by construction — a full text graded against a partial baseline.
+    assert won["agreement"] < SUSPECT_COVERAGE
+    # COVERAGE axis, the one that decided it, above the threshold. Absent on base: this is the key #806
+    # adds, so `won["coverage"]` raises KeyError there rather than merely comparing wrong.
+    assert won["coverage"] > SUSPECT_COVERAGE
+    # ...and it is the SAME number the judgement used, not a re-derivation.
+    sel = select_by_baselines([_candidate(_LONG_SUNG), _baseline(third)])
+    assert sel.winner_suspect is False
+    assert won["coverage"] == sel.winner_coverage
+    assert won["agreement"] == sel.winner_score
+
+
+@pytest.mark.asyncio
+async def test_a_genuinely_different_song_is_still_condemned_on_coverage_806(tmp_path):
+    """SENTINEL for the guard above — so publishing `coverage` cannot be mistaken for defanging the
+    wrong-song check. A real mismatch is low on BOTH axes, so it stays condemned and the baseline is
+    still published beside it."""
+    wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
+    lrc = FakeSource(SOURCE_LRCLIB, _candidate(wrong))
+    asr = FakeSource(SOURCE_ASR, _baseline(_LONG_SUNG))
+    proc = plans.align_runner(runner=fake_ytdlp_runner(), aligner=FakeAligner(), sources=[lrc, asr])
+    done = [e for e in await drain(proc, spec(tmp_path)) if isinstance(e, CompleteResult)][0]
+    bysrc = {c["textSource"]: c for c in done.artifacts["lyrics"]["candidates"]}
+    assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "low"  # demoted
+    assert bysrc[SOURCE_LRCLIB]["coverage"] < SUSPECT_COVERAGE  # ...on the coverage axis
+    assert SOURCE_ASR in bysrc  # what was actually heard is offered as a real alternative
 
 
 # ── is this LRC even for this recording? ──────────────────────────────────────────
@@ -2266,6 +2332,40 @@ def test_Selection_to_record_carries_every_rejected_label_and_score_669():
     ]
     # No choices → nothing to explain → None, not an empty shell.
     assert Selection().to_record() is None
+
+
+def test_Selection_to_record_persists_the_coverage_winnerSuspect_was_decided_on_806():
+    """#806 — the record must carry the number the arm actually fired on.
+
+    `winnerSuspect` is thresholded against baseline COVERAGE since #800, but the record persisted only
+    the RANKING score. On the normal partial-baseline case that makes `/metrics/<mediaId>` read as a
+    MISSED DETECTION on its own numbers — `winnerSuspect: false` beside a `winnerScore` under the
+    documented 0.40 — while the value that actually cleared the threshold is not persisted at all. This
+    record exists so a mis-pick is answerable after the cook log has rotated, which it cannot be while
+    the deciding number is dropped.
+    """
+    from src.lyrics.chain import Selection, VariantChoice
+
+    vc = VariantChoice(
+        text_source="lrclib",
+        considered=2,
+        chosen="lrclib-synced",
+        chosen_score=0.2906,
+        rejected=[("lrclib-plain", None)],
+        decided_by="agreement",
+        votes=1,
+    )
+    sel = Selection(choices=[vc], winner_score=0.2906, winner_coverage=0.9394, winner_suspect=False)
+    rec = sel.to_record()
+    assert rec is not None
+    # Both axes, labelled apart. The ranking score alone is what made the record self-contradictory:
+    # 0.2906 sits BELOW the threshold while the judgement (correctly) did not fire.
+    assert rec["winnerScore"] == sel.winner_score
+    assert rec["winnerCoverage"] == sel.winner_coverage
+    assert rec["winnerScore"] < SUSPECT_COVERAGE and rec["winnerCoverage"] > SUSPECT_COVERAGE
+    assert rec["winnerSuspect"] is False  # consistent with the coverage now shown beside it
+    # UNJUDGED stays distinguishable from a decision made on zero.
+    assert Selection(choices=[vc]).to_record()["winnerCoverage"] is None
 
 
 # ── #709: the keep_raw flag must reach the FetchCaptions steps through the whole wiring chain ──────────

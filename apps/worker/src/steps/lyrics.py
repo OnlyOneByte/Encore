@@ -519,6 +519,18 @@ class TimeTexts(Step):
                         if (sel is not None and text is sel.publish[0] and sel.winner_score is not None)
                         else {}
                     ),
+                    # BASELINE COVERAGE, on the same graded candidate. Both axes ship because the
+                    # consumers need DIFFERENT ones: `breaksTie` prefers on the ranking score above,
+                    # while `isLikelyWrongSong` thresholds coverage — and coverage is the only one of
+                    # the two that separates "a different song" from "the baseline heard only part of
+                    # this one" (see SUSPECT_COVERAGE in lyrics/chain.py). Publishing only the ranking
+                    # score left the TV thresholding a number that decided nothing, which convicted
+                    # correct lyrics graded against a partial baseline as ANOTHER SONG (#806).
+                    **(
+                        {"coverage": sel.winner_coverage}
+                        if (sel is not None and text is sel.publish[0] and sel.winner_coverage is not None)
+                        else {}
+                    ),
                 }
             )
         if not candidates:

@@ -454,10 +454,21 @@ export function attemptStages(a: Pick<JobAttempt, 'stages'>): { stage: string; m
 export interface SelectionRecord {
 	/** True when no candidate existed and a baseline is being shown as the answer. */
 	baselineFallback: boolean;
-	/** True when the winner scored below the wrong-song threshold, so it is probably a different song. */
+	/** True when the winner's BASELINE COVERAGE fell below the wrong-song threshold, so it is probably
+	 *  a different song. Decided on coverage, not on `winnerScore` — see `isLikelyWrongSong`. */
 	winnerSuspect: boolean;
-	/** Composite score of the published winner, or null when nothing could judge it. */
+	/** Composite RANKING score of the published winner, or null when nothing could judge it. This is
+	 *  what ordered the candidates; it is NOT the axis `winnerSuspect` was decided on. */
 	winnerScore: number | null;
+	/**
+	 * Baseline COVERAGE of the published winner — the number `winnerSuspect` was actually thresholded
+	 * against. Null when nothing could judge it.
+	 *
+	 * OPTIONAL because an attempt row written before #806 has no such key, and `attemptSelection`
+	 * parses defensively rather than rejecting an older record: a missing coverage must read as "this
+	 * worker did not record it", never as a decision made on nothing.
+	 */
+	winnerCoverage?: number | null;
 	/** One entry per source that offered a choice among versions, in the order considered. */
 	choices: VariantChoiceRecord[];
 }
