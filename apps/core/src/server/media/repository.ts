@@ -3,7 +3,7 @@
 // instead of re-cooking, and the saved-karaoke library can list every song whose instrumental is on
 // disk. The runtime `mediaById` Map stays the hot read path; this is the write-behind + boot-hydrate
 // store.
-import { eq, and, desc, isNotNull, type SQL } from 'drizzle-orm';
+import { eq, and, desc, isNotNull, inArray, type SQL } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { media, mediaTags } from '../db/schema';
 import type { Media, LyricsCandidate } from '@encore/shared';
@@ -138,8 +138,9 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
  * the Ready and Cooking groups at the same time. Hence: narrow in SQL, decide in the gate table, in
  * one place.
  *
- * `extra` narrows FURTHER in SQL (the artist filter's index push-down). It cannot relax the gate,
- * which is applied after it. Newest-first by id, the catalog-discovery order the library shows.
+ * `extra` narrows FURTHER in SQL — the artist filter's index push-down, and `readyTagged`'s id set. It
+ * cannot relax the gate, which is applied after it. Newest-first by id, the catalog-discovery order the
+ * library shows.
  */
 function readySongs(db: DB, extra?: SQL): Media[] {
 	const narrowing = and(eq(media.stemStatus, 'ready'), isNotNull(media.instrumentalRef));
@@ -162,6 +163,17 @@ function readySongs(db: DB, extra?: SQL): Media[] {
  * not finished simply has no pair, and walking that set also hands the pairs its newest-first order.
  * `tag` still narrows in SQL on the `media_tags` `byKindValue` index (`WHERE kind = ? AND value = ?`) —
  * the shape that index exists for — so the filter does not become a scan of every tag row.
+ *
+ * BOTH sides narrow in SQL. The tag rows name the only media ids that can produce a pair, so they are
+ * passed straight back down as `readySongs`'s `extra` and the media read is `WHERE id IN (…)` instead
+ * of the whole ready library plus a full gate pass thrown away by the join (#798: 900 rows read at
+ * 4.42 ms/call to return 1, versus 1 row at 0.39 ms). That is a push-down, not a second definition:
+ * `extra` narrows and cannot relax the gate, which still runs after it inside `readySongs`.
+ *
+ * The empty case needs no branch and must not get one. `inArray(media.id, [])` compiles to `false`
+ * (measured on drizzle-orm 0.45.2: zero bound params, zero rows), so nothing-tagged already answers
+ * `[]`. SKIPPING the `extra` when `byMedia` is empty is not a guard but a re-entry of the defect — it
+ * restores the whole-library read for exactly the query that needs no rows at all.
  */
 function readyTagged(db: DB, tag?: string): Array<{ song: Media; tag: string }> {
 	const rows = db
@@ -175,7 +187,9 @@ function readyTagged(db: DB, tag?: string): Array<{ song: Media; tag: string }> 
 		if (list) list.push(r.value);
 		else byMedia.set(r.mediaId, [r.value]);
 	}
-	return readySongs(db).flatMap((song) => (byMedia.get(song.id) ?? []).map((value) => ({ song, tag: value })));
+	return readySongs(db, inArray(media.id, [...byMedia.keys()])).flatMap((song) =>
+		(byMedia.get(song.id) ?? []).map((value) => ({ song, tag: value }))
+	);
 }
 
 export class MediaRepository {
