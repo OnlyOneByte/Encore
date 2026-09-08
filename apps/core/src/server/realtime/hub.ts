@@ -153,8 +153,11 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 					existing.status !== 'queued')
 			)
 				return `entry id already taken: ${op.entry.id}`;
-			// Shape of the CLIENT-MINTED fields that reach the queue verbatim (applyOp inserts op.entry
-			// unchanged; only rotationSeq is server-owned). Both feed NOT NULL columns in queue_entries
+			// Shape of the CLIENT-MINTED add entry as it reaches this guard. Since #345 (5acf86d) the server
+			// owns TWO of its fields, both rewritten at the applyQueueOp seam ~168 lines below: rotationSeq
+			// (assigned by applyOp) and addedAt (re-stamped from the room's monotonic nextAddedAt() — see
+			// hub.ts:handleQueueCommand). So the only client-minted field that reaches the queue verbatim is
+			// status. Both status and addedAt feed NOT NULL columns in queue_entries
 			// (added_at integer, status text). What the column ACTUALLY rejects at the write-behind flush is
 			// narrow and is NOT NULL alone — never an enum, never finiteness. Measured against a real
 			// migrated DB: a missing or null addedAt, or a null status, throws `NOT NULL constraint failed`
@@ -165,10 +168,15 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// throw NOTHING — status has no CHECK constraint (drizzle's `enum:` is compile-time only) so the
 			// bad string is stored verbatim, and Infinity is coerced past the NOT NULL check into the row —
 			// so those persist SILENTLY into the room's state and onto disk. So this guard is not
-			// defence-in-depth behind a strict column: it is the ONLY thing keeping an off-enum status
-			// or a garbage addedAt out of the queue. It is
-			// deliberately BROADER than the crash (it also rejects the silently-persisting cases), which is
-			// right. Same seam as the singerId crash above and the telemetry positionSec one. Reject here so
+			// defence-in-depth behind a strict column: for STATUS it is the ONLY thing keeping an off-enum
+			// value out of the queue (status is NOT re-stamped anywhere). For addedAt the story is different
+			// since #345: the seam ~168 lines below unconditionally REPLACES every client addedAt with the
+			// server's monotonic stamp, so a missing or Infinity addedAt can no longer crash the flush or
+			// persist to disk — the re-stamp closes both of those classes on its own. The finiteness reject
+			// here is therefore a SHAPE reject on addedAt (fail the frame early rather than silently rewrite a
+			// garbage value), not the last line of defence it once was. The guard is still
+			// deliberately BROADER than the crash (it also rejects the silently-persisting status case), which
+			// is right. Same seam as the singerId crash above and the telemetry positionSec one. Reject here so
 			// nothing bad — whether it would crash the flush or slip past it — is ever applied or persisted.
 			//
 			// #324: enum-MEMBERSHIP is too broad for a CLIENT-MINTED status. 'playing' and 'done' are both
