@@ -360,7 +360,7 @@ async def test_a_step_publishing_ctx_out_facts_without_declaring_it_is_caught(tm
     """`facts` is watched with the same field granularity as `artifacts`. A step that resolves an
     engine/model/device onto `ctx.out.facts` without declaring `out` must be caught: `facts` is what
     the per-attempt audit page shows, and letting it slip is the exact undeclared-publisher defect
-    #75 was filed for. Companion to the `artifacts` case so all three wire-shaped fields are pinned.
+    #75 was filed for. Companion to the `artifacts` case; every wire-shaped `Outputs` field has one such pin.
     """
     monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
 
@@ -397,6 +397,32 @@ async def test_a_step_publishing_ctx_out_media_uri_without_declaring_it_is_caugh
             yield ProgressEvent(stage=self.stage, pct=100)
 
     plan = LinearPlan("publishes-media-uri", [PublishesMediaUri()])
+    with pytest.raises(AssertionError, match="wrote to ctx.out without declaring it"):
+        await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
+
+
+@pytest.mark.asyncio
+async def test_a_step_publishing_ctx_out_selection_without_declaring_it_is_caught(tmp_path, monkeypatch):
+    """`selection` is the fourth wire-shaped field (#669/#700): it crosses to the `job_attempts` audit
+    trail as the durable account of WHY a lyric variant won. It was added to `Outputs` after `_snapshot`
+    was written, and the guard's `out` snapshot listed `artifacts`, `facts`, `media_uri` explicitly, so
+    `selection` was outside the watch (#708) — an undeclared second writer could silently decide what
+    the per-attempt audit page reports about the variant pick, the same failure mode #75 and #197 hit
+    on the earlier fields. It must be caught like any other wire-shaped publish; the guard now derives
+    the watched set from the dataclass fields so this cannot recur when a fifth field lands.
+    """
+    monkeypatch.setattr(runner_mod, "STRICT_WRITES", True)
+
+    class PublishesSelection(Step):
+        name = "publishes-selection"
+        stage = Stage.ALIGNING
+        writes = frozenset({"audio.path"})  # declares audio, publishes to out.selection
+
+        async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+            ctx.out.selection = {"winner": "lrclib"}
+            yield ProgressEvent(stage=self.stage, pct=100)
+
+    plan = LinearPlan("publishes-selection", [PublishesSelection()])
     with pytest.raises(AssertionError, match="wrote to ctx.out without declaring it"):
         await drain(PlanRunner(runner=noop_runner, plans=lambda j, e: plan), job(tmp_path))
 
