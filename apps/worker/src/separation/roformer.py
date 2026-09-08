@@ -42,8 +42,9 @@ from ..retry_policy import BoundaryError
 #: registry holds exactly ten models (see ROFORMER_REGISTRY_SLUGS) and the ep_317 checkpoint is not
 #: among them, so this token cannot currently be pointed at the approved model through this package.
 #: Deliberately NOT silently repointed to some other slug: swapping the cooked model without a
-#: listening test is the failure this comment exists to prevent. The engine-package decision (adopt
-#: python-audio-separator) is recorded in docs/DECISIONS.md.
+#: listening test is the failure this comment exists to prevent. The engine-package decision
+#: (adopt python-audio-separator ALONGSIDE bs-roformer-infer — both engines, issue #483 owner ruling
+#: Q1(b)) is recorded in docs/DECISIONS.md.
 #:
 #: The former `mel-roformer-inst-v2` token is GONE. It mapped to
 #: `roformer-model-bs-roformer-fno-instrumental-by-pcunwa`, which is absent from the registry, and
