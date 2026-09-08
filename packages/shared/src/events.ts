@@ -7,7 +7,15 @@ import type { LyricsCandidate } from './lyrics';
 import type { SongProfile } from './song-profile';
 import type { EffectiveSettings, TvBackgroundStyle } from './settings';
 
-export const ROOM_TOPIC = 'room:main'; // single room for MVP; Bun.serve pub/sub topic
+// The Bun.serve pub/sub TOPIC a room's realtime events ride (#657). Room isolation: every event for
+// a room is published to — and every one of that room's sockets subscribes to — THIS topic and no
+// other, so a broadcast in room A can never reach room B's clients. The topic is derived from the
+// room's internal id (`rooms.id`), which #654 mints and #655/#656 already scope playback/queue/roster
+// by, so two rooms deterministically get two distinct topics. Namespaced under `room:` so a future
+// non-room topic on the same server cannot collide with a room whose id happened to match.
+export function roomTopic(roomId: string): string {
+	return `room:${roomId}`;
+}
 
 export type MediaStatus =
 	| 'queued'

@@ -4,7 +4,6 @@
 // lives in this one process. Prod entry (replaces the adapter's build/index.js): bun run server.ts
 
 import {
-	ROOM_TOPIC,
 	graceMsOf,
 	type ClientEvent,
 	type ServerEvent,
@@ -19,6 +18,7 @@ import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish, buildHubDeps } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
 import { can } from './src/server/auth/capabilities';
+import { isForeignRoom, subscribeTopicFor, broadcastTopicFor } from './src/server/realtime/room-scope';
 import { presentTracks, type LocalTrack } from './src/server/media/local';
 import { safeMediaPath } from './src/server/media/local-files';
 import { existsSync } from 'node:fs';
@@ -41,7 +41,10 @@ const state = app.state;
 // Live worker WS sockets keyed by workerId — the dial-home registry's transport half (the registry
 // itself holds liveness/slots). In-memory, process-lifetime, never persisted (§10).
 // `singerId` is resolved at upgrade from the session cookie; absent for the TV and a not-yet-joined phone.
-type SocketData = { role: string; workerId?: string; singerId?: string };
+// `roomId` is the party this socket is SCOPED to (#657), resolved from the session token at upgrade —
+// the isolation key. `singerId` is the same singer's id (presence/auth). A worker, a TV before it is
+// bound, and a not-yet-joined phone carry neither and are foreign to every room's mutable state.
+type SocketData = { role: string; workerId?: string; singerId?: string; roomId?: string };
 type WorkerSocket = import('bun').ServerWebSocket<SocketData>;
 const workerSockets = new Map<string, WorkerSocket>();
 // server.ts owns the transport: the WorkerHub calls app.toWorker(id, cmd) → look up the socket.
@@ -163,8 +166,10 @@ function refreshMembership(): void {
 	const same = next.here.join() === membership.here.join() && next.away.join() === membership.away.join();
 	membership = { here: next.here, away: next.away };
 	if (!same) {
+		// #657: the presence roster is a per-room broadcast like any other — publish it to the served
+		// room's topic so another party never sees this room's roster.
 		server.publish(
-			ROOM_TOPIC,
+			broadcastTopicFor(app.activeRoomId),
 			JSON.stringify({ type: 'singer:presence', online: next.here, away: next.away } satisfies ServerEvent)
 		);
 	}
@@ -195,12 +200,21 @@ const server = Bun.serve<SocketData>({
 			// the browser sends on the WS handshake (same-origin, so it is there). Without this the
 			// socket is anonymous and presence is impossible. A TV or a not-yet-joined phone simply
 			// has no singerId and is tracked as a spectator.
-			const singerId = app.singers.bySessionToken(readSessionToken(req.headers.get('cookie')))?.id;
-			if (server.upgrade(req, { data: { role, singerId } })) return undefined as unknown as Response;
+			// #657: resolve the WHOLE singer, not just the id — its `roomId` (NOT NULL since #656) is the
+			// scope this socket is bound to. The session token is the scope token: it maps to exactly one
+			// room, so a socket cannot present a token for room A and then act on room B.
+			const me = app.singers.bySessionToken(readSessionToken(req.headers.get('cookie')));
+			if (server.upgrade(req, { data: { role, singerId: me?.id, roomId: me?.roomId } }))
+				return undefined as unknown as Response;
 			return new Response('ws upgrade failed', { status: 400 });
 		}
 		if (url.pathname === '/health') {
-			return Response.json({ ok: true, runtime: `bun ${Bun.version}`, room: ROOM_TOPIC, rev: state.rev });
+			return Response.json({
+				ok: true,
+				runtime: `bun ${Bun.version}`,
+				room: broadcastTopicFor(app.activeRoomId),
+				rev: state.rev
+			});
 		}
 		// Dev harness — two iframes + live queue JSON to eyeball cross-client sync.
 		if (url.pathname === '/harness') return new Response(harnessHtml(), { headers: { 'content-type': 'text/html' } });
@@ -217,11 +231,16 @@ const server = Bun.serve<SocketData>({
 		open(ws) {
 			// Workers are NOT room subscribers — they speak the dial-home protocol, not queue events.
 			if (ws.data.role === 'worker') return;
-			ws.subscribe(ROOM_TOPIC);
+			// #657: subscribe to the socket's OWN room topic, not one shared topic. A socket only ever
+			// receives events for the party it is scoped to, so a broadcast in room A never reaches room B.
+			// A foreign socket lands on its OWN room's topic, never the served room's. An unscoped
+			// spectator (a TV, a not-yet-joined phone) defaults to the served room, so it still sees the
+			// one room this box is serving — isolation is between rooms, not against a viewer of this one.
+			ws.subscribe(subscribeTopicFor(ws.data.roomId, app.activeRoomId));
 			// The app's broadcast sink is routed through Bun's native pub/sub ONCE at boot (see the
-			// setPublish(broadcast) call below Bun.serve) — not per open. Every socket subscribes to the
-			// same ROOM_TOPIC, so one publish reaches them all; reassigning the sink on every connect wrote
-			// the identical closure N times for no effect.
+			// setPublish(broadcast) call below Bun.serve) — not per open. Every socket subscribes to its
+			// own room's topic (#657), so one publish to that topic reaches exactly that room's clients;
+			// reassigning the sink on every connect wrote the identical closure N times for no effect.
 			// Announce only on the 0→1 transition so a second tab doesn't spam an unchanged roster.
 			if (ws.data.singerId && app.presence.connect(ws.data.singerId)) refreshMembership();
 		},
@@ -278,6 +297,17 @@ const server = Bun.serve<SocketData>({
 				hasOp: (id) => seenOps.has(id)
 			});
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
+
+			// #657 ROOM ISOLATION. Every frame below reads or mutates the room this core is serving
+			// (app.activeRoomId): `hello` replies with this room's whole state, and queue/player/telemetry
+			// mutate it. Isolation is BETWEEN rooms: a socket bound to a DIFFERENT party (its session token
+			// scoped it to another room) is refused the whole family, so a room-B phone can neither resync
+			// room A's queue nor pause room A's song. A spectator with NO room — a TV watching the one room
+			// this box serves, a phone that has not joined — is NOT foreign and passes this gate; its
+			// MUTATIONS are still refused by the per-command `join the room first` / `player:control` checks
+			// below, exactly as before #657, while its `hello` read of the served room stays allowed.
+			// #658 binds a TV to a specific room later.
+			if (isForeignRoom(ws.data.roomId, app.activeRoomId)) return; // drop the frame, reply nothing
 
 			switch (evt.type) {
 				case 'hello': {
@@ -341,7 +371,10 @@ const server = Bun.serve<SocketData>({
 // pub/sub. Defined ONCE here (server is in scope) and wired into the shared app a single time at
 // boot, rather than reassigned inside websocket.open on every connect. handleQueueCommand and the
 // cook-cancel path reuse this same reference through `deps`.
-const broadcast = (e: ServerEvent) => server.publish(ROOM_TOPIC, JSON.stringify(e));
+// #657: publish a served-room event ONLY to that room's topic, which only that room's sockets
+// subscribed to (see websocket.open) — the delivery half of isolation. The single AuthoritativeState
+// this core holds is bound to app.activeRoomId (#655/#656), so that is the room every broadcast names.
+const broadcast = (e: ServerEvent) => server.publish(broadcastTopicFor(app.activeRoomId), JSON.stringify(e));
 // Route the shared app's broadcasts (e.g. singer:joined from the /api/join route) through pub/sub.
 setPublish(broadcast);
 
