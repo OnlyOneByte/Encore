@@ -38,6 +38,9 @@ const entry = (id: string, singerId: string, addedAt: number, mediaId = 'm1'): Q
 	addedAt
 });
 
+// #656: singers are room-scoped; this wiring test exercises a single room, FK not enforced.
+const ROOM = 'test-room';
+
 /** A real DB + the same wiring app.ts builds, so this exercises the actual seam, not a mock of it. */
 function harness(order: QueueOrderId = 'fair') {
 	const db = migratedDb();
@@ -47,7 +50,7 @@ function harness(order: QueueOrderId = 'fair') {
 
 	const state = new AuthoritativeState(undefined, 250, () => ({
 		order: settings.getRoom().queueOrder,
-		lastSungAt: singHistoryFrom(singers.listPublic())
+		lastSungAt: singHistoryFrom(singers.listPublic(ROOM))
 	}));
 	const published: ServerEvent[] = [];
 	const deps: HubDeps = {
@@ -57,7 +60,7 @@ function harness(order: QueueOrderId = 'fair') {
 			['m1', media('m1')],
 			['m2', media('m2')]
 		]),
-		listSingers: () => singers.listPublic(),
+		listSingers: () => singers.listPublic(ROOM),
 		getSettings: () => settings.getEffective(),
 		onSang: (singerId) => singers.markSang(singerId, ++clock)
 	};
@@ -141,8 +144,8 @@ test('starting a song stamps the singer, and their remaining picks drop behind e
 	const h = harness('least-recently-sung');
 	// Real singer rows, because the stamp is written BY ID: entries carrying a literal singerId would
 	// update no row and this test would pass on fair rotation alone.
-	const ana = h.singers.create('Ana', '#f00', 1);
-	const ben = h.singers.create('Ben', '#0f0', 2);
+	const ana = h.singers.create('Ana', '#f00', 1, ROOM);
+	const ben = h.singers.create('Ben', '#0f0', 2, ROOM);
 	// Two songs EACH — with one song for Ben the two orderings agree, and the test proves nothing.
 	h.state.applyQueueOp({ op: 'add', entry: entry('a1', ana.id, 1) });
 	h.state.applyQueueOp({ op: 'add', entry: entry('a2', ana.id, 2) });
@@ -162,8 +165,8 @@ test('starting a song stamps the singer, and their remaining picks drop behind e
 
 test('a singer who has not sung is ordered ahead of one who has', () => {
 	const h = harness('least-recently-sung');
-	const ana = h.singers.create('Ana', '#f00', 1);
-	const ben = h.singers.create('Ben', '#0f0', 2);
+	const ana = h.singers.create('Ana', '#f00', 1, ROOM);
+	const ben = h.singers.create('Ben', '#0f0', 2, ROOM);
 	h.singers.markSang(ana.id, 500); // Ana sang earlier tonight; Ben has not sung at all
 
 	h.state.applyQueueOp({ op: 'add', entry: entry('ana1', ana.id, 1) });
@@ -174,7 +177,7 @@ test('a singer who has not sung is ordered ahead of one who has', () => {
 
 test('orderingOf carries both halves — the algorithm and the sing history', () => {
 	const h = harness('least-recently-sung');
-	const ana = h.singers.create('Ana', '#f00', 1);
+	const ana = h.singers.create('Ana', '#f00', 1, ROOM);
 	h.singers.markSang(ana.id, 777);
 	const ordering = orderingOf(h.deps);
 	expect(ordering.order).toBe('least-recently-sung');
@@ -186,16 +189,26 @@ test('the stamp records only THAT a singer sang, never what', () => {
 	// signal lives on the singer as a bare timestamp. If a media/entry id ever appears here, the
 	// rotation has started keeping a per-singer song history nobody agreed to.
 	const h = harness('least-recently-sung');
-	const ana = h.singers.create('Ana', '#f00', 1);
+	const ana = h.singers.create('Ana', '#f00', 1, ROOM);
 	h.singers.markSang(ana.id, 777);
 	const row = h.singers.byId(ana.id)!;
 	expect(row.lastSungAt).toBe(777);
-	expect(Object.keys(row).sort()).toEqual(['color', 'displayName', 'id', 'joinedAt', 'lastSungAt', 'sessionToken']);
+	// roomId (#656) is a scoping key, not song history — its presence does not cross the privacy line
+	// the test guards (no media/entry id on the singer row).
+	expect(Object.keys(row).sort()).toEqual([
+		'color',
+		'displayName',
+		'id',
+		'joinedAt',
+		'lastSungAt',
+		'roomId',
+		'sessionToken'
+	]);
 });
 
 test('a fresh singer has no stamp — absent, not zero', () => {
 	const h = harness();
-	const ana = h.singers.create('Ana', '#f00', 1);
+	const ana = h.singers.create('Ana', '#f00', 1, ROOM);
 	expect(h.singers.byId(ana.id)!.lastSungAt ?? null).toBeNull();
-	expect(singHistoryFrom(h.singers.listPublic()).has(ana.id)).toBe(false);
+	expect(singHistoryFrom(h.singers.listPublic(ROOM)).has(ana.id)).toBe(false);
 });

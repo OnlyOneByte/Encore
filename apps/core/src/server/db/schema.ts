@@ -30,12 +30,24 @@ export const singers = sqliteTable(
 		// NULL means "has not sung", which is deliberately distinct from 0: an unsung singer sorts ahead
 		// of everyone who has sung. Stored here rather than in `plays` because that table deliberately
 		// carries no singer id (see its comment): this records THAT someone sang and when, never what.
-		lastSungAt: integer('last_sung_at')
+		lastSungAt: integer('last_sung_at'),
+		// The party this singer belongs to (#656). Rotation, ordering and presence used to be
+		// deployment-wide because a singer carried no room — two rooms shared one roster. `room_id`
+		// scopes the roster to a room, mirroring how #655 keyed playback: the repository reads/writes
+		// only THIS room's singers, so `least-recently-sung` ranks the right party and the presence
+		// sweep never mixes two rooms. Minted from the room the /api/join landed in (the ROOM_COOKIE
+		// #654 set). NOT NULL: every singer belongs to exactly one room; the migration re-keys existing
+		// rows onto the active room. Which room a socket is scoped to at the wire is #657.
+		roomId: text('room_id').notNull()
 	},
 	// Finding #3: session_token is the auth lookup key (bySessionToken on every authed request).
 	// UNIQUE index = O(log n) lookup instead of a table scan AND prevents a (vanishingly unlikely
 	// but catastrophic) token collision from mapping two singers to one session.
-	(t) => ({ sessionTokenIdx: uniqueIndex('singers_session_token_idx').on(t.sessionToken) })
+	(t) => ({
+		sessionTokenIdx: uniqueIndex('singers_session_token_idx').on(t.sessionToken),
+		// The room roster read (#656): listing a room's singers is the ordering/presence hot path.
+		roomIdx: index('singers_room_idx').on(t.roomId)
+	})
 );
 
 export const media = sqliteTable('media', {
@@ -140,24 +152,40 @@ export const mediaTags = sqliteTable(
 	})
 );
 
-export const queueEntries = sqliteTable('queue_entries', {
-	id: text('id').primaryKey(), // client-minted ULID
-	mediaId: text('media_id').notNull(),
-	singerId: text('singer_id').notNull(),
-	status: text('status', {
-		enum: ['queued', 'playing', 'done']
+export const queueEntries = sqliteTable(
+	'queue_entries',
+	{
+		id: text('id').primaryKey(), // client-minted ULID
+		mediaId: text('media_id').notNull(),
+		singerId: text('singer_id').notNull(),
+		status: text('status', {
+			enum: ['queued', 'playing', 'done']
+		})
+			.notNull()
+			.default('queued'),
+		rotationSeq: integer('rotation_seq').notNull(),
+		addedAt: integer('added_at').notNull(),
+		// A HOST's durable global reorder pin: the index in the whole queued list this entry was dragged to
+		// (QueueEntry.pinnedSeq). NULLABLE on purpose — NULL means "follows the room's ordering policy",
+		// which is the resting state every entry starts in, so the column appearing changes no existing
+		// row's behaviour. The ordering layer honours it AFTER a policy runs so it survives rotation_seq
+		// re-derivation; a pin is set by the `move-global` op and cleared only by `unpin` (never auto-cleared).
+		pinnedSeq: integer('pinned_seq'),
+		// The party this queue entry belongs to (#656). `queue_entries` carried no room, so the queue
+		// and its round-robin rotation were deployment-wide — a song queued in one room appeared in
+		// every room and shared one rotation. `room_id` keys the queue by room, mirroring #655's
+		// per-room playback: the write-behind sink deletes and re-inserts only THIS room's rows, and
+		// boot-hydrate reads only THIS room's queue, so two rooms hold independent queues + rotations.
+		// NOT NULL: every entry lives in exactly one room; the migration re-keys existing rows onto the
+		// active room. The single authoritative store persists to the active room today (#655's seam);
+		// threading a room per socket at the wire is #657.
+		roomId: text('room_id').notNull()
+	},
+	(t) => ({
+		// The per-room queue read (#656): hydrate and the write-behind replace both scope by room.
+		roomIdx: index('queue_entries_room_idx').on(t.roomId)
 	})
-		.notNull()
-		.default('queued'),
-	rotationSeq: integer('rotation_seq').notNull(),
-	addedAt: integer('added_at').notNull(),
-	// A HOST's durable global reorder pin: the index in the whole queued list this entry was dragged to
-	// (QueueEntry.pinnedSeq). NULLABLE on purpose — NULL means "follows the room's ordering policy",
-	// which is the resting state every entry starts in, so the column appearing changes no existing
-	// row's behaviour. The ordering layer honours it AFTER a policy runs so it survives rotation_seq
-	// re-derivation; a pin is set by the `move-global` op and cleared only by `unpin` (never auto-cleared).
-	pinnedSeq: integer('pinned_seq')
-});
+);
 
 // Authoritative playback, KEYED BY ROOM (#655). Was a single-row table whose `id` defaulted to the
 // literal 'singleton' — one now-playing / position / key-shift / background per DEPLOYMENT, so two

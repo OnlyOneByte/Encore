@@ -179,7 +179,7 @@ export function getApp(): EncoreApp {
 	// this gives the QR a code to advertise and the join path a room to land an unqualified join in.
 	const activeRoomId = rooms.ensureActive(Date.now()).id;
 	const state = new AuthoritativeState(sqlitePersistence(db, activeRoomId), 250, () =>
-		orderingOf({ getSettings: () => settings.getEffective(), listSingers: () => singers.listPublic() })
+		orderingOf({ getSettings: () => settings.getEffective(), listSingers: () => singers.listPublic(activeRoomId) })
 	);
 	const { entries, playback } = hydrate(db, activeRoomId);
 	state.hydrate(entries, playback);
@@ -545,7 +545,7 @@ export function getApp(): EncoreApp {
 			app.publish(
 				syncEvent(state, {
 					mediaById,
-					listSingers: () => app.singers.listPublic(),
+					listSingers: () => app.singers.listPublic(app.activeRoomId),
 					listOnline: () => app.presence.online(),
 					getSettings: () => app.settings.getEffective()
 				})
@@ -557,7 +557,7 @@ export function getApp(): EncoreApp {
 				state,
 				publish: (e) => app.publish(e),
 				mediaById,
-				listSingers: () => app.singers.listPublic(),
+				listSingers: () => app.singers.listPublic(app.activeRoomId),
 				getSettings: () => app.settings.getEffective(),
 				onNowPlaying: (e) => app.plays.onNowPlaying(e),
 				onSang: (singerId) => app.singers.markSang(singerId, app.now())
@@ -635,7 +635,7 @@ export function buildHubDeps(app: EncoreApp, perFrame: HubDepsPerFrame): HubDeps
 		state: app.state,
 		publish: perFrame.broadcast,
 		mediaById: app.mediaById,
-		listSingers: () => app.singers.listPublic(),
+		listSingers: () => app.singers.listPublic(app.activeRoomId),
 		listOnline: perFrame.listOnline,
 		listAway: perFrame.listAway,
 		getSettings: () => app.settings.getEffective(),

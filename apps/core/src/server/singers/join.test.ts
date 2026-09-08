@@ -165,7 +165,7 @@ test('a rehydrated singer that never reconnected does not block a join', () => {
 	// definition, so their name must not be held hostage by the append-only table. Simulated by writing
 	// the row through the repository directly, bypassing the join-time presence seed doJoin adds.
 	const { app } = appHarness();
-	const ghost = app.singers.create('Ghost', SINGER_COLORS[0], app.now());
+	const ghost = app.singers.create('Ghost', SINGER_COLORS[0], app.now(), app.activeRoomId);
 	expect(app.presence.stateOf(ghost.id, app.now(), 999_999, false)).toBe('gone');
 	expect(() => doJoin(app, { displayName: 'Ghost', color: SINGER_COLORS[1] })).not.toThrow();
 });
@@ -248,5 +248,5 @@ test('a bad code fails BEFORE a singer is created, leaving no orphaned row or cl
 	// The name is free and no singer exists — a retry with a good (bare) join succeeds as the same name.
 	const { singer } = doJoin(app, { displayName: 'Kai', color: SINGER_COLORS[0] });
 	expect(singer.displayName).toBe('Kai');
-	expect(app.singers.listPublic()).toHaveLength(1);
+	expect(app.singers.listPublic(app.activeRoomId)).toHaveLength(1);
 });

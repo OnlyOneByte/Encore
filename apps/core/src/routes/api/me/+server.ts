@@ -36,8 +36,9 @@ export const PATCH: RequestHandler = async ({ request, cookies }) => {
 	const color = typeof body.color === 'string' ? normalizeSingerColor(body.color) : me.color;
 
 	try {
-		// `me.id` is excepted, or changing your own capitalisation would collide with yourself.
-		assertNameFree(app, displayName, me.id);
+		// Scope to `me.roomId` (#656) — uniqueness is per-party — and except `me.id`, or changing your
+		// own capitalisation would collide with yourself.
+		assertNameFree(app, me.roomId, displayName, me.id);
 	} catch (e) {
 		const status = e instanceof NameTakenError ? 409 : 400;
 		return json({ error: (e as Error).message }, { status });
