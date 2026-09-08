@@ -111,6 +111,11 @@
 		A: null,
 		B: null
 	});
+	// The QUEUE-ENTRY id playing in each slot, parallel to `slotMedia` (#701). A song queued twice
+	// snapshots to the byte-identical media in both turns, so the media id and resolved src cannot tell
+	// the second turn from the first; the entry id can, and the player re-arms its transport on it. Set
+	// only in `syncSlots`, the same explicit-transition seam that re-snapshots the media.
+	let slotEntryId = $state<{ A: string | null; B: string | null }>({ A: null, B: null });
 
 	// The TV's realtime channel is the shared, tested WsClient (heartbeat, liveness watchdog,
 	// capped-backoff reconnect, page-lifecycle rebinding). The TV runs unattended for hours on a
@@ -145,8 +150,19 @@
 		// correct seam: the snapshot is re-taken when the song genuinely changes and at no other time.
 		const curMedia = snapshot(mediaOf(current));
 		const nextMedia = snapshot(mediaOf(upNext));
+		// The entry id travels with its snapshot into the SAME slot, so the player's per-entry transport
+		// re-arm (#701) sees a distinct id for the second turn of a same-song queue even though the media
+		// snapshot is byte-identical.
+		const curEntryId = current?.id ?? null;
+		const nextEntryId = upNext?.id ?? null;
 		// visible slot shows current; hidden slot pre-warms upNext
-		slotMedia = a.visible === 'A' ? { A: curMedia, B: nextMedia } : { A: nextMedia, B: curMedia };
+		if (a.visible === 'A') {
+			slotMedia = { A: curMedia, B: nextMedia };
+			slotEntryId = { A: curEntryId, B: nextEntryId };
+		} else {
+			slotMedia = { A: nextMedia, B: curMedia };
+			slotEntryId = { A: nextEntryId, B: curEntryId };
+		}
 	}
 
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
@@ -569,6 +585,7 @@
 	<!-- two stacked player slots -->
 	<TvPlayer
 		media={slotMedia.A}
+		entryId={slotEntryId.A}
 		visible={visible === 'A' && !isAttract}
 		active={visible === 'A'}
 		playing={isPlaying}
@@ -600,6 +617,7 @@
 	/>
 	<TvPlayer
 		media={slotMedia.B}
+		entryId={slotEntryId.B}
 		visible={visible === 'B' && !isAttract}
 		active={visible === 'B'}
 		playing={isPlaying}
