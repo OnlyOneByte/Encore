@@ -8,7 +8,8 @@ import {
 	hasGuidingTrack,
 	type PlayerCommand,
 	type QueueEntry,
-	type PlaybackState
+	type PlaybackState,
+	type ServerEvent
 } from '@encore/shared';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
 import { mediaFor, orderingOf, type HubDeps } from './hub';
@@ -50,15 +51,34 @@ function publishQueue(deps: HubDeps): void {
 	});
 }
 
-/** Emit nowplaying:changed with the current entry + the soonest-ready upNext (drives TV preload). */
-export function emitNowPlaying(deps: HubDeps): void {
+/**
+ * BUILD the nowplaying:changed frame — the single source of truth for "what is playing, and what is
+ * up next". Both the current entry and `upNext` are PROJECTIONS of authoritative state, so anything
+ * that has to state them (a broadcast, a per-socket resync) must derive them here rather than
+ * re-deriving them at its own seam.
+ *
+ * This exists because the `hello` resync in apps/core/server.ts used to hand-build a byte-identical
+ * copy of this payload (issue #803). `deps.publish` is typed `(event: ServerEvent) => void`, but the
+ * resync path writes through `ws.send(JSON.stringify(...))`, which accepts anything — so the compiler
+ * named only ONE of the two sites when the variant changed, and a reconnecting TV/phone could be
+ * served a stale projection while every live client got the new one. Returning the typed variant
+ * makes both sites compiler-checked from one definition. Mirrors `syncEvent` (hub.ts), the queue:sync
+ * builder the same `hello` arm already calls two lines above.
+ */
+export function nowPlayingEvent(deps: HubDeps): Extract<ServerEvent, { type: 'nowplaying:changed' }> {
 	const cur = deps.state.entries.find((e) => e.id === deps.state.playback.currentEntryId) ?? null;
 	const upNext = upNextAfter(cur?.id ?? null, deps.state.entries, deps.mediaById, orderingOf(deps));
+	return { type: 'nowplaying:changed', current: cur, upNext };
+}
+
+/** Emit nowplaying:changed with the current entry + the soonest-ready upNext (drives TV preload). */
+export function emitNowPlaying(deps: HubDeps): void {
+	const evt = nowPlayingEvent(deps);
 	// Play tracking hooks in HERE because every playback transition funnels through this one emit.
 	// The tracker itself dedupes, since this is also re-emitted without a change (a cook finishing
 	// re-broadcasts nowplaying so the TV preloads the newly-ready song).
-	deps.onNowPlaying?.(cur ? { id: cur.id, mediaId: cur.mediaId } : null);
-	deps.publish({ type: 'nowplaying:changed', current: cur, upNext });
+	deps.onNowPlaying?.(evt.current ? { id: evt.current.id, mediaId: evt.current.mediaId } : null);
+	deps.publish(evt);
 }
 
 /**
@@ -101,6 +121,13 @@ export function reconcileOnReady(deps: HubDeps): void {
 	// pairing a terminal status op with a setPlayback; the client-driven queue path (hub.ts) has no
 	// such pairing, so a remove/status of the PLAYING entry leaves currentEntryId dangling. Enforce it
 	// here, at the recovery entry point, by treating a dangling id exactly like a null one.
+	//
+	// #803: this is the SOLE production statement of the #128 recovery predicate. server.ts's
+	// queue:command arm used to re-derive it to decide whether to call this function at all, so
+	// widening the predicate at one copy and not the other was silent (the suite could not see the
+	// two disagree) while the correct two-site edit red two guards. Callers now call unconditionally
+	// and this decides — every branch below falls through to the emitNowPlaying at the tail, which is
+	// exactly what a "current resolves, nothing to recover" caller needs.
 	const currentResolves = state.entries.some((e) => e.id === state.playback.currentEntryId);
 	if (!currentResolves) {
 		const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
