@@ -39,6 +39,7 @@ def align_plan(
     transcriber: Any = None,
     aligner: Any = None,
     ytdlp_bin: str = "yt-dlp",
+    keep_raw: bool = False,
 ) -> LinearPlan:
     """The align action: eight steps that were one 257-line method.
 
@@ -50,8 +51,8 @@ def align_plan(
         "align",
         [
             AcquireAudio(ytdlp_bin=ytdlp_bin),
-            FetchCaptions(AUTHORED, ytdlp_bin=ytdlp_bin),
-            FetchCaptions(MACHINE, ytdlp_bin=ytdlp_bin),
+            FetchCaptions(AUTHORED, ytdlp_bin=ytdlp_bin, keep_raw=keep_raw),
+            FetchCaptions(MACHINE, ytdlp_bin=ytdlp_bin, keep_raw=keep_raw),
             AcquireTexts(sources=sources, lyrics_client=lyrics_client, transcriber=transcriber),
             PresplitTexts(),
             GradeAndSelect(),
@@ -163,6 +164,7 @@ def align_runner(
     sync_mode: Any = None,
     device: str | None = None,
     ytdlp_bin: str = "yt-dlp",
+    keep_raw: bool = False,
 ) -> Any:
     """A PlanRunner wired to run the align plan with these seams and these worker defaults.
 
@@ -189,6 +191,7 @@ def align_runner(
         transcriber=transcriber,
         aligner=aligner,
         ytdlp_bin=ytdlp_bin,
+        keep_raw=keep_raw,
     )
     return PlanRunner(
         runner=runner,

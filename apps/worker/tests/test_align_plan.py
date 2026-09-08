@@ -2200,3 +2200,76 @@ def test_Selection_to_record_carries_every_rejected_label_and_score_669():
     ]
     # No choices → nothing to explain → None, not an empty shell.
     assert Selection().to_record() is None
+
+
+# ── #709: the keep_raw flag must reach the FetchCaptions steps through the whole wiring chain ──────────
+# F2 threads a resolved `keep_raw` bool config → dial_home → align_runner → align_plan → FetchCaptions.
+# Injecting it straight into the step ctor (as test_captions does) proves the STEP honours it but leaves
+# every wiring hunk unpinned — the built-and-not-wired hazard. These pin each seam of the chain: revert
+# any threading hunk and a FetchCaptions step stops carrying the flag, reddening exactly one of these.
+from src.config import WorkerConfig  # noqa: E402
+from src.steps.lyrics import FetchCaptions as _FetchCaptions  # noqa: E402
+
+
+def _fetch_caption_steps(plan):
+    return [s for s in plan.steps() if isinstance(s, _FetchCaptions)]
+
+
+def test_align_plan_threads_keep_raw_into_both_fetch_caption_steps():
+    """align_plan(keep_raw=...) sets it on BOTH tiers; default is off. Pins the align_plan body hunk."""
+    on = _fetch_caption_steps(plans.align_plan(keep_raw=True))
+    assert len(on) == 2, "align plan must have an authored and a machine FetchCaptions step"
+    assert all(s.keep_raw is True for s in on), "keep_raw=True must reach both FetchCaptions steps"
+
+    off = _fetch_caption_steps(plans.align_plan())
+    assert off and all(s.keep_raw is False for s in off), "default (no keep_raw) must be OFF on both"
+
+
+def _plan_from_runner(runner):
+    # The production align_runner injects plans=lambda job, engines: plan, so _plan_for returns that
+    # captured plan for any job. A minimal align job is enough to pull the steps out.
+    job = JobSpec(
+        job_id="j-kr",
+        media_id="m-kr",
+        job_type="align",
+        source_uri="https://youtube.com/watch?v=kr",
+        params={},
+        media_dir="/tmp/kr",
+    )
+    return runner._plan_for(job, runner._resolve_engines(job.params))
+
+
+def test_align_runner_threads_keep_raw_into_the_plan():
+    """align_runner(keep_raw=...) reaches the FetchCaptions steps. Pins the align_runner threading hunk."""
+    on = _fetch_caption_steps(
+        _plan_from_runner(plans.align_runner(runner=fake_ytdlp_runner(), keep_raw=True))
+    )
+    assert on and all(s.keep_raw is True for s in on)
+
+    off = _fetch_caption_steps(_plan_from_runner(plans.align_runner(runner=fake_ytdlp_runner())))
+    assert off and all(s.keep_raw is False for s in off)
+
+
+def test_build_processor_wires_config_keep_raw_captions_to_the_align_steps():
+    """_build_processor hands cfg.keep_raw_captions to align_runner. Pins the dial_home wiring hunk.
+
+    A config with keep_raw_captions=True must produce align FetchCaptions steps carrying keep_raw=True,
+    and False must produce False — the operator's ENCORE_KEEP_RAW_CAPTIONS setting has to survive the
+    whole build, not just the step ctor.
+    """
+    import dataclasses
+
+    from src.dial_home import _build_processor
+
+    for flag in (True, False):
+        base = WorkerConfig.from_env({"ENCORE_KEEP_RAW_CAPTIONS": "1" if flag else "0"})
+        assert base.keep_raw_captions is flag
+        # align is only registered when the worker advertises the capability; force it (capabilities are
+        # proven separately and unresolved in from_env). This is a wiring test, not a capability test.
+        cfg = dataclasses.replace(base, capabilities=("align",))
+        proc = _build_processor(cfg)
+        align = proc._by_type["align"]
+        steps = _fetch_caption_steps(_plan_from_runner(align))
+        assert steps and all(s.keep_raw is flag for s in steps), (
+            f"config keep_raw_captions={flag} must reach the steps"
+        )
