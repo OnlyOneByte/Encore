@@ -187,3 +187,45 @@ def test_degenerate_lrc_all_same_timestamp_is_inconclusive():
 def test_line_starts_reads_both_doc_shapes():
     assert line_starts(multiline([1.0, 2.0])) == [1.0, 2.0]
     assert line_starts({"segments": [{"start": 3.0}, {"start": 4.0}]}) == [3.0, 4.0]
+
+
+# ── overshoot: lyrics timed PAST the end of the audio (#667) ──────────────────────────────────────
+#
+# The clamp at validate.py:161 makes `coverage` one-sided: under-coverage shows, over-coverage reads as
+# a flawless 1.0. These pin the OTHER side as its own number, `overshoot_sec`, leaving coverage's clamp
+# and its thin/MIN_COVERAGE meaning untouched. MECHANISM: coverage stays clamped to 1.0 while
+# overshoot_sec carries the seconds past audio-end — proven on the real +105.8s Total Eclipse shape.
+
+
+def test_lyrics_timed_past_audio_end_report_overshoot_while_coverage_stays_clamped():
+    """The real Bonnie Tyler case in miniature: last word ends well past duration.
+
+    On base this test does not exist because TimingReport has no `overshoot_sec` field — the signal is
+    computed one character before it could be used (min(1.0, …)) and thrown away. Coverage MUST stay
+    clamped at 1.0 (the two are different questions); overshoot MUST be the positive seconds past the end.
+    """
+    d = doc([("last", 260.0, 373.8)])  # duration 268s, last_end 373.8s -> +105.8s, coverage clamps to 1.0
+    rep = validate_timing(d, duration_sec=268.0)
+    assert rep.coverage == 1.0, "coverage MUST remain clamped — merging overshoot into it breaks its meaning"
+    assert rep.overshoot_sec > 0, "lyrics running past audio-end MUST surface as positive overshoot"
+    assert abs(rep.overshoot_sec - 105.8) < 1e-6
+
+
+def test_lyrics_within_the_audio_have_zero_overshoot():
+    d = doc([("in", 1.0, 1.3), ("bounds", 1.3, 1.9)])
+    rep = validate_timing(d, duration_sec=200.0)
+    assert rep.overshoot_sec == 0.0
+
+
+def test_overshoot_is_zero_when_duration_is_unknown():
+    """Same fail-open policy as coverage: without a length we cannot judge, so it is 0.0, not a guess."""
+    d = doc([("late", 400.0, 500.0)])
+    assert validate_timing(d, duration_sec=None).overshoot_sec == 0.0
+    assert validate_timing(d, duration_sec=0).overshoot_sec == 0.0
+
+
+def test_overshoot_is_named_in_the_summary():
+    d = doc([("late", 260.0, 373.8)])
+    rep = validate_timing(d, duration_sec=268.0)
+    assert "OVERSHOOT" in rep.summary()
+    assert "+106s" in rep.summary()
