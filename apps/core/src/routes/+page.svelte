@@ -556,10 +556,17 @@
 	let libraryTags = $state<Record<string, string[]>>({});
 	// Browse: facets describe the WHOLE ready library (never the current filter), so picking an
 	// artist cannot collapse the rail to that one artist and strand you with no way back.
-	let facets = $state<{ artists: { artist: string; count: number }[] }>({
-		artists: []
+	let facets = $state<{
+		artists: { artist: string; count: number }[];
+		tags: { tag: string; count: number }[];
+	}>({
+		artists: [],
+		tags: []
 	});
-	let browseFilter = $state<{ artist?: string } | null>(null);
+	// One active browse facet at a time — an artist OR a tag (#690), never both. A tag chip narrows
+	// the library to songs carrying that descriptive tag ("duet", "80s"), reusing the media_tags
+	// byKindValue index server-side (?tag=) rather than filtering the payload client-side.
+	let browseFilter = $state<{ artist?: string; tag?: string } | null>(null);
 	/*
 	 * Browse starts collapsed so the readiness spine is the only filter on screen at rest. It opens
 	 * itself when a facet is active, because a filter narrowing the list while its control is hidden
@@ -570,17 +577,24 @@
 		if (browseFilter) browseOpen = true;
 	});
 
-	function setBrowse(kind: 'artist' | null, value: string) {
-		// tapping the active chip again clears it — a filter you cannot undo is a trap
-		const same = kind === 'artist' ? browseFilter?.artist === value : false;
-		browseFilter = kind === null || same ? null : { artist: value };
+	function setBrowse(kind: 'artist' | 'tag' | null, value: string) {
+		// tapping the active chip again clears it — a filter you cannot undo is a trap. Artist and tag
+		// are mutually exclusive: selecting one replaces the other (#690), matching the single ?artist=
+		// OR ?tag= the endpoint accepts.
+		const same =
+			kind === 'artist' ? browseFilter?.artist === value : kind === 'tag' ? browseFilter?.tag === value : false;
+		browseFilter = kind === null || same ? null : kind === 'artist' ? { artist: value } : { tag: value };
 		if (navigator.vibrate) navigator.vibrate(8);
 		loadLibrary();
 	}
 
 	async function loadLibrary() {
 		try {
-			const qs = browseFilter?.artist ? `?artist=${encodeURIComponent(browseFilter.artist)}` : '';
+			const qs = browseFilter?.artist
+				? `?artist=${encodeURIComponent(browseFilter.artist)}`
+				: browseFilter?.tag
+					? `?tag=${encodeURIComponent(browseFilter.tag)}`
+					: '';
 			const j = await (await fetch(`/api/library${qs}`)).json();
 			if (j.facets) facets = j.facets;
 			library = j.library ?? [];
@@ -891,12 +905,12 @@
 		  so the control row changed shape while you were using it. One collapsed row keeps the readiness
 		  spine primary and the control set stable.
 		-->
-		{#if !searchActive && facets.artists.length > 1}
+		{#if !searchActive && (facets.artists.length > 1 || facets.tags.length > 1)}
 			<div class="browse">
 				<button class="browse-toggle" aria-expanded={browseOpen} onclick={() => (browseOpen = !browseOpen)}>
 					<Icon name={browseOpen ? 'chevron-down' : 'chevron-right'} />
 					Browse
-					{#if browseFilter}<span class="browse-active">{browseFilter.artist}</span>{/if}
+					{#if browseFilter}<span class="browse-active">{browseFilter.artist ?? browseFilter.tag}</span>{/if}
 				</button>
 				<!-- Clearing stays reachable while collapsed: a filter you cannot see is a filter you
 				     cannot undo, and an empty-looking list with no visible cause is the result. -->
@@ -919,6 +933,24 @@
 						{/each}
 					</div>
 				{/if}
+				<!-- Browse by descriptive tag (#690): the same rail idiom as the artist rail, reading
+				     facets.tags (a tagFacets() count over the WHOLE ready library) and narrowing via
+				     ?tag= on the server. Capitalised for display; the value sent is the stored lower-case
+				     tag, so the round-trip matches what byTag indexes on. -->
+				{#if facets.tags.length > 1}
+					<div class="facets" role="group" aria-label="Browse by tag">
+						<span class="facet-label">Tag</span>
+						{#each facets.tags as f (f.tag)}
+							<button
+								class="chip tag"
+								class:active={browseFilter?.tag === f.tag}
+								onclick={() => setBrowse('tag', f.tag)}
+							>
+								{f.tag}&nbsp;<span class="facet-count">{f.count}</span>
+							</button>
+						{/each}
+					</div>
+				{/if}
 			{/if}
 		{/if}
 		{#if readyList.length}
@@ -926,7 +958,7 @@
 			{#if showGroupHeads || facetHead}
 				<h2 class="grouphead ok">
 					{facetHead
-						? `${browseFilter?.artist} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
+						? `${browseFilter?.artist ?? browseFilter?.tag} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
 						: 'Ready to sing · no wait'}
 				</h2>
 			{/if}
