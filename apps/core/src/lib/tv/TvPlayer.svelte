@@ -247,16 +247,26 @@
 		//     `postMessage`), so the element stays audible on the new song;
 		//     on an un-built graph it is a documented no-op. Teardown happens only on slot unmount (the
 		//     destroy effect below).
-		//   • GUIDE lives as long as the SONG — its <audio> sits behind {#if guideMountable && guideRef}
-		//     (mount-worthiness: a playable song with a guide ref, INDEPENDENT of the level — #586). It is
-		//     no longer torn down by a slider drag through level 0; the only thing that unmounts it is a
-		//     song change (or a non-playable/ref-less song), which is exactly this per-song reset. So on the
-		//     path that reaches here the previous graph's captured element is still gone — the guide is
-		//     remounted for the NEW song — and detaching the stale graph + dropping the reference remains
-		//     correct: the shift-wiring effect rebuilds against the fresh `vocals` element.
+		//   • GUIDE lives as long as its <audio> element is MOUNTED — which is exactly as long as
+		//     `guideMountable` holds ({#if guideMountable && guideRef} below; mount-worthiness is a
+		//     playable song WITH a guide ref, INDEPENDENT of the level — #586). The earlier model here
+		//     said the guide is "remounted for the NEW song" and so detached its graph on every song
+		//     change. That is FALSE for the common case (issue #694): a SKIP changes the song IN PLACE in
+		//     the visible slot (gapless.ts onNowPlaying keeps the same slot and only its src changes), and
+		//     `guideMountable` is true for both the skipped and the next song, so Svelte keeps the SAME
+		//     <audio> element. Its MediaElementSource is a PERMANENT capture, so detach() there left the
+		//     still-captured element feeding a released, disconnected context = SILENT guide until a
+		//     keyShift built a fresh graph on it (#694, the same shape as #477 on the master). So the guide
+		//     gets the master's treatment on a song change: reset IN PLACE with setShift(0) (transparent on
+		//     a routed graph, a no-op on an un-built one) and re-apply the room level with
+		//     setGain(effectiveGuide) — the re-apply is NOT optional, a graph defaults its gain to 1
+		//     (pitch-shift.ts) which is the #434 defect. We do NOT detach and do NOT drop the reference
+		//     here, so we keep the pre-roll lock-on #578/#586 protect. detach() moves to where the element
+		//     GENUINELY dies: the destroy effect below, PLUS a dedicated effect that releases the graph
+		//     when `guideMountable` goes false (a ref-less or non-playable next song unmounts the <audio>).
 		void masterGraph?.setShift(0);
-		guideGraph?.detach();
-		guideGraph = undefined;
+		void guideGraph?.setShift(0);
+		guideGraph?.setGain(effectiveGuide);
 		masterReady = false;
 		guideSettled = false;
 		prewarmedFired = false;
@@ -282,6 +292,26 @@
 			masterGraph = undefined;
 			guideGraph = undefined;
 		};
+	});
+
+	// The guide's element genuinely dies when `guideMountable` goes false — a ref-less or
+	// non-playable next song unmounts the <audio> ({#if guideMountable && guideRef} below). THAT is
+	// where the guide graph's permanent MediaElementSource is actually gone and its context must be
+	// released, so detach() lives here rather than on every song change (see the per-song reset above:
+	// a song-to-song skip keeps `guideMountable` true and the SAME element, so detaching there was the
+	// #694 silence bug). Guarded on the mount-worthiness VALUE, not the media signal, so identity
+	// churn on the same mounted state is a no-op; runs once more on destroy via cleanup order, which
+	// the destroy effect above already handles idempotently (detach() is best-effort).
+	let guideDetachedForUnmount = false;
+	$effect(() => {
+		if (guideMountable) {
+			guideDetachedForUnmount = false;
+			return;
+		}
+		if (guideDetachedForUnmount) return;
+		guideDetachedForUnmount = true;
+		guideGraph?.detach();
+		guideGraph = undefined;
 	});
 
 	// Buffer settled. Report it as a pre-warm signal on ANY slot — the controller ignores it unless the

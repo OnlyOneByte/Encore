@@ -142,7 +142,6 @@ test('#477 guard: the per-song reset resets the master graph via setShift(0)', (
 test('#477 guard (mutation trap): the per-song reset must NOT detach the master graph', () => {
 	const body = stripComments(resetEffectBody(TV));
 	expect(body).not.toMatch(/masterGraph[?][.]detach[(]/);
-	expect(body).toMatch(/guideGraph[?][.]detach[(]/);
 });
 
 test('#477 guard (not-vacuous): the destroy effect still detaches BOTH graphs on slot unmount', () => {
@@ -152,4 +151,77 @@ test('#477 guard (not-vacuous): the destroy effect still detaches BOTH graphs on
 	const destroyRegion = stripped.slice(destroyIdx, destroyIdx + 300);
 	expect(destroyRegion).toMatch(/masterGraph[?][.]detach[(]/);
 	expect(destroyRegion).toMatch(/guideGraph[?][.]detach[(]/);
+});
+
+// -- #694: the guide element PERSISTS across a song-to-song skip, so the per-song reset must reset
+//    it IN PLACE (setShift(0) + re-apply setGain) rather than detach() it. detach() on the still-
+//    mounted, permanently-captured element is the silence-until-a-tone-press bug the master already
+//    escaped in #477. Same two halves as above: A behavioural (the primitive survives), B source-scan
+//    (the reset is wired for the guide, and detach() moved to the genuine-unmount effect).
+
+test('#694: a routed GUIDE graph SURVIVES setShift(0) -- stays routed (song-change reset)', async () => {
+	const graph = new PitchShiftGraph(fakeEl());
+	await graph.setShift(1);
+	expect(graph.isRouted).toBe(true);
+	await graph.setShift(0);
+	expect(graph.isRouted).toBe(true);
+	expect(graph.isDegraded).toBe(false);
+});
+
+test('#694 control: detach() on the still-mounted guide element closes the context -- the silence path', async () => {
+	const graph = new PitchShiftGraph(fakeEl());
+	await graph.setShift(1);
+	expect(graph.isRouted).toBe(true);
+	graph.detach();
+	// A tone press builds a NEW graph on the same element and re-routes -- the "until tone buttons"
+	// workaround. The detached graph itself never comes back; that is why detach() song-to-song was wrong.
+	await graph.setShift(2);
+	expect(graph.isRouted).toBe(true);
+	expect(graph.isDegraded).toBe(false);
+});
+
+test('#694 guard: the per-song reset resets the GUIDE graph via setShift(0) and re-applies the level', () => {
+	const body = stripComments(resetEffectBody(TV));
+	expect(body).toMatch(/guideGraph[?][.]setShift[(]\s*0\s*[)]/);
+	// The re-apply is load-bearing (#434: a fresh/reset graph defaults its gain to 1). It must use the
+	// resolved room level, not a literal.
+	expect(body).toMatch(/guideGraph[?][.]setGain[(]\s*effectiveGuide\s*[)]/);
+});
+
+test('#694 guard (mutation trap): the per-song reset must NOT detach the guide graph', () => {
+	const body = stripComments(resetEffectBody(TV));
+	expect(body).not.toMatch(/guideGraph[?][.]detach[(]/);
+});
+
+// The detach() the reset used to do still has to happen where the guide element GENUINELY unmounts
+// (guideMountable goes false: a ref-less or non-playable next song). Prove that release path exists as
+// its own effect keyed on guideMountable -- otherwise the fix would leak a context bound to a removed
+// element. Located by the effect's own comment anchor so it is distinct from the destroy effect.
+function guideUnmountEffectBody(s: string): string {
+	// Anchor on a CODE token (survives comment stripping): the effect declares its own
+	// `guideDetachedForUnmount` latch immediately above it.
+	const marker = s.indexOf('guideDetachedForUnmount');
+	expect(marker).toBeGreaterThanOrEqual(0);
+	const from = s.indexOf('$effect', marker);
+	expect(from).toBeGreaterThanOrEqual(0);
+	let i = s.indexOf('{', from);
+	const start = i;
+	let depth = 0;
+	for (; i < s.length; i++) {
+		if (s[i] === '{') depth++;
+		else if (s[i] === '}') {
+			depth--;
+			if (depth === 0) break;
+		}
+	}
+	return s.slice(start, i + 1);
+}
+
+test('#694 guard (not-vacuous): a dedicated effect releases the guide graph when guideMountable goes false', () => {
+	const stripped = stripComments(TV);
+	const body = guideUnmountEffectBody(stripped);
+	// It gates on guideMountable and detaches only on the false transition.
+	expect(body).toMatch(/guideMountable/);
+	expect(body).toMatch(/guideGraph[?][.]detach[(]/);
+	expect(body).toMatch(/guideGraph = undefined/);
 });
