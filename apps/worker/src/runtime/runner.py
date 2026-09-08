@@ -20,6 +20,7 @@ dependency rule from the spec's §3, and it is what makes every domain testable 
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import os
 import time
 from collections.abc import AsyncIterator, Callable
@@ -280,15 +281,27 @@ def _snapshot(ctx: Ctx, step: Any) -> dict[str, Any]:
 
     `ctx.out` is watched at FIELD granularity, not as a whole: `notes` is appended by every step via
     `ctx.note()` and `timings_sec` is filled by the runner itself, so neither is a declared write and
-    both must stay exempt. The wire-shaped fields a step CAN publish — `artifacts`, `facts`,
-    `media_uri` — are the ones the guard has to cover, so a step that writes one without declaring
-    `out` is caught the same way an undeclared `ctx.audio` write is.
+    both must stay exempt. EVERY OTHER `Outputs` field is wire-shaped — it becomes part of the
+    CompleteResult — so the guard has to cover it, and a step that writes one without declaring `out`
+    is caught the same way an undeclared `ctx.audio` write is. The set is derived from the dataclass
+    fields minus the exempt pair rather than hardcoded, so a wire-shaped field added later (as
+    `media_uri`, then `selection`, each were — #75, #197, #708 are the same defect landing three times
+    on a hardcoded list) is watched automatically instead of silently slipping through.
     """
     watched = {"audio", "lyrics", "stems", "engines"}
     declared_roots = {w.split(".", 1)[0] for w in step.writes}
     snap = {root: repr(getattr(ctx, root)) for root in watched - declared_roots}
     if "out" not in declared_roots:
-        snap["out"] = repr((ctx.out.artifacts, ctx.out.facts, ctx.out.media_uri))
+        # Mechanical exemptions only: the runner fills `timings_sec` after the step returns, and every
+        # step appends `notes` via `ctx.note()` — both are legitimate undeclared writes. Anything else
+        # `Outputs` grows is wire-shaped and watched with no code change.
+        exempt = {"notes", "timings_sec"}
+        watched_out = tuple(
+            getattr(ctx.out, f.name)
+            for f in dataclasses.fields(ctx.out)
+            if f.name not in exempt
+        )
+        snap["out"] = repr(watched_out)
     return snap
 
 
