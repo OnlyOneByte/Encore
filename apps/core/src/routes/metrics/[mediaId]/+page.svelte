@@ -9,7 +9,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { onMount } from 'svelte';
-	import Icon from '$lib/ui/Icon.svelte';
+	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { dur, stepLabel, stageLabel, localStamp, rate } from '$lib/metrics-format';
 	import { formatClock } from '$lib/clock';
 	import type { SelectionRecord } from '@encore/shared';
@@ -117,14 +117,16 @@
 <svelte:head><title>Encore — audit {mediaId}</title></svelte:head>
 
 <section class="audit">
-	<p class="back"><a href="/metrics"><Icon name="arrow-left" size="0.9em" /> metrics</a></p>
+	<PageHeader
+		title={audit?.media?.titleCanonical ?? audit?.media?.title ?? mediaId ?? ''}
+		back={{ href: '/metrics', label: 'Back to metrics' }}
+	/>
 
 	{#if error}
 		<p class="note" role="alert">{error}</p>
 	{:else if !audit}
 		<p class="note" role="status">Loading…</p>
 	{:else}
-		<h1>{audit.media?.titleCanonical ?? audit.media?.title ?? mediaId}</h1>
 		{#if audit.media?.artistCanonical}<p class="sub">{audit.media.artistCanonical}</p>{/if}
 		<p class="note">
 			{#if audit.media}{formatClock(audit.media.durationSec)} long ·
@@ -245,24 +247,6 @@
 	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
 	.card {
 		padding: 1rem 1.1rem;
-	}
-	.back a {
-		color: var(--ink-dim);
-		font-size: 0.82rem;
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3rem;
-		/* 44px, matching the settings back link and the rest of the app — this was a 32px box and the
-		   only route back off the audit page (issue #140). Kept as a 44px literal, not var(--tap):
-		   touch-targets.test.ts pins .back by the literal string. */
-		min-width: 44px;
-		min-height: 44px;
-	}
-	h1 {
-		font-size: 1.25rem;
-		margin: 0;
-		/* A title-less song falls back to its raw media id; an unbroken id would push past 320px. */
-		overflow-wrap: anywhere;
 	}
 	/* The cook owns the attempts beneath it, so its header takes full ink and a dividing rule. At
 	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */

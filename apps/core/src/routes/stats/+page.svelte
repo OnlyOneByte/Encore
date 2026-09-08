@@ -9,6 +9,7 @@
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
 	import Trend from '$lib/charts/Trend.svelte';
+	import PageHeader from '$lib/ui/PageHeader.svelte';
 
 	interface Stats {
 		library: { ready: number; catalog: number };
@@ -50,7 +51,7 @@
 <svelte:head><title>Encore — stats</title></svelte:head>
 
 <section class="stats">
-	<h1>Party stats</h1>
+	<PageHeader title="Party stats" back={{ href: '/settings', label: 'Back to settings' }} />
 
 	{#if failed}
 		<p class="note" role="alert">Could not load stats.</p>
@@ -144,10 +145,6 @@
 		   overflow the page. min-width:0 lets the card shrink to its track, which bounds the chart
 		   so its own overflow-x scrolls the days instead of stretching the layout. */
 		min-width: 0;
-	}
-	h1 {
-		font-size: 1.4rem;
-		margin: 0;
 	}
 	/*
 	 * Section headers are the wayfinding on a page that is one long scroll, so they take full-strength
