@@ -4,6 +4,8 @@
 //   • authoritative+line OUTRANKS asr+word (correct words beat a bouncing ball over invented ones)
 //   • a low-confidence CAPTION is demoted to ASR standing despite arriving as "captions"
 import { test, expect } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
 	type LyricsCandidate,
 	type LyricsTextSource,
@@ -15,10 +17,13 @@ import {
 	pickBestLyrics,
 	mergeLyricsCandidate,
 	lyricsTokens,
+	agreement,
 	agreementScore,
 	isLikelyWrongSong,
-	SUSPECT_AGREEMENT
+	SUSPECT_COVERAGE,
+	SEQUENCE_WEIGHT
 } from './lyrics';
+import { AGREEMENT_PARITY_CORPUS } from './lyrics-agreement-corpus';
 
 let _t = 0;
 const cand = (
@@ -161,21 +166,55 @@ test('tokenizer NFKC-folds so Unicode form-variants tokenise alike (#540, mirror
 	expect(lyricsTokens("Hello, World! don't stop")).toEqual(['hello', 'world', "don't", 'stop']);
 });
 
-test('the same lyrics score ~1; a different song scores low', () => {
+test('the same lyrics score high; a different song scores low', () => {
 	// each side has >= MIN_TOKENS_TO_COMPARE (12) UNIQUE tokens after dedup
 	const a = 'we could be heroes just for one day standing by the wall guns above our heads and we kissed';
 	const b = 'we could be heroes just for one day standing near the wall guns above their heads and we kissed';
-	expect(agreementScore(a, b)!).toBeGreaterThanOrEqual(0.75); // near-identical, a couple of word swaps
+	expect(agreementScore(a, b)!).toBeGreaterThanOrEqual(0.7); // near-identical, a couple of word swaps
 	const other = 'never gonna give you up let down run around desert cry say goodbye tell lie hurt';
 	const score = agreementScore(a, other);
 	expect(score).not.toBeNull();
-	expect(score!).toBeLessThan(SUSPECT_AGREEMENT);
+	expect(score!).toBeLessThan(0.25); // shares almost nothing, ranks near the floor
 });
 
-test('agreement is order-insensitive (a repeated or reordered chorus is not disagreement)', () => {
-	const verse = 'hello darkness my old friend i have come to talk with you again because a vision';
-	const shuffled = verse.split(' ').reverse().join(' ');
-	expect(agreementScore(verse, shuffled)!).toBe(1); // same token SET
+test('agreement is count- and position-aware since #542 (repeats and reorders cost the score)', () => {
+	// The two cases symmetric set Jaccard scored a perfect 1.0. The words are all present either way,
+	// so coverage stays 1 — it IS the same song and the wrong-song judgement must not fire — while the
+	// ranking score drops on both.
+	const twelve = 'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima';
+
+	const twice = agreement(`${twelve} ${twelve}`, twelve)!;
+	expect(twice.coverage).toBe(1); // every audible word is in the candidate
+	expect(twice.fidelity).toBe(0.5); // but half the candidate is not audible
+	expect(twice.rankScore).toBeLessThan(0.5); // saying the chorus twice costs rank
+
+	const reversed = twelve.split(' ').reverse().join(' ');
+	const backwards = agreement(twelve, reversed)!;
+	expect(backwards.coverage).toBe(1);
+	expect(backwards.sequence).toBe(0); // not one adjacent pair survives a full reversal
+	expect(backwards.rankScore).toBe(0.5); // position is worth exactly SEQUENCE_WEIGHT of the score
+	expect(SEQUENCE_WEIGHT).toBe(0.5);
+});
+
+test('agreement matches the shared cross-language corpus (parity with the Python mirror)', () => {
+	// The Python suite (apps/worker/tests/test_lyrics_agreement_542.py) asserts this SAME table, so a
+	// drift on either implementation reds one of the two suites. Expectations are integer [num, den]
+	// pairs worked out by hand — not by running this code — so a bug cannot agree with itself.
+	for (const c of AGREEMENT_PARITY_CORPUS) {
+		const got = agreement(c.candidate, c.baseline);
+		if (c.coverage === null || c.fidelity === null || c.sequence === null) {
+			// A not-comparable case is all-null by construction; assert that, then that agreement abstains.
+			expect(c.coverage).toBeNull();
+			expect(c.fidelity).toBeNull();
+			expect(c.sequence).toBeNull();
+			expect(got).toBeNull(); // below MIN_TOKENS_TO_COMPARE: "cannot tell", not "differ"
+			continue;
+		}
+		expect(got).not.toBeNull();
+		expect(got!.coverage).toBe(c.coverage[0] / c.coverage[1]);
+		expect(got!.fidelity).toBe(c.fidelity[0] / c.fidelity[1]);
+		expect(got!.sequence).toBe(c.sequence[0] / c.sequence[1]);
+	}
 });
 
 test('too-short text returns null, NOT 0 — an instrumental must not fail a correct lookup', () => {
@@ -184,7 +223,8 @@ test('too-short text returns null, NOT 0 — an instrumental must not fail a cor
 	expect(isLikelyWrongSong(undefined)).toBe(false);
 });
 
-test('isLikelyWrongSong fires only below the suspect threshold', () => {
+test('isLikelyWrongSong reads coverage and fires only below the suspect threshold', () => {
+	expect(SUSPECT_COVERAGE).toBe(0.4);
 	expect(isLikelyWrongSong(0.1)).toBe(true);
 	expect(isLikelyWrongSong(0.9)).toBe(false);
 });
@@ -194,4 +234,22 @@ test('hasUsableTiming is true for word/line, false for none', () => {
 	expect(hasUsableTiming(cand('lrclib', 'word'))).toBe(true);
 	expect(hasUsableTiming(cand('lrclib', 'line'))).toBe(true);
 	expect(hasUsableTiming(cand('lrclib', 'none'))).toBe(false);
+});
+
+// ── the retired threshold stays retired ───────────────────────────────────────
+// #542 replaced SUSPECT_AGREEMENT = 0.25 with SUSPECT_COVERAGE = 0.40 on a DIFFERENT axis, so the old
+// name was deleted rather than re-valued. Deleting a symbol nothing imports is invisible to a
+// behavioural test by construction — re-adding the constant reds nothing — so this is a source-scan
+// guard: it reads the real production module as TEXT and asserts the declaration is gone.
+//
+// The Python mirror asserts the same thing (tests/test_lyrics_agreement_542.py), but that suite is not
+// the one a change to lyrics.ts runs, so the guard has to exist on BOTH sides to actually bite here.
+//
+// Matched as a DECLARATION, not as a substring: the surviving constant's own doc comment names
+// SUSPECT_AGREEMENT on purpose, to tell a reader still carrying 0.25 in their head that the axis moved.
+// A bare substring scan would fire on that prose and make the guard unfalsifiable.
+test('lyrics.ts no longer declares the retired SUSPECT_AGREEMENT (#542)', () => {
+	const source = readFileSync(join(import.meta.dir, 'lyrics.ts'), 'utf-8');
+	expect(source).toMatch(/export const SUSPECT_COVERAGE\s*=/);
+	expect(source).not.toMatch(/export const SUSPECT_AGREEMENT\s*=/);
 });

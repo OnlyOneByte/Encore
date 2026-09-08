@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from collections import Counter
 from dataclasses import dataclass, field, replace
-from typing import Any
+from typing import Any, NamedTuple
 
 from ..vocabulary import ROLE_BASELINE, ROLE_CANDIDATE, ROLE_UNSPECIFIED, TextSource, Timing
 from .artifact import (
@@ -234,7 +235,10 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
 
 # ── ASR agreement: catching a confidently WRONG lookup ────────────────────────────
 #
-# Mirrors agreementScore / SUSPECT_AGREEMENT / MIN_TOKENS_TO_COMPARE in packages/shared/src/lyrics.ts.
+# Mirrors agreement / agreementScore / SUSPECT_COVERAGE / SEQUENCE_WEIGHT / MIN_TOKENS_TO_COMPARE in
+# packages/shared/src/lyrics.ts, and every number below is cross-checked against that authority by
+# tests/test_lyrics_presplit.py's source-scan guard plus the shared-corpus parity guard in
+# tests/test_lyrics_agreement_542.py.
 # Computed HERE, in the worker, because this is the only place both texts exist in memory at once — the
 # core holds refs, and reading two artifacts back off disk inside the realtime hub to compare them would
 # be I/O on the wrong side of the seam.
@@ -244,7 +248,45 @@ def acquire(sources: list[LyricsSource], req: LyricsRequest) -> list[LyricsText]
 # comparing the lookup against a transcript of what is actually being sung is the only signal we have.
 
 MIN_TOKENS_TO_COMPARE = 12
-SUSPECT_AGREEMENT = 0.25
+
+#: Below this BASELINE COVERAGE the winner is probably a different song entirely (#542).
+#:
+#: Replaces SUSPECT_AGREEMENT = 0.25, which was a threshold on symmetric set Jaccard. Both the metric
+#: and the axis changed, so the constant is renamed rather than re-valued: a same-named threshold on a
+#: different scale is a trap for anyone carrying the old number in their head.
+#:
+#: WHY COVERAGE AND NOT THE RANKING SCORE. Jaccard, multiset Jaccard and the ranking score below all
+#: mix the two directions of the comparison, so they cannot tell "the candidate is a different song"
+#: from "the baseline only heard part of the song" — and a partial baseline is the NORMAL case here,
+#: because YouTube's ASR suppresses sung vocals. Measured on the synthetic corpus in
+#: tests/test_lyrics_agreement_542.py: a CORRECT candidate against a baseline covering a third of the
+#: audio scores 0.292 on set Jaccard (accepted at 0.25 by a hair) and 0.186 on the ranking score
+#: (rejected) — while a DIFFERENT song scores 0.165 on that same ranking score. Those two bands are
+#: 0.02 apart, so no threshold on a mixed score can separate them. Coverage — how much of what IS
+#: audible the candidate carries — is immune to that size asymmetry and separates them by 0.17.
+#:
+#: THE BAND, measured (same corpus, so these numbers are reproducible by running that test file):
+#:   different song, ceiling      0.300  (incl. a deliberately function-word-heavy adversary)
+#:   correct candidate, floor     0.468  at a 50%-word-error baseline, i.e. already unusable
+#:                                0.476  worst of 20 seeds at 45% word error
+#:   correct candidate, partial   0.485  baseline covering only a third of the audio
+#: 0.40 sits in that gap with 0.10 of margin above the different-song ceiling and 0.07 below the worst
+#: usable correct floor. It tolerates a baseline mishearing ~60% of the words before calling a correct
+#: lookup a different song, which is the direction to err in: publishing an ASR guess over correct
+#: lyrics is the failure this whole tier exists to avoid.
+#:
+#: NOT A CORPUS CALIBRATION. The corpus is synthetic (original text, an explicit ASR-degradation model)
+#: because #668 — commit a real lyrics corpus from the prod snapshot — is still open. What it measures
+#: is the metric's own systematic behaviour, which is what choosing between two axes needs; it is not
+#: evidence about the real distribution of songs. Re-derive this number once #668 lands.
+SUSPECT_COVERAGE = 0.40
+
+#: How much of the ranking score is the POSITION-aware term (#542). Equal weight with the count-aware
+#: term, for the same reason `composite_score` weights baselines equally: any other split would be a
+#: coefficient nobody has measured. Only the ranking score uses this, and ranking is threshold-free —
+#: `select_by_baselines` takes an argmax — so the weight steers a comparison and cannot, on its own,
+#: accept or reject anything.
+SEQUENCE_WEIGHT = 0.5
 
 #: How far past the end of the audio a candidate's own timings may run before selection DEMOTES it
 #: (#667, owner ruling B). Expressed as a FRACTION of the song's duration, not raw seconds, because
@@ -276,20 +318,106 @@ def lyrics_tokens(text: str) -> list[str]:
     return [t for t in cleaned.split() if t]
 
 
-def agreement_score(a: str, b: str) -> float | None:
-    """0..1 Jaccard over token SETS, or None when not comparable.
+def _multiset_overlap(a: list[str], b: list[str]) -> int:
+    """How many tokens the two sequences share COUNTING MULTIPLICITY: Σ min(count_a, count_b).
 
-    Order-insensitive on purpose: a repeated chorus or a reordered bridge is not disagreement, whereas a
-    different song shares few words in any order. Returns None — not 0 — when either side is too short:
-    an instrumental transcribes to almost nothing, and scoring that as total disagreement would condemn
-    a perfectly correct lookup. "Cannot tell" and "these differ" must not be the same answer.
+    The count is what set Jaccard threw away. A candidate that repeats a chorus four times where the
+    audio has it twice agrees on the words and disagrees on how many of them there are, and "how many"
+    is half of what tells one version of a recording from another.
     """
-    set_a, set_b = set(lyrics_tokens(a)), set(lyrics_tokens(b))
-    if len(set_a) < MIN_TOKENS_TO_COMPARE or len(set_b) < MIN_TOKENS_TO_COMPARE:
+    counts_b = Counter(b)
+    return sum(min(n, counts_b.get(token, 0)) for token, n in Counter(a).items())
+
+
+def _adjacent_pairs(tokens: list[str]) -> list[tuple[str, str]]:
+    """Every neighbouring token pair, in order — the position-aware view of a token sequence.
+
+    Adjacent pairs, not whole-sequence alignment: an LCS or difflib ratio is O(n·m) on texts that run to
+    thousands of tokens and would be re-run for every candidate × baseline pair inside selection, and
+    difflib's own ratio is not reproducible in TypeScript (its autojunk heuristic silently drops tokens
+    appearing in >1% of a long sequence). Pairs are O(n), and they carry what this comparison actually
+    needs: a reordered bridge or a verse swapped between versions breaks the pairs at the seams, while a
+    text with the same words in a different arrangement shares far fewer pairs than words.
+    """
+    return list(zip(tokens, tokens[1:], strict=False))
+
+
+class Agreement(NamedTuple):
+    """One candidate compared against one baseline, kept as the THREE numbers instead of an average.
+
+    The directional split is the point (#542). Symmetric Jaccard averages the two directions into one
+    number and destroys the fingerprint of "right song, WRONG version": near-complete coverage of the
+    audible words while a large part of the candidate is not audible at all. Measured on the real
+    reported mis-pick: coverage 0.857, fidelity 0.485 — one number cannot say that.
+
+    coverage  |C ∩ B| / |B|, multiset — how much of what IS audible the candidate carries.
+              The absolute judgement (`SUSPECT_COVERAGE`) reads THIS, because it is the only one of the
+              three that a partial baseline does not depress: a baseline that heard a third of the song
+              still has all of its own words inside a correct candidate.
+    fidelity  |C ∩ B| / |C|, multiset — how much of the candidate is actually audible. Low fidelity
+              with high coverage IS the wrong-version fingerprint. It steers the COMPARISON only.
+    sequence  the same overlap over ADJACENT PAIRS, weaker direction — word ORDER, not just counts.
+    """
+
+    coverage: float
+    fidelity: float
+    sequence: float
+
+    @property
+    def rank_score(self) -> float:
+        """The single 0..1 number `select_by_baselines` ranks candidates by. NOT a threshold axis.
+
+        The weaker of the two count directions, blended with the position-aware term: a candidate is
+        only as good as its worse direction, so padding it with words nobody sings cannot buy rank. No
+        threshold is applied to this anywhere — argmax needs a difference, not a level — which is why
+        it can afford to be the harsh, discriminating number while `coverage` stays the lenient,
+        judgeable one.
+        """
+        counts = min(self.coverage, self.fidelity)
+        return (1.0 - SEQUENCE_WEIGHT) * counts + SEQUENCE_WEIGHT * self.sequence
+
+
+def agreement(candidate: str, baseline: str) -> Agreement | None:
+    """Compare a CANDIDATE against a BASELINE, or None when the comparison says nothing.
+
+    ARGUMENT ORDER IS LOAD-BEARING and it was not before: `coverage` and `fidelity` are the two
+    directions of the same overlap, so swapping the arguments swaps them. Candidate first, baseline
+    second — the same order as `composite_score(candidate, baselines)`.
+
+    Returns None — not 0 — when either side has fewer than MIN_TOKENS_TO_COMPARE distinct tokens: an
+    instrumental transcribes to almost nothing, and scoring that as total disagreement would condemn a
+    perfectly correct lookup. "Cannot tell" and "these differ" must not be the same answer. The gate
+    stays on DISTINCT tokens, unchanged from the set-based metric, and needs no count-aware companion:
+    12 distinct tokens already implies at least 12 tokens and at least 11 adjacent pairs.
+    """
+    tokens_c, tokens_b = lyrics_tokens(candidate), lyrics_tokens(baseline)
+    if len(set(tokens_c)) < MIN_TOKENS_TO_COMPARE or len(set(tokens_b)) < MIN_TOKENS_TO_COMPARE:
         return None
-    shared = len(set_a & set_b)
-    union = len(set_a | set_b)
-    return None if union == 0 else shared / union
+    shared = _multiset_overlap(tokens_c, tokens_b)
+    pairs_c, pairs_b = _adjacent_pairs(tokens_c), _adjacent_pairs(tokens_b)
+    shared_pairs = _multiset_overlap(pairs_c, pairs_b)  # type: ignore[arg-type]
+    sequence = (
+        min(shared_pairs / len(pairs_b), shared_pairs / len(pairs_c))
+        if pairs_c and pairs_b
+        else 0.0
+    )
+    return Agreement(
+        coverage=shared / len(tokens_b),
+        fidelity=shared / len(tokens_c),
+        sequence=sequence,
+    )
+
+
+def agreement_score(candidate: str, baseline: str) -> float | None:
+    """The 0..1 ranking score for one candidate against one baseline, or None when not comparable.
+
+    Count- and position-aware since #542; it was symmetric Jaccard over token SETS, which scored the
+    reported wrong-version mis-pick at 0.448 — above the old 0.25 threshold, so it was accepted. See
+    `Agreement` for why the three numbers are kept apart and `SUSPECT_COVERAGE` for which of them the
+    absolute judgement reads.
+    """
+    got = agreement(candidate, baseline)
+    return None if got is None else got.rank_score
 
 
 def baselines_of(texts: list[LyricsText]) -> list[LyricsText]:
@@ -304,13 +432,28 @@ def candidates_of(texts: list[LyricsText]) -> list[LyricsText]:
     return [t for t in texts if t.role == ROLE_CANDIDATE]
 
 
-def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> tuple[float | None, list[float]]:
+class Composite(NamedTuple):
+    """One candidate graded against every baseline that could speak.
+
+    Two means, not one, because the two mechanisms below read different axes (#542): `score` is what
+    selection ranks by, `coverage` is what the absolute wrong-song judgement thresholds. `votes` is the
+    per-baseline ranking scores that formed the mean, so `len(votes)` is how many baselines spoke.
+
+    Index 0 stays `score`, so `composite_score(...)[0]` keeps meaning the ranking score.
+    """
+
+    score: float | None
+    coverage: float | None
+    votes: list[float]
+
+
+def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> Composite:
     """Mean agreement of one candidate against every baseline that can speak, plus the votes cast.
 
-    Returns (None, []) when NO baseline is comparable — nothing was audible enough to judge with, which
-    is a real outcome for an instrumental and must not be reported as disagreement.
+    Returns (None, None, []) when NO baseline is comparable — nothing was audible enough to judge with,
+    which is a real outcome for an instrumental and must not be reported as disagreement.
 
-    ABSTENTION, not zero, is what makes it safe to include a weak baseline. `agreement_score` yields None
+    ABSTENTION, not zero, is what makes it safe to include a weak baseline. `agreement` yields None
     below MIN_TOKENS_TO_COMPARE, so a baseline that transcribed to almost nothing — a silent vocals stem,
     or YouTube auto-captions that collapsed a song into [Music] markers — simply does not vote. Scoring
     it as total disagreement would let the weakest evidence veto the strongest.
@@ -319,13 +462,21 @@ def composite_score(candidate: LyricsText, baselines: list[LyricsText]) -> tuple
     the ordering in BASELINE_* is about which evidence to SHOW, not how much to trust its vote. An
     unweighted mean over independent errors is the honest default; if measurement later justifies
     weights, this is the one function that changes.
+
+    The two means are taken over the SAME set of speaking baselines, so `coverage` cannot be formed from
+    a different quorum than `score` — a baseline that abstains abstains on both axes.
     """
-    votes = [
-        s for s in (agreement_score(candidate.plain_text, b.plain_text) for b in baselines) if s is not None
+    spoke = [
+        got for got in (agreement(candidate.plain_text, b.plain_text) for b in baselines) if got is not None
     ]
-    if not votes:
-        return None, []
-    return sum(votes) / len(votes), votes
+    if not spoke:
+        return Composite(None, None, [])
+    votes = [got.rank_score for got in spoke]
+    return Composite(
+        score=sum(votes) / len(votes),
+        coverage=sum(got.coverage for got in spoke) / len(spoke),
+        votes=votes,
+    )
 
 
 def candidate_last_end(candidate: LyricsText) -> float | None:
@@ -377,18 +528,25 @@ def overshoot_penalized(score: float, candidate: LyricsText, duration_sec: float
 # Whisper's guess at sung words when the CORRECT lyrics were one record away. Detection without
 # re-selection made the outcome worse, not better.
 #
-# THRESHOLDS CANNOT SEPARATE VERSIONS. SUSPECT_AGREEMENT is calibrated for "a completely different song";
-# two versions of the SAME song share most of their words, so the wrong one still scores far above it
-# (measured: 0.548 for the wrong version against 0.938 for the right one, threshold 0.25). What separates
-# them is not an absolute score but the COMPARISON. Argmax needs no threshold at all — only a difference.
+# THRESHOLDS CANNOT SEPARATE VERSIONS. `SUSPECT_COVERAGE` is calibrated for "a completely different
+# song"; two versions of the SAME song share most of their words, so the wrong one still scores far above
+# it (measured: baseline coverage 0.857 for the reported wrong-version mis-pick). What separates them is
+# not an absolute score but the COMPARISON. Argmax needs no threshold at all — only a difference.
 #
-# So the two mechanisms are complementary and both run:
-#   SELECT   comparative, no threshold — which candidate best matches what is audible.
-#   JUDGE    absolute, thresholded — is even the winner about this song at all.
+# So the two mechanisms are complementary, both run, and since #542 they read DIFFERENT AXES of the same
+# comparison rather than sharing one averaged number:
+#   SELECT   comparative, no threshold — `Composite.score`, the weaker count direction blended with the
+#            adjacent-pair term. Harsh and discriminating on purpose: the wrong-version fingerprint is
+#            low fidelity (words nobody sings) and broken word order, and both cost rank here.
+#   JUDGE    absolute, thresholded — `Composite.coverage` against SUSPECT_COVERAGE. Lenient on purpose:
+#            it must not fire because the BASELINE was partial, which is the normal case for ASR on
+#            sung vocals. See SUSPECT_COVERAGE for why a mixed score cannot serve both.
 #
-# COST. Scoring is a token-set intersection over text already in memory, so judging five candidates
-# against three baselines costs fifteen set operations and no alignment. Only what is published gets
-# aligned, which is why selection deliberately happens before the expensive step.
+# COST. Scoring is a multiset intersection over token counts and adjacent pairs, both linear in the text
+# already in memory, so judging five candidates against three baselines costs fifteen linear passes and
+# no alignment. Whole-sequence alignment (LCS, difflib) would be O(n·m) per pair on texts of thousands of
+# tokens — see `_adjacent_pairs`. Only what is published gets aligned, which is why selection
+# deliberately happens before the expensive step.
 
 
 @dataclass
@@ -444,11 +602,15 @@ class Selection:
 
     #: What to publish, in rank order. The winning candidate first when there is one.
     publish: list[LyricsText] = field(default_factory=list)
-    #: Composite score of the winning candidate, or None when nothing could judge it.
+    #: Composite RANKING score of the winning candidate, or None when nothing could judge it. Not the
+    #: axis `winner_suspect` reads — see SUSPECT_COVERAGE.
     winner_score: float | None = None
+    #: Mean BASELINE COVERAGE of the winning candidate — how much of what was audible it carries. This
+    #: is the number the wrong-song judgement thresholds (#542). None when no baseline could speak.
+    winner_coverage: float | None = None
     #: True when there was no candidate at all, so a baseline is being shown as the answer.
     baseline_fallback: bool = False
-    #: True when the winner scored below SUSPECT_AGREEMENT — probably a different song entirely.
+    #: True when the winner's coverage fell below SUSPECT_COVERAGE — probably a different song entirely.
     winner_suspect: bool = False
     choices: list[VariantChoice] = field(default_factory=list)
     #: One line per baseline, for the log: which spoke, which abstained.
@@ -485,7 +647,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
          COMPARISON, it is not itself a similarity claim about the words.
       3. Publish the winner. Also publish the best baseline when the winner cannot be trusted, so there
          is always something honest to fall back to: either no candidate existed, or the winner scored
-         below SUSPECT_AGREEMENT and is probably a different song.
+         below SUSPECT_COVERAGE and is probably a different song.
 
     WHY A BASELINE IS PUBLISHED ONLY THEN, and not always: everything published gets force-aligned, so a
     baseline published for its own sake would cost a full alignment pass to produce words nobody shows.
@@ -508,6 +670,10 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
 
     best: LyricsText | None = None
     best_score: float | None = None
+    #: The winner's mean BASELINE COVERAGE — the axis the wrong-song judgement reads (#542). Tracked
+    #: alongside the rank so the judgement is made on the coverage of whatever actually wins, never on
+    #: a coverage borrowed from a candidate that lost.
+    best_coverage: float | None = None
     #: The penalised score the picked winner is RANKED by across sources (#667). Kept apart from
     #: `best_score` so an over-covered winner loses to a clean rival while `winner_score` still reports
     #: the raw agreement of whatever ultimately wins.
@@ -520,8 +686,8 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
         # penalty. A None-scored (unjudgeable) version stays -1.0 and is never penalised into a lower
         # negative that could reorder the unjudged tail — the penalty only ever touches a real score.
         ranked = [
-            (overshoot_penalized(sc, c, duration_sec) if sc is not None else None)
-            for c, (sc, _) in zip(pool, scored, strict=False)
+            (overshoot_penalized(got.score, c, duration_sec) if got.score is not None else None)
+            for c, got in zip(pool, scored, strict=False)
         ]
         pick = 0
         if any(s is not None for s in ranked):
@@ -533,7 +699,8 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
             decided_by = "agreement"
         else:
             decided_by = "metadata"
-        winner, (score, votes) = pool[pick], scored[pick]
+        winner, picked = pool[pick], scored[pick]
+        score, coverage, votes = picked.score, picked.coverage, picked.votes
         # The choice is made; the winner should no longer carry the losers. Rebind via replace rather
         # than assigning `winner.alternates = []`: `winner` is a caller-owned object (an element of the
         # candidate list passed in, or one of its `alternates`), and mutating it in place reaches across
@@ -548,8 +715,8 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
                     chosen=winner.variant,
                     chosen_score=score,
                     rejected=[
-                        (c.variant, s)
-                        for i, (c, (s, _)) in enumerate(zip(pool, scored, strict=False))
+                        (c.variant, got.score)
+                        for i, (c, got) in enumerate(zip(pool, scored, strict=False))
                         if i != pick
                     ],
                     decided_by=decided_by,
@@ -564,7 +731,7 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
         if best is None or (rank if rank is not None else -1.0) > (
             best_rank if best_rank is not None else -1.0
         ):
-            best, best_score, best_rank = winner, score, rank
+            best, best_score, best_coverage, best_rank = winner, score, coverage, rank
 
     if best is None:
         # No claim at all. The tiering system picks among the baselines — best evidence first.
@@ -574,7 +741,13 @@ def select_by_baselines(texts: list[LyricsText], duration_sec: float | None = No
 
     sel.publish = [best]
     sel.winner_score = best_score
-    sel.winner_suspect = best_score is not None and best_score < SUSPECT_AGREEMENT
+    sel.winner_coverage = best_coverage
+    # The JUDGE axis is coverage, not the ranking score (#542). A correct candidate graded against a
+    # baseline that only heard part of the song has a LOW rank score by construction — most of the
+    # candidate is not audible, so its fidelity is low — and thresholding that would demote correct
+    # lyrics for a defect in the evidence. Coverage asks the question that is actually absolute: does
+    # this candidate contain what was audible at all? See SUSPECT_COVERAGE for the measured band.
+    sel.winner_suspect = best_coverage is not None and best_coverage < SUSPECT_COVERAGE
     if sel.winner_suspect and baselines:
         # The winner is probably a different song. Publish what was actually HEARD alongside it, so the
         # room has a real alternative rather than only a warning label on the wrong words.

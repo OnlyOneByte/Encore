@@ -19,7 +19,7 @@ from src.lyrics.chain import (  # noqa: E402
     SOURCE_ASR,
     SOURCE_CAPTIONS,
     SOURCE_LRCLIB,
-    SUSPECT_AGREEMENT,
+    SUSPECT_COVERAGE,
     TIMING_LINE,
     TIMING_WORD,
     LyricsText,
@@ -101,11 +101,14 @@ def test_is_authoritative_text_mirrors_the_ts_predicate():
 
 
 def test_agreement_thresholds_mirror_the_ts_authority():
-    # MIN_TOKENS_TO_COMPARE / SUSPECT_AGREEMENT are declared authoritative in packages/shared/src/
-    # lyrics.ts (chain.py:431 calls itself their mirror) but nothing cross-checked them. Read the TS
+    # MIN_TOKENS_TO_COMPARE / SUSPECT_COVERAGE are declared authoritative in packages/shared/src/
+    # lyrics.ts (chain.py calls itself their mirror) but nothing cross-checked them. Read the TS
     # values and assert the Python copies equal them, so a threshold change on the authority side reds.
+    # SUSPECT_COVERAGE replaced SUSPECT_AGREEMENT in #542 — a different metric on a different axis, so
+    # the constant was renamed rather than re-valued. tests/test_lyrics_agreement_542.py carries the
+    # behavioural half of that parity guard (a shared corpus both suites assert against).
     assert MIN_TOKENS_TO_COMPARE == _ts_number(_SHARED_LYRICS_TS, "MIN_TOKENS_TO_COMPARE")
-    assert SUSPECT_AGREEMENT == _ts_number(_SHARED_LYRICS_TS, "SUSPECT_AGREEMENT")
+    assert SUSPECT_COVERAGE == _ts_number(_SHARED_LYRICS_TS, "SUSPECT_COVERAGE")
 
 
 def bound_only(lines, max_chars):

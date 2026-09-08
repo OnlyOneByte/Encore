@@ -9,7 +9,7 @@ Two mechanisms, deliberately separate, and the distinction is the point of most 
 
   * SELECTION is comparative (`select_by_baselines`). No threshold. It works precisely because two versions
     of one song both score far ABOVE the wrong-song threshold, so only their ORDER matters.
-  * DEMOTION is absolute (SUSPECT_AGREEMENT, tested in test_whisperx.py). It judges whether the winner
+  * DEMOTION is absolute (SUSPECT_COVERAGE on baseline coverage, #542). It judges whether the winner
     is trustworthy at all.
 """
 
@@ -101,17 +101,20 @@ def test_THE_BUG_the_version_matching_the_audio_is_chosen_over_the_one_that_does
 def test_the_wrong_version_scores_ABOVE_the_wrong_song_threshold_so_a_threshold_cannot_fix_this():
     """Why selection had to be comparative rather than a tuned cutoff.
 
-    If the losing version scored below SUSPECT_AGREEMENT, the absolute check would already have handled
-    this case and none of this code would be needed. It does not: two versions of one song share most of
-    their words. This test fails the moment someone 'simplifies' selection into a threshold.
+    If the losing version's baseline COVERAGE were below SUSPECT_COVERAGE, the absolute wrong-song check
+    would already have handled this case and none of this code would be needed. It does not: two versions
+    of one song share most of their words, so the shorter one still covers what is audible. This test
+    fails the moment someone 'simplifies' selection into a threshold. (#542: the judgement axis is
+    coverage now, not the ranking score — but the point stands on either, and coverage is the honest one
+    to make it on, because coverage is what the threshold actually reads.)
     """
-    from src.lyrics.chain import SUSPECT_AGREEMENT, agreement_score
+    from src.lyrics.chain import SUSPECT_COVERAGE, agreement
 
-    wrong = agreement_score(SOLO_TEXT, ASR_OF_FEAT)
-    right = agreement_score(FEAT_TEXT, ASR_OF_FEAT)
+    wrong = agreement(SOLO_TEXT, ASR_OF_FEAT)
+    right = agreement(FEAT_TEXT, ASR_OF_FEAT)
     assert wrong is not None and right is not None
-    assert wrong > SUSPECT_AGREEMENT  # the wrong version looks perfectly fine in absolute terms
-    assert right > wrong  # ...and is only exposed by comparison
+    assert wrong.coverage > SUSPECT_COVERAGE  # the wrong version looks perfectly fine in absolute terms
+    assert right.rank_score > wrong.rank_score  # ...and is only exposed by comparison
 
 
 def test_THE_MEAN_of_several_baselines_decides_not_any_single_one():

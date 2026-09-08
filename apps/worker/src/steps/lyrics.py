@@ -20,7 +20,7 @@ from typing import Any
 
 from ..lyrics import (
     OVERSHOOT_FRACTION_MAX,
-    SUSPECT_AGREEMENT,
+    SUSPECT_COVERAGE,
     TIMING_LINE,
     TIMING_WORD,
     LrclibClient,
@@ -355,10 +355,15 @@ class GradeAndSelect(Step):
             best = sel.publish[0].variant if sel.publish else "none"
             ctx.note(f"NO authored lyrics candidate — falling back to the best baseline ({best})")
         if sel.winner_suspect:
+            # Report the number the JUDGEMENT actually used — baseline coverage — and carry the ranking
+            # score beside it. Naming only the composite would print a number that did not decide this
+            # (#542): the two axes disagree by design on a partial baseline, which is exactly the case a
+            # reader of this line is trying to tell apart from a real wrong-song pick.
             ctx.note(
-                f"best lyrics disagree with every baseline (composite {sel.winner_score:.2f} < "
-                f"{SUSPECT_AGREEMENT}) — probably the WRONG SONG; demoting it and publishing what was "
-                "actually heard alongside"
+                f"best lyrics are missing most of what was heard (baseline coverage "
+                f"{sel.winner_coverage:.2f} < {SUSPECT_COVERAGE}, ranking composite "
+                f"{sel.winner_score:.2f}) — probably the WRONG SONG; demoting it and publishing what "
+                "was actually heard alongside"
             )
             # Demote via replace rather than `sel.publish[0].text_confidence = "low"`: that reached from
             # the step layer straight into a domain LyricsText, mutating a caller-owned object in place
