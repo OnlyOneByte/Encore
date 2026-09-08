@@ -79,17 +79,32 @@ export const stageLabel = (stage: string): string => STAGE_LABELS[stage] ?? stag
  * `timeZone` still resolves to the viewer's own zone by default. The optional `timeZone` argument
  * exists so this is deterministically testable against a pinned instant in a known zone.
  */
+// Constructing an Intl.DateTimeFormat is comparatively expensive, and the audit trail renders one
+// stamp per attempt row, so cache the formatter per resolved zone rather than rebuilding it on every
+// call. Keyed by the timeZone string ('' = the viewer's default zone); the config is otherwise fixed,
+// so a cached formatter produces byte-identical output to a freshly-built one.
+const stampFormatters = new Map<string, Intl.DateTimeFormat>();
+function stampFormatter(timeZone?: string): Intl.DateTimeFormat {
+	const key = timeZone ?? '';
+	let fmt = stampFormatters.get(key);
+	if (!fmt) {
+		fmt = new Intl.DateTimeFormat('en-US', {
+			year: 'numeric',
+			month: '2-digit',
+			day: '2-digit',
+			hour: '2-digit',
+			minute: '2-digit',
+			second: '2-digit',
+			hour12: false,
+			...(timeZone ? { timeZone } : {})
+		});
+		stampFormatters.set(key, fmt);
+	}
+	return fmt;
+}
+
 export function localStamp(ms: number, timeZone?: string): string {
-	const parts = new Intl.DateTimeFormat('en-US', {
-		year: 'numeric',
-		month: '2-digit',
-		day: '2-digit',
-		hour: '2-digit',
-		minute: '2-digit',
-		second: '2-digit',
-		hour12: false,
-		...(timeZone ? { timeZone } : {})
-	}).formatToParts(new Date(ms));
+	const parts = stampFormatter(timeZone).formatToParts(new Date(ms));
 	const g = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
 	// hour '24' is Intl's midnight rendering under hour12:false; normalise it to '00'.
 	const hour = g('hour') === '24' ? '00' : g('hour');
