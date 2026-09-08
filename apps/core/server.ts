@@ -11,10 +11,9 @@ import {
 	type WorkerMessage,
 	type WorkerCommand
 } from '@encore/shared';
-import { handleQueueCommand, syncEvent, orderingOf, type HubDeps } from './src/server/realtime/hub';
-import { handlePlayerCommand, handleTelemetry, reconcileOnReady, emitNowPlaying } from './src/server/realtime/player';
+import { handleQueueCommand, syncEvent, type HubDeps } from './src/server/realtime/hub';
+import { handlePlayerCommand, handleTelemetry, reconcileOnReady, nowPlayingEvent } from './src/server/realtime/player';
 import { validateWorkerMessage } from './src/server/jobs/worker-hub';
-import { upNextAfter } from './src/server/rotation/index';
 import { getApp, setPublish, buildHubDeps } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
 import { can } from './src/server/auth/capabilities';
@@ -326,39 +325,48 @@ const server = Bun.serve<SocketData>({
 					// nowplaying), so a reconnecting TV/phone resumes exactly where the room is.
 					ws.send(JSON.stringify(syncEvent(state, deps)));
 					ws.send(JSON.stringify({ type: 'playback:state', state: state.playback, rev: state.rev }));
-					const cur = state.entries.find((e) => e.id === state.playback.currentEntryId) ?? null;
-					const upNext = upNextAfter(cur?.id ?? null, state.entries, mediaById, orderingOf(deps));
-					ws.send(JSON.stringify({ type: 'nowplaying:changed', current: cur, upNext }));
+					// #803: the frame comes from player.ts's builder, the same single source of truth the
+					// broadcast path uses, so a change to what nowplaying:changed carries (or to how
+					// upNext is projected) reaches the reconnecting client and the live room together.
+					// Hand-deriving it here was invisible to tsc — `ws.send(JSON.stringify(...))` accepts
+					// anything, so only the publish-typed site was named. `syncEvent` one line above is
+					// the same pattern.
+					ws.send(JSON.stringify(nowPlayingEvent(deps)));
 					break;
 				}
 				case 'queue:command':
 					handleQueueCommand(evt.command, deps, sendToOrigin);
-					// Auto-start playback when the room is IDLE and a song was just queued. Without this
-					// a plain (non-make-karaoke) add never triggers play — the TV sits on the attract
-					// screen forever and the phone shows no play control (there's no "current" entry to
-					// hang one on). reconcileOnReady starts the soonest-playable entry when nothing is
-					// current, and no-ops once something is already playing.
+					// Reconcile after EVERY queue mutation. reconcileOnReady owns the whole decision and
+					// there is nothing left to decide here — #803 deleted the gate this line used to
+					// carry, because it was a second hand-written copy of the recovery predicate that
+					// reconcileOnReady already evaluates at player.ts.
 					//
-					// "Nothing current" is not just a null id: a client `remove`/`status` on the PLAYING
-					// entry prunes it here and leaves currentEntryId DANGLING (issue #128), which reads as
-					// busy to `!currentEntryId` while nothing plays. Gate on whether the id still RESOLVES
-					// so the same recovery fires — reconcileOnReady then advances to the next singer, or
-					// settles the room to idle if none is ready.
-					if (!state.entries.some((e) => e.id === state.playback.currentEntryId)) reconcileOnReady(deps);
-					// #636 THE ELSE IS THE FIX, and it is the case the `if` deliberately excludes: the current
-					// entry DOES resolve, so a song is playing and no recovery is due — but the queue just
-					// changed, and "who plays next" is derived from the queue. `handleQueueCommand` publishes
-					// `queue:patch` alone (hub.ts), and `nowplaying:changed` had exactly two broadcast
-					// producers, both playback transitions (player.ts reconcileOnReady/handlePlayerCommand).
-					// So an add/remove/move mid-song left the TV holding the LAST broadcast upNext until the
-					// song ended: it could name a song since removed from the queue, or one that reordering
-					// pushed behind another singer, and `syncSlots` pre-warmed the gapless slot from that same
-					// stale entry (routes/tv/+page.svelte). Re-emit here so the advertised next is re-derived
-					// from state on every queue mutation. `emitNowPlaying` re-derives BOTH values (and
-					// `upNextAfter` applies the held-slot rule, so a still-cooking entry is never advertised),
-					// which makes it idempotent — the `else` only avoids the double emit on the recovery path,
-					// since every reconcileOnReady branch already emits.
-					else emitNowPlaying(deps);
+					// What it does, per case:
+					//  • Room IDLE and a song was just queued → auto-start it. Without this a plain
+					//    (non-make-karaoke) add never triggers play: the TV sits on the attract screen
+					//    forever and the phone shows no play control (no "current" entry to hang one on).
+					//  • currentEntryId DANGLING → recover. A client `remove`/`status` on the PLAYING
+					//    entry prunes it here and leaves the id pointing at nothing (issue #128), which
+					//    reads as busy to every `!currentEntryId` gate while nothing plays.
+					//    reconcileOnReady advances to the next singer, or settles the room to genuinely
+					//    idle if none is ready.
+					//  • Current entry RESOLVES → a song is playing and no recovery is due, but the queue
+					//    just changed and "who plays next" is derived from the queue (#636). handleQueueCommand
+					//    publishes `queue:patch` alone (hub.ts), and nowplaying:changed's only other
+					//    producers are playback transitions — so an add/remove/move mid-song used to leave
+					//    the TV holding the LAST broadcast upNext: a song since removed, or one that
+					//    reordering pushed behind another singer, with `syncSlots` pre-warming the gapless
+					//    slot from that same stale entry (routes/tv/+page.svelte). reconcileOnReady's
+					//    recovery block is skipped and its tail emitNowPlaying re-derives both values
+					//    (`upNextAfter` applies the held-slot rule, so a still-cooking entry is never
+					//    advertised).
+					//
+					// EXACTLY ONE nowplaying:changed per command, on all three paths: the single
+					// emitNowPlaying sits OUTSIDE reconcileOnReady's `if (!currentResolves)` block
+					// (player.ts), which is why an unconditional call cannot double-broadcast. An
+					// unconditional `emitNowPlaying` here WOULD, which is the shape #636 correctly
+					// rejected — a different call, not this one.
+					reconcileOnReady(deps);
 					// A grace clock starts when someone's last pending song leaves the queue and clears when
 					// they queue another, so a queue change can move membership exactly as a socket can.
 					refreshMembership();
