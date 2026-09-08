@@ -443,14 +443,17 @@ export function normalizeRoomSettings(
 	// Falls back to the CURRENT room values, not hardcoded defaults: rejecting one invalid field must
 	// not discard an unrelated choice the room already made.
 	const d = base;
+	// One combinator for every bounded integer: clamp a finite number into [lo, hi] (rounded), else fall
+	// back. Clamped rather than rejected — a nonsensical value should still leave a usable room, and
+	// every bound has a stated reason (a legibility floor, a row count past which the type must shrink,
+	// an intro that unbounded would strand the TV between songs). Declared FIRST so the fields that used
+	// to hand-inline this same expression (songIntroMs, lyricsLeadMs, presenceGraceMinutes) share it.
+	const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
+		typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback;
 	// Clamped rather than rejected: a nonsensical value should still yield a usable room, and an
 	// unbounded intro would strand the TV between songs. 0 is NOT in range — the toggle owns "off", so
 	// leaving a zero here would be a second way to say the same thing.
-	const ms = input?.songIntroMs;
-	const songIntroMs =
-		typeof ms === 'number' && Number.isFinite(ms)
-			? Math.min(MAX_SONG_INTRO_MS, Math.max(MIN_SONG_INTRO_MS, Math.round(ms)))
-			: d.songIntroMs;
+	const songIntroMs = clampInt(input?.songIntroMs, MIN_SONG_INTRO_MS, MAX_SONG_INTRO_MS, d.songIntroMs);
 	const enabled = input?.songIntroEnabled;
 	const songIntroEnabled = typeof enabled === 'boolean' ? enabled : d.songIntroEnabled;
 	const cap = input?.maxQualityRank;
@@ -471,16 +474,7 @@ export function normalizeRoomSettings(
 	// Clamped, like the song intro and for the same reason: a lead of 30s is nonsense but should still
 	// leave a usable room. A NEGATIVE lead is clamped to 0 rather than honoured — running the highlight
 	// BEHIND the audio has no use case and reads as the overlay being broken.
-	const lead = input?.lyricsLeadMs;
-	const lyricsLeadMs =
-		typeof lead === 'number' && Number.isFinite(lead)
-			? Math.min(MAX_LYRICS_LEAD_MS, Math.max(0, Math.round(lead)))
-			: d.lyricsLeadMs;
-	// One helper for the three bounded integers. Clamped rather than rejected, like the song intro: a
-	// nonsensical value should still leave a usable room, and every bound here has a stated reason in
-	// lyrics-engines.ts (a legibility floor, or a row count past which the type must shrink to fit).
-	const clampInt = (v: unknown, lo: number, hi: number, fallback: number) =>
-		typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, Math.round(v))) : fallback;
+	const lyricsLeadMs = clampInt(input?.lyricsLeadMs, 0, MAX_LYRICS_LEAD_MS, d.lyricsLeadMs);
 	const lyricsScalePct = clampInt(input?.lyricsScalePct, MIN_LYRICS_SCALE_PCT, MAX_LYRICS_SCALE_PCT, d.lyricsScalePct);
 	// Zero is a legitimate value for both: a room may want no history, or nothing revealed ahead.
 	const lyricsLinesBefore = clampInt(input?.lyricsLinesBefore, 0, MAX_LYRICS_LINES_BEFORE, d.lyricsLinesBefore);
@@ -504,11 +498,12 @@ export function normalizeRoomSettings(
 	// there is nothing below it to inherit from. A junk write keeps the room's current value.
 	// Clamped like the intro: a nonsensical window should still yield a usable room. 0 IS a real choice
 	// here (no grace once your songs are done), so it is a bound rather than a rejected value.
-	const grace = input?.presenceGraceMinutes;
-	const presenceGraceMinutes =
-		typeof grace === 'number' && Number.isFinite(grace)
-			? Math.min(MAX_PRESENCE_GRACE_MINUTES, Math.max(MIN_PRESENCE_GRACE_MINUTES, Math.round(grace)))
-			: d.presenceGraceMinutes;
+	const presenceGraceMinutes = clampInt(
+		input?.presenceGraceMinutes,
+		MIN_PRESENCE_GRACE_MINUTES,
+		MAX_PRESENCE_GRACE_MINUTES,
+		d.presenceGraceMinutes
+	);
 	const gl = input?.guideLevelDefault;
 	const guideLevelDefault =
 		typeof gl === 'number' && Number.isFinite(gl)
