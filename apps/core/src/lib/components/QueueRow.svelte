@@ -99,8 +99,20 @@
 		border-color: var(--line-tint);
 		background: linear-gradient(var(--card), var(--card-tint));
 	}
+	/* Optimistic-add marker (#304), signalled on the SURFACE and not with opacity (#735). The dim this
+	   replaces was `opacity: 0.55` on this root, which flattened the whole subtree and composited it
+	   against --bg: `adding…` -- the entire explanation for why the row is greyed out and has lost its
+	   remove button -- rendered at 3.77:1 against a 4.5:1 floor, the byline at 2.68:1, and the singer
+	   dot at 2.57:1, under the 3:1 floor colors.ts refuses a STORED singer colour for. No alpha fixes
+	   that: the byline needs 0.807 to clear AA, which is indistinguishable from 1.0, so a legible dim
+	   is not a perceptible state signal. --warn-bg/--warn-line is app.css's status-surface pair for
+	   exactly this ("a surface that must read as a warning on its own"); the subtree keeps full
+	   opacity, so --warn now reads 8.57:1 and the dot 5.19:1. Must stay AFTER .mine -- both are
+	   single-class, so source order is what lets a pending row override its own `mine` gradient.
+	   contrast.test.ts's `no card root dims its own subtree with opacity` reds if opacity comes back. */
 	.pending {
-		opacity: 0.55;
+		background: var(--warn-bg);
+		border-color: var(--warn-line);
 	}
 	.seq {
 		width: 26px;
