@@ -2,7 +2,7 @@
 //
 // The repository (SettingsRepository.setRoom/getRoom/getEffective) has always been keyed by an
 // explicit roomId; the bug (#653) was that this endpoint called setRoom(body)/getEffective() with
-// NO id, so every write — whatever room it meant — landed on DEFAULT_ROOM_ID ('main'). These tests
+// NO id, so every write — whatever room it meant — landed on the literal room id 'main'. These tests
 // drive the REAL PUT handler against a REAL SettingsRepository on an in-memory migrated DB, so the
 // pinned mechanism is end-to-end: the query param reaches the repository call.
 //
@@ -11,7 +11,7 @@
 // EITHER threaded argument (setRoom's roomId or getEffective's) reds this file.
 import { test, expect, afterEach } from 'bun:test';
 import { PUT } from './+server';
-import { SettingsRepository, DEFAULT_ROOM_ID } from '$server/state/settings-repository';
+import { SettingsRepository } from '$server/state/settings-repository';
 import { migratedDb } from '$server/db/test-db';
 import { DEFAULT_ROOM_SETTINGS } from '@encore/shared';
 
@@ -59,7 +59,7 @@ test('a non-default roomId writes THAT room, leaving the default room untouched'
 	// The named room received the write…
 	expect(settings.getRoom('partyB').songIntroMs).toBe(5000);
 	// …and the default room did NOT (on base, the default room absorbs every write instead).
-	expect(settings.getRoom(DEFAULT_ROOM_ID).songIntroMs).toBe(2500);
+	expect(settings.getRoom('main').songIntroMs).toBe(2500);
 });
 
 test('the response body reflects the ADDRESSED room, not the default room', async () => {
@@ -71,7 +71,7 @@ test('the response body reflects the ADDRESSED room, not the default room', asyn
 	expect(payload.room.songIntroMs).toBe(5000);
 });
 
-test('an absent roomId writes the ACTIVE room, not the literal DEFAULT_ROOM_ID (#728)', async () => {
+test('an absent roomId writes the ACTIVE room, not the literal "main" (#728)', async () => {
 	// #728: the phone settings page fetches /api/settings/room with NO ?roomId=. Before #728 that
 	// bare write landed on 'main' while every reader read the active room — the write was silently
 	// discarded (host toggles a control, gets 200, nothing changes). The fallback is now
@@ -84,6 +84,6 @@ test('an absent roomId writes the ACTIVE room, not the literal DEFAULT_ROOM_ID (
 	// the write reaches the ACTIVE room …
 	expect(settings.getRoom(active).songIntroMs).toBe(5000);
 	// … and did NOT land on 'main' (the base behaviour that discarded it). Reverting the writer
-	// fallback to DEFAULT_ROOM_ID reds this.
-	expect(settings.getRoom(DEFAULT_ROOM_ID).songIntroMs).toBe(2500);
+	// fallback to 'main' reds this.
+	expect(settings.getRoom('main').songIntroMs).toBe(2500);
 });

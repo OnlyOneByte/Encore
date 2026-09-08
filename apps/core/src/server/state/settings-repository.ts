@@ -24,11 +24,6 @@ import {
 
 const SINGLETON = 'singleton';
 
-/** The default room's id. Multi-room has landed (#652-#658); every room-scoped call takes a
- *  required, explicit room id, so the room a caller addresses is visible at the call site rather
- *  than defaulted invisibly (#728). */
-export const DEFAULT_ROOM_ID = 'main';
-
 export class SettingsRepository {
 	constructor(private readonly db: DB) {}
 

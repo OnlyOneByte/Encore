@@ -1,5 +1,5 @@
 // guard: SettingsRepository's four room-scoped methods (getRoom/setRoom/hasRoom/getEffective) must
-// take a REQUIRED roomId — no `= DEFAULT_ROOM_ID` initialiser — so a caller can never silently
+// take a REQUIRED roomId — no default initialiser at all — so a caller can never silently
 // address the default room 'main' (#728). A defaulted parameter is invisible to `tsc` by
 // construction, so nothing forces the Nth call site; #653 already shipped that exact bug. This is the
 // same source-scan discipline the rooms chain used for the required listPublic(roomId) at
@@ -11,8 +11,21 @@
 //   ARM 1 (load-bearing) — the mechanism: `roomId: string =` must occur 0 times in the repository.
 //   ARM 2 (belt) — every bare `.getRoom()/.setRoom()/.hasRoom()/.getEffective()` across the seven
 //                   production caller files must be gone (empty-paren shape only; see the known limit).
+//
+// #737 adds two more arms, over RAW source this time. #728 removed the parameter defaults but left the
+// exported constant they had named, with zero non-test callers and a docstring asserting 'main' IS "the
+// default room's id" — which `rooms.byId('main')` returns null for, because RoomRepository.create mints
+// a ULID. `settings.getRoom(DEFAULT_ROOM_ID)` therefore type-checked, threw nothing, and served
+// pristine defaults instead of the room the box was running: #728's failure mode, one autocomplete
+// away. The constant is deleted; these two arms keep it deleted.
+//   ARM 3 — the identifier occurs 0 times in the repository, comments INCLUDED, so neither the export
+//           nor the docstring that made it look correct can come back.
+//   ARM 4 — no NON-TEST file under apps/core/src, plus apps/core/server.ts, mentions it either, so it
+//           cannot be reintroduced somewhere else and re-acquire a production caller.
+// Both read raw rather than stripped source deliberately: stripping would let the misleading docstring
+// return, and the comment contradicting its code is half of what #737 reported.
 import { test, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 function stripComments(src: string): string {
@@ -22,7 +35,18 @@ function stripComments(src: string): string {
 
 // import.meta.dir === apps/core/src/server/state
 const REPO_FILE = join(import.meta.dir, 'settings-repository.ts');
-const REPO = stripComments(readFileSync(REPO_FILE, 'utf8'));
+const REPO_RAW = readFileSync(REPO_FILE, 'utf8');
+const REPO = stripComments(REPO_RAW);
+
+// Every NON-TEST source file the app ships from apps/core: the whole of src, plus server.ts (the
+// Bun.serve entry, which sits OUTSIDE src and is exactly the file a src-scoped grep misses).
+const SRC_DIR = join(import.meta.dir, '..', '..');
+const PROD_FILES = [
+	join(import.meta.dir, '..', '..', '..', 'server.ts'),
+	...readdirSync(SRC_DIR, { recursive: true, encoding: 'utf8' })
+		.filter((p) => /\.(ts|svelte)$/.test(p) && !/\.test\.ts$/.test(p))
+		.map((p) => join(SRC_DIR, p))
+];
 
 // The seven production files that call the room-scoped methods (from the #728 census).
 const CALLER_PATHS = [
@@ -63,16 +87,33 @@ test('sentinel — the repository and its four methods still exist (non-vacuous)
 	}
 });
 
-test('sentinel — DEFAULT_ROOM_ID is still exported (fix removes the defaults, not the constant) (#728)', () => {
-	// The fix deletes the `= DEFAULT_ROOM_ID` initialisers; the constant itself is still the value every
-	// caller passes explicitly. If the constant were also deleted, ARM 1 would pass for the wrong reason.
-	expect(REPO).toMatch(/export const DEFAULT_ROOM_ID\s*=/);
+test('ARM 3 — the repository no longer names DEFAULT_ROOM_ID at all, comments included (#737)', () => {
+	// PURE DELETION, so nothing behavioural can red: reverting it re-adds a symbol nothing calls and the
+	// suite stays green. This scan is the proof. RAW source on purpose — the docstring asserting 'main'
+	// IS "the default room's id" is itself the defect's other half, so a stripped read would let it back.
+	expect(REPO_RAW).not.toMatch(/DEFAULT_ROOM_ID/);
+});
+
+test('ARM 4 — no non-test production file under apps/core mentions DEFAULT_ROOM_ID (#737)', () => {
+	// Wider than ARM 3: the constant must not come back anywhere a production caller could reach it.
+	// Only apps/core/drizzle/0004_rekey_room_settings.sql still names it, as shipped historical prose
+	// about the pre-#728 world; a .sql migration is not scanned here and must not be edited.
+	const offenders = PROD_FILES.filter((f) => readFileSync(f, 'utf8').includes('DEFAULT_ROOM_ID'));
+	expect(offenders).toEqual([]);
+});
+
+test('sentinel — ARM 4 really walks the production tree (census not vacuous) (#737)', () => {
+	// A mis-pathed or empty file list would make ARM 4 pass by reading nothing. Require both a
+	// plausible file count and that the walk actually reached the repository under test.
+	expect(PROD_FILES.length).toBeGreaterThanOrEqual(50);
+	expect(PROD_FILES).toContain(REPO_FILE);
+	expect(PROD_FILES.some((f) => readFileSync(f, 'utf8').includes('export class SettingsRepository'))).toBe(true);
 });
 
 test('sentinel — the comment stripper blanks a signature it would otherwise match (#728)', () => {
 	// Proves the stripper actually neutralises comments: a commented-out defaulted signature matches raw
 	// (so ARM 1 could be fooled) but must NOT match once stripped.
-	const planted = '// getRoom(roomId: string = DEFAULT_ROOM_ID): RoomSettings {';
+	const planted = "// getRoom(roomId: string = 'main'): RoomSettings {";
 	expect(/roomId\s*:\s*string\s*=/.test(planted)).toBe(true);
 	expect(/roomId\s*:\s*string\s*=/.test(stripComments(planted))).toBe(false);
 });
