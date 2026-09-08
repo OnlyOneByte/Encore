@@ -22,7 +22,7 @@
 import type { QueueEntry, ServerEvent, Media } from '@encore/shared';
 import type { HubDeps } from '../realtime/hub';
 import { cancelJobsForMedia, type CancelJobsDeps } from '../jobs/cancel';
-import { reconcileOnReady } from '../realtime/player';
+import { reconcileOnReady, emitNowPlaying } from '../realtime/player';
 import type { MediaRepository } from './repository';
 import {
 	metaKey,
@@ -119,6 +119,13 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	const wasPlaying = doomed.some((e: QueueEntry) => e.id === hub.state.playback.currentEntryId);
 	for (const e of doomed) hub.state.applyQueueOp({ op: 'remove', id: e.id });
 	if (wasPlaying) reconcileOnReady(hub);
+	// #636: deleting a NON-playing entry still mutates the queue, so "who plays next" can change —
+	// the deleted song may have been the advertised upNext, or removing it may promote a different
+	// singer's entry. reconcileOnReady only fires on the wasPlaying path (a dangling current), so the
+	// far more common non-playing delete published queue:removed with no nowplaying:changed and the TV
+	// kept naming the deleted song. Re-derive and re-broadcast the advertised next here too;
+	// emitNowPlaying is idempotent, so the `else` only avoids the double emit reconcileOnReady already does.
+	else emitNowPlaying(hub);
 
 	// 3–4. unlink files: SIDECAR FIRST, then audio, then derived. The sidecar is the source of truth (a
 	// rescan rebuilds the row FROM it), so it dies first: a crash after this can orphan bytes
