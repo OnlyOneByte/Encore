@@ -542,13 +542,13 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'statsPage',
 		file: 'src/routes/stats/+page.svelte',
-		anchor: '<h1>Party stats</h1>',
+		anchor: 'title="Party stats"',
 		why: 'the public stats page landmark the flow lands on at /stats'
 	},
 	{
 		id: 'metricsPage',
 		file: 'src/routes/metrics/+page.svelte',
-		anchor: '<h1>Processing metrics</h1>',
+		anchor: 'title="Processing metrics"',
 		why: 'the internal metrics page landmark the flow lands on at /metrics'
 	},
 

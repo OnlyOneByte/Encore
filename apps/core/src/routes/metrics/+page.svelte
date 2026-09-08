@@ -10,6 +10,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Bars from '$lib/charts/Bars.svelte';
+	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
 
 	interface StepRow {
@@ -106,7 +107,7 @@
 <svelte:head><title>Encore — metrics</title></svelte:head>
 
 <section class="metrics">
-	<h1>Processing metrics</h1>
+	<PageHeader title="Processing metrics" back={{ href: '/settings', label: 'Back to settings' }} />
 
 	{#if failed}
 		<p class="note" role="alert">Could not load metrics.</p>
@@ -373,10 +374,6 @@
 	/* .card in app.css has no padding — see the note in routes/stats/+page.svelte. */
 	.card {
 		padding: 1rem 1.1rem;
-	}
-	h1 {
-		font-size: 1.4rem;
-		margin: 0;
 	}
 	/* Full-strength ink and a rule beneath, so a section title out-ranks the dim column headers
 	   directly below it. Both were --ink-dim uppercase, which made them compete. */
