@@ -39,6 +39,7 @@
 		nextPlayableEntryId,
 		entryPlayable,
 		cookingGroupIds,
+		queueCardKind,
 		type Readiness
 	} from '$lib/readiness';
 	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
@@ -305,9 +306,18 @@
 	 * position of the turns pointing at that media, so cooking first files the job at
 	 * NO_QUEUE_PRIORITY — behind the lyrics backfill — while a singer stands there waiting. See
 	 * $lib/cook-and-queue.ts for the full reasoning and its test.
+	 *
+	 * `hasQueuedTurn` is the RETRY case (#741) and it is not an optimisation: a dead cook keeps
+	 * offering Sing (the group header literally says "tap Sing to try again"), so without it the second
+	 * tap booked the singer a second turn of the same song and the room played it twice in a row. The
+	 * cook step still runs — the retry must stay reachable, per readiness.ts's `canCook('failed')`.
 	 */
 	function singThis(mediaId: string) {
-		cookAndQueue({ queue: () => addSong(mediaId), cook: () => void makeKaraoke(mediaId) });
+		cookAndQueue({
+			queue: () => addSong(mediaId),
+			cook: () => void makeKaraoke(mediaId),
+			hasQueuedTurn: inMyQueue(mediaId)
+		});
 	}
 
 	/** Request stem-separation ("make karaoke") — flips the song to a cooking file server-side; the
@@ -692,11 +702,6 @@
 		if (to === i) return;
 		store?.pinEntry(id, to);
 		if (navigator.vibrate) navigator.vibrate(8);
-	}
-	/** Live processing state for an entry's media, or null if it isn't cooking. */
-	function cooking(mediaId: string): { status: MediaStatus; pct: number; etaSec?: number } | null {
-		const s = mediaStatus.get(mediaId);
-		return s && s.status !== 'ready' && s.status !== 'failed' && s.status !== 'canceled' ? s : null;
 	}
 	// The entry that will ACTUALLY play next (skipping any still cooking), matching the server's
 	// nextPlayable(). Pure + unit-tested in $lib/readiness.
@@ -1220,8 +1225,9 @@
 	{:else}
 		{#each queued as e, i (e.id)}
 			{@const s = singerOf(e.singerId)}
-			{@const proc = cooking(e.mediaId)}
-			{#if proc}
+			{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
+			{#if card === 'cooking' || card === 'failed'}
+				{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
 				<ProcessingCard
 					seq={i + 1}
 					title={mediaTitle(e.mediaId)}
