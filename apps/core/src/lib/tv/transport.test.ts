@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { transportFor, slotHoldsSrc, type TransportInputs } from './transport';
+import { transportFor, slotHoldsSrc, slotHoldsSong, songToken, type TransportInputs } from './transport';
 
 const base: TransportInputs = { hasSrc: true, playable: true, active: true, visible: true, playing: true };
 const at = (over: Partial<TransportInputs>) => transportFor({ ...base, ...over });
@@ -64,18 +64,24 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 		expect(src).toContain('transportFor(');
 	});
 
-	test('the transport hasSrc means "holding THIS song\'s src", so a song change re-runs it (#374)', () => {
+	test('the transport hasSrc means "holding THIS ENTRY\'s src", so a same-song advance re-runs it (#374/#701)', () => {
 		const calls = src.split('transportFor({').slice(1);
 		expect(calls.length).toBe(1); // ONE decision, derived once
-		const call = calls[0]!.slice(0, 900);
-		// The input must compare the element's src against the CURRENT media's resolved src, not merely
-		// ask "has this slot ever held a src" (`!!currentSrc`). The latter stays true across a song
-		// change, so the derived kept the same `'play'` value and never re-ran its effect after the new
-		// src landed — #374. `slotHoldsSrc(currentSrc, ...fileSrc(media)...)` gives the `idle -> play`
-		// value edge exactly when the new src lands.
-		expect(call).toContain('hasSrc: slotHoldsSrc(currentSrc,');
+		const call = calls[0]!.slice(0, 1600);
+		// The input must compare the element's ENTRY-scoped token against the CURRENT entry's, not merely
+		// ask "has this slot ever held a src" (`!!currentSrc`, stale-true across ANY change — #374) and not
+		// merely "does the element hold this SONG's src" (`slotHoldsSrc`, stale-true across a SAME-SONG
+		// advance because the src is byte-identical — #701). `slotHoldsSong(songToken(currentEntryId, ...),
+		// songToken(entryId, ...fileSrc(media)...))` gives the `idle -> play` value edge exactly when the
+		// assign effect records the new entry, even for turn 2 of a twice-queued song.
+		expect(call).toContain('hasSrc: slotHoldsSong(');
+		expect(call).toContain('songToken(currentEntryId, currentSrc)');
+		expect(call).toContain('songToken(entryId,');
 		expect(call).toContain('fileSrc(media)');
 		expect(call).not.toContain('hasSrc: !!currentSrc');
+		// #701 regression trap: the reader must NOT be the src-only helper — that is exactly the shape that
+		// stayed stale-true across a same-song advance and left turn 2 silent.
+		expect(call).not.toContain('hasSrc: slotHoldsSrc(');
 		// and it must be a $derived, so both the master and the guide effect track it
 		expect(src).toContain('$derived(\n\t\ttransportFor({');
 	});
@@ -144,9 +150,21 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 
 	test('#251: currentSrc is not clobbered on a not-playable pass', () => {
 		// The bookkeeping the transport gates on must survive a churn pass, so its write is guarded on
-		// `playable` rather than assigned unconditionally to a possibly-empty `resolved`.
-		expect(code).toContain('if (playable) currentSrc = resolved');
-		expect(code).not.toMatch(/^\s*currentSrc = resolved;\s*$/m);
+		// `playable` rather than assigned unconditionally to a possibly-empty `resolved`. (#701 moved the
+		// write inside a `if (playable) { ... }` block that also records `currentEntryId`; the guard on the
+		// write's playability is what matters, so match the assignment inside the guarded block.)
+		expect(code).toContain('currentSrc = resolved');
+		// The write must be GUARDED on `playable` (inside the `if (playable) { ... }` block), never a bare
+		// unconditional assignment that would clobber the still-playing song's src on a not-playable churn.
+		expect(code).toMatch(/if\s*\(playable\)\s*\{[\s\S]*?currentSrc = resolved/);
+		expect(code).not.toMatch(/\}\s*\n\s*currentSrc = resolved;/);
+	});
+
+	test('#701: currentEntryId is written in lockstep with currentSrc, so the held token cannot go half-stale', () => {
+		// The transport reader compares an entry-scoped token; recording the src without the entry it
+		// belongs to would leave turn 2 of a twice-queued song holding turn 1's entry id and reintroduce
+		// the silent-second-turn edge. Both shadow writes must live in the SAME playable-guarded block.
+		expect(code).toMatch(/if\s*\(playable\)\s*\{[\s\S]*currentSrc = resolved[\s\S]*currentEntryId = entryId/);
 	});
 
 	/*
@@ -162,15 +180,16 @@ describe('TvPlayer wires the transport to the src, not to declaration order', ()
 	 * Comments are stripped so the prose above (which names the old and new shapes) can neither satisfy
 	 * nor trip it.
 	 */
-	test('#674: currentSrc is reset when the master element unmounts, not left to go stale', () => {
-		// A guard against the shadow that survives the drain. The reset must fire on the ABSENCE of the
-		// binding (`!master`) — a genuine unmount — and clear the shadow to '' so a re-added same-song
-		// element does not read a stale hasSrc:true. Wrap-tolerant on whitespace between tokens.
-		expect(code).toMatch(/if\s*\(\s*!master\s*\)\s*currentSrc\s*=\s*''/);
-		// Not vacuous: the reader it protects is still wired to the shadow (if someone converts the
-		// transport reader to the element too, this shadow-reset stops being load-bearing and this anchor
-		// should be revisited — until then it must exist).
-		expect(code).toContain('slotHoldsSrc(currentSrc,');
+	test('#674: both src+entry shadows are reset when the master element unmounts, not left to go stale', () => {
+		// A guard against the shadows that survive the drain. The reset must fire on the ABSENCE of the
+		// binding (`!master`) — a genuine unmount — and clear BOTH the src shadow (so a re-added same-song
+		// element does not read a stale hasSrc:true — #674) and the entry shadow (#701's held token half).
+		// Wrap-tolerant on whitespace between tokens.
+		expect(code).toMatch(/if\s*\(\s*!master\s*\)\s*\{[\s\S]*currentSrc\s*=\s*''[\s\S]*currentEntryId\s*=\s*null/);
+		// Not vacuous: the reader it protects is still wired to the shadow (if someone rewires the transport
+		// reader off these shadows, this reset stops being load-bearing and this anchor should be revisited —
+		// until then it must exist).
+		expect(code).toContain('songToken(currentEntryId, currentSrc)');
 	});
 });
 
@@ -255,5 +274,81 @@ describe('#374: the transport across a song change on one page', () => {
 		expect(transportFor({ ...before, hasSrc: slotHoldsSrc(A, B) })).not.toBe(
 			transportFor({ ...before, hasSrc: slotHoldsSrc(B, B) })
 		); // new: idle -> play edge
+	});
+});
+
+/*
+ * #701 — "queue a song TWICE and its second turn never plays". Turn 1 and turn 2 are two separate
+ * `QueueEntry`s (distinct client-minted ids) but ONE media record, so `fileSrc(media)` — and thus the
+ * element's held src — is BYTE-IDENTICAL across the advance. #374's fix compared src strings, so on a
+ * same-song advance `slotHoldsSrc(currentSrc, wanted)` is `true` on BOTH sides: no value edge, the
+ * transport `$derived` keeps `'play'`, its effect never re-runs, and since `ended` has paused the
+ * element and the byte-identical src reset currentTime to 0, the room sits silent at 0 with no
+ * affordance. The fix scopes the transport input to the ENTRY via a `songToken` (`${entryId}|${src}`)
+ * and the pure `slotHoldsSong`, so turn 2 is a DIFFERENT wanted token and the change takes a genuine
+ * `idle -> play` edge — WITHOUT rewriting the byte-identical src.
+ *
+ * These are the pure-helper tests; the wiring guard above pins that TvPlayer actually passes the token.
+ */
+describe('#701: the transport across a SAME-SONG advance (a song queued twice)', () => {
+	const SRC = '/media/song-a-instrumental.wav';
+	const E1 = '01J000000000000000000TURN1';
+	const E2 = '01J000000000000000000TURN2';
+	const slot = { playable: true, active: true, visible: true, playing: true };
+
+	test('songToken pairs the entry with the src, and is null when either is missing', () => {
+		expect(songToken(E1, SRC)).toBe(`${E1}|${SRC}`);
+		// turn 2 of the SAME song differs only by entry id — but it DOES differ
+		expect(songToken(E2, SRC)).not.toBe(songToken(E1, SRC));
+		// absent legs => no token (mirrors slotHoldsSrc's "nothing to hold" leg)
+		expect(songToken(null, SRC)).toBeNull();
+		expect(songToken(E1, null)).toBeNull();
+		expect(songToken(E1, '')).toBeNull();
+		expect(songToken('', SRC)).toBeNull();
+	});
+
+	test('slotHoldsSong is true only when the element has settled on THIS entry', () => {
+		expect(slotHoldsSong(songToken(E1, SRC), songToken(E1, SRC))).toBe(true);
+		// same song, DIFFERENT entry (turn 1 held, turn 2 wanted): NOT holding it yet
+		expect(slotHoldsSong(songToken(E1, SRC), songToken(E2, SRC))).toBe(false);
+		// no wanted / no held => false, like slotHoldsSrc
+		expect(slotHoldsSong(songToken(E1, SRC), null)).toBe(false);
+		expect(slotHoldsSong(null, songToken(E2, SRC))).toBe(false);
+	});
+
+	/*
+	 * THE NAMED GUARD, red on base. On base the transport input is `slotHoldsSrc`, which compares only
+	 * the src: for a same-song advance held===wanted===SRC on BOTH sides, so both decisions are 'play'
+	 * and there is NO edge — the exact hole. Expressed against the SRC-ONLY input this assertion FAILS
+	 * (both 'play'); against the ENTRY-scoped input it PASSES (idle -> play). This is what makes #701
+	 * dispatchable and is byte-for-byte the case #374's describe could never reach because every one of
+	 * its cases used two DIFFERENT songs.
+	 */
+	test('the src-only input produces NO edge across a same-song advance — the bug', () => {
+		// held turn-1 src, wanted turn-2 src: byte-identical, so slotHoldsSrc is true on both sides.
+		const before = transportFor({ ...slot, hasSrc: slotHoldsSrc(SRC, SRC) });
+		const after = transportFor({ ...slot, hasSrc: slotHoldsSrc(SRC, SRC) });
+		expect(before).toBe('play');
+		expect(after).toBe('play');
+		expect(before).toBe(after); // NO edge — nothing re-runs the effect, turn 2 stays silent
+	});
+
+	test('the entry-scoped input DOES take an idle -> play edge across a same-song advance — the fix', () => {
+		// held = turn 1's token, wanted = turn 2's token (same src, different entry).
+		const held = songToken(E1, SRC);
+		const wantedT2 = songToken(E2, SRC);
+		const before = transportFor({ ...slot, hasSrc: slotHoldsSong(held, wantedT2) }); // element still on E1
+		const after = transportFor({ ...slot, hasSrc: slotHoldsSong(wantedT2, wantedT2) }); // assign effect recorded E2
+		expect(before).toBe('idle');
+		expect(after).toBe('play');
+		expect(before).not.toBe(after); // a genuine value edge — the effect re-runs and play() replays
+	});
+
+	test('#374 still holds under the entry-scoped input: two DIFFERENT songs also take the edge', () => {
+		const SRC_B = '/media/song-b-instrumental.wav';
+		const held = songToken(E1, SRC); // holding song A / entry 1
+		const wantedB = songToken(E2, SRC_B); // wanting song B / entry 2
+		expect(transportFor({ ...slot, hasSrc: slotHoldsSong(held, wantedB) })).toBe('idle');
+		expect(transportFor({ ...slot, hasSrc: slotHoldsSong(wantedB, wantedB) })).toBe('play');
 	});
 });

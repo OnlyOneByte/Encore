@@ -22,13 +22,21 @@
 	import { untrack } from 'svelte';
 	import { guideCorrection, prerollSeekTarget, seekPlan } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
-	import { transportFor, slotHoldsSrc } from './transport';
+	import { transportFor, slotHoldsSong, songToken } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
 	interface Props {
 		// A `PlaybackSnapshot`, not a live `Media` (#396). The brand makes this a compiler boundary: the
 		// page cannot hand this slot a catalog record that a cook can still change underneath it, so the
 		// player observes a song's fields as they were when the slot was assigned and at no other time.
 		media: PlaybackSnapshot | null;
+		// The id of the QUEUE ENTRY this slot is playing — NOT the media/song id (#701). A song queued
+		// twice is two entries with distinct client-minted ids but ONE media record, so `media.id` and the
+		// resolved src are byte-identical across the advance from turn 1 to turn 2. The transport re-arm
+		// keys on this entry id (see the `slotHoldsSong` token below) so a same-song advance still produces
+		// an `idle -> play` edge; without it turn 2 never calls play() and the room goes silent at 0. It is
+		// intentionally SEPARATE from the `PlaybackSnapshot` brand, which carries server catalog truth only
+		// (#396) and must not be widened with per-turn identity.
+		entryId?: string | null;
 		visible: boolean;
 		active: boolean; // is this the playing slot (vs the hidden pre-warming slot)
 		playing?: boolean; // playback:state.isPlaying — pause/resume from the phone
@@ -78,6 +86,7 @@
 	}
 	let {
 		media,
+		entryId = null,
 		visible,
 		active,
 		playing = true,
@@ -183,6 +192,12 @@
 	// (the authoritative copy is the element's own `src` attribute — see the assign effect). Declared here
 	// with the other slot state.
 	let currentSrc = $state<string>('');
+	// The ENTRY the element last SETTLED on, shadowing `currentSrc` and written in lockstep with it by
+	// the assign effect (#701). `currentSrc` alone cannot tell turn 2 of a song from turn 1 — the src is
+	// byte-identical — so the transport reader compares the entry-scoped `slotHoldsSong` token, and this
+	// is its `held` half. Cleared on the same unmount that clears `currentSrc` so a remounted element
+	// reads a fresh `held:null`.
+	let currentEntryId = $state<string | null>(null);
 
 	// True while the master's play() has been REFUSED by the browser's autoplay policy (NotAllowedError)
 	// and nothing has yet un-stuck it. A plain <audio> in a page that never received a user gesture is
@@ -314,13 +329,20 @@
 	 */
 	const transport = $derived(
 		transportFor({
-			// #374: the element must be holding THIS song's src, not merely SOME src. `currentSrc` holds
-			// the previous song's URL across a change (it is never cleared, only rewritten on a playable
-			// pass by the assign effect below), so `!!currentSrc` stayed stale-true and the transport kept
-			// the same `'play'` value — a memoized derived whose value does not change never re-runs the
-			// effect, so nothing replayed play() after the new src landed. Comparing to the resolved src
-			// gives an `idle -> play` value edge exactly when the new src lands.
-			hasSrc: slotHoldsSrc(currentSrc, media && isPlayable(media) ? fileSrc(media) : null),
+			// #374 + #701: the element must be holding THIS ENTRY's src, not merely SOME src, and not merely
+			// SOME turn of this song. `currentSrc`/`currentEntryId` shadow the previous entry across a change
+			// (never cleared, only rewritten on a playable pass by the assign effect below), so the OLD
+			// `!!currentSrc` stayed stale-true and the transport kept the same `'play'` value — a memoized
+			// derived whose value does not change never re-runs the effect, so nothing replayed play() after
+			// the new src landed. #374 fixed the two-DIFFERENT-songs case by comparing the resolved src; #701
+			// is the two-turns-of-the-SAME-song case, where the resolved src is byte-identical, so the src
+			// comparison alone still reads stale-true. Comparing the entry-scoped `songToken` gives an
+			// `idle -> play` value edge exactly when the assign effect records the new entry — without
+			// rewriting a byte-identical src (which the per-song-change note above warns reloads the song).
+			hasSrc: slotHoldsSong(
+				songToken(currentEntryId, currentSrc),
+				songToken(entryId, media && isPlayable(media) ? fileSrc(media) : null)
+			),
 			playable: !!media && isPlayable(media),
 			active,
 			visible,
@@ -368,7 +390,10 @@
 	// A bare `master` attribute read would register no reactive dependency, which is why the shadow exists;
 	// tracking the binding's presence is the reactive signal that a remount happened.
 	$effect(() => {
-		if (!master) currentSrc = '';
+		if (!master) {
+			currentSrc = '';
+			currentEntryId = null;
+		}
 	});
 
 	/**
@@ -471,10 +496,15 @@
 		};
 	});
 
-	// The guide mirrors the master's transport exactly — the SAME `transport` value, so it can never run
-	// ahead of an instrumental that is not playing. A rejected play() is swallowed the same way the
-	// master's is: an autoplay refusal on the guide must degrade to a silent guide, never to a stalled
-	// song.
+	// The guide mirrors the master's transport exactly — the SAME `transport` value, computed once by the
+	// derived above, so both effects take the same edge at the same time. This is only literally true once
+	// that value actually MOVES on a real transport change: before #701 a same-song advance produced no
+	// value edge for the master (its `hasSrc` stayed stale-true), so the master effect did not re-run while
+	// the guide's own start path (its `canplay` / preroll) still could, and the guide could run while the
+	// master sat paused at 0 — the mismatch #701 measured. With the transport now re-armed per ENTRY the
+	// value takes a genuine `idle -> play` edge and both effects re-run together, so the shared-`transport`
+	// claim holds. A rejected play() is swallowed the same way the master's is: an autoplay refusal on the
+	// guide must degrade to a silent guide, never to a stalled song.
 	$effect(() => {
 		if (!vocals || !master) return;
 		if (transport === 'play') {
@@ -687,7 +717,14 @@
 		// reloaded it to 0. Both are the #251 reset. When nothing is playable we keep the current song
 		// exactly as the element holds it; the genuine clear on a real song departure is the {#if}
 		// unmount, not this effect.
-		if (playable) currentSrc = resolved;
+		// Write the entry shadow in LOCKSTEP with the src shadow (#701): the transport reader compares an
+		// entry-scoped token, so recording the src without the entry it belongs to would leave turn 2's
+		// `held` token half-stale and reintroduce the silent-second-turn edge. A not-playable churn pass
+		// leaves BOTH untouched, exactly as it leaves `currentSrc`, so the still-playing entry is kept.
+		if (playable) {
+			currentSrc = resolved;
+			currentEntryId = entryId;
+		}
 	});
 
 	/**
