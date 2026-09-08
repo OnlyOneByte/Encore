@@ -39,6 +39,14 @@ export interface AgreementParityCase {
 }
 
 const TWELVE = 'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo lima';
+/**
+ * A single repeated token, kept as its OWN const rather than written inline as `` `alpha ${TWELVE}` ``.
+ * The Python side does not evaluate TypeScript: its parser resolves a template literal by collecting the
+ * `${NAME}` interpolations and joining them with a space, so bare text inside the backticks is dropped.
+ * Written inline, the mirror would compare a 12-token string against a 13-token expectation — and because
+ * every ratio in the repeated-token case below is exactly 1, it would pass anyway while guarding nothing.
+ */
+const ALPHA = 'alpha';
 const ELEVEN = 'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo';
 const TWELVE_REVERSED = 'lima kilo juliett india hotel golf foxtrot echo delta charlie bravo alpha';
 const TWELVE_LAST_SWAPPED = 'alpha bravo charlie delta echo foxtrot golf hotel india juliett kilo mike';
@@ -78,6 +86,22 @@ export const AGREEMENT_PARITY_CORPUS: readonly AgreementParityCase[] = [
 		fidelity: [12, 12],
 		sequence: [0, 11],
 		oldSetJaccard: [12, 12]
+	},
+	{
+		// THE CASE THAT TELLS A MULTISET FROM A SET. Every other row is blind to the difference: the
+		// doubling in "repeats the chorus" is ONE-SIDED, so `min(2, 1)` per token equals distinct
+		// counting and a set-based overlap scores it identically. Distinguishing the two needs a token
+		// repeated on BOTH sides. Here each side is `alpha` followed by the twelve — 13 tokens, `alpha`
+		// twice, 12 distinct — so multiset overlap is 13 (min(2,2) for `alpha`, plus 11 singletons) and
+		// coverage is 13/13 = 1, while a set-based overlap can only ever reach the 12 DISTINCT tokens and
+		// scores 12/13. The pairs are all distinct, so the position term stays 12/12 either way.
+		name: 'a token repeated on both sides, which only multiplicity can count',
+		candidate: `${ALPHA} ${TWELVE}`,
+		baseline: `${ALPHA} ${TWELVE}`,
+		coverage: [13, 13],
+		fidelity: [13, 13],
+		sequence: [12, 12],
+		oldSetJaccard: [12, 12] // the old metric saw 12 distinct of a 12-token union, and still scored 1
 	},
 	{
 		// 11 distinct tokens is below MIN_TOKENS_TO_COMPARE, so the answer is "cannot tell", not "differ".
