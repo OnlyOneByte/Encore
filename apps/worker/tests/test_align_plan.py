@@ -1070,7 +1070,8 @@ def test_the_ml_lock_is_reentrant_so_a_public_call_can_use_the_lazy_loader(monke
 from src.lyrics.chain import (  # noqa: E402
     ROLE_BASELINE,
     ROLE_CANDIDATE,
-    SUSPECT_AGREEMENT,
+    SUSPECT_COVERAGE,
+    agreement,
     agreement_score,
     composite_score,
     lyrics_tokens,
@@ -1108,17 +1109,27 @@ def _candidate(body, source=SOURCE_LRCLIB):
 
 
 def test_agreement_score_matches_the_TS_semantics():
+    # agreement_score/agreement take (candidate, baseline) order since #542, and the score is now
+    # count- and position-aware, not set Jaccard. Behaviour that must hold: a near-identical pair scores
+    # high, a different song scores near zero, and too-short text abstains. The full parity contract
+    # lives in test_lyrics_agreement_542.py against the shared corpus; this pins the same shapes here so
+    # the align seam's own view of the metric cannot drift silently.
     near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
     assert agreement_score(_SUNG, near) > 0.7
     other = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
-    assert agreement_score(_SUNG, other) < SUSPECT_AGREEMENT
+    # A genuinely different song: the JUDGEMENT axis is coverage now, not the ranking score, so assert
+    # both — the candidate carries almost none of what was heard, and its ranking score is far below the
+    # near-identical pair's.
+    assert agreement(_SUNG, other) is not None
+    assert agreement(_SUNG, other).coverage < SUSPECT_COVERAGE
+    assert agreement_score(_SUNG, other) < 0.25
     # too short to judge → None, NOT 0: an instrumental must not condemn a correct lookup
     assert agreement_score("la la la", _SUNG) is None
 
 
 def test_lyrics_tokens_fold_unicode_form_so_form_variants_match():
     """NFKC folding (#540): text differing only in Unicode FORM must tokenise identically, and the
-    all-ASCII path must be byte-for-byte unchanged so the calibrated 0.25 threshold is preserved.
+    all-ASCII path must be byte-for-byte unchanged so the metric's ASCII behaviour is preserved.
 
     RED ON BASE: before the fold, .lower() left the two forms as distinct codepoints, so these pairs
     produced disjoint token sets. Each assertion below fails on origin/main and passes with the fold.
@@ -1134,8 +1145,8 @@ def test_lyrics_tokens_fold_unicode_form_so_form_variants_match():
     ascii_text = "[00:12.50]Hello, World! [Chorus] don't stop the music"
     assert lyrics_tokens(ascii_text) == ["hello", "world", "don't", "stop", "the", "music"]
 
-    # The whole calibration corpus is ASCII, so a real same-song comparison is unchanged and still
-    # scores far above SUSPECT_AGREEMENT (0.25) — proving the fold did not disturb the threshold.
+    # The whole corpus here is ASCII, so a real same-song comparison is unchanged and still scores far
+    # above any wrong-song band — proving the fold did not disturb the metric's ASCII behaviour.
     near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
     assert agreement_score(_SUNG, near) > 0.7
 
@@ -1143,21 +1154,25 @@ def test_lyrics_tokens_fold_unicode_form_so_form_variants_match():
 def test_composite_is_the_MEAN_over_baselines_that_can_speak():
     """One baseline is one opinion; the composite averages independent ones."""
     near = "we could be heroes just for one day standing near the wall guns above their heads and we kissed"
-    score, votes = composite_score(_candidate(_SUNG), [_baseline(_SUNG), _baseline(near, rank=1)])
-    assert len(votes) == 2
-    assert score == pytest.approx(sum(votes) / 2)
+    got = composite_score(_candidate(_SUNG), [_baseline(_SUNG), _baseline(near, rank=1)])
+    assert len(got.votes) == 2
+    assert got.score == pytest.approx(sum(got.votes) / 2)
+    # #542: the composite now also carries the mean baseline COVERAGE — the axis the wrong-song
+    # judgement reads — over the same two speaking baselines.
+    assert got.coverage is not None
 
 
 def test_a_baseline_too_thin_to_judge_ABSTAINS_rather_than_voting_zero():
     """The property that makes a weak baseline (YouTube auto-captions on music) safe to include: it
     drops out of the mean instead of dragging it down."""
-    score, votes = composite_score(_candidate(_SUNG), [_baseline(_SUNG), _baseline("la la la", rank=2)])
-    assert len(votes) == 1  # the thin one abstained
-    assert score == 1.0  # ...and did not dilute the one that spoke
+    got = composite_score(_candidate(_SUNG), [_baseline(_SUNG), _baseline("la la la", rank=2)])
+    assert len(got.votes) == 1  # the thin one abstained
+    assert got.score == 1.0  # ...and did not dilute the one that spoke
+    assert got.coverage == 1.0  # coverage is taken over the same single speaking baseline
 
 
 def test_no_baseline_at_all_means_UNJUDGED_rather_than_a_zero():
-    assert composite_score(_candidate(_SUNG), []) == (None, [])
+    assert composite_score(_candidate(_SUNG), []) == (None, None, [])
 
 
 @pytest.mark.asyncio
@@ -1173,7 +1188,10 @@ async def test_A_WRONG_SONG_LOOKUP_IS_DEMOTED_not_shown_as_authoritative(tmp_pat
     cands = done.artifacts["lyrics"]["candidates"]
     bysrc = {c["textSource"]: c for c in cands}
     assert bysrc[SOURCE_LRCLIB]["textConfidence"] == "low"  # demoted: no longer authoritative
-    assert bysrc[SOURCE_LRCLIB]["agreement"] < SUSPECT_AGREEMENT  # and the evidence is recorded
+    # The recorded `agreement` field is the composite RANKING score (winner_score). The DEMOTION itself
+    # is judged on baseline coverage now (#542), but a genuinely different song scores near zero on both
+    # axes, so the recorded score is well below any wrong-song band.
+    assert bysrc[SOURCE_LRCLIB]["agreement"] < SUSPECT_COVERAGE
     assert SOURCE_ASR in bysrc  # the baseline was published as a real alternative
 
 

@@ -80,8 +80,9 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  * words with coarse highlighting is the accepted minimum. A bouncing ball over invented lyrics looks
  * more finished and is worth less.
  *
- * TIER 1 IS THE ONE THAT IS EASY TO GET WRONG. A candidate whose agreement is below SUSPECT_AGREEMENT
- * has been measured against transcripts of this actual audio and found to be a different song.
+ * TIER 1 IS THE ONE THAT IS EASY TO GET WRONG. A candidate whose BASELINE COVERAGE is below
+ * SUSPECT_COVERAGE has been measured against transcripts of this actual audio and found to be missing
+ * most of what was sung — a different song.
  * Demoting its `textConfidence` alone is NOT enough: that only drops it to the same rank as the
  * baseline it was measured against, and `breaksTie` then PREFERS it, because it carries a numeric
  * agreement while a baseline carries none (a baseline is the ruler, so it has no score). The room
@@ -167,36 +168,118 @@ export function lyricsTokens(text: string): string[] {
 		.filter(Boolean);
 }
 
-/** Fewer shared tokens than this and a comparison says nothing useful either way. */
+/** Fewer distinct tokens than this on either side and a comparison says nothing useful either way. */
 export const MIN_TOKENS_TO_COMPARE = 12;
 
-/** Below this, treat an authoritative lookup as probably the WRONG SONG. */
-export const SUSPECT_AGREEMENT = 0.25;
+/**
+ * Below this BASELINE COVERAGE, treat an authoritative lookup as probably the WRONG SONG.
+ *
+ * Replaces `SUSPECT_AGREEMENT = 0.25` (#542). Both the metric and the axis changed, so the constant is
+ * renamed rather than re-valued — a same-named threshold on a different scale is a trap.
+ *
+ * Coverage, not the ranking score, because only coverage is immune to the size asymmetry a partial
+ * baseline creates, and a partial baseline is the normal case: ASR suppresses sung vocals. Measured
+ * band (synthetic corpus, reproducible from `apps/worker/tests/test_lyrics_agreement_542.py`):
+ * different song tops out at 0.300, a correct candidate bottoms out at 0.468 against an already-unusable
+ * 50%-word-error baseline, and 0.485 against a baseline that heard only a third of the song. 0.40 sits
+ * in that gap. Not a corpus calibration — #668 (a real corpus from the prod snapshot) is still open.
+ */
+export const SUSPECT_COVERAGE = 0.4;
 
 /**
- * 0..1 similarity between two lyrics texts, or `null` when not comparable.
- *
- * Jaccard over token SETS, so order-insensitive on purpose: a repeated chorus, missing verse, or
- * reordered bridge should not read as disagreement, whereas a different song shares few words at all.
- *
- * Returns null — not 0 — when either side is too short (`MIN_TOKENS_TO_COMPARE`). An instrumental
- * transcribes to almost nothing, and scoring that as total disagreement would condemn a correct
- * lookup. "I cannot tell" and "these differ" must not be the same answer.
+ * Weight of the POSITION-aware term in the ranking score (#542). Equal weight with the count-aware
+ * term; any other split would be a coefficient nobody has measured. Ranking is threshold-free, so this
+ * steers a comparison and cannot by itself accept or reject anything.
  */
-export function agreementScore(a: string, b: string): number | null {
-	const setA = new Set(lyricsTokens(a));
-	const setB = new Set(lyricsTokens(b));
-	if (setA.size < MIN_TOKENS_TO_COMPARE || setB.size < MIN_TOKENS_TO_COMPARE) return null;
+export const SEQUENCE_WEIGHT = 0.5;
+
+/** Σ min(count in a, count in b) — the shared token count WITH multiplicity. */
+function multisetOverlap(a: readonly string[], b: readonly string[]): number {
+	const counts = new Map<string, number>();
+	for (const t of b) counts.set(t, (counts.get(t) ?? 0) + 1);
+	const seen = new Map<string, number>();
+	for (const t of a) seen.set(t, (seen.get(t) ?? 0) + 1);
 	let shared = 0;
-	for (const t of setA) if (setB.has(t)) shared++;
-	const union = setA.size + setB.size - shared;
-	return union === 0 ? null : shared / union;
+	for (const [t, n] of seen) shared += Math.min(n, counts.get(t) ?? 0);
+	return shared;
 }
 
 /**
- * Does the ASR transcript suggest this authoritative text is for a DIFFERENT song? `false` when the
- * comparison could not be made — an unknown must never be reported as a detected mismatch.
+ * Every neighbouring token pair, in order — the position-aware view of a token sequence.
+ *
+ * Adjacent pairs rather than a whole-sequence alignment: LCS/difflib is O(n·m) on texts of thousands of
+ * tokens, re-run per candidate × baseline inside selection, and difflib's ratio is not reproducible
+ * across languages (its autojunk heuristic silently drops frequent tokens in long sequences). `\u0000`
+ * joins the pair because no token can contain it — `lyricsTokens` keeps only letters, digits and `'`.
  */
-export function isLikelyWrongSong(agreement: number | null | undefined): boolean {
-	return typeof agreement === 'number' && agreement < SUSPECT_AGREEMENT;
+function adjacentPairs(tokens: readonly string[]): string[] {
+	const out: string[] = [];
+	for (let i = 1; i < tokens.length; i++) out.push(`${tokens[i - 1]}\u0000${tokens[i]}`);
+	return out;
+}
+
+/** One candidate compared against one baseline, kept as THREE numbers instead of an average. */
+export interface Agreement {
+	/** |C ∩ B| / |B|, multiset — how much of what IS audible the candidate carries. The JUDGE axis. */
+	coverage: number;
+	/** |C ∩ B| / |C|, multiset — how much of the candidate is actually audible. */
+	fidelity: number;
+	/** The same overlap over ADJACENT PAIRS, weaker direction — word ORDER, not just counts. */
+	sequence: number;
+	/** The single number selection ranks by. Not a threshold axis — see `SUSPECT_COVERAGE`. */
+	rankScore: number;
+}
+
+/**
+ * Compare a CANDIDATE against a BASELINE, or `null` when the comparison says nothing.
+ *
+ * The directional split is the point (#542). Symmetric Jaccard averaged the two directions into one
+ * number and destroyed the fingerprint of "right song, WRONG version" — near-complete coverage of the
+ * audible words while a large part of the candidate is not audible at all (measured on the real reported
+ * mis-pick: coverage 0.857, fidelity 0.485, and a symmetric 0.448 that sailed past the old 0.25).
+ *
+ * ARGUMENT ORDER IS LOAD-BEARING and was not before: swapping the arguments swaps coverage and fidelity.
+ *
+ * `null` — not 0 — when either side has fewer than `MIN_TOKENS_TO_COMPARE` distinct tokens. An
+ * instrumental transcribes to almost nothing, and scoring that as total disagreement would condemn a
+ * correct lookup. "I cannot tell" and "these differ" must not be the same answer.
+ */
+export function agreement(candidate: string, baseline: string): Agreement | null {
+	const tokensC = lyricsTokens(candidate);
+	const tokensB = lyricsTokens(baseline);
+	if (new Set(tokensC).size < MIN_TOKENS_TO_COMPARE || new Set(tokensB).size < MIN_TOKENS_TO_COMPARE) return null;
+	const shared = multisetOverlap(tokensC, tokensB);
+	const pairsC = adjacentPairs(tokensC);
+	const pairsB = adjacentPairs(tokensB);
+	const sharedPairs = multisetOverlap(pairsC, pairsB);
+	const sequence =
+		pairsC.length > 0 && pairsB.length > 0 ? Math.min(sharedPairs / pairsB.length, sharedPairs / pairsC.length) : 0;
+	const coverage = shared / tokensB.length;
+	const fidelity = shared / tokensC.length;
+	// Same expression, same order as chain.py's Agreement.rank_score: every intermediate is an integer
+	// count, so both languages produce bit-identical doubles for identical input.
+	const rankScore = (1 - SEQUENCE_WEIGHT) * Math.min(coverage, fidelity) + SEQUENCE_WEIGHT * sequence;
+	return { coverage, fidelity, sequence, rankScore };
+}
+
+/**
+ * The 0..1 ranking score for one candidate against one baseline, or `null` when not comparable.
+ *
+ * Count- and position-aware since #542; it was symmetric Jaccard over token SETS. Selection ranks by
+ * this and applies no threshold to it; the absolute wrong-song judgement reads `coverage` instead.
+ */
+export function agreementScore(candidate: string, baseline: string): number | null {
+	return agreement(candidate, baseline)?.rankScore ?? null;
+}
+
+/**
+ * Does the baseline suggest this authoritative text is for a DIFFERENT song? `false` when the
+ * comparison could not be made — an unknown must never be reported as a detected mismatch.
+ *
+ * Takes BASELINE COVERAGE (`Agreement.coverage`, or the worker's `winnerCoverage`), not the ranking
+ * score: a correct candidate graded against a baseline that heard only part of the song has a low rank
+ * score by construction, and thresholding that demotes correct lyrics for a defect in the evidence.
+ */
+export function isLikelyWrongSong(coverage: number | null | undefined): boolean {
+	return typeof coverage === 'number' && coverage < SUSPECT_COVERAGE;
 }
