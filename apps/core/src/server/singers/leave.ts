@@ -20,6 +20,7 @@
 import type { EncoreApp } from '../app';
 import type { QueueEntry, ServerEvent } from '@encore/shared';
 import { isTerminal } from '@encore/shared';
+import { emitNowPlaying } from '../realtime/player';
 
 export interface LeaveResult {
 	/** Entry ids removed from the queue. */
@@ -47,6 +48,24 @@ export function doLeave(app: EncoreApp, singerId: string): LeaveResult {
 	// Forget them BEFORE announcing, so the membership snapshot the broadcast carries already excludes
 	// them and no client has to reconcile a roster that still lists someone who just left.
 	app.presence.forget(singerId);
+
+	// #636: an explicit leave un-queues their songs, which can change who plays next — a leaving
+	// singer's queued pick may be the advertised upNext, or removing it promotes another singer. Each
+	// remove above published only queue:patch, so nowplaying:changed was never re-derived and the TV
+	// kept naming the departed song. Re-broadcast the true next once, after the removals, only when
+	// something was actually removed (an empty leave changes no ordering). The playing entry is left
+	// alone on purpose (see the header), so this never interrupts the current song. Deps mirror the
+	// authoritative reconcileOnReady bag in app.ts so upNextAfter ranks by the room's real ordering.
+	if (doomed.length > 0) {
+		emitNowPlaying({
+			state: app.state,
+			publish: (e) => app.publish(e),
+			mediaById: app.mediaById,
+			listSingers: () => app.singers.listPublic(app.activeRoomId),
+			getSettings: () => app.settings.getEffective(app.activeRoomId),
+			onNowPlaying: (e) => app.plays.onNowPlaying(e)
+		});
+	}
 
 	return { removed: doomed.map((e) => e.id), keptPlaying: playing?.id ?? null };
 }

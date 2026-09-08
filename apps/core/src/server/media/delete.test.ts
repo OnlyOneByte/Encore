@@ -32,7 +32,7 @@ const media = (id: string): Media => ({
 
 let _s = 0;
 /** Seed one queued entry directly onto the authoritative state. */
-function seed(state: AuthoritativeState, id: string, mediaId: string, singerId = "s1") {
+function seed(state: AuthoritativeState, id: string, mediaId: string, singerId = 's1') {
 	state.applyQueueOp({
 		op: 'add',
 		entry: { id, mediaId, singerId, status: 'queued', rotationSeq: -1, addedAt: ++_s } as QueueEntry
@@ -42,11 +42,11 @@ function seed(state: AuthoritativeState, id: string, mediaId: string, singerId =
 /** A fake catalog index recording remove() calls; deleteMediaEntirely only calls remove on it. */
 function fakeMediaRepo() {
 	const removed: string[] = [];
-	return { removed, repo: { remove: (id: string) => removed.push(id) } as unknown as DeleteMediaDeps["media"] };
+	return { removed, repo: { remove: (id: string) => removed.push(id) } as unknown as DeleteMediaDeps['media'] };
 }
 
 /** A jobs stub with no live cook — cancel becomes a no-op, isolating the queue/file/skip behaviour. */
-const noJobs = { findLive: () => undefined } as unknown as DeleteMediaDeps["cancel"]["jobs"];
+const noJobs = { findLive: () => undefined } as unknown as DeleteMediaDeps['cancel']['jobs'];
 
 function harness(mediaIds: string[]) {
 	const published: ServerEvent[] = [];
@@ -81,7 +81,7 @@ test('unlinks the sidecar FIRST, before audio and derived artifacts', () => {
 	expect(unlinked.some((r) => r.startsWith('derived/stems/m1-instrumental'))).toBe(true);
 });
 
-test('removes EVERY queue entry for the media, including another singer\'s turn', () => {
+test("removes EVERY queue entry for the media, including another singer's turn", () => {
 	const { deps, state } = harness(['m1', 'm2']);
 	// s1 queues m1; s2 also queues m1 (one song, two turns); s1 queues m2 (survivor).
 	seed(state, 'a', 'm1', 's1');
@@ -119,4 +119,38 @@ test('drops the index row and clears the runtime catalog; unknown id is a no-op 
 	expect(hub.mediaById.has('m1')).toBe(false);
 	const again = deleteMediaEntirely('m1', deps);
 	expect(again.deleted).toBe(false);
+});
+
+// Regression for issue #636: deleting a NON-playing entry changes who plays next, so the delete path
+// must re-broadcast nowplaying:changed too. reconcileOnReady fires only on the wasPlaying path (the
+// dangling-current case, #639); the far more common non-playing delete published queue:removed +
+// media:status with NO nowplaying:changed, so the TV's advertised upNext kept naming the deleted
+// song. The `else emitNowPlaying(hub)` on delete.ts's wasPlaying gate closes it. Base-RED: on base the
+// delete path emits no nowplaying:changed on this branch, so the assertion inverts (no such event).
+test('deleting a NON-playing entry re-broadcasts the true next (#636)', () => {
+	// p is playing; the room's upNext is q1. Delete q1 (NOT the playing entry): truth becomes q2.
+	const { deps, state, published } = harness(['m-p', 'm-q1', 'm-q2']);
+	seed(state, 'p', 'm-p');
+	seed(state, 'q1', 'm-q1');
+	seed(state, 'q2', 'm-q2');
+	state.applyQueueOp({ op: 'status', id: 'p', status: 'playing' });
+	state.setPlayback({ currentEntryId: 'p', isPlaying: true });
+
+	const before = published.length;
+	const res = deleteMediaEntirely('m-q1', deps);
+	// Not the playing entry, so the wasPlaying/reconcile branch is NOT taken — the emit came from the
+	// `else`, which is what pins the fix to the non-playing path.
+	expect(res.wasPlaying).toBe(false);
+	expect(state.playback.currentEntryId).toBe('p');
+
+	const np = published
+		.slice(before)
+		.filter((e) => e.type === 'nowplaying:changed')
+		.at(-1) as Extract<ServerEvent, { type: 'nowplaying:changed' }> | undefined;
+	// The delete re-broadcast the advertised next, and it is q2 (HARD-CODED — not re-derived with
+	// upNextAfter), never the deleted q1.
+	expect(np).toBeDefined();
+	expect(np!.current?.id).toBe('p');
+	expect(np!.upNext?.id).toBe('q2');
+	expect(np!.upNext?.id).not.toBe('q1');
 });
