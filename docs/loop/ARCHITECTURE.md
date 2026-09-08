@@ -1,124 +1,97 @@
 # Loop architecture
 
-## The shape today
+How the lanes connect, and how work reaches each one. Reference material — no lane reads this file.
+
+## The shape
 
 ```
-                  ┌─────────────────────────────────────────┐
-                  │  ISSUEGEN ×5  (cron, staggered)         │
-                  │  reads one code slice, files issues     │
-                  └────────────────┬────────────────────────┘
-                                   │ opens issue with `review` + `rev:*`
+   ISSUEGEN x5 (cron, 4h staggered)          owner opens an issue
+   reads one code slice, files issues                 │
+                    │                                 │
+                    └──────────────┬──────────────────┘
                                    ▼
-   owner opens ──────────▶  ┌──────────────┐
-   an issue                 │  GitHub      │
-                            │  issues +    │◀────── labels are the state
-                            │  PRs         │        AND the event bus
-                            └──┬────────┬──┘
-        polls every 900s ──────┘        └────── polled per pass
-                 │                                     │
-                 ▼                                     ▼
-        ┌─────────────────┐                  ┌────────────────────┐
-        │  TRIAGE (cron)  │                  │  PR REVIEW         │
-        │  labels + asks  │                  │  one verdict/head  │
-        │  the owner      │                  │  sets approved /   │
-        └────────┬────────┘                  │  blocked           │
-                 │ applies `triaged`         └─────────▲──────────┘
-                 ▼                                     │ `review:pending`
-        ┌──────────────────────────────┐               │
-        │  DEV — conductor session     │───────────────┘
-        │  polls for triaged issues,   │  dispatches one worker session
-        │  dispatches coding workers   │  per issue; worker merges after
-        └──────────────────────────────┘  the conductor's independent go
+                        ┌──────────────────────┐
+                        │   GitHub issues+PRs  │
+                        │   labels = state     │
+                        └──────────┬───────────┘
+                                   │ webhook, outbound connection
+                                   ▼
+                        gh webhook forward ──▶ translator ──▶ cron trigger
+                                                    │
+                    ┌───────────────────────────────┘
+                    ▼
+            TRIAGE-Unified  (~5s after the event)
+            labels, comments, asks the owner
+                    │ applies `triaged`
+                    ▼
+        ┌───────────────────────────┐        ┌──────────────────────┐
+        │  DEV CONDUCTOR (session)  │───────▶│  REVIEW ORCHESTRATOR │
+        │  dispatches 1 worker per  │        │  1 reviewer per PR   │
+        │  issue, max 5 in flight   │◀───────│  max 5, one verdict  │
+        └───────────────────────────┘        └──────────────────────┘
 ```
 
-Two structural facts about Encore that shape everything downstream:
+Two structural facts that shape everything downstream:
 
 - **There is no CI.** `.github/` does not exist — no workflows, no check runs, no `PR Readiness`
-  status, no reviewer lanes. Every gate is re-run by an agent on the box.
-- **`main` has no branch protection.** So the label gates plus the conductor's independent
-  verification are the *entire* safety system. Nothing external will catch a bad merge.
+  status. Every gate is re-run by an agent on the box.
+- **`main` has no branch protection.** So the label gates plus the conductor's independent verification
+  are the entire safety system. See [`COMMON.md`](COMMON.md#merge-safety).
 
-## The problem: labels are doing two jobs
+## Labels are state. Events are the bus.
 
-Labels are a good state store. They are a bad event bus, and they are currently being used as both.
+Labels are a good coordination store — visible, crash-safe, no side database. They used to do a second
+job as well: a lane learned there was work by noticing a label had changed since it last looked. That
+is edge detection by polling, and a missed edge was silent and permanent. It cost two issues:
 
-| Label edge | What it is really being used for | Failure mode |
+- **#707** — a freshly-opened PR carrying no label was *invisible* to the review lane, so its author
+  waited for a verdict that never came.
+- **#681** — a worker pushed a fix but left `review:blocked` in place and waited **forever**; the
+  comment it posted asking for re-review was inert.
+
+Both are events GitHub already emits. Triage now runs on those events, and the remaining label-as-
+trigger edges are listed in [`LABELS.md`](LABELS.md#labels-still-doing-trigger-duty).
+
+What webhooks did **not** change: what a lane may trust. With no CI there is no `check_suite` to
+consume, so an event only says *when* to look. Every lane still re-establishes ground truth with `gh`
+and re-runs its own gates.
+
+## How each lane is woken
+
+| Lane | Woken by | Latency |
 |---|---|---|
-| `triaged` removed | "re-triage this issue" | Only lever the owner has; noticed up to 900s later |
-| `review:pending` added | "a PR is ready to review" | A PR opened without it is **invisible** (#707) |
-| `review:blocked` → `review:pending` | "I pushed a fix, re-review me" | Left in place → waits forever; a comment is inert (#681) |
-| `review` added | "triage should stamp, not re-investigate" | Missing → triage tries to reproduce an architecture finding |
-| `needs-decision` removed | "the owner answered" | Nothing reads the answer itself; a label left on parks the issue indefinitely |
+| Triage | GitHub webhook → `cron trigger` on `TRIAGE-Unified`; its 2h schedule is only a safety net | ~5s |
+| ISSUEGEN x5 | wall clock, staggered 4h offsets, six passes per charter per day | n/a |
+| Dev conductor | its own ~90s patrol, reading GitHub for dispatchable issues | ≤90s |
+| Coding worker | dispatched by the conductor; then its own review-wait loop | — |
+| Review orchestrator | a PR appearing; one reviewer per PR, oldest head first | — |
 
-The pattern is identical in every row: a lane needs to know *something happened*, GitHub already
-knows it happened, and the loop instead reconstructs it by comparing label state against the last
-time it looked. Reconstruction is what fails.
+Triage is the only lane on the webhook path today. The dev and review lanes still poll, which is a
+known gap rather than a design choice — the trigger they need (`issues.labeled`, `pull_request.opened`,
+`pull_request.synchronize`) is already delivered and recorded by the translator; nothing consumes it
+yet.
 
-The clearest illustration is the triage Decisions block. Triage asks the owner a question in a
-comment and applies `needs-decision`. The owner answers in a comment. That answer changes nothing,
-because the only thing the loop watches is the label — so the protocol requires the owner to *also*
-perform a label edit to signal that the comment they just wrote exists.
+## Why triage is a cron and the others are sessions
 
-## The target shape
+A webhook-woken agent turn runs **unattended**: it inherits whatever approval policy the gateway
+started with, so a turn needing `gh` can block on an approval nobody is there to give and sit until it
+times out. Cron jobs do not have that problem — they carry their own auto-approval. So the translator
+does not run the lane itself; it rings the doorbell on a cron job with `kirocrew cron trigger`, which
+also means the ingress needs **no gateway credential at all**.
 
-GitHub events become the bus. Labels keep exactly one job: state.
+The dev and review orchestrators are long-lived **sessions** instead, because they hold accumulated
+context — rulings, in-flight tables, per-issue decisions — that an ephemeral turn cannot carry. That
+context is why they are not simply moved onto the webhook path.
+
+One consequence worth knowing: a cron run is a `cron_*` session, not a dashboard chat session, so it
+**cannot be filed into a sidebar folder**. `Encore/triage` stays empty while triage is cron-driven.
+
+## Sidebar layout
 
 ```
-GitHub ──(outbound connection, no ingress)──▶ gh webhook forward
-                                                     │ signed POST
-                                                     ▼
-                                            translator (loopback :8787)
-                                            verify HMAC · dedupe on
-                                            X-GitHub-Delivery · write
-                                            one file to a durable inbox
-                                                     │
-                                                     ▼
-                                            ┌────────────────────┐
-                                            │  inbox/  (on disk) │
-                                            └─────────┬──────────┘
-                                                      ▼
-                                            the lane drains it, and
-                                            reconciles against live
-                                            GitHub with `gh`
+Encore
+├── orchestrator   the dev conductor and the review orchestrator
+├── dev            one session per issue (coding workers)
+├── review         one session per PR (reviewers)
+└── triage         empty — triage is a cron, see above
 ```
-
-Three properties this buys, none of which the current design has:
-
-1. **Edges cannot be missed.** Every event is delivered with a delivery id, deduped, and written to
-   disk *before* anything is dispatched. A crash loses nothing.
-2. **Latency collapses** from "up to one poll interval" to about a second.
-3. **The hand-rolled label protocol can be retired**, because the events it was simulating are now
-   delivered directly. That removes the class of bug behind #681 and #707.
-
-What it explicitly does **not** buy: any new source of truth about correctness. Encore has no CI, so
-there is no `check_suite` event to consume. Webhooks change *when* a lane wakes, never *what* it is
-allowed to trust. Every lane still re-runs its own gates.
-
-## The constraint that shapes the bridge
-
-Encore's Dev and Review orchestrators are **long-lived dashboard sessions** carrying substantial
-accumulated context — rulings, in-flight tables, per-issue decisions. The webhook endpoint cannot
-talk to them directly:
-
-- `POST /api/hooks/agent` **refuses** to inject into a dashboard session. `sessionKey` must begin
-  with `hook:` — an explicit namespace guard so an external caller cannot steer a chat session.
-- Hook sessions are **ephemeral**: one turn, then destroyed. Continuity is only a `register_hook`
-  summary, capped at 5,000 characters and dropped entirely after 24 hours.
-
-So the events have to be bridged into the existing sessions rather than delivered to them. The three
-ways to do that, and why the staged plan picks the one it does, are in
-[`WEBHOOKS.md`](WEBHOOKS.md#bridging-into-a-live-session).
-
-## Ordering of the migration
-
-One lane at a time, in this order, because each stage's blast radius is contained by the one before:
-
-1. **Triage** — [`TRIAGE.md`](TRIAGE.md). Cheapest and most isolated: triage writes labels and
-   comments, never code. It also carries the most-felt pain (answering a question requires a label
-   edit). Doing it first proves the ingress on a lane that cannot break `main`.
-2. **Dev** — [`DEV.md`](DEV.md). Replaces the conductor's `gh issue list` poll with dispatch on
-   `issues.labeled`.
-3. **Review** — [`REVIEW.md`](REVIEW.md). Replaces the label-transition trigger with
-   `pull_request.opened` / `pull_request.synchronize`, and retires the manual flip protocol.
-
-Acceptance criteria per stage are in [`MIGRATION.md`](MIGRATION.md).
