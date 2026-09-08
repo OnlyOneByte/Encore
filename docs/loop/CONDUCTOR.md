@@ -74,6 +74,13 @@ its own. A genuinely-undecided proposal also carries `needs-decision` (which blo
 WITHOUT `needs-decision` means the owner already gave the go-ahead → dispatch it. `priority` = owner
 queue-jump (dispatch SOONER, still normal gate).
 
+**A brief that lists issue NUMBERS is stale by construction.** Blocked-ness is carried by the LABEL,
+never by a list in prose. When a list in any brief disagrees with the live labels, the labels win and
+the list is wrong — say so rather than following it. Measured 2026-09-08: a stale do-not-dispatch
+snapshot in the retired patrol context caused 11 label-ready issues to be held back for no reason,
+and the snapshot had defined itself as "anything carrying needs-decision / wontfix" — so once those
+labels cleared it described nothing.
+
 ## Dispatch gate and ordering
 
 `dispatchable` = `triaged`, no open PR/branch/worktree, NONE of {`needs-decision`, `wontfix`}.
