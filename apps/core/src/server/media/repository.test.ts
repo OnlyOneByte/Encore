@@ -223,3 +223,27 @@ test('setTags is atomic: a throw between delete and insert leaves the ORIGINAL t
 	// Rolled back: the pre-throw tags survive; the aborted 'jazz' write left nothing behind.
 	expect(r.tagsOf('m1', 'genre').sort()).toEqual(['pop', 'rock']);
 });
+
+test('remove() hard-deletes the media row AND its tags in one transaction (#639)', () => {
+	const r = repo();
+	r.upsert(cooked('m1'));
+	r.upsert(cooked('m2'));
+	r.setTags('m1', 'genre', ['rock', 'pop']);
+	r.setTags('m1', 'mood', ['upbeat']);
+	r.setTags('m2', 'genre', ['jazz']);
+	expect(r.byId('m1')).toBeDefined();
+	expect(r.tagsOf('m1', 'genre').sort()).toEqual(['pop', 'rock']);
+
+	r.remove('m1');
+
+	// The row is gone from the index...
+	expect(r.byId('m1')).toBeUndefined();
+	// ...and so are ALL its tags, of every kind (no orphan tag rows pointing at a dead media).
+	expect(r.tagsOf('m1', 'genre')).toEqual([]);
+	expect(r.tagsOf('m1', 'mood')).toEqual([]);
+	// The unrelated song and its tags are untouched.
+	expect(r.byId('m2')).toBeDefined();
+	expect(r.tagsOf('m2', 'genre')).toEqual(['jazz']);
+	// Idempotent: removing an absent id is a clean no-op.
+	expect(() => r.remove('m1')).not.toThrow();
+});

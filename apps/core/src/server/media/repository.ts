@@ -124,6 +124,20 @@ export class MediaRepository {
 		this.#onPersist?.(m);
 	}
 
+	/**
+	 * Hard-delete one media from the index — the row AND its tags — for the entry-delete of #639.
+	 * Row and tags go in ONE transaction: a crash between them would strand orphan tag rows pointing at
+	 * a media that no longer exists (bun:sqlite makes the transaction synchronous, so either both land
+	 * or neither). The AUTHORITATIVE sidecar is unlinked by the caller BEFORE this (deleteMediaEntirely),
+	 * so a rescan cannot rebuild the row this drops. Idempotent: deleting an absent id is a no-op.
+	 */
+	remove(mediaId: string): void {
+		this.#db.transaction((tx) => {
+			tx.delete(mediaTags).where(eq(mediaTags.mediaId, mediaId)).run();
+			tx.delete(media).where(eq(media.id, mediaId)).run();
+		});
+	}
+
 	/** One media by id, or undefined. */
 	byId(id: string): Media | undefined {
 		const row = this.#db.select().from(media).where(eq(media.id, id)).all()[0];
