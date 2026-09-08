@@ -330,6 +330,21 @@
 		   for this one effect, and this was one of them. Not a legibility risk — it darkens BEHIND the
 		   glyphs, it does not touch the pure-white ink itself. */
 		text-shadow: 0 2px 18px var(--scrim-strong);
+		/* The outline that keeps the words legible on ANY background. The soft glow above is a blurred
+		   shadow — it lifts the ink off a dark video, but it dissolves against a mid-tone stage colour of
+		   similar brightness, which is exactly the field a hue-only background paints. A hard stroke does
+		   not: it is a crisp edge regardless of what is behind it.
+
+		   `paint-order: stroke fill` is load-bearing. The default paints the fill first and the stroke
+		   ON TOP, so a stroke this wide would eat into the thin parts of the glyph and thicken the type.
+		   Reversing the order paints the stroke BEHIND the fill, so the outline only ever sits outside the
+		   letterform and the white ink stays its full width.
+
+		   Width is in `em`, not px, for the same reason --tv-lyric is: the reel adapts to the screen, so a
+		   pixel stroke would read heavy at 720p and hairline at 4K. --scrim-strong reuses the same black
+		   wash the glow already uses — one dark-outline source of truth, not a new colour. */
+		-webkit-text-stroke: 0.06em var(--scrim-strong);
+		paint-order: stroke fill;
 		/*
 		 * THE FOUR COLOURS THE REEL CAN PAINT, as variables — because provenance and highlight are two
 		 * independent axes, and competing selectors are a bad way to combine two axes.
