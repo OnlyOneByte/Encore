@@ -3,9 +3,9 @@
 // guard checks the call SHAPE, not the room VALUE, so it stays green whether a reader passes the live
 // room or the literal 'main'. This is the differential that pins the room VALUE: write a setting to the
 // LIVE room (a minted ULID, provably not 'main'), then read it back through the production reader path
-// and assert the value written is the value seen. Mutating a reader back to DEFAULT_ROOM_ID reds this.
+// and assert the value written is the value seen. Mutating a reader back to 'main' reds this.
 //
-// BASE-RED: on origin/main every touched reader passed DEFAULT_ROOM_ID (a bare default), so
+// BASE-RED: on origin/main every touched reader passed 'main' (a bare default), so
 // buildHubDeps().getSettings() and assertNameFree read 'main' and never saw a value written to the live
 // room — the getSettings assertion below inverts.
 import { test, expect, afterEach } from 'bun:test';
@@ -14,7 +14,7 @@ import { RoomRepository } from '$server/rooms/repository';
 import { SingerRepository } from '$server/singers/repository';
 import { PresenceTracker } from '$server/realtime/presence';
 import { AuthoritativeState } from '$server/state/store';
-import { SettingsRepository, DEFAULT_ROOM_ID } from '$server/state/settings-repository';
+import { SettingsRepository } from '$server/state/settings-repository';
 import { buildHubDeps, type EncoreApp } from '$server/app';
 import { assertNameFree } from '$server/singers/join';
 
@@ -51,12 +51,12 @@ const perFrame = {
 	hasOp: () => false
 };
 
-test('the live room is a minted id, not the literal DEFAULT_ROOM_ID (#728)', () => {
+test('the live room is a minted id, not the literal "main" (#728)', () => {
 	const db = migratedDb();
 	const app = installApp(db, 'placeholder');
 	const active = app.rooms.ensureActive(1);
 	// The property the whole fix rests on: the room the arc scopes to is NOT 'main'.
-	expect(active.id).not.toBe(DEFAULT_ROOM_ID);
+	expect(active.id).not.toBe('main');
 });
 
 test('buildHubDeps().getSettings() reads the ACTIVE room, not \u0027main\u0027 (#728, A1)', () => {
@@ -67,7 +67,7 @@ test('buildHubDeps().getSettings() reads the ACTIVE room, not \u0027main\u0027 (
 
 	// write distinct values to the live room and to 'main'
 	app.settings.setRoom({ songIntroMs: 9999 }, active.id);
-	app.settings.setRoom({ songIntroMs: 2222 }, DEFAULT_ROOM_ID);
+	app.settings.setRoom({ songIntroMs: 2222 }, 'main');
 
 	// the reader path this PR threads must return the LIVE room's value
 	const deps = buildHubDeps(app, perFrame);
@@ -75,7 +75,7 @@ test('buildHubDeps().getSettings() reads the ACTIVE room, not \u0027main\u0027 (
 	expect(getSettings).toBeDefined();
 	expect(getSettings!().room.songIntroMs).toBe(9999);
 	// and must NOT be reading 'main' (the base behaviour) — differential, so a revert to
-	// DEFAULT_ROOM_ID at the getSettings site reds here.
+	// 'main' at the getSettings site reds here.
 	expect(getSettings!().room.songIntroMs).not.toBe(2222);
 });
 
@@ -107,7 +107,7 @@ test('assertNameFree reads presence grace from the ACTIVE room, not \u0027main\u
 	// on its own, but it pins that the join path threads its room parameter (roomId), which is the
 	// active room here. The room-scoped listPublic below is what makes the scoping observable.
 	app.settings.setRoom({ presenceGraceMinutes: 1 }, active.id);
-	app.settings.setRoom({ presenceGraceMinutes: 60 }, DEFAULT_ROOM_ID);
+	app.settings.setRoom({ presenceGraceMinutes: 60 }, 'main');
 
 	// No singers in the active room, so no clash regardless — the assertion is that it does not throw
 	// and, crucially, that it is called with the ACTIVE room (verified by the scoped read above via
@@ -147,5 +147,5 @@ test('writer->reader seam: a param-less PUT lands where buildHubDeps().getSettin
 	expect(getSettings).toBeDefined();
 	expect(getSettings!().room.songIntroMs).toBe(6789);
 	// and it did NOT land on 'main' (the base regression)
-	expect(app.settings.getRoom(DEFAULT_ROOM_ID).songIntroMs).not.toBe(6789);
+	expect(app.settings.getRoom('main').songIntroMs).not.toBe(6789);
 });
