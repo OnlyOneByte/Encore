@@ -276,8 +276,12 @@ export function isValidLyricsHighlight(id: unknown): id is LyricsHighlightId {
  *
  * Applied at display time, so it COMPOSES WITH rather than replaces any per-song measured offset: a
  * fitted offset corrects for the recording, this corrects for the screen and the crowd in front of it.
+ *
+ * DEFAULT IS 0 (issue #629): a single global lead is a band-aid that cannot be right across tempos and
+ * masks per-song mismatch. The per-room `lyricsLeadMs` setting remains the opt-in for a room that
+ * wants a lead; only the shipped default changed.
  */
-export const DEFAULT_LYRICS_LEAD_MS = 300;
+export const DEFAULT_LYRICS_LEAD_MS = 0;
 export const MAX_LYRICS_LEAD_MS = 1500;
 
 // ── text ────────────────────────────────────────────────────────────────────

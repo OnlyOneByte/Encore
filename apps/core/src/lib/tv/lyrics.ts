@@ -99,8 +99,12 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
  * Applied at DISPLAY time, not baked into the artifact: the artifact should stay a faithful record of
  * where the words actually are, and this is a presentation preference that can be retuned per room
  * without recomputing anything.
+ *
+ * DEFAULT IS 0 (issue #629): a single global lead is a band-aid — it cannot be right for both a slow
+ * ballad and a fast rap line, and it masks per-song text/audio mismatch rather than fixing it. The
+ * per-room `lyricsLeadMs` setting stays as the opt-in for a room that still wants a lead.
  */
-export const LYRICS_LEAD_SEC = 0.3;
+export const LYRICS_LEAD_SEC = 0;
 
 /** A gap at least this long between two words reads as a line break. */
 export const LINE_GAP_SEC = 0.45;
