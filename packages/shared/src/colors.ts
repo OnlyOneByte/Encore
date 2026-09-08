@@ -296,6 +296,39 @@ export function isLegibleSingerColor(input: string): boolean {
 }
 
 /**
+ * The colour the TV lyric highlight should paint for the singer who is up — or `null` to leave the
+ * room accent in place (#634).
+ *
+ * WHY THIS IS A SEPARATE FUNCTION and not a call to `normalizeSingerColor`. That sibling exists to
+ * produce a colour that can be STORED, so it must always return something and falls back to a preset.
+ * Here a fallback to violet would be actively wrong: the reel's default is `--accent2`, the room's own
+ * accent, and silently substituting a preset would hand one guest somebody else's identity colour on
+ * the words they are singing. `null` is the honest answer — "no singer colour applies, keep the
+ * accent" — and it is the only one the caller can distinguish from a real choice.
+ *
+ * WHY IT NORMALISES. The value arrives from the wire (`singers.color` on the TV route) and is
+ * interpolated straight into a `style` attribute as a custom property. Canonical 6-digit lowercase hex
+ * is the shape every downstream reader already assumes, and a 3-digit hex reaching CSS is exactly what
+ * silently dropped the phone's avatar halo once already (see `normalizeSingerColor`, and the
+ * `singer-color.test.ts` guard). So this is the sanitising boundary, not a convenience.
+ *
+ * WHY THE LEGIBILITY GATE IS `isLegibleSingerColor` and not a new rule. The owner's ruling on #634 was
+ * to keep the singer's hue and let the reel's own `-webkit-text-stroke` (#750) carry legibility over
+ * the stage and over video — so there is no per-frame brightness derivation to invent here. What
+ * remains is the floor that a colour must clear to be an identity colour at all, and that floor
+ * already exists and is tested. A value that fails it is not a legitimate singer colour: it is junk,
+ * a legacy row, or an unparseable string, and the reel keeps the accent rather than painting the words
+ * in something that cannot be seen.
+ */
+export function lyricHighlightColor(input: string | null | undefined): string | null {
+	if (typeof input !== 'string') return null;
+	const rgb = parseHex(input);
+	if (!rgb) return null;
+	const hex = toHex(rgb);
+	return isLegibleSingerColor(hex) ? hex : null;
+}
+
+/**
  * Coerce arbitrary input into a colour that is safe to store and render.
  *
  * Normalising to canonical 6-digit lowercase hex is load-bearing, not tidiness: callers interpolate

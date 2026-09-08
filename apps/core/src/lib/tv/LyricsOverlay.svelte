@@ -25,6 +25,7 @@
 		LYRICS_SCALE_BASE,
 		getLyricsCase,
 		getLyricsFont,
+		lyricHighlightColor,
 		type LyricsBallStyleId,
 		type LyricsCaseId,
 		type LyricsFontId,
@@ -65,6 +66,16 @@
 		textCase?: LyricsCaseId;
 		linesBefore?: number;
 		linesAfter?: number;
+		/**
+		 * The CURRENT SINGER's identity colour (`singers.color`), so the highlight that tracks the words
+		 * is painted in the colour of whoever is singing rather than the room-wide accent (#634). Absent
+		 * or null — nobody is up, the roster has not arrived, the gallery — keeps the accent.
+		 *
+		 * Passed as the stored value, NOT pre-validated by the caller: `lyricHighlightColor` is the
+		 * sanitising boundary and it lives in @encore/shared, so every consumer of this component gets
+		 * the same rule instead of each call site deciding what an illegible colour means.
+		 */
+		singerColor?: string | null;
 	}
 	let {
 		lyricsRef,
@@ -80,7 +91,8 @@
 		font = DEFAULT_LYRICS_FONT,
 		textCase = DEFAULT_LYRICS_CASE,
 		linesBefore = DEFAULT_LYRICS_LINES_BEFORE,
-		linesAfter = DEFAULT_LYRICS_LINES_AFTER
+		linesAfter = DEFAULT_LYRICS_LINES_AFTER,
+		singerColor = null
 	}: Props = $props();
 
 	let fetched = $state<LyricsDoc | null>(null);
@@ -241,12 +253,23 @@
 	const rowCount = $derived(linesBefore + 1 + linesAfter);
 	const fontStack = $derived(getLyricsFont(font)?.stack ?? 'inherit');
 	const caseTransform = $derived(getLyricsCase(textCase)?.transform ?? 'none');
+	/*
+	 * WHOSE colour the highlight paints (#634). `null` means "no singer colour applies" — nobody is up,
+	 * the roster has not arrived, or the stored value is not a legible identity colour — and the reel
+	 * keeps `--accent2`, which is what `--reel-singer`'s declaration in the stylesheet already is.
+	 *
+	 * That is why the custom property is APPENDED CONDITIONALLY below rather than always written: the
+	 * CSS default is the real fallback, so there is exactly one place the accent is named and no
+	 * `var(--x, var(--accent2))` chain to drift out of step with it.
+	 */
+	const singerHighlight = $derived(lyricHighlightColor(singerColor));
 	const typeStyle = $derived(
 		// REBASED: the neutral 100 renders what 80 rendered before — see LYRICS_SCALE_BASE.
 		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE}; --lyrics-rows: ${rowCount}; ` +
 			`--lyrics-font: ${fontStack}; --lyrics-case: ${caseTransform}; ` +
 			// An edge with no context rows must not be faded — there the current line IS the edge row.
-			`--lyrics-fade-top-on: ${linesBefore > 0 ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 ? 1 : 0}`
+			`--lyrics-fade-top-on: ${linesBefore > 0 ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 ? 1 : 0}` +
+			(singerHighlight ? `; --reel-singer: ${singerHighlight}` : '')
 	);
 </script>
 
@@ -369,8 +392,25 @@
 		--reel-current: #fff;
 		--reel-ahead: rgba(255, 255, 255, 0.66);
 		--reel-done: #fff;
-		--reel-line: var(--accent2);
-		--reel-now: var(--accent2);
+		/*
+		 * WHOSE colour the highlight is (#634). The DEFAULT is the room accent, and this declaration is
+		 * the single place that fallback is named: the component appends `--reel-singer` to its inline
+		 * style ONLY when the current singer has a legible identity colour, so an absent roster, an
+		 * empty stage, the dev gallery and an illegible stored value all land here and render exactly
+		 * what they rendered before this feature existed.
+		 *
+		 * The two highlight colours read it rather than naming `--accent2` themselves, which is what
+		 * keeps the `word` and `line` treatments agreeing about whose colour is showing — the reason
+		 * this is one variable and not two overrides.
+		 *
+		 * Legibility is NOT re-derived here and that is the owner's ruling on #634, not an omission:
+		 * the hue is kept and the reel's own `-webkit-text-stroke` above carries the words over any
+		 * field, stage colour or video frame alike. The floor a colour must clear to be an identity
+		 * colour at all is enforced upstream by `lyricHighlightColor`.
+		 */
+		--reel-singer: var(--accent2);
+		--reel-line: var(--reel-singer);
+		--reel-now: var(--reel-singer);
 	}
 	/*
 	 * Unverified text is tinted WARM AMBER rather than set in italic.
@@ -388,14 +428,19 @@
 	 * mirrors the white ladder's own 0.66 alpha, which lands ~7:1 on the stage, so "not yet" is still
 	 * comfortably readable rather than merely sensed.
 	 *
-	 * `--reel-now` is deliberately NOT overridden. Pink means "sing this word now" on every song, and
-	 * the marker sitting directly above the word is `--accent2` regardless of provenance — recolouring
-	 * the word white here left a pink dot over a white word and made the two cues disagree. Amber
-	 * carries the doubt; pink carries the position. They are different questions.
+	 * `--reel-now` is deliberately NOT overridden, and #634 did not change that. The active word answers
+	 * WHERE the singer is (and, since #634, WHO is singing), which is a different question from whether
+	 * the text is trustworthy — and the marker sitting directly above the word is `--accent2` regardless
+	 * of provenance, so recolouring the word white here left a pink dot over a white word and made the
+	 * two cues disagree. Amber carries the doubt; the active word carries the position. Leaving
+	 * `--reel-now` alone is also what keeps a singer's own colour on the words they are singing on an
+	 * auto-transcribed song, which is the whole point of #634 and would otherwise be the one case that
+	 * silently lost it.
 	 *
 	 * `--reel-line` IS overridden, for the mirror-image reason: it colours the WHOLE current lyric, so
-	 * leaving it pink would mean the `line` treatment shows no provenance at all — which is what the
-	 * cascade was silently doing before. Under amber the current line is still unmistakably the current
+	 * leaving it on `--reel-singer` would mean the `line` treatment shows no provenance at all — which
+	 * is what the cascade was silently doing before. Under amber the current line is still unmistakably
+	 * the current
 	 * line (the rows around it are dim white), so nothing is lost by tinting it.
 	 */
 	.lyrics.unverified {
