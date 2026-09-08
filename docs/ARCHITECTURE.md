@@ -650,7 +650,7 @@ coarse `Stage` values are what the phone's progress bar reads; the step names ar
 | 3 | `fetch-captions:machine` | downloading | `audio.is_local`, `job`, `runner`, `work` | `lyrics.machine_cues` |
 | 4 | `acquire-texts` | aligning | `audio.duration_sec`, `audio.path`, `audio.vocals_path`, `job`, `lyrics.authored_cues`, `lyrics.machine_cues` | `lyrics.texts` |
 | 5 | `presplit-texts` | aligning | `lyrics.texts` | `lyrics.texts` |
-| 6 | `grade-and-select` | aligning | `lyrics.texts` | `lyrics.selection`, `lyrics.texts` |
+| 6 | `grade-and-select` | aligning | `audio.duration_sec`, `lyrics.texts` | `lyrics.selection`, `lyrics.texts` |
 | 7 | `time-texts` | aligning | `audio.path`, `audio.vocals_path`, `engines`, `job`, `lyrics.selection`, `lyrics.texts` | `out` |
 | 8 | `publish-lyrics` | aligning | `engines`, `job`, `out` | `out` |
 

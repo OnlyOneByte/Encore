@@ -19,6 +19,7 @@ from dataclasses import replace
 from typing import Any
 
 from ..lyrics import (
+    OVERSHOOT_FRACTION_MAX,
     SUSPECT_AGREEMENT,
     TIMING_LINE,
     TIMING_WORD,
@@ -28,6 +29,7 @@ from ..lyrics import (
     acquire_with_notes,
     build_sources,
     candidate_key,
+    candidate_last_end,
     caption_argv,
     is_line_synced,
     is_valid_lyrics,
@@ -276,11 +278,36 @@ class GradeAndSelect(Step):
 
     name = "grade-and-select"
     stage = Stage.ALIGNING
-    reads = frozenset({"lyrics.texts"})
+    # audio.duration_sec is read so the overshoot demotion (#667) can measure how far a candidate's own
+    # timings run past the end of the audio. `runtime/plan.py` fails plan validation for a key nothing
+    # produces, so this must be declared, not read implicitly.
+    reads = frozenset({"lyrics.texts", "audio.duration_sec"})
     writes = frozenset({"lyrics.selection", "lyrics.texts"})
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
-        sel = select_by_baselines(ctx.lyrics.texts)
+        duration_sec = ctx.audio.duration_sec
+        sel = select_by_baselines(ctx.lyrics.texts, duration_sec)
+        # Report overshoot in the same operator log that already carries timing defects (#667 piece 2),
+        # so a candidate timed past audio-end is visible in the cook log rather than only on the TV. The
+        # note is emitted for whatever was published, whether or not the overshoot was large enough to
+        # change the pick — a small, tolerated overshoot is still worth seeing.
+        if duration_sec and duration_sec > 0:
+            for published in sel.publish:
+                last_end = candidate_last_end(published)
+                if last_end is None:
+                    continue
+                over = max(0.0, last_end - duration_sec)
+                if over > 0:
+                    verdict = (
+                        "past the OVERSHOOT limit — a wrong-version pick, demoted in selection"
+                        if over / duration_sec > OVERSHOOT_FRACTION_MAX
+                        else "within tolerance"
+                    )
+                    ctx.note(
+                        f"lyrics overshoot — {published.variant or published.text_source} runs "
+                        f"+{over:.0f}s past audio-end ({over / duration_sec:.0%} of {duration_sec:.0f}s) "
+                        f"— {verdict}"
+                    )
         for note in sel.baseline_notes:
             ctx.note(f"baseline — {note}")
         for choice in sel.choices:

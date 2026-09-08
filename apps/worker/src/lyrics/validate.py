@@ -68,6 +68,11 @@ class TimingReport:
     smeared: list[tuple[str, float]] = field(default_factory=list)
     flashed: list[tuple[str, float]] = field(default_factory=list)
     out_of_order: int = 0
+    #: Seconds the lyrics run PAST the end of the audio. A one-sided metric coverage cannot carry: the
+    #: `min(1.0, …)` clamp below makes coverage report a candidate timed for a longer master (a
+    #: wrong-version pick) as a flawless 1.0. This is that discarded signal, kept as its own number so
+    #: coverage's thin/MIN_COVERAGE meaning is untouched — they answer different questions (#667).
+    overshoot_sec: float = 0.0
 
     @property
     def usable(self) -> bool:
@@ -106,6 +111,8 @@ class TimingReport:
 
     def summary(self) -> str:
         bits = [f"{self.words} words", f"coverage {self.coverage:.0%}"]
+        if self.overshoot_sec > 0:
+            bits.append(f"OVERSHOOT +{self.overshoot_sec:.0f}s past audio-end")
         if self.out_of_order:
             bits.append(f"{self.out_of_order} OUT OF ORDER")
         if self.long_gaps:
@@ -159,6 +166,9 @@ def validate_timing(doc: dict[str, Any], duration_sec: float | None) -> TimingRe
     rep.smeared.sort(key=lambda t: -t[1])
     last_end = max(float(w["end"]) for w in words)
     rep.coverage = 1.0 if not duration_sec or duration_sec <= 0 else min(1.0, last_end / duration_sec)
+    # Coverage is clamped and one-sided; overshoot is the OTHER side, kept separate. When the song
+    # length is unknown we cannot judge it, so it stays 0.0 (same policy coverage uses).
+    rep.overshoot_sec = 0.0 if not duration_sec or duration_sec <= 0 else max(0.0, last_end - duration_sec)
     return rep
 
 
