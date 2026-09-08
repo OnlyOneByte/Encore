@@ -11,7 +11,7 @@ import { SpotifyResolver } from '../media/spotify-resolver';
 import { createPopularityTracker } from '../media/popularity';
 import { MediaRepository } from '../media/repository';
 import { JobRepository } from '../jobs/repository';
-import { SettingsRepository } from '../state/settings-repository';
+import { SettingsRepository, DEFAULT_ROOM_ID } from '../state/settings-repository';
 import { JobReaper } from '../jobs/reaper';
 import { WorkerRegistry } from '../jobs/registry';
 import { WorkerHub } from '../jobs/worker-hub';
@@ -148,7 +148,7 @@ test('a name is still held while its owner is AWAY, so nobody takes it while she
 
 test('a name returns to the pool once its owner has GONE', () => {
 	const { app } = appHarness();
-	app.settings.setRoom({ presenceGraceMinutes: 0 }); // expire on the first sweep after the drain
+	app.settings.setRoom({ presenceGraceMinutes: 0 }, DEFAULT_ROOM_ID); // expire on the first sweep after the drain
 	const dana = doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] }).singer;
 	app.presence.connect(dana.id);
 	app.presence.disconnect(dana.id, app.now());
@@ -186,7 +186,7 @@ test('the join seed is AWAY, so the name frees up once the grace sweep expires i
 	// A phone that joined and immediately died must not hold a name for the whole night: the away seed
 	// expires through the ordinary sweep, same as any dropped socket.
 	const { app } = appHarness();
-	app.settings.setRoom({ presenceGraceMinutes: 0 }); // expire on the first sweep after the drain
+	app.settings.setRoom({ presenceGraceMinutes: 0 }, DEFAULT_ROOM_ID); // expire on the first sweep after the drain
 	doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[0] });
 	app.presence.evaluate({ now: app.now(), graceMs: 0, hasPendingSongs: () => false });
 	expect(() => doJoin(app, { displayName: 'Dana', color: SINGER_COLORS[1] })).not.toThrow();

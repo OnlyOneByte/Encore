@@ -8,7 +8,6 @@ import { getApp } from '$server/app';
 import { SESSION_COOKIE } from '$server/singers/repository';
 import { can } from '$server/auth/capabilities';
 import { mediaFor } from '$server/realtime/hub';
-import { DEFAULT_ROOM_ID } from '$server/state/settings-repository';
 import type { RoomSettings } from '@encore/shared';
 
 export const PUT: RequestHandler = async ({ request, cookies, url }) => {
@@ -18,12 +17,13 @@ export const PUT: RequestHandler = async ({ request, cookies, url }) => {
 	// every other capability the day one of them narrows.
 	if (!can({ singerId: singer?.id }, 'settings:write-room')) return json({ error: 'join first' }, { status: 401 });
 
-	// Which room this write addresses. The repository has always been keyed by room id; only this
-	// endpoint dropped it, so every write landed on the default room. `?roomId=` threads it back
-	// through, defaulting to DEFAULT_ROOM_ID so existing callers (no param) are unchanged. Read from
-	// the query string rather than the body so the JSON payload stays a pure Partial<RoomSettings>
+	// Which room this write addresses. The repository is keyed by room id; `?roomId=` names it
+	// explicitly, and an omitted param falls back to the LIVE room (app.activeRoomId), NOT the literal
+	// 'main' — otherwise a param-less client (the phone settings page fetches this bare) writes to
+	// 'main' while every reader now reads app.activeRoomId, silently discarding the write (#728). Read
+	// from the query string rather than the body so the JSON payload stays a pure Partial<RoomSettings>
 	// that flows straight into the normalizer.
-	const roomId = url.searchParams.get('roomId') ?? DEFAULT_ROOM_ID;
+	const roomId = url.searchParams.get('roomId') ?? app.activeRoomId;
 
 	let body: Partial<RoomSettings>;
 	try {

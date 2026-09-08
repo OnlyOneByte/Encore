@@ -398,3 +398,101 @@ test('#656: an EXISTING roomless database upgrades — 0003 adds room_id to queu
 	expect(new SingerRepository(db).listPublic('roomA').map((s) => s.id)).toEqual(['sOLD']);
 	expect(new SingerRepository(db).listPublic('roomB')).toHaveLength(0);
 });
+
+// #728 BLOCKING FIX -- the EXISTING-database upgrade path for room_settings. Before #728 every reader
+// AND the writer route defaulted to DEFAULT_ROOM_ID ('main'), so a configured box wrote its
+// room_settings row under 'main'. #728 moved every reader (and the writer fallback) onto the active
+// room -- a minted ULID, not 'main' -- so without a re-key an upgraded box would look up the active
+// room, find no row, and silently serve defaults. This models the real upgrade: apply migrations up to
+// 0003 (a pre-#728 box), write an old-shape 'main' room_settings row, THEN run the full set so 0004
+// runs -- and asserts the row is RE-KEYED onto the active (oldest) room, carrying every value.
+test('#728: an EXISTING main-keyed database upgrades -- 0004 re-keys room_settings onto the active room', () => {
+	const { db, sqlite } = openDb(':memory:');
+
+	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
+	const baseDir = mkdtempSync(join(tmpdir(), 'encore-mig-728-'));
+	mkdirSync(join(baseDir, 'meta'), { recursive: true });
+	const priorTags = [
+		'0000_baseline',
+		'0001_add_job_attempts_selection',
+		'0002_room_keyed_playback',
+		'0003_room_keyed_queue'
+	];
+	const fullJournal = JSON.parse(readFileSync(join(real, 'meta', '_journal.json'), 'utf8'));
+	for (const e of fullJournal.entries as { idx: number; tag: string }[]) {
+		if (!priorTags.includes(e.tag)) continue;
+		cpSync(join(real, e.tag + '.sql'), join(baseDir, e.tag + '.sql'));
+		cpSync(
+			join(real, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json'),
+			join(baseDir, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json')
+		);
+	}
+	const baseJournal = {
+		...fullJournal,
+		entries: fullJournal.entries.filter((e: { tag: string }) => priorTags.includes(e.tag))
+	};
+	writeFileSync(join(baseDir, 'meta', '_journal.json'), JSON.stringify(baseJournal));
+	runMigrations(db, baseDir);
+
+	sqlite.run("INSERT INTO rooms (id, code, created_at) VALUES ('roomA','AAAAAA',1000)");
+	sqlite.run("INSERT INTO rooms (id, code, created_at) VALUES ('roomB','BBBBBB',2000)");
+	sqlite.run("INSERT INTO room_settings (room_id, song_intro_ms, presence_grace_minutes) VALUES ('main', 7000, 5)");
+
+	runMigrations(db, real);
+
+	const rows = sqlite.query('SELECT room_id, song_intro_ms, presence_grace_minutes FROM room_settings').all() as {
+		room_id: string;
+		song_intro_ms: number;
+		presence_grace_minutes: number;
+	}[];
+	expect(rows).toHaveLength(1);
+	expect(rows[0]!.room_id).toBe('roomA');
+	expect(rows[0]!.song_intro_ms).toBe(7000);
+	expect(rows[0]!.presence_grace_minutes).toBe(5);
+	expect(rows.some((r) => r.room_id === 'main')).toBe(false);
+});
+
+// #728 guard: a pre-#654 DB (a 'main' row but no rooms yet) has no active room to carry it onto, so
+// the re-key is guarded off and the row stays put rather than being dropped or the migration throwing.
+test('#728: 0004 leaves the main row untouched when no room exists yet (pre-#654 DB)', () => {
+	const { db, sqlite } = openDb(':memory:');
+
+	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
+	const baseDir = mkdtempSync(join(tmpdir(), 'encore-mig-728b-'));
+	mkdirSync(join(baseDir, 'meta'), { recursive: true });
+	const priorTags = [
+		'0000_baseline',
+		'0001_add_job_attempts_selection',
+		'0002_room_keyed_playback',
+		'0003_room_keyed_queue'
+	];
+	const fullJournal = JSON.parse(readFileSync(join(real, 'meta', '_journal.json'), 'utf8'));
+	for (const e of fullJournal.entries as { idx: number; tag: string }[]) {
+		if (!priorTags.includes(e.tag)) continue;
+		cpSync(join(real, e.tag + '.sql'), join(baseDir, e.tag + '.sql'));
+		cpSync(
+			join(real, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json'),
+			join(baseDir, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json')
+		);
+	}
+	const baseJournal = {
+		...fullJournal,
+		entries: fullJournal.entries.filter((e: { tag: string }) => priorTags.includes(e.tag))
+	};
+	writeFileSync(join(baseDir, 'meta', '_journal.json'), JSON.stringify(baseJournal));
+	runMigrations(db, baseDir);
+
+	// a stray 'main' row and NO rooms row (pre-#654 shape)
+	sqlite.run("INSERT INTO room_settings (room_id, song_intro_ms) VALUES ('main', 7000)");
+
+	// deploy #728: only 0004 runs, but with no room its guard drops the UPDATE.
+	runMigrations(db, real);
+
+	const rows = sqlite.query('SELECT room_id, song_intro_ms FROM room_settings').all() as {
+		room_id: string;
+		song_intro_ms: number;
+	}[];
+	expect(rows).toHaveLength(1);
+	expect(rows[0]!.room_id).toBe('main');
+	expect(rows[0]!.song_intro_ms).toBe(7000);
+});
