@@ -36,3 +36,40 @@ test('queue-first gives the same cook the singer own rotation position', () => {
 test('a turn for a DIFFERENT song does not lend its priority', () => {
 	expect(soonestSeqFor('m1', [entry({ mediaId: 'other' })])).toBe(NO_QUEUE_PRIORITY);
 });
+
+// ── #741 F1: the retry the app advertises must not book a SECOND turn ─────────────────────────────
+// A terminally failed cook keeps offering Sing ("tap Sing to try again"), and taking that advice ran
+// BOTH steps — so the singer held two queued turns of one song and the room played it twice. With a
+// turn already queued the queue step must be skipped and only the cook run. Asserted against a
+// hard-coded expected call list, not derived from the same branch the code takes (#165).
+test('#741: a retry (hasQueuedTurn) COOKS but does NOT queue a second turn', () => {
+	const calls: string[] = [];
+	const out = cookAndQueue({
+		queue: () => calls.push('queue'),
+		cook: () => calls.push('cook'),
+		hasQueuedTurn: true
+	});
+	expect(calls).toEqual(['cook']); // cook only — the queue step was skipped
+	expect(out).toHaveLength(1); // and the caller can tell a retry from a first tap by result length
+});
+
+test('#741: a first tap (no queued turn) still queues THEN cooks — the failed case is the only change', () => {
+	// The default path is untouched: without a queued turn both steps run, in the load-bearing order.
+	const calls: string[] = [];
+	cookAndQueue({ queue: () => calls.push('queue'), cook: () => calls.push('cook') });
+	expect(calls).toEqual(['queue', 'cook']);
+	const explicit: string[] = [];
+	cookAndQueue({
+		queue: () => explicit.push('queue'),
+		cook: () => explicit.push('cook'),
+		hasQueuedTurn: false
+	});
+	expect(explicit).toEqual(['queue', 'cook']);
+});
+
+test('#741: the skipped retry cook still inherits the existing turn position, not NO_QUEUE_PRIORITY', () => {
+	// The reason skipping the queue step is safe: the turn the singer ALREADY holds is one of the
+	// turns soonestSeqFor reads, so the retry cook files at that position rather than at the bottom.
+	expect(soonestSeqFor('m1', [entry({ rotationSeq: 4 })])).toBe(4);
+	expect(soonestSeqFor('m1', [])).toBe(NO_QUEUE_PRIORITY); // and with no turn at all, the fallback
+});

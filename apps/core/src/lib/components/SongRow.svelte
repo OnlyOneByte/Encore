@@ -207,12 +207,22 @@
 	// Spelled out for a screen reader even though the button is a bare mark. The cook label names its
 	// COST ("about a minute") because that is the difference between the two actions, and it is the one
 	// thing an icon cannot say.
+	//
+	// The RETRY case is a third label, not a variant of the first (#741). `onmake` with `inQueue` means
+	// the singer already holds a queued turn for this song and its cook died — the only state that
+	// reaches it, because a cook in flight renders `.add` instead. Announcing "Sing this" there
+	// promised a turn the action deliberately no longer takes (it re-cooks the turn already held), so
+	// the words have to say re-cook. NOT disabled: the retry is the whole point of showing the failed
+	// state at all (readiness.ts `canCook('failed')`).
+	const retryCook = $derived(!!onmake && inQueue);
 	const actionLabel = $derived(
-		onmake
-			? 'Sing this — strips the vocals first, takes about a minute'
-			: inQueue
-				? 'Already in the queue'
-				: 'Add a turn'
+		retryCook
+			? 'Try making the karaoke again — you already have a turn for this song'
+			: onmake
+				? 'Sing this — strips the vocals first, takes about a minute'
+				: inQueue
+					? 'Already in the queue'
+					: 'Add a turn'
 	);
 </script>
 
@@ -299,8 +309,11 @@
 		-->
 		<button
 			class="sing"
+			class:retry={retryCook}
 			aria-label={actionLabel}
-			title="Take a turn now and strip the vocals — you keep your place in line while it cooks"
+			title={retryCook
+				? 'Try the karaoke again — you keep the turn you already have'
+				: 'Take a turn now and strip the vocals — you keep your place in line while it cooks'}
 			onclick={() => onmake?.()}><Icon name="sparkle" /></button
 		>
 	{:else}
@@ -590,6 +603,17 @@
 	.sing {
 		background: var(--accent-strong);
 		color: var(--on-accent);
+	}
+	/*
+	 * The RETRY sing (#741) keeps the accent fill — it is still the primary intent on this row, and it
+	 * is the action the failed group header points the singer at — but takes the danger ring so it is
+	 * not the same button as a first tap. It sits next to that row's own red "Couldn't make karaoke"
+	 * chip, so it borrows that chip's line colour rather than inventing a fourth semantic family. The
+	 * words carry the actual difference (see `actionLabel`); this stops the two states from being
+	 * pixel-identical while the action they perform differs.
+	 */
+	.sing.retry {
+		box-shadow: inset 0 0 0 2px var(--danger-line);
 	}
 	.add {
 		background: var(--card2);

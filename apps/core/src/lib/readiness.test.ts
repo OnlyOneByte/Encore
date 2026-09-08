@@ -2,7 +2,7 @@
 // media:status win over a stale catalog copy — otherwise tapping "✨ Karaoke" leaves the row looking
 // untouched until the next full sync.
 import { test, expect } from 'bun:test';
-import { readinessOf, displayReadiness, canCook, readyEmptyState } from './readiness';
+import { readinessOf, displayReadiness, canCook, readyEmptyState, queueCardKind } from './readiness';
 import { readinessOf as serverReadinessOf } from '../server/media/readiness';
 import type { Media } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
@@ -248,4 +248,43 @@ test('a canceled status leaves playability to the catalog, like failed', () => {
 	});
 	expect(entryPlayable(cooked, { status: 'canceled' })).toBe(true);
 	expect(entryPlayable(m(), { status: 'canceled' })).toBe(false);
+});
+
+// ── #741 F2: the singer's own queue card must say when the cook died ──────────────────────────────
+// A rotation entry chose between the cook-progress card and a plain waiting row on an "is it in
+// flight" test, and a terminally failed cook is not in flight — so a dead turn rendered
+// byte-for-byte as a turn about to play, with nothing saying the cook failed while nextPlayable held
+// its slot forever. queueCardKind selects the card, and MUST route a failed live status to a failed
+// card. Expected values are hard-coded, not derived from displayReadiness the same way the code is.
+test('#741: a live failed status selects the FAILED card, not a plain waiting row', () => {
+	// The exact reported state: media settled back to un-cooked (stemStatus none) after a dead cook,
+	// live status failed. On base this returned a plain row.
+	expect(queueCardKind(m({ stemStatus: 'none' }), { status: 'failed' })).toBe('failed');
+});
+
+test('#741: a cook in flight still selects the cooking card', () => {
+	expect(queueCardKind(m({ stemStatus: 'queued' }), { status: 'separating' })).toBe('cooking');
+	expect(queueCardKind(m(), { status: 'queued' })).toBe('cooking');
+});
+
+test('#741: a settled or absent status leaves a plain waiting row', () => {
+	// ready and canceled are terminal-and-settled: an ordinary turn again, no cook card.
+	expect(queueCardKind(m(), { status: 'ready' })).toBe('plain');
+	expect(queueCardKind(m(), { status: 'canceled' })).toBe('plain');
+	// no live status at all — the common case, a plain queued turn.
+	expect(queueCardKind(m(), undefined)).toBe('plain');
+});
+
+test('#741: a failed lyrics upgrade on a still-singable song is NOT marked broken', () => {
+	// The one case a raw status===failed test gets wrong: the song is fully cooked and singable, and a
+	// failed lyrics upgrade must not label a turn that WILL play as a dead one. Deferred to
+	// displayReadiness, which reads the catalog, so this stays plain.
+	const singable = m({
+		stemStatus: 'ready',
+		instrumentalRef: 'derived/stems/m1-instrumental.flac',
+		lyricsStatus: 'ready',
+		songProfile: EMPTY_SONG_PROFILE
+	});
+	expect(displayReadiness(singable, { status: 'failed' })).toBe('ready'); // the premise
+	expect(queueCardKind(singable, { status: 'failed' })).toBe('plain'); // so: plain, not failed
 });
