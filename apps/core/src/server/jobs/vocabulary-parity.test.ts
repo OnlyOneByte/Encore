@@ -17,7 +17,14 @@
 import { describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { ASR_MODELS, SYNC_MODES, SEPARATOR_ENGINES, FETCHERS } from '@encore/shared';
+import {
+	ASR_MODELS,
+	SYNC_MODES,
+	SEPARATOR_ENGINES,
+	FETCHERS,
+	EMPTY_SONG_PROFILE,
+	normalizeSongProfile
+} from '@encore/shared';
 import type { JobType } from '@encore/shared';
 import { requiredCapability } from './dispatch';
 import { DEFAULT_LEASE_CONFIG } from './leases';
@@ -661,5 +668,87 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
 	test('demucs.py is where the whitelist read expects it', () => {
 		const path = join(WORKER_SRC, 'separation/demucs.py');
 		expect(existsSync(path), `demucs.py not found under ${WORKER_SRC} — did the module move?`).toBe(true);
+	});
+});
+
+/**
+ * The songProfile's INNER FIELDS are a third hand-mirrored contract, and until now nothing spanned it.
+ *
+ * The guard above proves `songProfile` arrives at the right LEVEL of the artifacts envelope. It says
+ * nothing about what is inside it — and the inside is written in Python (`_NULL_PROFILE` in
+ * `analysis/song_profile.py`, the one place the always-publish null shape is built) and read in
+ * TypeScript (`SongProfile` + `EMPTY_SONG_PROFILE` + `normalizeSongProfile` in
+ * `packages/shared/src/song-profile.ts`). There is no generator between them. The worker's pytest
+ * asserts its own dict, the shared package's bun test asserts its own literal, and neither has ever
+ * seen the other's shape — the identical blind spot that let `songProfile` itself ship at the wrong
+ * envelope level.
+ *
+ * The drift this catches is silent in the direction that matters. Add a measured field on the worker
+ * side and forget the TS mirror and `normalizeSongProfile` drops it on the floor at the boundary: the
+ * cook still completes, the gate is still satisfied, nothing errors, and the measurement is simply
+ * never seen — which is exactly how `meanDb` came to be parsed, tested and discarded for a year
+ * (#462). Add it on the TS side and forget Python and every song reads null forever.
+ *
+ * Three-way, because two of the three can agree while the declared type disagrees: the Python source,
+ * the TS interface DECLARATION (read as text, since a type is erased at runtime), and the runtime keys
+ * of `EMPTY_SONG_PROFILE`.
+ */
+describe('songProfile inner-field parity (worker dict vs shared type)', () => {
+	const SHARED_SONG_PROFILE = join(WORKER_SRC, '../../../packages/shared/src/song-profile.ts');
+	const WORKER_SONG_PROFILE = join(WORKER_SRC, 'analysis/song_profile.py');
+
+	/** Keys of `_NULL_PROFILE = { "name": None, ... }`, read from the Python as text. */
+	function pyProfileKeys(): string[] {
+		expect(
+			existsSync(WORKER_SONG_PROFILE),
+			`song_profile.py not found under ${WORKER_SRC} — did the module move?`
+		).toBe(true);
+		const src = readFileSync(WORKER_SONG_PROFILE, 'utf8');
+		const m = src.match(/_NULL_PROFILE\s*=\s*\{([\s\S]*?)\n\}/);
+		expect(m, '_NULL_PROFILE dict not found in song_profile.py — did the null shape move?').toBeTruthy();
+		return [...m![1]!.matchAll(/^\s*"(\w+)"\s*:/gm)].map((x) => x[1]!);
+	}
+
+	/** Top-level field names of `export interface SongProfile { ... }`, read as text. */
+	function tsDeclaredKeys(): string[] {
+		expect(
+			existsSync(SHARED_SONG_PROFILE),
+			`song-profile.ts not found at ${SHARED_SONG_PROFILE} — did the module move?`
+		).toBe(true);
+		const src = readFileSync(SHARED_SONG_PROFILE, 'utf8');
+		const m = src.match(/export interface SongProfile \{([\s\S]*?)\n\}/);
+		expect(m, 'SongProfile interface not found in song-profile.ts').toBeTruthy();
+		// Field lines only: doc-comment lines inside the body start with `*` or `/`, never an ident.
+		return [...m![1]!.matchAll(/^\t([A-Za-z_]\w*)\??:/gm)].map((x) => x[1]!);
+	}
+
+	test('the Python null profile and the TS interface declare exactly the same fields', () => {
+		const py = pyProfileKeys();
+		const ts = tsDeclaredKeys();
+		// Non-vacuity floor on BOTH sides: an empty parse from either regex would let the equality
+		// pass with nothing in it, which is the trap the guards above call out by name.
+		expect(py.length, '_NULL_PROFILE parsed empty — did the dict change shape?').toBeGreaterThan(0);
+		expect(ts.length, 'SongProfile parsed empty — did the interface change shape?').toBeGreaterThan(0);
+		expect([...py].sort()).toEqual([...ts].sort());
+	});
+
+	test('EMPTY_SONG_PROFILE carries every declared field at runtime, and no extras', () => {
+		// The declaration is erased at runtime, so a field can be declared and missing from the
+		// always-publish literal the gate depends on. This is the arm that catches that.
+		expect([...Object.keys(EMPTY_SONG_PROFILE)].sort()).toEqual([...tsDeclaredKeys()].sort());
+	});
+
+	test('normalizeSongProfile emits every declared field even from garbage input', () => {
+		// The boundary must not narrow the shape: a field it forgets to copy is a measurement that
+		// silently never arrives, whatever both sides declare.
+		expect([...Object.keys(normalizeSongProfile({ nonsense: true }))].sort()).toEqual([...tsDeclaredKeys()].sort());
+	});
+
+	test('the measured loudness level crosses the wire under one name on both sides', () => {
+		// Named explicitly, not just covered by the set equality above: this is the field #462 adds,
+		// and a set-equality guard stays green if BOTH sides are renamed to something the playback
+		// side does not read.
+		expect(pyProfileKeys()).toContain('loudnessLufs');
+		expect(tsDeclaredKeys()).toContain('loudnessLufs');
 	});
 });

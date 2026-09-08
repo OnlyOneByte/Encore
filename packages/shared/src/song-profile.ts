@@ -106,7 +106,34 @@ export interface SongProfile {
 	 * that merely touches the same note once. `null` alongside a null range.
 	 */
 	histogram: number[] | null;
+	/**
+	 * Integrated loudness of the INSTRUMENTAL in LUFS (EBU R128 / ITU-R BS.1770-4), or `null` when the
+	 * stem could not be measured — digital silence, shorter than one 400 ms gating block, unreadable.
+	 *
+	 * A THIRD independent half of this record, measured by the same analysis step (see the worker's
+	 * `analysis/loudness.py`) off the same scratch WAV. The instrumental rather than the vocals on
+	 * purpose: the instrumental is the file that plays in the room, and the guide-vocal knob is a
+	 * fraction of it, so levelling the instrumental is also what makes a guide set to 15% mean the
+	 * same thing on the next song (#462).
+	 *
+	 * A negative float; mastered music sits around -8 to -20 LUFS. `null` means "not normalizable",
+	 * and the only safe reading of that is to leave the song's level alone — never to substitute a
+	 * default, because 0 LUFS would read as a deafening master and be attenuated into inaudibility.
+	 */
+	loudnessLufs: number | null;
 }
+
+/**
+ * The window a real BS.1770 integrated measurement can land in. Anything outside it is not a
+ * measurement of PCM audio and degrades to `null` rather than being trusted as a level.
+ *
+ * The floor is the standard's OWN absolute gate: BS.1770 discards gating blocks below -70 LUFS, so a
+ * programme measuring under that had every block thrown away and there is nothing left to normalize.
+ * The ceiling is what K-weighting can produce from full-scale content — stage 1 of the filter is a
+ * +4 dB high shelf, so even a clipped 0 dBFS master cannot integrate above roughly +4.
+ */
+export const MIN_MEASURABLE_LUFS = -70;
+export const MAX_MEASURABLE_LUFS = 4;
 
 /** A profile with no findings — what the worker publishes when analysis ran and came up empty. */
 export const EMPTY_SONG_PROFILE: SongProfile = {
@@ -117,7 +144,8 @@ export const EMPTY_SONG_PROFILE: SongProfile = {
 	highMidi: null,
 	p05Midi: null,
 	p95Midi: null,
-	histogram: null
+	histogram: null,
+	loudnessLufs: null
 };
 
 /** A profile whose key fields are all present — what {@link hasKey} narrows to. */
@@ -384,6 +412,12 @@ export function normalizeSongProfile(input: unknown): SongProfile {
 		? o.histogram.filter((x): x is number => typeof x === 'number' && Number.isFinite(x) && x >= 0)
 		: null;
 
+	// Loudness is its OWN half, validated against the measurable window rather than merely being
+	// finite: an out-of-window number is not a quiet or loud song, it is a bad reading, and trusting
+	// one would attenuate a song by a gain derived from noise. Out of window -> null -> left alone.
+	const lufs = num(o.loudnessLufs);
+	const lufsOk = lufs !== null && lufs >= MIN_MEASURABLE_LUFS && lufs <= MAX_MEASURABLE_LUFS;
+
 	return {
 		keyTonic: keyOk ? Math.trunc(tonic!) : null,
 		keyMode: keyOk ? mode : null,
@@ -392,6 +426,7 @@ export function normalizeSongProfile(input: unknown): SongProfile {
 		highMidi: rangeOk ? high : null,
 		p05Midi: rangeOk ? p05 : null,
 		p95Midi: rangeOk ? p95 : null,
-		histogram: rangeOk && hist && hist.length > 0 ? hist : null
+		histogram: rangeOk && hist && hist.length > 0 ? hist : null,
+		loudnessLufs: lufsOk ? lufs : null
 	};
 }
