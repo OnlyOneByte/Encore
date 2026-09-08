@@ -47,5 +47,7 @@ module = [
     "websockets.*",
     "intel_extension_for_pytorch",
     "karaoke_lyrics_processor",
+    "pyloudnorm",
+    "pyloudnorm.*",
 ]
 ignore_missing_imports = true
