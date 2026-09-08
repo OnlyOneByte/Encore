@@ -70,6 +70,13 @@
 		 * MUST stay ASCII (helper returns 'G#'/'Ab'); a typographic sharp/flat trips icons.test.ts.
 		 */
 		keyName?: string;
+		/**
+		 * The song's descriptive tags ("acoustic", "80s", "duet"), from the 'tag'-kind rows the sidecar
+		 * write path populates (see /api/library). Shown as neutral chips on a READY row only, matching
+		 * the key chip: tags describe a song IN YOUR LIBRARY, and a raw search result has none worth
+		 * showing. Absent/empty → no chips, so a song with no tags looks exactly as it did before.
+		 */
+		tags?: string[];
 		pct?: number; // cooking progress, 0..100
 		/**
 		 * The live cook STATUS (queued/downloading/separating/aligning/ready). Present, the row
@@ -94,6 +101,7 @@
 		durationSec,
 		viewCount,
 		keyName,
+		tags,
 		pct = 0,
 		status,
 		inQueue = false,
@@ -146,6 +154,14 @@
 	 * wrapper disappear. `keyName` is already the confidence-gated ASCII label from the parent.
 	 */
 	const showKey = $derived(readiness === 'ready' && !!keyName);
+
+	/*
+	 * Tags are shown ONLY on a READY (library) row, and only when there are any. Same reasoning as the
+	 * key chip: a raw/cooking row is a candidate upload, where a tag would be noise; a ready row is a
+	 * song in the library, where "acoustic · 80s" is exactly the kind of thing you scan the list for.
+	 * The array is normalised at its source (tagsOf de-dupes + lower-cases), so the row renders it as-is.
+	 */
+	const showTags = $derived(readiness === 'ready' && !!tags && tags.length > 0);
 
 	/*
 	 * The state chip replaces the old prose sub-line. That line read
@@ -235,7 +251,7 @@
 			{#if readiness === 'cooking'}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
 		</div>
 		{#if byline}<div class="byline">{byline}</div>{/if}
-		{#if kindLabel || stateChip || views || durationNote || showKey}
+		{#if kindLabel || stateChip || views || durationNote || showKey || showTags}
 			<div class="chips">
 				{#if stateChip}
 					<span
@@ -254,6 +270,9 @@
 				     reads as one thought about the same recording. -->
 				{#if durationNote}<span class="chip odd-dur">{durationNote}</span>{/if}
 				{#if views}<span class="chip">{views} views</span>{/if}
+				<!-- Descriptive tags for a library song. A neutral chip family (no semantic tint) — a tag is a
+				     fact about the song, not a status or a warning. Keyed by value so Svelte can re-use nodes. -->
+				{#if showTags}{#each tags! as tag (tag)}<span class="chip tag">{tag}</span>{/each}{/if}
 			</div>
 		{/if}
 		{#if readiness === 'cooking'}
@@ -498,6 +517,15 @@
 		background: var(--danger-bg);
 		border-color: var(--danger-line);
 		color: var(--danger-ink);
+	}
+	.chip.tag {
+		/* A song's descriptive tag ("acoustic", "80s"). A quiet accent wash — enough to read as a
+		   set apart from the neutral fact chips (views, key) beside it, but never a status colour:
+		   a tag is a describing word, not a warning. Reuses accent tokens rather than a new hex. */
+		background: var(--card-tint2);
+		border-color: var(--line-tint);
+		color: var(--accent-ink);
+		text-transform: capitalize;
 	}
 	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
 	.chip.odd-dur {

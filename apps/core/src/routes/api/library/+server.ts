@@ -27,6 +27,20 @@ export const GET: RequestHandler = async ({ url }) => {
 	// honest if a row was written by another path.
 	hydrateMediaCatalog(library, app.mediaById);
 
+	// A song's descriptive tags, so the library row can show what a song IS ("acoustic", "80s")
+	// without a second round-trip. Kept as a mediaId → string[] map ALONGSIDE `library` rather than
+	// folded into each Media: `Media` is the song's origin identity (search dedupes on it), and tags
+	// live in their own table written by a separate path (`setTags(id, 'tag', …)` in app.ts). A map is
+	// also the shape #690's tag filter reads — it needs "which songs carry tag X" cheaply, which a
+	// per-row array does not give. `tagsOf` defaults to the 'genre' kind, so 'tag' is passed
+	// explicitly: that is the kind the sidecar write path populates. Only entries WITH tags are
+	// included; a song with none is simply absent from the map (the row omits the chips).
+	const tags: Record<string, string[]> = {};
+	for (const m of library) {
+		const t = app.media.tagsOf(m.id, 'tag');
+		if (t.length) tags[m.id] = t;
+	}
+
 	// Cooking state is runtime, not durable — read it from the live catalog + job ledger.
 	const cooking = [...app.mediaById.values()]
 		.filter((m) => readinessOf(m) === 'cooking')
@@ -47,6 +61,9 @@ export const GET: RequestHandler = async ({ url }) => {
 	return json({
 		library,
 		cooking,
+		// mediaId → its 'tag'-kind values, for the library row's tag chips (#689). Additive: a client
+		// that does not read it is unaffected, and #690's tag filter reads this same map.
+		tags,
 		// Browse facets always describe the WHOLE ready library, never the current filter — otherwise
 		// picking an artist would collapse the facet list to that one artist and strand you there.
 		facets: { artists: app.media.artistFacets() },
