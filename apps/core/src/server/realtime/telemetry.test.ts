@@ -86,7 +86,7 @@ test('position-only telemetry updates position without advancing', () => {
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handleTelemetry({ positionSec: 42.7 }, deps);
 	expect(state.playback.currentEntryId).toBe('q1'); // unchanged
-	expect(state.playback.positionSec).toBe(42); // floored
+	expect(state.playback.positionSec).toBe(42.7); // tracked with sub-second precision (#718)
 });
 
 test('held-slot: ended skips a not-ready file entry, plays the ready one', () => {
@@ -195,7 +195,7 @@ test('a stale position frame naming the outgoing entry after an advance does NOT
 	state.applyQueueOp({ op: 'add', entry: entry('q2', 'm2') });
 	handlePlayerCommand({ cmd: 'play' }, deps); // q1 playing
 	handleTelemetry({ entryId: 'q1', positionSec: 87.4 }, deps);
-	expect(state.playback.positionSec).toBe(87); // a live frame for the current entry still tracks
+	expect(state.playback.positionSec).toBe(87.4); // a live frame for the current entry still tracks (#718: sub-second kept)
 
 	// Advance to q2 (its own play resets positionSec to 0).
 	handleTelemetry({ entryId: 'q1', positionSec: 100, ended: true }, deps);
@@ -213,7 +213,7 @@ test('a position frame for the current entry still updates position (guard hoist
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handleTelemetry({ entryId: 'q1', positionSec: 42.7 }, deps);
-	expect(state.playback.positionSec).toBe(42);
+	expect(state.playback.positionSec).toBe(42.7); // #718: broadcast position keeps sub-second precision
 });
 
 test('an id-less position frame keeps legacy behaviour (older TV unaffected) (#125)', () => {
@@ -221,7 +221,7 @@ test('an id-less position frame keeps legacy behaviour (older TV unaffected) (#1
 	state.applyQueueOp({ op: 'add', entry: entry('q1', 'm1') });
 	handlePlayerCommand({ cmd: 'play' }, deps);
 	handleTelemetry({ positionSec: 33.3 }, deps);
-	expect(state.playback.positionSec).toBe(33); // no id -> still applied
+	expect(state.playback.positionSec).toBe(33.3); // no id -> still applied (#718: sub-second kept)
 });
 
 test('the TV wires sendTelemetry through the pure telemetryFrame(status, current, …) so the stamp is reachable (#125, #130)', () => {
