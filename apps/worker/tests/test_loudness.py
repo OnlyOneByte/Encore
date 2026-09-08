@@ -1,9 +1,10 @@
-"""Integrated-loudness measurement (issue #462, PR1) + its wiring into build_song_profile.
+"""Integrated-loudness measurement (issue #462) + its wiring into build_song_profile.
 
 The measure is BS.1770-4 via pyloudnorm; these tests pin the TRI-STATE contract (a real negative
-float for a real signal, None for silence / too-short / missing / unreadable) and prove the value is
-measured on every cook by asserting build_song_profile logs it. Expected values are asserted against
-INDEPENDENTLY-REASONED bands, never by re-running the meter the code under test uses (section 3)."""
+float for a real signal, None for silence / too-short / missing / unreadable), that the value is
+PERSISTED into the songProfile on every cook, and that the level half degrades independently of the
+key and range halves. Expected values are asserted against INDEPENDENTLY-REASONED bands, never by
+re-running the meter the code under test uses (section 3)."""
 
 import os
 import sys
@@ -95,12 +96,52 @@ def test_build_song_profile_logs_null_for_silent_instrumental(tmp_path):
     assert "unmeasurable (null)" in joined, "a silent instrumental must report null, never a level"
 
 
-def test_loudness_measured_does_not_alter_the_profile_wire_shape(tmp_path):
+def test_build_song_profile_stores_the_measured_lufs_in_the_profile(tmp_path):
+    """PR2: the measurement is PERSISTED, not just logged. A half-scale 1 kHz tone must land in the
+    profile as a real negative float — the band is reasoned from full-scale, not re-measured here."""
+    _write_wav(tmp_path / "inst.wav", _tone(44100, 3.0, 1000.0, 0.5))
+    prof = song_profile.build_song_profile(str(tmp_path / "inst.wav"), None, "m1")
+    assert prof["loudnessLufs"] is not None, "a measurable instrumental must store its level"
+    assert -40.0 < prof["loudnessLufs"] < 0.0, f"expected a real programme level, got {prof['loudnessLufs']}"
+
+
+def test_build_song_profile_stores_null_for_an_unmeasurable_instrumental(tmp_path):
+    """Tri-state survives persistence: a silent stem stores None, NEVER 0.0 (which would read as a
+    deafening master and be attenuated into inaudibility) and never a default."""
+    _write_wav(tmp_path / "sil.wav", np.zeros(44100 * 2))
+    prof = song_profile.build_song_profile(str(tmp_path / "sil.wav"), None, "m1")
+    assert prof["loudnessLufs"] is None
+
+
+def test_build_song_profile_stores_null_loudness_when_there_is_no_instrumental():
+    """No instrumental at all still yields the full shape with a null level — the always-publish
+    contract: core reads a PRESENT profile as 'the analysis step ran'."""
+    prof = song_profile.build_song_profile(None, None, "m1")
+    assert "loudnessLufs" in prof
+    assert prof["loudnessLufs"] is None
+
+
+def test_loudness_is_its_own_half_and_survives_a_broken_key_analysis(tmp_path, monkeypatch):
+    """The three halves degrade INDEPENDENTLY: an exploding key detector must not throw away a good
+    measured level."""
+    _write_wav(tmp_path / "inst.wav", _tone(44100, 3.0, 1000.0, 0.5))
+
+    def boom(*_a, **_k):
+        raise RuntimeError("chromagram exploded")
+
+    monkeypatch.setattr(song_profile.key_detect, "detect_key", boom)
+    prof = song_profile.build_song_profile(str(tmp_path / "inst.wav"), None, "m1", log=lambda *a, **k: None)
+    assert prof["keyTonic"] is None, "the key half must have degraded"
+    assert prof["loudnessLufs"] is not None, "the loudness half must survive a failed key detection"
+
+
+def test_profile_wire_shape_carries_exactly_the_nine_declared_keys(tmp_path):
     _write_wav(tmp_path / "inst.wav", _tone(44100, 3.0, 1000.0, 0.5))
     prof = song_profile.build_song_profile(str(tmp_path / "inst.wav"), None, "m1")
     assert set(prof) == {
         "keyTonic", "keyMode", "keyConfidence",
         "lowMidi", "highMidi", "p05Midi", "p95Midi", "histogram",
+        "loudnessLufs",
     }
 
 

@@ -29,6 +29,7 @@ _NULL_PROFILE = {
     "p05Midi": None,
     "p95Midi": None,
     "histogram": None,
+    "loudnessLufs": None,
 }
 
 
@@ -73,17 +74,24 @@ def build_song_profile(
             )
 
     # ── loudness (instrumental) ─────────────────────────────────────────────────────
-    # Measure the INSTRUMENTAL's integrated loudness (BS.1770) — the file that plays in the room, so
-    # its level is what room-wide normalization equalizes (issue #462). PR1 measures and reports it;
-    # persistence into the profile + the migration land in PR2, so the value is logged here rather
-    # than added to the wire shape (the exact-8-key guard defends that shape for the coordinated
-    # worker+shared change). Best-effort like the halves above: measure_lufs never raises, and an
-    # unmeasurable stem (silence / too short / unreadable) reports None, never a fabricated level.
-    if instrumental_wav:
-        lufs = loudness.measure_lufs(instrumental_wav)
+    # Its OWN half of the profile, measured off the same WAV the key came from but independent of it:
+    # an unreadable chromagram must not throw away a good level, nor the reverse (issue #462). The
+    # INSTRUMENTAL is the file that plays in the room, and the guide-vocal knob is a fraction of it, so
+    # levelling the instrumental is also what makes a guide set to 15% mean the same on the next song.
+    #
+    # The MEASUREMENT is stored, never a gain. The ruling is an outlier clamp against the library, so
+    # the gain depends on every OTHER song's level and moves whenever one is cooked; baking it in here
+    # would be derived state going stale on disk. Playback derives it from the stored levels.
+    #
+    # Best-effort like the halves above — measure_lufs never raises — and tri-state: an unmeasurable
+    # stem (silence / shorter than one gating block / unreadable) stores None, never a fabricated
+    # level. A stored 0.0 would read as a deafening master and be attenuated into inaudibility.
+    if instrumental_wav:  # measured and STORED here; the log line is for the operator, not the room
+        measured_lufs = loudness.measure_lufs(instrumental_wav)
+        profile["loudnessLufs"] = measured_lufs
         log(
             f"[worker] instrumental loudness for {media_id}: "
-            f"{'unmeasurable (null)' if lufs is None else f'{lufs:.2f} LUFS'}",
+            f"{'unmeasurable (null)' if measured_lufs is None else f'{measured_lufs:.2f} LUFS'}",
             flush=True,
         )
 

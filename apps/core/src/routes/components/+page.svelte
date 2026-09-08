@@ -74,7 +74,8 @@
 		p05Midi: 55, // G3
 		p95Midi: 67, // G4
 		// 25 semitones C3..C5; time piles up around the upper-middle (the chorus camps high)
-		histogram: [2, 3, 4, 5, 6, 9, 14, 20, 26, 30, 28, 22, 15, 10, 7, 5, 4, 3, 2, 1, 1, 0, 0, 0, 0]
+		histogram: [2, 3, 4, 5, 6, 9, 14, 20, 26, 30, 28, 22, 15, 10, 7, 5, 4, 3, 2, 1, 1, 0, 0, 0, 0],
+		loudnessLufs: -11.2 // a loud modern master, for the level half of the profile
 	};
 	// Same range, but NO histogram — the block must degrade to a flat fill (range known, weight unknown).
 	const profileNoHist: SongProfile = { ...profileFull, histogram: null };
@@ -87,7 +88,8 @@
 		highMidi: null,
 		p05Midi: null,
 		p95Midi: null,
-		histogram: null
+		histogram: null,
+		loudnessLufs: null // unmeasurable level too — never a default, so nothing normalizes it
 	};
 
 	// Demo: a word-timed fixture + an auto-advancing position so the karaoke sweep is visible
