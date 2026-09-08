@@ -89,6 +89,7 @@ test('a pending MOVE or REMOVE does not mark any row as a newly-unconfirmed add'
 // and ProcessingCard has no pending prop at all.
 const PAGE = readFileSync(new URL('../../routes/+page.svelte', import.meta.url), 'utf8');
 const PROC = readFileSync(new URL('../components/ProcessingCard.svelte', import.meta.url), 'utf8');
+const GALLERY = readFileSync(new URL('../../routes/components/+page.svelte', import.meta.url), 'utf8');
 
 test('the +page.svelte call sites gate pending on the real pending set, not the placeholder seq', () => {
 	// The dead comparison is gone entirely...
@@ -120,7 +121,32 @@ test('ProcessingCard renders the "adding…" marker gated on pending, and styles
 	// The marker markup itself must be present and gated on `pending` -- an assertion that survived a
 	// mention of the word in a comment would not bite reverting the markup, so require the span shape.
 	expect(PROC).toMatch(/\{#if pending\}[\s\S]*?<span class="adding"[\s\S]*?adding…[\s\S]*?<\/span/);
-	// And the two CSS rules that make the state visible: the card dim and the warn-tinted marker.
-	expect(PROC).toMatch(/\.pending\s*\{[^}]*opacity:\s*0\.55/);
+	// And the two CSS rules that make the state visible: the card's warn-tinted surface and the
+	// warn-tinted marker. This pinned `opacity: 0.55` until #735 -- what it pinned was the
+	// declaration's PRESENCE, and the declaration turned out to be the defect: an ancestor opacity
+	// flattened the whole card and dropped the stage line to 3.76:1 and the singer dot to 2.57:1. The
+	// state signal is the SURFACE now, so this pins the surface. The legibility invariant itself lives
+	// in contrast.test.ts (`no card root dims its own subtree with opacity`), which is what stops an
+	// opacity coming back; this assertion only keeps the state from becoming invisible.
+	expect(PROC).toMatch(/\.pending\s*\{[^}]*background:\s*var\(--warn-bg\)/);
+	expect(PROC).toMatch(/\.pending\s*\{[^}]*border-color:\s*var\(--warn-line\)/);
 	expect(PROC).toMatch(/\.adding\s*\{[^}]*color:\s*var\(--warn\)/);
+});
+
+/*
+ * #735 §D: the component gallery must carry a PENDING ProcessingCard, and a source scan is the only
+ * thing that can hold it. Both `pending` rules shipped in #304 unreadable (the cook readout at
+ * 3.76:1, the singer dot at 2.57:1) specifically BECAUSE nothing ever rendered a pending cooking
+ * card: the gallery's only pending fixture was a QueueRow, so the reviewer who found the defect had
+ * to inject the class into the page by hand to measure it. A fixture's whole purpose is being looked
+ * at, so its absence is invisible to every runtime assertion in the suite -- which is exactly what
+ * prove_per_hunk.py reported (that hunk green when reverted, exit 20). This closes it the way §3
+ * closes a pure deletion: assert against the real gallery source.
+ */
+test('the component gallery renders a pending ProcessingCard so the state is eyes-on', () => {
+	const cards = [...GALLERY.matchAll(/<ProcessingCard\b([\s\S]*?)\/>/g)].map((m) => m[1]!);
+	expect(cards.length).toBeGreaterThan(0); // non-vacuity: the gallery still has cooking cards at all
+	// A bare `pending` attribute, not the word inside a title string or a comment.
+	const pendingCards = cards.filter((attrs) => /(?:^|\s)pending(?=\s|$)/.test(attrs));
+	expect(pendingCards.length).toBeGreaterThanOrEqual(1);
 });

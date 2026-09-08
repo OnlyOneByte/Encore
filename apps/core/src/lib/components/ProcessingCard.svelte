@@ -154,10 +154,21 @@
 	.stage.bad {
 		color: var(--danger-ink);
 	}
-	/* Optimistic-add markers, matching QueueRow (issue #304): dim the whole card and warn-tint the
-	   appended `adding…` word so an unconfirmed cooking entry reads as not-yet-committed. */
+	/* Optimistic-add markers, matching QueueRow (issue #304): warn-tint the CARD SURFACE and the
+	   appended `adding…` word so an unconfirmed cooking entry reads as not-yet-committed.
+	   NOT with opacity (#735). This rule was `opacity: 0.55`, which flattened the whole card and
+	   composited it against --bg, so the stage line -- `Making karaoke… / 68%`, the only thing telling
+	   a singer the cook is moving, on the card the #304 fix says actually renders during the primary
+	   ✨ Sing flow -- rendered at 3.76:1 against a 4.5:1 floor, and the singer dot at 2.57:1 under its
+	   3:1 floor. Retuning the alpha cannot work (the byline needs 0.807, indistinguishable from 1.0),
+	   so the state moved to app.css's --warn-bg/--warn-line status pair and the subtree keeps full
+	   opacity: --warn now reads 8.57:1 and the dot 5.19:1. Must stay AFTER .proc so a pending card
+	   overrides its cooking gradient; `.proc.failed`'s border wins on specificity, deliberately, so a
+	   dead cook still reads as broken rather than as merely unconfirmed.
+	   contrast.test.ts's `no card root dims its own subtree with opacity` reds if opacity comes back. */
 	.pending {
-		opacity: 0.55;
+		background: var(--warn-bg);
+		border-color: var(--warn-line);
 	}
 	.adding {
 		color: var(--warn);
