@@ -139,15 +139,52 @@ test('setPosition does NOT bump rev (Finding #1 — no resync storm from ontimeu
 	s.setPosition(13.9);
 	s.setPosition(42);
 	expect(s.rev).toBe(revBefore); // unchanged across many position updates
-	expect(s.playback.positionSec).toBe(42); // floored, tracked
+	expect(s.playback.positionSec).toBe(42); // tracked (final write is a whole second)
 });
 
-test('setPosition floors + clamps negative', () => {
+test('setPosition keeps sub-second precision in-memory + clamps negative (#718)', () => {
 	const s = new AuthoritativeState();
 	s.setPosition(-5);
-	expect(s.playback.positionSec).toBe(0);
+	expect(s.playback.positionSec).toBe(0); // a negative playhead is nonsense, clamp it
+	// The in-memory / broadcast value must NOT be floored: flooring here made the first ~1.25s of
+	// every song broadcast an exact 0, which guide-sync's `restartToZero` reads as a rewind.
 	s.setPosition(7.99);
-	expect(s.playback.positionSec).toBe(7);
+	expect(s.playback.positionSec).toBe(7.99);
+});
+
+test('a sub-second telemetry frame is never broadcast as exact 0, yet persists as an integer (#718)', () => {
+	// The producer bug: store.setPosition(0.6) floored to 0, and guide-sync.ts's `restartToZero`
+	// clause treats an exact 0 (with the master past the pre-roll tolerance) as an unambiguous
+	// rewind. So for the first ~1.25s of every song, any command that bumped rev (key/guide/pause)
+	// re-seeked the master AND the guiding track back to 0. The broadcast value must stay < 1s here
+	// so it is distinguishable from a restart's literal 0.
+	const db = migratedDb();
+	const s = new AuthoritativeState(sqlitePersistence(db, TEST_ROOM));
+	s.setPosition(0.6);
+	expect(s.playback.positionSec).not.toBe(0); // NOT the restart fixed point
+	expect(s.playback.positionSec).toBe(0.6);
+	s.setPosition(0.9);
+	expect(s.playback.positionSec).not.toBe(0);
+	expect(s.playback.positionSec).toBe(0.9);
+
+	// ...and the floor still lands at the persistence boundary, so the `integer` position_sec
+	// column (db/schema.ts) never receives a float — the fix cannot be 'just delete the floor'.
+	// This FIRST flush upserts a brand-new row (the INSERT arm of onConflictDoUpdate).
+	s.flushNow();
+	const afterInsert = hydrate(db, TEST_ROOM).playback;
+	expect(afterInsert).not.toBeNull();
+	expect(Number.isInteger(afterInsert!.positionSec)).toBe(true);
+
+	// A SECOND sub-second frame + flush now hits the UPDATE arm (a row already exists for this
+	// room), which floors independently — revert it and this reads back a float in an integer
+	// column. 2.7 keeps a fractional part so the update-arm floor is load-bearing on its own.
+	s.setPosition(2.7);
+	expect(s.playback.positionSec).toBe(2.7); // in-memory still sub-second
+	s.flushNow();
+	const { playback } = hydrate(db, TEST_ROOM);
+	expect(playback).not.toBeNull();
+	expect(Number.isInteger(playback!.positionSec)).toBe(true);
+	expect(playback!.positionSec).toBe(2); // 2.7 floored to 2 for storage through the UPDATE arm
 });
 
 test('applyQueueOp prunes terminal entries from the authoritative queue (Finding #3a)', () => {

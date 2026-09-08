@@ -47,7 +47,10 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 					.values({
 						roomId,
 						currentEntryId: playback.currentEntryId,
-						positionSec: playback.positionSec,
+						// The `position_sec` column is an INTEGER (db/schema.ts). Sub-second precision is kept
+						// in-memory / on the wire (#718) and floored HERE, at the persistence boundary, so an
+						// ordinary telemetry frame is never broadcast as an exact `0` that reads as a restart.
+						positionSec: Math.floor(playback.positionSec),
 						isPlaying: playback.isPlaying,
 						keyShift: playback.keyShift,
 						background: playback.background,
@@ -57,7 +60,7 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 						target: playbackState.roomId,
 						set: {
 							currentEntryId: playback.currentEntryId,
-							positionSec: playback.positionSec,
+							positionSec: Math.floor(playback.positionSec),
 							isPlaying: playback.isPlaying,
 							keyShift: playback.keyShift,
 							background: playback.background,
