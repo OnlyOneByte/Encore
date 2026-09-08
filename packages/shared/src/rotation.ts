@@ -34,7 +34,19 @@ export function assignSeqs(entries: QueueEntry[], ordering: Ordering = {}): Queu
 
 /**
  * THE PIN MECHANISM. Given entries already in the room's policy order, move each host-pinned entry to
- * its recorded global index, leaving the unpinned entries in the policy order around them.
+ * its recorded index among the REORDERABLE (queued) entries, leaving the unpinned ones in the policy
+ * order around them and every non-queued entry exactly where the policy put it.
+ *
+ * WHAT `pinnedSeq` INDEXES, and why it is the queued entries only. A pin is a reorder TARGET, so it
+ * counts the same list the reorder UI counts: `+page.svelte`'s `queued` is
+ * `entries.filter((e) => e.status === 'queued')`, and every tap sends an index into that. Indexing the
+ * whole non-terminal list here instead made every target one short while a song was playing —
+ * `move down` resolved onto the row's own slot (inert on every press, forever) and `move up` landed
+ * above the playing entry, displacing the song on stage and ranking two queued entries ahead of it
+ * (issue #790). This is the identical base #637 settled for the sibling `move` op; `reorderWithinSinger`
+ * spells it out the same way. A playing entry is not a reorder target: it holds its policy slot, and
+ * the queued entries are permuted among the slots they already occupy. With nothing playing the two
+ * lists coincide, which is why every pin case pinned before this stayed byte-identical.
  *
  * WHY A POST-PASS rather than a policy input. Every ordering (fair/fcfs/least-recently-sung/shuffle) is
  * pure over entries + Ordering and must agree byte-for-byte between phone and server; teaching each of
@@ -45,22 +57,39 @@ export function assignSeqs(entries: QueueEntry[], ordering: Ordering = {}): Queu
  * clears it. `move`'s per-singer reorder is untouched — it still permutes addedAt and flows through the
  * policy, so the two mechanisms compose (a singer reorders their own picks; a host overrides globally).
  *
- * Pure and deterministic: reads only `pinnedSeq` off the entries, so both sides compute the identical
- * result. Pins are applied lowest-target-first (ties broken by id) so the placement of one pin does not
- * depend on hidden iteration order, and each target is clamped into range against the list as it grows.
+ * Pure and deterministic: reads only `pinnedSeq` and `status` off the entries, so both sides compute the
+ * identical result. Pins are applied lowest-target-first (ties broken by id) so the placement of one pin
+ * does not depend on hidden iteration order, and each target is clamped into range against the list as
+ * it grows.
  */
 export function placePins(ordered: QueueEntry[]): QueueEntry[] {
-	const pinned = ordered
+	// The reorderable entries and the slots they occupy. Everything else (a playing entry) keeps its
+	// slot, so a pin can never move the song on stage.
+	const slots: number[] = [];
+	const reorderable: QueueEntry[] = [];
+	ordered.forEach((e, i) => {
+		if (e.status === 'queued') {
+			slots.push(i);
+			reorderable.push(e);
+		}
+	});
+	const pinned = reorderable
 		.filter((e) => typeof e.pinnedSeq === 'number' && Number.isFinite(e.pinnedSeq))
 		.sort((a, b) => a.pinnedSeq! - b.pinnedSeq! || (a.id < b.id ? -1 : 1));
 	if (pinned.length === 0) return ordered.slice();
 	const pinnedIds = new Set(pinned.map((e) => e.id));
-	// Start from the policy order with the pinned entries removed, then splice each back at its target.
-	const out = ordered.filter((e) => !pinnedIds.has(e.id));
+	// Start from the queued entries in policy order with the pinned ones removed, then splice each back
+	// at its target index INTO THAT LIST — the same list the tap counted.
+	const placed = reorderable.filter((e) => !pinnedIds.has(e.id));
 	for (const e of pinned) {
-		const at = Math.max(0, Math.min(e.pinnedSeq!, out.length));
-		out.splice(at, 0, e);
+		const at = Math.max(0, Math.min(e.pinnedSeq!, placed.length));
+		placed.splice(at, 0, e);
 	}
+	// Write the permuted queued entries back into the slots they held.
+	const out = ordered.slice();
+	slots.forEach((slot, i) => {
+		out[slot] = placed[i]!;
+	});
 	return out;
 }
 

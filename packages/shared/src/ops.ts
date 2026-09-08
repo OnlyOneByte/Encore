@@ -18,7 +18,7 @@ export type QueueOp =
 	// The gate lives in hub.ts validateCommand (queue:reorder-any). Crosses the wire contract: client
 	// and server ship together, and both stamp the pin identically through applyOp so their optimistic
 	// and authoritative states cannot diverge.
-	| { op: 'move-global'; id: string; toSeq: number } // toSeq = target index into the whole queued list
+	| { op: 'move-global'; id: string; toSeq: number } // toSeq = target index into the whole QUEUED list (placePins indexes queued entries only; a playing/terminal entry keeps its policy slot and never occupies one)
 	| { op: 'unpin'; id: string } // clear a durable global pin, returning the entry to the room's policy
 	| { op: 'status'; id: string; status: EntryStatus };
 
