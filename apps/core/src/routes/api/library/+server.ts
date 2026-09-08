@@ -19,8 +19,14 @@ export const GET: RequestHandler = async ({ url }) => {
 	// Browse: an optional facet filter. Only READY songs are browsable — the catalog holds
 	// every search result ever materialised (271 rows for 7 cooked songs on the live box), so browsing
 	// the whole table would bury the library in things you cannot sing yet.
+	// One active browse facet at a time (the phone UI enforces this too): an artist filter, a tag
+	// filter, or neither. `?tag=` reuses the media_tags byKindValue index via byTag — NOT a client-side
+	// filter over the whole payload, which the #632 design rejected because it wastes an on-disk index
+	// and stops scaling past a few hundred songs. artist wins if both are somehow present, matching the
+	// mutual-exclusion the chip row already imposes.
 	const artist = url.searchParams.get('artist')?.trim();
-	const library = artist ? app.media.byArtist(artist) : app.media.listReady();
+	const tag = url.searchParams.get('tag')?.trim();
+	const library = artist ? app.media.byArtist(artist) : tag ? app.media.byTag(tag) : app.media.listReady();
 
 	// The hub validates adds against the runtime catalog, so anything we offer for one-tap re-queue
 	// must be resolvable there. Boot hydration already covers this; re-seeding keeps the endpoint
@@ -65,8 +71,9 @@ export const GET: RequestHandler = async ({ url }) => {
 		// that does not read it is unaffected, and #690's tag filter reads this same map.
 		tags,
 		// Browse facets always describe the WHOLE ready library, never the current filter — otherwise
-		// picking an artist would collapse the facet list to that one artist and strand you there.
-		facets: { artists: app.media.artistFacets() },
-		filter: artist ? { artist } : null
+		// picking an artist would collapse the facet list to that one artist and strand you there. The
+		// tag facet (#690) rides the same rule and the same byKindValue index the tag filter reads.
+		facets: { artists: app.media.artistFacets(), tags: app.media.tagFacets() },
+		filter: artist ? { artist } : tag ? { tag } : null
 	});
 };
