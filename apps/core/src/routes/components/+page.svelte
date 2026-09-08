@@ -31,6 +31,12 @@
 	const PINK = SINGER_COLORS[1];
 	const GREEN = SINGER_COLORS[2];
 	const SKY = SINGER_COLORS[4];
+	/*
+	 * Named for the #634 highlight cards. Mint is the pick there rather than another violet because the
+	 * cards need a singer colour that can be COLLIDED with a stage colour convincingly — a mid-tone teal
+	 * field reads as a plausible room choice, where a mid-tone violet field does not.
+	 */
+	const MINT = SINGER_COLORS[7];
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
 	import TvProgress from '$lib/tv/TvProgress.svelte';
@@ -846,6 +852,42 @@
 				ball="bounce"
 				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }}
 				{...c.props}
+			/>
+		</div>
+	{/each}
+
+	<!--
+		#634 — WHOSE COLOUR THE HIGHLIGHT IS.
+
+		Four cards, and the pairing is the whole point: the first is the room accent (what every song
+		painted before this feature), the second is a singer's own colour on the same doc at the same
+		pinned position, so the ONLY difference between those two frames is the active word's hue.
+
+		Pinned at 0.8s with `playing={false}` for the same reason the marker cards are: the active word's
+		colour is the entire observable, and a running clock makes two frames incomparable.
+
+		The last two cards are the case the owner's ruling turns on. #425 removed the pinned stage tier,
+		so a room may now paint the field ANY colour — including one that lands on top of the singer's.
+		Card 3 puts a mint singer on a mid-tone teal stage (a realistic collision); card 4 is the
+		pathological floor, the stage set to the singer's colour EXACTLY, so the fill has 1:1 contrast
+		against the field behind it and the ONLY thing separating the glyphs from the background is the
+		reel's own `-webkit-text-stroke` (#750). If the words are still readable in card 4, the ruling
+		("keep the hue, rely on the stroke") holds for every less-extreme case by construction. No second
+		stroke is added for these — `lyrics-stroke.test.ts` asserts there is exactly one, and one is what
+		this leans on.
+	-->
+	{#each [{ what: 'highlight colour: the ROOM ACCENT (nobody up — the before frame)', singer: null, bg: stageBg }, { what: 'highlight colour: the SINGER (violet) — same doc, same position', singer: VIOLET, bg: stageBg }, { what: 'highlight colour: mint singer on a mid-tone TEAL stage — low contrast, held by the stroke', singer: MINT, bg: '#1f6f63' }, { what: 'highlight colour: mint singer on a stage of EXACTLY that mint — 1:1 fill contrast, stroke only', singer: MINT, bg: MINT }] as c (c.what)}
+		<h2 class="section">LyricsOverlay · {c.what}</h2>
+		<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{c.bg};">
+			<LyricsOverlay
+				doc={demoLyrics}
+				positionSec={0.8}
+				playing={false}
+				visible
+				highlight="word"
+				ball="bounce"
+				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }}
+				singerColor={c.singer}
 			/>
 		</div>
 	{/each}
