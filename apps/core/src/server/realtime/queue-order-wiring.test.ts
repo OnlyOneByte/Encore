@@ -3,7 +3,7 @@
 // BEFORE the reseq that reads it.
 import { test, expect } from 'bun:test';
 import { migratedDb } from '../db/test-db';
-import { SettingsRepository, DEFAULT_ROOM_ID } from '../state/settings-repository';
+import { SettingsRepository } from '../state/settings-repository';
 import { SingerRepository } from '../singers/repository';
 import { AuthoritativeState } from '../state/store';
 import { handlePlayerCommand } from './player';
@@ -46,10 +46,10 @@ function harness(order: QueueOrderId = 'fair') {
 	const db = migratedDb();
 	const settings = new SettingsRepository(db);
 	const singers = new SingerRepository(db);
-	settings.setRoom({ queueOrder: order }, DEFAULT_ROOM_ID);
+	settings.setRoom({ queueOrder: order }, 'main');
 
 	const state = new AuthoritativeState(undefined, 250, () => ({
-		order: settings.getRoom(DEFAULT_ROOM_ID).queueOrder,
+		order: settings.getRoom('main').queueOrder,
 		lastSungAt: singHistoryFrom(singers.listPublic(ROOM))
 	}));
 	const published: ServerEvent[] = [];
@@ -61,7 +61,7 @@ function harness(order: QueueOrderId = 'fair') {
 			['m2', media('m2')]
 		]),
 		listSingers: () => singers.listPublic(ROOM),
-		getSettings: () => settings.getEffective(DEFAULT_ROOM_ID),
+		getSettings: () => settings.getEffective('main'),
 		onSang: (singerId) => singers.markSang(singerId, ++clock)
 	};
 	let clock = 1000;
@@ -85,17 +85,15 @@ test('the room setting reaches the authoritative state', () => {
 
 test('an unwritten room defaults to fair rotation — the pre-setting behaviour', () => {
 	const h = harness();
-	expect(h.settings.getRoom(DEFAULT_ROOM_ID).queueOrder).toBe('fair');
+	expect(h.settings.getRoom('main').queueOrder).toBe('fair');
 });
 
 test('the chosen algorithm survives a write and a re-read', () => {
 	const h = harness();
-	expect(h.settings.setRoom({ queueOrder: 'shuffle' }, DEFAULT_ROOM_ID).queueOrder).toBe('shuffle');
-	expect(h.settings.getRoom(DEFAULT_ROOM_ID).queueOrder).toBe('shuffle');
+	expect(h.settings.setRoom({ queueOrder: 'shuffle' }, 'main').queueOrder).toBe('shuffle');
+	expect(h.settings.getRoom('main').queueOrder).toBe('shuffle');
 	// and an algorithm that does not exist leaves the room on the one it is running
-	expect(h.settings.setRoom({ queueOrder: 'no-such-order' as QueueOrderId }, DEFAULT_ROOM_ID).queueOrder).toBe(
-		'shuffle'
-	);
+	expect(h.settings.setRoom({ queueOrder: 'no-such-order' as QueueOrderId }, 'main').queueOrder).toBe('shuffle');
 });
 
 test('changing the algorithm re-derives the live queue', () => {
@@ -106,7 +104,7 @@ test('changing the algorithm re-derives the live queue', () => {
 	expect(ids(h.state.entries)).toEqual(['a1', 'b1', 'a2']);
 
 	const revBefore = h.state.rev;
-	h.settings.setRoom({ queueOrder: 'fcfs' }, DEFAULT_ROOM_ID);
+	h.settings.setRoom({ queueOrder: 'fcfs' }, 'main');
 	const out = h.state.reorder();
 	expect(out).not.toBeNull();
 	expect(ids(out!.entries)).toEqual(['a1', 'a2', 'b1']);
@@ -121,7 +119,7 @@ test('reorder() is a true no-op when the order is unchanged — no rev bump, not
 	h.state.applyQueueOp({ op: 'add', entry: entry('b1', 'ben', 2) });
 	const rev = h.state.rev;
 	// re-picking the algorithm already in force changes nothing
-	h.settings.setRoom({ queueOrder: 'fair' }, DEFAULT_ROOM_ID);
+	h.settings.setRoom({ queueOrder: 'fair' }, 'main');
 	expect(h.state.reorder()).toBeNull();
 	expect(h.state.rev).toBe(rev);
 });
@@ -135,7 +133,7 @@ test('a mid-party flip does not touch the song already playing', () => {
 	const singing = h.state.playback.currentEntryId;
 	expect(singing).toBe('a1');
 
-	h.settings.setRoom({ queueOrder: 'fcfs' }, DEFAULT_ROOM_ID);
+	h.settings.setRoom({ queueOrder: 'fcfs' }, 'main');
 	h.state.reorder();
 	expect(h.state.playback.currentEntryId).toBe(singing);
 	expect(h.state.playback.isPlaying).toBe(true);

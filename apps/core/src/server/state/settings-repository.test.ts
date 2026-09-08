@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'bun:test';
 import { migratedDb } from '../db/test-db';
-import { SettingsRepository, DEFAULT_ROOM_ID } from './settings-repository';
+import { SettingsRepository } from './settings-repository';
 import {
 	DEFAULT_GLOBAL_SETTINGS,
 	DEFAULT_ROOM_SETTINGS,
@@ -17,8 +17,8 @@ function freshRepo() {
 }
 
 describe('SettingsRepository', () => {
-	it('a room-scoped write addresses the given room, not the literal DEFAULT_ROOM_ID (#728)', () => {
-		// MECHANISM (#728): every room-scoped method used to DEFAULT its roomId to DEFAULT_ROOM_ID ('main'),
+	it('a room-scoped write addresses the given room, not the literal "main" (#728)', () => {
+		// MECHANISM (#728): every room-scoped method used to DEFAULT its roomId to the literal 'main',
 		// so an omitting caller silently addressed 'main' with the compiler saying nothing (12 of 13
 		// production sites did exactly that; the bug shipped as #653). roomId is now REQUIRED, so this test
 		// pins the property that makes the requirement meaningful: a write keyed to some OTHER room lands in
@@ -26,7 +26,7 @@ describe('SettingsRepository', () => {
 		// below would collide.
 		const repo = freshRepo();
 		const other = 'room-728';
-		expect(other).not.toBe(DEFAULT_ROOM_ID);
+		expect(other).not.toBe('main');
 
 		repo.setRoom({ songIntroMs: 4321 }, other);
 
@@ -36,9 +36,9 @@ describe('SettingsRepository', () => {
 		expect(repo.getEffective(other).room.songIntroMs).toBe(4321);
 
 		// ... and did NOT bleed into 'main', which never had a row and still reads the default.
-		expect(repo.hasRoom(DEFAULT_ROOM_ID)).toBe(false);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).songIntroMs).toBe(DEFAULT_ROOM_SETTINGS.songIntroMs);
-		expect(repo.getEffective(DEFAULT_ROOM_ID).room.songIntroMs).toBe(DEFAULT_ROOM_SETTINGS.songIntroMs);
+		expect(repo.hasRoom('main')).toBe(false);
+		expect(repo.getRoom('main').songIntroMs).toBe(DEFAULT_ROOM_SETTINGS.songIntroMs);
+		expect(repo.getEffective('main').room.songIntroMs).toBe(DEFAULT_ROOM_SETTINGS.songIntroMs);
 	});
 
 	it('returns defaults before anything is written', () => {
@@ -124,15 +124,15 @@ describe('SettingsRepository', () => {
 
 describe('SettingsRepository — room scope', () => {
 	it('returns room defaults before anything is written', () => {
-		expect(freshRepo().getRoom(DEFAULT_ROOM_ID)).toEqual(DEFAULT_ROOM_SETTINGS);
+		expect(freshRepo().getRoom('main')).toEqual(DEFAULT_ROOM_SETTINGS);
 	});
 
 	it('persists room settings independently of global', () => {
 		const repo = freshRepo();
 		repo.setGlobal({ defaultModel: 'htdemucs_ft' });
-		repo.setRoom({ songIntroEnabled: false }, DEFAULT_ROOM_ID);
+		repo.setRoom({ songIntroEnabled: false }, 'main');
 		// each scope keeps its own values; a room write must not disturb deployment policy
-		expect(repo.getRoom(DEFAULT_ROOM_ID).songIntroEnabled).toBe(false);
+		expect(repo.getRoom('main').songIntroEnabled).toBe(false);
 		expect(repo.getGlobal().defaultModel).toBe('htdemucs_ft');
 	});
 
@@ -149,8 +149,8 @@ describe('SettingsRepository — room scope', () => {
 	it('getEffective returns both layers', () => {
 		const repo = freshRepo();
 		repo.setGlobal({ enqueueUpgrade: true });
-		repo.setRoom({ maxQualityRank: 20 }, DEFAULT_ROOM_ID);
-		const eff = repo.getEffective(DEFAULT_ROOM_ID);
+		repo.setRoom({ maxQualityRank: 20 }, 'main');
+		const eff = repo.getEffective('main');
 		expect(eff.global.enqueueUpgrade).toBe(true);
 		expect(eff.room.maxQualityRank).toBe(20);
 	});
@@ -174,51 +174,51 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		// `edge`, not `card`: the now-singing block is plain text on the backdrop now, so there is no
 		// card for the in-card treatment to live in. `card` is still a legal choice and still renders
 		// its clock row inline — the setting kept its meaning — it just is not the default any more.
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvProgressStyle).toBe('edge');
-		expect(repo.setRoom({ tvProgressStyle: 'card' }, DEFAULT_ROOM_ID).tvProgressStyle).toBe('card');
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvProgressStyle).toBe('card');
+		expect(repo.getRoom('main').tvProgressStyle).toBe('edge');
+		expect(repo.setRoom({ tvProgressStyle: 'card' }, 'main').tvProgressStyle).toBe('card');
+		expect(repo.getRoom('main').tvProgressStyle).toBe('card');
 	});
 
 	it('falls back to the CURRENT style, not the default, when a write is invalid', () => {
 		// The bug this pins: setRoom normalized against hardcoded defaults, so one bad field discarded an
 		// unrelated choice the room had already made. Same defect previously fixed on the global scope.
 		const repo = freshRepo();
-		repo.setRoom({ tvProgressStyle: 'corner', songIntroMs: 7000 }, DEFAULT_ROOM_ID);
-		const after = repo.setRoom({ tvProgressStyle: 'nonsense' as never }, DEFAULT_ROOM_ID);
+		repo.setRoom({ tvProgressStyle: 'corner', songIntroMs: 7000 }, 'main');
+		const after = repo.setRoom({ tvProgressStyle: 'nonsense' as never }, 'main');
 		expect(after.tvProgressStyle).toBe('corner');
 		expect(after.songIntroMs).toBe(7000);
 	});
 
 	it('an invalid song intro duration keeps the room value rather than resetting to 2500', () => {
 		const repo = freshRepo();
-		repo.setRoom({ songIntroMs: 7000 }, DEFAULT_ROOM_ID);
-		expect(repo.setRoom({ songIntroMs: NaN }, DEFAULT_ROOM_ID).songIntroMs).toBe(7000);
+		repo.setRoom({ songIntroMs: 7000 }, 'main');
+		expect(repo.setRoom({ songIntroMs: NaN }, 'main').songIntroMs).toBe(7000);
 	});
 
 	it('an unconfigured room reads as black — an existing box looks identical after the migration', () => {
-		expect(freshRepo().getRoom(DEFAULT_ROOM_ID).tvBackgroundStyle).toBe('off');
+		expect(freshRepo().getRoom('main').tvBackgroundStyle).toBe('off');
 	});
 
 	it('a background choice survives the round trip through SQLite', () => {
 		// getRoom builds the normalizer input field-by-field, so a column it forgets to pass silently
 		// reads back as the default no matter what was written. Only a real round trip catches that.
 		const repo = freshRepo();
-		expect(repo.setRoom({ tvBackgroundStyle: 'singer' }, DEFAULT_ROOM_ID).tvBackgroundStyle).toBe('singer');
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundStyle).toBe('singer');
-		expect(
-			repo.setRoom({ tvBackgroundStyle: 'solid', tvBackgroundColor: '#002215' }, DEFAULT_ROOM_ID).tvBackgroundColor
-		).toBe('#002215');
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#002215');
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundStyle).toBe('solid');
+		expect(repo.setRoom({ tvBackgroundStyle: 'singer' }, 'main').tvBackgroundStyle).toBe('singer');
+		expect(repo.getRoom('main').tvBackgroundStyle).toBe('singer');
+		expect(repo.setRoom({ tvBackgroundStyle: 'solid', tvBackgroundColor: '#002215' }, 'main').tvBackgroundColor).toBe(
+			'#002215'
+		);
+		expect(repo.getRoom('main').tvBackgroundColor).toBe('#002215');
+		expect(repo.getRoom('main').tvBackgroundStyle).toBe('solid');
 	});
 
 	it('a bad background write keeps every unrelated choice the room already made', () => {
 		const repo = freshRepo();
 		repo.setRoom(
 			{ tvBackgroundStyle: 'solid', tvBackgroundColor: '#281600', songIntroMs: 7000, tvProgressStyle: 'edge' },
-			DEFAULT_ROOM_ID
+			'main'
 		);
-		const after = repo.setRoom({ tvBackgroundStyle: 'nonsense' as never }, DEFAULT_ROOM_ID);
+		const after = repo.setRoom({ tvBackgroundStyle: 'nonsense' as never }, 'main');
 		expect(after.tvBackgroundStyle).toBe('solid');
 		expect(after.tvBackgroundColor).toBe('#281600');
 		expect(after.songIntroMs).toBe(7000);
@@ -233,34 +233,32 @@ describe('SettingsRepository room scope: tv progress style', () => {
 	it('an arbitrary stage colour survives SQLite verbatim, and junk cannot poison it (#425)', () => {
 		const repo = freshRepo();
 		// white — unreachable under the retired hue pin, so this also proves the pin is gone end to end
-		expect(repo.setRoom({ tvBackgroundColor: '#ffffff' }, DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#ffffff');
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#ffffff');
+		expect(repo.setRoom({ tvBackgroundColor: '#ffffff' }, 'main').tvBackgroundColor).toBe('#ffffff');
+		expect(repo.getRoom('main').tvBackgroundColor).toBe('#ffffff');
 		// canonicalised on the way in, so every reader downstream can assume one shape
-		expect(repo.setRoom({ tvBackgroundColor: '#ABC' }, DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#aabbcc');
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#aabbcc');
+		expect(repo.setRoom({ tvBackgroundColor: '#ABC' }, 'main').tvBackgroundColor).toBe('#aabbcc');
+		expect(repo.getRoom('main').tvBackgroundColor).toBe('#aabbcc');
 		// and an unparseable write keeps what is already stored rather than resetting the room's choice
-		expect(repo.setRoom({ tvBackgroundColor: 'rebeccapurple' as never }, DEFAULT_ROOM_ID).tvBackgroundColor).toBe(
-			'#aabbcc'
-		);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundColor).toBe('#aabbcc');
+		expect(repo.setRoom({ tvBackgroundColor: 'rebeccapurple' as never }, 'main').tvBackgroundColor).toBe('#aabbcc');
+		expect(repo.getRoom('main').tvBackgroundColor).toBe('#aabbcc');
 	});
 
 	it('a visualizer choice survives the round trip through SQLite', () => {
 		const repo = freshRepo();
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvVisualizer).toBe('plasma');
-		expect(
-			repo.setRoom({ tvBackgroundStyle: 'visualizer', tvVisualizer: 'starfield' }, DEFAULT_ROOM_ID).tvVisualizer
-		).toBe('starfield');
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvVisualizer).toBe('starfield');
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvBackgroundStyle).toBe('visualizer');
+		expect(repo.getRoom('main').tvVisualizer).toBe('plasma');
+		expect(repo.setRoom({ tvBackgroundStyle: 'visualizer', tvVisualizer: 'starfield' }, 'main').tvVisualizer).toBe(
+			'starfield'
+		);
+		expect(repo.getRoom('main').tvVisualizer).toBe('starfield');
+		expect(repo.getRoom('main').tvBackgroundStyle).toBe('visualizer');
 	});
 
 	it('the visualizer choice is kept when the room switches to another background and back', () => {
 		const repo = freshRepo();
-		repo.setRoom({ tvBackgroundStyle: 'visualizer', tvVisualizer: 'lissajous' }, DEFAULT_ROOM_ID);
-		repo.setRoom({ tvBackgroundStyle: 'gradient' }, DEFAULT_ROOM_ID);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).tvVisualizer).toBe('lissajous');
-		expect(repo.setRoom({ tvBackgroundStyle: 'visualizer' }, DEFAULT_ROOM_ID).tvVisualizer).toBe('lissajous');
+		repo.setRoom({ tvBackgroundStyle: 'visualizer', tvVisualizer: 'lissajous' }, 'main');
+		repo.setRoom({ tvBackgroundStyle: 'gradient' }, 'main');
+		expect(repo.getRoom('main').tvVisualizer).toBe('lissajous');
+		expect(repo.setRoom({ tvBackgroundStyle: 'visualizer' }, 'main').tvVisualizer).toBe('lissajous');
 	});
 
 	it('a quality ceiling can be cleared and the clear survives the round trip through SQLite', () => {
@@ -268,15 +266,15 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		// clear payload. The visualizer sibling above gets this set→change→re-read shape; the ceiling
 		// never did, which let a bad normalizer keep the old cap forever with the UI insisting it is off.
 		const repo = freshRepo();
-		expect(repo.getRoom(DEFAULT_ROOM_ID).maxQualityRank).toBeNull();
-		expect(repo.setRoom({ maxQualityRank: 20 }, DEFAULT_ROOM_ID).maxQualityRank).toBe(20);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).maxQualityRank).toBe(20);
+		expect(repo.getRoom('main').maxQualityRank).toBeNull();
+		expect(repo.setRoom({ maxQualityRank: 20 }, 'main').maxQualityRank).toBe(20);
+		expect(repo.getRoom('main').maxQualityRank).toBe(20);
 		// operator picks "No limit": the cap must actually drop, not snap back to 20
-		expect(repo.setRoom({ maxQualityRank: null }, DEFAULT_ROOM_ID).maxQualityRank).toBeNull();
-		expect(repo.getRoom(DEFAULT_ROOM_ID).maxQualityRank).toBeNull();
+		expect(repo.setRoom({ maxQualityRank: null }, 'main').maxQualityRank).toBeNull();
+		expect(repo.getRoom('main').maxQualityRank).toBeNull();
 		// and an unrelated later patch must not resurrect the old cap
-		repo.setRoom({ songIntroMs: 1200 }, DEFAULT_ROOM_ID);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).maxQualityRank).toBeNull();
+		repo.setRoom({ songIntroMs: 1200 }, 'main');
+		expect(repo.getRoom('main').maxQualityRank).toBeNull();
 	});
 
 	it('the room default set is complete — every field has a value with no writes at all', () => {
@@ -284,7 +282,7 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		// would reach a NOT NULL column on the first write. This only catches the DEFAULTS omission
 		// (and TypeScript catches it first); the getRoom SELECT-list omission is the persisted-path
 		// guard below.
-		const room = freshRepo().getRoom(DEFAULT_ROOM_ID);
+		const room = freshRepo().getRoom('main');
 		for (const [k, v] of Object.entries(room)) {
 			if (k === 'maxQualityRank') continue; // legitimately nullable
 			expect(v, `${k} has no default`).not.toBeUndefined();
@@ -332,8 +330,8 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		expect(Object.keys(NON_DEFAULT_ROOM).sort()).toEqual(Object.keys(DEFAULT_ROOM_SETTINGS).sort());
 
 		const repo = freshRepo();
-		const written = repo.setRoom(NON_DEFAULT_ROOM, DEFAULT_ROOM_ID);
-		const readBack = repo.getRoom(DEFAULT_ROOM_ID);
+		const written = repo.setRoom(NON_DEFAULT_ROOM, 'main');
+		const readBack = repo.getRoom('main');
 		for (const k of Object.keys(DEFAULT_ROOM_SETTINGS) as (keyof RoomSettings)[]) {
 			// The override differs from the default, so a field dropped from getRoom's SELECT reverts to
 			// the default here and this assertion fails. Likeliest cause named first; a normalizer that
@@ -431,7 +429,7 @@ describe('SettingsRepository room scope: lyrics presentation', () => {
 		// A brand-new room (no stored row) reads the schema column defaults. The ball default was
 		// flipped to 'off' per #398; highlight/lead are unchanged. A room that existed BEFORE this
 		// flip keeps its own stored 'lyrics_ball' value via the shipped baseline migration.
-		const room = freshRepo().getRoom(DEFAULT_ROOM_ID);
+		const room = freshRepo().getRoom('main');
 		expect(room.lyricsBall).toBe('off');
 		expect(room.lyricsHighlight).toBe('word');
 		expect(room.lyricsLeadMs).toBe(0); // #629: default lead is now 0
@@ -439,8 +437,8 @@ describe('SettingsRepository room scope: lyrics presentation', () => {
 
 	it('round-trips all three through a write and a re-read', () => {
 		const repo = freshRepo();
-		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'line', lyricsLeadMs: 550 }, DEFAULT_ROOM_ID);
-		const room = repo.getRoom(DEFAULT_ROOM_ID);
+		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'line', lyricsLeadMs: 550 }, 'main');
+		const room = repo.getRoom('main');
 		expect(room.lyricsBall).toBe('underline');
 		expect(room.lyricsHighlight).toBe('line');
 		expect(room.lyricsLeadMs).toBe(550);
@@ -450,9 +448,9 @@ describe('SettingsRepository room scope: lyrics presentation', () => {
 		// Same contract as every other room field: a per-field patch over CURRENT values, so a stale
 		// Settings page cannot clobber a choice it never showed.
 		const repo = freshRepo();
-		repo.setRoom({ lyricsHighlight: 'off', lyricsLeadMs: 900 }, DEFAULT_ROOM_ID);
-		repo.setRoom({ lyricsBall: 'steady' }, DEFAULT_ROOM_ID);
-		const room = repo.getRoom(DEFAULT_ROOM_ID);
+		repo.setRoom({ lyricsHighlight: 'off', lyricsLeadMs: 900 }, 'main');
+		repo.setRoom({ lyricsBall: 'steady' }, 'main');
+		const room = repo.getRoom('main');
 		expect(room.lyricsBall).toBe('steady');
 		expect(room.lyricsHighlight).toBe('off');
 		expect(room.lyricsLeadMs).toBe(900);
@@ -460,17 +458,17 @@ describe('SettingsRepository room scope: lyrics presentation', () => {
 
 	it('an invalid style keeps the room CURRENT value rather than resetting to the default', () => {
 		const repo = freshRepo();
-		repo.setRoom({ lyricsBall: 'underline' }, DEFAULT_ROOM_ID);
-		repo.setRoom({ lyricsBall: 'disco' as never }, DEFAULT_ROOM_ID);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).lyricsBall).toBe('underline');
+		repo.setRoom({ lyricsBall: 'underline' }, 'main');
+		repo.setRoom({ lyricsBall: 'disco' as never }, 'main');
+		expect(repo.getRoom('main').lyricsBall).toBe('underline');
 	});
 
 	it('an out-of-range lead is clamped on write, not persisted raw', () => {
 		const repo = freshRepo();
-		repo.setRoom({ lyricsLeadMs: 99_999 }, DEFAULT_ROOM_ID);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).lyricsLeadMs).toBe(1500);
-		repo.setRoom({ lyricsLeadMs: -400 }, DEFAULT_ROOM_ID);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).lyricsLeadMs).toBe(0);
+		repo.setRoom({ lyricsLeadMs: 99_999 }, 'main');
+		expect(repo.getRoom('main').lyricsLeadMs).toBe(1500);
+		repo.setRoom({ lyricsLeadMs: -400 }, 'main');
+		expect(repo.getRoom('main').lyricsLeadMs).toBe(0);
 	});
 
 	it('two rooms hold different presentation, since this is per-party', () => {
@@ -485,9 +483,9 @@ describe('SettingsRepository room scope: lyrics presentation', () => {
 		// The two layers answer different questions; a syncMode change must not rewrite the room's
 		// rendering choice, only what the resolver can honour.
 		const repo = freshRepo();
-		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'word' }, DEFAULT_ROOM_ID);
+		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'word' }, 'main');
 		repo.setGlobal({ syncMode: 'lines' });
-		const room = repo.getRoom(DEFAULT_ROOM_ID);
+		const room = repo.getRoom('main');
 		expect(room.lyricsBall).toBe('underline');
 		expect(room.lyricsHighlight).toBe('word');
 	});
@@ -495,7 +493,7 @@ describe('SettingsRepository room scope: lyrics presentation', () => {
 
 describe('SettingsRepository room scope: lyrics text', () => {
 	it('defaults reproduce the reel that shipped before these columns existed', () => {
-		const room = freshRepo().getRoom(DEFAULT_ROOM_ID);
+		const room = freshRepo().getRoom('main');
 		expect(room.lyricsScalePct).toBe(100);
 		expect(room.lyricsFont).toBe('system');
 		expect(room.lyricsCase).toBe('natural');
@@ -513,9 +511,9 @@ describe('SettingsRepository room scope: lyrics text', () => {
 				lyricsLinesBefore: 1,
 				lyricsLinesAfter: 3
 			},
-			DEFAULT_ROOM_ID
+			'main'
 		);
-		const room = repo.getRoom(DEFAULT_ROOM_ID);
+		const room = repo.getRoom('main');
 		expect(room.lyricsScalePct).toBe(130);
 		expect(room.lyricsFont).toBe('serif');
 		expect(room.lyricsCase).toBe('upper');
@@ -527,17 +525,17 @@ describe('SettingsRepository room scope: lyrics text', () => {
 		// The bug this guards: 0 is falsy, so a `|| default` anywhere in the read path would silently
 		// restore the history a room explicitly turned off.
 		const repo = freshRepo();
-		repo.setRoom({ lyricsLinesBefore: 0, lyricsLinesAfter: 0 }, DEFAULT_ROOM_ID);
-		const room = repo.getRoom(DEFAULT_ROOM_ID);
+		repo.setRoom({ lyricsLinesBefore: 0, lyricsLinesAfter: 0 }, 'main');
+		const room = repo.getRoom('main');
 		expect(room.lyricsLinesBefore).toBe(0);
 		expect(room.lyricsLinesAfter).toBe(0);
 	});
 
 	it('a patch touching only the font leaves the other four alone', () => {
 		const repo = freshRepo();
-		repo.setRoom({ lyricsScalePct: 145, lyricsCase: 'lower', lyricsLinesAfter: 4 }, DEFAULT_ROOM_ID);
-		repo.setRoom({ lyricsFont: 'mono' }, DEFAULT_ROOM_ID);
-		const room = repo.getRoom(DEFAULT_ROOM_ID);
+		repo.setRoom({ lyricsScalePct: 145, lyricsCase: 'lower', lyricsLinesAfter: 4 }, 'main');
+		repo.setRoom({ lyricsFont: 'mono' }, 'main');
+		const room = repo.getRoom('main');
 		expect(room.lyricsFont).toBe('mono');
 		expect(room.lyricsScalePct).toBe(145);
 		expect(room.lyricsCase).toBe('lower');
@@ -546,17 +544,17 @@ describe('SettingsRepository room scope: lyrics text', () => {
 
 	it('an out-of-band scale is clamped on write, not persisted raw', () => {
 		const repo = freshRepo();
-		repo.setRoom({ lyricsScalePct: 5 }, DEFAULT_ROOM_ID);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).lyricsScalePct).toBe(100); // clamps up to the rebased legibility-floor MIN
-		repo.setRoom({ lyricsScalePct: 400 }, DEFAULT_ROOM_ID);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).lyricsScalePct).toBe(300); // clamps down to the widened MAX
+		repo.setRoom({ lyricsScalePct: 5 }, 'main');
+		expect(repo.getRoom('main').lyricsScalePct).toBe(100); // clamps up to the rebased legibility-floor MIN
+		repo.setRoom({ lyricsScalePct: 400 }, 'main');
+		expect(repo.getRoom('main').lyricsScalePct).toBe(300); // clamps down to the widened MAX
 	});
 
 	it('an invalid font keeps the room CURRENT value rather than resetting to the default', () => {
 		const repo = freshRepo();
-		repo.setRoom({ lyricsFont: 'serif' }, DEFAULT_ROOM_ID);
-		repo.setRoom({ lyricsFont: 'papyrus' as never }, DEFAULT_ROOM_ID);
-		expect(repo.getRoom(DEFAULT_ROOM_ID).lyricsFont).toBe('serif');
+		repo.setRoom({ lyricsFont: 'serif' }, 'main');
+		repo.setRoom({ lyricsFont: 'papyrus' as never }, 'main');
+		expect(repo.getRoom('main').lyricsFont).toBe('serif');
 	});
 
 	it('two rooms hold different type, since this is per-party', () => {
@@ -571,9 +569,9 @@ describe('SettingsRepository room scope: lyrics text', () => {
 	it('text settings are untouched by a marker/highlight write', () => {
 		// The two groups are independent: one is the type, the other the marks drawn on it.
 		const repo = freshRepo();
-		repo.setRoom({ lyricsFont: 'mono', lyricsLinesBefore: 0 }, DEFAULT_ROOM_ID);
-		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'line' }, DEFAULT_ROOM_ID);
-		const room = repo.getRoom(DEFAULT_ROOM_ID);
+		repo.setRoom({ lyricsFont: 'mono', lyricsLinesBefore: 0 }, 'main');
+		repo.setRoom({ lyricsBall: 'underline', lyricsHighlight: 'line' }, 'main');
+		const room = repo.getRoom('main');
 		expect(room.lyricsFont).toBe('mono');
 		expect(room.lyricsLinesBefore).toBe(0);
 	});
@@ -581,14 +579,14 @@ describe('SettingsRepository room scope: lyrics text', () => {
 
 describe('SettingsRepository room scope: the ordering algorithm', () => {
 	it('defaults to fair rotation — the behaviour that existed before the setting', () => {
-		expect(freshRepo().getRoom(DEFAULT_ROOM_ID).queueOrder).toBe('fair');
+		expect(freshRepo().getRoom('main').queueOrder).toBe('fair');
 	});
 
 	it('round-trips every registered algorithm', () => {
 		const repo = freshRepo();
 		for (const p of QUEUE_ORDERS) {
-			expect(repo.setRoom({ queueOrder: p.id }, DEFAULT_ROOM_ID).queueOrder).toBe(p.id);
-			expect(repo.getRoom(DEFAULT_ROOM_ID).queueOrder).toBe(p.id);
+			expect(repo.setRoom({ queueOrder: p.id }, 'main').queueOrder).toBe(p.id);
+			expect(repo.getRoom('main').queueOrder).toBe(p.id);
 		}
 	});
 
@@ -596,15 +594,15 @@ describe('SettingsRepository room scope: the ordering algorithm', () => {
 		// Reject-to-current, not reset-to-default: silently swapping the house rule mid-party because a
 		// checkpoint of a name was retired is worse than ignoring the write.
 		const repo = freshRepo();
-		repo.setRoom({ queueOrder: 'fcfs' }, DEFAULT_ROOM_ID);
-		expect(repo.setRoom({ queueOrder: 'round-robin' as never }, DEFAULT_ROOM_ID).queueOrder).toBe('fcfs');
-		expect(repo.setRoom({ queueOrder: undefined }, DEFAULT_ROOM_ID).queueOrder).toBe('fcfs');
+		repo.setRoom({ queueOrder: 'fcfs' }, 'main');
+		expect(repo.setRoom({ queueOrder: 'round-robin' as never }, 'main').queueOrder).toBe('fcfs');
+		expect(repo.setRoom({ queueOrder: undefined }, 'main').queueOrder).toBe('fcfs');
 	});
 
 	it('a patch touching only pacing leaves the algorithm alone', () => {
 		const repo = freshRepo();
-		repo.setRoom({ queueOrder: 'shuffle' }, DEFAULT_ROOM_ID);
-		expect(repo.setRoom({ songIntroMs: 1000 }, DEFAULT_ROOM_ID).queueOrder).toBe('shuffle');
+		repo.setRoom({ queueOrder: 'shuffle' }, 'main');
+		expect(repo.setRoom({ songIntroMs: 1000 }, 'main').queueOrder).toBe('shuffle');
 	});
 
 	it('the baseline is never edited in place; a schema addition is an additive follow-on migration', () => {
