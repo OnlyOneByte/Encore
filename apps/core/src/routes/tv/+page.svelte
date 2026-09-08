@@ -435,6 +435,81 @@
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
 	const roster = $derived(lobbyRoster(online, away, singers));
+
+	/*
+	 * KEEP THE TV AWAKE while a song is on stage (#478).
+	 *
+	 * Nothing here held the screen on, so the OS screensaver blanked the room mid-song — a long
+	 * instrumental break with no input was enough to lose the lyrics. This takes a Screen Wake Lock for
+	 * as long as the TV is showing a song, and releases it the moment the room goes idle.
+	 *
+	 * Gated on `!isAttract` — the SAME flag the player slots and the stage background use — not on a
+	 * literal `screen === 'playing'`: a song that is cooking (`waiting`) or between tracks
+	 * (`interstitial`) is still on stage and must keep the screen lit, exactly the instrumental-break
+	 * case the issue names. `attract`/`lobby` (nobody singing, or nothing queued) release it.
+	 *
+	 * Two platform facts shape it, mirroring the ResizeObserver effect above (acquire a platform
+	 * resource, free it in the returned cleanup):
+	 *   - `navigator.wakeLock` is SECURE-CONTEXT ONLY. Behind the https tunnel or at `localhost` on the
+	 *     box it exists; on the documented plain-HTTP LAN room (`http://192.168.x.x:3000`) it is simply
+	 *     `undefined`. The feature-detect guard makes this effect INERT there — no error, no-op — the
+	 *     same shape as the `typeof ResizeObserver === 'undefined'` guard above. Blanking on a plain-HTTP
+	 *     LAN TV stays a deployment concern (disable the OS screensaver), by owner ruling.
+	 *   - The platform DROPS the lock whenever the document hides (tab switch, TV input change) and does
+	 *     NOT restore it on its own. So we re-acquire on `visibilitychange` when we become visible again
+	 *     and the room is still playing; without that it would work once and then quietly stop.
+	 */
+	$effect(() => {
+		// Read reactively: this effect re-runs (releasing, then re-taking) whenever the room enters or
+		// leaves an on-stage screen.
+		const playing = !isAttract;
+		if (typeof navigator === 'undefined' || !navigator.wakeLock) return;
+		if (!playing) return;
+
+		let sentinel: WakeLockSentinel | null = null;
+		// True from the moment we issue a request until its promise settles. `sentinel` is null for that
+		// whole window, so without this flag a `visibilitychange` arriving mid-flight would issue a SECOND
+		// request and leak the first held lock (it would survive the song's end). Short-circuit on it too.
+		let acquiring = false;
+		let released = false;
+
+		const acquire = () => {
+			// A pending, in-flight, or held lock needs no second request; a released sentinel is spent, so
+			// re-request.
+			if (acquiring || (sentinel && !sentinel.released)) return;
+			acquiring = true;
+			navigator
+				.wakeLock!.request('screen')
+				.then((s) => {
+					if (released) {
+						// The effect tore down while the request was in flight — do not leak it.
+						s.release().catch(() => {});
+						return;
+					}
+					sentinel = s;
+				})
+				// A rejected request (user-agent policy, low battery) must not throw — the screen just
+				// falls back to its default sleep behaviour.
+				.catch(() => {})
+				.finally(() => {
+					acquiring = false;
+				});
+		};
+
+		const onVisibility = () => {
+			if (document.visibilityState === 'visible') acquire();
+		};
+
+		acquire();
+		document.addEventListener('visibilitychange', onVisibility);
+
+		return () => {
+			released = true;
+			document.removeEventListener('visibilitychange', onVisibility);
+			sentinel?.release().catch(() => {});
+			sentinel = null;
+		};
+	});
 	/*
 	 * The stage background, and the band it is shown in.
 	 *
