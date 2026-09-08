@@ -1387,6 +1387,68 @@ def test_time_one_lines_mode_publishes_source_timings_not_the_aligner_windows(mo
     assert [ln["end"] for ln in doc["lines"]] == [34.0]
 
 
+# ── #685: dual-script romanization survives the DEFAULT (forced-align) path, structurally ─────
+def test_time_one_forced_path_keeps_dual_script_romanization(monkeypatch):
+    """#685: the default forced-align path must carry an LRCLIB record's second script to the doc.
+
+    ``forced`` is the default sync mode on both sides (``config.py`` ``sync_mode = "forced"`` /
+    ``ctx.py`` ``SyncMode.FORCED``) and a bilingual LRCLIB record is ``TIMING_LINE``, so ``_time_one``
+    takes the force-align branch on every such song. The aligner re-times the ORIGINAL script and drops
+    the per-line ``romanization`` the source shipped; ``_attach_romanizations`` (the single call at the
+    end of that branch in ``steps/lyrics.py``) is the ONLY thing that puts it back on this path.
+
+    Before #685 nothing pinned that call: deleting it left the whole worker suite byte-identical green
+    while a Chinese record rendered single-script on the TV, because the one test that reads as its
+    coverage (``test_lrclib_to_segments_threads_romanization_end_to_end``) reaches the doc through
+    ``line_synced_lyrics`` — the aligner-failure/``lines``-mode FALLBACK — never this default path.
+
+    The mechanism this pins: dual-script survival on the forced path is structural, carried by the
+    ``_attach_romanizations`` re-attachment, not incidental. Uses the repo's ``FakeAligner``, which
+    emits ONLY ``start``/``end``/``text``/``words`` (the whisperx shape) and does NOT pass the input
+    segment through — so this test reds when the re-attachment is removed or reordered, and cannot be
+    satisfied by ``normalize_lyrics`` re-emitting a spread-through segment (see #431's own trap).
+    """
+    from src.lyrics.chain import SOURCE_LRCLIB, TIMING_LINE, LyricsText
+    from src.steps import lyrics as steps_lyrics
+
+    # A folded bilingual LRCLIB text: two lines, each the non-Latin script as ``text`` and its Latin
+    # romanization twin as ``romanization`` — exactly what ``fold_romanization_entries`` produces.
+    text = LyricsText(
+        text_source=SOURCE_LRCLIB,
+        segments=[
+            {
+                "start": 10.0,
+                "end": 20.0,
+                "text": "真情像草原广茂",
+                "romanization": "zhen qing xiang cao yuan guang mao",
+            },
+            {
+                "start": 20.0,
+                "end": 30.0,
+                "text": "雪花飘飘北风萧萧",
+                "romanization": "xue hua piao piao bei feng xiao xiao",
+            },
+        ],
+        timing=TIMING_LINE,
+        text_confidence="high",
+    )
+
+    # Default sync mode is forced, so the aligner branch runs and returns a WORD-timed doc.
+    ok = FakeAligner()
+    doc, timing, conf = steps_lyrics._time_one(
+        ok, _ctx_forced(monkeypatch), text, audio="/x.wav", language="zh"
+    )
+    assert ok.calls  # the force-align branch actually ran (not a fallback)
+    assert timing == TIMING_WORD and conf == "high"
+
+    # THE PIN, by value: both source lines' romanization rode through to the word-timed doc. Deleting
+    # or reordering ``_attach_romanizations`` in ``steps/lyrics.py`` makes this ``[None, None]``.
+    assert [ln.get("romanization") for ln in doc["lines"]] == [
+        "zhen qing xiang cao yuan guang mao",
+        "xue hua piao piao bei feng xiao xiao",
+    ]
+
+
 # ── #217: the wrong-version fit must be paired with what the aligner SEARCHED ─────────────────────
 # #92 routed the aligner at `steps/lyrics.py` to search `align_windows` (the per-row bounded windows)
 # instead of `segments` when presplit set them. `doc` then carries one aligned line per WINDOW, so it
