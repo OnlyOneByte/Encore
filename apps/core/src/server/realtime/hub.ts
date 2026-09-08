@@ -154,10 +154,16 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			)
 				return `entry id already taken: ${op.entry.id}`;
 			// Shape of the CLIENT-MINTED add entry as it reaches this guard. Since #345 (5acf86d) the server
-			// owns TWO of its fields, both rewritten at the applyQueueOp seam ~168 lines below: rotationSeq
-			// (assigned by applyOp) and addedAt (re-stamped from the room's monotonic nextAddedAt() — see
-			// hub.ts:handleQueueCommand). So the only client-minted field that reaches the queue verbatim is
-			// status. Both status and addedAt feed NOT NULL columns in queue_entries
+			// owns addedAt — it is re-stamped from the room's monotonic nextAddedAt() at the applyQueueOp seam
+			// ~168 lines below (see hub.ts:handleQueueCommand). rotationSeq is ALSO server-owned, but not by
+			// applyOp: applyOp inserts op.entry verbatim and sorts by the existing value (ops.ts) — assignSeqs
+			// re-derives it (rotation.ts). So TWO client-minted fields reach the queue verbatim: status, and
+			// pinnedSeq (#638) — the durable global-pin position, bound to the NULLABLE pinned_seq integer
+			// column with no CHECK (persistence.ts). Both are guarded here (pinnedSeq at :add-arm below): an
+			// object/array pinnedSeq crashes the un-try'd write-behind flush timer exactly like a non-integer
+			// toSeq does through move-global (#702), and a numeric string is coerced in silently by SQLite
+			// integer affinity so the room re-pins itself on restart into an order no client ever showed.
+			// Both status and addedAt feed NOT NULL columns in queue_entries
 			// (added_at integer, status text). What the column ACTUALLY rejects at the write-behind flush is
 			// narrow and is NOT NULL alone — never an enum, never finiteness. Measured against a real
 			// migrated DB: a missing or null addedAt, or a null status, throws `NOT NULL constraint failed`
@@ -192,6 +198,20 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			// fix used for the server-owned `status` op. (This also subsumes the off-enum reject above: any
 			// non-'queued' string, in the enum or not, is refused.)
 			if (!Number.isFinite(op.entry.addedAt)) return 'invalid addedAt';
+			// pinnedSeq (#638) is the LAST client-minted field with no shape guard on the add path: it is
+			// inserted verbatim (ops.ts), re-stamps nothing (only addedAt is re-stamped ~168 lines below), and
+			// is bound to the NULLABLE `pinned_seq integer` column (persistence.ts). Same class as move-global's
+			// toSeq (#702) and the addedAt reject above: nothing else on the path guards its shape, so this is
+			// the ONLY line keeping a non-integer out of the pin. A non-number binding (object/array/NaN/
+			// Infinity/float) is refused by bun:sqlite at the un-try'd write-behind flush and takes the core
+			// process down asynchronously; a numeric STRING ('0') is dropped live by placePins' `typeof ===
+			// number` filter (rotation.ts) yet coerced into the integer column by SQLite affinity, so the room
+			// silently re-orders itself on the next restart into an order no client ever showed. `!= null` is
+			// load-bearing: the field is OPTIONAL and every honest add omits it (lib/stores/queue.ts addSong),
+			// so a bare Number.isInteger check would reject 100% of real adds. Negative/huge integers are NOT
+			// rejected — placePins clamps low and high against the growing list (rotation.ts), so they are
+			// honest no-consequence inputs and refusing them would be a behaviour change (same reasoning #702).
+			if (op.entry.pinnedSeq != null && !Number.isInteger(op.entry.pinnedSeq)) return 'invalid pinnedSeq';
 			if (op.entry.status !== 'queued') {
 				// Distinguish the two rejects for the operator log: a string not even in the column vs a
 				// real-but-server-owned lifecycle value. VALID_ENTRY_STATUSES is the column's own list, so
