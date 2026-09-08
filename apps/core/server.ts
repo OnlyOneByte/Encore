@@ -14,11 +14,9 @@ import {
 } from '@encore/shared';
 import { handleQueueCommand, syncEvent, orderingOf, type HubDeps } from './src/server/realtime/hub';
 import { handlePlayerCommand, handleTelemetry, reconcileOnReady } from './src/server/realtime/player';
-import { cancelJobsForMedia } from './src/server/jobs/cancel';
 import { validateWorkerMessage } from './src/server/jobs/worker-hub';
-import { reprioritizeCookForMedia } from './src/server/jobs/reprioritize-cook';
 import { upNextAfter } from './src/server/rotation/index';
-import { getApp, setPublish } from './src/server/app';
+import { getApp, setPublish, buildHubDeps } from './src/server/app';
 import { readSessionToken } from './src/server/singers/repository';
 import { can } from './src/server/auth/capabilities';
 import { presentTracks, type LocalTrack } from './src/server/media/local';
@@ -259,44 +257,16 @@ const server = Bun.serve<SocketData>({
 			} catch {
 				return;
 			}
-			const deps: HubDeps = {
-				state,
-				publish: broadcast,
-				mediaById,
-				listSingers: () => app.singers.listPublic(),
+			// The hub bag is assembled by app.ts's buildHubDeps factory: every app-derived hook
+			// (listSingers, getSettings, onNowPlaying, onSang, recordAdd, onEntryRemoved -> cancelJobsForMedia,
+			// onEntryAdded -> reprioritizeCookForMedia) is wired there in ONE place. Only what genuinely
+			// varies per socket/frame is passed here — the broadcast sink, the authenticated singer on this
+			// socket, the live membership snapshot, and the idempotency ledger (#460 §3).
+			const deps: HubDeps = buildHubDeps(app, {
+				broadcast,
+				actorSingerId: ws.data.singerId,
 				listOnline: () => membership.here,
 				listAway: () => membership.away,
-				getSettings: () => app.settings.getEffective(),
-				onNowPlaying: (e) => app.plays.onNowPlaying(e),
-				onSang: (singerId) => app.singers.markSang(singerId, app.now()),
-				recordAdd: (mediaId) => app.popularity.recordAdd(mediaId, app.now()),
-				// An explicit remove of a cooking song stops the cook (subprocess kill + slot release +
-				// dedup-slot free), where before the row vanished but the worker kept cooking. It also
-				// settles the media back to un-cooked and tells the room, so a search row stops showing a
-				// cook that is no longer running. The helper no-ops when a shared cook is still needed by
-				// another queue entry. See jobs/cancel.ts.
-				onEntryRemoved: (mediaId, remainingEntries) =>
-					cancelJobsForMedia(mediaId, {
-						jobs: app.jobs,
-						toWorker: app.toWorker,
-						remainingEntries,
-						now: app.now,
-						mediaById: app.mediaById,
-						broadcast
-					}),
-				// The add-side mirror of onEntryRemoved. A song's cook can be filed at NO_QUEUE_PRIORITY when
-				// the make-karaoke POST beat the singer's queue add over a reconnecting socket; once the turn
-				// lands here we pull the outstanding cook to that turn's rotation position and kick dispatch,
-				// so it stops sorting behind the lyrics backfill forever. No-ops when there is no cook in
-				// flight or nothing more urgent to do. See jobs/reprioritize-cook.ts (#135 starvation half).
-				onEntryAdded: (mediaId, entries) =>
-					reprioritizeCookForMedia(mediaId, {
-						jobs: app.jobs,
-						entries,
-						now: app.now,
-						dispatch: () => app.workerHub.dispatch()
-					}),
-				actorSingerId: ws.data.singerId,
 				seenOp: (id) => {
 					if (seenOps.has(id)) return true;
 					seenOps.add(id);
@@ -306,7 +276,7 @@ const server = Bun.serve<SocketData>({
 				// #490: non-recording peek at the same ledger, for the validation-failure re-ack path.
 				// Never inserts — a rejected op must not enter the ledger, or its resend would falsely re-ack.
 				hasOp: (id) => seenOps.has(id)
-			};
+			});
 			const sendToOrigin = (e: ServerEvent) => ws.send(JSON.stringify(e));
 
 			switch (evt.type) {
