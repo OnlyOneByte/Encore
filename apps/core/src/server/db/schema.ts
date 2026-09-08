@@ -256,10 +256,16 @@ export const roomSettings = sqliteTable('room_settings', {
 	tvBackgroundStyle: text('tv_background_style', { enum: ['off', 'gradient', 'singer', 'solid', 'visualizer'] })
 		.notNull()
 		.default('off'),
-	// A HUE ANGLE, not a colour. The rendered stage comes from `stageHueToHex` at a pinned lightness,
-	// so this column cannot carry something bright enough to wash out the lyric reel, and there is no
-	// colour string for anything downstream to mis-parse. Only read when the style is `solid`.
-	tvBackgroundHue: integer('tv_background_hue').notNull().default(240),
+	// The stage's COLOUR, as canonical 6-digit lowercase hex. Text, not the integer hue angle this was
+	// until #425: the room now names a colour outright instead of naming an angle that `stageHueToHex`
+	// rendered at a pinned lightness. The pin existed to stop a room washing out the word-timed lyric
+	// reel; the reel now carries its own stroked outline (#750), which protects it on any field — so the
+	// bound moved rather than being dropped. Read when the style is `solid` (verbatim) or `visualizer`
+	// (as the palette's hue, via `hueOfColor`).
+	// Migration 0005 backfills each existing row by mapping its old quantised hue through the same
+	// stage tier, so a configured box renders identically after the upgrade; the default below is
+	// `stageHueToHex(240)`, what the old `DEFAULT 240` rendered as.
+	tvBackgroundColor: text('tv_background_color').notNull().default('#001d31'),
 	// Which visualizer runs when the style is `visualizer`. Kept across a switch away from it, so a room
 	// that tries another background and comes back does not lose the choice.
 	tvVisualizer: text('tv_visualizer', { enum: ['plasma', 'starfield', 'moire', 'lissajous'] })

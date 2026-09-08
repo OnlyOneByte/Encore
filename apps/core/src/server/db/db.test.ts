@@ -8,6 +8,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { sqlitePersistence } from '../state/persistence';
 import { SingerRepository } from '../singers/repository';
+import { SettingsRepository } from '../state/settings-repository';
+import { DEFAULT_STAGE_COLOR, STAGE_BG_C, STAGE_BG_L, hueToHex, stageHueToHex } from '@encore/shared';
 import type { PlaybackState, QueueEntry } from '@encore/shared';
 
 test('migrations create all tables and every entity round-trips', () => {
@@ -509,4 +511,181 @@ test('#728: 0004 leaves the main row untouched when no room exists yet (pre-#654
 	expect(rows).toHaveLength(1);
 	expect(rows[0]!.room_id).toBe('main');
 	expect(rows[0]!.song_intro_ms).toBe(7000);
+});
+
+// #425 — the EXISTING-database upgrade path for `tv_background_hue` → `tv_background_color`. Every
+// other test in this file that touches room_settings builds a FRESH db, which is exactly the coverage
+// gap that lets an in-place baseline edit pass: a rewritten 0000 is never re-applied to a db that
+// already ran it (drizzle keys on the journal `when`, not the file hash), so the new column would never
+// appear and the first `getRoom()` would throw at boot. #655 and #669 each shipped that. This models the
+// real upgrade: apply only 0000..0004 (a pre-#425 box), write old-shape rows carrying INTEGER hues, THEN
+// run the full set so 0005 actually runs.
+//
+// What it has to prove is the party keeping its look across the upgrade, not merely that a column
+// arrived: each row's stored hue must land on the colour that hue was ALREADY rendering as, which is
+// `stageHueToHex(hue)`. Those expectations are computed from the shared function rather than transcribed
+// here, so the test cannot agree with a wrong migration by copying the same wrong literals — the exact
+// derive-your-own-expectation trap that let #165 ship.
+test('#425: an EXISTING hue database upgrades — 0005 replaces tv_background_hue with the colour that hue rendered as', () => {
+	const { db, sqlite } = openDb(':memory:');
+
+	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
+	const baseDir = mkdtempSync(join(tmpdir(), 'encore-mig-425-'));
+	mkdirSync(join(baseDir, 'meta'), { recursive: true });
+	const priorTags = [
+		'0000_baseline',
+		'0001_add_job_attempts_selection',
+		'0002_room_keyed_playback',
+		'0003_room_keyed_queue',
+		'0004_rekey_room_settings'
+	];
+	const fullJournal = JSON.parse(readFileSync(join(real, 'meta', '_journal.json'), 'utf8'));
+	for (const e of fullJournal.entries as { idx: number; tag: string }[]) {
+		if (!priorTags.includes(e.tag)) continue;
+		cpSync(join(real, e.tag + '.sql'), join(baseDir, e.tag + '.sql'));
+		cpSync(
+			join(real, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json'),
+			join(baseDir, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json')
+		);
+	}
+	const baseJournal = {
+		...fullJournal,
+		entries: fullJournal.entries.filter((e: { tag: string }) => priorTags.includes(e.tag))
+	};
+	writeFileSync(join(baseDir, 'meta', '_journal.json'), JSON.stringify(baseJournal));
+	runMigrations(db, baseDir);
+
+	// Sanity: this really IS the old shape, so the test cannot pass by having skipped phase 1.
+	const before = sqlite.query('PRAGMA table_info(room_settings)').all() as { name: string }[];
+	expect(before.some((c) => c.name === 'tv_background_hue')).toBe(true);
+	expect(before.some((c) => c.name === 'tv_background_color')).toBe(false);
+
+	// Three configured rooms a running party would already hold: a room on the untouched default, one on
+	// a hue inside the accent2 guard band (where the tier's lightness ramp bites, so its colour is NOT
+	// simply the flat tier), and one at a stop far from it.
+	sqlite.run("INSERT INTO rooms (id, code, created_at) VALUES ('roomA','AAAAAA',1000)");
+	sqlite.run("INSERT INTO rooms (id, code, created_at) VALUES ('roomB','BBBBBB',2000)");
+	sqlite.run("INSERT INTO rooms (id, code, created_at) VALUES ('roomC','CCCCCC',3000)");
+	sqlite.run(
+		"INSERT INTO room_settings (room_id, tv_background_style, tv_background_hue) VALUES ('roomA','solid',240)"
+	);
+	sqlite.run(
+		"INSERT INTO room_settings (room_id, tv_background_style, tv_background_hue) VALUES ('roomB','solid',345)"
+	);
+	sqlite.run(
+		"INSERT INTO room_settings (room_id, tv_background_style, tv_background_hue, song_intro_ms) VALUES ('roomC','visualizer',120,7000)"
+	);
+
+	// Deploy #425: 0000..0004 are already recorded, so only 0005 runs.
+	runMigrations(db, real);
+
+	// The column swap actually happened — proving 0005 was applied rather than skipped the way an
+	// in-place baseline edit would have been.
+	const after = sqlite.query('PRAGMA table_info(room_settings)').all() as { name: string }[];
+	expect(after.some((c) => c.name === 'tv_background_color')).toBe(true);
+	expect(after.some((c) => c.name === 'tv_background_hue')).toBe(false);
+
+	// Every room still shows the colour it was showing before the upgrade.
+	const rows = sqlite
+		.query(
+			'SELECT room_id, tv_background_style, tv_background_color, song_intro_ms FROM room_settings ORDER BY room_id'
+		)
+		.all() as {
+		room_id: string;
+		tv_background_style: string;
+		tv_background_color: string;
+		song_intro_ms: number;
+	}[];
+	expect(rows.map((r) => r.room_id)).toEqual(['roomA', 'roomB', 'roomC']);
+	expect(rows[0]!.tv_background_color).toBe(stageHueToHex(240));
+	expect(rows[1]!.tv_background_color).toBe(stageHueToHex(345));
+	expect(rows[2]!.tv_background_color).toBe(stageHueToHex(120));
+	// non-vacuous: the three colours are genuinely different, so a migration that wrote one constant
+	// everywhere (the plausible bug) could not pass the three assertions above.
+	expect(new Set(rows.map((r) => r.tv_background_color)).size).toBe(3);
+	// the guard band really is exercised — roomB's hue sits ON accent2, so its colour is the ramped one
+	expect(stageHueToHex(345)).not.toBe(hueToHex(345, STAGE_BG_L, STAGE_BG_C));
+	// and unrelated columns are untouched by the swap
+	expect(rows[2]!.tv_background_style).toBe('visualizer');
+	expect(rows[2]!.song_intro_ms).toBe(7000);
+
+	// The running code can now read those rooms through the real path — the thing that threw on #655.
+	const repo = new SettingsRepository(db);
+	expect(repo.getRoom('roomA').tvBackgroundColor).toBe(stageHueToHex(240));
+	expect(repo.getRoom('roomB').tvBackgroundColor).toBe(stageHueToHex(345));
+	expect(repo.getRoom('roomC').tvBackgroundStyle).toBe('visualizer');
+});
+
+// #425 companion: a hand-edited DB holding an OFF-STEP hue has no colour to carry, so it must land on
+// the default rather than on NULL — the column is NOT NULL, so there is no third outcome, and silently
+// defaulting an illegal value is what the settings validator already does with one. Split from the test
+// above because this exercises the CASE's ELSE arm, which the 24 legal values never reach.
+test('#425: 0005 defaults an off-step or out-of-range hue instead of leaving it unmapped', () => {
+	const { db, sqlite } = openDb(':memory:');
+
+	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
+	const baseDir = mkdtempSync(join(tmpdir(), 'encore-mig-425b-'));
+	mkdirSync(join(baseDir, 'meta'), { recursive: true });
+	const priorTags = [
+		'0000_baseline',
+		'0001_add_job_attempts_selection',
+		'0002_room_keyed_playback',
+		'0003_room_keyed_queue',
+		'0004_rekey_room_settings'
+	];
+	const fullJournal = JSON.parse(readFileSync(join(real, 'meta', '_journal.json'), 'utf8'));
+	for (const e of fullJournal.entries as { idx: number; tag: string }[]) {
+		if (!priorTags.includes(e.tag)) continue;
+		cpSync(join(real, e.tag + '.sql'), join(baseDir, e.tag + '.sql'));
+		cpSync(
+			join(real, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json'),
+			join(baseDir, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json')
+		);
+	}
+	const baseJournal = {
+		...fullJournal,
+		entries: fullJournal.entries.filter((e: { tag: string }) => priorTags.includes(e.tag))
+	};
+	writeFileSync(join(baseDir, 'meta', '_journal.json'), JSON.stringify(baseJournal));
+	runMigrations(db, baseDir);
+
+	sqlite.run("INSERT INTO rooms (id, code, created_at) VALUES ('roomA','AAAAAA',1000)");
+	// 7 is not a wheel stop; 999 is out of range. Neither can be produced by the validator, only by hand.
+	sqlite.run("INSERT INTO room_settings (room_id, tv_background_hue) VALUES ('roomA',7)");
+	sqlite.run("INSERT INTO room_settings (room_id, tv_background_hue) VALUES ('roomZ',999)");
+
+	runMigrations(db, real);
+
+	const rows = sqlite.query('SELECT room_id, tv_background_color FROM room_settings ORDER BY room_id').all() as {
+		room_id: string;
+		tv_background_color: string;
+	}[];
+	expect(rows).toHaveLength(2);
+	for (const r of rows) {
+		expect(r.tv_background_color).toBe(DEFAULT_STAGE_COLOR);
+		expect(r.tv_background_color).not.toBeNull();
+	}
+});
+
+// #425 advisory: the 0005 migration's CASE backfills each of the 24 legal stored hues to the colour
+// `stageHueToHex` renders it as, transcribed as literals because SQL cannot run OKLCH. The migration
+// comment claims "a guard test asserts each of these 24 pairs still equals stageHueToHex(hue)" — this
+// IS that guard. It parses every `WHEN <hue> THEN '<hex>'` arm out of the .sql and re-derives each
+// with stageHueToHex, so a change to the stage tier that leaves the migration behind reds here rather
+// than silently shipping a wrong backfill on the 23 rows the upgrade test does not spot-check.
+test('#425: every WHEN arm of the 0005 backfill CASE equals stageHueToHex(hue)', () => {
+	const sql = readFileSync(join(import.meta.dir, '..', '..', '..', 'drizzle', '0005_tv_background_color.sql'), 'utf8');
+	const arms = [...sql.matchAll(/WHEN\s+(\d+)\s+THEN\s+'(#[0-9a-fA-F]{6})'/g)].map((m) => ({
+		hue: Number(m[1]),
+		hex: m[2]!.toLowerCase()
+	}));
+	// The wheel has exactly 24 stops (360 / SINGER_HUE_STEP), so the CASE must carry all 24 — no more,
+	// no fewer — or a legal stored hue would fall through to the ELSE default instead of its colour.
+	expect(arms.length).toBe(24);
+	for (const { hue, hex } of arms) {
+		expect(hex).toBe(stageHueToHex(hue));
+	}
+	// And the default the ELSE arm and the column both use is hue 240's colour, byte-identical.
+	expect(sql).toContain("ELSE '#001d31'");
+	expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
 });

@@ -11,6 +11,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import {
 		effectiveGuideLevel,
+		hueOfColor,
 		resolveLyricsPresentation,
 		type EffectiveSettings,
 		type TvBackgroundStyle
@@ -80,7 +81,12 @@
 	// What the room paints behind the song. Derived from the same settings object, so a live
 	// settings:changed needs no per-field assignment here.
 	let tvBackgroundStyle = $derived(settings.room.tvBackgroundStyle);
-	let tvBackgroundHue = $derived(settings.room.tvBackgroundHue);
+	let tvBackgroundColor = $derived(settings.room.tvBackgroundColor);
+	// The visualizers build their palette by hue ARITHMETIC around the room's colour
+	// (`stageHueToHex(hue + deg)`), so they need an ANGLE and the stored value is a hex since #425.
+	// `hueOfColor` is the atan2 of the OKLab chromatic axes — scale-free, so it recovers the hue of a
+	// dark stage colour that `nearestSingerHue` would snap to the wrong wheel stop.
+	let tvBackgroundHue = $derived(hueOfColor(tvBackgroundColor));
 	let tvVisualizer = $derived(settings.room.tvVisualizer);
 	// playback isPlaying (pause/resume from the phone) — wired into both player slots
 	let isPlaying = $state(true);
@@ -613,7 +619,7 @@
 	 * The override wins over the room default when set; `null` means defer to the room.
 	 */
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
-	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundHue, currentSingerColor));
+	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundColor, currentSingerColor));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
 	// Bug B + #393: the reel and ball ADVANCE only while the song is genuinely playing on BOTH
@@ -1250,13 +1256,24 @@
 		gap: 2px;
 		/*
 		 * NO CARD. No background, no padding, no border-radius, no backdrop-filter — see the markup
-		 * comment for why. Legibility over arbitrary video comes from the text-shadow below, which is
-		 * the same device the lyrics reel already uses and which works on every TV browser.
+		 * comment for why. Legibility comes from BOTH a blurred text-shadow AND a text-stroke, the same
+		 * pair the lyrics reel uses (LyricsOverlay.svelte:346), and both work on every TV browser.
+		 *
+		 * #425: the stroke is load-bearing, not decoration. Before #425 the stage was pinned dark, so a
+		 * shadow tuned against black was enough. #425 lets a room pick ANY stage colour — including
+		 * white — and a blurred dark shadow disappears against a bright field of similar luminance, so
+		 * the singer name measured 1.10:1 on white (the retired stage pin used to prevent exactly this).
+		 * `-webkit-text-stroke` with `paint-order: stroke fill` draws a hard dark outline BEHIND the
+		 * glyph, so the text stays readable on any background — the owner's ratified #425 condition,
+		 * "always visible regardless of the background". Width in `em` (not px) so it reads the same at
+		 * 720p and 4K, and --scrim-strong reuses the reel's one dark-outline source of truth.
 		 *
 		 * Dropping the fill also drops the reason the block was capped in height: it no longer reads as
 		 * an object that can collide with the QR, only as text that must not run into it.
 		 */
 		text-shadow: 0 2px 14px rgba(0, 0, 0, 0.9);
+		-webkit-text-stroke: 0.04em var(--scrim-strong);
+		paint-order: stroke fill;
 	}
 	/* The singer's own colour, as a dot rather than a fill. It is their identity everywhere else in
 	   the app, and a dot carries that at a size that cannot compete with the words. */

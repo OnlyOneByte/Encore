@@ -13,6 +13,9 @@ import {
 	presetTabStopIndex,
 	stageHueToHex,
 	stageLightnessForHue,
+	normalizeStageColor,
+	hueOfColor,
+	DEFAULT_STAGE_COLOR,
 	STAGE_BG_L,
 	SINGER_L,
 	oklchToRgb
@@ -327,4 +330,89 @@ test('hueToHex fully reduces chroma into sRGB gamut, even from a high starting c
 	// is STILL out of gamut for some hue - the exact condition that made the old code return a clip.
 	expect(sawStartOutOfGamut).toBe(true);
 	expect(sawFixedFloorOutOfGamut).toBe(true);
+});
+
+// ── #425: the stage stores a real colour ───────────────────────────────────
+
+// The constant is a hand-written literal because SQL cannot run an OKLCH conversion — the SQLite column
+// default and the 0005 migration's backfill both need these bytes. This is the guard that stops the
+// duplication rotting: change the stage tier and this reds rather than leaving the schema behind.
+test('DEFAULT_STAGE_COLOR is exactly what the old hue-240 default rendered as (#425)', () => {
+	expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
+});
+
+test('normalizeStageColor canonicalises to 6-digit lowercase hex (#425)', () => {
+	// the pin's surviving reason: this value is interpolated straight into a style attribute, and a
+	// 3-digit hex concatenated with alpha digits is what silently dropped the singer halo once already
+	expect(normalizeStageColor('#ABC', DEFAULT_STAGE_COLOR)).toBe('#aabbcc');
+	expect(normalizeStageColor('#AABBCC', DEFAULT_STAGE_COLOR)).toBe('#aabbcc');
+	expect(normalizeStageColor('  #001d31  ', DEFAULT_STAGE_COLOR)).toBe('#001d31');
+});
+
+test('normalizeStageColor keeps the caller current colour for anything unparseable (#425)', () => {
+	// a junk write must not reset a choice the room already made — the rule every other setting follows
+	for (const junk of [
+		'rebeccapurple',
+		'rgb(1,2,3)',
+		'oklch(.2 .07 240)',
+		'#7c5cff30',
+		'',
+		'#12',
+		240,
+		null,
+		undefined,
+		{}
+	]) {
+		expect(normalizeStageColor(junk as never, '#123456')).toBe('#123456');
+	}
+});
+
+// This is the assertion that pins the OWNER'S RULING rather than the mechanism. Ruling B on #425 was
+// "drop the lightness/chroma legibility pin"; the sibling `normalizeSingerColor` still enforces one, so
+// a reviewer cannot tell the two apart by reading either function alone. If someone reinstates a bound
+// on the stage — copying the singer validator, most likely — this reds and names why it must not.
+test('normalizeStageColor does NOT gate on legibility, unlike the singer validator (#425)', () => {
+	// white is the extreme case: brighter than anything the retired stage tier could emit, and rejected
+	// outright by the singer rule it sits next to.
+	expect(normalizeStageColor('#ffffff', DEFAULT_STAGE_COLOR)).toBe('#ffffff');
+	expect(isLegibleSingerColor('#ffffff')).toBe(true); // white passes the DOT rule, so pick a real failure
+	// a near-black dot fails the 3:1 dot bound, and the singer path rewrites it; the stage path keeps it
+	expect(isLegibleSingerColor('#050505')).toBe(false);
+	expect(normalizeSingerColor('#050505')).toBe(SINGER_COLORS[0]);
+	expect(normalizeStageColor('#050505', DEFAULT_STAGE_COLOR)).toBe('#050505');
+});
+
+/** Shortest angular distance between two hues, in degrees (0–180). */
+function hueGap(a: number, b: number): number {
+	const d = Math.abs(a - b) % 360;
+	return Math.min(d, 360 - d);
+}
+
+test('hueOfColor recovers the hue of a stage-tier colour, which nearestSingerHue cannot (#425)', () => {
+	// The visualizers build a palette by hue ARITHMETIC around the room's colour, so they need an angle
+	// back out of the stored hex. MEASURED, not assumed: atan2 of the OKLab chromatic axes is scale-free
+	// and round-trips every legal stop within one wheel step, while nearestSingerHue compares those axes
+	// by euclidean distance against candidates at the WHEEL's tier (L .70 / C .16) and so mis-snaps a
+	// stage colour (L .22 / C .07) — using it here would have re-coloured every configured visualizer.
+	let worst = 0;
+	let sawNearestMismatch = false;
+	for (const h of SINGER_HUES) {
+		const hex = stageHueToHex(h);
+		worst = Math.max(worst, hueGap(hueOfColor(hex), h));
+		if (nearestSingerHue(hex) !== h) sawNearestMismatch = true;
+	}
+	expect(worst).toBeLessThan(SINGER_HUE_STEP);
+	// non-vacuous: the rejected alternative genuinely fails on this input set
+	expect(sawNearestMismatch).toBe(true);
+});
+
+test('hueOfColor is independent of lightness and chroma, and greys have no hue (#425)', () => {
+	// scale-freedom is the whole property that makes it work across tiers, so assert it directly
+	for (const h of [0, 75, 165, 240, 345]) {
+		const wheel = hueOfColor(hueToHex(h, SINGER_L, 0.16));
+		const stage = hueOfColor(hueToHex(h, STAGE_BG_L, 0.07));
+		expect(hueGap(wheel, stage)).toBeLessThan(SINGER_HUE_STEP);
+	}
+	expect(hueOfColor('#000000')).toBe(0);
+	expect(hueOfColor('not a colour')).toBe(0);
 });

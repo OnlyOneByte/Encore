@@ -22,7 +22,7 @@ import {
 import { makeRegistry } from './registry';
 import { DEFAULT_QUEUE_ORDER, isQueueOrder, type QueueOrderId } from './queue-order';
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
-import { SINGER_HUE_STEP } from './colors';
+import { DEFAULT_STAGE_COLOR, normalizeStageColor } from './colors';
 import { DEFAULT_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES, MIN_PRESENCE_GRACE_MINUTES } from './membership';
 import {
 	DEFAULT_ASR_MODEL,
@@ -304,21 +304,28 @@ export interface RoomSettings {
 	/** What the TV paints behind the song. Room-scoped: it is one party's staging taste. */
 	tvBackgroundStyle: TvBackgroundStyle;
 	/**
-	 * Hue angle (0–359, quantised to SINGER_HUE_STEP) that colours the stage. Read by BOTH the `solid`
-	 * background and the `visualizer` one — they need the same thing (one hue, rendered inside the
-	 * legibility bound), so they share the field rather than each carrying their own.
+	 * The stage's colour, as canonical 6-digit lowercase hex. Read by BOTH the `solid` background and
+	 * the `visualizer` one — they need the same thing (the room's chosen colour), so they share the
+	 * field rather than each carrying their own; the visualizer takes its palette's hue from it through
+	 * `hueOfColor`.
 	 *
-	 * A HUE, not a hex, on purpose. The rendered colour is generated at the pinned stage lightness by
-	 * `stageHueToHex`, so a room cannot pick something bright enough to wash out the lyric reel, and
-	 * there is no colour string to parse — the `#rgb`-vs-`#rrggbb` trap that silently dropped the
-	 * singer halo cannot recur here.
+	 * A REAL COLOUR, not a hue angle — changed by #425. It was an angle, quantised to the wheel step and
+	 * rendered at a pinned stage lightness by `stageHueToHex`, so that no room could produce a field
+	 * bright enough to wash out the word-timed lyric reel. That bound is retired: the reel now carries
+	 * its own `-webkit-text-stroke` outline (#750, `b764d92`), which protects the words on any field —
+	 * including over a music video, which a bound on the stage colour could never reach. A room may
+	 * pick white.
+	 *
+	 * What the change KEEPS is the pin's other stated reason, which was never about brightness: the
+	 * value is normalised to one canonical hex shape, because it is interpolated straight into a `style`
+	 * attribute and the `#rgb`-vs-`#rrggbb` trap silently dropped the singer halo once already.
 	 */
-	tvBackgroundHue: number;
+	tvBackgroundColor: string;
 	/**
 	 * Which visualizer runs when `tvBackgroundStyle === 'visualizer'`. Ignored otherwise.
 	 *
 	 * Held even while another background is selected, so switching to the visualizer and back does not
-	 * forget the choice — the same reason `tvBackgroundHue` survives a switch away from `solid`.
+	 * forget the choice — the same reason `tvBackgroundColor` survives a switch away from `solid`.
 	 */
 	tvVisualizer: TvVisualizerId;
 	/**
@@ -404,9 +411,12 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	// `off` so an existing box looks byte-identical after the migration: today's TV is plain black
 	// behind the song, and a default that changed the stage would be a surprise, not a feature.
 	tvBackgroundStyle: 'off',
-	// 240° — the blue that tested cleanest against the pink active word. Only used once a room picks
-	// `solid`, so this is the starting point of the slider rather than something anyone sees by default.
-	tvBackgroundHue: 240,
+	// 240° — the blue that tested cleanest against the pink active word — is where the old hue slider
+	// started, and `#001d31` is exactly what `stageHueToHex(240)` rendered it as, so #425's change from
+	// an angle to a colour leaves an existing box looking identical. Only used once a room picks `solid`
+	// or `visualizer`, so this is the starting point of the picker rather than something anyone sees by
+	// default.
+	tvBackgroundColor: DEFAULT_STAGE_COLOR,
 	// Plasma is the one every old media player had, so it is the least surprising thing to find running
 	// the first time a room turns the visualizer on.
 	tvVisualizer: 'plasma',
@@ -485,14 +495,11 @@ export function normalizeRoomSettings(
 	const lyricsCase = isValidLyricsCase(textCase) ? textCase : d.lyricsCase;
 	const bg = input?.tvBackgroundStyle;
 	const tvBackgroundStyle = isTvBackgroundStyle(bg) ? bg : d.tvBackgroundStyle;
-	// Quantised and wrapped rather than rejected, matching the song intro: a hue is an angle, so every
-	// number has a valid meaning once wrapped, and snapping to the wheel's step keeps the phone slider
-	// and the rendered stage agreeing. Non-finite input is the only thing with no sane reading.
-	const rawHue = input?.tvBackgroundHue;
-	const tvBackgroundHue =
-		typeof rawHue === 'number' && Number.isFinite(rawHue)
-			? (((Math.round(rawHue / SINGER_HUE_STEP) * SINGER_HUE_STEP) % 360) + 360) % 360
-			: d.tvBackgroundHue;
+	// A COLOUR now, not an angle (#425). Normalised to canonical hex and deliberately NOT gated on
+	// brightness: the pin that used to bound it was replaced by the lyric reel's own stroke (#750), so
+	// a room may pick white. Unparseable input keeps the colour the room already chose rather than
+	// resetting it — the same rule every other field here follows.
+	const tvBackgroundColor = normalizeStageColor(input?.tvBackgroundColor, d.tvBackgroundColor);
 	// Clamped, like the song intro: a room default outside 0..1 should still yield a usable room. Note
 	// this one is NOT nullable — the room default is the floor the per-song override falls back to, so
 	// there is nothing below it to inherit from. A junk write keeps the room's current value.
@@ -515,7 +522,7 @@ export function normalizeRoomSettings(
 		queueOrder,
 		tvProgressStyle,
 		tvBackgroundStyle,
-		tvBackgroundHue,
+		tvBackgroundColor,
 		tvVisualizer,
 		songIntroEnabled,
 		songIntroMs,
