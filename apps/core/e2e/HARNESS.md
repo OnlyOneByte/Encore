@@ -40,6 +40,41 @@ how anything *sounds*. Say which you mean when you report.
 | **ffmpeg** | **decode-only** | no encoding, and the loudness probe's `volumedetect` filter is absent |
 | torch / demucs / whisperx | missing | no real separation or alignment — use the fake worker |
 
+## The one driver that is a GATE, not a probe
+
+`e2e/gates/measured-design.mjs` is the exception to everything below. Everything in `e2e/probes/` is
+run by an agent that decides to; that file is **the fifth gate** (issue #823), run by every lane with
+
+```bash
+bun run gate:measured          # from the repo root, AFTER bun run build
+```
+
+Three ways it differs from a probe, all deliberate:
+
+- **It boots its own world.** Its own free port, its own seeded media directory, its own Chromium, all
+  torn down on exit. A probe expects you to have started a server; a gate cannot.
+- **There is no exit 2.** A missing Chromium, an unbuilt app and a server that will not answer
+  `/health` are all exit **1**, with the remedy printed. Owner ruling on #823 Q1 chose this over
+  skipping, because `contract.test.ts:23` had already ruled a permanently-skipped test
+  indistinguishable from the rot it was meant to catch.
+- **It measures rather than drives.** It reads what a real layout engine resolved: hit extents against
+  `--tap`, computed field font sizes, the drawer's cap against `innerHeight`, `env(safe-area-inset-*)`
+  under a simulated inset, and the painted focus ring. `apps/core/src/lib/measured-design-gate.test.ts`
+  is its always-on half — it runs in `bun test` on every box and asserts the gate stays wired.
+
+Two methodology notes it paid for, beyond the ones in `docs/ux/04-verification.md`:
+
+- **Chromium hit-tests `border-radius`.** Sweeping a control's vertical extent at a far-edge x measures
+  the chord through its own rounded corner, so every 44px pill read 34–42px and the floor was
+  unmeetable by construction. Take the extent at the CENTRE x; use the far-edge probes for occlusion
+  only, along the control's widest row.
+- **Headless has no notch.** Every `env(safe-area-inset-*)` resolves to 0, so
+  `calc(10px + env(safe-area-inset-bottom, 0px))` and a bare `10px` measure identically and a guard
+  comparing them proves nothing. `page.safeAreaInsets({ bottom: 34 })` is what makes that arm real —
+  the helper #827's spike added to `cdp.mjs`, which this gate consumes rather than adding a second copy
+  of. Two identical helpers under two names on the shared driver is the drift `lib/chromium.mjs`'s
+  single-source rule exists to prevent (#617).
+
 ## Boot a private instance
 
 Every probe gets its own port and media dir, so runs never collide.

@@ -78,11 +78,12 @@ docker compose up                   # core only
 docker compose --profile stems up   # + the Python worker
 ```
 
-**Verification gates — run all four on every change.**
+**Verification gates — run all five on every change.**
 ```bash
 bun test                              # core + shared — runs from the REPO ROOT
 cd apps/worker && python3 -m pytest   # worker suite
 bun run typecheck && bun run build    # both workspaces; typecheck must be 0 errors / 0 warnings
+bun run gate:measured                 # the layout rung — AFTER build; boots its own server + Chromium
 ```
 `runMigrations()` locates `apps/core/drizzle` by walking up from `import.meta.dir`, so `bun test`
 works from anywhere. Re-measure the counts every time — they drift as tests land.

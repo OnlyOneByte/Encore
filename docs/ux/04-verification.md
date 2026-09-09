@@ -96,10 +96,32 @@ prospective, not a live violation — which is exactly why it must be closed *be
 enter, not after.
 
 **Incumbent values the replacement must match, not merely "cap in `dvh`":** `QueueSheet`'s sheet
-is `max-height: 82dvh`; `.peek` and `.body` both carry
-`calc(… + env(safe-area-inset-bottom, 0px))`; `--peek-h: 132px` with a
-`@media (height <= 480px)` override to `84px` that `QueueSheet.svelte:53`'s inline write on
-`documentElement` **outranks**. AT RISK #5 is therefore a *do-not-regress*, with a number.
+is `max-height: 82dvh` (`lib/components/QueueSheet.svelte:198`); `.peek` and `.body` both carry
+`calc(… + env(safe-area-inset-bottom, 0px))`; `--peek-h: 132px` in `app.css:162` with a
+`@media (max-height: 480px)` override to `84px` on `:root` at `routes/+page.svelte:1968` that
+`QueueSheet.svelte:60`'s inline write on `documentElement` **outranks**. AT RISK #5 is therefore a
+*do-not-regress*, with a number.
+
+**⚠ Two of those numbers do not reach the render, measured.** Corrected against
+`bun run gate:measured` (issue #823) on HeadlessChrome/151, 390×844: the inline write publishes the
+peek's REAL measured `clientHeight`, so neither the `132px` base nor the `84px` short-viewport
+override is ever the resolved value while the sheet is mounted, and at a 480px-tall viewport the media
+query MATCHES yet `--peek-h` still reads the measured height. The load-bearing invariant is therefore
+*`--peek-h` equals the peek's rendered height*, not any literal; a replacement drawer that publishes a
+constant satisfies every source scan and breaks every docked control that offsets from it.
+The cap measures `692.08px` of an 844px viewport and `393.6px` of a 480px one — 82.00% both times.
+(Earlier revisions of this row cited `QueueSheet.svelte:53`, which is `COMMIT_PX = 48`, and
+`(height <= 480px)`, which is range syntax the tree does not use; a probe grepping either finds
+nothing.)
+
+**Which is why the number itself must not be written down here.** `--peek-h` is content-measured, so
+it differs per surface and per queue depth: the #823 gate reads **91px** on `/` with an empty queue,
+and #827's spike (PR #865) read **164px** at 844 and **151px** at 480 on a populated three-row sheet.
+Both are correct and neither contradicts the other, because the invariant is an equality against the
+rendered peek rather than a constant — a guard pinned to either literal would have failed on the other
+measurement. #865 also established that the `84px` override is **route-scoped**: it lives in
+`routes/+page.svelte`'s `<style>`, so `/join` at 480 tall stays on the `132px` base, and it is a
+pre-measurement value rather than a steady state.
 
 ---
 

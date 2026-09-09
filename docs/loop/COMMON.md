@@ -58,7 +58,7 @@ removes the owner's only way to steer the queue.
 
 ## The gates
 
-Four, and all four every time. The full suite is cheap here, so narrowing it buys nothing and costs
+Five, and all five every time. The full suite is cheap here, so narrowing it buys nothing and costs
 the only safety net the repo has.
 
 ```bash
@@ -66,7 +66,16 @@ bun test                                # expect 0 fail
 cd apps/worker && python3 -m pytest -q  # expect 0 fail
 bun run build                           # expect exit 0
 bun run typecheck                       # expect exit 0, 0 errors, 0 warnings
+bun run gate:measured                   # expect exit 0 — the layout rung, AFTER build
 ```
+
+`gate:measured` is the fifth gate (issue #823, owner ruling Q1 = A). It boots its own ephemeral
+server and its own headless Chromium and MEASURES the four claims a source scan cannot decide —
+rendered control heights, computed field font size, the drawer's viewport cap and safe-area term, and
+the focus ring's painted form. **It has no skip path**: a missing Chromium, an unbuilt app or a
+server that will not boot are FAILURES, because option B — skip when the environment is missing — is
+the shape `apps/core/e2e/contract.test.ts:23` already ruled is indistinguishable from silent rot. Run
+it after `bun run build`; it drives the real bundle.
 
 ### Measurement discipline — three rules, each from a real false pass
 
@@ -122,7 +131,7 @@ safety system — nothing external will catch a bad merge.
 - **A red `main` outranks the queue.** Prefer `git revert` of the offending squash commit, through
   branch → PR → merge. Leaving a red `main` for another agent to trip over is the worst available
   outcome.
-- **Re-run all four gates after a rebase.** The gates that passed pre-rebase were measured against a
+- **Re-run all five gates after a rebase.** The gates that passed pre-rebase were measured against a
   base that no longer exists, so criterion "gates green" fails silently otherwise. The repo merges
   roughly 10 PRs an hour, so a branch green an hour ago can be semantically stale.
 - **Serialize merges with an atomic lock.** `until mkdir "$LOCK"` … `sleep 20`, retrying about ten
