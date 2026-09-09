@@ -190,7 +190,7 @@
 		height: 12px;
 		min-width: 4px;
 		transform: translateY(-50%);
-		background: var(--accent-strong);
+		background: var(--accent);
 		border-radius: 6px;
 		box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
 	}

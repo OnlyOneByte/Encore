@@ -635,7 +635,7 @@
 	 * the same glyph would re-create the inversion in a new form.
 	 */
 	.sing {
-		background: var(--accent-strong);
+		background: var(--accent);
 		color: var(--on-accent);
 	}
 	/*
