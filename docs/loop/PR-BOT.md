@@ -132,6 +132,16 @@ Then, the traps a green table still cannot see:
 - Does an assertion check a **shape** where it should check a **value**? A top-level key-set check is
   satisfied by a field re-nested under a preserved key — that exact hole shipped a real bug.
 - Is any test pinning the *old buggy behaviour* as correct?
+- **Does the diff lower, delete, or bypass a NON-VACUITY FLOOR?** That is a blocker on its own unless the
+  same diff records why. A floor is the `expect(files.length).toBeGreaterThan(50)`-shaped assertion a
+  scope-deriving guard carries so that an emptied walk reds instead of passing with nothing examined;
+  `apps/core/src/lib/non-vacuity-floors.test.ts` inventories every one of them and reds on a decrease.
+  **A firing floor is a FINDING, never a number to adjust** — it says the guard can no longer see the
+  surface it enforces on, so a diff that "fixes" it by editing the literal downward has converted a
+  detected loss of enforcement into a silent one. Accept only: the scope restored, the scan re-anchored
+  to where the surface moved, or the floor retired into that file's `RETIRED` record naming the invariant
+  whose scope shrank, the sites that left it, and the guard that now covers them (or that none does). An
+  author who says "the guard was broken, I lowered the number" has reported a defect and then hidden it.
 
 ### R3 · Break the wiring
 
