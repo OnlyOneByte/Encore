@@ -427,14 +427,34 @@ describe('#853 utilities are minted from the copy-in target only', () => {
 		const uiComponents = svelteFiles(SRC).filter((f) => f.startsWith(uiDir + '/'));
 
 		/** Every whitespace-separated static class token in a `class="…"`, interpolations blanked. */
+		/*
+		 * #913 S3: strip comments FIRST. This scanned raw text, so a component's own documentation
+		 * naming a class — `<label class="check">` in the Checkbox's deviation header — was collected as
+		 * a class the component USES, and reported as a collision with the app. A guard that criminalises
+		 * its own explanation teaches people to stop writing the explanation. The mutation arm below
+		 * proves the stripper does not blind the scan.
+		 */
 		const classTokens = (src: string): Set<string> => {
 			const out = new Set<string>();
-			for (const m of src.matchAll(/class=(?:"([^"]*)"|'([^']*)')/g)) {
+			const code = src
+				.replace(/<!--[\s\S]*?-->/g, ' ')
+				.replace(/\/\*[\s\S]*?\*\//g, ' ');
+			for (const m of code.matchAll(/class=(?:"([^"]*)"|'([^']*)')/g)) {
 				const raw = (m[1] ?? m[2] ?? '').replace(/\{[^}]*\}/g, ' ');
 				for (const t of raw.split(/\s+/)) if (t) out.add(t);
 			}
 			return out;
 		};
+
+		// MUTATION: the stripper must hide PROSE without hiding CODE. A class named inside a comment is
+		// not a class the file uses; one in markup is. If a future edit widens the stripper into the
+		// markup, this reds instead of the scan going quietly blind.
+		expect(classTokens('<!-- <label class="from-a-comment"> -->\n<div class="from-markup">')).toEqual(
+			new Set(['from-markup'])
+		);
+		expect(classTokens('/* class="in-a-block-comment" */ <p class="also-markup">')).toEqual(
+			new Set(['also-markup'])
+		);
 
 		// the app side: every component OUTSIDE the copy-in target, plus the `ball` marker enum, whose
 		// values reach markup through `class="ball {ball}"` and so never appear as static tokens.

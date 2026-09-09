@@ -23,6 +23,7 @@
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect } from '$lib/components/ui/native-select';
+	import { Checkbox } from '$lib/components/ui/checkbox';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -712,11 +713,11 @@
 							<p class="hint">How far the stage colour is darkened toward black. 0% is the colour itself.</p>
 						{/if}
 
-						<label class="check">
-							<input
-								type="checkbox"
+						<label class="check" for="song-intro-on">
+							<Checkbox
+								id="song-intro-on"
 								checked={settings.room.songIntroEnabled}
-								onchange={(e) => onroom({ songIntroEnabled: e.currentTarget.checked })}
+								onCheckedChange={(v) => onroom({ songIntroEnabled: v })}
 							/>
 							Song intro before each turn
 						</label>
@@ -899,11 +900,11 @@
 							<p class="hint">Only songs cooked with their vocals kept can offer a guide.</p>
 						{/if}
 
-						<label class="check">
-							<input
-								type="checkbox"
+						<label class="check" for="loudness-norm">
+							<Checkbox
+								id="loudness-norm"
 								checked={settings.room.loudnessNormalization}
-								onchange={(e) => onroom({ loudnessNormalization: e.currentTarget.checked })}
+								onCheckedChange={(v) => onroom({ loudnessNormalization: v })}
 							/>
 							Even out loud songs
 						</label>
@@ -1064,12 +1065,12 @@
 
 					{#if advancedOpen}
 						<div class="cardbody" id="advanced-body">
-							<label class="check">
-								<input
-									type="checkbox"
-									checked={settings.global.enqueueUpgrade}
-									onchange={(e) => onglobal({ enqueueUpgrade: e.currentTarget.checked })}
-								/>
+							<label class="check" for="enqueue-upgrade">
+							<Checkbox
+								id="enqueue-upgrade"
+								checked={settings.global.enqueueUpgrade}
+								onCheckedChange={(v) => onglobal({ enqueueUpgrade: v })}
+							/>
 								Re-cook at higher quality after each song
 							</label>
 							<p class="hint">Runs from the audio already saved — no re-download.</p>
@@ -1372,10 +1373,12 @@
 		min-height: var(--tap);
 		font-size: 0.86rem;
 	}
-	.check input {
-		width: 18px;
-		height: 18px;
-	}
+	/*
+	 * #913 S3: was `.check input { width: 18px; height: 18px }`. The glyph is now <Checkbox>, which
+	 * carries its own `size-[18px]` — scoped CSS cannot reach inside a child component, so the size had
+	 * to move with it. The TAP TARGET is unchanged and still this label's `min-height: var(--tap)`,
+	 * which is what #863 settled and what touch-targets.test.ts examines.
+	 */
 
 	/* ── the dashboard links ────────────────────────────────────────────── */
 	/*

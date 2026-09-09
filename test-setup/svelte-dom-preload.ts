@@ -34,6 +34,8 @@
 // Wired via the root `bunfig.toml` `[test] preload`, so it runs ONCE before the suite and forks
 // nothing. Zero production change; no existing test imports a Svelte file, so nothing else changes.
 import { plugin, Transpiler } from 'bun';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { Window } from 'happy-dom';
 import { compile, compileModule } from 'svelte/compiler';
 import { readFileSync } from 'node:fs';
@@ -157,6 +159,36 @@ plugin({
 				loader: 'ts'
 			}));
 		}
+	}
+});
+
+// ── 3b. The bare `svelte` specifier, for DEPENDENCIES ────────────────────────────────────────
+//
+// #913 S3. Bits UI — which shadcn's Checkbox, Switch and Slider are built on — ships `.svelte` source
+// that imports `getContext`/`setContext` from the bare `svelte` specifier. Under `bun test` that
+// resolves to Svelte's SERVER build (the `default` export condition), whose context stack is not the
+// one a client `mount()` populates. The result is `lifecycle_outside_component: getContext(...) can
+// only be used during component initialisation` the moment such a component mounts — so BEFORE this,
+// no Bits UI component could be mounted at all, and any route importing one failed the mount rung.
+//
+// `svelte-client.ts` already solves this for the test ENTRY file, and its comment explains why a
+// plugin cannot: `onResolve` does not intercept the entry's own bare imports. A dependency's imports
+// are a different case — those DO go through the plugin — so registering the specifier as a module
+// redirects every non-entry `import … from 'svelte'` to the client entry the mount actually uses.
+//
+// Scoped to the EXACT specifier: `svelte/internal/client`, `svelte/compiler` and `svelte/server` are
+// untouched, so a test that deliberately wants the server build still gets it.
+const SVELTE_CLIENT_ENTRY = join(
+	dirname(createRequire(import.meta.url).resolve('svelte/package.json')),
+	'src/index-client.js'
+);
+plugin({
+	name: 'svelte-bare-specifier-is-client',
+	setup(build) {
+		build.module('svelte', () => ({
+			contents: `export * from ${JSON.stringify(SVELTE_CLIENT_ENTRY)};`,
+			loader: 'js'
+		}));
 	}
 });
 

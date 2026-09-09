@@ -102,7 +102,14 @@ test('every component importing a $app/$env virtual module loads under the mount
 		const mod = (await import(file)) as { default: unknown };
 		expect(typeof mod.default, `${file} did not load a component`).toBe('function');
 	}
-});
+	/*
+	 * #913 S3: 20s, up from bun's 5s default. This test imports EVERY component that touches a
+	 * SvelteKit virtual module, and the settings route now pulls in Bits UI — whose `.svelte` sources
+	 * are compiled on demand by the preload's loader. Warm, the whole set loads in ~2.5s; a cold
+	 * compile of that graph crossed 5s and timed out. The budget is for compile variance in a
+	 * dependency, not for the app getting slower, so it is stated once here rather than raised globally.
+	 */
+}, 20_000);
 
 // ── 2. Each stub module's own contract ────────────────────────────────────────────────────────
 // One test per stub, so a deleted or hollowed-out stub is named by the failure rather than lumped in
