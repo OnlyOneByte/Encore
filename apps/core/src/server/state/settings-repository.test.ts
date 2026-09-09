@@ -243,6 +243,25 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		expect(repo.getRoom('main').tvBackgroundColor).toBe('#aabbcc');
 	});
 
+	// #782 — the stage dimmer. Same hazard as the colour above: getRoom rebuilds its normalizer input
+	// field-by-field, so a column dropped from the SELECT reads back as the default (0) no matter what
+	// was written. A real round trip is the only thing that catches it, and a junk write must keep the
+	// room's current dim rather than resetting it.
+	it('the stage dim survives SQLite verbatim, clamps, and junk cannot poison it (#782)', () => {
+		const repo = freshRepo();
+		expect(repo.getRoom('main').tvBackgroundDim).toBe(0); // default: no dim
+		expect(repo.setRoom({ tvBackgroundDim: 0.5 }, 'main').tvBackgroundDim).toBe(0.5);
+		expect(repo.getRoom('main').tvBackgroundDim).toBe(0.5);
+		// clamped to a hundredth, like guideLevelDefault
+		expect(repo.setRoom({ tvBackgroundDim: 0.126 }, 'main').tvBackgroundDim).toBe(0.13);
+		expect(repo.getRoom('main').tvBackgroundDim).toBe(0.13);
+		// out of range clamps rather than rejecting
+		expect(repo.setRoom({ tvBackgroundDim: 9 }, 'main').tvBackgroundDim).toBe(1);
+		// an unparseable write keeps what is already stored
+		expect(repo.setRoom({ tvBackgroundDim: 'lots' as never }, 'main').tvBackgroundDim).toBe(1);
+		expect(repo.getRoom('main').tvBackgroundDim).toBe(1);
+	});
+
 	it('a visualizer choice survives the round trip through SQLite', () => {
 		const repo = freshRepo();
 		expect(repo.getRoom('main').tvVisualizer).toBe('plasma');
@@ -299,6 +318,7 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		tvProgressStyle: 'card',
 		tvBackgroundStyle: 'solid',
 		tvBackgroundColor: '#241900',
+		tvBackgroundDim: 0.4,
 		tvVisualizer: 'starfield',
 		songIntroEnabled: false,
 		songIntroMs: 5000,

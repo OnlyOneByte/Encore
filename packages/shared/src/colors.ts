@@ -376,6 +376,58 @@ export function normalizeStageColor(input: unknown, fallback: string): string {
 	return rgb ? toHex(rgb) : fallback;
 }
 
+// ── stage dim (#782, piece 3 of #425) ──────────────────────────────────────
+//
+// A room-level 0..1 dimmer for the stage background. The owner ratified Q2 = A: "Dim the stage colour
+// toward black — today's geometry, no new layer." It is a LIGHTNESS control by another name, not an
+// opacity layer over the video: the stage sits at z-index 0 behind the video on a black floor, so
+// blending it toward black is indistinguishable from lowering its lightness and reveals nothing of the
+// video (which sits above it). Nothing is added over the players — this only changes the value the
+// existing `.stage-bg` layer already paints.
+
+/** No dim — the stage colour is shown at full strength. The default, so an existing box is unchanged. */
+export const MIN_STAGE_DIM = 0;
+/** Full dim — the stage colour is pulled all the way to black. */
+export const MAX_STAGE_DIM = 1;
+/**
+ * A room ships at 0 — no dim, today's behaviour exactly. So adding the field changes nothing on the TV
+ * until someone moves the slider, the same invisible-migration promise every other room setting keeps.
+ */
+export const DEFAULT_STAGE_DIM = 0;
+
+/**
+ * Clamp an untrusted dim fraction into 0..1, rounded to a hundredth. Mirrors the shape
+ * `guideLevelDefault` uses (a 0..1 real quantised to 1/100), so the two 0..1 room fractions store and
+ * compare the same way. A non-finite or non-number value returns `fallback` — a junk write keeps the
+ * dim the room already chose rather than resetting it, matching every other field's rule.
+ */
+export function normalizeStageDim(input: unknown, fallback: number): number {
+	if (typeof input !== 'number' || !Number.isFinite(input)) return fallback;
+	return Math.round(Math.min(MAX_STAGE_DIM, Math.max(MIN_STAGE_DIM, input)) * 100) / 100;
+}
+
+/**
+ * Darken a hex colour toward black by a 0..1 fraction: `dim` 0 returns the colour untouched, `dim` 1
+ * returns `#000000`, and values between scale every channel by `(1 - dim)`.
+ *
+ * This is the whole of Q2 = A. Multiplying the linear-8-bit channels toward zero is the "toward black"
+ * the owner named, and because the stage layer sits on a black floor it is exactly what an opacity
+ * reduction would have looked like — with no second layer and no reveal of the video. A colour is
+ * darkened, not composited.
+ *
+ * An unparseable input is returned verbatim: the only non-hex stage values this ever receives are the
+ * CSS-variable gradient strings the room does NOT pick by hand (`gradient`, and the `singer` glow's
+ * outer `var(--bg)` stop), and a token cannot be arithmetic-dimmed by a function with no DOM. The
+ * caller applies this only to the concrete colour it resolved (see `background.ts`), so in practice the
+ * input is always a hex; the passthrough is a safety net, not a code path a style reaches.
+ */
+export function dimTowardBlack(hex: string, dim: number): string {
+	const rgb = parseHex(hex);
+	if (!rgb) return hex;
+	const f = 1 - Math.min(MAX_STAGE_DIM, Math.max(MIN_STAGE_DIM, dim));
+	return toHex(rgb.map((c) => Math.round(c * f)) as [number, number, number]);
+}
+
 /**
  * The wheel stop closest to an arbitrary colour, in OKLab a/b terms.
  *

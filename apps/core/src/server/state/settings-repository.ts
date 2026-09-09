@@ -66,6 +66,7 @@ export class SettingsRepository {
 			tvProgressStyle: row.tvProgressStyle,
 			tvBackgroundStyle: row.tvBackgroundStyle,
 			tvBackgroundColor: row.tvBackgroundColor,
+			tvBackgroundDim: row.tvBackgroundDim,
 			tvVisualizer: row.tvVisualizer,
 			songIntroEnabled: row.songIntroEnabled,
 			songIntroMs: row.songIntroMs,

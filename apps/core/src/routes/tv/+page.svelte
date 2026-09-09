@@ -82,6 +82,9 @@
 	// settings:changed needs no per-field assignment here.
 	let tvBackgroundStyle = $derived(settings.room.tvBackgroundStyle);
 	let tvBackgroundColor = $derived(settings.room.tvBackgroundColor);
+	// The room's 0..1 stage dimmer (#782). Handed to stageBackgroundCss, which darkens the resolved
+	// stage colour toward black by this fraction — a lightness control, no layer over the video.
+	let tvBackgroundDim = $derived(settings.room.tvBackgroundDim);
 	// The visualizers build their palette by hue ARITHMETIC around the room's colour
 	// (`stageHueToHex(hue + deg)`), so they need an ANGLE and the stored value is a hex since #425.
 	// `hueOfColor` is the atan2 of the OKLab chromatic axes — scale-free, so it recovers the hue of a
@@ -619,7 +622,7 @@
 	 * The override wins over the room default when set; `null` means defer to the room.
 	 */
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
-	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundColor, currentSingerColor));
+	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundColor, currentSingerColor, tvBackgroundDim));
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
 	// Bug B + #393: the reel and ball ADVANCE only while the song is genuinely playing on BOTH

@@ -275,6 +275,12 @@ export const roomSettings = sqliteTable('room_settings', {
 	// stage tier, so a configured box renders identically after the upgrade; the default below is
 	// `stageHueToHex(240)`, what the old `DEFAULT 240` rendered as.
 	tvBackgroundColor: text('tv_background_color').notNull().default('#001d31'),
+	// How far the stage colour is dimmed toward black, 0..1 (#782, piece 3 of #425). REAL for the same
+	// reason as guide_level_default — it is a fraction, and an integer column would round every value to
+	// 0 or 1. NOT NULL default 0 so an existing room upgrades to today's behaviour (no dim) rather than
+	// to a darkened stage. A lightness control, not an opacity layer: the stage sits behind the video on
+	// a black floor, so this darkens the colour the `.stage-bg` layer already paints and adds nothing.
+	tvBackgroundDim: real('tv_background_dim').notNull().default(0),
 	// Which visualizer runs when the style is `visualizer`. Kept across a switch away from it, so a room
 	// that tries another background and comes back does not lose the choice.
 	tvVisualizer: text('tv_visualizer', { enum: ['plasma', 'starfield', 'moire', 'lissajous'] })
