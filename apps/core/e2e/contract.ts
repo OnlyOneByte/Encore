@@ -110,6 +110,19 @@ export const SEL = {
 	sheet: '.sheet',
 	/** The grab handle. ArrowUp on it is the documented open gesture, and where the transport lives. */
 	peek: '.peek',
+	/**
+	 * The sheet's scrolling region — the rotation list. Registered for #827, which measures the
+	 * `env(safe-area-inset-bottom)` term in its bottom padding; that inset is a contract, not a detail
+	 * (every other docked control offsets from `--peek-h` with no env() of its own).
+	 */
+	sheetBody: '.body',
+	/**
+	 * #827 SPIKE ONLY — the `vaul-svelte` QueueSheet variant, reached at `/components?spike827=drawer`.
+	 * It is a separate hook rather than a reuse of `sheet` because the port cannot wear `.sheet`: vaul
+	 * owns the element and can only be tagged through a `class` prop, and the two variants are mutually
+	 * exclusive on screen (both bottom-docked and `position: fixed`).
+	 */
+	spikeDrawer827: '.spike-drawer',
 
 	// ── transport (in the queue sheet's peek) ─────────────────────────────
 	play: { role: 'button' as const, name: 'play/pause' },
@@ -409,6 +422,18 @@ export const HOOKS: Hook[] = [
 		file: 'src/lib/components/QueueSheet.svelte',
 		anchor: 'class="peek"',
 		why: 'the grab handle capture sends ArrowUp to; the transport lives inside it'
+	},
+	{
+		id: 'sheetBody',
+		file: 'src/lib/components/QueueSheet.svelte',
+		anchor: 'class="body"',
+		why: "#827 measures the env(safe-area-inset-bottom) term in this region's bottom padding"
+	},
+	{
+		id: 'spikeDrawer827',
+		file: 'src/lib/components/QueueSheetDrawer.svelte',
+		anchor: 'sheet-surface sheet spike-drawer',
+		why: 'the #827 spike variant; the probe measures the four do-not-regress numbers on it'
 	},
 
 	// transport

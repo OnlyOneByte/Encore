@@ -227,6 +227,18 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {};
  */
 const PENDING_RULING: { file: string; anchor: string; ruling: string }[] = [
 	{
+		file: 'apps/core/src/lib/design-system.test.ts',
+		anchor: 'RECORDED RULING FOR THE QUEUESHEET DRAWER PORT (#827)',
+		ruling:
+			'A vaul/shadcn drawer port takes two design-system assertions out of scope at once: the dvh sheet-cap ' +
+			'scan and the `.peek` env(safe-area-inset-bottom) scan, because shadcn copies 12 drawer files with ' +
+			'zero <style> blocks and vaul writes the sheet offset as an inline transform from JS. Both fail ' +
+			'LOUDLY (caps.length > 0, and a non-null `.peek` rule match), so neither can pass vacuously. ' +
+			'Ruling: RE-ANCHOR, DO NOT DELETE — the #827 spike measured all four incumbent numbers still ' +
+			'holding on the port, so only their address changes, not their truth. Re-point both scans at the ' +
+			"port's own CSS file and keep the list shape. RETIRED is the wrong home: nothing is being given up."
+	},
+	{
 		file: 'apps/core/src/lib/contrast.test.ts',
 		anchor: 'RECORDED RULING FOR THE PALETTE MIGRATION',
 		ruling:
