@@ -2592,3 +2592,218 @@ async def test_773_a_repaired_doc_still_logs_timing_repaired(tmp_path):
     ctx = await _drive_time_texts(_SmearingAligner(), _six_line_synced_text(), tmp_path)
     assert any(n.startswith("timing repaired") for n in ctx.out.notes), ctx.out.notes
     assert not any("NOT repairable" in n for n in ctx.out.notes), ctx.out.notes
+
+
+# ── #794: an LRC whose master starts before this upload is PLACED before aligning ──────────────────
+
+
+async def _drive_time_texts_with_baselines(aligner, texts, tmp_path, duration=60.0, sync_mode=None):
+    """Like _drive_time_texts, but seeds the whole texts list (candidate + baselines) so the #794
+    shift estimator has a baseline series to measure against. `sync_mode` overrides the engine's sync
+    mode (e.g. SyncMode.LINES to drive the lines-only publish branch through the full run)."""
+    from src.runtime.ctx import AudioCtx, Ctx, LyricsCtx, ResolvedEngines
+    from src.steps.lyrics import TimeTexts
+
+    engines = ResolvedEngines(sync_mode=sync_mode) if sync_mode is not None else ResolvedEngines()
+    ctx = Ctx(
+        job=JobSpec(
+            job_id="j",
+            media_id="m1",
+            job_type="align",
+            source_uri="/x.wav",
+            params={"language": "en"},
+            media_dir=str(tmp_path),
+        ),
+        work=str(tmp_path),
+        engines=engines,
+        audio=AudioCtx(path="/x.wav", vocals_path="/vocals.wav", duration_sec=duration),
+        lyrics=LyricsCtx(texts=texts),
+    )
+    async for _ in TimeTexts(aligner=aligner).run(ctx):
+        pass
+    return ctx
+
+
+_L794 = [
+    "white shirt now red my bloody nose",
+    "sleeping you're on your tippy toes",
+    "creeping around like no one knows",
+    "think you're so criminal",
+]
+
+
+def _lrc_candidate_794(base=1.0):
+    """A synced LRCLIB candidate whose line starts belong to a master that begins `base`s in."""
+    segs = [{"start": base + 3.0 * i, "end": base + 3.0 * i + 2.5, "text": t} for i, t in enumerate(_L794)]
+    return LyricsText(
+        text_source=SOURCE_LRCLIB, segments=segs, timing=TIMING_LINE, text_confidence="high",
+        role=ROLE_CANDIDATE,
+    )
+
+
+def _late_baseline_794(late=2.5):
+    """A Whisper baseline that heard the same four lines `late`s LATER than the LRC master says —
+    i.e. this upload has a `late`-second quiet/speech pre-section before the vocal."""
+    segs = [{"start": 1.0 + 3.0 * i + late, "end": 1.0 + 3.0 * i + late + 2.0, "text": t}
+            for i, t in enumerate(_L794)]
+    return LyricsText(
+        text_source=SOURCE_ASR, segments=segs, timing=TIMING_LINE, text_confidence="low",
+        role=ROLE_BASELINE, baseline_rank=0, variant="whisper/vocals",
+    )
+
+
+@pytest.mark.asyncio
+async def test_794_lrc_windows_are_placed_onto_this_audio_before_aligning(tmp_path):
+    """THE #794 fix. The LRC master begins 2.5s before this upload's vocal (a quiet pre-section), and
+    the baseline measured the real lines 2.5s later. The aligner searches whatever windows it is
+    handed, so on BASE the first word is published at the LRC's early start (~1.0s) and highlighting
+    runs ahead of the song. With the fix the windows are shifted +2.5s first, so the published word
+    lands near where the vocal actually is (~3.5s).
+
+    Reverting the search-window shift in `_time_one` (dropping `_placed(base_search)`) reds the
+    first assertion: the word comes back at the early LRC time.
+    """
+    aligner = FakeAligner()
+    ctx = await _drive_time_texts_with_baselines(
+        aligner, [_lrc_candidate_794(base=1.0), _late_baseline_794(late=2.5)], tmp_path
+    )
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    lrc = [c for c in cands if c["textSource"] == SOURCE_LRCLIB][0]
+    assert lrc["timing"] == TIMING_WORD, lrc
+    doc = json.loads((tmp_path / lrc["ref"]).read_text())
+    first_word_start = doc["lines"][0]["words"][0]["start"]
+    # FAILING ON BASE (~1.0): the fix places the vocal near where the baseline heard it (~3.5s).
+    assert first_word_start > 3.0, first_word_start
+    # and the aligner was actually handed the SHIFTED window, not the LRC's raw start
+    assert aligner.searched[0][0][0] > 3.0, aligner.searched[0]
+    # the operator is told the placement happened
+    assert any("placed onto this audio" in n for n in ctx.out.notes), ctx.out.notes
+
+
+@pytest.mark.asyncio
+async def test_794_placed_lrc_still_reads_as_the_SAME_recording_afterwards(tmp_path):
+    """Guards the post-align fit-window shift. After placing the LRC and aligning on the correct span,
+    the wrong-version check must compare the aligner output against the PLACED windows. The point of
+    #794 is that the post-align fit stops being a self-comparison: once the LRC is on this audio's
+    timeline the aligner's output AGREES with the placed windows, so the reported fitted offset is
+    ~0.00s. Reverting the `shift_segments(windows, _shift)` line feeds the fit the LRC's UNSHIFTED
+    starts against aligner output that sits +2.5s later, so it reports a +2.50s fitted offset instead —
+    this test reds on that revert by asserting the reported offset is ~0.
+    """
+    aligner = FakeAligner()
+    ctx = await _drive_time_texts_with_baselines(
+        aligner, [_lrc_candidate_794(base=1.0), _late_baseline_794(late=2.5)], tmp_path
+    )
+    # The recording matches (only the intro length differed), so no wrong-version note may fire.
+    assert not any("do NOT fit this recording" in n for n in ctx.out.notes), ctx.out.notes
+    match_notes = [n for n in ctx.out.notes if "matches this recording" in n and n.startswith("lrclib")]
+    assert match_notes, ctx.out.notes
+    # FAILING ON REVERT: the post-align fit now AGREES (offset +0.00s) because the windows it compares
+    # against were placed. Without the fit-window shift it would read "fitted offset +2.50s".
+    assert "fitted offset +0.00s" in match_notes[0], match_notes[0]
+
+
+@pytest.mark.asyncio
+async def test_794_a_correctly_placed_song_is_left_untouched(tmp_path):
+    """The no-op guard. When the LRC already sits on this audio's timeline (baseline agrees to within
+    noise), no shift is applied: the first word publishes at the LRC's own start and no placement note
+    fires. This is what keeps the fix from perturbing every LRCLIB song that was already fine."""
+    aligner = FakeAligner()
+    ctx = await _drive_time_texts_with_baselines(
+        aligner, [_lrc_candidate_794(base=1.0), _late_baseline_794(late=0.05)], tmp_path
+    )
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    lrc = [c for c in cands if c["textSource"] == SOURCE_LRCLIB][0]
+    doc = json.loads((tmp_path / lrc["ref"]).read_text())
+    first_word_start = doc["lines"][0]["words"][0]["start"]
+    assert abs(first_word_start - 1.0) < 0.3, first_word_start  # unshifted
+    assert not any("placed onto this audio" in n for n in ctx.out.notes), ctx.out.notes
+
+
+@pytest.mark.asyncio
+async def test_794_no_baseline_means_no_shift(tmp_path):
+    """With no baseline to measure against the estimator abstains, so the LRC publishes at its own
+    (possibly early) start exactly as before this change — the fix can never fabricate a shift."""
+    aligner = FakeAligner()
+    ctx = await _drive_time_texts_with_baselines(aligner, [_lrc_candidate_794(base=1.0)], tmp_path)
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    lrc = [c for c in cands if c["textSource"] == SOURCE_LRCLIB][0]
+    doc = json.loads((tmp_path / lrc["ref"]).read_text())
+    assert abs(doc["lines"][0]["words"][0]["start"] - 1.0) < 0.3
+    assert not any("placed onto this audio" in n for n in ctx.out.notes), ctx.out.notes
+
+
+@pytest.mark.asyncio
+async def test_794_the_word_timing_REFUSED_degrade_path_also_publishes_placed_starts(tmp_path):
+    """The fourth consumer. When the aligner returns word timings that validate_timing REJECTS
+    (`usable == False`, an out-of-order word), the step degrades to the source's own line sync at
+    (line, low). That path publishes `text.segments` — the LRC master's OWN line starts — so on a #794
+    song (LRC master 2.5s ahead of this upload) it re-introduces the early-highlighting symptom the fix
+    removes everywhere else, even though the aligner itself was placed.
+
+    Driven through the real TimeTexts.run with `_OneBackwardsWordAligner` (which produces the reachable
+    `usable == False` state) on the #794 fixtures: with the fix the degraded line-sync doc's first line
+    start is PLACED (~3.5s), not the raw master 1.0. Reverting the `shift_segments(text.segments, _shift)`
+    on the degrade path publishes 1.0 and reds the assertion below.
+    """
+    aligner = _OneBackwardsWordAligner()
+    ctx = await _drive_time_texts_with_baselines(
+        aligner, [_lrc_candidate_794(base=1.0), _late_baseline_794(late=2.5)], tmp_path
+    )
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    lrc = [c for c in cands if c["textSource"] == SOURCE_LRCLIB][0]
+    # It degraded, exactly as the refuse path intends: line sync at the low tier, never word/high.
+    assert (lrc["timing"], lrc["timingConfidence"]) == (TIMING_LINE, "low"), lrc
+    doc = json.loads((tmp_path / lrc["ref"]).read_text())
+    first_line_start = doc["lines"][0]["start"]
+    # FAILING ON REVERT: the degraded line-sync starts are placed onto this audio (~3.5), not the LRC
+    # master's raw 1.0 that would highlight ahead of the vocal.
+    assert first_line_start > 3.0, first_line_start
+
+
+@pytest.mark.asyncio
+async def test_794_LINES_mode_publishes_placed_line_starts(tmp_path):
+    """Pins the SyncMode.LINES placement site in `_time_one`. In lines mode the aligner never runs and
+    the source's own line timings publish directly — so a #794 LRC (master 2.5s ahead of this upload)
+    would highlight ahead of the vocal unless the segments are placed first. Reverting `_placed(...)`
+    to `text.segments` on the LINES branch leaves the full suite green except THIS test, which asserts
+    the published first line start is placed (~3.5), not the raw master 1.0.
+    """
+    from src.vocabulary import SyncMode
+
+    aligner = FakeAligner()  # never called in LINES mode
+    ctx = await _drive_time_texts_with_baselines(
+        aligner, [_lrc_candidate_794(base=1.0), _late_baseline_794(late=2.5)], tmp_path,
+        sync_mode=SyncMode.LINES,
+    )
+    assert not aligner.calls  # lines mode skips forced alignment entirely
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    lrc = [c for c in cands if c["textSource"] == SOURCE_LRCLIB][0]
+    assert lrc["timing"] == TIMING_LINE, lrc
+    doc = json.loads((tmp_path / lrc["ref"]).read_text())
+    # FAILING ON REVERT: lines-mode publish is placed onto this audio (~3.5), not the raw master 1.0.
+    assert doc["lines"][0]["start"] > 3.0, doc["lines"][0]["start"]
+
+
+@pytest.mark.asyncio
+async def test_794_aligner_failure_fallback_publishes_placed_line_starts(tmp_path):
+    """Pins the aligner-FAILURE line-sync fallback in `_time_one`. When forced alignment raises, the
+    code degrades to the source's own line timings — the third line-sync publish path — which on a #794
+    song must also be placed or it re-introduces early highlighting. A raising aligner reaches the
+    `except` branch; reverting its `_placed(...)` to `text.segments` leaves the suite green except THIS
+    test, which asserts the fallback's first line start is placed (~3.5), not the raw master 1.0.
+    """
+
+    class _Broken:
+        def align(self, *a, **k):
+            raise RuntimeError("no wav2vec2 model (simulated)")
+
+    ctx = await _drive_time_texts_with_baselines(
+        _Broken(), [_lrc_candidate_794(base=1.0), _late_baseline_794(late=2.5)], tmp_path
+    )
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    lrc = [c for c in cands if c["textSource"] == SOURCE_LRCLIB][0]
+    assert lrc["timing"] == TIMING_LINE, lrc  # degraded to the line-sync floor
+    doc = json.loads((tmp_path / lrc["ref"]).read_text())
+    # FAILING ON REVERT: the aligner-failure fallback publishes placed starts (~3.5), not raw 1.0.
+    assert doc["lines"][0]["start"] > 3.0, doc["lines"][0]["start"]

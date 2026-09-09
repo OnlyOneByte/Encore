@@ -27,6 +27,7 @@ from ..lyrics import (
     LyricsRequest,
     LyricsText,
     acquire_with_notes,
+    baselines_of,
     build_sources,
     candidate_key,
     candidate_last_end,
@@ -49,7 +50,7 @@ from ..lyrics.captions import find_caption_file
 # _opening_window_indices moved to lyrics/validate.py (#456); re-imported so `_opens_for`'s
 # fallback works and the #459 guard tests can still do `from src.steps.lyrics import
 # _opening_window_indices`.
-from ..lyrics.validate import _opening_window_indices
+from ..lyrics.validate import LrcShift, _opening_window_indices, estimate_lrc_shift, shift_segments
 from ..processor import ProgressEvent, raw_caption_path
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_blocking, run_stage
@@ -458,12 +459,37 @@ class TimeTexts(Step):
             )
 
         sel = ctx.lyrics.selection
+        # #794: the baseline line series, measured by Whisper on THIS audio, is the same for every
+        # candidate — compute it ONCE. A synced LRC's windows are then placed onto this recording
+        # against it before alignment (see `_shift_for`). Baselines carry line starts only
+        # (whisper's `transcribe()` returns segment bounds, not word bounds), which is exactly what the
+        # fit needs. Empty when no baseline spoke, which makes every shift a no-op.
+        baseline_lines: list[dict[str, Any]] = []
+        for b in baselines_of(ctx.lyrics.texts):
+            baseline_lines.extend(b.segments)
+
+        def _shift_for(t: Any) -> LrcShift | None:
+            # Only a source that brought its OWN line timings (a synced LRCLIB record) can be
+            # mis-placed against this audio; an ASR/word source is already measured on it. No
+            # baseline -> the estimator abstains (`applied == False`), so this is a no-op then too.
+            if t.timing != TIMING_LINE or not baseline_lines:
+                return None
+            sh = estimate_lrc_shift(t.segments, baseline_lines)
+            if sh.applied:
+                ctx.note(
+                    f"{t.text_source}: LRC placed onto this audio before aligning "
+                    f"(shift {sh.offset_sec:+.2f}s, scale {sh.scale:.3f} over {sh.pairs} baseline lines) "
+                    "— its master starts earlier/later than this upload (#794)"
+                )
+            return sh
+
         candidates: list[dict[str, Any]] = []
         for text in ctx.lyrics.texts:
             built = None
+            _shift = _shift_for(text)
 
-            def _run(t: Any = text) -> Any:
-                return _time_one(self._aligner, ctx, t, align_audio, language)
+            def _run(t: Any = text, s: LrcShift | None = _shift) -> Any:
+                return _time_one(self._aligner, ctx, t, align_audio, language, s)
 
             async for kind, val in run_blocking(_run, self.stage, 50):
                 if kind == "progress":
@@ -496,7 +522,13 @@ class TimeTexts(Step):
                     )
                     if text.timing != TIMING_LINE:
                         continue  # nothing honest left to publish for this source
-                    doc = line_synced_lyrics(text.segments, language=text.language or language)
+                    # #794: this degrade path publishes the source's OWN line timings, so it is the
+                    # SAME wrong-number risk the line-sync fallbacks in `_time_one` carry — an LRC whose
+                    # master starts before this upload would re-introduce the early-highlighting symptom
+                    # here even though the aligner was placed. Place the segments with the same measured
+                    # shift before line-syncing. A no-op shift (`applied == False`) leaves them verbatim.
+                    placed = shift_segments(text.segments, _shift) if _shift is not None else text.segments
+                    doc = line_synced_lyrics(placed, language=text.language or language)
                     timing, timing_confidence = TIMING_LINE, "low"
                 else:
                     # ACT on the smears/flashes rep just diagnosed (issue #629, item #2). validate_timing
@@ -549,6 +581,13 @@ class TimeTexts(Step):
                     opens = _opens_for(text)
                 else:
                     windows, opens = text.segments, list(range(len(text.segments)))
+                # #794: when the LRC was PLACED onto this audio before aligning, the aligner searched
+                # the shifted windows, so the post-align fit must compare against those SAME placed
+                # starts — feeding it the LRC master's unshifted starts would report the shift itself
+                # as a residual and mislabel a matching recording "different version". A no-op shift
+                # (`applied == False`) returns identical copies, so this is inert on the ordinary song.
+                if _shift is not None and _shift.applied:
+                    windows = shift_segments(windows, _shift)
                 for note in lrc_fit_notes(text.text_source, windows, opens, doc):
                     ctx.note(note)
 
@@ -666,7 +705,9 @@ def _attach_romanizations(doc: dict[str, Any], source_segments: list[dict[str, A
             line["romanization"] = romanization.strip()
 
 
-def _time_one(aligner: Any, ctx: Ctx, text: Any, audio: str, language: str) -> tuple[dict, str, str] | None:
+def _time_one(
+    aligner: Any, ctx: Ctx, text: Any, audio: str, language: str, shift: LrcShift | None = None
+) -> tuple[dict, str, str] | None:
     """Turn one acquired text into (doc, timing, timingConfidence), or None if unusable.
 
     `audio` MUST be the isolated vocals stem when one exists — see the caller. Forced alignment is a
@@ -699,10 +740,18 @@ def _time_one(aligner: Any, ctx: Ctx, text: Any, audio: str, language: str) -> t
         if is_valid_lyrics(doc):
             return doc, TIMING_WORD, "medium"
 
+    # #794: place the LRC on THIS audio's timeline before its numbers are used for anything. `shift`
+    # is measured by the caller from the Whisper baselines (a series the LRC did not bound) and is a
+    # no-op (`applied == False`) unless the song's vocal sits confidently later/earlier than the LRC
+    # master. It moves BOTH the aligner's search windows AND the line-sync fallbacks, because those
+    # publish `text.segments` verbatim at `high` — the same wrong number the aligner would inherit.
+    def _placed(segments: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return shift_segments(segments, shift) if shift is not None else segments
+
     if ctx.engines.sync_mode is SyncMode.LINES:
         if text.timing != TIMING_LINE:
             return None  # nothing to sync against, and this mode will not go and find timings
-        doc = line_synced_lyrics(text.segments, language=lang)
+        doc = line_synced_lyrics(_placed(text.segments), language=lang)
         return (doc, TIMING_LINE, "high") if is_line_synced(doc) else None
 
     try:
@@ -711,7 +760,11 @@ def _time_one(aligner: Any, ctx: Ctx, text: Any, audio: str, language: str) -> t
         # whose human lines overflow a row): a tighter window is a better alignment anchor, and the
         # aligner re-times every word inside it. `segments` stays the source's OWN line timings for
         # the line-sync fallbacks below, so those still publish the human timestamps unmodified.
-        search = text.align_windows if getattr(text, "align_windows", None) else text.segments
+        # Both are `_placed` first (#794): the aligner must search the span the LRC actually occupies
+        # on this audio, not the master's, or `whisperx.align`'s per-segment crop confines it to the
+        # wrong window and it publishes confident early word times.
+        base_search = text.align_windows if getattr(text, "align_windows", None) else text.segments
+        search = _placed(base_search)
         aligned = al.align(search, audio, lang)
         doc = normalize_lyrics(aligned)
         if not is_valid_lyrics(doc):
@@ -725,5 +778,5 @@ def _time_one(aligner: Any, ctx: Ctx, text: Any, audio: str, language: str) -> t
     except Exception:  # noqa: BLE001 — degrade, never fail the whole job
         if text.timing != TIMING_LINE:
             return None  # nothing real to sync against
-        doc = line_synced_lyrics(text.segments, language=lang)
+        doc = line_synced_lyrics(_placed(text.segments), language=lang)
         return (doc, TIMING_LINE, "high") if is_line_synced(doc) else None
