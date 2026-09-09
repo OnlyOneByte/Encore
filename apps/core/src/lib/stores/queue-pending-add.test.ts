@@ -88,15 +88,9 @@ test('a pending REORDER marks its row as move — not as an add, and not as noth
 	store.onServerEvent({ type: 'queue:patch', patch: { rev: 3, ops: [], causedBy: 'id4' } });
 	expect(store.pendingKindById.size).toBe(0);
 
-	// A host pin crosses singers but is the same thing to a guest: this row moved, unconfirmed.
-	store.pinEntry('id2', 0); // id5 opId
-	expect(store.pendingKindById.get('id2')).toBe('move');
-	store.onServerEvent({ type: 'queue:patch', patch: { rev: 4, ops: [], causedBy: 'id5' } });
-	expect(store.pendingKindById.size).toBe(0);
-
 	// A pending REMOVE marks nothing: the row is gone from the list optimistically, so there is no row
 	// left to mark -- its disclosure is the undo toast.
-	store.removeEntry('id2'); // id6 opId
+	store.removeEntry('id2'); // id5 opId
 	expect(store.pendingKindById.size).toBe(0);
 });
 

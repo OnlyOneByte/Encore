@@ -64,6 +64,13 @@
       "when": 1788945282186,
       "tag": "0008_add_loudness_normalization",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1788945283186,
+      "tag": "0009_drop_pinned_seq",
+      "breakpoints": true
     }
   ]
 }

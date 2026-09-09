@@ -114,50 +114,6 @@ test('room_settings column defaults: lyrics_ball is off', () => {
 	expect(row.lyricsBall).toBe('off');
 });
 
-// Issue #638: a host pin (pinnedSeq) is durable — it must survive a restart, which is the whole point
-// of Option B (a column) over a transient reorder. Round-trips through the REAL write-behind path
-// (sqlitePersistence) and boot hydrate, not a raw insert, so it proves the persist mapping carries the
-// field. RED on base: the queue_entries baseline has no pinned_seq column, so this insert/read cannot
-// preserve it (drizzle would reject the unknown column, or the value would be dropped).
-test('a host pin (pinnedSeq) survives persist + hydrate; an unpinned entry stores null', () => {
-	const { db } = openDb(':memory:');
-	runMigrations(db);
-	const now = 1_700_000_000_000;
-	const playback: PlaybackState = {
-		currentEntryId: null,
-		positionSec: 0,
-		isPlaying: false,
-		keyShift: 0,
-		background: null,
-		guideLevel: null
-	};
-	const pinned: QueueEntry = {
-		id: 'q-pin',
-		mediaId: 'm1',
-		singerId: 's1',
-		status: 'queued',
-		rotationSeq: 0,
-		addedAt: now,
-		pinnedSeq: 3
-	};
-	const loose: QueueEntry = {
-		id: 'q-loose',
-		mediaId: 'm1',
-		singerId: 's1',
-		status: 'queued',
-		rotationSeq: 1,
-		addedAt: now + 1
-		// no pinnedSeq — an unpinned entry
-	};
-	sqlitePersistence(db, 'room-pin').persist({ entries: [pinned, loose], playback });
-
-	// "restart": read the rows back the way boot does
-	const { entries } = hydrate(db, 'room-pin');
-	const byId = new Map(entries.map((e) => [e.id, e]));
-	expect(byId.get('q-pin')!.pinnedSeq).toBe(3);
-	expect(byId.get('q-loose')!.pinnedSeq ?? null).toBeNull();
-});
-
 // #669 — the job_attempts.selection column must arrive as an INCREMENTAL migration (0001), not an edit
 // to the baseline. An existing deployment restarts and re-runs runMigrations; drizzle replays only
 // migrations it has not recorded, so a new column belongs in a new numbered file. Editing 0000 in place

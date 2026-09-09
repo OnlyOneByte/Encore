@@ -35,7 +35,7 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { cookAndQueue } from '$lib/cook-and-queue';
-	import { gripVisible, ownPicksPinned, ownSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
+	import { gripVisible, ownSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
 	import {
 		displayReadiness,
 		canCook,
@@ -133,9 +133,6 @@
 	// so a drag on a shuffled list simply rearranges the stored list like anywhere else.
 	const canReorder = true;
 	// HOST reorder (issue #638): a host can drag ANY song to any global slot, not just reorder their
-	// own picks. Every joined singer is a host today (mirrors player:control — see capabilities.ts),
-	// so this is "am I in the room"; narrowing to a real host role is one edit here + in capabilities.
-	const canHostReorder = $derived(canReorder && !!me?.id);
 	// The list heading named the order "rotation" unconditionally, which stops being true the moment
 	// the room picks anything else. Eyes-on: it still said ROTATION with the room on first-come-first-served.
 	const orderLabel = $derived(queueOrderLabel(settings.room.queueOrder));
@@ -704,7 +701,7 @@
 	 * not disagree about what counts as a deliberate drag.
 	 */
 	const TAP_SLOP_PX = 6;
-	const ownPinned = $derived(ownPicksPinned(myPicks));	const mySlots = $derived(ownSlots(myPicks.length));
+	const mySlots = $derived(ownSlots(myPicks.length));
 	// The row being dragged, the slot currently under the pointer, and the live pointer offset.
 	let movingId = $state<string | null>(null);
 	/**
@@ -733,17 +730,15 @@
 		return gripVisible({
 			mine: e.singerId === me?.id,
 			ownQueuedCount: myPicks.length,
-			reorderMeaningful: canReorder,
-			ownPicksPinned: ownPinned
+			reorderMeaningful: canReorder
 		});
 	}
 
 	/*
 	 * XR-PH-18's second half: while the mode is open, another guest's row must expose NO pointer or
-	 * keyboard interaction — it is not a legal drop target, and today every joined singer gets the host
-	 * arrows on every row (`canHostReorder`), so without this the mode would offer a cross-singer
-	 * control on exactly the rows it has just dimmed. The row's controls are dropped for the life of the
-	 * mode, rather than the row being marked `inert`: `inert` also takes the row out of the
+	 * keyboard interaction — it is not a legal drop target, so without this the mode could leave a
+	 * control live on exactly the rows it has just dimmed. The row's controls are dropped for the life
+	 * of the mode, rather than the row being marked `inert`: `inert` also takes the row out of the
 	 * accessibility tree, and XR-PH-03 turns on those rows staying INFORMATIONAL while dimmed — they
 	 * are who the guest is being ordered around.
 	 *
@@ -885,27 +880,6 @@
 		const reason = modeInvalidation(myPicks, movingId, entries.find((e) => e.id === movingId)?.status);
 		if (reason) exitReorder(null, reason);
 	});
-	/**
-	 * The entry's index in the WHOLE queued list — `queued` above, so the PLAYING entry is not counted.
-	 * That is exactly what a host pin's toSeq means: placePins indexes the queued entries only and
-	 * leaves a playing entry in its policy slot (see rotation.ts, issue #790).
-	 */
-	function globalIdx(id: string): number {
-		return queued.findIndex((e) => e.id === id);
-	}
-	/**
-	 * HOST global reorder (issue #638): pin the entry one slot up/down across the WHOLE queue, crossing
-	 * singers — the power `move`/moveMine deliberately cannot express. Clamped to the queue bounds so the
-	 * top row cannot move up and the bottom row cannot move down (mirrors moveMine's canUp/canDown).
-	 */
-	function moveGlobal(id: string, delta: number) {
-		const i = globalIdx(id);
-		if (i < 0) return;
-		const to = Math.max(0, Math.min(i + delta, queued.length - 1));
-		if (to === i) return;
-		store?.pinEntry(id, to);
-		if (navigator.vibrate) navigator.vibrate(8);
-	}
 	// The entry that will ACTUALLY play next (skipping any still cooking), matching the server's
 	// nextPlayable(). Pure + unit-tested in $lib/readiness.
 	const nextPlayableId = $derived(
@@ -1357,14 +1331,12 @@
 						pending={pendingKind.get(e.id) ?? null}
 						onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
 						reorderable={!rowFrozen(e) &&
-							(canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1)}
-						canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
-						canDown={canHostReorder
-							? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
-							: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+							(canReorder && e.singerId === me?.id && myPicks.length > 1)}
+						canUp={myIdx(e.id) > 0}
+						canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
 						dimmed={reorderOpen && !isMine}
-						onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
-						ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
+						onup={() => moveMine(e.id, -1)}
+						ondown={() => moveMine(e.id, 1)}
 					/>
 				{:else}
 					<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
@@ -1382,11 +1354,9 @@
 						subtitle={e.id === nextPlayableId ? 'up next' : ''}
 						removable={e.singerId === me?.id}
 						reorderable={!rowFrozen(e) &&
-							(canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1)}
-						canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
-						canDown={canHostReorder
-							? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
-							: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+							(canReorder && e.singerId === me?.id && myPicks.length > 1)}
+						canUp={myIdx(e.id) > 0}
+						canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
 						grip={gripFor(e)}
 						gripId={e.id}
 						dimmed={reorderOpen && !isMine}
@@ -1395,8 +1365,8 @@
 						ongripdown={(ev) => onGripPointerDown(e, ev)}
 						ongrip={(el) => enterReorder(e.id, el)}
 						onremove={() => removeWithUndo(e)}
-						onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
-						ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
+						onup={() => moveMine(e.id, -1)}
+						ondown={() => moveMine(e.id, 1)}
 					/>
 				{/if}
 			{/each}

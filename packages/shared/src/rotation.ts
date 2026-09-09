@@ -31,16 +31,17 @@ export function storedOrder(entries: QueueEntry[]): QueueEntry[] {
 }
 
 /**
- * Renumber the stored list to contiguous 0-based `rotationSeq`, honouring any host pins.
+ * Renumber the stored list to contiguous 0-based `rotationSeq`.
  *
  * This is the whole of it now: NO policy runs here. The list arrives in the order it is stored in and
  * leaves in the same order with tidy positions, so calling this on an unchanged queue is a no-op and
  * switching the room's algorithm does not re-sort anything already queued (the algorithm only decides
- * where the NEXT add lands). The pin pass still sits between the stored order and the numbering, so
- * pinning keeps behaving exactly as it does today until #856 step 3 deletes it.
+ * where the NEXT add lands). The stored order is the sole authority — nothing re-seats an entry after
+ * the list is stored, which is why a drag is durable by construction (#856 step 3 deleted the pin pass
+ * that used to sit here).
  */
 export function assignSeqs(entries: QueueEntry[], _ordering: Ordering = {}): QueueEntry[] {
-	return placePins(storedOrder(entries)).map((e, i) => ({ ...e, rotationSeq: i }));
+	return storedOrder(entries).map((e, i) => ({ ...e, rotationSeq: i }));
 }
 
 /**
@@ -164,38 +165,4 @@ function weave(stored: QueueEntry[], slots: number[], nextQueued: QueueEntry[]):
 /** Contiguous 0-based positions over a list already in its final order. */
 function renumber(list: QueueEntry[]): QueueEntry[] {
 	return list.map((e, i) => ({ ...e, rotationSeq: i }));
-}
-
-/**
- * THE PIN MECHANISM (unchanged, and on its way out in #856 step 3). Given the stored list, move each
- * host-pinned entry to its recorded index among the queued entries, leaving the unpinned ones in
- * stored order around them and every non-queued entry exactly where it was.
- *
- * `pinnedSeq` indexes the QUEUED entries only, the same list the reorder UI counts (#790, #637). A
- * playing entry is not a reorder target: it holds its slot, and the queued entries are permuted among
- * the slots they already occupy.
- *
- * Under the stored-list model this is the ONE thing that still overrides the stored order, which is
- * exactly why it is being deleted: a pinned row is re-seated on every renumber, so a drag of a pinned
- * row cannot stick. Unpinned rows keep their stored order, so a drag of anything else is durable.
- * Pure and deterministic: reads only `pinnedSeq` and `status`, applied lowest-target-first (ties by
- * id) so one pin's placement never depends on hidden iteration order.
- */
-export function placePins(ordered: QueueEntry[]): QueueEntry[] {
-	const { slots, queued: reorderable } = splitQueued(ordered);
-	const pinned = reorderable
-		.filter((e) => typeof e.pinnedSeq === 'number' && Number.isFinite(e.pinnedSeq))
-		.sort((a, b) => a.pinnedSeq! - b.pinnedSeq! || (a.id < b.id ? -1 : 1));
-	if (pinned.length === 0) return ordered.slice();
-	const pinnedIds = new Set(pinned.map((e) => e.id));
-	const placed = reorderable.filter((e) => !pinnedIds.has(e.id));
-	for (const e of pinned) {
-		const at = Math.max(0, Math.min(e.pinnedSeq!, placed.length));
-		placed.splice(at, 0, e);
-	}
-	const out = ordered.slice();
-	slots.forEach((slot, i) => {
-		out[slot] = placed[i]!;
-	});
-	return out;
 }
