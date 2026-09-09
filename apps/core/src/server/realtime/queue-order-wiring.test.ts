@@ -96,7 +96,10 @@ test('the chosen algorithm survives a write and a re-read', () => {
 	expect(h.settings.setRoom({ queueOrder: 'no-such-order' as QueueOrderId }, 'main').queueOrder).toBe('shuffle');
 });
 
-test('changing the algorithm re-derives the live queue', () => {
+test('changing the algorithm leaves the standing queue alone — only later adds use the new rule', () => {
+	// THE STORED-LIST MODEL (#856). The queue is the source of truth, so switching the algorithm can
+	// no longer re-sort songs already queued: that would throw away every reorder anyone had made.
+	// The new rule takes effect at the next INSERT.
 	const h = harness('fair');
 	h.state.applyQueueOp({ op: 'add', entry: entry('a1', 'ana', 1) });
 	h.state.applyQueueOp({ op: 'add', entry: entry('a2', 'ana', 2) });
@@ -105,12 +108,15 @@ test('changing the algorithm re-derives the live queue', () => {
 
 	const revBefore = h.state.rev;
 	h.settings.setRoom({ queueOrder: 'fcfs' }, 'main');
-	const out = h.state.reorder();
-	expect(out).not.toBeNull();
-	expect(ids(out!.entries)).toEqual(['a1', 'a2', 'b1']);
-	expect(out!.rev).toBeGreaterThan(revBefore);
-	// seqs are contiguous after the flip, not left at their old values
-	expect(h.state.entries.map((e) => e.rotationSeq)).toEqual([0, 1, 2]);
+	// nothing to re-derive: the flip publishes no new snapshot and does not bump the rev
+	expect(h.state.reorder()).toBeNull();
+	expect(h.state.rev).toBe(revBefore);
+	expect(ids(h.state.entries)).toEqual(['a1', 'b1', 'a2']);
+
+	// but the NEXT add follows fcfs — it appends instead of interleaving into ana's round
+	h.state.applyQueueOp({ op: 'add', entry: entry('b2', 'ben', 4) });
+	expect(ids(h.state.entries)).toEqual(['a1', 'b1', 'a2', 'b2']);
+	expect(h.state.entries.map((e) => e.rotationSeq)).toEqual([0, 1, 2, 3]);
 });
 
 test('reorder() is a true no-op when the order is unchanged — no rev bump, nothing to publish', () => {
@@ -140,7 +146,7 @@ test('a mid-party flip does not touch the song already playing', () => {
 });
 
 // ── least-recently-sung: the stamp must land before the reseq that reads it ──
-test('starting a song stamps the singer, and their remaining picks drop behind everyone else', () => {
+test('starting a song stamps the singer, and the stamp steers the NEXT add, not the standing queue', () => {
 	const h = harness('least-recently-sung');
 	// Real singer rows, because the stamp is written BY ID: entries carrying a literal singerId would
 	// update no row and this test would pass on fair rotation alone.
@@ -157,10 +163,12 @@ test('starting a song stamps the singer, and their remaining picks drop behind e
 	handlePlayerCommand({ cmd: 'play' }, h.deps);
 	expect(h.state.playback.currentEntryId).toBe('a1');
 	expect(h.singers.byId(ana.id)!.lastSungAt).toBeGreaterThan(0);
-	// Ana is now the most recently sung, so Ben leads the rounds and BOTH his songs come before her
-	// second — and it happened WITHIN the play command, not at some later mutation. Under fair this
-	// would still be ['b1', 'a2', 'b2'].
-	expect(ids(h.state.entries.filter((e) => e.status === 'queued'))).toEqual(['b1', 'b2', 'a2']);
+	// THE STORED-LIST MODEL (#856): sing history moving does NOT re-sort songs already queued. The
+	// queue everyone is looking at holds its order — it used to become ['b1','b2','a2'] here, which
+	// silently rearranged rows nobody touched. The stamp is still load-bearing: it is an input to the
+	// INSERT rule, which `queue-order.test.ts` pins directly (a never-sung singer is placed ahead of
+	// one who just sang, within the same round).
+	expect(ids(h.state.entries.filter((e) => e.status === 'queued'))).toEqual(['b1', 'a2', 'b2']);
 });
 
 test('a singer who has not sung is ordered ahead of one who has', () => {

@@ -1,148 +1,149 @@
 import { test, expect } from 'bun:test';
-import { rotate, assignSeqs, applyAndReseq, isTerminal } from './rotation';
+import { storedOrder, assignSeqs, insertEntry, applyAndReseq, isTerminal, reorderWithinSinger } from './rotation';
 import type { QueueEntry } from './types';
 
-// addedAt encodes queue order; singerId drives the round-robin grouping.
-const e = (id: string, singerId: string, addedAt: number): QueueEntry => ({
+// `rotationSeq` is the STORED position and is what every read goes through. `addedAt` no longer
+// decides a position; it only breaks a tie for a row the server has not numbered yet.
+const e = (id: string, singerId: string, addedAt: number, rotationSeq = addedAt): QueueEntry => ({
 	id,
 	mediaId: 'm-' + id,
 	singerId,
 	status: 'queued',
-	rotationSeq: -1,
+	rotationSeq,
 	addedAt
 });
 
-test("round-robin: everyone's 1st pick before anyone's 2nd", () => {
+const ids = (entries: QueueEntry[]) => entries.map((x) => x.id);
+/** Add each entry through the reducer under `order` — the only path that assigns a position. */
+const build = (adds: QueueEntry[], order?: 'fair' | 'fcfs' | 'shuffle' | 'least-recently-sung' | 'manual') =>
+	adds.reduce<QueueEntry[]>((q, entry) => applyAndReseq(q, { op: 'add', entry }, { order }), []);
+
+// ── the stored list is the truth ─────────────────────────────────────────────
+test('storedOrder reads the stored position, not addedAt', () => {
+	// addedAt says a,b,c; the stored positions say c,a,b — the stored positions win.
+	const entries = [e('a', 'a', 1, 1), e('b', 'b', 2, 2), e('c', 'c', 3, 0)];
+	expect(ids(storedOrder(entries))).toEqual(['c', 'a', 'b']);
+});
+
+test('storedOrder is TOTAL and stable when positions tie or are unset', () => {
+	const entries = [e('z', 'a', 5, 0), e('y', 'b', 2, 0), e('x', 'c', 2, 0)];
+	expect(ids(storedOrder(entries))).toEqual(['x', 'y', 'z']); // addedAt then id break the tie
+	const shuffled = [entries[2]!, entries[0]!, entries[1]!];
+	expect(ids(storedOrder(shuffled))).toEqual(['x', 'y', 'z']); // independent of input order
+});
+
+test('assignSeqs RENUMBERS the stored order and never re-sorts it', () => {
+	// A queue somebody has rearranged: b sits ahead of a. assignSeqs must preserve that.
+	const entries = [e('a', 'a', 1, 7), e('b', 'b', 2, 3)];
+	const out = assignSeqs(entries);
+	expect(out.map((x) => [x.id, x.rotationSeq])).toEqual([
+		['b', 0],
+		['a', 1]
+	]);
+	// idempotent: running it again changes nothing
+	expect(assignSeqs(out).map((x) => [x.id, x.rotationSeq])).toEqual([
+		['b', 0],
+		['a', 1]
+	]);
+});
+
+test('assignSeqs does NOT re-derive when the policy changes', () => {
+	const stored = build([e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3)], 'fcfs');
+	expect(ids(stored)).toEqual(['a1', 'a2', 'b1']);
+	// the room switches to fair — the queue already standing is untouched; only future adds interleave
+	expect(ids(assignSeqs(stored, { order: 'fair' }))).toEqual(['a1', 'a2', 'b1']);
+});
+
+// ── insert-time fairness (what `rotate` used to do as a full sort) ───────────
+test("fair insert: everyone's 1st pick before anyone's 2nd", () => {
 	// Maya queues 2, then Sam queues 1, then Maya queues another.
-	const entries = [e('maya1', 'maya', 1), e('maya2', 'maya', 2), e('sam1', 'sam', 3), e('maya3', 'maya', 4)];
-	// fair order: maya1 (M #1), sam1 (S #1), maya2 (M #2), maya3 (M #3)
-	expect(rotate(entries).map((x) => x.id)).toEqual(['maya1', 'sam1', 'maya2', 'maya3']);
+	expect(
+		ids(build([e('maya1', 'maya', 1), e('maya2', 'maya', 2), e('sam1', 'sam', 3), e('maya3', 'maya', 4)], 'fair'))
+	).toEqual(['maya1', 'sam1', 'maya2', 'maya3']);
 });
 
-test('three singers interleave by pick-index', () => {
-	const entries = [e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3), e('c1', 'c', 4), e('b2', 'b', 5)];
-	// round0: a1,b1,c1 · round1: a2,b2 · round2: (none)
-	expect(rotate(entries).map((x) => x.id)).toEqual(['a1', 'b1', 'c1', 'a2', 'b2']);
+test('fair insert: three singers interleave by pick-index', () => {
+	expect(
+		ids(build([e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3), e('c1', 'c', 4), e('b2', 'b', 5)], 'fair'))
+	).toEqual(['a1', 'b1', 'c1', 'a2', 'b2']);
 });
 
-test('singer order = first appearance (earliest addedAt), not alphabetical', () => {
-	const entries = [e('z1', 'zoe', 1), e('a1', 'amy', 2)];
-	// zoe appeared first -> zoe before amy
-	expect(rotate(entries).map((x) => x.id)).toEqual(['z1', 'a1']);
-});
-
-test('new joiner slots into the next gap (does not jump the current round)', () => {
-	// a has 3 queued; b joins after. b\'s first pick comes after a\'s first, not last.
-	const entries = [e('a1', 'a', 1), e('a2', 'a', 2), e('a3', 'a', 3), e('b1', 'b', 4)];
-	expect(rotate(entries).map((x) => x.id)).toEqual(['a1', 'b1', 'a2', 'a3']);
-});
-
-test('assignSeqs yields contiguous 0-based rotationSeq in fair order', () => {
-	const entries = [e('a1', 'a', 1), e('b1', 'b', 2), e('a2', 'a', 3)];
-	const seqs = assignSeqs(entries);
-	expect(seqs.map((x) => [x.id, x.rotationSeq])).toEqual([
-		['a1', 0],
-		['b1', 1],
-		['a2', 2]
+test('fair insert: a new joiner slots into the next gap, not the end', () => {
+	expect(ids(build([e('a1', 'a', 1), e('a2', 'a', 2), e('a3', 'a', 3), e('b1', 'b', 4)], 'fair'))).toEqual([
+		'a1',
+		'b1',
+		'a2',
+		'a3'
 	]);
 });
 
-// non-vacuity: a naive FIFO would FAIL the fairness test above, proving it asserts something real.
-test('NON-VACUOUS: fair order differs from naive FIFO', () => {
-	const entries = [e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3)];
-	const fifo = [...entries].sort((x, y) => x.addedAt - y.addedAt).map((x) => x.id);
-	const fair = rotate(entries).map((x) => x.id);
-	expect(fifo).toEqual(['a1', 'a2', 'b1']); // what FIFO would do
-	expect(fair).toEqual(['a1', 'b1', 'a2']); // round-robin is different -> test is meaningful
-	expect(fair).not.toEqual(fifo);
+test('NON-VACUOUS: fair insertion differs from naive append', () => {
+	const adds = [e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3)];
+	expect(ids(build(adds, 'fcfs'))).toEqual(['a1', 'a2', 'b1']); // append
+	expect(ids(build(adds, 'fair'))).toEqual(['a1', 'b1', 'a2']); // interleave — genuinely different
 });
 
-test('rotate does not mutate input', () => {
-	const input = [e('a1', 'a', 1)];
-	const snap = JSON.stringify(input);
-	rotate(input);
-	expect(JSON.stringify(input)).toBe(snap);
+test('insertEntry places one entry and renumbers contiguously', () => {
+	const stored = build([e('a1', 'a', 1), e('a2', 'a', 2)], 'fcfs');
+	const out = insertEntry(stored, e('b1', 'b', 3), { order: 'fair' });
+	expect(ids(out)).toEqual(['a1', 'b1', 'a2']);
+	expect(out.map((x) => x.rotationSeq)).toEqual([0, 1, 2]);
 });
 
-// ── applyAndReseq: the shared client+server mutation (Findings #2, #3a) ──────────
-test('applyAndReseq on add reseqs to fair round-robin (NOT append) — the no-flicker guarantee', () => {
-	// Maya has 2 queued; Sam adds his first. Fair order interleaves Sam's pick to slot 1,
-	// NOT the bottom. This is exactly what the client must predict so the row doesn't jump.
-	const base = assignSeqs([e('maya1', 'maya', 1), e('maya2', 'maya', 2)]);
-	const out = applyAndReseq(base, {
-		op: 'add',
-		entry: {
-			id: 'sam1',
-			mediaId: 'm-sam1',
-			singerId: 'sam',
-			status: 'queued',
-			rotationSeq: Number.MAX_SAFE_INTEGER,
-			addedAt: 3
-		}
-	});
-	expect(out.map((x) => x.id)).toEqual(['maya1', 'sam1', 'maya2']);
-	expect(out.map((x) => x.rotationSeq)).toEqual([0, 1, 2]); // contiguous, server-owned
+// ── ops on the stored list ──────────────────────────────────────────────────
+test('a move permutes the singer’s own slots and leaves other singers put', () => {
+	let q = build([e('a1', 'a', 1), e('b1', 'b', 2), e('a2', 'a', 3)], 'fair'); // a1, b1, a2
+	q = applyAndReseq(q, { op: 'move', id: 'a2', toSeq: 0 });
+	expect(ids(q)).toEqual(['a2', 'b1', 'a1']); // a's two songs swapped slots; b1 never moved
+	expect(q.map((x) => x.rotationSeq)).toEqual([0, 1, 2]);
 });
 
-test('applyAndReseq drops terminal entries (Finding #3a — no unbounded growth)', () => {
-	const base = assignSeqs([e('a', 'a', 1), e('b', 'b', 2)]);
-	// mark a done; it should be pruned, not linger
-	const out = applyAndReseq(base, { op: 'status', id: 'a', status: 'done' });
-	expect(out.find((x) => x.id === 'a')).toBeUndefined();
-	expect(out.map((x) => x.id)).toEqual(['b']);
-	expect(out[0]!.rotationSeq).toBe(0); // reseq'd after prune
+test('a move is a no-op when the target is where the song already is', () => {
+	const q = build([e('a1', 'a', 1), e('a2', 'a', 2)], 'fcfs');
+	expect(ids(reorderWithinSinger(q, 'a1', 0))).toEqual(['a1', 'a2']);
 });
 
-test('applyAndReseq move permutes addedAt within singer + survives reseq', () => {
-	// a:[a1,a2,a3], move a3 to index 0 within a's picks -> a3,a1,a2
-	const base = assignSeqs([e('a1', 'a', 1), e('a2', 'a', 2), e('a3', 'a', 3)]);
-	const out = applyAndReseq(base, { op: 'move', id: 'a3', toSeq: 0 });
-	expect(out.map((x) => x.id)).toEqual(['a3', 'a1', 'a2']);
+test('a move clamps out-of-range targets instead of throwing or dropping a row', () => {
+	const q = build([e('a1', 'a', 1), e('a2', 'a', 2)], 'fcfs');
+	expect(ids(reorderWithinSinger(q, 'a1', 99))).toEqual(['a2', 'a1']);
+	expect(ids(reorderWithinSinger(q, 'a2', -5))).toEqual(['a2', 'a1']);
 });
 
-test('CLIENT==SERVER: applyAndReseq is deterministic for identical input (the contract)', () => {
-	const base = assignSeqs([e('a1', 'a', 1), e('b1', 'b', 2)]);
-	const op = {
-		op: 'add' as const,
-		entry: { id: 'a2', mediaId: 'm-a2', singerId: 'a', status: 'queued' as const, rotationSeq: 9e15, addedAt: 3 }
-	};
-	expect(applyAndReseq(base, op)).toEqual(applyAndReseq(base, op)); // pure + deterministic
+test('an unknown id is an idempotent no-op', () => {
+	const q = build([e('a1', 'a', 1)], 'fcfs');
+	expect(ids(applyAndReseq(q, { op: 'move', id: 'nope', toSeq: 0 }))).toEqual(['a1']);
+	expect(ids(applyAndReseq(q, { op: 'remove', id: 'nope' }))).toEqual(['a1']);
 });
 
-test('isTerminal classifies done vs live', () => {
-	expect(isTerminal(e('x', 'a', 1))).toBe(false); // queued
-	expect(isTerminal({ ...e('x', 'a', 1), status: 'playing' })).toBe(false);
+test('a playing entry holds its slot: an insert cannot displace the song on stage', () => {
+	let q = build([e('a1', 'a', 1), e('b1', 'b', 2)], 'fair');
+	q = q.map((x) => (x.id === 'a1' ? { ...x, status: 'playing' as const } : x));
+	q = applyAndReseq(q, { op: 'add', entry: e('c1', 'c', 3) }, { order: 'fair' });
+	expect(q[0]!.id).toBe('a1'); // still on stage, still first
+	expect(q.map((x) => x.rotationSeq)).toEqual(q.map((_, i) => i));
+});
+
+test('applyAndReseq prunes terminal entries and renumbers what is left', () => {
+	let q = build([e('a1', 'a', 1), e('b1', 'b', 2), e('a2', 'a', 3)], 'fair');
+	q = applyAndReseq(q, { op: 'status', id: 'a1', status: 'done' });
+	expect(ids(q)).toEqual(['b1', 'a2']);
+	expect(q.map((x) => x.rotationSeq)).toEqual([0, 1]);
+});
+
+test('isTerminal is true only for done', () => {
 	expect(isTerminal({ ...e('x', 'a', 1), status: 'done' })).toBe(true);
+	for (const status of ['queued', 'playing'] as const) {
+		expect(isTerminal({ ...e('x', 'a', 1), status })).toBe(false);
+	}
 });
 
-// ── #637: reorder-DOWN on the next-to-play song ────────────────────────────────
-// The moving singer has a PLAYING entry. reorderWithinSinger must index over the singer's
-// QUEUED picks only, matching the client (+page.svelte myPicks = queued.filter(mine)). If it
-// counted the playing entry it would occupy index 0, every index would be off by one, and the
-// singer's first queued pick (toSeq = 0 + 1 = 1) would resolve onto its OWN slot — a silent no-op.
-test('#637 reorder-DOWN on next-to-play swaps with the following song (playing entry present)', () => {
-	// P is playing; q0 is the next-to-play (singer's FIRST queued pick), q1 follows. All one singer.
-	const base = assignSeqs([
-		{ ...e('q0', 's', 2) },
-		{ ...e('q1', 's', 3) },
-		{ ...e('P', 's', 1), status: 'playing' as const }
-	]);
-	const queuedBefore = base.filter((x) => x.status === 'queued').map((x) => x.id);
-	expect(queuedBefore).toEqual(['q0', 'q1']);
-	// DOWN on q0: client sends toSeq = myIdx(q0) + 1 = 0 + 1 = 1 (index over queued picks only).
-	const out = applyAndReseq(base, { op: 'move', id: 'q0', toSeq: 1 });
-	const queuedAfter = out.filter((x) => x.status === 'queued').map((x) => x.id);
-	expect(queuedAfter).toEqual(['q1', 'q0']); // RED on base: was ['q0','q1'] (no-op)
-	// The playing entry never moved and never lost its slot.
-	expect(out.find((x) => x.id === 'P')!.status).toBe('playing');
-});
-
-test('#637 reorder-UP on the following song (the old workaround) still works', () => {
-	const base = assignSeqs([
-		{ ...e('q0', 's', 2) },
-		{ ...e('q1', 's', 3) },
-		{ ...e('P', 's', 1), status: 'playing' as const }
-	]);
-	const out = applyAndReseq(base, { op: 'move', id: 'q1', toSeq: 0 });
-	expect(out.filter((x) => x.status === 'queued').map((x) => x.id)).toEqual(['q1', 'q0']);
+test('nothing mutates its input', () => {
+	const q = build([e('a1', 'a', 1), e('b1', 'b', 2)], 'fair');
+	const before = JSON.stringify(q);
+	storedOrder(q);
+	assignSeqs(q);
+	insertEntry(q, e('c1', 'c', 3), { order: 'fair' });
+	reorderWithinSinger(q, 'a1', 1);
+	applyAndReseq(q, { op: 'remove', id: 'b1' });
+	expect(JSON.stringify(q)).toBe(before);
 });
