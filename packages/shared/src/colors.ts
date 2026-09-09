@@ -505,3 +505,47 @@ export function nextSwatchIndex(value: string, step: number): number {
 
 /** A singer colour is any legible hex now, not one of eight literals. */
 export type SingerColor = string;
+
+// ── duet part colours (#692) ───────────────────────────────────────────────
+
+/**
+ * Map the abstract `part` letters a diarized duet carries (#691) onto DISTINCT, LEGIBLE reel
+ * colours — the visible half of the duet feature.
+ *
+ * WHAT IT RETURNS. A `Map<partLabel, hex>`, one legible colour per part, assigned in the order the
+ * parts first APPEAR in the song. Content-driven order (not lexical) so "the voice that opens the
+ * song" gets the first colour deterministically, and the same doc always yields the same mapping.
+ * The colours come from `SINGER_COLORS` — the palette the singer-identity dots already use — so the
+ * two-colour reel reads in the app's established vocabulary rather than an invented pair.
+ *
+ * WHY IT REUSES `isLegibleSingerColor` AND NOT A HARD-CODED PAIR. The owner's ruling on #692 was
+ * explicit: over video with a scrim an illegible second colour is worse than one colour, and a
+ * hard-coded second colour is rejected because it skips the legibility floor the singer-colour
+ * vocabulary already enforces. So every colour handed back has cleared `isLegibleSingerColor`; a
+ * palette entry that ever stopped being legible is skipped rather than painted. All eight
+ * `SINGER_COLORS` clear the floor today, so the two a duet needs are always available.
+ *
+ * THE FALLBACK IS BY ABSENCE, matching the worker (`diarize/attribution.py`). When NO line carries a
+ * part — a solo, a song diarization could not split, an undiarized cook — this returns an EMPTY map,
+ * which the reel reads as "no part colour applies, keep the single-colour path": an undiarized song
+ * renders exactly as today. A song with a single part likewise gets one colour. More parts than the
+ * palette can legibly cover collapse to whatever it can — but the worker caps a confident duet at two
+ * parts (`MAX_PARTS`), so in practice this is A and B.
+ *
+ * PURE and side-effect-free; safe to call on every render (the caller memoises it per doc).
+ */
+export function duetPartColors(lines: readonly { part?: string }[] | null | undefined): Map<string, string> {
+	const out = new Map<string, string>();
+	if (!lines) return out;
+	const legible = (SINGER_COLORS as readonly string[]).filter((c) => isLegibleSingerColor(c));
+	let next = 0;
+	for (const line of lines) {
+		const part = line?.part;
+		if (typeof part !== 'string' || !part.trim()) continue;
+		if (out.has(part)) continue;
+		if (next >= legible.length) continue; // palette exhausted — leave later parts uncoloured
+		out.set(part, legible[next]!);
+		next += 1;
+	}
+	return out;
+}
