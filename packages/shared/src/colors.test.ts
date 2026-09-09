@@ -18,6 +18,11 @@ import {
 	normalizeStageColor,
 	hueOfColor,
 	DEFAULT_STAGE_COLOR,
+	dimTowardBlack,
+	normalizeStageDim,
+	DEFAULT_STAGE_DIM,
+	MIN_STAGE_DIM,
+	MAX_STAGE_DIM,
 	STAGE_BG_L,
 	SINGER_L,
 	SURFACES,
@@ -456,4 +461,72 @@ test('hueOfColor is independent of lightness and chroma, and greys have no hue (
 	}
 	expect(hueOfColor('#000000')).toBe(0);
 	expect(hueOfColor('not a colour')).toBe(0);
+});
+
+// ── #782 stage dim (piece 3 of #425) ────────────────────────────────────────
+
+test('#782: dimTowardBlack with dim 0 returns the colour untouched', () => {
+	// 0 is the default, so this is the invisible-migration promise at the pixel level: no dim = no change.
+	for (const c of ['#000000', '#001d31', '#7c5cff', '#ff5cae', '#ffffff', '#123456']) {
+		expect(dimTowardBlack(c, 0)).toBe(c);
+	}
+});
+
+test('#782: dimTowardBlack with dim 1 pulls any colour to black', () => {
+	for (const c of ['#001d31', '#7c5cff', '#ffffff', '#123456']) {
+		expect(dimTowardBlack(c, 1)).toBe('#000000');
+	}
+});
+
+test('#782: dimTowardBlack scales every channel by (1 - dim), rounded', () => {
+	// white at 0.5 → each channel 255 * 0.5 = 127.5 → 128 (0x80). Derived from the rule, not transcribed
+	// from a fixture, so a wrong scaling reds rather than agreeing with a matching constant.
+	expect(dimTowardBlack('#ffffff', 0.5)).toBe('#808080');
+	// a mixed colour, per channel: 0x33=51→round(51*0.4=20.4)=20=0x14, 0x66=102→round(40.8)=41=0x29,
+	// 0x99=153→round(61.2)=61=0x3d
+	expect(dimTowardBlack('#336699', 0.6)).toBe('#14293d');
+	// canonicalises a 3-digit input on the way out, like every other colour path
+	expect(dimTowardBlack('#abc', 0)).toBe('#aabbcc');
+});
+
+test('#782: dimTowardBlack is monotone — more dim is never brighter on any channel', () => {
+	const c = '#7c5cff';
+	let prev = parseHex(dimTowardBlack(c, 0))!;
+	for (let d = 0.1; d <= 1.0001; d += 0.1) {
+		const cur = parseHex(dimTowardBlack(c, Number(d.toFixed(2))))!;
+		for (let i = 0; i < 3; i++) expect(cur[i]!).toBeLessThanOrEqual(prev[i]!);
+		prev = cur;
+	}
+});
+
+test('#782: dimTowardBlack clamps an out-of-range dim into [0,1] rather than inverting', () => {
+	// a negative dim must not BRIGHTEN (f > 1), and a dim past 1 must not go negative — both clamp.
+	expect(dimTowardBlack('#336699', -0.5)).toBe('#336699');
+	expect(dimTowardBlack('#336699', 2)).toBe('#000000');
+});
+
+test('#782: dimTowardBlack returns an unparseable input verbatim (the token safety net)', () => {
+	// stageBackgroundCss only ever hands it a hex, but a CSS-variable gradient string must pass through
+	// unchanged rather than throw — a pure function cannot darken a var().
+	const grad = 'radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%)';
+	expect(dimTowardBlack(grad, 0.5)).toBe(grad);
+	expect(dimTowardBlack('rebeccapurple', 0.5)).toBe('rebeccapurple');
+});
+
+test('#782: normalizeStageDim clamps to [0,1], rounds to a hundredth, and keeps the base on junk', () => {
+	expect(DEFAULT_STAGE_DIM).toBe(0);
+	expect(MIN_STAGE_DIM).toBe(0);
+	expect(MAX_STAGE_DIM).toBe(1);
+	expect(normalizeStageDim(0, 0.3)).toBe(0);
+	expect(normalizeStageDim(1, 0.3)).toBe(1);
+	expect(normalizeStageDim(0.5, 0)).toBe(0.5);
+	// rounded to 1/100, matching guideLevelDefault
+	expect(normalizeStageDim(0.126, 0)).toBe(0.13);
+	// clamped, not rejected
+	expect(normalizeStageDim(-1, 0.3)).toBe(0);
+	expect(normalizeStageDim(9, 0.3)).toBe(1);
+	// junk keeps the caller's current value, like every other field
+	for (const junk of [NaN, Infinity, -Infinity, '0.5', null, undefined, {}]) {
+		expect(normalizeStageDim(junk as never, 0.42)).toBe(0.42);
+	}
 });

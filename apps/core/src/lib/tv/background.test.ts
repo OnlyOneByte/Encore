@@ -7,7 +7,8 @@ import {
 	nearestSingerHue,
 	hueOfColor,
 	SINGER_HUES,
-	DEFAULT_STAGE_COLOR
+	DEFAULT_STAGE_COLOR,
+	dimTowardBlack
 } from '@encore/shared';
 
 test('every registered style resolves to a non-empty CSS value', () => {
@@ -134,4 +135,59 @@ test('adding the visualizer style left the four colour styles untouched', () => 
 	expect(stageBackgroundCss('singer', DEFAULT_STAGE_COLOR, '#5cb8ff')).toContain(
 		stageHueToHex(nearestSingerHue('#5cb8ff'))
 	);
+});
+
+// ── #782 stage dim (piece 3 of #425) ────────────────────────────────────────
+
+test('#782: an omitted dim defaults to 0 — every style renders exactly as before', () => {
+	// the new fourth arg is optional and defaults to 0, so every existing call site (and the tests above,
+	// which pass three args) keeps its result. This is the invisible-migration promise for the wiring.
+	for (const s of TV_BACKGROUND_STYLES) {
+		expect(stageBackgroundCss(s.id, DEFAULT_STAGE_COLOR, '#ff5cae')).toBe(
+			stageBackgroundCss(s.id, DEFAULT_STAGE_COLOR, '#ff5cae', 0)
+		);
+	}
+});
+
+test('#782: dim darkens the solid room colour toward black', () => {
+	// solid is the room's own colour, and the dim is a lightness control on it (owner ruling Q2 = A).
+	expect(stageBackgroundCss('solid', '#ffffff', null, 0)).toBe('#ffffff');
+	expect(stageBackgroundCss('solid', '#ffffff', null, 0.5)).toBe(dimTowardBlack('#ffffff', 0.5));
+	expect(stageBackgroundCss('solid', '#ffffff', null, 1)).toBe('#000000');
+	// a non-white colour dims by the same rule
+	expect(stageBackgroundCss('solid', '#336699', null, 0.6)).toBe(dimTowardBlack('#336699', 0.6));
+});
+
+test('#782: dim darkens the singer glow inner colour but keeps the geometry and the outer token', () => {
+	const dot = '#5cb8ff';
+	const undimmed = stageBackgroundCss('singer', DEFAULT_STAGE_COLOR, dot, 0);
+	const dimmed = stageBackgroundCss('singer', DEFAULT_STAGE_COLOR, dot, 0.5);
+	// same radial geometry and outer stop
+	expect(dimmed).toContain('radial-gradient(80% 60% at 50% 30%');
+	expect(dimmed).toContain('var(--bg) 70%');
+	// the inner hue stop is dimmed
+	const hue = nearestSingerHue(dot);
+	expect(undimmed).toContain(stageHueToHex(hue));
+	expect(dimmed).toContain(dimTowardBlack(stageHueToHex(hue), 0.5));
+	expect(dimmed).not.toBe(undimmed);
+});
+
+test('#782: dim is a no-op on the styles that resolve to no chosen colour', () => {
+	// off and visualizer are already the black floor — dimming black is still black.
+	expect(stageBackgroundCss('off', DEFAULT_STAGE_COLOR, null, 1)).toBe('#000');
+	expect(stageBackgroundCss('visualizer', DEFAULT_STAGE_COLOR, '#ff5cae', 1)).toBe('#000');
+	// gradient is the room glow in CSS-variable tokens a pure function cannot darken — geometry unchanged.
+	expect(stageBackgroundCss('gradient', DEFAULT_STAGE_COLOR, null, 0.7)).toBe(
+		stageBackgroundCss('gradient', DEFAULT_STAGE_COLOR, null, 0)
+	);
+	// the singer FALLBACK (no singer) is that same glow, so it is likewise untouched by dim.
+	expect(stageBackgroundCss('singer', DEFAULT_STAGE_COLOR, null, 0.7)).toBe(
+		stageBackgroundCss('gradient', DEFAULT_STAGE_COLOR, null, 0)
+	);
+});
+
+test('#782: dim 1 collapses the solid stage to the same black as off', () => {
+	// the ruling is "toward black", so full dim on solid must actually reach black — indistinguishable
+	// from off on the pixel, which is the honest end of the range.
+	expect(stageBackgroundCss('solid', '#7c5cff', null, 1)).toBe('#000000');
 });

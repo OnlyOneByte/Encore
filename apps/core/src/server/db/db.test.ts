@@ -713,3 +713,83 @@ test('#425: every WHEN arm of the 0005 backfill CASE equals stageHueToHex(hue)',
 	expect(sql).toContain("ELSE '#001d31'");
 	expect(DEFAULT_STAGE_COLOR).toBe(stageHueToHex(240));
 });
+
+// #782 — the EXISTING-database upgrade path for the stage dimmer. Piece 3 of #425 adds
+// room_settings.tv_background_dim (a 0..1 REAL, NOT NULL default 0). Every other room_settings test
+// builds a FRESH db, the coverage gap that lets an in-place baseline edit pass; this models the real
+// upgrade: apply only 0000..0006 (a pre-#782 box), write old-shape rows with NO dim column, THEN run
+// the full set so 0007 actually runs. What it must prove: the column arrives, an existing row upgrades
+// to 0 (no dim — today's look, byte-identical), and the running code can read it back through the real
+// path. RED on base: no 0007, so tv_background_dim is absent and the SELECT below throws.
+test('#782: an EXISTING database upgrades — 0007 adds tv_background_dim defaulting to 0 (no dim)', () => {
+	const { db, sqlite } = openDb(':memory:');
+
+	const real = join(import.meta.dir, '..', '..', '..', 'drizzle');
+	const baseDir = mkdtempSync(join(tmpdir(), 'encore-mig-782-'));
+	mkdirSync(join(baseDir, 'meta'), { recursive: true });
+	const priorTags = [
+		'0000_baseline',
+		'0001_add_job_attempts_selection',
+		'0002_room_keyed_playback',
+		'0003_room_keyed_queue',
+		'0004_rekey_room_settings',
+		'0005_tv_background_color',
+		'0006_add_guide_offset_ms'
+	];
+	const fullJournal = JSON.parse(readFileSync(join(real, 'meta', '_journal.json'), 'utf8'));
+	for (const e of fullJournal.entries as { idx: number; tag: string }[]) {
+		if (!priorTags.includes(e.tag)) continue;
+		cpSync(join(real, e.tag + '.sql'), join(baseDir, e.tag + '.sql'));
+		cpSync(
+			join(real, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json'),
+			join(baseDir, 'meta', String(e.idx).padStart(4, '0') + '_snapshot.json')
+		);
+	}
+	const baseJournal = {
+		...fullJournal,
+		entries: fullJournal.entries.filter((e: { tag: string }) => priorTags.includes(e.tag))
+	};
+	writeFileSync(join(baseDir, 'meta', '_journal.json'), JSON.stringify(baseJournal));
+	runMigrations(db, baseDir);
+
+	// Sanity: this really IS the pre-#782 shape, so the test cannot pass by having skipped phase 1.
+	const before = sqlite.query('PRAGMA table_info(room_settings)').all() as { name: string }[];
+	expect(before.some((c) => c.name === 'tv_background_color')).toBe(true);
+	expect(before.some((c) => c.name === 'tv_background_dim')).toBe(false);
+
+	// Two configured rooms a running party would already hold — a solid stage and a visualizer one, each
+	// carrying a colour but of course no dim, since the column does not exist yet.
+	sqlite.run("INSERT INTO rooms (id, code, created_at) VALUES ('roomA','AAAAAA',1000)");
+	sqlite.run("INSERT INTO rooms (id, code, created_at) VALUES ('roomB','BBBBBB',2000)");
+	sqlite.run(
+		"INSERT INTO room_settings (room_id, tv_background_style, tv_background_color) VALUES ('roomA','solid','#ffffff')"
+	);
+	sqlite.run(
+		"INSERT INTO room_settings (room_id, tv_background_style, tv_background_color, song_intro_ms) VALUES ('roomB','visualizer','#281600',7000)"
+	);
+
+	// Deploy #782: 0000..0006 are already recorded, so only 0007 runs.
+	runMigrations(db, real);
+
+	// The column arrived — proving 0007 was applied, not skipped the way an in-place baseline edit would be.
+	const after = sqlite.query('PRAGMA table_info(room_settings)').all() as { name: string }[];
+	expect(after.some((c) => c.name === 'tv_background_dim')).toBe(true);
+
+	// Every existing row upgraded to no dim (0), and unrelated columns are untouched by the add.
+	const rows = sqlite
+		.query('SELECT room_id, tv_background_dim, tv_background_color, song_intro_ms FROM room_settings ORDER BY room_id')
+		.all() as { room_id: string; tv_background_dim: number; tv_background_color: string; song_intro_ms: number }[];
+	expect(rows.map((r) => r.room_id)).toEqual(['roomA', 'roomB']);
+	expect(rows[0]!.tv_background_dim).toBe(0);
+	expect(rows[1]!.tv_background_dim).toBe(0);
+	expect(rows[0]!.tv_background_color).toBe('#ffffff');
+	expect(rows[1]!.tv_background_color).toBe('#281600');
+	expect(rows[1]!.song_intro_ms).toBe(7000);
+
+	// The running code can now read those rooms through the real path, and a fresh write of a real dim
+	// round-trips — proving getRoom's SELECT and setRoom's write both carry the new field end to end.
+	const repo = new SettingsRepository(db);
+	expect(repo.getRoom('roomA').tvBackgroundDim).toBe(0);
+	expect(repo.setRoom({ tvBackgroundDim: 0.5 }, 'roomA').tvBackgroundDim).toBe(0.5);
+	expect(repo.getRoom('roomA').tvBackgroundDim).toBe(0.5);
+});

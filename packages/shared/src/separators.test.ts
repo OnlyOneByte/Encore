@@ -792,6 +792,27 @@ describe('tv background styles', () => {
 			expect(c).toMatch(/^#[0-9a-f]{6}$/);
 		}
 	});
+
+	// #782 (piece 3 of #425): the stage dimmer, a 0..1 fraction normalised beside the colour it dims.
+	it('the default stage dim is 0 — no dim, today TV exactly (#782)', () => {
+		expect(DEFAULT_ROOM_SETTINGS.tvBackgroundDim).toBe(0);
+	});
+
+	it('normalises the stage dim: clamps to 0..1, rounds to a hundredth (#782)', () => {
+		expect(normalizeRoomSettings({ tvBackgroundDim: 0 }).tvBackgroundDim).toBe(0);
+		expect(normalizeRoomSettings({ tvBackgroundDim: 1 }).tvBackgroundDim).toBe(1);
+		expect(normalizeRoomSettings({ tvBackgroundDim: 0.5 }).tvBackgroundDim).toBe(0.5);
+		expect(normalizeRoomSettings({ tvBackgroundDim: 0.126 }).tvBackgroundDim).toBe(0.13);
+		expect(normalizeRoomSettings({ tvBackgroundDim: -1 }).tvBackgroundDim).toBe(0);
+		expect(normalizeRoomSettings({ tvBackgroundDim: 5 }).tvBackgroundDim).toBe(1);
+	});
+
+	it('keeps the room current dim on a junk write, like every other field (#782)', () => {
+		const room = { ...DEFAULT_ROOM_SETTINGS, tvBackgroundDim: 0.35 };
+		for (const junk of ['0.5', NaN, Infinity, null, undefined, {}]) {
+			expect(normalizeRoomSettings({ tvBackgroundDim: junk as never }, room).tvBackgroundDim).toBe(0.35);
+		}
+	});
 });
 
 describe('tv visualizers', () => {
