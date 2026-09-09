@@ -85,6 +85,15 @@ type Floor = {
  * and the two on the motion guard's new utility-class arm.
  */
 const FLOORS: Record<string, Floor[]> = {
+	'apps/core/src/lib/tailwind-toolchain.test.ts': [
+		{
+			subject: 'mintSurfaces',
+			min: 1,
+			count: 1,
+			guards:
+				'the surfaces the XR-COL-14 colour ban examines (#859) — every app.css `@theme` block plus every tailwind.config.* in the tree. The arm reports an empty offenders array both when the tree is clean AND when it scanned nothing (Tailwind uninstalled, the @theme regex stopped matching, the config walk lost its root), so this counts what was actually seen. Its firing means the rule went UNENFORCEABLE, which XR-VER-06 requires be loud rather than a vacuous pass.'
+		}
+	],
 	'apps/core/src/lib/task-number-hygiene.test.ts': [
 		{
 			subject: 'files.length',
@@ -382,9 +391,10 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// 38 as of #829 (29 on its base once #831 added `boxRulesSeen`; +9 for the nine enumerating scans
 	// #829 adds to design-system.test.ts — five dimension-duplication scans, the two @theme bridge scans,
 	// the ladder-ordering rungs, and the phone-ladder-on-TV ban). +1 for #852's breakpoint-membership
-	// `literalsFound` floor, giving 39. Measured the way this comment prescribes, not counted: raised
-	// absurdly high, read `Received: 39`.
-	expect(located).toBeGreaterThanOrEqual(39);
+	// `literalsFound` floor, and +1 for #859's `mintSurfaces` floor on the XR-COL-14 colour ban
+	// (tailwind-toolchain.test.ts), giving 40. Measured the way this comment prescribes, not counted:
+	// raised absurdly high, read `Received: 40`.
+	expect(located).toBeGreaterThanOrEqual(40);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
