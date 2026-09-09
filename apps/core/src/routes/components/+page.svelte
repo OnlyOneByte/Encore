@@ -8,6 +8,7 @@
 	import type { SongProfile } from '@encore/shared';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
+	import QueueSheetDrawer from '$lib/components/QueueSheetDrawer.svelte';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import {
 		LYRICS_BALL_STYLES,
@@ -358,6 +359,28 @@
 	// button opens it on demand instead.
 	let demoColour = $state(VIOLET);
 	let queueOpen = $state(false);
+	/*
+	 * SPIKE #827. `?spike827=drawer` swaps the incumbent QueueSheet for the vaul-svelte port. It is a
+	 * SWAP, not an addition: both are bottom-docked and `position: fixed`, so rendering them together
+	 * would stack one over the other and every geometry number measured would be of the wrong element.
+	 * Nothing else references the drawer variant, so the default gallery is unchanged.
+	 *
+	 * READ FROM `location`, NOT `$app/state`, and this is load-bearing rather than a style choice.
+	 * `mount-rung.test.ts` imports every component that imports a `$app/*` or `$env/*` module, and
+	 * `vaul-svelte@1.0.0-next.7` publishes `exports: { ".": { types, svelte } }` with NO `default` entry
+	 * — a condition `bun test` does not apply — so ANY component that transitively imports the drawer
+	 * cannot be loaded under the unchanged `bun test`, and the failure reads as a missing dependency
+	 * while the app builds fine. Importing `$app/state` here would therefore have dragged this whole
+	 * route into the mount rung and reddened the gate. See docs/research/827-queuesheet-drawer-spike.md;
+	 * a real port has to solve that (measured remedy: `bun test --conditions=svelte`) before it lands.
+	 */
+	let spikeDrawer = $state(false);
+	// Read once at init rather than in an $effect: on the client, component init IS hydration, so the
+	// value is right on the first render and there is no second pass to reconcile. On the server
+	// `location` does not exist and the default (the incumbent) stands.
+	if (typeof location !== 'undefined') {
+		spikeDrawer = new URLSearchParams(location.search).get('spike827') === 'drawer';
+	}
 </script>
 
 <main style="padding:14px 16px 200px;">
@@ -697,20 +720,38 @@
 	     singer / position / seek row) and the rotation body via the children snippet. It is
 	     position:fixed and pins itself to the bottom of the viewport. -->
 	<button class="btn-accent" onclick={() => (queueOpen = !queueOpen)}>Toggle QueueSheet</button>
-	<QueueSheet
-		open={queueOpen}
-		title="Bohemian Rhapsody"
-		sub="Maya is singing"
-		position="You're #3 · after Liam"
-		queueCount={3}
-		elapsedSec={82}
-		durationSec={358}
-		ontoggle={(v) => (queueOpen = v)}
-	>
-		<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
-		<QueueRow seq={2} title="Sweet Caroline" singerName="Liam" singerColor={SKY} />
-		<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
-	</QueueSheet>
+	{#if spikeDrawer}
+		<!-- SPIKE #827 · the vaul-svelte port, reached only via ?spike827=drawer -->
+		<QueueSheetDrawer
+			open={queueOpen}
+			title="Bohemian Rhapsody"
+			sub="Maya is singing"
+			position="You're #3 · after Liam"
+			queueCount={3}
+			elapsedSec={82}
+			durationSec={358}
+			ontoggle={(v) => (queueOpen = v)}
+		>
+			<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
+			<QueueRow seq={2} title="Sweet Caroline" singerName="Liam" singerColor={SKY} />
+			<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
+		</QueueSheetDrawer>
+	{:else}
+		<QueueSheet
+			open={queueOpen}
+			title="Bohemian Rhapsody"
+			sub="Maya is singing"
+			position="You're #3 · after Liam"
+			queueCount={3}
+			elapsedSec={82}
+			durationSec={358}
+			ontoggle={(v) => (queueOpen = v)}
+		>
+			<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
+			<QueueRow seq={2} title="Sweet Caroline" singerName="Liam" singerColor={SKY} />
+			<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
+		</QueueSheet>
+	{/if}
 
 	<h2 class="section">LyricsOverlay (TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
