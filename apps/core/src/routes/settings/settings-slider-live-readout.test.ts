@@ -48,10 +48,16 @@ const SLIDERS: { id: string; field: string; div100?: boolean }[] = [
 // would have quietly dropped the one control on this page whose live readout is a visible swatch.
 const COLOUR_INPUTS: { id: string; field: string }[] = [{ id: 'tv-background-color', field: 'tvBackgroundColor' }];
 
-// The <input …> element carrying a given id, across newlines. Self-closing.
-function inputElement(src: string, id: string): string {
-	const m = src.match(new RegExp(`<input\\b[\\s\\S]*?id="${id}"[\\s\\S]*?/>`));
-	expect(m, `expected an <input id="${id}"> element in settings/+page.svelte`).not.toBeNull();
+/*
+ * The element carrying a given id, across newlines. Self-closing.
+ *
+ * #913 S3: matches <Slider> as well as <input>. The seven range sliders are <Slider> now, while the
+ * stage-colour control below is still a native <input type="color"> — the registry has no colour
+ * primitive — so this guard spans both spellings on purpose.
+ */
+function controlElement(src: string, id: string): string {
+	const m = src.match(new RegExp(`<(?:input|Slider)\\b[\\s\\S]*?id="${id}"[\\s\\S]*?/>`));
+	expect(m, `expected an <input|Slider id="${id}"> element in settings/+page.svelte`).not.toBeNull();
 	return m![0];
 }
 
@@ -60,27 +66,32 @@ const src = stripComments(raw);
 
 for (const { id, field, div100 } of SLIDERS) {
 	test(`the ${id} slider updates its readout live via liveRoom('${field}') (#134)`, () => {
-		const el = inputElement(src, id);
-		// A live handler that calls liveRoom with THIS field. The value arg differs only for the
-		// percent-vs-fraction guide slider, so match liveRoom('<field>', … ) loosely on the value.
-		const live = new RegExp(`oninput=\\{\\(e\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`);
+		const el = controlElement(src, id);
+		/*
+		 * #913 S3: the CONTRACT is unchanged — live while dragging, commit on release — but its spelling
+		 * followed the control onto Bits UI: `oninput` → `onValueChange`, `onchange` → `onValueCommit`,
+		 * and the handler takes the value directly instead of digging it out of a DOM event. Bits UI
+		 * provides both edges as first-class props, which is what made the swap safe: had it offered
+		 * only a change event, #134's live/commit split would have had to be rebuilt by hand.
+		 */
+		const live = new RegExp(`onValueChange=\\{\\(v\\)\\s*=>\\s*liveRoom\\(\\s*'${field}'\\s*,[\\s\\S]*?\\)\\s*\\}`);
 		expect(
 			live.test(el),
-			`#${id} has no oninput={(e) => liveRoom('${field}', …)} — its readout will hold the pre-drag ` +
-				`value for the whole drag (#134). Add the live handler beside its onchange commit.`
+			`#${id} has no onValueChange={(v) => liveRoom('${field}', …)} — its readout will hold the pre-drag ` +
+				`value for the whole drag (#134). Add the live handler beside its onValueCommit commit.`
 		).toBe(true);
 		if (div100) {
 			// The guide slider's field is a 0..1 fraction; the live handler must divide by 100 to match
 			// the onchange commit, or the readout would jump 100x mid-drag.
 			expect(
-				/liveRoom\(\s*'guideLevelDefault'\s*,\s*Number\(e\.currentTarget\.value\)\s*\/\s*100\s*\)/.test(el),
-				`#guide-default's liveRoom must divide the percent input by 100 to match its onchange commit`
+				/liveRoom\(\s*'guideLevelDefault'\s*,\s*v\s*\/\s*100\s*\)/.test(el),
+				`#guide-default's liveRoom must divide the percent value by 100 to match its onValueCommit commit`
 			).toBe(true);
 		}
-		// The commit path stays: onchange still calls onroom for this field, so a drag still writes on
-		// release. This keeps the fix from silently dropping the commit while adding the live handler.
+		// The commit path stays: onValueCommit still calls onroom for this field, so a drag still writes
+		// on release. This keeps the fix from silently dropping the commit while adding the live handler.
 		expect(
-			new RegExp(`onchange=\\{\\(e\\)\\s*=>\\s*onroom\\(\\{\\s*${field}:`).test(el),
+			new RegExp(`onValueCommit=\\{\\(v\\)\\s*=>\\s*onroom\\(\\{\\s*${field}:`).test(el),
 			`#${id} must keep its onchange={(e) => onroom({ ${field}: … })} commit alongside the live handler`
 		).toBe(true);
 	});
@@ -88,7 +99,7 @@ for (const { id, field, div100 } of SLIDERS) {
 
 for (const { id, field } of COLOUR_INPUTS) {
 	test(`the ${id} colour input updates its swatch live via liveRoom('${field}') (#134/#425)`, () => {
-		const el = inputElement(src, id);
+		const el = controlElement(src, id);
 		// It must actually be a colour input, not a range that happens to carry this id — the whole point
 		// of #425 is that the control widened from one axis to a full picker.
 		expect(/type="color"/.test(el), `#${id} must be an <input type="color">, not a range (#425)`).toBe(true);

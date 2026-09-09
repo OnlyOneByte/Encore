@@ -24,6 +24,7 @@
 	import { Input } from '$lib/components/ui/input';
 	import { NativeSelect } from '$lib/components/ui/native-select';
 	import { Checkbox } from '$lib/components/ui/checkbox';
+	import { Slider } from '$lib/components/ui/slider';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -565,15 +566,15 @@
 						<label class="field" for="presence-grace">
 							Keep people in the room for · {graceLabel}
 						</label>
-						<input
+						<Slider
 							id="presence-grace"
-							type="range"
+							type="single"
 							min={MIN_PRESENCE_GRACE_MINUTES}
 							max={MAX_PRESENCE_GRACE_MINUTES}
-							step="15"
+							step={15}
 							value={settings.room.presenceGraceMinutes}
-							oninput={(e) => liveRoom('presenceGraceMinutes', Number(e.currentTarget.value))}
-							onchange={(e) => onroom({ presenceGraceMinutes: Number(e.currentTarget.value) })}
+							onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
+							onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
 						/>
 						<p class="hint">A locked phone is not someone leaving, so they stay on the roster this long.</p>
 					</div>
@@ -700,15 +701,15 @@
 							only the committed `change` writes and broadcasts. Stored 0..1, shown as a percent; the
 							range spans the full 0..100 the server clamp accepts.
 						-->
-							<input
+							<Slider
 								id="tv-background-dim"
-								type="range"
-								min="0"
-								max="100"
-								step="1"
+								type="single"
+								min={0}
+								max={100}
+								step={1}
 								value={Math.round(settings.room.tvBackgroundDim * 100)}
-								oninput={(e) => liveRoom('tvBackgroundDim', Number(e.currentTarget.value) / 100)}
-								onchange={(e) => onroom({ tvBackgroundDim: Number(e.currentTarget.value) / 100 })}
+								onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
+								onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
 							/>
 							<p class="hint">How far the stage colour is darkened toward black. 0% is the colour itself.</p>
 						{/if}
@@ -730,16 +731,16 @@
 					  The range MUST match the server clamp exactly (MIN/MAX_SONG_INTRO_MS). A slider narrower
 					  than the clamp has shipped here before: the UI silently refuses values the server takes.
 					-->
-						<input
+						<Slider
 							id="song-intro-ms"
-							type="range"
+							type="single"
 							min={MIN_SONG_INTRO_MS}
 							max={MAX_SONG_INTRO_MS}
 							step={SONG_INTRO_STEP_MS}
 							disabled={!settings.room.songIntroEnabled}
 							value={settings.room.songIntroMs}
-							oninput={(e) => liveRoom('songIntroMs', Number(e.currentTarget.value))}
-							onchange={(e) => onroom({ songIntroMs: Number(e.currentTarget.value) })}
+							onValueChange={(v) => liveRoom('songIntroMs', v)}
+							onValueCommit={(v) => onroom({ songIntroMs: v })}
 						/>
 					</div>
 				</div>
@@ -818,15 +819,15 @@
 						{#if caseNote}<p class="hint">{caseNote}</p>{/if}
 
 						<label class="field" for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</label>
-						<input
+						<Slider
 							id="lyrics-scale"
-							type="range"
+							type="single"
 							min={MIN_LYRICS_SCALE_PCT}
 							max={MAX_LYRICS_SCALE_PCT}
-							step="5"
+							step={5}
 							value={settings.room.lyricsScalePct}
-							oninput={(e) => liveRoom('lyricsScalePct', Number(e.currentTarget.value))}
-							onchange={(e) => onroom({ lyricsScalePct: Number(e.currentTarget.value) })}
+							onValueChange={(v) => liveRoom('lyricsScalePct', v)}
+							onValueCommit={(v) => onroom({ lyricsScalePct: v })}
 						/>
 						<!--
 						Says PERCENT OF, not a size, because that is what it is: the TV already picks a size from
@@ -837,42 +838,42 @@
 						<label class="field" for="lyrics-lead">
 							Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
 						</label>
-						<input
+						<Slider
 							id="lyrics-lead"
-							type="range"
-							min="0"
+							type="single"
+							min={0}
 							max={MAX_LYRICS_LEAD_MS}
-							step="50"
+							step={50}
 							value={settings.room.lyricsLeadMs}
-							oninput={(e) => liveRoom('lyricsLeadMs', Number(e.currentTarget.value))}
-							onchange={(e) => onroom({ lyricsLeadMs: Number(e.currentTarget.value) })}
+							onValueChange={(v) => liveRoom('lyricsLeadMs', v)}
+							onValueCommit={(v) => onroom({ lyricsLeadMs: v })}
 						/>
 
 						<div class="pair">
 							<div class="cell">
 								<label class="field" for="lyrics-before">Lines sung · {settings.room.lyricsLinesBefore}</label>
-								<input
+								<Slider
 									id="lyrics-before"
-									type="range"
-									min="0"
+									type="single"
+									min={0}
 									max={MAX_LYRICS_LINES_BEFORE}
-									step="1"
+									step={1}
 									value={settings.room.lyricsLinesBefore}
-									oninput={(e) => liveRoom('lyricsLinesBefore', Number(e.currentTarget.value))}
-									onchange={(e) => onroom({ lyricsLinesBefore: Number(e.currentTarget.value) })}
+									onValueChange={(v) => liveRoom('lyricsLinesBefore', v)}
+									onValueCommit={(v) => onroom({ lyricsLinesBefore: v })}
 								/>
 							</div>
 							<div class="cell">
 								<label class="field" for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</label>
-								<input
+								<Slider
 									id="lyrics-after"
-									type="range"
-									min="0"
+									type="single"
+									min={0}
 									max={MAX_LYRICS_LINES_AFTER}
-									step="1"
+									step={1}
 									value={settings.room.lyricsLinesAfter}
-									oninput={(e) => liveRoom('lyricsLinesAfter', Number(e.currentTarget.value))}
-									onchange={(e) => onroom({ lyricsLinesAfter: Number(e.currentTarget.value) })}
+									onValueChange={(v) => liveRoom('lyricsLinesAfter', v)}
+									onValueCommit={(v) => onroom({ lyricsLinesAfter: v })}
 								/>
 							</div>
 						</div>
@@ -885,15 +886,15 @@
 						<label class="field" for="guide-default">
 							Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
 						</label>
-						<input
+						<Slider
 							id="guide-default"
-							type="range"
-							min="0"
-							max="100"
-							step="1"
+							type="single"
+							min={0}
+							max={100}
+							step={1}
 							value={Math.round(settings.room.guideLevelDefault * 100)}
-							oninput={(e) => liveRoom('guideLevelDefault', Number(e.currentTarget.value) / 100)}
-							onchange={(e) => onroom({ guideLevelDefault: Number(e.currentTarget.value) / 100 })}
+							onValueChange={(v) => liveRoom('guideLevelDefault', v / 100)}
+							onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
 						/>
 						<p class="hint">Starting vocal level. Singers can change it per song.</p>
 						{#if settings.room.guideLevelDefault > 0}
@@ -1247,10 +1248,12 @@
 	 * component and a call-site utility is minted by nothing under `source(none)`. The range stays
 	 * native until its Slider rebuild, so it keeps the rule.
 	 */
-	input[type='range'] {
-		width: 100%;
-		box-sizing: border-box;
-	}
+	/*
+	 * #913 S3: the range sliders are <Slider> now. Their geometry — a 28px thumb on a 6px --track-bg
+	 * rail at var(--tap) — moved into ui/slider, and with it the two parallel ::-webkit-slider-* and
+	 * ::-moz-range-* rule sets a native range needed. Bits UI builds the control from real elements, so
+	 * one set of rules replaces both. Width comes from the component too.
+	 */
 	.hint {
 		margin: var(--space-xs) 0 0;
 		font-size: 0.76rem;
@@ -1297,43 +1300,6 @@
 	 * gradient track. That slider is gone — the stage is a colour input now — so the exclusion went with
 	 * it rather than being left behind as a selector matching nothing.
 	 */
-	input[type='range'] {
-		-webkit-appearance: none;
-		appearance: none;
-		height: var(--tap);
-		background: transparent;
-		cursor: pointer;
-	}
-	input[type='range']::-webkit-slider-runnable-track {
-		height: 6px;
-		border-radius: var(--radius-pill);
-		background: var(--track-bg);
-	}
-	input[type='range']::-moz-range-track {
-		height: 6px;
-		border-radius: var(--radius-pill);
-		background: var(--track-bg);
-	}
-	input[type='range']::-webkit-slider-thumb {
-		-webkit-appearance: none;
-		appearance: none;
-		width: 28px;
-		height: 28px;
-		/* Centre the 28px thumb on the 6px track — WebKit anchors the thumb to the track top otherwise. */
-		margin-top: -11px;
-		border-radius: 50%;
-		background: var(--accent);
-		border: 3px solid var(--ink);
-		cursor: pointer;
-	}
-	input[type='range']::-moz-range-thumb {
-		width: 28px;
-		height: 28px;
-		border-radius: 50%;
-		background: var(--accent);
-		border: 3px solid var(--ink);
-		cursor: pointer;
-	}
 	.warn {
 		margin: var(--space-xs) 0 0;
 		font-size: 0.76rem;
