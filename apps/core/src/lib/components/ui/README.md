@@ -7,8 +7,10 @@ that CSS into `node_modules`, where a 38 px button, a 14 px input, a `vh` sheet 
 `content: '✕'` all become **invisible rather than illegal**.
 
 This directory is empty on purpose. #853 installed the toolchain and deliberately ported **no**
-component: #827 decides whether the `vaul-svelte` drawer is viable for `QueueSheet`, and porting
-before that answer is work that may be thrown away.
+component. The one candidate was the queue sheet, and #827's spike answered the question the other
+way: #903 then deleted the whole drawer surface (the ratified phone design has no drawer), and removed
+`vaul-svelte`, `bits-ui` and `@internationalized/date` with it. There is no pending port here — the
+toolchain stays for future components, not for a drawer.
 
 ## Two things to know before you copy a component in here
 

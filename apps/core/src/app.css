@@ -217,11 +217,12 @@
 	--focus: #9d7cff;
 
 	/*
-	 * SCRIMS. A black wash used to lift text off a photo or video, and to dim the page behind a sheet.
-	 * Two steps only, because the tree had grown FIVE different alphas (0.35 / 0.45 / 0.5 / 0.84 / 0.85)
-	 * for what is conceptually one effect, spelled differently in every file that wanted it.
+	 * SCRIMS. A black wash used to lift text off a photo or video.
+	 * ONE step now, because the tree had grown FIVE different alphas (0.35 / 0.45 / 0.5 / 0.84 / 0.85)
+	 * for what is conceptually one effect, spelled differently in every file that wanted it. The
+	 * lighter step (--scrim, 0.45) dimmed the page behind the queue sheet and was retired with the
+	 * drawer surface itself (#903) — its only reader was that sheet's scrim rule.
 	 */
-	--scrim: rgba(0, 0, 0, 0.45);
 	--scrim-strong: rgba(0, 0, 0, 0.85);
 
 	/* shape + depth */
@@ -271,7 +272,7 @@
 	 *
 	 * ── SPACING ───────────────────────────────────────────────────────────────────────────────────
 	 *
-	 * px, because every other dimension token here is px (--radius, --tap, --peek-h, --max-w) and
+	 * px, because every other dimension token here is px (--radius, --tap, --max-w) and
 	 * because the census's spacing literals are overwhelmingly px. The ten steps are the even values
 	 * 2..20, which carry 221 of the 316 px gap/margin/padding literals in the tree; the granularity is
 	 * 2px because that is what the codebase actually uses, not because 2px is a good design step.
@@ -418,8 +419,9 @@
 	 * ── PAINT ORDER ───────────────────────────────────────────────────────────────────────────────
 	 *
 	 * TWO LADDERS, because there are two stacking worlds and the same integer meant different things
-	 * in each: the phone's sheet sat at 9/10 while the TV's status dot and tap affordance also sat at
-	 * 9/10. Bare integers cannot say which of those a `10` is, so a reader had to reconstruct the
+	 * in each: the phone's queue sheet sat at 9/10 (retired with the drawer surface, #903) while the
+	 * TV's status dot and tap affordance also sat at 9/10. Bare integers cannot say which of those a
+	 * `10` is, so a reader had to reconstruct the
 	 * scheme from a comment in one route -- and XR-TV-10 asks for exactly this: named tiers, each used
 	 * by the layers documented for it.
 	 *
@@ -448,26 +450,28 @@
 	--z-tv-status: 9;
 	--z-tv-affordance: 10;
 	/*
-	 * THE PHONE. The dock tier is above the sheet by a wide margin (30 vs 10) because the undo and
-	 * error toasts must be reachable while the sheet is expanded -- that gap is the incumbent value and
-	 * it is load-bearing, not slack.
+	 * THE PHONE. The dock tier is 30 — a wide margin above the row-lifted tier — because the undo and
+	 * error toasts must be reachable while a row is being dragged. The gap is the incumbent value and
+	 * it is load-bearing, not slack: it was cleared over a sheet tier at 10 (retired in #903), so do
+	 * not close it up on the grounds that nothing occupies the middle now.
 	 */
 	--z-header: 1;
 	/*
 	 * A ROW LIFTED OUT OF ITS LIST while it is dragged (#836's `.moving`). Above its siblings so the
 	 * next row's surface cannot clip it mid-travel, and below every page-level chrome tier so a row
-	 * being dragged never paints over the sheet, a toast or the dock. XR-PH-04 names the lifted drag
+	 * being dragged never paints over a toast or the dock. XR-PH-04 names the lifted drag
 	 * row as a surface that must name a step rather than carry a bare integer.
 	 *
 	 * ITS ORDER AGAINST --z-header IS NOMINAL, not a paint claim: --z-header belongs to PageHeader,
 	 * which the /settings, /metrics and /stats routes mount, while the drag lives on the phone home
 	 * route, which has its own un-layered `.topbar`. The two never share a stacking context, so the
 	 * only real claim here is the one that matters — lifted sits above list siblings and below the
-	 * sheet, dock and toasts.
+	 * dock and toasts.
+	 *
+	 * --z-sheet-scrim (9) and --z-sheet (10) sat between them until #903 deleted the drawer surface
+	 * that was their only reader; the phone ladder is three rungs now, not five.
 	 */
 	--z-row-lifted: 2;
-	--z-sheet-scrim: 9;
-	--z-sheet: 10;
 	--z-dock: 30;
 
 	/*
@@ -586,10 +590,10 @@
 	 * crowding the copy beside it. JoinBadge takes this token as its `size`.
 	 */
 	--tv-qr: clamp(300px, 26vmin, 460px);
-	/* Height of the collapsed queue sheet's peek. A fallback only — QueueSheet overwrites this with the
-	   peek's MEASURED height on mount. Owned here because everything docked to the bottom (the sheet
-	   itself, the mic bar, the toasts) must agree on it or they overlap. */
-	--peek-h: 132px;
+	/* No bottom-dock height token lives here. The phone's docked band publishes its own MEASURED
+	   height as --dock-h from routes/+page.svelte (.cta-dock on home, .search-dock on browse), so
+	   there is deliberately no :root fallback to go stale against it — consumers spell the fallback
+	   inline as var(--dock-h, 0px). The band contract is documented at those two rules. */
 
 	/*
 	 * The bottom band the TV overlay CARDS own, and the lyrics reel must never enter. The join/QR
@@ -840,9 +844,9 @@ body {
 }
 
 /*
- * --max-w grows in two steps so every surface widens together. Anything docked to the bottom (queue
- * sheet, now-playing, mic bar) MUST track this token or it floats free of the content column. Width
- * alone is not the feature: the remote spends it on more columns, join keeps its form narrow.
+ * --max-w grows in two steps so every surface widens together. Anything docked to the bottom (the
+ * docked band, now-playing, mic bar) MUST track this token or it floats free of the content column.
+ * Width alone is not the feature: the remote spends it on more columns, join keeps its form narrow.
  */
 @media (min-width: 768px) {
 	:root {
@@ -929,49 +933,6 @@ body {
 .icon-btn:disabled {
 	opacity: 0.35;
 	cursor: default;
-}
-
-/*
- * SHEET CHROME — the fixed-to-bottom scrim + surface geometry. Used by the queue sheet (QueueSheet),
- * the only sheet left after name/colour editing moved to the /settings route.
- *
- * Only the CHROME lives here: there is no <Sheet> wrapper component. The queue sheet is a persistent
- * dock — its peek is always on screen, it drags, and the page behind it stays interactive — so it
- * needs no focus trap or page lock. Background, max-height and z-index stay with the sheet itself
- * rather than defaulting here, so a second sheet added later must state its own.
- */
-.sheet-scrim {
-	position: fixed;
-	inset: 0;
-	background: var(--scrim);
-}
-.sheet-surface {
-	position: fixed;
-	left: 0;
-	right: 0;
-	bottom: 0;
-	max-width: var(--max-w);
-	margin: 0 auto;
-	display: flex;
-	flex-direction: column;
-	border: 1px solid var(--line);
-	border-top-left-radius: 20px;
-	border-top-right-radius: 20px;
-	box-shadow: var(--shadow);
-	/*
-	 * SHEET-LEVEL REFLOW FLOOR (#857). `left:0; right:0` makes the containing block the viewport, so
-	 * this box's used width resolves to min(max-width, viewport). That bound is only honoured while the
-	 * content CAN shrink to it: a flex child's automatic minimum size is its min-content width, and an
-	 * unbreakable control label at 200% text (a "semitone" key button, a "Making karaoke… N%" chip)
-	 * exceeds 320px on its own — so without this the box was sized by content it could not shrink below
-	 * and resolved to 436px inside a 320px viewport (SC 1.4.10 Reflow). `min-width: 0` on the direct
-	 * children lets the flex column shrink to its containing block again, pushing the wrap decision down
-	 * to the labels themselves (which then give way — see `.key` and `.chip.state`). It is the floor the
-	 * content fixes stand on: even a label that somehow still cannot wrap can no longer widen the sheet.
-	 */
-}
-.sheet-surface > * {
-	min-width: 0;
 }
 
 /* GPU-composited motion only (transform/opacity) — never animate layout props. */

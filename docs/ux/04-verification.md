@@ -188,11 +188,23 @@ specified.
 prospective, not a live violation — which is exactly why it must be closed *before* utilities
 enter, not after.
 
+**⚠ SUBJECT RETIRED (#903) — read this block as history.** The drawer surface these numbers described
+(`QueueSheet.svelte`, `QueueSheetDrawer.svelte`, `--peek-h` and the sheet CSS) was DELETED: the
+ratified phone design has no drawer, #832 built the inline-rows/hero/docked-band home instead, and
+neither component rendered anywhere a guest could reach. The file:line citations below are therefore
+left unrepaired ON PURPOSE — the files are gone, so there is nothing to re-point them at. What survived
+is the *contract*, not the sheet: `--dock-h` (published from `routes/+page.svelte` by `.cta-dock` on
+home and `.search-dock` on browse) carries the identical invariant — the token equals the band's REAL
+rendered height, and the safe-area inset lives on the band alone so nothing above it adds a second
+`env()`. XR-VER-11 below is now measured against that band; `SHEET_CAP_FRACTION` was retired from the
+measured-design register in the same change, because nothing docked caps itself in a viewport fraction
+any more.
+
 **Incumbent values the replacement must match, not merely "cap in `dvh`":** `QueueSheet`'s sheet
-is `max-height: 82dvh` (`lib/components/QueueSheet.svelte:198`); `.peek` and `.body` both carry
-`calc(… + env(safe-area-inset-bottom, 0px))`; `--peek-h: 132px` in `app.css:162` with a
-`@media (max-height: 480px)` override to `84px` on `:root` at `routes/+page.svelte:1968` that
-`QueueSheet.svelte:60`'s inline write on `documentElement` **outranks**. AT RISK #5 is therefore a
+was `max-height: 82dvh`; `.peek` and `.body` both carried
+`calc(… + env(safe-area-inset-bottom, 0px))`; `--peek-h: 132px` in `app.css` with a
+`@media (max-height: 480px)` override to `84px` on `:root` in `routes/+page.svelte` that
+the sheet's inline write on `documentElement` **outranked**. AT RISK #5 was therefore a
 *do-not-regress*, with a number.
 
 **⚠ Two of those numbers do not reach the render, measured.** Corrected against
@@ -203,9 +215,10 @@ query MATCHES yet `--peek-h` still reads the measured height. The load-bearing i
 *`--peek-h` equals the peek's rendered height*, not any literal; a replacement drawer that publishes a
 constant satisfies every source scan and breaks every docked control that offsets from it.
 The cap measures `692.08px` of an 844px viewport and `393.6px` of a 480px one — 82.00% both times.
-(Earlier revisions of this row cited `QueueSheet.svelte:53`, which is `COMMIT_PX = 48`, and
+(Earlier revisions of this row cited `QueueSheet.svelte:53`, which was `COMMIT_PX = 48` rather than the
+inline write, and
 `(height <= 480px)`, which is range syntax the tree does not use; a probe grepping either finds
-nothing.)
+nothing. Both files are now deleted (#903), so no corrected line number is offered.)
 
 **Which is why the number itself must not be written down here.** `--peek-h` is content-measured, so
 it differs per surface and per queue depth: the #823 gate reads **91px** on `/` with an empty queue,
@@ -263,7 +276,7 @@ one of the four claims checkable. Rows below are written against the correct run
 | **Surfaces** | Phone remote, TV, operator dashboards (harness-level; surface-agnostic) |
 | **Rationale** | An honour-system invariant and a checked one are indistinguishable to a reviewer unless the harness's reach is stated. |
 | **Source** | `bunfig.toml`; `test-setup/svelte-dom-preload.ts`; `apps/core/src/lib/tv/wake-lock.test.ts:18-27`; `apps/core/e2e/cdp.mjs`, `apps/core/e2e/HARNESS.md`; happy-dom limit at `node_modules/happy-dom/lib/nodes/element/Element.js:795-798`. **DERIVED** for the two-rung split — model: a claim is decidable on a rung iff the rung implements the API the claim reads; happy-dom returns a zero `DOMRect`, therefore geometry is not decidable on rung M. |
-| **Acceptance** | **Given** the preload aliases `$app` and `$env`, **When** a test imports and mounts `apps/core/src/routes/tv/+page.svelte`, `SongRow.svelte`, `QueueRow.svelte`, `QueueSheet.svelte` and `ColourPicker.svelte`, **Then** every mount returns without throwing and `flushSync()` runs their effects. **And** a checked-in document names, per rung, at least: box geometry, clipping/overflow, `env()`, `dvh`/`vh`, computed colour, computed `font-size`, and states which rung decides each. |
+| **Acceptance** | **Given** the preload aliases `$app` and `$env`, **When** a test imports and mounts `apps/core/src/routes/tv/+page.svelte`, `SongRow.svelte`, `QueueRow.svelte` and `ColourPicker.svelte`, **Then** every mount returns without throwing and `flushSync()` runs their effects. **And** a checked-in document names, per rung, at least: box geometry, clipping/overflow, `env()`, `dvh`/`vh`, computed colour, computed `font-size`, and states which rung decides each. |
 | **Check** | The five mounts are themselves tests. The capability document is enforced by XR-VER-02, which cites it. |
 | **Priority** | **BLOCKER** — migration cannot begin without it; four at-risk concerns are undecidable until it lands. |
 
@@ -411,13 +424,13 @@ what is measured.
 
 | | |
 |---|---|
-| **Statement** | The bottom sheet's maximum height resolves against the *visual* viewport and its screen-edge padding includes the bottom safe-area inset, measured on a real render. |
+| **Statement** | The bottom-docked band's published height equals its real rendered height, and its screen-edge padding includes the bottom safe-area inset, measured on a real render. |
 | **Surfaces** | Phone remote |
-| **Rationale** | A cap in `vh` overshoots by the browser-chrome height, and a dropped inset breaks clearance app-wide, because `--peek-h` is the contract every docked control offsets from. |
-| **Source** | Incumbent values read from source: `max-height: 82dvh`; `.peek` and `.body` both `calc(… + env(safe-area-inset-bottom, 0px))`; `--peek-h: 132px` written inline on `documentElement` by `QueueSheet.svelte:53`, outranking the `@media (height <= 480px)` `:root` override to `84px`. Base UI's drawer default `calc(100dvh - 6rem)` is cited in `encore-redesign-decision.md` as the API bar. |
-| **Acceptance** | **Given** the sheet opened on a real render at 390×844, **When** its resolved height is compared against `window.innerHeight`, **Then** the cap tracks the visual viewport and the resolved value is ≤ 82 % of it. **And When** the sheet's bottom padding is read, **Then** it exceeds its non-inset component by the inset value under a simulated non-zero `env(safe-area-inset-bottom)`. **And When** `--peek-h` is read from `documentElement`, **Then** every docked control's offset resolves from that same value rather than a literal. |
-| **Check** | Rung L only — `dvh`, `env()` and the inline-vs-stylesheet cascade are all unresolvable on rung M. A replacement drawer is measured against these numbers, not merely inspected for the word `dvh`. |
-| **Priority** | **MUST** — the densest concentration of at-risk **files** (5 of the 19-file at-risk bucket; the QueueSheet sheet-cap concern alone spans several cases) and the one component the library actually replaces. |
+| **Rationale** | A cap in `vh` overshoots by the browser-chrome height, and a dropped inset breaks clearance app-wide, because the published band token is the contract every docked control offsets from. |
+| **Source** | **RE-POINTED BY #903.** This rule was written against the queue sheet, whose incumbent values were `max-height: 82dvh`, `.peek` and `.body` both `calc(… + env(safe-area-inset-bottom, 0px))`, and `--peek-h: 132px` written inline on `documentElement`, outranking a `:root` override to `84px`. That surface was deleted (no drawer in the ratified design; nothing a guest could reach), so the sheet-cap half is retired — `SHEET_CAP_FRACTION` left the measured-design register with it, because nothing docked caps itself in a viewport fraction now. What remains, and what the gate measures, is the band contract on `.cta-dock` / `.search-dock`: `--dock-h` equals the band's real rendered `clientHeight`, and the band alone carries `env(safe-area-inset-bottom)`, which reaches the toasts THROUGH that token. |
+| **Acceptance** | **Given** the phone home on a real render at 390×844, **When** `--dock-h` is read from `documentElement` and compared against the band's rendered height, **Then** they are equal and every docked control's offset resolves from that same value rather than a literal. **And When** the band's bottom padding is read, **Then** it exceeds its non-inset component by the inset value under a simulated non-zero `env(safe-area-inset-bottom)`. |
+| **Check** | Rung L only — `dvh`, `env()` and the inline-vs-stylesheet cascade are all unresolvable on rung M. A future docked band is measured against these numbers, not merely inspected for the word `dvh`. |
+| **Priority** | **MUST** — the band is what every other docked control (undo toast, error toast) positions against, so a broken publish silently mis-docks all of them. |
 
 ### XR-VER-12 — The focus indicator's form is verified as an outline in the focus token, on every surface it can appear on
 
@@ -477,6 +490,12 @@ what is measured.
 
 ### XR-VER-16 — The copied drawer's animation mechanism is established from its source, not inferred from its styling hooks
 
+**⚠ MOOT SINCE #903 — no drawer will be adopted.** This rule and XR-VER-17 below were gates *on
+adoption* of a `vaul-svelte`/shadcn drawer. #903 deleted the drawer surface outright and removed
+`vaul-svelte`, `bits-ui` and `@internationalized/date`, so there is no copied source to grep and no
+adoption to gate. Both are kept as the record of what adoption WOULD have had to prove, and neither is
+an open action. `src/lib/components/ui/` remains deliberately empty.
+
 | | |
 |---|---|
 | **Statement** | Before the drawer is adopted, a written finding records — from the copied source — whether it animates via CSS on data attributes or via Svelte's transition directives, and names the file and line the finding rests on. |
@@ -491,10 +510,10 @@ what is measured.
 
 | | |
 |---|---|
-| **Statement** | A written determination records whether the chosen drawer exposes snap points, and if it does not, which mechanism carries the peek state that `--peek-h` currently implements. |
+| **Statement** | A written determination records whether the chosen drawer exposes snap points, and if it does not, which mechanism carries the peek state that `--peek-h` implemented. (Moot since #903 — see XR-VER-16.) |
 | **Surfaces** | Phone remote |
 | **Rationale** | `--peek-h` is exactly a snap point and it is the contract every other docked control offsets from, so a drawer without snap points is not a drop-in for the one component the library actually replaces. |
-| **Source** | `encore-design-handoff.md` §1 ("Check whether snap points are exposed; Encore's `--peek-h` is exactly a snap point") — shadcn-svelte's drawer page does **not** document them, per `encore-redesign-decision.md` §1's table. Incumbent value `--peek-h: 132px`, written inline at `QueueSheet.svelte:53`. |
+| **Source** | `encore-design-handoff.md` §1 ("Check whether snap points are exposed; Encore's `--peek-h` is exactly a snap point") — shadcn-svelte's drawer page does **not** document them, per `encore-redesign-decision.md` §1's table. Incumbent value was `--peek-h: 132px`, written inline on `documentElement` by the queue sheet (deleted in #903). |
 | **Acceptance** | **Given** the drawer's copied source and its published API, **When** a determination is written, **Then** it states either (a) the snap-point API's name and that a two-state peek/expanded configuration reproduces the measured 132 px peek, or (b) that no snap-point API exists, plus the named mechanism that replaces `--peek-h` and the list of docked controls re-pointed at it. |
 | **Check** | `EXEMPT` from automated checking — the judgment is whether a given API reproduces the peek contract, which no test can decide. The **existence** of the determination is checkable and is what XR-VER-13's register records. |
 | **Priority** | **MUST** before adoption |

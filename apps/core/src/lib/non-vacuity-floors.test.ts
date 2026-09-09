@@ -103,6 +103,15 @@ const FLOORS: Record<string, Floor[]> = {
 				'the repo-wide task-number walk; an unanchored `git ls-files` returning nothing passed with zero files scanned'
 		}
 	],
+	'apps/core/src/lib/drawer-surface-removed-903.test.ts': [
+		{
+			subject: 'scanned',
+			min: 100,
+			count: 1,
+			guards:
+				'the production-file walk behind the #903 deletion guard. The scan proves no live code imports the deleted drawer components, reads the retired --peek-h / --z-sheet tiers, or declares the sheet chrome — and it reports an empty offenders array both when the tree is genuinely clean AND when it read nothing (a wrong root, a broken extension filter, a test-file exclusion that swallowed the walk), so this counts what was actually opened. It REPLACES the `scanned` floor retired from design-system.test.ts in the same change: one population-counting floor out, one in'
+		}
+	],
 	'apps/core/src/lib/icon-centring.test.ts': [
 		{ subject: 'FILES.length', min: 7, count: 1, guards: 'the icon-centring components + routes walk' }
 	],
@@ -158,7 +167,6 @@ const FLOORS: Record<string, Floor[]> = {
 		{ subject: 'FILES.length', min: 15, count: 1, guards: 'the design-system source walk' },
 		{ subject: 'seen', min: 2, count: 1, guards: 'the rules examined by the token-duplication scan' },
 		{ subject: 'checked', min: 3, count: 1, guards: 'the surfaces examined by the surface-token scan' },
-		{ subject: 'scanned', min: 1, count: 1, guards: 'the sheets examined by the sheet-level scan' },
 		{
 			subject: 'bridgeRefsScanned',
 			min: 200,
@@ -215,10 +223,10 @@ const FLOORS: Record<string, Floor[]> = {
 		},
 		{
 			subject: 'rungsChecked',
-			min: 11,
+			min: 10,
 			count: 1,
 			guards:
-				'the adjacent-tier comparisons behind the ladder-ordering assertion (#829). This is what still pins #424/#473 — their guards used to assert the literals 7/8/10 and now assert tier NAMES, so the order itself is only checked here'
+				'the adjacent-tier comparisons behind the ladder-ordering assertion (#829). This is what still pins #424/#473 — their guards used to assert the literals 7/8/10 and now assert tier NAMES, so the order itself is only checked here. LOWERED 11 -> 10 by #903, loudly and on the record (XR-VER-06): the INVARIANT is unchanged, the POPULATION shrank. --z-sheet-scrim (9) and --z-sheet (10) were the queue sheet\u2019s two tiers, and the drawer surface that was their only reader was deleted, so the phone ladder went from five tiers (four rungs) to three (two rungs) while TV\u2019s eight rungs are untouched. Nothing became unenforced: the sibling `unplaced` assertion still proves NO z-* token escapes a ladder, so a re-added sheet tier reds there rather than joining un-ordered'
 		},
 		{
 			subject: 'literalsFound',
@@ -297,7 +305,27 @@ const FLOORS: Record<string, Floor[]> = {
  * absent from the file, so an entry cannot be parked here while a weakened version of the same floor
  * stays in the source.
  */
-const RETIRED: Record<string, { subject: string; reason: string }[]> = {};
+const RETIRED: Record<string, { subject: string; reason: string }[]> = {
+	'apps/core/src/lib/design-system.test.ts': [
+		{
+			subject: 'scanned',
+			reason:
+				'RETIRED BY #903 with the guard it floored: `a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets (#301)`. XR-VER-06 record. (a) The invariant: an inline-arrow onkeydown that cancels the event must early-return on `e.target !== e.currentTarget`, so a key pressed on a child control is not swallowed by its host. (b) What left scope: its ENTIRE population. QueueSheet.svelte and QueueSheetDrawer.svelte were measured to be the only two files under apps/core/src matching an inline-arrow onkeydown that calls preventDefault(, and both were deleted with the drawer surface — so the scan would have examined 0 files and this floor (>= 1) would have fired every run. (c) What covers it now: NOTHING, because there is nothing left to cover — no surviving surface has a preventDefault-ing inline keydown host. The floor was doing its job by firing; it is retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires. If such a host reappears, restore the guard AND this floor together rather than reviving one alone.'
+		},
+		{
+			subject: 'the dvh sheet-cap scan (every bottom-docked sheet caps its height in dvh, not vh)',
+			reason:
+				'RETIRED BY #903. The guard looped over a hardcoded list of exactly two files — QueueSheet.svelte and QueueSheetDrawer.svelte — asserting each declared a max-height in dvh/svh and none in vh (iOS resolves vh against the LARGE viewport, so a vh-capped sheet hides its own footer while the URL bar shows). Both files were deleted, so the list is empty and there is NO successor address: the only viewport-unit cap left under apps/core/src is lib/tv/TvLobby.svelte\u2019s `max-height: 20vh`, a TV surface, in vh — re-pointing there would INVERT the assertion into a failure. Its PENDING_RULING said RE-ANCHOR, DO NOT DELETE, and that ruling was correct for what it anticipated: a PORT, where the sheet still existed at a new address. This is a REMOVAL, so there is no address to move to and nothing is being laundered away — no surface docked to the bottom caps itself in a viewport fraction any more. SHEET_CAP_FRACTION was retired from the measured-design register in the same commit for the same reason.'
+		}
+	],
+	'apps/core/src/lib/phone-reflow-rung-l.test.ts': [
+		{
+			subject: 'the sheet-level reflow floor (.sheet-surface > * min-width: 0, #857)',
+			reason:
+				'RETIRED BY #903. XR-VER-06 record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width, viewport) while its flex children CAN shrink to it, because a flex child\u2019s automatic minimum is its min-content width — an unbreakable control label at 200% text sized the sheet by content it could not shrink below (436px inside a 320px viewport, SC 1.4.10 Reflow). (b) What left scope: `.sheet-surface` and its children, the only box the rule ever dressed, deleted with the drawer surface. (c) What covers the survivors: nothing asserts this on the docked band, DELIBERATELY. `.cta-dock` / `.search-dock` are a flex row holding ONE 44px control rather than a column of unbreakable labels, and neither declares min-width: 0 — so re-pointing the scan at them would assert a declaration that does not exist and demand production CSS for a defect nobody has measured. The band\u2019s reflow is covered where it is real: the rung-L probe arms measure the live pages at 320 CSS px and 200% text and FAIL on overflow. If a future band grows a multi-control column, add a floor for that band rather than reviving this one.'
+		}
+	]
+};
 
 /**
  * Guards whose premise a KNOWN, PLANNED change will invalidate, with the call made in advance.
@@ -310,18 +338,18 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {};
  * this record, that mismatch reds — so a stale ruling cannot sit here looking authoritative.
  */
 const PENDING_RULING: { file: string; anchor: string; ruling: string }[] = [
-	{
-		file: 'apps/core/src/lib/design-system.test.ts',
-		anchor: 'RECORDED RULING FOR THE QUEUESHEET DRAWER PORT (#827)',
-		ruling:
-			'A vaul/shadcn drawer port takes two design-system assertions out of scope at once: the dvh sheet-cap ' +
-			'scan and the `.peek` env(safe-area-inset-bottom) scan, because shadcn copies 12 drawer files with ' +
-			'zero <style> blocks and vaul writes the sheet offset as an inline transform from JS. Both fail ' +
-			'LOUDLY (caps.length > 0, and a non-null `.peek` rule match), so neither can pass vacuously. ' +
-			'Ruling: RE-ANCHOR, DO NOT DELETE — the #827 spike measured all four incumbent numbers still ' +
-			'holding on the port, so only their address changes, not their truth. Re-point both scans at the ' +
-			"port's own CSS file and keep the list shape. RETIRED is the wrong home: nothing is being given up."
-	},
+	/*
+	 * RESOLVED AND REMOVED BY #903 — the QueueSheet drawer-port ruling that lived here.
+	 *
+	 * Its anchor was `RECORDED RULING FOR THE QUEUESHEET DRAWER PORT (#827)` in design-system.test.ts,
+	 * and its call was RE-ANCHOR, DO NOT DELETE for the dvh sheet-cap scan and the `.peek` env() scan.
+	 * That call was right for the change it anticipated — a PORT, where both sheets still existed at a
+	 * new address. What actually happened was a REMOVAL: #903 deleted the drawer surface outright, so
+	 * the dvh scan had no address left to move to and was retired (see RETIRED, with its reason), while
+	 * the `.peek` env() scan DID have a live successor and was re-anchored to the docked bands
+	 * (`.cta-dock` / `.search-dock`) rather than dropped — which is the half of the ruling that
+	 * survived contact. Both outcomes are on the record; this entry is gone because its anchor is.
+	 */
 	{
 		file: 'apps/core/src/lib/contrast.test.ts',
 		anchor: 'RECORDED RULING FOR THE PALETTE MIGRATION',
@@ -394,6 +422,11 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// `literalsFound` floor, and +1 for #859's `mintSurfaces` floor on the XR-COL-14 colour ban
 	// (tailwind-toolchain.test.ts), giving 40. Measured the way this comment prescribes, not counted:
 	// raised absurdly high, read `Received: 40`.
+	// -1 for #903 retiring design-system.test.ts's `scanned` floor to RETIRED (its guard's entire
+	// population was the two deleted drawer components), and +1 for the `scanned` floor on the #903
+	// deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
+	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
+	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
 	expect(located).toBeGreaterThanOrEqual(40);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });

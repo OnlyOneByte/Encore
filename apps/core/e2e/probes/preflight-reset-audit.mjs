@@ -204,7 +204,7 @@ try {
 			// a session-gated surface must not be measured as its /join redirect
 			const landed = await page.evaluate('location.pathname');
 			if (s.join && landed !== s.url) throw new Error(`redirected to ${landed} — join did not take`);
-			// settle: fonts, the socket's first frame, and any mount-time style write (--peek-h etc.)
+			// settle: fonts, the socket's first frame, and any mount-time style write (--dock-h etc.)
 			await sleep(2500);
 			const data = await page.evaluate(READ);
 			result.surfaces[s.name] = { url: s.url, vp: s.vp, ...data };

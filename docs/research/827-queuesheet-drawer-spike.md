@@ -1,5 +1,15 @@
 # Spike · QueueSheet on the shadcn/vaul drawer (#827)
 
+> **⚠ SUPERSEDED BY #903 — this document is history, not a plan.** Its verdict ("GO on the drawer") was
+> never acted on, and the question it answered is closed the other way: the ratified phone design has no
+> drawer, #832 built the inline-rows/hero/docked-band home instead, and neither `QueueSheet.svelte` nor
+> the `QueueSheetDrawer.svelte` port ever rendered anywhere a guest could reach — both existed only in
+> the `/components` gallery. #903 deleted the whole drawer surface along with `vaul-svelte`, `bits-ui`
+> and `@internationalized/date`. The file:line citations below are left UNREPAIRED on purpose: the files
+> are gone, so there is nothing to re-point them at, and the measurements are kept because they are the
+> evidence for the decision. The band contract these numbers circle around survives as `--dock-h` on
+> `.cta-dock` / `.search-dock` in `routes/+page.svelte`.
+
 **Verdict: GO on the drawer, with two costs to accept and one number that will change.** All four
 do-not-regress values hold exactly on the port, snap points work under a real pointer drag, and the
 motion is CSS. What the port costs is guard coverage (already ruled on: #827 Q1 · C) and a sheet that

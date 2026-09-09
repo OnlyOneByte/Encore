@@ -7,8 +7,6 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import type { SongProfile } from '@encore/shared';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
-	import QueueSheet from '$lib/components/QueueSheet.svelte';
-	import QueueSheetDrawer from '$lib/components/QueueSheetDrawer.svelte';
 	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 	import { positionWords } from '$lib/position-sentence';
@@ -34,7 +32,6 @@
 	const VIOLET = SINGER_COLORS[0];
 	const PINK = SINGER_COLORS[1];
 	const GREEN = SINGER_COLORS[2];
-	const SKY = SINGER_COLORS[4];
 	/*
 	 * Named for the #634 highlight cards. Mint is the pick there rather than another violet because the
 	 * cards need a singer colour that can be COLLIDED with a stage colour convincingly — a mid-tone teal
@@ -366,36 +363,10 @@
 		return () => cancelAnimationFrame(raf);
 	});
 
-	// FIXTURE: a stand-in singer for the profile sheet — this is DATA, not styling. The colour is a
-	// singer's chosen accent, deliberately a literal.
-	// The picker and the sheet are bindable/stateful. Keep the gallery interactive so their real
-	// behaviour (preset-vs-slider agreement, open/close, drag) can be exercised, not just posed. The
-	// sheet defaults CLOSED so it does not cover the gallery it is being reviewed in — the toggle
-	// button opens it on demand instead.
+	// FIXTURE: a stand-in singer's chosen accent — this is DATA, not styling, deliberately a literal.
+	// The picker is bindable/stateful. Keep the gallery interactive so its real behaviour
+	// (preset-vs-slider agreement) can be exercised, not just posed.
 	let demoColour = $state(VIOLET);
-	let queueOpen = $state(false);
-	/*
-	 * SPIKE #827. `?spike827=drawer` swaps the incumbent QueueSheet for the vaul-svelte port. It is a
-	 * SWAP, not an addition: both are bottom-docked and `position: fixed`, so rendering them together
-	 * would stack one over the other and every geometry number measured would be of the wrong element.
-	 * Nothing else references the drawer variant, so the default gallery is unchanged.
-	 *
-	 * READ FROM `location`, NOT `$app/state`, and this is load-bearing rather than a style choice.
-	 * `mount-rung.test.ts` imports every component that imports a `$app/*` or `$env/*` module, and
-	 * `vaul-svelte@1.0.0-next.7` publishes `exports: { ".": { types, svelte } }` with NO `default` entry
-	 * — a condition `bun test` does not apply — so ANY component that transitively imports the drawer
-	 * cannot be loaded under the unchanged `bun test`, and the failure reads as a missing dependency
-	 * while the app builds fine. Importing `$app/state` here would therefore have dragged this whole
-	 * route into the mount rung and reddened the gate. See docs/research/827-queuesheet-drawer-spike.md;
-	 * a real port has to solve that (measured remedy: `bun test --conditions=svelte`) before it lands.
-	 */
-	let spikeDrawer = $state(false);
-	// Read once at init rather than in an $effect: on the client, component init IS hydration, so the
-	// value is right on the first render and there is no second pass to reconcile. On the server
-	// `location` does not exist and the default (the incumbent) stands.
-	if (typeof location !== 'undefined') {
-		spikeDrawer = new URLSearchParams(location.search).get('spike827') === 'drawer';
-	}
 </script>
 
 <main style="padding:14px 16px 200px;">
@@ -768,54 +739,14 @@
 		the surface to review is that route rather than a component in isolation.
 	-->
 
-	<h2 class="section">QueueSheet · docked now-playing, pullable to the rotation</h2>
-	<!-- The bottom-docked queue sheet. The button toggles it; open it to see the filled peek (song /
-	     singer / position / seek row) and the rotation body via the children snippet. It is
-	     position:fixed and pins itself to the bottom of the viewport. -->
-	<button class="btn-accent" onclick={() => (queueOpen = !queueOpen)}>Toggle QueueSheet</button>
-	{#if spikeDrawer}
-		<!-- SPIKE #827 · the vaul-svelte port, reached only via ?spike827=drawer -->
-		<QueueSheetDrawer
-			open={queueOpen}
-			title="Bohemian Rhapsody"
-			sub="Maya is singing"
-			position="You're #3 · after Liam"
-			queueCount={3}
-			elapsedSec={82}
-			durationSec={358}
-			ontoggle={(v) => (queueOpen = v)}
-		>
-			{#snippet listHeader()}
-				<!-- Pinned pane (#791): the per-song controls and the list heading stay put while the rows
-				     below scroll. GuidingTrack stands in for the full control group. -->
-				<GuidingTrack pct={40} available oninput={() => {}} oncommit={() => {}} />
-				<h3 style="margin:var(--space-md) 0 var(--space-2xs);font-size:var(--ph-text-sm)">Up next</h3>
-			{/snippet}
-			<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
-			<QueueRow seq={2} title="Sweet Caroline" singerName="Liam" singerColor={SKY} />
-			<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
-		</QueueSheetDrawer>
-	{:else}
-		<QueueSheet
-			open={queueOpen}
-			title="Bohemian Rhapsody"
-			sub="Maya is singing"
-			position="You're #3 · after Liam"
-			queueCount={3}
-			elapsedSec={82}
-			durationSec={358}
-			ontoggle={(v) => (queueOpen = v)}
-		>
-			{#snippet listHeader()}
-				<!-- Pinned pane (#791): controls + heading, fixed while the rows scroll. -->
-				<GuidingTrack pct={40} available oninput={() => {}} oncommit={() => {}} />
-				<h3 style="margin:var(--space-md) 0 var(--space-2xs);font-size:var(--ph-text-sm)">Up next</h3>
-			{/snippet}
-			<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
-			<QueueRow seq={2} title="Sweet Caroline" singerName="Liam" singerColor={SKY} />
-			<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
-		</QueueSheet>
-	{/if}
+	<!--
+		QueueSheet's and QueueSheetDrawer's demos lived here. Both were retired with the drawer surface
+		itself (#903): the ratified phone design has no drawer, #832 built the inline-rows/hero/docked-band
+		home instead, and the gallery was the only place either component still rendered — so a fix landed
+		here reached no guest. The band contract they carried now lives on .cta-dock / .search-dock in
+		routes/+page.svelte, which publish --dock-h; see docs/research/827-queuesheet-drawer-spike.md for
+		the vaul port spike this also retires.
+	-->
 
 	<h2 class="section">LyricsOverlay (TV) · VERIFIED text</h2>
 	<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
