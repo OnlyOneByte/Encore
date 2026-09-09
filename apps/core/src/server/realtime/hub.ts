@@ -226,6 +226,22 @@ export function validateCommand(cmd: ClientCommand, deps: HubDeps): string | nul
 			}
 			return null;
 		}
+		case 'move-to-index': {
+			// Cross-singer reorder (#856 step 4). `toIdx` is a position in the WHOLE queued list, so moving
+			// ANOTHER singer's entry jumps them — precisely what `queue:reorder-any` gates (issue #241, same
+			// scope as the `move` arm). Reordering your OWN entry to a global slot needs no capability.
+			const target = deps.state.entries.find((e) => e.id === op.id);
+			if (!target) return `unknown entry: ${op.id}`;
+			// Shape guard at the seam, like the add-arm guards: `toIdx` is client-minted and drives a splice
+			// index. moveToIndex clamps it, so a garbage value cannot corrupt state or the flush (rotationSeq
+			// is always renumbered contiguous), but reject a non-integer early rather than silently clamp a
+			// NaN/object to 0 — a frame that cannot mean a real position is a malformed frame.
+			if (!Number.isInteger(op.toIdx)) return `invalid toIdx: ${String(op.toIdx)}`;
+			if (target.singerId !== deps.actorSingerId) {
+				if (!can({ singerId: deps.actorSingerId }, 'queue:reorder-any')) return 'not allowed to reorder this entry';
+			}
+			return null;
+		}
 		case 'status':
 			// SERVER-OWNED, never accepted from the wire. The only two producers of a `status` op in the
 			// whole repo are the server itself — player.ts beginSinging ('playing') and advance ('done') —

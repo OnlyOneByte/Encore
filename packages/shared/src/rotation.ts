@@ -77,15 +77,20 @@ export function isTerminal(e: QueueEntry): boolean {
  * `ordering` must be the SAME on both sides, and matters for ONE op: `add`, where it picks the insert
  * index. Every other op rewrites or trims the stored list, which needs no policy at all.
  *
- * `add` and `move` are the two arms that do not go through `applyOp`: an add has to be PLACED by the
- * policy rather than appended, and a move has to rewrite the stored list rather than set a raw seq
- * that the next renumber would overwrite.
+ * `add`, `move` and `move-to-index` are the arms that do not go through `applyOp`: an add has to be
+ * PLACED by the policy rather than appended, and both moves rewrite the stored list rather than set a
+ * raw seq that the next renumber would overwrite.
  */
 export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Ordering = {}): QueueEntry[] {
 	if (op.op === 'add') {
 		return insertEntry(entries, op.entry, ordering).filter((e) => !isTerminal(e));
 	}
-	const applied = op.op === 'move' ? reorderWithinSinger(entries, op.id, op.toSeq) : applyOp(entries, op);
+	const applied =
+		op.op === 'move'
+			? reorderWithinSinger(entries, op.id, op.toSeq)
+			: op.op === 'move-to-index'
+				? moveToIndex(entries, op.id, op.toIdx)
+				: applyOp(entries, op);
 	return assignSeqs(applied.filter((e) => !isTerminal(e)), ordering);
 }
 
@@ -100,7 +105,8 @@ export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Orde
  *
  * The move permutes the singer's songs among the stored slots THAT SINGER ALREADY HOLDS, so the two
  * songs swap places and nobody else's row shifts. That is the stored-list form of what the stamp
- * permutation did before. A global "move to any index" op is #856 step 4; this stays own-picks only.
+ * permutation did before. A global "move to any index" is the sibling `moveToIndex` (#856 step 4);
+ * this one stays own-picks only.
  */
 export function reorderWithinSinger(entries: QueueEntry[], id: string, toIdx: number): QueueEntry[] {
 	const stored = storedOrder(entries);
@@ -128,6 +134,29 @@ export function reorderWithinSinger(entries: QueueEntry[], id: string, toIdx: nu
 }
 
 // ── stored-list plumbing ─────────────────────────────────────────────────────
+
+/**
+ * Move one entry to index `toIdx` in the WHOLE queued list, by rewriting the stored list. This is the
+ * cross-singer reorder: unlike `reorderWithinSinger`, the target index counts EVERY queued entry, so a
+ * host can move any song to any global slot (#856 step 4, #828 Q4-A). No pin — the stored list is the
+ * source of truth, so the move sticks by construction and re-derivation reproduces it.
+ *
+ * Only the queued rows move; a playing/terminal entry keeps its slot (it never occupies a queued
+ * index). `toIdx` is clamped into the queued range so the rule is TOTAL — an out-of-range index lands
+ * at the nearest end rather than dropping the entry. PURE and DETERMINISTIC: reads only the stored
+ * order and the id, so the phone's optimistic prediction and the server's commit are identical.
+ */
+export function moveToIndex(entries: QueueEntry[], id: string, toIdx: number): QueueEntry[] {
+	const stored = storedOrder(entries);
+	const { slots, queued } = splitQueued(stored);
+	const from = queued.findIndex((e) => e.id === id);
+	if (from === -1) return entries.slice(); // unknown, or not queued (e.g. playing) — no-op
+	const clamped = Math.max(0, Math.min(toIdx, queued.length - 1));
+	if (clamped === from) return entries.slice(); // already there
+	const nextQueued = queued.slice();
+	nextQueued.splice(clamped, 0, nextQueued.splice(from, 1)[0]!);
+	return renumber(weave(stored, slots, nextQueued));
+}
 
 /** The queued rows and the slots they occupy in the stored list. Everything else holds its slot. */
 function splitQueued(stored: QueueEntry[]): { slots: number[]; queued: QueueEntry[] } {

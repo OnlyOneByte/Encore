@@ -291,3 +291,25 @@ test('a lower-rev queue:patch does NOT rewind rev, and the next real patch still
 	expect(store.rev).toBe(11);
 	expect(store.entries.map((e) => e.id)).toEqual(['z']);
 });
+
+// #856 step 4: moveToIndex emits a `move-to-index` op (a GLOBAL queued index, crossing singers) and
+// applies it optimistically this frame through the same applyAndReseq reducer the server runs.
+test('moveToIndex emits move-to-index and pulls the entry to the global index this frame', () => {
+	const { store, sent } = makeStore();
+	// two entries from DIFFERENT singers, settled via server sync (we are not adding our own).
+	store.onServerEvent({
+		type: 'queue:sync',
+		rev: 1,
+		entries: [
+			{ id: 'a1', mediaId: 'ma', singerId: 'alice', status: 'queued', rotationSeq: 0, addedAt: 1 },
+			{ id: 'b1', mediaId: 'mb', singerId: 'bob', status: 'queued', rotationSeq: 1, addedAt: 2 }
+		]
+	});
+	// move bob's b1 to the front — a cross-singer reorder `move` cannot express.
+	store.moveToIndex('b1', 0);
+	const last = sent.at(-1)!;
+	expect(last.op.op).toBe('move-to-index');
+	expect(last.op).toMatchObject({ op: 'move-to-index', id: 'b1', toIdx: 0 });
+	expect(store.entries[0]!.id).toBe('b1'); // landed at the front optimistically this frame
+	expect(store.pendingKindById.get('b1')).toBe('move'); // shown as a pending reorder, not an add
+});

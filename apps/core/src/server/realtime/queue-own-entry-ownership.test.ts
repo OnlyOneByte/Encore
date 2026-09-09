@@ -80,6 +80,25 @@ test('with the current policy a singer may reorder SOMEONE ELSE\u2019S entry (st
 	expect(validateCommand(cmd({ op: 'move', id: 'other1', toSeq: 0 }), harness())).toBeNull();
 });
 
+// #856 step 4: move-to-index is the CROSS-SINGER reorder. Same ownership scope as `move` — own entry
+// needs no capability, another singer's is gated on queue:reorder-any (reachable under today's can()).
+test('with the current policy a singer may move-to-index their OWN entry', () => {
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'own1', toIdx: 0 }), harness())).toBeNull();
+});
+
+test('with the current policy a singer may move-to-index SOMEONE ELSE\u2019S entry across singers', () => {
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'other1', toIdx: 0 }), harness())).toBeNull();
+});
+
+test('move-to-index rejects a non-integer toIdx at the seam', () => {
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'own1', toIdx: 1.5 }), harness())).toBe('invalid toIdx: 1.5');
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'own1', toIdx: NaN as number }), harness())).toBe('invalid toIdx: NaN');
+});
+
+test('move-to-index on an unknown entry rejects before any ownership/capability check', () => {
+	expect(validateCommand(cmd({ op: 'move-to-index', id: 'ghost', toIdx: 0 }), harness())).toBe('unknown entry: ghost');
+});
+
 test('an unknown entry rejects before any ownership/capability check', () => {
 	expect(validateCommand(cmd({ op: 'remove', id: 'ghost' }), harness())).toBe('unknown entry: ghost');
 });
@@ -172,4 +191,11 @@ test("the 'move' arm reaches can('queue:reorder-any') only for a NON-owner entry
 	const canCall = "can({ singerId: deps.actorSingerId }, 'queue:reorder-any')";
 	expect(arm.indexOf(canCall)).toBeGreaterThan(-1);
 	expect(canGatedByOwnership(arm, canCall)).toBe(true);
+});
+
+test("the 'move-to-index' arm reaches can('queue:reorder-any') only for a NON-owner entry", () => {
+	const arm = switchArm(hubSrc, 'move-to-index');
+	const canCall = "can({ singerId: deps.actorSingerId }, 'queue:reorder-any')";
+	expect(arm.indexOf(canCall)).toBeGreaterThan(-1); // non-vacuous: the gate must be present
+	expect(canGatedByOwnership(arm, canCall)).toBe(true); // owner never reaches can()
 });
