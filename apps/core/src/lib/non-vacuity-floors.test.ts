@@ -210,6 +210,13 @@ const FLOORS: Record<string, Floor[]> = {
 			count: 1,
 			guards:
 				'the adjacent-tier comparisons behind the ladder-ordering assertion (#829). This is what still pins #424/#473 — their guards used to assert the literals 7/8/10 and now assert tier NAMES, so the order itself is only checked here'
+		},
+		{
+			subject: 'literalsFound',
+			min: 7,
+			count: 1,
+			guards:
+				'the @media width-literal walk behind the breakpoint-membership guard (#852). The scan derives its scope by walking apps/*/src + packages/*/src, so an emptied walk would report zero non-member widths from zero readings — seven `@media` width queries exist today'
 		}
 	],
 	'apps/core/src/lib/tv/stage-scale.test.ts': [
@@ -374,9 +381,10 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// eye: temporarily raise this literal absurdly high, run this file alone, and read `Received: N`.
 	// 38 as of #829 (29 on its base once #831 added `boxRulesSeen`; +9 for the nine enumerating scans
 	// #829 adds to design-system.test.ts — five dimension-duplication scans, the two @theme bridge scans,
-	// the ladder-ordering rungs, and the phone-ladder-on-TV ban). Measured the way this comment
-	// prescribes, not counted: raised absurdly high, read `Received: 38`.
-	expect(located).toBeGreaterThanOrEqual(38);
+	// the ladder-ordering rungs, and the phone-ladder-on-TV ban). +1 for #852's breakpoint-membership
+	// `literalsFound` floor, giving 39. Measured the way this comment prescribes, not counted: raised
+	// absurdly high, read `Received: 39`.
+	expect(located).toBeGreaterThanOrEqual(39);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 
