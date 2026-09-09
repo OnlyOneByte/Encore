@@ -325,6 +325,151 @@ def line_starts(doc: dict[str, Any]) -> list[float]:
     return [float(ln["start"]) for ln in lines if isinstance(ln.get("start"), (int, float))]
 
 
+# ── placing the LRC on THIS audio's timeline, BEFORE it is aligned (#794) ───────────────────────────
+#
+# The wrong-version check above (`lrc_fit_notes`) runs AFTER alignment, and #794 showed why that is not
+# enough on its own: the aligner is confined to the LRC's own line windows (`steps/lyrics.py` hands it
+# `align_windows`/`segments`, and `whisperx.align` crops the audio per segment), so an upload whose
+# vocal starts LATER than the LRC's master — an added intro, a talk-over, `bad guy`'s quiet whispered
+# pre-section — is aligned against the wrong span and publishes confident, EARLY word times. The
+# post-align fit cannot see it, because it compares the aligner's output against the very windows that
+# bounded that aligner: a self-comparison that manufactures the agreement it reports.
+#
+# Owner ruling 2026 (issue #794, Q1-A): estimate the LRC→audio offset from a series the LRC did NOT
+# bound — the Whisper baselines `AcquireTexts` measured on THIS audio (the vocals stem and the mix) —
+# and shift the LRC's line windows onto this recording BEFORE handing them to the aligner. Then the
+# aligner searches the right span, and the post-align fit stops being a self-comparison.
+#
+# The estimator reuses the Theil-Sen `fit_lrc_to_aligned` (offset absorbs the intro difference, scale a
+# tempo difference, and a minority of mis-paired lines cannot drag the fit). What it CANNOT reuse is the
+# positional/exact-text pairing the post-align fit uses: a baseline is Whisper's own segmentation of
+# GUESSED words on this audio, so it neither has the LRC's line count nor echoes its text. So a fuzzy
+# token-overlap pairing runs first, matching each LRC line to the baseline line it best overlaps.
+
+
+@dataclass
+class LrcShift:
+    """The estimated placement of an LRC onto THIS audio's timeline, from a baseline the LRC did not bound.
+
+    `applied` is the gate the step reads: only a confident, non-trivial shift is worth moving the
+    aligner's search windows for. A shift the estimator could not measure (too few paired lines, a
+    degenerate baseline) leaves `offset_sec == 0.0`, `applied == False` and the windows untouched, so
+    the fix can only ever HELP the mis-placed case and is a no-op on every song that was already placed.
+    """
+
+    offset_sec: float = 0.0
+    scale: float = 1.0
+    pairs: int = 0
+    applied: bool = False
+
+
+#: A |offset| below this is noise, not a real intro difference — do not perturb windows that were fine.
+#: `bad guy`'s reported pre-section is "a couple of seconds", well above this.
+MIN_SHIFT_SEC = 0.35
+
+#: The fuzzy pairing keeps an LRC↔baseline line pair only when their token overlap (Jaccard) clears
+#: this. High enough that a chorus line does not pair with an unrelated verse; low enough to survive
+#: Whisper mishearing a few words in a line it did roughly transcribe.
+_MIN_PAIR_JACCARD = 0.5
+
+#: Fewer surviving pairs than this cannot fit two parameters robustly — abstain (`applied == False`).
+_MIN_SHIFT_PAIRS = 3
+
+
+def _pair_lrc_to_baseline(
+    lrc_lines: list[dict[str, Any]], baseline_lines: list[dict[str, Any]]
+) -> tuple[list[float], list[float]]:
+    """Pair each LRC line's start against the baseline line it best overlaps, by TOKEN content.
+
+    A baseline is Whisper's guess at what is audible, so exact-text and positional pairing (what the
+    post-align fit uses) both miss it. This walks the LRC lines in order, and for each takes the
+    forward-most baseline line whose token-set Jaccard is the best AND clears `_MIN_PAIR_JACCARD`.
+    Matching is monotonic — the baseline cursor only advances — so line order is preserved and a
+    repeated chorus line cannot pair backwards onto an earlier occurrence. Lines with no confident
+    baseline match contribute nothing (they are just not in the returned series), which is correct:
+    the fit needs agreement, not coverage.
+
+    Returns (lrc_starts, baseline_starts), equal length, in LRC order — the two time series the fit
+    consumes. Imported lazily so the layering guard sees `validate` depend on its sibling `chain`, not
+    the reverse.
+    """
+    from .chain import lyrics_tokens
+
+    base_tokens = [set(lyrics_tokens(str(bl.get("text") or ""))) for bl in baseline_lines]
+    base_starts = [bl.get("start") for bl in baseline_lines]
+
+    lrc_out: list[float] = []
+    base_out: list[float] = []
+    bi = 0  # monotonic baseline cursor: preserves order, blocks a backward chorus match
+    for ln in lrc_lines:
+        ls = ln.get("start")
+        if not isinstance(ls, (int, float)):
+            continue
+        lt = set(lyrics_tokens(str(ln.get("text") or "")))
+        if not lt:
+            continue
+        best_j, best_score = -1, 0.0
+        for j in range(bi, len(baseline_lines)):
+            bt = base_tokens[j]
+            if not bt:
+                continue
+            inter = len(lt & bt)
+            if not inter:
+                continue
+            score = inter / len(lt | bt)  # Jaccard over token SETS
+            if score > best_score:
+                best_j, best_score = j, score
+        if best_j >= 0 and best_score >= _MIN_PAIR_JACCARD:
+            bstart = base_starts[best_j]
+            if isinstance(bstart, (int, float)):
+                lrc_out.append(float(ls))
+                base_out.append(float(bstart))
+                bi = best_j + 1
+    return lrc_out, base_out
+
+
+def estimate_lrc_shift(
+    lrc_lines: list[dict[str, Any]], baseline_lines: list[dict[str, Any]]
+) -> LrcShift:
+    """Estimate how far the LRC sits from THIS audio, from a baseline measured on this audio (#794).
+
+    `lrc_lines` are the source's own timed lines ({start, text, ...}); `baseline_lines` are a Whisper
+    baseline's segments ({start, text, ...}) measured on the real audio. Fuzzy-pair them by content,
+    fit `baseline ≈ scale * lrc + offset` with the same robust Theil-Sen estimator the post-align check
+    uses, and return the shift to apply to the LRC's windows before alignment.
+
+    `applied` is True only when the fit is trustworthy (≥ `_MIN_SHIFT_PAIRS` paired lines) AND the
+    offset is worth acting on (|offset| ≥ `MIN_SHIFT_SEC`). Otherwise it is a no-op shift — no baseline,
+    a degenerate baseline, or a song already correctly placed all leave the windows untouched.
+    """
+    lrc_starts, base_starts = _pair_lrc_to_baseline(lrc_lines, baseline_lines)
+    if len(lrc_starts) < _MIN_SHIFT_PAIRS:
+        return LrcShift(pairs=len(lrc_starts))
+    fit = fit_lrc_to_aligned(lrc_starts, base_starts)
+    applied = fit.pairs >= _MIN_SHIFT_PAIRS and abs(fit.offset_sec) >= MIN_SHIFT_SEC
+    return LrcShift(offset_sec=fit.offset_sec, scale=fit.scale, pairs=fit.pairs, applied=applied)
+
+
+def shift_segments(segments: list[dict[str, Any]], shift: LrcShift) -> list[dict[str, Any]]:
+    """Apply an LrcShift to a list of {start, end, ...} windows, returning NEW dicts (the source's own
+    `segments` must stay un-shifted for the line-sync fallback that publishes them, so this never
+    mutates in place). A window's start/end map as `scale * t + offset` — the exact model the fit
+    solved — so a stretched master is corrected as well as a shifted one. Non-numeric bounds pass
+    through untouched. A no-op shift (`applied == False`) returns copies with identical numbers, so the
+    caller can shift unconditionally and let `applied` decide whether it mattered."""
+    if not shift.applied:
+        return [dict(s) for s in segments]
+    out: list[dict[str, Any]] = []
+    for s in segments:
+        moved = dict(s)
+        for key in ("start", "end"):
+            v = s.get(key)
+            if isinstance(v, (int, float)):
+                moved[key] = round(shift.scale * float(v) + shift.offset_sec, 3)
+        out.append(moved)
+    return out
+
+
 # ── the LRC-fit decision, moved out of steps/lyrics.py (#456) ──────────────────────────────────────
 #
 # `TimeTexts.run` used to hold ~45 lines deciding one domain question — does a source's OWN line
