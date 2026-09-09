@@ -19,7 +19,7 @@
 // hand keep the tier: `singer` derives its glow from somebody's identity dot, and `visualizer` builds
 // a palette by hue arithmetic — nobody chose those colours, so nobody could see why one came out
 // bright.
-import { stageHueToHex, nearestSingerHue, type TvBackgroundStyle } from '@encore/shared';
+import { stageHueToHex, nearestSingerHue, dimTowardBlack, type TvBackgroundStyle } from '@encore/shared';
 
 /**
  * The room glow — byte-identical to the radial the attract and lobby screens already paint
@@ -29,9 +29,9 @@ import { stageHueToHex, nearestSingerHue, type TvBackgroundStyle } from '@encore
  */
 const ROOM_GLOW = 'radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%)';
 
-/** The same geometry as ROOM_GLOW, in an arbitrary hue. */
-function glowInHue(hue: number): string {
-	return `radial-gradient(80% 60% at 50% 30%, ${stageHueToHex(hue)} 0%, var(--bg) 70%)`;
+/** The same geometry as ROOM_GLOW, in an arbitrary hue, dimmed toward black by `dim` (0 = full). */
+function glowInHue(hue: number, dim: number): string {
+	return `radial-gradient(80% 60% at 50% 30%, ${dimTowardBlack(stageHueToHex(hue), dim)} 0%, var(--bg) 70%)`;
 }
 
 /**
@@ -49,21 +49,38 @@ function glowInHue(hue: number): string {
  * Every branch is matched explicitly with no trailing `else`, so adding a style to
  * TV_BACKGROUND_STYLES without teaching this function about it is a type error rather than a silent
  * fallback — the same discipline `TvProgress.svelte` applies to the progress styles.
+ *
+ * `dim` is the room's 0..1 stage dimmer (`RoomSettings.tvBackgroundDim`, #782): 0 leaves the colour at
+ * full strength, 1 pulls it to black. It is applied to the CONCRETE colour a style resolves to — the
+ * `solid` room colour, and the `singer` glow's inner hue stop — because "dim the stage colour toward
+ * black" (owner ruling Q2 = A) is a lightness transform on a colour, and the stage layer sits behind
+ * the video on a black floor so this is exactly what an opacity reduction would look like, with no new
+ * layer and no reveal of the video. The two styles that resolve to no colour a room chose take no dim:
+ * `gradient` is the room glow in CSS-variable tokens a pure function cannot darken, and `off` /
+ * `visualizer` are already `#000` (a floor under a canvas), where dimming toward black is a no-op.
  */
-export function stageBackgroundCss(style: TvBackgroundStyle, stageColor: string, singerColor?: string | null): string {
+export function stageBackgroundCss(
+	style: TvBackgroundStyle,
+	stageColor: string,
+	singerColor?: string | null,
+	dim: number = 0
+): string {
 	switch (style) {
 		case 'off':
 			return '#000';
 		case 'gradient':
+			// The room glow in `var(--stage-glow)`/`var(--bg)` tokens — nobody named a colour here, so
+			// there is no stage colour to dim, and a pure function cannot darken a CSS variable.
 			return ROOM_GLOW;
 		case 'singer': {
 			if (!singerColor) return ROOM_GLOW;
 			const h = nearestSingerHue(singerColor);
-			return glowInHue(h);
+			return glowInHue(h, dim);
 		}
 		case 'solid':
-			// The room's colour, as stored. No tier, no guard — #425.
-			return stageColor;
+			// The room's colour, as stored — then dimmed toward black by the room's dimmer. No tier, no
+			// guard on the colour itself (#425); the dim is the room's own lightness choice (#782).
+			return dimTowardBlack(stageColor, dim);
 		case 'visualizer':
 			// The FLOOR under the canvas, not the visualizer itself. A visualizer is a drawing loop, not
 			// a CSS value, so it cannot be expressed here at all — `VisualizerStage` mounts inside this

@@ -683,6 +683,28 @@
 								oninput={(e) => liveRoom('tvBackgroundColor', e.currentTarget.value)}
 								onchange={(e) => onroom({ tvBackgroundColor: e.currentTarget.value })}
 							/>
+
+							<label class="field" for="tv-background-dim">
+								Dim · {Math.round(settings.room.tvBackgroundDim * 100)}%
+							</label>
+							<!--
+							Dims the stage colour toward black (#782, owner ruling Q2 = A) — a lightness control, not
+							a layer over the video. Split oninput/onchange like every other slider here (#134): the
+							readout above is the only display of the value, so it must track the thumb live, while
+							only the committed `change` writes and broadcasts. Stored 0..1, shown as a percent; the
+							range spans the full 0..100 the server clamp accepts.
+						-->
+							<input
+								id="tv-background-dim"
+								type="range"
+								min="0"
+								max="100"
+								step="1"
+								value={Math.round(settings.room.tvBackgroundDim * 100)}
+								oninput={(e) => liveRoom('tvBackgroundDim', Number(e.currentTarget.value) / 100)}
+								onchange={(e) => onroom({ tvBackgroundDim: Number(e.currentTarget.value) / 100 })}
+							/>
+							<p class="hint">How far the stage colour is darkened toward black. 0% is the colour itself.</p>
 						{/if}
 
 						<label class="check">

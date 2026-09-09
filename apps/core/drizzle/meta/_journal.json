@@ -50,6 +50,13 @@
       "when": 1788945280186,
       "tag": "0006_add_guide_offset_ms",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1788945281186,
+      "tag": "0007_add_tv_background_dim",
+      "breakpoints": true
     }
   ]
 }

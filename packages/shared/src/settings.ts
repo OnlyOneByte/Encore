@@ -22,7 +22,7 @@ import {
 import { makeRegistry } from './registry';
 import { DEFAULT_QUEUE_ORDER, isQueueOrder, type QueueOrderId } from './queue-order';
 import { DEFAULT_FETCHER, isValidFetcher, type FetcherId } from './fetchers';
-import { DEFAULT_STAGE_COLOR, normalizeStageColor } from './colors';
+import { DEFAULT_STAGE_COLOR, DEFAULT_STAGE_DIM, normalizeStageColor, normalizeStageDim } from './colors';
 import { DEFAULT_PRESENCE_GRACE_MINUTES, MAX_PRESENCE_GRACE_MINUTES, MIN_PRESENCE_GRACE_MINUTES } from './membership';
 import {
 	DEFAULT_ASR_MODEL,
@@ -322,6 +322,20 @@ export interface RoomSettings {
 	 */
 	tvBackgroundColor: string;
 	/**
+	 * How far the stage background is dimmed toward black, as a 0..1 fraction: 0 shows the resolved
+	 * stage colour at full strength, 1 pulls it all the way to black. Room-scoped like the colour it
+	 * dims — one party's staging taste.
+	 *
+	 * Piece 3 of #425 (owner ruling Q2 = A, 2026-09-07): "Dim the stage colour toward black — today's
+	 * geometry, no new layer." It is a LIGHTNESS control, not an opacity layer over the video: the
+	 * stage sits behind the video on a black floor, so darkening it toward black reveals nothing of the
+	 * video and adds no layer. Applied to the concrete colour the stage resolves to — see
+	 * `dimTowardBlack` and `stageBackgroundCss`.
+	 *
+	 * Ships at 0, which reproduces today's TV exactly (no dim), so the feature is opt-in.
+	 */
+	tvBackgroundDim: number;
+	/**
 	 * Which visualizer runs when `tvBackgroundStyle === 'visualizer'`. Ignored otherwise.
 	 *
 	 * Held even while another background is selected, so switching to the visualizer and back does not
@@ -417,6 +431,9 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	// or `visualizer`, so this is the starting point of the picker rather than something anyone sees by
 	// default.
 	tvBackgroundColor: DEFAULT_STAGE_COLOR,
+	// 0 — no dim, so an existing box looks byte-identical after the migration. Only bites once a room
+	// moves the slider, matching the colour above (unseen until a room picks `solid`/`visualizer`).
+	tvBackgroundDim: DEFAULT_STAGE_DIM,
 	// Plasma is the one every old media player had, so it is the least surprising thing to find running
 	// the first time a room turns the visualizer on.
 	tvVisualizer: 'plasma',
@@ -500,6 +517,10 @@ export function normalizeRoomSettings(
 	// a room may pick white. Unparseable input keeps the colour the room already chose rather than
 	// resetting it — the same rule every other field here follows.
 	const tvBackgroundColor = normalizeStageColor(input?.tvBackgroundColor, d.tvBackgroundColor);
+	// A 0..1 dim fraction, clamped like guideLevelDefault (rounded to a hundredth) — the two 0..1 room
+	// fractions store and compare the same way. A junk write keeps the room's current dim, not the
+	// default, matching every other field here. #782.
+	const tvBackgroundDim = normalizeStageDim(input?.tvBackgroundDim, d.tvBackgroundDim);
 	// Clamped, like the song intro: a room default outside 0..1 should still yield a usable room. Note
 	// this one is NOT nullable — the room default is the floor the per-song override falls back to, so
 	// there is nothing below it to inherit from. A junk write keeps the room's current value.
@@ -523,6 +544,7 @@ export function normalizeRoomSettings(
 		tvProgressStyle,
 		tvBackgroundStyle,
 		tvBackgroundColor,
+		tvBackgroundDim,
 		tvVisualizer,
 		songIntroEnabled,
 		songIntroMs,

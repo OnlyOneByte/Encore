@@ -1,0 +1,17 @@
+-- #782 (piece 3 of #425): room_settings gains tv_background_dim — a 0..1 fraction that dims the stage
+-- colour toward black. Owner ruling Q2 = A, 2026-09-07: "Dim the stage colour toward black — today's
+-- geometry, no new layer." A lightness control, not an opacity layer over the video: the stage sits at
+-- z-index 0 behind the video on a black floor, so darkening it toward black reveals nothing of the
+-- video and adds no layer.
+--
+-- A real numbered migration (0007, after #766's 0006_add_guide_offset_ms), NOT an in-place edit of a
+-- baseline: drizzle replays on the journal `when`, so a rewritten baseline never re-applies to an
+-- existing box and the column would be missing at boot the first time a reader selected it — the exact
+-- trap the 0004/0005/0006 headers each record. This replays only on DBs that have not recorded idx:7.
+--
+-- ADDITIVE, and today's behaviour by default. A plain `ADD COLUMN`, not the __new_
+-- create-copy-drop-rename idiom, because room_settings needs no primary-key change (it keeps its
+-- `room_id text PRIMARY KEY`). NOT NULL DEFAULT 0: every existing row upgrades to "no dim", so a
+-- configured box renders byte-identically after the upgrade with no backfill. REAL, not integer,
+-- because it is a fraction — an integer column would round every stored dim to 0 or 1.
+ALTER TABLE `room_settings` ADD `tv_background_dim` real DEFAULT 0 NOT NULL;
