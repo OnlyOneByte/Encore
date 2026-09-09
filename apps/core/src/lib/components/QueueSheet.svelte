@@ -24,8 +24,17 @@
 		/** Seconds into the current song, and its length. Both omitted (or a 0 length) hides the row. */
 		elapsedSec?: number;
 		durationSec?: number;
-		children: Snippet; // the expanded body: the rotation list
+		children: Snippet; // the expanded body: the rotation list — THIS is the only region that scrolls
 		controls?: Snippet; // playback controls, rendered in the peek
+		/**
+		 * Pinned pane at the TOP of the expanded body, ABOVE the scrolling list (#791). Anything that
+		 * is NOT a queue row — the per-song controls (guiding track, key, vocal range) and the "Up next"
+		 * heading — belongs here so it stays fixed while a long queue scrolls. Before this, the body was
+		 * a single scroller wrapping controls AND rows together, so a long queue scrolled the controls
+		 * off the top of the drawer (the whole drawer had one scrollbar). Optional: a consumer with no
+		 * fixed header simply omits it and the list fills the whole body.
+		 */
+		listHeader?: Snippet;
 		ontoggle?: (open: boolean) => void;
 	}
 	let {
@@ -38,6 +47,7 @@
 		durationSec = 0,
 		children,
 		controls,
+		listHeader,
 		ontoggle
 	}: Props = $props();
 
@@ -179,7 +189,15 @@
 	</div>
 
 	<div class="body" inert={!open}>
-		{@render children()}
+		<!-- Pinned pane (#791): controls + the list heading. flex:0 0 auto so it NEVER scrolls; a long
+		     queue scrolls only the list below it, not this. Omitted by a consumer with no fixed header. -->
+		{#if listHeader}<div class="body-head">{@render listHeader()}</div>{/if}
+		<!-- The one and only scroll region: the queue rows. flex:1 1 auto + min-height:0 lets it shrink
+		     inside the 82dvh-capped column so it scrolls internally instead of pushing the pinned pane
+		     (and the sheet) past the cap — the #201 min-height:0 shape. -->
+		<div class="list">
+			{@render children()}
+		</div>
 	</div>
 </section>
 
@@ -312,9 +330,32 @@
 		color: var(--ink-dim);
 		margin-top: 9px;
 	}
+	/* The expanded body is a flex COLUMN that fills the sheet below the peek and does NOT itself
+	   scroll (#791). It carries the horizontal padding for both regions; the pinned pane and the
+	   scrolling list are its two children. min-height:0 is load-bearing — without it this flex child
+	   refuses to shrink below its content height, so the list pushes the pinned pane past the 82dvh
+	   cap instead of scrolling (the #201 shape). */
 	.body {
+		flex: 1 1 auto;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		padding-inline: var(--space-xl);
+	}
+	/* Pinned pane: controls + the list heading. Never scrolls. */
+	.body-head {
+		flex: 0 0 auto;
+		padding-top: var(--space-2xs);
+	}
+	/* The ONLY scroll region. flex:1 1 auto + min-height:0 so it takes the remaining height and
+	   scrolls internally; the bottom padding carries the iOS home-indicator inset the sheet's
+	   position:fixed cuts it off from. */
+	.list {
+		flex: 1 1 auto;
+		min-height: 0;
 		overflow-y: auto;
-		padding: var(--space-2xs) var(--space-xl) calc(var(--space-4xl) + env(safe-area-inset-bottom, 0px));
+		padding-block: var(--space-2xs) calc(var(--space-4xl) + env(safe-area-inset-bottom, 0px));
 		-webkit-overflow-scrolling: touch;
 	}
 	/* keep the collapsed sheet from eating taps meant for the page behind it */
