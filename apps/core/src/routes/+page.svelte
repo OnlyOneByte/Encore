@@ -2024,6 +2024,7 @@
 
 	.key {
 		display: flex;
+		flex-wrap: wrap;
 		gap: var(--space-xs);
 		margin: var(--space-xs) 0 var(--space-3xs);
 		align-items: center;
@@ -2041,7 +2042,16 @@
 		color: var(--warn);
 	}
 	.key button {
-		flex: 1;
+		/*
+		 * `1 1 40%`, not `1`: at 200% text a nowrap `flex: 1` pair could not shrink below the
+		 * min-content width of "semitone" (~172px each), so the two buttons plus the label forced the
+		 * row — and the sheet around it — past 320px (#857). A 40% basis lets both sit two-up when they
+		 * fit and wrap to their own rows when they cannot; `min-width: 0` frees the flex minimum so the
+		 * shrink is allowed at all, and `.key-btn`'s `overflow-wrap` breaks the single word if even a
+		 * full-width button is too narrow for it. The row's own `flex-wrap` (above) is what catches them.
+		 */
+		flex: 1 1 40%;
+		min-width: 0;
 		border: 1px dashed var(--line-strong);
 		background: transparent;
 		color: var(--ink-dim);
@@ -2058,6 +2068,9 @@
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-xs);
+		/* "semitone" is one unbreakable token; at 200% text a full-width button can still be narrower
+		   than it, so allow the word to break rather than force the row wider than the viewport (#857). */
+		overflow-wrap: anywhere;
 	}
 	.key:not(.disabled) button:not(:disabled) {
 		border-style: solid;

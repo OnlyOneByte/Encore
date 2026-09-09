@@ -578,6 +578,14 @@
 		background: var(--danger-bg);
 		border-color: var(--danger-line);
 		color: var(--danger-ink);
+		/*
+		 * WRAP, like `.chip.state` (#857). Every other chip here is a short token that fits on one line
+		 * even at 200% text, but this one carries a whole phrase ("Longer than a song") — at doubled
+		 * type it is ~230px, wider than the row can hold, and `.chip`'s blanket `white-space: nowrap`
+		 * made its min-content width its FULL width, so it could not shrink and pushed the browse page
+		 * past a 320px viewport. Letting it wrap keeps the whole phrase and reflows the row instead.
+		 */
+		white-space: normal;
 	}
 
 	.bar {

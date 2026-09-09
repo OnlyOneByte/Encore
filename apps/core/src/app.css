@@ -915,6 +915,20 @@ body {
 	border-top-left-radius: 20px;
 	border-top-right-radius: 20px;
 	box-shadow: var(--shadow);
+	/*
+	 * SHEET-LEVEL REFLOW FLOOR (#857). `left:0; right:0` makes the containing block the viewport, so
+	 * this box's used width resolves to min(max-width, viewport). That bound is only honoured while the
+	 * content CAN shrink to it: a flex child's automatic minimum size is its min-content width, and an
+	 * unbreakable control label at 200% text (a "semitone" key button, a "Making karaoke… N%" chip)
+	 * exceeds 320px on its own — so without this the box was sized by content it could not shrink below
+	 * and resolved to 436px inside a 320px viewport (SC 1.4.10 Reflow). `min-width: 0` on the direct
+	 * children lets the flex column shrink to its containing block again, pushing the wrap decision down
+	 * to the labels themselves (which then give way — see `.key` and `.chip.state`). It is the floor the
+	 * content fixes stand on: even a label that somehow still cannot wrap can no longer widen the sheet.
+	 */
+}
+.sheet-surface > * {
+	min-width: 0;
 }
 
 /* GPU-composited motion only (transform/opacity) — never animate layout props. */

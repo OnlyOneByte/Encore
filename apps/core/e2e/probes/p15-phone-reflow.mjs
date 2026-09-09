@@ -41,6 +41,8 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { findChromium } from '../lib/chromium.mjs';
+import { SEL } from '../contract.ts';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * @typedef {Awaited<ReturnType<typeof connect>>} Browser
@@ -181,12 +183,13 @@ const page = await browser.newPage();
 await page.viewport(VIEWPORT_W, VIEWPORT_H, 2);
 
 /**
- * Navigate, apply the scale, settle, and read. Returns the measurement WITHOUT asserting on it, so a
- * quarantined surface can be reported by number instead of being left unmeasured.
- * @param {string} label @param {string} path
+ * Navigate, apply the scale, settle, and read. Returns the measurement WITHOUT asserting on it.
+ * `skipNav` measures the page AS IT STANDS (already navigated and populated by the caller — e.g. the
+ * browse screen after a search), because re-navigating would wipe that state back to an empty list.
+ * @param {string} label @param {string} path @param {{ skipNav?: boolean }} [opts]
  */
-async function measureRaw(label, path) {
-	await page.goto(BASE + path);
+async function measureRaw(label, path, { skipNav = false } = {}) {
+	if (!skipNav) await page.goto(BASE + path);
 	// The root font-size is set AFTER navigation and re-asserted on every surface, because a fresh
 	// document resets it — a scale set once and assumed to persist measures the page at 100%.
 	await page.evaluate(`document.documentElement.style.fontSize = ${JSON.stringify(SCALED_ROOT_FONT_SIZE)}`);
@@ -205,9 +208,9 @@ async function measureRaw(label, path) {
 	return m;
 }
 
-/** @param {string} label @param {string} path */
-async function measure(label, path) {
-	const m = await measureRaw(label, path);
+/** @param {string} label @param {string} path @param {{ skipNav?: boolean }} [opts] */
+async function measure(label, path, opts) {
+	const m = await measureRaw(label, path, opts);
 	const ok = m.scrollWidth <= m.clientWidth;
 	const detail = [
 		`        scrollWidth=${m.scrollWidth} clientWidth=${m.clientWidth} (over by ${m.scrollWidth - m.clientWidth}px)`,
@@ -252,36 +255,35 @@ const joined = await page.evaluate(`(async () => {
 	return res.ok;
 })()`);
 if (!joined) bail('could not join the ephemeral room, so the browse screen could not be measured');
-const browse = await measureRaw('browse (joined /)', '/');
 
 /*
- * QUARANTINE — ONE ENTRY, NAMED, MEASURED, AND SHRINK-ONLY.
+ * MEASURE BROWSE WITH ITS REAL OFFENDER ON SCREEN (#857). The browse-screen reflow lives in SongRow's
+ * control labels at doubled type, and the widest is the odd-duration chip: a whole phrase ("Longer
+ * than a song") that `.chip`'s blanket `white-space: nowrap` turned into an unshrinkable ~230px box,
+ * pushing the row — and the browse page — past a 320px viewport. An EMPTY joined room renders no rows
+ * at all, so measuring it would be a clean 320 over a surface that never grew the label the criterion
+ * is about — the XR-VER-05 vacuity #850 exists to forbid, and the reason this arm was rejected once.
  *
- * The browse screen overflows by 116px at this viewport and scale, and it is NOT the #850 defect: the
- * offenders are the queue sheet's own unshrinkable control labels ("Cooking" 181px, "semitone" 172px)
- * inside a `.sheet-surface` that measures 436px against `max-width: var(--max-w)`. Different mechanism,
- * different components, and a fix wider than the tile grid #850 is about — so it is tracked as its own
- * issue rather than folded in here, and rung L records the number rather than looking away from it.
- *
- * The arm below is what keeps this entry from outliving its defect. It asserts the browse screen STILL
- * overflows: on the day that issue is fixed, this probe REDS and the failure message says to delete
- * these lines. Without it a quarantine entry survives its own fix and silently un-enforces the surface
- * forever, which is how a green guard came to sit over #850 in the first place.
+ * So the arm SEARCHES first. `openBrowseFromHome` is the shared post-join step (#832) — it reaches the
+ * browse screen and its search box the one sanctioned way — and typing into `SEL.search` surfaces the
+ * canned result set, which deterministically includes songs past the 8-minute unusual-duration
+ * threshold (`isUnusualSongDuration`); every one renders the odd-duration chip. Both the browse push
+ * and the query go through the contract's own hooks, so no hand-written selector enters this driver.
+ * This is the discriminating measurement: it REDS on the base CSS (the chip cannot wrap → scrollWidth
+ * 331 > 320) and passes on the fix (the chip wraps).
  */
-const BROWSE_QUARANTINE_ISSUE = 857;
-const browseOver = browse.scrollWidth - browse.clientWidth;
-check(
-	`browse (joined /) is still the known #${BROWSE_QUARANTINE_ISSUE} overflow, so the quarantine below is still earning its place`,
-	browseOver > 0,
-	`        browse now reflows cleanly (scrollWidth=${browse.scrollWidth} clientWidth=${browse.clientWidth}).\n` +
-		`        #${BROWSE_QUARANTINE_ISSUE} is FIXED — delete this quarantine and let the surface be measured like the others.`
-);
-console.log(
-	`NOTE  browse (joined /) overflows by ${browseOver}px — quarantined as #${BROWSE_QUARANTINE_ISSUE}, not asserted here.`
-);
-for (const o of browse.offenders.slice(0, 6)) {
-	console.log(`        · ${o.sel}  right=${o.right} width=${o.width}  ${JSON.stringify(o.text)}`);
-}
+await page.goto(BASE + '/');
+await openBrowseFromHome(page);
+await page.fill(SEL.search, 'caroline');
+// The result set arrives over a debounced fetch; wait for the rows to actually land before measuring,
+// or the read is of a still-empty list (a false clean 320). A room that returned no results at all is
+// an environment failure, not a pass. The row count reads the contract's own `SEL.songRow`.
+const rowsReady = await page
+	.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length >= 1`, { timeout: 12_000 })
+	.catch(() => false);
+if (rowsReady === false) bail('the browse search returned no rows, so the #857 offender could not be rendered');
+
+await measure('browse (joined /, searched)', '/?browse=1', { skipNav: true });
 
 await browser.close();
 
