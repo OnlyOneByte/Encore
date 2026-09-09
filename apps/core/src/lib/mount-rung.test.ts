@@ -185,7 +185,9 @@ test('the /join route mounts, reads the stubbed page.url, and its goto lands in 
 		input!.value = 'Maya';
 		input!.dispatchEvent(new DomEvent('input', { bubbles: true }));
 		flushSync();
-		const submit = target.querySelector('button.submit') as HTMLButtonElement | null;
+		// #913 S1 moved `.submit`'s page layout to a `.submit-slot` wrapper and the button itself to
+		// <Button>, whose element carries `data-slot="button"`. The class is no longer on the control.
+		const submit = target.querySelector('.submit-slot button') as HTMLButtonElement | null;
 		expect(submit, '/join rendered no submit button').not.toBeNull();
 		submit!.click();
 		flushSync();
