@@ -12,7 +12,7 @@
 		voiceBandSentence,
 		songDisplay
 	} from '@encore/shared';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
 	// The browse push is a real navigation (`?browse=1`), so the phone's own Back gesture dismisses it.
 	import { page } from '$app/state';
@@ -36,6 +36,7 @@
 	import RangeBar from '$lib/components/RangeBar.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { cookAndQueue } from '$lib/cook-and-queue';
+	import { gripVisible, ownPicksPinned, ownSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
 	import {
 		displayReadiness,
 		canCook,
@@ -688,6 +689,202 @@
 		store?.moveEntry(id, i + delta);
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
+
+	/* ── THE OWN-PICKS REORDER MODE (XR-PH-17 … XR-PH-20, issue #836) ──────────────────────────────
+	 *
+	 * A drag, not a list sort. `move`'s toSeq indexes the singer's OWN queued picks, so the op cannot
+	 * express "above someone else's song" — and the guest's picks are not adjacent in this flat list.
+	 * So the mode DRAWS its legal positions (one per own pick) instead of letting the list imply them,
+	 * dims the rows that cannot accept a drop, and declines a release anywhere else. Every predicate is
+	 * in $lib/reorder-mode so it is unit-testable without mounting this route (XR-PH-21).
+	 */
+	/**
+	 * Travel below which a press-and-release is a TAP rather than a drop, in px. 6 is QueueSheet's own
+	 * threshold for the same judgement on its pull, kept identical so the two gestures on this screen do
+	 * not disagree about what counts as a deliberate drag.
+	 */
+	const TAP_SLOP_PX = 6;
+	const ownPinned = $derived(ownPicksPinned(myPicks));	const mySlots = $derived(ownSlots(myPicks.length));
+	// The row being dragged, the slot currently under the pointer, and the live pointer offset.
+	let movingId = $state<string | null>(null);
+	/**
+	 * True only BETWEEN a press on the grip and its release — not for the life of the mode.
+	 *
+	 * The distinction is load-bearing, not bookkeeping. The dragged row is `pointer-events: none` so it
+	 * cannot intercept the hit-test for its own drop slot; if that state persisted for the whole mode,
+	 * the row's own grip would stay untouchable after the first tap and a second press could never start
+	 * a drag. Measured: with the two conflated, a tap opened the mode and every later drag did nothing.
+	 */
+	let dragging = $state(false);
+	let hoverSlot = $state<number | null>(null);
+	let dragY = $state(0);
+	// Why the mode closed itself. Announced through the SAME polite region the queue already uses
+	// (`liveMsg`) rather than a second one: two competing live regions is how one of them stops being
+	// read. Also rendered as visible text, because a sighted guest needs the reason just as much.
+	let reorderNote = $state('');
+	const reorderOpen = $derived(movingId !== null);
+	// The grip that opened the mode, so focus can be returned to it on every exit (XR-PH-19).
+	let openerEl: HTMLElement | null = null;
+	// The listeners added for the life of one drag, torn down together so a cancelled pointer cannot
+	// leave the page tracking a finger that is gone.
+	let dragTeardown: (() => void) | null = null;
+
+	function gripFor(e: QueueEntry): boolean {
+		return gripVisible({
+			mine: e.singerId === me?.id,
+			ownQueuedCount: myPicks.length,
+			reorderMeaningful: canReorder,
+			ownPicksPinned: ownPinned
+		});
+	}
+
+	/*
+	 * XR-PH-18's second half: while the mode is open, another guest's row must expose NO pointer or
+	 * keyboard interaction — it is not a legal drop target, and today every joined singer gets the host
+	 * arrows on every row (`canHostReorder`), so without this the mode would offer a cross-singer
+	 * control on exactly the rows it has just dimmed. The row's controls are dropped for the life of the
+	 * mode, rather than the row being marked `inert`: `inert` also takes the row out of the
+	 * accessibility tree, and XR-PH-03 turns on those rows staying INFORMATIONAL while dimmed — they
+	 * are who the guest is being ordered around.
+	 *
+	 * It never matches the guest's OWN rows, which is what keeps XR-PH-20 true: the single-pointer
+	 * alternative stays present and operable on the row being dragged, while the mode is open.
+	 *
+	 * Applied as an added clause on the EXISTING `reorderable` expression at both row call sites rather
+	 * than by extracting that expression into a helper. The extraction was written first and reverted:
+	 * `global-reorder-client-638.test.ts:32` counts the inline ternary twice on purpose, so that
+	 * reverting either row kind's wiring reds it, and collapsing the two into one helper silently
+	 * removed a guard belonging to another issue. A duplicated expression is the cheaper cost.
+	 */
+	function rowFrozen(e: QueueEntry): boolean {
+		return reorderOpen && e.singerId !== me?.id;
+	}
+
+	function enterReorder(id: string, opener: HTMLElement | null) {
+		if (movingId === id) return;
+		movingId = id;
+		hoverSlot = myIdx(id) >= 0 ? myIdx(id) : null;
+		dragY = 0;
+		reorderNote = '';
+		openerEl = opener;
+		// Focus the grip NOW, so the return on exit has somewhere to land. A pointer press does not focus
+		// a button in every engine, and a mode entered by touch that then exits by Escape would otherwise
+		// have no recorded origin to go back to — measured by driving a real pointer, where `activeElement` was
+		// still <body> after the grip was clicked.
+		opener?.focus?.();
+	}
+
+	/** Leave the mode. `commitSlot` is null for Cancel/Escape/an illegal release — which commit NOTHING. */
+	function exitReorder(commitSlot: number | null, note = '') {
+		const id = movingId;
+		dragTeardown?.();
+		dragTeardown = null;
+		const target = dropTarget(commitSlot, myPicks.length);
+		if (id && target !== null && target !== myIdx(id)) {
+			store?.moveEntry(id, target);
+			if (navigator.vibrate) navigator.vibrate(8);
+		}
+		movingId = null;
+		dragging = false;
+		hoverSlot = null;
+		dragY = 0;
+		reorderNote = note;
+		if (note) liveMsg = note;
+		// XR-PH-19: focus goes back to the control the guest was working from, on EVERY exit — Done,
+		// Cancel, Escape and a self-close alike. A mode that dissolves and drops focus to <body> leaves
+		// a keyboard user at the top of the document with no idea the list moved.
+		//
+		// After `tick()`, and by ATTRIBUTE rather than by the element reference: closing the mode removes
+		// the drop-slot buttons from this list, so Svelte recreates the row's DOM and the grip that was
+		// pressed is a detached node. Focusing the captured reference put focus nowhere — measured, not
+		// assumed. `openerEl` stays as the fallback for the case where the row itself has gone (the song
+		// started, or was removed), where there is no grip left to return to.
+		tick().then(() => {
+			const sel = id ? `[data-grip="${CSS.escape(id)}"]` : '';
+			const el = sel ? (document.querySelector(sel) as HTMLElement | null) : null;
+			(el ?? openerEl)?.focus?.();
+			openerEl = null;
+		});
+	}
+
+	/**
+	 * The pointer drag. Same idiom as QueueSheet's sheet pull: capture the pointer on the control that
+	 * was pressed, publish the offset as a CSS custom property, and let a CSS transform do the moving —
+	 * so no position is ever interpolated in JS (XR-PH-06).
+	 *
+	 * The slot under the finger is read by hit-testing rather than computed from row heights: rows can
+	 * change height while the mode is open (a byline gains an `away` badge, another guest queues a
+	 * cooking card), and a cached geometry table would then point at the wrong slot — the precise class
+	 * of "commits somewhere the guest did not choose" that XR-PH-18 exists to prevent.
+	 */
+	function onGripPointerDown(entry: QueueEntry, e: PointerEvent) {
+		const grip = e.currentTarget as HTMLElement | null;
+		if (!grip) return;
+		enterReorder(entry.id, grip);
+		dragging = true;
+		const startY = e.clientY;
+		/*
+		 * THE LISTENERS GO ON `window`, NOT ON THE GRIP — and not behind `setPointerCapture`.
+		 *
+		 * Entering the mode inserts the drop-slot buttons into this list, so Svelte re-renders the rows
+		 * and the grip that was pressed becomes a DETACHED node. Listeners bound to it, and a pointer
+		 * captured by it, then deliver nothing: the drag produced no `pointermove` and the release never
+		 * arrived, so a real drag moved no row and never closed the mode. Both symptoms had one cause,
+		 * and only a driven pointer could show it — the element identity is invisible to a unit test.
+		 * `window` is stable for the life of the gesture, which is exactly the lifetime this needs.
+		 */
+		const move = (ev: PointerEvent) => {
+			dragY = ev.clientY - startY;
+			const under = document.elementFromPoint(ev.clientX, ev.clientY);
+			const slotEl = under?.closest?.('[data-slot]') as HTMLElement | null;
+			const idx = slotEl ? Number(slotEl.dataset.slot) : null;
+			hoverSlot = idx !== null && Number.isInteger(idx) ? idx : null;
+		};
+		const up = () => {
+			/*
+			 * TAP vs DRAG, the same distinction QueueSheet's pull makes and for the same reason. A press
+			 * and release without travel is a TAP: it should OPEN the mode and leave it open, so the
+			 * guest can then use a slot or the move buttons. Treating every release as a drop made a tap
+			 * open and immediately close the mode — `hoverSlot` starts at the row's own index, so the
+			 * release resolved to "move to where you already are" and dissolved the mode in one frame.
+			 * Found by driving it with a real trusted pointer; no unit test could have seen it.
+			 *
+			 * Above the threshold the release IS a drop, and a drop outside a legal slot commits nothing
+			 * (XR-PH-18) — `exitReorder` routes it through `dropTarget`, which declines rather than clamps.
+			 */
+			const travelled = Math.abs(dragY);
+			if (travelled <= TAP_SLOP_PX) {
+				dragTeardown?.();
+				dragTeardown = null;
+				dragging = false;
+				dragY = 0;
+				return; // the mode stays open, and the row becomes touchable again
+			}
+			exitReorder(hoverSlot);
+		};
+		const cancel = () => exitReorder(null);
+		window.addEventListener('pointermove', move);
+		window.addEventListener('pointerup', up);
+		window.addEventListener('pointercancel', cancel);
+		dragTeardown = () => {
+			window.removeEventListener('pointermove', move);
+			window.removeEventListener('pointerup', up);
+			window.removeEventListener('pointercancel', cancel);
+		};
+	}
+
+	/*
+	 * XR-PH-19 — the queue moves underneath the mode, and that is NORMAL. `assignSeqs` re-derives every
+	 * rotationSeq on every mutation, so another guest's add re-orders the flat list under an open drag.
+	 * That case needs no handling at all and deliberately gets none: the slots are indexed over MY
+	 * picks, so a stranger's entry cannot shift them. What DOES invalidate the mode is my own picks
+	 * falling below two, my song starting, or my song leaving — each of which makes the drawn slots a
+	 * lie. Then the mode closes itself, says why, and returns focus.
+	 */
+	$effect(() => {
+		const reason = modeInvalidation(myPicks, movingId, entries.find((e) => e.id === movingId)?.status);
+		if (reason) exitReorder(null, reason);
+	});
 	/**
 	 * The entry's index in the WHOLE queued list — `queued` above, so the PLAYING entry is not counted.
 	 * That is exactly what a host pin's toSeq means: placePins indexes the queued entries only and
@@ -1097,12 +1294,56 @@
 		<MyPositionCard words={myPosition} />
 
 		<h2 class="grouphead">Up next · {orderLabel}</h2>
+		<!--
+			XR-PH-19 — the mode's own chrome. Done and Cancel are REAL buttons rather than a tap-anywhere
+			dismissal, because "commit" and "abandon" are different outcomes and a mode that exits one way
+			cannot express the other. Escape is bound on <svelte:window> below and takes the Cancel path.
+			The note is a polite live region: a mode that closes ITSELF (my pick started playing, my second
+			pick was removed elsewhere) has to say why, or the list simply changes shape under the guest.
+		-->
+		{#if reorderOpen}
+			<div class="reorder-bar card" role="group" aria-label="Reordering your songs">
+				<p class="reorder-hint">Drag to one of your own positions. Other guests' songs stay put.</p>
+				<div class="reorder-acts">
+					<button class="chip" onclick={() => exitReorder(hoverSlot)}>Done</button>
+					<button class="chip" onclick={() => exitReorder(null)}>Cancel</button>
+				</div>
+			</div>
+		{/if}
+		{#if !reorderOpen && reorderNote}
+			<!-- The mode closed ITSELF (XR-PH-19). Visible as well as announced: the list has just changed
+			     shape under the guest's hand, and a reason only a screen reader gets is not a reason. -->
+			<p class="reorder-note">{reorderNote}</p>
+		{/if}
 		{#if queued.length === 0}
 			<p class="empty">Queue's empty — add a song to start the party.</p>
 		{:else}
 			{#each queued as e, i (e.id)}
 				{@const s = singerOf(e.singerId)}
 				{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
+				{@const isMine = e.singerId === me?.id}
+				{@const ownIdx = myIdx(e.id)}
+				<!--
+					XR-PH-18 — ONE legal drop target per own queued pick, drawn immediately above the pick whose
+					position it represents, and rendered ONLY while the mode is open. The count therefore equals
+					`myPicks.length` by construction and can never equal the visible list length: `mySlots` is
+					derived from my own picks, so another guest queueing a song mid-drag changes the flat list
+					around these and changes neither their number nor what each one commits.
+
+					`data-slot` carries the index the release commits. The pointer path reads it by hit-testing
+					(see onGripPointerDown) instead of from a geometry table, and the same index is what the
+					button's own click commits — so the keyboard path and the pointer path cannot drift apart.
+				-->
+				{#if reorderOpen && isMine && ownIdx >= 0 && mySlots[ownIdx]}
+					{@const slot = mySlots[ownIdx]}
+					<button
+						class="dropslot"
+						class:hot={hoverSlot === slot.index}
+						data-slot={slot.index}
+						aria-label={slot.label}
+						onclick={() => exitReorder(slot.index)}>{slot.ordinal}</button
+					>
+				{/if}
 				{#if card === 'cooking' || card === 'failed'}
 					{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
 					<ProcessingCard
@@ -1115,11 +1356,13 @@
 						pct={proc.pct}
 						pending={pendingKind.get(e.id) ?? null}
 						onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-						reorderable={canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1}
+						reorderable={!rowFrozen(e) &&
+							(canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1)}
 						canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
 						canDown={canHostReorder
 							? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
 							: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+						dimmed={reorderOpen && !isMine}
 						onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
 						ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
 					/>
@@ -1138,11 +1381,19 @@
 						pending={pendingKind.get(e.id) ?? null}
 						subtitle={e.id === nextPlayableId ? 'up next' : ''}
 						removable={e.singerId === me?.id}
-						reorderable={canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1}
+						reorderable={!rowFrozen(e) &&
+							(canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1)}
 						canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
 						canDown={canHostReorder
 							? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
 							: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+						grip={gripFor(e)}
+						gripId={e.id}
+						dimmed={reorderOpen && !isMine}
+						moving={movingId === e.id && dragging}
+						dragY={movingId === e.id && dragging ? dragY : 0}
+						ongripdown={(ev) => onGripPointerDown(e, ev)}
+						ongrip={(el) => enterReorder(e.id, el)}
 						onremove={() => removeWithUndo(e)}
 						onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
 						ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
@@ -1371,6 +1622,14 @@
 	but present in the DOM from first render so the assistive tech is already observing it when the
 	first announcement lands. See the `liveMsg` effect for what is (and is not) announced.
 -->
+<!--
+	XR-PH-19 — Escape leaves the mode and commits NOTHING. Bound here rather than on the bar so it
+	works while the pointer is captured by the grip and while focus sits anywhere on the page, which is
+	where focus actually is mid-drag. Guarded on `reorderOpen` so it never swallows an Escape the rest
+	of the page wants (the sheet binds its own).
+-->
+<svelte:window onkeydown={(e) => reorderOpen && e.key === 'Escape' && exitReorder(null)} />
+
 <div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
 
 <style>
@@ -1481,6 +1740,78 @@
 		clip: rect(0 0 0 0);
 		clip-path: inset(50%);
 		white-space: nowrap;
+	}
+
+	/*
+	 * THE REORDER MODE's own chrome (issue #836).
+	 *
+	 * No transition and no keyframe anywhere in this block. The mode appears and disappears on a state
+	 * change, and the dragged row's movement is a CSS transform reading a var the pointer writes (see
+	 * QueueRow's `.moving`) — so nothing here interpolates over time and XR-PH-06 has nothing to gate.
+	 * That is a deliberate alternative to pulling in a drag library, whose JS-written settle animation
+	 * would be invisible to `motion.test.ts` by construction.
+	 */
+	.reorder-bar {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+		flex-wrap: wrap;
+		padding: 10px 12px;
+		margin-bottom: 8px;
+		border-color: var(--line-tint);
+		background: var(--card-tint);
+	}
+	.reorder-hint {
+		flex: 1 1 auto;
+		min-width: 0;
+		margin: 0;
+		font-size: 0.78rem;
+		color: var(--ink-dim);
+	}
+	.reorder-acts {
+		display: flex;
+		gap: 8px;
+		flex: 0 0 auto;
+	}
+	.reorder-note {
+		margin: 0 0 8px;
+		font-size: 0.78rem;
+		color: var(--warn);
+	}
+	/*
+	 * A legal drop position (XR-PH-18). A real <button>, so the position is committable without a
+	 * pointer at all — the drag and the keyboard commit the SAME index through the same handler, which
+	 * is what keeps them from drifting apart. 44px tall, matching every other control on this screen,
+	 * so the target the finger has to find is not smaller than the finger.
+	 *
+	 * `--line-strong` dashed reads as "a place something goes" rather than as a control that does
+	 * something on its own, and `.hot` swaps the SURFACE (not opacity) when the finger is over it.
+	 */
+	.dropslot {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 100%;
+		/*
+		 * The TOKEN, not the number (#831). `--tap` is the standard; a bare `44px` merely agrees with it
+		 * today, so raising the standard in `app.css` would leave this control behind while every touch
+		 * guard stayed green. `expressesTap` in `test-helpers.ts` asks for the token for that reason.
+		 */
+		min-height: var(--tap);
+		margin-bottom: 6px;
+		border: 2px dashed var(--line-strong);
+		border-radius: var(--radius-sm);
+		background: var(--bg2);
+		color: var(--ink-dim);
+		font-size: 0.78rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+	.dropslot.hot {
+		/* var(--accent), not the retired --accent-strong (#840, XR-COL-11) — a non-text border. */
+		border-color: var(--accent);
+		background: var(--card-tint2);
+		color: var(--ink);
 	}
 
 	/*

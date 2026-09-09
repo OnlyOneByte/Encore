@@ -33,6 +33,14 @@
 		// rotation (no slot there to act on).
 		onremove?: () => void;
 		reorderable?: boolean;
+		/**
+		 * XR-PH-18 (issue #836) — another guest's row while the own-picks reorder mode is open. A cooking
+		 * song is still a queue entry, so another guest's cook is one of the rows the mode has to
+		 * de-emphasise; found by driving the mode, where the only non-mine row on screen was a cooking
+		 * card and stayed at full weight. Surface token, never `opacity` (XR-PH-03) — same rule and same
+		 * reason as QueueRow's.
+		 */
+		dimmed?: boolean;
 		canUp?: boolean;
 		canDown?: boolean;
 		onup?: () => void;
@@ -49,6 +57,7 @@
 		pct,
 		onremove,
 		reorderable = false,
+		dimmed = false,
 		canUp = false,
 		canDown = false,
 		onup,
@@ -74,7 +83,7 @@
 	const overall = $derived(overallCookPct(status, pct));
 </script>
 
-<div class="qrow proc card list-row" class:pending={pending} class:failed={failed}>
+<div class="qrow proc card list-row" class:pending={pending} class:failed={failed} class:dimmed={dimmed}>
 	<div class="seq">
 		{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
 	</div>
@@ -178,6 +187,18 @@
 	}
 	.adding {
 		color: var(--warn);
+	}
+	/*
+	 * XR-PH-18 — another guest's cooking row while the reorder mode is open. Mirrors QueueRow's
+	 * `.dimmed` exactly, token for token, because the two row kinds sit in the same list and a mode
+	 * that de-emphasised only one of them would read as "this row is special" rather than as
+	 * "this row is not a target". Surface + border, never `opacity` (XR-PH-03) — this card's own
+	 * `.pending` comment above records what subtree opacity did to it.
+	 * After `.pending` for the same source-order reason that rule documents.
+	 */
+	.dimmed {
+		background: var(--bg2);
+		border-color: var(--line);
 	}
 	.seq {
 		width: 26px;
