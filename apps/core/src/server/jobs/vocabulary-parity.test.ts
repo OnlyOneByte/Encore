@@ -117,7 +117,7 @@ describe('every worker-written artifact key is declared in JobArtifacts', () => 
 	// `name?:` / `name:` at the start of an indented line inside the interface body — the same
 	// read-source-as-text idiom used above, so no build step is needed to know the declared set.
 	function declaredArtifactKeys(): Set<string> {
-		const events = readFileSync(join(WORKER_SRC, '../../../packages/shared/src/events.ts'), 'utf8');
+		const events = readFileSync(join(WORKER_SRC, '../../../packages/shared/src/core/events.ts'), 'utf8');
 		const m = events.match(/export interface JobArtifacts \{([\s\S]*?)\n\}/);
 		expect(m, 'JobArtifacts interface not found in events.ts').toBeTruthy();
 		const body = m![1]!;
@@ -275,7 +275,7 @@ describe('TS↔Python vocabulary parity', () => {
 	/**
 	 * The WIRE VERBS were the last contract in this file guarded only by a comment.
 	 *
-	 * `protocol.py` carries `# message type strings (must match packages/shared/src/events.ts)` above
+	 * `protocol.py` carries `# message type strings (must match packages/shared/src/core/events.ts)` above
 	 * eleven frame names, and nothing checked it. Rename a frame on either side and every test here
 	 * stayed green while the worker silently ignored an unrecognised `type` (or the core dropped the
 	 * worker's) — a worker that connects, handshakes, and then never accepts a job. That is the same
@@ -621,7 +621,7 @@ describe('stem path/extension parity (worker processor.py vs core paths.ts)', ()
  * separator contract with no guard.
  *
  * `demucs.py` carries `DEMUCS_MODELS = ("htdemucs", ...)` under a comment that says it "Mirrors the
- * `demucs` engine's model whitelist in packages/shared/src/separators.ts" — but nothing enforced the
+ * `demucs` engine's model whitelist in packages/shared/src/lyrics/separators.ts" — but nothing enforced the
  * mirror. Its roformer twin IS guarded (the token↔checkpoint block above reads ROFORMER_MODELS as
  * text and pins it against the offered set); the demucs side lived only in that prose comment.
  *
@@ -684,7 +684,7 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
  * nothing about what is inside it — and the inside is written in Python (`_NULL_PROFILE` in
  * `analysis/song_profile.py`, the one place the always-publish null shape is built) and read in
  * TypeScript (`SongProfile` + `EMPTY_SONG_PROFILE` + `normalizeSongProfile` in
- * `packages/shared/src/song-profile.ts`). There is no generator between them. The worker's pytest
+ * `packages/shared/src/cook/song-profile.ts`). There is no generator between them. The worker's pytest
  * asserts its own dict, the shared package's bun test asserts its own literal, and neither has ever
  * seen the other's shape — the identical blind spot that let `songProfile` itself ship at the wrong
  * envelope level.
@@ -700,7 +700,7 @@ describe('demucs model whitelist parity (worker DEMUCS_MODELS ↔ separators.ts)
  * of `EMPTY_SONG_PROFILE`.
  */
 describe('songProfile inner-field parity (worker dict vs shared type)', () => {
-	const SHARED_SONG_PROFILE = join(WORKER_SRC, '../../../packages/shared/src/song-profile.ts');
+	const SHARED_SONG_PROFILE = join(WORKER_SRC, '../../../packages/shared/src/cook/song-profile.ts');
 	const WORKER_SONG_PROFILE = join(WORKER_SRC, 'analysis/song_profile.py');
 
 	/** Keys of `_NULL_PROFILE = { "name": None, ... }`, read from the Python as text. */

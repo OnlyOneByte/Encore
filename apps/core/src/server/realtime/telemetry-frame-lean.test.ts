@@ -39,7 +39,7 @@ function stripComments(src: string): string {
 
 // import.meta.dir === apps/core/src/server/realtime.
 const EVENTS = stripComments(
-	readFileSync(join(import.meta.dir, '..', '..', '..', '..', '..', 'packages', 'shared', 'src', 'events.ts'), 'utf8')
+	readFileSync(join(import.meta.dir, '..', '..', '..', '..', '..', 'packages', 'shared', 'src', 'core', 'events.ts'), 'utf8')
 );
 const PLAYER = stripComments(readFileSync(join(import.meta.dir, 'player.ts'), 'utf8'));
 const SERVER = stripComments(readFileSync(join(import.meta.dir, '..', '..', '..', 'server.ts'), 'utf8'));

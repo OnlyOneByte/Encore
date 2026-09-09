@@ -691,7 +691,7 @@ test('the colour picker has exactly one name per shared preset colour', () => {
 	// announces `blue`.) Length parity plus the contract's name check bound the blast radius to a
 	// same-length reorder, which a human reading either file can still see.
 	const picker = readFileSync(join(SRC, 'lib/components/ColourPicker.svelte'), 'utf8');
-	const shared = readFileSync(join(SRC, '../../../packages/shared/src/colors.ts'), 'utf8');
+	const shared = readFileSync(join(SRC, '../../../packages/shared/src/presentation/colors.ts'), 'utf8');
 
 	const names = /PRESET_NAMES\s*=\s*\[([^\]]*)\]/.exec(picker)?.[1];
 	expect(names).toBeDefined();

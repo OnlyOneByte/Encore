@@ -10,7 +10,7 @@
 // deriving a per-frame brightness variant or clamping illegible colours to the accent. So there is no
 // new contrast rule to test here; the rule that does apply is the identity floor
 // (`lyricHighlightColor` -> `isLegibleSingerColor`), and that is exercised behaviourally on the pure
-// function in `packages/shared/src/colors.test.ts`.
+// function in `packages/shared/src/presentation/colors.test.ts`.
 //
 // WHY A SOURCE SCAN, and why it is not mutation-blind. There is no Svelte compiler and no DOM under
 // `bun test`, so a `$props()` declaration, a custom property appended to an inline `style` string, and

@@ -21,7 +21,7 @@
 // deliberately one assertion per production hunk, so reverting any single wiring hunk reds a NAMED
 // test rather than the suite staying green on a half-connected feature. The mutation-STRONG proof
 // that the mapping is correct (two distinct legible colours vs an empty map) is behavioural, on the
-// pure `duetPartColors` in `packages/shared/src/colors.test.ts`; the RENDERED pixels are the CDP
+// pure `duetPartColors` in `packages/shared/src/presentation/colors.test.ts`; the RENDERED pixels are the CDP
 // frames in the PR body.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';

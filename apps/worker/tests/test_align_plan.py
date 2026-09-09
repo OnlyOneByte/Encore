@@ -591,7 +591,7 @@ async def test_the_worker_chooses_the_TEXT_but_does_not_implement_the_presentati
     The worker DOES choose which text is the song's words — that is the two-tier grading, and it has to
     happen here because this is the only place the candidate and the baselines exist in memory together.
     What it does not do is rank what it published for display: `uri` is merely the first artifact, and
-    pickBestLyrics in packages/shared/src/lyrics.ts re-picks on every write and restore. So there is no
+    pickBestLyrics in packages/shared/src/lyrics/lyrics.ts re-picks on every write and restore. So there is no
     second copy of the presentation tier logic here to drift out of step with the TS one.
     """
     wrong = "never gonna give you up let down run around desert cry say goodbye tell lie hurt"
@@ -1799,7 +1799,7 @@ async def test_326_unusable_word_timing_is_REFUSED_and_degraded_to_line_low(tmp_
     """M1/M2/M3 in one assertion. An LRCLIB source force-aligned to a doc with one out-of-order word is
     UNUSABLE, so the worker must NOT publish it as word timing. It degrades to the source's own line
     sync stamped `(line, low)` — `line` (not `word`, M2) so the TV does not run a backwards ball, and
-    `low` (not `high`, M3) so breaksTie in packages/shared/src/lyrics.ts cannot let a refused alignment
+    `low` (not `high`, M3) so breaksTie in packages/shared/src/lyrics/lyrics.ts cannot let a refused alignment
     outrank a genuinely good line-sync candidate. A REFUSING note is emitted (M1). Deleting the block
     (`if not rep.usable:` -> `if False:`) publishes 30+ word timings at `(word, high)` and reds every
     line here.

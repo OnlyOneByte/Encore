@@ -238,7 +238,7 @@ export function markMediaReady(
  *
  * "Settled", not "succeeded". `ready` here means the step is finished, and a song with no words is a
  * legitimate finished song: requiring a lyrics artifact would leave every genuine instrumental stuck
- * cooking forever on a step that worked correctly. See packages/shared/src/gates.ts.
+ * cooking forever on a step that worked correctly. See packages/shared/src/queue/gates.ts.
  */
 export function settleLyricsGate(mediaId: string, mediaById: Map<string, Media>): boolean {
 	const media = mediaById.get(mediaId);

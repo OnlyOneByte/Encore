@@ -379,7 +379,7 @@ describe('SettingsRepository global scope: getGlobal SELECT completeness', () =>
 	// are valid live-selectable / valid-separator pairs rather than independently flipped values.
 	//
 	// defaultFetcher is deliberately NOT round-trip-checked here, and NOT because a dedicated test
-	// covers it — it does not. normalizeGlobalSettings (packages/shared/src/settings.ts) refuses the
+	// covers it — it does not. normalizeGlobalSettings (packages/shared/src/core/settings.ts) refuses the
 	// only other FETCHERS member ('local', which degrades to the default), and setGlobal is the sole
 	// writer to global_settings, so no value distinct from the default can ever reach the column
 	// through the public API. Its SELECT line is therefore UNOBSERVABLE today: deleting it changes no

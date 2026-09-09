@@ -1,7 +1,7 @@
 // The own-picks reorder MODE, as pure functions (XR-PH-17 … XR-PH-20, issue #836).
 //
 // WHY A MODE AT ALL. `move`'s `toSeq` is an index into the singer's own QUEUED picks, not a
-// `rotationSeq` (packages/shared/src/ops.ts:12, `reorderWithinSinger` at rotation.ts:127). The op
+// `rotationSeq` (packages/shared/src/core/ops.ts:12, `reorderWithinSinger` at rotation.ts:127). The op
 // therefore CANNOT express "put my song above someone else's" — round-robin owns cross-singer order,
 // and a drop that appeared to cross singers would be clamped back, which reads as a bug rather than
 // as a rule. A guest's picks are also NOT adjacent in the flat list, so the list cannot imply the

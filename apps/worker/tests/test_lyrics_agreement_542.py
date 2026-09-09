@@ -3,8 +3,8 @@
 Three things are guarded here.
 
 1. **Parity with the TypeScript authority.** `agreement` is implemented twice (here and in
-   `packages/shared/src/lyrics.ts`) and the two suites cannot import each other, so both read the same
-   hand-computed corpus — `packages/shared/src/lyrics-agreement-corpus.ts`. This file SOURCE-SCANS that
+   `packages/shared/src/lyrics/lyrics.ts`) and the two suites cannot import each other, so both read the same
+   hand-computed corpus — `packages/shared/src/lyrics/lyrics-agreement-corpus.ts`. This file SOURCE-SCANS that
    module rather than importing it, the same technique `test_lyrics_presplit.py` uses for the constants:
    the production truth is the file it parses, so it cannot be defeated by reverting a hunk.
 
@@ -47,8 +47,8 @@ from src.lyrics.chain import (
 from src.lyrics.chain import agreement as _chain_agreement
 
 _REPO = Path(__file__).resolve().parents[3]
-_SHARED_LYRICS_TS = _REPO / "packages" / "shared" / "src" / "lyrics.ts"
-_CORPUS_TS = _REPO / "packages" / "shared" / "src" / "lyrics-agreement-corpus.ts"
+_SHARED_LYRICS_TS = _REPO / "packages" / "shared" / "src" / "lyrics" / "lyrics.ts"
+_CORPUS_TS = _REPO / "packages" / "shared" / "src" / "lyrics" / "lyrics-agreement-corpus.ts"
 
 
 # ── reading the TypeScript authority ─────────────────────────────────────────────────
