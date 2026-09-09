@@ -3,7 +3,6 @@
 		SINGER_COLORS,
 		DEFAULT_EFFECTIVE_SETTINGS,
 		queueOrderLabel,
-		reorderIsMeaningful,
 		singHistoryFrom,
 		originalKeyLabel,
 		soundingKeyLabel,
@@ -128,13 +127,14 @@
 	// an input to the optimistic reducer, so an add can only land in its real position if this is
 	// current. Defaults until the first sync, which is fair rotation — the pre-setting behaviour.
 	let settings = $state<EffectiveSettings>(DEFAULT_EFFECTIVE_SETTINGS);
-	// Reordering your own picks is meaningless under `shuffle` (rank comes from the entry id), so the
-	// arrows are hidden rather than offered as a control that silently does nothing.
-	const canReorder = $derived(reorderIsMeaningful(settings.room.queueOrder));
+	// A reorder is ALWAYS meaningful now (#856): the queue is a stored ordered list and a move rewrites
+	// it, so there is no policy that can discard the move. This used to be false under `shuffle`, whose
+	// rank came from the entry id and re-derived over any reorder — nothing re-derives a position now,
+	// so a drag on a shuffled list simply rearranges the stored list like anywhere else.
+	const canReorder = true;
 	// HOST reorder (issue #638): a host can drag ANY song to any global slot, not just reorder their
 	// own picks. Every joined singer is a host today (mirrors player:control — see capabilities.ts),
 	// so this is "am I in the room"; narrowing to a real host role is one edit here + in capabilities.
-	// Still gated on the policy respecting order, since a pin under shuffle would fight the hash rank.
 	const canHostReorder = $derived(canReorder && !!me?.id);
 	// The list heading named the order "rotation" unconditionally, which stops being true the moment
 	// the room picks anything else. Eyes-on: it still said ROTATION with the room on first-come-first-served.

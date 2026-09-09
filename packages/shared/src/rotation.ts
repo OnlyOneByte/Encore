@@ -1,96 +1,66 @@
-// Rotation — the differentiator. Pure functions so the client can PREDICT the exact order the
-// server will assign. See docs/ARCHITECTURE.md.
+// Rotation — the differentiator. Pure functions so the client can PREDICT the exact list the server
+// will commit. See docs/ARCHITECTURE.md.
 //
-// WHICH ordering is a ROOM SETTING and lives in queue-order.ts (fair rotation, first-come-first-
-// served, shuffle, longest-ago). This module is the part that does not vary: turning an ordering
-// into contiguous `rotationSeq` values, and being the single reducer both sides run.
+// THE MODEL (#856): the queue is a single STORED ordered list and that list is the source of truth.
+// `rotationSeq` is each entry's durable position in it. Nothing re-derives the order from entry
+// fields: this module keeps the stored list, mutates it in place, and renumbers it so the positions
+// stay contiguous.
+//
+// WHICH ordering is a ROOM SETTING and lives in queue-order.ts. Under this model a policy is not a
+// sort — it is an INSERT-POSITION rule consulted ONCE, when a song is added, to pick the index the
+// new song takes in the current stored list. After that the song holds its place until somebody moves
+// it. That is what makes a drag durable by construction: there is no re-derivation for it to fight.
 //
 // The `Ordering` argument is optional everywhere and defaults to fair rotation, so a caller that has
-// no room settings to hand (a test, a boot path before settings are read) gets exactly the behaviour
-// that existed before the setting did.
+// no room settings to hand (a test, a boot path before settings are read) gets fair insertion.
 
 import type { QueueEntry } from './types';
 import { applyOp, type QueueOp } from './ops';
-import { orderQueue, type Ordering } from './queue-order';
+import { insertIndexFor, type Ordering } from './queue-order';
 
 /**
- * Given queued entries, return them in the room's order (fair rotation unless told otherwise).
- * Does NOT mutate; returns a new array. Caller assigns rotationSeq from the index.
+ * The stored list, in stored order. Sorts by the durable `rotationSeq` position; `addedAt` then `id`
+ * break a tie so the order is TOTAL and stable even for rows the server has not numbered yet (a
+ * just-minted optimistic add carries a placeholder seq) or a hand-edited database with duplicates.
+ * Does NOT mutate; returns a new array.
  */
-export function rotate(entries: QueueEntry[], ordering: Ordering = {}): QueueEntry[] {
-	return orderQueue(entries, ordering);
+export function storedOrder(entries: QueueEntry[]): QueueEntry[] {
+	return [...entries].sort(
+		(a, b) => a.rotationSeq - b.rotationSeq || a.addedAt - b.addedAt || (a.id < b.id ? -1 : 1)
+	);
 }
 
 /**
- * Assign contiguous rotationSeq values (0-based) from rotate() order, AFTER honouring any host pins.
+ * Renumber the stored list to contiguous 0-based `rotationSeq`, honouring any host pins.
  *
- * The pin pass sits HERE — between the policy's order and the numbering — so it is the one place every
- * caller (client optimistic store and authoritative server both reach assignSeqs) applies it, and so a
- * pin overrides whichever policy the room chose rather than being an input to one of them. See placePins.
+ * This is the whole of it now: NO policy runs here. The list arrives in the order it is stored in and
+ * leaves in the same order with tidy positions, so calling this on an unchanged queue is a no-op and
+ * switching the room's algorithm does not re-sort anything already queued (the algorithm only decides
+ * where the NEXT add lands). The pin pass still sits between the stored order and the numbering, so
+ * pinning keeps behaving exactly as it does today until #856 step 3 deletes it.
  */
-export function assignSeqs(entries: QueueEntry[], ordering: Ordering = {}): QueueEntry[] {
-	return placePins(rotate(entries, ordering)).map((e, i) => ({ ...e, rotationSeq: i }));
+export function assignSeqs(entries: QueueEntry[], _ordering: Ordering = {}): QueueEntry[] {
+	return placePins(storedOrder(entries)).map((e, i) => ({ ...e, rotationSeq: i }));
 }
 
 /**
- * THE PIN MECHANISM. Given entries already in the room's policy order, move each host-pinned entry to
- * its recorded index among the REORDERABLE (queued) entries, leaving the unpinned ones in the policy
- * order around them and every non-queued entry exactly where the policy put it.
+ * Insert a NEW entry into the stored list at the position the room's policy picks, then renumber.
  *
- * WHAT `pinnedSeq` INDEXES, and why it is the queued entries only. A pin is a reorder TARGET, so it
- * counts the same list the reorder UI counts: `+page.svelte`'s `queued` is
- * `entries.filter((e) => e.status === 'queued')`, and every tap sends an index into that. Indexing the
- * whole non-terminal list here instead made every target one short while a song was playing —
- * `move down` resolved onto the row's own slot (inert on every press, forever) and `move up` landed
- * above the playing entry, displacing the song on stage and ranking two queued entries ahead of it
- * (issue #790). This is the identical base #637 settled for the sibling `move` op; `reorderWithinSinger`
- * spells it out the same way. A playing entry is not a reorder target: it holds its policy slot, and
- * the queued entries are permuted among the slots they already occupy. With nothing playing the two
- * lists coincide, which is why every pin case pinned before this stayed byte-identical.
- *
- * WHY A POST-PASS rather than a policy input. Every ordering (fair/fcfs/least-recently-sung/shuffle) is
- * pure over entries + Ordering and must agree byte-for-byte between phone and server; teaching each of
- * the four to read a pin would be four chances to diverge and would make "pinned" mean something
- * different per policy. Placing pins AFTER any policy has run makes a global drag mean the same thing
- * under all four, and is why the pin survives assignSeqs re-derivation and the next add: `pinnedSeq`
- * lives on the entry (a durable column), so it is present on every re-derivation until an `unpin` op
- * clears it. `move`'s per-singer reorder is untouched — it still permutes addedAt and flows through the
- * policy, so the two mechanisms compose (a singer reorders their own picks; a host overrides globally).
- *
- * Pure and deterministic: reads only `pinnedSeq` and `status` off the entries, so both sides compute the
- * identical result. Pins are applied lowest-target-first (ties broken by id) so the placement of one pin
- * does not depend on hidden iteration order, and each target is clamped into range against the list as
- * it grows.
+ * The policy is consulted exactly here and nowhere else. `insertIndexFor` is given the current stored
+ * QUEUED list (not including the new entry, and not including a playing/terminal row) because that is
+ * the list the index counts — the same base `reorderWithinSinger` and the reorder UI use, so a target
+ * index means one thing everywhere. A playing entry keeps its slot: the queued rows are permuted among
+ * the slots they already occupy, so an insert can never displace the song on stage.
  */
-export function placePins(ordered: QueueEntry[]): QueueEntry[] {
-	// The reorderable entries and the slots they occupy. Everything else (a playing entry) keeps its
-	// slot, so a pin can never move the song on stage.
-	const slots: number[] = [];
-	const reorderable: QueueEntry[] = [];
-	ordered.forEach((e, i) => {
-		if (e.status === 'queued') {
-			slots.push(i);
-			reorderable.push(e);
-		}
-	});
-	const pinned = reorderable
-		.filter((e) => typeof e.pinnedSeq === 'number' && Number.isFinite(e.pinnedSeq))
-		.sort((a, b) => a.pinnedSeq! - b.pinnedSeq! || (a.id < b.id ? -1 : 1));
-	if (pinned.length === 0) return ordered.slice();
-	const pinnedIds = new Set(pinned.map((e) => e.id));
-	// Start from the queued entries in policy order with the pinned ones removed, then splice each back
-	// at its target index INTO THAT LIST — the same list the tap counted.
-	const placed = reorderable.filter((e) => !pinnedIds.has(e.id));
-	for (const e of pinned) {
-		const at = Math.max(0, Math.min(e.pinnedSeq!, placed.length));
-		placed.splice(at, 0, e);
-	}
-	// Write the permuted queued entries back into the slots they held.
-	const out = ordered.slice();
-	slots.forEach((slot, i) => {
-		out[slot] = placed[i]!;
-	});
-	return out;
+export function insertEntry(entries: QueueEntry[], entry: QueueEntry, ordering: Ordering = {}): QueueEntry[] {
+	const stored = storedOrder(entries.filter((e) => e.id !== entry.id));
+	const { slots, queued } = splitQueued(stored);
+	const at = insertIndexFor(queued, entry, ordering);
+	const nextQueued = queued.slice();
+	nextQueued.splice(at, 0, entry);
+	// The new row needs a slot of its own: rebuild by walking the stored list and emitting the queued
+	// sequence in its new order, then appending anything left over (the inserted row grew the list).
+	return renumber(weave(stored, slots, nextQueued));
 }
 
 /** Terminal entries no longer participate in the rotation (played to completion). */
@@ -99,46 +69,133 @@ export function isTerminal(e: QueueEntry): boolean {
 }
 
 /**
- * THE shared mutation: apply an op, drop terminal entries, then re-derive the room's ordering as
- * contiguous `rotationSeq`. Imported by BOTH the client optimistic store and the authoritative
- * server so the client predicts the EXACT order the server will commit — no post-broadcast
- * re-sort/flicker. Pure: returns a new array, never mutates.
+ * THE shared mutation: apply an op to the stored list, drop terminal entries, renumber. Imported by
+ * BOTH the client optimistic store and the authoritative server so the client predicts the EXACT list
+ * the server will commit — no post-broadcast re-sort/flicker. Pure: returns a new array.
  *
- * `ordering` must be the SAME on both sides. The client gets it from the room settings and singer
- * roster it already receives; a client whose snapshot is stale mispredicts one op and then adopts the
- * server's snapshot from the patch.
+ * `ordering` must be the SAME on both sides, and matters for ONE op: `add`, where it picks the insert
+ * index. Every other op rewrites or trims the stored list, which needs no policy at all.
  *
- * `move` is special: rotationSeq is server-owned and derived from per-singer addedAt order, so a raw
- * move-op (which only rewrites rotationSeq) wouldn't survive reseq. Instead we permute the moving
- * singer's addedAt stamps to the target index within their OWN picks — the timestamp set is stable,
- * so their slots are unchanged; only which song sits where moves. That works under every ordering
- * that reads addedAt, and is why a drag can never jump another singer under any of them. Under
- * `shuffle`, which ranks by entry id, a move is a legal no-op (see `respectsAddedAt`).
+ * `add` and `move` are the two arms that do not go through `applyOp`: an add has to be PLACED by the
+ * policy rather than appended, and a move has to rewrite the stored list rather than set a raw seq
+ * that the next renumber would overwrite.
  */
 export function applyAndReseq(entries: QueueEntry[], op: QueueOp, ordering: Ordering = {}): QueueEntry[] {
+	if (op.op === 'add') {
+		return insertEntry(entries, op.entry, ordering).filter((e) => !isTerminal(e));
+	}
 	const applied = op.op === 'move' ? reorderWithinSinger(entries, op.id, op.toSeq) : applyOp(entries, op);
-	return assignSeqs(
-		applied.filter((e) => !isTerminal(e)),
-		ordering
-	);
+	return assignSeqs(applied.filter((e) => !isTerminal(e)), ordering);
 }
 
-/** Reorder one entry to index `toIdx` within its own singer's picks by permuting addedAt stamps. */
+/**
+ * Move one entry to index `toIdx` within its OWN singer's queued picks, by rewriting the stored list.
+ *
+ * Under the stored-list model a reorder IS a list rewrite. (It used to permute the singer's `addedAt`
+ * stamps, because the order was re-derived from them; nothing reads `addedAt` for position now, so a
+ * stamp permutation would be an invisible no-op.) The index space is unchanged and is the singer's own
+ * QUEUED picks in stored order — the client derives `toSeq` from exactly that list (#637), so counting
+ * a playing entry here would make every index one short.
+ *
+ * The move permutes the singer's songs among the stored slots THAT SINGER ALREADY HOLDS, so the two
+ * songs swap places and nobody else's row shifts. That is the stored-list form of what the stamp
+ * permutation did before. A global "move to any index" op is #856 step 4; this stays own-picks only.
+ */
 export function reorderWithinSinger(entries: QueueEntry[], id: string, toIdx: number): QueueEntry[] {
-	const moving = entries.find((e) => e.id === id);
-	if (!moving) return entries.slice();
-	// Index over the singer's REORDERABLE (queued) picks only. A playing/terminal entry is not a
-	// reorder target and must not occupy a slot: the client (+page.svelte) derives its toSeq from
-	// queued picks only, so if the server counted a playing entry too, every index would be off by
-	// one and the singer's first queued pick would resolve onto its own slot (a no-op — issue #637).
-	const mine = entries
-		.filter((e) => e.singerId === moving.singerId && e.status === 'queued')
-		.sort((a, b) => a.addedAt - b.addedAt);
+	const stored = storedOrder(entries);
+	const { slots, queued } = splitQueued(stored);
+	const moving = queued.find((e) => e.id === id);
+	if (!moving) return entries.slice(); // unknown, or not reorderable (e.g. playing) — no-op
+	// The positions within the queued list that this singer's picks occupy. The singer's songs are
+	// permuted among EXACTLY these positions, so no other singer's row moves — the stored-list
+	// equivalent of the old "the timestamp set is stable, only which song sits where moves".
+	const myPositions: number[] = [];
+	queued.forEach((e, i) => {
+		if (e.singerId === moving.singerId) myPositions.push(i);
+	});
+	const mine = myPositions.map((i) => queued[i]!);
 	const from = mine.findIndex((e) => e.id === id);
-	if (from === -1) return entries.slice(); // moving entry isn't reorderable (e.g. playing) — no-op
-	const stamps = mine.map((e) => e.addedAt); // stable timestamp slots for this singer's picks
+	if (from === -1) return entries.slice();
 	const clamped = Math.max(0, Math.min(toIdx, mine.length - 1));
+	if (clamped === from) return entries.slice(); // already there
 	mine.splice(clamped, 0, mine.splice(from, 1)[0]!);
-	const reStamp = new Map(mine.map((e, i) => [e.id, stamps[i]!]));
-	return entries.map((e) => (reStamp.has(e.id) ? { ...e, addedAt: reStamp.get(e.id)! } : e));
+	const nextQueued = queued.slice();
+	myPositions.forEach((pos, k) => {
+		nextQueued[pos] = mine[k]!;
+	});
+	return renumber(weave(stored, slots, nextQueued));
+}
+
+// ── stored-list plumbing ─────────────────────────────────────────────────────
+
+/** The queued rows and the slots they occupy in the stored list. Everything else holds its slot. */
+function splitQueued(stored: QueueEntry[]): { slots: number[]; queued: QueueEntry[] } {
+	const slots: number[] = [];
+	const queued: QueueEntry[] = [];
+	stored.forEach((e, i) => {
+		if (e.status === 'queued') {
+			slots.push(i);
+			queued.push(e);
+		}
+	});
+	return { slots, queued };
+}
+
+/**
+ * Write a new queued sequence back into the stored list's queued slots, leaving every non-queued row
+ * (a playing entry) exactly where it was. When the sequence is LONGER than the slots it had (an
+ * insert), the surplus is appended after the last slot, which is where a grown list continues.
+ */
+function weave(stored: QueueEntry[], slots: number[], nextQueued: QueueEntry[]): QueueEntry[] {
+	const out: QueueEntry[] = [];
+	let q = 0;
+	for (let i = 0; i < stored.length; i++) {
+		if (slots.includes(i)) {
+			if (q < nextQueued.length) out.push(nextQueued[q++]!);
+			// a shrunk queued sequence just leaves the slot unfilled
+		} else {
+			out.push(stored[i]!);
+		}
+	}
+	while (q < nextQueued.length) out.push(nextQueued[q++]!); // surplus from an insert
+	return out;
+}
+
+/** Contiguous 0-based positions over a list already in its final order. */
+function renumber(list: QueueEntry[]): QueueEntry[] {
+	return list.map((e, i) => ({ ...e, rotationSeq: i }));
+}
+
+/**
+ * THE PIN MECHANISM (unchanged, and on its way out in #856 step 3). Given the stored list, move each
+ * host-pinned entry to its recorded index among the queued entries, leaving the unpinned ones in
+ * stored order around them and every non-queued entry exactly where it was.
+ *
+ * `pinnedSeq` indexes the QUEUED entries only, the same list the reorder UI counts (#790, #637). A
+ * playing entry is not a reorder target: it holds its slot, and the queued entries are permuted among
+ * the slots they already occupy.
+ *
+ * Under the stored-list model this is the ONE thing that still overrides the stored order, which is
+ * exactly why it is being deleted: a pinned row is re-seated on every renumber, so a drag of a pinned
+ * row cannot stick. Unpinned rows keep their stored order, so a drag of anything else is durable.
+ * Pure and deterministic: reads only `pinnedSeq` and `status`, applied lowest-target-first (ties by
+ * id) so one pin's placement never depends on hidden iteration order.
+ */
+export function placePins(ordered: QueueEntry[]): QueueEntry[] {
+	const { slots, queued: reorderable } = splitQueued(ordered);
+	const pinned = reorderable
+		.filter((e) => typeof e.pinnedSeq === 'number' && Number.isFinite(e.pinnedSeq))
+		.sort((a, b) => a.pinnedSeq! - b.pinnedSeq! || (a.id < b.id ? -1 : 1));
+	if (pinned.length === 0) return ordered.slice();
+	const pinnedIds = new Set(pinned.map((e) => e.id));
+	const placed = reorderable.filter((e) => !pinnedIds.has(e.id));
+	for (const e of pinned) {
+		const at = Math.max(0, Math.min(e.pinnedSeq!, placed.length));
+		placed.splice(at, 0, e);
+	}
+	const out = ordered.slice();
+	slots.forEach((slot, i) => {
+		out[slot] = placed[i]!;
+	});
+	return out;
 }

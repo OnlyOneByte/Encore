@@ -20,7 +20,7 @@ export interface OwnPick {
 	id: string;
 	/**
 	 * A durable global pin (`move-global`). Read because a pin OUTRANKS this mode's op: `assignSeqs`
-	 * is `placePins(rotate(…))`, so `placePins` re-seats a pinned entry AFTER the ordering policy has
+	 * is `placePins(storedOrder(…))`, so `placePins` re-seats a pinned entry AFTER the stored order has
 	 * honoured the `move`. Measured: with my pick `a` pinned to slot 0, moving it below my pick `b`
 	 * returns it to index 0 — the drag snaps back on screen. See `gripVisible`.
 	 */
@@ -35,12 +35,14 @@ export interface OwnPick {
  *    guest's song. `QueueRow.svelte` records that a grip once rendered only on another guest's row,
  *    where it was the sole affordance; that exact regression is what this argument forbids.
  *  • `ownQueuedCount > 1` — with one pick there is no second position to move it to.
- *  • `reorderMeaningful` — under `shuffle` (`respectsAddedAt: false`) rank comes from the entry id, so
- *    permuting addedAt is a legal NO-OP and a grip would promise a reorder the reducer discards.
+ *  • `reorderMeaningful` — always true under the stored-list model (#856): the queue IS the stored
+ *    list and a move rewrites it, so no policy can discard a reorder. It was false under `shuffle`,
+ *    which ranked by entry id and re-derived over any move; nothing re-derives a position now. The
+ *    parameter is kept so the caller states the claim explicitly rather than assuming it.
  *  • `!ownPicksPinned` — see `OwnPick.pinnedSeq`. A pinned pick is re-seated by `placePins` after the
  *    move, so the row springs back. Gating is the whole of the fix: no new op becomes reachable and
  *    no new word enters the UI (the up/down buttons on that row keep working, so nothing is lost).
- *    When pinning is removed (#856) `ownPicksPinned` is constant false and this clause is vacuous.
+ *    When pinning is removed (#856 step 3) `ownPicksPinned` is constant false and this clause is vacuous.
  */
 export function gripVisible(opts: {
 	mine: boolean;
