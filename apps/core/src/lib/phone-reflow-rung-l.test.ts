@@ -152,10 +152,10 @@ test('the /stats tile grid floors its tracks in a TYPE-RELATIVE unit, never px (
 // ---------------------------------------------------------------------------------------------------
 // The #857 fix mechanisms, pinned as source scans. The browse arm above DRIVES and MEASURES the
 // odd-duration chip offender live and reds without its fix, so that one is not honour-system — the
-// scan here is its cheap always-on companion. The KEY control and the sheet-level floor, by contrast,
-// only manifest with a now-playing song (the key control renders in the queue sheet under live,
-// WS-driven playback), which the self-hosting probe cannot start; per the reviewer's accepted
-// alternative, this is the clear statement that the harness cannot reach those offenders plus the
+// scan here is its cheap always-on companion. The KEY control, by contrast, only manifests with a
+// now-playing song (it renders in the now-playing controls under live, WS-driven playback), which the
+// self-hosting probe cannot start; per the reviewer's accepted
+// alternative, this is the clear statement that the harness cannot reach that offender plus the
 // source-scan assertion that stands in for the live measurement. None of these decides whether the
 // page overflows — each decides whether the mechanism that stopped it is still declared.
 // ---------------------------------------------------------------------------------------------------
@@ -176,21 +176,30 @@ test('the odd-duration chip wraps its phrase instead of forcing the row wider (#
 	expect(oddDurRule).toMatch(/white-space:\s*normal/);
 });
 
-test('the queue sheet floors its own reflow: its children can shrink below their content (#857)', () => {
-	// `.sheet-surface` is `left:0; right:0`, so its used width should resolve to min(max-width,
-	// viewport). That bound only holds while the flex column CAN shrink to it — a flex child's automatic
-	// minimum is its min-content width, and an unbreakable control label at 200% exceeds 320px, so
-	// without `min-width: 0` on the children the sheet was sized by content it could not shrink below
-	// and resolved to 436px in a 320px viewport. The live harness cannot reach this (it needs a
-	// now-playing song); this scan is its stand-in.
-	expect(APP_CSS).toMatch(/\.sheet-surface\s*>\s*\*\s*\{[^}]*min-width:\s*0/);
-});
+/*
+ * RETIRED IN #903 — `the queue sheet floors its own reflow: its children can shrink below their
+ * content (#857)`. It asserted `.sheet-surface > * { min-width: 0 }` in app.css, and that rule was
+ * deleted with the drawer surface it dressed.
+ *
+ * XR-VER-06 record. (a) The invariant: a `left:0; right:0` fixed box only honours min(max-width,
+ * viewport) while its flex children CAN shrink to it — a flex child's automatic minimum is its
+ * min-content width, so an unbreakable control label at 200% text sized the sheet by content it could
+ * not shrink below (436px inside a 320px viewport, SC 1.4.10). (b) What left scope: `.sheet-surface`
+ * and its children, the only box the rule ever applied to. (c) What covers the survivors: NOTHING
+ * asserts this on the docked band, DELIBERATELY. `.cta-dock` / `.search-dock` are a flex row holding
+ * ONE 44px control, not a column of unbreakable control labels, and neither declares `min-width: 0` —
+ * so re-pointing this scan at them would assert a declaration that does not exist and demand
+ * production CSS for a defect nobody has measured. The band's reflow is instead covered where it is
+ * real: the rung-L probe arms above measure the live pages at 320 CSS px and 200% text and FAIL on an
+ * overflow, which is the check that would catch it. If a future band grows a multi-control column,
+ * re-add a floor for that band rather than reviving this one.
+ */
 
 test('the key row wraps and its ±semitone buttons can shrink at 200% text (#857)', () => {
-	// The queue sheet's key control, named in the issue's offender list. It renders only under live
+	// The now-playing key control, named in the issue's offender list. It renders only under live
 	// playback, which the probe cannot start — so it is pinned here rather than measured. `.key` is a
 	// flex row of two `flex: 1` buttons whose label is the single unbreakable word "semitone"; at 200%
-	// each is ~172px, so two-up plus the label forced the row — and the sheet around it — past 320px.
+	// each is ~172px, so two-up plus the label forced the row — and the column around it — past 320px.
 	// The row must be allowed to WRAP…
 	const keyRule = APP_CSS.match(/\.key\s*\{([^}]*)\}/)?.[1] ?? PAGE.match(/\.key\s*\{([^}]*)\}/)?.[1] ?? '';
 	expect(keyRule).toMatch(/flex-wrap:\s*wrap/);

@@ -293,7 +293,8 @@
 	/*
 	 * The dragged row follows the finger. `--drag-y` is written by the page from the live pointer
 	 * offset and read HERE, so the movement is a CSS transform of a GPU-composited property — the
-	 * `--drag` idiom QueueSheet.svelte already uses for the sheet pull.
+	 * `--drag` idiom the reorder mode uses for every drag on this screen (the queue sheet's pull used
+	 * it too, before that surface was deleted in #903).
 	 *
 	 * There is deliberately NO `transition` and no keyframe on this rule, which is what makes XR-PH-06
 	 * hold by construction rather than by a media query: nothing is interpolated over time, so there is

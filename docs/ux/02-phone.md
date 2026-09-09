@@ -185,7 +185,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Rationale** | The mockup's own home frame demonstrates the failure — the docked CTA occludes queue row 5 because a disclosure grew inside a fixed shell — and an absolutely-positioned CTA that visually sits last while appearing first in the DOM also breaks the tab sequence. |
 | **Source** | [SC 2.4.3 Focus Order](https://www.w3.org/WAI/WCAG22/Understanding/focus-order.html) (A) for the sequence. The reserve-in-flow half is `DERIVED` — model: content occluded by a fixed band cannot be reached by scrolling, so it is content loss under [SC 1.4.10 Reflow](https://www.w3.org/WAI/WCAG22/Understanding/reflow.html) regardless of the focus question. |
 | **Acceptance** | Given home with enough rows to scroll, When the list is scrolled to its end, Then the last row's rect does not intersect the docked band's rect; and When Tab is pressed from the header, Then focus visits controls in top-to-bottom visual order. |
-| **Check** | Driven browser: `getBoundingClientRect` intersection plus real `Tab` key events reading `document.activeElement`. The existing `--peek-h` custom-property idiom is the working precedent for reserving a docked band's height. |
+| **Check** | Driven browser: `getBoundingClientRect` intersection plus real `Tab` key events reading `document.activeElement`. The `--dock-h` custom-property idiom is the working precedent for reserving a docked band's height (it succeeded `--peek-h`, retired with the drawer surface in #903). |
 | **Priority** | Must. |
 
 ### XR-PH-13 — Announcement inventory: what is announced, and when

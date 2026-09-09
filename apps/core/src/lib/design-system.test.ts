@@ -493,7 +493,8 @@ test('every z-index in a component names a paint-order tier, never a bare intege
 	// var(--z-tv-…) reference"), and XR-PH-04 for its phone half.
 	//
 	// A duplication rule could not express it anyway: the two ladders SHARE values by design (--z-header
-	// and --z-tv-video are both 1, --z-sheet and --z-tv-affordance both 10), so value -> token is
+	// and --z-tv-video are both 1, and --z-sheet matched --z-tv-affordance at 10 before the sheet tiers
+	// were retired in #903), so value -> token is
 	// ambiguous and only the author knows which tier was meant.
 	//
 	// Inline `style=` is in scope too — TvPlayer picks its slot tier from an expression, and a bare
@@ -554,7 +555,7 @@ test('each paint-order ladder still climbs in its documented order', () => {
 			'z-tv-status',
 			'z-tv-affordance'
 		],
-		phone: ['z-header', 'z-row-lifted', 'z-sheet-scrim', 'z-sheet', 'z-dock']
+		phone: ['z-header', 'z-row-lifted', 'z-dock']
 	};
 	let rungsChecked = 0;
 	for (const [name, ladder] of Object.entries(LADDERS)) {
@@ -571,7 +572,14 @@ test('each paint-order ladder still climbs in its documented order', () => {
 	const laddered = new Set(Object.values(LADDERS).flat());
 	const unplaced = [...ROOT_TOKENS].filter((t) => /^z-/.test(t) && !laddered.has(t));
 	expect(unplaced).toEqual([]);
-	expect(rungsChecked).toBeGreaterThanOrEqual(11);
+	// XR-VER-06 RECORD — this floor went 11 -> 10 in #903, and here is what left scope. The INVARIANT is
+	// unchanged: every z-* tier in :root belongs to exactly one ladder and each ladder climbs in its
+	// documented order. What shrank is the POPULATION: --z-sheet-scrim (9) and --z-sheet (10) were the
+	// queue sheet's two tiers, and the drawer surface that was their only reader was deleted, so the
+	// phone ladder went from five tiers (four rungs) to three (two rungs). Nothing is unenforced by the
+	// drop: the `unplaced` assertion above still proves NO z-* token escapes a ladder, so a re-added
+	// sheet tier reds there rather than slipping in un-ordered. TV's eight rungs are untouched.
+	expect(rungsChecked).toBeGreaterThanOrEqual(10);
 });
 
 test('the phone type ladder never reaches a TV surface', () => {
@@ -731,44 +739,6 @@ test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare in
 	expect(picker).not.toMatch(/indexOf\(value\)/);
 });
 
-test('every bottom-docked sheet caps its height in dvh, not vh', () => {
-	/*
-	 * RECORDED RULING FOR THE QUEUESHEET DRAWER PORT (#827)
-	 *
-	 * This assertion and the `.peek` env() one below are the two guards a vaul/shadcn drawer port takes
-	 * out of scope, and the ruling was made BEFORE the port rather than in the review that meets the red.
-	 *
-	 * Why they go: shadcn's drawer copies 12 files with zero `<style>` blocks, so a ported QueueSheet has
-	 * no scoped `<style>` for either scan to read — the real CSS is a `<style global>` inside
-	 * `node_modules/vaul-svelte`, which `test-helpers.ts`'s SKIP_DIRS skips by name, and the sheet's
-	 * offset is an inline `transform` written from JS (`use-snap-points.svelte.js:44-54`) that outranks
-	 * any rule either way. Both assertions fail LOUDLY, which is the good case: `caps.length > 0` here and
-	 * the non-null `.peek` match below cannot pass vacuously.
-	 *
-	 * RULING: RE-ANCHOR, DO NOT DELETE. The #827 spike measured all four incumbent numbers holding on the
-	 * port — 82dvh = 692.08px at 844, `.peek` 44/10 and `.body` 54/20 across a 34px inset, `--peek-h` the
-	 * measured inline write beating `@media (max-height: 480px)` — so the values are still true and still
-	 * worth pinning; only their ADDRESS changes. Re-point both at whatever file the port's CSS lives in
-	 * (its own `:global` block, or the copied `ui/drawer/` component), and keep the loop's list shape so
-	 * the next sheet still has to comply. Deleting either one launders a real design floor away under
-	 * cover of a refactor. Do not use RETIRED for this: nothing here is being given up.
-	 */
-	// `.sheet-surface` in app.css deliberately does NOT default a max-height, because a sheet's cap is
-	// its own business. But the UNIT is not a preference: on iOS `vh` resolves to the LARGE viewport, so
-	// a sheet capped in vh overflows the visible area whenever the URL bar is showing and hides its own
-	// footer -- which was the rotation's last row here, and the Save button on the profile sheet before
-	// identity moved to /settings and that sheet was retired. The cap stays with each sheet and the unit
-	// is asserted here. One entry in this list today; it is a list because the next sheet must comply.
-	for (const f of ['lib/components/QueueSheet.svelte', 'lib/components/QueueSheetDrawer.svelte']) {
-		const src = stripComments(readFileSync(join(SRC, f), 'utf8'));
-		const caps = [...src.matchAll(/max-height:\s*([0-9.]+)(dvh|svh|vh)\b/g)];
-		expect(caps.length).toBeGreaterThan(0);
-		for (const c of caps) {
-			expect(c[2], `${f}: max-height ${c[1]}${c[2]} must be dvh/svh, not vh`).not.toBe('vh');
-		}
-	}
-});
-
 test('no component leaks a stray comment terminator into the page', () => {
 	// THE BUG THIS EXISTS FOR. A rebase auto-merge left a bare `-->` in the phone route with no `<!--`
 	// opening it. Svelte treats an unmatched terminator as ordinary TEXT, so it rendered "-->" on
@@ -866,41 +836,53 @@ test('the phone shell keeps its dynamic viewport and its safe-area insets', () =
 	expect(css).toMatch(/env\(safe-area-inset-/);
 });
 
-test('a bottom-docked sheet clears the home indicator', () => {
-	// THE BUG: the queue sheet is `position: fixed; bottom: 0` and collapses to show only its peek, so
-	// the peek is the band sitting at the very bottom of the screen. Its inset landed on the sheet's
-	// separate scroll body instead, which only helps once EXPANDED -- so in the default collapsed state
-	// the transport controls and the "when am I up?" line rendered under the home indicator.
+test('the bottom-docked band clears the home indicator', () => {
+	// THE BUG: a band that is `position: fixed; bottom: 0` sits in the ~34px iOS reserves for the home
+	// indicator unless it carries the inset itself. The original defect was on the queue sheet's peek,
+	// whose inset landed on the sheet's separate scroll body instead — so in the collapsed state the
+	// transport controls and the "when am I up?" line rendered under the indicator. That surface was
+	// deleted in #903 and the invariant moved WITH the band contract to the phone home's docked bands.
 	//
-	// The peek is also what --peek-h measures (it is bound to that element's clientHeight, which
-	// includes padding), and every other docked control offsets from --peek-h with no env() of its own.
-	// So the inset belonging to the peek is a contract, not a detail: move it and the toasts silently
-	// stop clearing the indicator too.
-	const sheet = readFileSync(join(SRC, 'lib/components/QueueSheet.svelte'), 'utf8');
-	const peek = sheet.match(/\.peek\s*\{[^}]*\}/s);
-	expect(peek).not.toBeNull();
-	expect(peek![0]).toMatch(/env\(safe-area-inset-bottom/);
+	// The band is also what --dock-h measures (bound to that element's clientHeight, which includes
+	// padding), and every other docked control offsets from --dock-h with no env() of its own. So the
+	// inset belonging to the band is a contract, not a detail: move it and the toasts silently stop
+	// clearing the indicator too. Both bands are checked because they are mutually exclusive halves of
+	// the same contract (home's primary button, browse's search dock) and either can be the band on
+	// screen; it is a list so the next docked band must comply.
+	const page = readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8');
+	let banded = 0;
+	for (const cls of ['cta-dock', 'search-dock']) {
+		const rule = page.match(new RegExp(`\\.${cls}\\s*\\{[^}]*\\}`, 's'));
+		expect(rule, `.${cls} must still be a rule in routes/+page.svelte`).not.toBeNull();
+		expect(rule![0], `.${cls} must carry env(safe-area-inset-bottom) itself`).toMatch(/env\(safe-area-inset-bottom/);
+		banded++;
+	}
+	// Non-vacuous: if a rename makes both selectors unmatchable the loop above already reds, and this
+	// floor stops the list being quietly emptied to nothing.
+	expect(banded).toBe(2);
 });
 
-test('both documentElement custom-property writes (--peek-h, --undo-h) tear down on unmount (#460 §14/§17)', () => {
-	// THE BUG THIS EXISTS FOR (#460 sec.14). QueueSheet writes `--peek-h` onto documentElement in an
+test('both documentElement custom-property writes (--undo-h, --dock-h) tear down on unmount (#460 §14/§17)', () => {
+	// THE BUG THIS EXISTS FOR (#460 sec.14). A component wrote `--peek-h` onto documentElement in an
 	// $effect but returned no cleanup, so the inline property OUTLIVED the component on the root element
-	// and kept beating the `@media (height <= 480px)` rule after the sheet unmounted. A documentElement
-	// custom-property write is app-global mutable state; leaving it set is a leak. Source scan because
-	// bun:test has no DOM to mount-and-unmount; comments stripped so the rationale prose cannot satisfy
-	// or trip it. Reverting the $effect teardown reds this.
+	// and kept beating a `@media` rule after it unmounted. A documentElement custom-property write is
+	// app-global mutable state; leaving it set is a leak. Source scan because bun:test has no DOM to
+	// mount-and-unmount; comments stripped so the rationale prose cannot satisfy or trip it. Reverting
+	// any $effect teardown below reds this.
 	//
-	// SCOPE: both documentElement custom-property writes the audit named. QueueSheet's --peek-h was
-	// fixed in #598; routes/+page.svelte's --undo-h carried the SAME leak shape (a setProperty $effect
-	// with no cleanup, skewing the --error-dock stack after the route unmounts) and is fixed + pinned
-	// here in the #460 tail (§17). Each site must both WRITE its property and RETURN a cleanup that
-	// removeProperty's it; reverting either teardown reds this.
+	// SCOPE (#903): the original --peek-h site was the queue sheet, deleted with the drawer surface, so
+	// this guard now covers the two writers that remain — routes/+page.svelte's --undo-h (the SAME leak
+	// shape: a setProperty $effect with no cleanup, skewing the --error-dock stack after the route
+	// unmounts, fixed + pinned in the #460 tail §17) and its --dock-h (#832, the docked band's measured
+	// height, the same leak shape on a third site). The leak CLASS is documented in full at --dock-h's
+	// declaration in routes/+page.svelte. Each site must both WRITE its property and RETURN a cleanup
+	// that removeProperty's it; reverting either teardown reds this.
 	const sites: Array<{ file: string; prop: string }> = [
-		{ file: 'lib/components/QueueSheet.svelte', prop: '--peek-h' },
 		{ file: 'routes/+page.svelte', prop: '--undo-h' },
-		// #832: the docked primary button's measured band height, the same leak shape on a third site.
 		{ file: 'routes/+page.svelte', prop: '--dock-h' }
 	];
+	// Non-vacuity floor: an emptied list would pass this test silently. Two live writers today.
+	expect(sites.length).toBeGreaterThanOrEqual(2);
 	for (const { file, prop } of sites) {
 		const src = stripComments(readFileSync(join(SRC, file), 'utf8'));
 		const setRe = new RegExp(`documentElement\\.style\\.setProperty\\(\\s*['"]${prop}['"]`);
@@ -1036,79 +1018,5 @@ test('a route page block that caps its width also centres it under the app-shell
 	// The rule must actually be exercising something, or a refactor of the routes would silently disarm it.
 	// The three dashboards plus the two precedents (settings, join) all cap-and-centre.
 	expect(checked).toBeGreaterThanOrEqual(3);
-	expect(offences).toEqual([]);
-});
-
-test('a keydown handler that preventDefault()s on a snippet host early-returns on foreign targets (#301)', () => {
-	// THE BUG THIS EXISTS FOR (#301). QueueSheet's `.peek` is `role="button"` + `tabindex="0"` and
-	// RENDERS the transport snippet (`controls`) inside itself — the three real <button>s (restart /
-	// play-pause / skip) are the app's only transport. The peek's onkeydown handled Enter/Space/arrows
-	// with an unconditional `e.preventDefault()`, so a keypress that BUBBLED UP from a focused transport
-	// button was cancelled and toggled the sheet instead of activating the button. A keyboard, switch,
-	// or Bluetooth-keyboard guest could reach the transport but never fire it.
-	//
-	// The pointer path already guards its target at onPointerDown (`closest('button.no-drag')`); the
-	// keydown path had no equivalent. The fix mirrors it with an IDENTITY test — `if (e.target !==
-	// e.currentTarget) return;` — which the issue prescribes over a class test because the peek only
-	// ever wants keys it originated itself, and an identity check cannot rot when a caller forgets a
-	// class. This is a source scan: bun:test has no layout/event engine, the e2e probes are unwired
-	// live scripts, and the issue's own mutation signal is "restore :109-112 to the unconditional form
-	// → red". Comments are stripped first so the rationale prose above/below cannot satisfy or trip it.
-	const offences: string[] = [];
-	let scanned = 0;
-
-	for (const f of FILES) {
-		const src = stripComments(readFileSync(f, 'utf8'));
-		// Only the risky shape is in scope: a keydown handler whose body calls preventDefault(). A
-		// handler that never cancels the event cannot swallow a nested control's activation.
-		for (const m of src.matchAll(/onkeydown=\{\(?\s*(\w+)\s*\)?\s*=>\s*\{/g)) {
-			const evName = m[1]!; // the event parameter's local name (e, ev, …)
-			// Capture the arrow-body via a brace-depth walk from the `{` after `=>`.
-			const open = src.indexOf('{', m.index! + m[0].length - 1);
-			let depth = 0;
-			let end = -1;
-			for (let i = open; i < src.length; i++) {
-				if (src[i] === '{') depth++;
-				else if (src[i] === '}') {
-					depth--;
-					if (depth === 0) {
-						end = i;
-						break;
-					}
-				}
-			}
-			if (end === -1) {
-				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: unbalanced onkeydown body`);
-				continue;
-			}
-			// Strip // line comments from the body too: the rationale comment on the fixed handler
-			// mentions preventDefault()/e.target in prose, which would otherwise skew the index checks
-			// below. (design-system's stripComments only removes /* */ and <!-- -->.)
-			const body = src.slice(open + 1, end).replace(/\/\/[^\n]*/g, '');
-			if (!body.includes('preventDefault(')) continue; // this handler never cancels — not in scope
-			scanned++;
-			// The guard clause must be a target-identity early-return, and it must sit BEFORE the first
-			// preventDefault() so a foreign target is dropped before anything is cancelled.
-			const guardRe = new RegExp(
-				`if\\s*\\(\\s*${evName}\\.target\\s*!==\\s*${evName}\\.currentTarget\\s*\\)\\s*return\\b`
-			);
-			const guardIdx = body.search(guardRe);
-			const pdIdx = body.indexOf('preventDefault(');
-			if (guardIdx === -1) {
-				offences.push(
-					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: onkeydown preventDefault()s but never early-returns on ${evName}.target !== ${evName}.currentTarget — a nested control's Enter/Space is swallowed (#301)`
-				);
-			} else if (guardIdx > pdIdx) {
-				offences.push(
-					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: the ${evName}.target identity guard sits AFTER preventDefault() — move it first so a foreign target is dropped before the event is cancelled (#301)`
-				);
-			}
-		}
-	}
-
-	// Non-vacuous: the QueueSheet peek is exactly such a handler, so the scan must have examined at
-	// least one. If a refactor removes the last preventDefault()ing keydown this drops to 0 and the
-	// assertion below fails loudly rather than passing on an empty set.
-	expect(scanned).toBeGreaterThanOrEqual(1);
 	expect(offences).toEqual([]);
 });

@@ -100,16 +100,31 @@
 		void goto('/', { keepFocus: true, noScroll: false });
 	}
 	/**
-	 * The docked primary button's REAL rendered height, published so the scrolling column can reserve
-	 * its band in normal flow (XR-PH-12) instead of having the button float over the last queue row.
-	 * Measured, not a constant, for the reason --peek-h was: a guessed value leaves the last row
-	 * bleeding under the band the moment the copy or the safe-area inset changes.
+	 * THE BAND CONTRACT. The docked primary button's REAL rendered height, published to
+	 * documentElement so the scrolling column can reserve its band in normal flow (XR-PH-12) instead of
+	 * having the button float over the last queue row.
+	 *
+	 * MEASURED, not a constant, and that is the whole point: a hardcoded guess leaves the last row
+	 * bleeding under the band (or reserves dead space above it) the moment the copy, the font or the
+	 * safe-area inset changes. `main` pads by THIS measurement; the band publishes it.
+	 *
+	 * THE INSET LIVES ON THE BAND ALONE. The band's own bottom padding carries
+	 * env(safe-area-inset-bottom), and that inset reaches everything stacked above it THROUGH
+	 * --dock-h — so nothing above may add a second env() term or the gap doubles. One env(), on the one
+	 * element that actually sits at the bottom edge of the screen.
+	 *
+	 * THE TEARDOWN IS PART OF THE CONTRACT, not tidiness — leak class #598 §14. A custom property
+	 * written to documentElement OUTLIVES the component that wrote it, so a stale --dock-h keeps
+	 * padding every later page the app navigates to, and (because an inline property on :root outranks
+	 * a stylesheet rule) it silently defeats any media query that tries to set the same token. Hence
+	 * the removeProperty on unmount below; `design-system.test.ts` guards that every documentElement
+	 * writer in this route pairs its setProperty with a removeProperty.
 	 */
 	let dockH = $state(0);
 	$effect(() => {
 		document.documentElement.style.setProperty('--dock-h', `${dockH}px`);
 		// Tear the inline property down on unmount, or it OUTLIVES the route on documentElement and a
-		// stale --dock-h keeps padding every later page — the leak class #598 §14 fixed for --peek-h.
+		// stale --dock-h keeps padding every later page — the leak class #598 §14.
 		return () => {
 			document.documentElement.style.removeProperty('--dock-h');
 		};
@@ -523,15 +538,16 @@
 	let undoTimer: ReturnType<typeof setTimeout> | undefined;
 	// The undo toast's real rendered height, bound to its clientHeight in the markup. The error toast
 	// docks ABOVE it, and the toast wraps to as many lines as a real “title — artist” needs, so the
-	// error toast's offset must track this MEASURED value, not a constant (the same reason --peek-h is
-	// measured). Published as 0 when no undo toast is up, so the error toast then docks above the peek.
+	// error toast's offset must track this MEASURED value, not a constant (the same reason --dock-h is
+	// measured). Published as 0 when no undo toast is up, so the error toast then docks above the band.
 	let undoH = $state(0);
 	$effect(() => {
 		document.documentElement.style.setProperty('--undo-h', `${undo ? undoH : 0}px`);
 		// Tear the inline property down on unmount. Without this it OUTLIVES the page on documentElement,
 		// so a stale --undo-h keeps skewing the --error-dock stack (calc(... + var(--undo-h) ...)) after
-		// this route is gone — the same leak class #598 §14 fixed for --peek-h in QueueSheet. This effect
-		// always writes (0 when no toast), so it always owns the property and clears it unconditionally.
+		// this route is gone — the same leak class #598 §14, documented in full at --dock-h above. This
+		// effect always writes (0 when no toast), so it always owns the property and clears it
+		// unconditionally.
 		return () => {
 			document.documentElement.style.removeProperty('--undo-h');
 		};
@@ -696,9 +712,13 @@
 	 * in $lib/reorder-mode so it is unit-testable without mounting this route (XR-PH-21).
 	 */
 	/**
-	 * Travel below which a press-and-release is a TAP rather than a drop, in px. 6 is QueueSheet's own
-	 * threshold for the same judgement on its pull, kept identical so the two gestures on this screen do
-	 * not disagree about what counts as a deliberate drag.
+	 * Travel below which a press-and-release is a TAP rather than a drop, in px. 6px is the reorder
+	 * mode's OWN threshold and this is now its only definition — it was shared with the queue sheet's
+	 * pull until that surface was deleted (#903), so the value is inherited, not arbitrary: it is the
+	 * travel a thumb produces incidentally while pressing, below which treating the release as a drop
+	 * dissolves the mode the guest was trying to open. Raising it makes short deliberate drags read as
+	 * taps; lowering it makes a steady press read as a drop. `reorder-mode-source-836.test.ts` pins the
+	 * name and the comparison, not this number.
 	 */
 	const TAP_SLOP_PX = 6;
 	const mySlots = $derived(ownSlots(myPicks.length));
@@ -803,9 +823,10 @@
 	}
 
 	/**
-	 * The pointer drag. Same idiom as QueueSheet's sheet pull: capture the pointer on the control that
-	 * was pressed, publish the offset as a CSS custom property, and let a CSS transform do the moving —
-	 * so no position is ever interpolated in JS (XR-PH-06).
+	 * The pointer drag. The idiom: capture the pointer on the control that was pressed, publish the
+	 * offset as a CSS custom property, and let a CSS transform do the moving — so no position is ever
+	 * interpolated in JS (XR-PH-06). The queue sheet's pull used the same idiom before it was deleted
+	 * (#903); this is the only drag on the phone now.
 	 *
 	 * The slot under the finger is read by hit-testing rather than computed from row heights: rows can
 	 * change height while the mode is open (a byline gains an `away` badge, another guest queues a
@@ -837,12 +858,11 @@
 		};
 		const up = () => {
 			/*
-			 * TAP vs DRAG, the same distinction QueueSheet's pull makes and for the same reason. A press
-			 * and release without travel is a TAP: it should OPEN the mode and leave it open, so the
-			 * guest can then use a slot or the move buttons. Treating every release as a drop made a tap
-			 * open and immediately close the mode — `hoverSlot` starts at the row's own index, so the
-			 * release resolved to "move to where you already are" and dissolved the mode in one frame.
-			 * Found by driving it with a real trusted pointer; no unit test could have seen it.
+			 * TAP vs DRAG. A press and release without travel is a TAP: it should OPEN the mode and leave
+			 * it open, so the guest can then use a slot or the move buttons. Treating every release as a
+			 * drop made a tap open and immediately close the mode — `hoverSlot` starts at the row's own
+			 * index, so the release resolved to "move to where you already are" and dissolved the mode in
+			 * one frame. Found by driving it with a real trusted pointer; no unit test could have seen it.
 			 *
 			 * Above the threshold the release IS a drop, and a drop outside a legal slot commits nothing
 			 * (XR-PH-18) — `exitReorder` routes it through `dropTarget`, which declines rather than clamps.
@@ -1596,7 +1616,7 @@
 	XR-PH-19 — Escape leaves the mode and commits NOTHING. Bound here rather than on the bar so it
 	works while the pointer is captured by the grip and while focus sits anywhere on the page, which is
 	where focus actually is mid-drag. Guarded on `reorderOpen` so it never swallows an Escape the rest
-	of the page wants (the sheet binds its own).
+	of the page wants.
 -->
 <svelte:window onkeydown={(e) => reorderOpen && e.key === 'Escape' && exitReorder(null)} />
 
@@ -1640,8 +1660,8 @@
 	 * The docked primary action. `position: fixed` is what makes it reachable with one thumb wherever
 	 * the list is scrolled to; it does not overlap content, because `main` pads by this element's own
 	 * measured height (--dock-h) rather than by a guess. The safe-area inset lives HERE, on the band
-	 * that actually sits at the bottom of the screen, and reaches the toasts THROUGH --dock-h — the
-	 * same contract the sheet's peek carried, so do not add a second env() term to anything above.
+	 * that actually sits at the bottom of the screen, and reaches the toasts THROUGH --dock-h — so do
+	 * not add a second env() term to anything above. See --dock-h's own comment for the full contract.
 	 */
 	.cta-dock {
 		position: fixed;
@@ -2214,12 +2234,12 @@
 	}
 	/*
 	 * Docked-toast stacking, measured UP from the docked primary button. --dock-h is bound to that band's
-	 * clientHeight, and the peek's own padding already includes env(safe-area-inset-bottom), so the
+	 * clientHeight, and the BAND's own padding already includes env(safe-area-inset-bottom), so the
 	 * inset arrives THROUGH --dock-h — do NOT add another env() term here or the gap doubles.
 	 *
 	 * The offsets were hand-tuned constants (14 / 70) stacking one element above the other above a
 	 * measured value, so they overlapped the instant either toast changed height. Named as scoped
-	 * tokens the stacking order is explicit: undo sits just above the peek; the error toast docks above
+	 * tokens the stacking order is explicit: undo sits just above the band; the error toast docks above
 	 * the undo toast's REAL rendered height (--undo-h, bound to its clientHeight in script; 0 when it
 	 * is absent) plus a fixed gap, so the two never draw over each other however many lines the undo
 	 * toast wraps to. The height is content-dependent and unbounded, so it MUST be measured, not a
@@ -2366,10 +2386,10 @@
 	 * and section labels otherwise consume almost the whole height, leaving no room for result rows, so
 	 * the chrome shrinks and at least a couple of rows stay visible.
 	 *
-	 * The docked band itself is NOT shrunk by a token here any more: --dock-h now carries the button's
-	 * own MEASURED height, and an inline custom property on :root outranks this rule — so a smaller
-	 * value written here would have been silently defeated the moment the measurement landed. The band
-	 * is one 44px control instead of a multi-line peek, which is what makes that acceptable.
+	 * The docked band itself is NOT shrunk by a token here: --dock-h carries the button's own MEASURED
+	 * height, and an inline custom property on :root outranks this rule — so a smaller value written
+	 * here would be silently defeated the moment the measurement landed. The band is one 44px control,
+	 * which is what makes that acceptable.
 	 */
 	@media (max-height: 480px) {
 		.topbar {

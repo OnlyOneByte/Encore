@@ -138,26 +138,7 @@ export const SEL = {
 	strip: '.strip',
 	stripPerson: '.strip .person',
 
-	// ── the pull-up queue sheet (capture drives the transport through it) ──
-	/** The sheet surface; `.open` on it is what says the pull-up actually pulled up. */
-	sheet: '.sheet',
-	/** The grab handle. ArrowUp on it is the documented open gesture, and where the transport lives. */
-	peek: '.peek',
-	/**
-	 * The sheet's scrolling region — the rotation list. Registered for #827, which measures the
-	 * `env(safe-area-inset-bottom)` term in its bottom padding; that inset is a contract, not a detail
-	 * (every other docked control offsets from `--peek-h` with no env() of its own).
-	 */
-	sheetBody: '.body',
-	/**
-	 * #827 SPIKE ONLY — the `vaul-svelte` QueueSheet variant, reached at `/components?spike827=drawer`.
-	 * It is a separate hook rather than a reuse of `sheet` because the port cannot wear `.sheet`: vaul
-	 * owns the element and can only be tagged through a `class` prop, and the two variants are mutually
-	 * exclusive on screen (both bottom-docked and `position: fixed`).
-	 */
-	spikeDrawer827: '.spike-drawer',
-
-	// ── transport (in the queue sheet's peek) ─────────────────────────────
+	// ── transport (on the now-playing hero since #832) ────────────────────
 	play: { role: 'button' as const, name: 'play/pause' },
 	skip: { role: 'button' as const, name: 'skip' },
 	restart: { role: 'button' as const, name: 'restart' },
@@ -482,31 +463,6 @@ export const HOOKS: Hook[] = [
 		anchor: '.proc',
 		why: 'a cooking song holds its rotation slot; .proc is a subset of .qrow, so either class proves it'
 	},
-	{
-		id: 'sheetSurface',
-		file: 'src/lib/components/QueueSheet.svelte',
-		anchor: 'class="sheet-surface sheet"',
-		why: 'capture waits for .sheet.open to know the pull-up actually opened before it shoots it'
-	},
-	{
-		id: 'peekHandle',
-		file: 'src/lib/components/QueueSheet.svelte',
-		anchor: 'class="peek"',
-		why: 'the grab handle capture sends ArrowUp to; the transport lives inside it'
-	},
-	{
-		id: 'sheetBody',
-		file: 'src/lib/components/QueueSheet.svelte',
-		anchor: 'class="body"',
-		why: "#827 measures the env(safe-area-inset-bottom) term in this region's bottom padding"
-	},
-	{
-		id: 'spikeDrawer827',
-		file: 'src/lib/components/QueueSheetDrawer.svelte',
-		anchor: 'sheet-surface sheet spike-drawer',
-		why: 'the #827 spike variant; the probe measures the four do-not-regress numbers on it'
-	},
-
 	// transport — on the now-playing HERO since #832 (direction A). The SELECTORS are unchanged (same
 	// aria-labels), so the driven flow is untouched; only which file to look in moved.
 	{
@@ -520,12 +476,6 @@ export const HOOKS: Hook[] = [
 		file: 'src/lib/components/NowPlayingHero.svelte',
 		anchor: 'aria-label="skip"',
 		why: 'the flow advances the rotation to prove round-robin ordering'
-	},
-	{
-		id: 'queuePeek',
-		file: 'src/lib/components/QueueSheet.svelte',
-		anchor: 'aria-expanded={open}',
-		why: 'the transport lives in the sheet peek; the flow must know the sheet is reachable'
 	},
 
 	// TV
@@ -585,7 +535,7 @@ export const HOOKS: Hook[] = [
 		why: 'the song-intro card names who is up before playback; the flow reads .up-song / .up-name off it'
 	},
 
-	// guiding track (phone now-playing sheet body)
+	// guiding track (phone now-playing controls)
 	{
 		id: 'guidingTrack',
 		file: 'src/lib/components/GuidingTrack.svelte',

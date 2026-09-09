@@ -17,7 +17,7 @@
  * |---|---|---|
  * | 1 button heights | XR-VER-09 | every control's vertical HIT EXTENT vs `--tap`, at three viewports |
  * | 2 input font size | XR-VER-10 | `getComputedStyle(field).fontSize` on real fields |
- * | 3 drawer cap | XR-VER-11 | resolved `max-height` vs `innerHeight`, `--peek-h` vs the peek's real height, and the safe-area term under a simulated 34px inset |
+ * | 3 docked band | XR-VER-11 | `--dock-h` vs the band's real rendered height, and the safe-area term under a simulated 34px inset |
  * | 4 focus-ring form | XR-VER-12 | computed `outline-style/-width/-color` on a genuinely `:focus-visible` element |
  *
  * None of the four is decidable on the mount rung: happy-dom has no layout engine, and
@@ -53,7 +53,6 @@ import {
 	LABEL_SELECTOR,
 	MIN_FIELD_PX,
 	QUARANTINE,
-	SHEET_CAP_FRACTION,
 	SIMULATED_BOTTOM_INSET,
 	TAP,
 	TEXT_INPUT_TYPES,
@@ -429,20 +428,18 @@ try {
 	);
 
 	/*
-	 * ── CLAIM 3 (XR-VER-11): the drawer's cap, its peek contract, and its safe-area term ───────
+	 * ── CLAIM 3 (XR-VER-11): the docked band's published height and its safe-area term ──────────
 	 *
 	 * WHERE THIS IS MEASURED CHANGED WITH #832, and the claim did not. Direction A made the queue the
-	 * home screen, so `/` no longer mounts QueueSheet: the docked band at the bottom of the phone is the
-	 * primary button, and the "published height equals the real rendered height, and the safe-area inset
-	 * arrives THROUGH that token" contract moved with it from `--peek-h`/`.peek` to `--dock-h`/`.cta-dock`.
+	 * home screen, so the docked band at the bottom of the phone is the primary button, and the
+	 * "published height equals the real rendered height, and the safe-area inset arrives THROUGH that
+	 * token" contract moved with it from `--peek-h`/`.peek` to `--dock-h`/`.cta-dock`.
 	 *
-	 * So this section measures BOTH, and drops neither:
-	 *   - the LIVE contract, on `/`, against the docked band (below);
-	 *   - the sheet's own cap and peek geometry, on `/components`, where the component still renders
-	 *     (further down) — because the component is unchanged and its cap is still a real claim.
-	 *
-	 * The one sub-check that lost its subject outright is called out where it was, rather than deleted
-	 * silently: see the note at `shortViewportMediaMatches`.
+	 * #903 then deleted the drawer surface entirely, so the second half of this section — the sheet's
+	 * own cap and peek geometry, measured on `/components` where the component used to render — was
+	 * removed with it, and `SHEET_CAP_FRACTION` retired from the register (its reason is recorded
+	 * there). Nothing docked caps itself in a viewport fraction now; the band is sized by its content.
+	 * What remains below is the LIVE contract on `/`, measured against the real band.
 	 */
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
@@ -643,98 +640,6 @@ try {
 			shortGap >= 0 && shortGap <= 72,
 			`empty-state line's bottom is ${shortGap.toFixed(1)}px above the band (0..72 expected; unanchored it would be ~700px)`
 		);
-	}
-
-	// The sheet's OWN geometry, measured where the component still renders.
-	await page.goto(base + '/components');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.peek)}) !== null`, { timeout: 15000 });
-	await sleep(900); // the sheet's transform transition is 0.28s; measure it settled
-
-	const sheetProbe = `(() => {
-		const sheet = document.querySelector(${JSON.stringify(SEL.sheet)});
-		const peek = document.querySelector(${JSON.stringify(SEL.peek)});
-		if (!sheet || !peek) return null;
-		const cs = getComputedStyle(sheet);
-		const pr = peek.getBoundingClientRect();
-		return {
-			maxHeightPx: parseFloat(cs.maxHeight),
-			innerHeight: window.innerHeight,
-			peekVar: getComputedStyle(document.documentElement).getPropertyValue('--peek-h').trim(),
-			peekInline: document.documentElement.style.getPropertyValue('--peek-h').trim(),
-			peekClientHeight: peek.clientHeight,
-			peekTop: pr.top,
-			peekBottom: pr.bottom,
-			peekPadBottom: parseFloat(getComputedStyle(peek).paddingBottom),
-			shortViewportMediaMatches: window.matchMedia('(max-height: 480px)').matches
-		};
-	})()`;
-
-	const tall = await page.evaluate(sheetProbe);
-	if (!tall) {
-		check('CLAIM 3 the sheet and its peek are rendered, so the cap is measurable', false, 'no .sheet / .peek found');
-	} else {
-		const fraction = tall.maxHeightPx / tall.innerHeight;
-		check(
-			`CLAIM 3 (XR-VER-11) the sheet's cap resolves against the visual viewport at ${SHEET_CAP_FRACTION * 100}%`,
-			Math.abs(fraction - SHEET_CAP_FRACTION) < 0.005,
-			`max-height resolved to ${tall.maxHeightPx}px of a ${tall.innerHeight}px viewport = ${(fraction * 100).toFixed(2)}%`
-		);
-		check(
-			"CLAIM 3 --peek-h equals the peek's REAL rendered height — the contract every docked control offsets from",
-			tall.peekVar === `${tall.peekClientHeight}px` && tall.peekInline === `${tall.peekClientHeight}px`,
-			`--peek-h resolved "${tall.peekVar}" (inline "${tall.peekInline}") against a rendered peek of ${tall.peekClientHeight}px`
-		);
-		check(
-			'CLAIM 3 the collapsed sheet leaves exactly its peek on screen — no bleed below, no clip above',
-			tall.peekTop >= -1 && tall.peekBottom <= tall.innerHeight + 1,
-			`peek occupies ${tall.peekTop.toFixed(1)}..${tall.peekBottom.toFixed(1)} of a ${tall.innerHeight}px viewport (1px of sub-pixel slack allowed)`
-		);
-
-		// the cap must TRACK the viewport, not be a literal that happens to match one
-		await page.viewport(390, 480);
-		await sleep(900);
-		const short = await page.evaluate(sheetProbe);
-		const shortFraction = short ? short.maxHeightPx / short.innerHeight : 0;
-		check(
-			'CLAIM 3 the same cap re-resolves at a 480px-tall viewport — it tracks the viewport, not a literal',
-			short !== null && Math.abs(shortFraction - SHEET_CAP_FRACTION) < 0.005 && short.maxHeightPx !== tall.maxHeightPx,
-			`844px viewport -> ${tall.maxHeightPx}px cap; 480px viewport -> ${short?.maxHeightPx}px cap (${(shortFraction * 100).toFixed(2)}%)`
-		);
-		check(
-			'CLAIM 3 the short-viewport media query really matches at 480px, so the --peek-h cascade below is a real reading',
-			short?.shortViewportMediaMatches === true,
-			`matchMedia('(max-height: 480px)') = ${short?.shortViewportMediaMatches}`
-		);
-		/*
-		 * The recorded do-not-regress fact: the inline write on documentElement outranks a
-		 * `@media (max-height: 480px)` :root override, so a token value in the stylesheet never reaches
-		 * the render while the writer is mounted.
-		 *
-		 * #832 DELETED THE OVERRIDE THIS MEASURED. The `--peek-h: 84px` it looked for lived in
-		 * routes/+page.svelte's short-viewport block, and the phone route no longer mounts the sheet; the
-		 * override was removed rather than re-pointed at --dock-h precisely BECAUSE of the fact this check
-		 * records — an override there would be silently defeated by the measured inline write. So the
-		 * assertion is kept and inverted onto what is now true: the inline write is still what the render
-		 * resolves, and there is no competing :root literal for it to beat. The absence is asserted, not
-		 * assumed, so re-introducing an override that cannot win reds this.
-		 */
-		check(
-			'CLAIM 3 the inline --peek-h write is what the render resolves, and no :root literal competes with it',
-			short !== null && short.peekVar === `${short.peekClientHeight}px` && short.peekVar !== '84px',
-			`at 480px tall, --peek-h = "${short?.peekVar}" (rendered peek ${short?.peekClientHeight}px), not a stylesheet literal`
-		);
-
-		// The safe-area term, proven by giving the browser a non-zero inset to resolve.
-		await page.viewport(390, 844);
-		await page.safeAreaInsets({ bottom: SIMULATED_BOTTOM_INSET });
-		await sleep(600);
-		const inset = await page.evaluate(sheetProbe);
-		check(
-			`CLAIM 3 the peek's bottom padding really composes env(safe-area-inset-bottom) — +${SIMULATED_BOTTOM_INSET}px under a simulated inset`,
-			inset !== null && Math.abs(inset.peekPadBottom - (tall.peekPadBottom + SIMULATED_BOTTOM_INSET)) < 1,
-			`padding-bottom ${tall.peekPadBottom}px at inset 0, ${inset?.peekPadBottom}px at inset ${SIMULATED_BOTTOM_INSET}px`
-		);
-		await page.safeAreaInsets({ top: 0, right: 0, bottom: 0, left: 0 });
 	}
 
 	// ── CLAIM 4 (XR-VER-12): the focus indicator's FORM, on a genuinely :focus-visible element ──

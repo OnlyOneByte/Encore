@@ -29,7 +29,6 @@ import {
 	MIN_FIELD_PX,
 	QUARANTINE,
 	RETIRED,
-	SHEET_CAP_FRACTION,
 	TAP,
 	TAP_FLOOR
 } from '../../e2e/gates/measured-design-register.mjs';
@@ -208,9 +207,17 @@ test('the CDP driver exposes exactly ONE safe-area method, and every caller uses
 	};
 	walk(join(REPO, 'apps/core/e2e'));
 	expect(offenders).toEqual([]);
-	// Non-vacuity floor (XR-VER-05): four call sites today — this gate's two and #865's drawer probe's
-	// two. A walk that finds none would pass while enforcing nothing. A firing floor is a FINDING.
-	expect(callsSeen).toBeGreaterThanOrEqual(4);
+	// Non-vacuity floor (XR-VER-05): TWO call sites today — this gate's live docked-band arm sets a
+	// simulated inset and then resets it. A walk that finds none would pass while enforcing nothing.
+	//
+	// XR-VER-06 RECORD — LOWERED 4 -> 2 by #903. The INVARIANT is untouched: one name for the capability,
+	// and every caller in the e2e tree spells it. What shrank is the POPULATION. The other two callers
+	// were #865's drawer probe (e2e/probes/spike827-queuesheet-drawer.mjs, deleted whole with the drawer
+	// surface) and this gate's own sheet half (deleted with it, since it measured the peek's safe-area
+	// term on a component that no longer exists). Nothing is unenforced by the drop: the walk still
+	// covers the ENTIRE e2e tree, and `defined` above still pins the driver to exactly one method name,
+	// so a third name added by a future PR reds here exactly as before. A firing floor is a FINDING.
+	expect(callsSeen).toBeGreaterThanOrEqual(2);
 });
 
 test('every quarantined control carries a substantive reason and a real identity to match on', () => {
@@ -256,10 +263,13 @@ test('the register mirrors the tokens it measures against, so the two cannot dri
 	// register imports a separate floor — is whether the token still holds the app's commitment.
 	expect(css).toMatch(/--tap:\s*[0-9.]+px\s*;/);
 	expect(TAP).toBeGreaterThanOrEqual(TAP_FLOOR);
-	// The sheet's cap is a do-not-regress number with a source (XR-VER-11), not a preference.
-	expect(SHEET_CAP_FRACTION).toBe(0.82);
-	const sheet = readFileSync(join(REPO, 'apps/core/src/lib/components/QueueSheet.svelte'), 'utf8');
-	expect(sheet).toContain(`max-height: ${SHEET_CAP_FRACTION * 100}dvh`);
+	// XR-VER-11 RECORD — the sheet-cap arm was RETIRED here in #903, not weakened. It asserted
+	// `SHEET_CAP_FRACTION === 0.82` and that QueueSheet.svelte declared `max-height: 82dvh`; the drawer
+	// surface that owned that declaration was deleted, so the number had no source left to mirror and
+	// SHEET_CAP_FRACTION went with it out of the register. Nothing docked caps itself in a viewport
+	// fraction now — the docked band is sized by its own content and published as --dock-h — so there is
+	// no successor declaration to re-point at, and inventing one would pin a cap no surface asks for.
+	// SIMULATED_BOTTOM_INSET deliberately STAYS: the live .cta-dock safe-area arm still uses it.
 	// The 16px threshold is a WebKit behaviour, renegotiable only on evidence about WebKit.
 	expect(MIN_FIELD_PX).toBe(16);
 });

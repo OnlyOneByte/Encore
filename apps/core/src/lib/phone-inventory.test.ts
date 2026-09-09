@@ -256,7 +256,6 @@ const PHONE_ANNOUNCING_FILES = [
 	join(SRC, 'lib', 'components', 'SongRow.svelte'),
 	join(SRC, 'lib', 'components', 'ProcessingCard.svelte'),
 	join(SRC, 'lib', 'components', 'QueueRow.svelte'),
-	join(SRC, 'lib', 'components', 'QueueSheet.svelte'),
 	join(SRC, 'lib', 'ui', 'PageHeader.svelte')
 ];
 
