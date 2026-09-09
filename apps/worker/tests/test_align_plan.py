@@ -2500,3 +2500,95 @@ async def test_629_a_smeared_word_is_REPAIRED_on_the_publish_path(tmp_path):
     assert all(w["end"] - w["start"] <= 3.0 + 1e-6 for w in words), words
     # the repair note is emitted so an operator sees it happened
     assert any("timing repaired" in n for n in ctx.out.notes), ctx.out.notes
+
+
+class _PackedFlashAligner:
+    """Force-aligner stand-in whose ONLY defect is a flash the repair cannot fix. Every word is emitted
+    back to back (`word[i].end == word[i+1].start`), which is whisperx's ordinary output shape, and one
+    word is held for 20ms (< validate.MIN_WORD_SEC 30ms). Because the next word starts at the flash's
+    end, extending it to `start + 0.03` would cross that start, so `repair_word_spans` LEAVES it and
+    files it under `flashed_uncorrectable` — it changes nothing at all in the doc. No word exceeds
+    MAX_WORD_SEC, so there is no smear anywhere and nothing for the repair to clamp, and starts are
+    non-decreasing so the doc is `usable`.
+    """
+
+    FLASH_SEC = 0.02
+    NORMAL_SEC = 0.4
+
+    def align(self, segments, audio_path, language):
+        out = []
+        t = 0.0
+        flashed = False
+        for s in segments:
+            words = []
+            for tok in s["text"].split():
+                dur = self.NORMAL_SEC
+                if not flashed:
+                    dur, flashed = self.FLASH_SEC, True
+                start = round(t, 3)
+                end = round(start + dur, 3)
+                words.append({"word": tok, "start": start, "end": end})
+                t = end  # packed: the next word starts exactly where this one ended
+            out.append(
+                {"start": words[0]["start"], "end": words[-1]["end"], "text": s["text"], "words": words}
+            )
+        return {"language": language, "segments": out}
+
+
+@pytest.mark.asyncio
+async def test_773_a_flash_only_doc_is_NOT_logged_as_repaired_but_is_still_reported(tmp_path):
+    """#773. `repair_word_spans` declines a flash with no room before the next word, so on a doc whose
+    only defect is such a flash the published artifact is byte-identical to what the aligner produced.
+    The call site nonetheless ORed `flashed_uncorrectable` — by construction the things the repair did
+    NOT change — into the `timing repaired` gate, so the cook log claimed a repair on an untouched doc,
+    and `timing repaired` is the whole evidence trail for whether #629 item 2 does anything.
+
+    Three assertions, and the third is why the fix cannot be "delete the note". FAILING ASSERTION ON
+    BASE: the second one — `timing repaired — 1 flash(es) left — no room before the next word` is
+    emitted on base, contradicting its own body. Expected spans are read back off the aligner's own
+    recorded output rather than recomputed from FLASH_SEC/NORMAL_SEC, so the test cannot derive them the
+    way the code does.
+    """
+    text = _six_line_synced_text()
+    aligner = _PackedFlashAligner()
+    given: dict[str, list[tuple[str, float, float]]] = {}
+
+    inner = aligner.align
+
+    def _record(segments, audio_path, language):
+        res = inner(segments, audio_path, language)
+        # snapshot BEFORE the step runs: repair_word_spans mutates the word dicts in place, so a
+        # live reference would compare the published doc against itself.
+        given["words"] = [
+            (w["word"], w["start"], w["end"]) for seg in res["segments"] for w in seg["words"]
+        ]
+        return res
+
+    aligner.align = _record
+    ctx = await _drive_time_texts(aligner, text, tmp_path)
+
+    cands = ctx.out.artifacts["lyrics"]["candidates"]
+    assert len(cands) == 1, cands
+    cand = cands[0]
+    assert cand["timing"] == TIMING_WORD  # usable: in order, so the repair branch is reached at all
+    doc = json.loads((tmp_path / cand["ref"]).read_text())
+    published = [
+        (w["word"], w["start"], w["end"]) for ln in doc["lines"] for w in (ln.get("words") or [])
+    ]
+    assert published, doc
+    # 1. the repair genuinely changed nothing — the precondition the note misreported
+    assert published == given["words"]
+    assert any(round(e - s, 3) == 0.02 for _, s, e in published), published  # the flash survived
+    # 2. FAILING ON BASE: no past-tense repair claim on a doc that was not repaired
+    assert not any(n.startswith("timing repaired") for n in ctx.out.notes), ctx.out.notes
+    # 3. and the operator is still told why, so a fix that merely deleted the note does not pass
+    assert any("NOT repairable" in n for n in ctx.out.notes), ctx.out.notes
+
+
+@pytest.mark.asyncio
+async def test_773_a_repaired_doc_still_logs_timing_repaired(tmp_path):
+    """The other direction, so the fix is not "never claim a repair". The smear control is repaired, so
+    the past-tense line must still be emitted and the NOT-repairable line must not be."""
+    ctx = await _drive_time_texts(_SmearingAligner(), _six_line_synced_text(), tmp_path)
+    assert any(n.startswith("timing repaired") for n in ctx.out.notes), ctx.out.notes
+    assert not any("NOT repairable" in n for n in ctx.out.notes), ctx.out.notes

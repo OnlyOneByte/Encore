@@ -504,8 +504,27 @@ class TimeTexts(Step):
                     # so it can never turn a defect into the one disqualifier (an out-of-order word). Only
                     # on a usable word doc — a degraded line-sync doc has no per-word spans to repair.
                     fixed = repair_word_spans(doc)
-                    if fixed.changed or fixed.flashed_uncorrectable:
+                    if fixed.changed:
+                        # `changed` is the honest predicate for "the repair ACTED" (validate.py):
+                        # it is true exactly when a clamp or extend branch was taken and wrote a span.
+                        # It is not a claim that the written value differs from the one it replaced —
+                        # at the float boundary a word of exactly MIN_WORD_SEC computes `dur < 0.03`
+                        # and is rewritten to the value it already had, which over-reports. That is
+                        # pre-existing in `repair_word_spans`, out of scope here, and reported
+                        # separately. When declined flashes are also present, `summary()` already
+                        # names them, so nothing is lost by gating on this alone.
                         ctx.note(f"timing repaired — {fixed.summary()}")
+                    elif fixed.flashed_uncorrectable:
+                        # #773: `flashed_uncorrectable` is BY CONSTRUCTION the branch that wrote
+                        # NOTHING, so ORing it into the line above claimed a repair on a
+                        # byte-identical doc — the ordinary shape, since back-to-back aligner words
+                        # leave every flash with no room. The operator still needs to know, so it
+                        # gets its own line instead of borrowing the past tense of a repair that
+                        # did not happen.
+                        ctx.note(
+                            f"timing NOT repairable — {len(fixed.flashed_uncorrectable)} flash(es) "
+                            "left: no room before the next word"
+                        )
 
             # IS THIS LRC EVEN FOR THIS RECORDING? Only askable here, and only for a source that brought
             # its OWN line timings (a synced LRCLIB record) and then got force-aligned: that gives two
