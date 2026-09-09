@@ -38,7 +38,7 @@ import { findChromium } from './lib/chromium.mjs';
  * The measurement the overlap-probe evaluate returns.
  * @typedef {{
  *   overlap: number, painted: string | null, inStrip: boolean, strip: number | null,
- *   clipped: boolean, chipsCut: number, moreShown: boolean
+ *   clipped: boolean, chipsCut: number, chipsOccluded: number
  * }} OverlapReading
  */
 
@@ -167,7 +167,17 @@ try {
 				const hit = document.elementFromPoint(cx, cy);
 				const chips = [...document.querySelectorAll(${JSON.stringify(SEL.lobbyStripPerson)})];
 				const cut = sb ? chips.filter((p) => { const r = p.getBoundingClientRect(); return r.bottom > sb.bottom + 0.5 || r.right > sb.right + 0.5; }).length : 0;
-				const more = document.querySelector(${JSON.stringify(SEL.lobbyStripPersonMore)});
+				// XR-TV-14: no chip may be OCCLUDED by a corner control (.fs-btn / the join corner badge),
+				// which are position:absolute above the strip in the paint order. A name under a control is
+				// worse than the "+N more" this replaced and is invisible to a clip check.
+				const occluded = chips.filter((p) => {
+					const r = p.getBoundingClientRect();
+					for (const [x, y] of [[r.left + r.width / 2, r.top + r.height / 2], [r.right - 2, r.top + r.height / 2]]) {
+						const h = document.elementFromPoint(x, y);
+						if (h && (h.closest(${JSON.stringify(SEL.fsBtn)}) || h.closest(${JSON.stringify(SEL.badQr)}))) return true;
+					}
+					return false;
+				}).length;
 				return {
 					overlap: sb ? Math.max(0, ub.bottom - sb.top) : 0,
 					painted: hit ? (typeof hit.className === 'string' && hit.className ? '.' + hit.className.split(' ')[0] : hit.tagName) : null,
@@ -175,18 +185,25 @@ try {
 					strip: sb ? +sb.height.toFixed(1) : null,
 					clipped: strip ? strip.scrollHeight > strip.clientHeight || strip.scrollWidth > strip.clientWidth + 1 : false,
 					chipsCut: cut,
-					moreShown: !!more
+					chipsOccluded: occluded
 				};
 			})()`)
 			);
 			// The address must not intersect the strip AND must be the element painted at its own centre.
-			// The address must be clear AND painted AND the strip must not clip any roster member: the
-			// #98 fix must not trade the burial for silently dropping the people it names.
-			const ok = m.overlap === 0 && m.painted === SEL.lobbyAddress && !m.inStrip && !m.clipped && m.chipsCut === 0;
+			// The address must be clear AND painted AND the strip must not clip OR occlude any roster
+			// member: the #826 full-roster fix must not trade the burial for silently dropping the people
+			// it names, and no chip may hide under a corner control (XR-TV-14).
+			const ok =
+				m.overlap === 0 &&
+				m.painted === SEL.lobbyAddress &&
+				!m.inStrip &&
+				!m.clipped &&
+				m.chipsCut === 0 &&
+				m.chipsOccluded === 0;
 			check(
-				`${label} @ ${w}x${h}: address clear + roster not clipped`,
+				`${label} @ ${w}x${h}: address clear + roster not clipped or occluded`,
 				ok,
-				`overlap=${m.overlap}px painted=${m.painted} inStrip=${m.inStrip} clipped=${m.clipped} chipsCut=${m.chipsCut} moreShown=${m.moreShown} stripH=${m.strip}`
+				`overlap=${m.overlap}px painted=${m.painted} inStrip=${m.inStrip} clipped=${m.clipped} chipsCut=${m.chipsCut} chipsOccluded=${m.chipsOccluded} stripH=${m.strip}`
 			);
 		}
 
