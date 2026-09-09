@@ -59,6 +59,11 @@ class AudioCtx:
     duration_sec: float | None = None
     #: Scratch WAV a separator needs, when the engine cannot read the retained original directly.
     decoded_wav: str | None = None
+    #: YouTube's OWN declared credit, captured from the download's `.info.json` (#672). The annotation
+    #: artifact shape (`{source:'youtube', artist, title, confidence:'high'}`) or None when the upload
+    #: carried no music-panel metadata. A citation, not a parse — Annotate prefers it and also uses it
+    #: as the MusicBrainz query key so a wrong title parse can no longer defeat the lookup.
+    youtube_credit: dict[str, Any] | None = None
 
 
 @dataclass

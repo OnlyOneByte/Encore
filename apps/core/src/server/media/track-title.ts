@@ -280,11 +280,19 @@ export function parseTrackTitle(rawTitle: string, uploader?: string | null): Par
 			const u = comparable(up);
 			const l = comparable(left);
 			const r = comparable(right);
-			// containment (not equality): "Daft Punk" vs uploader "DaftPunkVEVO" / "Daft Punk Official"
-			if (u && l && (u.includes(l) || l.includes(u))) {
+			// The uploader must CONTAIN the side, one direction only: "Adele" ⊂ "AdeleVEVO", "Daft Punk"
+			// == "Daft Punk". The reverse test — side.includes(u) — was the garbage generator (#672): a
+			// channel name sitting ANYWHERE inside a longer side promoted the WHOLE side to artist at the
+			// parser's highest confidence, so "Sophia George - Girlie Girlie (1986) • TopPop" by uploader
+			// "TopPop" wrote artist "Girlie Girlie (1986) • TopPop" and "Glimpse Of Us by Joji - Jamal
+			// Corrie Cover" by "Jamal Corrie" wrote artist "Jamal Corrie Cover". Both branches carried it,
+			// so a title-longer-than-uploader match on the LEFT was reversed too; dropping it from both is
+			// what closes the defect at its source rather than by suffix vocabulary. No existing case
+			// needs the loose form — every pinned uploader-confirmed match is exact or the kept direction.
+			if (u && l && u.includes(l)) {
 				return resolve(left, right, 'uploader-confirmed', 'high');
 			}
-			if (u && r && (u.includes(r) || r.includes(u))) {
+			if (u && r && u.includes(r)) {
 				return resolve(right, left, 'uploader-confirmed', 'high');
 			}
 		}

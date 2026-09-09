@@ -87,6 +87,69 @@ describe('confidence and provenance', () => {
 	});
 });
 
+// #672: the uploader-confirmed rule tested containment in EITHER direction (`u.includes(side) ||
+// side.includes(u)`). The `side.includes(u)` half was the garbage generator: a channel name appearing
+// ANYWHERE inside a longer side promoted the WHOLE side to artist at `high` confidence, taking the
+// correct artist (on the other side) into the title. Measured across the real 2273-sidecar library, 24
+// titles parsed reversed this way.
+//
+// The three RIGHT-side cases below red on base (artist = the whole qualifier-laden side) and green
+// once the loose direction is dropped from both branches — the correct artist then falls through to
+// the ordinary title-split. The owner's own costing is that this closes 5 of the 6 KNOWN garbage
+// cases; the one it does NOT close is `Tong Hua ( 童话 ) Male Karaoke Mandarin - No Vocal`, where the
+// artist "No Vocal" is not a containment artifact but a genuine trailing qualifier with no separator
+// signal — that shape is out of scope for this rule (it would need the rejected suffix heuristic).
+// The LEFT-side and EXACT cases below pin the OTHER two behaviours the fix must preserve.
+describe('#672 — a channel name inside a longer side must not promote the whole side to artist', () => {
+	it('"Sophia George - Girlie Girlie (1986) • TopPop" by uploader "TopPop"', () => {
+		// r.includes(u): "girlie girlie 1986 toppop" contains "toppop", so the RIGHT side was promoted
+		// whole to artist at high confidence. The artist is on the LEFT.
+		const p = parseTrackTitle('Sophia George - Girlie Girlie (1986) • TopPop', 'TopPop');
+		expect(p.artist).toBe('Sophia George');
+		expect(p.title).toBe('Girlie Girlie (1986) • TopPop');
+		expect(p.by).toBe('title-split');
+	});
+
+	it('"Glimpse Of Us by Joji - Jamal Corrie Cover" by uploader "Jamal Corrie"', () => {
+		// r.includes(u): "jamal corrie cover" contains "jamal corrie", so "Jamal Corrie Cover" became the
+		// artist. The real song is on the left.
+		const p = parseTrackTitle('Glimpse Of Us by Joji - Jamal Corrie Cover', 'Jamal Corrie');
+		expect(p.artist).toBe('Glimpse Of Us by Joji');
+		expect(p.title).toBe('Jamal Corrie Cover');
+		expect(p.by).toBe('title-split');
+	});
+
+	it('"Abi Carter Stuns - American Idol 2024" by uploader "American Idol"', () => {
+		// r.includes(u): "american idol 2024" contains "american idol", so the trailing show tag was
+		// promoted to artist.
+		const p = parseTrackTitle('Abi Carter Stuns - American Idol 2024', 'American Idol');
+		expect(p.artist).toBe('Abi Carter Stuns');
+		expect(p.title).toBe('American Idol 2024');
+		expect(p.by).toBe('title-split');
+	});
+
+	it('the LEFT-side arm loses its bogus HIGH confidence (the value was already this, the LABEL was not)', () => {
+		// l.includes(u): a channel name inside the LEFT side matched too. For THIS shape the artist VALUE
+		// is the same either way — "American Idol 2024" is the whole left side, and title-split also
+		// names the left side artist — so the fix does NOT change the parsed artist here. What it removes
+		// is the `uploader-confirmed`/`high` label the base stamped, demoting it to `title-split`/
+		// `medium`. That matters because the medium value is still gated OUT of browse (browseArtist),
+		// whereas high would have been rendered as a heading. Uploader "Idol" ⊂ left "American Idol 2024".
+		const base = parseTrackTitle('American Idol 2024 - Abi Carter Stuns', 'Idol');
+		expect(base.artist).toBe('American Idol 2024'); // unchanged value for this shape
+		expect(base.by).toBe('title-split'); // RED on base: base stamps 'uploader-confirmed'
+		expect(base.confidence).toBe('medium'); // RED on base: base stamps 'high'
+	});
+
+	it('an EXACT uploader match still confirms — the kept direction is untouched', () => {
+		// u.includes(side) survives: exact matches (Daft Punk, Queen) and the VEVO case (AdeleVEVO ⊃
+		// Adele) are still high-confidence uploader-confirmed. This is what makes the fix test-safe.
+		expect(parseTrackTitle('Bohemian Rhapsody - Queen', 'Queen').by).toBe('uploader-confirmed');
+		expect(parseTrackTitle('Adele - Hello', 'AdeleVEVO').by).toBe('uploader-confirmed');
+		expect(parseTrackTitle('Daft Punk - One More Time', 'Daft Punk').by).toBe('uploader-confirmed');
+	});
+});
+
 describe('cleanTitleNoise', () => {
 	it('strips bracketed upload noise in any bracket style', () => {
 		expect(cleanTitleNoise('Song (Official Music Video)')).toBe('Song');

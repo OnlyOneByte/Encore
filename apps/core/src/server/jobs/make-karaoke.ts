@@ -375,17 +375,23 @@ export function markLyricsQueued(mediaId: string, mediaById: Map<string, Media>)
 }
 
 /**
- * Apply a `fetch` job's MusicBrainz annotation, or refuse.
+ * Apply a `fetch` job's annotation, or refuse.
  *
- * NEVER REGRESSES. A `high` annotation carries an MBID and a duration that corroborated it; a `medium`
- * is a plausible identification nothing confirmed. Once a media holds a `high` citation, a later
- * `medium` must not overwrite it — a re-fetch, a re-cook, or a backfill would otherwise be able to
- * downgrade a known-good artist into a guess, and the field that suffers is the one the LRCLIB query
- * matches on.
+ * TWO citation SOURCES arrive here, and both are stronger than the title parse they replace:
+ *   • `musicbrainz` — a search that AGREED on artist and title with a corroborating duration; carries
+ *     an MBID.
+ *   • `youtube` — YouTube's OWN extracted `track`/`artist` metadata, captured for free at download time
+ *     (#672). The uploader DECLARED the credit rather than us reverse-engineering it from the title, so
+ *     it is a citation, not a guess — `high`, and with NO MBID (YouTube does not mint one). An MBID is
+ *     therefore required only for the `musicbrainz` source.
  *
- * A normalizer-derived value is always overwritable: it is a title parse, not a citation.
+ * NEVER REGRESSES. Once a media holds a `high` citation from EITHER source, a later `medium` (or a
+ * later citation that is not itself `high`) must not overwrite it — a re-fetch, a re-cook, or a
+ * backfill would otherwise downgrade a known-good artist into a lesser value, and the field that
+ * suffers is the one the LRCLIB query matches on. A normalizer-derived value is always overwritable:
+ * it is a title parse, not a citation.
  *
- * Writes the canonical fields as well as the MBID, because being able to cite the song is only useful
+ * Writes the canonical fields as well as any MBID, because being able to cite the song is only useful
  * if the names that come with it are the ones downstream reads.
  */
 export function applyAnnotation(
@@ -394,20 +400,29 @@ export function applyAnnotation(
 	annotation?: { source?: string; mbid?: string; artist?: string; title?: string; confidence?: string }
 ): boolean {
 	const media = mediaById.get(mediaId);
-	if (!media || !annotation?.mbid || !annotation.artist || !annotation.title) return false;
+	if (!media || !annotation?.artist || !annotation.title) return false;
+	// Only the two citation sources are accepted here; anything else (a normalizer echo, a typo) is not
+	// an identification and writes nothing.
+	const source =
+		annotation.source === 'musicbrainz' ? 'musicbrainz' : annotation.source === 'youtube' ? 'youtube' : null;
+	if (!source) return false;
+	// A MusicBrainz citation is defined by its MBID; a YouTube one has none by construction.
+	if (source === 'musicbrainz' && !annotation.mbid) return false;
 	const confidence = annotation.confidence === 'high' ? 'high' : 'medium';
 
-	// Refuse a downgrade of an existing citation. Same rank comparison in spirit as the separator
-	// upgrade gate: a candidate has to be at least as good as what is already published.
+	// Refuse a downgrade of an existing citation — from EITHER citation source. Same rank comparison in
+	// spirit as the separator upgrade gate: a candidate has to be at least as good as what is published.
 	const current = media.annotation;
-	if (current?.source === 'musicbrainz' && current.confidence === 'high' && confidence !== 'high') {
+	const currentIsCitation = current?.source === 'musicbrainz' || current?.source === 'youtube';
+	if (currentIsCitation && current!.confidence === 'high' && confidence !== 'high') {
 		return false;
 	}
 
-	media.mbid = annotation.mbid;
+	// Only a MusicBrainz citation carries an MBID; a YouTube one leaves whatever was there untouched.
+	if (annotation.mbid) media.mbid = annotation.mbid;
 	media.artistCanonical = annotation.artist;
 	media.titleCanonical = annotation.title;
-	media.annotation = { source: 'musicbrainz', confidence };
+	media.annotation = { source, confidence };
 	return true;
 }
 
