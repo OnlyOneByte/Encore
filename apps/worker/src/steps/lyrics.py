@@ -20,8 +20,10 @@ from typing import Any
 
 from ..lyrics import (
     OVERSHOOT_FRACTION_MAX,
+    SOURCE_MANUAL,
     SUSPECT_COVERAGE,
     TIMING_LINE,
+    TIMING_NONE,
     TIMING_WORD,
     LrclibClient,
     LyricsRequest,
@@ -55,7 +57,7 @@ from ..processor import ProgressEvent, raw_caption_path
 from ..runtime.ctx import Ctx
 from ..runtime.runner import run_blocking, run_stage
 from ..runtime.step import Outcome, Step, StepResult
-from ..vocabulary import Stage, SyncMode
+from ..vocabulary import Stage, SyncMode, TextSource
 
 #: Which caption track a FetchCaptions instance asks for. The two have opposite roles, and they are
 #: fetched separately into separate directories so the distinction cannot come down to a filename guess.
@@ -223,6 +225,40 @@ class AcquireTexts(Step):
         return sources
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
+        # #640: an operator RE-PICK short-circuits acquisition entirely. The core names the candidate to
+        # re-time (`pinnedRef`), optionally with pasted words (`pinnedText`). Re-running the providers
+        # could only produce a different answer than the one the human just chose — and grading it would
+        # discard the pin outright (see GradeAndSelect.applies).
+        #
+        # THE BRANCH LIVES IN GUARDS, not in a step of its own. (1) not acquiring and (2) not grading are
+        # REFUSALS, and `applies()`/an early return are where this worker puts refusals; only (3) timing
+        # under a caller-chosen ref is new work, and TimeTexts stays the single place that times and emits
+        # (E8: one writer per artifact kind). A front-of-plan step would be a second producer of
+        # `lyrics.texts` and would still not spare TimeTexts the ref override.
+        asked = str(ctx.params.get("pinnedRef") or "").strip()
+        pinned_ref = _pinned_ref(ctx)
+        if asked and pinned_ref is None:
+            yield StepResult(
+                outcome=Outcome.STOP,
+                reason=f"REFUSING pinned ref {asked!r}: it leaves the media directory. Completing with "
+                "no lyrics rather than reading or writing outside the store",
+            )
+            return
+        if pinned_ref:
+            pinned = _pinned_lyrics_text(ctx, pinned_ref)
+            if pinned is None:
+                yield StepResult(
+                    outcome=Outcome.STOP,
+                    reason=f"pinned lyrics {pinned_ref} carry no readable text — leaving the stored "
+                    "candidate exactly as it is rather than re-picking behind the operator",
+                )
+                return
+            ctx.lyrics.texts = [pinned]
+            ctx.note(
+                f"lyrics PINNED — re-timing {pinned_ref} as {pinned.text_source} "
+                f"({len(pinned.segments)} line(s)); acquisition and comparative grading skipped"
+            )
+            return
         req = LyricsRequest(
             media_id=ctx.job.media_id,
             artist=str(ctx.params.get("artist") or "").strip() or None,
@@ -295,6 +331,17 @@ class GradeAndSelect(Step):
     reads = frozenset({"lyrics.texts", "audio.duration_sec"})
     writes = frozenset({"lyrics.selection", "lyrics.texts"})
 
+    def applies(self, ctx: Ctx) -> bool:
+        """Skip comparative selection on a pinned re-time (#640).
+
+        Not an optimisation. A pinned text is hand-built, so it is ROLE_UNSPECIFIED (fail-closed, see
+        LyricsText.role): `select_by_baselines` puts it in neither `candidates_of` nor `baselines_of`,
+        `sel.publish` comes back EMPTY, and TimeTexts then raises `nothing could be timed` on a job whose
+        text was never in doubt. The operator has already decided WHICH text publishes; an argmax over a
+        pool of one is not a decision this step gets to make.
+        """
+        return _pinned_ref(ctx) is None
+
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         duration_sec = ctx.audio.duration_sec
         sel = select_by_baselines(ctx.lyrics.texts, duration_sec)
@@ -311,9 +358,7 @@ class GradeAndSelect(Step):
         # which survive the winner's `replace(..., alternates=[])`.
         if duration_sec and duration_sec > 0:
             published_keys = {(p.text_source, p.variant) for p in sel.publish}
-            winner_label = (
-                (sel.publish[0].variant or sel.publish[0].text_source) if sel.publish else "none"
-            )
+            winner_label = (sel.publish[0].variant or sel.publish[0].text_source) if sel.publish else "none"
             # #739: walk the pool ONCE into a deduped list before wording any verdict, because two of
             # the three verdicts below are facts about the POOL, not about the candidate being reported.
             # `is_published` is the only pool fact the old ladder had, and two of its arms wrote claims
@@ -591,7 +636,20 @@ class TimeTexts(Step):
                 for note in lrc_fit_notes(text.text_source, windows, opens, doc):
                     ctx.note(note)
 
-            ref = candidate_key(ctx.job.media_id, text.text_source, timing, text.tag)
+            # #640: a pinned re-time writes under the ref the CORE chose, never a re-derived key. The core
+            # merges on `ref` (mergeLyricsCandidate), so reusing the same key is exactly what makes this
+            # OVERWRITE the pinned candidate with freshly-timed words instead of adding a rival beside it.
+            # A derived key could not do that: `candidate_key` folds in the timing TIER, so re-timing a
+            # line-synced candidate into word timings would land on a different key and leave the doc the
+            # operator rejected in place. Guarded on a single text because that is the only shape the
+            # pinned path produces (AcquireTexts supplies exactly one), so the override can never leak
+            # onto a graded run's second candidate.
+            pinned_ref = _pinned_ref(ctx)
+            ref = (
+                pinned_ref
+                if pinned_ref is not None and len(ctx.lyrics.texts) == 1
+                else candidate_key(ctx.job.media_id, text.text_source, timing, text.tag)
+            )
             final = os.path.join(ctx.job.media_dir, ref)
             os.makedirs(os.path.dirname(final), exist_ok=True)
             with open(final, "w", encoding="utf-8") as f:
@@ -686,6 +744,91 @@ def _default_aligner(ctx: Ctx) -> Any:
     from ..lyrics import aligner_for
 
     return aligner_for(ctx.engines.device or "cpu")
+
+
+def _pinned_ref(ctx: Ctx) -> str | None:
+    """The MediaStore key of a candidate the operator pinned for re-timing (#640), or None.
+
+    REFUSES an absolute path and any key that climbs out of the media directory. This value is joined
+    with `ctx.job.media_dir` to both READ a stored doc and WRITE the re-timed one, so an escaping key
+    would point the align step at a file outside the store. The core's own `safeMediaPath` rejects the
+    same shapes; the worker does not take that on trust, because the worker is the side holding the file
+    handle. A refused key is never silently downgraded to a normal cook — AcquireTexts STOPs and says so.
+    """
+    ref = str(ctx.params.get("pinnedRef") or "").strip()
+    if not ref or os.path.isabs(ref) or ".." in ref.replace("\\", "/").split("/"):
+        return None
+    return ref
+
+
+def _pinned_source_from_ref(ref: str, media_id: str) -> str | None:
+    """The `textSource` a stored candidate's own artifact KEY encodes, or None if it does not parse.
+
+    A lyrics doc on disk carries `language`/`lines`/`words` and NOT its provenance, so re-timing an
+    already-stored candidate can only recover the tier from the key `candidate_key` built:
+    `derived/lyrics/<media>-<source>[-<tag>]-<timing>.json`. Validated against the wire vocabulary, so
+    an unrecognised shape DECLINES rather than inventing a tier.
+    """
+    stem = os.path.splitext(os.path.basename(ref))[0]
+    prefix = f"{media_id}-"
+    if not stem.startswith(prefix):
+        return None
+    parts = stem[len(prefix) :].split("-")
+    if len(parts) < 2:
+        return None
+    return parts[0] if parts[0] in {s.value for s in TextSource} else None
+
+
+def _stored_line_texts(path: str) -> list[str]:
+    """The plain line texts of a stored lyrics artifact, in order. Empty when it cannot be read.
+
+    Reads back the shape `TimeTexts` wrote (`lyrics/artifact.py`'s `lines[].text`) and keeps only the
+    words: a re-time exists precisely because the stored TIMINGS were wrong for this recording.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError):
+        return []
+    if not isinstance(doc, dict):
+        return []
+    out: list[str] = []
+    for line in doc.get("lines") or []:
+        if isinstance(line, dict) and isinstance(line.get("text"), str) and line["text"].strip():
+            out.append(line["text"].strip())
+    return out
+
+
+def _pinned_lyrics_text(ctx: Ctx, ref: str) -> LyricsText | None:
+    """The ONE text a pinned align job must time, or None when the pin cannot be honoured.
+
+    Two shapes, one per way an operator re-picks (#640):
+
+      * `pinnedText` — pasted words, used verbatim. The FIRST producer of SOURCE_MANUAL, which
+        `chain.py` has held reserved with no producer since the two-tier split.
+      * `pinnedRef` alone — re-time the candidate already on disk, keeping its own `textSource`, which
+        by then survives only in its artifact key.
+
+    TIMING_NONE either way, deliberately: re-timing is the whole point, so the stored line bounds must
+    not become a line-sync fallback that republishes the timings the operator just rejected. The cost is
+    real and accepted — `_time_one` drops a text with neither word nor line timings when the aligner
+    fails, so a failed re-time publishes nothing and leaves the stored doc untouched, which is the honest
+    outcome rather than shipping back the timings that prompted the re-pick.
+
+    `text_confidence` is `high` because a human chose this text; that outranks any scored guess. `role`
+    stays ROLE_UNSPECIFIED on purpose — nothing on this path reads it (grading is skipped), and stamping
+    a tier here would put a second decider of tiers outside `lyrics/registry.py` (E9).
+    """
+    pasted = str(ctx.params.get("pinnedText") or "").strip()
+    if pasted:
+        lines, source = [ln.strip() for ln in pasted.splitlines() if ln.strip()], SOURCE_MANUAL
+    else:
+        lines = _stored_line_texts(os.path.join(ctx.job.media_dir, ref))
+        source = _pinned_source_from_ref(ref, ctx.job.media_id) or SOURCE_MANUAL
+    if not lines:
+        return None
+    segments: list[dict[str, Any]] = [{"text": ln} for ln in lines]
+    return LyricsText(text_source=source, segments=segments, timing=TIMING_NONE, text_confidence="high")
 
 
 def _attach_romanizations(doc: dict[str, Any], source_segments: list[dict[str, Any]]) -> None:

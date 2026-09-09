@@ -108,6 +108,10 @@ export const media = sqliteTable('media', {
 	// would show auto-transcribed words unlabelled until the async sidecar pass caught up. Nothing
 	// queries inside it, so one JSON column beats a candidates table.
 	lyricsCandidates: text('lyrics_candidates'),
+	// A human's explicit lyrics pick, by candidate ref (#640). The sidecar is authoritative; this is the
+	// index copy so a hydrate that has not read meta/ yet still honours the override. Nullable: NULL means
+	// no override and the ranking decides, exactly as before this feature.
+	lyricsOverrideRef: text('lyrics_override_ref'),
 	// Canonical metadata for BROWSE. Derived by the track-title normalizer and mirrored here
 	// from the authoritative sidecar, because grouping the library by `artist` is useless — that column
 	// holds the YouTube uploader ("7clouds"), not the artist. Nullable: a low-confidence parse stores

@@ -162,6 +162,34 @@ export class JobRepository {
 	}
 
 	/**
+	 * Free a FINISHED job's dedup slot so the song can be re-processed (#640). A `ready` job still
+	 * occupies the slot in both the app check and the partial unique index, and `ready` is TERMINAL —
+	 * `cancel()` cannot move it (the state machine gives terminal states no outgoing events). So a
+	 * re-run of a completed step (a human re-picking lyrics, a future re-cook button) has no way to
+	 * proceed: `enqueue` would return the old `ready` job and nothing would run, silently.
+	 *
+	 * This deletes the SLOT-OCCUPYING row for the key — the one `findLive` names, which is exactly the
+	 * row a fresh `enqueue` would otherwise hand back. `findLive` already excludes the slot-freeing
+	 * statuses (`failed`/`canceled`), so it can only return the row that actually holds the slot; a
+	 * key with several terminal rows (e.g. a `failed` attempt plus a later `ready` one — an ordinary
+	 * state, since `enqueue` inserts a new row whenever nothing is live) resolves to the `ready`
+	 * occupant, not an arbitrary `.all()[0]`. Only a TERMINAL occupant is removed — a live one is left
+	 * untouched and returned as `false`, so this can never yank a job out from under a running worker,
+	 * and a key with NO live occupant returns `false` (nothing to free) rather than deleting a stray
+	 * slot-freed row. The attempt history lives in the separate `job_attempts` ledger and is NOT
+	 * touched, so the audit trail of the prior attempt survives the supersession. Returns true when a
+	 * row was freed.
+	 */
+	supersedeForRerun(mediaId: string, jobType: JobType): boolean {
+		// findLive returns precisely the slot occupant (it filters out failed/canceled), so this frees
+		// the row enqueue would reuse — never a slot-freed sibling that leaves the real occupant in place.
+		const job = this.findLive(mediaId, jobType);
+		if (!job || !isTerminalJob(job.status)) return false;
+		this.#db.delete(jobs).where(eq(jobs.id, job.id)).run();
+		return true;
+	}
+
+	/**
 	 * The step of this song's cook that is CURRENTLY outstanding — the first not-yet-finished job in
 	 * pipeline order, or null when nothing is in flight.
 	 *

@@ -254,6 +254,22 @@ export interface JobParams {
 	 */
 	asrModel?: string;
 	syncMode?: string;
+	/**
+	 * A HUMAN re-pick: the MediaStore key of the candidate this `align` job must re-time, instead of
+	 * running its own comparative selection (#640). Set only by the re-select flow (`/api/lyrics-reselect`).
+	 *
+	 * When present the worker SHORT-CIRCUITS `GradeAndSelect` to this candidate's stored text and times
+	 * that — re-timing the words a human chose from the RETAINED vocals stem, no re-download, no re-pick.
+	 * Absent on every normal cook, where the worker selects comparatively as before.
+	 */
+	pinnedRef?: string;
+	/**
+	 * PASTED lyrics text for a `manual`-source re-pick (#640): the user supplied words no provider had.
+	 * When present the worker times THIS text (source `manual`) rather than any stored candidate, and
+	 * `pinnedRef` is the ref it will be written under. Absent on every normal cook and on a re-pick of an
+	 * already-stored candidate.
+	 */
+	pinnedText?: string;
 }
 
 // core -> worker

@@ -100,6 +100,30 @@ test('#766: media.guide_offset_ms defaults null and round-trips a signed value (
 	expect(byId.get('g3')).toBe(0); // measured, aligned — distinct from null
 });
 
+// #640: media.lyrics_override_ref arrives via migration 0010 (not a baseline edit), defaults null
+// ("no human override → the ranking decides"), and round-trips a stored ref. RED on base: the media
+// baseline has no lyrics_override_ref column, so this insert/read cannot preserve it.
+test('#640: media.lyrics_override_ref defaults null and round-trips a stored ref', () => {
+	const { db, sqlite } = openDb(':memory:');
+	runMigrations(db);
+	const cols = (sqlite.query('PRAGMA table_info(media)').all() as { name: string }[]).map((c) => c.name);
+	expect(cols).toContain('lyrics_override_ref'); // the migration added it
+	db.insert(media).values({ id: 'o0', source: 'youtube', sourceRef: 'a', title: 'A', durationSec: 200 }).run();
+	db.insert(media)
+		.values({
+			id: 'o1',
+			source: 'youtube',
+			sourceRef: 'b',
+			title: 'B',
+			durationSec: 200,
+			lyricsOverrideRef: 'derived/lyrics/o1-manual-word.json'
+		})
+		.run();
+	const byId = new Map(db.select().from(media).all().map((r) => [r.id, r.lyricsOverrideRef]));
+	expect(byId.get('o0')).toBeNull(); // no override
+	expect(byId.get('o1')).toBe('derived/lyrics/o1-manual-word.json');
+});
+
 // #398: the room_settings.lyrics_ball COLUMN default is 'off' (owner decision C — flip the marker
 // default to No marker, keep the styles). This pins the SQLite column default itself: a raw insert
 // that omits lyrics_ball must read back 'off'. Reverting schema.ts's .default('off') -> 'bounce'

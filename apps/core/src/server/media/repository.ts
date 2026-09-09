@@ -41,6 +41,7 @@ const toRow = (m: Media): MediaRow => ({
 	lyricsRef: m.lyricsRef ?? null,
 	// JSON blob, not a table: nothing queries inside the set.
 	lyricsCandidates: m.lyricsCandidates?.length ? JSON.stringify(m.lyricsCandidates) : null,
+	lyricsOverrideRef: m.lyricsOverrideRef ?? null,
 	artistCanonical: m.artistCanonical ?? null,
 	artistCredit: m.artistCredit ?? null,
 	titleCanonical: m.titleCanonical ?? null
@@ -120,6 +121,7 @@ const fromRow = (r: typeof media.$inferSelect): Media => ({
 	songProfile: r.songProfile ? normalizeSongProfile(safeParse(r.songProfile)) : undefined,
 	lyricsRef: r.lyricsRef ?? undefined,
 	lyricsCandidates: parseCandidates(r.lyricsCandidates),
+	lyricsOverrideRef: r.lyricsOverrideRef ?? undefined,
 	artistCanonical: r.artistCanonical ?? undefined,
 	artistCredit: r.artistCredit ?? undefined,
 	titleCanonical: r.titleCanonical ?? undefined

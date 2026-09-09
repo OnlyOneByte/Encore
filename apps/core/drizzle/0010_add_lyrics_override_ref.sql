@@ -1,0 +1,17 @@
+-- #640: media.lyrics_override_ref — a human's explicit lyrics pick, by candidate ref, the fallback
+-- for when the ranker chose the wrong lyrics set. The chosen candidate is resolved through the shared
+-- resolveLyricsRef: an override present in the candidate set outranks pickBestLyrics, everywhere the
+-- pointer is derived (sidecar restore + align completion).
+--
+-- A real numbered migration (0010, after #856's 0009_drop_pinned_seq), NOT an in-place edit of the
+-- baseline: drizzle keys replay on the journal `when`, so a rewritten baseline never re-applies to an
+-- existing box and the column would be missing at boot the first time a reader selected it (the trap
+-- the 0004/0005/0006 headers record, and db.test.ts pins for #669). This replays only on DBs that have
+-- not recorded idx:10.
+--
+-- ADDITIVE AND NULLABLE. A plain `ADD COLUMN`, not the __new_ create-copy-drop-rename idiom, because
+-- `media` needs no primary-key change (same shape as 0006/0007/0008). The column is NULLABLE with no
+-- default on purpose: null ⇔ "no human override / row predates the feature", which resolveLyricsRef
+-- treats as "let the ranking decide" — so every song already in the library keeps today's chosen
+-- candidate byte-for-byte after the upgrade, with no backfill.
+ALTER TABLE `media` ADD `lyrics_override_ref` text;
