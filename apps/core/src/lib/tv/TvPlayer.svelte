@@ -20,7 +20,7 @@
 	import { playbackRef, isPlayable } from '@encore/shared';
 	import type { PlaybackSnapshot } from './catalog';
 	import { untrack } from 'svelte';
-	import { guideCorrection, prerollSeekTarget, seekPlan } from './guide-sync';
+	import { guideCorrection, prerollSeekTarget, resumeSeekTarget, seekPlan } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
 	import { transportFor, slotHoldsSong, songToken } from './transport';
 	import { PitchShiftGraph, needsShift } from './pitch-shift';
@@ -179,6 +179,15 @@
 	// be, for the first seconds of every song. `guideSettled` means "stop waiting": ready, failed, or
 	// timed out.
 	let masterReady = $state(false);
+	// #795: the last room position from `playback:state`, HELD so a cold mount can take it on the
+	// master's `canplay` — the element does not exist when the frame arrives on a reload. Applied ONCE
+	// per element load, and ONLY on the ACTIVE, playable slot (see `applyResume`'s guard). NOT reactive:
+	// a plain variable, read only inside the untracked `applyResume`, so it never itself re-triggers the
+	// seek effect. What keeps a STALE target off the next song is NOT clearing this variable — it is the
+	// server: a song advance publishes `positionSec: 0` with a fresh `rev` (EPHEMERAL_RESET, player.ts)
+	// BEFORE `emitNowPlaying`, so the incoming song re-stashes a target of 0, not the outgoing position
+	// (the #396/#125 protection lives there, at the source).
+	let resumeTarget: number | undefined;
 	let guideSettled = $state(false);
 	// Two independent latches, because the two reports mean different things and fire on different
 	// conditions. `prewarmedFired` guards the buffer-settled signal (any visibility, once per song);
@@ -613,6 +622,13 @@
 		// A bare read is enough to register the dep in runes mode.
 		void seekRev;
 		if (target === undefined) return;
+		// #795: hold this position for the master's `canplay`. On a cold mount (a reload mid-song) the
+		// <audio> does not exist yet — it is gated on `nowplaying:changed`, which the server sends AFTER
+		// this `playback:state` — so `applySeek` below early-returns on a null master and the target is
+		// lost, and telemetry never bumps `rev` to re-wake this effect. Stashing it lets `applyResume`
+		// take it once the element can play. `applySeek` still runs for the WARM path (a live scrub with
+		// an element already mounted), where `canplay` will not fire again.
+		resumeTarget = target;
 		applySeek(target);
 	});
 
@@ -653,6 +669,54 @@
 			// governor re-derives whatever it needs from real drift on its next tick.
 			guideEl.playbackRate = 1;
 		}
+	}
+
+	/**
+	 * Resume the master to the room's position on a COLD MOUNT — the fix for #795, and the master's
+	 * counterpart to `alignGuidePreroll`.
+	 *
+	 * Called at the moment the master can actually play (its `canplay`), never at effect time before
+	 * the element exists — which is the whole point: on a reload mid-song the `playback:state` frame
+	 * carrying the room's position arrives before the `<audio>` is mounted (the element is gated on the
+	 * `nowplaying:changed` that the server sends one frame later), so the seek effect fired against a
+	 * null master and dropped the target. The held `resumeTarget` is that dropped position; this takes
+	 * it here, against the fresh master's playhead (≈0), where the seek is a primed-buffer flush.
+	 *
+	 * The decision is `resumeSeekTarget`, NOT `seekPlan`: a cold-mounted element has no playhead to
+	 * protect, so the room's position is a RESUME, not a jump subject to the telemetry-vs-scrub
+	 * threshold (a resume 1s in would otherwise read as sub-threshold telemetry and be dropped). See
+	 * `resumeSeekTarget` for the full argument.
+	 *
+	 * GUARDED LIKE `applySeek`, and consumed only on the path that applies. The prewarming (hidden)
+	 * slot reaches `canplay` too, so without the `active`/playable guard it would park the NEXT song's
+	 * element at the outgoing song's position — and on advance `setPosition` writes that back as the
+	 * incoming song's room position, the #125/#396 shape. The guard makes the inactive slot a no-op
+	 * WITHOUT consuming the target, so the slot can still resume when it legitimately becomes active.
+	 * What keeps a stale target off the next song is not this function clearing the variable — it is the
+	 * server publishing `positionSec: 0` on advance (EPHEMERAL_RESET, player.ts) before `emitNowPlaying`,
+	 * so the incoming song re-stashes 0.
+	 */
+	function applyResume(): void {
+		const el = untrack(() => master);
+		const target = resumeTarget;
+		if (target === undefined || !el) return;
+		// Mirror applySeek's full guard — the resume path had only `!el`, and that is the regression the
+		// cold-mount fix opened. The prewarming (hidden, INACTIVE) slot is handed the next song's media
+		// and DOES reach `canplay` (onprewarmed rides masterReady off canplaythrough at any visibility),
+		// so a playback command carrying a non-zero position (a guest scrub, a pause/resume) is stashed
+		// in BOTH slots. applySeek early-returns on the inactive slot; applyResume must too, or it parks
+		// the NEXT song's element at the outgoing song's position, and on advance setPosition writes that
+		// stale playhead as the incoming song's room position on every phone — the #125/#396 shape. Do
+		// NOT consume resumeTarget here: the slot may legitimately become active later (it advances into
+		// the visible role), and its real element load must still be able to take the position.
+		const snap = untrack(() => media);
+		const isActive = untrack(() => active);
+		if (!snap || !isPlayable(snap) || !isActive) return;
+		const plan = resumeSeekTarget(el.currentTime, target);
+		if (plan.seek) el.currentTime = plan.target;
+		// Consume it: one resume per element load, only on the path that actually applied it. The guide
+		// re-aligns on its OWN `canplay` against wherever the master now sits, so it is not driven here.
+		resumeTarget = undefined;
 	}
 
 	// ── pitch shift (the ± semitone transpose, made audible) ─────────────────────────────────────────
@@ -784,6 +848,7 @@
 			bind:this={master}
 			preload="auto"
 			oncanplaythrough={() => (masterReady = true)}
+			oncanplay={() => applyResume()}
 			onplay={() => active && visible && onplayingchange?.(true)}
 			onpause={() => active && visible && onplayingchange?.(false)}
 			onended={() => {
