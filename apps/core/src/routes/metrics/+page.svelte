@@ -494,10 +494,10 @@
 		gap: 0.15rem;
 	}
 	/*
-	 * --ink with an underline, NOT an accent colour. --accent measures 3.95:1 on --card and
-	 * --accent-strong is worse at 3.52:1 (it is built to CARRY --on-accent, not to be text), so both
-	 * fail AA for normal-size link text. The underline also stops the link being signalled by colour
-	 * alone. min-height gives the stacked links a real tap target.
+	 * --ink with an underline, NOT an accent colour. --accent measures 3.38:1 on --card — it is built
+	 * to CARRY --on-accent, not to be text — so it fails AA for normal-size link text. (The old
+	 * --accent-strong was worse at 3.52:1 and is retired; #840, XR-COL-11.) The underline also stops
+	 * the link being signalled by colour alone. min-height gives the stacked links a real tap target.
 	 */
 	.cooks a {
 		color: var(--ink);

@@ -1124,8 +1124,9 @@
 		cursor: pointer;
 	}
 	.tab.on {
-		/* --accent-strong + --on-accent is the one accent pair that carries a label at AA (4.88:1). */
-		background: var(--accent-strong);
+		/* --accent + --on-accent is the certified pair that carries a label: 5.09:1 (#840, XR-COL-12 —
+		   the fill and its ink are set together, never separately). */
+		background: var(--accent);
 		color: var(--on-accent);
 	}
 
@@ -1304,7 +1305,7 @@
 		/* Centre the 28px thumb on the 6px track — WebKit anchors the thumb to the track top otherwise. */
 		margin-top: -11px;
 		border-radius: 50%;
-		background: var(--accent-strong);
+		background: var(--accent);
 		border: 3px solid var(--ink);
 		cursor: pointer;
 	}
@@ -1312,7 +1313,7 @@
 		width: 28px;
 		height: 28px;
 		border-radius: 50%;
-		background: var(--accent-strong);
+		background: var(--accent);
 		border: 3px solid var(--ink);
 		cursor: pointer;
 	}

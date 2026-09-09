@@ -48,12 +48,12 @@
 		flex: 0 0 auto;
 		font-size: 1.5rem;
 		font-weight: 800;
-		/* --accent2, NOT --accent. The mockup draws this numeral in the violet accent, but the accent
-		   tokens exist to be BACKGROUNDS carrying --on-accent: as text they measure 3.95:1 (--accent)
-		   and 3.52:1 (--accent-strong) on --card, both under AA, and "strong" is WORSE rather than a
-		   remedy — contrast.test.ts refuses both by name for exactly that reason. --accent2 is the
-		   family's text-safe member and already this route's text accent (.range-peek, .browse-active):
-		   MEASURED 6.05:1 on --card and 5.92:1 on the --card-tint this gradient ends at. */
+		/* --accent2, NOT --accent. The mockup draws this numeral in the violet accent, but --accent
+		   exists to be a BACKGROUND carrying --on-accent: as text it measures 3.38:1 on --card, under
+		   AA. (The old --accent-strong was worse still at 3.52:1 and is now retired — #840, XR-COL-11 —
+		   so there is no darkened sibling to reach for either.) --accent2 is the family's text-safe
+		   member and already this route's text accent (.range-peek, .browse-active): MEASURED 6.05:1 on
+		   --card and 5.92:1 on the --card-tint this gradient ends at. */
 		color: var(--accent2);
 		font-variant-numeric: tabular-nums;
 	}

@@ -252,7 +252,13 @@ const PENDING_RULING: { file: string; anchor: string; ruling: string }[] = [
 			'The accent-as-ink ban self-reports: its first arm asserts the pairs FAIL AA (toBeLessThan), so a ' +
 			'palette whose stops clear AA as ink reds that line rather than passing vacuously. The handoff ' +
 			'predicted the opposite. Ruling: re-anchor, do not delete — drop the contrast arm only, keep the ' +
-			'usage scan, and record the swap. The full ruling is at the anchor above.'
+			'usage scan, and record the swap. The full ruling is at the anchor above. ' +
+			'EXECUTED by #840 (XR-COL-11): the trigger was not a red but `--accent-strong`\u2019s retirement ' +
+			'removing the loop\u2019s second operand, so the arm could not be left alone in any case. The ' +
+			'contrast arm is dropped (accent-as-ink is now per-stop and mostly FALSE — 35 of 48 fills clear ' +
+			'AA on --card), the usage scan is kept verbatim, and the XR-VER-06 swap record sits under the ' +
+			'anchor. This entry stays here rather than moving to RETIRED because nothing was given up: the ' +
+			'anchor and the guard it describes are both still present, which is what this check verifies.'
 	}
 ];
 

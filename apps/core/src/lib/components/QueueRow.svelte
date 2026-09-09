@@ -134,7 +134,7 @@
 		flex: 0 0 auto;
 	}
 	.up .seq {
-		background: var(--accent-strong);
+		background: var(--accent);
 		color: var(--on-accent);
 	}
 	.meta {

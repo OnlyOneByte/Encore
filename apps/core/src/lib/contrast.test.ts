@@ -155,23 +155,34 @@ test('status colors pass AA as text on a card', () => {
 	expect(fails).toEqual([]);
 });
 
-test('--on-accent passes AA on --accent-strong (the actionable pair)', () => {
-	const r = ratio(token('on-accent'), token('accent-strong'));
+/*
+ * THE ACTIONABLE PAIR, re-anchored by #840 (XR-COL-11, XR-COL-12).
+ *
+ * This used to read `ratio(token('on-accent'), token('accent-strong'))`. `--accent-strong` is retired:
+ * it was a 3% darken of `--accent` whose sole job was getting white to 4.5:1, and per-stop `on_fill`
+ * supersedes that — the fill IS the strong value. The claim worth asserting is unchanged in substance
+ * (the accent surface carries its ink at AA); only its left operand moved.
+ *
+ * The per-stop half — that all 48 registry pairs clear AA, and that `:root`'s pair IS one of them — is
+ * in `colour-tokens.test.ts`, which can import the registry. This file stays a pure token-value guard.
+ */
+test('--on-accent passes AA on --accent (the actionable pair)', () => {
+	const r = ratio(token('on-accent'), token('accent'));
 	expect(r).toBeGreaterThanOrEqual(AA_TEXT);
 });
 
 /*
- * THE GAP THIS CLOSES. The accent tokens exist to be BACKGROUNDS that carry --on-accent. Used the
- * other way round -- as a text colour on a dark surface -- they both fail AA outright:
+ * THE GAP THIS CLOSES. The accent fill exists to be a BACKGROUND that carries --on-accent. Used the
+ * other way round -- as a text colour on a dark surface -- it fails AA outright:
  *
- *   --accent        on --card = 3.95:1
- *   --accent-strong on --card = 3.52:1   (worse, because "strong" means darker, for white ON it)
+ *   --accent on --card = 3.38:1   (#7254e6, registry stop 41)
  *
  * That is counter-intuitive enough that it already happened once: the /metrics "slowest cooks" links
  * shipped as `color: var(--accent)` and the suite stayed green, because every other test here checks
- * whether a PAIR is safe and none checked whether this pair was in USE. A reviewer then proposed
- * "fix" it by switching to --accent-strong, which would have made the contrast worse while looking
- * like a remedy. So this test asserts the pairs are unusable AND scans for anyone using them, the
+ * whether a PAIR is safe and none checked whether this pair was in USE. A reviewer then proposed to
+ * "fix" it by switching to the darker --accent-strong, which would have made the contrast worse while
+ * looking like a remedy -- that token is now retired (#840, XR-COL-11), so the wrong remedy is no
+ * longer reachable, but the wrong INSTINCT is. So this test scans for anyone using the fill as ink, the
  * same belt-and-braces shape as the --grad usage scan.
  *
  * ── RECORDED RULING FOR THE PALETTE MIGRATION (issue #830, XR-VER-07) ──────────────────────────────
@@ -205,19 +216,32 @@ test('--on-accent passes AA on --accent-strong (the actionable pair)', () => {
  *
  * `non-vacuity-floors.test.ts` holds the machine-checkable half of this: it asserts this record and the
  * guard it describes are still both present, so the ruling cannot rot out from under the guard.
+ *
+ * ── THE RULING, EXECUTED BY #840. SWAP RECORDED PER XR-VER-06 ──────────────────────────────────────
+ *
+ * Carried out exactly as written above, and the trigger was the one the ruling did NOT predict: not a
+ * red, but `--accent-strong`'s retirement (XR-COL-11) removing the loop's second operand outright.
+ * `token('accent-strong')` throws by design, so the arm could not have been left alone in any case.
+ *
+ *   LEFT SCOPE: "accent-as-ink fails AA" as a UNIVERSAL contrast fact. It is now per-stop and mostly
+ *   FALSE -- 35 of the 48 registry fills clear AA on --card (min 3.27:1, max 12.87:1). Asserting
+ *   `toBeLessThan(AA_TEXT)` against whichever single stop happens to be seeded would have been a green
+ *   that says nothing about the palette, which is the shape XR-VER-06 exists to refuse. The threshold
+ *   was NOT relaxed and the arm was NOT inverted; it was dropped, and this is its one line of record.
+ *
+ *   STILL COVERED: the offenders scan below, kept VERBATIM. "The accent fill is a background, not ink"
+ *   remains a design rule after it stops being a contrast fact, and this scan is what caught /metrics.
+ *   The AA question it used to carry is now answered per stop, positively, by `colour-tokens.test.ts`:
+ *   every stop's `accent_ink` -- the token that exists for accent-coloured TEXT -- clears AA on --card.
  */
-test('the accent tokens are not safe as text, and nothing uses them that way', () => {
-	for (const t of ['accent', 'accent-strong']) {
-		expect(ratio(token(t), token('card'))).toBeLessThan(AA_TEXT);
-	}
-
+test('the accent fill is a background by design, and nothing draws text in it', () => {
 	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 	const offenders: string[] = [];
 	for (const f of files) {
 		for (const block of readFileSync(f, 'utf8').matchAll(/\{([^{}]*)\}/g)) {
 			const body = block[1]!;
-			// A `color:` set to an accent token. A background, border or fill is the intended use.
-			if (/(^|[;\s])color:\s*var\(--accent(-strong)?\)/.test(body)) {
+			// A `color:` set to the accent fill. A background, border or fill is the intended use.
+			if (/(^|[;\s])color:\s*var\(--accent\)/.test(body)) {
 				offenders.push(`${f.replace(SRC, 'src')}: text color on var(--accent)`);
 			}
 		}
@@ -269,6 +293,14 @@ test('every focus outline is drawn in --focus, not --accent or the surface colou
  * The regression that motivated this file. --grad is decoration; a `color:` in the same rule block
  * means someone put a label back on it. Scanning rule blocks rather than whole files keeps this from
  * firing on a bar fill that merely sits near an unrelated color declaration.
+ *
+ * THE SCAN IS UNCHANGED BY #840; ITS REASON IS RE-STATED PER STOP (XR-COL-13). The ban used to rest on
+ * one figure -- white on the pink stop, 2.84:1 -- and with `accent2` derived per stop this is 48
+ * gradients, so that number licenses nothing about the other 47. Re-measured over the registry: a
+ * stop's OWN certified `on_fill` clears AA at BOTH endpoints for only 36 of 48 (worst `Scarlet`,
+ * 1.85:1), and the 36 are not a licence either, because the registry certifies the two ENDPOINTS while
+ * a label sits over the interpolated interior that nothing measures. The full measurement is recorded
+ * at the token in `app.css`; the rule this scan enforces is the same rule it always was.
  */
 test('no rule puts a text color on var(--grad)', () => {
 	const files = [join(SRC, 'app.css'), ...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
