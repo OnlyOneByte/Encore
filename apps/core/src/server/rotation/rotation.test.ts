@@ -3,7 +3,7 @@
 import { test, expect } from 'bun:test';
 import { reseq, nextPlayable, upNextAfter, isEntryReady } from './index';
 import type { QueueEntry, Media } from '@encore/shared';
-import { EMPTY_SONG_PROFILE } from '@encore/shared';
+import { EMPTY_SONG_PROFILE, applyAndReseq } from '@encore/shared';
 
 const e = (id: string, singerId: string, addedAt: number, mediaId = 'm-' + id): QueueEntry => ({
 	id,
@@ -26,14 +26,32 @@ const m = (id: string, over: Partial<Media> = {}): Media => ({
 	...over
 });
 
-test('reseq: three singers interleave fairly', () => {
+// Fairness is decided at INSERT time now (#856): the queue is a stored ordered list, and `reseq`
+// only renumbers it. So these drive real adds through the shared reducer and assert the resulting
+// stored list, rather than handing `reseq` a pile of entries and expecting it to sort them.
+const insertAll = (adds: QueueEntry[], order: 'fair' | 'fcfs' = 'fair') =>
+	adds.reduce<QueueEntry[]>((q, entry) => applyAndReseq(q, { op: 'add', entry }, { order }), []);
+
+test('three singers interleave fairly as they are added', () => {
 	const entries = [e('a1', 'a', 1), e('a2', 'a', 2), e('b1', 'b', 3), e('c1', 'c', 4), e('b2', 'b', 5)];
-	expect(reseq(entries).map((x) => x.id)).toEqual(['a1', 'b1', 'c1', 'a2', 'b2']);
+	expect(insertAll(entries).map((x) => x.id)).toEqual(['a1', 'b1', 'c1', 'a2', 'b2']);
 });
 
 test('new joiner slots into the next gap', () => {
 	const entries = [e('a1', 'a', 1), e('a2', 'a', 2), e('a3', 'a', 3), e('b1', 'b', 4)];
-	expect(reseq(entries).map((x) => x.id)).toEqual(['a1', 'b1', 'a2', 'a3']);
+	expect(insertAll(entries).map((x) => x.id)).toEqual(['a1', 'b1', 'a2', 'a3']);
+});
+
+test('reseq renumbers the stored order and does not re-sort it', () => {
+	// a queue somebody rearranged: b1 stored ahead of a1. reseq must preserve that and tidy positions.
+	const rearranged = [
+		{ ...e('a1', 'a', 1), rotationSeq: 5 },
+		{ ...e('b1', 'b', 2), rotationSeq: 2 }
+	];
+	expect(reseq(rearranged).map((x) => [x.id, x.rotationSeq])).toEqual([
+		['b1', 0],
+		['a1', 1]
+	]);
 });
 
 test('nextPlayable returns the soonest ready entry', () => {

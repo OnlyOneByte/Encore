@@ -82,7 +82,7 @@ test('a pin holds under ALL four orderings', () => {
 	}
 });
 
-test('unpin releases the entry back to the room policy (a pin never auto-clears)', () => {
+test('unpin clears the pin, and the row keeps the position it is standing in', () => {
 	const pinned = applyAndReseq([e('a1', 'a', 1), e('b1', 'b', 2), e('c1', 'c', 3)], {
 		op: 'move-global',
 		id: 'c1',
@@ -90,8 +90,10 @@ test('unpin releases the entry back to the room policy (a pin never auto-clears)
 	});
 	expect(pinned[0]!.id).toBe('c1');
 	const released = applyAndReseq(pinned, { op: 'unpin', id: 'c1' });
-	// back to fair order; the pin is gone (null), not merely ignored
-	expect(released.map((x) => x.id)).toEqual(['a1', 'b1', 'c1']);
+	// The pin is gone (null), not merely ignored. Under the STORED-LIST model (#856) releasing it does
+	// NOT spring the row back to a derived order — the stored list is the truth, so c1 stays at the
+	// head it now occupies. Nothing re-derives a position for it to return to.
+	expect(released.map((x) => x.id)).toEqual(['c1', 'a1', 'b1']);
 	expect(released.find((x) => x.id === 'c1')!.pinnedSeq ?? null).toBeNull();
 });
 
