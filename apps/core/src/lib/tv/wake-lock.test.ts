@@ -16,15 +16,19 @@
 //      hides and never restores it on its own — without this it works once and then stops.
 //
 // WHY A SOURCE SCAN (not a mount). #734 landed a happy-dom + Svelte-loader harness that CAN mount leaf
-// components (it stubs navigator.AudioContext and still reds on real defects). But this route is not a
-// leaf: apps/core/src/routes/tv/+page.svelte imports `$app/navigation`, and the harness does not alias
-// the `$app`/`$env` virtual modules, so importing the component fails outright before any effect runs
-// (TvPlayer.svelte mounts only because it has zero `$app` imports). So a real mount is not available
-// for THIS file today — and navigator.wakeLock being absent in the env is exactly what a stub would be
-// for, not a reason to avoid mounting. Every invariant here is therefore a source scan over the
-// component text, like autoplay-recovery.test.ts: which API is called, that it is guarded, that the
-// lock is released on cleanup, and that a visibilitychange handler re-acquires it — all decidable from
-// the source. If the harness later aliases `$app`, these can be promoted to a real mount.
+// components (it stubs navigator.AudioContext and still reds on real defects), and #822 aliased the
+// `$app`/`$env` virtual modules, so apps/core/src/routes/tv/+page.svelte now IMPORTS fine under the
+// harness — pinned by apps/core/src/lib/mount-rung.test.ts. Two things still stand between that import
+// and a mount of THIS route, and neither is in this file's scope: the component destructures a `data`
+// prop supplied by +page.server.ts's load (mounting it means constructing that payload), and it reads
+// `el.offsetHeight` for the card band, which THROWS on the mount rung — #822 made all six geometry
+// APIs raise an error naming the rung instead of returning happy-dom's fabricated zero
+// (docs/ux/04-verification.md, XR-VER-03), so a mount here would fail at that read rather than
+// silently measure nothing. So the invariants here stay source scans over the component text, like
+// autoplay-recovery.test.ts: which API is called, that it is guarded, that the lock is released on
+// cleanup, and that a visibilitychange handler re-acquires it — all decidable from the source.
+// Promoting them to a real mount is its own issue, and navigator.wakeLock being absent in the env is a
+// stub's job there, not a reason to avoid mounting.
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
