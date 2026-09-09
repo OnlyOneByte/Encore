@@ -7,33 +7,106 @@ mechanism that could catch its violation.
 
 ## Enumeration — what is actually in the tree
 
-Measured on `main` at read time. The brief's **242 cases / 38 design-enforcing files / 128
-survive / 68 retarget / 27 retire / 19 at risk** is taken as given and not re-derived; these are
-the file-level facts a requirement can be anchored to.
+Re-derived on `main` at `3f6ee2f` (issue #838). The brief carried **242 / 38 design-enforcing
+files / 128 survive / 68 retarget / 27 retire / 19 at risk** as bare numbers with no unit named,
+and two of them do not survive a recount: the population is counted here **twice, once in files and
+once in cases, each labelled**, and the earlier "242 == 242 coincidence" is resolved below rather
+than flagged.
 
-**Scan-helper consumers — 11 files** (10 before issue #841 added the guard over the helpers
-themselves). The named helpers (`svelteFiles`, `styleFiles`, `classPresent`, `markupControls`;
-`allSvelte` is deleted):
+### The design-enforcing population — the written rule
 
-`apps/core/e2e/contract.test.ts` · `apps/core/src/lib/components/motion.test.ts` ·
-`apps/core/src/lib/contrast.test.ts` · `apps/core/src/lib/design-system.test.ts` ·
-`apps/core/src/lib/icon-centring.test.ts` · `apps/core/src/lib/settings-scopes.test.ts` ·
-`apps/core/src/lib/singer-color.test.ts` · `apps/core/src/lib/test-helpers.test.ts` ·
-`apps/core/src/lib/touch-targets.test.ts` · `apps/core/src/lib/tv/stage-scale.test.ts` ·
-`apps/core/src/lib/ui/icons.test.ts`
+Prior passes counted this population two incompatible ways and neither wrote down what it was
+counting, which is how a file count and a case count came to sit under one number. The rule this
+doc now counts by, stated so a later recount lands on the same set:
 
-**Files reading `.svelte` or `.css` source text — 63.** The superset: adds the per-component
-pins (`trend-tap-target`, `song-row-sparkle-sibling`, `processing-card-fullwidth`,
-`drawer-ui-cleanup-253`, `lyrics-*`, `stage-scale`, `page-header`, `lobby-copy`, `reel-offset`,
-`lower-third-stroke`, `tv-background-color-wiring`, …) plus behavioural wiring guards that read
-source incidentally. **The brief's 38 sits between these two numbers** — 10 understates it
-because most design pins inline their own reader; 63 overstates it because ~25 of those are
-server/wiring guards that happen to `readFileSync` a component.
+> **A test file is *design-enforcing* iff it (a) reads `.svelte` or `.css` source text (via a shared
+> scan helper or its own `readFileSync`/`readdirSync`), AND (b) asserts a *rendered or structural
+> design claim* — contrast, geometry, a tap target, a token, motion, layout, focus, a breakpoint, a
+> type ladder — AND (c) does not live under a `server/` path.** Clause (c) excludes the
+> behavioural/wiring guards that `readFileSync` a component only to assert a data-flow or event
+> contract, not a design one.
 
-**Repo-wide `*.test.ts` file count is also 242.** That is the same number the handoff reports as
-its *test-case* count. Either a coincidence or a units error in the retirement analysis; flagged,
-not resolved. If it is a units error the 128/68/27/19 split is a split of **files**, and the
-at-risk population is materially larger than 19 cases.
+The two prior counts are the **bounds** of this rule, not rival answers to it:
+
+- **Lower bound — scan-helper consumers: 14 files / 140 cases.** Files that import a shared scan
+  helper (`svelteFiles`, `styleFiles`, `classPresent`, `markupControls`; `allSvelte` is deleted).
+  This understates the population because most per-component design pins inline their own reader
+  instead of importing a helper. The 14:
+
+  `apps/core/e2e/contract.test.ts` · `apps/core/src/lib/colour-tokens.test.ts` ·
+  `apps/core/src/lib/components/drawer-spike-827.test.ts` ·
+  `apps/core/src/lib/components/motion.test.ts` · `apps/core/src/lib/contrast.test.ts` ·
+  `apps/core/src/lib/design-system.test.ts` · `apps/core/src/lib/icon-centring.test.ts` ·
+  `apps/core/src/lib/settings-scopes.test.ts` · `apps/core/src/lib/singer-color.test.ts` ·
+  `apps/core/src/lib/tailwind-toolchain.test.ts` · `apps/core/src/lib/test-helpers.test.ts` ·
+  `apps/core/src/lib/touch-targets.test.ts` · `apps/core/src/lib/tv/stage-scale.test.ts` ·
+  `apps/core/src/lib/ui/icons.test.ts`
+
+- **Upper bound — any `.svelte`/`.css` reader: 87 files / 766 cases.** Every test that
+  `readFileSync`/`readdirSync`-reads component or stylesheet source, including the per-component
+  pins the lower bound misses AND the 11 `server/`-path wiring guards that read a component only
+  incidentally (115 of those 766 cases). This overstates the population by exactly those wiring
+  guards plus six `tv/`-tree tests that read a component but assert an audio-graph, seek/resume,
+  socket-lifecycle, prose-accuracy or data-flow contract rather than a design one.
+
+- **The rule's own count — design-enforcing: 70 files / 624 cases.** The upper bound minus the 11
+  `server/` wiring guards (clause c) and the 6 clause-(b) `tv/` readers that read `.svelte`/`.css`
+  but assert no rendered/structural design claim: `tv/guide-gain-after-transpose.test.ts` and
+  `tv/master-level-normalization.test.ts` (audio GainNode wiring), `tv/tv-reload-resume.test.ts`
+  (seek/resume timing), `tv/pitch-shift-doc-accuracy.test.ts` (a docstring-vs-class prose guard),
+  `tv/ws-through-wsclient.test.ts` (socket lifecycle), and `routes/tv/lyrics-clamp.test.ts`
+  (which argument reaches the clamp — data-flow, not the clamp's rendered result). This is the
+  population every requirement below is anchored to.
+
+Case counts for the three sub-populations (140 / 624 / 766) are `test(…)`/`it(…)` invocation counts
+harvested by grep, so they are floors relative to `bun test`'s own case count (which also counts
+cases generated inside `describe`/loops); the file counts are exact. The *ratio* (~8.9 cases/file
+across the 70-file rule population) is what the split-unit argument below rests on, and it holds
+regardless of the harvesting method since every sub-population was counted the same way.
+
+**The brief's 38 was neither of these** — it sits between the 14 lower bound and the 70 rule count,
+and no recount reproduces it, so it is treated as a stale figure from an earlier tree, superseded
+by 70 files / 624 cases.
+
+**Repo-wide `*.test.ts` file count is 265, and the whole suite is 2566 cases** (files counted
+across `apps/*` + `packages/*` excluding `node_modules`; the case total is `bun test`'s own
+authoritative `Ran N tests` count). The brief's "242" matched **neither** unit on
+this base: it is neither the 265 repo-wide files nor the 2566 repo-wide cases, and it is not the 70
+design-enforcing files or their 624 cases. The old note that "the repo-wide `*.test.ts` file count
+is also 242" was a coincidence of a **prior** tree that has since grown; it does not hold at
+`3f6ee2f` and is not evidence of anything now. See "Restating the retirement split" below for what
+the 242/128/68/27/19 numbers most likely were.
+
+### Restating the retirement split (128 / 68 / 27 / 19) — the unit is FILES, and 19 is a file bucket
+
+The brief presented `242 → 128 survive / 68 retarget / 27 retire / 19 at risk` with no unit. Two
+facts settle the unit:
+
+1. `128 + 68 + 27 + 19 = 242`, so the four buckets partition the **242** total exactly. Whatever
+   242 counted, the split counts the same thing.
+2. On this base the design-enforcing population is **70 files / 624 cases** — an order of magnitude
+   apart. A 242-item total is far closer to a *file*-scale count of an earlier, larger design set
+   than to any case count of it, and a 19-item "at risk" bucket is a plausible *file* bucket but an
+   implausibly small *case* bucket (the QueueSheet sheet-cap concern alone spans several cases).
+
+**Conclusion: the 242/128/68/27/19 split is a split of FILES, not cases** — an earlier tree's
+design-enforcing *file* set, bucketed by retirement fate. That makes "19 at risk" a count of
+at-risk **files**, and the at-risk **case** population is materially larger, because each at-risk
+file carries several cases (the 70-file / 624-case ratio is ~8.9 cases per file). The buckets are
+not re-derived here — the earlier tree they were measured on no longer exists — but their unit is
+now named, which is what #838 asked for. The concrete downstream consequence is #830's scope,
+adjusted here.
+
+**#830 scope adjustment.** #830's "at risk" work was sized against the brief's `19`, read as a
+count of cases needing migration coverage. That number is a **file** bucket (above), so the real
+work #830 and its successors must cover is the **cases** those at-risk files carry, not 19 items.
+At the 70-file / 624-case ratio (~8.9 cases/file) a 19-*file* at-risk bucket is on the order of
+**~170 at-risk cases**, an order of magnitude above the figure the scope was sized against. #830
+itself (the motion utility-class arm, XR-VER-15) is already landed and unaffected — it added its
+own floors rather than enumerating the at-risk set — but any remaining "cover the at-risk
+population" scoping that inherited the `19` must be re-sized off cases. The register (XR-VER-13) is
+what makes the true case population enumerable; until it lands, treat "19 at risk" as a file count
+and expect the case count to be materially larger.
 
 **Helper definition sites — all five now share one home** (issue #841, `XR-VER-14`). Every one is
 defined in `apps/core/src/lib/test-helpers.ts` and imported; `allSvelte` is gone, having been a
@@ -73,19 +146,39 @@ their own globs remain out of this set and out of scope here — `e2eDrivers`, `
 
 **Non-vacuity floors — 18 assertions across 10 files**, more than the decision record's 7:
 
-`task-number-hygiene:136,176` (`>50`) · `icon-centring:41` (`>7`) · `contrast:348` (`>=3`) ·
-`singer-color:29` (`>15`) · `touch-targets:139` (`>10`) · `motion:220,270,497` (`>=24`, three of
-them) · `design-system:84` (`>15`), `:439` (`>=2`), `:488` (`>=3`), `:562` (`>=1`) ·
-`stage-scale:217` (`>=2`) · `icons:127` (`>15`), `:128` (`>10`) · `contract:715` (`>20`),
-`:970` (`>=19`).
+**Non-vacuity floors — the decision record said 7; the live guard now enumerates 40 floor
+assertions across 14 files.** The "7" was already known low when the record was written; on
+`3f6ee2f` the authoritative count is not a prose figure at all but the machine-checked snapshot in
+`apps/core/src/lib/non-vacuity-floors.test.ts`, whose own accounting asserts
+`located >= 39` and `Object.keys(FLOORS).length >= 12` (those are floors, not exact counts; the map
+lists 14 files today and its `count` fields sum to 40). Count the unit carefully: **40 is the sum
+of every floor entry's `count`** (three entries require more than one assertion — `motion`
+`files.length` needs 3, `task-number-hygiene` `files.length` needs 2, `phone-inventory`
+`filesScanned` needs 2), across **36 distinct floor entries** in **14 files**. The 14 files:
 
-**Now 22 across 12 files, and inventoried.** Issue #830 closed the XR-VER-05 gap — the two enumerating
-walks that carried no floor, `apps/core/e2e/lib/chromium.test.ts` (the `.mjs` driver walk) and
-`apps/core/src/lib/ui/page-header.test.ts` (the route-page walk), each of which fed two tests asserting
-an `offenders` array empty and so passed with zero items examined — and added two more on the motion
-guard's new utility-class arm. All 22 are now enumerated in
-`apps/core/src/lib/non-vacuity-floors.test.ts`, which reds on any decrease or deletion and carries its
-own floor on the count it located. XR-VER-06's Check is therefore implemented, not merely specified.
+`tailwind-toolchain` (`FILES.length`) · `task-number-hygiene` (`files.length >50`, ×2) ·
+`icon-centring` (`FILES.length >7`) · `contrast` (`rootsScanned >=3`) ·
+`singer-color` (`FILES.length >15`) ·
+`touch-targets` (`controlRulesSeen >=10`, `FILES.length >=12`, `boxRulesSeen >=10`) ·
+`motion` (`files.length >=24` ×3, `svelte.length >=20`, `netFiles.length >=40`) ·
+`design-system` (fourteen floors: `FILES.length`, `seen`, `checked`, `scanned`, `bridgeRefsScanned`,
+`forwardsChecked`, `spacingDeclsSeen`, `fontDeclsSeen`, `leadingDeclsSeen`, `motionDeclsSeen`,
+`zDeclsSeen`, `TV.length`, `rungsChecked`, `literalsFound`) ·
+`tv/stage-scale` (`heroBadgesSeen >=2`) · `ui/icons` (`FILES.length >15`, `tsFiles(...).length >10`) ·
+`e2e/contract` (`DRIVERS.length >20`, `lits.length >=19`, `sources.length >20`) ·
+`e2e/lib/chromium` (`out.length >20`) · `ui/page-header` (`out.length >7`) ·
+`phone-inventory` (`PHONE_ROUTES.length >=4`, `filesScanned >=10` ×2, `declarationsSeen >=10`).
+
+The record's earlier "18 across 10 files" and the interim "22 across 12 files" are both stale
+snapshots superseded by that guard. #829 (the design-system dimension-duplication and `@theme`
+bridge scans, plus the ladder-ordering and phone-ladder-on-TV floors), #830 (the two enumerating
+walks that carried none — `e2e/lib/chromium.test.ts` and `ui/page-header.test.ts` — plus the motion
+utility-class arm), #831 (`boxRulesSeen`), #841 (`sources.length`, `touch-targets` `FILES.length`),
+#852 (`literalsFound`) and the tailwind-toolchain floor each raised it; the guard's own `located >=
+39` floor tracks the running total (the true sum is now 40). Do not trust any prose figure here
+over the guard: it reds on any decrease or deletion and carries its own floor on the count it
+located, so it is the single source of truth. XR-VER-06's Check is implemented, not merely
+specified.
 
 **Breakpoints, both lists located.** Documented: `.kiro/autoloop/REVIEW.md:206` — 390 / 820 /
 1440 px (**not** repo-root `REVIEW.md`, which does not exist). Implemented `@media` widths across
@@ -212,7 +305,7 @@ one of the four claims checkable. Rows below are written against the correct run
 | **Source** | `docs/archive/milestones-m0-m8.md:128-130` called `motion.test.ts` "non-vacuous (injecting `transition:width` fails it)" — true of exactly the one shape it caught, and five other injected layout animations survived (`.kiro/autoloop/REVIEW-LOG.md`, issue #177). **DERIVED** from that: a single demonstrated mutation certifies one shape, not the guard. |
 | **Acceptance** | **Given** a design guard, **When** its recorded mutation is applied to production source and the suite is run, **Then** that guard reds and names the mutated site; **and When** the mutation is reverted, **Then** the tree is byte-identical and the guard is green. |
 | **Check** | A per-guard mutation record checked in beside the register. Guards whose mutation record is absent or stale are listed by a meta-test. |
-| **Priority** | **MUST** for the 19 at-risk plus the 68 retarget entries; **SHOULD** for the 128 survivors. |
+| **Priority** | **MUST** for the 19 at-risk plus the 68 retarget entries (**files** — see "Restating the retirement split"; the case counts they carry are larger); **SHOULD** for the 128 survivors. |
 
 ### XR-VER-05 — Every enumerating guard carries a non-vacuity floor
 
@@ -221,7 +314,7 @@ one of the four claims checkable. Rows below are written against the correct run
 | **Statement** | Any guard that derives its own scope by walking a tree or filtering a file list asserts a minimum on the size of what it actually examined. |
 | **Surfaces** | All (harness-level) |
 | **Rationale** | A scope regression — a moved directory, a renamed extension, a copy-in path outside the walk — otherwise turns the guard green rather than red. |
-| **Source** | 18 existing floors enumerated above, e.g. `design-system.test.ts:84`, `motion.test.ts:220,270,497`, `contract.test.ts:715,970`. **DERIVED**: the same class already caught `/metrics` (#140) and `lib/charts` (Trend) escaping hand-listed `FILES` arrays. |
+| **Source** | The 40 floor assertions across 14 files enumerated above and snapshotted in `apps/core/src/lib/non-vacuity-floors.test.ts`, e.g. `design-system.test.ts` (`FILES.length`), `motion.test.ts` (`files.length >=24`, ×3), `contract.test.ts` (`DRIVERS.length`, `lits.length`, `sources.length`). **DERIVED**: the same class already caught `/metrics` (#140) and `lib/charts` (Trend) escaping hand-listed `FILES` arrays. |
 | **Acceptance** | **Given** a guard that computes its file or rule set at run time, **When** the computed set is emptied by pointing the walk at a non-existent directory, **Then** the guard fails on its floor rather than passing with zero items examined. |
 | **Check** | For each register entry marked *enumerating*, assert a floor assertion exists in the file and mutation-prove it by redirecting the walk root. |
 | **Priority** | **MUST** |
@@ -324,7 +417,7 @@ what is measured.
 | **Source** | Incumbent values read from source: `max-height: 82dvh`; `.peek` and `.body` both `calc(… + env(safe-area-inset-bottom, 0px))`; `--peek-h: 132px` written inline on `documentElement` by `QueueSheet.svelte:53`, outranking the `@media (height <= 480px)` `:root` override to `84px`. Base UI's drawer default `calc(100dvh - 6rem)` is cited in `encore-redesign-decision.md` as the API bar. |
 | **Acceptance** | **Given** the sheet opened on a real render at 390×844, **When** its resolved height is compared against `window.innerHeight`, **Then** the cap tracks the visual viewport and the resolved value is ≤ 82 % of it. **And When** the sheet's bottom padding is read, **Then** it exceeds its non-inset component by the inset value under a simulated non-zero `env(safe-area-inset-bottom)`. **And When** `--peek-h` is read from `documentElement`, **Then** every docked control's offset resolves from that same value rather than a literal. |
 | **Check** | Rung L only — `dvh`, `env()` and the inline-vs-stylesheet cascade are all unresolvable on rung M. A replacement drawer is measured against these numbers, not merely inspected for the word `dvh`. |
-| **Priority** | **MUST** — the densest concentration of at-risk cases (5 of 19) and the one component the library actually replaces. |
+| **Priority** | **MUST** — the densest concentration of at-risk **files** (5 of the 19-file at-risk bucket; the QueueSheet sheet-cap concern alone spans several cases) and the one component the library actually replaces. |
 
 ### XR-VER-12 — The focus indicator's form is verified as an outline in the focus token, on every surface it can appear on
 
@@ -349,7 +442,7 @@ what is measured.
 | **Statement** | A checked-in register lists every design-enforcing test file with its invariant, its rung, its classification (declaration or measurement), its retirement bucket, and its mutation record; every design-relevant source file is covered by at least one register entry or appears on a named, reasoned exemption list. |
 | **Surfaces** | All (harness-level) |
 | **Rationale** | Every recorded escape in this repo was a file outside a hand-listed scope, and an inventory with an unbounded escape hatch enforces nothing. |
-| **Source** | `.kiro/autoloop/REVIEW-LOG.md` records `src/lib/charts` and `src/lib/metrics-format.ts` as **orphan paths appearing in no charter's rotation** — "Nothing will ever review those files directly". Enumeration above: 10 helper consumers vs 63 source-reading tests vs the handoff's 38, three different populations with no register reconciling them. |
+| **Source** | `.kiro/autoloop/REVIEW-LOG.md` records `src/lib/charts` and `src/lib/metrics-format.ts` as **orphan paths appearing in no charter's rotation** — "Nothing will ever review those files directly". Enumeration above (re-derived at `3f6ee2f`, #838): 14 scan-helper consumers (lower bound) vs 87 `.svelte`/`.css` readers (upper bound) vs the design-enforcing rule's 70 files / 624 cases vs the brief's stale 38 — populations the register now reconciles by the written rule rather than leaving as three unlabelled numbers. |
 | **Acceptance** | **Given** the register, **When** the source tree is walked for `.svelte` and `.css` under `apps/*/src` and `packages/*/src`, **Then** every file is named by a register entry or by the exemption list; **and Then** the exemption list contains no wildcard, glob or open-ended category — each entry is a path with a one-line reason. **And When** a new `.svelte` or `.css` file is added, **Then** the walk fails until it is registered or exempted. |
 | **Check** | A guard over the register, carrying its own non-vacuity floor on the walked-file count (per XR-VER-05). The copy-in directory `src/lib/components/ui/` is inside the walk by construction — which is the whole verification argument for the DECIDED library. |
 | **Priority** | **MUST** |
@@ -508,11 +601,15 @@ what is measured.
   undecided policy would check conformance to nothing. The one adjacent thing worth flagging:
   `settings-slider-live-readout.test.ts` exists, and AT RISK #9 asks whether a library slider
   emits during drag — that is XR-VER-13's register job to carry, not a new row.
-- **A number for how many of the 19 at-risk cases must pass before adoption.** The handoff's own
-  answer is the spike (§7 step 6), and a percentage gate would be invented.
-- **A resolution of the 242-cases / 242-files collision.** Reported above as a finding. Resolving
-  it means recounting the retirement analysis, which is the analysis's owner's call — but if it is
-  a units error, XR-VER-13's register is what surfaces the true population, so nothing downstream
-  waits on it.
+- **A number for how many at-risk entries must pass before adoption.** The handoff's own
+  answer is the spike (§7 step 6), and a percentage gate would be invented. (The "19 at risk" is a
+  count of at-risk **files**, per "Restating the retirement split" above; the at-risk *case*
+  population is larger and un-recounted, which is why a fixed number here would be doubly invented.)
+- **A re-derivation of the 128/68/27/19 buckets themselves.** #838 resolved their **unit** (files,
+  not cases) and resolved the "242 == 242" coincidence (it does not hold at `3f6ee2f`; the
+  repo-wide count is now 265 files / 2566 cases). Re-deriving the four buckets means re-bucketing
+  the design-enforcing population by retirement fate on the current tree — the analysis owner's
+  call, and unnecessary downstream: XR-VER-13's register surfaces the true 70-file / 624-case
+  population, so nothing waits on the old buckets.
 
 [OPTIONS: Resolve the 242 cases-vs-files collision first | Write the register file XR-VER-13 specifies | Show me the happy-dom zero-rect evidence in full]
