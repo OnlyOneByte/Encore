@@ -1010,22 +1010,22 @@ if (!chromium) {
 			`rendered="${noResultsText}". See apps/core/src/routes/+page.svelte:875 ("No results. YouTube search needs yt-dlp installed on the server.").`
 		);
 
-		// Empty-state for the Ready filter chip with a non-matching search: this is where
-		// readyEmptyState fires the "None of your N karaoke songs match X" copy + "Show all" button.
+		// Empty-state for a query the ready library cannot answer: this is where readyEmptyState fires
+		// the "None of your N karaoke songs match X" copy + "Show all" button. It used to need a click on
+		// the Ready readiness chip; #833 deleted the chips, and the state is now reached by the condition
+		// it was always really about — a non-matching query against a non-empty library.
 		await openBrowseFromHome(phone); // #832: search lives behind the browse push
 		await phone.fill(SEL.search, 'xyznotasongxyz');
-		await sleep(400);
-		await phone.click(SEL.readyChip); // pick the Ready readiness filter chip
-		await sleep(200);
+		await sleep(600);
 		const readyEmpty = await phone.evaluate(
 			`document.querySelector(${JSON.stringify(SEL.empty)})?.textContent?.trim() ?? ''`
 		);
 		const namesTheCount = /None of your \d+ karaoke/.test(readyEmpty);
 		record(
 			'MEDIUM',
-			'S9d-ready-filter-empty-state',
+			'S9d-nonmatching-query-empty-state',
 			namesTheCount,
-			"the Ready filter's empty state must name how many songs the library HAS (so the singer knows it isn't empty)",
+			"a non-matching query's empty state must name how many songs the library HAS (so the singer knows it isn't empty)",
 			`rendered="${readyEmpty}". See apps/core/src/lib/readiness.ts:75 readyEmptyState.`
 		);
 	} catch (err) {
