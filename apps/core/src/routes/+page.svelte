@@ -700,10 +700,22 @@
 	function myIdx(id: string): number {
 		return myPicks.findIndex((e) => e.id === id);
 	}
-	function moveMine(id: string, delta: number) {
-		const i = myIdx(id);
+	/** The entry's index in the WHOLE queued list — the index space `move-to-index` uses. */
+	function queuedIdx(id: string): number {
+		return queued.findIndex((e) => e.id === id);
+	}
+	/**
+	 * Cross-singer reorder (#856 step 4, #828 Q4-A): shift the entry one slot up/down across the WHOLE
+	 * queue, jumping other singers — which the own-picks `move` op cannot express. Emits `move-to-index`,
+	 * which rewrites the stored list, so the move sticks with no pin. Every joined singer may do it; the
+	 * server gates a NON-owner entry on `queue:reorder-any`. (The reorder-mode drag below still commits
+	 * an own-picks `move` via exitReorder — wiring the drag to `move-to-index` too is the tracked
+	 * follow-up, the drag half of Q4-A.)
+	 */
+	function moveGlobal(id: string, delta: number) {
+		const i = queuedIdx(id);
 		if (i < 0) return;
-		store?.moveEntry(id, i + delta);
+		store?.moveToIndex(id, i + delta);
 		if (navigator.vibrate) navigator.vibrate(8);
 	}
 
@@ -1355,12 +1367,12 @@
 						pending={pendingKind.get(e.id) ?? null}
 						onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
 						reorderable={!rowFrozen(e) &&
-							(canReorder && e.singerId === me?.id && myPicks.length > 1)}
-						canUp={myIdx(e.id) > 0}
-						canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+							(canReorder && !!me?.id && queued.length > 1)}
+						canUp={queuedIdx(e.id) > 0}
+						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
 						dimmed={reorderOpen && !isMine}
-						onup={() => moveMine(e.id, -1)}
-						ondown={() => moveMine(e.id, 1)}
+						onup={() => moveGlobal(e.id, -1)}
+						ondown={() => moveGlobal(e.id, 1)}
 					/>
 				{:else}
 					<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
@@ -1378,9 +1390,9 @@
 						subtitle={e.id === nextPlayableId ? 'up next' : ''}
 						removable={e.singerId === me?.id}
 						reorderable={!rowFrozen(e) &&
-							(canReorder && e.singerId === me?.id && myPicks.length > 1)}
-						canUp={myIdx(e.id) > 0}
-						canDown={myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+							(canReorder && !!me?.id && queued.length > 1)}
+						canUp={queuedIdx(e.id) > 0}
+						canDown={queuedIdx(e.id) >= 0 && queuedIdx(e.id) < queued.length - 1}
 						grip={gripFor(e)}
 						gripId={e.id}
 						dimmed={reorderOpen && !isMine}
@@ -1389,8 +1401,8 @@
 						ongripdown={(ev) => onGripPointerDown(e, ev)}
 						ongrip={(el) => enterReorder(e.id, el)}
 						onremove={() => removeWithUndo(e)}
-						onup={() => moveMine(e.id, -1)}
-						ondown={() => moveMine(e.id, 1)}
+						onup={() => moveGlobal(e.id, -1)}
+						ondown={() => moveGlobal(e.id, 1)}
 					/>
 				{/if}
 			{/each}

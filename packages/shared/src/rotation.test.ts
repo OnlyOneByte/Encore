@@ -1,5 +1,5 @@
 import { test, expect } from 'bun:test';
-import { storedOrder, assignSeqs, insertEntry, applyAndReseq, isTerminal, reorderWithinSinger } from './rotation';
+import { storedOrder, assignSeqs, insertEntry, applyAndReseq, isTerminal, reorderWithinSinger, moveToIndex } from './rotation';
 import type { QueueEntry } from './types';
 
 // `rotationSeq` is the STORED position and is what every read goes through. `addedAt` no longer
@@ -137,6 +137,59 @@ test('isTerminal is true only for done', () => {
 	}
 });
 
+// ── move-to-index: cross-singer reorder (#856 step 4) ────────────────────────
+
+test('move-to-index places a song at a GLOBAL queued index, jumping another singer', () => {
+	// fair rotation interleaves: a1, b1, a2 (everyone's 1st before anyone's 2nd).
+	const q = build([e('a1', 'a', 1), e('b1', 'b', 2), e('a2', 'a', 3)], 'fair');
+	expect(ids(q)).toEqual(['a1', 'b1', 'a2']);
+	// b (a DIFFERENT singer) moves a1 to index 2 — a jump `move` cannot express.
+	expect(ids(moveToIndex(q, 'a1', 2))).toEqual(['b1', 'a2', 'a1']);
+	// and to the front from the middle.
+	expect(ids(moveToIndex(q, 'a2', 0))).toEqual(['a2', 'a1', 'b1']);
+});
+
+test('move-to-index rewrites the STORED list, so the move survives the next add (durable, no pin)', () => {
+	let q = build([e('a1', 'a', 1), e('b1', 'b', 2)], 'fair'); // a1, b1
+	q = moveToIndex(q, 'b1', 0); // host pulls b1 to the front
+	expect(ids(q)).toEqual(['b1', 'a1']);
+	expect(q.map((x) => x.rotationSeq)).toEqual([0, 1]); // renumbered contiguous
+	// A later add re-derives NOTHING: the fair rule inserts around the stored order, which now leads
+	// with b1. The moved position is not undone (the pin problem the stored-list model dissolves).
+	q = applyAndReseq(q, { op: 'add', entry: e('a2', 'a', 3) }, { order: 'fair' });
+	expect(ids(q).indexOf('b1')).toBeLessThan(ids(q).indexOf('a1')); // b1 still ahead of a1
+});
+
+test('move-to-index clamps out-of-range and is a no-op at the current index or an unknown id', () => {
+	const q = build([e('a1', 'a', 1), e('b1', 'b', 2), e('c1', 'c', 3)], 'fair'); // a1,b1,c1
+	expect(ids(moveToIndex(q, 'a1', 99))).toEqual(['b1', 'c1', 'a1']); // clamped to last
+	expect(ids(moveToIndex(q, 'c1', -5))).toEqual(['c1', 'a1', 'b1']); // clamped to first
+	// -1 is the DISCRIMINATING clamp case (validateCommand accepts -1 as an integer): the `Math.max(0,…)`
+	// clamp lands it at the FRONT, whereas a raw `splice(-1,…)` with the clamp removed would insert it
+	// second-from-last (['a1','c1','b1']). This reds if the low clamp is dropped; 99/-5 do not (JS splice
+	// clamps those identically).
+	expect(ids(moveToIndex(q, 'c1', -1))).toEqual(['c1', 'a1', 'b1']);
+	expect(ids(moveToIndex(q, 'b1', 1))).toEqual(['a1', 'b1', 'c1']); // already there → no-op
+	expect(ids(moveToIndex(q, 'nope', 0))).toEqual(['a1', 'b1', 'c1']); // unknown → no-op
+});
+
+test('move-to-index leaves a playing entry on stage; it never occupies a queued index', () => {
+	let q = build([e('a1', 'a', 1), e('b1', 'b', 2), e('c1', 'c', 3)], 'fair');
+	q = q.map((x) => (x.id === 'a1' ? { ...x, status: 'playing' as const } : x)); // a1 on stage
+	// move the last queued song to queued index 0 — the playing entry keeps slot 0 of the stored list.
+	q = moveToIndex(q, 'c1', 0);
+	expect(q[0]!.id).toBe('a1'); // still on stage
+	expect(ids(q.filter((x) => x.status === 'queued'))).toEqual(['c1', 'b1']); // queued rows reordered
+	expect(q.map((x) => x.rotationSeq)).toEqual(q.map((_, i) => i));
+});
+
+test('move-to-index through applyAndReseq matches the direct call (the wire path clients run)', () => {
+	const q = build([e('a1', 'a', 1), e('b1', 'b', 2), e('a2', 'a', 3)], 'fair');
+	expect(ids(applyAndReseq(q, { op: 'move-to-index', id: 'a1', toIdx: 2 }))).toEqual(
+		ids(moveToIndex(q, 'a1', 2))
+	);
+});
+
 test('nothing mutates its input', () => {
 	const q = build([e('a1', 'a', 1), e('b1', 'b', 2)], 'fair');
 	const before = JSON.stringify(q);
@@ -144,6 +197,7 @@ test('nothing mutates its input', () => {
 	assignSeqs(q);
 	insertEntry(q, e('c1', 'c', 3), { order: 'fair' });
 	reorderWithinSinger(q, 'a1', 1);
+	moveToIndex(q, 'b1', 0);
 	applyAndReseq(q, { op: 'remove', id: 'b1' });
 	expect(JSON.stringify(q)).toBe(before);
 });

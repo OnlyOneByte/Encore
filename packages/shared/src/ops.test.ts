@@ -35,6 +35,13 @@ test('move updates rotationSeq and re-sorts', () => {
 	expect(out.map((x) => x.id)).toEqual(['b', 'a']);
 });
 
+test('move-to-index in applyOp is a raw-seq fallback (real path is applyAndReseq → moveToIndex)', () => {
+	// applyOp is not the cross-singer reducer — that is rotation.ts moveToIndex, exercised in
+	// rotation.test.ts. This only pins that the arm exists so applyOp stays exhaustive over the union.
+	const out = applyOp([e('a', 0), e('b', 1)], { op: 'move-to-index', id: 'a', toIdx: 2 });
+	expect(out.map((x) => x.id)).toEqual(['b', 'a']);
+});
+
 test('status updates only the targeted entry', () => {
 	const out = applyOp([e('a', 0), e('b', 1)], { op: 'status', id: 'b', status: 'playing' });
 	expect(out.find((x) => x.id === 'b')!.status).toBe('playing');
@@ -76,4 +83,20 @@ test('applyAndReseq(add) and (remove) also leave the input untouched', () => {
 	const remFrozen = JSON.stringify(rem0);
 	applyAndReseq(rem0, { op: 'remove', id: 'b' });
 	expect(JSON.stringify(rem0)).toBe(remFrozen);
+});
+
+// #856 step 4 — the `move-to-index` union member is a TYPE + comment hunk: reverting it alone leaves
+// the suite green (nothing runtime-observable), which is the R2 pure-addition exception, not a defect.
+// The behavioural reducer path is pinned by rotation.test.ts + the applyOp fallback above; this is the
+// source-scan guard for the vocabulary itself, so the op cannot silently vanish from the wire contract.
+import { readFileSync } from 'node:fs';
+const opsSrc = readFileSync(new URL('./ops.ts', import.meta.url), 'utf8').replace(
+	/\/\*[\s\S]*?\*\//g,
+	''
+).replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+test('#856 step 4: the QueueOp union carries move-to-index (id + numeric toIdx)', () => {
+	const m = opsSrc.match(/export type QueueOp =[\s\S]*?status: EntryStatus \};/);
+	expect(m).not.toBeNull(); // non-vacuous: the union must exist
+	expect(m![0]).toContain("op: 'move-to-index'");
+	expect(m![0]).toMatch(/'move-to-index';\s*id: string;\s*toIdx: number/);
 });

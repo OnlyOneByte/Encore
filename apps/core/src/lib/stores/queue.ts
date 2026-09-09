@@ -95,8 +95,9 @@ export class QueueStore {
 	 * `'move'` is what this getter adds, and it replaces a stated gap: the old `unconfirmedAddIds`
 	 * documented "a pending move/remove does not make an entry newly unconfirmed", so a reorder
 	 * committed on a flaky socket looked IDENTICAL to one that landed — the row slid into its new slot
-	 * and nothing said the slide was still a guess. `move` (own picks) is the one kind here: this row
-	 * has been moved and the room has not agreed yet.
+	 * and nothing said the slide was still a guess. `move` (own picks) and `move-to-index` (a
+	 * cross-singer reorder) are one kind here because they are one thing to a guest: this row has been
+	 * moved and the room has not agreed yet.
 	 *
 	 * `remove` is deliberately absent: the optimistic remove takes the row OUT of the list, so there is
 	 * no row left to mark, and its disclosure is the undo toast.
@@ -109,7 +110,7 @@ export class QueueStore {
 		for (const p of this.#pending.values()) {
 			// Ops are issued in order, so a later op's kind is the one the row is currently waiting on.
 			if (p.op.op === 'add') kinds.set(p.op.entry.id, 'add');
-			else if (p.op.op === 'move') kinds.set(p.op.id, 'move');
+			else if (p.op.op === 'move' || p.op.op === 'move-to-index') kinds.set(p.op.id, 'move');
 		}
 		return kinds;
 	}
@@ -144,6 +145,16 @@ export class QueueStore {
 	}
 	moveEntry(id: string, toSeq: number): void {
 		this.#optimistic({ op: 'move', id, toSeq });
+	}
+	/**
+	 * Cross-singer reorder (#856 step 4): move an entry to a GLOBAL queued index, which can jump other
+	 * singers — unlike moveEntry, whose toSeq is an index into the caller's OWN picks. Runs through the
+	 * same optimistic applyAndReseq path (→ moveToIndex, rotation.ts), so the row lands at its real slot
+	 * this frame and the server commits the identical order. `queue:reorder-any` gates it server-side for
+	 * an entry the actor does not own.
+	 */
+	moveToIndex(id: string, toIdx: number): void {
+		this.#optimistic({ op: 'move-to-index', id, toIdx });
 	}
 
 	/**
