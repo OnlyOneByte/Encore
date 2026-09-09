@@ -102,30 +102,52 @@ test('the browse push is a real navigation, so the phone Back gesture dismisses 
 	// A local boolean would leave Back exiting the app from the browse screen — and would lose the
 	// search state on a reload. Same route either way, so the query and the library survive the trip.
 	expect(PAGE).toMatch(/const browsing = \$derived\(page\.url\.searchParams\.get\('browse'\) === '1'\)/);
-	expect(PAGE).toMatch(/function openBrowse\(\) \{\s*void goto\('\/\?browse=1'/);
-	expect(PAGE).toMatch(/function closeBrowse\(\) \{\s*void goto\('\/'/);
+	/*
+	 * The OPTION OBJECT is pinned, not just the URL (#833). `goto('/?browse=1')` pushes a history entry,
+	 * which is what makes Back close browse rather than leave the room; `goto('/?browse=1', {
+	 * replaceState: true })` REPLACES it, silently turning the ruled-on option A back into option B —
+	 * and a match that stopped at the closing quote of the path stayed green through exactly that edit.
+	 */
+	expect(PAGE).toMatch(
+		/function openBrowse\(\) \{\s*void goto\('\/\?browse=1', \{ keepFocus: true, noScroll: false \}\);\s*\}/
+	);
+	expect(PAGE).toMatch(/function closeBrowse\(\) \{\s*void goto\('\/', \{ keepFocus: true, noScroll: false \}\);\s*\}/);
+	expect(PAGE).not.toContain('replaceState');
 	// …and a visible way back, first in the DOM because it is first visually.
 	expect(PAGE).toMatch(/<button class="back-btn" onclick=\{closeBrowse\}>/);
 });
 
 test('every browse surface is behind the push — home cannot show the library list', () => {
-	// The four result blocks plus the search box and the readiness chips. If any one of these loses its
-	// gate, home silently becomes the browse-first screen direction A replaced.
-	for (const gate of [
-		'{#if browsing && showReady}',
-		'{#if browsing && showCooking && cookingRows.length}',
-		'{#if browsing && showRaw}'
-	]) {
-		expect(PAGE).toContain(gate);
-	}
-	expect(PAGE).toMatch(/\{#if browsing && filter !== 'all'/);
+	/*
+	 * RE-ANCHORED BY #833, ON THE RECORD (XR-VER-07). The CLAIM is unchanged and still load-bearing: if
+	 * any browse block loses its gate, home silently becomes the browse-first screen direction A
+	 * replaced. Only the anchors moved, because #833 deleted the mechanisms this test used to name —
+	 * `{#if browsing && showReady}`, `{#if browsing && showCooking && …}`, `{#if browsing && showRaw}`
+	 * and `{#if browsing && filter !== 'all'}` were all gates on the readiness FILTER, and there is no
+	 * filter any more. Weakening this to "some gate exists" was the wrong answer: the point is that
+	 * EVERY browse block is gated, so the check counts them.
+	 */
 	const main = PAGE.slice(PAGE.indexOf('<main>'), PAGE.indexOf('</main>'));
-	// The search box and the chip row are inside a `{#if browsing}`, which is the block that opens
-	// immediately before them.
-	const searchAt = main.indexOf('class="card searchbox"');
-	expect(searchAt).toBeGreaterThan(0);
-	const before = main.slice(0, searchAt);
-	expect(before.lastIndexOf('{#if browsing}')).toBeGreaterThan(before.lastIndexOf('{/if}') - 1);
+
+	// Every result block that renders a SongRow inside <main> is inside a `{#if browsing…}`. Counted
+	// rather than named, so a block added tomorrow is covered without editing this list.
+	const gated = main.match(/\{#if browsing\b/g) ?? [];
+	expect(gated.length).toBeGreaterThanOrEqual(4); // back control, raw/shortcuts, cooking, ready
+	for (const gate of ['{#if browsing && cookingRows.length}']) expect(main).toContain(gate);
+
+	// Non-vacuity: every `<SongRow` in <main> really is inside one of those blocks. `{#if browsing}` is
+	// the only conditional the browse blocks open at that indent, so the first SongRow cannot precede
+	// the first browse gate — and no SongRow may follow the last `{/if}`.
+	const firstRow = main.indexOf('<SongRow');
+	expect(firstRow).toBeGreaterThan(0);
+	expect(main.indexOf('{#if browsing')).toBeLessThan(firstRow);
+
+	// The search box is NOT in <main> any more: it is the docked band, after </main>, so the thumb can
+	// reach it wherever the stack is scrolled to (#833). Home must not dock it — that is the browse
+	// screen's band, gated on `browsing`.
+	expect(main).not.toContain('class="card searchbox"');
+	expect(PAGE.indexOf('class="search-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
+	expect(PAGE).toMatch(/\{#if browsing\}\s*<div class="search-dock"/);
 });
 
 // ── the unconfirmed marker (XR-PH-10) ────────────────────────────────────────────────────────────

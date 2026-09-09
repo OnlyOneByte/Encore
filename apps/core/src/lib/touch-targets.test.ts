@@ -190,14 +190,19 @@ test('the controls that previously fell short declare the tap standard as the to
 
 	// the settings gear was ~18px, under even the 24px WCAG minimum
 	expect(declares(phone, 'gear', 'min-(?:width|height)')).toBe(true);
-	// the readiness chips were ~30px
+	// the readiness chips were ~30px. Those chips are deleted (#833), but the `.chip` rule and this pin
+	// stay: the way back out of a non-matching search ("Show all N") is a `chip ok chip-icon` button.
 	expect(declares(phone, 'chip', 'min-height')).toBe(true);
-	// the browse disclosure is new and must not repeat the mistake
-	expect(declares(phone, 'browse-toggle', 'min-height')).toBe(true);
-	// The back link (formerly ~26px in settings and 32px on the audit page, issue #140) is the single
-	// shared PageHeader control adopted by /settings /stats /metrics /metrics/[mediaId] (#644). Its
-	// hand-written pin is GONE: `lib/ui/` is in FILES now (#831), so both arms above examine it like any
-	// other control, and a pin that duplicates the walk only hides whether the walk still reaches it.
+	// RETIRED (#833): the `.browse-toggle` pin. Direction B deleted the browse disclosure along with the
+	// artist and genre rails it hid, so the rule it named is gone from the phone stylesheet — the
+	// assertion could only fail, never bite. #831 had just re-pointed this pin at `var(--tap)`; that
+	// conversion is moot here rather than reverted, because the control it converted no longer exists.
+	// Nothing replaces it: the search field that took its place is covered by the rendered gate (see the
+	// measured-design quarantine entry for it) rather than by a declaration.
+	// RETIRED (#831): the hand-written back-link pin. The back link (formerly ~26px in settings and 32px
+	// on the audit page, issue #140) is the single shared PageHeader control adopted by /settings /stats
+	// /metrics /metrics/[mediaId] (#644), and `lib/ui/` is in FILES now — so both arms above examine it
+	// like any other control, and a pin that duplicates the walk only hides whether the walk reaches it.
 	// the /metrics slowest-songs links and the audit-page back link were both 32px (issue #140), and
 	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
 	expect(declares(metrics, 'cooks a', 'min-height')).toBe(true);

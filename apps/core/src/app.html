@@ -2,7 +2,19 @@
 <html lang="en">
 	<head>
 		<meta charset="utf-8" />
-		<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+		<!--
+			`interactive-widget=resizes-content` is load-bearing for the browse screen (#833), not a tidy-up.
+			The default (`resizes-visual`) shrinks only the VISUAL viewport when the on-screen keyboard
+			opens, leaving the layout viewport its full height — so a `position: fixed; bottom: 0` band sits
+			UNDER the keyboard, which is exactly where the search box a guest is typing into must not be.
+			With `resizes-content` the layout viewport shrinks instead, the dock rides above the keyboard,
+			and `main`'s `--dock-h` padding keeps the top-ranked row clear of it. Not verifiable by the
+			measured gate: headless Chromium has no soft keyboard to raise.
+		-->
+		<meta
+			name="viewport"
+			content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content"
+		/>
 		<meta name="text-scale" content="scale" />
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<meta name="theme-color" content="#0b0b12" />
