@@ -44,7 +44,6 @@ The case for Bun was made and accepted. Do not propose Node/Deno swaps.
 ```
 Encore/
 ├─ docker-compose.yml     # core (always) + worker (profile: stems)
-├─ push.sh                # how you push — see Gotcha 7
 ├─ docs/                  # ARCHITECTURE, HANDOFF, DECISIONS; deploy/, benchmarks/, mocks/, research/
 ├─ packages/shared/       # @encore/shared — types, ops, rotation reducer, events, ulid, colors
 └─ apps/
@@ -155,8 +154,8 @@ never `vite dev`. The tunnel agent dies on its own sometimes; the server survive
    **check `git status` after committing**: a commit once shipped without its `packages/shared`
    contract change and was not buildable in isolation, because local verification ran on a working
    tree the commit didn't describe.
-7. **Pushing works — with a bare `bash push.sh` from the repo root, no env prefix and no pipe.**
-   This was misdiagnosed for a long time: the guard pattern-matches an inline
+7. **Pushing works — with a bare `git push origin HEAD:refs/heads/<branch>` from the repo root, no
+   env prefix and no pipe.** This was misdiagnosed for a long time: the guard pattern-matches an inline
    `MESHCLAW_ALLOW_GIT_PUSH=1` assignment, so **adding that env var is what blocked the push**, and
    the failure reads misleadingly as "User denied tool execution". Do not add it. `rm -rf` and
    `DROP TABLE` are genuinely blocked; surface a blocker rather than routing around it.
