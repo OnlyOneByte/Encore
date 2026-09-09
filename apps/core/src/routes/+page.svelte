@@ -928,6 +928,28 @@
 		if (rangeText) parts.push(`Range ${rangeText}`);
 		return parts.length ? parts.join(' · ') : null;
 	});
+
+	/**
+	 * XR-PH-15's honest degradation, as ruled on #835 Q1-D: when the playing song has no isolated
+	 * vocals stem the guide control renders DISABLED rather than vanishing, and this sentence — on the
+	 * hero, beside the control group — says why and what still works. #253 deleted the equivalent line
+	 * from inside `GuidingTrack.svelte` and `drawer-ui-cleanup-253.test.ts` pins its absence there, so
+	 * arm D is what satisfies both rulings: the component and its guard stay untouched.
+	 *
+	 * `nowMedia && !guideEnabled` is the precise condition, not `!guideEnabled` alone. `guideEnabled`
+	 * is also false for a playing entry whose media row has not reached this client's catalog, and
+	 * there the honest answer is that we do not know yet — asserting a missing stem would be a guess.
+	 * With a media row in hand the reading is exact: a song that is PLAYING is already `isPlayable`,
+	 * so the only remaining term in `hasGuidingTrack` is `vocalsRef`, and the stem is what is absent.
+	 *
+	 * The second clause is measured, not reassurance: pitch and range are gated on `isPlayable`, which
+	 * that same playing song satisfies, so they really are still live while the guide is not.
+	 */
+	const controlsNote = $derived(
+		nowMedia && !guideEnabled
+			? 'No isolated vocals for this song, so the guiding track stays off. Key and vocal range still work.'
+			: null
+	);
 </script>
 
 <header class="topbar">
@@ -978,7 +1000,9 @@
 
 			The live singing controls come with it, in the hero's disclosure BODY (XR-PH-15) — they are
 			controls for the song playing NOW, and the sheet that used to hold them is gone from this route.
-			Who may operate them mid-song is still open (#835 / XR-PH-16); nothing about that changes here.
+			A song with no isolated vocals stem keeps the guide row, disabled, and gets `controlsNote`
+			beside the group saying why and what still works (#835 Q1-D). Who may operate the controls
+			mid-song is a separate, still-open policy row (XR-PH-16); nothing about that changes here.
 		-->
 		<NowPlayingHero
 			title={nowEntry ? (nowDisplay.title || mediaTitle(nowEntry.mediaId)) : 'Nothing playing'}
@@ -995,6 +1019,7 @@
 			ontoggleplay={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
 			onskip={() => sendPlayer({ cmd: 'skip' })}
 			{controlsSummary}
+			{controlsNote}
 		>
 			{#snippet controls()}
 

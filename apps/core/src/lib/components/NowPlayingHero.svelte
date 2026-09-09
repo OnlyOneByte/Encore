@@ -45,6 +45,17 @@
 		controls?: Snippet;
 		/** The current values, so the collapsed disclosure still says where the controls stand. */
 		controlsSummary?: string | null;
+		/**
+		 * One sentence at the head of the control group when a control cannot act on this song — the
+		 * reason, plus what still works (XR-PH-15). It lives HERE, beside the group, rather than inside
+		 * the control it explains: #253 deleted that line from `GuidingTrack.svelte` and a guard pins its
+		 * absence, and #835 Q1-D is the owner's ruling that the reason belongs on the hero instead.
+		 *
+		 * It is deliberately a sibling of the snippet's own markup, not a child of it, because the
+		 * disabled controls dim their subtree with `opacity` (`.gt.disabled`, `.key.disabled`) — a
+		 * sentence rendered inside one of those would paint at half its measured contrast (XR-PH-03).
+		 */
+		controlsNote?: string | null;
 	}
 	let {
 		title,
@@ -61,7 +72,8 @@
 		ontoggleplay,
 		onskip,
 		controls,
-		controlsSummary = null
+		controlsSummary = null,
+		controlsNote = null
 	}: Props = $props();
 
 	// null (not 0) for an unknown length, so the row HIDES rather than showing a bar pinned at zero —
@@ -139,7 +151,13 @@
 				{#if controlsSummary}<span class="tools-peek">{controlsSummary}</span>{/if}
 			</button>
 			{#if controlsOpen}
-				<div class="tools-body">{@render controls()}</div>
+				<div class="tools-body">
+					<!-- Ahead of the controls, so the reason is read BEFORE the dead control it explains rather
+					     than after it — and outside the snippet, so no `opacity` on a disabled control can dim
+					     it (XR-PH-15 / XR-PH-03). -->
+					{#if controlsNote}<p class="tools-note">{controlsNote}</p>{/if}
+					{@render controls()}
+				</div>
 			{/if}
 		</div>
 	{/if}
@@ -292,5 +310,14 @@
 	}
 	.tools-body {
 		padding-bottom: 4px;
+	}
+	/* De-emphasised with the dim INK token, never with `opacity` — an ancestor opacity flattens the
+	   sentence and the card behind it into one buffer, so the measured contrast stops being what is
+	   painted. This is the same reason the sentence sits outside the snippet at all (XR-PH-03). */
+	.tools-note {
+		margin: 2px 0 0;
+		font-size: 0.7rem;
+		line-height: 1.45;
+		color: var(--ink-dim);
 	}
 </style>
