@@ -131,40 +131,56 @@ export const FOCUS_VISIBLE = ':focus-visible';
  * more than 1px worse (sub-pixel layout differs between viewport widths) and fails if a reading
  * reaches TAP.
  *
+ * ── EMPTIED BY #863 ────────────────────────────────────────────────────────────────────────────
+ *
+ * The four entries this gate first surfaced are all resolved now, and each is recorded in RETIRED
+ * below rather than deleted — XR-VER-06/07: a quarantine whose defect no longer reproduces is
+ * re-decided on the record, never a number nudged and never a line silently dropped. Three were real
+ * CSS shortfalls closed by one declaration each (min-height: var(--tap)); the fourth was a false
+ * positive of the gate's own reader, closed by crediting the wrapping label's hit extent in
+ * measured-design.mjs. An empty QUARANTINE means the gate now holds EVERY control it drives to the
+ * 44px floor with no exceptions.
+ *
  * @type {{ where: string, match: { tag: string, type?: string | null, cls?: string, near?: string }, measured: number, reason: string }[]}
  */
-export const QUARANTINE = [
+export const QUARANTINE = [];
+
+/**
+ * Controls that WERE quarantined and are now resolved, kept on the record (XR-VER-06/07). The same
+ * shape as `non-vacuity-floors.test.ts`'s RETIRED map: `was` is the number it measured while
+ * quarantined and `reason` names what changed so a reader sees why it left the set rather than a
+ * silent deletion. `measured-design-gate.test.ts` checks each reason is substantive.
+ *
+ * @type {{ where: string, match: { tag: string, type?: string | null, cls?: string, near?: string }, was: number, reason: string }[]}
+ */
+export const RETIRED = [
 	{
-		// SURFACE MOVED, control unchanged (#832): direction A made `/` the queue and put searching behind
-		// the browse push, so this field is measured on `/?browse=1` now. Same element, same 22px, same
-		// reason — re-pointed rather than re-quarantined, because a second entry would read as the set
-		// growing and this is the same offender the gate has always recorded.
 		where: '/?browse=1',
 		match: { tag: 'input', type: null, cls: '', near: 'Search a song or artist' },
-		measured: 22,
+		was: 22,
 		reason:
-			'The search field is a bare <input> inside `div.card.searchbox`, which carries the padding that makes the box look tappable. The wrapper is a div, not a label, so tapping its padding focuses nothing — the real hit extent is the input text line, 22px. The structural arm of touch-targets.test.ts cannot see this: the input rule declares no height at all, so it is skipped before any comparison. Fixing it means either min-height on the input or making the wrapper a label, both of which change the searchbox layout; issue #831 owns the touch-target guard and this belongs with it.'
+			'FIXED in #863. The dock search field is a bare <input> in `div.card.searchbox`; its rule declared no height, so the real hit extent was the 22px text line while the div carried the tappable-looking padding. The `.searchbox input` rule now sets `min-height: var(--tap)`, and the narrow-breakpoint searchbox rose from 42px to var(--tap) so it is not clipped. The gate measures it live at var(--tap) now, and touch-targets.test.ts sees it too: the `.searchbox input` rule is examined by the #863 arm there, so a revert reds the structural scan.'
 	},
 	{
 		where: '/settings',
 		match: { tag: 'select', type: null },
-		measured: 41,
+		was: 41,
 		reason:
-			"Every <select> on /settings sizes from the UA default plus the route's own padding and lands at 41px — 3px short. `min-height: var(--tap)` would close it, but a native select's intrinsic box is browser-owned, so the fix has to be verified on a real render rather than declared; that verification is what this gate now provides, and the change itself is the touch-target work in #831."
+			'FIXED in #863. Every <select> on /settings sized from the UA default plus the route padding and landed at 41px — 3px short. The shared `select, .text, .name-input` rule now sets `min-height: var(--tap)` with box-sizing:border-box, which closes all eight selects at once. A native select box is browser-owned, so this is verified on the real render by gate:measured (now live, not quarantined) rather than declared.'
 	},
 	{
 		where: '/settings',
 		match: { tag: 'input', type: 'checkbox', cls: '', near: 'Song intro before each turn' },
-		measured: 18,
+		was: 18,
 		reason:
-			'The song-intro toggle is a bare 18px checkbox. A checkbox is the one control you do NOT raise to 44px by resizing it — the fix is to make its wrapping label the target, which is a markup change to the settings row and a design decision about the whole label-plus-control pattern on that page. Recorded here rather than guessed at.'
+			'FALSE POSITIVE of the gate, closed in #863. The song-intro checkbox is wrapped by `<label class="check">`, which already carries `min-height: var(--tap)` on `main` — tapping the 44px label toggles it. The gate read 18px because its own() counted only the glyph and its descendants. measured-design.mjs now credits the wrapping label as the tap target for a checkbox/radio glyph, so the live reading is the label extent (>= var(--tap)). No markup change was needed; resizing the glyph to 44px was explicitly the WRONG fix.'
 	},
 	{
 		where: '/settings',
 		match: { tag: 'input', type: 'text', cls: 'text', near: 'Address phones join at' },
-		measured: 35,
+		was: 35,
 		reason:
-			'The join-address field on the Server tab measures 35px. Its own rule sets font-size and padding but no height, which is exactly the shape the structural scan skips. Same fix and same owner as the search field above (#831).'
+			'FIXED in #863. The join-address field on the Server tab measured 35px — its own text-class rule set font-size and padding but no height, the shape the structural scan skipped. It shares the `select, .text, .name-input` rule that now carries `min-height: var(--tap)`, so the same one edit that closed the selects closed this field, and the #863 structural arm catches it via that shared rule.'
 	}
 ];
 
