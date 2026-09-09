@@ -62,9 +62,9 @@ test('#833 mechanism 1 — the readiness chip row is gone, and so is the state b
 });
 
 test('#833 mechanism 1 — every group renders unconditionally, so nothing is hidden behind a chip', () => {
-	// The ready and cooking groups are gated on `browsing` and on having rows — never on a filter. This
-	// is the arm that fails if a "quick" reinstatement re-adds a gate without re-adding the chips.
-	expect(PAGE).toContain('{#if browsing && cookingRows.length}');
+	// The ready and cooking groups are gated on `searchActive` (#902) and on having rows — never on a
+	// filter. This is the arm that fails if a "quick" reinstatement re-adds a gate without the chips.
+	expect(PAGE).toContain('{#if searchActive && cookingRows.length}');
 	// `accountedFor` subtracts BOTH groups from the shortcut lists unconditionally: with a filter, a
 	// hidden group stopped accounting for its songs and they reappeared under Popular/Recently queued.
 	expect(PAGE).toMatch(/for \(const m of searchActive \? readyResults : library\) ids\.add\(m\.id\);/);
@@ -110,25 +110,31 @@ test('#833 mechanism 4 — the readiness group headings are gone; the rows say i
 	expect(PAGE).not.toMatch(/\bshowGroupHeads\b/);
 	expect(PAGE).not.toMatch(/class="grouphead ok"/);
 	expect(PAGE).not.toMatch(/class="grouphead warn"/);
-	// The headings that survive label a DIFFERENT axis (what the list is), not the readiness of its
-	// members — so they are not duplication and are deliberately kept.
+	// The heading that survives labels a DIFFERENT axis (what the list is), not the readiness of its
+	// members — so it is not duplication and is deliberately kept.
 	expect(PAGE).toContain('Needs karaoke · has vocals');
-	expect(PAGE).toContain('Popular tonight');
-	expect(PAGE).toContain('Recently queued');
+	// The zero-query shortcut lists (Popular tonight / Recently queued) were dropped with the browse
+	// mode (#902): an empty box shows the live QUEUE now, so their headings are gone from this route.
+	expect(PAGE).not.toContain('Popular tonight');
+	expect(PAGE).not.toContain('Recently queued');
+	// …and the `.grouphead-mark` rule they were the only users of goes with them — a dead CSS selector
+	// left behind is exactly the residue this deletion guard exists to red on (svelte-check would warn).
+	expect(PAGE).not.toContain('grouphead-mark');
 });
 
 // ── what replaced them: one docked box, one stack, growing upward ────────────────────────────────
 test('#833 — search is a docked band in the thumb zone, publishing the measured --dock-h', () => {
 	// After </main>, so it sits below the content it docks under and the tab sequence follows the visual
-	// order (XR-PH-12); gated on `browsing`, so home keeps its one primary action.
+	// order (XR-PH-12). Since #902 it is gated on `{#if me}` — docked for a joined singer at all times,
+	// the sole band on this route.
 	expect(PAGE.indexOf('class="search-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
-	expect(PAGE).toMatch(/\{#if browsing\}\s*<div class="search-dock" bind:clientHeight=\{dockH\}>/);
-	// ONE token, measured, shared with home's band. A second `--search-dock-h`, or a hardcoded height,
-	// forks the geometry the measurement exists to keep single — and `main`'s padding, `--undo-dock` and
-	// `--error-dock` all read this one.
+	expect(PAGE).toMatch(/\{#if me\}\s*<div class="search-dock" bind:clientHeight=\{dockH\}>/);
+	// ONE token, measured, and now ONE band (the `+ Add a turn` CTA that used to be home's band is gone,
+	// #902). A second `--search-dock-h`, or a hardcoded height, forks the geometry the measurement exists
+	// to keep single — and `main`'s padding, `--undo-dock` and `--error-dock` all read this one.
 	expect(PAGE).not.toContain('--search-dock-h');
 	const docks = PAGE.match(/bind:clientHeight=\{dockH\}/g) ?? [];
-	expect(docks.length).toBe(2); // home's primary button, and this
+	expect(docks.length).toBe(1); // the search dock, the only fixed band on this route since #902
 	// Re-anchored by #829: `6px`/`18px` are now `var(--space-xs)`/`var(--space-3xl)`, the same two values
 	// read from the spacing scale in app.css. The claim is unchanged — main's padding is what consumes the
 	// measured --dock-h — so only its spelling moves. The `+ 28px` term stays a literal: 28 is not a scale
@@ -139,15 +145,16 @@ test('#833 — search is a docked band in the thumb zone, publishing the measure
 	expect(PAGE).toContain('aria-label="Search a song or artist"');
 });
 
-test('#833 — the results stack UPWARD: every browse list is emitted with its best match last', () => {
+test('#833 — the results stack UPWARD: every result list is emitted with its best match last', () => {
 	// The ranking is reversed in the DOM, which is what keeps DOM order equal to visual order
 	// (XR-PH-12). A `column-reverse` container would paint the column against its DOM order and invert
 	// the focus sequence with it, so the ban is part of the claim.
-	expect(PAGE).toMatch(/\{@const readyStack = \[\.\.\.\(searchActive \? readyResults : library\)\]\.reverse\(\)\}/);
+	expect(PAGE).toMatch(/\{@const readyStack = \[\.\.\.readyResults\]\.reverse\(\)\}/);
 	expect(PAGE).toMatch(/\{@const cookingStack = \[\.\.\.cookingRows\]\.reverse\(\)\}/);
 	expect(PAGE).toMatch(/\{@const rawRows = unaccounted\(rawResults\)\.reverse\(\)\}/);
-	expect(PAGE).toMatch(/\{@const popularRows = unaccounted\(popular\)\.reverse\(\)\}/);
-	expect(PAGE).toMatch(/\{@const recentRows = unaccounted\(recent\)\.reverse\(\)\}/);
+	// The zero-query shortcut stacks (popularRows / recentRows) were dropped with the browse mode (#902).
+	expect(PAGE).not.toContain('popularRows');
+	expect(PAGE).not.toContain('recentRows');
 	expect(PAGE).not.toContain('column-reverse');
 
 	// Section order is the same claim at the block level: the most relevant section is the LAST one, so
@@ -155,8 +162,6 @@ test('#833 — the results stack UPWARD: every browse list is emitted with its b
 	const main = PAGE.slice(PAGE.indexOf('<main>'), PAGE.indexOf('</main>'));
 	expect(main.indexOf('rawRows')).toBeLessThan(main.indexOf('cookingStack'));
 	expect(main.indexOf('cookingStack')).toBeLessThan(main.indexOf('readyStack'));
-	// Within the zero-query shortcuts, Popular tonight is the closer of the two to the box.
-	expect(main.indexOf('Recently queued')).toBeLessThan(main.indexOf('Popular tonight'));
 });
 
 test('#833 — the bottom-anchored column reserves the top for the back control', () => {
@@ -196,11 +201,12 @@ test('#833 — the empty state that named the library count survives the chip th
 	expect(PAGE).toContain('Show all {empty.showAllCount}');
 });
 
-test('#833 — the copy no longer points at a search box above the list', () => {
-	// The box moved to the bottom, so "Search for a song above" became false. A stale direction in an
-	// empty state is worse than none: it is the one line a guest reads when nothing is on screen.
+test('#833/#902 — no empty-state copy points at a search box above, or at a now-deleted shortcut list', () => {
+	// The box moved to the bottom (#833), so "Search for a song above" became false. #902 then dropped
+	// the empty-box shortcut list entirely — an empty box shows the live queue — so its "in the box
+	// below" prompt is gone too: neither direction is stated any more.
 	expect(PAGE).not.toContain('Search for a song above');
-	expect(PAGE).toContain('Search for a song in the box below');
+	expect(PAGE).not.toContain('Search for a song in the box below');
 });
 
 test('#833 — the docked box survives the on-screen keyboard, by the one mechanism that can say so', () => {

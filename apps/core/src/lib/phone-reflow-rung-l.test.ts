@@ -76,11 +76,12 @@ test('the reflow probe covers every XR-PH-02 surface, and /stats by name (#850)'
 		expect(PROBE).toContain(`measure('${surface}', '${surface}')`);
 	}
 	expect(PROBE).toMatch(/measure\('\/',\s*'\/'\)/);
-	// The browse screen needs a session, so the probe joins from inside the page and then measures it
-	// like the other four (#857 fixed; it was quarantined here until the fix landed). It is `?browse=1`
-	// — the joined `/` opens the song list (Direction B, #833) — and it is SEARCHED first so the real
-	// offender renders (see the non-vacuity test below), then measured in place (`skipNav`).
-	expect(PROBE).toMatch(/measure\('browse \(joined \/, searched\)',\s*'\/\?browse=1',\s*\{\s*skipNav:\s*true\s*\}\)/);
+	// The browse/results screen needs a session, so the probe joins from inside the page and then
+	// measures it like the other four (#857 fixed; it was quarantined here until the fix landed). Since
+	// #902 the search box is docked on `/` and results render in place, so the surface IS `/` — SEARCHED
+	// first so the real offender renders (see the non-vacuity test below), then measured in place
+	// (`skipNav`). The old `?browse=1` mode is gone.
+	expect(PROBE).toMatch(/measure\('browse \(joined \/, searched\)',\s*'\/',\s*\{\s*skipNav:\s*true\s*\}\)/);
 	expect(PROBE).toMatch(/'\/api\/join'/);
 });
 

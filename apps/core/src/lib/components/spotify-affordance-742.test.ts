@@ -45,7 +45,10 @@ test('#742 every Sing site asks a gate that can SEE the media, not readiness alo
 	// now pass the media. Counting them is what stops a fix that converts one of the four and leaves the
 	// other three — the shape #224 was blocked for.
 	const singSites = page.match(/onmake=\{canCook\([^)]*\)/g) ?? [];
-	expect(singSites).toHaveLength(4);
+	// TWO sites since #902 dropped the empty-box shortcut lists (Popular / Recently, which each rendered
+	// a SongRow): the raw search-results block and the cooking block. Counting them is what stops a fix
+	// that converts one and leaves the other — the shape #224 was blocked for.
+	expect(singSites).toHaveLength(2);
 	for (const site of singSites) {
 		// two arguments, the first of which is a media expression (not a bare Readiness variable)
 		expect(site).toMatch(/canCook\(\s*[A-Za-z_$][\w.$]*\s*,\s*r\s*\)/);
@@ -56,12 +59,13 @@ test('#742 every Sing site asks a gate that can SEE the media, not readiness alo
 });
 
 test('#742 every row that can offer a turn also declares whether the song is cookable at all', () => {
-	// `cookable` is what removes the ADD affordance. Same count as the Sing sites: the three raw/browse
-	// blocks plus the cooking block. It must be derived from the shared authority, not re-implemented
-	// with a local `source === 'spotify'` test — that is how the rule ended up enforced in one place and
-	// asserted in five.
+	// `cookable` is what removes the ADD affordance. Same count as the Sing sites: since #902 the raw
+	// search-results block plus the cooking block (the empty-box shortcut lists that used to add two
+	// more were dropped). It must be derived from the shared authority, not re-implemented with a local
+	// `source === 'spotify'` test — that is how the rule ended up enforced in one place and asserted in
+	// several.
 	const cookableSites = page.match(/cookable=\{isCookableSource\([^)]*\)\}/g) ?? [];
-	expect(cookableSites).toHaveLength(4);
+	expect(cookableSites).toHaveLength(2);
 	expect(page).not.toMatch(/cookable=\{[^}]*===\s*'spotify'/);
 	// imported from the shared package — pinned separately from the call sites so reverting only the
 	// import (which would break the build rather than a test) is still caught by a named failure.

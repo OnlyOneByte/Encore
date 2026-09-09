@@ -161,7 +161,7 @@ export const QUARANTINE = [];
  */
 export const RETIRED = [
 	{
-		where: '/?browse=1',
+		where: '/ (searched)',
 		match: { tag: 'input', type: null, cls: '', near: 'Search a song or artist' },
 		was: 22,
 		reason:
