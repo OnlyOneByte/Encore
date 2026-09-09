@@ -283,7 +283,7 @@ const rowsReady = await page
 	.catch(() => false);
 if (rowsReady === false) bail('the browse search returned no rows, so the #857 offender could not be rendered');
 
-await measure('browse (joined /, searched)', '/?browse=1', { skipNav: true });
+await measure('browse (joined /, searched)', '/', { skipNav: true });
 
 await browser.close();
 

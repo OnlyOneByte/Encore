@@ -38,8 +38,9 @@ test('the rotation rows render inside <main>, not inside a pull-up sheet', () =>
 	expect(main).toContain('{#each queued as e, i (e.id)}');
 	expect(main).toContain('<QueueRow');
 	expect(main).toContain('<ProcessingCard');
-	// …and behind the home branch, so the browse push does not stack the queue under the results.
-	const homeStart = main.indexOf('{#if !browsing}');
+	// …and behind the home branch, so the results overlay does not stack the queue under it. Since the
+	// owner correction (#902) home is `{#if !searchActive}` — the queue shows with an empty search box.
+	const homeStart = main.indexOf('{#if !searchActive}');
 	expect(homeStart).toBeGreaterThanOrEqual(0);
 	expect(main.indexOf('{#each queued as e, i (e.id)}')).toBeGreaterThan(homeStart);
 });
@@ -77,77 +78,98 @@ test('the wait is summed from the CATALOG, with an absent media reported as unkn
 });
 
 // ── the docked band reserves its space (XR-PH-12) ────────────────────────────────────────────────
-test('the docked primary button reserves its band in flow instead of overlapping rows (XR-PH-12)', () => {
+test('the docked search band reserves its band in flow instead of overlapping rows (XR-PH-12)', () => {
 	// The measured height, published…
 	expect(PAGE).toMatch(/bind:clientHeight=\{dockH\}/);
 	expect(PAGE).toMatch(/setProperty\(\s*'--dock-h'/);
-	// …and consumed by the scrolling column. A constant here is the mockup's own bug: the docked CTA
+	// …and consumed by the scrolling column. A constant here is the mockup's own bug: the docked band
 	// occluded queue row 5 because a disclosure grew inside a fixed shell.
 	expect(PAGE).toMatch(/padding:\s*var\(--space-xs\) var\(--space-3xl\) calc\(var\(--dock-h[^)]*\) \+ 28px\)/);
 	// The band is LAST in the DOM, after the content it sits below, so tab order follows visual order.
-	expect(PAGE.indexOf('class="cta-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
+	expect(PAGE.indexOf('class="search-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
 	// Nothing else may dock off the retired sheet's token, or it reserves 132px of nothing.
 	expect(PAGE).not.toContain('var(--peek-h)');
 });
 
-test('one primary action, and it is not on the browse screen', () => {
-	const docks = PAGE.match(/class="cta-dock"/g) ?? [];
-	expect(docks.length).toBe(1);
-	expect(PAGE).toMatch(/\{#if me && !browsing\}\s*<div class="cta-dock"/);
-	expect(PAGE).toMatch(/<button class="cta" onclick=\{openBrowse\}>/);
+test('the search dock is docked on home for a joined singer, and the + Add a turn CTA is gone (#902)', () => {
+	// THE OWNER CORRECTION (2026-09-09, #902). The search box IS the add affordance, docked at the bottom
+	// AT ALL TIMES for a joined singer — so it renders on `{#if me}`, unconditional on any search/mode
+	// state, and the whole `+ Add a turn` interstitial (`.cta-dock` / `.cta` / `openBrowse`) is deleted.
+	expect(PAGE).toMatch(/\{#if me\}\s*<div class="search-dock" bind:clientHeight=\{dockH\}>/);
+	// The CTA and its dock are GONE — not merely re-gated. If any of these come back the interstitial
+	// direction the owner corrected is back with them.
+	expect(PAGE).not.toContain('cta-dock');
+	expect(PAGE).not.toMatch(/class="cta"/);
+	expect(PAGE).not.toContain('Add a turn');
+	expect(PAGE).not.toContain('openBrowse');
+
+	// EXACTLY ONE fixed docked band on the route, and it measures into --dock-h. Two bands both binding
+	// dockH was the pre-#902 shape (`.cta-dock` on home, `.search-dock` on browse); collapsing to one is
+	// scope item 3. Count the fixed docks by their shared band contract line.
+	const bandBinds = PAGE.match(/bind:clientHeight=\{dockH\}/g) ?? [];
+	expect(bandBinds.length).toBe(1);
+	// The safe-area inset lives on the ONE band and nowhere above it — no SECOND env() term stacked on
+	// the padding that already reserves --dock-h (scope item 3). The band's own padding carries the one
+	// env(); `main`'s reserve does not, and the toast docks reach it THROUGH --dock-h.
+	const dockCss = PAGE.slice(PAGE.indexOf('.search-dock {'), PAGE.indexOf('.searchbox {'));
+	expect((dockCss.match(/env\(safe-area-inset-bottom\)/g) ?? []).length).toBe(1);
+	const mainCss = PAGE.slice(PAGE.indexOf('\tmain {'), PAGE.indexOf('\tmain {') + 200);
+	expect(mainCss).not.toContain('env(safe-area-inset-bottom)');
 });
 
-// ── browsing is a push, and it is reversible ─────────────────────────────────────────────────────
-test('the browse push is a real navigation, so the phone Back gesture dismisses it', () => {
-	// A local boolean would leave Back exiting the app from the browse screen — and would lose the
-	// search state on a reload. Same route either way, so the query and the library survive the trip.
-	expect(PAGE).toMatch(/const browsing = \$derived\(page\.url\.searchParams\.get\('browse'\) === '1'\)/);
-	/*
-	 * The OPTION OBJECT is pinned, not just the URL (#833). `goto('/?browse=1')` pushes a history entry,
-	 * which is what makes Back close browse rather than leave the room; `goto('/?browse=1', {
-	 * replaceState: true })` REPLACES it, silently turning the ruled-on option A back into option B —
-	 * and a match that stopped at the closing quote of the path stayed green through exactly that edit.
-	 */
-	expect(PAGE).toMatch(
-		/function openBrowse\(\) \{\s*void goto\('\/\?browse=1', \{ keepFocus: true, noScroll: false \}\);\s*\}/
-	);
-	expect(PAGE).toMatch(/function closeBrowse\(\) \{\s*void goto\('\/', \{ keepFocus: true, noScroll: false \}\);\s*\}/);
-	expect(PAGE).not.toContain('replaceState');
-	// …and a visible way back, first in the DOM because it is first visually.
-	expect(PAGE).toMatch(/<button class="back-btn" onclick=\{closeBrowse\}>/);
+// ── results are IN PLACE, driven by the query, with no navigation (#902) ─────────────────────────
+test('the results view is driven by the query in place, with no browse mode or ?browse=1 (#902)', () => {
+	// THE OWNER CORRECTION. Pre-#902 browsing was a `?browse=1` push whose only job was a history entry
+	// so Back returned to the queue. #902 renders results IN PLACE over the queue while the box has a
+	// query, so there is no navigation and no mode: the split is `searchActive`, derived from `query`.
+	expect(PAGE).toContain('const searchActive = $derived(query.trim().length > 0)');
+	// The mode, its navigations, and the URL read that backed them are GONE.
+	expect(PAGE).not.toContain("searchParams.get('browse')");
+	expect(PAGE).not.toContain("goto('/?browse=1'");
+	expect(PAGE).not.toContain('const browsing');
+	expect(PAGE).not.toContain('function openBrowse');
+	expect(PAGE).not.toContain('function closeBrowse');
+	// The back-gesture role is reassigned explicitly (not silently dropped): the "← Queue" control
+	// clears the search rather than navigating, which is what brings the queue back in place. It is
+	// still first in the DOM because it is first visually.
+	expect(PAGE).toMatch(/<button class="back-btn" onclick=\{clearSearch\}>/);
+	// The upward-stack auto-scroll is gated on `!searchActive` too, not the retired `browsing`: an empty
+	// box shows the queue and must NOT force-scroll to the bottom on every queue change. Reverting this
+	// gate to `!browsing` references an identifier this route no longer declares.
+	expect(PAGE).toMatch(/const resultShape = \$derived\(\s*!searchActive/);
+	expect(PAGE).not.toContain('!browsing');
 });
 
-test('every browse surface is behind the push — home cannot show the library list', () => {
+test('every result surface is gated on searchActive — an empty box shows the queue, not a result list (#902)', () => {
 	/*
-	 * RE-ANCHORED BY #833, ON THE RECORD (XR-VER-07). The CLAIM is unchanged and still load-bearing: if
-	 * any browse block loses its gate, home silently becomes the browse-first screen direction A
-	 * replaced. Only the anchors moved, because #833 deleted the mechanisms this test used to name —
-	 * `{#if browsing && showReady}`, `{#if browsing && showCooking && …}`, `{#if browsing && showRaw}`
-	 * and `{#if browsing && filter !== 'all'}` were all gates on the readiness FILTER, and there is no
-	 * filter any more. Weakening this to "some gate exists" was the wrong answer: the point is that
-	 * EVERY browse block is gated, so the check counts them.
+	 * The claim is unchanged in spirit from #832/#833 and still load-bearing: if any result block loses
+	 * its gate, home shows the library list under an empty box instead of the live queue. Only the gate
+	 * moved — from `{#if browsing}` (the retired mode) to `{#if searchActive}` (query-driven, #902).
+	 * Weakening this to "some gate exists" would be the wrong answer: the point is that EVERY result
+	 * block is gated, so the check counts them.
 	 */
 	const main = PAGE.slice(PAGE.indexOf('<main>'), PAGE.indexOf('</main>'));
 
-	// Every result block that renders a SongRow inside <main> is inside a `{#if browsing…}`. Counted
+	// Every result block that renders a SongRow inside <main> is inside a `{#if searchActive…}`. Counted
 	// rather than named, so a block added tomorrow is covered without editing this list.
-	const gated = main.match(/\{#if browsing\b/g) ?? [];
-	expect(gated.length).toBeGreaterThanOrEqual(4); // back control, raw/shortcuts, cooking, ready
-	for (const gate of ['{#if browsing && cookingRows.length}']) expect(main).toContain(gate);
+	const gated = main.match(/\{#if searchActive\b/g) ?? [];
+	expect(gated.length).toBeGreaterThanOrEqual(3); // back control, raw results, cooking, ready
+	for (const gate of ['{#if searchActive && cookingRows.length}']) expect(main).toContain(gate);
 
-	// Non-vacuity: every `<SongRow` in <main> really is inside one of those blocks. `{#if browsing}` is
-	// the only conditional the browse blocks open at that indent, so the first SongRow cannot precede
-	// the first browse gate — and no SongRow may follow the last `{/if}`.
+	// The retired mode must not linger anywhere in <main>.
+	expect(main).not.toContain('{#if browsing');
+
+	// Non-vacuity: every `<SongRow` in <main> really is inside one of those blocks. The first SongRow
+	// cannot precede the first searchActive gate.
 	const firstRow = main.indexOf('<SongRow');
 	expect(firstRow).toBeGreaterThan(0);
-	expect(main.indexOf('{#if browsing')).toBeLessThan(firstRow);
+	expect(main.indexOf('{#if searchActive')).toBeLessThan(firstRow);
 
-	// The search box is NOT in <main> any more: it is the docked band, after </main>, so the thumb can
-	// reach it wherever the stack is scrolled to (#833). Home must not dock it — that is the browse
-	// screen's band, gated on `browsing`.
+	// The search box is NOT in <main>: it is the docked band, after </main>, present in BOTH views now
+	// (#902), so the thumb can reach it wherever the stack is scrolled to.
 	expect(main).not.toContain('class="card searchbox"');
 	expect(PAGE.indexOf('class="search-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
-	expect(PAGE).toMatch(/\{#if browsing\}\s*<div class="search-dock"/);
+	expect(PAGE).toMatch(/\{#if me\}\s*<div class="search-dock"/);
 });
 
 // ── the unconfirmed marker (XR-PH-10) ────────────────────────────────────────────────────────────
@@ -162,7 +184,10 @@ test('the shell imports what it is built from — a missing one is a build break
 	// These are the three hunks a `bun test` run cannot see: nothing imports this route, so reverting an
 	// import reds `build`/`typecheck` and leaves the suite green. Asserted here as the syntax claims
 	// they are, so each is pinned to a named test rather than to a gate a reviewer has to re-run.
-	expect(PAGE).toMatch(/import \{ page \} from '\$app\/state';/); // the browse push reads the URL
+	// The `$app/state` `page` import is GONE (#902): the results view is query-driven in place, so the
+	// route no longer reads the browse query off the URL. (Asserted on the specifier alone, not the
+	// whole import statement, so this comment cannot itself read as a virtual-module import.)
+	expect(PAGE).not.toContain('$app/state');
 	expect(PAGE).toMatch(/import \{ positionWords \} from '\$lib\/position-sentence';/);
 	expect(PAGE).toMatch(/import NowPlayingHero from '\$lib\/components\/NowPlayingHero\.svelte';/);
 	expect(PAGE).toMatch(/import MyPositionCard from '\$lib\/components\/MyPositionCard\.svelte';/);

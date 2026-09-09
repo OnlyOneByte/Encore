@@ -13,8 +13,6 @@
 	} from '@encore/shared';
 	import { onMount, tick } from 'svelte';
 	import { goto } from '$app/navigation';
-	// The browse push is a real navigation (`?browse=1`), so the phone's own Back gesture dismisses it.
-	import { page } from '$app/state';
 	import type {
 		ServerEvent,
 		QueueEntry,
@@ -86,23 +84,29 @@
 	// scar exists to survive.
 	let scarredMedia: Media[] = [];
 	/*
-	 * DIRECTION A (docs/DECISIONS.md, issue #832): the room's queue IS the home screen, and browsing is
-	 * a deliberate push behind one primary button — the inverse of the browse-first screen that kept the
-	 * queue in a pull-up sheet. The push is a real navigation rather than a local boolean so the phone's
-	 * own Back gesture dismisses it; it is the SAME route, so the search query and the library both
-	 * survive the trip in both directions.
+	 * DIRECTION A + the 2026-09-09 owner correction (docs/DECISIONS.md, issues #832/#902): the room's
+	 * queue IS the home screen, and the search box is docked at the bottom of it AT ALL TIMES for a
+	 * joined singer — it is the add affordance, so there is no `+ Add a turn` push and no browse MODE.
+	 * Typing expands the results UPWARD IN PLACE over the queue (direction B's layout), so there is no
+	 * navigation: the split between "queue" and "results" is driven purely by whether the box has a
+	 * query, `searchActive` below.
+	 *
+	 * `?browse=1`'s FATE (stated, not silently dropped): it is GONE. Its only job was to push a history
+	 * entry so the phone's Back gesture returned to the queue instead of leaving the room. With results
+	 * rendered in place there is no mode to back out of — the queue is always underneath and reappears
+	 * the instant the box is cleared — so the back-gesture role is reassigned explicitly: the on-screen
+	 * "← Queue" control (rendered only while `searchActive`) calls `clearSearch()`, and the hardware Back
+	 * at the empty-box home leaves the room, which is what Back from home has always meant under
+	 * direction A. No pushed history entry means no route to strand a reload on.
 	 */
-	const browsing = $derived(page.url.searchParams.get('browse') === '1');
-	function openBrowse() {
-		void goto('/?browse=1', { keepFocus: true, noScroll: false });
-	}
-	function closeBrowse() {
-		void goto('/', { keepFocus: true, noScroll: false });
-	}
+	// `searchActive` (query non-empty) is the sole switch between the queue view and the results view;
+	// it is derived from `query` in the search section below.
 	/**
-	 * THE BAND CONTRACT. The docked primary button's REAL rendered height, published to
-	 * documentElement so the scrolling column can reserve its band in normal flow (XR-PH-12) instead of
-	 * having the button float over the last queue row.
+	 * THE BAND CONTRACT. The docked search band's REAL rendered height, published to documentElement so
+	 * the scrolling column can reserve its band in normal flow (XR-PH-12) instead of having the band
+	 * float over the last queue row. Since #902 the search dock IS this band — docked on home for a
+	 * joined singer at all times, the `+ Add a turn` button it replaced is gone — so there is exactly
+	 * one band, present in both the queue and results views.
 	 *
 	 * MEASURED, not a constant, and that is the whole point: a hardcoded guess leaves the last row
 	 * bleeding under the band (or reserves dead space above it) the moment the copy, the font or the
@@ -634,7 +638,7 @@
 	 * smoothed, because a scroll animation is not something a reduced-motion guest asked for.
 	 */
 	const resultShape = $derived(
-		!browsing
+		!searchActive
 			? ''
 			: [query.trim(), readyResults.length, cookingRows.length, rawResults.length, library.length, popular.length, recent.length].join(
 					'|'
@@ -1173,7 +1177,7 @@
 </header>
 
 <main>
-	{#if !browsing}
+	{#if !searchActive}
 		<!--
 			HOME IS THE QUEUE (direction A, issue #832). The playing song is the one thing on this screen
 			that is not a list item, so it gets a HERO rather than the docked peek row it used to share with
@@ -1394,108 +1398,76 @@
 	{/if}
 
 	<!--
-		THE BROWSE SCREEN — direction A's push (issue #832), direction B's layout (issue #833).
+		THE RESULTS VIEW — direction A's queue-home (issue #832), direction B's layout (issue #833), and
+		the 2026-09-09 owner correction (issue #902): it renders IN PLACE over the queue while the box
+		has a query (`searchActive`), with NO navigation. There is no browse mode any more.
 
-		The search box is NOT in here. It is docked in the thumb zone below this column, and the results
-		STACK UPWARD from it: the top-ranked row is the LAST one in this block, so it is the row nearest
-		the thumb. That is the whole reason to dock the box at the bottom rather than the top, and it is
-		why every list below is emitted with its ranking REVERSED and the sections run least-relevant
-		first. DOM order still matches visual order (XR-PH-12) — what is reversed is the order of the
-		list, not the direction the column paints in, which is what a `column-reverse` container would
-		have done instead and it would have inverted the focus sequence with it.
+		The search box is NOT in here. It is docked in the thumb zone below this column AT ALL TIMES, and
+		the results STACK UPWARD from it: the top-ranked row is the LAST one in this block, so it is the
+		row nearest the thumb. That is the whole reason to dock the box at the bottom rather than the top,
+		and it is why every list below is emitted with its ranking REVERSED and the sections run
+		least-relevant first. DOM order still matches visual order (XR-PH-12) — what is reversed is the
+		order of the list, not the direction the column paints in, which is what a `column-reverse`
+		container would have done instead and it would have inverted the focus sequence with it.
 
 		The four concurrent filter mechanisms that used to sit at the top of this block are GONE: the
 		three readiness chips, the artist rail, the genre rail, and the group headings that re-announced
 		the readiness axis in prose. Typing in the docked box is the only way to narrow the list. Four
 		ways to narrow one list was the defect; a tidier four would still have been the defect.
 
-		The back control is first in the DOM because it is first visually (XR-PH-12); the phone's own
-		Back gesture also works, because the push is a real navigation.
+		The empty-box shortcuts (Popular / Recently) are GONE from here too (#902): with an empty box the
+		screen is the live QUEUE, not a shortcut list, so this whole block renders ONLY while a query is
+		present.
+
+		The "← Queue" control is first in the DOM because it is first visually (XR-PH-12). It no longer
+		navigates — with results in place there is nowhere to navigate FROM — so it clears the search,
+		which is what returns the screen to the queue underneath. It renders only while `searchActive`,
+		because with an empty box the queue is already what is showing.
 	-->
-	{#if browsing}
+	{#if searchActive}
 		<div class="backrow">
-			<button class="back-btn" onclick={closeBrowse}><Icon name="arrow-left" /> Queue</button>
+			<button class="back-btn" onclick={clearSearch}><Icon name="arrow-left" /> Queue</button>
 		</div>
 	{/if}
 
 	<!--
-		FURTHEST FROM THE THUMB: songs that still need karaoke made, or — with an empty box — the
-		zero-keystroke shortcuts. Recently queued sits above Popular tonight so that the more useful of
-		the two is the closer one to the search box.
+		FURTHEST FROM THE THUMB: songs that still need karaoke made. Recently queued sits above Popular
+		tonight — but only ever as search results now; the empty-box shortcut lists were dropped in #902
+		in favour of showing the live queue.
 	-->
-	{#if browsing}
-		{#if searchActive}
-			{#if searching && rawResults.length === 0 && readyResults.length === 0}
-				<div aria-busy="true" aria-label="Searching…">
-					{#each [0, 1, 2] as i (i)}
-						<div class="skel-row">
-							<div class="skel-thumb"></div>
-							<div class="skel-text">
-								<div class="skel-line"></div>
-								<div class="skel-line short"></div>
-							</div>
+	{#if searchActive}
+		{#if searching && rawResults.length === 0 && readyResults.length === 0}
+			<div aria-busy="true" aria-label="Searching…">
+				{#each [0, 1, 2] as i (i)}
+					<div class="skel-row">
+						<div class="skel-thumb"></div>
+						<div class="skel-text">
+							<div class="skel-line"></div>
+							<div class="skel-line short"></div>
 						</div>
-					{/each}
-				</div>
-			{/if}
-			{#if !searching && rawResults.length === 0 && readyResults.length === 0}
-				<p class="empty">No results. YouTube search needs yt-dlp installed on the server.</p>
-			{/if}
-			{@const rawRows = unaccounted(rawResults).reverse()}
-			{#if rawRows.length}
-				<h2 class="grouphead">Needs karaoke · has vocals</h2>
-				{#each rawRows as m (m.id)}
-					{@const r = readinessFor(m)}
-					<SongRow
-						{...rowMeta(m)}
-						readiness={r}
-						pct={liveOf(m.id)?.pct ?? 0}
-						status={liveOf(m.id)?.status}
-						inQueue={inMyQueue(m.id)}
-						cookable={isCookableSource(m.source)}
-						onadd={() => addSong(m.id)}
-						onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
-					/>
+					</div>
 				{/each}
-			{/if}
-		{:else}
-			{@const popularRows = unaccounted(popular).reverse()}
-			{@const recentRows = unaccounted(recent).reverse()}
-			{#if !popularRows.length && !recentRows.length && !library.length}
-				<p class="empty">Search for a song in the box below, or be the first to queue one.</p>
-			{/if}
-			{#if recentRows.length}
-				<h2 class="grouphead grouphead-mark"><Icon name="clock" /> Recently queued</h2>
-				{#each recentRows as m (m.id)}
-					{@const r = readinessFor(m)}
-					<SongRow
-						{...rowMeta(m)}
-						readiness={r}
-						pct={liveOf(m.id)?.pct ?? 0}
-						status={liveOf(m.id)?.status}
-						inQueue={inMyQueue(m.id)}
-						cookable={isCookableSource(m.source)}
-						onadd={() => addSong(m.id)}
-						onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
-					/>
-				{/each}
-			{/if}
-			{#if popularRows.length}
-				<h2 class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</h2>
-				{#each popularRows as m (m.id)}
-					{@const r = readinessFor(m)}
-					<SongRow
-						{...rowMeta(m)}
-						readiness={r}
-						pct={liveOf(m.id)?.pct ?? 0}
-						status={liveOf(m.id)?.status}
-						inQueue={inMyQueue(m.id)}
-						cookable={isCookableSource(m.source)}
-						onadd={() => addSong(m.id)}
-						onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
-					/>
-				{/each}
-			{/if}
+			</div>
+		{/if}
+		{#if !searching && rawResults.length === 0 && readyResults.length === 0}
+			<p class="empty">No results. YouTube search needs yt-dlp installed on the server.</p>
+		{/if}
+		{@const rawRows = unaccounted(rawResults).reverse()}
+		{#if rawRows.length}
+			<h2 class="grouphead">Needs karaoke · has vocals</h2>
+			{#each rawRows as m (m.id)}
+				{@const r = readinessFor(m)}
+				<SongRow
+					{...rowMeta(m)}
+					readiness={r}
+					pct={liveOf(m.id)?.pct ?? 0}
+					status={liveOf(m.id)?.status}
+					inQueue={inMyQueue(m.id)}
+					cookable={isCookableSource(m.source)}
+					onadd={() => addSong(m.id)}
+					onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
+				/>
+			{/each}
 		{/if}
 	{/if}
 
@@ -1506,7 +1478,7 @@
 		mechanism 4 and is deleted — SongRow's own readiness chip already says it per row, and a failed
 		cook says so on its own row rather than in a heading covering the whole group.
 	-->
-	{#if browsing && cookingRows.length}
+	{#if searchActive && cookingRows.length}
 		{@const cookingStack = [...cookingRows].reverse()}
 		{#each cookingStack as c (c.id)}
 			{@const r = displayReadiness(c.media, liveOf(c.id))}
@@ -1528,8 +1500,8 @@
 		no wait" heading that used to sit above them was mechanism 4 — it restated the readiness chip
 		directly above it — and it is deleted with the chips.
 	-->
-	{#if browsing}
-		{@const readyStack = [...(searchActive ? readyResults : library)].reverse()}
+	{#if searchActive}
+		{@const readyStack = [...readyResults].reverse()}
 		{#each readyStack as m (m.id)}
 			<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
 		{/each}
@@ -1554,33 +1526,22 @@
 </main>
 
 <!--
-	The ONE primary action, docked in the thumb zone. It RESERVES its band in normal flow rather than
-	overlapping the list (XR-PH-12): --dock-h carries this element's measured height and `main` pads by
-	it, so the last queue row is reachable at every scroll position. It is also LAST in the DOM, after
-	the content it sits below, so the tab sequence follows the visual order.
--->
-{#if me && !browsing}
-	<div class="cta-dock" bind:clientHeight={dockH}>
-		<button class="cta" onclick={openBrowse}><Icon name="plus" /> Add a turn</button>
-	</div>
-{/if}
+	THE SEARCH DOCK (direction B #833, made the sole home dock by the owner correction #902). ONE box
+	across every source: a singer picks by readiness ("can I sing this now?"), never by which index the
+	song came from — so there is no source switch, no readiness chips, no artist rail and no genre rail.
+	Typing is the only filter.
 
-<!--
-	THE SEARCH DOCK (direction B, issue #833). ONE box across every source: a singer picks by readiness
-	("can I sing this now?"), never by which index the song came from — so there is no source switch,
-	and since this issue, no readiness chips, no artist rail and no genre rail either. Typing is the
-	only filter.
-
-	It is bottom-anchored in the THUMB ZONE, and the results stack upward from it, which is what makes
-	the nearest row the best answer. It is the browse screen's one docked band, so it publishes the same
-	--dock-h the primary button publishes on home: `main` already pads by that token, so the top-ranked
-	row cannot end up under the band (XR-PH-12). LAST in the DOM, after the content it sits above.
+	It is docked in the thumb zone AT ALL TIMES for a joined singer — it IS the add affordance, which is
+	why the old `+ Add a turn` CTA (and its `.cta-dock`) are gone (#902). With an empty box the queue
+	shows above it; typing expands results upward in place. It is the ONE docked band on this route, so
+	`main` pads by the `--dock-h` this element measures and the safe-area inset lives HERE and nowhere
+	above it (XR-PH-12). LAST in the DOM, after the content it sits below.
 
 	The `aria-label` is a driven-flow anchor (`SEL.search`), not decoration: every phone probe reaches
 	the library by waiting on it, so renaming it hangs them on a timeout rather than failing an
 	assertion. Moving the box is safe; renaming the label is not.
 -->
-{#if browsing}
+{#if me}
 	<div class="search-dock" bind:clientHeight={dockH}>
 		<div class="card searchbox">
 			<span class="search-mark"><Icon name="search" /></span>
@@ -1624,24 +1585,27 @@
 
 <style>
 	/*
-	 * The primary button is docked, so the column must be able to scroll clear of it (XR-PH-12): the
-	 * padding reserves the band's MEASURED height, which is what keeps the last queue row reachable at
-	 * every scroll position instead of parked under the button. The fallback covers the first frame
-	 * before the effect publishes a measurement. Both bands publish the SAME token — the browse
-	 * screen's search dock and home's primary button — so this one rule reserves whichever is present.
+	 * The search dock is docked at the bottom, so the column must be able to scroll clear of it
+	 * (XR-PH-12): the padding reserves the band's MEASURED height (--dock-h), which is what keeps the
+	 * last queue row (empty box) or the top-ranked result (searching) reachable at every scroll position
+	 * instead of parked under the band. The fallback covers the first frame before the effect publishes
+	 * a measurement. Since #902 there is exactly ONE band on this route — the search dock, present in
+	 * both views — so this one rule reserves the only band there is.
 	 */
 	main {
 		flex: 1;
 		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	/*
-	 * THE BOTTOM-ANCHORED BROWSE STACK (direction B, issue #833). Results grow UPWARD from the docked
+	 * THE BOTTOM-ANCHORED RESULTS STACK (direction B, issue #833). Results grow UPWARD from the docked
 	 * search box, so the column's content sits at its bottom edge rather than its top: with one line of
 	 * content, that line is beside the thumb instead of stranded at the top of an empty screen.
 	 *
-	 * Selected by `:has(> .backrow)` rather than by a class on `<main>` because the back control IS the
-	 * browse screen — it renders on `{#if browsing}` and nowhere else — and because `<main>` carries no
-	 * attributes today, which three separate driven-flow anchors read as the literal string `<main>`.
+	 * Selected by `:has(> .backrow)` rather than by a class on `<main>` because the "← Queue" control IS
+	 * the results view — it renders on `{#if searchActive}` and nowhere else — and because `<main>`
+	 * carries no attributes today, which three separate driven-flow anchors read as the literal string
+	 * `<main>`. With an empty box there is no `.backrow`, so this rule does not match and the queue view
+	 * flows top-down as an ordinary column.
 	 *
 	 * TWO declarations, and the SECOND is the one doing the work. The auto bottom margin on the back
 	 * control both keeps it at the top of the column and pushes every later sibling to the bottom, which
@@ -1656,47 +1620,8 @@
 	main:has(> .backrow) > .backrow {
 		margin-bottom: auto;
 	}
-	/*
-	 * The docked primary action. `position: fixed` is what makes it reachable with one thumb wherever
-	 * the list is scrolled to; it does not overlap content, because `main` pads by this element's own
-	 * measured height (--dock-h) rather than by a guess. The safe-area inset lives HERE, on the band
-	 * that actually sits at the bottom of the screen, and reaches the toasts THROUGH --dock-h — so do
-	 * not add a second env() term to anything above. See --dock-h's own comment for the full contract.
-	 */
-	.cta-dock {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		z-index: var(--z-dock);
-		display: flex;
-		justify-content: center;
-		padding: var(--space-md) var(--space-3xl) calc(var(--space-md) + env(safe-area-inset-bottom));
-		background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 88%, transparent));
-		border-top: 1px solid var(--line);
-	}
-	.cta {
-		width: 100%;
-		max-width: var(--max-w);
-		min-height: var(--tap);
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-sm);
-		border: 0;
-		border-radius: var(--radius);
-		/* --accent + --on-accent, never --grad: this button carries a LABEL, and no stop's gradient is
-		   certified to carry one (#840, XR-COL-13). app.css states that rule at the token itself. */
-		background: var(--accent);
-		color: var(--on-accent);
-		font-size: 0.95rem;
-		font-weight: 700;
-		cursor: pointer;
-	}
-	.cta:active {
-		transform: scale(0.99);
-	}
-	/* The way back off the browse screen. First in the DOM because it is first visually (XR-PH-12). */
+	/* The way back to the queue from the results view — it clears the search (#902). First in the DOM
+	   because it is first visually (XR-PH-12). */
 	.backrow {
 		display: flex;
 		margin: 0 0 var(--space-sm);
@@ -1904,12 +1829,11 @@
 		}
 	}
 	/*
-	 * THE SEARCH DOCK (direction B, issue #833). Same band contract as .cta-dock, for the same reason:
-	 * `position: fixed` is what keeps the box reachable with one thumb wherever the stack is scrolled
-	 * to, and it does not overlap content because `main` pads by this element's own measured height
-	 * (--dock-h) rather than by a guess. The safe-area inset lives HERE, on the band that actually sits
-	 * at the bottom of the screen, and reaches the toasts THROUGH --dock-h — so do not add a second
-	 * env() term to anything above.
+	 * THE SEARCH DOCK (direction B #833; the SOLE home dock since #902). `position: fixed` is what keeps
+	 * the box reachable with one thumb wherever the stack is scrolled to, and it does not overlap content
+	 * because `main` pads by this element's own measured height (--dock-h) rather than by a guess. The
+	 * safe-area inset lives HERE, on the band that actually sits at the bottom of the screen, and reaches
+	 * the toasts THROUGH --dock-h — so do not add a second env() term to anything above.
 	 */
 	.search-dock {
 		position: fixed;
@@ -1986,11 +1910,6 @@
 		display: grid;
 		place-items: center;
 		color: var(--ink-dim);
-	}
-	.grouphead-mark {
-		display: flex;
-		align-items: center;
-		gap: 7px;
 	}
 	.chip:active {
 		transform: scale(0.95);

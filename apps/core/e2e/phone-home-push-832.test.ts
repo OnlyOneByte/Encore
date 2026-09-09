@@ -39,28 +39,31 @@ function previousCodeLine(lines: string[], idx: number): string {
 	return '';
 }
 
-test('the contract names the way through the browse push, and both anchors resolve', () => {
-	// The selectors themselves. `contract.test.ts` proves each resolves to real source; this proves they
-	// exist at all, which is what every driver below depends on.
-	expect(SEL.homeReady).toBe('.cta-dock');
-	expect(SEL.openBrowse).toBe('.cta-dock .cta');
+test('the contract names the way to the docked search box, and homeReady resolves', () => {
+	// Since #902 the search box is docked on home unconditionally, so `homeReady` (the docked band) is
+	// both the post-join readiness signal AND the band the box lives in — there is nothing to click.
+	// `contract.test.ts` proves it resolves to real source; this proves it exists at all.
+	expect(SEL.homeReady).toBe('.search-dock');
 	const ids = HOOKS.map((h) => h.id);
 	expect(ids).toContain('homeReady');
-	expect(ids).toContain('openBrowse');
+	// `openBrowse` was RETIRED with the `+ Add a turn` button (#902) — it must not linger in SEL or HOOKS.
+	expect('openBrowse' in SEL).toBe(false);
+	expect(ids).not.toContain('openBrowse');
 });
 
-test('the shared post-join helper exists and performs the whole sequence', () => {
+test('the shared post-join helper reaches the docked search box with no click (#902)', () => {
 	const helper = join(E2E, 'lib', 'phone.mjs');
 	expect(existsSync(helper)).toBe(true);
 	const src = readFileSync(helper, 'utf8');
-	// All three steps, in order: home is up, the push happens, the browse screen is up. A helper that
-	// only waited (or only clicked) would leave every caller half-arrived.
+	// Two waits, in order: home is up (the docked band), then the search box is up. There is no click —
+	// the box is docked unconditionally now, so a helper that tried to click a `+ Add a turn` button
+	// would time out on markup that no longer exists.
 	const wait = src.indexOf('SEL.homeReady');
-	const click = src.indexOf('page.click(SEL.openBrowse)');
 	const search = src.lastIndexOf('SEL.search');
 	expect(wait).toBeGreaterThan(-1);
-	expect(click).toBeGreaterThan(wait);
-	expect(search).toBeGreaterThan(click);
+	expect(search).toBeGreaterThan(wait);
+	expect(src).not.toContain('SEL.openBrowse');
+	expect(src).not.toContain('page.click(SEL.openBrowse)');
 	expect(src).toContain('export async function openBrowseFromHome');
 });
 

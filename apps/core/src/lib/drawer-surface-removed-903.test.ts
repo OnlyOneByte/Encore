@@ -145,10 +145,14 @@ test('#903: the band contract SURVIVED the deletion — --dock-h is still publis
 	const page = stripComments(readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8'));
 	expect(page).toMatch(/documentElement\.style\.setProperty\(\s*['"]--dock-h['"]/);
 	expect(page).toMatch(/removeProperty\(\s*['"]--dock-h['"]\s*\)/);
-	// Both bands publish the same token, and each carries the safe-area inset itself.
-	for (const cls of ['cta-dock', 'search-dock']) {
+	// Since #902 there is exactly ONE band — the search dock, docked on home for a joined singer and
+	// present in both views (the `+ Add a turn` `.cta-dock` it replaced is gone). It carries the
+	// safe-area inset itself.
+	for (const cls of ['search-dock']) {
 		const rule = page.match(new RegExp(`\\.${cls}\\s*\\{[^}]*\\}`, 's'));
 		expect(rule, `.${cls} must still exist as the docked band`).not.toBeNull();
 		expect(rule![0]).toMatch(/env\(safe-area-inset-bottom/);
 	}
+	// The retired band must not linger, or the one-band contract has forked again.
+	expect(page).not.toContain('cta-dock');
 });

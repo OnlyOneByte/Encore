@@ -58,18 +58,21 @@ export const SEL = {
 
 	// ── phone remote ──────────────────────────────────────────────────────
 	/*
-	 * HOME IS THE QUEUE (#832, direction A). The joined home screen is the rotation, and searching is a
-	 * deliberate PUSH behind one primary button — so `search` below is NOT on `/` any more, and a driver
-	 * that waits for it straight after joining waits forever.
+	 * HOME IS THE QUEUE (#832, direction A), and since the 2026-09-09 owner correction (#902) the SEARCH
+	 * BOX IS DOCKED AT THE BOTTOM OF IT AT ALL TIMES for a joined singer — it is the add affordance, so
+	 * there is no `+ Add a turn` push and no browse mode. Typing expands results upward IN PLACE.
 	 *
-	 * These two are the way through. `homeReady` is the docked band, which exists as soon as the joined
-	 * home has rendered, so it is the post-join readiness check that `search` used to be; `openBrowse` is
-	 * the button inside it that navigates to `?browse=1`. Two different elements, deliberately: the wait
-	 * proves home is up, the click is what moves. Use `openBrowseFromHome()` in `lib/phone.mjs` rather
-	 * than spelling the sequence out per driver — 15 call sites made that mistake's cost concrete.
+	 * `homeReady` is the docked search band, which exists as soon as the joined home has rendered, so it
+	 * is the post-join readiness check — and because the search box lives inside it, reaching `search` no
+	 * longer needs a click. `openBrowseFromHome()` in `lib/phone.mjs` therefore just waits for the box;
+	 * it is kept (rather than removed from 20 call sites) so a future IA change has one place to edit.
+	 *
+	 * RETIRED (#902): `openBrowse` was `.cta-dock .cta`, the `+ Add a turn` button that pushed `?browse=1`
+	 * to reveal the search box. #902 docked the box permanently and deleted the button, so the anchor is
+	 * absent from every source — an anchor guard for markup nobody renders reports a permanent failure,
+	 * not an invariant. The search box (`search` below) is now reached with no click.
 	 */
-	homeReady: '.cta-dock',
-	openBrowse: '.cta-dock .cta',
+	homeReady: '.search-dock',
 	/**
 	 * The scrolling content column. The measured gate reads its padding-bottom to prove the docked band
 	 * is RESERVED rather than overlapping the list (XR-PH-12), which is a geometry claim about this
@@ -85,13 +88,17 @@ export const SEL = {
 	 * song of the night.
 	 */
 	heroTitle: '.hero .song',
-	/** Back off the browse screen to the queue. The phone's own Back gesture also works. */
+	/** Back to the queue from the results view — it CLEARS the search (#902). Renders only while a query
+	 *  is present; with an empty box the queue is already showing. The phone's own Back gesture at the
+	 *  empty-box home leaves the room, as it always has under direction A. */
 	backToQueue: '.back-btn',
 	search: 'input[aria-label="Search a song or artist"]',
 	/**
-	 * The browse screen's docked band (#833). Search is bottom-anchored in the thumb zone and the results
-	 * stack upward from it, so this band — not the search box's own wrapper — is what publishes `--dock-h`
-	 * and what the measured gate reads the band contract off. Home's band is `.cta-dock` (SEL.homeReady).
+	 * The docked search band (#833; the SOLE home band since #902). Search is bottom-anchored in the
+	 * thumb zone and the results stack upward from it, so this band — not the search box's own wrapper —
+	 * is what publishes `--dock-h` and what the measured gate reads the band contract off. It is docked
+	 * on home for a joined singer at all times, so it is also `homeReady` (same selector, semantic alias
+	 * for the post-join readiness signal).
 	 */
 	searchDock: '.search-dock',
 	songRow: '.row',
@@ -400,21 +407,22 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'backToQueue',
 		file: 'src/routes/+page.svelte',
-		anchor: 'class="back-btn" onclick={closeBrowse}',
-		why: 'a driver that queued a song returns to the queue through this control'
+		anchor: 'class="back-btn" onclick={clearSearch}',
+		why: 'a driver that queued a song returns to the queue through this control, which now clears the search (#902)'
 	},
 	{
 		id: 'homeReady',
 		file: 'src/routes/+page.svelte',
-		anchor: 'class="cta-dock"',
-		why: 'the docked band is what says the joined home screen has rendered, now that search is not on it'
+		anchor: 'class="search-dock"',
+		why: 'the docked search band is what says the joined home has rendered, and it is present in both the queue and results views (#902)'
 	},
-	{
-		id: 'openBrowse',
-		file: 'src/routes/+page.svelte',
-		anchor: 'class="cta" onclick={openBrowse}',
-		why: 'every driven flow reaches the search box by clicking this, so a rename strands all of them'
-	},
+	/*
+	 * RETIRED (#902): the `openBrowse` hook (anchor `class="cta" onclick={openBrowse}`). #902 docked the
+	 * search box permanently and deleted the `+ Add a turn` button that used to push `?browse=1`, so the
+	 * anchor is absent from every source — an anchor guard for markup nobody renders reports a permanent
+	 * failure, not an invariant. The search box is now reached with no click; `homeReady` above is the
+	 * band that proves the joined home rendered.
+	 */
 	/*
 	 * RETIRED (#833): the `readinessChips` hook (anchor `aria-label="Filter by readiness"`) and the
 	 * `browseToggle` hook (anchor `class="browse-toggle"`). Direction B deleted the readiness chip row
