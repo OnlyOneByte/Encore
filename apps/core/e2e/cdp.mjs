@@ -197,6 +197,19 @@ function makePage(send, sessionId) {
 			);
 		},
 
+		/**
+		 * Override `env(safe-area-inset-*)`. Without this, a headless run resolves every inset to 0, so
+		 * `calc(10px + env(safe-area-inset-bottom, 0px))` measures 10px and a probe cannot tell the env()
+		 * term from its absence — the padding is byte-identical whether the term is there or was deleted.
+		 * Encore's bottom-docked surfaces (the queue sheet's peek and body, the docked toasts, /settings)
+		 * all carry that term for the iOS home indicator, so it is a contract worth being able to measure.
+		 * Pass 0 for every edge to restore the default.
+		 */
+		/** @param {{ top?: number, right?: number, bottom?: number, left?: number }} insets */
+		async safeAreaInsets(insets) {
+			await send('Emulation.setSafeAreaInsetsOverride', { insets }, sessionId);
+		},
+
 		/** PNG to disk. Returns the path, so a caller can hand it straight to a reader. */
 		/**
 		 * @param {string} path
@@ -246,6 +259,36 @@ function makePage(send, sessionId) {
 		async realClick(x, y) {
 			await send('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', clickCount: 1 }, sessionId);
 			await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', clickCount: 1 }, sessionId);
+		},
+
+		/**
+		 * Drag with a real trusted pointer: press, a sequence of moves, release. Needed because a sheet's
+		 * pull is the one gesture no synthetic event reproduces — `dragging`/snap logic reads
+		 * `pointermove` deltas and `setPointerCapture`, so a scripted click proves nothing about it, and
+		 * a single move event is indistinguishable from a jump (velocity-based snapping reads the
+		 * intermediate points). `steps` is how many moves the path is divided into.
+		 */
+		/**
+		 * @param {number} x1 @param {number} y1 @param {number} x2 @param {number} y2
+		 * @param {{ steps?: number, settle?: number }} [opts]
+		 */
+		async drag(x1, y1, x2, y2, { steps = 12, settle = 16 } = {}) {
+			await send(
+				'Input.dispatchMouseEvent',
+				{ type: 'mousePressed', x: x1, y: y1, button: 'left', clickCount: 1 },
+				sessionId
+			);
+			for (let i = 1; i <= steps; i++) {
+				const x = x1 + ((x2 - x1) * i) / steps;
+				const y = y1 + ((y2 - y1) * i) / steps;
+				await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'left', buttons: 1 }, sessionId);
+				await sleep(settle);
+			}
+			await send(
+				'Input.dispatchMouseEvent',
+				{ type: 'mouseReleased', x: x2, y: y2, button: 'left', clickCount: 1 },
+				sessionId
+			);
 		},
 
 		count: (/** @type {string} */ selector) =>

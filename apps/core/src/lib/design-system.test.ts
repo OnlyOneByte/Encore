@@ -234,13 +234,34 @@ test('the colour picker anchors arrow movement on nextSwatchIndex, not a bare in
 });
 
 test('every bottom-docked sheet caps its height in dvh, not vh', () => {
+	/*
+	 * RECORDED RULING FOR THE QUEUESHEET DRAWER PORT (#827)
+	 *
+	 * This assertion and the `.peek` env() one below are the two guards a vaul/shadcn drawer port takes
+	 * out of scope, and the ruling was made BEFORE the port rather than in the review that meets the red.
+	 *
+	 * Why they go: shadcn's drawer copies 12 files with zero `<style>` blocks, so a ported QueueSheet has
+	 * no scoped `<style>` for either scan to read — the real CSS is a `<style global>` inside
+	 * `node_modules/vaul-svelte`, which `test-helpers.ts`'s SKIP_DIRS skips by name, and the sheet's
+	 * offset is an inline `transform` written from JS (`use-snap-points.svelte.js:44-54`) that outranks
+	 * any rule either way. Both assertions fail LOUDLY, which is the good case: `caps.length > 0` here and
+	 * the non-null `.peek` match below cannot pass vacuously.
+	 *
+	 * RULING: RE-ANCHOR, DO NOT DELETE. The #827 spike measured all four incumbent numbers holding on the
+	 * port — 82dvh = 692.08px at 844, `.peek` 44/10 and `.body` 54/20 across a 34px inset, `--peek-h` the
+	 * measured inline write beating `@media (max-height: 480px)` — so the values are still true and still
+	 * worth pinning; only their ADDRESS changes. Re-point both at whatever file the port's CSS lives in
+	 * (its own `:global` block, or the copied `ui/drawer/` component), and keep the loop's list shape so
+	 * the next sheet still has to comply. Deleting either one launders a real design floor away under
+	 * cover of a refactor. Do not use RETIRED for this: nothing here is being given up.
+	 */
 	// `.sheet-surface` in app.css deliberately does NOT default a max-height, because a sheet's cap is
 	// its own business. But the UNIT is not a preference: on iOS `vh` resolves to the LARGE viewport, so
 	// a sheet capped in vh overflows the visible area whenever the URL bar is showing and hides its own
 	// footer -- which was the rotation's last row here, and the Save button on the profile sheet before
 	// identity moved to /settings and that sheet was retired. The cap stays with each sheet and the unit
 	// is asserted here. One entry in this list today; it is a list because the next sheet must comply.
-	for (const f of ['lib/components/QueueSheet.svelte']) {
+	for (const f of ['lib/components/QueueSheet.svelte', 'lib/components/QueueSheetDrawer.svelte']) {
 		const src = stripComments(readFileSync(join(SRC, f), 'utf8'));
 		const caps = [...src.matchAll(/max-height:\s*([0-9.]+)(dvh|svh|vh)\b/g)];
 		expect(caps.length).toBeGreaterThan(0);

@@ -250,6 +250,22 @@ button, a 14 px input, a `vh` sheet cap and a `content: '✕'` all become **invi
 illegal**. Scope reality: a library replaces **~1,060 of ~4,950** hand-written CSS lines (21%); the
 ~2,404-line TV tree is out of scope; the single clear win is `QueueSheet`.
 
+**Correction — the rationale above does NOT hold for the drawer, which is the one component this
+decision names as the clear win.** Measured in the #827 spike, on the pinned
+`vaul-svelte@1.0.0-next.7`: shadcn's drawer copies 12 files with **zero `<style>` blocks**, so
+nothing lands in `src/lib/components/ui/` for a design scan to read even though #853 created that
+directory; the real CSS is a 291-line `<style global>` at
+`node_modules/vaul-svelte/dist/components/drawer/drawer.svelte:92-383`, which `test-helpers.ts`'s
+`SKIP_DIRS` skips by name. Worse, the sheet's **geometry is not CSS at all**: vaul computes each snap
+point's offset in JS (`dist/use-snap-points.svelte.js:44-54`) and writes an inline `transform`, which
+outranks any stylesheet rule, and its motion duration is a hardcoded `TRANSITIONS.DURATION = 0.5`
+with no prop to override it — where the incumbent's own transition is `0.28s`. The decision to adopt
+anyway (Q1 · C on #827: accept the hole, on the record) stands; what is retracted is the claim that
+adoption costs no guard coverage here. The two named assertions it will red are recorded in advance
+in `apps/core/src/lib/non-vacuity-floors.test.ts`'s `PENDING_RULING`. Compounding it from the other
+side: Preflight is off (below), so a copied-in drawer cannot assume the reset ran either — it arrives
+with neither the utilities' reset nor a readable stylesheet of its own.
+
 **Tailwind restriction:** registering a colour in `@theme` mints the *whole* utility family, with
 no per-family opt-out. Keep `--accent`, `--grad` and the player hues in `:root` and **never
 register them**; use `@theme` for non-colour tokens only.
