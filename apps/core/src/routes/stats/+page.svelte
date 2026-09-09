@@ -163,20 +163,34 @@
 	 * 1fr is safe now that .stats itself is capped — the reason for a fixed max was an uncapped shell
 	 * stretching each tile to ~350px, and capping the container solved that at the root. A fixed 260px
 	 * max here instead wrapped the third tile onto its own row inside the narrower container.
+	 *
+	 * The floor is in `em`, not `px` (#850). A tile's own longest word cannot wrap — "different" is one
+	 * token — so a track narrower than that word plus the card's padding does not clip, it pushes the
+	 * whole page wider. A px floor is fixed while the word it has to hold grows with the guest's
+	 * text-size setting, so at 200% the floor stops bounding anything. 9em tracks the type: at the
+	 * default size it is 144px (what the 140px floor was), and it doubles exactly when the word does.
+	 * `min(100%, …)` is what keeps the floor itself from becoming the overflow — a floor wider than the
+	 * row would push a single track past the viewport, which is the same defect one level up.
 	 */
 	.tiles {
 		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+		grid-template-columns: repeat(auto-fit, minmax(min(100%, 9em), 1fr));
 		gap: 0.75rem;
 	}
 	/*
 	 * On a phone three tiles cannot sit side by side without becoming cramped, and auto-fit's 2+1 left
 	 * the third stranded beside empty space. The headline takes the full row instead, which reads as a
 	 * banner over two supporting figures rather than a broken grid.
+	 *
+	 * `max(9em, 40%)` is that two-up written as a floor rather than as a fixed `1fr 1fr` (#850). The
+	 * 40% term is what caps the row at two — three tracks would need 120% of the row, so they never
+	 * fit — and it replaces the fixed pair without changing the phone layout at the default text size.
+	 * The 9em term is what makes the row give way: once the type outgrows half the width, one column is
+	 * all that fits, and the tiles stack instead of overflowing the viewport (SC 1.4.10 Reflow).
 	 */
 	@media (max-width: 520px) {
 		.tiles {
-			grid-template-columns: 1fr 1fr;
+			grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9em, 40%)), 1fr));
 		}
 		.primary {
 			grid-column: 1 / -1;
