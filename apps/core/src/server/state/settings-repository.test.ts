@@ -332,6 +332,7 @@ describe('SettingsRepository room scope: tv progress style', () => {
 		lyricsLinesBefore: 1,
 		lyricsLinesAfter: 3,
 		guideLevelDefault: 0.5,
+		loudnessNormalization: true,
 		presenceGraceMinutes: 120
 	};
 

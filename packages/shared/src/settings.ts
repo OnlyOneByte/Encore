@@ -396,6 +396,20 @@ export interface RoomSettings {
 	 */
 	guideLevelDefault: number;
 	/**
+	 * Whether this room pulls loud outlier songs DOWN toward the library level (#462). Room-scoped
+	 * because it is a property of one party's audio taste, and open to any joined singer per the #828
+	 * Q3 = B ruling (room settings need no capability gate).
+	 *
+	 * When on, a song whose measured `songProfile.loudnessLufs` is more than `LOUDNESS_CLAMP_N_DB`
+	 * above the library median is attenuated to `median + N` at playback — only loud outliers, and only
+	 * once at least `LOUDNESS_MEASURED_FLOOR` songs carry a measured level. See
+	 * `loudness-normalization.ts` for the full ruling. Attenuate-only: a quiet song is never brought up.
+	 *
+	 * Ships at `false`, which reproduces today's TV exactly (every song at unity), so the feature is
+	 * opt-in — the same discipline as `guideLevelDefault` and `tvBackgroundDim`.
+	 */
+	loudnessNormalization: boolean;
+	/**
 	 * How long a singer stays in the room after their last socket drops AND their last pending song
 	 * leaves the queue. Per-room because it is a property of the party: a long evening where people
 	 * pocket their phones wants a generous window, a kiosk wants none.
@@ -451,6 +465,8 @@ export const DEFAULT_ROOM_SETTINGS: RoomSettings = {
 	lyricsLinesBefore: DEFAULT_LYRICS_LINES_BEFORE,
 	lyricsLinesAfter: DEFAULT_LYRICS_LINES_AFTER,
 	guideLevelDefault: 0,
+	// false — every song at unity, byte-identical to today's TV. Opt-in like guideLevelDefault.
+	loudnessNormalization: false,
 	presenceGraceMinutes: DEFAULT_PRESENCE_GRACE_MINUTES
 };
 
@@ -537,6 +553,10 @@ export function normalizeRoomSettings(
 		typeof gl === 'number' && Number.isFinite(gl)
 			? Math.round(Math.min(1, Math.max(0, gl)) * 100) / 100
 			: d.guideLevelDefault;
+	// A plain boolean toggle, like songIntroEnabled: a boolean is honoured, anything else keeps the
+	// room's current choice rather than resetting the feature.
+	const ln = input?.loudnessNormalization;
+	const loudnessNormalization = typeof ln === 'boolean' ? ln : d.loudnessNormalization;
 	const viz = input?.tvVisualizer;
 	const tvVisualizer = isTvVisualizer(viz) ? viz : d.tvVisualizer;
 	return {
@@ -558,6 +578,7 @@ export function normalizeRoomSettings(
 		lyricsLinesBefore,
 		lyricsLinesAfter,
 		guideLevelDefault,
+		loudnessNormalization,
 		presenceGraceMinutes
 	};
 }

@@ -13,6 +13,7 @@
 		effectiveGuideLevel,
 		hueOfColor,
 		resolveLyricsPresentation,
+		loudnessNormalizationGain,
 		type EffectiveSettings,
 		type TvBackgroundStyle
 	} from '@encore/shared';
@@ -125,6 +126,35 @@
 	// the second turn from the first; the entry id can, and the player re-arms its transport on it. Set
 	// only in `syncSlots`, the same explicit-transition seam that re-snapshots the media.
 	let slotEntryId = $state<{ A: string | null; B: string | null }>({ A: null, B: null });
+
+	// ── loudness normalization (#462, PR3) ──────────────────────────────────────────────────────────
+	// The decision happens HERE, at playback, not in the worker: the master pulldown for a song depends
+	// on the LIVE library median, which is a property of the room's whole catalog at play time, not of
+	// the song's cook. The route owns both facts — the full `mediaCatalog` and the room's setting — so
+	// it resolves the gain and hands each slot a plain `masterLevel`. TvPlayer stays a pure applier.
+	//
+	// Every measured `loudnessLufs` in the library. `null`/absent levels are simply not in the list, so
+	// the count is the population the floor (>=8) is checked against. Re-derives whenever the catalog
+	// changes (a new cook lands a new level), so the median tracks the library rather than a stale seed.
+	const libraryLoudnessLevels = $derived(
+		[...mediaCatalog.values()]
+			.map((m) => m.songProfile?.loudnessLufs ?? null)
+			.filter((v): v is number => typeof v === 'number')
+	);
+	// Resolve one slot's master level from its own song's measured loudness, the library levels, and the
+	// room toggle. 1 (unity) for the whole existing library and every song when the feature is off,
+	// below the measured floor, or unmeasured — attenuate-only, never above 1.
+	function resolveMasterLevel(m: PlaybackSnapshot | null): number {
+		return loudnessNormalizationGain({
+			songLufs: m?.songProfile?.loudnessLufs ?? null,
+			libraryLevels: libraryLoudnessLevels,
+			enabled: settings.room.loudnessNormalization
+		}).gain;
+	}
+	// Parallel to slotMedia — each slot gets the pulldown for the song IT holds (they can differ: the
+	// visible slot plays `current`, the hidden slot pre-warms `upNext`).
+	const masterLevelA = $derived(resolveMasterLevel(slotMedia.A));
+	const masterLevelB = $derived(resolveMasterLevel(slotMedia.B));
 
 	// The TV's realtime channel is the shared, tested WsClient (heartbeat, liveness watchdog,
 	// capped-backoff reconnect, page-lifecycle rebinding). The TV runs unattended for hours on a
@@ -747,6 +777,7 @@
 		seekRev={seekRev}
 		keyShift={keyShift}
 		guideLevel={guideLevel}
+		masterLevel={masterLevelA}
 		onready={() => {
 			ctl.onVisibleReady();
 			tvState = ctl.state;
@@ -779,6 +810,7 @@
 		seekRev={seekRev}
 		keyShift={keyShift}
 		guideLevel={guideLevel}
+		masterLevel={masterLevelB}
 		onready={() => {
 			ctl.onVisibleReady();
 			tvState = ctl.state;

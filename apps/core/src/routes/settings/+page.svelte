@@ -893,6 +893,16 @@
 						{#if settings.room.guideLevelDefault > 0}
 							<p class="hint">Only songs cooked with their vocals kept can offer a guide.</p>
 						{/if}
+
+						<label class="check">
+							<input
+								type="checkbox"
+								checked={settings.room.loudnessNormalization}
+								onchange={(e) => onroom({ loudnessNormalization: e.currentTarget.checked })}
+							/>
+							Even out loud songs
+						</label>
+						<p class="hint">Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet songs are left alone.</p>
 					</div>
 				</div>
 
