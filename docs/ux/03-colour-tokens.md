@@ -62,7 +62,7 @@ drift at all was going to cross it. It is carried as `XR-COL-04`.
 | **Surfaces** | Phone, TV, operator dashboards, build |
 | **Rationale** | 48 stops × 4 values = 192 hexes; any second copy is a copy that will drift, and a drifted `onFill` is an AA failure nobody can see in a diff. |
 | **Source** | `DERIVED` — model: the repo's own documented failure mode. `packages/shared/src/colors.ts:255` keeps `DEFAULT_STAGE_COLOR` as a literal *only* because SQL cannot run an OKLCH conversion, and pays for it with a named drift guard in `colors.test.ts`. No consumer here has that excuse. |
-| **Acceptance** | **Given** the registry artifact and the repo, **When** every `#rrggbb` literal in `packages/shared/src`, `apps/core/src` and any palette doc is collected, **Then** none of them equals a `fill`, `onFill`, `ink` or `accent2` value of any stop, except inside the registry artifact itself. |
+| **Acceptance** | **Given** the registry artifact and the repo, **When** every `#rrggbb` literal in `packages/shared/src`, `apps/core/src` and any palette doc is collected, **Then** none of them equals a `fill`, `onFill`, `ink` or `accent2` value of any stop, except inside the registry artifact itself — **excluding pure `#ffffff` and `#000000`**, which are carved out because **12 of the 48 stops carry `on_fill: #ffffff`**, so without the carve-out this criterion criminalises all 52 `#ffffff` occurrences across 12 files in `src` and can never go green. The carve-out is safe precisely because white and black are not distinguishing: no stop's *identity* is white, so a stray `#ffffff` cannot silently become a drifted copy of one stop in particular. |
 | **Check** | Source scan in the shape of the existing `design-system.test.ts` / `contrast.test.ts` scans: load the registry, glob the source tree, assert zero literal matches outside the artifact. |
 | **Priority** | **Blocking.** A second source of truth cannot be retrofitted out once 192 hexes are loose. |
 
@@ -94,7 +94,7 @@ drift at all was going to cross it. It is carried as `XR-COL-04`.
 
 | | |
 |---|---|
-| **Statement** | The registry's contrast figures are computed against the live values of `--bg`, `--card` and `--card2`, read from `apps/core/src/app.css`, and no stop ships failing the role thresholds in `XR-COL-05`–`XR-COL-07` against those values. |
+| **Statement** | The registry's contrast figures are computed against the live values of **every surface the app actually paints a stop's value on**, read from `apps/core/src/app.css` — at minimum `--bg`, `--card`, `--card2`, `--card-tint` and `--card-tint2` — and no stop ships failing the role thresholds in `XR-COL-05`–`XR-COL-07` against those values. The surface list is **derived from the read sites, not hand-maintained**, so a new read site on a new surface fails the build rather than passing unmeasured. |
 | **Surfaces** | Phone, TV, operator dashboards, build |
 | **Rationale** | The generator's `surfaces` block (`#060a18` / `#131a2e` / `#1a2238`) is not the app's (`#0b0b12` / `#1a1a28` / `#212133`), and against the real `--card` six stops fall below AA as ink. |
 | **Source** | `packages/shared/src/player-palette-48.json` `surfaces`; `apps/core/src/app.css:7–10`. Failure list `DERIVED` — model as stated in the finding above. |
