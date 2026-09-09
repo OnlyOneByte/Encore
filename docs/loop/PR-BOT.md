@@ -20,7 +20,10 @@ shorter than a full-depth review takes — an 8-wide fan-out on **2026-09-06 pos
 8 PRs** for exactly that reason.
 
 **Reviewers are dispatched as real sessions by the review orchestrator**, one PR per reviewer session.
-Everything below (§1–§6) is the reviewer's procedure, addressed to the session that was handed one PR.
+Sections §1–§4 and §6 are the reviewer's procedure, addressed to the session that was handed one PR;
+this is the range `pipeline.json` seeds each reviewer with (`"brief_sections": "1-4,6"`). §5 is split
+into a **Reviewer:** half and a **Dispatcher:** half, and §6 likewise carries a **Dispatcher:** bullet —
+the reviewer half of each is you, the dispatcher half is not.
 
 ### A reviewer slot reads this brief ONCE, at creation
 
