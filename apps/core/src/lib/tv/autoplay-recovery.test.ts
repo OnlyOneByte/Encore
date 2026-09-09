@@ -127,7 +127,7 @@ test('the /tv route surfaces the hint gated on the block, and wires both slots (
 	// `position` shrinks the affordance to normal-flow ~26% of the viewport with those two still present.
 	expect(body).toMatch(/position:\s*absolute/);
 	expect(body).toMatch(/inset:\s*0/);
-	expect(body).toMatch(/z-index:\s*10/);
+	expect(body).toMatch(/z-index:\s*var\(--z-tv-affordance\)/);
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -236,5 +236,5 @@ test('the /tv route renders an on-screen silent-room panel fed only by the slots
 	const body = rule ? rule[1] : '';
 	expect(body).toMatch(/position:\s*absolute/);
 	expect(body).toMatch(/inset:\s*0/);
-	expect(body).toMatch(/z-index:\s*8/);
+	expect(body).toMatch(/z-index:\s*var\(--z-tv-interstitial\)/);
 });

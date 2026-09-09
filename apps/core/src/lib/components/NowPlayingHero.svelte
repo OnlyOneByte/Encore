@@ -166,14 +166,14 @@
 <style>
 	/* Surface, radius and border come from .card in app.css. */
 	.hero {
-		padding: 14px 16px 12px;
-		margin: 0 0 10px;
+		padding: var(--space-xl) var(--space-2xl) var(--space-lg);
+		margin: 0 0 var(--space-md);
 	}
 	.eyebrow {
 		display: flex;
 		align-items: center;
 		gap: 7px;
-		font-size: 0.68rem;
+		font-size: var(--ph-text-2xs);
 		font-weight: 700;
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
@@ -198,7 +198,7 @@
 	/* The hero's whole job: the song, at hero weight. Two lines then ellipsis, so a full YouTube title
 	   cannot push the transport off screen. */
 	.song {
-		margin: 6px 0 0;
+		margin: var(--space-xs) 0 0;
 		font-size: 1.35rem;
 		font-weight: 800;
 		line-height: 1.15;
@@ -209,7 +209,7 @@
 		overflow: hidden;
 	}
 	.byline {
-		margin: 4px 0 0;
+		margin: var(--space-2xs) 0 0;
 		font-size: 0.82rem;
 		color: var(--ink-dim);
 		overflow: hidden;
@@ -220,10 +220,10 @@
 		display: flex;
 		align-items: center;
 		gap: 9px;
-		margin: 12px 0 2px;
+		margin: var(--space-lg) 0 var(--space-3xs);
 	}
 	.time {
-		font-size: 0.68rem;
+		font-size: var(--ph-text-2xs);
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;
 		min-width: 30px;
@@ -248,7 +248,7 @@
 		background: var(--grad);
 		border-radius: var(--radius-xs);
 		transform-origin: left center;
-		transition: transform 1s linear;
+		transition: transform var(--motion-tick) linear;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.track > i {
@@ -258,8 +258,8 @@
 	.transport {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		margin-top: 10px;
+		gap: var(--space-md);
+		margin-top: var(--space-md);
 	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css, which derives its box from
 	   var(--tap) — no literal here (XR-PH-01). */
@@ -276,14 +276,14 @@
 		color: var(--ink-dim);
 	}
 	.tools {
-		margin-top: 12px;
+		margin-top: var(--space-lg);
 		border-top: 1px solid var(--line);
-		padding-top: 4px;
+		padding-top: var(--space-2xs);
 	}
 	.tools-toggle {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: var(--space-sm);
 		width: 100%;
 		min-height: var(--tap);
 		background: none;
@@ -309,15 +309,15 @@
 		color: var(--ink-dim);
 	}
 	.tools-body {
-		padding-bottom: 4px;
+		padding-bottom: var(--space-2xs);
 	}
 	/* De-emphasised with the dim INK token, never with `opacity` — an ancestor opacity flattens the
 	   sentence and the card behind it into one buffer, so the measured contrast stops being what is
 	   painted. This is the same reason the sentence sits outside the snippet at all (XR-PH-03). */
 	.tools-note {
-		margin: 2px 0 0;
+		margin: var(--space-3xs) 0 0;
 		font-size: 0.7rem;
-		line-height: 1.45;
+		line-height: var(--lh-normal);
 		color: var(--ink-dim);
 	}
 </style>

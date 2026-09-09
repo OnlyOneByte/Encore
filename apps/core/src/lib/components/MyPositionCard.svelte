@@ -38,15 +38,15 @@
 	.mine {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		padding: 10px 14px;
-		margin: 0 0 10px;
+		gap: var(--space-lg);
+		padding: var(--space-md) var(--space-xl);
+		margin: 0 0 var(--space-md);
 		border-color: var(--line-tint);
 		background: linear-gradient(var(--card), var(--card-tint));
 	}
 	.big {
 		flex: 0 0 auto;
-		font-size: 1.5rem;
+		font-size: var(--ph-text-2xl);
 		font-weight: 800;
 		/* --accent2, NOT --accent. The mockup draws this numeral in the violet accent, but --accent
 		   exists to be a BACKGROUND carrying --on-accent: as text it measures 3.38:1 on --card, under

@@ -189,7 +189,7 @@
 	   survive — but the same edit under shadcn's copy-in replaces them with `class="max-h-[82dvh]"`,
 	   which has no rule to find. */
 	:global(.spike-drawer) {
-		z-index: 10;
+		z-index: var(--z-sheet);
 		background: var(--card2);
 		max-height: 82dvh;
 		/* FINDING (risk 1, the shape the snap points cost). vaul supplies NO positioning — it only ever
@@ -211,10 +211,10 @@
 		height: 4px;
 		border-radius: 3px;
 		background: var(--line-strong);
-		margin: 2px auto 10px;
+		margin: var(--space-3xs) auto var(--space-md);
 	}
 	.peek {
-		padding: 8px 14px calc(10px + env(safe-area-inset-bottom, 0px));
+		padding: var(--space-sm) var(--space-xl) calc(var(--space-md) + env(safe-area-inset-bottom, 0px));
 		cursor: grab;
 		touch-action: none;
 		flex: 0 0 auto;
@@ -228,10 +228,10 @@
 		display: flex;
 		align-items: center;
 		gap: 9px;
-		margin: 10px 0 2px;
+		margin: var(--space-md) 0 var(--space-3xs);
 	}
 	.time {
-		font-size: 0.68rem;
+		font-size: var(--ph-text-2xs);
 		color: var(--ink-dim);
 		font-variant-numeric: tabular-nums;
 		min-width: 30px;
@@ -253,7 +253,7 @@
 		background: var(--grad);
 		border-radius: var(--radius-xs);
 		transform-origin: left center;
-		transition: transform 1s linear;
+		transition: transform var(--motion-tick) linear;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.track > i {
@@ -263,7 +263,7 @@
 	.line {
 		display: flex;
 		align-items: center;
-		gap: 12px;
+		gap: var(--space-lg);
 	}
 	.txt {
 		min-width: 0;
@@ -281,7 +281,7 @@
 		color: var(--ink-dim);
 	}
 	.pos {
-		font-size: 0.8rem;
+		font-size: var(--ph-text-sm);
 		font-weight: 700;
 		color: var(--accent2);
 		margin-top: 3px;
@@ -289,15 +289,15 @@
 	.ctrls {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: var(--space-md);
 		flex: 0 0 auto;
 	}
 	.hint {
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 6px;
-		font-size: 0.68rem;
+		gap: var(--space-xs);
+		font-size: var(--ph-text-2xs);
 		letter-spacing: 0.08em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
@@ -305,7 +305,7 @@
 	}
 	.body {
 		overflow-y: auto;
-		padding: 4px 14px calc(20px + env(safe-area-inset-bottom, 0px));
+		padding: var(--space-2xs) var(--space-xl) calc(var(--space-4xl) + env(safe-area-inset-bottom, 0px));
 		-webkit-overflow-scrolling: touch;
 	}
 </style>

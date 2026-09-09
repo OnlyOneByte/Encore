@@ -90,7 +90,7 @@
 
 <style>
 	.qr {
-		padding: 16px;
+		padding: var(--space-2xl);
 		/* The QR needs a white quiet zone to scan reliably — this is scannability-critical, not a
 		   themeable surface. Legitimate white literal, kept per the token sweep. */
 		background: #fff;
@@ -133,10 +133,10 @@
 		position: absolute;
 		right: var(--tv-safe-x);
 		bottom: var(--tv-safe-y);
-		z-index: 7;
+		z-index: var(--z-tv-card);
 		display: flex;
 		align-items: center;
-		gap: 14px;
+		gap: var(--space-xl);
 		/*
 		 * NO PANEL. This was a bordered, blurred, near-opaque card — the last piece of furniture left on
 		 * the stage after the now-singing card became plain text, and side by side the mismatch was the
@@ -198,15 +198,15 @@
 		position: absolute;
 		right: var(--tv-safe-x);
 		bottom: var(--tv-safe-y);
-		z-index: 7;
+		z-index: var(--z-tv-card);
 		max-width: 30vw;
-		padding: 14px 20px;
+		padding: var(--space-xl) var(--space-4xl);
 	}
 	.badqr-t {
 		font-size: var(--tv-name);
 		font-weight: 800;
 		color: var(--danger-ink);
-		margin-bottom: 8px;
+		margin-bottom: var(--space-sm);
 	}
 	.badqr-b {
 		font-size: var(--tv-body);
@@ -219,7 +219,7 @@
 	}
 	.badqr-addr {
 		display: block;
-		margin: 2px 0;
+		margin: var(--space-3xs) 0;
 		color: var(--danger-ink);
 		/* A long advertised address still has to fit the card rather than push it wide. */
 		overflow-wrap: anywhere;
@@ -227,6 +227,6 @@
 	.badqr-fix {
 		font-size: var(--tv-label);
 		color: var(--ink-dim);
-		margin-top: 10px;
+		margin-top: var(--space-md);
 	}
 </style>
