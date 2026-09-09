@@ -376,6 +376,45 @@
 	--motion-tick: 1s;
 
 	/*
+	 * ── BREAKPOINTS (issue #852) ──────────────────────────────────────────────────────────────────
+	 *
+	 * The sixth zero-token dimension #829 named and deliberately left for this issue, because a
+	 * breakpoint set has no meaning without the parity test that pins the `@media` widths to it, and
+	 * minting the token alone would put a second source of truth in front of that test (app.css's own
+	 * "what this deliberately does not do" note said exactly this). So the declaration and its guard
+	 * (`design-system.test.ts`, "every @media width literal is a declared breakpoint") land together.
+	 *
+	 * MEMBERSHIP, NOT EQUALITY — the owner's #831 Q1-C ruling. Two DIFFERENT lists are in play and
+	 * conflating them was the original defect: 390 / 820 / 1440 px are widths a reviewer EYEBALLS
+	 * (`docs/loop/REVIEW-PASSES.md:223`), while these are the widths the CSS actually SWITCHES at. The
+	 * reviewer list is left exactly as it is; the guard asserts only that every `@media` width literal
+	 * in source is a MEMBER of this set. The seven queries collapse to four switch widths:
+	 *   --bp-xs  380px  — SongRow single-column, settings single-column
+	 *   --bp-sm  520px  — stats compact
+	 *   --bp-md  768px  — --max-w step 1, the phone/tablet shell, the join two-column
+	 *   --bp-lg  1200px — --max-w step 2, the desktop wide grid
+	 * The two @media (min-width) rules that switch --max-w (768/1200) stay literals in their preludes:
+	 * a media prelude cannot read a custom property (the query is evaluated before the cascade), so
+	 * this is a declared SET the guard compares against, not a set of values the preludes interpolate.
+	 *
+	 * 320px IS A MEMBER, per XR-VER-21's Source note and WCAG 2.2 SC 1.4.10 Reflow, which requires the
+	 * layout to work down to a 320px CSS width. No `@media` branches at 320 today, so it is a declared
+	 * floor the guard tolerates as an unused-but-legal member rather than a width some rule must use —
+	 * recording it here is the "320px is a member, or one line says why not" half of the acceptance.
+	 *
+	 * NO `@theme` BRIDGE. Tailwind v4's breakpoint namespace is `--breakpoint-*`, and registering one
+	 * would mint `sm:` / `md:` responsive variants at these widths — a utility surface this app does
+	 * not use (it writes `@media` by hand) and #853's Preflight-off, one-source-directory posture is
+	 * deliberately minimal. Like the z-index ladder above, these live in `:root` only; the guard reads
+	 * them straight from here. A later issue that wants Tailwind responsive variants can bridge them.
+	 */
+	--bp-320: 320px;
+	--bp-xs: 380px;
+	--bp-sm: 520px;
+	--bp-md: 768px;
+	--bp-lg: 1200px;
+
+	/*
 	 * ── PAINT ORDER ───────────────────────────────────────────────────────────────────────────────
 	 *
 	 * TWO LADDERS, because there are two stacking worlds and the same integer meant different things
