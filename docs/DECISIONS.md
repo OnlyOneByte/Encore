@@ -159,6 +159,180 @@ Consequences that shape any change here:
 
 ---
 
+## Ratified: the UI redesign — direction, palette, TV states (decided 2026-09-09)
+
+**Nothing here is implemented yet.** These are owner rulings; the requirements they imply are in
+[`ux/`](ux/README.md) (109 XR rows), and the work is tracked in GitHub issues. A pass proposing an
+alternative to anything in this section is re-opening a ratified decision.
+
+### Phone — direction A + B
+
+The room's queue **is** the home screen. Now-playing is a hero, and a guest's own position is
+stated **in words** ("3rd — you're up after Sam, roughly 11 minutes") rather than as a bare
+number. Browsing is a deliberate push behind one primary button. From B: on the browse screen
+**search is bottom-anchored** in the thumb zone and results stack upward — which **deletes** the
+four concurrent filter mechanisms (3 readiness chips + artist rail + genre rail + re-announcing
+group headers) rather than tidying them.
+
+Rejected, recorded so they are not re-proposed: **C** (three cards per screen — ceiling hit too
+fast) and **D** (queue drawn as people-in-rotation lanes — better at explaining round-robin, but
+degrades past ~8 guests and exposes every guest's picks to the room).
+
+**Drag reorder is additive, never a replacement.** SC 2.5.7 Dragging Movements (AA) requires a
+single-pointer alternative, so the up/down buttons stay. Because `move`'s `toSeq` is an index into
+*the singer's own* QUEUED picks, a guest's songs are **not adjacent** in a flat list — so drag must
+enter a **mode** that dims other guests' rows and exposes only the guest's own legal slots. Do not
+reintroduce the `cursor:grab` that was removed for appearing on another guest's song as the sole
+affordance.
+
+**Singing controls are LIVE controls for the currently-playing song**, on the now-playing hero —
+not setup for an upcoming turn. That is what makes *who may touch them mid-song* a live authority
+question rather than a hypothetical one.
+
+### TV — split-panel attract, full roster lobby, full-screen takeovers
+
+The playback join affordance folds into the **lower-third** (singer left, join right, one band,
+stroked). That made lower-third reuse an **axis** for every other state: one chrome pattern means
+nothing shifts when playback starts, and there is one thing to test rather than four.
+
+- **Attract** is a **split panel** — an 820 px left column carrying a fixed `Karaoke` label above a
+  rotating phrase, and a 600 px flat filled right panel carrying QR, URL and the room code at
+  76 px. Nothing floats, nothing is centred.
+- **Lobby** shows the **entire roster, no "+N more"**. Measured: 10 guests still fit two rows;
+  headroom is ~12 before chip size must step down.
+- **Transient states are full-screen takeovers**, one colour family each so they cannot be
+  confused: **accent** for Next up (singer name the hero at 132 px), **warn** for Still cooking
+  (bounded 3-step progress), **danger** for Skipping (names what is going *and* what replaces it).
+  **The join block survives every takeover**, dimmed — a song change is exactly when a new guest
+  looks up, so blanking the code then would lose the join path when it is most wanted.
+
+**The attract phrase cycles as a shuffled bag** — a permutation reseeded per room, advanced every
+8 s, reshuffled when exhausted, so no phrase repeats until all seven have shown. The `Karaoke`
+label never rotates; it is the only thing telling a stranger what they are looking at. The box is a
+**fixed two lines with content centred**, because one- and two-line phrases otherwise differ by
+87 px and the column jumps on every tick. **Under `prefers-reduced-motion` the cycle stops** and
+one phrase is held for the session — which is exactly Minecraft's splash behaviour, so the
+accessible fallback is the reference rather than a lesser version of it. Measured admission rule:
+**≤ 24 characters** (84 px/900 in 820 px; a 30-character control overflows to three lines).
+
+**The TV cannot be themed to one player.** The stage is shared, so it keeps neutral chrome and
+spends a player's colour only where it *identifies* someone — singer dot, roster chip, now-singing
+line. This is the one surface where "your colour is your accent" does not apply.
+
+### TV type floor — and it can land independently
+
+```css
+:root { font-size: calc(max(2.7vh, 20px) * var(--ui-scale)); }
+```
+
+Whole ladder in `rem` off that, so the floor lives in exactly one declaration. `--ui-scale` is a
+persisted preference, 0.8–1.6.
+
+`max()` of a `vh` and a `px` term because **you cannot detect which case you are in**, so you
+satisfy both. Two corrections to earlier analysis, recorded so the wrong model is not inherited:
+
+- **`vh` does not track resolution.** A TV browser presents a fixed CSS viewport regardless of
+  panel pixels (Samsung: 1920×1080 for UHD groups, 1280×720 for FHD). `vh` is panel-proportional
+  and very nearly **angle-preserving** — one CSS px on a full-panel 1080-tall viewport subtends
+  ~0.70′ at 43″@8 ft, 55″@10 ft and 65″@12 ft alike.
+- The real defect is that **coefficients are ~1.8× too small** (0.70′ is ~0.55× CSS's nominal 1.28′
+  reference pixel, so body text needs 16 × 1.8 ≈ 29 px ≈ 2.7vh — independently reproducing Google's
+  and Apple's 24 px TV starting point), and that **the viewport is not the panel when windowed**.
+
+Also: `env(safe-area-inset-*)` is defined for **non-rectangular** displays, so a TV correctly
+reports 0 and cannot help. A hardcoded percentage is the only option.
+
+### Component library — shadcn-svelte + Tailwind
+
+Chosen because **copy-in puts component CSS in `src/`**, where the source-scan design guards can
+still see and edit it. A headless dependency moves that CSS into `node_modules`, where a 38 px
+button, a 14 px input, a `vh` sheet cap and a `content: '✕'` all become **invisible rather than
+illegal**. Scope reality: a library replaces **~1,060 of ~4,950** hand-written CSS lines (21%); the
+~2,404-line TV tree is out of scope; the single clear win is `QueueSheet`.
+
+**Tailwind restriction:** registering a colour in `@theme` mints the *whole* utility family, with
+no per-family opt-out. Keep `--accent`, `--grad` and the player hues in `:root` and **never
+register them**; use `@theme` for non-colour tokens only.
+
+### Palette — Chromatic, 48 stops, player colour = UI accent
+
+Each stop ships four values: `fill` (identity and accent), `onFill` (the only ink permitted on it),
+`ink` (accent as text on a card), `accent2` (+42° hue, so the brand gradient is personal too).
+Stops sit at equal cumulative OKLab distance with per-hue in-gamut chroma found by bisection, and
+lightness following each hue's gamut cusp — which is what restores true yellow and true blue that
+the rejected Uniform variant destroyed, and separates neighbours 1.6× better.
+
+Consequences that must not be lost: `onFill` is **36 dark / 12 white**, per-stop and not one rule.
+`ink` **differs from `fill` for 13 of 48**, so `--accent-ink` stays a required distinct token.
+`--accent-strong` **loses its job** (with per-stop `onFill`, the fill *is* the strong value).
+`--on-accent` **stops being a constant** and becomes per-stop, so the adjacency discipline matters
+*more* — there are now 48 pairs. `--grad`'s decoration-only ban **stands** but becomes a per-stop
+question. The picker becomes a **discrete 48-swatch grid**, because a colour *between* two stops
+has no validated ink and no measured contrast. The colour **name** is the non-colour carrier of
+identity for a colour-blind guest, so it stays visible in the picker and the roster.
+
+**Status hues stay fixed and never follow the player.** 20 of 48 stops sit within 20° of a status
+hue and **the owner accepted this** — do not reserve arcs, do not remove stops. Record the cost
+accurately, because rendering it inverted the intuition: the **error survives** a same-hue accent
+(its tint, border and pill carry it). What degrades is the **status pill's scannability**, worst for
+**green**, because "Ready" is the most common badge in the app. The harm is not a false alarm — both
+meanings are positive — it is that the chip stops being scannable, which is the only job it has.
+
+### ⚠ Blocking correction found while specifying: six stops fail AA
+
+The palette generator measured against `bg #060a18 / card #131a2e`. **`app.css` paints
+`--bg: #0b0b12` and `--card: #1a1a28`.** Re-measured on the real tokens, six stops miss the 4.5
+floor as accent-as-ink:
+
+| Stop | vs real `--card` | vs mockup surface |
+|---|---|---|
+| Cobalt | **4.473** | 4.501 |
+| Denim | **4.477** | 4.505 |
+| Rose | **4.477** | 4.504 |
+| Orchid | **4.481** | 4.509 |
+| Magenta | **4.483** | 4.510 |
+| Fuchsia | **4.490** | 4.517 |
+
+The reported worst case was 4.50 — a margin of ~0.00 — so any surface drift at all was going to
+cross it. **This is the same defect class as the `colors.test.ts` landmine**: a contrast measurement
+bound to a duplicated surface value rather than to the token the app paints. The palette direction
+is unaffected; the *numbers* must be regenerated with the app's real surfaces as the input, and the
+generator must read them rather than restate them.
+
+### ⚠ Correction: the rendered-DOM prerequisite is two rungs, not one
+
+Aliasing `$app`/`$env` in the preload was recorded as converting measured tap geometry, clipping,
+computed contrast and safe-area violation to checkable. **The measurement half is false.**
+happy-dom 20.14.0's `getBoundingClientRect()` is a stub — `Element.js:795`, `// TODO: Not full
+implementation`, `return new DOMRect()`, all zeros — and it has **no layout engine**.
+
+So: **rung M** (mount — cascade, computed declared values, effects; unblocked by the aliasing) and
+**rung L** (layout — real headless Chromium, already in-repo at `apps/core/e2e/cdp.mjs`). The four
+measurement claims land on **rung L**. A plan that stops at rung M has made none of them checkable.
+
+### Superseded: four "not decided" items were already decided
+
+The design handoff listed these as open. They are not, and the mechanism in each case already
+ships:
+
+- **A host concept exists**, centralised in `server/auth/capabilities.ts` as `can(actor, cap)`,
+  carrying the owner's dated ruling: *"Today every joined singer is a host. That is Angelo's call
+  (2026-09-04) … there is no operator to be, and inventing an admin password for a party is worse
+  than the exposure."* Gating it later is an edit **there and nowhere else**.
+- **Cross-singer reorder already ships** — `move-global` ("a HOST reorder that can cross singers")
+  and `unpin`, with a durable `pinnedSeq` column and `rotation.ts:placePins`, gated on
+  `queue:reorder-any`. The within-singer rule still holds for the `move` op, but the *product* is no
+  longer within-singer only.
+- **A rate limit exists** — `MAX_CONCURRENT_COOKS_PER_SINGER = 3`, refused as `over-limit` and
+  answered HTTP 429 with a phone-showable reason. The uncapped axis is **queue depth per singer**.
+- **A lost optimistic race is already disclosed** — `hub.ts` emits `op:reject`, the queue store
+  rolls back to the pre-op snapshot, and it surfaces as a `role="alert"` toast.
+
+What remains open in all four is **policy content, not mechanism** — much cheaper than the handoff
+assumed. Those are the named-decision rows in [`ux/05-concurrency.md`](ux/05-concurrency.md).
+
+---
+
 ## Deferred — do NOT pick these up
 
 Parked deliberately. These return only if the owner says so.
