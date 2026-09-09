@@ -76,7 +76,12 @@ import type { LyricsTiming } from './lyrics';
 // Both are authoritative SERVER state broadcast to clients (like presence), never phone-local
 // preferences two devices could disagree about.
 
-/** Deployment-wide separator and cook policy. Owned by the operator. */
+/**
+ * Deployment-wide separator and cook policy. Writable by ANY joined singer via `PUT /api/settings`
+ * (`settings:write-global`, which `can()` grants to every joined singer) — NOT operator-owned. This is
+ * the owner's confirmed ruling (Q3, 2026-09-09, issue #828): deployment-scoped settings stay open,
+ * accepted. Published policy: docs/ux/05-concurrency.md § "Owner rulings".
+ */
 export interface GlobalSettings {
 	/** Engine+model every new cook uses. Must be a `liveSelectable` pairing. */
 	defaultEngine: SeparatorEngineId;

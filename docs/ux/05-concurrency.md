@@ -40,6 +40,38 @@ lives in a source comment, which is the gap `XR-CON-06` addresses.
 
 ---
 
+## Owner rulings — CONFIRMED 2026-09-09 (issue #828)
+
+This is the **published, non-source statement of record** for the five authority questions. It exists
+because a ruling in a source comment is not discoverable by the person it constrains (`XR-CON-06`).
+The owner (Angelo) ruled all five on 2026-09-09; every one keeps the blanket 2026-09-04 policy —
+**any joined singer is a host**. Each row names the `Capability` union member (`capabilities.ts`) that
+enforces it, so this document and `can()` disagree detectably if either drifts.
+
+| # | Question | Ruling | Actor class | Capability / enforcement | Owner / date |
+|---|---|---|---|---|---|
+| Q1 | Skip a currently-playing song | **A — any joined singer** (status quo; no change to who can skip) | Any joined singer | `player:control` — `apps/core/server.ts:379` gates the `player:command {cmd:'skip'}` frame | Angelo, 2026-09-09 |
+| Q2 | Live singing controls (guide level, pitch ±, range viz on the now-playing hero) | **A — any joined singer** (ratify; status quo by inheritance, no new capability) | Any joined singer | `player:control` — the same gate; `handlePlayerCommand`'s `key` / `guide` arms | Angelo, 2026-09-09 |
+| Q3 | Deployment-scoped settings (`PUT /api/settings`) | **A — ratify open, accepted** (no split, no gate; consistent with the 2026-09-04 ruling; and fix the stale source comment to match — `packages/shared/src/settings.ts`) | Any joined singer | `settings:write-global` — `routes/api/settings/+server.ts:24`; room-scoped stays `settings:write-room` | Angelo, 2026-09-09 |
+| Q4 | Cross-singer reorder | **A — keep open to everyone** (status quo). #828 rules only the policy: `queue:reorder-any` stays open to any joined singer. Pinning-removal (so `queue:reorder-any` effectively becomes "anyone") is a separate ruling attributed to **#856 (Q1-B, 2026-09-09T02:58Z)**, not #828 | Any joined singer | `queue:reorder-any` — `hub.ts` `move` / `move-global` / `unpin` arms. Pinning-removal + last-write-wins reorder mechanics are #856; this doc + `capabilities.ts` own only the policy side | Angelo, 2026-09-09 |
+| Q5 | Per-singer queue-depth limit | **A — no cap** (status quo). `validateCommand`'s `add` arm stays uncapped | Any joined singer | Not a capability. The unrelated cook cap `MAX_CONCURRENT_COOKS_PER_SINGER = 3` is kept | Angelo, 2026-09-09 |
+
+**Every `Capability` union member is covered above.** `queue:remove-any` (removing someone else's
+entry) is not one of the five #828 questions and is unchanged: it stays open to any joined singer.
+
+### Reorder contention: last-write-wins is not a refusal
+
+Cross-singer reorder contention resolves **last-write-wins, no toast** (conductor-relayed owner ruling
+2026-09-09). When two guests reorder at once, the later write lands and the final order reflects the
+last writer. A reorder that loses the race is **superseded, not rejected**: there is no `op:reject` for
+reorder contention, so nothing is refused and nothing is announced. Because `XR-CON-13` governs
+**refusals** of a guest's action, it does not apply here — a superseded reorder is not a refusal, so it
+is not a carve-out from that rule and nothing is exempted from it. **Every actual `op:reject`
+disclosure is unchanged** — an `add` over a limit, a `cook` over `MAX_CONCURRENT_COOKS_PER_SINGER`, and
+any other refusal a guest caused are still surfaced on that guest's phone in the room's words.
+
+---
+
 ## Group A — Named decisions: the five open questions
 
 ### XR-CON-01 — Skip authority is a stated policy
@@ -372,10 +404,12 @@ changes its severity independently of its technical impact.
 
 ---
 
-## (b) OPEN QUESTIONS FOR THE OWNER
+## (b) OPEN QUESTIONS FOR THE OWNER — RESOLVED 2026-09-09 (issue #828)
 
-Five questions. Each option is independently implementable as written. Costs are stated in terms of
-what the option spends, not what it risks.
+**All five are now ruled.** See § "Owner rulings — CONFIRMED 2026-09-09" above for the statement of
+record; the outcome was **the status-quo option (A) for every question** (Q1-A, Q2-A, Q3-A, Q4-A
+keep-open with pinning removed, Q5-A). The options below are retained as the decision context that
+produced those rulings — they are no longer open.
 
 ### Q1 — Who may skip the song that is playing?
 
