@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	import { SINGER_COLORS } from '@encore/shared';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import { goto } from '$app/navigation';
@@ -69,9 +70,11 @@
 		<div class="err" role="alert">{error}</div>
 	{/if}
 
-	<button class="btn-accent submit" class:disabled={!canJoin} disabled={!canJoin} onclick={join}>
-		{#if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
-	</button>
+	<div class="submit-slot">
+		<Button size="blockLg" shape="lg" disabled={!canJoin} onclick={join}>
+			{#if submitting}Joining…{:else}Start singing <Icon name="arrow-right" />{/if}
+		</Button>
+	</div>
 </main>
 
 <style>
@@ -145,23 +148,15 @@
 		flex-direction: column;
 		gap: var(--space-4xl);
 	}
-	.submit {
-		/* On a phone the button sits at the bottom of the viewport, where a thumb already is. */
+	/*
+	 * PAGE LAYOUT ONLY (#913 S1). Padding, type, radius, the flex centring and the disabled opacity
+	 * moved into <Button size="blockLg" shape="lg">. `margin-top: auto` is the one thing that is
+	 * about this page rather than this button — it pushes the action to the bottom of the viewport,
+	 * where a thumb already is — so it stays here, on a wrapper.
+	 */
+	.submit-slot {
 		margin-top: auto;
-		/* --radius (18px), the card/sheet radius, for this full-width primary button; the inline 16px it
-		   replaced matched neither token. Padding + type keep it well over the 44px tap target. */
-		padding: var(--space-2xl);
-		font-size: var(--ph-text-lg);
-		border-radius: var(--radius);
-		/* Centres the trailing mark with the label instead of letting it sit on the text baseline. */
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		gap: var(--space-sm);
-	}
-	/* Was an inline opacity bound to canJoin; the disabled attribute already carries the state. */
-	.submit.disabled {
-		opacity: 0.5;
+		display: flex;
 	}
 	@media (min-width: 768px) {
 		/*
@@ -179,7 +174,7 @@
 			flex: 0 0 auto;
 			padding-bottom: 0;
 		}
-		.submit {
+		.submit-slot {
 			/* Pinned to the viewport bottom, the button is stranded far below the form on a tall desktop
 			   window, so it follows the fields it submits instead. */
 			margin-top: var(--space-sm);

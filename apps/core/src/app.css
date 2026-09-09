@@ -876,17 +876,13 @@ body {
 	border: 1px solid var(--line);
 	border-radius: var(--radius-sm);
 }
-.btn-accent {
-	border: 0;
-	border-radius: 10px;
-	background: var(--accent);
-	color: var(--on-accent);
-	font-weight: 700;
-	cursor: pointer;
-}
-.btn-accent:active {
-	transform: scale(0.96);
-}
+/*
+ * `.btn-accent` was DELETED by #913 S1. Its two consumers — settings' Save and join's Start
+ * singing — are now <Button variant="accent">, whose `accent` variant reproduces it: the fill and
+ * its only legal ink (#840's per-stop pair), weight 700, and the same bare `active:scale(0.96)`
+ * with no transition, which is what keeps the migration invisible. The hardcoded 10px it carried is
+ * now named `--radius-btn` through `shape="btn"`.
+ */
 
 /*
  * A ROW in one of the phone's three lists (a search result, a rotation entry, a cook in progress).

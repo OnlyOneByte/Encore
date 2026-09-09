@@ -255,8 +255,34 @@ reports 0 and cannot help. A hardcoded percentage is the only option.
 Chosen because **copy-in puts component CSS in `src/`**, where the source-scan design guards can
 still see and edit it. A headless dependency moves that CSS into `node_modules`, where a 38 px
 button, a 14 px input, a `vh` sheet cap and a `content: '✕'` all become **invisible rather than
-illegal**. Scope reality: a library replaces **~1,060 of ~4,950** hand-written CSS lines (21%); the
-~2,404-line TV tree is out of scope; the single clear win is `QueueSheet`.
+illegal**. **Scope — REVISED 2026-09-09 (#913).** This section previously read *"a library replaces ~1,060 of
+~4,950 hand-written CSS lines (21%); the ~2,404-line TV tree is out of scope; the single clear win is
+`QueueSheet`."* Both halves of that justification are now dead: **#903 deleted `QueueSheet`**, and the
+copy-in rationale had already been retracted in place for the drawer (see the correction directly
+below). That left a toolchain installed, fenced and guarded since #853 and used by **nothing**.
+
+The owner's ruling is to **adopt shadcn-svelte for the primitive layer across the app** — 42 buttons,
+21 inputs, 16 selects, 11 range inputs and the alert/disclosure surfaces, sliced S0–S5 in #913. What
+stays hand-rolled is not "not yet" but **not ever, unless something changes**: the whole TV tree (a
+ten-foot surface with its own type ladder has no business borrowing phone primitives), `SongRow`,
+`RangeBar`, and the composites `NowPlayingHero` / `ProcessingCard` / `QueueRow` — whose *primitives*
+migrate while the components themselves remain.
+
+Two constraints discovered while building S1, both structural rather than stylistic:
+
+- **A copied-in component cannot be styled from its call site.** `app.css` sets Tailwind to
+  `source(none)` with a single `@source '../src/lib/components/ui/**/*.svelte'`, so a utility written in
+  a page is scanned by nothing and emitted nowhere — verified by building with a `w-full` at a call site
+  and finding no `.w-full` rule in any of the 16 built CSS assets. Svelte's scoped CSS cannot reach in
+  either, because a class a page passes down carries no scoping attribute for that page's `<style>`.
+  **Both roads are closed, so every call-site difference becomes a named variant**, and page-level
+  layout stays on a wrapper element in the page. That is a stricter discipline than shadcn's usual
+  utility-soup-at-the-call-site, and it is the better one.
+- **Colour cannot come from `@theme`.** Registering a colour mints the whole utility family, so
+  `--color-accent` would hand out `text-accent` beside `bg-accent`, and `--accent` measures 3.10:1 as
+  ink on `--card2` — below AA, which is why `--accent-ink` exists. Colour therefore arrives as arbitrary
+  values over `:root` tokens (`bg-[var(--accent)]`), which need no registration and cannot mint an
+  illegal sibling. `lib/tailwind-toolchain.test.ts` reds if a colour is ever registered.
 
 **Correction — the rationale above does NOT hold for the drawer, which is the one component this
 decision names as the clear win.** Measured in the #827 spike, on the pinned

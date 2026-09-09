@@ -15,6 +15,7 @@
 	stale page can only change the field it sends, never clobber a newer choice it never touched.
 -->
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	import { untrack } from 'svelte';
 	import { goto, replaceState } from '$app/navigation';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -503,9 +504,11 @@
 						The one control on this page that needs an explicit commit. Every party and server
 						setting writes the moment it changes; a name is typed, so it saves on purpose.
 					-->
-						<button class="btn-accent save" disabled={!canSaveProfile} onclick={saveProfile}>
-							{#if saving}Saving…{:else}Save{/if}
-						</button>
+						<div class="save-slot">
+							<Button size="block" disabled={!canSaveProfile} onclick={saveProfile}>
+								{#if saving}Saving…{:else}Save{/if}
+							</Button>
+						</div>
 					</div>
 				</div>
 
@@ -902,7 +905,10 @@
 							/>
 							Even out loud songs
 						</label>
-						<p class="hint">Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet songs are left alone.</p>
+						<p class="hint">
+							Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet
+							songs are left alone.
+						</p>
 					</div>
 				</div>
 
@@ -1444,15 +1450,15 @@
 		cursor: pointer;
 	}
 	/* Save IS accent, because it is the one thing on this page that does not happen without a tap. */
-	.save {
-		width: 100%;
-		min-height: var(--tap);
+	/*
+	 * PAGE LAYOUT ONLY (#913 S1). Width, min-height, padding, type and the disabled opacity moved
+	 * into <Button size="block">. What is left is where the button sits in this column, which is this
+	 * page's business and not the component's. It lives on a wrapper because Tailwind is scoped to
+	 * `@source ui/**` — a utility written here would be minted by nothing — and Svelte's scoped CSS
+	 * cannot reach an element inside a child component either.
+	 */
+	.save-slot {
 		margin-top: var(--space-xl);
-		padding: 13px;
-		font-size: var(--ph-text-base);
-	}
-	.save:disabled {
-		opacity: 0.45;
 	}
 
 	/* ── leaving ────────────────────────────────────────────────────────── */
