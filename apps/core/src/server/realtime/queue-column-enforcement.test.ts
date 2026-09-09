@@ -45,10 +45,6 @@ function persist(
 		rotationSeq: 0,
 		addedAt: 1,
 		roomId: 'r1',
-		// The flush always binds this key (persistence.ts:38 `pinnedSeq: e.pinnedSeq ?? null`), so an
-		// omitted pin reaches the column as an explicit NULL rather than as `undefined`. Setting it in
-		// `base` is what lets the pinned_seq arm below override it with one value per row.
-		pinnedSeq: null,
 		...over
 	};
 	try {
@@ -184,79 +180,4 @@ test('#706: hub.ts prose names every field the add seam server-owns (rotationSeq
 test('#706: hub.ts no longer calls the addedAt reject the last line of defence', () => {
 	const src = readFileSync(join(import.meta.dir, 'hub.ts'), 'utf8');
 	expect(src).not.toMatch(/ONLY thing keeping[\s\S]{0,140}addedAt out of the queue/);
-});
-
-// #738 — pinned_seq is the THIRD field to run through this file's loud/silent taxonomy, and the first
-// one the production rationale sorted wrongly. `#724`'s guard is correct and stays; its comment put
-// NaN/Infinity/a float in the LOUD "crashes the flush" class, and all three are measurably in the
-// SILENT "persists past the column" class. The discriminator at the flush is BINDABILITY, not
-// number-ness and not integer-ness: `pinned_seq` is `integer` and NULLABLE with no CHECK
-// (schema.ts:175), so NaN binding to NULL violates nothing — which is exactly why it does not throw
-// where a NULL `added_at`/`status` does. `pinned_seq` had no row in the table above, which is how the
-// belief re-entered the file immediately below the clauses #317/#395/#706 were filed to correct.
-//
-// ARM 1 (this test) is the ANCHOR: green on base and after. It is what stops the belief returning a
-// fourth time, by measuring the split instead of describing it.
-test('#738: pinned_seq crashes the flush ONLY on an unbindable shape — NaN/Infinity/a float persist silently', () => {
-	// THE CRASH CLASS — bun:sqlite refuses the bind itself. Nothing to do with number-ness.
-	expect(persist(seededDb(), { pinnedSeq: {} }).threw).toBe(true);
-	expect(persist(seededDb(), { pinnedSeq: [] }).threw).toBe(true);
-	expect(persist(seededDb(), { pinnedSeq: [1] }).threw).toBe(true);
-
-	// THE SILENT CLASS — the belief the production comment got wrong. All three bind, so the row
-	// persists and the column says nothing. Assert the STORED value, not merely the absence of a throw:
-	// each lands differently, and which one it is decides what placePins does with it on the next boot.
-	const nan = persist(seededDb(), { pinnedSeq: NaN });
-	expect(nan.threw).toBe(false);
-	expect(nan.row?.pinnedSeq).toBeNull(); // NaN binds to NULL, and the column is NULLABLE.
-	const inf = persist(seededDb(), { pinnedSeq: Infinity });
-	expect(inf.threw).toBe(false);
-	expect(inf.row?.pinnedSeq).toBe(Infinity); // held as a REAL in an `integer` column.
-	const float = persist(seededDb(), { pinnedSeq: 1.5 });
-	expect(float.threw).toBe(false);
-	expect(float.row?.pinnedSeq).toBe(1.5); // held as a REAL, NOT truncated by the column.
-
-	// A numeric STRING is coerced in by SQLite integer affinity — persists as a number, no throw.
-	const str = persist(seededDb(), { pinnedSeq: '0' });
-	expect(str.threw).toBe(false);
-	expect(str.row?.pinnedSeq).toBe(0);
-
-	// And the two honest cases, so the arm cannot pass by every value behaving identically.
-	expect(persist(seededDb(), { pinnedSeq: 3 }).row?.pinnedSeq).toBe(3);
-	expect(persist(seededDb(), {}).row?.pinnedSeq).toBeNull();
-});
-
-// #738 ARM 2 — the source scan, RED ON BASE. The defect is prose, so this is the arm that pins the
-// production change. Same shape as the arms above (#317 at :96-113, #395 at :115-136, #706 at :180-183):
-// a negative assertion banning the false framing, paired with positive ones requiring the corrected
-// account, so deleting the comment cannot pass vacuously. Scoped to the pinnedSeq clause itself rather
-// than the whole file, because "NaN" and "crash" both occur legitimately elsewhere in hub.ts.
-test('#738: hub.ts does not sort NaN/Infinity/a float into the pinnedSeq crash class', () => {
-	const src = readFileSync(join(import.meta.dir, 'hub.ts'), 'utf8');
-
-	// Extract the add-arm pinnedSeq rationale: its opening anchor through its own guard line.
-	const start = src.indexOf('pinnedSeq (#638) is the LAST client-minted field');
-	const end = src.indexOf("return 'invalid pinnedSeq'");
-	// SENTINEL: both anchors present and in order, so the block can never be silently empty.
-	expect(start).toBeGreaterThan(-1);
-	expect(end).toBeGreaterThan(start);
-	const clause = src.slice(start, end);
-	expect(clause.length).toBeGreaterThan(400);
-
-	// NEGATIVE (matches base): NaN placed in the refused/crash class. On base the clause reads
-	// "A non-number binding (object/array/NaN/Infinity/float) is refused by bun:sqlite ... takes the
-	// core process down", so a crash word follows NaN within a sentence.
-	expect(clause).not.toMatch(/NaN[\s\S]{0,100}(?:refused|crash|process down)/);
-	// NEGATIVE: the same false framing stated as a non-number rule rather than a bindability one.
-	expect(clause).not.toMatch(/non-number binding/);
-
-	// AFFIRMATIVE: the measured account must be present, not merely the false one absent.
-	expect(clause).toMatch(/BINDABILITY/);
-	expect(clause).toMatch(/persist SILENTLY/);
-	expect(clause).toMatch(/NULLABLE with no CHECK/);
-	expect(clause).toMatch(/NaN lands as NULL/); // the NaN → NULL measurement
-	expect(clause).toMatch(/REAL in the integer/); // the Infinity/float → REAL measurement
-	// AFFIRMATIVE: the ruling that keeps the guard broad, so a later reader cannot use this clause to
-	// justify narrowing it to only the crashing shapes (which the issue explicitly rules out).
-	expect(clause).toMatch(/must not be narrowed/);
 });

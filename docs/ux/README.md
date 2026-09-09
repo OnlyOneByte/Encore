@@ -54,8 +54,9 @@ stops at rung M has made none of them checkable. See `XR-VER-01`.
 **3. Four concurrency premises were stale.** A host **mechanism** already exists and is
 centralised (`server/auth/capabilities.ts`, `can(actor, cap)`), carrying the owner's dated ruling
 that "today every joined singer is a host". A **cross-singer host reorder already ships**
-(`move-global`, `pinnedSeq`, `rotation.ts:placePins`, gated on `queue:reorder-any`) — so the
-within-singer rule holds for the `move` op but not for the product. **One rate limit exists**
+(a direct rewrite of the stored ordered list — no durable pin; pinning was deleted in #856 step 3
+— still gated on `queue:reorder-any`, with the arrow/drag "move to index" wiring landing in #856
+step 4) — so the within-singer rule holds for the `move` op but not for the product. **One rate limit exists**
 (`MAX_CONCURRENT_COOKS_PER_SINGER = 3`, answered HTTP 429); the uncapped axis is queue depth. And
 a **lost optimistic race is already disclosed** (`hub.ts` → `op:reject` → rollback → `role="alert"`
 toast). What is open in all four cases is **policy content, not mechanism** — which is much

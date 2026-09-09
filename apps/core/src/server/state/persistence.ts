@@ -32,10 +32,6 @@ export function sqlitePersistence(db: DB, roomId: string): StatePersistence {
 								status: e.status,
 								rotationSeq: e.rotationSeq,
 								addedAt: e.addedAt,
-								// A durable host pin (issue #638). `?? null` because the column is nullable and the
-								// domain field optional — an unpinned entry stores NULL, read back as "follows policy".
-								// Persisting it is what makes a pin survive a restart.
-								pinnedSeq: e.pinnedSeq ?? null,
 								// The room this snapshot belongs to (#656). The in-memory entries carry no room —
 								// the store holds one room's queue — so it is stamped from the sink's bound room here.
 								roomId

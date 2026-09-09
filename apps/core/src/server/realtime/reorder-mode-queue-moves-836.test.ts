@@ -6,17 +6,13 @@
 // the invalidating states are produced by `assignSeqs` re-deriving every `rotationSeq` on every
 // mutation — the behaviour under test IS the interaction between the ops and the ordering layer, so
 // hand-writing the "after" state would pin my belief about it rather than the thing itself.
-//
-// It also carries the measurement that decides XR-PH-17's pin clause: a `move` on a pinned own pick,
-// through the real reducer, does not move it.
 import { test, expect } from 'bun:test';
 import { handleQueueCommand, type HubDeps } from './hub';
 import { reconcileOnReady } from './player';
 import { AuthoritativeState } from '../state/store';
-import { applyAndReseq } from '@encore/shared';
 import { type ServerEvent, type Media, type QueueEntry, type ClientCommand } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
-import { modeInvalidation, ownSlots, ownPicksPinned, gripVisible } from '../../lib/reorder-mode';
+import { modeInvalidation, ownSlots, gripVisible } from '../../lib/reorder-mode';
 
 const media = (id: string): Media => ({
 	id,
@@ -108,7 +104,7 @@ test('XR-PH-19 · my second pick removed elsewhere closes the mode with a reason
 	);
 	// And the grip is gone for the next render, so the mode cannot be re-entered into the same lie.
 	expect(
-		gripVisible({ mine: true, ownQueuedCount: picks.length, reorderMeaningful: true, ownPicksPinned: false })
+		gripVisible({ mine: true, ownQueuedCount: picks.length, reorderMeaningful: true })
 	).toBe(false);
 });
 
@@ -145,28 +141,4 @@ test('XR-PH-19 · the moving song starting playback closes the mode with its own
 	expect(modeInvalidation(myPicks(state, 's1'), 'a', moving?.status)).toBe(
 		'That song started playing — nothing was moved.'
 	);
-});
-
-test('XR-PH-17 · MEASURED: a `move` on a pinned own pick is undone by placePins, so no grip is offered', () => {
-	// The reason the pin clause exists, proven against the shared reducer the server and client both
-	// run rather than argued from reading it. `assignSeqs` is `placePins(rotate(…))`, so the pin is
-	// applied AFTER the ordering policy has honoured the move.
-	const entry = (id: string, singerId: string, addedAt: number, pinnedSeq: number | null = null) =>
-		({ id, singerId, mediaId: 'm-' + id, status: 'queued', rotationSeq: 0, addedAt, pinnedSeq }) as QueueEntry;
-
-	// My two picks (a, b) plus another guest's (x). `a` is pinned to global slot 0.
-	const pinned = [entry('a', 's1', 1, 0), entry('b', 's1', 2), entry('x', 's2', 3)];
-	const afterPinned = applyAndReseq(pinned, { op: 'move', id: 'a', toSeq: 1 }).map((e) => e.id);
-	// Asked for "second of my songs"; still first. On screen that is the row springing back — the
-	// outcome XR-PH-18 was written to prevent.
-	expect(afterPinned.indexOf('a')).toBe(0);
-	expect(afterPinned.indexOf('a')).toBeLessThan(afterPinned.indexOf('b'));
-	expect(ownPicksPinned(pinned.filter((e) => e.singerId === 's1'))).toBe(true);
-
-	// The SAME move with no pin lands, which is what makes the clause a real discriminator and not a
-	// blanket refusal: the grip is withheld exactly where the op cannot deliver.
-	const free = [entry('a', 's1', 1), entry('b', 's1', 2), entry('x', 's2', 3)];
-	const afterFree = applyAndReseq(free, { op: 'move', id: 'a', toSeq: 1 }).map((e) => e.id);
-	expect(afterFree.indexOf('a')).toBeGreaterThan(afterFree.indexOf('b'));
-	expect(ownPicksPinned(free.filter((e) => e.singerId === 's1'))).toBe(false);
 });
