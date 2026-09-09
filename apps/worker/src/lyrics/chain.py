@@ -630,6 +630,11 @@ class Selection:
             "baselineFallback": self.baseline_fallback,
             "winnerSuspect": self.winner_suspect,
             "winnerScore": self.winner_score,
+            # The axis `winnerSuspect` is actually decided on (#800). Without it the record reads as a
+            # MISSED DETECTION on its own numbers — `winnerSuspect: false` beside a `winnerScore` under
+            # the documented threshold — because the score shown is the ranking axis and the threshold
+            # belongs to coverage. This is the number that cleared it (#806).
+            "winnerCoverage": self.winner_coverage,
             "choices": [c.to_record() for c in self.choices],
         }
 

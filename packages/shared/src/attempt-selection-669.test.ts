@@ -59,4 +59,28 @@ describe('attemptSelection', () => {
 		});
 		expect(attemptSelection({ selection: bad })).toBeNull();
 	});
+
+	// #806 — the record must also carry the axis `winnerSuspect` is DECIDED on. Since #800 that
+	// judgement thresholds baseline COVERAGE, not the ranking score, so a record holding only
+	// `winnerScore` reads as a MISSED DETECTION on its own numbers on the normal partial-baseline case:
+	// `winnerSuspect: false` beside a score under the documented 0.40, with the number that actually
+	// cleared it absent. RED on base: `winnerCoverage` is not a member of SelectionRecord there, so this
+	// literal and the read below are both type errors.
+	it('#806 round-trips winnerCoverage, the number winnerSuspect was thresholded against', () => {
+		const withCoverage: SelectionRecord = { ...RECORD, winnerScore: 0.2906, winnerCoverage: 0.9394 };
+		const got = attemptSelection({ selection: JSON.stringify(withCoverage) });
+		expect(got).toEqual(withCoverage);
+		expect(got!.winnerCoverage).toBe(0.9394);
+		// The pair is what makes the record self-explaining: the ranking score sits BELOW the threshold
+		// while the coverage that decided it sits above, so `winnerSuspect: false` is no longer a puzzle.
+		expect(got!.winnerScore).toBe(0.2906);
+	});
+
+	it('#806 an older record with no winnerCoverage still parses — a missing axis is not a bad record', () => {
+		// Attempt rows written before #806 have no such key. `attemptSelection` parses defensively, so
+		// the honest reading is "this worker did not record it", never a decision made on nothing.
+		const got = attemptSelection({ selection: JSON.stringify(RECORD) });
+		expect(got).not.toBeNull();
+		expect(got!.winnerCoverage).toBeUndefined();
+	});
 });
