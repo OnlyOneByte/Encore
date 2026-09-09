@@ -85,6 +85,15 @@ type Floor = {
  * and the two on the motion guard's new utility-class arm.
  */
 const FLOORS: Record<string, Floor[]> = {
+	'apps/core/src/lib/ui-foreign-theme-913.test.ts': [
+		{
+			subject: 'files.length',
+			min: 1,
+			count: 1,
+			guards:
+				'the copy-in target scan (#913 S1). Both colour arms report an empty offenders array when the directory is clean AND when it holds nothing — `apps/core/src/lib/components/ui/` held only a README before this issue, so an empty result was the honest state and is now the vacuous one. Its firing means the scan stopped reaching components, which is when a shadcn theme key could survive repointing unnoticed: Tailwind emits nothing for an unknown key, so the element renders unstyled rather than erroring.'
+		}
+	],
 	'apps/core/src/lib/tailwind-toolchain.test.ts': [
 		{
 			subject: 'mintSurfaces',
@@ -422,12 +431,14 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// `literalsFound` floor, and +1 for #859's `mintSurfaces` floor on the XR-COL-14 colour ban
 	// (tailwind-toolchain.test.ts), giving 40. Measured the way this comment prescribes, not counted:
 	// raised absurdly high, read `Received: 40`.
+	// +1 for #913 S1's `files.length` floor on the copied-in-component theme scan
+	// (ui-foreign-theme-913.test.ts), giving 41.
 	// -1 for #903 retiring design-system.test.ts's `scanned` floor to RETIRED (its guard's entire
 	// population was the two deleted drawer components), and +1 for the `scanned` floor on the #903
 	// deletion guard that replaces it (drawer-surface-removed-903.test.ts) — net UNCHANGED at 40. One
 	// population-counting floor out, one in, in the same commit. Re-measured the way this comment
 	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
-	expect(located).toBeGreaterThanOrEqual(40);
+	expect(located).toBeGreaterThanOrEqual(41);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 

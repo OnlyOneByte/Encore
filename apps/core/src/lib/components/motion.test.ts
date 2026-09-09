@@ -4,7 +4,7 @@
 // src/app.css, the shared design system). See docs/ARCHITECTURE.md.
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import { styleFiles, svelteFiles } from '../test-helpers';
 
 // ALLOWLIST, not a denylist (issue #290): the file header states the rule positively —
@@ -774,14 +774,43 @@ test('no utility class expresses motion the declaration scans cannot see', () =>
 	expect(svelte.length).toBeGreaterThanOrEqual(20);
 	expect(svelte.some((f) => f.includes(join('lib', 'tv')))).toBe(true);
 
+	/*
+	 * THE ONE NAMED EXEMPTION THIS EXTRACTOR IS ALLOWED, TAKEN BY #913 S1 — and taken the way the
+	 * comment on the NET arm below prescribes, not as a way to make a red go away.
+	 *
+	 * A copied-in shadcn component computes its class list: `class={cn(buttonVariants({ variant, size }),
+	 * className)}`. That is not a stylistic choice, it is the library's architecture — `tailwind-variants`
+	 * resolves at runtime — so NO static extractor can read it, and this arm reports every such
+	 * component as an `UNRESOLVED` expression. That report is correct and it is also unactionable: the
+	 * only way to satisfy it would be to stop using the library, or to hand-inline every variant back
+	 * into markup, which is the hand-rolling #913 exists to end.
+	 *
+	 * The exemption is safe because it costs no COVERAGE, only the precise message. The net arm below
+	 * greps every `.svelte` and `.ts` source for the motion utility NAMES in any position — including
+	 * inside a `tv()` variant string, which is exactly where a copied component would carry
+	 * `transition-all` (the stock Button ships it in its base class; S1 removed it). So a motion utility
+	 * smuggled into `ui/**` still reds, one arm over, with a less specific message.
+	 *
+	 * SCOPED TO `ui/**` BY PATH, deliberately. Anywhere else in the tree an unresolvable class
+	 * expression remains an offender, because outside the copy-in target there is no library forcing
+	 * the indirection and a computed class list is a place to hide.
+	 */
+	const UI_COPY_IN = join('lib', 'components', 'ui') + sep;
 	const offenders: string[] = [];
 	for (const f of svelte) {
+		const isCopyIn = f.includes(UI_COPY_IN);
 		const markup = markupRegion(stripAllComments(readFileSync(f, 'utf8')));
 		for (const { where, tokens } of classLists(markup)) {
-			for (const o of utilityOffenders(tokens)) offenders.push(`${f}: ${where}: ${o}`);
+			for (const o of utilityOffenders(tokens)) {
+				if (isCopyIn && o.startsWith('unresolvable class expression')) continue;
+				offenders.push(`${f}: ${where}: ${o}`);
+			}
 		}
 	}
 	expect(offenders).toEqual([]);
+	// Non-vacuity for the exemption itself: if `ui/**` ever stops being scanned, the skip above is
+	// silently unnecessary and this arm has quietly narrowed. XR-VER-05.
+	expect(svelte.some((f) => f.includes(UI_COPY_IN))).toBe(true);
 });
 
 test('no motion utility name appears anywhere in source, in any position', () => {

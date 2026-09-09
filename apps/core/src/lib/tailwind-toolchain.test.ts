@@ -443,9 +443,19 @@ describe('#841 the copy-in target is genuinely in guard scope', () => {
 
 	it('svelteFiles and styleFiles both reach a file placed there', () => {
 		const probe = join(UI_DIR, '__scope-probe.svelte');
-		// NON-VACUITY, established BEFORE the probe exists: the walk currently returns nothing from
-		// this directory, so a hit below is the walk arriving rather than the walk being indiscriminate.
-		expect(svelteFiles(SRC).filter((f) => f.startsWith(UI_DIR + '/'))).toEqual([]);
+		/*
+		 * NON-VACUITY, RE-ANCHORED BY #913 S1 (XR-VER-07).
+		 *
+		 * This previously asserted the walk returns NOTHING from this directory, and used that emptiness
+		 * to prove a later hit was the walk arriving rather than the walk being indiscriminate. #913 S1
+		 * copied in the first real component (`button/`), so that premise is gone — and it is gone
+		 * because the thing it was waiting for happened, which is the good case, not a regression.
+		 *
+		 * The property still worth pinning is the one the original was reaching for: the walk reaches
+		 * THIS EXACT probe path, not merely something in the directory. So the pre-condition becomes
+		 * "the probe is not already there", and the assertion below is unchanged.
+		 */
+		expect(svelteFiles(SRC)).not.toContain(probe);
 		try {
 			writeFileSync(probe, '<span class="scope-probe"></span>\n');
 			expect(svelteFiles(SRC)).toContain(probe);
