@@ -12,7 +12,6 @@
 		songDisplay
 	} from '@encore/shared';
 	import { onMount, tick } from 'svelte';
-	import { goto } from '$app/navigation';
 	import type {
 		ServerEvent,
 		QueueEntry,
@@ -26,6 +25,7 @@
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
+	import JoinLanding from '$lib/components/JoinLanding.svelte';
 	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
 	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
@@ -194,7 +194,9 @@
 		(async () => {
 			const res = await fetch('/api/me');
 			if (!res.ok) {
-				await goto('/join');
+				// Unjoined. `/` is the landing page now (#834 Q2-A retired /join), so the template renders
+				// the JoinLanding state below rather than bouncing. Leave `me` null and stop: no store, no
+				// socket for a guest who has not joined.
 				return;
 			}
 			me = (await res.json()).singer;
@@ -1189,6 +1191,7 @@
 </header>
 
 <main>
+	{#if me}
 	{#if !searchActive}
 		<!--
 			HOME IS THE QUEUE (direction A, issue #832). The playing song is the one thing on this screen
@@ -1534,6 +1537,11 @@
 				</div>
 			{/if}
 		{/if}
+	{/if}
+	{:else}
+		<!-- UNJOINED (#834): `/` is the landing page. Both a scan affordance and a six-segment code entry,
+		     or — when a QR was scanned (`/?room=CODE`) — the room confirmed in words. -->
+		<JoinLanding />
 	{/if}
 </main>
 

@@ -118,18 +118,6 @@ function detect(src: string, c: Condition): string | null {
  */
 const KNOWN_ABSENT: { route: string; condition: Condition; kind: 'n/a' | 'gap'; reason: string }[] = [
 	{
-		route: '/join',
-		condition: 'empty',
-		kind: 'n/a',
-		reason: 'the join form renders no collection, so it has nothing to be empty of; the unresolved-code case is XR-PH-14'
-	},
-	{
-		route: '/join',
-		condition: 'offline',
-		kind: 'gap',
-		reason: 'join POSTs once and holds no socket, so a post that fails off-network reads as the generic "Network error — try again" rather than naming the connection'
-	},
-	{
 		route: '/settings',
 		condition: 'empty',
 		kind: 'n/a',
@@ -171,7 +159,11 @@ const PHONE_ROUTES = ALL_ROUTES.filter((r) => !isExempt(r.route));
  * new name here instead of leaving a dead exemption behind and the new surface unchecked.
  */
 test('XR-PH-08: the phone route set is derived from the filesystem, and every exemption is the spec\u2019s', () => {
-	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(4); // @nvf-floor PHONE_ROUTES.length
+	// Re-anchored 4 -> 3 by #834: `/join` was retired (its state is now the unjoined branch of `/`), so
+	// the real phone-route set is `/`, `/settings`, `/stats`. Still non-vacuous — a walk that enumerates
+	// 0/1/2 (an over-broad exemption or a moved routes/ dir) still fails here. Keeps #849's per-site
+	// floor-tag anchor (below); the value 3 is recorded to match in non-vacuity-floors.test.ts's FLOORS.
+	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(3); // @nvf-floor PHONE_ROUTES.length
 
 	const known = new Set(ALL_ROUTES.map((r) => r.route));
 	for (const e of EXEMPT_ROUTES) {
@@ -250,12 +242,13 @@ test('XR-PH-08: the known-absent baseline is bounded, well-formed, and has not r
  */
 const PHONE_ANNOUNCING_FILES = [
 	join(ROUTES, '+page.svelte'),
-	join(ROUTES, 'join', '+page.svelte'),
 	join(ROUTES, 'settings', '+page.svelte'),
 	join(ROUTES, 'stats', '+page.svelte'),
 	join(SRC, 'lib', 'components', 'SongRow.svelte'),
 	join(SRC, 'lib', 'components', 'ProcessingCard.svelte'),
 	join(SRC, 'lib', 'components', 'QueueRow.svelte'),
+	join(SRC, 'lib', 'components', 'JoinLanding.svelte'),
+	join(SRC, 'lib', 'components', 'CodeEntry.svelte'),
 	join(SRC, 'lib', 'ui', 'PageHeader.svelte')
 ];
 
@@ -270,7 +263,15 @@ const LIVE_REGIONS: { file: string; purpose: string }[] = [
 	{ file: 'routes/+page.svelte', purpose: 'connection loss/restore (`offline-pill`)' },
 	{ file: 'lib/components/SongRow.svelte', purpose: "a row's readiness chip changing while the guest looks at it" },
 	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'a cook that failed, and why it stopped' },
-	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'cook stage progress while the guest waits' }
+	{ file: 'lib/components/ProcessingCard.svelte', purpose: 'cook stage progress while the guest waits' },
+	{
+		file: 'lib/components/CodeEntry.svelte',
+		purpose: 'XR-PH-14 join-code entry — a rejected keystroke names the excluded characters (SC 3.3.1) and the disabled-Continue reason (SC 3.3.2), without interrupting typing'
+	},
+	{
+		file: 'lib/components/JoinLanding.svelte',
+		purpose: 'XR-PH-14 landing — the reason Continue is disabled (enter your name / finish the code), stated in words rather than by disabled state alone (SC 3.3.2)'
+	}
 ];
 
 test('XR-PH-13: every phone live region is inventoried, and all are polite', () => {
@@ -355,7 +356,6 @@ test('XR-PH-13: every phone announcement is one of the inventoried events, and t
 const PHONE_STYLE_FILES = [
 	join(SRC, 'app.css'),
 	join(ROUTES, '+page.svelte'),
-	join(ROUTES, 'join', '+page.svelte'),
 	join(ROUTES, 'settings', '+page.svelte'),
 	join(ROUTES, 'stats', '+page.svelte'),
 	...readdirSync(join(SRC, 'lib', 'components'))

@@ -4,9 +4,11 @@
 //   1. app.ts's getApp() MINTS the active room at boot and exposes its id as app.activeRoomId.
 //      getApp() stands up the whole app over a file/memory DB and has no unit harness, so reverting
 //      the boot mint or the literal wiring leaves every other test green.
-//   2. the phone /join page reads the ?room= code the QR encoded and FORWARDS it to /api/join.
-//      There is no Svelte-component render harness in this repo, so this scan is the only thing
-//      that reds if the forwarding is dropped and a scanned QR silently joins the wrong party.
+//   2. the phone landing page (JoinLanding) reads the ?room= code the QR encoded and FORWARDS it to
+//      /api/join. `/join` was retired (#834 Q2-A); the join UI is now JoinLanding.svelte, rendered in
+//      the unjoined branch of `/`. There is no Svelte-component render harness in this repo, so this
+//      scan is the only thing that reds if the forwarding is dropped and a scanned QR silently joins
+//      the wrong party.
 //
 // Comments are blanked so a commented-out wiring cannot satisfy any match.
 import { test, expect } from 'bun:test';
@@ -21,7 +23,7 @@ function stripComments(src: string): string {
 // import.meta.dir === apps/core/src/server/rooms → up two to src/server, and to src/routes.
 const APP = stripComments(readFileSync(join(import.meta.dir, '..', 'app.ts'), 'utf8'));
 const JOIN_PAGE = stripComments(
-	readFileSync(join(import.meta.dir, '..', '..', 'routes', 'join', '+page.svelte'), 'utf8')
+	readFileSync(join(import.meta.dir, '..', '..', 'lib', 'components', 'JoinLanding.svelte'), 'utf8')
 );
 // import.meta.dir === apps/core/src/server/rooms → up two to src, then into routes/api/me.
 const ME_ROUTE = stripComments(
@@ -37,11 +39,12 @@ test('app.ts mints the active room at boot and exposes its id (#654)', () => {
 	expect(APP).toMatch(/activeRoomId:\s*string;/);
 });
 
-test('the phone /join page reads the ?room= code and forwards it to /api/join (#654)', () => {
+test('the phone landing page reads the ?room= code and forwards it to /api/join (#654, #834)', () => {
 	// reads the code the QR encoded out of the URL.
 	expect(JOIN_PAGE).toMatch(/page\.url\.searchParams\.get\('room'\)/);
-	// and forwards it in the /api/join body as `code` — drop this and a scanned QR joins the default room.
-	expect(JOIN_PAGE).toMatch(/code:\s*roomCode/);
+	// and forwards it in the /api/join body as `code` — drop this and a scanned QR joins the default
+	// room. JoinLanding sends `code: joinCode` (the scanned code when it resolved, else the typed code).
+	expect(JOIN_PAGE).toMatch(/code:\s*joinCode/);
 });
 
 test('app.ts binds the playback store + boot-hydrate to the ACTIVE room, not a constant (#655)', () => {

@@ -49,7 +49,7 @@ export const SEL = {
 	hueSlider: 'input[type="range"]',
 	submit: /Start singing/,
 	/*
-	 * The join-page error announcement: `<div class="err" role="alert">` (routes/join/+page.svelte).
+	 * The join-page error announcement: `<div class="err" role="alert">` (lib/components/JoinLanding.svelte).
 	 * A class + UNQUOTED attribute compound the p8-presence probe reads to tell a duplicate-name
 	 * rejection (form sits on /join with this alert) from a clean join (lands on / with the search box).
 	 * Migrated here from KNOWN_OFFENDERS as Group B of the #513 per-driver SEL split (tail of #494).
@@ -355,7 +355,7 @@ export const HOOKS: Hook[] = [
 	// join (the colour picker itself is a shared component — see ColourPicker.svelte)
 	{
 		id: 'nameInput',
-		file: 'src/routes/join/+page.svelte',
+		file: 'src/lib/components/JoinLanding.svelte',
 		anchor: 'placeholder="e.g. Maya"',
 		why: 'the flow types a singer name here'
 	},
@@ -379,7 +379,7 @@ export const HOOKS: Hook[] = [
 	},
 	{
 		id: 'submit',
-		file: 'src/routes/join/+page.svelte',
+		file: 'src/lib/components/JoinLanding.svelte',
 		anchor: 'Start singing',
 		why: 'the flow submits the join form by this label'
 	},

@@ -70,9 +70,11 @@ test('the reflow probe measures at the criterion\u2019s own numbers: 320 CSS px 
 });
 
 test('the reflow probe covers every XR-PH-02 surface, and /stats by name (#850)', () => {
-	// XR-PH-02's Acceptance names `/`, `/join`, `/settings`, `/stats` and the browse screen. A probe
-	// that silently stopped visiting one of them would report a green row over an unmeasured surface.
-	for (const surface of ['/join', '/settings', '/stats']) {
+	// XR-PH-02's Acceptance named `/`, `/join`, `/settings`, `/stats` and the browse screen. `/join` was
+	// retired (#834 Q2-A) into the unjoined branch of `/`, so `measure('/', '/')` now IS the join
+	// surface — the four named surfaces are `/`, `/settings`, `/stats` and browse. A probe that silently
+	// stopped visiting one would report a green row over an unmeasured surface.
+	for (const surface of ['/settings', '/stats']) {
 		expect(PROBE).toContain(`measure('${surface}', '${surface}')`);
 	}
 	expect(PROBE).toMatch(/measure\('\/',\s*'\/'\)/);

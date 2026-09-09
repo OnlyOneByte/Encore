@@ -314,7 +314,9 @@ try {
 	await page.viewport(VIEWPORTS[0].w, VIEWPORTS[0].h);
 
 	// ── join once; every phone surface below is behind a session ───────────────────────────────
-	await page.goto(`${base}/join`);
+	// `/join` was retired (#834 Q2-A): the join form is the unjoined state of `/`. An unjoined visitor
+	// to `/` gets the name field + code entry; joining navigates back to `/` (now the joined queue).
+	await page.goto(`${base}/`);
 	const joinSweep = /** @type {Reading[]} */ (await page.evaluate(sweepExpr()));
 	await page.fill(SEL.nameInput, `Gate${Date.now() % 1000000}`);
 	await page.clickByText('Start singing');

@@ -154,7 +154,7 @@ const TV = [1920, 1080];
  */
 const SURFACES = [
 	{ name: 'phone-home', url: '/', vp: PHONE, join: true },
-	{ name: 'phone-join', url: '/join', vp: PHONE },
+	{ name: 'phone-join', url: '/', vp: PHONE },
 	{ name: 'settings', url: '/settings', vp: PHONE, join: true },
 	{ name: 'stats', url: '/stats', vp: PHONE },
 	{ name: 'metrics', url: '/metrics', vp: PHONE },

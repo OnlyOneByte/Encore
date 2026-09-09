@@ -31,12 +31,12 @@ function stripComments(src: string): string {
 const FILES = [
 	...svelteFiles(join(SRC, 'lib', 'components')),
 	join(SRC, 'routes', '+page.svelte'),
-	join(SRC, 'routes', 'join', '+page.svelte'),
 	join(SRC, 'routes', 'settings', '+page.svelte')
 ];
 
 // Non-vacuity floor (issue #453): the scan below asserts `offenders` empty, so an empty FILES
-// (a broken components walk) would pass vacuously. 7 components + 3 routes = 10 today.
+// (a broken components walk) would pass vacuously. Components (9 since #834 added CodeEntry +
+// JoinLanding) + 2 routes today; `/join` was retired (#834), its join UI is now JoinLanding.
 test('the icon-centring scan actually reads a non-empty surface', () => {
 	expect(FILES.length).toBeGreaterThan(7); // @nvf-floor FILES.length
 });

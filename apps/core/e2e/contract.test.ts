@@ -121,8 +121,10 @@ test('the swatch selector asks for the accessible name the picker actually rende
 
 test('the contract exposes a hook for each surface the flow has to reach', () => {
 	// A cheap completeness check: the flow spans join, remote and TV, so all three must be represented.
+	// The join surface is JoinLanding.svelte since #834 retired the /join route (the join UI is now the
+	// unjoined branch of `/`), so match it case-insensitively rather than the old lower-case `join` path.
 	const files = new Set(HOOKS.map((h) => h.file));
-	expect([...files].some((f) => f.includes('join'))).toBe(true);
+	expect([...files].some((f) => /join/i.test(f))).toBe(true);
 	expect([...files].some((f) => f.endsWith('routes/+page.svelte'))).toBe(true);
 	expect([...files].some((f) => f.includes('routes/tv'))).toBe(true);
 	// and the selector map must not have gone empty through a bad refactor
@@ -742,7 +744,7 @@ test('#544 Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS i
 
 	// Half 2: it now lives in SEL with its exact value, and the resolver — extended here to model a
 	// class + unquoted-attribute compound (`[role=alert]`, not `[role="alert"]`) — resolves it against
-	// real source. The anchor is `<div class="err" role="alert">` in routes/join/+page.svelte, so a
+	// real source. The anchor is `<div class="err" role="alert">` in lib/components/JoinLanding.svelte, so a
 	// green false/null here would mean the SEL entry points at markup no component renders.
 	expect(SEL.joinError).toBe('.err[role=alert]');
 	const sources = guardSources();
