@@ -47,6 +47,10 @@
 			titleCanonical?: string | null;
 			artistCanonical?: string | null;
 			durationSec: number;
+			// The guiding-track fields (#766): whether this song has a vocals stem to align, and the
+			// measured guide/instrumental offset in signed ms (undefined = never measured).
+			vocalsRef?: string;
+			guideOffsetMs?: number;
 		} | null;
 		cooks: Cook[];
 		plays: { at: number; entryId: string }[];
@@ -132,6 +136,24 @@
 			{#if audit.media}{formatClock(audit.media.durationSec)} long ·
 			{/if}sung {audit.plays.length} times
 		</p>
+
+		{#if audit.media?.vocalsRef}
+			<!--
+				The MEASURED guide/instrumental offset (#766), so a wrong alignment is diagnosable here rather
+				than only by ear on the party box. Shown only when this song has a guiding track (a vocals
+				stem) — the only case an offset means anything. `undefined` ⇔ never measured (an older cook);
+				a number, 0 included, ⇔ measured, so the two read differently.
+			-->
+			<p class="note">
+				Guide offset:
+				{#if typeof audit.media.guideOffsetMs === 'number'}
+					<strong>{audit.media.guideOffsetMs} ms</strong>
+					{audit.media.guideOffsetMs === 0 ? '(vocals aligned with instrumental)' : '(vocals vs instrumental)'}
+				{:else}
+					<strong>not measured</strong> (cooked before this was recorded)
+				{/if}
+			</p>
+		{/if}
 
 		{#if !audit.hasHistory}
 			<div class="card">

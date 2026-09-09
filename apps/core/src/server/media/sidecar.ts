@@ -27,7 +27,10 @@ import { parseTrackTitle, type TrackParseRule } from './track-title';
 // 3: `artifacts.songProfile` added (key + vocal range). Purely additive: a schema-2 record simply has
 // no profile, which mediaFromSidecar restores as absent — the stems gate then reads that song as
 // still-cooking and the boot pipeline re-analyses it, exactly as an old song with no vocals ref did.
-export const SIDECAR_SCHEMA = 3;
+// 4: `artifacts.guideOffsetMs` added (#766, the measured guide/instrumental offset). Purely additive: a
+// schema-3 record has no offset, restored as absent, which the client's guideOffsetSec maps to 0 — so an
+// un-upgraded song is held exactly as today until a re-cook measures one.
+export const SIDECAR_SCHEMA = 4;
 
 /** How a derived field was obtained. Mirrors the lyrics chain's provenance idea on purpose. */
 export interface FieldProvenance {
@@ -85,6 +88,13 @@ export interface MediaSidecar {
 		 * is NOT the same as absent (which means the analysis never ran).
 		 */
 		songProfile?: SongProfile;
+		/**
+		 * The MEASURED guide/instrumental offset in signed ms (#766). Authoritative here so a DB wipe
+		 * restores it without re-cooking, like every derived artifact. Optional/absent on schema-3 and
+		 * earlier; absent means "never measured" (the client holds the guide as today), which is distinct
+		 * from a stored 0 ("measured, aligned").
+		 */
+		guideOffsetMs?: number;
 	};
 	library: {
 		tags: string[];
@@ -172,7 +182,12 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			// Same runtime-first / preserve-prior rule as lyricsCandidates: an index-only hydrate that has
 			// not read the sidecar yet carries no profile on the Media, so falling back to the prior
 			// write is what stops a sidecar rewrite from erasing an already-recorded key/range.
-			songProfile: m.songProfile ?? prev?.artifacts.songProfile
+			songProfile: m.songProfile ?? prev?.artifacts.songProfile,
+			// Same runtime-first / preserve-prior rule, with `??` (never `||`) because a MEASURED 0 is a
+			// real offset — an aligned stem — that `||` would discard as falsy and re-read from the prior
+			// write. An index-only hydrate carries no offset on the Media, so falling back to prior is what
+			// stops a sidecar rewrite from erasing an already-measured value.
+			guideOffsetMs: m.guideOffsetMs ?? prev?.artifacts.guideOffsetMs
 		},
 		library: {
 			tags: prev?.library.tags ?? [],
@@ -236,6 +251,9 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		// re-normalized on the way out; a schema-2 sidecar has none and this stays undefined, which the
 		// gate reads as still-cooking so the boot pipeline re-analyses it.
 		songProfile: s.artifacts.songProfile ? normalizeSongProfile(s.artifacts.songProfile) : undefined,
+		// A measured offset (including 0) round-trips; absent stays undefined → the client holds the guide
+		// as today. `typeof … number` rather than truthiness so a stored 0 is not read back as absent.
+		guideOffsetMs: typeof s.artifacts.guideOffsetMs === 'number' ? s.artifacts.guideOffsetMs : undefined,
 		// Carry the confidence-gated canonicals so a RESTORED media is immediately complete. The boot
 		// sync pass mirrors these into the index too, but an align job dispatched before it ran would
 		// otherwise look up the raw title and miss.
@@ -399,7 +417,10 @@ export async function clearArtifacts(mediaId: string): Promise<void> {
 		instrumental: null,
 		vocals: null,
 		lyrics: null,
-		lyricsCandidates: []
+		lyricsCandidates: [],
+		// The offset was measured FROM the stems being evicted, so it goes with them — a re-cook measures a
+		// fresh one. Set undefined (not 0), the honest "no longer measured".
+		guideOffsetMs: undefined
 	};
 	await writeSidecar(side);
 }

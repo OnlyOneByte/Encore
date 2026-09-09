@@ -16,6 +16,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncIterator
 
+from ..analysis import measure_guide_offset_ms
 from ..processor import (
     ProgressEvent,
     instrumental_path,
@@ -221,6 +222,27 @@ class PublishStems(Step):
             except Exception:  # noqa: BLE001 — an enhancement must never fail the job
                 ctx.note("vocals encode failed (non-fatal) — publishing the instrumental alone")
 
+        # Measure the guide's OFFSET against the instrumental, from the RAW scratch WAVs — the guide-
+        # alignment half of the guide feature made observable (#766). Read the raw stems, not the encoded
+        # ones: they are the same PCM measure_guide_offset_ms reads, and doing it here means no re-decode.
+        # BEST-EFFORT and TRI-STATE, exactly like the vocals encode above: only measured when a vocals stem
+        # was actually published (a silent/absent guide has nothing to align), never fatal, and a decline
+        # reports None → the core stores null → the client holds the guide exactly as today. A freshly-cooked
+        # song's two FLAC stems decode to a common start, so this is ~0 for the whole library; the non-zero
+        # case is a legacy pre-#480 .m4a vocals stem or a deliberately shifted one.
+        guide_offset_ms: int | None = None
+        if ctx.stems.published.get("vocals"):
+            try:
+                guide_offset_ms = measure_guide_offset_ms(raw_vox, raw_inst)
+            except Exception:  # noqa: BLE001 — a measurement must never fail the load-bearing instrumental
+                ctx.note("guide-offset measurement failed (non-fatal) — offset left unmeasured")
+            # Log it so a wrong measurement is diagnosable WITHOUT the party box (#766 DoD): a silent
+            # correction is its own defect class, so the number is always emitted, None included.
+            ctx.note(
+                f"guide offset: {'unmeasured' if guide_offset_ms is None else f'{guide_offset_ms} ms'}"
+                " (vocals stem vs instrumental)"
+            )
+
         # songProfile sits at the TOP level, a SIBLING of stems. The core reads it there; publishing it
         # nested inside `stems` is a shape mismatch that would stall every cook at "Separating vocals"
         # forever, because the cook gate requires the profile to be present and the re-cook check reads
@@ -228,6 +250,11 @@ class PublishStems(Step):
         # apps/core/src/server/jobs/vocabulary-parity.test.ts.
         ctx.out.artifacts["stems"] = dict(ctx.stems.published)
         ctx.out.artifacts["songProfile"] = ctx.stems.song_profile
+        # guideOffsetMs rides beside them, top-level like songProfile — a measurement, not a file. Emitted
+        # only when there is a value: an absent field on the wire is the same "not measured" the core reads
+        # as null, so a decline does not need to send an explicit None.
+        if guide_offset_ms is not None:
+            ctx.out.artifacts["guideOffsetMs"] = guide_offset_ms
         ctx.out.media_uri = final
         return
         yield  # pragma: no cover - makes this an async generator
