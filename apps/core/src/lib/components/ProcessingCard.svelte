@@ -206,7 +206,7 @@
 		border-radius: 50%;
 		display: grid;
 		place-items: center;
-		font-size: 0.8rem;
+		font-size: var(--ph-text-sm);
 		font-weight: 700;
 		background: var(--card2);
 		color: var(--ink-dim);
@@ -234,7 +234,7 @@
 		gap: 7px;
 		font-size: 0.78rem;
 		color: var(--ink-dim);
-		margin-top: 2px;
+		margin-top: var(--space-3xs);
 	}
 	.who i.dim {
 		opacity: 0.5;
@@ -285,7 +285,7 @@
 		background: var(--grad);
 		border-radius: 6px;
 		transform-origin: left center;
-		transition: transform 0.4s ease;
+		transition: transform var(--motion-slow) ease;
 	}
 	.stage {
 		display: flex;
@@ -301,7 +301,7 @@
 	.actions {
 		display: flex;
 		align-items: flex-start;
-		gap: 8px;
+		gap: var(--space-sm);
 		flex: 0 0 auto;
 	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css. */

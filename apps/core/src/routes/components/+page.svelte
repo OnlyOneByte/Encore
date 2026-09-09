@@ -1076,8 +1076,8 @@
 	 * needs to make the gallery's own headers agree with each other.
 	 */
 	.section {
-		margin-top: 18px;
-		font-size: 0.8rem;
+		margin-top: var(--space-3xl);
+		font-size: var(--ph-text-sm);
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
@@ -1088,7 +1088,7 @@
 	 * intentional if its caption says so -- so the captions have to stay legible and consistent.
 	 */
 	.caption {
-		margin: 0 0 4px;
+		margin: 0 0 var(--space-2xs);
 		font-size: 0.7rem;
 		color: var(--ink-dim);
 	}

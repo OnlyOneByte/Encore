@@ -73,7 +73,7 @@
 	.chart {
 		display: flex;
 		align-items: flex-end;
-		gap: 2px;
+		gap: var(--space-3xs);
 		height: 96px;
 		/*
 		 * 31 days at a phone's width squeezed each column to ~9px — a real button too narrow to tap,
@@ -119,7 +119,7 @@
 		border-radius: var(--radius-xs);
 		pointer-events: none;
 		opacity: 0;
-		transition: opacity 0.12s ease;
+		transition: opacity var(--motion-fast) ease;
 		white-space: nowrap;
 	}
 	/* :focus as well as :focus-visible, because :focus-visible is keyboard-driven and does NOT match a
@@ -164,7 +164,7 @@
 	}
 	.empty {
 		color: var(--ink-dim);
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		margin: 0;
 	}
 </style>

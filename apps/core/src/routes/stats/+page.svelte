@@ -152,7 +152,7 @@
 	 * navigation and the fine print at the same visual level.
 	 */
 	h2 {
-		font-size: 1rem;
+		font-size: var(--ph-text-base);
 		margin: 0 0 0.9rem;
 		color: var(--ink);
 		font-weight: 600;
@@ -204,10 +204,10 @@
 	/* One number leads. All three at 2rem/700 meant nothing did, and the glanceable question a guest
 	   actually has ("is this party going?") is answered by the sing count, not the library size. */
 	.n {
-		font-size: 1.5rem;
+		font-size: var(--ph-text-2xl);
 		font-weight: 700;
 		font-variant-numeric: tabular-nums;
-		line-height: 1.1;
+		line-height: var(--lh-tight);
 	}
 	.primary .n {
 		font-size: 2.6rem;
@@ -217,7 +217,7 @@
 	}
 	.sub,
 	.note {
-		font-size: 0.75rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 	}
 	.note {

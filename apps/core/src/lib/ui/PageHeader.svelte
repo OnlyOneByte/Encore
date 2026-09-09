@@ -43,13 +43,13 @@
 	.page-header {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 16px 18px 10px;
+		gap: var(--space-md);
+		padding: var(--space-2xl) var(--space-3xl) var(--space-md);
 		border-bottom: 1px solid var(--line);
 		position: sticky;
 		top: 0;
 		background: var(--bg);
-		z-index: 1;
+		z-index: var(--z-header);
 	}
 	.back {
 		color: var(--ink-dim);
@@ -73,9 +73,9 @@
 	}
 	h1 {
 		margin: 0;
-		font-size: 1.1rem;
+		font-size: var(--ph-text-lg);
 		display: inline-flex;
 		align-items: center;
-		gap: 8px;
+		gap: var(--space-sm);
 	}
 </style>

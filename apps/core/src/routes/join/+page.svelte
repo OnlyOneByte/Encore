@@ -78,7 +78,7 @@
 	/* Was inline on <header>; moved here so the page's spacing lives in one place, not split between
 	   attributes and this block. */
 	.join-head {
-		padding: 26px 20px 8px;
+		padding: 26px var(--space-4xl) var(--space-sm);
 		text-align: center;
 	}
 	/* The mic was 🎤 — platform-dependent art, and a tofu box with no emoji font. */
@@ -86,7 +86,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 10px;
+		gap: var(--space-md);
 		font-weight: 800;
 		font-size: 1.6rem;
 		letter-spacing: 0.5px;
@@ -101,20 +101,20 @@
 	}
 	.lede {
 		color: var(--ink-dim);
-		margin: 6px 0 0;
-		font-size: 0.9rem;
+		margin: var(--space-xs) 0 0;
+		font-size: var(--ph-text-md);
 	}
 	/* --danger-ink (text-on-dark ink), NOT --danger (the semantic failure FILL): using the fill token
 	   as text put join's error one tap away from ProfileSheet's error in a different, wrong red. */
 	.err {
 		color: var(--danger-ink);
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 	}
 
 	.name-field {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: var(--space-sm);
 	}
 	/* Eyebrow label: this exact idiom (0.78rem / 0.12em / uppercase / --ink-dim) is a THIRD copy of one
 	   in ProfileSheet (.field) and ColourPicker (.field-label). Kept local since this file owns only
@@ -126,8 +126,8 @@
 		color: var(--ink-dim);
 	}
 	.name-input {
-		padding: 14px;
-		font-size: 1.1rem;
+		padding: var(--space-xl);
+		font-size: var(--ph-text-lg);
 		color: var(--ink);
 		background: var(--card);
 	}
@@ -140,24 +140,24 @@
 	   attribute would make the desktop override below silently do nothing. */
 	.join-main {
 		flex: 1;
-		padding: 18px 20px;
+		padding: var(--space-3xl) var(--space-4xl);
 		display: flex;
 		flex-direction: column;
-		gap: 20px;
+		gap: var(--space-4xl);
 	}
 	.submit {
 		/* On a phone the button sits at the bottom of the viewport, where a thumb already is. */
 		margin-top: auto;
 		/* --radius (18px), the card/sheet radius, for this full-width primary button; the inline 16px it
 		   replaced matched neither token. Padding + type keep it well over the 44px tap target. */
-		padding: 16px;
-		font-size: 1.1rem;
+		padding: var(--space-2xl);
+		font-size: var(--ph-text-lg);
 		border-radius: var(--radius);
 		/* Centres the trailing mark with the label instead of letting it sit on the text baseline. */
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 8px;
+		gap: var(--space-sm);
 	}
 	/* Was an inline opacity bound to canJoin; the disabled attribute already carries the state. */
 	.submit.disabled {
@@ -182,7 +182,7 @@
 		.submit {
 			/* Pinned to the viewport bottom, the button is stranded far below the form on a tall desktop
 			   window, so it follows the fields it submits instead. */
-			margin-top: 8px;
+			margin-top: var(--space-sm);
 		}
 	}
 </style>

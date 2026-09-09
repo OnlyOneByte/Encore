@@ -121,7 +121,7 @@
 	.rangebar {
 		position: relative;
 		height: 34px;
-		margin: 8px 0 4px;
+		margin: var(--space-sm) 0 var(--space-2xs);
 		border-radius: 8px;
 		overflow: hidden;
 		background: var(--card2);

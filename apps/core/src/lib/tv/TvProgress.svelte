@@ -44,7 +44,7 @@
 		height: 100%;
 		width: 100%;
 		transform-origin: left center;
-		transition: transform 1s linear;
+		transition: transform var(--motion-tick) linear;
 	}
 	@media (prefers-reduced-motion: reduce) {
 		.track > i,
@@ -58,8 +58,8 @@
 	.card-row {
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		margin-top: 6px;
+		gap: var(--space-sm);
+		margin-top: var(--space-xs);
 	}
 	.t {
 		font-size: var(--tv-label);
@@ -91,7 +91,7 @@
 		height: 6px;
 		/* rgba(255,255,255,0.12) was a translucent-white track over video; --ink is the theme's near-white. */
 		background: color-mix(in srgb, var(--ink) 12%, transparent);
-		z-index: 7;
+		z-index: var(--z-tv-card);
 		overflow: hidden;
 	}
 	.topbar > i {
@@ -101,8 +101,8 @@
 		position: absolute;
 		top: var(--tv-safe-y);
 		left: var(--tv-safe-x);
-		z-index: 7;
-		padding: 8px 16px;
+		z-index: var(--z-tv-card);
+		padding: var(--space-sm) var(--space-2xl);
 		border-radius: var(--radius-pill);
 		/* rgba(33,33,51,0.85) was --card2 at 85%. */
 		background: color-mix(in srgb, var(--card2) 85%, transparent);
@@ -126,7 +126,7 @@
 		height: 8px;
 		/* rgba(255,255,255,0.12) was a translucent-white track over video; --ink is the theme's near-white. */
 		background: color-mix(in srgb, var(--ink) 12%, transparent);
-		z-index: 7;
+		z-index: var(--z-tv-card);
 		overflow: hidden;
 	}
 	.edgebar > i {

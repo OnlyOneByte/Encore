@@ -149,7 +149,68 @@ const FLOORS: Record<string, Floor[]> = {
 		{ subject: 'FILES.length', min: 15, count: 1, guards: 'the design-system source walk' },
 		{ subject: 'seen', min: 2, count: 1, guards: 'the rules examined by the token-duplication scan' },
 		{ subject: 'checked', min: 3, count: 1, guards: 'the surfaces examined by the surface-token scan' },
-		{ subject: 'scanned', min: 1, count: 1, guards: 'the sheets examined by the sheet-level scan' }
+		{ subject: 'scanned', min: 1, count: 1, guards: 'the sheets examined by the sheet-level scan' },
+		{
+			subject: 'bridgeRefsScanned',
+			min: 200,
+			count: 1,
+			guards:
+				'the var() population behind the @theme-only reference ban (#829). A @theme key emits no custom property, so a component naming one paints nothing; a regex slip here would report zero offences from zero readings'
+		},
+		{
+			subject: 'forwardsChecked',
+			min: 30,
+			count: 1,
+			guards:
+				'the bridge entries whose right-hand side is resolved (#829) — catches an entry forwarding to itself, or to a :root token that does not exist. Reading no values would pass both silently'
+		},
+		{
+			subject: 'spacingDeclsSeen',
+			min: 200,
+			count: 1,
+			guards:
+				'the gap/margin/padding declarations examined by the spacing-scale duplication scan (#829). Every offence it can report comes from this walk'
+		},
+		{
+			subject: 'fontDeclsSeen',
+			min: 60,
+			count: 1,
+			guards: 'the font-size declarations examined by the phone type-ladder duplication scan (#829)'
+		},
+		{
+			subject: 'leadingDeclsSeen',
+			min: 8,
+			count: 1,
+			guards:
+				'the line-height declarations examined by the leading-scale duplication scan (#829). Deliberately the lowest floor here — the tree carries only ~15, which is why the dimension drifted unnoticed'
+		},
+		{
+			subject: 'motionDeclsSeen',
+			min: 10,
+			count: 1,
+			guards: 'the transition/animation declarations examined by the motion-scale duplication scan (#829)'
+		},
+		{
+			subject: 'zDeclsSeen',
+			min: 15,
+			count: 1,
+			guards:
+				'the z-index declarations examined by the bare-integer ban (#829). Unlike its four siblings that rule is a TOTAL ban, so an empty walk would report a fully compliant tree'
+		},
+		{
+			subject: 'TV.length',
+			min: 5,
+			count: 1,
+			guards:
+				'the TV file population behind the phone-ladder ban (#829). Tokenisation made `font-size: var(--ph-text-2xs)` an idiomatic green way to write a 10.88px font on a wall, invisible to the ten-foot floor in tv/stage-scale.test.ts; an empty TV walk would report a compliant stage'
+		},
+		{
+			subject: 'rungsChecked',
+			min: 11,
+			count: 1,
+			guards:
+				'the adjacent-tier comparisons behind the ladder-ordering assertion (#829). This is what still pins #424/#473 — their guards used to assert the literals 7/8/10 and now assert tier NAMES, so the order itself is only checked here'
+		}
 	],
 	'apps/core/src/lib/tv/stage-scale.test.ts': [
 		{ subject: 'heroBadgesSeen', min: 2, count: 1, guards: 'hero-badge discovery on the TV stage' }
@@ -311,9 +372,11 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// So when you add an entry to `FLOORS`, raise this by the same amount in the same commit; when you
 	// retire one to `RETIRED`, lower it by the same amount. Measured directly rather than counted by
 	// eye: temporarily raise this literal absurdly high, run this file alone, and read `Received: N`.
-	// 28 as of #841 (26 on the base, which had drifted 4 below the sum when #846 added three entries
-	// without moving this number; restoring the equality closes that inherited slack too).
-	expect(located).toBeGreaterThanOrEqual(28);
+	// 38 as of #829 (29 on its base once #831 added `boxRulesSeen`; +9 for the nine enumerating scans
+	// #829 adds to design-system.test.ts — five dimension-duplication scans, the two @theme bridge scans,
+	// the ladder-ordering rungs, and the phone-ladder-on-TV ban). Measured the way this comment
+	// prescribes, not counted: raised absurdly high, read `Received: 38`.
+	expect(located).toBeGreaterThanOrEqual(38);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 

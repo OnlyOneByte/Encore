@@ -60,7 +60,7 @@
 		margin-bottom: 0.3rem;
 	}
 	.label {
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		/*
 		 * Wrap to a second line rather than clip with an ellipsis. The full label was ONLY in the
 		 * title attribute, which never fires on touch (no :hover), so a long artist or model name was
@@ -74,7 +74,7 @@
 		 * 0.82rem/--ink-dim it was the smallest, dimmest thing in a row whose entire purpose is that
 		 * number. min-width keeps the right edge stable so a column of values aligns.
 		 */
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		font-variant-numeric: tabular-nums;
 		color: var(--ink);
 		flex: none;
@@ -95,13 +95,13 @@
 	}
 	.hint {
 		display: block;
-		font-size: 0.75rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		margin-top: 0.25rem;
 	}
 	.empty {
 		color: var(--ink-dim);
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		margin: 0;
 	}
 </style>

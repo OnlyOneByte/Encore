@@ -273,7 +273,7 @@
 	/* The cook owns the attempts beneath it, so its header takes full ink and a dividing rule. At
 	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
 	h2 {
-		font-size: 1rem;
+		font-size: var(--ph-text-base);
 		margin: 0;
 		color: var(--ink);
 		font-weight: 600;
@@ -291,10 +291,10 @@
 		color: var(--ink-dim);
 	}
 	.note {
-		font-size: 0.75rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		margin: 0.5rem 0 0;
-		line-height: 1.6;
+		line-height: var(--lh-loose);
 	}
 	.steps {
 		list-style: none;
@@ -339,12 +339,12 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.ran {
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		font-weight: 600;
 		color: var(--ink);
 	}
 	.secondary {
-		font-size: 0.75rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 	}
 	/* Aligned pairs instead of a run-on line: keys stay dim, values take ink. */
@@ -353,7 +353,7 @@
 		grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
 		gap: 0.2rem 1.2rem;
 		margin: 0.45rem 0 0;
-		font-size: 0.75rem;
+		font-size: var(--ph-text-xs);
 	}
 	.facts div {
 		display: flex;
@@ -393,7 +393,7 @@
 		color: var(--warn);
 	}
 	.pill {
-		font-size: 0.68rem;
+		font-size: var(--ph-text-2xs);
 		text-transform: uppercase;
 		letter-spacing: 0.04em;
 		padding: 0.1rem 0.45rem;
@@ -416,7 +416,7 @@
 		border-color: var(--warn);
 	}
 	.err {
-		font-size: 0.75rem;
+		font-size: var(--ph-text-xs);
 		color: var(--danger-ink);
 		background: var(--danger-bg);
 		border: 1px solid var(--danger-line);

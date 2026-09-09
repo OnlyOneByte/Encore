@@ -182,19 +182,19 @@
 	.picker {
 		display: flex;
 		flex-direction: column;
-		gap: 10px;
+		gap: var(--space-md);
 	}
 	.swatches {
 		display: grid;
 		grid-template-columns: repeat(4, 1fr);
-		gap: 12px;
+		gap: var(--space-lg);
 	}
 	/* The selected colour, named and shown — a hue off the wheel has no swatch to point at. */
 	.colour-head {
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
-		gap: 12px;
+		gap: var(--space-lg);
 	}
 	.field-label {
 		font-size: 0.78rem;
@@ -204,7 +204,7 @@
 	}
 	.field-hint {
 		margin: -4px 0 0;
-		font-size: 0.8rem;
+		font-size: var(--ph-text-sm);
 		color: var(--ink-dim);
 	}
 	.colour-now {
@@ -224,8 +224,8 @@
 	.hue {
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
-		margin-top: 4px;
+		gap: var(--space-sm);
+		margin-top: var(--space-2xs);
 	}
 	/*
 	 * The track shows the actual reachable colours rather than a generic rainbow, so what you drag
@@ -309,7 +309,7 @@
 		border-radius: var(--radius-sm);
 		border: 3px solid transparent;
 		cursor: pointer;
-		transition: transform 0.12s;
+		transition: transform var(--motion-fast);
 		display: grid;
 		place-items: center;
 	}

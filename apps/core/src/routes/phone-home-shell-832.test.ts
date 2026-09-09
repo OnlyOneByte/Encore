@@ -83,7 +83,7 @@ test('the docked primary button reserves its band in flow instead of overlapping
 	expect(PAGE).toMatch(/setProperty\(\s*'--dock-h'/);
 	// …and consumed by the scrolling column. A constant here is the mockup's own bug: the docked CTA
 	// occluded queue row 5 because a disclosure grew inside a fixed shell.
-	expect(PAGE).toMatch(/padding:\s*6px 18px calc\(var\(--dock-h[^)]*\) \+ 28px\)/);
+	expect(PAGE).toMatch(/padding:\s*var\(--space-xs\) var\(--space-3xl\) calc\(var\(--dock-h[^)]*\) \+ 28px\)/);
 	// The band is LAST in the DOM, after the content it sits below, so tab order follows visual order.
 	expect(PAGE.indexOf('class="cta-dock"')).toBeGreaterThan(PAGE.indexOf('</main>'));
 	// Nothing else may dock off the retired sheet's token, or it reserves 132px of nothing.

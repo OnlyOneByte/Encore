@@ -177,6 +177,437 @@ test('every token a component references is actually defined', () => {
 	expect(missing).toEqual([]);
 });
 
+/**
+ * The declarations inside a named at-rule or selector block, brace-matched rather than regexed.
+ *
+ * WHY BRACE-MATCHED. Every other scan in this file reads app.css as one flat string, which is correct
+ * for "does this token exist anywhere". It is WRONG for the question the two tests below ask, because
+ * app.css has two token blocks that mean different things -- `:root`, whose declarations the browser
+ * emits as custom properties, and `@theme inline`, whose declarations only tell Tailwind which utility
+ * classes to mint. A flat regex cannot tell them apart.
+ *
+ * `head` is matched at the start of a line so `:root` inside the @media overrides is collected too
+ * (there are two, raising --max-w), while the `:root` written inside a comment cannot match -- comments
+ * are blanked to spaces before this runs, and a blanked line has no `:root` left on it.
+ */
+function blockDecls(head: RegExp, src: string): Array<[string, string]> {
+	const decls: Array<[string, string]> = [];
+	for (const m of src.matchAll(head)) {
+		const open = src.indexOf('{', m.index!);
+		if (open === -1) continue;
+		let depth = 0;
+		let end = -1;
+		for (let i = open; i < src.length; i++) {
+			if (src[i] === '{') depth++;
+			else if (src[i] === '}') {
+				depth--;
+				if (depth === 0) {
+					end = i;
+					break;
+				}
+			}
+		}
+		if (end === -1) continue;
+		for (const d of src.slice(open + 1, end).matchAll(/--([a-z0-9-]+)\s*:\s*([^;]*);/g)) {
+			decls.push([d[1]!, d[2]!.trim()]);
+		}
+	}
+	return decls;
+}
+
+const ROOT_DECLS = blockDecls(/^:root\b/gm, css);
+const THEME_DECLS = blockDecls(/^@theme\b/gm, css);
+const ROOT_TOKENS = new Set(ROOT_DECLS.map(([n]) => n));
+const THEME_TOKENS = new Set(THEME_DECLS.map(([n]) => n));
+
+test('a component never references a token that exists only in the @theme bridge', () => {
+	// THE BUG THIS EXISTS FOR, AND IT IS ARMED RATHER THAN HISTORICAL. `@theme inline` is not a place
+	// custom properties live -- it is Tailwind's configuration input, and its keys are NOT emitted into
+	// the stylesheet. Verified against the built bundle: `--spacing-tap` and `--text-tv-label` have been
+	// in that block since #853 and appear NOWHERE in any built asset. So `var(--spacing-tap)` in a
+	// component resolves to nothing and paints nothing -- the exact failure mode of the undefined
+	// `--warn-bg` that rendered /metrics' worker-down banner transparent, which is the defect the
+	// sibling test above was written for.
+	//
+	// AND THAT SIBLING CANNOT CATCH THIS ONE. It builds `defined` with /--([a-z0-9-]+):/g over the whole
+	// file, which is block-blind: a bridge key satisfies `defined.has(name)` identically to a real
+	// `:root` token, so the reference short-circuits and is never reported. It asks "is this name
+	// written in app.css", and the question here is "is this name EMITTED".
+	//
+	// #829 makes the trap materially easier to step on, which is why the guard lands with it: the
+	// bridge keys it adds are deliberate near-homophones of their `:root` sources (--spacing-sm beside
+	// --space-sm, --text-ph-sm beside --ph-text-sm, --duration-fast beside --motion-fast). The spelling
+	// has to differ -- a bridge entry naming itself is a self-reference that resolves to nothing -- so
+	// the pairs cannot be made distinct by renaming, and a scan is the only thing that closes it.
+	const bridgeOnly = new Set([...THEME_TOKENS].filter((t) => !ROOT_TOKENS.has(t)));
+	// Not vacuous: the bridge exists and every key in it is by construction spelled differently from the
+	// `:root` token it forwards to, so this set is the whole block. If it empties, the scan below is
+	// checking nothing and this reds first.
+	expect(bridgeOnly.size).toBeGreaterThanOrEqual(10);
+
+	const offences: string[] = [];
+	let bridgeRefsScanned = 0;
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		const local = new Set([...src.matchAll(/--([a-z0-9-]+)\s*:/g)].map((m) => m[1]!));
+		for (const m of src.matchAll(/var\(\s*--([a-z0-9-]+)\s*[,)]/g)) {
+			bridgeRefsScanned++;
+			const name = m[1]!;
+			if (local.has(name)) continue; // the file declares it itself, so it resolves
+			if (!bridgeOnly.has(name)) continue;
+			offences.push(
+				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: var(--${name}) is declared only in @theme, which mints a utility but emits no custom property — it paints nothing. Use the :root token it forwards to.`
+			);
+		}
+	}
+	// The var() walk must have read a real population, or a regex slip would report zero offences from
+	// zero readings. The tree carries hundreds of var() references.
+	expect(bridgeRefsScanned).toBeGreaterThanOrEqual(200);
+	expect(offences).toEqual([]);
+});
+
+test('every @theme bridge entry forwards to a real :root token, and never to itself', () => {
+	// A bridge entry is `--spacing-sm: var(--space-sm)` — a DIFFERENT name on each side, forwarding to a
+	// token `:root` really declares. Two ways that breaks, both silent, both invisible to either side
+	// read alone:
+	//
+	//   SELF-REFERENCE — `--radius-sm: var(--radius-sm)`, the exact shape app.css's own comment warns
+	//   about for the radius scale. The property resolves to itself, the utility mints, and it paints
+	//   nothing. This is why the bridge keys are spelled differently from their sources at all, so it is
+	//   the invariant that keeps that spelling rule honest rather than merely conventional.
+	//
+	//   DANGLING FORWARD — `var(--space-smm)`. `:root` has no such token, so the utility mints and paints
+	//   nothing. The sibling "every token a component references is actually defined" scan reads
+	//   COMPONENTS, never app.css, so nothing else in the tree looks at the right-hand side of these
+	//   declarations.
+	const offences: string[] = [];
+	let forwardsChecked = 0;
+	for (const [name, value] of THEME_DECLS) {
+		for (const ref of value.matchAll(/var\(\s*--([a-z0-9-]+)\s*[,)]/g)) {
+			forwardsChecked++;
+			const target = ref[1]!;
+			if (target === name) {
+				offences.push(`--${name} forwards to itself — it resolves to nothing and paints nothing`);
+			} else if (!ROOT_TOKENS.has(target)) {
+				offences.push(`--${name} forwards to var(--${target}), which :root never declares`);
+			}
+		}
+	}
+	// Every bridge entry is a forward, so this counts the block. A parser slip that read no values would
+	// otherwise report zero offences from zero readings.
+	expect(forwardsChecked).toBeGreaterThanOrEqual(30);
+	expect(ROOT_TOKENS.size).toBeGreaterThanOrEqual(50);
+	expect(offences).toEqual([]);
+});
+
+/*
+ * ══ THE FIVE NON-COLOUR DIMENSION RULES (issue #829) ══════════════════════════════════════════════
+ *
+ * These are the colour scans' siblings, and they enforce the SAME decidable rule for the same reason:
+ * a literal must not duplicate a value that already has a token. Nothing above them changed shape --
+ * what changed is that five dimensions now HAVE tokens, so the rule finally has something to compare
+ * against. Before app.css declared these scales, ~391 literals were not violations this file was
+ * missing; they were outside anything it could express, which is why it passed correctly on all of them.
+ *
+ * WHAT THESE DELIBERATELY DO NOT DO, stated once for all five: they do not flag a NEAR miss. 7px beside
+ * a 6px and an 8px step, or 0.78rem beside 0.75rem and 0.8rem, is drift a human can see and a
+ * duplication rule cannot -- exactly as a colour with no token is not an offence to the hex scan above.
+ * Flagging near misses needs a snapped scale, which changes rendered pixels and therefore needs a design
+ * ruling and frames. So this closes "there was no token to compare against" and not "this value sits one
+ * step off". The cost is real and is recorded at app.css's own scale block.
+ *
+ * WHY A VALUE MAP AND NOT A LIST OF PROPERTIES TO BAN: the map is built from app.css at run time, so
+ * adding a step to a scale starts enforcing it everywhere by itself and no list here needs touching --
+ * the property the colour scans were written for.
+ */
+
+/** The steps of one `:root` scale, as rendered-value -> token name. Built from app.css, never a copy. */
+function scale(prefix: RegExp, normalise: (v: string) => string | null): Map<string, string> {
+	const m = new Map<string, string>();
+	for (const [name, value] of ROOT_DECLS) {
+		if (!prefix.test(name)) continue;
+		const key = normalise(value);
+		if (key === null) continue;
+		if (!m.has(key)) m.set(key, name);
+	}
+	return m;
+}
+
+/**
+ * The declaration blocks of one component, as [selector, body] pairs.
+ *
+ * Shared by the four value-dimension scans below so each reports the rule it found an offence in rather
+ * than a bare line number, and so a property name appearing in a SELECTOR (or in a Svelte expression
+ * outside any rule) cannot be read as a declaration.
+ */
+function rules(src: string): Array<[string, string, number]> {
+	const out: Array<[string, string, number]> = [];
+	for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) out.push([m[1]!.trim(), m[2]!, m.index!]);
+	return out;
+}
+
+test('no component hard-codes a spacing value the scale already owns', () => {
+	// Scope is gap / margin / padding, which is XR-PH-04's own scope ("every gap/margin/padding in a
+	// phone surface resolves to a spacing step"). Positional offsets -- top/right/bottom/left/inset -- are
+	// deliberately NOT in it: they place a box against its container rather than space one from another,
+	// and the incumbent values there are edge offsets whose meaning is positional, not rhythmic.
+	//
+	// UNSIGNED ONLY. A negative offset (-10px on a slider thumb, -0.85em on a marker) is a nudge in the
+	// opposite direction from anything the scale means, and no step is negative, so `-10px` must not be
+	// read as a duplicate of `--space-md`. The `(?<![\w.-])` guard is what excludes it -- and also stops
+	// `14px` matching inside `114px`.
+	const steps = scale(/^space-/, (v) => (/^\d+px$/.test(v) ? v : null));
+	expect(steps.size).toBeGreaterThanOrEqual(8);
+	const PROPS = /^(gap|row-gap|column-gap|margin|margin-(top|right|bottom|left|inline|block)|padding|padding-(top|right|bottom|left|inline|block))$/;
+	const offences: string[] = [];
+	let spacingDeclsSeen = 0;
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const [sel, body, at] of rules(src)) {
+			for (const d of body.matchAll(/([a-z-]+)\s*:\s*([^;]+)/g)) {
+				if (!PROPS.test(d[1]!)) continue;
+				spacingDeclsSeen++;
+				for (const n of d[2]!.matchAll(/(?<![\w.-])(\d+px)\b/g)) {
+					const token = steps.get(n[1]!);
+					if (!token) continue;
+					offences.push(
+						`${f.replace(SRC, 'src')}:${lineOf(src, at)}: ${sel} { ${d[1]}: … ${n[1]} … } is var(--${token})`
+					);
+				}
+			}
+		}
+	}
+	// The declaration walk must have read a real population, or a regex slip reports zero offences from
+	// zero readings. The tree carries hundreds of gap/margin/padding declarations.
+	expect(spacingDeclsSeen).toBeGreaterThanOrEqual(200);
+	expect(offences).toEqual([]);
+});
+
+test('no component hard-codes a phone type size the ladder already owns', () => {
+	// rem only. The TV tiers are clamp() expressions and carry no bare literal, so they cannot collide
+	// with this; a px font-size on a phone surface is a separate and stricter offence already owned by
+	// phone-inventory.test.ts (SC 1.4.4 -- an absolute size does not respond to the browser's text-size
+	// setting), and it is left there rather than double-reported here.
+	//
+	// `.7rem` and `0.7rem` are the same size, so the leading zero is normalised before comparing -- a
+	// duplicate must not be able to hide behind formatting, the same argument as normaliseHex above.
+	const steps = scale(/^ph-text-/, (v) => (/^[\d.]+rem$/.test(v) ? String(parseFloat(v)) + 'rem' : null));
+	expect(steps.size).toBeGreaterThanOrEqual(6);
+	// EVERY STEP IS rem, asserted rather than assumed. phone-inventory.test.ts bans absolute font sizes on
+	// phone surfaces (SC 1.4.4 — a px size ignores the browser's text-size setting) by scanning the
+	// COMPONENTS, so once a component says `font-size: var(--ph-text-sm)` that scan can no longer see what
+	// the size is made of. A px step added to the ladder would therefore hand every component naming it an
+	// absolute size with nothing reporting it. This is the assertion that keeps that door shut.
+	const ladder = ROOT_DECLS.filter(([n]) => /^ph-text-/.test(n));
+	expect(ladder.length).toBeGreaterThanOrEqual(6);
+	expect(ladder.filter(([, v]) => !/^[\d.]+rem$/.test(v.trim()))).toEqual([]);
+	const offences: string[] = [];
+	let fontDeclsSeen = 0;
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const [sel, body, at] of rules(src)) {
+			for (const d of body.matchAll(/(?<![\w-])font-size\s*:\s*([^;]+)/g)) {
+				fontDeclsSeen++;
+				const lit = d[1]!.trim().match(/^([\d.]+)rem$/);
+				if (!lit) continue;
+				const token = steps.get(String(parseFloat(lit[1]!)) + 'rem');
+				if (!token) continue;
+				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, at)}: ${sel} { font-size: ${d[1]!.trim()} } is var(--${token})`);
+			}
+		}
+	}
+	expect(fontDeclsSeen).toBeGreaterThanOrEqual(60);
+	expect(offences).toEqual([]);
+});
+
+test('no component hard-codes a line height the scale already owns', () => {
+	// Unitless only, which is the whole scale: a unitless line-height resolves against the element's own
+	// font-size, so it survives being paired with any type step. A `line-height: 20px` is a different
+	// thing (it pins the line box against the type) and has no token to duplicate.
+	const steps = scale(/^lh-/, (v) => (/^[\d.]+$/.test(v) ? String(parseFloat(v)) : null));
+	expect(steps.size).toBeGreaterThanOrEqual(4);
+	const offences: string[] = [];
+	let leadingDeclsSeen = 0;
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const [sel, body, at] of rules(src)) {
+			for (const d of body.matchAll(/(?<![\w-])line-height\s*:\s*([^;]+)/g)) {
+				leadingDeclsSeen++;
+				const lit = d[1]!.trim();
+				if (!/^[\d.]+$/.test(lit)) continue;
+				const token = steps.get(String(parseFloat(lit)));
+				if (!token) continue;
+				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, at)}: ${sel} { line-height: ${lit} } is var(--${token})`);
+			}
+		}
+	}
+	expect(leadingDeclsSeen).toBeGreaterThanOrEqual(8);
+	expect(offences).toEqual([]);
+});
+
+test('no component hard-codes a motion duration the scale already owns', () => {
+	// Durations are compared in MILLISECONDS, so `0.12s` and `120ms` are the same value and neither can
+	// hide behind the other's unit.
+	//
+	// A DURATION TOKEN IS NOT A REDUCED-MOTION MECHANISM. This scan says nothing about whether an
+	// animation is gated -- components/motion.test.ts owns that, and XR-TV-05's rule that a reduced-motion
+	// branch HALTS rather than shortens is unaffected by which token spells the duration it halts.
+	const ms = (v: string) => {
+		const m = v.match(/^([\d.]+)(ms|s)$/);
+		return m ? String(m[2] === 's' ? parseFloat(m[1]!) * 1000 : parseFloat(m[1]!)) : null;
+	};
+	const steps = scale(/^motion-/, ms);
+	expect(steps.size).toBeGreaterThanOrEqual(3);
+	const offences: string[] = [];
+	let motionDeclsSeen = 0;
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const [sel, body, at] of rules(src)) {
+			for (const d of body.matchAll(/(?<![\w-])(transition|animation)(-duration)?\s*:\s*([^;]+)/g)) {
+				motionDeclsSeen++;
+				for (const n of d[3]!.matchAll(/(?<![\w.-])([\d.]+m?s)\b/g)) {
+					const token = steps.get(ms(n[1]!)!);
+					if (!token) continue;
+					offences.push(
+						`${f.replace(SRC, 'src')}:${lineOf(src, at)}: ${sel} { ${d[1]}: … ${n[1]} … } is var(--${token})`
+					);
+				}
+			}
+		}
+	}
+	expect(motionDeclsSeen).toBeGreaterThanOrEqual(10);
+	expect(offences).toEqual([]);
+});
+
+test('every z-index in a component names a paint-order tier, never a bare integer', () => {
+	// THIS ONE IS A TOTAL BAN, NOT A DUPLICATION RULE, and the difference is not an inconsistency.
+	//
+	// The other four permit a token-less literal because a genuinely un-tokened spacing or size can be
+	// legitimate. Paint order has no such case: a bare integer is only meaningful RELATIVE to the other
+	// integers in its stacking context, so the number alone cannot say what it sits above -- which is the
+	// defect, not a side effect of it. The tree had `9` and `10` meaning the TV's status dot and tap
+	// affordance in one file and the phone sheet's scrim and surface in another, and nothing in either
+	// said which ladder a reader was looking at. XR-TV-10 asks for exactly this ("each value is a
+	// var(--z-tv-…) reference"), and XR-PH-04 for its phone half.
+	//
+	// A duplication rule could not express it anyway: the two ladders SHARE values by design (--z-header
+	// and --z-tv-video are both 1, --z-sheet and --z-tv-affordance both 10), so value -> token is
+	// ambiguous and only the author knows which tier was meant.
+	//
+	// Inline `style=` is in scope too — TvPlayer picks its slot tier from an expression, and a bare
+	// integer there is exactly as unreadable as one in a rule.
+	const tiers = new Set([...ROOT_TOKENS].filter((t) => /^z-/.test(t)));
+	expect(tiers.size).toBeGreaterThanOrEqual(10);
+	const offences: string[] = [];
+	let zDeclsSeen = 0;
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		// To end-of-line rather than to a quote, because one of these lives in a Svelte expression
+		// (`style="z-index:{visible ? 'var(--z-tv-video-active)' : 'var(--z-tv-video)'}"`) whose value
+		// legitimately contains quotes and braces. Stopping at `;` keeps a rule's other declarations out.
+		for (const m of src.matchAll(/z-index\s*:\s*([^;\n]*)/g)) {
+			zDeclsSeen++;
+			const value = m[1]!.trim();
+			if (/var\(\s*--z-/.test(value)) continue; // names a tier
+			offences.push(
+				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: z-index: ${value} is a bare integer — name the tier it means (one of ${[...tiers].slice(0, 3).join(', ')}, …)`
+			);
+		}
+	}
+	// Every overlapping surface declares one, so a walk that reads none is a broken scan rather than a
+	// tree with no paint order.
+	expect(zDeclsSeen).toBeGreaterThanOrEqual(15);
+	expect(offences).toEqual([]);
+});
+
+test('each paint-order ladder still climbs in its documented order', () => {
+	// THE CLAIM THIS KEEPS ALIVE. Naming the tiers moved every ordering fact out of the components and
+	// into app.css -- and the ordering IS the whole content of a z-index. Before #829, `.fs-btn`'s guard
+	// asserted the literal 7 and its own name carried the reason ("above the reel and video, below the
+	// overlays and the hint"); the autoplay hint's asserted 10 and the interstitial's 8 the same way. Those
+	// assertions now read `var(--z-tv-card)`, which pins WHICH TIER but says nothing about where the tier
+	// sits. Without this test the ladder could be reordered in app.css and every one of them would stay
+	// green while the hint painted under the cards it exists to cover.
+	//
+	// Asserted as a strictly increasing sequence in the documented order rather than as a list of
+	// numbers, so re-spacing the ladder (the gaps are incumbent values, not meaning) stays legal while
+	// re-ORDERING it cannot.
+	const value = (t: string) => {
+		const d = ROOT_DECLS.find(([n]) => n === t);
+		expect(d, `--${t} must be declared in :root`).toBeDefined();
+		const n = Number(d![1]);
+		expect(Number.isInteger(n), `--${t} must be an integer, got ${d![1]}`).toBe(true);
+		return n;
+	};
+	const LADDERS: Record<string, string[]> = {
+		// bottom to top. The two shared tiers (card, interstitial) are documented at app.css.
+		'TV stage': [
+			'z-tv-bg',
+			'z-tv-video',
+			'z-tv-video-active',
+			'z-tv-screen',
+			'z-tv-reel',
+			'z-tv-card',
+			'z-tv-interstitial',
+			'z-tv-status',
+			'z-tv-affordance'
+		],
+		phone: ['z-header', 'z-row-lifted', 'z-sheet-scrim', 'z-sheet', 'z-dock']
+	};
+	let rungsChecked = 0;
+	for (const [name, ladder] of Object.entries(LADDERS)) {
+		for (let i = 1; i < ladder.length; i++) {
+			rungsChecked++;
+			expect(
+				value(ladder[i]!),
+				`${name}: --${ladder[i]} must paint above --${ladder[i - 1]}`
+			).toBeGreaterThan(value(ladder[i - 1]!));
+		}
+	}
+	// Every tier in :root belongs to exactly one ladder, so a tier added without a place in the order
+	// reds here rather than joining the scheme unordered.
+	const laddered = new Set(Object.values(LADDERS).flat());
+	const unplaced = [...ROOT_TOKENS].filter((t) => /^z-/.test(t) && !laddered.has(t));
+	expect(unplaced).toEqual([]);
+	expect(rungsChecked).toBeGreaterThanOrEqual(11);
+});
+
+test('the phone type ladder never reaches a TV surface', () => {
+	// THE HAZARD THIS CLOSES, AND #829 IS WHAT OPENED IT. `tv/stage-scale.test.ts` enforces a ten-foot
+	// floor by scanning the TV tree for `font-size: <number><rem|px>` and rejecting anything under 24px.
+	// That scan cannot see through a token — and it currently matches ZERO declarations, because every TV
+	// font-size is already a `var(--tv-*)`, a `clamp()` or an `em`.
+	//
+	// So the moment a phone ladder existed, `font-size: var(--ph-text-2xs)` became an idiomatic, one-token,
+	// fully green way to write a 10.88px font ON A WALL — which is the exact defect that guard's header
+	// describes ("the room-state labels, the song title … rendered at 12–19px — on a wall"). Only
+	// `--ph-text-2xl` (1.5rem = 24px) clears the floor at all. Tokenisation made the defect cheaper to
+	// write and invisible to the thing watching for it, which is a coverage regression rather than a
+	// neutral refactor, so the ban ships with the ladder that created it.
+	//
+	// A BAN ON THE SURFACE, NOT A THRESHOLD ON THE VALUE. Comparing resolved px would pass `--ph-text-2xl`
+	// and re-red every time a step is retuned; but a phone size on the stage is wrong at ANY value,
+	// because the stage's sizes are viewing-distance functions (`clamp(px, vh, px)`) and the phone's are
+	// not. The scale to use there exists and is `--tv-*`.
+	//
+	// LINE HEIGHT IS DELIBERATELY NOT BANNED: `--lh-*` is unitless and carries no distance, so it is
+	// surface-neutral by construction and the TV uses it in four places. That asymmetry is the whole
+	// reason the leading scale is not `--ph-`-prefixed.
+	const TV = FILES.filter((f) => /\/(lib|routes)\/tv\//.test(f));
+	// The TV tree exists and was walked. Without this the ban is a scan over an empty list.
+	expect(TV.length).toBeGreaterThanOrEqual(5);
+	const offences: string[] = [];
+	for (const f of TV) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const m of src.matchAll(/var\(\s*(--ph-[a-z0-9-]+)\s*[,)]/g)) {
+			offences.push(
+				`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${m[1]} is a PHONE size on a TV surface — the stage reads from three metres and has its own ladder (--tv-*), and the ten-foot floor in tv/stage-scale.test.ts cannot see through a token`
+			);
+		}
+	}
+	expect(offences).toEqual([]);
+});
+
 test('the colour picker has exactly one name per shared preset colour', () => {
 	// THE BUG THIS BOUNDS. The picker names its swatches BY POSITION: PRESET_NAMES[i] is the announced
 	// name of SINGER_COLORS[i], and that is the only thing tying a screen-reader label to a hex. The
@@ -314,8 +745,17 @@ test('form controls never sit below the 16px iOS zoom threshold', () => {
 	// THE BUG: iOS Safari zooms the page in when a focused input computes under 16px, and does not
 	// zoom back out. The settings page shipped `select, .text { font-size: 0.9rem }` (14.4px) and a
 	// 0.86rem LAN-address field, so tapping either left the whole surface zoomed and off-centre.
+	//
+	// THE VALUE IS RESOLVED THROUGH A TOKEN, NOT ONLY READ AS A LITERAL (#829). Before the type ladder
+	// existed every control stated its size as a literal and a regex over the declaration was the whole
+	// job. Tokenising them made this scan BLIND rather than red: `.searchbox input` became
+	// `font-size: var(--ph-text-base)`, the literal match failed, `continue` fired, and the control
+	// dropped out of the population silently — a vacuous pass on the one rule here that protects a
+	// WCAG-adjacent behaviour. So a var() is followed to its `:root` declaration and judged on that,
+	// which also means a future ladder step retuned below 16px reds every control that names it.
 	const offences: string[] = [];
 	const CONTROL = /(^|[\s,>])(input|select|textarea)\b/;
+	let controlSizesResolved = 0;
 
 	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
@@ -324,16 +764,34 @@ test('form controls never sit below the 16px iOS zoom threshold', () => {
 			if (!CONTROL.test(sel)) continue;
 			// A range slider has no text, so the zoom rule cannot apply to it.
 			if (/type=['"]?range/.test(sel)) continue;
-			const fs = body.match(/font-size:\s*([0-9.]+)(rem|px|em)/);
+			const decl = body.match(/font-size:\s*([^;]+)/);
+			if (!decl) continue;
+			// Follow one hop through a token. One hop is enough and is asserted: the ladder's steps are
+			// plain lengths, not references to further tokens.
+			let value = decl[1]!.trim();
+			const ref = value.match(/^var\(\s*(--[a-z0-9-]+)\s*\)$/);
+			if (ref) {
+				const target = ROOT_DECLS.find(([n]) => '--' + n === ref[1]);
+				if (!target) continue; // not a :root token — the @theme-only scan above owns that defect
+				value = target[1]!.trim();
+				controlSizesResolved++;
+			}
+			const fs = value.match(/^([0-9.]+)(rem|px|em)$/);
 			if (!fs) continue;
 			const [n, unit] = [Number(fs[1]), fs[2]];
 			const px = unit === 'px' ? n : n * 16;
 			if (px < 16) {
-				offences.push(`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${sel.trim()} is ${fs[1]}${unit} (${px}px)`);
+				offences.push(
+					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: ${sel.trim()} is ${decl[1]!.trim()} (${px}px)`
+				);
 			}
 		}
 	}
 
+	// At least one control takes its size through the ladder, so the resolution path above is exercised
+	// rather than merely present. If every control went back to a literal this reds and the branch can be
+	// retired deliberately.
+	expect(controlSizesResolved).toBeGreaterThanOrEqual(1);
 	expect(offences).toEqual([]);
 });
 

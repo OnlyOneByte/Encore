@@ -55,7 +55,7 @@
 	   native — that one sits in a form, this one sits in the performance surface next to the transport,
 	   where an unstyled OS slider reads as a different application. */
 	.gt {
-		margin: 10px 0 2px;
+		margin: var(--space-md) 0 var(--space-3xs);
 	}
 	.gt.disabled {
 		opacity: 0.5;
@@ -64,7 +64,7 @@
 		display: flex;
 		align-items: baseline;
 		justify-content: space-between;
-		gap: 8px;
+		gap: var(--space-sm);
 	}
 	.lab {
 		font-size: 0.7rem;
@@ -81,8 +81,8 @@
 	.gt-hint {
 		font-size: 0.7rem;
 		color: var(--ink-dim);
-		margin: 6px 0 0;
-		line-height: 1.45;
+		margin: var(--space-xs) 0 0;
+		line-height: var(--lh-normal);
 	}
 	.gt-slider {
 		-webkit-appearance: none;

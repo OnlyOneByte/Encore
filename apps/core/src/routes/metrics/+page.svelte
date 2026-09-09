@@ -378,7 +378,7 @@
 	/* Full-strength ink and a rule beneath, so a section title out-ranks the dim column headers
 	   directly below it. Both were --ink-dim uppercase, which made them compete. */
 	h2 {
-		font-size: 1rem;
+		font-size: var(--ph-text-base);
 		margin: 0 0 0.75rem;
 		padding-bottom: 0.5rem;
 		border-bottom: 1px solid var(--line);
@@ -455,7 +455,7 @@
 		border: 1px solid var(--warn);
 		border-radius: var(--radius-sm);
 		color: var(--warn);
-		font-size: 0.68rem;
+		font-size: var(--ph-text-2xs);
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
@@ -477,10 +477,10 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.note {
-		font-size: 0.75rem;
+		font-size: var(--ph-text-xs);
 		color: var(--ink-dim);
 		margin: 0.8rem 0 0;
-		line-height: 1.6;
+		line-height: var(--lh-loose);
 	}
 	.cooks {
 		list-style: none;
@@ -521,7 +521,7 @@
 		grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
 		gap: 0.2rem 1.2rem;
 		margin: 0.45rem 0 0;
-		font-size: 0.75rem;
+		font-size: var(--ph-text-xs);
 	}
 	.facts div {
 		display: flex;
