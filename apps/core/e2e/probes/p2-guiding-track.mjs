@@ -30,6 +30,7 @@ import { join, resolve } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #561, following the
@@ -461,7 +462,8 @@ async function main() {
 	await phone.goto(`${BASE}/join`);
 	await phone.fill(SEL.nameInput, `Guide${Date.now() % 100000}`);
 	await phone.clickByText('Start singing');
-	await phone.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`, { timeout: 15_000 });
+	await phone.waitFor(`location.pathname === '/'`, { timeout: 15_000 });
+	await openBrowseFromHome(phone, { timeout: 15_000 });
 
 	// TV page — this is where we read audio-element state.
 	const tv = await browser.newPage();

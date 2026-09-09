@@ -24,6 +24,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join as pathJoin } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 import { SEL } from '../contract.ts';
 
 const PORT = process.env.EPORT ?? '3000';
@@ -104,7 +105,8 @@ async function runUnder(label, extraFlags, cdpPort) {
 		await phone.goto(`${base}/join`);
 		await phone.fill(SEL.nameInput, `T17-${cdpPort}-${Date.now() % 10000}`);
 		await phone.clickByText('Start singing');
-		await phone.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+		await phone.waitFor(`location.pathname === '/'`);
+		await openBrowseFromHome(phone);
 		await phone.fill(SEL.search, 'sweet');
 		await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.addTurn)}).length > 0`);
 		await phone.click(SEL.addTurn);

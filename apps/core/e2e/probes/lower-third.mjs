@@ -16,6 +16,7 @@ import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 import { SEL } from '../contract.ts';
 
 /**
@@ -93,6 +94,7 @@ try {
 		await p.goto(`${base}/health`);
 		await p.evaluate(`document.cookie = ${JSON.stringify(s.cookie + '; path=/')}`);
 		await p.goto(`${base}/`);
+		await openBrowseFromHome(p);
 		await p.fill(SEL.search, ready[i].title.split(' ')[0]);
 		await p.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.addTurn)}).length > 0`);
 		await p.click(SEL.addTurn);

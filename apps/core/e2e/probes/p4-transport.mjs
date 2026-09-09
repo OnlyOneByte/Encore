@@ -40,6 +40,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #564, following the
@@ -251,8 +252,11 @@ try {
 		await page.goto(`${base}/join`);
 		await page.fill(SEL.nameInput, name);
 		await page.clickByText('Start singing');
-		// Wait for the remote — the search field is the surest signal the room UI mounted.
-		await page.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+		// Wait for the remote. The search field USED to be the signal the room UI mounted; since #832 it
+		// lives on the browse screen, so the docked band is the joined-home signal and this helper also
+		// leaves the page on the browse screen, where the rest of this probe expects to be.
+		await page.waitFor(`location.pathname === '/'`);
+		await openBrowseFromHome(page);
 		return page;
 	}
 	const phone1 = await newPhone(`P4A${Date.now() % 100000}`);
@@ -263,21 +267,33 @@ try {
 	// from `playback.positionSec` + the current media's `durationSec`. The peek stays visible whether
 	// the sheet is expanded or not; expanding is not strictly required, but the aria-label reads
 	// better and future controls will need it.
-	/** @param {Page} page */
+	/**
+	 * Reach the transport. It used to live in the queue sheet's peek and needed the sheet opened; since
+	 * #832 it is on the now-playing HERO, on the joined home screen, so reaching it means BEING there —
+	 * which is also where the rotation rows this probe counts are rendered.
+	 * @param {Page} page
+	 */
 	async function openSheet(page) {
-		// The sheet's peek is a role=button on `.peek`; a mouse click on it toggles.
-		await page.click(SEL.peek);
+		await returnHomeFromBrowse(page);
 	}
 
 	// Queue a cooked song from a phone. Uses the real UI: search, then click .add on a ready row.
 	/** @param {Page} page @param {string} q */
 	async function queueSong(page, q) {
+		await openBrowseFromHome(page); // #832: search lives behind the browse push
 		await page.fill(SEL.search, q);
 		await page.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 		// Prefer .add (already cooked) over .sing (queue+cook) so we do not depend on the fake worker.
 		const hasAdd = await page.count(SEL.addTurn);
 		await page.click(hasAdd > 0 ? SEL.addTurn : SEL.sing);
-		await page.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`);
+		// The rotation is on home (#832). A PLAYING entry is not a `.qrow` — `queued` filters it out and
+		// it renders on the hero — so accept either, or the first song of the night reads as unqueued.
+		await returnHomeFromBrowse(page);
+		await page
+			.waitFor(
+				`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0 || [...document.querySelectorAll(${JSON.stringify(SEL.heroTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`
+			)
+			.catch(() => 0);
 	}
 
 	await queueSong(phone1, 'caroline');

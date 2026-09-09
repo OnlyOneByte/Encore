@@ -83,19 +83,36 @@ export class QueueStore {
 	}
 
 	/**
-	 * Entry ids of still-pending optimistic ADDs — a row is "unconfirmed" between addSong() and the
-	 * server ack/reject of that add. This is the truth the QueueRow `pending` affordance was meant to
-	 * read (issue #304): the earlier call site tested the placeholder rotationSeq === MAX_SAFE_INTEGER,
-	 * but #optimistic runs applyAndReseq (which reseqs every entry to a contiguous 0-based index)
-	 * BEFORE it emits, so no subscriber ever observed the placeholder and the state was structurally
-	 * dead. Only `add` ops mark a row: a pending move/remove does not make an entry newly unconfirmed.
+	 * What each visible row is still waiting on — the truth behind every unconfirmed marker on the
+	 * phone (XR-PH-10, issue #832).
+	 *
+	 * `'add'` is the original case (issue #304): a row is unconfirmed between addSong() and the server
+	 * ack/reject of that add. The earlier call site tested the placeholder
+	 * `rotationSeq === MAX_SAFE_INTEGER`, but #optimistic runs applyAndReseq (which reseqs every entry
+	 * to a contiguous 0-based index) BEFORE it emits, so no subscriber ever observed the placeholder
+	 * and the state was structurally dead.
+	 *
+	 * `'move'` is what this getter adds, and it replaces a stated gap: the old `unconfirmedAddIds`
+	 * documented "a pending move/remove does not make an entry newly unconfirmed", so a reorder
+	 * committed on a flaky socket looked IDENTICAL to one that landed — the row slid into its new slot
+	 * and nothing said the slide was still a guess. `move` (own picks) and `move-global` (a host pin)
+	 * are one kind here because they are one thing to a guest: this row has been moved and the room
+	 * has not agreed yet.
+	 *
+	 * `remove` is deliberately absent: the optimistic remove takes the row OUT of the list, so there is
+	 * no row left to mark, and its disclosure is the undo toast. `unpin` likewise renders no row state.
+	 *
+	 * A MAP rather than two sets because the marker's COPY differs — a pending reorder must not claim
+	 * it is "adding" — and two parallel sets would be two sources of truth for one row's state.
 	 */
-	get unconfirmedAddIds(): Set<string> {
-		const ids = new Set<string>();
+	get pendingKindById(): Map<string, 'add' | 'move'> {
+		const kinds = new Map<string, 'add' | 'move'>();
 		for (const p of this.#pending.values()) {
-			if (p.op.op === 'add') ids.add(p.op.entry.id);
+			// Ops are issued in order, so a later op's kind is the one the row is currently waiting on.
+			if (p.op.op === 'add') kinds.set(p.op.entry.id, 'add');
+			else if (p.op.op === 'move' || p.op.op === 'move-global') kinds.set(p.op.id, 'move');
 		}
-		return ids;
+		return kinds;
 	}
 
 	subscribe(fn: (entries: QueueEntry[]) => void): () => void {

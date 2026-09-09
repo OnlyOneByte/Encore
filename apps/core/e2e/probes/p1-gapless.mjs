@@ -34,6 +34,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #561, following the
@@ -268,13 +269,14 @@ try {
 	await phone1.viewport(390, 844);
 	await withCookie(phone1, alice.cookie);
 	await phone1.goto(`${base}/`);
-	await phone1.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+	// Home is the queue since #832 — reach the search box through the browse push.
+	await openBrowseFromHome(phone1);
 
 	phone2 = await browser.newPage();
 	await phone2.viewport(390, 844);
 	await withCookie(phone2, bob.cookie);
 	await phone2.goto(`${base}/`);
-	await phone2.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+	await openBrowseFromHome(phone2);
 
 	// Alice queues song 1. The .add button only appears on ready songs, which we've now cooked.
 	await phone1.fill(SEL.search, 'caroline');
@@ -286,6 +288,7 @@ try {
 
 	// Bob queues song 2. Between his join and this add, the server has already autostarted playback of
 	// song 1 (reconcileOnReady), so Bob's add lands as UP-NEXT.
+	await openBrowseFromHome(phone2); // #832: search lives behind the browse push
 	await phone2.fill(SEL.search, 'believin');
 	await phone2.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const has2 = await phone2.count(SEL.addTurn);

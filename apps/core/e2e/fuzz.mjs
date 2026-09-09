@@ -77,6 +77,7 @@ import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
  * Types for the out-of-program driver. This file runs under tsconfig.e2e.json (issue #557); the shapes
@@ -1220,6 +1221,7 @@ async function driveInput(input, world) {
 			const wantRaw = raw.length > 0 && (ready.length === 0 || rnd() < 0.3);
 			const row = pick(wantRaw ? raw : ready);
 			const term = String(row.title).split(/\s+/)[0].toLowerCase();
+			await openBrowseFromHome(page); // #832: search lives behind the browse push
 			await page.fill(SEL.search, term);
 			try {
 				await page.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 15000 });
@@ -1396,12 +1398,13 @@ try {
 		await page.goto(`${base}/join`);
 		await page.fill(SEL.nameInput, name);
 		await page.clickByText('Start singing');
-		await page.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`, { timeout: 15000 });
+		await page.waitFor(`location.pathname === '/'`, { timeout: 15000 });
+		await openBrowseFromHome(page, { timeout: 15000 });
 		await openWire(page);
-		// The transport lives in the queue sheet's peek; open the sheet so it is mounted and clickable.
-		try {
-			await page.click(SEL.peek);
-		} catch {}
+		// The transport used to need the queue sheet opened. Since #832 it is on the now-playing hero on
+		// HOME, so the fuzzer starts each phone there — that is where its transport taps and its `.qrow`
+		// counts both apply.
+		await returnHomeFromBrowse(page);
 		return page;
 	}
 	phones.push(await newPhone(`FzA${NONCE}`));
