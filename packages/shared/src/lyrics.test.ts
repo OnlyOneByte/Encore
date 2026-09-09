@@ -72,28 +72,69 @@ test('a text identified as ANOTHER SONG ranks below every honest guess', () => {
 	// textConfidence alone left it TIED with the baseline that convicted it, and breaksTie then
 	// preferred it — it has a numeric agreement, a baseline has none. So the room kept seeing words
 	// already proven wrong while the words actually heard sat unshown beside them.
-	const suspect = { ...cand('lrclib', 'word'), textConfidence: 'low' as const, agreement: 0.08 };
+	//
+	// The convicting axis is `coverage`, not `agreement` (#806). A genuinely different song is low on
+	// BOTH (measured: coverage 0.2745, rank score 0.1521), so both are set here — but only coverage is
+	// thresholded, which the guard below proves by moving them apart.
+	const suspect = {
+		...cand('lrclib', 'word'),
+		textConfidence: 'low' as const,
+		agreement: 0.1521,
+		coverage: 0.2745
+	};
 	const baseline = cand('asr', 'word'); // a baseline is the ruler, so it carries no score
 	expect(lyricsRank(suspect)).toBe(1);
 	expect(lyricsRank(suspect)).toBeLessThan(lyricsRank(baseline));
 	expect(pickBestLyrics([suspect, baseline])).toBe(baseline);
 });
 
+test('#806 a LOW RANK SCORE with high coverage is NOT another song — it is a partial baseline', () => {
+	// THE REGRESSION. YouTube's ASR suppresses sung vocals, so a baseline that heard only part of the
+	// song is the normal case here, and a correct authored lookup graded against one scores low on the
+	// RANKING axis by construction. Measured through the real align plan: agreement 0.1857 while the
+	// coverage that actually decided it was 0.6970 — so the worker correctly declined to demote
+	// (winner_suspect false, textConfidence still high) while lyricsRank convicted the same text.
+	//
+	// Consequence, measured: rank 1 instead of 5, so pickBestLyrics handed the room the ASR transcript
+	// over the correct words, and make-karaoke's candidate merge meant a later correct align could
+	// never displace it.
+	const correct = { ...cand('lrclib', 'word'), agreement: 0.1857, coverage: 0.697 };
+	const asrBaseline = { ...cand('asr', 'word'), textConfidence: 'low' as const };
+	expect(lyricsRank(correct)).toBe(5);
+	expect(lyricsRank(correct)).toBeGreaterThan(lyricsRank(asrBaseline));
+	expect(pickBestLyrics([correct, asrBaseline])).toBe(correct);
+
+	// SENTINEL — so the guard above cannot be satisfied by deleting the tier. A genuinely different
+	// song has LOW coverage and is still convicted, even though its rank score is the same order of
+	// magnitude as the correct candidate's above (0.1521 vs 0.1857 — 0.03 apart, which is why no
+	// threshold on the ranking score can separate them).
+	const differentSong = { ...cand('lrclib', 'word'), agreement: 0.1521, coverage: 0.2745 };
+	expect(lyricsRank(differentSong)).toBe(1);
+});
+
 test('a suspect text is still shown when it is the only thing there', () => {
 	// Rank 1, not 0. Wrong words beat a blank screen when there is no alternative, and the TV labels it.
-	const suspect = { ...cand('lrclib', 'word'), textConfidence: 'low' as const, agreement: 0.05 };
+	const suspect = {
+		...cand('lrclib', 'word'),
+		textConfidence: 'low' as const,
+		agreement: 0.05,
+		coverage: 0.05
+	};
 	expect(pickBestLyrics([suspect])).toBe(suspect);
 });
 
-test('a high agreement does not trip the suspect tier', () => {
-	const good = { ...cand('lrclib', 'word'), agreement: 0.94 };
+test('a high coverage does not trip the suspect tier', () => {
+	const good = { ...cand('lrclib', 'word'), agreement: 0.94, coverage: 0.94 };
 	expect(lyricsRank(good)).toBe(5);
 });
 
 test('an UNJUDGED candidate is not treated as suspect', () => {
 	// No baseline could compare it (an instrumental, or text too short). "Cannot tell" must not demote.
 	expect(lyricsRank(cand('lrclib', 'word'))).toBe(5);
-	expect(lyricsRank({ ...cand('lrclib', 'word'), agreement: undefined })).toBe(5);
+	expect(lyricsRank({ ...cand('lrclib', 'word'), coverage: undefined })).toBe(5);
+	// A candidate carrying only the ranking axis (an older worker, or a baseline) is also UNJUDGED for
+	// this purpose: `agreement` alone must never reach the wrong-song threshold.
+	expect(lyricsRank({ ...cand('lrclib', 'word'), agreement: 0.08 })).toBe(5);
 });
 
 // ── pickBestLyrics ────────────────────────────────────────────────────────────

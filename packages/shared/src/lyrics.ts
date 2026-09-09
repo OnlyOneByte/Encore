@@ -46,8 +46,24 @@ export interface LyricsCandidate {
 	/**
 	 * 0..1 agreement between this candidate's text and an ASR transcript of the same audio, when both
 	 * exist. `undefined` = never compared or not comparable. See `agreementScore`.
+	 *
+	 * A RANKING axis only — it orders candidates against each other (`breaksTie`) and no threshold is
+	 * applied to it. A correct candidate graded against a baseline that heard only part of the song
+	 * scores low here by construction, so this number cannot answer "is this a different song?".
+	 * That question reads `coverage`.
 	 */
 	agreement?: number;
+	/**
+	 * 0..1 BASELINE COVERAGE of the published winner — how much of what the baselines actually heard
+	 * this text contains. `undefined` = never compared or not comparable. The worker emits it beside
+	 * `agreement` for the graded candidate only (`Selection.winner_coverage`).
+	 *
+	 * The one axis the absolute wrong-song judgement may threshold, and the reason it is a separate
+	 * field rather than a second use of `agreement`: coverage is immune to the size asymmetry between a
+	 * full text and a partial transcript, so it separates "a different song" from "the baseline only
+	 * heard a third of this one" where the ranking score cannot. See `isLikelyWrongSong`.
+	 */
+	coverage?: number;
 }
 
 /**
@@ -83,6 +99,11 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  * TIER 1 IS THE ONE THAT IS EASY TO GET WRONG. A candidate whose BASELINE COVERAGE is below
  * SUSPECT_COVERAGE has been measured against transcripts of this actual audio and found to be missing
  * most of what was sung — a different song.
+ * It reads `coverage`, NOT `agreement`. Thresholding the ranking score instead convicts a CORRECT
+ * candidate whose baseline heard only part of the song — the repo's normal case, since YouTube's ASR
+ * suppresses sung vocals — and then the ASR baseline wins `pickBestLyrics` while the correct words sit
+ * unshown beside it (#806). `agreement` stays a preference axis inside `breaksTie`, which is ranking
+ * and is its correct use.
  * Demoting its `textConfidence` alone is NOT enough: that only drops it to the same rank as the
  * baseline it was measured against, and `breaksTie` then PREFERS it, because it carries a numeric
  * agreement while a baseline carries none (a baseline is the ruler, so it has no score). The room
@@ -92,7 +113,7 @@ export function hasUsableTiming(c: LyricsCandidate): boolean {
  */
 export function lyricsRank(c: LyricsCandidate): number {
 	if (!hasUsableTiming(c)) return 0;
-	if (isLikelyWrongSong(c.agreement)) return 1;
+	if (isLikelyWrongSong(c.coverage)) return 1;
 	const authoritative = isAuthoritativeText(c);
 	const word = c.timing === 'word';
 	if (authoritative) return word ? 5 : 4;
@@ -276,9 +297,11 @@ export function agreementScore(candidate: string, baseline: string): number | nu
  * Does the baseline suggest this authoritative text is for a DIFFERENT song? `false` when the
  * comparison could not be made — an unknown must never be reported as a detected mismatch.
  *
- * Takes BASELINE COVERAGE (`Agreement.coverage`, or the worker's `winnerCoverage`), not the ranking
- * score: a correct candidate graded against a baseline that heard only part of the song has a low rank
- * score by construction, and thresholding that demotes correct lyrics for a defect in the evidence.
+ * Takes BASELINE COVERAGE (`Agreement.coverage`, the wire's `LyricsCandidate.coverage`, or the
+ * persisted `SelectionRecord.winnerCoverage` — all three are `Selection.winner_coverage`), not the
+ * ranking score: a correct candidate graded against a baseline that heard only part of the song has a
+ * low rank score by construction, and thresholding that demotes correct lyrics for a defect in the
+ * evidence.
  */
 export function isLikelyWrongSong(coverage: number | null | undefined): boolean {
 	return typeof coverage === 'number' && coverage < SUSPECT_COVERAGE;
