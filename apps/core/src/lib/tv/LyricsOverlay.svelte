@@ -336,7 +336,7 @@
 		left: 0;
 		right: 0;
 		bottom: var(--tv-chrome-h);
-		z-index: 6;
+		z-index: var(--z-tv-reel);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -580,7 +580,7 @@
 	 */
 	.romanization {
 		font-size: 0.62em;
-		line-height: 1.25;
+		line-height: var(--lh-snug);
 		margin-top: 0.15em;
 		opacity: 0.78;
 		letter-spacing: 0.01em;
@@ -615,7 +615,7 @@
 		position: relative;
 		display: inline-block;
 		color: var(--reel-ahead); /* not yet sung */
-		transition: color 0.12s linear;
+		transition: color var(--motion-fast) linear;
 	}
 	.word.done {
 		color: var(--reel-done); /* sung */

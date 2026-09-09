@@ -148,7 +148,7 @@
 	.lobby {
 		position: absolute;
 		inset: 0;
-		z-index: 5;
+		z-index: var(--z-tv-screen);
 		display: flex;
 		/*
 		 * COLUMN, not a single centred box. The stack takes a flex region that ENDS where the roster
@@ -194,7 +194,7 @@
 		font-size: var(--tv-name);
 		display: inline-flex;
 		align-items: center;
-		gap: 12px;
+		gap: var(--space-lg);
 		margin-bottom: 5.2vh;
 	}
 	.grad {
@@ -256,7 +256,7 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 16px;
+		gap: var(--space-2xl);
 		flex-wrap: nowrap;
 		/*
 		 * The display cap (MAX_CHIPS in the script) already keeps this to at most two rows at any name

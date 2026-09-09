@@ -1147,9 +1147,9 @@
 	.stage-bg {
 		position: absolute;
 		inset: 0;
-		z-index: 0;
+		z-index: var(--z-tv-bg);
 		opacity: 0;
-		transition: opacity 0.25s ease;
+		transition: opacity var(--motion-base) ease;
 	}
 	.stage-bg.shown {
 		opacity: 1;
@@ -1161,7 +1161,7 @@
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		z-index: 5;
+		z-index: var(--z-tv-screen);
 		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
 	.brand {
@@ -1172,7 +1172,7 @@
 		font-size: var(--tv-name);
 		display: inline-flex;
 		align-items: center;
-		gap: 12px;
+		gap: var(--space-lg);
 	}
 	.grad {
 		background: var(--grad);
@@ -1234,7 +1234,7 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		z-index: 6;
+		z-index: var(--z-tv-reel);
 		display: flex;
 		align-items: baseline;
 		justify-content: center;
@@ -1264,11 +1264,11 @@
 		position: absolute;
 		left: var(--tv-safe-x);
 		bottom: var(--tv-safe-y);
-		z-index: 7;
+		z-index: var(--z-tv-card);
 		display: flex;
 		flex-direction: column;
 		max-width: 46vw;
-		gap: 2px;
+		gap: var(--space-3xs);
 		/*
 		 * NO CARD. No background, no padding, no border-radius, no backdrop-filter — see the markup
 		 * comment for why. Legibility comes from BOTH a blurred text-shadow AND a text-stroke, the same
@@ -1347,7 +1347,7 @@
 		font-weight: 600;
 		letter-spacing: 0.04em;
 		opacity: 0.82;
-		margin-top: 2px;
+		margin-top: var(--space-3xs);
 	}
 	/*
 	 * The provenance label naming WHERE the words came from (#635). Neutral dim by default -- it is a
@@ -1380,7 +1380,7 @@
 		position: absolute;
 		right: var(--tv-safe-x);
 		top: calc(var(--tv-safe-y) + 2.6vh);
-		z-index: 7;
+		z-index: var(--z-tv-card);
 		display: flex;
 		flex-direction: column;
 		align-items: flex-end;
@@ -1424,12 +1424,12 @@
 	.interstitial {
 		position: absolute;
 		inset: 0;
-		z-index: 8;
+		z-index: var(--z-tv-interstitial);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
 		justify-content: center;
-		gap: 12px;
+		gap: var(--space-lg);
 		/*
 		 * A SCRIM, not a wash. This was --bg at 94%, which blanked the room's chosen backdrop — a
 		 * gradient, the singer's colour, or an animated visualiser — for every song change and every
@@ -1467,13 +1467,13 @@
 	.up-artist {
 		font-size: var(--tv-body);
 		color: var(--ink-dim);
-		margin-top: 6px;
+		margin-top: var(--space-xs);
 	}
 	/* A mark large enough to be the first thing read, since it is what distinguishes these states. */
 	.state-mark {
 		font-size: var(--tv-hero);
-		line-height: 1;
-		margin-bottom: 4px;
+		line-height: var(--lh-none);
+		margin-bottom: var(--space-2xs);
 	}
 
 	/* Affirmative: something good is about to happen. */
@@ -1525,7 +1525,7 @@
 		height: 16px;
 		border-radius: 50%;
 		background: var(--ink-dim);
-		z-index: 9;
+		z-index: var(--z-tv-status);
 	}
 	/* rgba(51,214,166,0.18) was --ok at 18%; color-mix keeps the ring on the theme's ok colour. */
 	.status.on {
@@ -1551,7 +1551,7 @@
 		position: absolute;
 		right: var(--tv-safe-x);
 		bottom: var(--tv-safe-y);
-		z-index: 7;
+		z-index: var(--z-tv-card);
 		display: grid;
 		place-items: center;
 		width: clamp(var(--tap), 5.2vmin, 88px);
@@ -1565,7 +1565,7 @@
 		-webkit-backdrop-filter: blur(4px);
 		opacity: 0;
 		pointer-events: none;
-		transition: opacity 0.4s ease;
+		transition: opacity var(--motion-slow) ease;
 	}
 	.fs-btn.shown {
 		opacity: 0.85;
@@ -1585,7 +1585,7 @@
 	.autoplay-hint {
 		position: absolute;
 		inset: 0;
-		z-index: 10;
+		z-index: var(--z-tv-affordance);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -1612,7 +1612,7 @@
 	.ah-head {
 		font-size: var(--tv-hero);
 		font-weight: 800;
-		line-height: 1.1;
+		line-height: var(--lh-tight);
 		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 	}
 	.ah-sub {
@@ -1628,7 +1628,7 @@
 	.silent-room {
 		position: absolute;
 		inset: 0;
-		z-index: 8;
+		z-index: var(--z-tv-interstitial);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
@@ -1653,7 +1653,7 @@
 	.sr-head {
 		font-size: var(--tv-hero);
 		font-weight: 800;
-		line-height: 1.1;
+		line-height: var(--lh-tight);
 		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 	}
 	.sr-sub {

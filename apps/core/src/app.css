@@ -252,6 +252,208 @@
 	--max-w: 480px;
 
 	/*
+	 * ══ THE FIVE NON-COLOUR SCALES (issue #829) ═══════════════════════════════════════════════════
+	 *
+	 * WHY THESE EXIST AT ALL, WHICH IS NOT "TIDINESS". `design-system.test.ts` enforces one decidable
+	 * rule -- a literal must not duplicate a value that already has a token -- so its reach is exactly
+	 * the set of dimensions that HAVE tokens. Five dimensions had none, and ~391 literals lived in
+	 * them: the guard was not missing those violations, it could not express them. Declaring the
+	 * scales is therefore not a rename; it is what gives the existing guard a dimension to bite in.
+	 *
+	 * EVERY STEP BELOW IS A VALUE THE CODEBASE ALREADY USED, taken from a census of the 31 tracked
+	 * `.svelte` files rather than from a design round. That is deliberate and it is the same move the
+	 * radius scale above made ("this names what the codebase had already standardised on by
+	 * accident"): a scale invented here would have to CHANGE pixels to be adopted, and a pixel change
+	 * needs a design ruling and before/after frames, which this issue is not scoped to carry. So the
+	 * steps are the census's dominant values, every conversion is byte-for-byte the same rendered
+	 * number, and the values the census shows as drift (7px, 9px, 0.78rem, 1.04) are deliberately NOT
+	 * given tokens -- see "WHAT THIS DELIBERATELY DOES NOT DO" at the end of this block.
+	 *
+	 * ── SPACING ───────────────────────────────────────────────────────────────────────────────────
+	 *
+	 * px, because every other dimension token here is px (--radius, --tap, --peek-h, --max-w) and
+	 * because the census's spacing literals are overwhelmingly px. The ten steps are the even values
+	 * 2..20, which carry 221 of the 316 px gap/margin/padding literals in the tree; the granularity is
+	 * 2px because that is what the codebase actually uses, not because 2px is a good design step.
+	 *
+	 * NAMED, NOT NUMBERED, and that is load-bearing rather than a style choice. Tailwind v4's spacing
+	 * namespace ships exactly ONE key -- `--spacing`, a multiplier -- and computes `p-2` from it. So
+	 * registering `--spacing-2` in the bridge below would REPLACE that computed key: every copied-in
+	 * shadcn component asking for `p-2` (0.5rem = 8px) would silently get 2px. t-shirt names cannot
+	 * collide with a namespace that has no t-shirt defaults, which is why they are used here.
+	 */
+	--space-3xs: 2px;
+	--space-2xs: 4px;
+	--space-xs: 6px;
+	--space-sm: 8px;
+	--space-md: 10px;
+	--space-lg: 12px;
+	--space-xl: 14px;
+	--space-2xl: 16px;
+	--space-3xl: 18px;
+	--space-4xl: 20px;
+
+	/*
+	 * ── PHONE TYPE LADDER ─────────────────────────────────────────────────────────────────────────
+	 *
+	 * The phone's counterpart to the two TV ladders below, which is why it is `--ph-*` beside their
+	 * `--tv-*`. rem throughout, and that is a correctness requirement rather than a convention: `body`
+	 * declares `font-size: 100%` precisely so every rem-sized rule tracks the guest's browser
+	 * text-size setting (SC 1.4.4), and `phone-inventory.test.ts` bans absolute font sizes on phone
+	 * surfaces with no exemption. A px step here would be a hole in that rule.
+	 *
+	 * NO VIEWPORT TERM, unlike the TV tiers. The phone is held at arm's length at a known distance, so
+	 * its ladder expresses ratios off the root and nothing else.
+	 *
+	 * The census found 34 distinct font-size literals between 0.6rem and 2.6rem -- 0.68 / 0.7 / 0.72 /
+	 * 0.74 / 0.75 / 0.76 / 0.78 all in use, which is drift rather than a ladder. These eight steps are
+	 * its dominant values (a ~1.1 ratio); the near-misses keep their literals until a design round
+	 * snaps them, and are visible as literals precisely because they are not steps.
+	 *
+	 * THE SMALLEST STEP IS 0.68rem ≈ 10.9px at the default root. That is the app's existing floor
+	 * (13 uses), recorded here rather than raised: raising it is a pixel change. Note what it is NOT
+	 * used for -- form controls take their own 16px floor (iOS zooms a focused sub-16px field and does
+	 * not zoom back), enforced by design-system.test.ts's control rule, which reads through these
+	 * tokens rather than around them.
+	 */
+	--ph-text-2xs: 0.68rem;
+	--ph-text-xs: 0.75rem;
+	--ph-text-sm: 0.8rem;
+	--ph-text-md: 0.9rem;
+	--ph-text-base: 1rem;
+	--ph-text-lg: 1.1rem;
+	--ph-text-xl: 1.25rem;
+	--ph-text-2xl: 1.5rem;
+
+	/*
+	 * ── LINE HEIGHT ───────────────────────────────────────────────────────────────────────────────
+	 *
+	 * Unitless, so each resolves against the element's OWN font-size and a tier can be paired with any
+	 * step of any type ladder (XR-PH-05 asks for size + line-height pairs). A px line-height would break
+	 * that pairing the moment the type scaled.
+	 *
+	 * SURFACE-NEUTRAL, unlike the type ladders, and that is what the unitlessness BUYS. `--ph-*` and
+	 * `--tv-*` exist because a size is only meaningful against a viewing distance — 0.9rem is a phone
+	 * number and clamp(24px, 2.5vh, 62px) is a wall number. A ratio has no distance in it: 1.1 means the
+	 * same thing on a phone row and on the stage, because it is a multiple of whatever type it lands on.
+	 * So there is one scale, named `--lh-*` for neither surface, and both use it.
+	 *
+	 * (Written as `--ph-leading-*` on the first pass, on the belief that the TV declared no line-height
+	 * at all. It declares four — LyricsOverlay's artist line and three on the TV route — so the prefix
+	 * was simply wrong, and it mattered: a phone-prefixed token on the stage is the same category error
+	 * that makes `font-size: var(--ph-text-2xs)` look idiomatic on a wall, which is the defect the
+	 * ten-foot floor exists to stop and cannot see. The type ladders stay separate and a guard now keeps
+	 * the phone's off the TV.)
+	 */
+	--lh-none: 1;
+	--lh-tight: 1.1;
+	--lh-snug: 1.25;
+	--lh-normal: 1.45;
+	--lh-loose: 1.6;
+
+	/*
+	 * ── MOTION ────────────────────────────────────────────────────────────────────────────────────
+	 *
+	 * Durations only. There is no easing scale here on purpose: the census found every easing already
+	 * bespoke to its curve (three different cubic-bezier control-point sets, each tuned to one
+	 * gesture), so naming them would assert a shared identity that does not exist.
+	 *
+	 * A DURATION TOKEN IS NOT A REDUCED-MOTION MECHANISM, and conflating the two is the trap this
+	 * comment exists to close. Nothing about `var(--motion-fast)` respects a preference; the gating is
+	 * the `@media (prefers-reduced-motion: ...)` wrapper, and `components/motion.test.ts` is what
+	 * enforces it. These tokens make the durations consistent INSIDE that wrapper. XR-TV-05's rule
+	 * still stands and is unaffected: a reduced-motion branch HALTS an animation, it does not
+	 * substitute a shorter token.
+	 *
+	 * --motion-tick is a period rather than a transition: it is the once-a-second linear transform
+	 * that lets a progress bar advance smoothly between server updates, so it tracks the update
+	 * interval and must not be "tuned" to feel faster. Longer ambient loop periods (a 4s breathe, a
+	 * 1.3s shimmer) are each a single-site animation cycle rather than a step, and keep their literals.
+	 */
+	--motion-fast: 0.12s;
+	--motion-base: 0.25s;
+	--motion-slow: 0.4s;
+	--motion-tick: 1s;
+
+	/*
+	 * ── PAINT ORDER ───────────────────────────────────────────────────────────────────────────────
+	 *
+	 * TWO LADDERS, because there are two stacking worlds and the same integer meant different things
+	 * in each: the phone's sheet sat at 9/10 while the TV's status dot and tap affordance also sat at
+	 * 9/10. Bare integers cannot say which of those a `10` is, so a reader had to reconstruct the
+	 * scheme from a comment in one route -- and XR-TV-10 asks for exactly this: named tiers, each used
+	 * by the layers documented for it.
+	 *
+	 * Values are unchanged from what the tree already painted; the gaps between them (2 -> 5) are the
+	 * incumbent numbers, kept so this is a pure renaming of the order rather than a re-layering.
+	 *
+	 * There is no `@theme` bridge for these. Tailwind v4 has NO z-index theme namespace at all -- `z-10`
+	 * is a bare-value utility computed from the class name -- so there is no key to register them under,
+	 * and inventing one would mint nothing. `:root` is the whole mechanism here.
+	 *
+	 * THE TV STAGE, bottom to top. Sharing a tier is legal where it is stated (XR-TV-10), and two
+	 * tiers below are shared on purpose:
+	 *   card  -- the lower-third, the up-next strip, the join/QR corner, the progress topbar/pill/
+	 *            edgebar and the fullscreen button. All are edge chrome that never overlaps another
+	 *            member, so they are one tier rather than an invented order between them.
+	 *   interstitial -- the failure interstitial and the silent-room notice. Both are full-screen
+	 *            takeovers that replace the stage, and they are mutually exclusive by state.
+	 */
+	--z-tv-bg: 0;
+	--z-tv-video: 1;
+	--z-tv-video-active: 2;
+	--z-tv-screen: 5;
+	--z-tv-reel: 6;
+	--z-tv-card: 7;
+	--z-tv-interstitial: 8;
+	--z-tv-status: 9;
+	--z-tv-affordance: 10;
+	/*
+	 * THE PHONE. The dock tier is above the sheet by a wide margin (30 vs 10) because the undo and
+	 * error toasts must be reachable while the sheet is expanded -- that gap is the incumbent value and
+	 * it is load-bearing, not slack.
+	 */
+	--z-header: 1;
+	/*
+	 * A ROW LIFTED OUT OF ITS LIST while it is dragged (#836's `.moving`). Above its siblings so the
+	 * next row's surface cannot clip it mid-travel, and below every page-level chrome tier so a row
+	 * being dragged never paints over the sheet, a toast or the dock. XR-PH-04 names the lifted drag
+	 * row as a surface that must name a step rather than carry a bare integer.
+	 *
+	 * ITS ORDER AGAINST --z-header IS NOMINAL, not a paint claim: --z-header belongs to PageHeader,
+	 * which the /settings, /metrics and /stats routes mount, while the drag lives on the phone home
+	 * route, which has its own un-layered `.topbar`. The two never share a stacking context, so the
+	 * only real claim here is the one that matters — lifted sits above list siblings and below the
+	 * sheet, dock and toasts.
+	 */
+	--z-row-lifted: 2;
+	--z-sheet-scrim: 9;
+	--z-sheet: 10;
+	--z-dock: 30;
+
+	/*
+	 * ── WHAT THIS DELIBERATELY DOES NOT DO ────────────────────────────────────────────────────────
+	 *
+	 *   Snap the off-scale literals. 7px (16 uses), 9px (8), 0.78rem (11), 1.04 and their neighbours
+	 *   keep their literals. Moving them onto a step changes rendered pixels on surfaces this issue
+	 *   has no frames for, and the guard's rule is DUPLICATION -- so a value with no token is not an
+	 *   offence, exactly as a token-less colour is not. The cost is stated plainly: a near-miss is
+	 *   invisible to the guard, so this closes the "no token to compare against" gap and not the
+	 *   "value sits one pixel off a step" gap.
+	 *
+	 *   Tokenise rem/em SPACING (95 literals). The spacing scale is px, and a rem gap tracks the
+	 *   guest's text-size setting while a px one does not -- so converting one to the other is a
+	 *   behaviour change under text zoom, not a rename. Whether phone spacing should scale with text
+	 *   at all is a design question, and it is not answered by this issue.
+	 *
+	 *   Give font-family or breakpoints a scale. Both are named in #829's table, and both are already
+	 *   owned elsewhere: the font stack is one declaration on `body` (there is nothing to a scale of
+	 *   one), and the breakpoint set is #831's, whose triage records it landing here once its own
+	 *   media-query parity test lands with it. Minting a breakpoint token here without that test
+	 *   would put a second source of truth in front of it.
+	 */
+
+	/*
 	 * TV / STAGE SCALE. A separate scale because the stage is not a big phone: it is read from three
 	 * metres, so the phone's tokens produce 12–19px text on a wall. Each clamp's MINIMUM is the
 	 * ten-foot legibility floor; the vh term lets a larger panel scale up instead of capping every set
@@ -384,10 +586,22 @@
  * `clamp()`/`max()` expressions resolved against the viewport: one definition, in `:root`, stays the
  * only place any of these values is written.
  *
- * THREE NAMESPACES ARE DELIBERATELY ABSENT.
- *   - motion (`--ease-*`, `--duration-*`) and z-index: this app has no such tokens yet. #829 is
- *     creating that scale and owns the seam; inventing values here to fill the namespaces would put a
- *     second source of truth in front of it.
+ * THREE NAMESPACES WERE DELIBERATELY ABSENT WHEN THIS BLOCK WAS WRITTEN. Two are now filled, and the
+ * reasons the others stay out have not changed.
+ *   - motion (`--duration-*`), and the spacing / type / line-height scales: FILLED by #829, which
+ *     declared them in `:root` above and bridges them below. #853 left this seam open rather than
+ *     inventing values for it, which is why every bridge entry added for them carries no number of its
+ *     own -- each is a `var()` back to the single declaration in `:root`.
+ *   - easing (`--ease-*`): still absent. #829 states why at its motion block above -- every curve in
+ *     the tree is bespoke to one gesture, so there is no shared scale to name.
+ *   - z-index: absent because Tailwind HAS no z-index theme namespace -- `z-10` is a bare-value
+ *     utility computed from the class name, so there is no key to register a tier under. The two
+ *     ladders #829 added therefore live in `:root` only, and that is the whole mechanism.
+ *
+ * THAT SELF-REFERENCE TRAP IS WHY EVERY BRIDGE KEY BELOW IS SPELLED DIFFERENTLY FROM ITS `:root`
+ * TOKEN (`--spacing-sm: var(--space-sm)`, never `var(--spacing-sm)`). A bridge entry that names itself
+ * resolves to nothing and paints nothing, silently -- the same failure mode as the undefined
+ * `--warn-bg` that rendered /metrics' worker-down banner transparent.
  *   - shape (`--radius-*`): not registered, and not merely out of caution. This app's radius tokens
  *     are ALREADY NAMED `--radius-sm` / `--radius-md` / `--radius-xs` / `--radius-btn` /
  *     `--radius-pill`, which is Tailwind's own `--radius-*` namespace, so a bridge entry would be
@@ -409,9 +623,10 @@
 	--spacing-tv-safe-y: var(--tv-safe-y);
 
 	/*
-	 * TYPE — mints text-tv-*. The TV ladder only. The phone's sizes are still written per component,
-	 * so there is nothing to bridge there yet, and inventing a phone scale here would be the same
-	 * second-source-of-truth problem the motion namespace is being kept clear of below.
+	 * TYPE — mints text-tv-*. The TV ladder. The phone's ladder sits beside it below, added by #829;
+	 * when this block was written the phone's sizes were still per-component literals, so there was
+	 * nothing to bridge and inventing a phone scale here would have been the same second-source-of-truth
+	 * problem the motion namespace was being kept clear of.
 	 */
 	--text-tv-eyebrow: var(--tv-eyebrow);
 	--text-tv-label: var(--tv-label);
@@ -420,6 +635,63 @@
 	--text-tv-joinurl: var(--tv-joinurl);
 	--text-tv-hero: var(--tv-hero);
 	--text-tv-lyric: var(--tv-lyric);
+
+	/*
+	 * TYPE, PHONE (#829) — mints text-ph-*. The counterpart to the TV ladder above, and the thing the
+	 * comment above used to say there was "nothing to bridge" for. Prefixed `ph-` for the same reason
+	 * the TV tiers are prefixed `tv-`: Tailwind's own type namespace already ships --text-xs..9xl, so
+	 * an unprefixed --text-sm here would REPLACE the size every copied-in component means by text-sm.
+	 */
+	--text-ph-2xs: var(--ph-text-2xs);
+	--text-ph-xs: var(--ph-text-xs);
+	--text-ph-sm: var(--ph-text-sm);
+	--text-ph-md: var(--ph-text-md);
+	--text-ph-base: var(--ph-text-base);
+	--text-ph-lg: var(--ph-text-lg);
+	--text-ph-xl: var(--ph-text-xl);
+	--text-ph-2xl: var(--ph-text-2xl);
+
+	/*
+	 * SPACING SCALE (#829) — mints p-sm / gap-lg / m-2xl and the rest, beside the three semantic
+	 * entries above. t-shirt keys rather than numbers, and that is the load-bearing half: Tailwind
+	 * computes `p-2` from its single `--spacing` multiplier, so a `--spacing-2` here would replace it
+	 * and hand a copied-in component 2px where it asked for 8px. The namespace ships no t-shirt keys,
+	 * so these cannot collide with anything.
+	 */
+	--spacing-3xs: var(--space-3xs);
+	--spacing-2xs: var(--space-2xs);
+	--spacing-xs: var(--space-xs);
+	--spacing-sm: var(--space-sm);
+	--spacing-md: var(--space-md);
+	--spacing-lg: var(--space-lg);
+	--spacing-xl: var(--space-xl);
+	--spacing-2xl: var(--space-2xl);
+	--spacing-3xl: var(--space-3xl);
+	--spacing-4xl: var(--space-4xl);
+
+	/*
+	 * LINE HEIGHT (#829) — mints leading-app-*. Prefixed because Tailwind ships --leading-tight / -snug /
+	 * -normal / -relaxed / -loose already, and this app's tight is 1.1 against their 1.25: an unprefixed
+	 * entry would quietly retune `leading-tight` for every copy-in component. `app` rather than `ph`
+	 * because the scale is surface-neutral — a unitless ratio carries no viewing distance, so the TV uses
+	 * these too (see the :root block).
+	 */
+	--leading-app-none: var(--lh-none);
+	--leading-app-tight: var(--lh-tight);
+	--leading-app-snug: var(--lh-snug);
+	--leading-app-normal: var(--lh-normal);
+	--leading-app-loose: var(--lh-loose);
+
+	/*
+	 * MOTION (#829) — mints duration-fast / -base / -slow / -tick. Unprefixed, and safe to be:
+	 * Tailwind's duration utility is bare-value (`duration-200` reads the number out of the class),
+	 * so the namespace ships no keys at all and there is nothing here to overwrite. Registering a
+	 * duration mints no reduced-motion behaviour — that stays the @media wrapper's job.
+	 */
+	--duration-fast: var(--motion-fast);
+	--duration-base: var(--motion-base);
+	--duration-slow: var(--motion-slow);
+	--duration-tick: var(--motion-tick);
 }
 
 /*

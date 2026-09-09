@@ -195,7 +195,7 @@
 		border-radius: 50%;
 		display: grid;
 		place-items: center;
-		font-size: 0.8rem;
+		font-size: var(--ph-text-sm);
 		font-weight: 700;
 		background: var(--card2);
 		color: var(--ink-dim);
@@ -222,7 +222,7 @@
 		gap: 7px;
 		font-size: 0.78rem;
 		color: var(--ink-dim);
-		margin-top: 2px;
+		margin-top: var(--space-3xs);
 		min-width: 0;
 		white-space: nowrap;
 		overflow: hidden;
@@ -254,7 +254,7 @@
 		margin-left: auto;
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: var(--space-sm);
 		flex: 0 0 auto;
 	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css -- this block and
@@ -307,7 +307,7 @@
 		transform: translateY(var(--drag-y, 0px));
 		/* Above its siblings while it travels, so it is not clipped by the next row's surface. */
 		position: relative;
-		z-index: 2;
+		z-index: var(--z-row-lifted);
 		/*
 		 * `var(--accent)`, not the retired `--accent-strong` (#840, XR-COL-11): the fill IS the strong
 		 * value now that the accent is registry stop 41, and this is a BORDER — non-text, so the 3:1

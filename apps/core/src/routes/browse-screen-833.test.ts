@@ -129,7 +129,11 @@ test('#833 — search is a docked band in the thumb zone, publishing the measure
 	expect(PAGE).not.toContain('--search-dock-h');
 	const docks = PAGE.match(/bind:clientHeight=\{dockH\}/g) ?? [];
 	expect(docks.length).toBe(2); // home's primary button, and this
-	expect(PAGE).toMatch(/padding:\s*6px 18px calc\(var\(--dock-h[^)]*\) \+ 28px\)/);
+	// Re-anchored by #829: `6px`/`18px` are now `var(--space-xs)`/`var(--space-3xl)`, the same two values
+	// read from the spacing scale in app.css. The claim is unchanged — main's padding is what consumes the
+	// measured --dock-h — so only its spelling moves. The `+ 28px` term stays a literal: 28 is not a scale
+	// step, so nothing owns it and there is nothing to name it.
+	expect(PAGE).toMatch(/padding:\s*var\(--space-xs\) var\(--space-3xl\) calc\(var\(--dock-h[^)]*\) \+ 28px\)/);
 	// The label is a driven-flow anchor (SEL.search); renaming it hangs six probes on a timeout rather
 	// than failing an assertion, so the move must not have taken it with it.
 	expect(PAGE).toContain('aria-label="Search a song or artist"');

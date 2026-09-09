@@ -366,7 +366,7 @@
 	/* Geometry comes from .list-row in app.css, shared with the two queue rows -- this row had drifted
 	   to gap 11 / padding 10 against their 12 / 11px 12px. */
 	.row {
-		transition: background 0.12s ease;
+		transition: background var(--motion-fast) ease;
 	}
 	/* readiness is legible at a glance from the border alone, before any text is read */
 	.row.ready {
@@ -405,7 +405,7 @@
 	 */
 	.ph {
 		color: rgba(255, 255, 255, 0.55);
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		display: grid;
 		place-items: center;
 	}
@@ -428,7 +428,7 @@
 		color: #fff;
 		font-size: 0.62rem;
 		font-weight: 700;
-		padding: 1px 4px;
+		padding: 1px var(--space-2xs);
 		border-radius: 4px;
 		font-variant-numeric: tabular-nums;
 		letter-spacing: 0.01em;
@@ -463,7 +463,7 @@
 		flex: 0 1 auto;
 		min-width: 0;
 		font-weight: 600;
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		line-height: 1.28;
 		display: -webkit-box;
 		-webkit-line-clamp: 2;
@@ -484,14 +484,14 @@
 		display: inline-grid;
 		place-items: center;
 		margin-left: 5px;
-		margin-top: 2px;
+		margin-top: var(--space-3xs);
 	}
 
 	/* The uploader / canonical artist, alone on its line so it is never truncated by prose beside it. */
 	.byline {
 		font-size: 0.74rem;
 		color: var(--ink-dim);
-		margin-top: 2px;
+		margin-top: var(--space-3xs);
 		white-space: nowrap;
 		overflow: hidden;
 		text-overflow: ellipsis;
@@ -501,12 +501,12 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 5px;
-		margin-top: 6px;
+		margin-top: var(--space-xs);
 	}
 	.chip {
 		font-size: 0.65rem;
 		font-weight: 600;
-		padding: 2px 7px;
+		padding: var(--space-3xs) 7px;
 		border-radius: 999px;
 		border: 1px solid var(--line);
 		background: var(--card2);
@@ -594,7 +594,7 @@
 		background: var(--grad);
 		border-radius: 4px;
 		transform-origin: left center;
-		transition: transform 0.4s ease;
+		transition: transform var(--motion-slow) ease;
 	}
 
 	/*
@@ -703,17 +703,17 @@
 		 */
 		.chip {
 			font-size: 0.62rem;
-			padding: 1px 6px;
+			padding: 1px var(--space-xs);
 		}
 		.chips {
-			gap: 4px;
+			gap: var(--space-2xs);
 			margin-top: 5px;
 		}
 		.byline {
 			font-size: 0.72rem;
 		}
 		.row {
-			padding: 8px;
+			padding: var(--space-sm);
 		}
 	}
 </style>

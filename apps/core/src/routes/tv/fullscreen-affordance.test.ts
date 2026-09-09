@@ -95,7 +95,7 @@ test('a fading corner button (.fs-btn) is wired to controlsVisible and the toggl
 	expect(script).toMatch(/let\s+controlsVisible\s*=\s*\$state\(/);
 });
 
-test('.fs-btn sits at z-index 7 — above the reel and video, below the overlays and the hint (#424)', () => {
+test('.fs-btn sits on the --z-tv-card tier — above the reel and video, below the overlays and the hint (#424)', () => {
 	// PINS the CSS hunk, which is the constraint the issue spells out: the button must not occlude the
 	// lower-third or the join QR, and must sit below the autoplay hint (10). z 7 is the documented
 	// persistent-chrome tier — above the lyrics reel (6) and the player slots (1/2) so it stays tappable
@@ -105,5 +105,5 @@ test('.fs-btn sits at z-index 7 — above the reel and video, below the overlays
 	expect(style).not.toBeNull();
 	const rule = /\.fs-btn\s*\{([^}]*)\}/.exec(style![1]!);
 	expect(rule).not.toBeNull();
-	expect(rule![1]!).toMatch(/z-index\s*:\s*7\s*;/);
+	expect(rule![1]!).toMatch(/z-index\s*:\s*var\(--z-tv-card\)\s*;/);
 });

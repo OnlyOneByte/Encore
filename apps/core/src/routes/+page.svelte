@@ -1642,7 +1642,7 @@
 	 */
 	main {
 		flex: 1;
-		padding: 6px 18px calc(var(--dock-h, 0px) + 28px);
+		padding: var(--space-xs) var(--space-3xl) calc(var(--dock-h, 0px) + 28px);
 	}
 	/*
 	 * THE BOTTOM-ANCHORED BROWSE STACK (direction B, issue #833). Results grow UPWARD from the docked
@@ -1678,10 +1678,10 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		z-index: 30;
+		z-index: var(--z-dock);
 		display: flex;
 		justify-content: center;
-		padding: 10px 18px calc(10px + env(safe-area-inset-bottom));
+		padding: var(--space-md) var(--space-3xl) calc(var(--space-md) + env(safe-area-inset-bottom));
 		background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 88%, transparent));
 		border-top: 1px solid var(--line);
 	}
@@ -1692,7 +1692,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 8px;
+		gap: var(--space-sm);
 		border: 0;
 		border-radius: var(--radius);
 		/* --accent + --on-accent, never --grad: this button carries a LABEL, and no stop's gradient is
@@ -1709,14 +1709,14 @@
 	/* The way back off the browse screen. First in the DOM because it is first visually (XR-PH-12). */
 	.backrow {
 		display: flex;
-		margin: 0 0 8px;
+		margin: 0 0 var(--space-sm);
 	}
 	.back-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
+		gap: var(--space-xs);
 		min-height: var(--tap);
-		padding: 0 10px 0 0;
+		padding: 0 var(--space-md) 0 0;
 		background: none;
 		border: 0;
 		color: var(--ink-dim);
@@ -1754,10 +1754,10 @@
 	.reorder-bar {
 		display: flex;
 		align-items: center;
-		gap: 10px;
+		gap: var(--space-md);
 		flex-wrap: wrap;
-		padding: 10px 12px;
-		margin-bottom: 8px;
+		padding: var(--space-md) var(--space-lg);
+		margin-bottom: var(--space-sm);
 		border-color: var(--line-tint);
 		background: var(--card-tint);
 	}
@@ -1770,11 +1770,11 @@
 	}
 	.reorder-acts {
 		display: flex;
-		gap: 8px;
+		gap: var(--space-sm);
 		flex: 0 0 auto;
 	}
 	.reorder-note {
-		margin: 0 0 8px;
+		margin: 0 0 var(--space-sm);
 		font-size: 0.78rem;
 		color: var(--warn);
 	}
@@ -1798,7 +1798,7 @@
 		 * guard stayed green. `expressesTap` in `test-helpers.ts` asks for the token for that reason.
 		 */
 		min-height: var(--tap);
-		margin-bottom: 6px;
+		margin-bottom: var(--space-xs);
 		border: 2px dashed var(--line-strong);
 		border-radius: var(--radius-sm);
 		background: var(--bg2);
@@ -1822,9 +1822,9 @@
 	.brand {
 		display: inline-flex;
 		align-items: center;
-		gap: 8px;
+		gap: var(--space-sm);
 		font-weight: 800;
-		font-size: 1.25rem;
+		font-size: var(--ph-text-xl);
 		margin: 0;
 		line-height: inherit;
 	}
@@ -1894,7 +1894,7 @@
 			   on the thumbnail, readiness badge, action button and gaps, so a narrower column truncates
 			   every title to "Quee..." and two unreadable columns are worse than one readable one. */
 			grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
-			gap: 0 14px;
+			gap: 0 var(--space-xl);
 			align-content: start;
 		}
 		/*
@@ -1926,18 +1926,18 @@
 		left: 0;
 		right: 0;
 		bottom: 0;
-		z-index: 30;
+		z-index: var(--z-dock);
 		display: flex;
 		justify-content: center;
-		padding: 10px 18px calc(10px + env(safe-area-inset-bottom));
+		padding: var(--space-md) var(--space-3xl) calc(var(--space-md) + env(safe-area-inset-bottom));
 		background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 88%, transparent));
 		border-top: 1px solid var(--line);
 	}
 	.searchbox {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 12px 14px;
+		gap: var(--space-md);
+		padding: var(--space-lg) var(--space-xl);
 		min-height: 52px;
 		width: 100%;
 		max-width: var(--max-w);
@@ -1946,7 +1946,7 @@
 		border: 0;
 		background: transparent;
 		color: var(--ink);
-		font-size: 1rem;
+		font-size: var(--ph-text-base);
 		/*
 		 * `flex: 1` with `min-width: 0`, never `width: 100%`. An <input>'s intrinsic minimum width comes
 		 * from its character size, so as a flex item with the default `min-width: auto` it refuses to
@@ -1973,8 +1973,8 @@
 		min-height: var(--tap);
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
-		padding: 7px 14px;
+		gap: var(--space-xs);
+		padding: 7px var(--space-xl);
 		border-radius: 22px;
 		font-size: 0.82rem;
 		font-weight: 600;
@@ -1990,7 +1990,7 @@
 	.chip-icon {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
+		gap: var(--space-xs);
 	}
 	.search-mark {
 		display: grid;
@@ -2006,26 +2006,26 @@
 		transform: scale(0.95);
 	}
 	.grouphead {
-		font-size: 0.68rem;
+		font-size: var(--ph-text-2xs);
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
 		font-weight: 700;
-		margin: 16px 4px 8px;
+		margin: var(--space-2xl) var(--space-2xs) var(--space-sm);
 	}
 	.grouphead:first-of-type {
-		margin-top: 4px;
+		margin-top: var(--space-2xs);
 	}
 	.empty {
 		color: var(--ink-dim);
-		padding: 0 4px;
-		font-size: 0.9rem;
+		padding: 0 var(--space-2xs);
+		font-size: var(--ph-text-md);
 	}
 
 	.key {
 		display: flex;
-		gap: 6px;
-		margin: 6px 0 2px;
+		gap: var(--space-xs);
+		margin: var(--space-xs) 0 var(--space-3xs);
 		align-items: center;
 	}
 	.key.disabled {
@@ -2046,8 +2046,8 @@
 		background: transparent;
 		color: var(--ink-dim);
 		border-radius: var(--radius-btn);
-		padding: 6px;
-		font-size: 0.8rem;
+		padding: var(--space-xs);
+		font-size: var(--ph-text-sm);
 		cursor: pointer;
 		min-height: var(--tap);
 	}
@@ -2057,7 +2057,7 @@
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		gap: 6px;
+		gap: var(--space-xs);
 	}
 	.key:not(.disabled) button:not(:disabled) {
 		border-style: solid;
@@ -2083,8 +2083,8 @@
 		/* flex-end, not space-between: with the row's own label removed there is a single child, and
 		   space-between would push it to the START. The value belongs over the buttons on the right. */
 		justify-content: flex-end;
-		gap: 8px;
-		margin: 8px 0 0;
+		gap: var(--space-sm);
+		margin: var(--space-sm) 0 0;
 	}
 	.key-vals {
 		display: inline-flex;
@@ -2103,7 +2103,7 @@
 		display: inline-grid;
 		place-items: center;
 		color: var(--ink-dim);
-		font-size: 0.8rem;
+		font-size: var(--ph-text-sm);
 	}
 	.key-sound {
 		font-size: 0.85rem;
@@ -2117,7 +2117,7 @@
 	 * collapsed row so the section states its headline fact without being opened.
 	 */
 	.range {
-		margin: 8px 0 2px;
+		margin: var(--space-sm) 0 var(--space-3xs);
 	}
 	.range-toggle {
 		width: 100%;
@@ -2127,10 +2127,10 @@
 		gap: 7px;
 		background: none;
 		border: 0;
-		padding: 0 2px;
+		padding: 0 var(--space-3xs);
 		cursor: pointer;
 		color: var(--ink-dim);
-		font-size: 0.68rem;
+		font-size: var(--ph-text-2xs);
 		font-weight: 700;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
@@ -2144,16 +2144,16 @@
 		color: var(--accent2);
 		text-transform: none;
 		letter-spacing: 0;
-		font-size: 0.8rem;
+		font-size: var(--ph-text-sm);
 		font-variant-numeric: tabular-nums;
 	}
 	.range-body {
-		padding: 2px 2px 4px;
+		padding: var(--space-3xs) var(--space-3xs) var(--space-2xs);
 	}
 	.range-facts {
 		display: flex;
 		align-items: baseline;
-		gap: 10px;
+		gap: var(--space-md);
 	}
 	.range-label {
 		font-size: 0.95rem;
@@ -2169,7 +2169,7 @@
 	.range-band {
 		font-size: 0.72rem;
 		color: var(--ink-dim);
-		margin: 4px 0 0;
+		margin: var(--space-2xs) 0 0;
 	}
 
 	.search-spinner {
@@ -2189,9 +2189,9 @@
 	.skel-row {
 		display: flex;
 		align-items: center;
-		gap: 12px;
-		padding: 12px 14px;
-		margin-bottom: 8px;
+		gap: var(--space-lg);
+		padding: var(--space-lg) var(--space-xl);
+		margin-bottom: var(--space-sm);
 		border-radius: 14px;
 		background: var(--card);
 		border: 1px solid var(--line);
@@ -2206,7 +2206,7 @@
 		flex: 1;
 		display: flex;
 		flex-direction: column;
-		gap: 8px;
+		gap: var(--space-sm);
 	}
 	.skel-line {
 		height: 12px;
@@ -2255,14 +2255,14 @@
 		width: fit-content;
 		display: flex;
 		align-items: center;
-		gap: 14px;
-		z-index: 30;
+		gap: var(--space-xl);
+		z-index: var(--z-dock);
 		background: var(--card2);
 		border: 1px solid var(--line);
 		border-radius: 14px;
-		padding: 12px 16px;
+		padding: var(--space-lg) var(--space-2xl);
 		box-shadow: var(--shadow);
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		max-width: 90vw;
 	}
 	.undo-toast button {
@@ -2280,7 +2280,7 @@
 		color: var(--on-accent);
 		font-weight: 700;
 		border-radius: 8px;
-		padding: 6px 14px;
+		padding: var(--space-xs) var(--space-xl);
 		cursor: pointer;
 	}
 	.error-toast {
@@ -2292,11 +2292,11 @@
 		bottom: var(--error-dock);
 		margin-inline: auto;
 		width: fit-content;
-		z-index: 30;
+		z-index: var(--z-dock);
 		background: var(--danger-bg);
 		color: var(--danger-ink);
 		border: 1px solid var(--danger-line);
-		padding: 11px 16px;
+		padding: 11px var(--space-2xl);
 		border-radius: var(--radius-sm);
 		font-size: 0.88rem;
 		max-width: 90vw;
@@ -2308,10 +2308,10 @@
 	.me-btn {
 		display: inline-flex;
 		align-items: center;
-		gap: 8px;
+		gap: var(--space-sm);
 		min-width: 0;
 		min-height: var(--tap);
-		padding: 0 6px;
+		padding: 0 var(--space-xs);
 		background: none;
 		border: 0;
 		cursor: pointer;
@@ -2328,11 +2328,11 @@
 	.offline-pill {
 		display: inline-flex;
 		align-items: center;
-		gap: 6px;
+		gap: var(--space-xs);
 		color: var(--warn);
 		border: 1px solid var(--line-strong);
 		border-radius: var(--radius-pill);
-		padding: 4px 10px;
+		padding: var(--space-2xs) var(--space-md);
 		font-size: 0.78rem;
 		white-space: nowrap;
 	}
@@ -2343,8 +2343,8 @@
 	.topbar {
 		display: flex;
 		align-items: center;
-		gap: 10px;
-		padding: 16px 18px 8px;
+		gap: var(--space-md);
+		padding: var(--space-2xl) var(--space-3xl) var(--space-sm);
 	}
 	/* The name + gear cluster, pushed to the trailing edge. Static styling classed (not inline) so it
 	   inherits the responsive layer rather than freezing raw px. */
@@ -2353,7 +2353,7 @@
 		min-width: 0;
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: var(--space-sm);
 		font-size: 0.85rem;
 		color: var(--ink-dim);
 	}
@@ -2362,7 +2362,7 @@
 	.showall-row {
 		display: flex;
 		justify-content: center;
-		padding: 0 0 8px;
+		padding: 0 0 var(--space-sm);
 	}
 
 	/*
@@ -2390,18 +2390,18 @@
 	 */
 	@media (max-height: 480px) {
 		.topbar {
-			padding: 6px 18px 4px;
+			padding: var(--space-xs) var(--space-3xl) var(--space-2xs);
 		}
 		main {
-			padding-top: 2px;
+			padding-top: var(--space-3xs);
 		}
 		.searchbox {
 			/* rise to hold the 44px input added in #863 — 42px would clip its tap target */
 			min-height: var(--tap);
-			padding: 8px 14px;
+			padding: var(--space-sm) var(--space-xl);
 		}
 		.grouphead {
-			margin: 8px 4px 4px;
+			margin: var(--space-sm) var(--space-2xs) var(--space-2xs);
 		}
 	}
 </style>

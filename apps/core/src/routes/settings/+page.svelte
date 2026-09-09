@@ -1096,15 +1096,15 @@
 		   the paired controls, narrower than the shell's 1080px so a select never spans a monitor. */
 		max-width: 560px;
 		margin: 0 auto;
-		padding: 10px 18px calc(28px + env(safe-area-inset-bottom, 0px));
+		padding: var(--space-md) var(--space-3xl) calc(28px + env(safe-area-inset-bottom, 0px));
 	}
 
 	/* ── the scope tabs ─────────────────────────────────────────────────── */
 	.seg {
 		display: flex;
-		gap: 4px;
-		margin: 4px 0 12px;
-		padding: 4px;
+		gap: var(--space-2xs);
+		margin: var(--space-2xs) 0 var(--space-lg);
+		padding: var(--space-2xs);
 		background: var(--card);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-pill);
@@ -1119,7 +1119,7 @@
 		background: none;
 		color: var(--ink-dim);
 		/* 16px so iOS does not auto-zoom when the tab takes focus, same as every control below. */
-		font-size: 1rem;
+		font-size: var(--ph-text-base);
 		font-weight: 700;
 		cursor: pointer;
 	}
@@ -1139,29 +1139,29 @@
 		background: var(--card);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
-		margin-bottom: 10px;
+		margin-bottom: var(--space-md);
 	}
 	.cardhead {
 		margin: 0;
-		padding: 12px 12px 0;
-		font-size: 0.68rem;
+		padding: var(--space-lg) var(--space-lg) 0;
+		font-size: var(--ph-text-2xs);
 		font-weight: 700;
 		letter-spacing: 0.14em;
 		text-transform: uppercase;
 		color: var(--ink-dim);
 	}
 	.cardbody {
-		padding: 2px 12px 12px;
+		padding: var(--space-3xs) var(--space-lg) var(--space-lg);
 	}
 	/* Only the server scope needs saying out loud; "You" and "Party" say it in the tab. */
 	.scope-note {
-		margin: 0 0 10px 2px;
+		margin: 0 0 var(--space-md) var(--space-3xs);
 		font-size: 0.78rem;
 		color: var(--ink-dim);
 	}
 	/* A failed write is about the page, not one card, so it sits above them all. */
 	.banner {
-		margin: 0 0 10px;
+		margin: 0 0 var(--space-md);
 	}
 
 	/*
@@ -1171,7 +1171,7 @@
 	 */
 	.pair {
 		display: flex;
-		gap: 10px;
+		gap: var(--space-md);
 	}
 	.cell {
 		flex: 1;
@@ -1185,7 +1185,7 @@
 
 	.field {
 		display: block;
-		margin: 12px 0 4px;
+		margin: var(--space-lg) 0 var(--space-2xs);
 		font-size: 0.82rem;
 		color: var(--ink-dim);
 	}
@@ -1210,7 +1210,7 @@
 	select,
 	.text,
 	.name-input {
-		padding: 9px 10px;
+		padding: 9px var(--space-md);
 		border-radius: var(--radius-btn);
 		border: 1px solid var(--line);
 		background: var(--card2);
@@ -1222,25 +1222,25 @@
 		min-height: var(--tap);
 		/* 16px, not 0.9rem (14.4px): iOS Safari auto-zooms on focusing any control under 16px and never
 		   zooms back out, leaving the operator stuck at 1.3x for the rest of the session. */
-		font-size: 1rem;
+		font-size: var(--ph-text-base);
 	}
 	/* A LAN address is read character by character to check it, so keep the digits monospaced and stop
 	   iOS from title-casing what the user types. The name field deliberately does NOT inherit this. */
 	.text {
 		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-		padding: 7px 10px;
+		padding: 7px var(--space-md);
 	}
 	.text[aria-invalid='true'] {
 		border-color: var(--warn);
 	}
 	/* Your own name is the one field worth typing comfortably, so it keeps the sheet's larger box. */
 	.name-input {
-		padding: 12px 14px;
+		padding: var(--space-lg) var(--space-xl);
 		font-size: 1.05rem;
 		border-radius: 14px;
 	}
 	.hint {
-		margin: 6px 0 0;
+		margin: var(--space-xs) 0 0;
 		font-size: 0.76rem;
 		color: var(--ink-dim);
 	}
@@ -1268,7 +1268,7 @@
 	input[type='color'].colour {
 		width: 100%;
 		height: var(--tap);
-		padding: 4px;
+		padding: var(--space-2xs);
 		background: var(--field-bg, transparent);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
@@ -1323,7 +1323,7 @@
 		cursor: pointer;
 	}
 	.warn {
-		margin: 6px 0 0;
+		margin: var(--space-xs) 0 0;
 		font-size: 0.76rem;
 		color: var(--warn);
 	}
@@ -1334,12 +1334,12 @@
 		min-height: var(--tap);
 		display: flex;
 		align-items: center;
-		gap: 8px;
-		padding: 0 12px;
+		gap: var(--space-sm);
+		padding: 0 var(--space-lg);
 		background: none;
 		border: 0;
 		color: var(--ink);
-		font-size: 0.9rem;
+		font-size: var(--ph-text-md);
 		font-weight: 700;
 		text-align: left;
 		cursor: pointer;
@@ -1357,7 +1357,7 @@
 	.check {
 		display: flex;
 		align-items: center;
-		gap: 8px;
+		gap: var(--space-sm);
 		min-height: var(--tap);
 		font-size: 0.86rem;
 	}
@@ -1376,9 +1376,9 @@
 		display: flex;
 		align-items: center;
 		justify-content: center;
-		gap: 8px;
+		gap: var(--space-sm);
 		min-height: var(--tap);
-		margin-bottom: 10px;
+		margin-bottom: var(--space-md);
 		border: 1px solid var(--line-strong);
 		border-radius: var(--radius-btn);
 		background: var(--card2);
@@ -1402,8 +1402,8 @@
 		display: block;
 		width: 100%;
 		min-height: var(--tap);
-		margin-top: 18px;
-		padding: 12px;
+		margin-top: var(--space-3xl);
+		padding: var(--space-lg);
 		border: 1px solid var(--line);
 		border-radius: var(--radius-sm);
 		background: var(--card);
@@ -1415,9 +1415,9 @@
 	.save {
 		width: 100%;
 		min-height: var(--tap);
-		margin-top: 14px;
+		margin-top: var(--space-xl);
 		padding: 13px;
-		font-size: 1rem;
+		font-size: var(--ph-text-base);
 	}
 	.save:disabled {
 		opacity: 0.45;
@@ -1442,7 +1442,7 @@
 		opacity: 0.5;
 	}
 	.leave-warn {
-		margin: 4px 0 10px;
+		margin: var(--space-2xs) 0 var(--space-md);
 		font-size: 0.88rem;
 		color: var(--danger-ink);
 	}

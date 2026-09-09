@@ -773,7 +773,12 @@
 	}
 </script>
 
-<div class="slot" class:visible={visible} style="z-index:{visible ? 2 : 1}">
+<!--
+	The two crossfading slots share one box, so which of them is on top IS the crossfade. Written as the
+	named tiers rather than 2 and 1 so the pair reads against the rest of the stage ladder in app.css
+	(#829) — a bare integer here says nothing about what it sits above.
+-->
+<div class="slot" class:visible={visible} style="z-index:{visible ? 'var(--z-tv-video-active)' : 'var(--z-tv-video)'}">
 	{#if media && isPlayable(media)}
 		<!--
 			THE MASTER. An <audio>, not a <video> — see the note at the top of this file. It owns the clock:
@@ -823,7 +828,7 @@
 		position: absolute;
 		inset: 0;
 		opacity: 0;
-		transition: opacity 0.25s ease; /* crossfade on swap — opacity only, GPU-composited */
+		transition: opacity var(--motion-base) ease; /* crossfade on swap — opacity only, GPU-composited */
 		pointer-events: none;
 	}
 	.slot.visible {
