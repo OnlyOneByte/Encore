@@ -7,12 +7,12 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { gripVisible, ownPicksPinned, ownSlots, ordinal, dropTarget, modeInvalidation, type OwnPick } from './reorder-mode';
+import { gripVisible, ownSlots, ordinal, dropTarget, modeInvalidation } from './reorder-mode';
 
 const PAGE = join(import.meta.dir, '..', 'routes', '+page.svelte');
 
-// The four-true case, so each test below can negate exactly one condition.
-const OK = { mine: true, ownQueuedCount: 2, reorderMeaningful: true, ownPicksPinned: false };
+// The three-true case, so each test below can negate exactly one condition.
+const OK = { mine: true, ownQueuedCount: 2, reorderMeaningful: true };
 
 // ── XR-PH-17 · the grip appears ONLY where a reorder is real ──────────────────────────────────────
 
@@ -36,23 +36,6 @@ test('XR-PH-17 · no grip under an ordering that ignores addedAt — a `move` th
 	// `shuffle` ranks by entry id (`respectsAddedAt: false`), so permuting addedAt changes nothing and
 	// a grip would promise a reorder the reducer discards.
 	expect(gripVisible({ ...OK, reorderMeaningful: false })).toBe(false);
-});
-
-test('XR-PH-17 · no grip while any of the guest\u2019s picks is pinned — the move would snap back', () => {
-	// Not a preference: `assignSeqs` is `placePins(rotate(…))`, so `placePins` re-seats a pinned entry
-	// AFTER the policy honoured the move. Proven against the real reducer in the sibling case below.
-	expect(gripVisible({ ...OK, ownPicksPinned: true })).toBe(false);
-});
-
-test('XR-PH-17 · the pinned check reads EVERY own pick, not only the dragged one', () => {
-	const unpinned: OwnPick[] = [{ id: 'a' }, { id: 'b', pinnedSeq: null }];
-	expect(ownPicksPinned(unpinned)).toBe(false);
-	// A pinned SIBLING is enough: placePins re-seats it, so the order the slots promised is not the
-	// order that lands, even though the dragged row itself carries no pin.
-	expect(ownPicksPinned([{ id: 'a' }, { id: 'b', pinnedSeq: 0 }])).toBe(true);
-	expect(ownPicksPinned([{ id: 'a', pinnedSeq: 3 }, { id: 'b' }])).toBe(true);
-	// A non-finite value is not a pin — the column is nullable and the wire type is `number | null`.
-	expect(ownPicksPinned([{ id: 'a', pinnedSeq: Number.NaN }])).toBe(false);
 });
 
 // ── XR-PH-18 · legal slots come from the guest's OWN picks ────────────────────────────────────────
@@ -168,7 +151,7 @@ test('non-vacuity · +page.svelte imports and calls every predicate asserted her
 	// failure mode #830 exists to make loud. Each name is checked as a CALL, not just as an import.
 	const src = readFileSync(PAGE, 'utf8');
 	expect(src).toContain("from '$lib/reorder-mode'");
-	for (const fn of ['gripVisible(', 'ownPicksPinned(', 'ownSlots(', 'dropTarget(', 'modeInvalidation(']) {
+	for (const fn of ['gripVisible(', 'ownSlots(', 'dropTarget(', 'modeInvalidation(']) {
 		expect(src).toContain(fn);
 	}
 });

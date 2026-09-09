@@ -15,49 +15,28 @@
 
 import type { EntryStatus } from '@encore/shared';
 
-/** The fields of a queued entry this module reads. Structural, so a QueueEntry satisfies it. */
-export interface OwnPick {
-	id: string;
-	/**
-	 * A durable global pin (`move-global`). Read because a pin OUTRANKS this mode's op: `assignSeqs`
-	 * is `placePins(storedOrder(…))`, so `placePins` re-seats a pinned entry AFTER the stored order has
-	 * honoured the `move`. Measured: with my pick `a` pinned to slot 0, moving it below my pick `b`
-	 * returns it to index 0 — the drag snaps back on screen. See `gripVisible`.
-	 */
-	pinnedSeq?: number | null;
-}
-
 /**
  * XR-PH-17 — the grip renders ONLY where a reorder is real.
  *
- * Four conditions, each of which is a way for a drag to be a lie:
- *  • `mine` — `move` permutes the MOVING singer's own addedAt stamps, so it can never place another
- *    guest's song. `QueueRow.svelte` records that a grip once rendered only on another guest's row,
- *    where it was the sole affordance; that exact regression is what this argument forbids.
+ * Three conditions, each of which is a way for a drag to be a lie:
+ *  • `mine` — `move` permutes the MOVING singer's own picks in the stored list, so it can never place
+ *    another guest's song. `QueueRow.svelte` records that a grip once rendered only on another guest's
+ *    row, where it was the sole affordance; that exact regression is what this argument forbids.
  *  • `ownQueuedCount > 1` — with one pick there is no second position to move it to.
  *  • `reorderMeaningful` — always true under the stored-list model (#856): the queue IS the stored
  *    list and a move rewrites it, so no policy can discard a reorder. It was false under `shuffle`,
  *    which ranked by entry id and re-derived over any move; nothing re-derives a position now. The
  *    parameter is kept so the caller states the claim explicitly rather than assuming it.
- *  • `!ownPicksPinned` — see `OwnPick.pinnedSeq`. A pinned pick is re-seated by `placePins` after the
- *    move, so the row springs back. Gating is the whole of the fix: no new op becomes reachable and
- *    no new word enters the UI (the up/down buttons on that row keep working, so nothing is lost).
- *    When pinning is removed (#856 step 3) `ownPicksPinned` is constant false and this clause is vacuous.
+ *
+ * (The `!ownPicksPinned` clause was removed with pinning in #856 step 3: with no durable pin there is
+ * nothing left to re-seat a moved row, so the clause was constant-true and its predicate dead.)
  */
 export function gripVisible(opts: {
 	mine: boolean;
 	ownQueuedCount: number;
 	reorderMeaningful: boolean;
-	ownPicksPinned: boolean;
 }): boolean {
-	return opts.mine && opts.ownQueuedCount > 1 && opts.reorderMeaningful && !opts.ownPicksPinned;
-}
-
-/** True when ANY of the guest's queued picks carries a durable pin — see `gripVisible`. */
-export function ownPicksPinned(ownQueued: readonly OwnPick[]): boolean {
-	// ANY, not just the dragged one: `placePins` re-seats every pinned entry, so one pinned sibling is
-	// enough for the order the slots promised to differ from the order that lands.
-	return ownQueued.some((e) => typeof e.pinnedSeq === 'number' && Number.isFinite(e.pinnedSeq));
+	return opts.mine && opts.ownQueuedCount > 1 && opts.reorderMeaningful;
 }
 
 /** A legal drop position: one per own queued pick, in the guest's own index space. */

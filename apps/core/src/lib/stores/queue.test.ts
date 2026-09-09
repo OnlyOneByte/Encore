@@ -291,36 +291,3 @@ test('a lower-rev queue:patch does NOT rewind rev, and the next real patch still
 	expect(store.rev).toBe(11);
 	expect(store.entries.map((e) => e.id)).toEqual(['z']);
 });
-
-// Issue #638: the host global-reorder store methods. pinEntry emits a `move-global` op (a GLOBAL
-// index, crossing singers) and applies it optimistically this frame; unpinEntry emits `unpin`.
-// Reverting the store methods reds these.
-test('pinEntry emits move-global and pins the entry to the global slot this frame', () => {
-	const { store, sent } = makeStore();
-	// seed two entries from DIFFERENT singers via server sync (so we are not adding our own)
-	store.onServerEvent({
-		type: 'queue:sync',
-		rev: 1,
-		entries: [
-			{ id: 'a1', mediaId: 'ma', singerId: 'alice', status: 'queued', rotationSeq: 0, addedAt: 1 },
-			{ id: 'b1', mediaId: 'mb', singerId: 'bob', status: 'queued', rotationSeq: 1, addedAt: 2 }
-		]
-	});
-	// pin b1 (bob's) to the front — a cross-singer host move
-	store.pinEntry('b1', 0);
-	const last = sent.at(-1)!;
-	expect(last.op.op).toBe('move-global');
-	expect(last.op).toMatchObject({ op: 'move-global', id: 'b1', toSeq: 0 });
-	expect(store.entries[0]!.id).toBe('b1'); // pinned to the front optimistically this frame
-});
-
-test('unpinEntry emits an unpin op', () => {
-	const { store, sent } = makeStore();
-	store.onServerEvent({
-		type: 'queue:sync',
-		rev: 1,
-		entries: [{ id: 'a1', mediaId: 'ma', singerId: 'alice', status: 'queued', rotationSeq: 0, addedAt: 1 }]
-	});
-	store.unpinEntry('a1');
-	expect(sent.at(-1)!.op.op).toBe('unpin');
-});

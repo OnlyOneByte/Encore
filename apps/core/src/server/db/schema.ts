@@ -174,12 +174,6 @@ export const queueEntries = sqliteTable(
 			.default('queued'),
 		rotationSeq: integer('rotation_seq').notNull(),
 		addedAt: integer('added_at').notNull(),
-		// A HOST's durable global reorder pin: the index in the whole queued list this entry was dragged to
-		// (QueueEntry.pinnedSeq). NULLABLE on purpose — NULL means "follows the room's ordering policy",
-		// which is the resting state every entry starts in, so the column appearing changes no existing
-		// row's behaviour. The ordering layer honours it AFTER a policy runs so it survives rotation_seq
-		// re-derivation; a pin is set by the `move-global` op and cleared only by `unpin` (never auto-cleared).
-		pinnedSeq: integer('pinned_seq'),
 		// The party this queue entry belongs to (#656). `queue_entries` carried no room, so the queue
 		// and its round-robin rotation were deployment-wide — a song queued in one room appeared in
 		// every room and shared one rotation. `room_id` keys the queue by room, mirroring #655's

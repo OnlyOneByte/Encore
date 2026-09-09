@@ -8,11 +8,15 @@ Direction is **A + B**, and drag reorder, landing/join, and live singing control
 
 Two repo facts these rows lean on, verified in this pass and worth stating once:
 
-- **`move` is not the only reorder op.** `packages/shared/src/ops.ts:12` scopes `move`'s `toSeq` to the
-  singer's own QUEUED picks, but `move-global` (same file) *can* cross singers via a durable
-  `pinnedSeq`, gated on `queue:reorder-any` in `hub.ts`, and `+page.svelte:1249` already branches on
-  `canHostReorder`. So "the operation cannot express crossing singers" is true of the **guest** path
-  only. Every drag row below is written for the guest path and says so.
+- **`move` is not the only way an entry crosses singers.** `packages/shared/src/ops.ts:12` scopes
+  `move`'s `toSeq` to the singer's own QUEUED picks. Crossing singers is now a **direct rewrite of the
+  stored ordered list** — the list is the source of truth, so a placement is durable by construction and
+  there is no pin: pinning (`move-global`/`unpin`, `pinnedSeq`, `placePins`, and the client's
+  `pinEntry`/`unpinEntry`/`moveGlobal`/`canHostReorder`) was DELETED in #856 step 3. `queue:reorder-any`
+  survives and gates `move` on an entry the actor does not own. Wiring the arrows and the drag to a
+  single "move to index" op is #856 **step 4** and is not yet shipped, so "the operation cannot express
+  crossing singers" still describes today's **guest** path. Every drag row below is written for the
+  guest path and says so.
 - **`move` is a legal no-op under one ordering.** `queue-order.ts` marks `shuffle` as
   `respectsAddedAt: false` with the note "Reordering your own picks does nothing here", and
   `+page.svelte:97` already gates the up/down buttons on `reorderIsMeaningful(...)`. The **grip is new**,
@@ -155,7 +159,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | Every optimistic queue mutation carries a visible unconfirmed marker until the server acknowledges it — an add, a removal, **and a reorder** — using the same surface-signal idiom, not opacity. |
 | **Surfaces** | Phone |
 | **Rationale** | The add path already has this (`QueueRow.svelte`'s `.pending` warn surface; the reconnecting pill at `+page.svelte:852` states that commands are still accepted while offline because they resend on resync), but a reorder has no marker at all — so a drag committed on a flaky socket looks identical to one that landed. |
-| **Source** | `DERIVED` — model: the mutation set is `ops.ts`'s `QueueOp` union; the marker exists for `add` and is absent for `move`/`move-global`, so the gap is the difference between them. |
+| **Source** | `DERIVED` — model: the mutation set is `ops.ts`'s `QueueOp` union; the marker exists for `add` and is absent for `move`, so the gap is the difference between them. |
 | **Acceptance** | Given a reorder issued while the socket is down, When the row re-renders, Then it carries the unconfirmed surface and its reorder controls are inert; When the ack arrives, Then the marker clears within one render. |
 | **Check** | Source scan that every branch of the op union has a marker binding, plus a driven check with the socket interrupted. |
 | **Priority** | Must. |
@@ -257,7 +261,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Rationale** | `move`'s `toSeq` is an index into the singer's own queued picks, so a drop that appears to cross singers cannot be expressed and would snap back — which reads as a bug rather than as a rule. The guest's picks are **not adjacent** in a flat list, which is why the mode must draw the slots rather than let the list imply them. |
 | **Source** | Repo: `packages/shared/src/ops.ts:12`; `reorderWithinSinger` at `packages/shared/src/rotation.ts:127`, which indexes queued picks only and clamps an out-of-range target. |
 | **Acceptance** | Given 6 queued entries of which 2 are the guest's, When the mode is entered, Then exactly 2 drop targets render and the other 4 rows expose no pointer or keyboard interaction; When a row is released over a non-target, Then no `move` op is emitted. |
-| **Check** | Driven browser for the target count and release behaviour; a unit test asserts the count derives from the guest's queued picks, not from the visible list length. Cross-singer placement is a **host** power (`move-global`, gated on `queue:reorder-any`) and is out of scope for this row. |
+| **Check** | Driven browser for the target count and release behaviour; a unit test asserts the count derives from the guest's queued picks, not from the visible list length. Cross-singer placement is now a **direct rewrite of the stored ordered list** (no pin — pinning was deleted in #856 step 3), wired to the arrows and the drag in #856 step 4, and is out of scope for this within-singer row. |
 | **Priority** | Must. |
 
 ### XR-PH-19 — Exiting the mode, and what happens when the queue moves underneath it
@@ -328,8 +332,9 @@ the pre-migration figures and are kept as the rationale that justified the work,
 - **A ban on Svelte transition directives.** `motion.test.ts` already rejects them. The new exposure is a
   drag library's JS-driven motion and Tailwind's `transition-*` utilities, both outside that matcher —
   which is XR-PH-06.
-- **A cross-singer drag requirement.** `move` cannot express it and `move-global` is a host power gated on
-  `queue:reorder-any`; specifying a guest-facing version would contradict the decision.
+- **A cross-singer drag requirement.** `move` expresses a within-singer reorder only; a cross-singer drag
+  rewrites the stored ordered list through the "move to index" op that #856 step 4 introduces, so
+  specifying a guest-facing version here would front-run that step.
 - **Search and filter behaviour on the browse screen beyond the deletion.** The direction deletes the four
   filter mechanisms and leaves typing as the only filter; ranking, debounce and result-set semantics are a
   search-quality question nobody has framed, and inventing thresholds here would be exactly the

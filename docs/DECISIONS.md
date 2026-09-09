@@ -377,10 +377,13 @@ ships:
   carrying the owner's dated ruling: *"Today every joined singer is a host. That is Angelo's call
   (2026-09-04) … there is no operator to be, and inventing an admin password for a party is worse
   than the exposure."* Gating it later is an edit **there and nowhere else**.
-- **Cross-singer reorder already ships** — `move-global` ("a HOST reorder that can cross singers")
-  and `unpin`, with a durable `pinnedSeq` column and `rotation.ts:placePins`, gated on
-  `queue:reorder-any`. The within-singer rule still holds for the `move` op, but the *product* is no
-  longer within-singer only.
+- **Cross-singer reorder is expressed directly, and pinning is gone** — #856 step 3 deleted pinning
+  outright: the `move-global` and `unpin` ops, the `pinnedSeq` column, and `rotation.ts:placePins`
+  went with it. The queue is now a single stored ordered list and *is* the source of truth, so a
+  reorder rewrites that list in place and is durable by construction — there is nothing left to pin.
+  `queue:reorder-any` survives as the capability gating a `move` on an entry the actor does not own.
+  What remains is wiring the phone arrows and drag to one "move to index" op that rewrites the stored
+  list: that is **#856 step 4**, not yet shipped.
 - **A rate limit exists** — `MAX_CONCURRENT_COOKS_PER_SINGER = 3`, refused as `over-limit` and
   answered HTTP 429 with a phone-showable reason. The uncapped axis is **queue depth per singer**.
 - **A lost optimistic race is already disclosed** — `hub.ts` emits `op:reject`, the queue store

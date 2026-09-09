@@ -157,7 +157,6 @@ test('XR-PH-17 · the grip binding goes through the predicate, never a literal',
 	expect(body).toContain('mine: e.singerId === me?.id');
 	expect(body).toContain('ownQueuedCount: myPicks.length');
 	expect(body).toContain('reorderMeaningful: canReorder');
-	expect(body).toContain('ownPicksPinned: ownPinned');
 });
 
 // ── the four invariants the DRIVEN run found, pinned cheaply ──────────────────────────────────────

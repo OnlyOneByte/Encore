@@ -95,12 +95,11 @@ export class QueueStore {
 	 * `'move'` is what this getter adds, and it replaces a stated gap: the old `unconfirmedAddIds`
 	 * documented "a pending move/remove does not make an entry newly unconfirmed", so a reorder
 	 * committed on a flaky socket looked IDENTICAL to one that landed — the row slid into its new slot
-	 * and nothing said the slide was still a guess. `move` (own picks) and `move-global` (a host pin)
-	 * are one kind here because they are one thing to a guest: this row has been moved and the room
-	 * has not agreed yet.
+	 * and nothing said the slide was still a guess. `move` (own picks) is the one kind here: this row
+	 * has been moved and the room has not agreed yet.
 	 *
 	 * `remove` is deliberately absent: the optimistic remove takes the row OUT of the list, so there is
-	 * no row left to mark, and its disclosure is the undo toast. `unpin` likewise renders no row state.
+	 * no row left to mark, and its disclosure is the undo toast.
 	 *
 	 * A MAP rather than two sets because the marker's COPY differs — a pending reorder must not claim
 	 * it is "adding" — and two parallel sets would be two sources of truth for one row's state.
@@ -110,7 +109,7 @@ export class QueueStore {
 		for (const p of this.#pending.values()) {
 			// Ops are issued in order, so a later op's kind is the one the row is currently waiting on.
 			if (p.op.op === 'add') kinds.set(p.op.entry.id, 'add');
-			else if (p.op.op === 'move' || p.op.op === 'move-global') kinds.set(p.op.id, 'move');
+			else if (p.op.op === 'move') kinds.set(p.op.id, 'move');
 		}
 		return kinds;
 	}
@@ -145,30 +144,6 @@ export class QueueStore {
 	}
 	moveEntry(id: string, toSeq: number): void {
 		this.#optimistic({ op: 'move', id, toSeq });
-	}
-	/**
-	 * HOST reorder (issue #638): pin an entry to a GLOBAL queue index, which can cross singers — unlike
-	 * moveEntry, whose toSeq is an index into the caller's OWN picks. Runs through the same optimistic
-	 * applyAndReseq path, so the pinned row lands at its real slot this frame and the server commits the
-	 * identical order. The pin is durable (a `pinnedSeq` column) and survives adds/reshuffles until
-	 * unpinEntry clears it.
-	 */
-	pinEntry(id: string, toSeq: number): void {
-		this.#optimistic({ op: 'move-global', id, toSeq });
-	}
-	/**
-	 * Clear a host pin, returning the entry to the room's ordering policy.
-	 *
-	 * NO NON-TEST CALLER, deliberately — no surface renders an "unpin" control (issue #790 F3). What
-	 * makes that acceptable is that the ORDER a pin produces is recoverable without one: after #790 a
-	 * reorder tap visibly moves the row, so tapping the other way sets a new `pinnedSeq` and the room
-	 * reads the way the host wants. What is NOT recoverable from the phone is the entry's PARTICIPATION
-	 * in the policy — a pinned entry holds its queued index through later adds and a queueOrder change
-	 * until this op runs. That is the intended meaning of a host override (see rotation.ts placePins),
-	 * not an oversight; the op stays wired end to end so a surface can adopt it without a wire change.
-	 */
-	unpinEntry(id: string): void {
-		this.#optimistic({ op: 'unpin', id });
 	}
 
 	/**
