@@ -99,6 +99,13 @@ class Separate(Step):
         async for ev in run_stage(ctx.runner, self.stage, argv, engine.parse_progress):
             yield ev
 
+        # Some engines' CLIs do not themselves write the 2-stem {no_vocals,vocals} layout the pipeline
+        # reads. The MLX engine (demucs-mlx) emits four/six stems and derives the instrumental with a
+        # mix-minus ffmpeg pass declared here; demucs and roformer return no derivation. Each runs
+        # quietly through the same runner, in order, before outputs are located. (#595)
+        for derive_argv in engine.derive_argvs(ctx.audio.decoded_wav or "", out_dir, model):
+            await run_quiet(ctx.runner, derive_argv)
+
         found = engine.find_outputs(out_dir, model)
         if not found.get("instrumental"):
             raise PermanentError(f"{engine.id} produced no instrumental in {out_dir}")
