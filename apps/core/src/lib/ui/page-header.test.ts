@@ -64,7 +64,7 @@ function routePages(): { route: string; file: string; src: string }[] {
 	// 9 routed pages today; pin below. Plus the which-pages sentinel: the root page is the one route
 	// that cannot legitimately disappear, and both EXEMPT entries must still be reachable by the walk,
 	// or the exemption test at :90 is pinning a decision about pages this scan can no longer see.
-	expect(out.length).toBeGreaterThanOrEqual(7);
+	expect(out.length).toBeGreaterThanOrEqual(7); // @nvf-floor out.length
 	const routes = out.map((p) => p.route);
 	expect(routes).toContain('/');
 	for (const ex of Object.keys(EXEMPT)) expect(routes).toContain(`/${ex}`);

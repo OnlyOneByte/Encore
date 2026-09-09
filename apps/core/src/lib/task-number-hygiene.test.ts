@@ -133,7 +133,7 @@ test('no task/ticket number appears in source, comments, tests or fixtures', () 
 	// Non-vacuity floor (issue #453): the walk was unanchored — if `git ls-files` returned nothing
 	// (guard run outside the git tree, or the ext/name filter matched none), the scan iterated zero
 	// files and passed while guarding nothing. Pin a floor well below the true count (hundreds).
-	expect(files.length).toBeGreaterThan(50);
+	expect(files.length).toBeGreaterThan(50); // @nvf-floor files.length
 	for (const rel of files) {
 		offenders.push(...offendersIn(rel, readFileSync(join(REPO, rel), 'utf8')));
 	}
@@ -173,7 +173,7 @@ test('the docs/loop/ exemption stays narrow and the guard still bites everywhere
 	// 3. The walk did not collapse to (or around) the exempt set: hundreds of files are still scanned,
 	//    the rest of docs/ among them, and no docs/loop/ path survives the filter.
 	const files = scannedFiles();
-	expect(files.length).toBeGreaterThan(50);
+	expect(files.length).toBeGreaterThan(50); // @nvf-floor files.length
 	expect(files.some((rel) => rel.startsWith('docs/') && !rel.startsWith('docs/loop/'))).toBe(true);
 	expect(files.filter((rel) => rel.startsWith('docs/loop/'))).toEqual([]);
 });

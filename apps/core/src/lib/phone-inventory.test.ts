@@ -171,7 +171,7 @@ const PHONE_ROUTES = ALL_ROUTES.filter((r) => !isExempt(r.route));
  * new name here instead of leaving a dead exemption behind and the new surface unchecked.
  */
 test('XR-PH-08: the phone route set is derived from the filesystem, and every exemption is the spec\u2019s', () => {
-	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(4);
+	expect(PHONE_ROUTES.length).toBeGreaterThanOrEqual(4); // @nvf-floor PHONE_ROUTES.length
 
 	const known = new Set(ALL_ROUTES.map((r) => r.route));
 	for (const e of EXEMPT_ROUTES) {
@@ -413,7 +413,7 @@ test('XR-PH-02: no phone text is sized in absolute units, so the user\u2019s tex
 	}
 
 	// Non-vacuity floor: the file list really resolved. An empty walk finds no offenders and looks clean.
-	expect(filesScanned).toBeGreaterThanOrEqual(10);
+	expect(filesScanned).toBeGreaterThanOrEqual(10); // @nvf-floor filesScanned
 	expect(offenders).toEqual([]);
 	for (const e of PX_FONT_SIZE_EXEMPTIONS) expect(e.reason.length).toBeGreaterThan(30);
 });
@@ -467,7 +467,7 @@ test('XR-PH-02: no phone rule fixes a horizontal dimension wider than a 320px vi
 	}
 
 	// Non-vacuity floor: the scan really read width declarations rather than matching nothing.
-	expect(declarationsSeen).toBeGreaterThanOrEqual(10);
+	expect(declarationsSeen).toBeGreaterThanOrEqual(10); // @nvf-floor declarationsSeen
 	expect(offenders).toEqual([]);
 });
 
@@ -513,7 +513,7 @@ test('XR-PH-03: no phone markup de-emphasises a subtree with an inline opacity',
 		}
 	}
 
-	expect(filesScanned).toBeGreaterThanOrEqual(10);
+	expect(filesScanned).toBeGreaterThanOrEqual(10); // @nvf-floor filesScanned
 	expect(offenders).toEqual([]);
 	for (const e of INLINE_OPACITY_EXEMPTIONS) expect(e.reason.length).toBeGreaterThan(30);
 });

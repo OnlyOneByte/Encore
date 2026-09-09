@@ -83,7 +83,7 @@ function palette(): Map<string, string> {
  */
 const FILES = svelteFiles(SRC);
 test('the design-system scan actually reads the component surface', () => {
-	expect(FILES.length).toBeGreaterThan(15);
+	expect(FILES.length).toBeGreaterThan(15); // @nvf-floor FILES.length
 });
 
 test('no component hard-codes a colour the palette already owns', () => {
@@ -264,7 +264,7 @@ test('a component never references a token that exists only in the @theme bridge
 	}
 	// The var() walk must have read a real population, or a regex slip would report zero offences from
 	// zero readings. The tree carries hundreds of var() references.
-	expect(bridgeRefsScanned).toBeGreaterThanOrEqual(200);
+	expect(bridgeRefsScanned).toBeGreaterThanOrEqual(200); // @nvf-floor bridgeRefsScanned
 	expect(offences).toEqual([]);
 });
 
@@ -297,7 +297,7 @@ test('every @theme bridge entry forwards to a real :root token, and never to its
 	}
 	// Every bridge entry is a forward, so this counts the block. A parser slip that read no values would
 	// otherwise report zero offences from zero readings.
-	expect(forwardsChecked).toBeGreaterThanOrEqual(30);
+	expect(forwardsChecked).toBeGreaterThanOrEqual(30); // @nvf-floor forwardsChecked
 	expect(ROOT_TOKENS.size).toBeGreaterThanOrEqual(50);
 	expect(offences).toEqual([]);
 });
@@ -381,7 +381,7 @@ test('no component hard-codes a spacing value the scale already owns', () => {
 	}
 	// The declaration walk must have read a real population, or a regex slip reports zero offences from
 	// zero readings. The tree carries hundreds of gap/margin/padding declarations.
-	expect(spacingDeclsSeen).toBeGreaterThanOrEqual(200);
+	expect(spacingDeclsSeen).toBeGreaterThanOrEqual(200); // @nvf-floor spacingDeclsSeen
 	expect(offences).toEqual([]);
 });
 
@@ -418,7 +418,7 @@ test('no component hard-codes a phone type size the ladder already owns', () => 
 			}
 		}
 	}
-	expect(fontDeclsSeen).toBeGreaterThanOrEqual(60);
+	expect(fontDeclsSeen).toBeGreaterThanOrEqual(60); // @nvf-floor fontDeclsSeen
 	expect(offences).toEqual([]);
 });
 
@@ -443,7 +443,7 @@ test('no component hard-codes a line height the scale already owns', () => {
 			}
 		}
 	}
-	expect(leadingDeclsSeen).toBeGreaterThanOrEqual(8);
+	expect(leadingDeclsSeen).toBeGreaterThanOrEqual(8); // @nvf-floor leadingDeclsSeen
 	expect(offences).toEqual([]);
 });
 
@@ -477,7 +477,7 @@ test('no component hard-codes a motion duration the scale already owns', () => {
 			}
 		}
 	}
-	expect(motionDeclsSeen).toBeGreaterThanOrEqual(10);
+	expect(motionDeclsSeen).toBeGreaterThanOrEqual(10); // @nvf-floor motionDeclsSeen
 	expect(offences).toEqual([]);
 });
 
@@ -519,7 +519,7 @@ test('every z-index in a component names a paint-order tier, never a bare intege
 	}
 	// Every overlapping surface declares one, so a walk that reads none is a broken scan rather than a
 	// tree with no paint order.
-	expect(zDeclsSeen).toBeGreaterThanOrEqual(15);
+	expect(zDeclsSeen).toBeGreaterThanOrEqual(15); // @nvf-floor zDeclsSeen
 	expect(offences).toEqual([]);
 });
 
@@ -579,7 +579,7 @@ test('each paint-order ladder still climbs in its documented order', () => {
 	// phone ladder went from five tiers (four rungs) to three (two rungs). Nothing is unenforced by the
 	// drop: the `unplaced` assertion above still proves NO z-* token escapes a ladder, so a re-added
 	// sheet tier reds there rather than slipping in un-ordered. TV's eight rungs are untouched.
-	expect(rungsChecked).toBeGreaterThanOrEqual(10);
+	expect(rungsChecked).toBeGreaterThanOrEqual(10); // @nvf-floor rungsChecked
 });
 
 test('the phone type ladder never reaches a TV surface', () => {
@@ -605,7 +605,7 @@ test('the phone type ladder never reaches a TV surface', () => {
 	// reason the leading scale is not `--ph-`-prefixed.
 	const TV = FILES.filter((f) => /\/(lib|routes)\/tv\//.test(f));
 	// The TV tree exists and was walked. Without this the ban is a scan over an empty list.
-	expect(TV.length).toBeGreaterThanOrEqual(5);
+	expect(TV.length).toBeGreaterThanOrEqual(5); // @nvf-floor TV.length
 	const offences: string[] = [];
 	for (const f of TV) {
 		const src = stripComments(readFileSync(f, 'utf8'));
@@ -674,7 +674,7 @@ test('every @media width literal in source is a declared breakpoint (#852)', () 
 	// scope by walking, so an empty walk (a moved src/ dir, a renamed extension) would find zero
 	// literals and pass while examining nothing — the exact vacuity that dimension's floors guard. Seven
 	// width queries exist today; the floor sits at 7 so a walk that stops seeing `@media` reds instead.
-	expect(literalsFound).toBeGreaterThanOrEqual(7);
+	expect(literalsFound).toBeGreaterThanOrEqual(7); // @nvf-floor literalsFound
 	expect(offences).toEqual([]);
 });
 
@@ -968,7 +968,7 @@ test('every identity-dot rule declares a non-shrinking flex basis', () => {
 	for (const f of FILES) {
 		seen += [...stripComments(readFileSync(f, 'utf8')).matchAll(/\.who\s+i\s*\{/g)].length;
 	}
-	expect(seen).toBeGreaterThanOrEqual(2);
+	expect(seen).toBeGreaterThanOrEqual(2); // @nvf-floor seen
 	expect(offences).toEqual([]);
 });
 
@@ -1017,6 +1017,6 @@ test('a route page block that caps its width also centres it under the app-shell
 	}
 	// The rule must actually be exercising something, or a refactor of the routes would silently disarm it.
 	// The three dashboards plus the two precedents (settings, join) all cap-and-centre.
-	expect(checked).toBeGreaterThanOrEqual(3);
+	expect(checked).toBeGreaterThanOrEqual(3); // @nvf-floor checked
 	expect(offences).toEqual([]);
 });

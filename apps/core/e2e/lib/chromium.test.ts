@@ -43,7 +43,7 @@ function e2eDrivers(): string[] {
 	walk(E2E, '');
 	// 28 drivers today; pin well below. Plus the which-files sentinel: a walk that found 21 of
 	// something but not the canonical module is also broken, and a count alone cannot say so.
-	expect(out.length).toBeGreaterThan(20);
+	expect(out.length).toBeGreaterThan(20); // @nvf-floor out.length
 	expect(out).toContain(CANON);
 	return out;
 }

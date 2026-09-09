@@ -37,7 +37,7 @@ const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'route
 // Non-vacuity floor (issue #453): both scans below assert `offenders` empty, so a walk returning
 // nothing would pass vacuously. ~25 svelte files today.
 test('the singer-colour scans actually read a non-empty surface', () => {
-	expect(FILES.length).toBeGreaterThan(15);
+	expect(FILES.length).toBeGreaterThan(15); // @nvf-floor FILES.length
 });
 
 test('no hex alpha digits are concatenated onto an interpolated colour', () => {
