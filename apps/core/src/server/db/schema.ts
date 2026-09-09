@@ -256,7 +256,7 @@ export const roomSettings = sqliteTable('room_settings', {
 	// like the style settings, so a hand-edited DB cannot name an algorithm that does not exist — and
 	// the default is today's fair rotation, so an existing room's behaviour is unchanged by the column
 	// appearing.
-	queueOrder: text('queue_order', { enum: ['fair', 'fcfs', 'shuffle', 'least-recently-sung'] })
+	queueOrder: text('queue_order', { enum: ['fair', 'fcfs', 'shuffle', 'least-recently-sung', 'manual'] })
 		.notNull()
 		.default('fair'),
 	tvProgressStyle: text('tv_progress_style', { enum: ['card', 'corner', 'edge', 'off'] })
