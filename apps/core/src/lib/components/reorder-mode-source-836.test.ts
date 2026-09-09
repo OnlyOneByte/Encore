@@ -323,3 +323,31 @@ test('XR-PH-18 · every release is routed through dropTarget rather than passed 
 	expect(/store\?\.moveEntry\(id, target\)/.test(body)).toBe(true);
 	expect(/target !== null/.test(body)).toBe(true);
 });
+
+// #856 step 4 — the cross-singer arrow wiring, pinned so reverting the call site reds. The arrow
+// hunk at +page.svelte moveGlobal is individually-revertible-green otherwise: swapping
+// `store?.moveToIndex(id, i + delta)` back to `store?.moveEntry(...)` undoes the whole feature (arrows
+// go back to own-picks) yet the behavioural suite stays green, because no test reads the UI call site.
+// This scan is that missing pin. The drag mode's exitReorder still calls moveEntry (own-picks, #836) —
+// distinct path — so this asserts moveGlobal SPECIFICALLY emits moveToIndex.
+test('#856 step 4 · the up/down arrows are wired to moveGlobal, which emits store.moveToIndex', () => {
+	const src = stripComments(page());
+	// (1) both arrow handlers route through moveGlobal (not moveMine / moveEntry).
+	expect(/onup=\{\(\)\s*=>\s*moveGlobal\(/.test(src)).toBe(true);
+	expect(/ondown=\{\(\)\s*=>\s*moveGlobal\(/.test(src)).toBe(true);
+	// (2) moveGlobal emits the cross-singer op. Slice its body and require store.moveToIndex, and
+	// require it does NOT fall back to the own-picks store.moveEntry — reverting the call site reds here.
+	const fn = /function moveGlobal\([\s\S]*?\n\t\}/.exec(src);
+	expect(fn).not.toBeNull(); // sentinel: the function must exist
+	const body = fn![0]!;
+	expect(/store\?\.moveToIndex\(id,/.test(body)).toBe(true);
+	expect(/store\?\.moveEntry\(/.test(body)).toBe(false);
+	// (3) the arrow-GATING props (canUp/canDown) are computed on the GLOBAL queued index, not the
+	// singer's own-picks index — that is what makes the arrows reach every row. Reverting the props to
+	// the own-picks basis (myIdx / myPicks.length) reds these. Both QueueRow blocks are covered.
+	expect((src.match(/canUp=\{queuedIdx\(e\.id\)\s*>\s*0\}/g) || []).length).toBeGreaterThanOrEqual(2);
+	expect((src.match(/canDown=\{queuedIdx\(e\.id\)[\s\S]*?queued\.length\s*-\s*1\}/g) || []).length).toBeGreaterThanOrEqual(2);
+	// no arrow-gating prop falls back to the own-picks basis
+	expect(/canUp=\{myIdx\(/.test(src)).toBe(false);
+	expect(/canDown=\{myIdx\(/.test(src)).toBe(false);
+});

@@ -10,6 +10,15 @@ export type QueueOp =
 	| { op: 'add'; entry: QueueEntry } // entry.id is the client-minted ULID
 	| { op: 'remove'; id: string }
 	| { op: 'move'; id: string; toSeq: number } // toSeq = target index into the singer's own QUEUED picks (reorderWithinSinger indexes queued entries only; a playing/terminal entry never occupies a slot), NOT a rotationSeq
+	// A HOST reorder that can cross singers: `toIdx` is a position in the WHOLE queued list, not the
+	// singer's own picks (that is `move` above). `move` cannot express this — it permutes one singer's
+	// picks among the slots that singer already holds, so it can never jump another singer. `move-to-index`
+	// splices the entry to any queued index and rewrites the stored list, which the stored-list model
+	// makes durable by construction (#856 step 4). No pin: the list IS the truth. Gated in hub.ts
+	// validateCommand on `queue:reorder-any` for an entry the actor does not own. Crosses the wire
+	// contract: client and server ship together and both rewrite the list identically through
+	// `moveToIndex` in applyAndReseq, so optimistic and authoritative states cannot diverge.
+	| { op: 'move-to-index'; id: string; toIdx: number } // toIdx = target index into the whole QUEUED list (a playing/terminal entry keeps its slot and never occupies one)
 	| { op: 'status'; id: string; status: EntryStatus };
 
 export interface ClientCommand {
@@ -47,6 +56,12 @@ export function applyOp(entries: QueueEntry[], op: QueueOp): QueueEntry[] {
 			break;
 		case 'move':
 			next = entries.map((e) => (e.id === op.id ? { ...e, rotationSeq: op.toSeq } : e));
+			break;
+		case 'move-to-index':
+			// Like `move`, this arm is a raw-seq fallback: the REAL path is applyAndReseq → moveToIndex
+			// (rotation.ts), which rewrites the stored list. A direct applyOp caller (there is none for
+			// this op) gets the same shape `move` gives — a raw index that the next renumber overwrites.
+			next = entries.map((e) => (e.id === op.id ? { ...e, rotationSeq: op.toIdx } : e));
 			break;
 		case 'status':
 			next = entries.map((e) => (e.id === op.id ? { ...e, status: op.status } : e));
