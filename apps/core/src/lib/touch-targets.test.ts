@@ -294,7 +294,36 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule (i
 		 * check is "is the floor reached anywhere", which is why a variant needs no floor of its own.
 		 */
 		{ file: join(SRC, 'lib', 'components', 'ui', 'native-select', 'native-select.svelte'), token: /\.encore-field\b/, name: 'the settings selects (NativeSelect)' },
-		{ file: join(SRC, 'lib', 'components', 'ui', 'input', 'input.svelte'), token: /\.encore-field\b/, name: 'the settings text fields (Input)' }
+		{ file: join(SRC, 'lib', 'components', 'ui', 'input', 'input.svelte'), token: /\.encore-field\b/, name: 'the settings text fields (Input)' },
+		/*
+		 * ── WHY VENDORED CONTROLS MUST BE LISTED HERE BY HAND (#913 S4) ────────────────────────────
+		 *
+		 * `controlRules()` above derives "is this a control?" from the file's own MARKUP (#400) — it
+		 * looks for a rule whose subject is an interactive TAG, or a class that markup puts on one. A
+		 * copied-in shadcn component satisfies neither: it renders `<TabsPrimitive.Trigger>`, a
+		 * COMPONENT, so no `button` tag ever appears for `markupControls` to find. On top of that,
+		 * `subjectIsControl` strips `:global(...)` and `[attr]` before looking, so a rule written as
+		 * `:global([data-slot='tabs-trigger'])` — the only way to reach an element a child component
+		 * renders — cleans down to nothing and is skipped.
+		 *
+		 * The consequence was measured, not assumed: moving the settings tabs' `min-height: var(--tap)`
+		 * out of the page and into ui/tabs left a 38px pill PASSING this whole file. The floor had gone
+		 * unguarded silently, which is the exact shape #863 exists to catch.
+		 *
+		 * So every vendored control that owns its own box is named here explicitly. `gate:measured` is
+		 * the real backstop — it hit-tests a live render — but it skips wherever Chromium is absent, and
+		 * a floor that only one rung can see is a floor most runs do not check.
+		 */
+		{
+			file: join(SRC, 'lib', 'components', 'ui', 'tabs', 'tabs-trigger.svelte'),
+			token: /tabs-trigger/,
+			name: "the settings scope tabs (Tabs.Trigger)"
+		},
+		{
+			file: join(SRC, 'lib', 'components', 'ui', 'slider', 'slider.svelte'),
+			token: /\.encore-slider\b/,
+			name: 'the settings sliders (Slider)'
+		}
 	];
 	const reachesFloor = (body: string): boolean => {
 		if (expressesTap(body)) return true; // var(--tap) on width/height

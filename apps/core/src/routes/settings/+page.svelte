@@ -25,6 +25,7 @@
 	import { NativeSelect } from '$lib/components/ui/native-select';
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Slider } from '$lib/components/ui/slider';
+	import * as Tabs from '$lib/components/ui/tabs';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -119,21 +120,11 @@
 		replaceState(`?tab=${id}`, {});
 	}
 
-	/** Arrow keys move between tabs, which is what a tablist is expected to do from a keyboard. */
-	function onTabKey(e: KeyboardEvent) {
-		const delta = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
-		let next: TabId | null = null;
-		if (delta !== 0) {
-			const i = TABS.findIndex((t) => t.id === tab);
-			next = TABS[(i + delta + TABS.length) % TABS.length]!.id;
-		} else if (e.key === 'Home') next = TABS[0]!.id;
-		else if (e.key === 'End') next = TABS[TABS.length - 1]!.id;
-		if (!next) return;
-		e.preventDefault();
-		showTab(next);
-		// Move focus with the selection, or the ring is left behind on the tab you just left.
-		document.getElementById(`tab-${next}`)?.focus();
-	}
+	/*
+	 * #913 S4: `onTabKey` was deleted here. It implemented ArrowLeft/Right with wraparound, Home, End,
+	 * and moved focus to follow the selection — all of which Bits UI's tablist does, verified by a real
+	 * mount rather than assumed. `showTab` below is what remains Encore's: the URL sync.
+	 */
 
 	// Local state, not a plain derived, because a write is applied optimistically before the server
 	// answers. The effect re-adopts `data` so a load re-run (client-side nav back here, or
@@ -462,28 +453,28 @@
 		fix that survives adding a fourth room control is to stop rendering them together.
 	-->
 		<!--
-		`tabindex="-1"` on the list itself for the same reason ColourPicker's radiogroup carries one: the
-		arrow-key handler lives on the container, and an interactive role needs to be focusable to own it.
-		The tabs themselves use a roving tabindex, so Tab enters the group once and arrows move inside it.
-	-->
-		<div class="seg" role="tablist" aria-label="Settings scope" tabindex="-1" onkeydown={onTabKey}>
-			{#each TABS as t (t.id)}
-				<button
-					class="tab"
-					class:on={tab === t.id}
-					id="tab-{t.id}"
-					role="tab"
-					aria-selected={tab === t.id}
-					aria-controls="panel-{t.id}"
-					tabindex={tab === t.id ? 0 : -1}
-					onclick={() => showTab(t.id)}
-				>
-					{t.label}
-				</button>
-			{/each}
-		</div>
+		#913 S4: a Bits UI tablist. The roving tabindex, ArrowLeft/Right, Home and End that used to live
+		in `onTabKey` are the primitive's now — verified by mounting it rather than trusted: ArrowRight,
+		End and Home each move BOTH `aria-selected` and the tabindex, which is the pairing the old
+		handler had to remember to do by hand ("move focus with the selection, or the ring is left behind
+		on the tab you just left").
 
-		{#if tab === 'you'}
+		`showTab` stays, because the URL sync is Encore's and no primitive can know about it: it is what
+		makes a scope survive a reload and a shared link.
+	-->
+		<Tabs.Root value={tab} onValueChange={(v) => showTab(v as TabId)}>
+			<Tabs.List aria-label="Settings scope">
+				{#each TABS as t (t.id)}
+					<!--
+						The explicit id is load-bearing: Bits UI would generate its own, and both
+						`SEL.settingsTab(id)` (`#tab-<id>`) and capture.mjs, which clicks it and then reads
+						`aria-selected`, resolve THIS spelling.
+					-->
+					<Tabs.Trigger id="tab-{t.id}" value={t.id}>{t.label}</Tabs.Trigger>
+				{/each}
+			</Tabs.List>
+
+			<Tabs.Content value="you">
 			<!-- ── YOU ────────────────────────────────────────────────────────── -->
 			<div class="panel" id="panel-you" role="tabpanel" aria-labelledby="tab-you" tabindex="-1">
 				<div class="card">
@@ -545,7 +536,8 @@
 			-->
 				<button class="done" onclick={() => goto('/')}>Done</button>
 			</div>
-		{:else if tab === 'party'}
+			</Tabs.Content>
+			<Tabs.Content value="party">
 			<!-- ── PARTY ──────────────────────────────────────────────────────── -->
 			<div class="panel" id="panel-party" role="tabpanel" aria-labelledby="tab-party" tabindex="-1">
 				<div class="card">
@@ -927,7 +919,8 @@
 
 				<button class="done" onclick={() => goto('/')}>Done</button>
 			</div>
-		{:else}
+			</Tabs.Content>
+			<Tabs.Content value="server">
 			<!-- ── SERVER ─────────────────────────────────────────────────────── -->
 			<div class="panel" id="panel-server" role="tabpanel" aria-labelledby="tab-server" tabindex="-1">
 				<p class="scope-note">Affects every room on this server.</p>
@@ -1118,7 +1111,8 @@
 
 				<button class="done" onclick={() => goto('/')}>Done</button>
 			</div>
-		{/if}
+			</Tabs.Content>
+		</Tabs.Root>
 	</main>
 </div>
 
@@ -1142,35 +1136,12 @@
 	}
 
 	/* ── the scope tabs ─────────────────────────────────────────────────── */
-	.seg {
-		display: flex;
-		gap: var(--space-2xs);
-		margin: var(--space-2xs) 0 var(--space-lg);
-		padding: var(--space-2xs);
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-pill);
-	}
-	.tab {
-		flex: 1;
-		/* var(--tap), not a smaller literal: touch-targets.test.ts checks every `button` rule that
-		   declares a box, and a 38px pill would be the one control on the page under the 44px floor. */
-		min-height: var(--tap);
-		border: 0;
-		border-radius: var(--radius-pill);
-		background: none;
-		color: var(--ink-dim);
-		/* 16px so iOS does not auto-zoom when the tab takes focus, same as every control below. */
-		font-size: var(--ph-text-base);
-		font-weight: 700;
-		cursor: pointer;
-	}
-	.tab.on {
-		/* --accent + --on-accent is the certified pair that carries a label: 5.09:1 (#840, XR-COL-12 —
-		   the fill and its ink are set together, never separately). */
-		background: var(--accent);
-		color: var(--on-accent);
-	}
+	/*
+	 * #913 S4: `.seg`, `.tab` and `.tab.on` left this file. Their appearance is ui/tabs's now, keyed on
+	 * shadcn's `data-slot` — scoped CSS cannot reach an element a child component renders. Both guarded
+	 * facts moved with it verbatim: `min-height: var(--tap)` (XR-PH-01) and the certified
+	 * --accent/--on-accent pair at 5.09:1 (#840, XR-COL-12).
+	 */
 
 	/* ── cards ──────────────────────────────────────────────────────────── */
 	/*
