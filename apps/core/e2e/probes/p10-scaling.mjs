@@ -269,11 +269,12 @@ async function measureTv(label, w, h) {
 	const contrastPairs = await page.evaluate(`(() => {
 		// Contrast target pairs [foreground, background]. In-scope selectors for #547 (Group E) are
 		// interpolated from SEL so the guard reads them from the contract; out-of-scope descendant
-		// selectors (".badqr-b b", ".lower-third .ls-artist/.ls-key", ".attract .brand/.idle-url",
+		// selectors (".badqr-b b", ".lower-third .ls-artist/.ls-key", ".attract .brand/.jt-url",
 		// ".corner .t/.u") keep their literals — they carry a space so the guard's shape rule never
 		// flagged them, and they belong to selectors tracked separately, not this group. The attract
-		// instruction line reads SEL.stageHeadline (".idle-head") — #682 repointed it from the dead
-		// ".attract .idle-title" (a class no component declares), and dropped the dead ".roster" target.
+		// instruction line reads SEL.stageHeadline (".phrase-line", the #826 rotating phrase) — repointed
+		// from the pre-#826 ".idle-head", and the typed address from ".idle-url" to the split panel's
+		// ".jt-url".
 		const targets = [
 			[${JSON.stringify(SEL.badQrTitle)}, ${JSON.stringify(SEL.badQrTitle)}],
 			[${JSON.stringify(SEL.badQrBody)}, ${JSON.stringify(SEL.badQrBody)}],
@@ -287,7 +288,7 @@ async function measureTv(label, w, h) {
 			[${JSON.stringify(SEL.upSong)}, ${JSON.stringify(SEL.upSong)}],
 			['.attract .brand', ${JSON.stringify(SEL.attract)}],
 			[${JSON.stringify(SEL.stageHeadline)}, ${JSON.stringify(SEL.attract)}],
-			['.attract .idle-url', ${JSON.stringify(SEL.attract)}],
+			['.attract .jt-url', ${JSON.stringify(SEL.attract)}],
 			['.corner .t', 'body'],
 			['.corner .u', 'body']
 		];

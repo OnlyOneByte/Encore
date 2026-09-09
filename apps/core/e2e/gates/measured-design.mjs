@@ -240,6 +240,10 @@ const server = spawn('bun', ['run', './server.ts'], {
 		ENCORE_EPHEMERAL: '1',
 		PORT: String(port),
 		HOST: '127.0.0.1',
+		// A routable (non-loopback) public origin so the TV attract renders its REACHABLE join panel
+		// (.jt-url), not the loopback .badqr notice — and a realistic long LAN address is exactly the
+		// worst case the XR-TV-19 URL-break probe (CLAIM 6) needs to measure.
+		ENCORE_PUBLIC_ORIGIN: `http://192.168.1.20:${port}`,
 		MEDIA_DIR: mediaDir,
 		ENCORE_LYRICS_BACKFILL: '0',
 		ENCORE_VOCALS_BACKFILL: '0'
@@ -465,7 +469,11 @@ try {
 	})()`;
 	const dock = await page.evaluate(dockProbe);
 	if (!dock) {
-		check('CLAIM 3 the docked band is rendered on the joined home, so its contract is measurable', false, 'no .search-dock found');
+		check(
+			'CLAIM 3 the docked band is rendered on the joined home, so its contract is measurable',
+			false,
+			'no .search-dock found'
+		);
 	} else {
 		check(
 			"CLAIM 3 (XR-VER-11) --dock-h equals the docked band's REAL rendered height — the contract every docked control offsets from",
@@ -610,7 +618,9 @@ try {
 	 * thing that can put it at the bottom is the anchoring.
 	 */
 	await page.fill(SEL.search, 'zzzzznotasongzzzzz');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.empty)}) !== null`, { timeout: 15000 }).catch(() => {});
+	await page
+		.waitFor(`document.querySelector(${JSON.stringify(SEL.empty)}) !== null`, { timeout: 15000 })
+		.catch(() => {});
 	await sleep(900);
 	const shortProbe = `(() => {
 		const dock = document.querySelector(${JSON.stringify(SEL.searchDock)});
@@ -735,7 +745,16 @@ try {
 	await sleep(500);
 
 	// The eight TV type tiers, read as the ENGINE resolves them off the root (a rem tier * the root px).
-	const TV_TIERS = ['--tv-small', '--tv-eyebrow', '--tv-label', '--tv-body', '--tv-name', '--tv-joinurl', '--tv-hero', '--tv-lyric'];
+	const TV_TIERS = [
+		'--tv-small',
+		'--tv-eyebrow',
+		'--tv-label',
+		'--tv-body',
+		'--tv-name',
+		'--tv-joinurl',
+		'--tv-hero',
+		'--tv-lyric'
+	];
 	const tvProbe = `(() => {
 		const tv = document.querySelector(${JSON.stringify(SEL.tvRoot)});
 		if (!tv) return null;
@@ -756,7 +775,11 @@ try {
 
 	const tv1 = await page.evaluate(tvProbe);
 	if (!tv1) {
-		check('CLAIM 5 (#821) the /tv document mounts .tv so the root floor is measurable', false, 'no .tv element found on /tv');
+		check(
+			'CLAIM 5 (#821) the /tv document mounts .tv so the root floor is measurable',
+			false,
+			'no .tv element found on /tv'
+		);
 	} else {
 		// Root: 2.7vh of 1080 = 29.16px, * ui-scale 1.
 		check(
@@ -771,7 +794,9 @@ try {
 			`smallest tier ${smallest1}px across ${JSON.stringify(tv1.tiers)}`
 		);
 		// Every tier must be an integer-ish rem multiple of the root, i.e. tracked BY the root, not free.
-		const untracked = Object.entries(tv1.tiers).filter(([, px]) => Math.abs((px / tv1.rootPx) - Math.round((px / tv1.rootPx) * 1000) / 1000) > 0.05);
+		const untracked = Object.entries(tv1.tiers).filter(
+			([, px]) => Math.abs(px / tv1.rootPx - Math.round((px / tv1.rootPx) * 1000) / 1000) > 0.05
+		);
 		check(
 			'CLAIM 5 (XR-TV-02) every TV tier is a rem multiple of the root — it moves when the root moves',
 			untracked.length === 0,
@@ -823,7 +848,136 @@ try {
 		await page.viewport(1920, 1080);
 	}
 
-	// ── the gate's own non-vacuity floors (XR-VER-05) ──────────────────────────────────────────
+	/*
+	 * ── CLAIM 6 (issue #826, XR-TV-14 / XR-TV-19): the ratified TV states measured on the render ──────
+	 *
+	 * The source-scan half (room-code-is-largest, the CSS-gated crossfade, the family borders) lives in
+	 * routes/tv/tv-ratified-states.test.ts and CANNOT make a measured claim. What only a render settles,
+	 * and what shipped green past a source scan on the first pass:
+	 *   • XR-TV-19 — the join URL is one unbreakable token: `.jt-url` must not break mid-octet
+	 *     (scrollWidth <= clientWidth), at the realistic long LAN address the repo documents.
+	 *   • XR-TV-14 — every roster member is shown with no chip OCCLUDED by a corner control. A name
+	 *     painted under .fs-btn is worse than the "+N more" it replaced, and is invisible to a source
+	 *     scan. Swept with LONG-name fixtures at 6/10/12/13 guests (name length is load-bearing here).
+	 *
+	 * The takeover frames (next-up / cooking / skipping) need live WS playback to mount and are NOT
+	 * driven here — the self-hosting drive has no cooked media — so their invariants stay on the
+	 * source-scan guard; this gate covers attract and lobby, the two the drive can reach honestly.
+	 */
+	{
+		// Long-name fixtures (name length is load-bearing for XR-TV-14). Colours are irrelevant to the
+		// occlusion measurement and are passed as a CSS named colour, NOT a `#hex` literal — a `#`-led
+		// string reads as an id selector to the driver-selector-ban guard (contract.test.ts).
+		const NAMES = [
+			'Bartholomew',
+			'Alexandria',
+			'Maximilian',
+			'Christopher',
+			'Evangeline',
+			'Sebastian',
+			'Anastasia',
+			'Montgomery',
+			'Josephine',
+			'Wilhelmina',
+			'Fitzgerald',
+			'Konstantin',
+			'Persephone'
+		];
+		const CHIP_COLOR = 'rebeccapurple';
+		/** Join one singer via the production path and HOLD a phone socket so presence counts them. */
+		/** @type {WebSocket[]} */
+		const heldSockets = [];
+		/** @param {string} displayName @param {string} color */
+		async function joinOne(displayName, color) {
+			const res = await fetch(`${base}/api/join`, {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ displayName, color })
+			});
+			const cookie = (res.headers.get('set-cookie') ?? '').split(';')[0];
+			const ws = new /** @type {new (url: string, opts?: { headers?: Record<string, string> }) => WebSocket} */ (
+				WebSocket
+			)(`ws://127.0.0.1:${port}/ws?role=phone`, { headers: { Cookie: cookie } });
+			await new Promise((r) => {
+				ws.addEventListener('open', () => r(undefined), { once: true });
+				ws.addEventListener('error', () => r(undefined), { once: true });
+			});
+			heldSockets.push(ws);
+		}
+
+		// The lobby is where the two measured invariants are both reachable in this drive: the phone-flow
+		// claims above already joined a singer, so the TV is in the LOBBY (not attract). The lobby carries
+		// the same #826 join panel (.url) and the roster, so the URL-no-break (XR-TV-19) and the
+		// roster-not-occluded (XR-TV-14) invariants are measured here. The attract `.jt-url` and the three
+		// takeover frames stay on the source-scan guard (the takeovers need live WS playback the
+		// self-hosting drive has no cooked media for).
+		const lobbyProbe = `(() => {
+			const chips = [...document.querySelectorAll(${JSON.stringify(SEL.lobbyStripPerson)})];
+			const url = document.querySelector(${JSON.stringify(SEL.lobbyUrl)});
+			const isControl = (el) => el && (el.closest(${JSON.stringify(SEL.fsBtn)}) || el.closest(${JSON.stringify(SEL.badQr)}));
+			let occluded = 0; const hits = [];
+			for (const chip of chips) {
+				const r = chip.getBoundingClientRect();
+				for (const [x, y] of [[r.left + r.width / 2, r.top + r.height / 2], [r.right - 2, r.top + r.height / 2]]) {
+					if (isControl(document.elementFromPoint(x, y))) { occluded++; hits.push(chip.textContent.trim()); break; }
+				}
+			}
+			let intersects = 0;
+			const controls = [...document.querySelectorAll(${JSON.stringify(SEL.fsBtn)}), ...document.querySelectorAll(${JSON.stringify(SEL.badQr)})].map((c) => c.getBoundingClientRect());
+			for (const chip of chips) {
+				const r = chip.getBoundingClientRect();
+				for (const c of controls) { if (r.left < c.right && r.right > c.left && r.top < c.bottom && r.bottom > c.top) { intersects++; break; } }
+			}
+			return {
+				chipCount: chips.length, occluded, hits, intersects,
+				docOverflow: document.documentElement.scrollWidth - window.innerWidth,
+				urlScrollW: url ? url.scrollWidth : null,
+				urlClientW: url ? url.clientWidth : null,
+				urlLines: url ? url.getClientRects().length : null,
+				urlText: url ? url.textContent : null
+			};
+		})()`;
+
+		let joined = 0;
+		let urlChecked = false;
+		for (const count of [6, 10, 12, 13]) {
+			while (joined < count) {
+				await joinOne(NAMES[joined], CHIP_COLOR);
+				joined++;
+			}
+			await sleep(700);
+			await page.goto(base + '/tv');
+			await page.waitFor(`document.querySelector(${JSON.stringify(SEL.lobbyStripPerson)}) !== null`, {
+				timeout: 15000
+			});
+			await sleep(900);
+			const r = await page.evaluate(lobbyProbe);
+			// chipCount is a FLOOR (>=): the drive may already carry a phone-flow singer, so the point is
+			// occlusion + no overflow, not an exact count.
+			check(
+				`CLAIM 6 (XR-TV-14) lobby at >=${count} guests renders every chip with none occluded by a control`,
+				r !== null && r.chipCount >= count && r.occluded === 0 && r.intersects === 0 && r.docOverflow <= 0,
+				`chips=${r?.chipCount} (>= ${count}) occluded=${r?.occluded} ${JSON.stringify(r?.hits)} intersects=${r?.intersects} docOverflow=${r?.docOverflow}`
+			);
+			// XR-TV-19: the typed join URL must fit one line — checked once, on the first populated sweep.
+			if (!urlChecked && r && r.urlScrollW !== null) {
+				urlChecked = true;
+				check(
+					'CLAIM 6 (XR-TV-19) the lobby join URL fits one line — no mid-token break',
+					r.urlScrollW <= r.urlClientW + 1 && r.urlLines <= 1,
+					`.url "${r.urlText}" scrollW=${r.urlScrollW} clientW=${r.urlClientW} lines=${r.urlLines} — an address is one unbreakable token, shrinking beats breaking`
+				);
+			}
+		}
+		if (!urlChecked)
+			check(
+				'CLAIM 6 (XR-TV-19) the lobby join URL was measured',
+				false,
+				'the .lobby .url element never rendered — the probe could not reach it'
+			);
+		for (const ws of heldSockets) ws.close();
+		await page.viewport(1920, 1080);
+	}
 	check(
 		`the drive measured a real population — >=${FLOORS.controlsMeasured} control readings`,
 		controlsMeasured >= FLOORS.controlsMeasured,

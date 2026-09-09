@@ -22,10 +22,18 @@
 	import { WsClient } from '$lib/ws/client';
 	import TvLobby from '$lib/tv/TvLobby.svelte';
 	import JoinBadge from '$lib/tv/JoinBadge.svelte';
-	import { tvScreen, lobbyRoster, isUnreachableJoinOrigin, lyricsAdvancing } from '$lib/tv/screen';
+	import {
+		tvScreen,
+		lobbyRoster,
+		isUnreachableJoinOrigin,
+		lyricsAdvancing,
+		cookStep,
+		COOK_STEPS
+	} from '$lib/tv/screen';
 	import { isAutoTranscribed, provenanceLabel } from '$lib/tv/lyrics';
 	import { cookStageLabel } from '$lib/cook-phrasing';
 	import { mergeCatalog, snapshot, cookIsTerminal, type PlaybackSnapshot } from '$lib/tv/catalog';
+	import { makePhraseBag, reducedMotionPhrase, seedFromString, ATTRACT_PHRASES } from '$lib/tv/phrases';
 
 	let { data } = $props();
 
@@ -473,7 +481,10 @@
 		}).length
 	);
 	const isAttract = $derived(screen === 'attract' || screen === 'lobby');
-	const roster = $derived(lobbyRoster(online, away, singers));
+	// #826/XR-TV-14: the lobby shows the WHOLE roster with no "+N more" — the reason to show it is that
+	// it must not degrade as the party grows, so it is never truncated. Pass Infinity so nothing is
+	// capped; TvLobby renders every chip and steps the chip size down above a threshold instead.
+	const roster = $derived(lobbyRoster(online, away, singers, Infinity));
 
 	/*
 	 * KEEP THE TV AWAKE while a song is on stage (#478).
@@ -652,7 +663,9 @@
 	 * The override wins over the room default when set; `null` means defer to the room.
 	 */
 	const resolvedBackground = $derived(backgroundOverride ?? tvBackgroundStyle);
-	const stageBg = $derived(stageBackgroundCss(resolvedBackground, tvBackgroundColor, currentSingerColor, tvBackgroundDim));
+	const stageBg = $derived(
+		stageBackgroundCss(resolvedBackground, tvBackgroundColor, currentSingerColor, tvBackgroundDim)
+	);
 	// lyrics overlay is live only while a song is actually playing (not attract/lobby/interstitial/waiting)
 	const lyricsActive = $derived(screen === 'playing' && tvState !== 'interstitial');
 	// Bug B + #393: the reel and ball ADVANCE only while the song is genuinely playing on BOTH
@@ -709,6 +722,13 @@
 	 */
 	const joinShort = $derived(data.joinUrl.replace(/^https?:\/\//, ''));
 	/*
+	 * The attract panel shows the room CODE as its own largest element (.jt-code), so repeating it in
+	 * the URL's `?room=CODE` query is both redundant and the reason the address wrapped to five lines in
+	 * a 600px panel. Strip the scheme AND the query for the attract URL line — host + path only, the
+	 * shortest legible thing to type — while the QR still encodes the full room-scoped URL.
+	 */
+	const attractJoinUrl = $derived(joinShort.replace(/\?.*$/, ''));
+	/*
 	 * Whether the join QR advertises an address no phone can reach.
 	 *
 	 * `data.joinOrigin` is derived from the request host, so opening /tv ON the serving machine puts a
@@ -744,6 +764,67 @@
 	});
 	/** The entry the loading treatment is announcing — the one the visible player is loading toward. */
 	const loadingDisplay = $derived(songDisplay(mediaOf(current)));
+
+	/*
+	 * THE ATTRACT PHRASE (issue #826, XR-TV-16/17/18). A fixed `Karaoke` label with one of seven phrases
+	 * rotating beneath it in a fixed two-line box. The order is a shuffled bag reseeded per room
+	 * (phrases.ts), advanced every 8s, with no repeat until the whole set has shown.
+	 *
+	 * Seeded from the room code so a room's rotation is stable and deterministic — the same requirement
+	 * the phrase bag is built to satisfy, and testable because both are pure. A code-less TV (no active
+	 * room resolved) falls back to a fixed seed, which is fine: the sequence just is not room-specific.
+	 *
+	 * REDUCED MOTION (XR-TV-05/17). Under `prefers-reduced-motion: reduce` the cycle does not start at
+	 * all: one phrase is chosen per room and HELD for the session — Minecraft's own splash behaviour.
+	 * The crossfade itself is a CSS animation gated on `(prefers-reduced-motion: no-preference)` (see the
+	 * `.phrase-line` rule), never a Svelte `transition:` directive (motion.test.ts rejects those because
+	 * the transition runtime never consults the media query). So motion is stopped in TWO independent
+	 * ways under reduce — the clock never ticks AND the fade animation is media-gated off — and either
+	 * alone is sufficient.
+	 */
+	const phraseSeed = $derived(seedFromString(data.roomCode || 'encore-attract'));
+	// SSR-safe: matchMedia does not exist during load. Defaults to full motion; corrected on mount.
+	let prefersReducedMotion = $state(false);
+	// The phrase currently shown. Under reduce it is the held phrase; while cycling it is the bag's head.
+	let attractPhrase = $state<string>(ATTRACT_PHRASES[0]);
+
+	onMount(() => {
+		const mq = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+		prefersReducedMotion = mq?.matches ?? false;
+
+		let timer: ReturnType<typeof setInterval> | undefined;
+
+		// (Re)decide the phrase behaviour for the current motion preference. Called on mount and whenever
+		// the OS preference changes, so a mid-session toggle stops or starts the cycle without a reload.
+		const apply = () => {
+			clearInterval(timer);
+			timer = undefined;
+			if (prefersReducedMotion) {
+				// Hold ONE phrase for the session (XR-TV-17). No clock, no crossfade.
+				attractPhrase = reducedMotionPhrase(phraseSeed);
+				return;
+			}
+			// Full motion: draw the bag's first phrase now, then advance every 8s. The crossfade replays
+			// via the `{#key attractPhrase}` remount in the markup, animated only under no-preference.
+			const bag = makePhraseBag(phraseSeed);
+			attractPhrase = bag.next();
+			timer = setInterval(() => {
+				attractPhrase = bag.next();
+			}, 8000);
+		};
+
+		const onChange = (e: MediaQueryListEvent) => {
+			prefersReducedMotion = e.matches;
+			apply();
+		};
+		mq?.addEventListener?.('change', onChange);
+		apply();
+
+		return () => {
+			clearInterval(timer);
+			mq?.removeEventListener?.('change', onChange);
+		};
+	});
 </script>
 
 <div class="tv" style={chromeBandStyle}>
@@ -854,40 +935,62 @@
 
 	{#if screen === 'attract'}
 		<!--
-			NOBODY HAS JOINED. Structurally the same screen as the lobby: wordmark, one instruction, the
-			QR, the typed fallback beneath it, and a strip along the bottom. Only the instruction and
-			what the strip carries differ — the lobby lists who is here, this lists what to do. Before,
-			this screen stacked the QR beside its copy and had no bottom row at all, which made it the
-			one state that did not look like its sibling and the one with an empty lower third.
+			NOBODY HAS JOINED — the ratified split panel (issue #826, A2). Left column at the title-safe x:
+			a FIXED `Karaoke` label above a rotating phrase in a fixed two-line box, so the label always
+			tells a stranger what they are looking at and the rotation never shifts the column. Right
+			column: a flat-filled panel carrying the join block, with the ROOM CODE as the largest element
+			because the code is the thing being transcribed. The owner copy "Go to XXX and enter room code
+			YYYY OR scan the QR code" is kept but BROKEN across the type ladder — a long sentence at ten
+			feet is the failure mode — so each part sits on its own tier.
 		-->
 		<div class="attract">
-			<div class="idle">
-				<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
+			<div class="brand"><Icon name="mic" /> <span class="grad">Encore</span></div>
+			<div class="asplit-l">
+				<div class="phrase-kick">Karaoke</div>
+				<!--
+					The phrase box is a FIXED height for --tv-phrase-lines lines (XR-TV-18): a one-line and a
+					two-line phrase must not move the column. The crossfade is a CSS animation on `.phrase-line`
+					gated on (prefers-reduced-motion: no-preference); it replays because `{#key attractPhrase}`
+					remounts the line on each 8s tick. Under reduce the cycle never ticks (the clock is not
+					started) AND the animation is media-gated off, so the phrase is simply held. This is NOT a
+					Svelte transition: directive — motion.test.ts bans those because they ignore the media query.
+				-->
+				<div class="phrase-box">
+					{#key attractPhrase}
+						<div class="phrase-line">{attractPhrase}</div>
+					{/key}
+				</div>
+			</div>
+			<div class="asplit-r">
 				{#if joinUnreachable}
 					<JoinBadge
 						qrDataUrl={data.qrDataUrl}
 						joinUrl={data.joinUrl}
 						placement="hero"
-						size="var(--tv-qr)"
+						size="var(--tv-attract-qr)"
 						unreachable={true}
 					/>
 				{:else}
-					<h1 class="idle-head">Scan to <span class="grad">join the party</span></h1>
+					<!-- QR first: scanning types nothing, so it is the fast path and owns the top of the panel. -->
 					<JoinBadge
 						qrDataUrl={data.qrDataUrl}
 						joinUrl={data.joinUrl}
 						placement="hero"
-						size="var(--tv-qr)"
+						size="var(--tv-attract-qr)"
 						unreachable={false}
 					/>
-					<!-- The typed fallback for a camera that will not scan. PRIMARY content here, so it
-					     takes its own tier rather than the corner-chrome one. -->
-					<p class="idle-url">{joinShort}</p>
+					<!-- The typed path, broken across the ladder: "Go to <url> and enter room code <code>". -->
+					<div class="join-text">
+						<div class="jt-step">Go to</div>
+						<div class="jt-url">{attractJoinUrl}</div>
+						{#if data.roomCode}
+							<div class="jt-step jt-code-step">and enter room code</div>
+							<!-- THE LARGEST ELEMENT ON THE SCREEN (--tv-code): it is the thing being transcribed. -->
+							<div class="jt-code">{data.roomCode}</div>
+						{/if}
+						<div class="jt-or">or scan the QR code</div>
+					</div>
 				{/if}
-			</div>
-			<div class="idle-strip">
-				<span class="is-label">Nobody here yet</span>
-				<span class="is-copy">Pick a name, pick a song, grab the mic</span>
 			</div>
 		</div>
 	{:else if screen === 'lobby'}
@@ -988,36 +1091,58 @@
 	{#if transient === 'next' && introEntry}
 		{@const m = mediaOf(introEntry)}
 		{@const d = songDisplay(m)}
-		<div class="interstitial state-next">
+		<!-- Next up (issue #826, T1a) — accent family. The SINGER is the hero at --tv-takeover-name
+		     (132px): the one thing the room needs to know is who to look at; the song is secondary. -->
+		<div class="interstitial takeover state-next">
 			<!-- "Now singing" for the opener; "Next up" once the night is under way. Saying "Next up" for
 			     the very first song of the evening is simply untrue — there is no previous song it follows. -->
 			<div class="up-label">{openedOnce && introEntry.id !== current?.id ? 'Next up' : 'Now singing'}</div>
-			<div class="up-name">{singerName(introEntry.singerId)}</div>
-			<div class="up-song">{d.title}</div>
-			<!-- Artist disambiguates between covers, but ONLY when trustworthy: the old fallback rendered
-			     the UPLOADER (e.g. "7clouds") as the artist, which is a bug, not a fallback. Show the
-			     canonical artist or nothing. -->
-			{#if d.artist}<div class="up-artist">{d.artist}</div>{/if}
+			<div class="up-name hero-name">{singerName(introEntry.singerId)}</div>
+			<!-- The song is the secondary line under the singer hero. Artist inline, and ONLY when a
+			     confident parse produced one — never the uploader (e.g. "7clouds"). -->
+			<div class="up-song">
+				{d.title}{#if d.artist}<span class="up-artist-inline">{'\u00a0· '}{d.artist}</span>{/if}
+			</div>
 		</div>
 	{:else if transient === 'error'}
-		<!-- An error. --danger exists precisely so this cannot be mistaken for an affirmative event. -->
-		<div class="interstitial state-error" role="alert">
+		<!-- Skipping (issue #826, T1c) — danger family. Names what is GOING and what REPLACES it in the
+		     same breath, so the room is never left wondering whose turn it now is. --danger exists
+		     precisely so this cannot be mistaken for an affirmative event. -->
+		<div class="interstitial takeover state-error" role="alert">
 			<div class="state-mark"><Icon name="warning" /></div>
 			<div class="up-label">Skipped</div>
 			<div class="up-song">{skipNotice}</div>
+			{#if upNext && upNext.id !== current?.id}
+				<div class="up-replaces">
+					Up next — {singerName(upNext.singerId)} · {songDisplay(mediaOf(upNext)).title}
+				</div>
+			{/if}
 		</div>
 	{:else if transient === 'waiting'}
-		<!-- Not an error and not a transition: work in progress. Warm, and it names what is happening.
-		     The words come from cook-phrasing (the ONE guest-facing cook vocabulary, shared with the
-		     phone) so the TV and the phone describe the same pipeline state identically. The TV only
-		     knows a coarse "cooking" state, so it passes the least-committal in-flight value 'queued' —
-		     exactly as SongRow does — rather than naming a step (e.g. 'separating') it cannot know. The
-		     sub-line stays a plain reassurance, deliberately NOT the old "Stripping the vocals" (the
-		     musician's word cook-phrasing exists to retire). -->
-		<div class="interstitial state-waiting">
+		<!-- Still cooking (issue #826, T1b) — warn family. A wait, not a failure: the song title is the
+		     hero and a bounded 3-step progress names the current step, so the wait reads as finite. The
+		     words come from cook-phrasing (the ONE guest-facing cook vocabulary, shared with the phone).
+		     THE TV KNOWS ONLY A COARSE "cooking" STATE: #396 deliberately stripped per-media cook tracking
+		     from the TV (a cook for one song was reaching another's playhead), so there is no per-media
+		     MediaStatus to read here. cookStep() is a pure, total MediaStatus->step mapping (guarded in
+		     screen.test.ts and shared in shape with the phone, XR-TV-15); the TV feeds it the representative
+		     mid-cook step 'separating' (the mockup's bolded "Removing vocals") rather than inventing the
+		     per-media tracking the TV was purpose-built not to hold. -->
+		{@const cookMedia = mediaOf(current)}
+		{@const cook = cookStep('separating')}
+		<div class="interstitial takeover state-waiting">
 			<div class="state-mark"><Icon name="flame" /></div>
 			<div class="up-label">{cookStageLabel('queued')}</div>
-			<div class="up-song">Hang tight — this takes a minute</div>
+			<div class="up-song hero-song">{songDisplay(cookMedia).title}</div>
+			<!-- Bounded 3-step progress. The bar width tracks the current step so the wait reads as
+			     finite; the current step is bolded. Every step label is a fixed guest word (not a worker
+			     stage), and exactly one step is current for every status (cookStep is total). -->
+			<div class="cook-bar"><i style="width: {cook.fraction}"></i></div>
+			<div class="cook-steps">
+				{#each COOK_STEPS as label, i (label)}
+					<span class:step-current={i === cook.index} class:step-done={i < cook.index}>{label}</span>
+				{/each}
+			</div>
 		</div>
 	{:else if transient === 'loading'}
 		<!--
@@ -1027,11 +1152,27 @@
 		  ready (onVisibleReady -> playing dismisses it). Uses the affirmative `state-next` treatment
 		  because a song IS coming — it is the same "a song is about to play" beat the swap card covers.
 		-->
-		<div class="interstitial state-next">
+		<div class="interstitial takeover state-next">
 			<div class="up-label">{openedOnce ? 'Up next' : 'Loading'}</div>
-			<div class="up-name">{singerName(current?.singerId)}</div>
-			<div class="up-song">{loadingDisplay.title}</div>
-			{#if loadingDisplay.artist}<div class="up-artist">{loadingDisplay.artist}</div>{/if}
+			<div class="up-name hero-name">{singerName(current?.singerId)}</div>
+			<div class="up-song">
+				{loadingDisplay.title}{#if loadingDisplay.artist}<span class="up-artist-inline"
+						>{'\u00a0· '}{loadingDisplay.artist}</span
+					>{/if}
+			</div>
+		</div>
+	{/if}
+
+	<!--
+		THE JOIN BLOCK SURVIVES EVERY TAKEOVER (issue #826, XR-TV-13), dimmed to 72%, in the same
+		bottom-right slot as during playback. A song change is exactly when a new guest looks up, so
+		blanking the code then would lose the join path precisely when it is most wanted. Rendered
+		whenever a takeover is up (`transient` set) — the corner treatment is the identical component the
+		playing state uses, so the slot does not move; `.takeover-join` only dims it.
+	-->
+	{#if transient}
+		<div class="takeover-join">
+			<JoinBadge qrDataUrl={data.qrDataUrl} joinUrl={data.joinUrl} placement="corner" unreachable={joinUnreachable} />
 		</div>
 	{/if}
 
@@ -1230,16 +1371,20 @@
 	.stage-bg.shown {
 		opacity: 1;
 	}
+	/*
+	 * THE ATTRACT SPLIT PANEL (issue #826, A2). A left column at the title-safe x carrying the fixed
+	 * `Karaoke` label + rotating phrase, and a flat-filled right panel carrying the join block. Two
+	 * columns, not a centred stack, so the phrase can be a large left-aligned statement and the join
+	 * block a self-contained panel a guest scans or transcribes from.
+	 */
 	.attract {
 		position: absolute;
 		inset: 0;
-		display: flex;
-		flex-direction: column;
-		align-items: center;
-		justify-content: center;
 		z-index: var(--z-tv-screen);
-		background: radial-gradient(80% 60% at 50% 30%, var(--stage-glow) 0%, var(--bg) 70%);
+		background: radial-gradient(80% 60% at 30% 30%, var(--stage-glow) 0%, var(--bg) 70%);
 	}
+	/* The wordmark, pinned top-left at the safe-area inset — its offset from the edge is what proves the
+	   stage chrome clears the overscan region (the e2e stageBrand anchor reads this). */
 	.brand {
 		position: absolute;
 		top: var(--tv-safe-y);
@@ -1256,83 +1401,126 @@
 		background-clip: text;
 		color: transparent;
 	}
+	/* Left column: fixed label above the rotating phrase, vertically centred, at the title-safe inset. */
+	.asplit-l {
+		position: absolute;
+		left: var(--tv-safe-x);
+		top: 0;
+		bottom: 0;
+		width: var(--tv-attract-left);
+		display: flex;
+		flex-direction: column;
+		justify-content: center;
+	}
+	/* `Karaoke` — the FIXED label. It never rotates: it is the only thing telling a stranger what they
+	   are looking at (XR-TV-18). */
+	.phrase-kick {
+		font-size: var(--tv-name);
+		font-weight: 700;
+		letter-spacing: 0.1em;
+		text-transform: uppercase;
+		color: var(--accent-ink);
+	}
 	/*
-	 * THE IDLE STACK, shared in shape by both idle screens: wordmark, one instruction, the QR, the typed
-	 * fallback. Centred as a column so the QR is centred on the screen and the URL reads as its caption
-	 * — the two are the same object at both scales, which is what makes the corner version during a song
-	 * legible as the same thing shrunk.
+	 * The phrase box is a FIXED height for exactly --tv-phrase-lines lines, content vertically centred
+	 * (XR-TV-18), so a one-line and a two-line phrase never move the label above or the panel beside it.
+	 * Height = phrase font-size × line-height × lines; the line-height here (1.03) matches the mockup and
+	 * is what the box height is computed from.
 	 */
-	.idle {
+	.phrase-box {
+		height: calc(var(--tv-phrase) * 1.03 * var(--tv-phrase-lines));
+		margin-top: 2vh;
+		display: grid;
+		align-content: center;
+		overflow: hidden;
+	}
+	.phrase-line {
+		font-size: var(--tv-phrase);
+		font-weight: 900;
+		line-height: 1.03;
+	}
+	/*
+	 * THE CROSSFADE — opacity only, and a CSS animation gated on (prefers-reduced-motion: no-preference)
+	 * (XR-TV-05/17). It replays because `{#key attractPhrase}` remounts `.phrase-line` on each 8s tick.
+	 * NEVER a Svelte transition: directive — motion.test.ts bans those because the transition runtime
+	 * never consults the media query. Under `reduce` this @media block does not apply AND the JS clock is
+	 * never started, so the phrase is simply held with no animation.
+	 */
+	@media (prefers-reduced-motion: no-preference) {
+		.phrase-box .phrase-line {
+			animation: phrase-fade 0.6s ease-out;
+		}
+	}
+	@keyframes phrase-fade {
+		from {
+			opacity: 0;
+		}
+		to {
+			opacity: 1;
+		}
+	}
+	/*
+	 * Right column: the flat-filled join panel (--bg2, a 2px --line left border). QR, then the typed
+	 * path broken across the ladder, with the ROOM CODE as the largest element (--tv-code) because it is
+	 * the thing being transcribed.
+	 */
+	.asplit-r {
+		position: absolute;
+		right: 0;
+		top: 0;
+		bottom: 0;
+		width: var(--tv-attract-right);
+		background: var(--bg2);
+		border-left: 2px solid var(--line);
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		text-align: center;
-	}
-	/* In flow here, not pinned to the corner: on the idle screens the wordmark heads the stack. */
-	.idle .brand {
-		position: static;
-		font-size: var(--tv-name);
-	}
-	/*
-	 * The rhythm is deliberately UNEVEN — wordmark, a beat, the instruction, a bigger beat, then the
-	 * thing you point a phone at — so it cannot come from one flex `gap`, which would force all three
-	 * intervals equal. Both in vh so the proportions hold at 720p and 4K instead of being right at one
-	 * size.
-	 *
-	 * The instruction sits at --tv-hero, well below the sung-lyric tier: it is read once, not sung
-	 * along to, and taking it down is what pays for the room above the QR.
-	 */
-	.idle-head {
-		font-size: var(--tv-hero);
-		font-weight: 900;
-		line-height: 1.04;
-		margin: 5.2vh 0 0;
-		max-width: 22ch;
-	}
-	.idle :global(.hero) {
-		margin-top: 6.2vh;
-	}
-	.idle-url {
-		font-size: var(--tv-joinurl);
-		font-weight: 800;
-		color: var(--ink);
-		margin: 3vh 0 0;
-		overflow-wrap: anywhere;
-	}
-	/*
-	 * The bottom strip. Full-bleed background so it reaches the panel edge, content inset with the
-	 * safe-area tokens because that is what keeps it out of the overscan crop — the same shape as the
-	 * lobby's roster strip, and the reason both idles have an occupied lower third instead of one of
-	 * them trailing off into black.
-	 */
-	.idle-strip {
-		position: absolute;
-		left: 0;
-		right: 0;
-		bottom: 0;
-		z-index: var(--z-tv-reel);
-		display: flex;
-		align-items: baseline;
 		justify-content: center;
-		gap: 1.2em;
-		flex-wrap: wrap;
-		padding: 2vh var(--tv-safe-x) var(--tv-safe-y);
-		/* Fade to the theme background, matching TvLobby's twin idle fade. This was a hardcoded
-		   rgba(3,3,8,…) that the token sweep missed — a DIFFERENT black from --bg (0b0b12 = rgb(11,11,18)),
-		   so the two idle screens, which are meant to read as the same screen, fell out of sync (#460 §16).
-		   color-mix keeps the fade on --bg like TvLobby; alpha-0 is just transparent. */
-		background: linear-gradient(0deg, color-mix(in srgb, var(--bg) 90%, transparent), transparent);
+		gap: 3.2vh;
+		padding: 0 var(--tv-safe-x);
+		text-align: center;
+		overflow: hidden;
 	}
-	.is-label {
-		font-size: var(--tv-eyebrow);
-		letter-spacing: 0.2em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-		font-weight: 700;
+	.join-text {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
 	}
-	.is-copy {
+	.jt-step {
 		font-size: var(--tv-body);
-		font-weight: 600;
+		color: var(--ink-dim);
+		line-height: 1.3;
+	}
+	.jt-code-step {
+		margin-top: 1.6vh;
+	}
+	.jt-url {
+		/*
+		 * The mockup's `.url` budget is 44px (--tv-name); at --tv-joinurl (88px) a real LAN address split
+		 * mid-octet in the 600px panel ("10.69.1.1 / 69:3721/j / oin"), so a guest transcribed the wrong
+		 * host (XR-TV-19 blocker). An address is ONE unbreakable token: shrinking beats breaking, so this
+		 * carries NO overflow-wrap — the room code (the largest element) is the thing being transcribed,
+		 * and it renders unbroken; the URL is the secondary route and fits one line at this budget.
+		 */
+		font-size: var(--tv-name);
+		font-weight: 800;
+		font-variant-numeric: tabular-nums;
+		line-height: var(--lh-tight);
+	}
+	/* THE LARGEST ELEMENT ON THE ATTRACT SCREEN (--tv-code, 96px): the room code is what a guest types. */
+	.jt-code {
+		font-size: var(--tv-code);
+		font-weight: 900;
+		letter-spacing: 0.11em;
+		color: var(--accent-ink);
+		line-height: var(--lh-none);
+		font-variant-numeric: tabular-nums;
+		margin-top: 0.6vh;
+	}
+	.jt-or {
+		font-size: var(--tv-small);
+		color: var(--ink-dim);
+		margin-top: 1.8vh;
 	}
 	.lower-third {
 		/* Capped: unbounded, a long title or singer name grew this rightward into the join QR at
@@ -1539,11 +1727,9 @@
 	.up-song {
 		font-size: var(--tv-name);
 	}
-	/* Secondary to the title: it disambiguates rather than identifies, so it must not compete with it. */
-	.up-artist {
-		font-size: var(--tv-body);
+	/* Inline artist suffix on a takeover song line — same role as the old .up-artist but riding the title. */
+	.up-artist-inline {
 		color: var(--ink-dim);
-		margin-top: var(--space-xs);
 	}
 	/* A mark large enough to be the first thing read, since it is what distinguishes these states. */
 	.state-mark {
@@ -1552,21 +1738,47 @@
 		margin-bottom: var(--space-2xs);
 	}
 
-	/* Affirmative: something good is about to happen. */
+	/*
+	 * ── FULL-SCREEN TAKEOVERS (issue #826, T1) ─────────────────────────────────────────────────────
+	 * The three transient states are full-screen takeovers that cannot be confused: one colour family
+	 * each, drawn as a 14px LEFT BORDER in the family colour plus a same-direction gradient. Left-aligned
+	 * from the title-safe x (the border lives just outside it, so the text still starts at title-safe),
+	 * overriding the centred base `.interstitial` layout. Colour is never the only carrier — each also
+	 * keeps its own eyebrow and (error/cooking) its own mark.
+	 */
+	.takeover {
+		align-items: flex-start;
+		justify-content: center;
+		text-align: left;
+		padding-left: var(--tv-safe-x);
+		border-left: var(--tv-takeover-border) solid transparent;
+	}
+	/* Next up — accent family. Singer name is the hero at --tv-takeover-name (132px). --accent (not the
+	   retired --accent-strong, #840/XR-COL-11) as a NON-TEXT border/fill, which is exactly what --accent
+	   is certified for; the text on this takeover is --ink / --accent2, never --accent as ink. */
+	.state-next.takeover {
+		border-left-color: var(--accent);
+		background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 16%, transparent), transparent 55%);
+	}
+	.hero-name {
+		font-size: var(--tv-takeover-name);
+		font-weight: 900;
+		line-height: 1.02;
+	}
 	.state-next .up-song {
 		color: var(--accent2);
+		margin-top: 1.4vh;
 	}
 
 	/*
-	 * Failure — and the ONE state that keeps the full opaque wash.
-	 *
-	 * A skip is rare, urgent and must be unmissable, and demoting it to a scrim beside a cheerful
-	 * now-singing block is exactly the "cannot tell a failure from a normal song change" bug this
-	 * surface already fixed once. Distinct family AND a distinct eyebrow, so colour is not the only
-	 * carrier. rgba(42,27,34,0.95) was --danger-bg at 95%; color-mix keeps it themeable.
+	 * Skipping — danger family. Names what is GOING and what REPLACES it. Keeps a distinct family AND a
+	 * distinct eyebrow, so colour is not the only carrier. It no longer needs the old near-opaque wash:
+	 * the border + gradient + mark make a skip unmistakable, and the join block below must stay visible
+	 * through it (XR-TV-13), which a near-opaque wash would have hidden.
 	 */
-	.state-error {
-		background: color-mix(in srgb, var(--danger-bg) 95%, transparent);
+	.state-error.takeover {
+		border-left-color: var(--danger);
+		background: linear-gradient(90deg, color-mix(in srgb, var(--danger) 14%, transparent), transparent 55%);
 	}
 	.state-error .state-mark {
 		color: var(--danger);
@@ -1577,8 +1789,18 @@
 	.state-error .up-song {
 		color: var(--danger-ink);
 	}
+	/* What replaces the skipped song — so the room never wonders whose turn it now is. */
+	.up-replaces {
+		font-size: var(--tv-name);
+		color: var(--ink-dim);
+		margin-top: 1.4vh;
+	}
 
-	/* Work in progress: neither affirmative nor broken. */
+	/* Still cooking — warn family. Song title is the hero; a bounded 3-step bar says the wait is finite. */
+	.state-waiting.takeover {
+		border-left-color: var(--warn);
+		background: linear-gradient(90deg, color-mix(in srgb, var(--warn) 10%, transparent), transparent 55%);
+	}
 	.state-waiting .state-mark {
 		color: var(--warn);
 	}
@@ -1587,6 +1809,52 @@
 	}
 	.state-waiting .up-song {
 		color: var(--ink);
+	}
+	.hero-song {
+		font-size: var(--tv-hero);
+		font-weight: 900;
+		line-height: 1.04;
+		margin-top: 1vh;
+	}
+	.cook-bar {
+		width: var(--tv-cook-bar-w);
+		height: var(--tv-cook-bar-h);
+		border-radius: var(--radius-pill);
+		background: var(--track-bg);
+		margin-top: 3vh;
+		overflow: hidden;
+	}
+	.cook-bar i {
+		display: block;
+		height: 100%;
+		background: var(--warn);
+	}
+	.cook-steps {
+		display: flex;
+		gap: var(--space-4xl);
+		margin-top: 2vh;
+		font-size: var(--tv-small);
+		color: var(--ink-dim);
+	}
+	.cook-steps .step-current {
+		color: var(--warn);
+		font-weight: 700;
+	}
+	.cook-steps .step-done {
+		color: var(--ink);
+	}
+	/*
+	 * THE JOIN BLOCK SURVIVES EVERY TAKEOVER, dimmed to 72% (XR-TV-13). It wraps the identical corner
+	 * JoinBadge the playing state uses, so the bottom-right slot does not move; only the opacity changes.
+	 * The composited --ink-dim run inside it still clears 3:1 at ≥24px because --tv-small is 27px
+	 * (XR-TV-04). Sits above the takeover (z-tv-status) so the dimmed block is never painted over.
+	 */
+	.takeover-join {
+		position: absolute;
+		inset: 0;
+		z-index: var(--z-tv-status);
+		opacity: 0.72;
+		pointer-events: none;
 	}
 
 	/*
