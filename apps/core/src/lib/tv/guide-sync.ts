@@ -160,3 +160,40 @@ export function prerollSeekTarget(guideSec: number, masterSec: number): { seek: 
 	if (!Number.isFinite(guideSec) || !Number.isFinite(masterSec)) return { seek: false, target: masterSec };
 	return { seek: Math.abs(guideSec - masterSec) > GUIDE_PREROLL_ALIGN_SEC, target: masterSec };
 }
+
+/**
+ * The cold-mount RESUME decision — the fix for #795, and the master's counterpart to
+ * `prerollSeekTarget`.
+ *
+ * When the TV page is reloaded mid-song the room's position (`playback:state.positionSec`) arrives
+ * BEFORE the `<audio>` master exists: the element is gated on `nowplaying:changed` filling the media
+ * slot, which the server sends AFTER `playback:state`. The seek effect fires against a null `master`
+ * and drops the target, and position telemetry never bumps `rev`, so `seekPlan`'s effect is never
+ * re-woken and the target is never re-offered — the fresh master plays from 0 while the room is at 6s,
+ * and the TV's own telemetry then drags the server's position backwards (#795 measured: master 0.52s,
+ * server falling from 6.00s).
+ *
+ * This is NOT a jump subject to `seekPlan`. `seekPlan` separates "the phone scrubbed" (a JUMP worth a
+ * seam) from "the phone is reporting where we already are" (telemetry to ignore) using `SEEK_JUMP_SEC`,
+ * and it does that by comparing the target to the master's CURRENT playhead — which is exactly the
+ * playhead a cold mount does not have yet. A fresh element sits at 0 with nothing to protect, so any
+ * room position more than a pre-roll tolerance away is unambiguously a RESUME, not a scrub. Sending it
+ * through `seekPlan` would be wrong twice: a resume to a position under `SEEK_JUMP_SEC` would be read
+ * as sub-threshold telemetry and dropped (a reload 1s into a song would never resume), and the
+ * `restartToZero` clause would fire on a genuine resume-to-0 that is already correct.
+ *
+ * So the resume gets its own threshold, the same tolerance the pre-roll uses: seek iff the held target
+ * sits more than `GUIDE_PREROLL_ALIGN_SEC` from where the fresh element is. The component reads this on
+ * the master's `canplay` — when the buffer is primed and the seek is a flush of a primed buffer rather
+ * than a cold start — and applies it ONCE per element-and-src load, then clears the held target. Applied
+ * then cleared is what keeps #396 shut: a stale target cannot be re-yanked onto a later song by catalog
+ * churn, because there is no held target left to apply after the one resume it was taken for.
+ *
+ * @param masterSec the fresh master's playhead at the moment it can play (≈0 on a cold mount)
+ * @param targetSec the room position held from the last `playback:state`
+ * @returns whether to seek the master, and the fixed target to seek it to
+ */
+export function resumeSeekTarget(masterSec: number, targetSec: number): { seek: boolean; target: number } {
+	if (!Number.isFinite(masterSec) || !Number.isFinite(targetSec)) return { seek: false, target: targetSec };
+	return { seek: Math.abs(masterSec - targetSec) > GUIDE_PREROLL_ALIGN_SEC, target: targetSec };
+}

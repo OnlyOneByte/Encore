@@ -442,7 +442,12 @@ describe('TvPlayer takes the pre-roll lock-on when the guide can play, not at ef
 		// would leave the old guard green. Slice the `oncanplay={...}` block and assert the call lives
 		// INSIDE it, so the on-buffer-primed lock-on cannot be silently removed.
 		expect(tv).toContain('oncanplay={');
-		const canplay = tv.split('oncanplay={')[1]?.split('}}')[0] ?? '';
+		// #795: the master <audio> now also has an `oncanplay=` (the cold-mount resume), which precedes
+		// the guide's in source order — so anchor on the GUIDE element first, then slice ITS handler,
+		// rather than taking the first `oncanplay={` in the file.
+		const guideMarkup = tv.split('bind:this={vocals}')[1] ?? '';
+		expect(guideMarkup).not.toBe('');
+		const canplay = guideMarkup.split('oncanplay={')[1]?.split('}}')[0] ?? '';
 		expect(canplay).not.toBe('');
 		expect(canplay).toContain('alignGuidePreroll()');
 	});

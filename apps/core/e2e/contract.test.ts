@@ -558,6 +558,12 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'video,audio'
 	],
 	'probes/p14-playhead-vs-cook.mjs': ['#ff5cae', 'audio'],
+	'probes/p15-reload-resume.mjs': [
+		// Same two non-selectors p14 carries: a bare-tag media-element query (see SEL.mediaEl for the
+		// union form) and the join swatch hex colour (a shape-rule hit, not a UI selector).
+		'#ff5cae',
+		'audio'
+	],
 	'probes/p2-guiding-track.mjs': ['#ff5cae', 'audio,video'],
 	'probes/p3-key-shift.mjs': [
 		// Media-element liveness union, not a UI selector (see SEL.mediaEl).
