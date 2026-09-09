@@ -13,20 +13,24 @@
 //      rows must be deleted explicitly, and if the PLAYING entry is one of them the playback path skips
 //      to the next singer rather than leaving a dangling current)
 //   3. unlink the sidecar FIRST (kills the source of truth so a rescan cannot bring it back)
-//   4. then the raw audio, then every derived artifact
+//   4. then the raw audio at EVERY extension it could be under, then every derived artifact — both
+//      enumerations delegate rather than re-implement (paths.ts candidateAudioRefs, retention.ts
+//      derivedRefsOf), because the hand-written versions of both had already drifted narrow (#762)
 //   5. then the media row + its tags from the index
-//   6. then broadcast, so every surface drops the song at once
+//   6. then broadcast — the queue snapshot, the advertised next, and the per-media status — so every
+//      surface drops the song at once instead of one surface at a time (#762 F3)
 //
 // A SERVER op with no QueueOp — packages/shared is untouched — so it lives beside the media modules.
 
 import type { QueueEntry, ServerEvent, Media } from '@encore/shared';
 import type { HubDeps } from '../realtime/hub';
 import { cancelJobsForMedia, type CancelJobsDeps } from '../jobs/cancel';
-import { reconcileOnReady, emitNowPlaying } from '../realtime/player';
+import { reconcileOnReady, emitNowPlaying, publishQueue } from '../realtime/player';
 import type { MediaRepository } from './repository';
+import { derivedRefsOf } from './retention';
 import {
 	metaKey,
-	audioKey,
+	candidateAudioRefs,
 	instrumentalKey,
 	vocalsKey,
 	lyricsKey,
@@ -71,23 +75,28 @@ function realDeleteFile(ref: string): void {
 }
 
 /**
- * Every derived artifact ref a media might own, enumerated (not globbed) so this stays pure: stems at
- * every known vocals extension, lyrics json, and retained raw caption tracks across the kind×ext
- * matrix. The media OWN stored refs are folded in too, catching a cook that wrote under an older
- * scheme. Missing files are a no-op for the unlink, so naming a superset is free.
+ * Every derived artifact ref a media might own. `retention.ts`'s `derivedRefsOf` is the AUTHORITY for
+ * everything a media STORED (instrumental, vocals at any historical ext, the chosen lyrics JSON, every
+ * other lyrics candidate's JSON, the retained raw caption matrix) — this used to re-implement that list
+ * and drifted immediately: it named `lyricsKey` + `m.lyricsRef` and stopped, so every non-chosen lyrics
+ * candidate was orphaned on disk forever (#762 F2, the same undercount #496/#442 closed for retention).
+ * Delegating removes the possibility of drifting again; a one-line `lyricsCandidates` patch here would
+ * have closed today's symptom and left the next divergence free.
+ *
+ * What the delete adds on top is only what retention has no reason to name: the ID-DERIVED keys for a
+ * cook that wrote under an older scheme and never stored a ref at all (retention walks live media and
+ * reads their refs; the delete must name candidates for a row whose refs are missing or stale). Missing
+ * files are a no-op for the unlink, so naming a superset is free.
  */
 function derivedRefsFor(mediaId: string, m: Media | undefined): string[] {
-	const refs = new Set<string>();
+	const refs = new Set<string>(m ? derivedRefsOf(m) : []);
 	refs.add(instrumentalKey(mediaId));
 	for (const ext of KNOWN_VOCALS_EXTS) refs.add(vocalsKey(mediaId, ext));
 	refs.add(lyricsKey(mediaId));
 	for (const kind of CAPTION_KINDS) for (const ext of KNOWN_CAPTION_EXTS) refs.add(rawCaptionKey(mediaId, kind, ext));
 	if (m?.instrumentalRef) {
-		refs.add(m.instrumentalRef);
 		for (const r of legacyVocalsRefs(m.instrumentalRef)) refs.add(r);
 	}
-	if (m?.vocalsRef) refs.add(m.vocalsRef);
-	if (m?.lyricsRef) refs.add(m.lyricsRef);
 	return [...refs];
 }
 
@@ -125,7 +134,24 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 	// far more common non-playing delete published queue:removed with no nowplaying:changed and the TV
 	// kept naming the deleted song. Re-derive and re-broadcast the advertised next here too;
 	// emitNowPlaying is idempotent, so the `else` only avoids the double emit reconcileOnReady already does.
-	else emitNowPlaying(hub);
+	//
+	// #762 F3: and re-broadcast the QUEUE ITSELF, which neither of them did. applyQueueOp publishes
+	// nothing, and on this branch the only broadcast was step 6's `media:status canceled`, which no
+	// client turns into a queue mutation — so every phone and the TV kept the removed turn, and the
+	// singer whose turn it was still saw themselves queued. `publishQueue` is player.ts's own, made
+	// exported rather than copied: it already decides the shape a server-side queue broadcast has
+	// (`ops: []` with the authoritative entries + mediaFor inline, so the client adopts the snapshot and
+	// re-applies its pending ops), and a second hand-written copy here would be this repo's fourth
+	// beside hub.ts, player.ts and singers/leave.ts — the same two-answers-to-one-question shape that
+	// produced F1 and F2. Guarded on `doomed.length` because a delete that removed no entries did not
+	// mutate the queue and must not bump every client through a no-op resync. Queue first, then
+	// nowplaying, the order every other mutation path uses: the upNext in `nowplaying:changed` names an
+	// entry, so the client should already hold the entry list it names — reconcileOnReady's own branches
+	// publish the queue before their final emitNowPlaying too.
+	else {
+		if (doomed.length > 0) publishQueue(hub);
+		emitNowPlaying(hub);
+	}
 
 	// 3–4. unlink files: SIDECAR FIRST, then audio, then derived. The sidecar is the source of truth (a
 	// rescan rebuilds the row FROM it), so it dies first: a crash after this can orphan bytes
@@ -136,7 +162,17 @@ export function deleteMediaEntirely(mediaId: string, deps: DeleteMediaDeps): Del
 		unlinked.push(ref);
 	};
 	unlink(metaKey(mediaId)); // 3. the authoritative record — FIRST
-	unlink(audioKey(mediaId)); // 4a. the one unrecoverable class
+	// 4a. the one unrecoverable class. EXT-BLIND (#762 F1): this was `unlink(audioKey(mediaId))`, and
+	// `audioKey`'s default ext is `wav` — the LEGACY mislabelled name. The worker downloads to
+	// `audio/<id>.%(ext)s` and discovers the real name with a `<id>.*` glob because the extension is
+	// whatever YouTube served, so for every song cooked since 2981662 the file is `audio/<id>.m4a` or
+	// `.webm` and the single unlink named a path that does not exist. The bytes then survived
+	// PERMANENTLY, not until the next sweep: the sidecar and the row are gone by the time this returns,
+	// retention is barred from `audio/` by design, and there is no orphan-audio pass in the boot chain —
+	// so nothing can ever enumerate that media again. Nothing recorded the real name either (`Media` has
+	// no audio field; the sidecar's `artifacts.audio` is only ever `prev ?? null`), which is why this
+	// names candidates rather than reading one: see `candidateAudioRefs`.
+	for (const ref of candidateAudioRefs(mediaId)) unlink(ref);
 	for (const ref of derivedRefsFor(mediaId, m)) unlink(ref); // 4b. regenerable artifacts
 
 	// 5. drop the index row + its tags, and the runtime hot-read catalog, so no surface resolves the
