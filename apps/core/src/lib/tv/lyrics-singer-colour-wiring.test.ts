@@ -95,15 +95,19 @@ test('the resolved colour is appended as --reel-singer, and only when there is o
 	expect(src).toMatch(/style=\{typeStyle\}/);
 });
 
-test('both highlight treatments read --reel-singer, and neither names --accent2 any more (#634)', () => {
+test('both highlight treatments read the reel colour chain, and neither names --accent2 any more (#634, layered by #692)', () => {
 	const src = overlaySrc();
 	// The default: the room accent, declared once.
 	expect(src).toMatch(/--reel-singer:\s*var\(--accent2\)\s*;/);
-	// Both treatments read it — `--reel-now` is the sung WORD, `--reel-line` the whole current lyric
-	// under the `line` room setting. Splitting them would let the two settings disagree about whose
-	// colour is showing, so both are asserted.
-	expect(src).toMatch(/--reel-now:\s*var\(--reel-singer\)\s*;/);
-	expect(src).toMatch(/--reel-line:\s*var\(--reel-singer\)\s*;/);
+	// Both treatments read the reel colour — `--reel-now` is the sung WORD, `--reel-line` the whole
+	// current lyric under the `line` room setting. Splitting them would let the two settings disagree
+	// about whose colour is showing, so both are asserted. #692 inserted `--reel-part` between the
+	// treatments and `--reel-singer` (part colour layers over singer colour), so the treatments now
+	// read `--reel-part` and `--reel-part` falls back to `--reel-singer` — the singer colour still
+	// flows through unchanged when no part applies, which is what this test protects.
+	expect(src).toMatch(/--reel-part:\s*var\(--reel-singer\)\s*;/);
+	expect(src).toMatch(/--reel-now:\s*var\(--reel-part\)\s*;/);
+	expect(src).toMatch(/--reel-line:\s*var\(--reel-part\)\s*;/);
 	// The retired form is gone: neither highlight property may name the accent directly, which is what
 	// reverting either CSS hunk would restore. Scoped to these two declarations rather than banning
 	// `--accent2` from the file, because the marker and the underline bar legitimately keep it (the
