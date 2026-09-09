@@ -41,25 +41,24 @@
 	const count = $derived(roster.length + overflow);
 
 	/*
-	 * DISPLAY CAP — bound what the strip has to CONTAIN, not clip what it shows (#98).
+	 * FULL ROSTER, NO TRUNCATION (issue #826, XR-TV-14).
 	 *
-	 * The strip sits in the .lobby column below the fixed-height stack; its own height reserves the band
-	 * above it, but if it grows tall the region left for the stack shrinks and the join address spills
-	 * back into it. `lobbyRoster` already caps the roster at 8, but 8 names at the 32-char ceiling the
-	 * join path allows (repository.ts) wrap to ~5 rows on a 720p panel — far taller than the band can be
-	 * without eating the stack. So we render at most MAX_CHIPS names here and FOLD the rest into the
-	 * "+N more" chip, before layout, so the strip is at most two rows at any name length and NOTHING is
-	 * clipped off-screen — the count stays truthful and the overflow chip always survives (it was the
-	 * first casualty of a raw `overflow: hidden`). MAX_CHIPS = 4, combined with a per-chip
-	 * max-width + ellipsis (a 32-char name is unreadable on a wall anyway), keeps even the widest room to
-	 * two rows so the band stays short.
+	 * The lobby shows EVERY guest — the reason to show the roster at all is that it must not degrade as
+	 * the party grows, so a "+N more" fold (the old #98 behaviour) is exactly the degradation to avoid.
+	 * The route now passes the whole roster (lobbyRoster with no cap), so `overflow` is 0 and this
+	 * renders one chip per present singer.
+	 *
+	 * THE STEP-DOWN IS A RULE, not a discovery at a party. Measured: 10 guests still fit two rows at the
+	 * 56px chip; headroom is ~12 before the chips must shrink. Above CHIP_STEPDOWN the roster switches to
+	 * a smaller chip tier (the `.roster.dense` modifier) so 13+ guests still fit without clipping or
+	 * overflowing the title-safe area, rather than letting a bigger party push chips off-screen.
 	 */
-	const MAX_CHIPS = 4;
-	const shownRoster = $derived(roster.slice(0, MAX_CHIPS));
-	// Everyone not shown: the names we folded here PLUS the presence overflow lobbyRoster already counted.
-	const hiddenCount = $derived(Math.max(0, roster.length - MAX_CHIPS) + overflow);
-	/* Scheme-less, matching attract: nobody types "http://" off a wall. The QR carries the full URL. */
-	const joinShort = $derived(joinUrl.replace(/^https?:\/\//, ''));
+	const CHIP_STEPDOWN = 12;
+	const dense = $derived(roster.length > CHIP_STEPDOWN);
+	/* Scheme-less AND query-less, matching attract: nobody types "http://" or the redundant ?room=CODE
+	   off a wall (the QR carries the full URL). Stripping the query is also what keeps the address to one
+	   line so it cannot collide with a full roster below it (#826). */
+	const joinShort = $derived(joinUrl.replace(/^https?:\/\//, '').replace(/\?.*$/, ''));
 	/** Somebody has picked, it just is not singable yet. Different situation, different words. */
 	const cooking = $derived(pendingCount > 0);
 
@@ -96,7 +95,13 @@
 	<div class="stack-region">
 		<div class="stack">
 			{#if unreachable}
-				<JoinBadge qrDataUrl={qrDataUrl} joinUrl={joinUrl} placement="hero" size="var(--tv-qr)" unreachable={true} />
+				<JoinBadge
+					qrDataUrl={qrDataUrl}
+					joinUrl={joinUrl}
+					placement="hero"
+					size="var(--tv-attract-qr)"
+					unreachable={true}
+				/>
 			{:else}
 				<!--
 				ORDER: instruction, then the QR, then the typed address beneath it.
@@ -110,7 +115,13 @@
 					<h1>{headline}</h1>
 					<p class="sub">{sub}</p>
 				</div>
-				<JoinBadge qrDataUrl={qrDataUrl} joinUrl={joinUrl} placement="hero" size="var(--tv-qr)" unreachable={false} />
+				<JoinBadge
+					qrDataUrl={qrDataUrl}
+					joinUrl={joinUrl}
+					placement="hero"
+					size="var(--tv-attract-qr)"
+					unreachable={false}
+				/>
 				<!--
 				The address in text as well as in the QR. The attract screen prints it and this screen did
 				not, which left the lobby — the state a latecomer actually walks in on — with no way to join
@@ -123,9 +134,9 @@
 	</div>
 
 	{#if roster.length > 0}
-		<div class="strip">
+		<div class="strip" class:dense={dense}>
 			<span class="label">In the room</span>
-			{#each shownRoster as member (member.id)}
+			{#each roster as member (member.id)}
 				<!--
 				  An away singer is GREYED, not removed. Before this the roster was pure socket count, so a
 				  locked phone erased its owner from the screen — the one place a guest confirms the room
@@ -137,9 +148,6 @@
 					{#if member.state === 'away'}<span class="tag">away</span>{/if}
 				</span>
 			{/each}
-			{#if hiddenCount > 0}
-				<span class="person more">+{hiddenCount} more</span>
-			{/if}
 		</div>
 	{/if}
 </div>
@@ -195,7 +203,7 @@
 		display: inline-flex;
 		align-items: center;
 		gap: var(--space-lg);
-		margin-bottom: 5.2vh;
+		margin-bottom: 2.4vh;
 	}
 	.grad {
 		background: var(--grad);
@@ -208,11 +216,11 @@
 	}
 	h1 {
 		/*
-		 * --tv-hero, not --tv-name. This is an instruction read once, not a lyric sung along to, so it
-		 * does not belong on the reel's ladder — and taking it off the name tier is what pays for the
-		 * space above the QR.
+		 * --tv-name (not --tv-hero): the lobby now shows the WHOLE roster below (#826), so the headline
+		 * yields height to the roster rather than owning the reel-adjacent hero tier. Still well above the
+		 * ten-foot floor; it is read once, not sung along to.
 		 */
-		font-size: var(--tv-hero);
+		font-size: var(--tv-name);
 		font-weight: 900;
 		line-height: 1.04;
 		margin: 0;
@@ -221,26 +229,26 @@
 	.sub {
 		font-size: var(--tv-label);
 		color: var(--ink-dim);
-		margin: 1.4vh 0 0;
+		margin: 1.2vh 0 0;
 	}
 	.stack :global(.hero) {
-		margin-top: 6.2vh;
+		margin-top: 2.8vh;
 	}
-	/* Matches the attract screen's treatment of the same string: primary content here, so it takes the
-	   join-URL tier rather than the corner-chrome one. */
+	/* The typed join address. Same 44px budget and no-break rule as the attract's .jt-url (XR-TV-19):
+	   an address is one unbreakable token, so it is sized to fit one line rather than wrapped mid-octet.
+	   The query is already stripped in the script, so this is host:port/join — short enough at --tv-name. */
 	.url {
-		font-size: var(--tv-joinurl);
+		font-size: var(--tv-name);
 		font-weight: 800;
 		color: var(--ink);
-		margin: 3vh 0 0;
-		overflow-wrap: anywhere;
+		margin: 1.6vh 0 0;
 	}
 
 	.strip {
 		/*
-		 * In normal flow at the foot of the .lobby column now, not `position: absolute; bottom: 0`. It
-		 * still spans the full width (it is the column's own width) and keeps its full-bleed fade to the
-		 * bottom edge, but its height is part of layout, which is what reserves the band above it (#98).
+		 * In normal flow at the foot of the .lobby column, not `position: absolute; bottom: 0`. Its height
+		 * is part of layout, which reserves the band above it (#98). It now shows the WHOLE roster
+		 * (#826/XR-TV-14), so it WRAPS to multiple rows rather than clipping — a party is not truncated.
 		 */
 		flex: none;
 		/*
@@ -249,22 +257,52 @@
 		 * carries the safe-area inset, because a set that overscans would otherwise crop the roster — the
 		 * one place a guest confirms the room actually saw them join. A guard that only inspects edge
 		 * OFFSETS cannot catch this shape, which is why it survived the first pass of the stage scale.
+		 *
+		 * RESERVE THE CORNER CONTROLS (#826, XR-TV-14 blocker). The fullscreen button (.fs-btn) and the
+		 * join corner badge are `position: absolute` in the bottom-right at `right: var(--tv-safe-x)`,
+		 * ABOVE this strip in the paint order (--z-tv-card > --z-tv-reel). A wrapped roster's rightmost
+		 * chip used to land UNDER the button (elementFromPoint returned .fs-btn at 10–12 guests), which is
+		 * worse than the "+N more" it replaced — a name hidden under a control. So the horizontal padding
+		 * clears the control's whole footprint (its 88px cap + the safe inset + a gap), applied to BOTH
+		 * sides so the centred roster stays centred and reaches neither bottom corner.
 		 */
-		padding: 22px var(--tv-safe-x) calc(var(--tv-safe-y) * 0.6);
+		padding: 22px var(--tv-strip-corner-clear) calc(var(--tv-safe-y) * 0.6);
 		/* rgba(11,11,18,0.9) was --bg at 90%; color-mix keeps the fade on the theme's background. */
 		background: linear-gradient(transparent, color-mix(in srgb, var(--bg) 90%, transparent) 40%);
 		display: flex;
 		align-items: center;
 		justify-content: center;
 		gap: var(--space-2xl);
-		flex-wrap: nowrap;
 		/*
-		 * The display cap (MAX_CHIPS in the script) already keeps this to at most two rows at any name
-		 * length, so this max-height is a SAFETY NET, not the mechanism — and there is deliberately no
-		 * `overflow: hidden`: with the roster bounded before layout nothing needs clipping, and a hard clip
-		 * is what silently ate roster members (and the "+N more" chip) at the 32-char ceiling.
+		 * WRAP the full roster (#826). No cap, no clip: every guest is shown. The step-down (`.dense`
+		 * below) is what keeps a large party inside the title-safe band — the chips shrink rather than
+		 * the roster being truncated or clipped off-screen.
 		 */
-		max-height: 20vh;
+		flex-wrap: wrap;
+		/*
+		 * A vh max-height so the wrapped strip cannot grow UPWARD past its band into the corner controls
+		 * either (the horizontal clear handles the same-row case; this handles the extra-rows case). NO
+		 * `overflow: hidden` — with the step-down keeping 13+ inside two rows this is a safety net, not a
+		 * clip, and a hard clip is what silently ate roster members in the pre-#826 design.
+		 */
+		max-height: 26vh;
+	}
+	/*
+	 * THE CHIP STEP-DOWN RULE (#826/XR-TV-14). Above CHIP_STEPDOWN (12) guests the chip type and dot
+	 * step down a tier, so 13+ still fit two rows inside the title-safe area instead of pushing chips
+	 * off-screen. A RULE, applied by the `dense` class the script derives, rather than a size a party
+	 * discovers by overflowing. Written as `.dense .name` / `.dense .swatch` (not `.dense .person`) so
+	 * the smaller tier tracks the type and the identity dot together.
+	 */
+	.strip.dense {
+		gap: var(--space-xl);
+	}
+	.strip.dense .name {
+		font-size: var(--tv-body);
+	}
+	.strip.dense .swatch {
+		width: 0.5em;
+		height: 0.5em;
 	}
 	.label {
 		font-size: var(--tv-eyebrow);
@@ -290,10 +328,9 @@
 		font-weight: 700;
 		/*
 		 * Bound the chip WIDTH so one very long name (the join path admits up to 32 chars) cannot blow a
-		 * row out and, combined with the MAX_CHIPS count cap, force the strip to a height that eats the
-		 * stack above (#98). A name past this is clipped with an ellipsis on the NAME only — the dot (the
-		 * singer's identity) is flex:none and always shows. A 32-char name is not readable across a room
-		 * regardless, so truncating the tail loses nothing a guest could use.
+		 * row out. A name past this is clipped with an ellipsis on the NAME only — the dot (the singer's
+		 * identity) is flex:none and always shows. A 32-char name is not readable across a room anyway, so
+		 * truncating the tail loses nothing a guest could use, and the roster wraps rather than overflowing.
 		 */
 		max-width: 16ch;
 		min-width: 0;
@@ -303,10 +340,6 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 		min-width: 0;
-	}
-	.person.more {
-		color: var(--ink-dim);
-		font-weight: 600;
 	}
 	/*
 	 * Away: recessed, never hidden. The dot keeps its hue (that is the singer's identity, and fading it

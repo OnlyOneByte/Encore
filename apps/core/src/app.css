@@ -571,15 +571,42 @@
 	/* who is singing. 1.509rem ≈ 44px. */
 	--tv-name: 1.509rem;
 	/*
-	 * The idle screens' join URL. Its own tier because it is PRIMARY content there — the typed fallback
-	 * for a phone whose camera will not scan — while the same URL in the playback corner is chrome. One
-	 * token for both would force a choice between an unreadable fallback and inflated corner furniture.
-	 * 3.02rem ≈ 88px (the recorded room-code band 88–96px).
+	 * An 88px idle join-URL tier. RETAINED BUT NOT CURRENTLY RENDERED (issue #826, XR-TV-19). It used to
+	 * size the attract/lobby typed address, but at 88px a real LAN address split mid-octet in the 600px
+	 * attract panel, so the join URL was moved DOWN to --tv-name (44px, the mockup's `.url` budget) where
+	 * an address is one unbreakable token that fits one line. This token stays declared because it is a
+	 * well-formed rung of the rem type ladder the XR-TV-01 guard enumerates (stage-scale.test.ts) and the
+	 * recorded ladder's 88px room-code band — not because a component reads it. If a future idle surface
+	 * needs an 88px tier it is here; otherwise it is a candidate for retirement in a token sweep.
+	 * 3.02rem ≈ 88px.
 	 */
 	--tv-joinurl: 3.02rem;
 	/* the one thing on an otherwise empty screen: the idle headline, and whose turn it is. The takeover
 	   hero, 3.567rem ≈ 104px. */
 	--tv-hero: 3.567rem;
+	/*
+	 * ── THE RATIFIED TV STATES (issue #826, XR-TV-09) ──────────────────────────────────────────────
+	 * The attract phrase, the room code, and the takeover heroes are their own tiers because the
+	 * decided design's guarantees are MADE OF them: the fixed phrase box (no layout shift) is sized from
+	 * --tv-phrase × --tv-phrase-lines, and "the room code is the largest element" is a claim about these
+	 * tokens' ORDERING. rem off the one root floor like the rest of the ladder (XR-TV-01/02) — no
+	 * viewport term on a type token — so a source scan can keep pinning that none of them carries one.
+	 */
+	/* The rotating attract phrase. 2.881rem ≈ 84px, the size the ≤24-char admission rule was measured
+	   at (phrases.ts). Its box is a FIXED height of --tv-phrase-lines lines so rotation never shifts the
+	   left column (XR-TV-18). */
+	--tv-phrase: 2.881rem;
+	/* The number of lines the phrase box always reserves. Unitless (a multiplier), so it is exempt from
+	   the "no viewport term" scan the same way --tv-phrase-lines is not a length at all. */
+	--tv-phrase-lines: 2;
+	/* The room code on the attract panel. It is the thing being TRANSCRIBED, so it MUST be the largest
+	   element on that screen (XR-TV, room-code-is-largest): 3.29rem ≈ 96px — above the phrase (84px), the
+	   join URL (88px) and even the takeover hero (104px is a takeover, a different screen). The recorded
+	   room-code band is 88–96px; this sits at its top so nothing on the attract screen out-sizes it. */
+	--tv-code: 3.29rem;
+	/* The takeover singer-name hero — "Next up" names WHO to look at, so the singer is the hero at
+	   4.527rem ≈ 132px, above the ordinary takeover hero (104px, --tv-hero) the song/title uses. */
+	--tv-takeover-name: 4.527rem;
 	/*
 	 * The hero join QR, sized in vmin so it GROWS with the panel. The old fixed 320px (attract) / 238px
 	 * (lobby) meant the code stayed a phone-sized square on a 4K wall while everything around it scaled
@@ -590,6 +617,28 @@
 	 * crowding the copy beside it. JoinBadge takes this token as its `size`.
 	 */
 	--tv-qr: clamp(300px, 26vmin, 460px);
+	/*
+	 * ── #826 GEOMETRY (BOXES, not type) ── these size layout boxes, so like --tv-safe-* / --tv-qr they
+	 * are the named exemption to the "no viewport term" rule and may carry vw/vmin (XR-TV-02, XR-TV-09).
+	 */
+	/* The attract split: a left column at the title-safe x carrying the label + phrase, and a flat-filled
+	   right panel carrying the join block. Widths track the panel so the 820/600 proportion from the
+	   mockup holds at 1080p and scales on a larger wall rather than freezing two pixel columns. */
+	--tv-attract-left: min(820px, 44vw);
+	--tv-attract-right: min(600px, 32vw);
+	/* The attract panel's own QR (not the --tv-qr hero): 230px in the mockup, in vmin so it grows. */
+	--tv-attract-qr: clamp(190px, 16vmin, 300px);
+	/* The full-screen takeover's family-coloured left border (Next-up / Still-cooking / Skipping). One
+	   token so all three states share the exact stripe width; the COLOUR is per-state. */
+	--tv-takeover-border: 14px;
+	/* The still-cooking progress bar geometry (bounded 3-step). */
+	--tv-cook-bar-w: min(760px, 42vw);
+	--tv-cook-bar-h: 14px;
+	/* Horizontal clearance the lobby roster strip must keep from the bottom-right corner controls
+	   (.fs-btn / the join corner badge, both position:absolute at right:var(--tv-safe-x), above the
+	   strip in the paint order). = the control's 88px cap + the safe inset + a gap, applied to BOTH
+	   sides so the centred roster stays centred and no wrapped chip lands under a control (XR-TV-14). */
+	--tv-strip-corner-clear: calc(var(--tv-safe-x) + 88px + var(--space-2xl));
 	/* No bottom-dock height token lives here. The phone's docked band publishes its own MEASURED
 	   height as --dock-h from routes/+page.svelte (.cta-dock on home, .search-dock on browse), so
 	   there is deliberately no :root fallback to go stale against it — consumers spell the fallback

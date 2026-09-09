@@ -69,7 +69,8 @@ test('no TV type is sized below the ten-foot floor with a literal size', () => {
  * — because that IS the floor every rem tier multiplies. `em` stays out of scope for the reason the
  * floor test states (it is relative to the parent, e.g. the bouncing-ball dot at 0.5em).
  */
-const TV_ROOT_FLOOR_RE = /^calc\(\s*max\(\s*2\.7vh\s*,\s*20px\s*\)\s*\*\s*clamp\(\s*0\.8\s*,\s*var\(--ui-scale\)\s*,\s*1\.6\s*\)\s*\)$/;
+const TV_ROOT_FLOOR_RE =
+	/^calc\(\s*max\(\s*2\.7vh\s*,\s*20px\s*\)\s*\*\s*clamp\(\s*0\.8\s*,\s*var\(--ui-scale\)\s*,\s*1\.6\s*\)\s*\)$/;
 
 test('#821 no TV font-size is a px literal or a per-token viewport term — the floor is the one exception', () => {
 	const offenders: string[] = [];
@@ -100,7 +101,9 @@ test('#821 no TV font-size is a px literal or a per-token viewport term — the 
 	}
 	// Non-vacuity: the root floor must actually be present, or a rename silently makes this guard a
 	// scan that exempts nothing AND finds nothing (a green that proves the floor moved, not that it holds).
-	expect(rootFloorsSeen, 'the .tv root font-size floor declaration was not found — did it move or change shape?').toBe(1);
+	expect(rootFloorsSeen, 'the .tv root font-size floor declaration was not found — did it move or change shape?').toBe(
+		1
+	);
 	expect(offenders).toEqual([]);
 });
 
@@ -290,9 +293,13 @@ test('the TV fullscreen button floors its clamp on var(--tap), never the number'
 	expect(TAP).toBeGreaterThanOrEqual(TAP_FLOOR);
 });
 
-test('every HERO join badge sizes from the --tv-qr token, never a bare pixel number', () => {
+test('every HERO join badge sizes from a vmin TV-QR token, never a bare pixel number', () => {
 	// This is the assertion the size={320}->size={9999} mutation must not survive: a hero badge with a
-	// numeric size is the fixed-pixel bug, whatever the number is.
+	// numeric size is the fixed-pixel bug, whatever the number is. #826: the ATTRACT panel's QR is the
+	// smaller in-panel `--tv-attract-qr` (it shares the right column with the code), while the LOBBY hero
+	// keeps `--tv-qr`. Both are vmin clamp tokens that GROW with the panel — which is the anti-freeze
+	// property this guard exists to protect — so either is accepted; a bare pixel number is not.
+	const TV_QR_TOKENS = ['var(--tv-qr)', 'var(--tv-attract-qr)'];
 	const offenders: string[] = [];
 	// Non-vacuity floor: a zero-match scan iterates zero times and passes with `offenders` empty,
 	// so a hero badge that spells `placement` as `placement={placement}` or hides it in a spread
@@ -311,11 +318,11 @@ test('every HERO join badge sizes from the --tv-qr token, never a bare pixel num
 			const tag = m[0];
 			// A hero badge must NOT carry a numeric size ({320}, {238}, {9999}, …).
 			if (/size=\{\s*\d+(?:\.\d+)?\s*\}/.test(tag)) {
-				offenders.push(`${name}: hero JoinBadge uses a fixed numeric size — use size="var(--tv-qr)"`);
+				offenders.push(`${name}: hero JoinBadge uses a fixed numeric size — use a vmin --tv-*qr token`);
 			}
-			// …and it MUST carry the token.
-			if (!/size="var\(--tv-qr\)"/.test(tag)) {
-				offenders.push(`${name}: hero JoinBadge does not size from var(--tv-qr)`);
+			// …and it MUST size from a vmin TV-QR token.
+			if (!TV_QR_TOKENS.some((tok) => tag.includes(`size="${tok}"`))) {
+				offenders.push(`${name}: hero JoinBadge does not size from var(--tv-qr) or var(--tv-attract-qr)`);
 			}
 		}
 		expect(
@@ -326,6 +333,16 @@ test('every HERO join badge sizes from the --tv-qr token, never a bare pixel num
 	expect(offenders).toEqual([]);
 	// Both TV surfaces carry a hero badge (attract + lobby, reachable + unreachable = 4 today).
 	expect(heroBadgesSeen).toBeGreaterThanOrEqual(2);
+});
+
+test('both TV-QR hero tokens are defined in vmin, not a fixed px', () => {
+	// The anti-freeze property both hero tokens must keep: a vmin term so the QR grows with the panel.
+	const css = stripComments(APP_CSS);
+	for (const tok of ['--tv-qr', '--tv-attract-qr']) {
+		const decl = new RegExp(`${tok}:\\s*([^;]+);`).exec(css);
+		expect(decl, `${tok} declaration`).not.toBeNull();
+		expect(decl![1]!, `${tok} must scale in vmin`).toContain('vmin');
+	}
 });
 
 /*
@@ -531,36 +548,48 @@ test('the unverified tint overrides variables only — it never re-selects a wor
  * is the runnable e2e at e2e/lobby-overlap.mjs (`bun run e2e:lobby`) \u2014 it FAILS 6/9 against base and
  * 2/9 with the cap removed, so it pins both halves of the fix; before/after frames are in the PR body.
  */
-test('#98 the lobby roster strip reserves its band in flow — it is not absolutely docked to the edge', () => {
+test('#826 the lobby roster strip wraps the full roster in flow — not absolutely docked, not clipped', () => {
+	// RETARGETED from #98 (XR-TV-14/XR-TV-20). #98's design capped the roster and folded the surplus
+	// into a "+N more" chip, and this guard pinned that cap. #826 ratifies the OPPOSITE: the lobby shows
+	// EVERY guest with no truncation, because the point of the roster is that it must not degrade as the
+	// party grows. So the strip WRAPS (was flex-wrap:nowrap + a max-height cap) and the step-down rule
+	// keeps a large party inside the title-safe band instead of a fold. What is preserved from #98: the
+	// strip is IN FLOW (never absolutely docked to the edge), which is what kept it from painting over
+	// the typed join address on a short panel.
 	const lobby = stripComments(TV_LOBBY);
 	const stripBlock = /\.strip\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
 	expect(stripBlock).not.toBe('');
-	// The reversion: an absolutely-positioned, bottom-docked strip is exactly what painted over the
-	// address. In flow it cannot overlap the stack, so it must be neither.
+	// The reversion this still guards: an absolutely-positioned, bottom-docked strip is what painted
+	// over the address. In flow it cannot overlap the stack, so it must be neither.
 	expect(/position:\s*absolute/.test(stripBlock)).toBe(false);
 	expect(/bottom:\s*0/.test(stripBlock)).toBe(false);
-	// AND its height must be BOUNDED without clipping the roster. Free to wrap, the strip grows tall
-	// enough (8 long names) to shrink the region below the fixed-height stack and push the address back
-	// into it. It is kept to one row (nowrap) with a vh max-height safety net; the roster is bounded by a
-	// DISPLAY CAP in the script, not by clipping the band (next test), so there is deliberately NO
-	// `overflow: hidden` here — that hard cut is what silently ate roster members and the "+N more" chip.
-	expect(/flex-wrap:\s*nowrap/.test(stripBlock)).toBe(true);
-	expect(/max-height:\s*[0-9.]+vh/.test(stripBlock)).toBe(true);
+	// #826: it WRAPS the full roster (every guest), rather than nowrap-ing to one clipped row.
+	expect(/flex-wrap:\s*wrap/.test(stripBlock)).toBe(true);
+	// And it never hard-clips: a full roster is shown, not cut off — a clip is exactly the degradation
+	// #826 forbids (the surplus was the first casualty of a raw overflow:hidden).
 	expect(/overflow:\s*hidden/.test(stripBlock)).toBe(false);
 });
 
-test('#98 the roster is bounded by folding surplus into "+N more", never by clipping chips off-screen', () => {
+test('#826 the lobby shows the whole roster with a chip step-down rule, never a "+N more" fold', () => {
+	// RETARGETED from #98 (XR-TV-14). #98 bounded the roster with MAX_CHIPS and a "+N more" fold; #826
+	// ratifies showing EVERY guest, so the fold is gone and the step-down (chips shrink above a
+	// threshold) is what keeps a big party inside the title-safe band. This guard now pins the
+	// step-down rule and the ABSENCE of the fold, so a future edit cannot silently reintroduce the cap.
 	const src = TV_LOBBY;
 	const lobby = stripComments(src);
-	// A display cap in the script limits how many chips render; the count folds the rest — the names we
-	// hide PLUS the presence overflow lobbyRoster already reports — into one "+N more".
-	expect(/const\s+MAX_CHIPS\s*=\s*\d+/.test(lobby)).toBe(true);
-	// The each-loop must iterate the CAPPED list, not the full roster, or the cap does nothing.
-	expect(/\{#each\s+shownRoster\s+as/.test(src)).toBe(true);
-	// hiddenCount must add BOTH the folded names and the upstream overflow, so the count stays truthful.
-	expect(/roster\.length\s*-\s*MAX_CHIPS[\s\S]*?\+\s*overflow/.test(lobby)).toBe(true);
-	expect(/\+\{hiddenCount\}\s*more/.test(src)).toBe(true);
-	// A single long name must not blow the one row out: the chip name is width-bounded and ellipsised.
+	// The step-down is a RULE with a named threshold, applied by a `dense` class the script derives.
+	expect(/const\s+CHIP_STEPDOWN\s*=\s*\d+/.test(lobby)).toBe(true);
+	expect(/const\s+dense\s*=\s*\$derived\(roster\.length\s*>\s*CHIP_STEPDOWN\)/.test(lobby)).toBe(true);
+	// The each-loop iterates the WHOLE roster, not a capped slice — every guest is shown.
+	expect(/\{#each\s+roster\s+as/.test(src)).toBe(true);
+	// The retired fold must be gone: no MAX_CHIPS cap, no "+N more" chip.
+	expect(/MAX_CHIPS/.test(lobby)).toBe(false);
+	expect(/\+\{hiddenCount\}\s*more/.test(src)).toBe(false);
+	// The dense tier must actually step the chip type down (a rule, not a comment).
+	const denseBlock = /\.strip\.dense\s+\.name\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
+	expect(denseBlock).not.toBe('');
+	expect(/font-size:/.test(denseBlock)).toBe(true);
+	// A single long name must still not blow a row out: the chip name is width-bounded and ellipsised.
 	const nameBlock = /\.person\s+\.name\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';
 	expect(/text-overflow:\s*ellipsis/.test(nameBlock)).toBe(true);
 	const personBlock = /\.person\s*\{([^}]*)\}/.exec(lobby)?.[1] ?? '';

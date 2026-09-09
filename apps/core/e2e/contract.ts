@@ -141,7 +141,9 @@ export const SEL = {
 	 *  used to be distinguished from was deleted by #833. */
 	chip: '.chip',
 	away: '.away',
-	isLabel: '.is-label',
+	/* Attract-only markup used as a freshness gate by p8: the fixed `Karaoke` label on the #826 split
+	   panel (the old `.is-label` "Nobody here yet" strip was removed with the pre-#826 attract). */
+	isLabel: '.phrase-kick',
 	strip: '.strip',
 	stripPerson: '.strip .person',
 
@@ -154,25 +156,24 @@ export const SEL = {
 	/*
 	 * THE EMPTY-ROOM STAGE, and the three things asserted on it.
 	 *
-	 * `.attract` is the state itself. It is what "the room is empty" should have been keyed on all
-	 * along: the flow used to wait for `.url`, which is the LOBBY's typed address (TvLobby.svelte) and
-	 * therefore appears only once somebody HAS joined. The gate was inverted — it could not pass on the
-	 * fresh empty room it demanded, and its failure message blamed leftover guests for the one
-	 * condition that would have satisfied it.
+	 * `.attract` is the state itself (the #826 split panel). It is what "the room is empty" is
+	 * keyed on: the flow used to wait for `.url`, which is the LOBBY's typed address (TvLobby.svelte)
+	 * and therefore appears only once somebody HAS joined. The gate was inverted — it could not pass on
+	 * the fresh empty room it demanded.
 	 *
-	 * The attract screen's own address is `.idle-url` and its instruction is `.idle-head`, and BOTH
-	 * live behind the reachable-origin branch: when the advertised address is loopback or a bare
-	 * hostname the TV replaces the QR block with `.badqr` (correctly — a QR to an unroutable address is
-	 * a working-looking dead end). So `.badqr` is part of the contract too, because it is how the flow
-	 * tells "the origin is not routable" apart from "someone already joined" instead of reporting one
-	 * as the other.
+	 * The attract screen's own typed address is `.jt-url` (in the right join panel) and its read-once
+	 * headline is `.phrase-line` (the rotating phrase). BOTH the QR and the typed lines live behind the
+	 * reachable-origin branch: when the advertised address is loopback or a bare hostname the TV
+	 * replaces the QR block with `.badqr` (correctly — a QR to an unroutable address is a
+	 * working-looking dead end). So `.badqr` is part of the contract too, because it is how the flow
+	 * tells "the origin is not routable" apart from "someone already joined".
 	 */
 	/** The TV's socket indicator. `.on` appears when the WebSocket opens, which is the only barrier the
 	 *  flow has before the room state it renders can be believed. */
 	tvConnected: '.status.on',
 	attract: '.attract',
-	joinAddress: '.idle-url',
-	stageHeadline: '.idle-head',
+	joinAddress: '.jt-url',
+	stageHeadline: '.phrase-line',
 	/** The wordmark whose inset proves stage chrome clears the overscan region. */
 	stageBrand: '.brand',
 	badQr: '.badqr',
@@ -251,14 +252,18 @@ export const SEL = {
 	autoplayHint: '.autoplay-hint',
 	/*
 	 * LOBBY strip the overlap probe reads (#494). `.strip` is the joined-singers ribbon, `.person` a
-	 * chip in it (`.more` the "+N" overflow chip), `.url` the lobby's typed join address. Scoped forms
-	 * are what lobby-overlap.mjs queries.
+	 * chip in it, `.url` the lobby's typed join address. Scoped forms are what lobby-overlap.mjs queries.
+	 * The "+N more" overflow chip is RETIRED (#826/XR-TV-14): the lobby now shows every guest with no
+	 * truncation, so there is no overflow chip and no `.person.more` anchor.
 	 */
 	lobbyUrl: '.lobby .url',
 	lobbyStrip: '.lobby .strip',
 	lobbyStripPerson: '.lobby .strip .person',
-	lobbyStripPersonMore: '.lobby .strip .person.more',
 	lobbyAddress: '.url',
+	/* The bottom-right fullscreen control (#424). It is position:absolute above the lobby roster strip,
+	   so the roster must not paint a chip UNDER it (#826/XR-TV-14) — the measured gate and lobby-overlap
+	   probe sweep the roster against this. */
+	fsBtn: '.fs-btn',
 	/* KEY-SHIFT control the transpose probe reads (#494): the +/- buttons and the current-key label. */
 	keyBtn: '.key .key-btn',
 	keyLabel: '.key .lab',
@@ -503,14 +508,14 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'joinAddress',
 		file: 'src/routes/tv/+page.svelte',
-		anchor: 'class="idle-url"',
-		why: 'the typed join address on attract — the flow asserts it is legible at ten feet'
+		anchor: 'class="jt-url"',
+		why: 'the typed join address on the attract split panel — the flow asserts it is legible at ten feet'
 	},
 	{
 		id: 'stageHeadline',
 		file: 'src/routes/tv/+page.svelte',
-		anchor: 'class="idle-head"',
-		why: 'the attract instruction; the flow asserts it clears the ten-foot floor'
+		anchor: 'class="phrase-line"',
+		why: 'the attract rotating phrase (#826); the flow asserts it clears the ten-foot floor'
 	},
 	{
 		id: 'stageBrand',
@@ -539,7 +544,7 @@ export const HOOKS: Hook[] = [
 	{
 		id: 'tvSongIntro',
 		file: 'src/routes/tv/+page.svelte',
-		anchor: 'class="interstitial state-next"',
+		anchor: 'class="interstitial takeover state-next"',
 		why: 'the song-intro card names who is up before playback; the flow reads .up-song / .up-name off it'
 	},
 

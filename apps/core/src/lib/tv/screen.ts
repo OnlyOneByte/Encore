@@ -159,3 +159,44 @@ export function isUnreachableJoinOrigin(origin: string | null | undefined): bool
 	if (!h.includes('.') && !h.includes(':')) return true;
 	return false;
 }
+
+/**
+ * The three guest-facing steps of the still-cooking takeover (issue #826, XR-TV-15).
+ *
+ * The media model has FIVE stages (`MEDIA_STAGES`) but the takeover shows THREE, so the collapse is a
+ * real mapping — and if the TV hand-wrote it, the wall and the phone could describe the same song
+ * differently. The labels here are guest words (what the guest is waiting for), not worker stages.
+ */
+export const COOK_STEPS = ['Downloaded', 'Removing vocals', 'Timing the lyrics'] as const;
+
+/**
+ * Map a `MediaStatus` onto the three displayed cook steps (XR-TV-15). TOTAL over every status: exactly
+ * one step is current for any value, so the takeover never renders with no step marked. Returns the
+ * current step `index` (0-based into `COOK_STEPS`) and a `fraction` for the bounded progress bar.
+ *
+ *   queued / downloading → step 0 (getting the audio)
+ *   separating           → step 1 (removing the vocals)
+ *   aligning             → step 2 (timing the lyrics)
+ *   ready                → step 2, complete (the takeover is normally gone by now, but total is total)
+ *   failed / canceled    → step 0 (off the happy line; the takeover shows only while cooking, so this
+ *                          is a defensive floor rather than a state the guest sees)
+ */
+export function cookStep(status: import('@encore/shared').MediaStatus | undefined): {
+	index: number;
+	fraction: string;
+} {
+	switch (status) {
+		case 'downloading':
+		case 'queued':
+			return { index: 0, fraction: '20%' };
+		case 'separating':
+			return { index: 1, fraction: '62%' };
+		case 'aligning':
+			return { index: 2, fraction: '90%' };
+		case 'ready':
+			return { index: 2, fraction: '100%' };
+		default:
+			// failed / canceled / undefined — off the happy line; floor at the first step.
+			return { index: 0, fraction: '20%' };
+	}
+}

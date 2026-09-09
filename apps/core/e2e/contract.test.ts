@@ -973,7 +973,7 @@ test('#682 G1 — every literal p10-scaling contrast target resolves to a real a
 	const classLits = [
 		'.badqr-b b',
 		'.lower-third .ls-key',
-		'.attract .idle-url',
+		'.attract .jt-url',
 		'.row .t',
 		'.row .byline',
 		'.searchbox input'

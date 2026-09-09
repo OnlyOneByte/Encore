@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { tvScreen, lobbyRoster, lyricsAdvancing } from './screen';
+import { tvScreen, lobbyRoster, lyricsAdvancing, cookStep, COOK_STEPS } from './screen';
 import type { QueueEntry } from '@encore/shared';
 
 const entry = (id: string, singerId = 's1'): QueueEntry =>
@@ -194,5 +194,40 @@ describe('#393 the element-advancing signal is wired from the master element to 
 		expect(player).toMatch(/onpause=\{\(\)\s*=>\s*active\s*&&\s*visible\s*&&\s*onplayingchange\?\.\(false\)\}/);
 		// onended reports a stop too (the element pauses at track end without firing `pause` in every engine).
 		expect(player).toMatch(/if\s*\(active\s*&&\s*visible\)\s*onplayingchange\?\.\(false\)/);
+	});
+});
+
+describe('cookStep (issue #826, XR-TV-15)', () => {
+	// The still-cooking takeover shows THREE steps while the media model has FIVE stages, so the
+	// collapse is a real mapping. It must be TOTAL over MediaStatus so the takeover never renders with
+	// no step marked, and the labels are guest words shared in shape with the phone.
+	it('has exactly three guest-facing step labels', () => {
+		expect([...COOK_STEPS]).toEqual(['Downloaded', 'Removing vocals', 'Timing the lyrics']);
+	});
+
+	it('is total over every MediaStatus — exactly one step is current for any value', () => {
+		const all = ['queued', 'downloading', 'separating', 'aligning', 'ready', 'failed', 'canceled'] as const;
+		for (const s of all) {
+			const step = cookStep(s);
+			expect(step.index, `${s} maps to a valid step index`).toBeGreaterThanOrEqual(0);
+			expect(step.index, `${s} maps to a valid step index`).toBeLessThan(COOK_STEPS.length);
+			// the fraction is a CSS percentage the bar can consume
+			expect(step.fraction).toMatch(/^\d+%$/);
+		}
+	});
+
+	it('advances the step as the cook progresses down MEDIA_STAGES', () => {
+		// getting-audio -> removing-vocals -> timing-lyrics: monotonic non-decreasing across the line.
+		expect(cookStep('queued').index).toBe(0);
+		expect(cookStep('downloading').index).toBe(0);
+		expect(cookStep('separating').index).toBe(1);
+		expect(cookStep('aligning').index).toBe(2);
+		expect(cookStep('ready').index).toBe(2);
+	});
+
+	it('floors an off-the-line status (failed/canceled/undefined) at the first step, never out of range', () => {
+		for (const s of ['failed', 'canceled', undefined] as const) {
+			expect(cookStep(s).index).toBe(0);
+		}
 	});
 });
