@@ -175,7 +175,11 @@
 
 	/*
 	 * Minimum touch target. One token so a control can declare the standard instead of restating 44px,
-	 * and so the guard test and the components read the same number from the same place.
+	 * and so the guard tests and the components resolve the SAME declaration: `lib/test-helpers.ts`
+	 * parses this line for its `TAP` (issue #831). Before that it hand-wrote 44, so this comment's
+	 * "same number from the same place" claim was false — the guards and the components agreed only by
+	 * coincidence, and editing this value moved one side alone. Editing it now moves both, which is why
+	 * a control must express `var(--tap)` and never the number.
 	 */
 	--tap: 44px;
 

@@ -1542,8 +1542,10 @@
 	 * opposite corner). Safe-area-inset on both axes so overscan cannot clip it, and `pointer-events`
 	 * drops with the fade so a hidden button can never eat a tap meant for the stage.
 	 *
-	 * The 44px clamp floor is the room's own tap-target minimum (--tap in app.css), which a TV remote's
-	 * pointer needs as much as a thumb does.
+	 * The clamp's floor is var(--tap) — app.css's own tap-target minimum, named rather than restated
+	 * (XR-PH-01, issue #831). A TV remote's pointer needs that floor as much as a thumb does, and this
+	 * comment used to CLAIM the binding while the code held a bare `44px`: the one control whose stated
+	 * reason for its size was a token it did not read.
 	 */
 	.fs-btn {
 		position: absolute;
@@ -1552,8 +1554,8 @@
 		z-index: 7;
 		display: grid;
 		place-items: center;
-		width: clamp(44px, 5.2vmin, 88px);
-		height: clamp(44px, 5.2vmin, 88px);
+		width: clamp(var(--tap), 5.2vmin, 88px);
+		height: clamp(var(--tap), 5.2vmin, 88px);
 		border: 0;
 		border-radius: 14px;
 		cursor: pointer;

@@ -421,11 +421,13 @@ test('the phone header truncates a long display name instead of growing the row 
 	expect(btn).not.toBeNull();
 	expect(btn![1]!).toMatch(/min-width:\s*0/);
 
-	// The dot and the gear must stay unshrinkable so the 44px target and the colour dot survive.
+	// The dot and the gear must stay unshrinkable so the tap target and the colour dot survive.
 	const dot = page.match(/\.me-dot\s*\{([^}]*)\}/);
 	expect(dot![1]!).toMatch(/flex:\s*0 0 auto/);
 	const gear = page.match(/\.gear\s*\{([^}]*)\}/);
-	expect(gear![1]!).toMatch(/min-width:\s*44px/);
+	// var(--tap), not the number: touch-targets.test.ts owns the spelling rule (#831) and this pin must
+	// not be the one place a bare literal still satisfies a guard.
+	expect(gear![1]!).toMatch(/min-width:\s*var\(--tap\)/);
 });
 
 test('every identity-dot rule declares a non-shrinking flex basis', () => {

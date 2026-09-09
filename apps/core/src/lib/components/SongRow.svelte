@@ -598,9 +598,10 @@
 	}
 
 	/*
-	 * The actions. 44×44 is the project's minimum touch target and is why the button is square rather
-	 * than as small as its mark: shrinking the hit area to the glyph is how a control ends up
-	 * technically present and practically unhittable.
+	 * The actions. The box declares the project's minimum touch target as var(--tap) — the token, not
+	 * the number (XR-PH-01) — and that is why the button is square rather than as small as its mark:
+	 * shrinking the hit area to the glyph is how a control ends up technically present and practically
+	 * unhittable.
 	 *
 	 * The class NAMES (`.sing` / `.add`) are deliberately unchanged even though the buttons no longer
 	 * carry those words: they are the anchors `e2e/contract.ts` addresses these controls by, and its
@@ -609,8 +610,8 @@
 	 */
 	.sing,
 	.add {
-		width: 44px;
-		height: 44px;
+		width: var(--tap);
+		height: var(--tap);
 		flex: 0 0 auto;
 		border: 0;
 		border-radius: 12px;
