@@ -19,7 +19,7 @@ Spec file: `docs/loop/pipeline.json`. Read it first, including its `encore_overr
 parts of the generic `pipeline-conductor` skill are WRONG for this repo and the block says which:
 
 1. Full test suites are CHEAP here (~8s for 1351 core tests, ~5s for ~540 worker tests). Workers MUST
-   run all four gates every time. Do NOT emit BANNED lines for full-suite runs — banning them would
+   run all five gates every time. Do NOT emit BANNED lines for full-suite runs — banning them would
    strip the only safety net this repo has.
 2. There is NO CI. No `.github/`, no check runs, no reviewer lanes, no branch protection on `main`. So
    "babysit the PR to green" has nothing to read. The review lane is the **review-orchestrator**
@@ -115,7 +115,8 @@ Retired rule: the old "owner owns `TvPlayer.svelte` → STANDDOWN" rule is GONE 
    - SELF-MERGE on a matching-head `review:approved`;
    - the review lane is the REVIEW-ORCHESTRATOR;
    - gates: `bun test` 0 / worker `pytest` 0 / `build` 0 / `typecheck` 0 errors 0 warnings /
-     `bun run lint` 0 / `prettier --check`.
+     `bun run gate:measured` 0 (the layout rung, run AFTER build — it boots its own server and
+     Chromium and has no skip path) / `bun run lint` 0 / `prettier --check`.
 3. Seed the decided fix-direction and the overlap-watch list.
 4. Add the session key to `sessions[]` in
    `/local/home/angryang/workspace/encore-loop-state/probe-config.json`.
@@ -138,7 +139,7 @@ Retired rule: the old "owner owns `TvPlayer.svelte` → STANDDOWN" rule is GONE 
 Workers **self-merge** on a matching-head `review:approved`. `main` has no protection, so these are the
 entire safety system:
 
-1. The gates are green on the PR's head SHA — the four gates, re-measured, never taken on trust.
+1. The gates are green on the PR's head SHA — all five gates, re-measured, never taken on trust.
 2. `review:approved` present and `review:blocked` absent, and the verdict's `head=<sha>` equals the PR's
    current `headRefOid`.
 3. Every blocking finding in the orchestrator's comment answered.
@@ -173,7 +174,8 @@ These four caused every real BLOCK/rework in the checkpoint they were written fr
 1. **READ GATE EXIT CODES, not summary lines** — especially `bun run typecheck` (it chains
    `typecheck:e2e` = `tsc` on e2e; `svelte-check` can print "0 errors" while the chained leg FAILS, e.g.
    **#616**). Run the FULL chain and confirm each EXITS 0: `bun test`; `bun run build`;
-   `bun run typecheck`; `(cd apps/worker && python3 -m pytest -q)`; `ruff`/`mypy` (**#484**) +
+   `bun run typecheck`; `(cd apps/worker && python3 -m pytest -q)`; `bun run gate:measured` (the
+   layout rung — after `bun run build`, since it drives the real bundle); `ruff`/`mypy` (**#484**) +
    `eslint`/`prettier` (**#554**) on touched files. Check `echo EXIT=$?` per gate; do not trust printed
    summaries.
 2. **When STRENGTHENING/NARROWING a guard or scanner, PROVE IT IS ADDITIVE** — no old catch lost. The
@@ -317,7 +319,7 @@ subagents.)
 
 One wave per wake:
 
-1. **Baseline and reclaim.** Sync `main` read-only and re-measure all four gates — never trust a pinned
+1. **Baseline and reclaim.** Sync `main` read-only and re-measure all five gates — never trust a pinned
    number. Reclaim debris from killed waves: for each `encore-loop-*` worktree, resolve its branch with
    `gh pr list --head <branch> --state all`. Merged or closed → remove. PR still open → leave it and
    exclude its issue from this wave. No PR and no commits → debris, remove. No PR but real commits → a
@@ -336,7 +338,7 @@ One wave per wake:
    the default 100 is not enough, and in wave 1 the #53 agent died on `turn_limit:100` after opening a
    complete PR but before its review landed. Each agent OWNS ITS PR TO THE MERGE: claim the issue,
    `git worktree add ../encore-loop-<slug>` + `bun install`, prove the defect first, smallest fix, climb
-   the verification ladder with a mandatory mutation proof, four gates green, open a PR carrying
+   the verification ladder with a mandatory mutation proof, five gates green, open a PR carrying
    `Closes #<n>` plus the rung, mutation-proof output and gate numbers. An agent that cannot reach a rung
    above 0, or whose change would exceed ~400 changed lines, stops and says so.
 4. **Each agent reviews its own PR with agents that are NOT it.** It dispatches R1/R2/R3 (break the fix ·
@@ -346,8 +348,8 @@ One wave per wake:
    answered individually. A null result counts only if it says what it tried to break. At most 2 rounds.
 5. **The agent merges its own PR under a lock**, because merges must not race: an atomic `mkdir` lock
    with a 20-minute breaker, released on every exit path including failure. Holding it: fetch and rebase
-   on current `origin/main`, re-run all four gates on the rebased branch, re-check the eight §3.8
-   criteria, `gh pr merge --squash --delete-branch`, confirm it landed, then re-run the four gates on
+   on current `origin/main`, re-run all five gates on the rebased branch, re-check the eight §3.8
+   criteria, `gh pr merge --squash --delete-branch`, confirm it landed, then re-run the five gates on
    freshly-pulled `main` and revert the offending squash through a normal branch → PR → merge if `main`
    went red. Cap 3 merges per wave.
 6. **One ledger entry per wave**, listing per issue the outcome, PR URL, merged SHA, rung, mutation-proof

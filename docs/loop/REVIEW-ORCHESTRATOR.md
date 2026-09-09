@@ -8,7 +8,7 @@ The review orchestrator is the supervisor that finds pull requests needing an ad
 dispatches **one reviewer session per PR**. It never reviews a PR itself and never merges anything.
 
 Reviewer brief: [`PR-BOT.md`](PR-BOT.md) — **§1–§4 and §6 only** (see the section-scope rule below).
-Shared rules (the four gates, severity, proof discipline, merge safety) are in [`COMMON.md`](COMMON.md);
+Shared rules (the five gates, severity, proof discipline, merge safety) are in [`COMMON.md`](COMMON.md);
 this file does not restate them.
 
 ## How to start one
@@ -84,7 +84,7 @@ comment means a stale label from a pre-push head, not an approval. Confirm the c
 3. **Order a re-read of `PR-BOT.md` at the START of that PR's review** — see below. This is not optional
    boilerplate; it is the only thing that makes an edit to the reviewer brief take effect.
 4. Name the gate and evidence policy in the dispatch:
-   - **Gates:** run the four gates in the coding worker's existing `../encore-bot-<issue>` worktree —
+   - **Gates:** run the five gates in the coding worker's existing `../encore-bot-<issue>` worktree —
      numbered by the **issue the PR closes**, not by the PR number, and already at the PR head with
      `node_modules` installed. Confirm `git status --short` is clean **and** `HEAD` equals the PR head
      first; if the coding worker has it dirty or at another SHA, cut a private `../encore-rev-<pr>`.

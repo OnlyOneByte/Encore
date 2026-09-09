@@ -155,12 +155,12 @@ no parity guard? Do the TypeScript and Python sides still agree?
 
 ### R4 · Break the gates and the surface
 
-Re-run the four gates yourself on the PR head — do not take the body's word. Run them **in your own
+Re-run the five gates yourself on the PR head — do not take the body's word. Run them **in your own
 worktree** (`../encore-rev-<n>`, checked out at this PR's head, `bun install` already done), never in
 the main checkout and never in another reviewer's tree:
 
 ```bash
-bun test · cd apps/worker && python3 -m pytest -q · bun run build · bun run typecheck
+bun test · cd apps/worker && python3 -m pytest -q · bun run build · bun run typecheck · bun run gate:measured
 ```
 
 **Gate expectations on a clean tree, as of 2026-09-06** — anything else is a regression this PR caused:
@@ -174,6 +174,13 @@ bun test · cd apps/worker && python3 -m pytest -q · bun run build · bun run t
   "exits 2 with 9 known `song-profile` errors = green" rule is DEAD — treat any error as this PR's
   regression. Read the `found N errors` line, not `grep -c error` (which counts the literal string in
   "found 0 errors").
+- `bun run gate:measured` → **exit 0** (issue #823). The layout rung; run it AFTER `bun run build`,
+  because it drives the real bundle. It boots its own ephemeral server and its own headless Chromium
+  and has **no skip path** — a missing browser or an unbuilt app is a red gate, by design. Its
+  quarantine (`apps/core/e2e/gates/measured-design-register.mjs`) records the controls already under
+  the 44px floor; it reds on a new one, on one getting worse, **and** on one that starts passing,
+  since a quarantine whose defect no longer reproduces is a finding to re-decide rather than a number
+  to adjust.
 - A PR citing a bare GitHub issue ref (`#132`) is fine; the hygiene guard only bans the hyphenated
   task families (`T-<n>`, `B-<n>`, `M<n>-C<n>`). Before blaming the base for a hygiene failure, grep
   the PR's own added lines.
