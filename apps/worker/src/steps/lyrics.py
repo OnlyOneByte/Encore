@@ -310,6 +310,15 @@ class GradeAndSelect(Step):
         # which survive the winner's `replace(..., alternates=[])`.
         if duration_sec and duration_sec > 0:
             published_keys = {(p.text_source, p.variant) for p in sel.publish}
+            winner_label = (
+                (sel.publish[0].variant or sel.publish[0].text_source) if sel.publish else "none"
+            )
+            # #739: walk the pool ONCE into a deduped list before wording any verdict, because two of
+            # the three verdicts below are facts about the POOL, not about the candidate being reported.
+            # `is_published` is the only pool fact the old ladder had, and two of its arms wrote claims
+            # that fact does not carry. Acquisition order, so the labels read in the order the sources
+            # were fetched.
+            pool: list[tuple[tuple[str, str | None], str, float | None]] = []
             seen_keys: set[tuple[str, str | None]] = set()
             for candidate in candidates_of(ctx.lyrics.texts):
                 for text in (candidate, *candidate.alternates):
@@ -317,36 +326,62 @@ class GradeAndSelect(Step):
                     if key in seen_keys:
                         continue
                     seen_keys.add(key)
-                    last_end = candidate_last_end(text)
-                    if last_end is None:
-                        continue
-                    over = max(0.0, last_end - duration_sec)
-                    if over <= 0:
-                        continue
-                    is_published = key in published_keys
-                    if over / duration_sec <= OVERSHOOT_FRACTION_MAX:
-                        # A small, tolerated overshoot the demotion did not act on — still worth seeing.
-                        verdict = "within tolerance"
-                    elif is_published:
-                        # Over the limit and it WON: no rival fit the audio, so the wrong version shipped.
-                        # #667's own cost — say so plainly rather than claiming it was demoted.
-                        verdict = (
-                            "past the OVERSHOOT limit — PUBLISHED anyway, "
-                            "no candidate that fits the audio"
-                        )
-                    else:
-                        # Over the limit and demoted — the case #667 piece 2 was written to surface.
-                        winner = (
-                            (sel.publish[0].variant or sel.publish[0].text_source)
-                            if sel.publish
-                            else "none"
-                        )
-                        verdict = f"past the OVERSHOOT limit — DEMOTED, published {winner} instead"
-                    ctx.note(
-                        f"lyrics overshoot — {text.variant or text.text_source} runs "
-                        f"+{over:.0f}s past audio-end ({over / duration_sec:.0%} of {duration_sec:.0f}s) "
-                        f"— {verdict}"
+                    pool.append((key, text.variant or text.text_source, candidate_last_end(text)))
+            # A candidate FITS the audio when its own timings stay inside it, or when it carries no
+            # timings at all: `candidate_last_end` returns None for a text-only source, which cannot be
+            # said to run past audio-end and is force-aligned to THIS recording after selection. Same
+            # boundary `overshoot_penalized` demotes on, so "fits" here means exactly "the demotion has
+            # no quarrel with it".
+            fits_audio = [
+                label
+                for _k, label, end in pool
+                if end is None or max(0.0, end - duration_sec) / duration_sec <= OVERSHOOT_FRACTION_MAX
+            ]
+            for key, label, last_end in pool:
+                if last_end is None:
+                    continue
+                over = max(0.0, last_end - duration_sec)
+                if over <= 0:
+                    continue
+                is_published = key in published_keys
+                if over / duration_sec <= OVERSHOOT_FRACTION_MAX:
+                    # A small, tolerated overshoot the demotion did not act on — still worth seeing,
+                    # but #739 F2: say WHOSE. This is the only arm that can fire for a candidate the
+                    # operator has no other way to place — `sel.choices` names a winner only when one
+                    # source offered several versions — so worded bare it read as an overshoot on the
+                    # SHIPPED lyrics when it was on a rejected rival, a false alarm about a cook whose
+                    # published text does not run past the audio at all. `is_published` is already in
+                    # scope and both sibling arms state it; state it here too.
+                    verdict = (
+                        "within tolerance"
+                        if is_published
+                        else f"within tolerance — NOT published, {winner_label} was"
                     )
+                elif is_published:
+                    # Over the limit and it WON: #667's own stated cost (owner ruling B fixes some
+                    # cases, not all). #739 F1: whether a fitting candidate existed is decided from the
+                    # POOL, never from `is_published`, which says only that THIS text is in
+                    # `sel.publish`. `overshoot_penalized` (lyrics/chain.py) subtracts the overshoot
+                    # FRACTION from the composite score — a COMPARATIVE penalty — so an overshooter
+                    # leading a fitting rival by more than that fraction publishes with the fitting
+                    # rival in the pool the whole time. Claiming "no candidate that fits the audio"
+                    # from `is_published` was false on every such cook, and false in the direction that
+                    # ends the investigation: told nothing fit, the operator hunts a new lyrics source
+                    # instead of inspecting the text that was fetched, graded, and narrowly lost.
+                    verdict = "past the OVERSHOOT limit — PUBLISHED anyway"
+                    verdict += (
+                        f", over {', '.join(fits_audio)} which fits the audio"
+                        if fits_audio
+                        else ", no candidate that fits the audio"
+                    )
+                else:
+                    # Over the limit and demoted — the case #667 piece 2 was written to surface.
+                    verdict = f"past the OVERSHOOT limit — DEMOTED, published {winner_label} instead"
+                ctx.note(
+                    f"lyrics overshoot — {label} runs "
+                    f"+{over:.0f}s past audio-end ({over / duration_sec:.0%} of {duration_sec:.0f}s) "
+                    f"— {verdict}"
+                )
         for note in sel.baseline_notes:
             ctx.note(f"baseline — {note}")
         for choice in sel.choices:
