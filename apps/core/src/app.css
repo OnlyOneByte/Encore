@@ -1,3 +1,81 @@
+/*
+ * TAILWIND v4 — IMPORTED IN THREE PARTS ON PURPOSE, WITH PREFLIGHT DELIBERATELY OMITTED (issue #853).
+ *
+ * `@import 'tailwindcss'` is the one-line form and it pulls in a fourth thing: `preflight.css`, a
+ * GLOBAL reset. This app carries ~4,950 lines of hand-written CSS that predates it, so the reset is
+ * not a neutral baseline here — it is a restyle of every screen. That was measured rather than
+ * assumed, with `e2e/probes/preflight-reset-audit.mjs` reading the 36 computed properties Preflight
+ * writes on every element of eight surfaces, before and after:
+ *
+ *     2,457 of 2,630 boxes MOVED (93%), on the four surfaces whose DOM was comparable.
+ *     1,167 of 1,201 boxes moved on /components alone — every component in the app.
+ *     Largest single displacement: 264px.
+ *
+ * and the named regressions were not subtle:
+ *
+ *   - 74 `<h2>` section headings dropped from font-weight 700 to 400 and lost their bottom margin,
+ *     because Preflight's `h1..h6 { font-size: inherit; font-weight: inherit }` unstyles every
+ *     heading this app has ever written. `/settings`'s `<h1>` went with them.
+ *   - 75 buttons lost their 6px left padding; 26 jumped from 13.3px to 16px.
+ *   - 24 buttons and 21 inputs CHANGED COLOUR, because `color: inherit` overrides the UA value the
+ *     hand-written CSS was relying on.
+ *   - the lyrics overlay's `.word.done` changed colour (#ffb7db -> #ffffff, #ffa9b4 -> #ffe6b8) and
+ *     `.ball.underline` gained a real underline — a visible change to the TV's signature surface.
+ *
+ * So: Preflight is OFF (the issue's option A), and this is the whole mechanism — the layer order is
+ * declared, then theme and utilities are imported and `preflight.css` is not. Re-adding that one line
+ * is what enabling it later looks like, and `lib/tailwind-toolchain.test.ts` reds if it is
+ * added without the frames and the fallout being dealt with, so the decision cannot be reversed by
+ * accident.
+ *
+ * CONSEQUENCE FOR #827, WHICH MUST NOT BE LOST: a copied-in shadcn component assumes Preflight ran —
+ * `box-sizing: border-box`, zeroed margins, `list-style: none`. Without it those must be supplied by
+ * the component's own classes. That is a real cost of option A and it is #827's to weigh when it
+ * decides whether the drawer is viable; option B (enable it and fix the fallout) stays available as
+ * its own issue once the redesign surfaces have settled, which is exactly why it was not taken here
+ * underneath four in-flight issues contending on routes/+page.svelte.
+ */
+@layer theme, base, components, utilities;
+@import 'tailwindcss/theme.css' layer(theme);
+@import 'tailwindcss/utilities.css' layer(utilities) source(none);
+
+/*
+ * ── WHY `source(none)` PLUS ONE EXPLICIT `@source`, INSTEAD OF TAILWIND'S AUTO-DETECTION ──────────
+ *
+ * This is not tidying. Left to auto-detect, Tailwind scans the whole project and mints a utility for
+ * any bare token that happens to parse as one — including tokens in TEST FILES and MARKDOWN. The first
+ * build of this branch emitted 50 utilities that way, harvested from string literals nobody wrote as a
+ * class, and TWO of them collided with class names this app already applies to real elements:
+ *
+ *   .underline  ← the `ball` marker style. `class="ball {ball}"` with ball === 'underline' produces
+ *                 `<span class="ball underline">`, and Tailwind's `.underline` then painted a real
+ *                 `text-decoration-line: underline` on the lyrics ball. MEASURED on /components,
+ *                 with Preflight already off, so this was the utilities layer and nothing else.
+ *   .block      ← the same enum's `block` marker. Survived only because the app's own `.ball.block`
+ *                 rule (specificity 0,2,0) outranks a bare `.block` (0,1,0) for `display`. It is a
+ *                 near miss, not a safe case.
+ *
+ * `ball` is a ROOM SETTING whose values are English words, so this is a family exposure rather than
+ * two unlucky names, and it grows every time Tailwind's utility vocabulary does. The scan also reached
+ * e2e/HARNESS.md and minted `.\[jsc\:deno\]` from the prose `[jsc:deno]`, which is harmless but shows
+ * how wide auto-detection casts.
+ *
+ * So utilities are minted from ONE directory, and within it from `.svelte` FILES ONLY: the
+ * design-library copy-in target, which is the only place a utility is supposed to be written at all
+ * (docs/DECISIONS.md — copy-in is why shadcn was chosen). App source keeps its hand-written CSS and
+ * gets no utilities minted from its class names.
+ *
+ * THE `*.svelte` HALF OF THAT GLOB IS NOT TIDINESS EITHER, and it was learned the same way. A first
+ * attempt scoped to the bare directory, and `.underline` came straight back — because `ui/README.md`
+ * *documents* the collision, in prose, naming `.underline` and `.block` in order to warn the next
+ * reader about them. Tailwind scanned the markdown and minted the two utilities the file exists to
+ * caution against. A utility can only ever be USED in a component, so the source is components.
+ *
+ * `lib/tailwind-toolchain.test.ts` pins the source list, so widening it later cannot re-open the hole
+ * silently.
+ */
+@source '../src/lib/components/ui/**/*.svelte';
+
 /* Encore design tokens — ported from docs/mocks/phone-ui-mock.html.
    Clean, dark, premium, mobile-first. A theme is a pure token swap on these custom
    properties (R1 principle): components read var(--*), never hard-coded colors. */
@@ -206,13 +284,82 @@
 	 * reel's own max-height absorbs the squeeze and the existing edge mask fades the surplus rows.
 	 */
 	--tv-chrome-h: calc(
-		var(--tv-safe-y) + 1.2 *
-			(var(--tv-label) + var(--tv-name) + var(--tv-body) + var(--tv-label)) + 54px
+		var(--tv-safe-y) + 1.2 * (var(--tv-label) + var(--tv-name) + var(--tv-body) + var(--tv-label)) + 54px
 	);
 
 	color-scheme: dark;
 }
 
+/*
+ * THE TOKEN BRIDGE (issue #853, scope item 4) — NON-COLOUR TOKENS ONLY.
+ *
+ * `@theme` is how Tailwind v4 is configured: there is no `tailwind.config.ts` in this setup because v4
+ * takes its scale from CSS custom properties in this block, and a JS config would be the v3 shape.
+ * Registering a token here does one thing beyond declaring a variable: it MINTS THE UTILITY FAMILY for
+ * that namespace, so `--radius-btn` below is what makes `rounded-btn` a legal class.
+ *
+ * ── WHY THERE IS NOT ONE COLOUR IN HERE, AND WHY THAT IS A RULE AND NOT A PREFERENCE ──────────────
+ *
+ * Minting is all-or-nothing per namespace: there is no per-family opt-out. Registering `--color-accent`
+ * would mint `text-accent` in the same breath as `bg-accent`, and `text-accent` is a class this design
+ * system must NOT hand out — `--accent` (#7c5cff) measures 3.63:1 as ink on `--card2`, below AA, which
+ * is the entire reason `--accent-ink` (#c4a9ff) exists as a separate token. #840's 48-stop palette
+ * makes that ink-vs-fill split load-bearing per stop, with `onFill` 36-dark/12-white and `ink`
+ * differing from `fill` for 13 of 48. A minted `text-<hue>` would silently offer the illegal pairing
+ * for all 48. So the player hues, `--accent`, `--accent2`, `--grad` and every other colour stay in
+ * `:root` above, unregistered and utility-less, and are reached the way they always were: `var(--…)`
+ * in a component's own CSS. `lib/tailwind-toolchain.test.ts` reds if a colour is ever added here.
+ *
+ * `inline` (rather than a bare `@theme`) so a utility emits the `:root` token's own reference rather
+ * than a second hop through a Tailwind-owned copy. That matters for the TV insets and type, which are
+ * `clamp()`/`max()` expressions resolved against the viewport: one definition, in `:root`, stays the
+ * only place any of these values is written.
+ *
+ * THREE NAMESPACES ARE DELIBERATELY ABSENT.
+ *   - motion (`--ease-*`, `--duration-*`) and z-index: this app has no such tokens yet. #829 is
+ *     creating that scale and owns the seam; inventing values here to fill the namespaces would put a
+ *     second source of truth in front of it.
+ *   - shape (`--radius-*`): not registered, and not merely out of caution. This app's radius tokens
+ *     are ALREADY NAMED `--radius-sm` / `--radius-md` / `--radius-xs` / `--radius-btn` /
+ *     `--radius-pill`, which is Tailwind's own `--radius-*` namespace, so a bridge entry would be
+ *     `--radius-sm: var(--radius-sm)` — a self-reference that resolves to nothing. Registering them
+ *     properly means MOVING their definitions out of `:root` and into this block, which is a
+ *     refactor of the token layer rather than a bridge to it, and it is not what this issue was
+ *     scoped to do. `rounded-*` therefore does not exist yet; whoever needs it should move the five
+ *     declarations deliberately, in one commit, with the guards re-run.
+ */
+@theme inline {
+	/*
+	 * SPACING — mints p-tap / size-tap / min-h-tap / gap-tap and the two TV safe insets.
+	 * `--tap` is the 44px minimum touch target the touch-target guards enforce; a ported component
+	 * asking for the standard should name it rather than restating the number, which is the same
+	 * argument that put it in `:root` in the first place.
+	 */
+	--spacing-tap: var(--tap);
+	--spacing-tv-safe-x: var(--tv-safe-x);
+	--spacing-tv-safe-y: var(--tv-safe-y);
+
+	/*
+	 * TYPE — mints text-tv-*. The TV ladder only. The phone's sizes are still written per component,
+	 * so there is nothing to bridge there yet, and inventing a phone scale here would be the same
+	 * second-source-of-truth problem the motion namespace is being kept clear of below.
+	 */
+	--text-tv-eyebrow: var(--tv-eyebrow);
+	--text-tv-label: var(--tv-label);
+	--text-tv-body: var(--tv-body);
+	--text-tv-name: var(--tv-name);
+	--text-tv-joinurl: var(--tv-joinurl);
+	--text-tv-hero: var(--tv-hero);
+	--text-tv-lyric: var(--tv-lyric);
+}
+
+/*
+ * This app resets box-sizing ITSELF, and has since before Tailwind was on the table. Worth naming
+ * because it is the single largest thing Preflight would otherwise contribute (issue #853): the
+ * universal border-box rule is already here, so switching Preflight off gives up far less than the
+ * measured 2,457 moved boxes suggests — most of that number is Preflight UNDOING deliberate styling
+ * (heading weights, button padding, control colours), not supplying something missing.
+ */
 * {
 	box-sizing: border-box;
 	-webkit-tap-highlight-color: transparent;
@@ -293,9 +440,7 @@ body {
 	margin: 0 auto;
 	display: flex;
 	flex-direction: column;
-	padding:
-		env(safe-area-inset-top) env(safe-area-inset-right)
-		env(safe-area-inset-bottom) env(safe-area-inset-left);
+	padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
 }
 
 /* shared primitives used across surfaces */
