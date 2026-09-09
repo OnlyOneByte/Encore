@@ -247,3 +247,64 @@ test('the stage-colour control is one full-size target with no sub-44px part (is
 	expect(/input\[type=['"]range['"]\]\.hue/.test(settings)).toBe(false);
 	expect(/class="hue"/.test(settings)).toBe(false);
 });
+
+/**
+ * THE HEIGHTLESS-INPUT HOLE (issue #863).
+ *
+ * `controlRules()` above only looks at a rule that already declares a box (`min-height|height|padding`),
+ * on the reasoning that a control sized by its content has "not taken a position on target size". That
+ * reasoning holds for a `<button>` or a text link, whose content height is a comfortable tap. It does
+ * NOT hold for a text field: an `<input>` with no height sits at its single text line — the `/` dock
+ * search field measured 22px this way — and one sized by padding alone (`select` 41px, the join-address
+ * `.text` 35px) lands short too. On top of that, `input` was absent from the bare-tag allowlist
+ * `controlRules()` consults, so even a boxed rule whose subject is a bare `input` never reached the
+ * comparison. Those gaps are why the rendered gate (measured-design) found four sub-floor controls the
+ * source scan waved through.
+ *
+ * This arm closes the field half structurally, so a REVERT of the #863 CSS fixes reds here too — not
+ * only in the browser gate, which skips on a machine with no Chromium. Each text-entry control must be
+ * sized to the tap floor by SOME rule that names `var(--tap)` (an input's height can come from a shared
+ * rule while a per-class rule only tweaks its padding, so the check is "is it reached anywhere", not
+ * "does every rule name it"). Two controls are deliberately NOT in scope:
+ *
+ *   - the checkbox/radio GLYPH (`.check input`, an 18px square): its tap target is the wrapping <label>,
+ *     which carries `min-height: var(--tap)` and is examined as its own control. Resizing the glyph is
+ *     the wrong fix (issue #863).
+ *   - the range slider (`.hue input`): a different control with its own `height: var(--tap)` rule and
+ *     track/thumb geometry, pinned by the #133/#425 arm above.
+ */
+test('every text-entry control is sized to the tap floor by a var(--tap) rule (issue #863)', () => {
+	// Each entry: the file, the SELECTOR TOKEN that identifies the control's sizing rule, and a human
+	// name. A control passes when at least one rule whose selector contains that token names var(--tap)
+	// on a height, OR sets an explicit height >= TAP.
+	const CONTROLS: { file: string; token: RegExp; name: string }[] = [
+		{ file: join(SRC, 'routes', '+page.svelte'), token: /\.searchbox\s+input\b/, name: 'the dock search input' },
+		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /(^|[\s,{])select\b/m, name: 'the settings selects' },
+		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /\.text\b/, name: 'the join-address field (.text)' },
+		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /\.name-input\b/, name: 'the display-name field (.name-input)' }
+	];
+	const reachesFloor = (body: string): boolean => {
+		if (expressesTap(body)) return true; // var(--tap) on width/height
+		const explicit = [...body.matchAll(/(?:min-)?height:\s*([0-9.]+)px/g)].map((x) => Number(x[1]));
+		return explicit.some((h) => h >= TAP);
+	};
+	const offenders: string[] = [];
+	for (const { file, token, name } of CONTROLS) {
+		const src = stripComments(readFileSync(file, 'utf8'));
+		let sized = false;
+		let anyRule = false;
+		for (const m of src.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+			const sel = m[1]!.trim();
+			const body = m[2]!;
+			if (sel.includes('::') || !token.test(sel)) continue;
+			anyRule = true;
+			if (reachesFloor(body)) sized = true;
+			// a bare `44px` is the drift shape XR-PH-01 names — report it even if another rule is clean.
+			if (restatesTapNumber(body)) offenders.push(`${file.replace(SRC, 'src')}: ${name} → restates ${TAP}px instead of var(--tap)`);
+		}
+		if (!anyRule) offenders.push(`${file.replace(SRC, 'src')}: ${name} → no sizing rule found (selector moved?)`);
+		else if (!sized) offenders.push(`${file.replace(SRC, 'src')}: ${name} → not sized to var(--tap) by any rule; a text field with no tap-floor height sits below 44px`);
+	}
+	expect(offenders).toEqual([]);
+});
+

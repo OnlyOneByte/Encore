@@ -1215,6 +1215,11 @@
 		border: 1px solid var(--line);
 		background: var(--card2);
 		color: var(--ink);
+		/* The tap floor for every settings field (#863): the padding here sized the box to 41px (select,
+		   UA default) and 35px (.text), both short of var(--tap). A native select's box is browser-owned,
+		   so this is verified on a real render by gate:measured rather than trusted. box-sizing:border-box
+		   above keeps the padding inside the floor. .name-input's own larger padding stays above it. */
+		min-height: var(--tap);
 		/* 16px, not 0.9rem (14.4px): iOS Safari auto-zooms on focusing any control under 16px and never
 		   zooms back out, leaving the operator stuck at 1.3x for the rest of the session. */
 		font-size: 1rem;

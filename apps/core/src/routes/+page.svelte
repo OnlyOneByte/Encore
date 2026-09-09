@@ -1625,6 +1625,13 @@
 		 */
 		flex: 1;
 		min-width: 0;
+		/*
+		 * The input, not the wrapper, is the tap target: `.searchbox` is a div, so tapping its padding
+		 * focuses nothing (#863). Give the input the full tap floor so the hit extent at its centre is
+		 * var(--tap), not the bare 22px text line. The wrapper's own min-height (52px here, raised from
+		 * 42px at the narrow breakpoint below) already absorbs it.
+		 */
+		min-height: var(--tap);
 	}
 	.chip {
 		/* var(--tap), matching the queue actions and the row buttons. The readiness chips this was
@@ -2058,7 +2065,8 @@
 			padding-top: 2px;
 		}
 		.searchbox {
-			min-height: 42px;
+			/* rise to hold the 44px input added in #863 — 42px would clip its tap target */
+			min-height: var(--tap);
 			padding: 8px 14px;
 		}
 		.grouphead {

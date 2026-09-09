@@ -125,16 +125,25 @@ function sweepExpr(scope) {
 			el.scrollIntoView({ block: 'center' });
 			const r = el.getBoundingClientRect();
 			if (r.width === 0 || r.height === 0) continue;
-			const own = (n) => !!n && (n === el || el.contains(n));
-			const cx = Math.min(Math.max(Math.round(r.left + r.width / 2), 0), innerWidth - 1);
-			const cy = Math.round(r.top + r.height / 2);
+			// A checkbox/radio has no accessible box of its own worth tapping — its tap target is
+			// DELEGATED to the wrapping <label> (the pattern touch-targets.test.ts documents: the .check
+			// label in settings carries min-height: var(--tap)). So the box we measure for a glyph input
+			// is that label, and a hit anywhere on the label counts as reaching the control (#863).
+			// Without this, the sweep saw only the 18px glyph and read a 44px label as an 18px false floor.
+			const type = (el.getAttribute('type') || '').toLowerCase();
+			const glyph = el.tagName === 'INPUT' && (type === 'checkbox' || type === 'radio');
+			const target = glyph ? (el.closest(${JSON.stringify(LABEL_SELECTOR)}) || el) : el;
+			const inTarget = (n) => !!n && (n === target || target.contains(n));
+			const tr = target.getBoundingClientRect();
+			const cx = Math.min(Math.max(Math.round(tr.left + tr.width / 2), 0), innerWidth - 1);
+			const cy = Math.round(tr.top + tr.height / 2);
 			// Vertical hit extent at the CENTRE x. That is the reading the 44px floor is about: WCAG
 			// 2.5.8 and Encore's own --tap are both statements about the target's box.
 			let hitH = 0;
-			if (own(document.elementFromPoint(cx, cy))) {
+			if (inTarget(document.elementFromPoint(cx, cy))) {
 				let top = cy, bottom = cy;
-				while (top - 1 >= 0 && own(document.elementFromPoint(cx, top - 1))) top--;
-				while (bottom + 1 < innerHeight && own(document.elementFromPoint(cx, bottom + 1))) bottom++;
+				while (top - 1 >= 0 && inTarget(document.elementFromPoint(cx, top - 1))) top--;
+				while (bottom + 1 < innerHeight && inTarget(document.elementFromPoint(cx, bottom + 1))) bottom++;
 				hitH = bottom - top + 1;
 			}
 			// Occlusion, as a SEPARATE reading along the widest row. Sweeping the vertical extent at a
@@ -144,8 +153,8 @@ function sweepExpr(scope) {
 			// is actually good for: an overlay covering part of a control.
 			let occluded = 0;
 			for (const f of [0.25, 0.5, 0.75]) {
-				const x = Math.min(Math.max(Math.round(r.left + r.width * f), 0), innerWidth - 1);
-				if (!own(document.elementFromPoint(x, cy))) occluded++;
+				const x = Math.min(Math.max(Math.round(tr.left + tr.width * f), 0), innerWidth - 1);
+				if (!inTarget(document.elementFromPoint(x, cy))) occluded++;
 			}
 			const label = el.closest(${JSON.stringify(LABEL_SELECTOR)});
 			const near = (el.getAttribute('aria-label') || (label ? label.textContent : '') || (el.parentElement ? el.parentElement.textContent : '') || '')
