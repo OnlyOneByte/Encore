@@ -14,9 +14,10 @@ import { test, expect } from 'bun:test';
 import { deleteMediaEntirely, type DeleteMediaDeps } from './delete';
 import { AuthoritativeState } from '../state/store';
 import type { HubDeps } from '../realtime/hub';
-import { type Media, type QueueEntry, type ServerEvent } from '@encore/shared';
+import { type Media, type QueueEntry, type ServerEvent, type LyricsCandidate } from '@encore/shared';
 import { EMPTY_SONG_PROFILE } from '@encore/shared';
 import { metaKey, audioKey } from './paths';
+import { readFileSync } from 'node:fs';
 
 const media = (id: string): Media => ({
 	id,
@@ -153,4 +154,139 @@ test('deleting a NON-playing entry re-broadcasts the true next (#636)', () => {
 	expect(np!.current?.id).toBe('p');
 	expect(np!.upNext?.id).toBe('q2');
 	expect(np!.upNext?.id).not.toBe('q1');
+});
+
+// ── issue #762 — the hard delete left the two biggest byte classes on disk, and left every other
+// client's queue stale. Three guards, one per finding. All three are RED on base.
+
+/** A lyrics candidate at the real per-(source, tag, timing) key the worker mints. */
+function cand(
+	ref: string,
+	textSource: LyricsCandidate['textSource'],
+	timing: LyricsCandidate['timing']
+): LyricsCandidate {
+	return { ref, textSource, timing, textConfidence: 'high', createdAt: 1 };
+}
+
+// F1. `audioKey`'s default ext is `wav`, the LEGACY mislabelled name. Every song cooked since 2981662
+// has `audio/<id>.m4a` or `.webm` on disk, because the worker downloads to `audio/<id>.%(ext)s` and
+// discovers the real name with a `<id>.*` glob. So the single `unlink(audioKey(id))` named a path that
+// does not exist and the ONE UNRECOVERABLE class survived — permanently, since the sidecar and the row
+// are gone when this returns, retention never touches `audio/`, and no boot pass sweeps orphans.
+//
+// Base-RED at the first assertion: base unlinks exactly ["audio/m1.wav"], so `audio/m1.m4a` is absent.
+// The expected refs are HARD-CODED literals, deliberately not built with candidateAudioRefs/audioKey —
+// re-deriving them with the code's own helpers would make this pass for any list the code happens to
+// hold, including a one-entry one.
+test('unlinks the raw original at EVERY extension it could be under, not just .wav (#762 F1)', () => {
+	const { deps, unlinked } = harness(['m1']);
+	const res = deleteMediaEntirely('m1', deps);
+	expect(res.deleted).toBe(true);
+
+	// The modern names first — these are what a real cook actually wrote.
+	expect(unlinked).toContain('audio/m1.m4a');
+	expect(unlinked).toContain('audio/m1.webm');
+	// Every candidate, so a partial widening (e.g. adding only m4a) does not satisfy this.
+	for (const ref of [
+		'audio/m1.webm',
+		'audio/m1.opus',
+		'audio/m1.m4a',
+		'audio/m1.mp4',
+		'audio/m1.mp3',
+		'audio/m1.wav'
+	]) {
+		expect(unlinked).toContain(ref);
+	}
+	// The sidecar still goes first, and the audio still goes before the derived artifacts.
+	expect(unlinked[0]).toBe(metaKey('m1'));
+	expect(unlinked.indexOf('audio/m1.m4a')).toBeLessThan(unlinked.findIndex((r) => r.startsWith('derived/')));
+});
+
+// F2. `derivedRefsFor` named `lyricsKey(id)` (the dead single-file key) + `m.lyricsRef` and stopped, so
+// the other N−1 lyrics JSONs were orphaned forever — the exact undercount retention.ts:216-222 records
+// as already-fixed once for itself (#496/#442). Delegating to retention's `derivedRefsOf` closes it.
+//
+// Base-RED: base unlinks the chosen `lrclib.word` ref (it equals m.lyricsRef) and misses the other two.
+test('unlinks EVERY lyrics candidate JSON, not only the chosen one (#762 F2)', () => {
+	const { deps, hub, unlinked } = harness(['m1']);
+	const chosen = 'derived/lyrics/m1-lrclib-word.json';
+	const others = ['derived/lyrics/m1-captions-line.json', 'derived/lyrics/m1-asr-word.json'];
+	hub.mediaById.set('m1', {
+		...media('m1'),
+		lyricsRef: chosen,
+		lyricsCandidates: [
+			cand(chosen, 'lrclib', 'word'),
+			cand(others[0], 'captions', 'line'),
+			cand(others[1], 'asr', 'word')
+		]
+	});
+
+	expect(deleteMediaEntirely('m1', deps).deleted).toBe(true);
+	expect(unlinked).toContain(chosen);
+	for (const ref of others) expect(unlinked).toContain(ref);
+});
+
+// F3. `applyQueueOp` mutates and publishes NOTHING. On the non-playing path the only broadcast was
+// `media:status canceled`, which no client turns into a queue mutation — so the server had removed the
+// turn while every phone and the TV kept rendering it, healing only when some later `queue:patch`
+// tripped the ws gap detector. Base-RED: base's published types are ["nowplaying:changed",
+// "media:status"] with no `queue:patch` at all.
+test('deleting a QUEUED, non-playing song broadcasts the authoritative queue (#762 F3)', () => {
+	const { deps, state, published, hub } = harness(['m1', 'm2']);
+	seed(state, 'a', 'm1', 's1'); // the doomed turn
+	seed(state, 'b', 'm2', 's2'); // the survivor
+
+	const res = deleteMediaEntirely('m1', deps);
+	expect(res.wasPlaying).toBe(false); // the reconcile branch is NOT the one under test
+	expect(res.removedEntries).toBe(1);
+
+	const patch = published.find((e) => e.type === 'queue:patch') as
+		Extract<ServerEvent, { type: 'queue:patch' }> | undefined;
+	expect(patch).toBeDefined();
+	// The snapshot is authoritative: the deleted turn is gone from it and the survivor is in it.
+	expect(patch!.patch.entries?.map((e) => e.id)).toEqual(['b']);
+	expect(patch!.patch.rev).toBe(state.rev);
+	// The media projection carries the survivor's title and does NOT re-advertise the deleted song,
+	// which is still in mediaById at publish time (the row is dropped afterwards, at step 5).
+	expect(hub.mediaById.has('m1')).toBe(false);
+	expect(patch!.patch.media?.map((m) => m.id)).toEqual(['m2']);
+});
+
+// The companion half of F3's guard: the publish is conditioned on entries having actually been removed,
+// so deleting a song nobody queued does not bump every client through a no-op resync.
+test('deleting a song with NO queue entries publishes no queue:patch (#762 F3)', () => {
+	const { deps, state, published } = harness(['m1', 'm2']);
+	seed(state, 'b', 'm2', 's2'); // unrelated turn; nothing points at m1
+
+	const res = deleteMediaEntirely('m1', deps);
+	expect(res.removedEntries).toBe(0);
+	expect(published.some((e) => e.type === 'queue:patch')).toBe(false);
+	expect(published.some((e) => e.type === 'media:status')).toBe(true);
+});
+
+// F2's structural half — a SOURCE-SCAN guard, because the behavioural test above cannot see it.
+//
+// The fix deleted three now-redundant lines from `derivedRefsFor` (`refs.add(m.instrumentalRef)`,
+// `m.vocalsRef`, `m.lyricsRef`) whose refs `derivedRefsOf` already supplies. Re-adding them is
+// behaviour-identical by construction — the accumulator is a Set — so no runtime assertion can ever
+// distinguish the two, and `prove_per_hunk.py` correctly reports those hunks green when reverted. That
+// green IS the finding: the lines are a rival enumeration, and a rival enumeration that agrees today is
+// exactly how the `lyricsCandidates` omission got here (retention.ts:216-222 records the same drift for
+// itself). So the invariant to pin is structural: `derivedRefsFor` DELEGATES the stored-ref question and
+// does not answer it a second time.
+//
+// Reads the real production file (not a fixture) and scans only the function BODY, so the docstrings
+// above it — which quote `m.lyricsRef` while explaining the defect — cannot satisfy or trip it.
+test('derivedRefsFor delegates the stored-ref enumeration instead of keeping a rival copy (#762 F2)', () => {
+	const src = readFileSync(new URL('./delete.ts', import.meta.url), 'utf8');
+	const start = src.indexOf('function derivedRefsFor');
+	expect(start).toBeGreaterThan(-1);
+	const body = src.slice(start, src.indexOf('\n}\n', start));
+
+	// It asks retention for the answer.
+	expect(body).toContain('derivedRefsOf(');
+	// And it does not re-answer it. Any of the three stored refs added back here is a second list —
+	// under ANY property spelling, so a rename cannot slip past a literal-name scan.
+	expect(body).not.toMatch(/refs\.add\(\s*m\??\.(instrumentalRef|vocalsRef|lyricsRef)/);
+	expect(body).not.toMatch(/if\s*\(\s*m\??\.(instrumentalRef|vocalsRef|lyricsRef)\s*\)\s*refs\.add/);
 });

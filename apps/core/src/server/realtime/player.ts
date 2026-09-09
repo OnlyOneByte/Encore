@@ -35,15 +35,20 @@ const EPHEMERAL_RESET = {
 } as const satisfies Partial<PlaybackState>;
 
 /**
- * Broadcast the authoritative queue after a PLAYBACK transition changed entry statuses.
+ * Broadcast the authoritative queue after a mutation that no client command produced.
  *
  * Skip/advance/play all flip entries to `done`/`playing` — a real queue mutation — but this module
  * used to publish only playback:state + nowplaying:changed. Clients therefore kept the skipped song
  * in their `queued` list until something unrelated forced a resync, which is why a skip took a
  * visible beat to disappear from the rotation. `ops: []` with the entries inline is the same shape
  * handleQueueCommand sends; the client adopts the snapshot and re-applies its pending ops on top.
+ *
+ * Exported (#762) for `media/delete.ts`, the other server-side path that removes entries nobody asked
+ * to remove. It had the same defect for the same reason — `applyQueueOp` publishes nothing — and closing
+ * it by open-coding a second `queue:patch` there would have made this repo's fourth hand-written copy
+ * of one broadcast. One publisher; the SHAPE of a queue broadcast is decided here.
  */
-function publishQueue(deps: HubDeps): void {
+export function publishQueue(deps: HubDeps): void {
 	const entries = deps.state.entries as QueueEntry[];
 	deps.publish({
 		type: 'queue:patch',

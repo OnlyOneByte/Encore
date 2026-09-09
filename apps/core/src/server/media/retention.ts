@@ -220,8 +220,15 @@ export function planEviction(
  * every candidate ref too — same class of drift the vocals-omission fix above closed.
  *
  * Callers dedupe with a Set, so overlap (a candidate that equals `lyricsRef`) is free.
+ *
+ * Exported (#762) because `media/delete.ts` needs the same answer: it had grown a SECOND enumeration
+ * (`derivedRefsFor`) that omitted `lyricsCandidates`, re-creating the exact undercount #496/#442 closed
+ * here — N−1 lyrics JSONs orphaned forever, since a hard delete removes the sidecar and the row and
+ * nothing can ever enumerate that media again. Two hand-maintained answers to "what does this media own
+ * on disk" is the defect; this is the one answer. The delete adds id-derived keys on top (it must name
+ * refs a media never stored), it does not maintain a rival list.
  */
-function derivedRefsOf(m: Media): string[] {
+export function derivedRefsOf(m: Media): string[] {
 	return [
 		m.instrumentalRef,
 		m.lyricsRef,

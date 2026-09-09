@@ -93,6 +93,40 @@ export function resolveBase(ref: string): { base: string; rest: string } {
 export function audioKey(mediaId: string, ext = 'wav'): string {
 	return `audio/${mediaId}.${ext.replace(/^\./, '')}`;
 }
+
+/**
+ * Every extension the retained original can be sitting under, newest-served first. The raw audio is
+ * the ONLY class that cannot be regenerated, and — unlike the stems and lyrics — nothing in the core
+ * ever records its real name: `Media` has no audio field and `sidecar.ts` only ever writes
+ * `artifacts.audio = prev?.artifacts.audio ?? null`. So any consumer that needs to find the file has
+ * to name candidates, exactly as `candidateVocalsRefs` and the caption kind×ext matrix already do for
+ * their classes.
+ *
+ * `audioKey`'s `ext = 'wav'` default is NOT the modern name. The worker downloads to
+ * `audio/<id>.%(ext)s` and then discovers what landed with `find_downloaded` (a `<id>.*` glob),
+ * because — quoting `download_argv`'s docstring — the extension is whatever YouTube served. Each
+ * entry below is a container `stream_quality.FORMAT_SELECTOR`
+ * (`bestaudio[acodec=opus]/bestaudio[acodec^=mp4a]/bestaudio[ext=m4a]/bestaudio/best`) can actually
+ * produce, plus the legacy name:
+ *
+ * - `webm` / `opus` — the opus-preferring first clause, in its native container.
+ * - `m4a` / `mp4` — the two mp4a clauses, and the muxed `/best` last resort (format 18 is mp4), which
+ *   is the only thing that survives once this box's egress IP is bot-blocked.
+ * - `mp3` — other extractors and declared-local uploads.
+ * - `wav` — the LEGACY mislabelled name from the retired `source_audio_path` era: yt-dlp was handed a
+ *   literal `audio/<id>.wav` and wrote m4a/webm bytes into it. Those files are still on the owner's
+ *   volume, so dropping this entry would strand the pre-`2981662` cohort.
+ *
+ * This is a superset by construction and a ref whose file is absent is a no-op for every consumer
+ * (`rmSync(..., { force: true })`, retention's `existsSync` skip), so naming one too many is free and
+ * naming one too few permanently orphans the one unrecoverable class.
+ */
+export const KNOWN_AUDIO_EXTS = ['webm', 'opus', 'm4a', 'mp4', 'mp3', 'wav'] as const;
+
+/** Every ref the retained original for `mediaId` could live at — `audioKey` at every known ext. */
+export function candidateAudioRefs(mediaId: string): string[] {
+	return [...new Set(KNOWN_AUDIO_EXTS.map((ext) => audioKey(mediaId, ext)))];
+}
 /**
  * Stored stem formats (audio policy, #480). BOTH stems are now lossless FLAC, and both MUST match
  * the worker's processor.py INSTRUMENTAL_EXT / VOCALS_EXT.
