@@ -18,7 +18,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 #: The domain packages. Each owns one concern and is named for it.
-DOMAIN_PACKAGES = ["acquisition", "analysis", "lyrics", "metadata", "separation"]
+DOMAIN_PACKAGES = ["acquisition", "analysis", "diarize", "lyrics", "metadata", "separation"]
 
 #: The runtime layers. These execute a plan and know nothing about audio, lyrics or separation — see
 #: docs/ARCHITECTURE.md §7.1. Listed separately from the domains because the layering guard

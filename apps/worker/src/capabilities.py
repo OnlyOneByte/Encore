@@ -99,6 +99,21 @@ def probe_all(
         )
     )
 
+    # Diarization (#691) — the SOURCE of duet part attribution. Its own probe because an advertised
+    # capability the box cannot run is the exact failure this module exists to remove: pyannote is
+    # HF-gated (needs a token this box may not have) and heavy, so `diarize` is opt-in and reports
+    # available only when the pipeline can actually be imported. It rides the `align` action rather
+    # than a new job type, so an align worker without pyannote simply publishes single-colour lyrics —
+    # the owner's fallback — and this token stays absent rather than promising work that would degrade.
+    diarize_ok = _module_available("pyannote.audio")
+    probes.append(
+        Probe(
+            "diarize",
+            diarize_ok,
+            "pyannote.audio importable" if diarize_ok else "pyannote.audio not importable",
+        )
+    )
+
     return probes
 
 

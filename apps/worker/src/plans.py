@@ -17,6 +17,7 @@ from .runtime.ctx import ResolvedEngines
 from .runtime.plan import PLANS, LinearPlan
 from .steps.acquire import AcquireAudio
 from .steps.analysis import KeyAndRange
+from .steps.diarize import Diarize
 from .steps.lyrics import (
     AUTHORED,
     MACHINE,
@@ -38,14 +39,16 @@ def align_plan(
     lyrics_client: Any = None,
     transcriber: Any = None,
     aligner: Any = None,
+    diarizer: Any = None,
     ytdlp_bin: str = "yt-dlp",
     keep_raw: bool = False,
 ) -> LinearPlan:
-    """The align action: eight steps that were one 257-line method.
+    """The align action: nine steps that were one 257-line method.
 
     Seams stay injectable for the same reason they always were — the real WhisperX, the real LRCLIB and
     the real yt-dlp only ever run on a worker box, so the whole flow has to be exercisable without any of
-    them.
+    them. `diarizer` is the newest seam (#691): the real pyannote pipeline only runs on a worker box, so
+    Diarize takes an injected diarizer exactly as TimeTexts takes an aligner.
     """
     return LinearPlan(
         "align",
@@ -57,6 +60,7 @@ def align_plan(
             PresplitTexts(),
             GradeAndSelect(),
             TimeTexts(aligner=aligner),
+            Diarize(diarizer=diarizer),
             PublishLyrics(),
         ],
     )
@@ -160,6 +164,7 @@ def align_runner(
     lyrics_client: Any = None,
     transcriber: Any = None,
     aligner: Any = None,
+    diarizer: Any = None,
     model: str | None = None,
     sync_mode: Any = None,
     device: str | None = None,
@@ -190,6 +195,7 @@ def align_runner(
         lyrics_client=lyrics_client,
         transcriber=transcriber,
         aligner=aligner,
+        diarizer=diarizer,
         ytdlp_bin=ytdlp_bin,
         keep_raw=keep_raw,
     )
