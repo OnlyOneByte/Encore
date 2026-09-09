@@ -9,6 +9,9 @@
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
 	import QueueSheet from '$lib/components/QueueSheet.svelte';
 	import QueueSheetDrawer from '$lib/components/QueueSheetDrawer.svelte';
+	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
+	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
+	import { positionWords } from '$lib/position-sentence';
 	import LyricsOverlay from '$lib/tv/LyricsOverlay.svelte';
 	import {
 		LYRICS_BALL_STYLES,
@@ -549,18 +552,56 @@
 	<!-- No thumbnail, no duration, no views — a local library file. Must degrade, not break. -->
 	<SongRow title="A local file with no metadata at all" readiness="unacquired" onmake={() => {}} />
 
+	<!--
+		#832, direction A. The hero and the position card, which are the two things home is now made of.
+		The position card is shown in BOTH branches, adjacent: XR-PH-09's second arm is that an unknown
+		wait renders NO minutes clause, and "no clause" is only judgeable against the clause it replaces.
+		The wait is `null` here because one entry ahead has no resolvable length — the reachable unknown,
+		since Media.durationSec is required and absence from the catalog is what produces it.
+	-->
+	<h2 class="section">NowPlayingHero · MyPositionCard (#832)</h2>
+	<NowPlayingHero
+		title="Livin' on a Prayer"
+		singerName="Maya"
+		singerColor={GREEN}
+		byline="Bon Jovi · A minor"
+		elapsedSec={104}
+		durationSec={249}
+		isPlaying
+		hasSong
+		controlsSummary="Guide vocals 20% · Key · −2"
+	>
+		{#snippet controls()}
+			<GuidingTrack pct={20} available oninput={() => {}} oncommit={() => {}} />
+		{/snippet}
+	</NowPlayingHero>
+	<NowPlayingHero title="Nothing playing" hint="Queue a song to start the party" />
+	<MyPositionCard
+		words={positionWords({ place: 3, beforeName: 'Priya', nowRemainingSec: 145, aheadDurationsSec: [249, 321] })}
+	/>
+	<MyPositionCard
+		words={positionWords({ place: 3, beforeName: 'Priya', nowRemainingSec: 145, aheadDurationsSec: [249, null] })}
+	/>
+	<MyPositionCard words={positionWords({ place: 1, nowRemainingSec: 40, aheadDurationsSec: [] })} />
+
 	<h2 class="section">QueueRow</h2>
 	<!-- singerColor values here are FIXTURE data — each is a singer's chosen accent standing in for a
 	     person, not a theme token (some equal --accent2, but they mean "this singer's colour"). -->
 	<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
 	<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
 	<QueueRow seq={4} title="Sweet Caroline" singerName="Liam" singerColor="#5cb8ff" />
-	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor={PINK} mine pending />
+	<QueueRow seq={5} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="add" />
+	<!-- #832 / XR-PH-10: the unconfirmed REORDER, which had no fixture because the state did not exist —
+	     a pending move was indistinguishable from a landed one. Paired directly below its `pending="add"`
+	     twin so the only difference under review is the WORD: a row already in the queue must say
+	     "moving…", never "adding…". Both share the warn surface, which is the state signal (never
+	     opacity, per XR-PH-03). -->
+	<QueueRow seq={6} title="Wonderwall" singerName="You" singerColor={PINK} mine pending="move" />
 	<!-- issue #89: a 32-char name (the profile-name maxlength) overflows the byline. The identity dot
 	     (.who i) must keep its 10px width — it is flex:0 0 auto, not a shrinkable flex item — so the
 	     singer's colour survives on the very row where the truncated name least disambiguates them. -->
 	<QueueRow
-		seq={6}
+		seq={7}
 		title="Africa"
 		singerName="Christopher Alexander Montgomery"
 		singerColor={PINK}
@@ -585,7 +626,7 @@
 		singerColor={PINK}
 		status="separating"
 		pct={68}
-		pending
+		pending="add"
 	/>
 
 	<!-- The bug this fixed: an early stage (downloading) at pct=100. Old code filled the bar solid and

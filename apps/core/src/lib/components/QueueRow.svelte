@@ -17,7 +17,7 @@
 		 */
 		singerAway?: boolean;
 		subtitle?: string; // e.g. "now playing", "after Liam"
-		pending?: boolean; // optimistic, not yet confirmed
+		pending?: 'add' | 'move' | null; // optimistic, not yet confirmed — see pendingLabel
 		removable?: boolean; // show the remove affordance (mine, not currently playing)
 		reorderable?: boolean; // show move up/down (mine, more than one of my picks)
 		canUp?: boolean;
@@ -38,7 +38,7 @@
 		up = false,
 		singerAway = false,
 		subtitle = '',
-		pending = false,
+		pending = null,
 		removable = false,
 		reorderable = false,
 		canUp = false,
@@ -47,6 +47,13 @@
 		onup,
 		ondown
 	}: Props = $props();
+
+	/**
+	 * What the unconfirmed marker SAYS. An optimistic reorder used to borrow the add path's word and
+	 * announce "adding…" on a row that was already in the queue (XR-PH-10, issue #832). One expression,
+	 * so the two states cannot drift into saying the same thing again.
+	 */
+	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
 </script>
 
 <div class="qrow card list-row pop-in" class:mine={mine} class:up={up} class:pending={pending}>
@@ -60,7 +67,7 @@
 			     carries a margin-left of its own, so adding a space there would double the gap. -->
 			<i class:dim={singerAway} style="--singer:{singerColor}"></i>
 			{singerName}{#if singerAway}<span class="away">· away</span
-				>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">adding…</span>{/if}
+				>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">{pendingLabel}</span>{/if}
 		</div>
 	</div>
 	{#if !pending}

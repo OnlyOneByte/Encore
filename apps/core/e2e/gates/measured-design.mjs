@@ -43,6 +43,7 @@ import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 import { findChromium } from '../lib/chromium.mjs';
 import {
 	CONTROL_SELECTOR,
@@ -305,7 +306,11 @@ try {
 	const joinSweep = /** @type {Reading[]} */ (await page.evaluate(sweepExpr()));
 	await page.fill(SEL.nameInput, `Gate${Date.now() % 1000000}`);
 	await page.clickByText('Start singing');
-	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`, { timeout: 20000 });
+	// Joining lands on the QUEUE since #832 — the search box is a screen further in. `homeReady` is the
+	// joined-home signal, and the shared step leaves the page on the browse screen the sweep below types
+	// into. Both selectors and the step come from the contract, so this does not re-spell the sequence.
+	await page.waitFor(`location.pathname === '/'`, { timeout: 20000 });
+	await openBrowseFromHome(page, { timeout: 20000 });
 	check('the drive reaches a joined session — every phone surface below is behind one', joinSweep.length > 0);
 
 	const browserVersion = await page.evaluate('navigator.userAgent');
@@ -362,8 +367,20 @@ try {
 
 	for (const vp of VIEWPORTS) {
 		await page.viewport(vp.w, vp.h);
+		/*
+		 * TWO phone surfaces since #832, not one. `/` is the queue — the hero's transport, the position
+		 * card and the docked primary button, none of which existed when this gate was written and all of
+		 * which are controls these claims are about. The library rows it used to measure here are a screen
+		 * further in, so they get their own surface rather than being lost: measuring only `/` would have
+		 * quietly stopped measuring every row action, and measuring only the browse screen would never
+		 * measure the docked band.
+		 */
 		await surface('/', async () => {
 			await page.goto(base + '/');
+			await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout: 15000 });
+		});
+		await surface('/?browse=1', async () => {
+			await openBrowseFromHome(page, { timeout: 15000 });
 			await page.fill(SEL.search, 'caroline');
 			await page
 				.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 15000 })
@@ -402,9 +419,75 @@ try {
 		smallFields.join('\n        ')
 	);
 
-	// ── CLAIM 3 (XR-VER-11): the drawer's cap, its peek contract, and its safe-area term ───────
+	/*
+	 * ── CLAIM 3 (XR-VER-11): the drawer's cap, its peek contract, and its safe-area term ───────
+	 *
+	 * WHERE THIS IS MEASURED CHANGED WITH #832, and the claim did not. Direction A made the queue the
+	 * home screen, so `/` no longer mounts QueueSheet: the docked band at the bottom of the phone is the
+	 * primary button, and the "published height equals the real rendered height, and the safe-area inset
+	 * arrives THROUGH that token" contract moved with it from `--peek-h`/`.peek` to `--dock-h`/`.cta-dock`.
+	 *
+	 * So this section measures BOTH, and drops neither:
+	 *   - the LIVE contract, on `/`, against the docked band (below);
+	 *   - the sheet's own cap and peek geometry, on `/components`, where the component still renders
+	 *     (further down) — because the component is unchanged and its cap is still a real claim.
+	 *
+	 * The one sub-check that lost its subject outright is called out where it was, rather than deleted
+	 * silently: see the note at `shortViewportMediaMatches`.
+	 */
 	await page.viewport(390, 844);
 	await page.goto(base + '/');
+	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout: 15000 });
+	await sleep(600); // let the measured --dock-h write land
+
+	const dockProbe = `(() => {
+		const dock = document.querySelector(${JSON.stringify(SEL.homeReady)});
+		if (!dock) return null;
+		const dr = dock.getBoundingClientRect();
+		return {
+			dockVar: getComputedStyle(document.documentElement).getPropertyValue('--dock-h').trim(),
+			dockInline: document.documentElement.style.getPropertyValue('--dock-h').trim(),
+			dockClientHeight: dock.clientHeight,
+			dockTop: dr.top,
+			dockBottom: dr.bottom,
+			dockPadBottom: parseFloat(getComputedStyle(dock).paddingBottom),
+			innerHeight: window.innerHeight,
+			mainPadBottom: parseFloat(getComputedStyle(document.querySelector(${JSON.stringify(SEL.mainColumn)})).paddingBottom)
+		};
+	})()`;
+	const dock = await page.evaluate(dockProbe);
+	if (!dock) {
+		check('CLAIM 3 the docked band is rendered on the joined home, so its contract is measurable', false, 'no .cta-dock found');
+	} else {
+		check(
+			"CLAIM 3 (XR-VER-11) --dock-h equals the docked band's REAL rendered height — the contract every docked control offsets from",
+			dock.dockVar === `${dock.dockClientHeight}px` && dock.dockInline === `${dock.dockClientHeight}px`,
+			`--dock-h resolved "${dock.dockVar}" (inline "${dock.dockInline}") against a rendered band of ${dock.dockClientHeight}px`
+		);
+		check(
+			'CLAIM 3 the docked band sits fully on screen — no bleed below, no clip above',
+			dock.dockTop >= -1 && dock.dockBottom <= dock.innerHeight + 1,
+			`band occupies ${dock.dockTop.toFixed(1)}..${dock.dockBottom.toFixed(1)} of a ${dock.innerHeight}px viewport (1px of sub-pixel slack allowed)`
+		);
+		check(
+			'CLAIM 3 the scrolling column RESERVES the band rather than being overlapped by it (XR-PH-12)',
+			dock.mainPadBottom >= dock.dockClientHeight,
+			`main padding-bottom ${dock.mainPadBottom}px against a ${dock.dockClientHeight}px band`
+		);
+		// The safe-area term, proven by giving the browser a non-zero inset to resolve.
+		await page.safeAreaInsets({ bottom: SIMULATED_BOTTOM_INSET });
+		await sleep(600);
+		const dockInset = await page.evaluate(dockProbe);
+		check(
+			`CLAIM 3 the band's bottom padding really composes env(safe-area-inset-bottom) — +${SIMULATED_BOTTOM_INSET}px under a simulated inset`,
+			dockInset !== null && Math.abs(dockInset.dockPadBottom - (dock.dockPadBottom + SIMULATED_BOTTOM_INSET)) < 1,
+			`padding-bottom ${dock.dockPadBottom}px at inset 0, ${dockInset?.dockPadBottom}px at inset ${SIMULATED_BOTTOM_INSET}px`
+		);
+		await page.safeAreaInsets({ top: 0, right: 0, bottom: 0, left: 0 });
+	}
+
+	// The sheet's OWN geometry, measured where the component still renders.
+	await page.goto(base + '/components');
 	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.peek)}) !== null`, { timeout: 15000 });
 	await sleep(900); // the sheet's transform transition is 0.28s; measure it settled
 
@@ -463,13 +546,23 @@ try {
 			short?.shortViewportMediaMatches === true,
 			`matchMedia('(max-height: 480px)') = ${short?.shortViewportMediaMatches}`
 		);
-		// The recorded do-not-regress fact, and the one a source scan gets WRONG: the inline write on
-		// documentElement outranks the `@media (max-height: 480px)` :root override, so the 84px in the
-		// stylesheet never reaches the render while the sheet is mounted. Assert the cascade AS IT IS.
+		/*
+		 * The recorded do-not-regress fact: the inline write on documentElement outranks a
+		 * `@media (max-height: 480px)` :root override, so a token value in the stylesheet never reaches
+		 * the render while the writer is mounted.
+		 *
+		 * #832 DELETED THE OVERRIDE THIS MEASURED. The `--peek-h: 84px` it looked for lived in
+		 * routes/+page.svelte's short-viewport block, and the phone route no longer mounts the sheet; the
+		 * override was removed rather than re-pointed at --dock-h precisely BECAUSE of the fact this check
+		 * records — an override there would be silently defeated by the measured inline write. So the
+		 * assertion is kept and inverted onto what is now true: the inline write is still what the render
+		 * resolves, and there is no competing :root literal for it to beat. The absence is asserted, not
+		 * assumed, so re-introducing an override that cannot win reds this.
+		 */
 		check(
-			'CLAIM 3 the inline --peek-h write outranks the short-viewport :root override, measured',
+			'CLAIM 3 the inline --peek-h write is what the render resolves, and no :root literal competes with it',
 			short !== null && short.peekVar === `${short.peekClientHeight}px` && short.peekVar !== '84px',
-			`at 480px tall, --peek-h = "${short?.peekVar}" (rendered peek ${short?.peekClientHeight}px), NOT the stylesheet's 84px`
+			`at 480px tall, --peek-h = "${short?.peekVar}" (rendered peek ${short?.peekClientHeight}px), not a stylesheet literal`
 		);
 
 		// The safe-area term, proven by giving the browser a non-zero inset to resolve.

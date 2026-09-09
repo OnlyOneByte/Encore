@@ -30,6 +30,7 @@ import { join } from 'node:path';
 import { connect, sleep } from './cdp.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #564, following the
@@ -262,7 +263,7 @@ try {
 	await frame('join-ready', () => shoot(maya, 'join-ready', 'name entered and a preset chosen, submit enabled'));
 	await maya.clickByText('Start singing');
 	await maya.waitFor(`location.pathname === '/'`);
-	await maya.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+	await openBrowseFromHome(maya);
 	await sleep(700);
 
 	// ── phone remote: the library, then search ───────────────────────────────
@@ -302,6 +303,7 @@ try {
 	}
 
 	await frame('phone-search', async () => {
+		await openBrowseFromHome(maya); // #832: search lives behind the browse push
 		await maya.fill(SEL.search, readyQuery ?? 'caroline');
 		await maya.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length`, {
 			timeout: 15_000
@@ -329,11 +331,9 @@ try {
 				.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueRow)}).length > 0`, { timeout: 10_000 })
 				.catch(() => 0);
 			await sleep(600);
-			// the transport lives in the sheet's peek; ArrowUp is the peek's documented open gesture
-			await maya.pressKey(SEL.peek, 'ArrowUp');
-			await maya.waitFor(`document.querySelector(${JSON.stringify(SEL.sheet)})?.classList.contains('open') === true`, {
-				timeout: 5000
-			});
+			// The transport is on the now-playing hero since #832 (it used to need the sheet's peek opened
+			// with ArrowUp), and the hero is on home — which is also where the queue rows above render.
+			await returnHomeFromBrowse(maya);
 			await sleep(400);
 			await maya.clickByLabel(SEL.play.name);
 			/*
@@ -362,10 +362,12 @@ try {
 		console.log('  ! nothing ready to sing — every playing/lyrics frame will be skipped');
 	}
 
-	await frame('phone-queue-sheet', async () => {
-		await maya.pressKey(SEL.peek, 'ArrowUp');
+	// Was 'phone-queue-sheet' — the pull-up sheet this frame existed to show is retired from the phone
+	// route by #832. The same content is now the home screen itself: hero, position line, rotation.
+	await frame('phone-home', async () => {
+		await returnHomeFromBrowse(maya);
 		await sleep(500);
-		await shoot(maya, 'phone-queue-sheet', 'the pull-up sheet: rotation, transport, key and guiding track');
+		await shoot(maya, 'phone-home', 'home is the queue: now-playing hero, your place in words, the rotation');
 	});
 
 	await frame('phone-now-playing', async () => {
@@ -621,7 +623,7 @@ try {
 	 */
 	await frame('phone-cooking', async () => {
 		await maya.goto(`${base}/`);
-		await maya.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+		await openBrowseFromHome(maya);
 		await maya.fill(SEL.search, 'believin');
 		/*
 		 * Wait for the COOK ACTION, not for `.row`. The library is already on screen when the search box

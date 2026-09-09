@@ -9,10 +9,13 @@
 		soundingKeyLabel,
 		rangeLabel,
 		rangeOctaves,
-		voiceBandSentence
+		voiceBandSentence,
+		songDisplay
 	} from '@encore/shared';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
+	// The browse push is a real navigation (`?browse=1`), so the phone's own Back gesture dismisses it.
+	import { page } from '$app/state';
 	import type {
 		ServerEvent,
 		QueueEntry,
@@ -26,7 +29,8 @@
 	import { WsClient } from '$lib/ws/client';
 	import QueueRow from '$lib/components/QueueRow.svelte';
 	import SongRow from '$lib/components/SongRow.svelte';
-	import QueueSheet from '$lib/components/QueueSheet.svelte';
+	import NowPlayingHero from '$lib/components/NowPlayingHero.svelte';
+	import MyPositionCard from '$lib/components/MyPositionCard.svelte';
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
@@ -43,15 +47,18 @@
 		type Readiness
 	} from '$lib/readiness';
 	import { activeScars, recordScar, clearScar } from '$lib/stores/cook-scars';
+	import { positionWords } from '$lib/position-sentence';
 	import type { MediaStatus } from '@encore/shared';
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '@encore/shared';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
-	// Entry ids of not-yet-confirmed optimistic adds, republished on every store emit so the
+	// What each row is still waiting on ('add' | 'move'), republished on every store emit so the
 	// QueueRow/ProcessingCard `pending` affordance reflects the real pending map instead of the
-	// placeholder rotationSeq that applyAndReseq overwrites in the same frame (issue #304).
-	let unconfirmed = $state<Set<string>>(new Set());
+	// placeholder rotationSeq that applyAndReseq overwrites in the same frame (issue #304). A KIND
+	// rather than a set of ids since #832: a pending REORDER is marked too (XR-PH-10), and it must not
+	// borrow the add path's "adding…" word.
+	let pendingKind = $state<Map<string, 'add' | 'move'>>(new Map());
 	let singers = $state<Map<string, PublicSinger>>(new Map());
 	let mediaCatalog = $state<Map<string, Media>>(new Map());
 	let connected = $state(false);
@@ -78,7 +85,35 @@
 	// scarred (failed, so server-unknown) media and its row vanishes again on the very reload the
 	// scar exists to survive.
 	let scarredMedia: Media[] = [];
-	let sheetOpen = $state(false);
+	/*
+	 * DIRECTION A (docs/DECISIONS.md, issue #832): the room's queue IS the home screen, and browsing is
+	 * a deliberate push behind one primary button — the inverse of the browse-first screen that kept the
+	 * queue in a pull-up sheet. The push is a real navigation rather than a local boolean so the phone's
+	 * own Back gesture dismisses it; it is the SAME route, so the search query, the library and the
+	 * facet state all survive the trip in both directions.
+	 */
+	const browsing = $derived(page.url.searchParams.get('browse') === '1');
+	function openBrowse() {
+		void goto('/?browse=1', { keepFocus: true, noScroll: false });
+	}
+	function closeBrowse() {
+		void goto('/', { keepFocus: true, noScroll: false });
+	}
+	/**
+	 * The docked primary button's REAL rendered height, published so the scrolling column can reserve
+	 * its band in normal flow (XR-PH-12) instead of having the button float over the last queue row.
+	 * Measured, not a constant, for the reason --peek-h was: a guessed value leaves the last row
+	 * bleeding under the band the moment the copy or the safe-area inset changes.
+	 */
+	let dockH = $state(0);
+	$effect(() => {
+		document.documentElement.style.setProperty('--dock-h', `${dockH}px`);
+		// Tear the inline property down on unmount, or it OUTLIVES the route on documentElement and a
+		// stale --dock-h keeps padding every later page — the leak class #598 §14 fixed for --peek-h.
+		return () => {
+			document.documentElement.style.removeProperty('--dock-h');
+		};
+	});
 
 	/*
 	 * Editing your name and colour, and leaving the room, used to live in a sheet mounted here. They now
@@ -106,29 +141,6 @@
 
 	let store: QueueStore;
 	let ws: WsClient;
-
-	// derived: my position in the rotation + who's right before me
-	const myNextEntry = $derived(
-		entries
-			.filter((e) => e.singerId === me?.id && e.status === 'queued')
-			.sort((a, b) => a.rotationSeq - b.rotationSeq)[0]
-	);
-	const myPositionLabel = $derived.by(() => {
-		if (!myNextEntry) return '';
-		const q = entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq);
-		const idx = q.findIndex((e) => e.id === myNextEntry.id);
-		if (idx < 0) return '';
-		// Only claim "up next" when the song can actually play next. Ranking by raw rotationSeq said
-		// "You're up next!" for a still-cooking song that the TV skips straight past, contradicting the
-		// playable-aware badge in the queue list below.
-		if (idx === 0) {
-			const playable = entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId));
-			return playable ? "You're up next!" : "You're next once it's ready";
-		}
-		const before = q[idx - 1];
-		const beforeName = before ? (singers.get(before.singerId)?.displayName ?? 'someone') : 'someone';
-		return `You're #${idx + 1} · after ${beforeName}`;
-	});
 
 	function mediaTitle(id: string): string {
 		const m = mediaCatalog.get(id);
@@ -181,7 +193,7 @@
 			});
 			store.subscribe((e) => {
 				entries = e;
-				unconfirmed = store.unconfirmedAddIds;
+				pendingKind = store.pendingKindById;
 			});
 
 			ws = new WsClient({
@@ -839,6 +851,83 @@
 		return () => clearInterval(id);
 	});
 	const nowDurationSec = $derived(nowEntry ? (mediaCatalog.get(nowEntry.mediaId)?.durationSec ?? 0) : 0);
+
+	// ── the guest's own place in the rotation, in WORDS (XR-PH-09, issue #832) ──────────────
+	// My soonest queued pick, and where it sits in the room's order.
+	const myNextEntry = $derived(
+		entries
+			.filter((e) => e.singerId === me?.id && e.status === 'queued')
+			.sort((a, b) => a.rotationSeq - b.rotationSeq)[0]
+	);
+	/**
+	 * Seconds still to run on the song playing now: 0 when nothing is playing, and NULL when something
+	 * is playing whose length is unknown — which makes the whole wait unknown rather than short. The
+	 * sentence builder decides what to do with that; this only reports what is true.
+	 */
+	const nowRemainingSec = $derived.by(() => {
+		if (!nowEntry) return 0;
+		if (nowDurationSec <= 0) return null;
+		return Math.max(0, nowDurationSec - displayPos);
+	});
+	/*
+	 * The sentence itself is built by a pure helper so it is unit-testable with no DOM and no room, and
+	 * so the honest-degradation rule lives in ONE place: an entry ahead whose media is not in the
+	 * catalog has no resolvable length, and one unknown term makes the estimate unknown. `Media.durationSec`
+	 * is required, so ABSENCE from the catalog — not a missing field — is the reachable unknown.
+	 */
+	const myPosition = $derived.by(() => {
+		if (!myNextEntry) return null;
+		const idx = queued.findIndex((e) => e.id === myNextEntry.id);
+		if (idx < 0) return null;
+		const before = idx > 0 ? queued[idx - 1] : undefined;
+		return positionWords({
+			place: idx + 1,
+			beforeName: before ? (singers.get(before.singerId)?.displayName ?? null) : null,
+			nowRemainingSec,
+			aheadDurationsSec: queued.slice(0, idx).map((e) => mediaCatalog.get(e.mediaId)?.durationSec ?? null),
+			// Only claim "up next" when the song can actually play next: a still-cooking song is skipped
+			// by the TV, which contradicted the playable-aware badge in the queue list below.
+			playable: entryPlayable(mediaCatalog.get(myNextEntry.mediaId), liveOf(myNextEntry.mediaId))
+		});
+	});
+
+	/*
+	 * The hero shows the song and the artist on SEPARATE lines, so it needs them apart — `mediaTitle`
+	 * welds them into one string for the queue rows. songDisplay is the shared helper that prefers the
+	 * canonical pair (a full YouTube title with the uploader as the "artist" is what the cards used to
+	 * show); the key is appended because "G major" belongs with the artist, not with the controls.
+	 */
+	const nowDisplay = $derived(songDisplay(nowMedia));
+	const heroByline = $derived.by(() => {
+		if (!nowEntry) return null;
+		const parts: string[] = [];
+		/*
+		 * `?? nowMedia?.artist` is deliberate and it is the PHONE's rule, not a weakening of songDisplay.
+		 * songDisplay is written for the TV, where the uploader must never appear as the artist; SongRow
+		 * (:143) draws a READY row as `artistCanonical ?? artist` because by then the uploader IS the
+		 * useful fact. The hero renders a PLAYING song — necessarily ready — and a hero that drops the
+		 * artist the row two taps earlier displayed is the two-surfaces-disagreeing shape this codebase
+		 * has already hit twice. Measured on a driven frame: the browse row said "Bon Jovi" and the hero
+		 * said nothing, because these demo tracks carry `artist` and no `artistCanonical`.
+		 */
+		const artist = nowDisplay.artist ?? nowMedia?.artist ?? null;
+		if (artist) parts.push(artist);
+		if (keyOriginal) parts.push(keyOriginal);
+		return parts.length ? parts.join(' · ') : null;
+	});
+
+	/**
+	 * The collapsed live-controls summary on the hero — the current values, so the disclosure still says
+	 * where the controls stand while shut (XR-PH-15). Built from the same derivations the controls
+	 * themselves render, so the two cannot disagree.
+	 */
+	const controlsSummary = $derived.by(() => {
+		const parts: string[] = [];
+		if (guideEnabled) parts.push(`Guide vocals ${guidePct}%`);
+		if (keyShiftEnabled && playback.keyShift !== 0) parts.push(keyLabel);
+		if (rangeText) parts.push(`Range ${rangeText}`);
+		return parts.length ? parts.join(' · ') : null;
+	});
 </script>
 
 <header class="topbar">
@@ -881,30 +970,213 @@
 </header>
 
 <main>
+	{#if !browsing}
+		<!--
+			HOME IS THE QUEUE (direction A, issue #832). The playing song is the one thing on this screen
+			that is not a list item, so it gets a HERO rather than the docked peek row it used to share with
+			the rotation; the bottom of the screen belongs to the one primary button instead.
+
+			The live singing controls come with it, in the hero's disclosure BODY (XR-PH-15) — they are
+			controls for the song playing NOW, and the sheet that used to hold them is gone from this route.
+			Who may operate them mid-song is still open (#835 / XR-PH-16); nothing about that changes here.
+		-->
+		<NowPlayingHero
+			title={nowEntry ? (nowDisplay.title || mediaTitle(nowEntry.mediaId)) : 'Nothing playing'}
+			singerName={nowEntry ? (singerOf(nowEntry.singerId)?.displayName ?? 'Someone') : null}
+			singerColor={nowEntry ? (singerOf(nowEntry.singerId)?.color ?? SINGER_COLORS[0]) : null}
+			byline={heroByline}
+			hint={nowEntry ? null : queued.length === 0 ? 'Queue a song to start the party' : 'Starting the next song…'}
+			elapsedSec={displayPos}
+			durationSec={nowDurationSec}
+			isPlaying={playback.isPlaying}
+			hasSong={!!nowEntry}
+			canStart={queued.length > 0}
+			onrestart={() => sendPlayer({ cmd: 'restart' })}
+			ontoggleplay={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
+			onskip={() => sendPlayer({ cmd: 'skip' })}
+			{controlsSummary}
+		>
+			{#snippet controls()}
+
+				<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
+				     sharing its labelled-row idiom; both are per-song adjustments to the same playing song. -->
+				<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
+
+				<!--
+					KEY LINE. A value row ABOVE the ± buttons, NOT inline in `.key`: `.key` is a no-wrap flex with two
+					flex:1 buttons, so a third inline element crushes both below their 44px target at 480px. It
+					carries NO label of its own — `.key` already says "Key" beside the buttons it belongs to, and two
+					"KEY" labels stacked two rows apart read as two different controls. So this row is the value
+					only, right-aligned to sit over the buttons. Shows the ORIGINAL key, then an arrow, then the
+					SOUNDING key; collapses to just the original at shift 0. Renders nothing when the key is
+					undetected / low-confidence (keyOriginal === null) — a wrong key is worse than none. The arrow is
+					an Icon, not a U+2192 glyph (icons.test.ts bans that codepoint); the key names are ASCII from the
+					helper.
+				-->
+				{#if keyOriginal}
+					<div class="key-head" class:shifted={keyShifted}>
+						<span class="key-vals">
+							<span class="key-orig">{keyOriginal}</span>
+							{#if keyShifted}
+								<span class="key-arrow"><Icon name="arrow-right" /></span>
+								<span class="key-sound">{keySounding}</span>
+							{/if}
+						</span>
+					</div>
+				{/if}
+
+				<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
+					<span class="lab">{keyLabel}</span>
+					<button
+						class="key-btn"
+						disabled={!keyShiftEnabled || playback.keyShift <= -7}
+						onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}
+						><Icon name="minus" /> semitone</button
+					>
+					<button
+						class="key-btn"
+						disabled={!keyShiftEnabled || playback.keyShift >= 7}
+						onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}><Icon name="plus" /> semitone</button
+					>
+				</div>
+
+				<!--
+					VOCAL RANGE, behind a disclosure. Same idiom as the 'Browse' toggle above: a plain $state
+					boolean, a real <button> carrying aria-expanded, a chevron-down/right Icon swap, and a 44px
+					target. Only rendered when there is a measured range to show (hasRange). Everything inside reacts
+					to playback.keyShift through the shared helpers, so the ± buttons slide the bar and can flip the
+					band sentence — which is what makes transposing feel like it means something.
+				-->
+				{#if hasRange}
+					<div class="range">
+						<button class="range-toggle" aria-expanded={rangeOpen} onclick={() => (rangeOpen = !rangeOpen)}>
+							<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
+							Vocal range
+							<span class="range-peek">{rangeText}</span>
+						</button>
+						{#if rangeOpen}
+							<div class="range-body">
+								<div class="range-facts">
+									<span class="range-label">{rangeText}</span>
+									{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
+								</div>
+								{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
+								<RangeBar profile={profile} keyShift={playback.keyShift} />
+							</div>
+						{/if}
+					</div>
+				{/if}
+
+				<!--
+					The TV stage look lives ONLY in room settings now. The per-song override that used to sit here
+					(a phone repainting the stage for the current song via sendPlayer 'background') was removed: the
+					stage is a room-wide decision, not a per-singer one, so a single writer in Settings is correct.
+					The server command, PlaybackState.background field and the TV resolver are deliberately kept —
+					with no writer the field simply stays null and the resolver already falls back to the room style.
+				-->
+
+			{/snippet}
+		</NowPlayingHero>
+
+		<!-- The guest's own place, in words, with the wait omitted rather than guessed (XR-PH-09). -->
+		<MyPositionCard words={myPosition} />
+
+		<h2 class="grouphead">Up next · {orderLabel}</h2>
+		{#if queued.length === 0}
+			<p class="empty">Queue's empty — add a song to start the party.</p>
+		{:else}
+			{#each queued as e, i (e.id)}
+				{@const s = singerOf(e.singerId)}
+				{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
+				{#if card === 'cooking' || card === 'failed'}
+					{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
+					<ProcessingCard
+						seq={i + 1}
+						title={mediaTitle(e.mediaId)}
+						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+						singerColor={s?.color ?? SINGER_COLORS[0]}
+						singerAway={awaySingers.has(e.singerId)}
+						status={proc.status}
+						pct={proc.pct}
+						pending={pendingKind.get(e.id) ?? null}
+						onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
+						reorderable={canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1}
+						canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
+						canDown={canHostReorder
+							? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
+							: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+						onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
+						ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
+					/>
+				{:else}
+					<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
+					     safe to remove. The old `i !== 0` guard meant to protect the current song but
+					     actually froze whatever sat at position 0 — i.e. the next-up song. -->
+					<QueueRow
+						seq={i + 1}
+						title={mediaTitle(e.mediaId)}
+						singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
+						singerColor={s?.color ?? SINGER_COLORS[0]}
+						mine={e.singerId === me?.id}
+						singerAway={awaySingers.has(e.singerId)}
+						up={e.id === nextPlayableId}
+						pending={pendingKind.get(e.id) ?? null}
+						subtitle={e.id === nextPlayableId ? 'up next' : ''}
+						removable={e.singerId === me?.id}
+						reorderable={canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1}
+						canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
+						canDown={canHostReorder
+							? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
+							: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
+						onremove={() => removeWithUndo(e)}
+						onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
+						ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
+					/>
+				{/if}
+			{/each}
+		{/if}
+	{/if}
+
+	<!--
+		THE BROWSE PUSH (direction A, issue #832). Everything below is the screen the primary button
+		pushes to, and it is deliberately UNCHANGED apart from being gated and given a way back — the
+		browse screen's own redesign (bottom-anchored search, the four filter mechanisms deleted) is
+		#833, and landing the two together would leave a home nobody can queue from at every merge in
+		between. The back control is first in the DOM because it is first visually (XR-PH-12); the
+		phone's own Back gesture also works, because the push is a real navigation.
+	-->
+	{#if browsing}
+		<div class="backrow">
+			<button class="back-btn" onclick={closeBrowse}><Icon name="arrow-left" /> Queue</button>
+		</div>
+	{/if}
+
 	<!-- ONE box across every source: a singer picks by readiness ("can I sing this now?"), never by
 	     which index the song came from — so there is no source switch. -->
-	<div class="card searchbox">
-		<span class="search-mark"><Icon name="search" /></span>
-		<input
-			bind:value={query}
-			oninput={onQueryInput}
-			aria-label="Search a song or artist"
-			placeholder="Search a song or artist…"
-		/>
-		{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
-	</div>
+	{#if browsing}
+		<div class="card searchbox">
+			<span class="search-mark"><Icon name="search" /></span>
+			<input
+				bind:value={query}
+				oninput={onQueryInput}
+				aria-label="Search a song or artist"
+				placeholder="Search a song or artist…"
+			/>
+			{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
+		</div>
 
-	<div class="chips" role="group" aria-label="Filter by readiness">
-		<button class="chip" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
-		<button class="chip ok" class:active={filter === 'ready'} onclick={() => (filter = 'ready')}>
-			<Icon name="mic" /> Ready{#if libraryCount}&nbsp;{libraryCount}{/if}
-		</button>
-		<button class="chip warn" class:active={filter === 'cooking'} onclick={() => (filter = 'cooking')}>
-			<Icon name="sparkle" /> Cooking{#if cookingRows.length}&nbsp;{cookingRows.length}{/if}
-		</button>
-	</div>
+		<div class="chips" role="group" aria-label="Filter by readiness">
+			<button class="chip" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
+			<button class="chip ok" class:active={filter === 'ready'} onclick={() => (filter = 'ready')}>
+				<Icon name="mic" /> Ready{#if libraryCount}&nbsp;{libraryCount}{/if}
+			</button>
+			<button class="chip warn" class:active={filter === 'cooking'} onclick={() => (filter = 'cooking')}>
+				<Icon name="sparkle" /> Cooking{#if cookingRows.length}&nbsp;{cookingRows.length}{/if}
+			</button>
+		</div>
+	{/if}
 
-	{#if showReady}
+	{#if browsing && showReady}
 		{@const readyList = searchActive ? readyResults : library}
 		<!--
 		  Browse lives behind ONE disclosure. Previously the two facet rails rendered inline whenever the
@@ -977,7 +1249,7 @@
 		{/if}
 	{/if}
 
-	{#if showCooking && cookingRows.length}
+	{#if browsing && showCooking && cookingRows.length}
 		<!-- Queue it anyway: rotation HOLDS a cooking song's slot, so it keeps its fair
 		     position and plays when the stems land. Cooking is not a blocked state. -->
 		{#if showGroupHeads}
@@ -1006,7 +1278,7 @@
 		{/each}
 	{/if}
 
-	{#if showRaw}
+	{#if browsing && showRaw}
 		{#if searchActive}
 			{#if searching && rawResults.length === 0 && readyResults.length === 0}
 				<div aria-busy="true" aria-label="Searching…">
@@ -1082,7 +1354,7 @@
 		{/if}
 	{/if}
 
-	{#if filter !== 'all' && ((filter === 'ready' && !(searchActive ? readyResults : library).length) || (filter === 'cooking' && !cookingRows.length))}
+	{#if browsing && filter !== 'all' && ((filter === 'ready' && !(searchActive ? readyResults : library).length) || (filter === 'cooking' && !cookingRows.length))}
 		{#if filter === 'ready'}
 			{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
 			<p class="empty">{empty.message}</p>
@@ -1100,188 +1372,17 @@
 	{/if}
 </main>
 
-<!-- The rotation lives in a pull-up sheet: at a party you are either browsing or checking the queue,
-     so the two should not fight over one scroll. The peek carries "when am I up?" — the question
-     that used to sit in a card above the search box and scroll out of sight.
-
-     The "queue a song" prompt is conditional on the queue ACTUALLY being empty. It used to be the
-     else-branch of a plain `nowEntry` ternary, so a room with a song queued-but-still-cooking was
-     told to go and queue a song — an instruction to do the thing the singer had just done, printed
-     directly above their own song. The queued case adds no line on purpose: the title already says
-     "Nothing playing", the position line says when you are up, and the peek's hint renders
-     "N waiting", so a fourth line would only repeat one of them. -->
-<QueueSheet
-	open={sheetOpen}
-	title={nowEntry ? mediaTitle(nowEntry.mediaId) : 'Nothing playing'}
-	sub={nowEntry
-		? `${singerOf(nowEntry.singerId)?.displayName ?? 'Someone'} is singing`
-		: queued.length === 0
-			? 'Queue a song to start the party'
-			: undefined}
-	position={myPositionLabel}
-	queueCount={queued.length}
-	elapsedSec={displayPos}
-	durationSec={nowDurationSec}
-	ontoggle={(v) => (sheetOpen = v)}
->
-	{#snippet controls()}
-		<!--
-			The transport is disabled when there is nothing for it to act on. It used to be
-			unconditionally enabled, so an empty room showed a full-weight primary play button plus
-			restart and skip, all three dispatching commands the server could only ignore -- the same
-			shape of defect as the old cook/queue button pair, where primary weight sat on an action
-			that led nowhere. Restart and skip need a song that is PLAYING; play additionally accepts a
-			queue that has something in it, because "start when it is ready" is a real intent and the
-			server, not the phone, decides when that is.
-		-->
-		<button class="ic no-drag" aria-label="restart" disabled={!nowEntry} onclick={() => sendPlayer({ cmd: 'restart' })}
-			><Icon name="prev" /></button
-		>
-		<button
-			class="ic play no-drag"
-			aria-label="play/pause"
-			disabled={!nowEntry && queued.length === 0}
-			onclick={() => sendPlayer({ cmd: playback.isPlaying ? 'pause' : 'play' })}
-		>
-			<Icon name={playback.isPlaying ? 'pause' : 'play'} />
-		</button>
-		<button class="ic no-drag" aria-label="skip" disabled={!nowEntry} onclick={() => sendPlayer({ cmd: 'skip' })}
-			><Icon name="next" /></button
-		>
-	{/snippet}
-
-	<!-- Guiding track: how loud the ORIGINAL vocals sit under the instrumental. Above the Key control,
-	     sharing its labelled-row idiom; both are per-song adjustments to the same playing song. -->
-	<GuidingTrack pct={guidePct} available={guideEnabled} oninput={onGuideInput} oncommit={onGuideCommit} />
-
-	<!--
-		KEY LINE. A value row ABOVE the ± buttons, NOT inline in `.key`: `.key` is a no-wrap flex with two
-		flex:1 buttons, so a third inline element crushes both below their 44px target at 480px. It
-		carries NO label of its own — `.key` already says "Key" beside the buttons it belongs to, and two
-		"KEY" labels stacked two rows apart read as two different controls. So this row is the value
-		only, right-aligned to sit over the buttons. Shows the ORIGINAL key, then an arrow, then the
-		SOUNDING key; collapses to just the original at shift 0. Renders nothing when the key is
-		undetected / low-confidence (keyOriginal === null) — a wrong key is worse than none. The arrow is
-		an Icon, not a U+2192 glyph (icons.test.ts bans that codepoint); the key names are ASCII from the
-		helper.
-	-->
-	{#if keyOriginal}
-		<div class="key-head" class:shifted={keyShifted}>
-			<span class="key-vals">
-				<span class="key-orig">{keyOriginal}</span>
-				{#if keyShifted}
-					<span class="key-arrow"><Icon name="arrow-right" /></span>
-					<span class="key-sound">{keySounding}</span>
-				{/if}
-			</span>
-		</div>
-	{/if}
-
-	<div class="key" class:disabled={!keyShiftEnabled} class:shifted={playback.keyShift !== 0}>
-		<span class="lab">{keyLabel}</span>
-		<button
-			class="key-btn"
-			disabled={!keyShiftEnabled || playback.keyShift <= -7}
-			onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift - 1 })}
-			><Icon name="minus" /> semitone</button
-		>
-		<button
-			class="key-btn"
-			disabled={!keyShiftEnabled || playback.keyShift >= 7}
-			onclick={() => sendPlayer({ cmd: 'key', semitones: playback.keyShift + 1 })}><Icon name="plus" /> semitone</button
-		>
+<!--
+	The ONE primary action, docked in the thumb zone. It RESERVES its band in normal flow rather than
+	overlapping the list (XR-PH-12): --dock-h carries this element's measured height and `main` pads by
+	it, so the last queue row is reachable at every scroll position. It is also LAST in the DOM, after
+	the content it sits below, so the tab sequence follows the visual order.
+-->
+{#if me && !browsing}
+	<div class="cta-dock" bind:clientHeight={dockH}>
+		<button class="cta" onclick={openBrowse}><Icon name="plus" /> Add a turn</button>
 	</div>
-
-	<!--
-		VOCAL RANGE, behind a disclosure. Same idiom as the 'Browse' toggle above: a plain $state
-		boolean, a real <button> carrying aria-expanded, a chevron-down/right Icon swap, and a 44px
-		target. Only rendered when there is a measured range to show (hasRange). Everything inside reacts
-		to playback.keyShift through the shared helpers, so the ± buttons slide the bar and can flip the
-		band sentence — which is what makes transposing feel like it means something.
-	-->
-	{#if hasRange}
-		<div class="range">
-			<button class="range-toggle" aria-expanded={rangeOpen} onclick={() => (rangeOpen = !rangeOpen)}>
-				<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
-				Vocal range
-				<span class="range-peek">{rangeText}</span>
-			</button>
-			{#if rangeOpen}
-				<div class="range-body">
-					<div class="range-facts">
-						<span class="range-label">{rangeText}</span>
-						{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
-					</div>
-					{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
-					<RangeBar profile={profile} keyShift={playback.keyShift} />
-				</div>
-			{/if}
-		</div>
-	{/if}
-
-	<!--
-		The TV stage look lives ONLY in room settings now. The per-song override that used to sit here
-		(a phone repainting the stage for the current song via sendPlayer 'background') was removed: the
-		stage is a room-wide decision, not a per-singer one, so a single writer in Settings is correct.
-		The server command, PlaybackState.background field and the TV resolver are deliberately kept —
-		with no writer the field simply stays null and the resolver already falls back to the room style.
-	-->
-
-	<h2 class="grouphead">Up next · {orderLabel}</h2>
-	{#if queued.length === 0}
-		<p class="empty">Queue's empty — add a song to start the party.</p>
-	{:else}
-		{#each queued as e, i (e.id)}
-			{@const s = singerOf(e.singerId)}
-			{@const card = queueCardKind(mediaCatalog.get(e.mediaId), mediaStatus.get(e.mediaId))}
-			{#if card === 'cooking' || card === 'failed'}
-				{@const proc = mediaStatus.get(e.mediaId) ?? { status: 'failed' as MediaStatus, pct: 0 }}
-				<ProcessingCard
-					seq={i + 1}
-					title={mediaTitle(e.mediaId)}
-					singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-					singerColor={s?.color ?? SINGER_COLORS[0]}
-					singerAway={awaySingers.has(e.singerId)}
-					status={proc.status}
-					pct={proc.pct}
-					pending={unconfirmed.has(e.id)}
-					onremove={e.singerId === me?.id ? () => removeWithUndo(e) : undefined}
-					reorderable={canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1}
-					canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
-					canDown={canHostReorder
-						? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
-						: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
-					onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
-					ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
-				/>
-			{:else}
-				<!-- `queued` excludes the PLAYING entry (its status is 'playing'), so every row here is
-				     safe to remove. The old `i !== 0` guard meant to protect the current song but
-				     actually froze whatever sat at position 0 — i.e. the next-up song. -->
-				<QueueRow
-					seq={i + 1}
-					title={mediaTitle(e.mediaId)}
-					singerName={e.singerId === me?.id ? 'You' : (s?.displayName ?? 'Guest')}
-					singerColor={s?.color ?? SINGER_COLORS[0]}
-					mine={e.singerId === me?.id}
-					singerAway={awaySingers.has(e.singerId)}
-					up={e.id === nextPlayableId}
-					pending={unconfirmed.has(e.id)}
-					subtitle={e.id === nextPlayableId ? 'up next' : ''}
-					removable={e.singerId === me?.id}
-					reorderable={canHostReorder ? queued.length > 1 : canReorder && e.singerId === me?.id && myPicks.length > 1}
-					canUp={canHostReorder ? globalIdx(e.id) > 0 : myIdx(e.id) > 0}
-					canDown={canHostReorder
-						? globalIdx(e.id) >= 0 && globalIdx(e.id) < queued.length - 1
-						: myIdx(e.id) >= 0 && myIdx(e.id) < myPicks.length - 1}
-					onremove={() => removeWithUndo(e)}
-					onup={() => (canHostReorder ? moveGlobal(e.id, -1) : moveMine(e.id, -1))}
-					ondown={() => (canHostReorder ? moveGlobal(e.id, 1) : moveMine(e.id, 1))}
-				/>
-			{/if}
-		{/each}
-	{/if}
-</QueueSheet>
+{/if}
 
 {#if undo}
 	<div class="undo-toast" role="status" bind:clientHeight={undoH}>
@@ -1303,10 +1404,74 @@
 <div class="sr-live" role="status" aria-live="polite" aria-atomic="true">{liveMsg}</div>
 
 <style>
-	/* the sheet's peek is docked, so the page must be able to scroll clear of it */
+	/*
+	 * The primary button is docked, so the column must be able to scroll clear of it (XR-PH-12): the
+	 * padding reserves the band's MEASURED height, which is what keeps the last queue row reachable at
+	 * every scroll position instead of parked under the button. The fallback covers the first frame
+	 * before the effect publishes a measurement, and the browse screen, which docks nothing.
+	 */
 	main {
 		flex: 1;
-		padding: 6px 18px calc(var(--peek-h) + 28px);
+		padding: 6px 18px calc(var(--dock-h, 0px) + 28px);
+	}
+	/*
+	 * The docked primary action. `position: fixed` is what makes it reachable with one thumb wherever
+	 * the list is scrolled to; it does not overlap content, because `main` pads by this element's own
+	 * measured height (--dock-h) rather than by a guess. The safe-area inset lives HERE, on the band
+	 * that actually sits at the bottom of the screen, and reaches the toasts THROUGH --dock-h — the
+	 * same contract the sheet's peek carried, so do not add a second env() term to anything above.
+	 */
+	.cta-dock {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 30;
+		display: flex;
+		justify-content: center;
+		padding: 10px 18px calc(10px + env(safe-area-inset-bottom));
+		background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 88%, transparent));
+		border-top: 1px solid var(--line);
+	}
+	.cta {
+		width: 100%;
+		max-width: var(--max-w);
+		min-height: var(--tap);
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		gap: 8px;
+		border: 0;
+		border-radius: var(--radius);
+		/* --accent-strong, never --grad: this button carries a LABEL, and white on the gradient's pink
+		   stop measures 2.84:1. app.css states that rule at the token itself. */
+		background: var(--accent-strong);
+		color: var(--on-accent);
+		font-size: 0.95rem;
+		font-weight: 700;
+		cursor: pointer;
+	}
+	.cta:active {
+		transform: scale(0.99);
+	}
+	/* The way back off the browse screen. First in the DOM because it is first visually (XR-PH-12). */
+	.backrow {
+		display: flex;
+		margin: 0 0 8px;
+	}
+	.back-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 6px;
+		min-height: var(--tap);
+		padding: 0 10px 0 0;
+		background: none;
+		border: 0;
+		color: var(--ink-dim);
+		font: inherit;
+		font-size: 0.85rem;
+		font-weight: 600;
+		cursor: pointer;
 	}
 
 	/* Visually-hidden live region: announced by assistive tech, painted nowhere (so it is
@@ -1566,42 +1731,6 @@
 		font-size: 0.9rem;
 	}
 
-	/* playback controls, rendered into the sheet's peek */
-	.ic {
-		width: 44px;
-		height: 44px;
-		border-radius: 50%;
-		display: grid;
-		place-items: center;
-		border: 1px solid var(--line);
-		background: var(--card);
-		color: var(--ink);
-		font-size: 1rem;
-		cursor: pointer;
-	}
-	/* The one filled transport control. Solid accent + paired ink, because in stage 1 the glyph became
-	   an SVG drawn with currentColor — on --grad that mark sat at 2.84:1, under the 3:1 non-text floor. */
-	.ic.play {
-		background: var(--accent-strong);
-		color: var(--on-accent);
-		border-color: transparent;
-		width: 44px;
-		height: 44px;
-	}
-	.ic:active {
-		transform: scale(0.92);
-	}
-	/* Reads as unavailable rather than merely dim: a 44px target that still looks pressable but does
-	   nothing is worse than one that plainly cannot be pressed. The cursor changes too, since this
-	   surface is also opened on a laptop. */
-	.ic:disabled {
-		opacity: 0.4;
-		cursor: not-allowed;
-	}
-	.ic:disabled:active {
-		transform: none;
-	}
-
 	.key {
 		display: flex;
 		gap: 6px;
@@ -1810,9 +1939,9 @@
 		}
 	}
 	/*
-	 * Docked-toast stacking, measured UP from the queue sheet's peek. --peek-h is bound to the peek's
+	 * Docked-toast stacking, measured UP from the docked primary button. --dock-h is bound to that band's
 	 * clientHeight, and the peek's own padding already includes env(safe-area-inset-bottom), so the
-	 * inset arrives THROUGH --peek-h — do NOT add another env() term here or the gap doubles.
+	 * inset arrives THROUGH --dock-h — do NOT add another env() term here or the gap doubles.
 	 *
 	 * The offsets were hand-tuned constants (14 / 70) stacking one element above the other above a
 	 * measured value, so they overlapped the instant either toast changed height. Named as scoped
@@ -1823,7 +1952,7 @@
 	 * constant. Adjust the gaps, not the measurement.
 	 */
 	:root {
-		--undo-dock: calc(var(--peek-h) + 14px);
+		--undo-dock: calc(var(--dock-h, 0px) + 14px);
 		--error-dock: calc(var(--undo-dock) + var(--undo-h, 0px) + 14px);
 	}
 	.undo-toast {
@@ -1959,16 +2088,16 @@
 	}
 
 	/*
-	 * Landscape / short viewports (e.g. a phone held sideways at 844×390). The docked now-playing peek
-	 * plus header, search box, chip row and section labels otherwise consume almost the whole height,
-	 * leaving no room for result rows. Shrink the peek token and the top chrome so at least a couple of
-	 * rows stay visible. --peek-h is the fallback the sheet overwrites with its measured peek height on
-	 * mount, but on a short screen a smaller fallback still buys rows before that measurement lands.
+	 * Landscape / short viewports (e.g. a phone held sideways at 844×390). The docked band plus header,
+	 * search box, chip row and section labels otherwise consume almost the whole height, leaving no room
+	 * for result rows, so the top chrome shrinks and at least a couple of rows stay visible.
+	 *
+	 * The docked band itself is NOT shrunk by a token here any more: --dock-h now carries the button's
+	 * own MEASURED height, and an inline custom property on :root outranks this rule — so a smaller
+	 * value written here would have been silently defeated the moment the measurement landed. The band
+	 * is one 44px control instead of a multi-line peek, which is what makes that acceptable.
 	 */
 	@media (max-height: 480px) {
-		:root {
-			--peek-h: 84px;
-		}
 		.topbar {
 			padding: 6px 18px 4px;
 		}

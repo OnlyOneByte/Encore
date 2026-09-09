@@ -46,6 +46,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #562, following the
@@ -953,7 +954,8 @@ if (!chromium) {
 		await phone.clickByLabel(SEL.swatch('pink').name);
 		await phone.clickByText('Start singing');
 		await phone.waitFor(`location.pathname === '/'`);
-		await phone.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+		// #832: the search box moved behind the browse push, so joining lands on the queue.
+		await openBrowseFromHome(phone);
 
 		// Search for something we know is cooked (Sweet Caroline is ready from S1).
 		await phone.fill(SEL.search, 'caroline');
@@ -993,6 +995,7 @@ if (!chromium) {
 		);
 
 		// Zero-result copy: search a garbage string and read the rendered text.
+		await openBrowseFromHome(phone); // #832: search lives behind the browse push
 		await phone.fill(SEL.search, 'zzzzzzznotasongzzzzzz');
 		await sleep(600); // debounce is 150ms; give the search a fair moment
 		const noResultsText = await phone
@@ -1009,6 +1012,7 @@ if (!chromium) {
 
 		// Empty-state for the Ready filter chip with a non-matching search: this is where
 		// readyEmptyState fires the "None of your N karaoke songs match X" copy + "Show all" button.
+		await openBrowseFromHome(phone); // #832: search lives behind the browse push
 		await phone.fill(SEL.search, 'xyznotasongxyz');
 		await sleep(400);
 		await phone.click(SEL.readyChip); // pick the Ready readiness filter chip

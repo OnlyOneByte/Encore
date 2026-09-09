@@ -372,7 +372,9 @@ test('both documentElement custom-property writes (--peek-h, --undo-h) tear down
 	// removeProperty's it; reverting either teardown reds this.
 	const sites: Array<{ file: string; prop: string }> = [
 		{ file: 'lib/components/QueueSheet.svelte', prop: '--peek-h' },
-		{ file: 'routes/+page.svelte', prop: '--undo-h' }
+		{ file: 'routes/+page.svelte', prop: '--undo-h' },
+		// #832: the docked primary button's measured band height, the same leak shape on a third site.
+		{ file: 'routes/+page.svelte', prop: '--dock-h' }
 	];
 	for (const { file, prop } of sites) {
 		const src = stripComments(readFileSync(join(SRC, file), 'utf8'));
