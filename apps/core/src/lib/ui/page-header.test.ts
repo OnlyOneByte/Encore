@@ -31,7 +31,20 @@ const EXEMPT: Record<string, string> = {
 // so the invariant requires their h1 but NOT a back affordance.
 const ROOTS = new Set(['/', '/join']);
 
-/** Every routed page under src/routes, as { route, file, src }. */
+/**
+ * Every routed page under src/routes, as { route, file, src }.
+ *
+ * Non-vacuity floor (issue #830, XR-VER-05). This walk had NO floor, and both consumers assert
+ * `offenders` EMPTY (`:70` the single-h1 rule, `:80` the back affordance) — so a moved `routes/`, a
+ * renamed `+page.svelte`, or a walk root typo made both pass with ZERO pages examined. That is the
+ * exact shape that let /stats and /metrics ship as dead ends in the first place, reappearing one level
+ * up: nothing asserted the guard was still looking at anything.
+ *
+ * The floor lives IN the walk, not in each test, so a third consumer inherits it.
+ *
+ * A firing floor is a FINDING, never a number to adjust — see XR-VER-06 and
+ * `../non-vacuity-floors.test.ts`.
+ */
 function routePages(): { route: string; file: string; src: string }[] {
 	const out: { route: string; file: string; src: string }[] = [];
 	const walk = (dir: string, urlParts: string[]) => {
@@ -48,6 +61,13 @@ function routePages(): { route: string; file: string; src: string }[] {
 		}
 	};
 	walk(SRC, []);
+	// 9 routed pages today; pin below. Plus the which-pages sentinel: the root page is the one route
+	// that cannot legitimately disappear, and both EXEMPT entries must still be reachable by the walk,
+	// or the exemption test at :90 is pinning a decision about pages this scan can no longer see.
+	expect(out.length).toBeGreaterThanOrEqual(7);
+	const routes = out.map((p) => p.route);
+	expect(routes).toContain('/');
+	for (const ex of Object.keys(EXEMPT)) expect(routes).toContain(`/${ex}`);
 	return out;
 }
 
