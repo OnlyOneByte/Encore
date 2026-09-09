@@ -560,6 +560,14 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'video,audio'
 	],
 	'probes/p14-playhead-vs-cook.mjs': ['#ff5cae', 'audio'],
+	'probes/p16-hero-live-controls.mjs': [
+		// The join colour: a swatch VALUE, not a selector — the same shape rule p2 and p14 rely on.
+		'#ff5cae',
+		// The join screen's submit control, found by accessible text rather than a class: #913 moved it
+		// onto the vendored <Button>, where a class belongs to the component rather than the app. A bare
+		// tag name is not a selector the contract can own.
+		'button'
+	],
 	'probes/p15-reload-resume.mjs': [
 		// Same two non-selectors p14 carries: a bare-tag media-element query (see SEL.mediaEl for the
 		// union form) and the join swatch hex colour (a shape-rule hit, not a UI selector).

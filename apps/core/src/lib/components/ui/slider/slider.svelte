@@ -34,9 +34,12 @@
 		ref = $bindable(null),
 		value = $bindable(),
 		orientation = "horizontal",
+		variant = "field",
 		class: className,
 		...restProps
-	}: WithoutChildrenOrChild<SliderPrimitive.RootProps> = $props();
+	}: WithoutChildrenOrChild<SliderPrimitive.RootProps> & {
+		variant?: "field" | "guiding";
+	} = $props();
 </script>
 
 <!--
@@ -47,6 +50,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 	bind:ref
 	bind:value={value as never}
 	data-slot="slider"
+	data-variant={variant}
 	{orientation}
 	class={cn(
 		"encore-slider data-disabled:cursor-not-allowed data-vertical:min-h-40 relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col",
@@ -58,6 +62,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 		<span
 			data-slot="slider-track"
 			data-orientation={orientation}
+			data-variant={variant}
 					class={cn(
 				"encore-slider-track rounded-full data-horizontal:w-full data-vertical:h-full relative grow overflow-hidden"
 			)}
@@ -65,7 +70,12 @@ get along, so we shut typescript up by casting `value` to `never`.
 			<SliderPrimitive.Range
 				data-slot="slider-range"
 				class={cn(
-					"bg-[var(--accent)] absolute select-none data-horizontal:h-full data-vertical:w-full"
+					cn(
+					"absolute select-none data-horizontal:h-full data-vertical:w-full",
+					variant === "guiding"
+						? "bg-linear-to-r from-[var(--accent)] to-[var(--accent2)]"
+						: "bg-[var(--accent)]"
+				)
 				)}
 			/>
 		</span>
@@ -73,7 +83,12 @@ get along, so we shut typescript up by casting `value` to `never`.
 			<SliderPrimitive.Thumb
 				data-slot="slider-thumb"
 				index={thumb.index}
-				class="size-[28px] rounded-full border-[3px] border-[var(--ink)] bg-[var(--accent)] shadow-[var(--shadow)] block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50"
+				class={cn(
+					"rounded-full block shrink-0 select-none disabled:pointer-events-none disabled:opacity-50",
+					variant === "guiding"
+						? "size-[22px] border-2 border-[var(--accent)] bg-[var(--ink)] shadow-[0_2px_8px_rgba(0,0,0,0.5)] data-disabled:border-[var(--line-strong)] data-disabled:bg-[var(--ink-dim)]"
+						: "size-[28px] border-[3px] border-[var(--ink)] bg-[var(--accent)] shadow-[var(--shadow)]"
+				)}
 			/>
 		{/each}
 	{/snippet}
@@ -84,6 +99,11 @@ get along, so we shut typescript up by casting `value` to `never`.
 		min-height: var(--tap);
 		width: 100%;
 		cursor: pointer;
+	}
+	/* GuidingTrack's rail is thinner; its thumb inverts the palette — ink filled, accent ringed. */
+	.encore-slider-track[data-variant='guiding'] {
+		height: 4px;
+		border-radius: 4px;
 	}
 	.encore-slider-track {
 		height: 6px;

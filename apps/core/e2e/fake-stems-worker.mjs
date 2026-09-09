@@ -16,6 +16,12 @@
  * Fault injection, because the interesting defects are all in the unhappy paths:
  *   FAKE_SILENT_INSTRUMENTAL=1  publish a floor-level instrumental (the guard must refuse it)
  *   FAKE_SILENT_VOCALS=1        publish a floor-level vocals stem (must NOT fail the cook)
+ *   FAKE_NO_VOCALS=1            publish NO vocals stem at all — a real state, not a fault: worker-hub
+ *                               optional-chains `artifacts?.stems?.vocals` and its own comment says a
+ *                               worker that could not encode vocals "reports none". The song is still
+ *                               playable; it simply has no guiding track, because
+ *                               `hasGuidingTrack()` is `isPlayable(m) && !!m.vocalsRef`. This is the
+ *                               ONLY way to reach XR-PH-15's degraded arm on the layout rung.
  *   FAKE_SKIP_WRITE=1           report a ref for a file never written (the unservable path)
  *   FAKE_NO_PROFILE=1           complete with no songProfile (the gate must not deadlock)
  *   FAKE_FAIL=stems             fail that job type instead of completing it
@@ -121,11 +127,16 @@ ws.onmessage = async (/** @type {MessageEvent} */ ev) => {
 					insRef,
 					process.env.FAKE_SILENT_INSTRUMENTAL ? silence() : tone({ seconds: 8, hz: [220, 277.18, 329.63] })
 				);
-				writeRef(vocRef, process.env.FAKE_SILENT_VOCALS ? silence() : tone({ seconds: 8, hz: [440], amp: 0.2 }));
+				// FAKE_NO_VOCALS writes no vocals file, because it reports no vocals ref either.
+				if (!process.env.FAKE_NO_VOCALS) {
+					writeRef(vocRef, process.env.FAKE_SILENT_VOCALS ? silence() : tone({ seconds: 8, hz: [440], amp: 0.2 }));
+				}
 			}
 			await progress('separating', 90);
-			/** @type {{ stems: { instrumental: string, vocals: string }, songProfile?: Record<string, unknown> }} */
-			const artifacts = { stems: { instrumental: insRef, vocals: vocRef } };
+			/** @type {{ stems: { instrumental: string, vocals?: string }, songProfile?: Record<string, unknown> }} */
+			const artifacts = process.env.FAKE_NO_VOCALS
+				? { stems: { instrumental: insRef } }
+				: { stems: { instrumental: insRef, vocals: vocRef } };
 			// songProfile is a SIBLING of stems, never a member — the shape drift that once stalled
 			// every cook at "Separating vocals" forever. Publishing it correctly here is the point.
 			//

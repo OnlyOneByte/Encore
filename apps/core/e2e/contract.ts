@@ -88,6 +88,34 @@ export const SEL = {
 	 * song of the night.
 	 */
 	heroTitle: '.hero .song',
+
+	/*
+	 * The hero's LIVE-CONTROLS disclosure and the guiding track inside it (#835, XR-PH-15/XR-PH-03).
+	 * Added by #913, when those claims moved from the mount rung to p16: GuidingTrack's control is
+	 * Bits UI's slider now, which needs a real layout engine to exist, so `bun test` could no longer
+	 * mount the hero at all.
+	 */
+	/** The disclosure's toggle; `aria-expanded` on it is how a driver knows the panel is open. */
+	toolsToggle: '.tools-toggle',
+	/** The disclosure BODY. The explanation lives here, never in the collapsed summary. */
+	toolsBody: '.tools-body',
+	/** The sentence explaining a control that cannot work. Absent when nothing is owed. */
+	toolsNote: '.tools-note',
+	/** The collapsed summary's peek text, which must NOT carry the explanation. */
+	toolsPeek: '.tools-peek',
+	/** GuidingTrack's root; `.gt.disabled` is the subtree dimmed with opacity — XR-PH-03's subject. */
+	guidingTrackRoot: '.gt',
+	/** Its readout, which reads 'Off' rather than a live-looking number when the track is dead. */
+	guideReadout: '.gt-val',
+	/**
+	 * The vendored slider's root, by shadcn's OWN `data-slot` rather than an Encore class (#913). That
+	 * choice is the point: a class in a copied-in component belongs to the component and a re-vendor
+	 * may rename it, while `data-slot` is the contract shadcn itself maintains.
+	 *
+	 * Note it is NOT `input[type="range"]` — see `hueSlider`, which still is one. GuidingTrack's
+	 * control stopped being a native range in #913; the colour picker's hue rail did not.
+	 */
+	slider: "[data-slot='slider']",
 	/** Back to the queue from the results view — it CLEARS the search (#902). Renders only while a query
 	 *  is present; with an empty box the queue is already showing. The phone's own Back gesture at the
 	 *  empty-box home leaves the room, as it always has under direction A. */
@@ -410,6 +438,48 @@ export const HOOKS: Hook[] = [
 		why: 'the playing song is read off the hero, because a playing entry renders no queue row'
 	},
 	{
+		id: 'toolsToggle',
+		file: 'src/lib/components/NowPlayingHero.svelte',
+		anchor: 'class="tools-toggle"',
+		why: 'p16 opens the live-controls disclosure through it and reads aria-expanded to know it is open'
+	},
+	{
+		id: 'toolsBody',
+		file: 'src/lib/components/NowPlayingHero.svelte',
+		anchor: 'class="tools-body"',
+		why: 'the explanation must sit inside the body, which is what keeps it out of the collapsed summary'
+	},
+	{
+		id: 'toolsNote',
+		file: 'src/lib/components/NowPlayingHero.svelte',
+		anchor: 'class="tools-note"',
+		why: 'XR-PH-15 IS this sentence; p16 asserts its presence for a dead control and its absence for a live one'
+	},
+	{
+		id: 'toolsPeek',
+		file: 'src/lib/components/NowPlayingHero.svelte',
+		anchor: 'class="tools-peek"',
+		why: 'the summary must not shout the explanation at a singer who has not opened the panel'
+	},
+	{
+		id: 'guidingTrackRoot',
+		file: 'src/lib/components/GuidingTrack.svelte',
+		anchor: 'class:disabled={!available}',
+		why: 'XR-PH-03 is a containment question about THIS dimmed subtree, so the dimming is the anchor'
+	},
+	{
+		id: 'guideReadout',
+		file: 'src/lib/components/GuidingTrack.svelte',
+		anchor: 'class="gt-val"',
+		why: "a dead guiding track reads 'Off' rather than a live-looking percentage"
+	},
+	{
+		id: 'slider',
+		file: 'src/lib/components/ui/slider/slider.svelte',
+		anchor: 'data-slot="slider"',
+		why: 'the vendored slider is addressed by shadcn own data-slot, which survives a re-vendor'
+	},
+	{
 		id: 'backToQueue',
 		file: 'src/routes/+page.svelte',
 		anchor: 'class="back-btn" onclick={clearSearch}',
@@ -553,7 +623,7 @@ export const HOOKS: Hook[] = [
 		id: 'guidingTrack',
 		file: 'src/lib/components/GuidingTrack.svelte',
 		anchor: 'aria-label="Guiding track — original vocal level"',
-		why: 'the flow mixes the original vocals back in through this range input'
+		why: 'the flow mixes the original vocals back in through this control — a <Slider> since #913, not a range input, though the aria-label anchoring it is deliberately unchanged'
 	},
 
 	// per-song stage background hook removed: the stage look now lives only in room settings, so the
