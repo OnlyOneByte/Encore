@@ -151,8 +151,8 @@ function inlineTransitionProps(css: string): string[] {
 	// it -- yet it lands as a real inline style, which no @media wrapper or reduce reset can ever cover.
 	// Three spellings: `el.style.transition = ...`, the camelCased `el.style.webkitTransition = ...` /
 	// `el.style.transitionProperty = ...`, and `el.style.setProperty('transition', ...)`
-	// (this repo already writes setProperty on documentElement.style at routes/+page.svelte:510 and
-	// QueueSheet.svelte:60, so a `transition` write is one identifier away from a live idiom). The value
+	// (this repo already writes setProperty on documentElement.style at routes/+page.svelte — see the
+	// --dock-h and --undo-h writers — so a `transition` write is one identifier away from a live idiom). The value
 	// is script-computed and opaque at scan time, so report it via the SAME sentinel a braced directive
 	// uses -- two spellings of one inline-transition defect must not read as two causes.
 	for (const _m of markup.matchAll(/\.style\.(?:transition|webkitTransition|transitionProperty)\s*=/g)) {

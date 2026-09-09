@@ -65,8 +65,14 @@ function readTapToken() {
 /** The 16px iOS-zoom threshold — XR-VER-10. A WebKit behaviour, not a published success criterion. */
 export const MIN_FIELD_PX = 16;
 
-/** The sheet cap, as a FRACTION of the visual viewport: `max-height: 82dvh`. XR-VER-11. */
-export const SHEET_CAP_FRACTION = 0.82;
+/*
+ * RETIRED IN #903 — `SHEET_CAP_FRACTION = 0.82`, the queue sheet's cap as a fraction of the visual
+ * viewport (XR-VER-11). Its source declaration was `max-height: 82dvh` in QueueSheet.svelte, and the
+ * whole drawer surface was deleted, so the number had nothing left to mirror and its CLAIM 3 arm was
+ * removed rather than re-pointed: nothing docked caps itself in a viewport fraction now — the docked
+ * band is sized by its own content and published as --dock-h. Do not re-add it without a surface that
+ * actually declares a viewport-fraction cap.
+ */
 
 /** A simulated home-indicator inset, in px, used to prove the safe-area term is really composed in. */
 export const SIMULATED_BOTTOM_INSET = 34;
