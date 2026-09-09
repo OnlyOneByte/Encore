@@ -21,6 +21,7 @@ from src.lyrics.chain import (
     SOURCE_LRCLIB,
     TIMING_LINE,
     LyricsText,
+    candidate_last_end,
 )
 from src.processor import JobSpec
 from src.steps.lyrics import GradeAndSelect
@@ -150,3 +151,77 @@ def test_an_overshooting_published_pick_is_not_reported_as_demoted(tmp_path):
     note = overshoot_notes[0]
     assert "demoted" not in note.lower(), note  # RED ON BASE: base note says "demoted in selection"
     assert "PUBLISHED anyway" in note, note
+
+
+# --- #739: the verdict ladder PR #733 added (steps/lyrics.py) wrote two claims its one local fact,
+# `is_published`, does not carry. F1 asserted "no candidate that fits the audio" from it, which is
+# false whenever the COMPARATIVE overshoot penalty is smaller than the overshooter's score lead. F2
+# dropped `is_published` entirely, so a tolerated overshoot on a REJECTED rival read as one on the
+# lyrics that shipped. Neither #731 test above can see either arm: `:116` drives a FLIPPING (+80%)
+# overshoot, and `:137` drives a lone overshooter with no rival in the pool at all.
+
+#: The audible words — what the ASR baseline heard off this recording.
+AUDIBLE_268 = (
+    "once upon a time i was falling in love but now im only falling apart "
+    "theres nothing i can do a total eclipse of the heart"
+)
+#: A LONGER MASTER: every audible word plus a tail this recording does not contain. High agreement,
+#: and its own timings run to 300s against 268s of audio — +12%, just past OVERSHOOT_FRACTION_MAX.
+LONGER_MASTER_300 = (
+    AUDIBLE_268 + " turn around bright eyes turn around bright eyes every now and then i know"
+)
+#: A poorer transcription of THIS recording: lower agreement, but its timings stop at 265s, inside
+#: the audio. Chosen so the +12% penalty (0.646 -> 0.526) does NOT close the gap to its 0.506, which
+#: is the whole reachable trigger — the overshooter publishes with a fitting rival in the pool.
+FITS_THIS_RECORDING_265 = (
+    "once upon a day i was drifting in love yet now im merely falling away "
+    "theres little else i can do a partial eclipse of my heart"
+)
+
+
+def test_a_published_overshoot_does_not_claim_nothing_fit_when_a_fitting_rival_was_in_the_pool(
+    tmp_path,
+):
+    """#739 F1: a NON-FLIPPING overshoot. `overshoot_penalized` subtracts the overshoot fraction, so
+    at +12% it takes 0.646 to 0.526 and the overshooter still beats the 0.506 rival whose timings fit
+    the audio. Base words this from `is_published` alone and emits "no candidate that fits the audio"
+    verbatim — false, since `fits-this-recording` was fetched, graded, and never published. Head must
+    not make that claim, and must name the candidate that did fit."""
+    over = _timed(SOURCE_LRCLIB, LONGER_MASTER_300, "longer-master", per_word_end=300.0)
+    fits = _timed(SOURCE_CAPTIONS, FITS_THIS_RECORDING_265, "fits-this-recording", per_word_end=265.0)
+    baseline = _timed(SOURCE_ASR, AUDIBLE_268, "whisper/vocals", per_word_end=265.0, role=ROLE_BASELINE)
+
+    ctx, notes = _run_step([over, fits, baseline], 268.0, tmp_path)
+
+    # the trigger: the penalty did NOT flip the pick, and the rival that fits stayed unpublished
+    assert [p.variant for p in ctx.lyrics.selection.publish] == ["longer-master"]
+    assert candidate_last_end(fits) is not None and candidate_last_end(fits) <= 268.0
+    overshoot_notes = [n for n in notes if "overshoot" in n.lower() and "longer-master" in n]
+    assert overshoot_notes, notes
+    note = overshoot_notes[0]
+    assert "PUBLISHED anyway" in note, note
+    # RED ON BASE: base emits ", no candidate that fits the audio" on exactly this shape
+    assert "no candidate that fits the audio" not in note, note
+    assert "fits-this-recording" in note, note
+
+
+def test_a_tolerated_overshoot_on_a_rejected_candidate_says_it_was_not_published(tmp_path):
+    """#739 F2: the published pick does not overshoot at all (last_end 90s of 100s), and the only
+    overshoot line in the log is about a REJECTED rival 5s long — inside the tolerance band, so no
+    demotion fires. Base emits a bare "within tolerance", which reads as the shipped lyrics
+    overrunning by 5s. Head must say it was not published, and which variant was."""
+    fits = _timed(SOURCE_CAPTIONS, AUDIBLE_268, "fits-the-audio", per_word_end=90.0)
+    mildly_long = _timed(SOURCE_LRCLIB, FITS_THIS_RECORDING_265, "mildly-long", per_word_end=105.0)
+    baseline = _timed(SOURCE_ASR, AUDIBLE_268, "whisper/vocals", per_word_end=90.0, role=ROLE_BASELINE)
+
+    ctx, notes = _run_step([fits, mildly_long, baseline], 100.0, tmp_path)
+
+    # the trigger: what shipped fits the audio; the overshooting candidate is the one that lost
+    assert [p.variant for p in ctx.lyrics.selection.publish] == ["fits-the-audio"]
+    tolerance_notes = [n for n in notes if "within tolerance" in n]
+    assert tolerance_notes, notes
+    note = tolerance_notes[0]
+    assert "mildly-long" in note and "+5s" in note, note
+    # RED ON BASE: base's verdict is the bare string "within tolerance" with nothing after it
+    assert "NOT published" in note, note
+    assert "fits-the-audio" in note, note
