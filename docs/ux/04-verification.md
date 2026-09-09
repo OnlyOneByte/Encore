@@ -585,11 +585,12 @@ what is measured.
   bare `44px` literals against 5 files using `var(--tap)` — and that is a token-layer requirement,
   not a verification one.
 - **A guard for the six zero-token dimensions.** A "no literal that duplicates a token" guard can
-  only compare against a token that exists, so `design-system.test.ts` passes *correctly* and
-  reports nothing about the ~391 literals. The requirement is to mint the token axes; the guard
+  only compare against a token that exists, so `design-system.test.ts` passed *correctly* and
+  reported nothing about the ~391 literals. The requirement is to mint the token axes; the guard
   follows for free and belongs with the axis, not here. Worth stating once as sequencing: **a new
   token axis lands with its guard in the same change**, or the ~391-literal backlog surfaces as a
-  reviewer-facing wall of red.
+  reviewer-facing wall of red. *(Five of the six axes have since landed — see `01-tv.md` Group 2.
+  `font-family` and easing have not, so the sequencing rule still applies to them.)*
 - **A `prefers-reduced-motion` coverage requirement.** Already both stated and enforced —
   `motion.test.ts` rejects the Svelte directives outright and three floors at `:220/:270/:497`
   keep its scope honest. XR-VER-15 adds only the class-name arm that is genuinely invisible today.

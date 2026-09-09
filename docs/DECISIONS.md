@@ -161,9 +161,17 @@ Consequences that shape any change here:
 
 ## Ratified: the UI redesign — direction, palette, TV states (decided 2026-09-09)
 
-**Nothing here is implemented yet.** These are owner rulings; the requirements they imply are in
-[`ux/`](ux/README.md) (109 XR rows), and the work is tracked in GitHub issues. A pass proposing an
-alternative to anything in this section is re-opening a ratified decision.
+These are owner rulings; the requirements they imply are in [`ux/`](ux/README.md) (105 XR rows), and
+the work is tracked in GitHub issues. A pass proposing an alternative to anything in this section is
+re-opening a ratified decision.
+
+**Implementation status, as of 2026-09-09 (this section originally read "nothing here is implemented
+yet", which stopped being true within hours).** The palette, the token scales, the guard layer, the
+phone direction A+B, the drag mode and the authority rulings all shipped. **The two largest
+user-visible items did not:** the TV type floor (#821 — a clamp ladder shipped instead, and
+`--ui-scale` does not exist in code) and the TV states plus the attract phrase system (#826 — the
+screens exist in a pre-redesign shape). Both were undispatchable for a labelling reason rather than a
+technical one. Check the issue before assuming a decision below is live in the product.
 
 ### Phone — direction A + B
 
