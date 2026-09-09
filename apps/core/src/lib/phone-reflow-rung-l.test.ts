@@ -76,8 +76,11 @@ test('the reflow probe covers every XR-PH-02 surface, and /stats by name (#850)'
 		expect(PROBE).toContain(`measure('${surface}', '${surface}')`);
 	}
 	expect(PROBE).toMatch(/measure\('\/',\s*'\/'\)/);
-	// The browse screen needs a session, so it is reached by joining from inside the page.
-	expect(PROBE).toMatch(/measureRaw\('browse \(joined \/\)',\s*'\/'\)/);
+	// The browse screen needs a session, so the probe joins from inside the page and then measures it
+	// like the other four (#857 fixed; it was quarantined here until the fix landed). It is `?browse=1`
+	// — the joined `/` opens the song list (Direction B, #833) — and it is SEARCHED first so the real
+	// offender renders (see the non-vacuity test below), then measured in place (`skipNav`).
+	expect(PROBE).toMatch(/measure\('browse \(joined \/, searched\)',\s*'\/\?browse=1',\s*\{\s*skipNav:\s*true\s*\}\)/);
 	expect(PROBE).toMatch(/'\/api\/join'/);
 });
 
@@ -92,15 +95,32 @@ test('the reflow probe FAILS on an overflow instead of merely reporting one (#85
 	expect(PROBE).toMatch(/build['"],\s*['"]client/);
 });
 
-test('the browse-screen quarantine is rot-proofed: it reds the day its issue is fixed (#850)', () => {
-	// ONE surface is quarantined, and the entry is only allowed to exist because the probe asserts the
-	// defect is STILL THERE. Without that arm the entry outlives its own fix and un-enforces the
-	// surface forever — which is exactly how a green suite came to sit over #850.
-	expect(PROBE).toMatch(/BROWSE_QUARANTINE_ISSUE\s*=\s*857\b/);
-	expect(PROBE).toMatch(/browseOver\s*>\s*0/);
-	// Shrink-only: exactly one quarantined surface. A second one must be argued for here, not added
-	// quietly to the probe.
-	expect(PROBE.match(/BROWSE_QUARANTINE_ISSUE/g)?.length).toBeGreaterThanOrEqual(2);
+test('the browse arm is MEASURED, DISCRIMINATING, and renders its real offender (#857)', () => {
+	// #857 fixed the browse-screen reflow, so the surface is now asserted like the other four rather
+	// than recorded as a known overflow. The quarantine that used to live here reddened the day the fix
+	// landed (its arm asserted the surface STILL overflowed) and was deleted, per XR-VER-06/07 — a
+	// resolved quarantine is removed, never left to sit green over a fixed defect. Its machinery must be
+	// gone: no residual constant, and no "still overflows" arm that would re-quarantine the surface.
+	expect(PROBE).not.toMatch(/BROWSE_QUARANTINE_ISSUE/);
+	expect(PROBE).not.toMatch(/browseOver/);
+	// The browse measurement must FAIL on an overflow like the others — proven by the shared `measure()`
+	// call asserted above, not a `measureRaw` that reads without asserting.
+	expect(PROBE).not.toMatch(/measureRaw\('browse/);
+	// NON-VACUITY + DISCRIMINATION (XR-VER-05). An EMPTY joined room renders no rows, so a bare browse
+	// measurement is a clean 320 over an unexercised layout — a green guard insensitive to the fix, which
+	// is exactly why the first version of this arm was rejected. So the arm SEARCHES the browse screen
+	// first — via the shared `openBrowseFromHome` step (#832) and a `fill` of the contract's `SEL.search`
+	// hook — which surfaces the canned result set whose long-duration entries render the odd-duration
+	// chip, the widest #857 offender. It then waits for the rows to land (`SEL.songRow`) and bails rather
+	// than measures if none did, so an empty read can never masquerade as a pass. With the fix reverted
+	// this arm reds ("over by 11px"); with it, green.
+	expect(PROBE).toMatch(/openBrowseFromHome\(page\)/);
+	expect(PROBE).toMatch(/\.fill\(SEL\.search,\s*'caroline'\)/);
+	expect(PROBE).toMatch(/SEL\.songRow/);
+	expect(PROBE).toMatch(/the browse search returned no rows/);
+	// It must NOT depend on cooking a song: the earlier cooking-seed approach measured a chip that
+	// wraps on its own, so it never overflowed and never discriminated.
+	expect(PROBE).not.toMatch(/make-karaoke/);
 });
 
 // ---------------------------------------------------------------------------------------------------
@@ -127,4 +147,60 @@ test('the /stats tile grid floors its tracks in a TYPE-RELATIVE unit, never px (
 		// overflow itself — the same defect one level up.
 		expect(rule).toMatch(/min\(\s*100%/);
 	}
+});
+
+// ---------------------------------------------------------------------------------------------------
+// The #857 fix mechanisms, pinned as source scans. The browse arm above DRIVES and MEASURES the
+// odd-duration chip offender live and reds without its fix, so that one is not honour-system — the
+// scan here is its cheap always-on companion. The KEY control and the sheet-level floor, by contrast,
+// only manifest with a now-playing song (the key control renders in the queue sheet under live,
+// WS-driven playback), which the self-hosting probe cannot start; per the reviewer's accepted
+// alternative, this is the clear statement that the harness cannot reach those offenders plus the
+// source-scan assertion that stands in for the live measurement. None of these decides whether the
+// page overflows — each decides whether the mechanism that stopped it is still declared.
+// ---------------------------------------------------------------------------------------------------
+
+const APP_CSS_PATH = join(CORE, 'src', 'app.css');
+const PAGE_PATH = join(CORE, 'src', 'routes', '+page.svelte');
+const SONG_ROW_PATH = join(CORE, 'src', 'lib', 'components', 'SongRow.svelte');
+const APP_CSS = stripComments(readFileSync(APP_CSS_PATH, 'utf8'));
+const PAGE = stripComments(readFileSync(PAGE_PATH, 'utf8'));
+const SONG_ROW = stripComments(readFileSync(SONG_ROW_PATH, 'utf8'));
+
+test('the odd-duration chip wraps its phrase instead of forcing the row wider (#857)', () => {
+	// The offender the browse arm above measures. Every other SongRow chip is a short token, so `.chip`'s
+	// blanket `white-space: nowrap` is fine for them — but this one carries a whole phrase ("Longer than a
+	// song"), and nowrap made its min-content width its FULL width (~230px at 200%), so it could not shrink
+	// and pushed the browse page past 320px. It must be allowed to wrap, like `.chip.state` already is.
+	const oddDurRule = SONG_ROW.match(/\.chip\.odd-dur\s*\{([^}]*)\}/)?.[1] ?? '';
+	expect(oddDurRule).toMatch(/white-space:\s*normal/);
+});
+
+test('the queue sheet floors its own reflow: its children can shrink below their content (#857)', () => {
+	// `.sheet-surface` is `left:0; right:0`, so its used width should resolve to min(max-width,
+	// viewport). That bound only holds while the flex column CAN shrink to it — a flex child's automatic
+	// minimum is its min-content width, and an unbreakable control label at 200% exceeds 320px, so
+	// without `min-width: 0` on the children the sheet was sized by content it could not shrink below
+	// and resolved to 436px in a 320px viewport. The live harness cannot reach this (it needs a
+	// now-playing song); this scan is its stand-in.
+	expect(APP_CSS).toMatch(/\.sheet-surface\s*>\s*\*\s*\{[^}]*min-width:\s*0/);
+});
+
+test('the key row wraps and its ±semitone buttons can shrink at 200% text (#857)', () => {
+	// The queue sheet's key control, named in the issue's offender list. It renders only under live
+	// playback, which the probe cannot start — so it is pinned here rather than measured. `.key` is a
+	// flex row of two `flex: 1` buttons whose label is the single unbreakable word "semitone"; at 200%
+	// each is ~172px, so two-up plus the label forced the row — and the sheet around it — past 320px.
+	// The row must be allowed to WRAP…
+	const keyRule = APP_CSS.match(/\.key\s*\{([^}]*)\}/)?.[1] ?? PAGE.match(/\.key\s*\{([^}]*)\}/)?.[1] ?? '';
+	expect(keyRule).toMatch(/flex-wrap:\s*wrap/);
+	// …and each button must free its flex minimum so the shrink is allowed at all. A bare `flex: 1`
+	// (basis 0 but min-width:auto) cannot go below the word's min-content width — the exact shape that
+	// overflowed. `min-width: 0` is the load-bearing declaration.
+	const keyBtnRule = PAGE.match(/\.key button\s*\{([^}]*)\}/)?.[1] ?? '';
+	expect(keyBtnRule).toMatch(/min-width:\s*0/);
+	// A single full-width button can still be narrower than "semitone", so the word itself must be able
+	// to break — otherwise a one-per-row wrap still overflows by the width of the word minus the button.
+	const keyBtnClassRule = PAGE.match(/\.key-btn\s*\{([^}]*)\}/)?.[1] ?? '';
+	expect(keyBtnClassRule).toMatch(/overflow-wrap:\s*anywhere/);
 });
