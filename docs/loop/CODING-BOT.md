@@ -179,7 +179,11 @@ premise. Either way the repo's own zero-dep CDP driver in `apps/core/e2e/` remai
 run it against a throwaway loopback server, read the frames you capture, and embed them. A screenshot
 you did not open is not evidence.
 
-Then `PR: <full URL>` and add `review:pending` to the PR.
+Then `PR: <full URL>` and add `review:pending` to the PR. That label is **board state, not a trigger**:
+the review lane polls every open PR and buckets on "no verdict at the current head", so your PR is
+reviewed whether or not the label is set (measured on #781). Set it anyway — it is what tells the board,
+and the conductor, that this PR is waiting on review. See
+[`LABELS.md`](LABELS.md#labels-still-doing-trigger-duty).
 
 ## 6. Review — you do not review yourself
 
