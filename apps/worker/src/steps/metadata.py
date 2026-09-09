@@ -30,24 +30,41 @@ class Annotate(Step):
 
     name = "annotate"
     stage = Stage.DOWNLOADING
-    reads = frozenset({"job", "audio.duration_sec"})
+    reads = frozenset({"job", "audio.duration_sec", "audio.youtube_credit"})
     writes = frozenset({"out"})
 
     def __init__(self, annotator: Any = None) -> None:
         self._annotator = annotator
 
     def applies(self, ctx: Ctx) -> bool:
-        return self._annotator is not None
+        # Runs whenever there is a YouTube credit to publish, OR an annotator to query. A local job with
+        # no annotator and no credit has nothing to do.
+        return self._annotator is not None or ctx.audio.youtube_credit is not None
 
     async def run(self, ctx: Ctx) -> AsyncIterator[ProgressEvent | StepResult]:
         from ..metadata.annotate import annotate_or_reason
 
         params = ctx.params
+        credit = ctx.audio.youtube_credit
+
+        # YouTube's OWN declared credit is a citation, so it is PREFERRED over the title parser and
+        # published up front (#672). MusicBrainz can still upgrade it — a match adds an MBID and
+        # duration corroboration — so it is not the end of the story, just the floor. When present it
+        # also becomes the MusicBrainz QUERY KEY: the bad-title-parse that used to defeat the lookup
+        # ("No Vocal", "American Idol 2024") is exactly what the citation replaces, so querying with the
+        # citation is what lets MusicBrainz find the song at all.
+        if credit:
+            ctx.out.artifacts["annotation"] = dict(credit)
+            ctx.note(f"identified from YouTube metadata ({credit['artist']} — {credit['title']})")
+
+        if self._annotator is None:
+            return
+
+        query_artist = credit["artist"] if credit else params.get("artist")
+        query_track = credit["title"] if credit else params.get("track")
 
         def _call():
-            return annotate_or_reason(
-                self._annotator, params.get("artist"), params.get("track"), params.get("durationSec")
-            )
+            return annotate_or_reason(self._annotator, query_artist, query_track, params.get("durationSec"))
 
         # Run the lookup through run_blocking, exactly as the sibling blocking steps do (lyrics AcquireTexts,
         # analysis SongProfile). A raw asyncio.to_thread here emitted NOTHING for the whole MusicBrainz wait,
@@ -69,13 +86,17 @@ class Annotate(Step):
         except Exception as exc:  # noqa: BLE001 — annotation is an enrichment; never a job failure
             got, reason = None, f"lookup crashed: {exc}"
         if got is not None:
+            # A MusicBrainz match is strictly more informative (it carries an MBID) so it overwrites the
+            # YouTube floor. The core's applyAnnotation never-regress rule protects a prior high citation
+            # regardless of which source wrote it.
             ctx.out.artifacts["annotation"] = got.as_artifact()
             ctx.note("identified against MusicBrainz")
-        else:
+        elif credit is None:
             # The decline used to be SILENT on every path — a throttled box declines every annotation
             # indefinitely (ENCORE_ANNOTATE is on by default, so this runs on every fetch) and an
             # operator had no way to tell that from a healthy "nothing agreed on the names" miss. The
-            # reason distinguishes them, carrying the rate gate's counters when it was a throttle.
+            # reason distinguishes them, carrying the rate gate's counters when it was a throttle. When a
+            # YouTube credit already stands, the MusicBrainz decline is expected enrichment, not a gap.
             ctx.note(f"annotation declined: {reason or 'no reason'}")
 
 

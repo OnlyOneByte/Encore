@@ -92,3 +92,46 @@ test('an unrecognised confidence is treated as medium, never as high', () => {
 	applyAnnotation('m1', catalog(m), { ...HIGH, confidence: 'VERY high' });
 	expect(m.annotation?.confidence).toBe('medium');
 });
+
+// #672: YouTube's OWN declared credit is a citation, applied through the same path. It carries NO
+// MBID (YouTube mints none), and the never-regress rule protects it exactly like a MusicBrainz one.
+const YT = { source: 'youtube', artist: 'a-ha', title: 'Take On Me', confidence: 'high' };
+
+test('a YouTube citation applies WITHOUT an mbid and records source "youtube"', () => {
+	const m = media();
+	expect(applyAnnotation('m1', catalog(m), YT)).toBe(true);
+	expect(m.artistCanonical).toBe('a-ha');
+	expect(m.titleCanonical).toBe('Take On Me');
+	expect(m.annotation).toEqual({ source: 'youtube', confidence: 'high' });
+	expect(m.mbid).toBeUndefined(); // YouTube does not mint one
+	expect(m.artist).toBe('ahaVEVO'); // raw provenance untouched
+});
+
+test('a MusicBrainz match UPGRADES a YouTube citation (it adds an MBID)', () => {
+	const m = media();
+	applyAnnotation('m1', catalog(m), YT);
+	expect(applyAnnotation('m1', catalog(m), HIGH)).toBe(true); // high beats high — re-identification
+	expect(m.annotation?.source).toBe('musicbrainz');
+	expect(m.mbid).toBe('mb-1');
+});
+
+test('THE INVARIANT holds across sources: a medium cannot downgrade a high YouTube citation', () => {
+	const m = media();
+	applyAnnotation('m1', catalog(m), YT); // high youtube
+	expect(applyAnnotation('m1', catalog(m), MEDIUM)).toBe(false); // medium musicbrainz refused
+	expect(m.annotation).toEqual({ source: 'youtube', confidence: 'high' });
+});
+
+test('a YouTube payload missing a field is not half-applied', () => {
+	const m = media({ artistCanonical: 'guessed' });
+	expect(applyAnnotation('m1', catalog(m), { source: 'youtube', artist: 'a-ha', confidence: 'high' })).toBe(false);
+	expect(m.artistCanonical).toBe('guessed');
+});
+
+test('an unknown annotation source writes nothing', () => {
+	const m = media({ artistCanonical: 'guessed' });
+	expect(
+		applyAnnotation('m1', catalog(m), { source: 'normalizer', artist: 'a-ha', title: 'Take On Me' })
+	).toBe(false);
+	expect(m.artistCanonical).toBe('guessed');
+});

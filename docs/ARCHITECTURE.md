@@ -624,15 +624,15 @@ coarse `Stage` values are what the phone's progress bar reads; the step names ar
 
 | # | step | stage | reads | writes |
 |---|---|---|---|---|
-| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path` |
-| 2 | `annotate` | downloading | `audio.duration_sec`, `job` | `out` |
+| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
+| 2 | `annotate` | downloading | `audio.duration_sec`, `audio.youtube_credit`, `job` | `out` |
 | 3 | `publish-original` | downloading | `audio.path` | `out` |
 
 **`stems`** — stages: downloading → separating
 
 | # | step | stage | reads | writes |
 |---|---|---|---|---|
-| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path` |
+| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
 | 2 | `decode-to-wav` | separating | `audio.path`, `runner`, `work` | `audio.decoded_wav` |
 | 3 | `separate` | separating | `audio.decoded_wav`, `engines`, `runner`, `work` | `out`, `stems.raw` |
 | 4 | `probe-silence` | separating | `runner`, `stems.raw` | `stems` |
@@ -643,7 +643,7 @@ coarse `Stage` values are what the phone's progress bar reads; the step names ar
 
 | # | step | stage | reads | writes |
 |---|---|---|---|---|
-| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path` |
+| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
 | 2 | `decode-to-wav` | separating | `audio.path`, `runner`, `work` | `audio.decoded_wav` |
 | 3 | `separate` | separating | `audio.decoded_wav`, `engines`, `runner`, `work` | `out`, `stems.raw` |
 | 4 | `probe-silence` | separating | `runner`, `stems.raw` | `stems` |
@@ -654,7 +654,7 @@ coarse `Stage` values are what the phone's progress bar reads; the step names ar
 
 | # | step | stage | reads | writes |
 |---|---|---|---|---|
-| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path` |
+| 1 | `acquire-audio` | downloading | `job`, `runner` | `audio.duration_sec`, `audio.is_local`, `audio.path`, `audio.vocals_path`, `audio.youtube_credit` |
 | 2 | `fetch-captions:authored` | downloading | `audio.is_local`, `job`, `runner`, `work` | `lyrics.authored_cues` |
 | 3 | `fetch-captions:machine` | downloading | `audio.is_local`, `job`, `runner`, `work` | `lyrics.machine_cues` |
 | 4 | `acquire-texts` | aligning | `audio.duration_sec`, `audio.path`, `audio.vocals_path`, `job`, `lyrics.authored_cues`, `lyrics.machine_cues` | `lyrics.texts` |

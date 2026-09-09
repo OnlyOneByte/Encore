@@ -312,7 +312,14 @@ def test_find_downloaded_ignores_partial_downloads():
         assert fetch_mod.find_downloaded(d, "id1") is None
         open(_os.path.join(d, "id1.webm.part"), "w").close()
         assert fetch_mod.find_downloaded(d, "id1") is None  # an interrupted download is not a result
+        # #672: --write-info-json drops `<id>.info.json` beside the audio. `.info.json` sorts BEFORE
+        # `.webm`/`.m4a` in the `sorted(os.listdir(...))` scan, so without the skip it would be
+        # returned as ctx.audio.path on every fresh download (and the retained-original early-return
+        # would then point at the JSON). It is metadata, never the audio.
+        open(_os.path.join(d, "id1.info.json"), "w").close()
+        assert fetch_mod.find_downloaded(d, "id1") is None  # the info sidecar alone is not a result
         open(_os.path.join(d, "id1.webm"), "w").close()
+        # `.info.json` sorts first, but the real audio must still be the one returned.
         assert fetch_mod.find_downloaded(d, "id1").endswith("id1.webm")
 
 

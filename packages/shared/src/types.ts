@@ -72,10 +72,14 @@ export interface Media {
 	mbid?: string;
 	/**
 	 * How `artistCanonical`/`titleCanonical` came to be trusted. `musicbrainz` means a citation with an
-	 * MBID; `normalizer` means a title parse and nothing more. Kept because the two are not equal
-	 * evidence and the difference decides whether a later annotation may overwrite them.
+	 * MBID; `youtube` means YouTube's OWN extracted `track`/`artist` metadata, captured at download time
+	 * (a citation, `high`, no MBID — the uploader declared the credit rather than us guessing it);
+	 * `normalizer` means a title parse and nothing more. Kept because the three are not equal evidence
+	 * and the difference decides whether a later annotation may overwrite them (see applyAnnotation's
+	 * never-regress rule). `youtube` and `musicbrainz` are both citations and neither may be downgraded
+	 * to a `normalizer` guess.
 	 */
-	annotation?: { source: 'musicbrainz' | 'normalizer'; confidence: 'high' | 'medium' };
+	annotation?: { source: 'musicbrainz' | 'youtube' | 'normalizer'; confidence: 'high' | 'medium' };
 	durationSec: number;
 	thumbnail?: string;
 	/**
