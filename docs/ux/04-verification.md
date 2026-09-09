@@ -11,14 +11,16 @@ Measured on `main` at read time. The brief's **242 cases / 38 design-enforcing f
 survive / 68 retarget / 27 retire / 19 at risk** is taken as given and not re-derived; these are
 the file-level facts a requirement can be anchored to.
 
-**Scan-helper consumers — 10 files.** The named helpers (`svelteFiles`, `styleFiles`,
-`classPresent`, `markupControls`, `allSvelte`):
+**Scan-helper consumers — 11 files** (10 before issue #841 added the guard over the helpers
+themselves). The named helpers (`svelteFiles`, `styleFiles`, `classPresent`, `markupControls`;
+`allSvelte` is deleted):
 
 `apps/core/e2e/contract.test.ts` · `apps/core/src/lib/components/motion.test.ts` ·
 `apps/core/src/lib/contrast.test.ts` · `apps/core/src/lib/design-system.test.ts` ·
 `apps/core/src/lib/icon-centring.test.ts` · `apps/core/src/lib/settings-scopes.test.ts` ·
-`apps/core/src/lib/singer-color.test.ts` · `apps/core/src/lib/touch-targets.test.ts` ·
-`apps/core/src/lib/tv/stage-scale.test.ts` · `apps/core/src/lib/ui/icons.test.ts`
+`apps/core/src/lib/singer-color.test.ts` · `apps/core/src/lib/test-helpers.test.ts` ·
+`apps/core/src/lib/touch-targets.test.ts` · `apps/core/src/lib/tv/stage-scale.test.ts` ·
+`apps/core/src/lib/ui/icons.test.ts`
 
 **Files reading `.svelte` or `.css` source text — 63.** The superset: adds the per-component
 pins (`trend-tap-target`, `song-row-sparkle-sibling`, `processing-card-fullwidth`,
@@ -33,7 +35,33 @@ its *test-case* count. Either a coincidence or a units error in the retirement a
 not resolved. If it is a units error the 128/68/27/19 split is a split of **files**, and the
 at-risk population is materially larger than 19 cases.
 
-**Helper definition sites — four of five are per-file copies:**
+**Helper definition sites — all five now share one home** (issue #841, `XR-VER-14`). Every one is
+defined in `apps/core/src/lib/test-helpers.ts` and imported; `allSvelte` is gone, having been a
+verbatim copy of `svelteFiles` under another name.
+
+| Helper | Defined at | Shared? |
+|---|---|---|
+| `svelteFiles` | `apps/core/src/lib/test-helpers.ts` | exported, shared |
+| `styleFiles` | `apps/core/src/lib/test-helpers.ts` | exported, shared — `svelteFiles` deliberately widened to `.css` so `app.css` is in scope |
+| `markupControls` | `apps/core/src/lib/test-helpers.ts` | exported, shared |
+| `classPresent` | `apps/core/src/lib/test-helpers.ts` | exported, shared |
+| ~~`allSvelte`~~ | — | deleted; `e2e/contract.test.ts` imports `svelteFiles` |
+
+All five walk through **one** recursive `walk()` with a single `SKIP_DIRS` set
+(`node_modules`, `build`, `.svelte-kit`, `dist`, `.git`) and **no** directory allowlist, so
+`src/lib/components/ui/` is in scope by construction rather than by someone remembering to add it.
+`apps/core/src/lib/test-helpers.test.ts` reds if a consumer declares or calls **one of these five names**
+without importing it, or if the shared walk gains a second `readdirSync` or an allowlist. Its scan is
+**name-keyed, and that is its limit**: a rival walker reintroduced under a *different* name leaves the
+suite green. Measured, not assumed — three consumers carry exactly such a walker today (`tsSources` in
+`components/motion.test.ts`, `tsFiles` in `ui/icons.test.ts`, `allDrivers` in `e2e/contract.test.ts`)
+and the suite is green with all three present. Closing that needs a ban on any second recursive
+directory walk in a consumer, which cannot land until those three are consolidated or carried on an
+annotated baseline — the follow-up issue below. Six more walkers with
+their own globs remain out of this set and out of scope here — `e2eDrivers`, `allDrivers`,
+`productionFiles`, `productionSources`, `tsFiles`, `routePages` — worth their own issue.
+
+**The state this replaced — four of five were per-file copies:**
 
 | Helper | Defined at | Shared? |
 |---|---|---|
@@ -311,9 +339,9 @@ what is measured.
 | **Statement** | The helpers that determine a design guard's scope are defined once and imported, not copied per test file. |
 | **Surfaces** | All (harness-level) |
 | **Rationale** | Four of the five helpers are per-file copies, so a scope fix lands in one guard and silently leaves the others narrow — and a register that cannot point at one definition cannot verify scope centrally. |
-| **Source** | Definition sites enumerated above: `svelteFiles` shared at `apps/core/src/lib/test-helpers.ts:13`; `styleFiles`, `markupControls`, `allSvelte`, `classPresent` each local to one file. **DERIVED**: `motion.test.ts` needed its scope widened in isolation (#177) precisely because its `styleFiles` was private. |
+| **Source** | Definition sites enumerated above: all five are now defined once in `apps/core/src/lib/test-helpers.ts` and imported (issue #841); `allSvelte` was a verbatim copy of `svelteFiles` and is deleted. **DERIVED**: `motion.test.ts` needed its scope widened in isolation (#177) precisely because its `styleFiles` was private. |
 | **Acceptance** | **Given** the register's implementing files, **When** each is parsed for local function declarations named in the helper set, **Then** none declares one; every use resolves to an import from the shared helper module. **And** the shared module's walk excludes `node_modules`, `build`, `.svelte-kit`, `dist`, `.git` and includes `src/lib/components/ui/`. |
-| **Check** | A source guard over the register's files. Note `.svelte-kit/` currently contains built copies of every component's CSS — a walk that fails to exclude it will read stale duplicates and report on colours the app no longer paints, which is XR-VER-08's failure mode arriving through the scope door. |
+| **Check** | A source guard over the register's files. **Implemented** by `apps/core/src/lib/test-helpers.test.ts` (issue #841): a comment-stripped scan of the ten consumers for a local declaration of any helper name and for a call without a matching import, plus arms asserting the exported `SKIP_DIRS` set, that the module contains exactly one `readdirSync` and no directory allowlist (so `src/lib/components/ui/` is in scope by construction), and that the walk behaviourally skips `node_modules`. Note `.svelte-kit/` currently contains built copies of every component's CSS — a walk that fails to exclude it will read stale duplicates and report on colours the app no longer paints, which is XR-VER-08's failure mode arriving through the scope door. |
 | **Priority** | **SHOULD** — shipping with copies is survivable; shipping without knowing which copies exist is not, and XR-VER-13 covers that. |
 
 ---

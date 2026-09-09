@@ -13,7 +13,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { TAP, svelteFiles } from './test-helpers';
+import { TAP, markupControls, svelteFiles } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..'); // src/
 
@@ -23,52 +23,11 @@ function stripComments(src: string): string {
 }
 
 /*
- * Derive the interactive-control selector set from the MARKUP of each component, not from a
- * hand-maintained literal list. The old `CONTROL` allowlist decided what counted as a control by a
- * regex someone had to remember to extend; a control introduced under any selector nobody added was
- * silently skipped and shipped undersized green (issue #400 — a renamed strip's `.pills`/`.pill`
- * escaped 44px scrutiny entirely). The FILES tree-walk already closed the file dimension; this closes
- * the selector dimension by the same principle: read what the markup says is interactive.
- *
- * An element is interactive if it is a bare interactive tag (`<button>`, `<a href>`, `<input>`,
- * `<select>`, `<textarea>`) or carries an interaction hook (`onclick`, `role="button"`, `tabindex`).
- * We collect the CLASS TOKENS of every such element plus which bare tags appeared. A CSS rule is then
- * a control iff the SUBJECT of its selector (the last compound, after the final combinator) targets a
- * bare interactive tag or any interactive class token — matched hash-agnostically, since Svelte adds a
- * `.svelte-xxxxx` scope class at compile time that never appears in authored source.
+ * The interactive-control derivation — `markupControls`, plus the bare-tag allowlist it consults —
+ * lives in ./test-helpers (#841, XR-VER-14). It was a private copy here; it decides which CSS rules
+ * this guard even looks at, so a drift between it and any other consumer silently narrows the
+ * population one guard examines while the others keep their own answer.
  */
-// Bare element selectors we honour as controls. `input` is deliberately absent: no box-sizing
-// input rule in these surfaces is written element-only — text inputs carry a class
-// (.name-input / .text), the range slider is attribute-targeted (input[type='range']), and a
-// checkbox/radio is a UA glyph inside a <label> that owns the tap target. Matching bare `input`
-// would flag `.check input` (an 18px checkbox glyph) whose real target — the label — already
-// passes at var(--tap).
-const BARE_CONTROL_TAGS = ['button', 'a', 'select', 'textarea'];
-function markupControls(src: string): { tags: Set<string>; classes: Set<string> } {
-	const tags = new Set<string>();
-	const classes = new Set<string>();
-	// each opening tag: <tag ...attrs...>  (self-closing or not; we only need the attr text)
-	for (const m of src.matchAll(/<([a-zA-Z][\w-]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g)) {
-		const tag = m[1]!.toLowerCase();
-		const attrs = m[2]!;
-		const hasHandler = /(^|\s)onclick[\s=]/.test(attrs);
-		const isButtonRole = /(^|\s)role\s*=\s*["']button["']/.test(attrs);
-		const isTabbable = /(^|\s)tabindex[\s=]/.test(attrs);
-		const isLink = tag === 'a' && /(^|\s)href[\s=]/.test(attrs);
-		// a checkbox/radio is a platform glyph sized by the UA; its tap target is delegated to the
-		// wrapping <label> (see `.check` in settings, which itself carries min-height: var(--tap)), so
-		// its own 18px box is not the control and would be a false offender.
-		const isGlyphInput = tag === 'input' && /(^|\s)type\s*=\s*["'](?:checkbox|radio)["']/.test(attrs);
-		const isFormControl = (tag === 'input' || tag === 'select' || tag === 'textarea') && !isGlyphInput;
-		if (!(hasHandler || isButtonRole || isTabbable || isLink || isFormControl)) continue;
-		// only honour a BARE element selector for tags whose box rules are written element-only here
-		if (BARE_CONTROL_TAGS.includes(tag)) tags.add(tag);
-		if (isLink) tags.add('a');
-		const cls = attrs.match(/(?:^|\s)class\s*=\s*"([^"]*)"/);
-		if (cls) for (const t of cls[1]!.trim().split(/\s+/)) if (t) classes.add(t);
-	}
-	return { tags, classes };
-}
 
 /*
  * Only the PHONE surfaces. The TV is not touched — its controls are a phone in someone's hand, and its
@@ -137,6 +96,12 @@ test('every phone control that sizes its own box reaches 44px', () => {
 	// a broken markup walk (empty tag/class sets) would silently measure nothing and pass vacuously;
 	// pin a floor so the guard fails loudly if the derivation ever stops finding controls.
 	expect(controlRulesSeen).toBeGreaterThan(10);
+	// …and pin the SCANNED POPULATION too (#841, XR-VER-14 Acceptance). FILES is a tree walk over
+	// lib/components PLUS five hand-named route pages, so a walk that stops finding components still
+	// leaves five files — and five files carry enough control rules to clear the floor above. The two
+	// floors fail on different regressions: `controlRulesSeen` on a broken derivation, this one on a
+	// narrowed walk. 12 files today.
+	expect(FILES.length).toBeGreaterThanOrEqual(10);
 });
 
 /**

@@ -119,6 +119,13 @@ const FLOORS: Record<string, Floor[]> = {
 			min: 10,
 			count: 1,
 			guards: 'control-rule derivation from markup; an empty tag/class set measured nothing'
+		},
+		{
+			subject: 'FILES.length',
+			min: 10,
+			count: 1,
+			guards:
+				'the scanned POPULATION, added by #841. FILES is a walk over lib/components plus five hand-named route pages, so a walk contributing nothing still leaves five files \u2014 and five files carry enough control rules that `controlRulesSeen` above stays green (measured). The two floors fail on different regressions.'
 		}
 	],
 	'apps/core/src/lib/components/motion.test.ts': [
@@ -146,7 +153,14 @@ const FLOORS: Record<string, Floor[]> = {
 	],
 	'apps/core/e2e/contract.test.ts': [
 		{ subject: 'DRIVERS.length', min: 20, count: 1, guards: 'e2e driver discovery for the selector contract' },
-		{ subject: 'lits.length', min: 19, count: 1, guards: 'the selector literals the contract scan collected' }
+		{ subject: 'lits.length', min: 19, count: 1, guards: 'the selector literals the contract scan collected' },
+		{
+			subject: 'sources.length',
+			min: 20,
+			count: 1,
+			guards:
+				'the .svelte walk the SEL-resolution guard resolves against, added by #841. The two floors beside it pin the DRIVER list and the collected literals, not the source population, so a narrowed walk whose surviving files still carry every SEL anchor left whole surfaces unexamined and every floor green.'
+		}
 	],
 	// added by issue #830 — both walks previously had NO floor, and both feed tests that assert an
 	// offenders array is empty, so an emptied walk passed while examining nothing.
@@ -263,7 +277,18 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// This guard's OWN non-vacuity floor. Without it, a broken `assertedLiterals` regex, an emptied
 	// FLOORS map, or a bad REPO root would make the loop above examine nothing and pass — the exact
 	// class of failure this file exists to detect, one level up.
-	expect(located).toBeGreaterThanOrEqual(22);
+	//
+	// ⚠ THIS LITERAL MUST EQUAL THE SUM OF EVERY `count` IN `FLOORS`, EXACTLY. `located` accumulates
+	// `f.count` per located floor, so any slack between the sum and this number is a LAUNDERING
+	// ALLOWANCE: a floor can be deleted from its source file AND its entry removed from `FLOORS`
+	// together, and `located` still clears a floor set below the sum. That green run is indistinguishable
+	// from a healthy one, which is precisely the hole this file exists to close — one level up again.
+	// So when you add an entry to `FLOORS`, raise this by the same amount in the same commit; when you
+	// retire one to `RETIRED`, lower it by the same amount. Measured directly rather than counted by
+	// eye: temporarily raise this literal absurdly high, run this file alone, and read `Received: N`.
+	// 28 as of #841 (26 on the base, which had drifted 4 below the sum when #846 added three entries
+	// without moving this number; restoring the equality closes that inherited slack too).
+	expect(located).toBeGreaterThanOrEqual(28);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
 });
 

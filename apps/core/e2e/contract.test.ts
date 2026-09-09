@@ -15,6 +15,7 @@ import { test, expect } from 'bun:test';
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { HOOKS, PRESET_COLOUR_NAMES, SEL } from './contract';
+import { classPresent, svelteFiles } from '../src/lib/test-helpers';
 
 const CORE = join(import.meta.dir, '..');
 
@@ -72,7 +73,7 @@ function stripComments(src: string): string {
  * exercises the same composition the guard does — reverting the stripComments wrapper here reds it.
  */
 function guardSources(): string[] {
-	return allSvelte(join(CORE, 'src')).map((f) => stripComments(readFileSync(f, 'utf8')));
+	return svelteFiles(join(CORE, 'src')).map((f) => stripComments(readFileSync(f, 'utf8')));
 }
 
 test('the flow imports the contract instead of hard-coding selectors', () => {
@@ -143,49 +144,19 @@ test('the contract exposes a hook for each surface the flow has to reach', () =>
  * SEL is the thing that rotted unwatched.
  */
 
-/** Every .svelte source file under apps/core/src — the whole surface the flow can drive. */
-function allSvelte(dir: string): string[] {
-	const out: string[] = [];
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, ent.name);
-		if (ent.isDirectory()) out.push(...allSvelte(p));
-		else if (ent.name.endsWith('.svelte')) out.push(p);
-	}
-	return out;
-}
-
-/**
- * Does `token` appear as a CLASS anywhere in `src`? A class is reached three ways in Svelte source —
- * a static `class="a b c"` list, a `class:token` directive, or a `.token` rule in <style> — and the
- * flow's `.token` query matches an element that got the class by ANY of them, so all three count.
- *
- * The class="..." arm compares WHOLE tokens, not a `\b…\b` substring (#682). A word boundary treats
- * `-` as a break, so `class="badqr-b"` used to resolve the bare token `b`, and a Svelte
- * interpolation `class="pill {a.outcome}"` used to resolve the JS identifier `a` — both are dead
- * classes no element carries, yet the guard whose job is to red on a vanished anchor waved them
- * through. So split the quoted value into real tokens: blank out `{…}` interpolations first (the
- * expression names a variable, not a static class), then split on whitespace and match `token`
- * exactly. The `class:token` directive and `.token` <style> arms already name the class in full, so
- * a `\b` boundary is exact for them (it only differs from an exact match on a following `-`, and no
- * `class:foo-bar` / `.foo-bar` rule can satisfy a query for `foo`); they are unchanged.
+/*
+ * Every .svelte source file under apps/core/src — the whole surface the flow can drive — comes from
+ * `svelteFiles` in ../src/lib/test-helpers (#841, XR-VER-14). This file used to carry a local walker
+ * that was a VERBATIM copy of it under a different name, so the two could disagree about what the
+ * flow's surface even is while the design guards under src/lib kept the other answer.
  */
-function classPresent(src: string, token: string): boolean {
-	const t = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-	// inside a class="..." attribute: exact token match against the whitespace-split value, with
-	// `{…}` interpolations blanked so an interpolated expression cannot masquerade as a static class.
-	for (const m of src.matchAll(/class="([^"]*)"/g)) {
-		const tokens = m[1]
-			.replace(/\{[^}]*\}/g, ' ')
-			.split(/\s+/)
-			.filter(Boolean);
-		if (tokens.includes(token)) return true;
-	}
-	// class:token directive
-	if (new RegExp(`class:${t}\\b`).test(src)) return true;
-	// a .token rule in <style>
-	if (new RegExp(`\\.${t}\\b`).test(src)) return true;
-	return false;
-}
+
+/*
+ * `classPresent` — does a token appear as a CLASS in a Svelte source, via `class="…"`, a
+ * `class:token` directive, or a `.token` rule in <style>? — is imported from
+ * ../src/lib/test-helpers (#841, XR-VER-14), where its exact-token semantics (#682) are documented.
+ * The `#682 G2` case below exercises the shared function directly, so a regression there reds here.
+ */
 
 /**
  * Does a bare TAG appear in the source? `body`/`html` are guaranteed by HTML itself and appear in no
@@ -342,6 +313,15 @@ test('every SEL selector resolves to an anchor in the source (the guard, non-vac
 	// and this resolution disagree about what is source, and a dead selector living in a comment stays green.
 	const sources = guardSources();
 
+	// NON-VACUITY FLOOR on the SCANNED POPULATION (#841, XR-VER-14 Acceptance). `unresolved` and
+	// `unmodelled` are both asserted EMPTY below, and an empty-array assertion is what a working guard
+	// produces AND what a guard reading nothing produces. Over a NARROWED walk — a moved directory, a
+	// copy-in path the walk misses — the surviving files can still carry every SEL anchor while whole
+	// surfaces go unexamined, and nothing says so. The walk finds 27 `.svelte` files under
+	// apps/core/src today. A firing floor is a FINDING: restore the walk's scope, never lower the
+	// number (XR-VER-06).
+	expect(sources.length).toBeGreaterThanOrEqual(20);
+
 	/*
 	 * Explicit, documented exemptions — honest about what this resolver cannot check by source scan,
 	 * rather than a guard that silently skips whatever it fails to find. Each MUST state why it is safe:
@@ -409,7 +389,7 @@ test('a selector whose only occurrence is a comment does not resolve (the guard 
 	// so reverting the stripComments wrapper inside guardSources reds this test — the guard and this test
 	// can no longer drift. `raw` stays unstripped inline: the raw-vs-stripped asymmetry is the whole point.
 	const stripped = guardSources();
-	const raw = allSvelte(join(CORE, 'src')).map((f) => readFileSync(f, 'utf8'));
+	const raw = svelteFiles(join(CORE, 'src')).map((f) => readFileSync(f, 'utf8'));
 
 	// Precondition for this to be a meaningful guard: `<video` really does exist in the raw source (in
 	// comments) but never as a rendered element. If either stops holding, this test must be revisited.

@@ -5,7 +5,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { svelteFiles } from '../test-helpers';
+import { styleFiles, svelteFiles } from '../test-helpers';
 
 // ALLOWLIST, not a denylist (issue #290): the file header states the rule positively —
 // animations/transitions may touch ONLY GPU-composited properties. Flag anything animated
@@ -23,18 +23,11 @@ const COMPOSITED_PROPS = new Set([
 
 // every .svelte AND .css file under a directory — the CSS lives in both component <style> blocks
 // and the shared design system (src/app.css), so a scan restricted to .svelte is blind to app.css.
+// The walk itself is `styleFiles` in ../test-helpers (#841, XR-VER-14): it was a private copy here,
+// which is why widening this guard's scope in #177 left every other guard's scope untouched.
 function assertScanIntact(files: string[]): void {
 	expect(files.some((f) => f.endsWith('app.css'))).toBe(true);
 	expect(files.some((f) => f.includes(join('lib', 'tv')) && f.endsWith('.svelte'))).toBe(true);
-}
-function styleFiles(dir: string): string[] {
-	const out: string[] = [];
-	for (const ent of readdirSync(dir, { withFileTypes: true })) {
-		const p = join(dir, ent.name);
-		if (ent.isDirectory()) out.push(...styleFiles(p));
-		else if (ent.name.endsWith('.svelte') || ent.name.endsWith('.css')) out.push(p);
-	}
-	return out;
 }
 
 // non-test .ts sources, for the utility-name net at the bottom of this file (issue #830): a class list
