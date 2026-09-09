@@ -130,17 +130,29 @@ production file (not a fixture), and if the finding was "this predicate is *wron
 a literal-name scan is not enough: add a second arm banning the discredited expression under **any**
 name, and prove that arm discriminates by injecting a renamed copy with the same body.
 
-## 4. Gates — all four, every time, exit codes not piped output
+## 4. Gates — all five, every time, exit codes not piped output
 
 ```bash
 bun test                                # expect 0 fail
 cd apps/worker && python3 -m pytest -q  # expect 0 fail
 bun run build                           # expect exit 0
 bun run typecheck                       # expect exit 0, 0 errors, 0 warnings
+bun run gate:measured                   # expect exit 0 — the layout rung, AFTER build
 ```
 
 **The full suite is cheap here** — a few seconds for the core suite, a few more for the worker's.
-Run all four every pass; do not narrow them.
+Run all five every pass; do not narrow them.
+
+`bun run gate:measured` is the fifth gate (issue #823, owner ruling Q1 = A). It boots its own
+ephemeral server and its own headless Chromium and measures the four design claims no source scan can
+decide. Two things to know before you meet it red:
+
+- **It never skips.** No Chromium, no build output, or a server that will not answer `/health` are
+  FAILURES with the remedy printed. That was chosen over skipping on purpose.
+- **A quarantined control is a recorded number, not a licence.** `e2e/gates/measured-design-register.mjs`
+  lists the controls already below the 44px floor with the number each measures. The gate reds if one
+  gets worse, if a NEW one appears, **and if a quarantined one now passes** — a defect that no longer
+  reproduces is a finding to re-decide on the record, never a number to adjust (XR-VER-06/07).
 
 `bun run typecheck` **exits 0 with 0 errors and 0 warnings on a clean tree.** Issue #56 was closed
 by PR #73, so the old "exits 2 with 9 known `@encore/shared` `song-profile` errors = green" rule is
@@ -203,7 +215,8 @@ Babysit with `monitor_start` (~300s). Each cycle: has pr-bot posted a verdict?
 
 ## 7. Merge — only when all six hold
 
-1. Four gates green on the PR's current head.
+1. Five gates green on the PR's current head — including `bun run gate:measured`, the only one that
+   can decide the four measurement claims.
 2. `review:approved` present.
 3. `review:blocked` absent.
 4. Every blocking finding answered.

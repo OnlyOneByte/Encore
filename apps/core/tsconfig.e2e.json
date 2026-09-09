@@ -39,6 +39,8 @@
 		"e2e/probes/p13-tap-to-start.mjs",
 		"e2e/probes/tv-audiocontext-resume.mjs",
 		"e2e/probes/lower-third.mjs",
+		"e2e/gates/measured-design.mjs",
+		"e2e/gates/measured-design-register.mjs",
 		"e2e/fake-align-worker.mjs",
 		"e2e/seed-media.mjs",
 		"e2e/wav.mjs"
