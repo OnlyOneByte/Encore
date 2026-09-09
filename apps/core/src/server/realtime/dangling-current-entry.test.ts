@@ -330,16 +330,25 @@ test('reconcileOnReady is called from exactly the three non-boot sites: queue:co
 
 test('the play/pause transport button still allows a ready queue while nothing plays (#342)', () => {
 	// The comment's third recovery route — "or a manual play … the play control stays enabled because a
-	// non-empty queue satisfies its gate" — is the play button's `disabled={!nowEntry && queued.length
-	// === 0}` at routes/+page.svelte. restart and skip are the stricter `disabled={!nowEntry}`, so after
-	// a boot heal (nowEntry null, queue ready) the play button is the room's ONLY manual restart.
-	// Narrowing this gate to `!nowEntry` (the mutation #254's own consequence paragraph named) leaves a
-	// boot-healed room with a phone that offers NO transport control at all — invisible to the suite
-	// until now. The +page.svelte file has no unit harness, so this is a source scan, kept SEPARATE from
-	// the reconcile check so a UI refactor reds only its own line.
+	// non-empty queue satisfies its gate" — is the play button's gate. restart and skip are stricter
+	// (they need a PLAYING entry), so after a boot heal (nowEntry null, queue ready) the play button is
+	// the room's ONLY manual restart. Narrowing this gate to the restart/skip form (the mutation #254's
+	// own consequence paragraph named) leaves a boot-healed room with a phone that offers NO transport
+	// control at all — invisible to the suite until now.
+	//
+	// Since #832 the invariant spans TWO files: the transport moved onto the now-playing hero, so the
+	// hero owns the gate's SHAPE and the route owns the value it is fed. Both halves are asserted,
+	// because either one alone can break it — a hero that ANDs the two conditions is useless if the
+	// route stops passing `canStart`, and vice versa. The behavioural half is also now covered by a
+	// real mounted assertion (lib/components/phone-home-832.test.ts); this stays a source scan so a UI
+	// refactor reds only its own line, kept SEPARATE from the reconcile check above.
+	const HERO = stripComments(readFileSync(join(SRC_ROOT, 'lib', 'components', 'NowPlayingHero.svelte'), 'utf8'));
 	const PAGE = stripComments(readFileSync(join(SRC_ROOT, 'routes', '+page.svelte'), 'utf8'));
 	// non-vacuous: we are looking at the play/pause control specifically.
 	expect(PAGE).toMatch(/cmd:\s*playback\.isPlaying\s*\?\s*'pause'\s*:\s*'play'/);
-	// its gate must keep the queued.length allowance, not degrade to the restart/skip `!nowEntry` form.
-	expect(PAGE).toMatch(/disabled=\{\s*!nowEntry\s*&&\s*queued\.length\s*===\s*0\s*\}/);
+	// The gate must keep an allowance BEYOND "something is playing" — narrowing it to `!hasSong` (the
+	// restart/skip form) is the mutation.
+	expect(HERO).toMatch(/disabled=\{\s*!hasSong\s*&&\s*!canStart\s*\}/);
+	// …and the route must feed that allowance from the queue's own length, not from a constant.
+	expect(PAGE).toMatch(/canStart=\{\s*queued\.length\s*>\s*0\s*\}/);
 });

@@ -43,6 +43,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #562, following the
@@ -401,7 +402,8 @@ try {
 	await phone.goto(`${base}/join`);
 	await phone.fill(SEL.nameInput, `P3S${Date.now() % 100000}`);
 	await phone.clickByText('Start singing');
-	await phone.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+	await phone.waitFor(`location.pathname === '/'`);
+	await openBrowseFromHome(phone);
 	await phone.fill(SEL.search, 'caroline');
 	await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 	const hasAdd = await phone.count(SEL.addTurn);
@@ -800,6 +802,7 @@ try {
 			// The second song is already ready-cooked (see ensureSecondReady above). The phone's search
 			// field still has 'caroline' from earlier, so first change it to a term that finds the second
 			// song. Then click .add on its row.
+			await openBrowseFromHome(phone); // #832: search lives behind the browse push
 			await phone.fill(SEL.search, secondReady.title.split(' ')[0].toLowerCase());
 			await phone.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`);
 			await phone.evaluate(`

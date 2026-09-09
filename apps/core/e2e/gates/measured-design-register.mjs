@@ -107,7 +107,11 @@ export const FOCUS_VISIBLE = ':focus-visible';
  */
 export const QUARANTINE = [
 	{
-		where: '/',
+		// SURFACE MOVED, control unchanged (#832): direction A made `/` the queue and put searching behind
+		// the browse push, so this field is measured on `/?browse=1` now. Same element, same 22px, same
+		// reason — re-pointed rather than re-quarantined, because a second entry would read as the set
+		// growing and this is the same offender the gate has always recorded.
+		where: '/?browse=1',
 		match: { tag: 'input', type: null, cls: '', near: 'Search a song or artist' },
 		measured: 22,
 		reason:

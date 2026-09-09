@@ -17,6 +17,7 @@ import { join } from 'node:path';
 import { connect, sleep } from '../cdp.mjs';
 import { SEL } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
@@ -87,7 +88,8 @@ try {
 	await phone.goto(base + '/join');
 	await phone.fill(SEL.nameInput, 'Singer' + (Date.now() % 100000));
 	await phone.clickByText('Start singing');
-	await phone.waitFor('document.querySelector(' + JSON.stringify(SEL.search) + ') !== null');
+	await phone.waitFor("location.pathname === '/'");
+	await openBrowseFromHome(phone);
 
 	await phone.fill(SEL.search, 'caroline');
 	await phone.waitFor('document.querySelectorAll(' + JSON.stringify(SEL.songRow) + ').length > 0');

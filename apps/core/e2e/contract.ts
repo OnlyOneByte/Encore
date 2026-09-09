@@ -57,6 +57,36 @@ export const SEL = {
 	joinError: '.err[role=alert]',
 
 	// ── phone remote ──────────────────────────────────────────────────────
+	/*
+	 * HOME IS THE QUEUE (#832, direction A). The joined home screen is the rotation, and searching is a
+	 * deliberate PUSH behind one primary button — so `search` below is NOT on `/` any more, and a driver
+	 * that waits for it straight after joining waits forever.
+	 *
+	 * These two are the way through. `homeReady` is the docked band, which exists as soon as the joined
+	 * home has rendered, so it is the post-join readiness check that `search` used to be; `openBrowse` is
+	 * the button inside it that navigates to `?browse=1`. Two different elements, deliberately: the wait
+	 * proves home is up, the click is what moves. Use `openBrowseFromHome()` in `lib/phone.mjs` rather
+	 * than spelling the sequence out per driver — 15 call sites made that mistake's cost concrete.
+	 */
+	homeReady: '.cta-dock',
+	openBrowse: '.cta-dock .cta',
+	/**
+	 * The scrolling content column. The measured gate reads its padding-bottom to prove the docked band
+	 * is RESERVED rather than overlapping the list (XR-PH-12), which is a geometry claim about this
+	 * element and so cannot be spelled out at the call site.
+	 */
+	mainColumn: 'main',
+	/** The now-playing hero — the joined home's own surface, and where the transport lives since #832. */
+	hero: '.hero',
+	/**
+	 * The playing song's TITLE on the hero. Load-bearing for the rotation checks: the PLAYING entry is
+	 * not a `.qrow` (its status is 'playing', which `queued` filters out), so a flow asking "is my song
+	 * in the rotation?" has to read the hero as well as the rows, or it reads zero for the very first
+	 * song of the night.
+	 */
+	heroTitle: '.hero .song',
+	/** Back off the browse screen to the queue. The phone's own Back gesture also works. */
+	backToQueue: '.back-btn',
 	search: 'input[aria-label="Search a song or artist"]',
 	songRow: '.row',
 	songTitle: '.row .t',
@@ -363,7 +393,43 @@ export const HOOKS: Hook[] = [
 		id: 'search',
 		file: 'src/routes/+page.svelte',
 		anchor: 'aria-label="Search a song or artist"',
-		why: 'the flow searches the library through this field'
+		why: 'the flow searches the library through this field, on the browse screen since #832'
+	},
+	{
+		id: 'mainColumn',
+		file: 'src/routes/+page.svelte',
+		anchor: '<main>',
+		why: 'the gate measures this column reserving the docked band, so the element itself is load-bearing'
+	},
+	{
+		id: 'hero',
+		file: 'src/lib/components/NowPlayingHero.svelte',
+		anchor: 'class="hero card"',
+		why: 'the rotation and the transport are read off the joined home, whose hero is what says it rendered'
+	},
+	{
+		id: 'heroTitle',
+		file: 'src/lib/components/NowPlayingHero.svelte',
+		anchor: 'class="song"',
+		why: 'the playing song is read off the hero, because a playing entry renders no queue row'
+	},
+	{
+		id: 'backToQueue',
+		file: 'src/routes/+page.svelte',
+		anchor: 'class="back-btn" onclick={closeBrowse}',
+		why: 'a driver that queued a song returns to the queue through this control'
+	},
+	{
+		id: 'homeReady',
+		file: 'src/routes/+page.svelte',
+		anchor: 'class="cta-dock"',
+		why: 'the docked band is what says the joined home screen has rendered, now that search is not on it'
+	},
+	{
+		id: 'openBrowse',
+		file: 'src/routes/+page.svelte',
+		anchor: 'class="cta" onclick={openBrowse}',
+		why: 'every driven flow reaches the search box by clicking this, so a rename strands all of them'
 	},
 	{
 		id: 'readinessChips',
@@ -436,16 +502,17 @@ export const HOOKS: Hook[] = [
 		why: 'the #827 spike variant; the probe measures the four do-not-regress numbers on it'
 	},
 
-	// transport
+	// transport — on the now-playing HERO since #832 (direction A). The SELECTORS are unchanged (same
+	// aria-labels), so the driven flow is untouched; only which file to look in moved.
 	{
 		id: 'play',
-		file: 'src/routes/+page.svelte',
+		file: 'src/lib/components/NowPlayingHero.svelte',
 		anchor: 'aria-label="play/pause"',
 		why: 'the flow starts playback through the real control, not a synthetic socket message'
 	},
 	{
 		id: 'skip',
-		file: 'src/routes/+page.svelte',
+		file: 'src/lib/components/NowPlayingHero.svelte',
 		anchor: 'aria-label="skip"',
 		why: 'the flow advances the rotation to prove round-robin ordering'
 	},

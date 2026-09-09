@@ -28,6 +28,7 @@ import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { SEL, PRESET_COLOUR_NAMES } from '../contract.ts';
 import { findChromium } from '../lib/chromium.mjs';
+import { openBrowseFromHome } from '../lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver, which runs under tsconfig.e2e.json (issue #563, following the
@@ -189,8 +190,30 @@ class CdpPage {
 		await this.cdp.send('Page.navigate', { url }, this.sessionId);
 		await this.waitFor(`document.readyState === "complete"`, 15_000);
 	}
-	/** @param {string} expr @param {number} [timeout] @param {number} [every] */
+	/**
+	 * Click a selector. Added for #832: the shared `openBrowseFromHome` step needs it, and this thin
+	 * client had no click at all — every earlier interaction here was an `evaluate` that dispatched its
+	 * own events. Implemented the same way, so it adds no new mechanism.
+	 * @param {string} selector
+	 */
+	async click(selector) {
+		const target = JSON.stringify(selector);
+		const clicked = await this.evaluate(
+			`(() => { const el = document.querySelector(${target}); if (!el) return false; el.click(); return true; })()`
+		);
+		if (!clicked) throw new Error(`click: no element matched ${selector}`);
+	}
+	/**
+	 * @param {string} expr
+	 * @param {number | { timeout?: number, every?: number }} [timeout] positional ms (this probe's own
+	 *   callers) or an options object (what the shared drivers and `lib/phone.mjs` pass)
+	 * @param {number} [every]
+	 */
 	async waitFor(expr, timeout = 10_000, every = 100) {
+		if (timeout !== null && typeof timeout === 'object') {
+			every = timeout.every ?? every;
+			timeout = timeout.timeout ?? 10_000;
+		}
 		const deadline = Date.now() + timeout;
 		let last;
 		while (Date.now() < deadline) {
@@ -317,11 +340,13 @@ async function joinPhone(cdp, name, colourName = PRESET_COLOUR_NAMES[0]) {
 			if (btn) btn.click();
 		})()`
 	);
-	// A well-formed join lands on / with the search box present. A duplicate-name join sits on /join
-	// with a `.err[role=alert]` — differentiate here so the caller can react.
+	// A well-formed join lands on / with the joined home rendered — the DOCKED BAND, not the search box:
+	// since #832 search lives on the browse screen, so testing for it here would mean "browsing", not
+	// "joined". A duplicate-name join sits on /join with a `.err[role=alert]` — differentiate here so the
+	// caller can react.
 	const outcome = await page.waitFor(
 		`(() => {
-			if (location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.search)})) return 'joined';
+			if (location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.homeReady)})) return 'joined';
 			const err = document.querySelector(${JSON.stringify(SEL.joinError)});
 			if (err) return 'err:' + (err.textContent || '').trim();
 			return null;
@@ -366,6 +391,8 @@ const SEARCH_TERM = process.env.P8_SEARCH ?? 'bohemian';
 
 /** @param {CdpPage} page @param {string} [term] */
 async function searchAndQueue(page, term = SEARCH_TERM) {
+	// The search box is on the browse screen (#832), so get there first. A no-op when already there.
+	await openBrowseFromHome(page);
 	await page.evaluate(
 		`(() => {
 			const el = document.querySelector(${JSON.stringify(SEL.search)});
@@ -655,7 +682,7 @@ async function main() {
 						);
 						const recovered = await dup.page
 							.waitFor(
-								`location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.search)}) !== null`,
+								`location.pathname === '/' && document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`,
 								8_000
 							)
 							.catch(() => false);
@@ -860,6 +887,7 @@ async function main() {
 			// Populate search results FIRST while online — we can't rely on /api/search reaching the
 			// server while offline (setOffline(true) does affect NEW HTTP requests). Row appears; then
 			// we sever and click.
+			await openBrowseFromHome(p.page);
 			await p.page.evaluate(
 				`(() => {
 					const el = document.querySelector(${JSON.stringify(SEL.search)});

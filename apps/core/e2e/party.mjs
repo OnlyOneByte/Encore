@@ -33,6 +33,7 @@ import { spawn } from 'node:child_process';
 import { connect, sleep } from './cdp.mjs';
 import { SEL, PRESET_COLOUR_NAMES } from './contract.ts';
 import { findChromium } from './lib/chromium.mjs';
+import { openBrowseFromHome, returnHomeFromBrowse } from './lib/phone.mjs';
 
 /**
  * Types for this out-of-program driver (issue #564, #553/#557–#563 pattern). Browser/Page derive from
@@ -222,7 +223,9 @@ try {
 		if (hue !== undefined) await page.setRange(SEL.hueSlider, hue);
 		await page.clickByText('Start singing');
 		await page.waitFor(`location.pathname === '/'`);
-		await page.waitFor(`document.querySelector(${JSON.stringify(SEL.search)}) !== null`);
+		// Home is the QUEUE since #832; searching is a push. openBrowseFromHome waits for the joined home,
+		// clicks the primary button and waits for the search box, so the caller lands where it used to.
+		await openBrowseFromHome(page);
 		return page;
 	}
 
@@ -242,6 +245,7 @@ try {
 	// ── search and queue, through the one unified box ────────────────────────
 	// A real multi-character term: the remote does not search on a single character, so 'a' returns
 	// nothing and looks exactly like a broken UI. It is not.
+	await openBrowseFromHome(maya); // #832: search lives behind the browse push
 	await maya.fill(SEL.search, 'caroline');
 	/*
 	 * Poll for rows instead of sleeping. Search is debounced and then hits yt-dlp, so its latency is not
@@ -282,6 +286,11 @@ try {
 		);
 
 		await maya.click(queueAction);
+		// Back to the QUEUE, which is home since #832 — the rotation rows, the position line and the
+		// transport all live there, and this flow reads all three below. Ada is still on the browse
+		// screen she joined through, so she comes home too before her rotation is compared.
+		await returnHomeFromBrowse(maya);
+		await returnHomeFromBrowse(ada);
 		// Poll for the optimistic row rather than sleeping: the store renders it immediately, but the
 		// server confirmation and the socket echo land on their own schedule.
 		await maya
@@ -292,22 +301,41 @@ try {
 			.catch(() => 0);
 		const queued = await maya.count(SEL.queueRow);
 		const processing = await maya.count(SEL.processing);
+		/*
+		 * The song can be in the rotation in THREE shapes, and the first song of the night is the one
+		 * that is not a row: an idle room auto-starts the add, the entry's status becomes 'playing', and
+		 * `queued` filters a playing entry out — so it renders on the HERO instead (#832). It reads as a
+		 * `.qrow` when someone else is already singing, and as `.proc` while it cooks. The invariant is
+		 * "the singer is in the rotation", so all three count; asserting only `.qrow` would report an
+		 * empty rotation for a room whose first song is playing perfectly.
+		 */
+		const heroSong = (await maya.texts(SEL.heroTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing');
 		check(
 			'queueing puts the singer in the rotation',
-			queued + processing > 0,
-			`${queued} ${SEL.queueRow} (of which ${processing} cooking — ProcessingCard carries both classes) — a cooking song HOLDS its slot, which is why either counts`
+			queued + processing + heroSong.length > 0,
+			`${queued} ${SEL.queueRow} (of which ${processing} cooking — ProcessingCard carries both classes), hero=${JSON.stringify(heroSong)} — a cooking song HOLDS its slot and a PLAYING one is the hero, which is why all three count`
 		);
 
 		// ── cross-client sync ───────────────────────────────────────────────
 		// Wait for the OTHER phone to catch up over the socket, rather than assuming a latency.
 		// Capture the wait result: an empty rotation must FAIL as a missing precondition,
 		// not slip past the agreement check (where '[]' === '[]' reads as spurious agreement).
+		// The rotation AS EACH PHONE SEES IT: the playing song (hero) followed by the waiting rows. Both
+		// halves, for the same reason as above — comparing rows alone compares two empty lists and reads
+		// as agreement when neither phone has rendered anything.
+		const rotationOf = async (/** @type {typeof maya} */ page) => [
+			...(await page.texts(SEL.heroTitle)).filter((/** @type {string} */ t) => t && t !== 'Nothing playing'),
+			...(await page.texts(SEL.queueTitle))
+		];
 		const adaSawRotation = await ada
-			.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.queueTitle)}).length > 0`, { timeout: 10_000 })
+			.waitFor(
+				`[...document.querySelectorAll(${JSON.stringify(SEL.heroTitle)}), ...document.querySelectorAll(${JSON.stringify(SEL.queueTitle)})].some(el => (el.textContent || '').trim() && (el.textContent || '').trim() !== 'Nothing playing')`,
+				{ timeout: 10_000 }
+			)
 			.then(() => true)
 			.catch(() => false);
-		const mayaQ = await maya.texts(SEL.queueTitle);
-		const adaQ = await ada.texts(SEL.queueTitle);
+		const mayaQ = await rotationOf(maya);
+		const adaQ = await rotationOf(ada);
 		check(
 			'the rotation reached both phones',
 			adaSawRotation && mayaQ.length > 0 && adaQ.length > 0,

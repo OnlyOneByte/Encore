@@ -18,10 +18,13 @@
 		 * The optimistic add of this entry has not yet been confirmed by the server. Mirrors QueueRow's
 		 * `pending` (issue #304): the primary ✨ Sing flow produces a COOKING entry, so the ProcessingCard
 		 * is what actually renders during an add — the unconfirmed state has to survive here or it is
-		 * invisible on the exact path that creates it. Dims the card, appends an `adding…` marker, and
+		 * invisible on the exact path that creates it. Dims the card, appends the pending marker, and
 		 * hides the remove/reorder cluster until the server acks.
+		 *
+		 * A KIND, not a boolean (XR-PH-10, issue #832): a pending REORDER of a cooking entry must not
+		 * announce that it is "adding".
 		 */
-		pending?: boolean;
+		pending?: 'add' | 'move' | null;
 		status: MediaStatus; // queued|downloading|separating|aligning|ready|failed
 		pct: number;
 		// A cooking song is still a QUEUE ENTRY, so it gets the same controls a ready row does: remove
@@ -41,7 +44,7 @@
 		singerName,
 		singerColor = SINGER_COLORS[0],
 		singerAway = false,
-		pending = false,
+		pending = null,
 		status,
 		pct,
 		onremove,
@@ -54,6 +57,9 @@
 
 	// pct is shown separately in the .stage row, so the line itself omits it.
 	const stageLabel = $derived(cookStageLabel(status));
+	// What the unconfirmed marker SAYS — one expression, so a pending reorder cannot re-borrow the
+	// add path's word (XR-PH-10, issue #832). Mirrors QueueRow's derivation of the same name.
+	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
 	// A terminally failed cook is NOT in flight. It reaches this card (#741) because the singer's own
 	// queue slot must say the cook died — a dead turn used to render as a plain waiting row,
 	// indistinguishable from a turn about to play. On this branch the card drops the progress bar and
@@ -88,7 +94,7 @@
 				     Redundant AND divergent, so it is gone. -->
 				<i class:dim={singerAway} style="--singer:{singerColor}"></i>
 				{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if pending}{' · '}<span class="adding"
-						>adding…</span
+						>{pendingLabel}</span
 					>{/if}
 			</div>
 		{/if}
