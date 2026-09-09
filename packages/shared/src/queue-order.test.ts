@@ -187,11 +187,14 @@ test("a singer reordering their own picks never changes another singer's positio
 	}
 });
 
-test('reorderIsMeaningful is false only for shuffle', () => {
+test('reorderIsMeaningful is false for shuffle and manual, true for the rest', () => {
 	expect(reorderIsMeaningful('fair')).toBe(true);
 	expect(reorderIsMeaningful('fcfs')).toBe(true);
 	expect(reorderIsMeaningful('least-recently-sung')).toBe(true);
 	expect(reorderIsMeaningful('shuffle')).toBe(false);
+	// manual reads the stored rotationSeq, not addedAt, so an own-picks reorder does nothing under it
+	// until #856 step 2 wires the reorder to write the stored order.
+	expect(reorderIsMeaningful('manual')).toBe(false);
 	// unknown / absent must not hide a working control
 	expect(reorderIsMeaningful(null)).toBe(true);
 });
@@ -218,4 +221,51 @@ test('every policy names its own order, and the label never leaks an id', () => 
 	// unknown / absent falls back to the default's word, never to a bare id
 	expect(queueOrderLabel(null)).toBe('rotation');
 	expect(queueOrderLabel('nope' as QueueOrderId)).toBe('rotation');
+});
+
+// ── manual ordering (#856 step 1: additive) ─────────────────────────────────
+
+// Like `e`, but sets the server-owned rotationSeq manual reads — the four other policies ignore it.
+const eSeq = (id: string, singerId: string, addedAt: number, rotationSeq: number): QueueEntry => ({
+	...e(id, singerId, addedAt),
+	rotationSeq
+});
+
+test("'manual' is a registered policy the room setting can name", () => {
+	expect(isQueueOrder('manual')).toBe(true);
+	expect(getQueueOrder('manual')).toBeDefined();
+	expect(QUEUE_ORDERS.some((p) => p.id === 'manual')).toBe(true);
+});
+
+test('manual orders by the stored rotationSeq, not by addedAt', () => {
+	// addedAt ascending a<b<c, but the stored order is c,a,b — manual must reproduce the stored order,
+	// which is exactly what lets a cross-singer reorder survive re-derivation (no durable pin needed).
+	const entries = [eSeq('a', 'a', 1, 1), eSeq('b', 'b', 2, 2), eSeq('c', 'c', 3, 0)];
+	expect(ids(orderQueue(entries, { order: 'manual' }))).toEqual(['c', 'a', 'b']);
+	// fair would interleave by first-appearance addedAt — proving manual is genuinely different.
+	expect(ids(orderQueue(entries, { order: 'fair' }))).toEqual(['a', 'b', 'c']);
+});
+
+test('manual breaks a tied/unset rotationSeq by addedAt, then id — total and stable', () => {
+	// Two entries share seq 0 (e.g. just added before the server numbered them); the tie falls to
+	// addedAt, and a full tie there falls to id, so the order never depends on input array order.
+	const entries = [eSeq('z', 'a', 5, 0), eSeq('y', 'b', 2, 0), eSeq('x', 'c', 2, 0)];
+	expect(ids(orderQueue(entries, { order: 'manual' }))).toEqual(['x', 'y', 'z']);
+	// same multiset, shuffled input → same output (stable)
+	const shuffled = [entries[2]!, entries[0]!, entries[1]!];
+	expect(ids(orderQueue(shuffled, { order: 'manual' }))).toEqual(['x', 'y', 'z']);
+});
+
+test('manual does not respect own-picks reorder, and reorderIsMeaningful reflects that', () => {
+	// Under manual the stored rotationSeq is the authority, so permuting a singer's addedAt (what an
+	// own-picks reorder does) changes nothing until step 2 wires a reorder to WRITE the stored order.
+	expect(getQueueOrder('manual')!.respectsAddedAt).toBe(false);
+	expect(reorderIsMeaningful('manual')).toBe(false);
+});
+
+test('adding manual leaves the other policies byte-identical (purely additive)', () => {
+	const entries = [eSeq('a1', 'a', 1, 2), eSeq('a2', 'a', 2, 0), eSeq('b1', 'b', 3, 1)];
+	expect(ids(orderQueue(entries, { order: 'fair' }))).toEqual(['a1', 'b1', 'a2']);
+	expect(ids(orderQueue(entries, { order: 'fcfs' }))).toEqual(['a1', 'a2', 'b1']);
+	expect(ids(orderQueue(entries, { order: 'manual' }))).toEqual(['a2', 'b1', 'a1']);
 });
