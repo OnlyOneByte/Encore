@@ -846,20 +846,20 @@ test('the bottom-docked band clears the home indicator', () => {
 	// The band is also what --dock-h measures (bound to that element's clientHeight, which includes
 	// padding), and every other docked control offsets from --dock-h with no env() of its own. So the
 	// inset belonging to the band is a contract, not a detail: move it and the toasts silently stop
-	// clearing the indicator too. Both bands are checked because they are mutually exclusive halves of
-	// the same contract (home's primary button, browse's search dock) and either can be the band on
-	// screen; it is a list so the next docked band must comply.
+	// clearing the indicator too. Since #902 there is ONE band — the search dock, docked on home for a
+	// joined singer and present in both views (the `.cta-dock` primary button it replaced is gone); it
+	// is a list so the next docked band must comply.
 	const page = readFileSync(join(SRC, 'routes/+page.svelte'), 'utf8');
 	let banded = 0;
-	for (const cls of ['cta-dock', 'search-dock']) {
+	for (const cls of ['search-dock']) {
 		const rule = page.match(new RegExp(`\\.${cls}\\s*\\{[^}]*\\}`, 's'));
 		expect(rule, `.${cls} must still be a rule in routes/+page.svelte`).not.toBeNull();
 		expect(rule![0], `.${cls} must carry env(safe-area-inset-bottom) itself`).toMatch(/env\(safe-area-inset-bottom/);
 		banded++;
 	}
-	// Non-vacuous: if a rename makes both selectors unmatchable the loop above already reds, and this
+	// Non-vacuous: if a rename makes the selector unmatchable the loop above already reds, and this
 	// floor stops the list being quietly emptied to nothing.
-	expect(banded).toBe(2);
+	expect(banded).toBe(1);
 });
 
 test('both documentElement custom-property writes (--undo-h, --dock-h) tear down on unmount (#460 §14/§17)', () => {

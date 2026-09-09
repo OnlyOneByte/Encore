@@ -387,7 +387,7 @@ try {
 			await page.goto(base + '/');
 			await page.waitFor(`document.querySelector(${JSON.stringify(SEL.homeReady)}) !== null`, { timeout: 15000 });
 		});
-		await surface('/?browse=1', async () => {
+		await surface('/ (searched)', async () => {
 			await openBrowseFromHome(page, { timeout: 15000 });
 			await page.fill(SEL.search, 'caroline');
 			await page
@@ -430,10 +430,12 @@ try {
 	/*
 	 * ── CLAIM 3 (XR-VER-11): the docked band's published height and its safe-area term ──────────
 	 *
-	 * WHERE THIS IS MEASURED CHANGED WITH #832, and the claim did not. Direction A made the queue the
-	 * home screen, so the docked band at the bottom of the phone is the primary button, and the
-	 * "published height equals the real rendered height, and the safe-area inset arrives THROUGH that
-	 * token" contract moved with it from `--peek-h`/`.peek` to `--dock-h`/`.cta-dock`.
+	 * WHERE THIS IS MEASURED CHANGED WITH #832 and again with #902, and the claim did not. Direction A
+	 * made the queue the home screen, so `/` no longer mounts QueueSheet; the 2026-09-09 owner correction
+	 * (#902) then made the docked band at the bottom of the phone the SEARCH DOCK (the `+ Add a turn`
+	 * button is gone), present on home for a joined singer. The "published height equals the real
+	 * rendered height, and the safe-area inset arrives THROUGH that token" contract moved with it from
+	 * `--peek-h`/`.peek` to `--dock-h`/`.search-dock`.
 	 *
 	 * #903 then deleted the drawer surface entirely, so the second half of this section — the sheet's
 	 * own cap and peek geometry, measured on `/components` where the component used to render — was
@@ -463,7 +465,7 @@ try {
 	})()`;
 	const dock = await page.evaluate(dockProbe);
 	if (!dock) {
-		check('CLAIM 3 the docked band is rendered on the joined home, so its contract is measurable', false, 'no .cta-dock found');
+		check('CLAIM 3 the docked band is rendered on the joined home, so its contract is measurable', false, 'no .search-dock found');
 	} else {
 		check(
 			"CLAIM 3 (XR-VER-11) --dock-h equals the docked band's REAL rendered height — the contract every docked control offsets from",
@@ -493,21 +495,23 @@ try {
 	}
 
 	/*
-	 * ── CLAIM 3, SECOND BAND: the browse screen's search dock (#833) ────────────────────────────
+	 * ── CLAIM 3, THE SEARCH DOCK measured with results showing (#833; sole band since #902) ──────
 	 *
-	 * Direction B docks search in the thumb zone and stacks the results UPWARD from it, so the browse
-	 * screen is now a second surface carrying a docked band — and the band contract has to hold on both
-	 * or the geometry has forked, which is the whole reason `--dock-h` is measured rather than written.
+	 * Direction B docks search in the thumb zone and stacks the results UPWARD from it. Since the owner
+	 * correction (#902) it is the SOLE docked band on this route — the `+ Add a turn` button that used to
+	 * be home's band is gone — and results render IN PLACE (no `?browse=1` mode), so this measures the
+	 * one band with a query typed and its results on screen. The band contract still has to hold, which
+	 * is the whole reason `--dock-h` is measured rather than written.
 	 *
 	 * Four of these cannot be settled by reading source, and three were open questions before this ran:
-	 *   - whether `--dock-h` on `?browse=1` reads the REAL search band or a phantom left over from home's
-	 *     button (the publishing effect lives on the page and tears down only on route unmount);
+	 *   - whether `--dock-h` reads the REAL search band's rendered height (there is now only one band, so
+	 *     the old "phantom left over from home's button" ambiguity is gone, but the measurement stands);
 	 *   - whether the input really lands within thumb reach rather than merely below the list;
 	 *   - whether the stack really ENDS at the dock — a bottom-anchored column plus a scroll-to-bottom is
 	 *     the mechanism, and nothing about either is visible in a declaration;
 	 *   - whether any result row is occluded by the band it stacks up from.
 	 *
-	 * The reflow half of the browse screen (320px at 200% text) is deliberately NOT re-asserted here:
+	 * The reflow half of the results screen (320px at 200% text) is deliberately NOT re-asserted here:
 	 * `src/lib/phone-inventory.test.ts` owns XR-PH-02 since #837, and two independent geometry checks of
 	 * one criterion is the duplicated-vocabulary shape the spec warns about.
 	 */
@@ -549,7 +553,7 @@ try {
 		check(
 			'CLAIM 3 the browse screen renders its docked search band, so its contract is measurable',
 			false,
-			`no ${SEL.searchDock} / ${SEL.search} / ${SEL.mainColumn} found on ?browse=1`
+			`no ${SEL.searchDock} / ${SEL.search} / ${SEL.mainColumn} found on / with results showing`
 		);
 	} else {
 		check(
@@ -626,7 +630,7 @@ try {
 		check(
 			'CLAIM 3 a non-matching query leaves one empty-state line to measure the anchoring against',
 			false,
-			`no ${SEL.empty} found on ?browse=1 after a non-matching query`
+			`no ${SEL.empty} found on / after a non-matching query`
 		);
 	} else {
 		check(
