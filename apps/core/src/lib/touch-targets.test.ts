@@ -278,9 +278,23 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule (i
 	// on a height, OR sets an explicit height >= TAP.
 	const CONTROLS: { file: string; token: RegExp; name: string }[] = [
 		{ file: join(SRC, 'routes', '+page.svelte'), token: /\.searchbox\s+input\b/, name: 'the dock search input' },
-		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /(^|[\s,{])select\b/m, name: 'the settings selects' },
-		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /\.text\b/, name: 'the join-address field (.text)' },
-		{ file: join(SRC, 'routes', 'settings', '+page.svelte'), token: /\.name-input\b/, name: 'the display-name field (.name-input)' }
+		/*
+		 * RE-ANCHORED BY #913 S2 (XR-VER-07). These three controls were `select`, `.text` and `.name-input`
+		 * rules inside settings/+page.svelte. They are now <NativeSelect> and <Input>, and their appearance
+		 * moved INTO those components — Svelte's scoped CSS cannot reach an element inside a child
+		 * component, and under `source(none)` a utility written at a call site is minted by nothing, so the
+		 * appearance had nowhere else to go.
+		 *
+		 * The floor itself is UNCHANGED and still spelled `min-height: var(--tap)`; only the file moved. The
+		 * guard follows the control rather than the file, which is what it was for: this arm is what caught
+		 * the move, reporting `no sizing rule found (selector moved?)` exactly as written.
+		 *
+		 * All three share the base `.encore-field` rule that carries the floor; the `comfortable` and `mono`
+		 * variants only tweak padding and font, so the token deliberately matches the base rule too — the
+		 * check is "is the floor reached anywhere", which is why a variant needs no floor of its own.
+		 */
+		{ file: join(SRC, 'lib', 'components', 'ui', 'native-select', 'native-select.svelte'), token: /\.encore-field\b/, name: 'the settings selects (NativeSelect)' },
+		{ file: join(SRC, 'lib', 'components', 'ui', 'input', 'input.svelte'), token: /\.encore-field\b/, name: 'the settings text fields (Input)' }
 	];
 	const reachesFloor = (body: string): boolean => {
 		if (expressesTap(body)) return true; // var(--tap) on width/height

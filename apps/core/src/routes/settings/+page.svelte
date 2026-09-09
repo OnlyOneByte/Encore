@@ -21,6 +21,8 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import ColourPicker from '$lib/components/ColourPicker.svelte';
+	import { Input } from '$lib/components/ui/input';
+	import { NativeSelect } from '$lib/components/ui/native-select';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -486,11 +488,11 @@
 					<h2 class="cardhead">Who you are</h2>
 					<div class="cardbody">
 						<label class="field" for="profile-name">Your name</label>
-						<input
+						<Input
 							id="profile-name"
-							class="name-input"
+							variant="comfortable"
 							type="text"
-							maxlength="32"
+							maxlength={32}
 							autocomplete="off"
 							placeholder="e.g. Dana"
 							bind:value={name}
@@ -548,7 +550,7 @@
 					<h2 class="cardhead">Rotation</h2>
 					<div class="cardbody">
 						<label class="field" for="queue-order">Who sings next</label>
-						<select
+						<NativeSelect
 							id="queue-order"
 							value={settings.room.queueOrder}
 							onchange={(e) => onroom({ queueOrder: e.currentTarget.value as QueueOrderId })}
@@ -556,7 +558,7 @@
 							{#each QUEUE_ORDERS as o (o.id)}
 								<option value={o.id}>{o.label}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 						{#if queueOrderNote}<p class="hint">{queueOrderNote}</p>{/if}
 
 						<label class="field" for="presence-grace">
@@ -586,7 +588,7 @@
 						resolver picks the best live pairing AT OR UNDER this, so these are exactly the
 						ceilings it can honour.
 					-->
-						<select
+						<NativeSelect
 							id="quality-ceiling"
 							value={settings.room.maxQualityRank ?? ''}
 							onchange={(e) =>
@@ -598,7 +600,7 @@
 							{#each qualityCeilings as c (c.rank)}
 								<option value={c.rank}>Up to {c.label}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 						<!--
 						Downward-only, and this is where a party learns it: the server's default is already
 						bounded by what the worker fleet can run, so a room can only ask for the same or less.
@@ -621,7 +623,7 @@
 						<div class="pair">
 							<div class="cell">
 								<label class="field" for="tv-background">Background</label>
-								<select
+								<NativeSelect
 									id="tv-background"
 									value={settings.room.tvBackgroundStyle}
 									onchange={(e) => onroom({ tvBackgroundStyle: e.currentTarget.value as TvBackgroundStyle })}
@@ -629,11 +631,11 @@
 									{#each TV_BACKGROUND_STYLES as s (s.id)}
 										<option value={s.id}>{s.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 							<div class="cell">
 								<label class="field" for="tv-progress">Song progress</label>
-								<select
+								<NativeSelect
 									id="tv-progress"
 									value={settings.room.tvProgressStyle}
 									onchange={(e) => onroom({ tvProgressStyle: e.currentTarget.value as TvProgressStyle })}
@@ -641,7 +643,7 @@
 									{#each TV_PROGRESS_STYLES as s (s.id)}
 										<option value={s.id}>{s.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 						</div>
 						{#if tvBackgroundNote}<p class="hint">{tvBackgroundNote}</p>{/if}
@@ -653,7 +655,7 @@
 					-->
 						{#if settings.room.tvBackgroundStyle === 'visualizer'}
 							<label class="field" for="tv-visualizer">Which visualizer</label>
-							<select
+							<NativeSelect
 								id="tv-visualizer"
 								value={settings.room.tvVisualizer}
 								onchange={(e) => onroom({ tvVisualizer: e.currentTarget.value as TvVisualizerId })}
@@ -661,7 +663,7 @@
 								{#each TV_VISUALIZERS as v (v.id)}
 									<option value={v.id}>{v.label}</option>
 								{/each}
-							</select>
+							</NativeSelect>
 							{#if tvVisualizerNote}<p class="hint">{tvVisualizerNote}</p>{/if}
 						{/if}
 
@@ -747,7 +749,7 @@
 						<div class="pair">
 							<div class="cell">
 								<label class="field" for="lyrics-highlight">Highlight</label>
-								<select
+								<NativeSelect
 									id="lyrics-highlight"
 									value={settings.room.lyricsHighlight}
 									onchange={(e) => onroom({ lyricsHighlight: e.currentTarget.value as LyricsHighlightId })}
@@ -755,11 +757,11 @@
 									{#each LYRICS_HIGHLIGHTS as h (h.id)}
 										<option value={h.id}>{h.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 							<div class="cell">
 								<label class="field" for="lyrics-ball">Marker</label>
-								<select
+								<NativeSelect
 									id="lyrics-ball"
 									value={settings.room.lyricsBall}
 									onchange={(e) => onroom({ lyricsBall: e.currentTarget.value as LyricsBallStyleId })}
@@ -767,7 +769,7 @@
 									{#each LYRICS_BALL_STYLES as s (s.id)}
 										<option value={s.id}>{s.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 						</div>
 						{#if highlightNote}<p class="hint">{highlightNote}</p>{/if}
@@ -788,7 +790,7 @@
 						<div class="pair">
 							<div class="cell">
 								<label class="field" for="lyrics-font">Font</label>
-								<select
+								<NativeSelect
 									id="lyrics-font"
 									value={settings.room.lyricsFont}
 									onchange={(e) => onroom({ lyricsFont: e.currentTarget.value as LyricsFontId })}
@@ -796,11 +798,11 @@
 									{#each LYRICS_FONTS as f (f.id)}
 										<option value={f.id}>{f.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 							<div class="cell">
 								<label class="field" for="lyrics-case">Letter case</label>
-								<select
+								<NativeSelect
 									id="lyrics-case"
 									value={settings.room.lyricsCase}
 									onchange={(e) => onroom({ lyricsCase: e.currentTarget.value as LyricsCaseId })}
@@ -808,7 +810,7 @@
 									{#each LYRICS_CASES as c (c.id)}
 										<option value={c.id}>{c.label}</option>
 									{/each}
-								</select>
+								</NativeSelect>
 							</div>
 						</div>
 						{#if fontNote}<p class="hint">{fontNote}</p>{/if}
@@ -933,7 +935,7 @@
 					<div class="cardbody">
 						<!-- Stacked for the same measured reason as the lyrics engine below: "BS-RoFormer 1297". -->
 						<label class="field" for="engine">Stem splitter</label>
-						<select
+						<NativeSelect
 							id="engine"
 							value={settings.global.defaultEngine}
 							onchange={(e) => pickEngine(e.currentTarget.value)}
@@ -941,10 +943,10 @@
 							{#each liveEngines as engine (engine.id)}
 								<option value={engine.id}>{engine.label}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 
 						<label class="field" for="model">Model</label>
-						<select
+						<NativeSelect
 							id="model"
 							value={settings.global.defaultModel}
 							onchange={(e) => onglobal({ defaultModel: e.currentTarget.value })}
@@ -952,14 +954,14 @@
 							{#each liveModels as model (model.id)}
 								<option value={model.id}>{model.label}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 						{#if liveNote}<p class="hint">{liveNote}</p>{/if}
 						{#if liveSlow}
 							<p class="warn">Slow on CPU — around 45 minutes per song. Better suited to upgrades.</p>
 						{/if}
 
 						<label class="field" for="fetcher">Where audio comes from</label>
-						<select
+						<NativeSelect
 							id="fetcher"
 							value={settings.global.defaultFetcher}
 							onchange={(e) => onglobal({ defaultFetcher: e.currentTarget.value as FetcherId })}
@@ -967,7 +969,7 @@
 							{#each defaultFetchers as f (f.id)}
 								<option value={f.id}>{f.label}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 						{#if fetcherNote}<p class="hint">{fetcherNote}</p>{/if}
 						<!--
 						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
@@ -991,7 +993,7 @@
 						than a longer page, and this is the tab you visit once.
 					-->
 						<label class="field" for="asr-model">Reader</label>
-						<select
+						<NativeSelect
 							id="asr-model"
 							value={settings.global.asrModel}
 							onchange={(e) => onglobal({ asrModel: e.currentTarget.value as GlobalSettings['asrModel'] })}
@@ -999,14 +1001,14 @@
 							{#each ASR_MODELS as model (model.id)}
 								<option value={model.id}>{model.label} · {model.params}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 						{#if asrNote}<p class="hint">{asrNote}</p>{/if}
 						{#if asrSlow}
 							<p class="warn">A big reader needs real memory and adds minutes to every cook on a CPU box.</p>
 						{/if}
 
 						<label class="field" for="sync-mode">Timing</label>
-						<select
+						<NativeSelect
 							id="sync-mode"
 							value={settings.global.syncMode}
 							onchange={(e) => onglobal({ syncMode: e.currentTarget.value as GlobalSettings['syncMode'] })}
@@ -1014,7 +1016,7 @@
 							{#each SYNC_MODES as mode (mode.id)}
 								<option value={mode.id}>{mode.label}</option>
 							{/each}
-						</select>
+						</NativeSelect>
 						{#if syncNote}<p class="hint">{syncNote}</p>{/if}
 					</div>
 				</div>
@@ -1023,9 +1025,9 @@
 					<h2 class="cardhead">Joining</h2>
 					<div class="cardbody">
 						<label class="field" for="join-origin">Address phones join at</label>
-						<input
+						<Input
 							id="join-origin"
-							class="text"
+							variant="mono"
 							type="text"
 							inputmode="url"
 							autocomplete="off"
@@ -1074,7 +1076,7 @@
 
 							<!-- Stacked: these default to the roformer names, the longest labels in any registry. -->
 							<label class="field" for="upgrade-engine">Upgrade splitter</label>
-							<select
+							<NativeSelect
 								id="upgrade-engine"
 								value={settings.global.upgradeEngine}
 								onchange={(e) => pickUpgradeEngine(e.currentTarget.value)}
@@ -1082,10 +1084,10 @@
 								{#each SEPARATOR_ENGINES as engine (engine.id)}
 									<option value={engine.id}>{engine.label}</option>
 								{/each}
-							</select>
+							</NativeSelect>
 
 							<label class="field" for="upgrade-model">Upgrade model</label>
-							<select
+							<NativeSelect
 								id="upgrade-model"
 								value={settings.global.upgradeModel}
 								onchange={(e) => onglobal({ upgradeModel: e.currentTarget.value })}
@@ -1093,7 +1095,7 @@
 								{#each upgradeModels as model (model.id)}
 									<option value={model.id}>{model.label}</option>
 								{/each}
-							</select>
+							</NativeSelect>
 
 							{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
 								<p class="warn">This is not better than the splitter above, so no upgrade will run.</p>
@@ -1238,44 +1240,15 @@
 		flex-wrap: wrap;
 		align-items: center;
 	}
-	select,
-	.text,
-	.name-input,
+	/*
+	 * #913 S2: `select`, `.text` and `.name-input` left this rule — their appearance moved INTO
+	 * ui/input and ui/native-select, because Svelte's scoped CSS cannot reach an element inside a child
+	 * component and a call-site utility is minted by nothing under `source(none)`. The range stays
+	 * native until its Slider rebuild, so it keeps the rule.
+	 */
 	input[type='range'] {
 		width: 100%;
 		box-sizing: border-box;
-	}
-	select,
-	.text,
-	.name-input {
-		padding: 9px var(--space-md);
-		border-radius: var(--radius-btn);
-		border: 1px solid var(--line);
-		background: var(--card2);
-		color: var(--ink);
-		/* The tap floor for every settings field (#863): the padding here sized the box to 41px (select,
-		   UA default) and 35px (.text), both short of var(--tap). A native select's box is browser-owned,
-		   so this is verified on a real render by gate:measured rather than trusted. box-sizing:border-box
-		   above keeps the padding inside the floor. .name-input's own larger padding stays above it. */
-		min-height: var(--tap);
-		/* 16px, not 0.9rem (14.4px): iOS Safari auto-zooms on focusing any control under 16px and never
-		   zooms back out, leaving the operator stuck at 1.3x for the rest of the session. */
-		font-size: var(--ph-text-base);
-	}
-	/* A LAN address is read character by character to check it, so keep the digits monospaced and stop
-	   iOS from title-casing what the user types. The name field deliberately does NOT inherit this. */
-	.text {
-		font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-		padding: 7px var(--space-md);
-	}
-	.text[aria-invalid='true'] {
-		border-color: var(--warn);
-	}
-	/* Your own name is the one field worth typing comfortably, so it keeps the sheet's larger box. */
-	.name-input {
-		padding: var(--space-lg) var(--space-xl);
-		font-size: 1.05rem;
-		border-radius: 14px;
 	}
 	.hint {
 		margin: var(--space-xs) 0 0;
