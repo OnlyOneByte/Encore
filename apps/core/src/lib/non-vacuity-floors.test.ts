@@ -284,10 +284,10 @@ const FLOORS: Record<string, Floor[]> = {
 	'apps/core/src/lib/phone-inventory.test.ts': [
 		{
 			subject: 'PHONE_ROUTES.length',
-			min: 4,
+			min: 3,
 			count: 1,
 			guards:
-				'the filesystem-derived phone route set behind the XR-PH-08 state inventory; an over-broad exemption match or a moved routes/ dir would enumerate nothing and pass'
+				'the filesystem-derived phone route set behind the XR-PH-08 state inventory; an over-broad exemption match or a moved routes/ dir would enumerate nothing and pass. Re-anchored 4 -> 3 by #834 when /join was retired into the unjoined branch of /'
 		},
 		{
 			subject: 'filesScanned',

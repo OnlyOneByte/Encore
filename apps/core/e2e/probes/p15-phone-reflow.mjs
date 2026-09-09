@@ -232,7 +232,9 @@ async function measure(label, path, opts) {
 console.log(`viewport ${VIEWPORT_W}x${VIEWPORT_H} @ DPR 2, root font-size ${SCALED_ROOT_FONT_SIZE}\n`);
 
 await measure('/', '/');
-await measure('/join', '/join');
+// `/join` was retired (#834 Q2-A): the unjoined `/` above IS the join surface now, and its six-segment
+// code entry (XR-PH-14) is the widest fixed row on it — six boxes in a flex row at a 32px root is the
+// exact reflow class this rung is about, and `measure('/', '/')` renders it (no session → unjoined).
 await measure('/settings', '/settings');
 await measure('/stats', '/stats');
 
@@ -245,7 +247,7 @@ await measure('/stats', '/stats');
  * colour is sent: join normalizes an absent one to a default, and a hex literal here would read to
  * contract.test.ts's shape rule as a hand-written selector.
  */
-await page.goto(BASE + '/join');
+await page.goto(BASE + '/');
 const joined = await page.evaluate(`(async () => {
 	const res = await fetch('/api/join', {
 		method: 'POST',

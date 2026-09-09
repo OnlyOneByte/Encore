@@ -18,9 +18,9 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	// settings change that CLEARED the address, which moves the QR back to this value.
 	const fallback = fallbackJoinOrigin(request, url);
 	// Advertise THIS room's join code in the QR (#654), so a scan lands the phone in this party rather
-	// than at a bare /join. The code is a query param the /join page reads and forwards to /api/join.
-	// Absent only if the app singleton is unavailable (prerender/unit load), where a plain /join is the
-	// honest fallback.
+	// than at a bare landing. The code is a query param the landing page (`/`) reads and forwards to
+	// /api/join. Absent only if the app singleton is unavailable (prerender/unit load), where a plain
+	// `/` is the honest fallback.
 	// #658 one-TV-per-room: resolve WHICH room this TV shows. An explicit ?room=<code> (validated
 	// against the room repo) points the TV at that specific party; a bare /tv falls back to the room
 	// this box serves (activeRoomId), which is the pre-#658 behaviour. The resolved code is both what
@@ -36,7 +36,7 @@ export const load: PageServerLoad = async ({ url, request }) => {
 	} catch {
 		// No app singleton under prerender/unit load — fall back to a code-less join URL.
 	}
-	const joinUrl = roomCode ? `${origin}/join?room=${encodeURIComponent(roomCode)}` : `${origin}/join`;
+	const joinUrl = roomCode ? `${origin}/?room=${encodeURIComponent(roomCode)}` : `${origin}/`;
 	const qrDataUrl = await QRCode.toDataURL(joinUrl, {
 		margin: 1,
 		width: 320,

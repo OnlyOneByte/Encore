@@ -21,3 +21,4 @@ export * from './ulid';
 export * from './colors';
 export * from './song-display';
 export * from './days-window';
+export * from './room-code';
