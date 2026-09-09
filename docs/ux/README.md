@@ -5,12 +5,12 @@
 > how the system works now is [`../ARCHITECTURE.md`](../ARCHITECTURE.md); how to operate it safely
 > is [`../HANDOFF.md`](../HANDOFF.md). Open work is tracked in **GitHub issues**.
 
-Written 2026-09-09 for the UI redesign. **109 requirements** across five sections.
+Written 2026-09-09 for the UI redesign. **105 requirements** across five sections.
 
 | Section | Rows | Covers |
 |---|---|---|
 | [`01-tv.md`](01-tv.md) | 20 | Type floor, safe areas, every TV state, the attract phrase system |
-| [`02-phone.md`](02-phone.md) | 26 | Queue-as-home, bottom search, the drag mode, join, live singing controls |
+| [`02-phone.md`](02-phone.md) | 22 | Queue-as-home, bottom search, the drag mode, join, live singing controls |
 | [`03-colour-tokens.md`](03-colour-tokens.md) | 24 | The 48-stop palette, four per-stop contrast roles, token-layer consequences |
 | [`04-verification.md`](04-verification.md) | 22 | How the rules are *checked* — the two rungs, anti-vacuity, migration safety |
 | [`05-concurrency.md`](05-concurrency.md) | 17 | Authority, cross-surface consistency, the social cost of a visible failure |
