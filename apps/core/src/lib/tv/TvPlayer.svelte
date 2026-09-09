@@ -47,6 +47,14 @@
 		seekRev?: number;
 		keyShift?: number; // ± semitones for a file song — selects the keyed instrumental
 		guideLevel?: number; // 0..1 — how loud the original vocals sit under the instrumental
+		// The MASTER instrumental level (0..1), the loudness-normalization pulldown for #462. Resolved by
+		// the TV route from the room's `loudnessNormalization` toggle, this song's measured loudness, and
+		// the library median (see loudness-normalization.ts). 1 = untouched, which is the whole existing
+		// library and every song when the feature is off / below floor / unmeasured. Attenuate-only:
+		// never above 1. Applied at BOTH the native (`master.volume`) and routed (`masterGraph.setGain`)
+		// sites, exactly like the guide level, because WebAudio capture bypasses `.volume` once a shift
+		// exists.
+		masterLevel?: number;
 		// Fires ONLY while this slot is the visible one. Drives the controller's onVisibleReady, which
 		// flips `loading` -> `playing`. Gating it on visibility is load-bearing: the hidden pre-warming
 		// slot buffers a whole song ahead of time, so if it reported here it would flip the room to
@@ -93,6 +101,7 @@
 		seekRev,
 		keyShift = 0,
 		guideLevel = 0,
+		masterLevel = 1,
 		onready,
 		onprewarmed,
 		onended,
@@ -149,6 +158,11 @@
 	// guide is pitch-shifted by the SAME amount as the instrumental (see the two PitchShiftGraphs below),
 	// so it stays in key with what is playing and the level applies unchanged at any shift.
 	const effectiveGuide = $derived(Math.max(0, Math.min(1, guideLevel)));
+
+	// The master instrumental's applied level — the loudness-normalization pulldown (#462), clamped to
+	// [0,1] here as a second guard even though the route already clamps it. Attenuate-only: this is 1
+	// for the whole existing library and rises no higher, so a song is only ever pulled DOWN.
+	const effectiveMasterLevel = $derived(Math.max(0, Math.min(1, masterLevel)));
 
 	const guideRef = $derived(media?.vocalsRef ?? null);
 	/**
@@ -287,6 +301,11 @@
 		void masterGraph?.setShift(0);
 		void guideGraph?.setShift(0);
 		guideGraph?.setGain(effectiveGuide);
+		// Same in-place re-apply for the master's normalization level (#462): a song change resets the
+		// graph in place (not detached), and a graph defaults its gain to 1, so re-assert the pulldown
+		// here for the same reason the guide does — the new song's level is resolved by the route and
+		// arrives as `effectiveMasterLevel`.
+		masterGraph?.setGain(effectiveMasterLevel);
 		masterReady = false;
 		guideSettled = false;
 		prewarmedFired = false;
@@ -608,6 +627,17 @@
 		guideGraph?.setGain(effectiveGuide);
 	});
 
+	// The MASTER instrumental's level — the loudness-normalization pulldown (#462). Exactly the guide's
+	// dual-site shape and for the same reason: `.volume` governs the native path, and once a transpose
+	// routes the master through WebAudio its `.volume` is bypassed so `masterGraph.setGain` must carry
+	// the same level. The shift-wiring effect below re-applies it after (re)building the graph, because
+	// a freshly built PitchShiftGraph defaults desiredGain to 1 (the #434 carry lands the value at
+	// construction, but a level set BEFORE the graph existed still needs this effect's write).
+	$effect(() => {
+		if (master) master.volume = effectiveMasterLevel;
+		masterGraph?.setGain(effectiveMasterLevel);
+	});
+
 	// Reposition on a real JUMP — a restart, a scrub, a skip, or a reconnect whose position has moved on.
 	// ONE-LINE DEPENDENCY SET, ON PURPOSE (#396 — read this before adding a read to it).
 	//
@@ -770,6 +800,13 @@
 		// un-built graph is a documented no-op.
 		if (needsShift(shift) && !masterGraph) masterGraph = new PitchShiftGraph(v);
 		masterGraph?.setShift(shift);
+		// Re-apply the master's normalization level (#462), same shape as the guide's #434 re-apply
+		// below: the level effect above owns it, but its tracked deps are `master`/`effectiveMasterLevel`
+		// only — `masterGraph` is a plain variable, so that effect does NOT re-run when a transpose
+		// builds the graph here. Without this, an attenuated song jumps to FULL volume the first time
+		// anyone transposes. Reading `effectiveMasterLevel` here also re-runs this effect on a level
+		// change, so the graph's gain tracks the pulldown whether the graph is built before or after it.
+		masterGraph?.setGain(effectiveMasterLevel);
 		// Guide, when it is mounted. Shifting it by the SAME amount is what lets us keep it audible under
 		// a transposed instrumental instead of muting it.
 		if (g) {

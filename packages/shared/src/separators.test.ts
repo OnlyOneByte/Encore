@@ -241,6 +241,16 @@ describe('room scope', () => {
 		expect(normalizeRoomSettings({ songIntroEnabled: 'yes' as never }, off).songIntroEnabled).toBe(false);
 	});
 
+	it('loudnessNormalization ships OFF and is a plain boolean toggle (#462)', () => {
+		// Opt-in: the default reproduces today's TV (every song at unity).
+		expect(DEFAULT_ROOM_SETTINGS.loudnessNormalization).toBe(false);
+		expect(normalizeRoomSettings({ loudnessNormalization: true }).loudnessNormalization).toBe(true);
+		expect(normalizeRoomSettings({ loudnessNormalization: false }).loudnessNormalization).toBe(false);
+		// A non-boolean keeps the room's current choice, like songIntroEnabled.
+		const on = normalizeRoomSettings({ loudnessNormalization: true });
+		expect(normalizeRoomSettings({ loudnessNormalization: 'on' as never }, on).loudnessNormalization).toBe(true);
+	});
+
 	it('clamps the presence grace window, where 0 IS meaningful', () => {
 		expect(normalizeRoomSettings({ presenceGraceMinutes: 0 }).presenceGraceMinutes).toBe(0);
 		expect(normalizeRoomSettings({ presenceGraceMinutes: -10 }).presenceGraceMinutes).toBe(0);

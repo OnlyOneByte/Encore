@@ -57,6 +57,13 @@
       "when": 1788945281186,
       "tag": "0007_add_tv_background_dim",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1788945282186,
+      "tag": "0008_add_loudness_normalization",
+      "breakpoints": true
     }
   ]
 }

@@ -80,6 +80,7 @@ export class SettingsRepository {
 			lyricsLinesBefore: row.lyricsLinesBefore,
 			lyricsLinesAfter: row.lyricsLinesAfter,
 			guideLevelDefault: row.guideLevelDefault,
+			loudnessNormalization: row.loudnessNormalization,
 			presenceGraceMinutes: row.presenceGraceMinutes
 		});
 	}

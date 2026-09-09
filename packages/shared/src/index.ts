@@ -10,6 +10,7 @@ export * from './membership';
 export * from './queue-order';
 export * from './lyrics';
 export * from './song-profile';
+export * from './loudness-normalization';
 export * from './events';
 export * from './cook-progress';
 export * from './separators';
