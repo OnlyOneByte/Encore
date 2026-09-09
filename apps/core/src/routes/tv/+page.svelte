@@ -1136,6 +1136,47 @@
 
 <style>
 	/*
+	 * THE TV TYPE FLOOR — THE ONE DECLARATION (issue #821, XR-TV-01). Every --tv-* type tier in app.css
+	 * is a `rem` multiple of THIS root, so the floor is defined in exactly one place. It MUST live on
+	 * `:root` (the document root), NOT on `.tv`: `rem` resolves against the document root font-size
+	 * unconditionally, so a `font-size` on `.tv` would not re-root `rem` for its descendants.
+	 *
+	 * `:global(:root)` inside THIS component's <style> — not global in app.css — is the resolution of
+	 * XR-TV-02's "one declaration vs the phone is unaffected", stated rather than defaulted: a Svelte
+	 * component's stylesheet is injected only WHILE the component is mounted and removed when the last
+	 * instance is destroyed, so this root floor applies to the /tv document alone. A global :root in
+	 * app.css would re-root the phone's --ph-* rem ladder to ~19px on a phone viewport and regress
+	 * SC 1.4.4. Kept in the component's single <style> block (rather than a second <style> or
+	 * <svelte:head>) so the file's first-and-only style block stays the component's, which the TV
+	 * source-scan guards read.
+	 *
+	 * max(2.7vh, 20px): the vh term scales with the panel (a TV browser presents a fixed 1920×1080 CSS
+	 * viewport, so 2.7vh = 29.16px on a full 1080-tall stage); the 20px term is the legibility floor for
+	 * the windowed/dev case where every physical assumption collapses (2.2vh = 20px on a 900px laptop).
+	 *
+	 * --ui-scale is a persisted preference, range 0.8–1.6, default 1. PERSISTENCE IS DEFERRED to a
+	 * follow-up (XR-TV-07's room-setting plumbing lives in packages/shared, out of #821's TV-only scope);
+	 * until then it defaults to 1 here. The clamp() is defensive: whatever a future setting writes into
+	 * --ui-scale, the multiplier can never leave 0.8–1.6, so the floor holds.
+	 */
+	/*
+	 * --ui-scale registered as a typed custom property (XR-TV-07 default + the reviewer's non-numeric
+	 * advisory on #907). `@property` with `syntax: '<number>'` means a non-numeric write (e.g.
+	 * `--ui-scale: banana`) is rejected at parse time and FALLS BACK to `initial-value: 1`, instead of
+	 * poisoning the clamp() and dropping the whole font-size declaration — which would silently remove
+	 * the floor. The clamp() below still bounds a numeric out-of-range value to 0.8–1.6. `inherits: true`
+	 * so a future setting can write it once on :root and every tier sees it.
+	 */
+	@property --ui-scale {
+		syntax: '<number>';
+		inherits: true;
+		initial-value: 1;
+	}
+	:global(:root) {
+		--ui-scale: 1;
+		font-size: calc(max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6));
+	}
+	/*
 	 * STAGE Z-INDEX SCHEME. Two unrelated layers previously shared a z-index (the lower-third and the
 	 * lyrics reel both at 6; the interstitial, the progress bar and the join corner all at 7), so paint
 	 * order fell to DOM order and a future reorder could silently push a transient behind the chrome.
@@ -1642,7 +1683,9 @@
 		height: clamp(64px, 12vmin, 160px);
 		border-radius: 50%;
 		background: color-mix(in srgb, var(--accent) 26%, transparent);
-		font-size: clamp(32px, 6vmin, 84px);
+		/* the mark glyph, sized off the root ladder (XR-TV-01): 2.881rem ≈ 84px at --ui-scale 1, and
+		   it tracks the floor down on a short panel so it stays inside the vmin-scaled circle. */
+		font-size: 2.881rem;
 	}
 	.ah-head {
 		font-size: var(--tv-hero);
@@ -1651,7 +1694,7 @@
 		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 	}
 	.ah-sub {
-		font-size: var(--tv-body, clamp(16px, 2.4vmin, 32px));
+		font-size: var(--tv-body);
 		color: var(--ink-dim);
 		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
 	}
@@ -1683,7 +1726,9 @@
 		height: clamp(64px, 12vmin, 160px);
 		border-radius: 50%;
 		background: color-mix(in srgb, var(--warn, #e0a63a) 26%, transparent);
-		font-size: clamp(32px, 6vmin, 84px);
+		/* the mark glyph, sized off the root ladder (XR-TV-01): 2.881rem ≈ 84px at --ui-scale 1, and
+		   it tracks the floor down on a short panel so it stays inside the vmin-scaled circle. */
+		font-size: 2.881rem;
 	}
 	.sr-head {
 		font-size: var(--tv-hero);
@@ -1692,7 +1737,7 @@
 		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
 	}
 	.sr-sub {
-		font-size: var(--tv-body, clamp(16px, 2.4vmin, 32px));
+		font-size: var(--tv-body);
 		color: var(--ink-dim);
 		max-width: 60ch;
 		text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
