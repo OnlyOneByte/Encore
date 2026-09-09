@@ -326,6 +326,22 @@ describe('annotation persistence', () => {
 		expect(mediaFromSidecar(side).artistCredit).toBe('Lady Gaga ft. Beyoncé');
 	});
 
+	it('#672 — a LOW-confidence credit is not projected into the Media (LRCLIB tiebreak poison)', () => {
+		// A no-separator title with a plausible uploader parses `uploader-fallback` at LOW confidence:
+		// artist is the uploader channel, which is a guess. The credit is still STORED verbatim (it is
+		// the raw billing and must survive re-annotation), but it must NOT reach the projected Media,
+		// where `LrclibSource.fetch` would score the near-tie tiebreak against the channel name via
+		// `credit = req.artist_credit or req.artist`. browseArtist already gates the artist to null; the
+		// credit now gates the same way.
+		const m = media({ title: 'Baby One More Time', artist: 'SomeChannel' });
+		const side = sidecarFromMedia(m, NOW);
+		expect(side.provenance.artist?.confidence).toBe('low');
+		expect(side.canonical.artistCredit).toBe('SomeChannel'); // stored...
+		const back = mediaFromSidecar(side);
+		expect(back.artistCanonical).toBeUndefined(); // ...gated out of the artist...
+		expect(back.artistCredit).toBeUndefined(); // ...and out of the credit too (the fix)
+	});
+
 	it('a MusicBrainz citation does not overwrite the credit with a narrower one', () => {
 		// The annotator returns a PRIMARY artist, so letting a citation write here would replace a real
 		// two-artist billing with one name — losing exactly the signal that distinguishes the versions.
@@ -339,6 +355,33 @@ describe('annotation persistence', () => {
 		const side = sidecarFromMedia(m, NOW);
 		expect(side.canonical.artist).toBe('Lady Gaga'); // the citation owns this
 		expect(side.canonical.artistCredit).toBe('Lady Gaga ft. Beyoncé'); // ...but not this
+	});
+
+	it('#672 — a YouTube citation round-trips as source "youtube" and is not re-parsed away', () => {
+		// YouTube's OWN declared metadata is a citation (no MBID). It must persist with provenance
+		// by=youtube, project back with annotation.source=youtube, and survive a later re-parse of the
+		// raw title — the same never-regress the MusicBrainz path gets, via keepCited.
+		const m = media({
+			title: 'some noisy upload title',
+			artist: 'SomeChannel',
+			artistCanonical: 'a-ha',
+			titleCanonical: 'Take On Me',
+			annotation: { source: 'youtube', confidence: 'high' }
+		});
+		const side = sidecarFromMedia(m, NOW);
+		expect(side.canonical.artist).toBe('a-ha');
+		expect(side.canonical.title).toBe('Take On Me');
+		expect(side.provenance.artist).toEqual({ by: 'youtube', confidence: 'high' });
+		const back = mediaFromSidecar(side);
+		expect(back.artistCanonical).toBe('a-ha');
+		expect(back.annotation).toEqual({ source: 'youtube', confidence: 'high' });
+
+		// A later write whose Media lost the runtime annotation (an index-only hydrate) must keep the
+		// stored citation rather than re-parse the raw title into the artist slot.
+		const reparsed = media({ title: 'some noisy upload title', artist: 'SomeChannel' });
+		const side2 = sidecarFromMedia(reparsed, NOW, side);
+		expect(side2.canonical.artist).toBe('a-ha'); // keepCited protected it
+		expect(side2.provenance.artist).toEqual({ by: 'youtube', confidence: 'high' });
 	});
 
 	it('a MusicBrainz citation survives a sidecar round trip', () => {

@@ -15,9 +15,12 @@ from collections.abc import AsyncIterator
 from ..acquisition.fetch import (
     download_argv,
     find_downloaded,
+    info_json_path,
     job_fetcher,
     local_source_path,
     parse_ytdlp_progress,
+    read_info_json,
+    youtube_credit,
 )
 from ..processor import ProgressEvent, source_audio_path
 from ..runtime.ctx import Ctx
@@ -59,7 +62,9 @@ class AcquireAudio(Step):
     name = "acquire-audio"
     stage = Stage.DOWNLOADING
     reads = frozenset({"job", "runner"})
-    writes = frozenset({"audio.path", "audio.is_local", "audio.duration_sec", "audio.vocals_path"})
+    writes = frozenset(
+        {"audio.path", "audio.is_local", "audio.duration_sec", "audio.vocals_path", "audio.youtube_credit"}
+    )
 
     def __init__(self, *, ytdlp_bin: str = "yt-dlp") -> None:
         # The worker's configured yt-dlp binary (ENCORE_YTDLP_BIN), threaded from the plan the same way
@@ -84,6 +89,7 @@ class AcquireAudio(Step):
         found = find_downloaded(audio_dir, job.media_id)
         if found is not None:
             ctx.audio.path = found
+            self._capture_youtube_credit(ctx, audio_dir)
             ctx.note(f"audio: retained original already on disk ({os.path.basename(found)}), no fetch")
             yield ProgressEvent(stage=self.stage, pct=100)
             return
@@ -100,6 +106,21 @@ class AcquireAudio(Step):
             # matters because the usual cause is yt-dlp resolving no audio-only format at all (a missing
             # JavaScript runtime for YouTube's player challenge), which otherwise reads as a broken worker.
             raise RuntimeError(f"download produced no file for {job.media_id} in {audio_dir}")
+        self._capture_youtube_credit(ctx, audio_dir)
+
+    def _capture_youtube_credit(self, ctx: Ctx, audio_dir: str) -> None:
+        """Read the download's `.info.json` and stash YouTube's OWN declared credit on the ctx (#672).
+
+        Best-effort and silent on absence: a legacy audio file that predates `--write-info-json` has no
+        sidecar, and a video with no music-panel metadata has no `track`/`artist` — both leave
+        `ctx.audio.youtube_credit` None, so the parser's values stand. `Annotate` reads this to prefer
+        the citation over any parse and to use it as the MusicBrainz query key.
+        """
+        info = read_info_json(info_json_path(audio_dir, ctx.job.media_id))
+        credit = youtube_credit(info) if info else None
+        if credit:
+            ctx.audio.youtube_credit = credit
+            ctx.note(f"youtube: captured declared credit ({credit['artist']} — {credit['title']})")
 
 
 def _existing_vocals(ctx: Ctx) -> str | None:

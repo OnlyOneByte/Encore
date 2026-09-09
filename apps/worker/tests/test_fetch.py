@@ -338,3 +338,151 @@ async def test_configured_ytdlp_binary_reaches_the_download_argv(tmp_path):
 
     assert seen, "yt-dlp must have been invoked"
     assert seen[0][0] == configured, f"argv[0] must be the configured ENCORE_YTDLP_BIN, got {seen[0][0]!r}"
+
+
+# ── #672: capture YouTube's OWN declared credit at download time ───────────────────────────────────
+
+
+def test_download_argv_writes_the_info_json():
+    # yt-dlp already does a full extraction to evaluate the format selector, so --write-info-json
+    # captures track/artist/album with NO extra network round trip. Pinned at the argv boundary.
+    argv = fetch_mod.download_argv("https://yt/x", "/tmp/audio/m1.%(ext)s")
+    assert "--write-info-json" in argv
+
+
+def test_youtube_credit_reads_the_declared_track_and_artist():
+    # The music-panel metadata yt-dlp exposes — a citation, not a re-parse of the title. Emits the same
+    # artifact shape MusicBrainz does, with source "youtube" and no mbid.
+    got = fetch_mod.youtube_credit({"track": "Take On Me", "artist": "a-ha", "album": "Hunting High and Low"})
+    assert got == {"source": "youtube", "artist": "a-ha", "title": "Take On Me", "confidence": "high"}
+
+
+def test_youtube_credit_takes_the_primary_when_artist_is_a_list():
+    # Some extractors return `artist` as a list; the primary (first) is the artist key.
+    got = fetch_mod.youtube_credit({"track": "Telephone", "artist": ["Lady Gaga", "Beyoncé"]})
+    assert got is not None and got["artist"] == "Lady Gaga"
+
+
+def test_youtube_credit_declines_without_both_fields():
+    # A lone artist with no track is not an identification (the title parser owns the title), and an
+    # empty/absent/non-string value declines rather than inventing a credit.
+    assert fetch_mod.youtube_credit({"artist": "a-ha"}) is None
+    assert fetch_mod.youtube_credit({"track": "Take On Me"}) is None
+    assert fetch_mod.youtube_credit({"track": "  ", "artist": "a-ha"}) is None
+    assert fetch_mod.youtube_credit({"track": 5, "artist": "a-ha"}) is None
+    assert fetch_mod.youtube_credit({}) is None
+
+
+def test_read_info_json_degrades_to_none_on_absence_or_garbage(tmp_path):
+    assert fetch_mod.read_info_json(str(tmp_path / "nope.info.json")) is None
+    bad = tmp_path / "bad.info.json"
+    bad.write_text("{not json")
+    assert fetch_mod.read_info_json(str(bad)) is None
+    good = tmp_path / "m1.info.json"
+    good.write_text('{"track": "T", "artist": "A"}')
+    assert fetch_mod.read_info_json(str(good)) == {"track": "T", "artist": "A"}
+
+
+@pytest.mark.asyncio
+async def test_a_fetch_captures_the_youtube_credit_and_publishes_it_as_the_annotation(tmp_path):
+    # The whole point of #672: when the upload declares track/artist, that citation is published as the
+    # annotation — with NO MusicBrainz query needed to reach it.
+    audio = tmp_path / "audio" / "m1.m4a"
+    info = tmp_path / "audio" / "m1.info.json"
+
+    async def download(argv):
+        audio.parent.mkdir(parents=True, exist_ok=True)
+        audio.write_bytes(b"OPUS")
+        info.write_text('{"track": "Take On Me", "artist": "a-ha"}')
+        yield "[download] 100% of 1MiB"
+
+    # No artist/track params and no annotator: the credit must still be published from the info json.
+    proc = plans.fetch_runner(runner=download, annotator=None)
+    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp")) if isinstance(e, CompleteResult)][0]
+    note = done.artifacts["annotation"]
+    assert note == {"source": "youtube", "artist": "a-ha", "title": "Take On Me", "confidence": "high"}
+
+
+@pytest.mark.asyncio
+async def test_the_youtube_credit_becomes_the_musicbrainz_query_key(tmp_path):
+    # The reversed-parse defect (#672) is that a wrong artist parse ("No Vocal") defeats the MusicBrainz
+    # lookup. Querying with the YouTube CITATION instead of the parse is what lets the lookup succeed —
+    # and a MusicBrainz match then upgrades the youtube floor to a musicbrainz citation with an MBID.
+    audio = tmp_path / "audio" / "m1.m4a"
+    info = tmp_path / "audio" / "m1.info.json"
+
+    async def download(argv):
+        audio.parent.mkdir(parents=True, exist_ok=True)
+        audio.write_bytes(b"OPUS")
+        info.write_text('{"track": "Take On Me", "artist": "a-ha"}')
+        yield "[download] 100% of 1MiB"
+
+    annotator = FakeAnnotator(MB_HIT)
+    proc = plans.fetch_runner(runner=download, annotator=annotator)
+    # The dispatched params carry the WRONG parse (what defeats the lookup today); the credit overrides.
+    done = [
+        e
+        for e in await drain(
+            proc, spec(tmp_path, fetcher="ytdlp", artist="No Vocal", track="Wrong", durationSec=225.0)
+        )
+        if isinstance(e, CompleteResult)
+    ][0]
+    # MusicBrainz was queried with the CITATION, not the bad parse.
+    assert annotator.search_calls == [("a-ha", "Take On Me")]
+    # ...and its match (with an MBID) upgraded the youtube floor.
+    note = done.artifacts["annotation"]
+    assert note["source"] == "musicbrainz"
+    assert note["mbid"] == "mb-take-on-me"
+
+
+@pytest.mark.asyncio
+async def test_a_youtube_credit_survives_a_musicbrainz_decline(tmp_path):
+    # When MusicBrainz declines, the YouTube citation must remain the published annotation — it is a
+    # citation in its own right, not a guess that a miss should erase.
+    audio = tmp_path / "audio" / "m1.m4a"
+    info = tmp_path / "audio" / "m1.info.json"
+
+    async def download(argv):
+        audio.parent.mkdir(parents=True, exist_ok=True)
+        audio.write_bytes(b"OPUS")
+        info.write_text('{"track": "Take On Me", "artist": "a-ha"}')
+        yield "[download] 100% of 1MiB"
+
+    proc = plans.fetch_runner(runner=download, annotator=FakeAnnotator([]))  # empty => no match
+    done = [e for e in await drain(proc, spec(tmp_path, fetcher="ytdlp")) if isinstance(e, CompleteResult)][0]
+    note = done.artifacts["annotation"]
+    assert note["source"] == "youtube"
+    assert note["artist"] == "a-ha"
+
+
+@pytest.mark.asyncio
+async def test_a_retained_original_still_captures_the_youtube_credit_without_re_downloading(tmp_path):
+    # The self-corrects-one-song-at-a-time promise: a re-cook of an already-downloaded song reads the
+    # credit from the info.json ALREADY on disk, on the `found is not None` early-return branch — no
+    # fetch. Drives AcquireAudio directly because the branch is the retained-original path.
+    from src.runtime.ctx import Ctx
+    from src.steps.acquire import AcquireAudio
+
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir(parents=True)
+    (audio_dir / "m1.m4a").write_bytes(b"OPUS")  # the retained original, already on disk
+    (audio_dir / "m1.info.json").write_text('{"track": "Take On Me", "artist": "a-ha"}')
+
+    ctx = Ctx(job=spec(tmp_path, fetcher="ytdlp"), work=str(tmp_path))
+
+    async def never(argv):  # pragma: no cover - must not run: the audio is already retained
+        raise AssertionError("re-downloaded a song whose audio was already on disk")
+        yield ""
+
+    ctx.runner = never
+    events = [e async for e in AcquireAudio().run(ctx)]
+
+    # audio resolved from disk, no fetch, and the credit captured off the retained info.json
+    assert str(ctx.audio.path).endswith("m1.m4a")
+    assert any(isinstance(e, ProgressEvent) and e.pct == 100 for e in events)
+    assert ctx.audio.youtube_credit == {
+        "source": "youtube",
+        "artist": "a-ha",
+        "title": "Take On Me",
+        "confidence": "high",
+    }

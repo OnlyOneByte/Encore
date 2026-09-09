@@ -127,10 +127,16 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 	// title, so neither may be clobbered by a later write. Without this, every sidecar write would
 	// silently downgrade a cited artist back to a title parse — the exact regression applyAnnotation
 	// refuses at runtime, reintroduced through persistence.
-	const CITED = ['manual', 'musicbrainz'];
+	// A YouTube citation counts the same as a MusicBrainz one (#672): YouTube's OWN extracted metadata
+	// is a declared credit, not a re-parse, so a later title parse must not clobber it either.
+	const CITED = ['manual', 'musicbrainz', 'youtube'];
 	const keepCited = (field: 'artist' | 'title') => CITED.includes(prev?.provenance?.[field]?.by ?? '');
-	// Runtime annotation wins over a stored one: it is the fresher citation.
-	const cited = m.annotation?.source === 'musicbrainz' ? m.annotation : undefined;
+	// Runtime annotation wins over a stored one: it is the fresher citation. Either citation source.
+	const cited =
+		m.annotation?.source === 'musicbrainz' || m.annotation?.source === 'youtube' ? m.annotation : undefined;
+	// The provenance `by` records WHICH authority cited it, so a YouTube citation is not mislabelled as
+	// MusicBrainz (they are not equal evidence, and `by` is what a later reader trusts).
+	const citedBy = cited?.source === 'youtube' ? ('youtube' as const) : ('musicbrainz' as const);
 
 	return {
 		id: m.id,
@@ -162,8 +168,8 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			...(prev?.provenance ?? {}),
 			...(cited
 				? {
-						artist: { by: 'musicbrainz' as const, confidence: cited.confidence },
-						title: { by: 'musicbrainz' as const, confidence: cited.confidence }
+						artist: { by: citedBy, confidence: cited.confidence },
+						title: { by: citedBy, confidence: cited.confidence }
 					}
 				: {
 						...(keepCited('artist') ? {} : { artist: { by: parsed.by, confidence: parsed.confidence } }),
@@ -236,7 +242,12 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		annotation:
 			s.provenance.artist && (s.provenance.artist.by === 'musicbrainz' || s.provenance.artist.confidence !== 'low')
 				? {
-						source: s.provenance.artist.by === 'musicbrainz' ? 'musicbrainz' : 'normalizer',
+						source:
+							s.provenance.artist.by === 'musicbrainz'
+								? 'musicbrainz'
+								: s.provenance.artist.by === 'youtube'
+									? 'youtube'
+									: 'normalizer',
 						confidence: s.provenance.artist.confidence === 'low' ? 'medium' : s.provenance.artist.confidence
 					}
 				: undefined,
@@ -258,7 +269,7 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		// sync pass mirrors these into the index too, but an align job dispatched before it ran would
 		// otherwise look up the raw title and miss.
 		artistCanonical: browseArtist(s) ?? undefined,
-		artistCredit: s.canonical.artistCredit ?? undefined,
+		artistCredit: credit(s) ?? undefined,
 		titleCanonical: lookupTitle(s) ?? undefined
 	};
 }
@@ -293,6 +304,26 @@ export function lookupTitle(s: MediaSidecar): string | null {
 	const p = s.provenance.title;
 	if (!p || p.confidence === 'low') return null;
 	return s.canonical.title;
+}
+
+/**
+ * The lookup-safe FULL artist billing ("Lady Gaga feat. Beyoncé"): null when the artist parse was
+ * only a guess. Same confidence gate as `browseArtist`/`lookupTitle`, and here for a sharper reason
+ * (#672).
+ *
+ * `artistCredit` is stored UNGATED — it is the upload's raw billing and is preserved verbatim across
+ * writes so a re-annotated song does not lose it. But its downstream consumer is the LRCLIB ranking:
+ * `LrclibSource.fetch` scores a record with `credit = req.artist_credit or req.artist`, PREFERRING the
+ * credit over the artist. For an `uploader-fallback` song `artistCanonical` is null (correctly gated)
+ * so no artist key is sent, yet the ungated credit still rode along as `artistCredit` — the uploader
+ * channel name — and the near-tie tiebreak scored against it. So the confidence gate was everywhere
+ * the artist was read EXCEPT the one place a low-confidence value could still poison selection. This
+ * closes it: a low-confidence artist contributes no credit either, matching the gate on the primary.
+ */
+export function credit(s: MediaSidecar): string | null {
+	const p = s.provenance.artist;
+	if (!p || p.confidence === 'low') return null;
+	return s.canonical.artistCredit ?? null;
 }
 
 // ── I/O ─────────────────────────────────────────────────────────────────────────────
