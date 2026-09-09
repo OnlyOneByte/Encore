@@ -805,6 +805,115 @@ try {
 		badFocus.join('\n        ')
 	);
 
+	/*
+	 * ── CLAIM 5 (XR-TV-01/02, issue #821): the TV type floor is ONE declaration and the ladder is rem ─
+	 *
+	 * This is the measured half of #821 — the source-scan half (no px literal, tokens are rem, no
+	 * per-token viewport term) lives in stage-scale.test.ts and CANNOT make a computed claim. What only a
+	 * render can settle: that `.tv { font-size: calc(max(2.7vh, 20px) * clamp(0.8, --ui-scale, 1.6)) }`
+	 * actually RESOLVES to 29.16px at a 1920×1080 CSS viewport, that every rem tier multiplies THAT root
+	 * (so the smallest rendered tier clears the 27px floor and none clears below 24px), and that pushing
+	 * --ui-scale to its 0.8 bound keeps every tier >= 20px — the acceptance criteria verbatim. --ui-scale
+	 * is read off the live `.tv` element and overridden in place, so this measures the real cascade, not a
+	 * recomputation of the token file.
+	 *
+	 * Not gated on a room/session: `/tv` always mounts `.tv`, and the tier tokens live on it regardless of
+	 * playback state, so the attract screen is enough to read the resolved sizes.
+	 */
+	await page.viewport(1920, 1080);
+	await page.goto(base + '/tv');
+	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`, { timeout: 15000 });
+	await sleep(500);
+
+	// The eight TV type tiers, read as the ENGINE resolves them off the root (a rem tier * the root px).
+	const TV_TIERS = ['--tv-small', '--tv-eyebrow', '--tv-label', '--tv-body', '--tv-name', '--tv-joinurl', '--tv-hero', '--tv-lyric'];
+	const tvProbe = `(() => {
+		const tv = document.querySelector(${JSON.stringify(SEL.tvRoot)});
+		if (!tv) return null;
+		// Resolve each rem token to px through a throwaway child of .tv, so rem binds to the .tv root
+		// font-size exactly as the real tiers do.
+		const read = (tok) => {
+			const probe = document.createElement('span');
+			probe.style.cssText = 'position:absolute;visibility:hidden;font-size:var(' + tok + ')';
+			tv.appendChild(probe);
+			const px = parseFloat(getComputedStyle(probe).fontSize);
+			probe.remove();
+			return px;
+		};
+		const tiers = {};
+		for (const t of ${JSON.stringify(TV_TIERS)}) tiers[t] = read(t);
+		return { rootPx: parseFloat(getComputedStyle(tv).fontSize), tiers };
+	})()`;
+
+	const tv1 = await page.evaluate(tvProbe);
+	if (!tv1) {
+		check('CLAIM 5 (#821) the /tv document mounts .tv so the root floor is measurable', false, 'no .tv element found on /tv');
+	} else {
+		// Root: 2.7vh of 1080 = 29.16px, * ui-scale 1.
+		check(
+			'CLAIM 5 (XR-TV-01) the .tv root font-size resolves to 29.16px at 1920x1080, --ui-scale 1',
+			Math.abs(tv1.rootPx - 29.16) <= 0.5,
+			`.tv root computed to ${tv1.rootPx}px (expected 29.16 ± 0.5)`
+		);
+		const smallest1 = Math.min(...Object.values(tv1.tiers));
+		check(
+			'CLAIM 5 (XR-TV-01) the smallest rendered TV tier is >= 27px, and none below 24px, at --ui-scale 1',
+			smallest1 >= 27 - 0.5,
+			`smallest tier ${smallest1}px across ${JSON.stringify(tv1.tiers)}`
+		);
+		// Every tier must be an integer-ish rem multiple of the root, i.e. tracked BY the root, not free.
+		const untracked = Object.entries(tv1.tiers).filter(([, px]) => Math.abs((px / tv1.rootPx) - Math.round((px / tv1.rootPx) * 1000) / 1000) > 0.05);
+		check(
+			'CLAIM 5 (XR-TV-02) every TV tier is a rem multiple of the root — it moves when the root moves',
+			untracked.length === 0,
+			`tiers not resolving as a clean rem multiple of the ${tv1.rootPx}px root: ${JSON.stringify(untracked)}`
+		);
+
+		// Push --ui-scale to its 0.8 lower bound on the ROOT (where the floor consumes it — a custom
+		// property set on a descendant like .tv would not reach :root's already-resolved font-size).
+		await page.evaluate(`document.documentElement.style.setProperty('--ui-scale', '0.8')`);
+		await sleep(200);
+		const tv08 = await page.evaluate(tvProbe);
+		const smallest08 = tv08 ? Math.min(...Object.values(tv08.tiers)) : 0;
+		check(
+			'CLAIM 5 (XR-TV-01) at --ui-scale 0.8 no TV tier falls below 20px',
+			tv08 !== null && smallest08 >= 20 - 0.5,
+			`smallest tier at 0.8 = ${smallest08}px across ${JSON.stringify(tv08?.tiers)}`
+		);
+		// And that the root itself scaled with it (proves --ui-scale is the multiplier, not inert).
+		check(
+			'CLAIM 5 (XR-TV-01) --ui-scale actually scales the root — 0.8 * 29.16 ~= 23.33px',
+			tv08 !== null && Math.abs(tv08.rootPx - 29.16 * 0.8) <= 0.5,
+			`.tv root at --ui-scale 0.8 computed to ${tv08?.rootPx}px (expected ~23.33)`
+		);
+
+		// Reset --ui-scale to a non-numeric value: the @property <number> registration must REJECT it and
+		// fall back to initial-value 1, so the floor holds rather than the whole font-size dropping (the
+		// reviewer's advisory — a non-numeric --ui-scale silently removing the floor). Root stays 29.16.
+		await page.evaluate(`document.documentElement.style.setProperty('--ui-scale', 'banana')`);
+		await sleep(200);
+		const tvBad = await page.evaluate(tvProbe);
+		check(
+			'CLAIM 5 (#907 advisory) a non-numeric --ui-scale falls back to 1 via @property — the floor is not dropped',
+			tvBad !== null && Math.abs(tvBad.rootPx - 29.16) <= 0.5,
+			`.tv root with --ui-scale: banana computed to ${tvBad?.rootPx}px (expected 29.16 — @property <number> should reject the non-numeric value)`
+		);
+		await page.evaluate(`document.documentElement.style.removeProperty('--ui-scale')`);
+
+		// 720p: the px term of max(2.7vh, 20px) must engage. At a 720-tall viewport 2.7vh = 19.44px < 20px,
+		// so the root floors at 20px — the windowed/short-panel case the px term exists for (reviewer's
+		// advisory: the 1080p arms alone would miss a 720p regression).
+		await page.viewport(1280, 720);
+		await sleep(200);
+		const tv720 = await page.evaluate(tvProbe);
+		check(
+			'CLAIM 5 (XR-TV-01) at a 720-tall viewport the root floors on the 20px px-term of max(2.7vh, 20px)',
+			tv720 !== null && Math.abs(tv720.rootPx - 20) <= 0.5,
+			`.tv root at 1280x720 computed to ${tv720?.rootPx}px (expected 20 — the px floor, since 2.7vh = 19.44px there)`
+		);
+		await page.viewport(1920, 1080);
+	}
+
 	// ── the gate's own non-vacuity floors (XR-VER-05) ──────────────────────────────────────────
 	check(
 		`the drive measured a real population — >=${FLOORS.controlsMeasured} control readings`,

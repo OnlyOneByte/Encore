@@ -59,6 +59,89 @@ test('no TV type is sized below the ten-foot floor with a literal size', () => {
 	expect(offenders).toEqual([]);
 });
 
+/*
+ * #821 / XR-TV-01/02 — the TV type floor lives in exactly ONE declaration and the whole ladder is rem.
+ *
+ * The floor test above only rejects a literal size BELOW the ten-foot floor, so it would happily pass
+ * a hard-coded `44px` on the stage — which is precisely the drift #821 closes: a px font-size anywhere
+ * under the TV tree is a tier that no longer tracks the one root floor. The ONE exemption is the root
+ * declaration itself — `.tv { font-size: calc(max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6)) }`
+ * — because that IS the floor every rem tier multiplies. `em` stays out of scope for the reason the
+ * floor test states (it is relative to the parent, e.g. the bouncing-ball dot at 0.5em).
+ */
+const TV_ROOT_FLOOR_RE = /^calc\(\s*max\(\s*2\.7vh\s*,\s*20px\s*\)\s*\*\s*clamp\(\s*0\.8\s*,\s*var\(--ui-scale\)\s*,\s*1\.6\s*\)\s*\)$/;
+
+test('#821 no TV font-size is a px literal or a per-token viewport term — the floor is the one exception', () => {
+	const offenders: string[] = [];
+	let rootFloorsSeen = 0;
+	for (const f of FILES) {
+		const src = stripComments(readFileSync(f, 'utf8'));
+		for (const m of src.matchAll(/font-size:\s*([^;]+);/g)) {
+			const value = m[1]!.trim();
+			// The single named exemption: the root floor declaration.
+			if (TV_ROOT_FLOOR_RE.test(value)) {
+				rootFloorsSeen++;
+				continue;
+			}
+			// Any px literal in a TV font-size is a tier that stopped tracking the root (bans 44px too,
+			// not merely sub-floor sizes).
+			if (/\b[0-9.]+px\b/.test(value)) {
+				offenders.push(
+					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: font-size "${value}" carries a px literal — size it in rem off the .tv root floor (var(--tv-*))`
+				);
+			}
+			// A per-token viewport term under a vh-scaled root multiplies the panel twice (XR-TV-02).
+			if (/\b[0-9.]+(vh|vw|vmin|vmax)\b/.test(value)) {
+				offenders.push(
+					`${f.replace(SRC, 'src')}:${lineOf(src, m.index!)}: font-size "${value}" carries a viewport term — only the .tv root may (XR-TV-02); tokens express rem ratios`
+				);
+			}
+		}
+	}
+	// Non-vacuity: the root floor must actually be present, or a rename silently makes this guard a
+	// scan that exempts nothing AND finds nothing (a green that proves the floor moved, not that it holds).
+	expect(rootFloorsSeen, 'the .tv root font-size floor declaration was not found — did it move or change shape?').toBe(1);
+	expect(offenders).toEqual([]);
+});
+
+test('#821 the TV type ladder in app.css is rem off the root — no tier carries a viewport term', () => {
+	const css = stripComments(readFileSync(join(SRC, 'app.css'), 'utf8'));
+	// XR-TV-02's enumerated type tokens: each must be a bare rem multiple, none may carry vh/vw/vmin.
+	// (--tv-safe-* and --tv-qr are the named geometry exemption and are intentionally NOT in this list.)
+	const TYPE_TOKENS = [
+		'--tv-small',
+		'--tv-eyebrow',
+		'--tv-label',
+		'--tv-body',
+		'--tv-name',
+		'--tv-joinurl',
+		'--tv-hero',
+		'--tv-lyric'
+	] as const;
+	const offenders: string[] = [];
+	let smallestRem = Infinity;
+	for (const tok of TYPE_TOKENS) {
+		const decl = new RegExp(`${tok}:\\s*([^;]+);`).exec(css);
+		if (!decl) {
+			offenders.push(`${tok}: declaration not found`);
+			continue;
+		}
+		const value = decl[1]!.trim();
+		if (/\b[0-9.]+(vh|vw|vmin|vmax)\b/.test(value)) {
+			offenders.push(`${tok}: "${value}" carries a viewport term — the root owns the scale, tokens own ratios`);
+		}
+		const rem = /^([0-9.]+)rem$/.exec(value);
+		if (!rem) {
+			offenders.push(`${tok}: "${value}" is not a bare rem multiple`);
+			continue;
+		}
+		smallestRem = Math.min(smallestRem, Number(rem[1]));
+	}
+	expect(offenders).toEqual([]);
+	// XR-TV-01: no TV tier is smaller than 0.93rem (≈27px at the 29.16px root, ≥24px floor).
+	expect(smallestRem).toBeGreaterThanOrEqual(0.93);
+});
+
 /**
  * Anything docked to an edge must use the safe-area tokens. A bare pixel offset is how content ends up
  * in the overscan region — and it always looks fine on the developer's monitor, which does not overscan.
