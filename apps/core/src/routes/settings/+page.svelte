@@ -505,7 +505,7 @@
 						setting writes the moment it changes; a name is typed, so it saves on purpose.
 					-->
 						<div class="save-slot">
-							<Button class="w-full" disabled={!canSaveProfile} onclick={saveProfile}>
+							<Button size="block" disabled={!canSaveProfile} onclick={saveProfile}>
 								{#if saving}Saving…{:else}Save{/if}
 							</Button>
 						</div>

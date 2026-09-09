@@ -9,20 +9,20 @@
 	 * than shipping.
 	 *
 	 * 1. `transition-all` REMOVED from the base class. Encore does not want it: it animates layout
-	 *    properties, `components/motion.test.ts` bans the name across the whole tree, and the incumbent
-	 *    `.btn-accent` had no transition at all — so removing it is also what makes the migration
-	 *    invisible. That guard's net arm is what caught it here, and is what will catch its return.
+	 * properties, `components/motion.test.ts` bans the name across the whole tree, and the incumbent
+	 * `.btn-accent` had no transition at all — so removing it is also what makes the migration
+	 * invisible. That guard's net arm is what caught it here, and is what will catch its return.
 	 * 2. `size: icon` is `size-tap`, not `size-9`. The registry's 36px is under this app's 44px `--tap`
-	 *    standard; `size-tap` reads the token rather than restating the number. Guarded by
-	 *    `touch-targets.test.ts`. `grid place-items-center` comes with it because Icon renders as a block
-	 *    and without a centring context the mark sits off-centre (the reported off-centre X).
+	 * standard; `size-tap` reads the token rather than restating the number. Guarded by
+	 * `touch-targets.test.ts`. `grid place-items-center` comes with it because Icon renders as a block
+	 * and without a centring context the mark sits off-centre (the reported off-centre X).
 	 * 3. A `press` axis and its scoped styles at the bottom of this file — three incumbent behaviours
-	 *    over one shape. `touch-action: none` on the grab case is load-bearing for the #836 drag:
-	 *    without it the browser claims the vertical gesture for scrolling and `onpointerdown` never
-	 *    fires. `cursor: grab` must stay pinned to this control and never reach a row (XR-PH-17,
-	 *    guarded by `reorder-mode-source-836.test.ts`).
+	 * over one shape. `touch-action: none` on the grab case is load-bearing for the #836 drag:
+	 * without it the browser claims the vertical gesture for scrolling and `onpointerdown` never
+	 * fires. `cursor: grab` must stay pinned to this control and never reach a row (XR-PH-17,
+	 * guarded by `reorder-mode-source-836.test.ts`).
 	 * 4. An `iconPrimary` variant for NowPlayingHero's transport: accent fill while actionable, falling
-	 *    back to the icon surface when disabled, which is what says the transport is dead not idle.
+	 * back to the icon surface when disabled, which is what says the transport is dead not idle.
 	 *
 	 * NOT a deviation: colour. `app.css`'s semantic layer aliases `--primary`, `--muted`, `--ring` and
 	 * friends onto Encore's tokens, so every stock class here resolves untouched. That layer is why this
@@ -46,6 +46,15 @@
 				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {
+				/*
+				 * Fills its column — a form's one commit control. This is a VARIANT rather than a
+				 * `class="w-full"` at the call site, and that is not style preference: app.css sets
+				 * `source(none)` with a single `@source` over this directory, so a utility written in a
+				 * page is scanned by nothing and emitted nowhere. #913 S1 briefly shipped that bug — the
+				 * settings Save and join Start-singing buttons kept their width only by accident,
+				 * because a vendored component elsewhere happened to use the same class.
+				 */
+				block: "w-full min-h-tap",
 				default: "h-9 gap-1.5 px-2.5 in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
 				xs: "h-6 gap-1 rounded-[min(var(--radius-md),8px)] px-2 text-xs in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-8 gap-1 rounded-[min(var(--radius-md),10px)] px-2.5 in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5",
