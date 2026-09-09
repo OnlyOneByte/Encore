@@ -28,6 +28,7 @@ import {
 	FLOORS,
 	MIN_FIELD_PX,
 	QUARANTINE,
+	RETIRED,
 	SHEET_CAP_FRACTION,
 	TAP,
 	TAP_FLOOR
@@ -228,10 +229,24 @@ test('every quarantined control carries a substantive reason and a real identity
 		if (q.measured <= 0)
 			offenders.push(`${who}: recorded at ${q.measured}px — a zero measurement is UNMEASURED (XR-VER-03)`);
 	}
+	// A RETIRED entry (a control that WAS quarantined and is now resolved, #863) carries the same
+	// identity + substantive-reason bar. `was` is the number it measured while quarantined, so it
+	// must be a real sub-floor reading — a >= TAP `was` would mean it was never a defect.
+	for (const q of RETIRED) {
+		const who = `${q.where} ${q.match.tag} (retired)`;
+		if (q.reason.trim().length < 60)
+			offenders.push(`${who}: reason is not substantive (${q.reason.trim().length} chars)`);
+		const fields = Object.values(q.match).filter((v) => v !== undefined).length;
+		if (fields < 2) offenders.push(`${who}: matches on ${fields} field(s) — too loose to be a single control`);
+		if (q.was >= TAP) offenders.push(`${who}: recorded at ${q.was}px, which was never below the ${TAP}px floor`);
+		if (q.was <= 0) offenders.push(`${who}: recorded at ${q.was}px — a zero measurement is UNMEASURED (XR-VER-03)`);
+	}
 	expect(offenders).toEqual([]);
-	// non-vacuity: an emptied QUARANTINE would make this pass while checking nothing, and would also
-	// silently turn the gate from "these four are known" into "nothing is known".
-	expect(QUARANTINE.length).toBeGreaterThanOrEqual(4);
+	// non-vacuity: the gate started with four known sub-floor controls. #863 resolved all four — three
+	// CSS fixes and one false positive — so they moved from QUARANTINE to RETIRED rather than vanishing.
+	// Pin the COMBINED set at the original four so neither list can be silently emptied: dropping a
+	// quarantine entry without recording its resolution in RETIRED reds here. (XR-VER-06/07.)
+	expect(QUARANTINE.length + RETIRED.length).toBeGreaterThanOrEqual(4);
 });
 
 test('the register mirrors the tokens it measures against, so the two cannot drift apart', () => {
