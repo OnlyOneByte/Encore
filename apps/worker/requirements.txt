@@ -31,6 +31,14 @@ soundfile>=0.13
 # use its wav2vec2 align() to produce WORD timings, rather than trusting ASR to transcribe sung
 # vocals. 3.8.6 is the modern line that installs on py3.12 and matches faster-whisper 1.2's API.
 whisperx==3.8.6
+# pyannote.audio — SPEAKER DIARIZATION for duet part attribution (issue #691). It already arrives
+# TRANSITIVELY via whisperx 3.8.6 (which pins pyannote-audio>=4, see the coupled version-set note
+# above); pinned EXPLICITLY here — the soundfile precedent — because the `diarize` capability now
+# depends on it directly, so its version is ours to control, not an incidental of whisperx's resolver.
+# Only a worker that advertises `diarize` loads it (the pipeline is HF-gated and lazy-imported), so a
+# demucs/align-only box never pays its startup cost. 4.0 is the line whisperx 3.8.6 resolved on the
+# pinned torch 2.8 / py3.12 stack — do NOT re-pin without re-resolving the whole ML set.
+pyannote.audio==4.0.0
 # BS-RoFormer separation engine, inference-only. Adopted ALONGSIDE python-audio-separator (issue
 # #483, owner ruling Q1(b): both engines, not one over the other) — kept for its load/infer/release
 # session lifecycle (load the ~700MB checkpoint ONCE per long-lived worker, not per cook) and its

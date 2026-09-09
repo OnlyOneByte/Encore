@@ -20,6 +20,15 @@ export interface LyricLine {
 	 * single-script line leaves it undefined. Display-only: it carries no timings and drives no ball.
 	 */
 	romanization?: string;
+	/**
+	 * Which abstract duet PART sings this line — `"A"`, `"B"`, … (issue #691). The worker's diarization
+	 * pass writes it, and only when it is CONFIDENT the song is a duet; an undiarized song, a solo, or a
+	 * low-confidence result leaves it undefined, which reads as a single colour for the whole song (the
+	 * owner's fallback ruling on #632). Abstract on purpose — never a singer identity — so #692 can map
+	 * "same part → same colour" without naming anyone. Display-only: it carries no timings and drives no
+	 * ball, exactly like `romanization`.
+	 */
+	part?: string;
 }
 export interface LyricsDoc {
 	language: string | null;
@@ -57,6 +66,7 @@ export function parseLyricsDoc(raw: unknown): LyricsDoc | null {
 		if (!text.trim() && words.length === 0) continue;
 		const line: LyricLine = { start: num(l.start), end: num(l.end), text, words };
 		if (typeof l.romanization === 'string' && l.romanization.trim()) line.romanization = l.romanization;
+		if (typeof l.part === 'string' && l.part.trim()) line.part = l.part;
 		lines.push(line);
 	}
 	if (lines.length === 0) return null;
@@ -173,7 +183,13 @@ export function resegmentLine(
 		cur.push(w);
 	}
 	if (cur.length) out.push(lineFromWords(cur));
-	return out.length ? coalesceOrphans(out) : [line];
+	// A duet PART is a property of the whole source line (issue #691), so every row it splits into keeps
+	// it — otherwise resegmenting a long duet line would drop the colour on all but nothing. `part` rides
+	// through here even though `romanization` does not, because `romanization` only appears on line-synced
+	// docs (never resegmented) while `part` lands on the word-timed docs this split actually fires on.
+	const split = out.length ? coalesceOrphans(out) : [line];
+	if (line.part !== undefined) for (const l of split) l.part = line.part;
+	return split;
 }
 
 /**

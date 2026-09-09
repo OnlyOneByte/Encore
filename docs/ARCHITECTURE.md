@@ -661,7 +661,8 @@ coarse `Stage` values are what the phone's progress bar reads; the step names ar
 | 5 | `presplit-texts` | aligning | `lyrics.texts` | `lyrics.texts` |
 | 6 | `grade-and-select` | aligning | `audio.duration_sec`, `lyrics.texts` | `lyrics.selection`, `lyrics.texts` |
 | 7 | `time-texts` | aligning | `audio.path`, `audio.vocals_path`, `engines`, `job`, `lyrics.selection`, `lyrics.texts` | `out` |
-| 8 | `publish-lyrics` | aligning | `engines`, `job`, `out` | `out` |
+| 8 | `diarize` | aligning | `audio.vocals_path`, `job`, `out` | `out` |
+| 9 | `publish-lyrics` | aligning | `engines`, `job`, `out` | `out` |
 
 ```mermaid
 flowchart LR
@@ -710,7 +711,8 @@ flowchart LR
     align_4["presplit-texts"]
     align_5["grade-and-select"]
     align_6["time-texts"]
-    align_7["publish-lyrics"]
+    align_7["diarize"]
+    align_8["publish-lyrics"]
     align_0 --> align_1
     align_1 --> align_2
     align_2 --> align_3
@@ -718,6 +720,7 @@ flowchart LR
     align_4 --> align_5
     align_5 --> align_6
     align_6 --> align_7
+    align_7 --> align_8
   end
 ```
 

@@ -445,3 +445,61 @@ test('parseLyricsDoc ignores a blank/non-string romanization (if-available, neve
 	expect(doc!.lines[0]!.romanization).toBeUndefined();
 	expect(doc!.lines[1]!.romanization).toBeUndefined();
 });
+
+// ── duet part attribution (#691) ──────────────────────────────────────────────
+// The worker's diarization writes a `part` letter on each line of a CONFIDENT duet; a solo /
+// undiarized song carries none, which reads as one colour. The TV side just has to carry it through
+// parse and resegmentation faithfully — it never invents one.
+
+test('parseLyricsDoc carries a per-line duet part through, and omits it when absent', () => {
+	const doc = parseLyricsDoc({
+		language: 'en',
+		lines: [
+			{ start: 0, end: 1, text: 'my line', words: [{ word: 'my', start: 0, end: 1 }], part: 'A' },
+			{ start: 1, end: 2, text: 'your line', words: [{ word: 'your', start: 1, end: 2 }], part: 'B' },
+			{ start: 2, end: 3, text: 'no part', words: [{ word: 'no', start: 2, end: 3 }] }
+		],
+		words: []
+	});
+	expect(doc).not.toBeNull();
+	expect(doc!.lines.map((l) => l.part)).toEqual(['A', 'B', undefined]);
+});
+
+test('parseLyricsDoc ignores a blank/non-string part (if-available, never fabricated)', () => {
+	const doc = parseLyricsDoc({
+		language: 'en',
+		lines: [
+			{ start: 0, end: 2, text: 'a', words: [], part: '   ' },
+			{ start: 2, end: 4, text: 'b', words: [], part: 7 }
+		],
+		words: []
+	});
+	expect(doc).not.toBeNull();
+	expect(doc!.lines[0]!.part).toBeUndefined();
+	expect(doc!.lines[1]!.part).toBeUndefined();
+});
+
+test('resegmenting a long duet line keeps the part on every row it splits into', () => {
+	// A long single line owned by part "B", split at its pauses — every resulting row must stay "B",
+	// or a duet's colour would drop on all but the first row after resegmentation.
+	const words = wordsWithGaps([
+		['this', 0],
+		['is', 0.05],
+		['a', 0.05],
+		['fairly', 0.05],
+		['long', 0.9],
+		['sung', 0.05],
+		['duet', 0.05],
+		['line', 0.05]
+	]);
+	const line: LyricLine = {
+		start: words[0]!.start,
+		end: words[words.length - 1]!.end,
+		text: words.map((w) => w.word).join(' '),
+		words,
+		part: 'B'
+	};
+	const out = resegmentLine(line, LINE_GAP_SEC, LINE_MAX_CHARS, 0);
+	expect(out.length).toBeGreaterThan(1); // it actually split
+	expect(out.every((l) => l.part === 'B')).toBe(true);
+});
