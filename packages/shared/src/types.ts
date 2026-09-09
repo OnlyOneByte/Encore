@@ -112,6 +112,29 @@ export interface Media {
 	 * degradation rather than a broken mix.
 	 */
 	vocalsRef?: string;
+	/**
+	 * Signed millisecond offset of the guiding track against the instrumental, MEASURED at cook time —
+	 * the guide-alignment half of the guide feature made observable instead of assumed (#766).
+	 *
+	 * `guide-sync.ts` is blind by construction to any offset baked into the DECODED audio: it only ever
+	 * compares the two elements' reported `currentTime`, so a stem that is time-shifted in its samples
+	 * (container priming, an mp4 edit list, a genuinely misaligned separation) leaves both playheads in
+	 * agreement while the ears hear the guide early or late, and the governor holds for the whole song.
+	 * This field carries what the ear would hear: the worker cross-correlates the two raw stems once and
+	 * records how far the vocals sit from the instrumental. Positive = the guide LAGS the instrumental
+	 * (its content arrives late, so it must be seeked EARLIER to line up); negative = it leads.
+	 *
+	 * `TvPlayer` adds it wherever it aligns the guide — the pre-roll lock-on, the jump path, and as the
+	 * ZERO POINT `guideCorrection` measures drift against — so the offset arrives as an INPUT and
+	 * `guide-sync.ts` stays a pure policy function with no new branch (read `guideOffsetSec` there).
+	 *
+	 * ABSENT OR 0 IS TODAY'S BEHAVIOUR, EXACTLY. Every song cooked before this field existed carries no
+	 * value, and a freshly-cooked song whose two stems are the same FLAC codec (#480) decodes to a
+	 * sample-exact common start and measures ~0 — so the field is 0 for essentially the whole library on
+	 * the day it lands, and `guideOffsetSec` maps absent → 0. The non-zero case is a legacy pre-#480
+	 * `.m4a` vocals stem (the ~21 ms AAC priming asymmetry) or a deliberately shifted stem.
+	 */
+	guideOffsetMs?: number;
 	lyricsRef?: string; // MediaStore key of the word-timed lyrics JSON artifact — drives the
 	// TV karaoke overlay. Absent until an align job completes; the overlay no-ops without it.
 	// This is the CHOSEN candidate (see lyricsCandidates + pickBestLyrics).
@@ -169,6 +192,21 @@ export function playbackRef(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): s
  */
 export function isPlayable(m: Pick<Media, 'stemStatus' | 'instrumentalRef'>): boolean {
 	return playbackRef(m) !== '';
+}
+
+/**
+ * The guide-alignment offset in SECONDS, ready to add to the master playhead — 0 whenever there is
+ * nothing measured (#766).
+ *
+ * The wire and the schema carry `guideOffsetMs` (a signed integer, or absent). The client aligns in
+ * seconds, so this converts once and, crucially, DEFAULTS ABSENT/NON-FINITE TO 0: a song cooked before
+ * the field existed, or one whose measurement was declined, is held exactly as today. Keeping the
+ * default here — not at each call site — is what lets `guide-sync.ts` receive `masterSec + guideOffsetSec`
+ * without ever branching on whether an offset was measured.
+ */
+export function guideOffsetSec(m: Pick<Media, 'guideOffsetMs'>): number {
+	const ms = m.guideOffsetMs;
+	return typeof ms === 'number' && Number.isFinite(ms) ? ms / 1000 : 0;
 }
 
 export interface Singer {

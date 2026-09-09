@@ -293,6 +293,19 @@ export interface JobArtifacts {
 	 */
 	songProfile?: SongProfile;
 	/**
+	 * The MEASURED guide/instrumental offset in signed milliseconds — the guide-alignment half of the
+	 * guide feature made observable (#766). A SIBLING of `stems`, like `songProfile`: it is a
+	 * measurement, not a file, so it does not belong inside the file-key record. Positive = the vocals
+	 * LAG the instrumental; negative = they lead.
+	 *
+	 * OPTIONAL and value-or-nothing, unlike `songProfile`: the worker measures it best-effort and emits
+	 * it only when it has a confident number (`measure_guide_offset_ms` is tri-state), so an absent field
+	 * means "not measured" and the core reads it as null — which the client's `guideOffsetSec` maps to 0,
+	 * holding the guide exactly as today. A stored 0 (a measured "aligned") is distinct from absent. Read
+	 * through this declared field, never structurally — the lesson `songProfile` above records.
+	 */
+	guideOffsetMs?: number;
+	/**
 	 * What a `fetch` job identified this song AS, when MusicBrainz agreed. Absent when annotation was
 	 * declined — which is the normal outcome for anything the normalizer could not name confidently, a
 	 * weak duration match, or an unreachable service. The core applies it under a never-regress rule so

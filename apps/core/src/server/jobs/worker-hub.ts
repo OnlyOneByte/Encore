@@ -37,6 +37,7 @@ import {
 	setMediaLyrics,
 	setMediaVocals,
 	setMediaSongProfile,
+	setMediaGuideOffset,
 	applyAnnotation,
 	settleLyricsGate,
 	reportTerminalFailure,
@@ -326,6 +327,14 @@ export class WorkerHub {
 				// "Separating vocals" permanently. Unit tests on both sides passed throughout, because each
 				// mocked its own shape.
 				setMediaSongProfile(job.mediaId, msg.artifacts?.songProfile, this.#d.mediaById);
+				// The same separation ALSO measured how far the vocals stem sits from the instrumental — the
+				// guide-alignment offset (#766), reported as a top-level sibling of `stems`/`songProfile`
+				// exactly like the profile is. Value-or-nothing, unlike the profile: the worker only sends a
+				// number when it measured one confidently, and setMediaGuideOffset drops a non-number, so an
+				// absent field leaves the offset unset (→ the client holds the guide as today) and a refused
+				// upgrade's missing measurement never wipes a good one. Read through the DECLARED wire field,
+				// the same lesson the songProfile line above records.
+				setMediaGuideOffset(job.mediaId, msg.artifacts?.guideOffsetMs, this.#d.mediaById);
 			}
 		}
 		// A fetch may have identified the song. Applied under a never-regress rule so a later `medium`

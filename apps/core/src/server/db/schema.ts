@@ -83,6 +83,13 @@ export const media = sqliteTable('media', {
 	// feature survive a restart instead of silently vanishing from a library song. Nullable: absent
 	// means no guide is offered (never separated, or the stem came back silent).
 	vocalsRef: text('vocals_ref'),
+	// Signed millisecond offset of the vocals stem against the instrumental, measured at cook time (#766).
+	// INTEGER (whole ms is all the alignment ever needs — the client divides by 1000), and NULLABLE with a
+	// meaningful null: null ⇔ "never measured / row predates the feature", which guideOffsetSec() maps to 0
+	// so the song is held exactly as today. It is deliberately NOT `.notNull().default(0)` — a stored 0 and
+	// an absent value are the same behaviour, and keeping null distinct lets the operator surface tell
+	// "measured, and it was 0" apart from "we never measured this one".
+	guideOffsetMs: integer('guide_offset_ms'),
 	// The stems job's THIRD artifact: what the cook learned about the song's music — its key and the
 	// sung range — as one JSON blob (see packages/shared/src/song-profile.ts, SongProfile). Stored the
 	// same way as lyrics_candidates: nothing queries INSIDE it (transposition and range math all happen

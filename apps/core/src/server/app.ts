@@ -447,6 +447,7 @@ export function getApp(): EncoreApp {
 					// back to un-cooked: rotation stops treating it as playable, a re-request re-cooks it
 					live.instrumentalRef = undefined;
 					live.vocalsRef = undefined;
+					live.guideOffsetMs = undefined;
 					live.lyricsRef = undefined;
 					live.lyricsCandidates = [];
 					live.stemStatus = 'none';

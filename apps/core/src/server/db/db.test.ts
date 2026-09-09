@@ -76,6 +76,30 @@ test('media defaults: stemStatus none', () => {
 	expect(row.stemStatus).toBe('none');
 });
 
+// #766: guide_offset_ms is added by migration 0006, NULLABLE with no default — a row that omits it
+// reads back null ("never measured", which the client maps to 0), and a stored signed value (0
+// included, a measured "aligned") round-trips. RED on base: the media baseline has no guide_offset_ms
+// column, so this insert/read cannot preserve it.
+test('#766: media.guide_offset_ms defaults null and round-trips a signed value (0 included)', () => {
+	const { db } = openDb(':memory:');
+	runMigrations(db);
+	db.insert(media).values({ id: 'g0', source: 'youtube', sourceRef: 'a', title: 'A', durationSec: 200 }).run();
+	db.insert(media)
+		.values({ id: 'g1', source: 'youtube', sourceRef: 'b', title: 'B', durationSec: 200, guideOffsetMs: 30 })
+		.run();
+	db.insert(media)
+		.values({ id: 'g2', source: 'youtube', sourceRef: 'c', title: 'C', durationSec: 200, guideOffsetMs: -25 })
+		.run();
+	db.insert(media)
+		.values({ id: 'g3', source: 'youtube', sourceRef: 'd', title: 'D', durationSec: 200, guideOffsetMs: 0 })
+		.run();
+	const byId = new Map(db.select().from(media).all().map((r) => [r.id, r.guideOffsetMs]));
+	expect(byId.get('g0')).toBeNull(); // never measured
+	expect(byId.get('g1')).toBe(30);
+	expect(byId.get('g2')).toBe(-25);
+	expect(byId.get('g3')).toBe(0); // measured, aligned — distinct from null
+});
+
 // #398: the room_settings.lyrics_ball COLUMN default is 'off' (owner decision C — flip the marker
 // default to No marker, keep the styles). This pins the SQLite column default itself: a raw insert
 // that omits lyrics_ball must read back 'off'. Reverting schema.ts's .default('off') -> 'bounce'
