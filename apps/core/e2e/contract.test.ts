@@ -547,8 +547,9 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 	'probes/p12-search.mjs': [
 		// Hex swatch colour (shape rule), not a selector.
 		'#ff5cae'
-		// '.chips button.ok' MIGRATED to SEL.readyChip (Group C of #513, tail of #494): the guard now
-		// models a `tag.class` compound part, so the bare-tag `button` resolves as a tag anchor.
+		// '.chips button.ok' was migrated to SEL.readyChip (Group C of #513, tail of #494) and then
+		// RETIRED by #833, which deleted the readiness chip row it anchored. Nothing returns here: the
+		// probe reaches the same empty state by typing a non-matching query.
 	],
 	'probes/p13-tap-to-start.mjs': [
 		' + JSON.stringify(SEL.queueRow) + ',
@@ -753,30 +754,27 @@ test('#544 Group B — p8-presence .err[role=alert] moved from KNOWN_OFFENDERS i
 	expect(selectorResolves('.err[data-x=alert]', sources)).toBe(false);
 });
 
-test('#545 Group C — p12-search .chips button.ok moved from KNOWN_OFFENDERS into SEL', () => {
-	// Half 1: the tag.class compound is no longer quarantined for p12-search. On base it sat in
-	// KNOWN_OFFENDERS (the probe spelled it out); after the migration the only honest place it may live
-	// is SEL, so KNOWN_OFFENDERS must no longer wave it through.
-	const p12 = KNOWN_OFFENDERS['probes/p12-search.mjs'] ?? [];
-	expect(p12).not.toContain('.chips button.ok');
-
-	// Half 2: it now lives in SEL with its exact value, and the resolver — extended here to model a
-	// TAG.CLASS compound part (a bare tag `button` anchored by the class `.ok`, mid-selector) — resolves
-	// it against real source. The anchor is `<button class="chip ok">` inside the `.chips` readiness
-	// group in routes/+page.svelte, so a green false/null here would mean the SEL entry points at markup
-	// no component renders.
-	expect(SEL.readyChip).toBe('.chips button.ok');
+test('#545 Group C — the resolver still models a `tag.class` compound part (re-anchored by #833)', () => {
+	// RE-ANCHORED, ON THE RECORD (XR-VER-07). This test used to pin SEL.readyChip ('.chips button.ok')
+	// through two halves: that KNOWN_OFFENDERS no longer waved the literal through, and that the SEL
+	// entry resolved against real source. #833 deleted the readiness chip row, so both halves now name
+	// markup nothing renders — they cannot hold, and lowering them to a `null` check would leave the
+	// test looking authoritative while asserting nothing.
+	//
+	// What must NOT rot with them is the RESOLVER EXTENSION they were built on: modelling a `tag.class`
+	// compound part — a bare tag anchored by a class, mid-selector — which no other test exercises. A
+	// surviving real instance of that shape is `.showall-row button.chip`, the way back out of a
+	// non-matching search, so the positive arm re-anchors there and the negatives are unchanged.
 	const sources = guardSources();
-	expect(selectorResolves(SEL.readyChip, sources)).toBe(true);
+	expect(selectorResolves('.showall-row button.chip', sources)).toBe(true);
 
 	// The resolver extension must be REAL, not a widening that accepts any `tag.class` shape:
 	//   • a wrong CLASS must still fail — no source renders a `button.nope-not-a-class`;
-	//   • a wrong TAG must still fail — no component renders a `<marquee`, so `.chips marquee.ok` fails;
-	//   • the bare-tag part is load-bearing — `.chips .ok` (class-only) is a DIFFERENT selector that
-	//     also matches a SongRow `<span class="chip state ok">`, which is exactly why the migration keeps
-	//     the `button` anchor rather than dropping to a class-only handle.
-	expect(selectorResolves('.chips button.nope-not-a-class', sources)).toBe(false);
-	expect(selectorResolves('.chips marquee.ok', sources)).toBe(false);
+	//   • a wrong TAG must still fail — no component renders a `<marquee`, so `marquee.chip` fails;
+	//   • the bare-tag part is load-bearing — a class-only handle would match a SongRow's own
+	//     `<span class="chip state">` too, which is why the shape keeps the `button` anchor.
+	expect(selectorResolves('.showall-row button.nope-not-a-class', sources)).toBe(false);
+	expect(selectorResolves('.showall-row marquee.chip', sources)).toBe(false);
 });
 
 test('#546 Group D — p11-dashboards card/tile/chart selectors moved from KNOWN_OFFENDERS into SEL', () => {

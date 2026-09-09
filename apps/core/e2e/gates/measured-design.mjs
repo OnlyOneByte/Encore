@@ -486,6 +486,156 @@ try {
 		await page.safeAreaInsets({ top: 0, right: 0, bottom: 0, left: 0 });
 	}
 
+	/*
+	 * ── CLAIM 3, SECOND BAND: the browse screen's search dock (#833) ────────────────────────────
+	 *
+	 * Direction B docks search in the thumb zone and stacks the results UPWARD from it, so the browse
+	 * screen is now a second surface carrying a docked band — and the band contract has to hold on both
+	 * or the geometry has forked, which is the whole reason `--dock-h` is measured rather than written.
+	 *
+	 * Four of these cannot be settled by reading source, and three were open questions before this ran:
+	 *   - whether `--dock-h` on `?browse=1` reads the REAL search band or a phantom left over from home's
+	 *     button (the publishing effect lives on the page and tears down only on route unmount);
+	 *   - whether the input really lands within thumb reach rather than merely below the list;
+	 *   - whether the stack really ENDS at the dock — a bottom-anchored column plus a scroll-to-bottom is
+	 *     the mechanism, and nothing about either is visible in a declaration;
+	 *   - whether any result row is occluded by the band it stacks up from.
+	 *
+	 * The reflow half of the browse screen (320px at 200% text) is deliberately NOT re-asserted here:
+	 * `src/lib/phone-inventory.test.ts` owns XR-PH-02 since #837, and two independent geometry checks of
+	 * one criterion is the duplicated-vocabulary shape the spec warns about.
+	 */
+	await page.viewport(390, 844);
+	await openBrowseFromHome(page, { timeout: 15000 });
+	await page.fill(SEL.search, 'a');
+	await page
+		.waitFor(`document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length > 0`, { timeout: 15000 })
+		.catch(() => {});
+	await sleep(800); // the search debounce is 150ms; let the result set and the scroll-to-bottom settle
+
+	const browseProbe = `(() => {
+		const dock = document.querySelector(${JSON.stringify(SEL.searchDock)});
+		const field = document.querySelector(${JSON.stringify(SEL.search)});
+		const main = document.querySelector(${JSON.stringify(SEL.mainColumn)});
+		if (!dock || !field || !main) return null;
+		const dr = dock.getBoundingClientRect();
+		const fr = field.getBoundingClientRect();
+		const rows = [...document.querySelectorAll(${JSON.stringify(SEL.songRow)})].map((r) => {
+			const b = r.getBoundingClientRect();
+			return { top: b.top, bottom: b.bottom };
+		});
+		return {
+			dockVar: getComputedStyle(document.documentElement).getPropertyValue('--dock-h').trim(),
+			dockInline: document.documentElement.style.getPropertyValue('--dock-h').trim(),
+			dockClientHeight: dock.clientHeight,
+			dockTop: dr.top,
+			dockBottom: dr.bottom,
+			fieldCentreY: fr.top + fr.height / 2,
+			innerHeight: window.innerHeight,
+			mainPadBottom: parseFloat(getComputedStyle(main).paddingBottom),
+			rowCount: rows.length,
+			lastRowBottom: rows.length ? rows[rows.length - 1].bottom : null,
+			occludedRows: rows.filter((r) => r.bottom > dr.top + 1 && r.top < dr.bottom - 1).length
+		};
+	})()`;
+	const browse = await page.evaluate(browseProbe);
+	if (!browse) {
+		check(
+			'CLAIM 3 the browse screen renders its docked search band, so its contract is measurable',
+			false,
+			`no ${SEL.searchDock} / ${SEL.search} / ${SEL.mainColumn} found on ?browse=1`
+		);
+	} else {
+		check(
+			"CLAIM 3 (XR-VER-11) --dock-h on the browse screen is the SEARCH band's REAL rendered height, not a phantom from home's button",
+			browse.dockVar === `${browse.dockClientHeight}px` && browse.dockInline === `${browse.dockClientHeight}px`,
+			`--dock-h resolved "${browse.dockVar}" (inline "${browse.dockInline}") against a rendered band of ${browse.dockClientHeight}px`
+		);
+		check(
+			'CLAIM 3 the search band sits fully on screen — no bleed below, no clip above',
+			browse.dockTop >= -1 && browse.dockBottom <= browse.innerHeight + 1,
+			`band occupies ${browse.dockTop.toFixed(1)}..${browse.dockBottom.toFixed(1)} of a ${browse.innerHeight}px viewport`
+		);
+		check(
+			'CLAIM 3 the browse column RESERVES the search band rather than being overlapped by it (XR-PH-12)',
+			browse.mainPadBottom >= browse.dockClientHeight,
+			`main padding-bottom ${browse.mainPadBottom}px against a ${browse.dockClientHeight}px band`
+		);
+		// Thumb reach is the POINT of docking it (issue #833 acceptance 1): the bottom third of a 390x844
+		// phone is the region a thumb covers without regripping. A box merely below the list fails this.
+		check(
+			'CLAIM 3 the search input sits in the thumb zone — the bottom third of the viewport (#833)',
+			browse.fieldCentreY > (browse.innerHeight * 2) / 3,
+			`input centre at y=${browse.fieldCentreY.toFixed(1)} of ${browse.innerHeight}px; thumb zone starts at ${((browse.innerHeight * 2) / 3).toFixed(1)}`
+		);
+		// A floor, not a check: with no rows the two arms below would pass over nothing at all.
+		check(
+			'CLAIM 3 the browse drive rendered a real result stack — >=1 row to measure',
+			browse.rowCount >= 1,
+			`${browse.rowCount} rows rendered for the query "a"`
+		);
+		check(
+			'CLAIM 3 no result row is occluded by the band it stacks up from (#833 acceptance 3)',
+			browse.occludedRows === 0,
+			`${browse.occludedRows} of ${browse.rowCount} rows intersect the band at ${browse.dockTop.toFixed(1)}..${browse.dockBottom.toFixed(1)}`
+		);
+		// The stack GROWS UPWARD: its last member — the top-ranked one — ends just above the dock rather
+		// than at the top of the column. This is the arm that fails if the bottom anchoring or the
+		// scroll-to-bottom is dropped, and neither is visible in any declaration.
+		const gap = browse.lastRowBottom === null ? null : browse.dockTop - browse.lastRowBottom;
+		check(
+			'CLAIM 3 the stack ENDS at the dock — the top-ranked row is the one beside the thumb (#833 acceptance 1)',
+			gap !== null && gap >= 0 && gap <= 72,
+			`last row's bottom is ${gap === null ? 'n/a' : gap.toFixed(1)}px above the band (0..72 expected: main reserves the band + 28px)`
+		);
+	}
+
+	/*
+	 * The BOTTOM ANCHORING, isolated from the scroll. The arm above cannot tell the two apart: a long
+	 * result set overflows the column, so the scroll-to-bottom alone puts the last row beside the dock
+	 * whether the column is anchored or not — measured, by reverting `justify-content: flex-end` and
+	 * watching that arm stay green. What the anchoring is FOR is the short case: one line of content
+	 * belongs beside the thumb, not stranded at the top of an empty screen. A query that matches nothing
+	 * is the deterministic way to reach it — one `.empty` line, a column that cannot scroll, so the only
+	 * thing that can put it at the bottom is the anchoring.
+	 */
+	await page.fill(SEL.search, 'zzzzznotasongzzzzz');
+	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.empty)}) !== null`, { timeout: 15000 }).catch(() => {});
+	await sleep(900);
+	const shortProbe = `(() => {
+		const dock = document.querySelector(${JSON.stringify(SEL.searchDock)});
+		const empty = document.querySelector(${JSON.stringify(SEL.empty)});
+		if (!dock || !empty) return null;
+		const er = empty.getBoundingClientRect();
+		return {
+			dockTop: dock.getBoundingClientRect().top,
+			emptyBottom: er.bottom,
+			rowCount: document.querySelectorAll(${JSON.stringify(SEL.songRow)}).length,
+			scrollHeight: document.documentElement.scrollHeight,
+			innerHeight: window.innerHeight
+		};
+	})()`;
+	const short = await page.evaluate(shortProbe);
+	if (!short) {
+		check(
+			'CLAIM 3 a non-matching query leaves one empty-state line to measure the anchoring against',
+			false,
+			`no ${SEL.empty} found on ?browse=1 after a non-matching query`
+		);
+	} else {
+		check(
+			'CLAIM 3 the short case really is short — the column cannot scroll, so position is anchoring alone',
+			short.rowCount === 0 && short.scrollHeight <= short.innerHeight + 1,
+			`${short.rowCount} rows, scrollHeight ${short.scrollHeight} against innerHeight ${short.innerHeight}`
+		);
+		const shortGap = short.dockTop - short.emptyBottom;
+		check(
+			'CLAIM 3 one line of content is anchored beside the thumb, not stranded at the top (#833)',
+			shortGap >= 0 && shortGap <= 72,
+			`empty-state line's bottom is ${shortGap.toFixed(1)}px above the band (0..72 expected; unanchored it would be ~700px)`
+		);
+	}
+
 	// The sheet's OWN geometry, measured where the component still renders.
 	await page.goto(base + '/components');
 	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.peek)}) !== null`, { timeout: 15000 });

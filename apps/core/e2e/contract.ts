@@ -88,6 +88,12 @@ export const SEL = {
 	/** Back off the browse screen to the queue. The phone's own Back gesture also works. */
 	backToQueue: '.back-btn',
 	search: 'input[aria-label="Search a song or artist"]',
+	/**
+	 * The browse screen's docked band (#833). Search is bottom-anchored in the thumb zone and the results
+	 * stack upward from it, so this band — not the search box's own wrapper — is what publishes `--dock-h`
+	 * and what the measured gate reads the band contract off. Home's band is `.cta-dock` (SEL.homeReady).
+	 */
+	searchDock: '.search-dock',
 	songRow: '.row',
 	songTitle: '.row .t',
 	addTurn: '.row .add',
@@ -101,7 +107,6 @@ export const SEL = {
 	 * reads an exact total off the pair.
 	 */
 	processing: '.proc',
-	browseToggle: '.browse-toggle',
 	/*
 	 * Bare remote-list handles the probes read directly (not scoped under .row like addTurn/sing/songTitle
 	 * above): p3/p8/p10 query `.add`, `.sing`, `.t` on their own to check an action or a title exists at all,
@@ -116,19 +121,17 @@ export const SEL = {
 	rowTitle: '.t',
 	empty: '.empty',
 	/*
-	 * The Ready readiness filter chip: `<button class="chip ok">` inside the `.chips` readiness
-	 * group (routes/+page.svelte). The `button` tag is load-bearing, not decorative — a SongRow's
-	 * own `.chips` row renders a `<span class="chip state ok">` state chip, so `.chips .ok` alone
-	 * would also match that span; `button.ok` scopes the read to the clickable filter control.
-	 * p12-search clicks this to exercise the Ready-filter empty state. Migrated here from
-	 * KNOWN_OFFENDERS as Group C of the #513 per-driver SEL split (tail of #494); the guard now
-	 * models a `tag.class` compound part (bare-tag mid-selector anchor) to resolve it.
+	 * RETIRED (#833): `readyChip` was `.chips button.ok`, the Ready readiness filter chip. Direction B
+	 * deleted the readiness chip row — one of the four concurrent filter mechanisms — so the anchor no
+	 * longer exists in any source and the entry could only resolve vacuously or red. p12-search reached
+	 * `readyEmptyState` by clicking it; it now reaches the same copy by typing a non-matching query,
+	 * which is the condition that empty state was always really about. `browseToggle` ('.browse-toggle')
+	 * went with the same diff and for the same reason: the disclosure it opened is gone.
 	 */
-	readyChip: '.chips button.ok',
 	/** A SongRow status/kind chip (`<span class="chip state">` / `<span class="chip kind ...">` in
 	 *  SongRow.svelte) — the SCALING probe (p10) contrast-checks its text on the remote. Migrated from
-	 *  KNOWN_OFFENDERS in #547 (Group E). Distinct from `readyChip` above (a `.chips button.ok`
-	 *  readiness filter button); this is the per-row label chip. */
+	 *  KNOWN_OFFENDERS in #547 (Group E). This is the per-row label chip; the readiness FILTER chip it
+	 *  used to be distinguished from was deleted by #833. */
 	chip: '.chip',
 	away: '.away',
 	isLabel: '.is-label',
@@ -431,17 +434,19 @@ export const HOOKS: Hook[] = [
 		anchor: 'class="cta" onclick={openBrowse}',
 		why: 'every driven flow reaches the search box by clicking this, so a rename strands all of them'
 	},
+	/*
+	 * RETIRED (#833): the `readinessChips` hook (anchor `aria-label="Filter by readiness"`) and the
+	 * `browseToggle` hook (anchor `class="browse-toggle"`). Direction B deleted the readiness chip row
+	 * and the browse disclosure outright, so both anchors are absent from every source — an anchor
+	 * guard for markup nobody renders reports a permanent failure, not an invariant. What replaced them
+	 * is `searchDock` below: with those four mechanisms gone, the docked search box is the only control
+	 * a driven flow needs to narrow the library, so it is the one anchor worth pinning.
+	 */
 	{
-		id: 'readinessChips',
+		id: 'searchDock',
 		file: 'src/routes/+page.svelte',
-		anchor: 'aria-label="Filter by readiness"',
-		why: 'readiness is the organising axis; there is deliberately no source switch to click'
-	},
-	{
-		id: 'browseToggle',
-		file: 'src/routes/+page.svelte',
-		anchor: 'class="browse-toggle"',
-		why: 'browse is behind a disclosure now, so facets are not clickable until it is opened'
+		anchor: 'class="search-dock"',
+		why: 'search is bottom-anchored in the thumb zone and is the ONLY way to narrow the list since #833'
 	},
 	{
 		id: 'songRow',

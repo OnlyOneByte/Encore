@@ -89,8 +89,8 @@
 	 * DIRECTION A (docs/DECISIONS.md, issue #832): the room's queue IS the home screen, and browsing is
 	 * a deliberate push behind one primary button — the inverse of the browse-first screen that kept the
 	 * queue in a pull-up sheet. The push is a real navigation rather than a local boolean so the phone's
-	 * own Back gesture dismisses it; it is the SAME route, so the search query, the library and the
-	 * facet state all survive the trip in both directions.
+	 * own Back gesture dismisses it; it is the SAME route, so the search query and the library both
+	 * survive the trip in both directions.
 	 */
 	const browsing = $derived(page.url.searchParams.get('browse') === '1');
 	function openBrowse() {
@@ -361,8 +361,12 @@
 	// ── readiness ────────────────────────────────────────────────────────────
 	// One axis, three states: ready (stems on disk, sing now), cooking (stems in flight, still
 	// queueable because rotation holds its slot), raw (plays with the original vocals).
-	type Filter = 'all' | 'ready' | 'cooking';
-	let filter = $state<Filter>('all');
+	//
+	// It is no longer a FILTER. Direction B (issue #833) deleted the four concurrent ways to narrow
+	// one list — the three readiness chips, the artist rail, the genre rail, and the group headings
+	// that re-announced this axis in prose — leaving typing in the docked search box as the only one.
+	// So there is no `filter` state and no `showReady`/`showCooking`/`showRaw` gate: every group
+	// renders, every time, and the reader narrows the list by saying what they want.
 
 	function liveOf(id: string) {
 		return mediaStatus.get(id);
@@ -430,27 +434,19 @@
 			}));
 	});
 
-	const showReady = $derived(filter === 'all' || filter === 'ready');
-	const showCooking = $derived(filter === 'all' || filter === 'cooking');
-	const showRaw = $derived(filter === 'all');
-	/*
-	 * The readiness group headings only earn their space when more than one group is on screen. With a
-	 * chip selected, "Ready to sing · no wait" restates the chip directly above it — the fourth of the
-	 * four overlapping filter mechanisms, and the one that was pure duplication. A browse facet keeps
-	 * its heading either way, because there the heading carries the count and the facet name.
-	 */
-	const showGroupHeads = $derived(filter === 'all');
-
 	/**
 	 * The songs the readiness groups above already account for. The whole point of the readiness axis
 	 * is that a song appears EXACTLY ONCE, so the zero-query shortcut lists (popular / recently
 	 * queued) must subtract it — otherwise a cooked song shows up three times on one screen, once per
 	 * list, which is precisely the confusion the source tabs used to cause.
+	 *
+	 * Unconditional since #833: with the readiness chips gone, the ready and cooking groups always
+	 * render, so they always account for their songs.
 	 */
 	const accountedFor = $derived.by(() => {
 		const ids = new Set<string>();
-		if (showReady) for (const m of searchActive ? readyResults : library) ids.add(m.id);
-		if (showCooking) for (const c of cookingRows) ids.add(c.id);
+		for (const m of searchActive ? readyResults : library) ids.add(m.id);
+		for (const c of cookingRows) ids.add(c.id);
 		return ids;
 	});
 	function unaccounted(list: Media[]): Media[] {
@@ -576,49 +572,21 @@
 	// /api/library (#689). A parallel map rather than a field on Media because tags live in their own
 	// table and Media is the origin identity; the row reads its own song's entry, absent = no chips.
 	let libraryTags = $state<Record<string, string[]>>({});
-	// Browse: facets describe the WHOLE ready library (never the current filter), so picking an
-	// artist cannot collapse the rail to that one artist and strand you with no way back.
-	let facets = $state<{
-		artists: { artist: string; count: number }[];
-		tags: { tag: string; count: number }[];
-	}>({
-		artists: [],
-		tags: []
-	});
-	// One active browse facet at a time — an artist OR a tag (#690), never both. A tag chip narrows
-	// the library to songs carrying that descriptive tag ("duet", "80s"), reusing the media_tags
-	// byKindValue index server-side (?tag=) rather than filtering the payload client-side.
-	let browseFilter = $state<{ artist?: string; tag?: string } | null>(null);
 	/*
-	 * Browse starts collapsed so the readiness spine is the only filter on screen at rest. It opens
-	 * itself when a facet is active, because a filter narrowing the list while its control is hidden
-	 * reads as an empty library rather than an applied filter.
+	 * DELETED HERE (#833, direction B): the browse disclosure and the two facet rails it hid — the
+	 * `facets` state, the `browseFilter` that held one artist OR one tag, `browseOpen`, `setBrowse`,
+	 * and the `?artist=`/`?tag=` query this page sent. They were mechanisms 2 and 3 of the four
+	 * concurrent ways to narrow one list, and the ruling was to delete them rather than tidy them.
+	 *
+	 * The SERVER half stays: /api/library still computes the facets and still honours ?artist= and
+	 * ?tag= (`server/media/repository.ts`, guarded by browse-ready-parity.test.ts and
+	 * library-tag-filter.test.ts). Nothing on the phone asks for them any more, which is the point;
+	 * removing a working, tested endpoint capability is a separate decision nobody has made.
 	 */
-	let browseOpen = $state(false);
-	$effect(() => {
-		if (browseFilter) browseOpen = true;
-	});
-
-	function setBrowse(kind: 'artist' | 'tag' | null, value: string) {
-		// tapping the active chip again clears it — a filter you cannot undo is a trap. Artist and tag
-		// are mutually exclusive: selecting one replaces the other (#690), matching the single ?artist=
-		// OR ?tag= the endpoint accepts.
-		const same =
-			kind === 'artist' ? browseFilter?.artist === value : kind === 'tag' ? browseFilter?.tag === value : false;
-		browseFilter = kind === null || same ? null : kind === 'artist' ? { artist: value } : { tag: value };
-		if (navigator.vibrate) navigator.vibrate(8);
-		loadLibrary();
-	}
 
 	async function loadLibrary() {
 		try {
-			const qs = browseFilter?.artist
-				? `?artist=${encodeURIComponent(browseFilter.artist)}`
-				: browseFilter?.tag
-					? `?tag=${encodeURIComponent(browseFilter.tag)}`
-					: '';
-			const j = await (await fetch(`/api/library${qs}`)).json();
-			if (j.facets) facets = j.facets;
+			const j = await (await fetch('/api/library')).json();
 			library = j.library ?? [];
 			libraryTags = j.tags ?? {};
 			mergeMedia(library);
@@ -638,8 +606,30 @@
 
 	const queued = $derived(entries.filter((e) => e.status === 'queued').sort((a, b) => a.rotationSeq - b.rotationSeq));
 	const myPicks = $derived(queued.filter((e) => e.singerId === me?.id));
-	// the Ready chip's count reflects what that chip would actually show for the current query
-	const libraryCount = $derived(searchActive ? readyResults.length : library.length);
+
+	/*
+	 * DIRECTION B (docs/DECISIONS.md, issue #833): on the browse screen the search box is docked in the
+	 * thumb zone and the results stack UPWARD from it, so the highest-ranked row is the one nearest the
+	 * thumb — which is the whole reason to dock the box at the bottom rather than the top. Every list
+	 * below is therefore emitted in reverse, and the column is bottom-anchored in CSS.
+	 *
+	 * A stack that grows upward has to be scrolled to. Bottom-anchored content longer than the viewport
+	 * starts at its TOP, which is the far end of the ranking: without this the best match renders below
+	 * the fold while the worst one is what you see. Keyed on the shape of the rendered set rather than
+	 * running every frame, so scrolling up to read further is not fought by the effect; instant, never
+	 * smoothed, because a scroll animation is not something a reduced-motion guest asked for.
+	 */
+	const resultShape = $derived(
+		!browsing
+			? ''
+			: [query.trim(), readyResults.length, cookingRows.length, rawResults.length, library.length, popular.length, recent.length].join(
+					'|'
+				)
+	);
+	$effect(() => {
+		if (!resultShape) return;
+		window.scrollTo({ top: document.documentElement.scrollHeight });
+	});
 
 	/*
 	 * Screen-reader announcements for the two changes that most often happen UNDER the user's hands and
@@ -1163,12 +1153,23 @@
 	{/if}
 
 	<!--
-		THE BROWSE PUSH (direction A, issue #832). Everything below is the screen the primary button
-		pushes to, and it is deliberately UNCHANGED apart from being gated and given a way back — the
-		browse screen's own redesign (bottom-anchored search, the four filter mechanisms deleted) is
-		#833, and landing the two together would leave a home nobody can queue from at every merge in
-		between. The back control is first in the DOM because it is first visually (XR-PH-12); the
-		phone's own Back gesture also works, because the push is a real navigation.
+		THE BROWSE SCREEN — direction A's push (issue #832), direction B's layout (issue #833).
+
+		The search box is NOT in here. It is docked in the thumb zone below this column, and the results
+		STACK UPWARD from it: the top-ranked row is the LAST one in this block, so it is the row nearest
+		the thumb. That is the whole reason to dock the box at the bottom rather than the top, and it is
+		why every list below is emitted with its ranking REVERSED and the sections run least-relevant
+		first. DOM order still matches visual order (XR-PH-12) — what is reversed is the order of the
+		list, not the direction the column paints in, which is what a `column-reverse` container would
+		have done instead and it would have inverted the focus sequence with it.
+
+		The four concurrent filter mechanisms that used to sit at the top of this block are GONE: the
+		three readiness chips, the artist rail, the genre rail, and the group headings that re-announced
+		the readiness axis in prose. Typing in the docked box is the only way to narrow the list. Four
+		ways to narrow one list was the defect; a tidier four would still have been the defect.
+
+		The back control is first in the DOM because it is first visually (XR-PH-12); the phone's own
+		Back gesture also works, because the push is a real navigation.
 	-->
 	{#if browsing}
 		<div class="backrow">
@@ -1176,134 +1177,12 @@
 		</div>
 	{/if}
 
-	<!-- ONE box across every source: a singer picks by readiness ("can I sing this now?"), never by
-	     which index the song came from — so there is no source switch. -->
+	<!--
+		FURTHEST FROM THE THUMB: songs that still need karaoke made, or — with an empty box — the
+		zero-keystroke shortcuts. Recently queued sits above Popular tonight so that the more useful of
+		the two is the closer one to the search box.
+	-->
 	{#if browsing}
-		<div class="card searchbox">
-			<span class="search-mark"><Icon name="search" /></span>
-			<input
-				bind:value={query}
-				oninput={onQueryInput}
-				aria-label="Search a song or artist"
-				placeholder="Search a song or artist…"
-			/>
-			{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
-		</div>
-
-		<div class="chips" role="group" aria-label="Filter by readiness">
-			<button class="chip" class:active={filter === 'all'} onclick={() => (filter = 'all')}>All</button>
-			<button class="chip ok" class:active={filter === 'ready'} onclick={() => (filter = 'ready')}>
-				<Icon name="mic" /> Ready{#if libraryCount}&nbsp;{libraryCount}{/if}
-			</button>
-			<button class="chip warn" class:active={filter === 'cooking'} onclick={() => (filter = 'cooking')}>
-				<Icon name="sparkle" /> Cooking{#if cookingRows.length}&nbsp;{cookingRows.length}{/if}
-			</button>
-		</div>
-	{/if}
-
-	{#if browsing && showReady}
-		{@const readyList = searchActive ? readyResults : library}
-		<!--
-		  Browse lives behind ONE disclosure. Previously the two facet rails rendered inline whenever the
-		  library had enough variety, so the top of the screen could stack four independent ways to narrow
-		  the same list — three readiness chips, an artist rail, a genre rail, and group headings that
-		  re-announced the readiness axis in prose. Worse, the rails appeared and vanished as you typed,
-		  so the control row changed shape while you were using it. One collapsed row keeps the readiness
-		  spine primary and the control set stable.
-		-->
-		{#if !searchActive && (facets.artists.length > 1 || facets.tags.length > 1)}
-			<div class="browse">
-				<button class="browse-toggle" aria-expanded={browseOpen} onclick={() => (browseOpen = !browseOpen)}>
-					<Icon name={browseOpen ? 'chevron-down' : 'chevron-right'} />
-					Browse
-					{#if browseFilter}<span class="browse-active">{browseFilter.artist ?? browseFilter.tag}</span>{/if}
-				</button>
-				<!-- Clearing stays reachable while collapsed: a filter you cannot see is a filter you
-				     cannot undo, and an empty-looking list with no visible cause is the result. -->
-				{#if browseFilter}
-					<button class="chip chip-icon" onclick={() => setBrowse(null, '')}><Icon name="close" /> Clear</button>
-				{/if}
-			</div>
-			{#if browseOpen}
-				{#if facets.artists.length > 1}
-					<div class="facets" role="group" aria-label="Browse by artist">
-						<span class="facet-label">Artist</span>
-						{#each facets.artists as f (f.artist)}
-							<button
-								class="chip"
-								class:active={browseFilter?.artist === f.artist}
-								onclick={() => setBrowse('artist', f.artist)}
-							>
-								{f.artist}&nbsp;<span class="facet-count">{f.count}</span>
-							</button>
-						{/each}
-					</div>
-				{/if}
-				<!-- Browse by descriptive tag (#690): the same rail idiom as the artist rail, reading
-				     facets.tags (a tagFacets() count over the WHOLE ready library) and narrowing via
-				     ?tag= on the server. Capitalised for display; the value sent is the stored lower-case
-				     tag, so the round-trip matches what byTag indexes on. -->
-				{#if facets.tags.length > 1}
-					<div class="facets" role="group" aria-label="Browse by tag">
-						<span class="facet-label">Tag</span>
-						{#each facets.tags as f (f.tag)}
-							<button
-								class="chip tag"
-								class:active={browseFilter?.tag === f.tag}
-								onclick={() => setBrowse('tag', f.tag)}
-							>
-								{f.tag}&nbsp;<span class="facet-count">{f.count}</span>
-							</button>
-						{/each}
-					</div>
-				{/if}
-			{/if}
-		{/if}
-		{#if readyList.length}
-			{@const facetHead = browseFilter && !searchActive}
-			{#if showGroupHeads || facetHead}
-				<h2 class="grouphead ok">
-					{facetHead
-						? `${browseFilter?.artist ?? browseFilter?.tag} · ${readyList.length} ${readyList.length === 1 ? 'song' : 'songs'}`
-						: 'Ready to sing · no wait'}
-				</h2>
-			{/if}
-			{#each readyList as m (m.id)}
-				<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
-			{/each}
-		{/if}
-	{/if}
-
-	{#if browsing && showCooking && cookingRows.length}
-		<!-- Queue it anyway: rotation HOLDS a cooking song's slot, so it keeps its fair
-		     position and plays when the stems land. Cooking is not a blocked state. -->
-		{#if showGroupHeads}
-			<!-- "Queue it anyway" is true of a cooking song — rotation HOLDS its slot, so it keeps its fair
-			     position and plays when the stems land. It is NOT true of a failed one, so the head stops
-			     saying it as soon as the group contains a dead cook rather than inviting a guest to queue
-			     a song that will never play. -->
-			<h2 class="grouphead warn">
-				{cookingRows.some((c) => liveOf(c.id)?.status === 'failed')
-					? 'Cooking · one didn’t work — tap Sing to try again'
-					: 'Cooking · queue it anyway'}
-			</h2>
-		{/if}
-		{#each cookingRows as c (c.id)}
-			{@const r = displayReadiness(c.media, liveOf(c.id))}
-			<SongRow
-				{...rowMeta(c.media)}
-				readiness={r}
-				pct={c.pct}
-				status={c.status}
-				inQueue={inMyQueue(c.id)}
-				cookable={isCookableSource(c.media.source)}
-				onadd={() => addSong(c.id)}
-				onmake={canCook(c.media, r) ? () => singThis(c.id) : undefined}
-			/>
-		{/each}
-	{/if}
-
-	{#if browsing && showRaw}
 		{#if searchActive}
 			{#if searching && rawResults.length === 0 && readyResults.length === 0}
 				<div aria-busy="true" aria-label="Searching…">
@@ -1318,7 +1197,10 @@
 					{/each}
 				</div>
 			{/if}
-			{@const rawRows = unaccounted(rawResults)}
+			{#if !searching && rawResults.length === 0 && readyResults.length === 0}
+				<p class="empty">No results. YouTube search needs yt-dlp installed on the server.</p>
+			{/if}
+			{@const rawRows = unaccounted(rawResults).reverse()}
 			{#if rawRows.length}
 				<h2 class="grouphead">Needs karaoke · has vocals</h2>
 				{#each rawRows as m (m.id)}
@@ -1335,27 +1217,11 @@
 					/>
 				{/each}
 			{/if}
-			{#if !searching && rawResults.length === 0 && readyResults.length === 0}
-				<p class="empty">No results. YouTube search needs yt-dlp installed on the server.</p>
-			{/if}
 		{:else}
-			{@const popularRows = unaccounted(popular)}
-			{@const recentRows = unaccounted(recent)}
-			{#if popularRows.length}
-				<h2 class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</h2>
-				{#each popularRows as m (m.id)}
-					{@const r = readinessFor(m)}
-					<SongRow
-						{...rowMeta(m)}
-						readiness={r}
-						pct={liveOf(m.id)?.pct ?? 0}
-						status={liveOf(m.id)?.status}
-						inQueue={inMyQueue(m.id)}
-						cookable={isCookableSource(m.source)}
-						onadd={() => addSong(m.id)}
-						onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
-					/>
-				{/each}
+			{@const popularRows = unaccounted(popular).reverse()}
+			{@const recentRows = unaccounted(recent).reverse()}
+			{#if !popularRows.length && !recentRows.length && !library.length}
+				<p class="empty">Search for a song in the box below, or be the first to queue one.</p>
 			{/if}
 			{#if recentRows.length}
 				<h2 class="grouphead grouphead-mark"><Icon name="clock" /> Recently queued</h2>
@@ -1373,26 +1239,75 @@
 					/>
 				{/each}
 			{/if}
-			{#if !popularRows.length && !recentRows.length && !library.length}
-				<p class="empty">Search for a song above, or be the first to queue one.</p>
+			{#if popularRows.length}
+				<h2 class="grouphead grouphead-mark"><Icon name="flame" /> Popular tonight</h2>
+				{#each popularRows as m (m.id)}
+					{@const r = readinessFor(m)}
+					<SongRow
+						{...rowMeta(m)}
+						readiness={r}
+						pct={liveOf(m.id)?.pct ?? 0}
+						status={liveOf(m.id)?.status}
+						inQueue={inMyQueue(m.id)}
+						cookable={isCookableSource(m.source)}
+						onadd={() => addSong(m.id)}
+						onmake={canCook(m, r) ? () => singThis(m.id) : undefined}
+					/>
+				{/each}
 			{/if}
 		{/if}
 	{/if}
 
-	{#if browsing && filter !== 'all' && ((filter === 'ready' && !(searchActive ? readyResults : library).length) || (filter === 'cooking' && !cookingRows.length))}
-		{#if filter === 'ready'}
+	<!--
+		Cooking, immediately above the ready rows: rotation HOLDS a cooking song's slot, so it keeps its
+		fair position and plays when the stems land. Cooking is not a blocked state, which is why these
+		rows sit with the singable ones rather than behind a chip. The heading that said so in prose was
+		mechanism 4 and is deleted — SongRow's own readiness chip already says it per row, and a failed
+		cook says so on its own row rather than in a heading covering the whole group.
+	-->
+	{#if browsing && cookingRows.length}
+		{@const cookingStack = [...cookingRows].reverse()}
+		{#each cookingStack as c (c.id)}
+			{@const r = displayReadiness(c.media, liveOf(c.id))}
+			<SongRow
+				{...rowMeta(c.media)}
+				readiness={r}
+				pct={c.pct}
+				status={c.status}
+				inQueue={inMyQueue(c.id)}
+				cookable={isCookableSource(c.media.source)}
+				onadd={() => addSong(c.id)}
+				onmake={canCook(c.media, r) ? () => singThis(c.id) : undefined}
+			/>
+		{/each}
+	{/if}
+
+	<!--
+		NEAREST THE THUMB: the songs that can be sung right now, best match last. The "Ready to sing ·
+		no wait" heading that used to sit above them was mechanism 4 — it restated the readiness chip
+		directly above it — and it is deleted with the chips.
+	-->
+	{#if browsing}
+		{@const readyStack = [...(searchActive ? readyResults : library)].reverse()}
+		{#each readyStack as m (m.id)}
+			<SongRow {...rowMeta(m)} readiness="ready" inQueue={inMyQueue(m.id)} onadd={() => addSong(m.id)} />
+		{/each}
+		<!--
+			The library HAS karaoke songs, they just do not match what is in the box. Saying so — and
+			naming the way back — is what stops a non-matching query reading as "the app threw my
+			downloads away". This used to be the Ready CHIP's empty state; the chip is gone, and the
+			condition it was really about (a query the ready library cannot answer) is stated directly.
+		-->
+		{#if searchActive && !readyStack.length && library.length}
 			{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
 			<p class="empty">{empty.message}</p>
 			{#if empty.showAllCount !== null}
-				<!-- the way back: the library is one tap away, not gone -->
 				<div class="showall-row">
 					<button class="chip ok chip-icon" onclick={clearSearch}
 						><Icon name="mic" /> Show all {empty.showAllCount}</button
 					>
 				</div>
 			{/if}
-		{:else}
-			<p class="empty">Nothing cooking right now.</p>
 		{/if}
 	{/if}
 </main>
@@ -1406,6 +1321,36 @@
 {#if me && !browsing}
 	<div class="cta-dock" bind:clientHeight={dockH}>
 		<button class="cta" onclick={openBrowse}><Icon name="plus" /> Add a turn</button>
+	</div>
+{/if}
+
+<!--
+	THE SEARCH DOCK (direction B, issue #833). ONE box across every source: a singer picks by readiness
+	("can I sing this now?"), never by which index the song came from — so there is no source switch,
+	and since this issue, no readiness chips, no artist rail and no genre rail either. Typing is the
+	only filter.
+
+	It is bottom-anchored in the THUMB ZONE, and the results stack upward from it, which is what makes
+	the nearest row the best answer. It is the browse screen's one docked band, so it publishes the same
+	--dock-h the primary button publishes on home: `main` already pads by that token, so the top-ranked
+	row cannot end up under the band (XR-PH-12). LAST in the DOM, after the content it sits above.
+
+	The `aria-label` is a driven-flow anchor (`SEL.search`), not decoration: every phone probe reaches
+	the library by waiting on it, so renaming it hangs them on a timeout rather than failing an
+	assertion. Moving the box is safe; renaming the label is not.
+-->
+{#if browsing}
+	<div class="search-dock" bind:clientHeight={dockH}>
+		<div class="card searchbox">
+			<span class="search-mark"><Icon name="search" /></span>
+			<input
+				bind:value={query}
+				oninput={onQueryInput}
+				aria-label="Search a song or artist"
+				placeholder="Search a song or artist…"
+			/>
+			{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
+		</div>
 	</div>
 {/if}
 
@@ -1433,11 +1378,34 @@
 	 * The primary button is docked, so the column must be able to scroll clear of it (XR-PH-12): the
 	 * padding reserves the band's MEASURED height, which is what keeps the last queue row reachable at
 	 * every scroll position instead of parked under the button. The fallback covers the first frame
-	 * before the effect publishes a measurement, and the browse screen, which docks nothing.
+	 * before the effect publishes a measurement. Both bands publish the SAME token — the browse
+	 * screen's search dock and home's primary button — so this one rule reserves whichever is present.
 	 */
 	main {
 		flex: 1;
 		padding: 6px 18px calc(var(--dock-h, 0px) + 28px);
+	}
+	/*
+	 * THE BOTTOM-ANCHORED BROWSE STACK (direction B, issue #833). Results grow UPWARD from the docked
+	 * search box, so the column's content sits at its bottom edge rather than its top: with one line of
+	 * content, that line is beside the thumb instead of stranded at the top of an empty screen.
+	 *
+	 * Selected by `:has(> .backrow)` rather than by a class on `<main>` because the back control IS the
+	 * browse screen — it renders on `{#if browsing}` and nowhere else — and because `<main>` carries no
+	 * attributes today, which three separate driven-flow anchors read as the literal string `<main>`.
+	 *
+	 * TWO declarations, and the SECOND is the one doing the work. The auto bottom margin on the back
+	 * control both keeps it at the top of the column and pushes every later sibling to the bottom, which
+	 * is the whole anchoring. A `justify-content: flex-end` beside it was measured to change nothing —
+	 * the two always co-occur, because the selector only matches when the back control is present — so
+	 * it is not written here rather than left as a declaration no revert can falsify.
+	 */
+	main:has(> .backrow) {
+		display: flex;
+		flex-direction: column;
+	}
+	main:has(> .backrow) > .backrow {
+		margin-bottom: auto;
 	}
 	/*
 	 * The docked primary action. `position: fixed` is what makes it reachable with one thumb wherever
@@ -1583,10 +1551,10 @@
 
 	/*
 	 * Wide viewports spend the extra room on MORE SONGS, not longer rows. Only song rows flow into
-	 * columns — the search box, chips, facet rails and group headings each label everything below
-	 * them, so a heading confined to one column would read as applying to half the list. The rule is
-	 * inverted deliberately: everything spans by default and rows opt in, so a new block added here
-	 * spans (always safe) rather than silently landing in a column beside a song.
+	 * columns — the group headings and the empty states each label everything below them, so a heading
+	 * confined to one column would read as applying to half the list. The rule is inverted
+	 * deliberately: everything spans by default and rows opt in, so a new block added here spans
+	 * (always safe) rather than silently landing in a column beside a song.
 	 */
 	@media (min-width: 768px) {
 		main {
@@ -1598,6 +1566,15 @@
 			gap: 0 14px;
 			align-content: start;
 		}
+		/*
+		 * The wide layout keeps its columns on the browse screen; only the anchoring changes. It needs its
+		 * OWN declaration: an auto margin on a grid item aligns that item inside its own area and does not
+		 * push its siblings, so the flex mechanism above does not carry over.
+		 */
+		main:has(> .backrow) {
+			display: grid;
+			align-content: end;
+		}
 		main > :global(*) {
 			grid-column: 1 / -1;
 		}
@@ -1605,91 +1582,56 @@
 			grid-column: auto;
 		}
 	}
+	/*
+	 * THE SEARCH DOCK (direction B, issue #833). Same band contract as .cta-dock, for the same reason:
+	 * `position: fixed` is what keeps the box reachable with one thumb wherever the stack is scrolled
+	 * to, and it does not overlap content because `main` pads by this element's own measured height
+	 * (--dock-h) rather than by a guess. The safe-area inset lives HERE, on the band that actually sits
+	 * at the bottom of the screen, and reaches the toasts THROUGH --dock-h — so do not add a second
+	 * env() term to anything above.
+	 */
+	.search-dock {
+		position: fixed;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		z-index: 30;
+		display: flex;
+		justify-content: center;
+		padding: 10px 18px calc(10px + env(safe-area-inset-bottom));
+		background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 88%, transparent));
+		border-top: 1px solid var(--line);
+	}
 	.searchbox {
 		display: flex;
 		align-items: center;
 		gap: 10px;
 		padding: 12px 14px;
-		margin-bottom: 10px;
 		min-height: 52px;
+		width: 100%;
+		max-width: var(--max-w);
 	}
 	.searchbox input {
 		border: 0;
 		background: transparent;
 		color: var(--ink);
 		font-size: 1rem;
-		width: 100%;
-	}
-	.chips {
-		display: flex;
-		gap: 7px;
-		margin-bottom: 14px;
-	}
-	/* One collapsed row where two facet rails used to render inline and reshuffle as you typed. */
-	.browse {
-		display: flex;
-		align-items: center;
-		gap: 8px;
-		margin-bottom: 8px;
-	}
-	.browse-toggle {
-		min-height: var(--tap);
-		display: inline-flex;
-		align-items: center;
-		gap: 7px;
-		background: none;
-		border: 0;
-		padding: 0 2px;
-		cursor: pointer;
-		color: var(--ink-dim);
-		font-size: 0.68rem;
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-	}
-	.browse-toggle:hover {
-		color: var(--ink);
-	}
-	/* Names the active facet on the collapsed row, so a narrowed list always shows its cause. */
-	.browse-active {
-		color: var(--accent2);
-		text-transform: none;
-		letter-spacing: 0;
-		font-size: 0.8rem;
-	}
-	/* browse facet rails: horizontally scrollable so a 20-artist library cannot push the
-	   song list off the screen on a phone. */
-	.facets {
-		display: flex;
-		align-items: center;
-		gap: 7px;
-		margin-bottom: 8px;
-		overflow-x: auto;
-		scrollbar-width: none;
-		-webkit-overflow-scrolling: touch;
-	}
-	.facets::-webkit-scrollbar {
-		display: none;
-	}
-	.facets .chip {
-		flex: none;
-	}
-	.facet-label {
-		flex: none;
-		font-size: 0.68rem;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-		padding-right: 2px;
-	}
-	.facet-count {
-		opacity: 0.55;
-		font-variant-numeric: tabular-nums;
+		/*
+		 * `flex: 1` with `min-width: 0`, never `width: 100%`. An <input>'s intrinsic minimum width comes
+		 * from its character size, so as a flex item with the default `min-width: auto` it refuses to
+		 * shrink below roughly 20 characters — which at 200% text on a 320px viewport pushes the row
+		 * wider than the screen and forces horizontal scrolling (SC 1.4.10). That is the exact shape
+		 * #857 measured at 436px against 320px on the chip row this dock replaces.
+		 */
+		flex: 1;
+		min-width: 0;
 	}
 	.chip {
-		/* var(--tap), matching the queue actions and the row buttons. These were ~30px: above the 24px
-		   WCAG floor, but below the threshold this app had already set for itself everywhere else — and
-		   the readiness chips are the most-tapped controls on the screen. */
+		/* var(--tap), matching the queue actions and the row buttons. The readiness chips this was
+		   written for were ~30px — above the 24px WCAG floor, but below the threshold this app had
+		   already set for itself everywhere else. Those chips are deleted (#833); the rule stays because
+		   the way back out of a non-matching search ("Show all N") is a `chip ok chip-icon` and is just
+		   as tappable. The TOKEN, never the number (#831): the control has to move with `--tap`. */
 		min-height: var(--tap);
 		display: inline-flex;
 		align-items: center;
@@ -1705,14 +1647,6 @@
 	}
 	.chip.ok {
 		color: var(--ok);
-	}
-	.chip.warn {
-		color: var(--warn);
-	}
-	.chip.active {
-		background: var(--accent);
-		border-color: transparent;
-		color: var(--on-accent);
 	}
 	/* any label that leads with a mark rather than a word */
 	.chip-icon {
@@ -1743,12 +1677,6 @@
 	}
 	.grouphead:first-of-type {
 		margin-top: 4px;
-	}
-	.grouphead.ok {
-		color: var(--ok);
-	}
-	.grouphead.warn {
-		color: var(--warn);
 	}
 	.empty {
 		color: var(--ink-dim);
@@ -1846,7 +1774,7 @@
 	}
 
 	/*
-	 * The vocal-range disclosure. Mirrors the .browse toggle: a 44px min-height button, an uppercase
+	 * The vocal-range disclosure: a var(--tap) min-height button, an uppercase
 	 * label, a chevron that swaps down/right with the open state, and a peek of the range value on the
 	 * collapsed row so the section states its headline fact without being opened.
 	 */
@@ -2113,9 +2041,9 @@
 	}
 
 	/*
-	 * Landscape / short viewports (e.g. a phone held sideways at 844×390). The docked band plus header,
-	 * search box, chip row and section labels otherwise consume almost the whole height, leaving no room
-	 * for result rows, so the top chrome shrinks and at least a couple of rows stay visible.
+	 * Landscape / short viewports (e.g. a phone held sideways at 844×390). The docked band plus header
+	 * and section labels otherwise consume almost the whole height, leaving no room for result rows, so
+	 * the chrome shrinks and at least a couple of rows stay visible.
 	 *
 	 * The docked band itself is NOT shrunk by a token here any more: --dock-h now carries the button's
 	 * own MEASURED height, and an inline custom property on :root outranks this rule — so a smaller
@@ -2132,14 +2060,6 @@
 		.searchbox {
 			min-height: 42px;
 			padding: 8px 14px;
-			margin-bottom: 6px;
-		}
-		.chips {
-			margin-bottom: 8px;
-		}
-		.browse,
-		.facets {
-			margin-bottom: 4px;
 		}
 		.grouphead {
 			margin: 8px 4px 4px;

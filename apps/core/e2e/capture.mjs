@@ -283,12 +283,21 @@ try {
 		shoot(maya, 'phone-library', 'the library as it opens — cooked songs, newest first')
 	);
 
+	/*
+	 * #833 re-shot this frame. It used to open the browse disclosure and photograph the artist and genre
+	 * facet rails; direction B deleted both, along with the readiness chips and the group headings, so
+	 * there is nothing to open. What the frame shows now is the thing that replaced them: the search box
+	 * docked in the thumb zone with the results stacked upward from it, which is only visible with a
+	 * query in the box.
+	 */
 	await frame('phone-browse', async () => {
-		await maya.click(SEL.browseToggle);
-		await sleep(500);
-		await shoot(maya, 'phone-browse', 'browse behind its disclosure: artist and genre facets');
-		await maya.click(SEL.browseToggle); // close it again so it does not shadow later frames
-		await sleep(300);
+		await openBrowseFromHome(maya); // a no-op when the field is already there; keeps the fill safe
+		await maya.fill(SEL.search, 'a');
+		await sleep(700);
+		await shoot(maya, 'phone-browse', 'search docked in the thumb zone, results stacking upward from it');
+		await openBrowseFromHome(maya);
+		await maya.fill(SEL.search, ''); // clear it again so it does not shadow later frames
+		await sleep(400);
 	});
 
 	// Find something actually singable. Everything downstream of here needs one.
