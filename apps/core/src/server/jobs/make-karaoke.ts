@@ -476,6 +476,29 @@ export function setMediaVocals(mediaId: string, uri: string | undefined, mediaBy
 }
 
 /**
+ * Attach the MEASURED guide offset — how far the vocals stem sits from the instrumental, in signed
+ * milliseconds, so guide/instrumental alignment is observable instead of assumed (#766).
+ *
+ * Additive and independent of the instrumental flip, like setMediaVocals — and like it, a VALUE-OR-NOTHING
+ * field, not an always-write one. The worker measures the offset best-effort and only reports it when it
+ * has a trustworthy number (see measure_guide_offset_ms's tri-state); an absent value on the wire means
+ * "not measured", which must leave the field as it is. So a non-number is a no-op here: it never overwrites
+ * an existing measurement with null, which matters on a stems-UPGRADE re-cook where a declined re-measure
+ * would otherwise wipe a good offset a prior cook recorded. A measured 0 IS a number and is stored — that
+ * is the honest "measured, and it was aligned" answer, distinct from the never-measured null.
+ *
+ * The untrusted wire value is coerced at this boundary: anything that is not a finite number is dropped
+ * rather than written, so a garbage frame cannot poison the alignment the client trusts.
+ */
+export function setMediaGuideOffset(mediaId: string, offsetMs: unknown, mediaById: Map<string, Media>): boolean {
+	const media = mediaById.get(mediaId);
+	if (!media) return false;
+	if (typeof offsetMs !== 'number' || !Number.isFinite(offsetMs)) return false;
+	media.guideOffsetMs = Math.round(offsetMs);
+	return true;
+}
+
+/**
  * Attach the SONG PROFILE — the key + vocal-range analysis a stems job produces alongside the two
  * stems. Additive and independent of the instrumental flip, like setMediaVocals.
  *

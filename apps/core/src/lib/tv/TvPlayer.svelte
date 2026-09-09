@@ -17,8 +17,7 @@
 	// and the lyrics overlay run on. Nothing about the existing playback path changes, which is the
 	// reason this is two media elements rather than a WebAudio graph — a graph buys sample-exact lock
 	// and effects at the cost of rebuilding the part that already works.
-	import { playbackRef, isPlayable } from '@encore/shared';
-	import type { PlaybackSnapshot } from './catalog';
+	import { playbackRef, isPlayable, guideOffsetSec } from '@encore/shared';	import type { PlaybackSnapshot } from './catalog';
 	import { untrack } from 'svelte';
 	import { guideCorrection, prerollSeekTarget, seekPlan } from './guide-sync';
 	import { nextVideoSrc } from './video-src';
@@ -152,6 +151,18 @@
 	const effectiveGuide = $derived(Math.max(0, Math.min(1, guideLevel)));
 
 	const guideRef = $derived(media?.vocalsRef ?? null);
+	/**
+	 * The measured guide/instrumental offset in SECONDS — the ZERO POINT the guide is aligned to (#766).
+	 *
+	 * `guide-sync.ts` compares playheads and is blind to any offset baked into the decoded audio, so a
+	 * stem shifted in its samples reads as in-time while the ears hear it early or late. This carries the
+	 * measured shift so the guide is aligned to `master.currentTime + guideOffsetSecValue` at all three
+	 * sites (pre-roll, jump, drift). It is 0 for a song with no measured offset (guideOffsetSec maps
+	 * absent → 0), so the whole existing library is held EXACTLY as today; only a song with a stored
+	 * non-zero offset is shifted. The offset arrives as an INPUT to the pure policy functions — never a
+	 * new branch inside guide-sync.ts.
+	 */
+	const guideOffsetSecValue = $derived(media ? guideOffsetSec(media) : 0);
 	/**
 	 * Mount-worthiness, split from level-gating (#586, §3 of #578). The guide <audio> stays mounted
 	 * whenever THIS song CAN have a guide — a guide ref exists and the song is playable — regardless of
@@ -569,7 +580,11 @@
 	 */
 	function alignGuidePreroll(): void {
 		if (!vocals || !master) return;
-		const plan = prerollSeekTarget(vocals.currentTime, master.currentTime);
+		// The zero point is the master playhead PLUS the measured offset (#766): a stem shifted in its
+		// decoded samples must lock on to `master + offset`, not to `master`, or it starts that far out of
+		// time and the governor spends ~15s per e-fold crawling it back. `guideOffsetSecValue` is 0 for the
+		// whole existing library, so this is byte-for-byte today's pre-roll for a song with no offset.
+		const plan = prerollSeekTarget(vocals.currentTime, master.currentTime + guideOffsetSecValue);
 		if (plan.seek) vocals.currentTime = plan.target;
 		// Neutral tempo so the governor starts from real drift; pitch preserved for the sung vocal.
 		vocals.playbackRate = 1;
@@ -643,11 +658,19 @@
 		// A guide that is not mounted has no playhead to compare; NaN reads as "needs the seek" and is
 		// then skipped by the `guideEl` guard below, so the master's half of the plan is unaffected.
 		const guideEl = untrack(() => vocals);
-		const plan = seekPlan(el.currentTime, guideEl ? guideEl.currentTime : NaN, seekTarget);
+		// The guide's zero point is `seekTarget + offset` (#766), the master's is `seekTarget`. seekPlan
+		// takes ONE target for both, so the guide half is expressed by shifting the guide's playhead the
+		// other way: `guide - offset` compared to `seekTarget` is exactly `guide` compared to
+		// `seekTarget + offset`. This keeps seekPlan a pure single-target function and leaves the master's
+		// decision (`el.currentTime` vs `seekTarget`) untouched. `guideOffsetSecValue` is 0 for the whole
+		// existing library, so a no-offset song's jump is byte-for-byte today's.
+		const offset = untrack(() => guideOffsetSecValue);
+		const guideSecForPlan = guideEl ? guideEl.currentTime - offset : NaN;
+		const plan = seekPlan(el.currentTime, guideSecForPlan, seekTarget);
 		if (!plan.master) return;
 		el.currentTime = seekTarget;
 		if (guideEl) {
-			if (plan.guide) guideEl.currentTime = seekTarget;
+			if (plan.guide) guideEl.currentTime = seekTarget + offset;
 			// Back to neutral tempo. Any trim still on the element was derived from the drift that
 			// existed BEFORE the jump, so carrying it across corrects a drift that no longer exists; the
 			// governor re-derives whatever it needs from real drift on its next tick.
@@ -766,8 +789,14 @@
 	 */
 	function syncGuide(): void {
 		if (!vocals || !master || vocals.seeking) return;
-		const correction = guideCorrection(vocals.currentTime, master.currentTime);
-		if (correction.kind === 'reseek') vocals.currentTime = master.currentTime;
+		// The zero point the guide is held at is `master + offset` (#766): the offset is the guide's
+		// measured place relative to the instrumental, so drift is `guide - (master + offset)` and a
+		// reseek lands the guide at `master + offset`. `guideOffsetSecValue` is 0 for the whole existing
+		// library, so a no-offset song's drift governor is byte-for-byte today's. guideCorrection stays a
+		// pure policy function — the offset is folded into its `masterSec` input, never a branch inside it.
+		const zero = master.currentTime + guideOffsetSecValue;
+		const correction = guideCorrection(vocals.currentTime, zero);
+		if (correction.kind === 'reseek') vocals.currentTime = zero;
 		// Assign only on a real change: writing playbackRate is not free on every element.
 		if (vocals.playbackRate !== correction.rate) vocals.playbackRate = correction.rate;
 	}

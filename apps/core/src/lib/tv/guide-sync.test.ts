@@ -495,3 +495,82 @@ describe('TvPlayer mounts the guide on mount-worthiness, gates readiness on the 
 		expect(tv).toContain('if (!wantsGuide || guideSettled) return;');
 	});
 });
+
+/*
+ * The measured guide offset (#766). The alignment ZERO POINT is `master + guideOffsetSec`, applied at
+ * the three sites in TvPlayer so guide-sync.ts stays a pure policy function. Two things are pinned:
+ *
+ *   1. The policy functions still behave correctly WHEN the zero point is shifted — a stem held at a
+ *      non-zero offset holds, drifts and locks on relative to THAT point, not to raw master. This is
+ *      just the existing pure-function behaviour re-read at a shifted origin, but it is the invariant
+ *      the feature rests on, so it is asserted directly.
+ *   2. A SOURCE GUARD, because — exactly like #396 and #578 — the offset lives in WIRING. guideOffsetSec
+ *      being correct proves nothing about the component: a call site that ignored it would leave a
+ *      shifted stem misaligned while every unit test on the pure functions stayed green. These
+ *      assertions fail if any of the three sites stops folding the offset into its master zero point.
+ */
+describe('guideCorrection holds a stem at its measured offset, not at zero (#766)', () => {
+	it('a guide sitting exactly at the offset is HELD — the offset is the zero point, not drift', () => {
+		// Vocals at 10.030, master at 10.000, measured offset +30ms → zero point 10.030. Drift is 0, so
+		// hold. Without the offset the same reading is 30ms of drift, which is a trim — the misalignment
+		// the feature removes. This is guideCorrection re-read at the shifted origin the client passes.
+		const offsetSec = 0.03;
+		expect(guideCorrection(10.03, 10.0 + offsetSec).kind).toBe('hold');
+		// And the SAME reading with no offset is NOT a hold — proving the offset is what makes it one.
+		expect(guideCorrection(10.03, 10.0).kind).not.toBe('hold');
+	});
+
+	it('drift is measured from master+offset, so a stem at raw master is now OFF by the offset', () => {
+		// A +300ms offset with the guide sitting at raw master (10.0) is 300ms of drift from the zero
+		// point 10.3 — a reseek, the largest correction. That is correct: a stem that SHOULD sit 300ms
+		// ahead but sits at master is genuinely lost.
+		expect(guideCorrection(10.0, 10.0 + 0.3).kind).toBe('reseek');
+	});
+});
+
+describe('TvPlayer folds the measured offset into the guide zero point at all three sites (#766)', () => {
+	const tv = readFileSync(join(import.meta.dir, 'TvPlayer.svelte'), 'utf8');
+
+	it('derives guideOffsetSecValue from the media snapshot via the shared helper', () => {
+		// The offset must come from the shared pure helper (absent → 0), not an inline read that could
+		// forget the default and feed NaN into an alignment. guideOffsetSec is imported and the derived
+		// value reads it.
+		expect(tv).toContain('guideOffsetSec');
+		const derived = tv.split('const guideOffsetSecValue = $derived(')[1]?.split(');')[0] ?? '';
+		expect(derived).not.toBe('');
+		expect(derived).toContain('guideOffsetSec(media)');
+	});
+
+	it('the pre-roll lock-on aligns to master + offset, not raw master', () => {
+		const align = tv.split('function alignGuidePreroll(): void {')[1]?.split('\n\t}')[0] ?? '';
+		expect(align).not.toBe('');
+		// The helper's masterSec argument is master.currentTime + the offset. Reds if a future edit drops
+		// the `+ guideOffsetSecValue`, which would lock a shifted stem onto raw master and start it off.
+		expect(align).toContain('master.currentTime + guideOffsetSecValue');
+	});
+
+	it('the drift governor measures drift and reseeks against master + offset', () => {
+		const sync = tv.split('function syncGuide(): void {')[1]?.split('\n\t}')[0] ?? '';
+		expect(sync).not.toBe('');
+		// The zero point is computed once and both the correction and the reseek use it — so a stem held
+		// at an offset is not perpetually corrected toward raw master.
+		expect(sync).toContain('master.currentTime + guideOffsetSecValue');
+		expect(sync).toContain('guideCorrection(vocals.currentTime, zero)');
+		expect(sync).toContain("if (correction.kind === 'reseek') vocals.currentTime = zero;");
+		// The pre-#766 form — drift measured against raw master — must be gone, or a shifted stem is
+		// chased back to the wrong point every governor tick.
+		expect(sync).not.toContain('guideCorrection(vocals.currentTime, master.currentTime)');
+	});
+
+	it('the jump path seeks the guide to target + offset while leaving the master on target', () => {
+		const seekEffect = tv.split('function applySeek(seekTarget: number): void {')[1]?.split('\n\t}')[0] ?? '';
+		expect(seekEffect).not.toBe('');
+		// The master half is unchanged (on seekTarget); only the guide gets the offset. A stem shifted in
+		// its samples must land at target+offset, or a scrub re-introduces the misalignment.
+		expect(seekEffect).toContain('el.currentTime = seekTarget');
+		expect(seekEffect).toContain('guideEl.currentTime = seekTarget + offset');
+		// The guide's own tolerance comparison is taken against its shifted zero point (guide - offset vs
+		// target ≡ guide vs target+offset), so seekPlan stays a pure single-target function.
+		expect(seekEffect).toContain('guideEl.currentTime - offset');
+	});
+});

@@ -43,6 +43,13 @@
       "when": 1788834305437,
       "tag": "0005_tv_background_color",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1788945280186,
+      "tag": "0006_add_guide_offset_ms",
+      "breakpoints": true
     }
   ]
 }
