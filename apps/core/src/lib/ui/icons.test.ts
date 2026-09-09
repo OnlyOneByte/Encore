@@ -124,8 +124,8 @@ const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'route
  * the client-lib .ts count the copy scan uses. ~25 svelte + ~26 client .ts today.
  */
 test('the icon ban scans actually read a non-empty surface', () => {
-	expect(FILES.length).toBeGreaterThan(15);
-	expect(tsFiles(join(SRC, 'lib')).length).toBeGreaterThan(10);
+	expect(FILES.length).toBeGreaterThan(15); // @nvf-floor FILES.length
+	expect(tsFiles(join(SRC, 'lib')).length).toBeGreaterThan(10); // @nvf-floor tsFiles(join(SRC, 'lib')).length
 });
 
 test('no functional control is a Unicode codepoint (use Icon.svelte)', () => {

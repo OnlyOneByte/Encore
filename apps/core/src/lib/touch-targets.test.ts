@@ -113,13 +113,13 @@ test('every phone control that sizes its own box reaches the tap standard', () =
 	expect(offenders).toEqual([]);
 	// a broken markup walk (empty tag/class sets) would silently measure nothing and pass vacuously;
 	// pin a floor so the guard fails loudly if the derivation ever stops finding controls.
-	expect(controlRulesSeen).toBeGreaterThan(10);
+	expect(controlRulesSeen).toBeGreaterThan(10); // @nvf-floor controlRulesSeen
 	// …and pin the SCANNED POPULATION too (#841, XR-VER-14 Acceptance). FILES is a tree walk over
 	// lib/components and lib/ui PLUS five hand-named route pages, so a walk that stops finding
 	// components still leaves five files — and five files carry enough control rules to clear the floor
 	// above. The two floors fail on different regressions: `controlRulesSeen` on a broken derivation,
 	// this one on a narrowed walk. 14 files today (12 before lib/ui/ joined the walk, issue #831).
-	expect(FILES.length).toBeGreaterThanOrEqual(12);
+	expect(FILES.length).toBeGreaterThanOrEqual(12); // @nvf-floor FILES.length
 });
 
 /**
@@ -158,7 +158,7 @@ test('every phone control expresses the tap standard as var(--tap), never the nu
 	expect(offenders).toEqual([]);
 	// non-vacuity: this arm filters harder than the value guard (box-declaring rules only), so it needs
 	// its own floor — a derivation that stopped finding box rules would report zero offenders happily.
-	expect(boxRulesSeen).toBeGreaterThan(10);
+	expect(boxRulesSeen).toBeGreaterThan(10); // @nvf-floor boxRulesSeen
 });
 
 /**

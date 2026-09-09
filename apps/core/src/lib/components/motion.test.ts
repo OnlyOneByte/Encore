@@ -222,7 +222,7 @@ test('no transition animates a layout-triggering property (transform/opacity onl
 	// scan pass VACUOUSLY. The asserted floor (>= 24) is the guard — a broken walk reds instead of
 	// silently passing, the exact failure mode #140 shipped under. (No live count in prose: issue #615
 	// advisory 3 — the parenthetical drifted across #575/#590/#615, so the assertion is the only number.)
-	expect(files.length).toBeGreaterThanOrEqual(24);
+	expect(files.length).toBeGreaterThanOrEqual(24); // @nvf-floor files.length
 	assertScanIntact(files);
 	const offenders: string[] = [];
 	for (const f of files) {
@@ -272,7 +272,7 @@ function keyframeProps(body: string): string[] {
 
 test('@keyframes animate only GPU-composited properties', () => {
 	const files = styleFiles(join(import.meta.dir, '..', '..'));
-	expect(files.length).toBeGreaterThanOrEqual(24);
+	expect(files.length).toBeGreaterThanOrEqual(24); // @nvf-floor files.length
 	assertScanIntact(files);
 	const bad: string[] = [];
 	for (const f of files) {
@@ -499,7 +499,7 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 	const files = [...svelte, join(import.meta.dir, '..', '..', 'app.css')];
 	// test 3 had NO count floor (issue #481 finding 4): the exact vacuity gap #287 gap 3 added to
 	// tests 1 and 2 was left out here. Give it the same real-count floor + which-files sentinel.
-	expect(files.length).toBeGreaterThanOrEqual(24);
+	expect(files.length).toBeGreaterThanOrEqual(24); // @nvf-floor files.length
 	assertScanIntact(files);
 	const offenders: string[] = [];
 	for (const f of files) {
@@ -771,7 +771,7 @@ test('no utility class expresses motion the declaration scans cannot see', () =>
 	];
 	// Non-vacuity floor + which-files sentinel, the same pair tests 1-3 carry (XR-VER-05). A firing
 	// floor is a FINDING, never a number to adjust — XR-VER-06.
-	expect(svelte.length).toBeGreaterThanOrEqual(20);
+	expect(svelte.length).toBeGreaterThanOrEqual(20); // @nvf-floor svelte.length
 	expect(svelte.some((f) => f.includes(join('lib', 'tv')))).toBe(true);
 
 	/*
@@ -824,7 +824,7 @@ test('no motion utility name appears anywhere in source, in any position', () =>
 		...svelteFiles(join(import.meta.dir, '..', '..', 'routes')),
 		...tsSources(join(import.meta.dir, '..', '..', 'lib'))
 	];
-	expect(netFiles.length).toBeGreaterThanOrEqual(40);
+	expect(netFiles.length).toBeGreaterThanOrEqual(40); // @nvf-floor netFiles.length
 
 	// Only the names that are unambiguously motion utilities: `transition-all` and the layout-hazard
 	// keys XR-VER-15 enumerates, plus `animate-<name>`. A bare `duration-`/`ease-` is deliberately NOT

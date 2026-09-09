@@ -116,7 +116,7 @@ describe('#913 a copied-in component references no theme this app does not defin
 	});
 
 	test('non-vacuity: the scan reached at least one component', () => {
-		expect(files.length).toBeGreaterThanOrEqual(1);
+		expect(files.length).toBeGreaterThanOrEqual(1); // @nvf-floor files.length
 	});
 
 	test('the comment stripper does not blind the scan to real class strings', () => {

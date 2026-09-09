@@ -332,7 +332,7 @@ test('every HERO join badge sizes from a vmin TV-QR token, never a bare pixel nu
 	}
 	expect(offenders).toEqual([]);
 	// Both TV surfaces carry a hero badge (attract + lobby, reachable + unreachable = 4 today).
-	expect(heroBadgesSeen).toBeGreaterThanOrEqual(2);
+	expect(heroBadgesSeen).toBeGreaterThanOrEqual(2); // @nvf-floor heroBadgesSeen
 });
 
 test('both TV-QR hero tokens are defined in vmin, not a fixed px', () => {

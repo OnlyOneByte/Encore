@@ -320,7 +320,7 @@ test('every SEL selector resolves to an anchor in the source (the guard, non-vac
 	// surfaces go unexamined, and nothing says so. The walk finds 27 `.svelte` files under
 	// apps/core/src today. A firing floor is a FINDING: restore the walk's scope, never lower the
 	// number (XR-VER-06).
-	expect(sources.length).toBeGreaterThanOrEqual(20);
+	expect(sources.length).toBeGreaterThanOrEqual(20); // @nvf-floor sources.length
 
 	/*
 	 * Explicit, documented exemptions — honest about what this resolver cannot check by source scan,
@@ -699,7 +699,7 @@ test('the driver ban is not vacuous — it covers every driver, not a shrunk lis
 	// The rot this file catches came from a hand-kept list going stale. A hand-kept DRIVERS array could
 	// silently empty (or shrink back to 2) and the ban above would pass while guarding nothing, so pin a
 	// floor: there are 24 drivers today, and the enumeration must keep finding roughly that many.
-	expect(DRIVERS.length).toBeGreaterThan(20);
+	expect(DRIVERS.length).toBeGreaterThan(20); // @nvf-floor DRIVERS.length
 	// party.mjs and capture.mjs — the two the old list named — must still be in the enumerated set, so a
 	// walk that regressed to matching nothing cannot pass this test either.
 	expect(DRIVERS).toContain('party.mjs');
@@ -951,7 +951,7 @@ test('#682 G1 — every literal p10-scaling contrast target resolves to a real a
 	// arrays with `[]` (or a rename that hides them from the scan) makes the main arm pass vacuously —
 	// this floor reds instead. 19 distinct live literals across the two arrays as of #682.
 	expect(arrays.length).toBe(2);
-	expect(lits.length).toBeGreaterThanOrEqual(19);
+	expect(lits.length).toBeGreaterThanOrEqual(19); // @nvf-floor lits.length
 
 	// Sentinel B: known-live anchors the arrays name must resolve, so a resolver that rejects
 	// everything (or a broken guardSources) fails here rather than passing the main arm vacuously.
