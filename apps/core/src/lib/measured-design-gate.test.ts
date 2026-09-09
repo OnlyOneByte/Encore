@@ -29,7 +29,8 @@ import {
 	MIN_FIELD_PX,
 	QUARANTINE,
 	SHEET_CAP_FRACTION,
-	TAP
+	TAP,
+	TAP_FLOOR
 } from '../../e2e/gates/measured-design-register.mjs';
 
 const REPO = join(import.meta.dir, '..', '..', '..', '..');
@@ -235,9 +236,11 @@ test('every quarantined control carries a substantive reason and a real identity
 
 test('the register mirrors the tokens it measures against, so the two cannot drift apart', () => {
 	const css = readFileSync(join(REPO, 'apps/core/src/app.css'), 'utf8');
-	// If --tap drifts off 44px, the gate would keep measuring against a number the design no longer
-	// uses. The gate also re-reads --tap live; this is the half that fails on every box.
-	expect(css).toMatch(new RegExp(`--tap:\\s*${TAP}px\\s*;`));
+	// `TAP` is parsed out of this very declaration now (the register, issue #831), so asserting it
+	// equals TAP compares the value to itself. What is still a real question — and the reason the
+	// register imports a separate floor — is whether the token still holds the app's commitment.
+	expect(css).toMatch(/--tap:\s*[0-9.]+px\s*;/);
+	expect(TAP).toBeGreaterThanOrEqual(TAP_FLOOR);
 	// The sheet's cap is a do-not-regress number with a source (XR-VER-11), not a preference.
 	expect(SHEET_CAP_FRACTION).toBe(0.82);
 	const sheet = readFileSync(join(REPO, 'apps/core/src/lib/components/QueueSheet.svelte'), 'utf8');

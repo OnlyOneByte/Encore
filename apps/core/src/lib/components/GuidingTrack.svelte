@@ -89,10 +89,11 @@
 		appearance: none;
 		display: block;
 		width: 100%;
-		/* 44px hit area — the project's minimum touch target. The row was 24px (a 22px thumb + 2px),
-		   which is itself below 44px, so the row did not rescue the target. The PAINTED track stays a
-		   4px hairline (::-webkit-slider-runnable-track below); only the interactive box grows. */
-		height: 44px;
+		/* var(--tap) hit area — the project's minimum touch target, named rather than restated
+		   (XR-PH-01). The row was 24px (a 22px thumb + 2px), itself below the floor, so the row did not
+		   rescue the target. The PAINTED track stays a 4px hairline
+		   (::-webkit-slider-runnable-track below); only the interactive box grows. */
+		height: var(--tap);
 		margin: 3px 0 0;
 		background: transparent;
 		cursor: pointer;

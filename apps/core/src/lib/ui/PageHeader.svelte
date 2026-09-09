@@ -55,12 +55,14 @@
 		color: var(--ink-dim);
 		text-decoration: none;
 		font-size: 1.2rem;
-		/* 44px, matching the rest of the app. Kept as a 44px literal, not var(--tap): touch-targets.test.ts
-		   pins this control (now the single source for the apps back link) by the literal string. */
+		/* var(--tap), never the number (XR-PH-01, issue #831). The comment here used to say the literal
+		   was kept BECAUSE touch-targets.test.ts pinned this control "by the literal string" — that
+		   stopped being true once the pin accepted either form, so the note was defending a constraint
+		   the guard no longer had while the control silently held the old value. */
 		display: grid;
 		place-items: center;
-		min-width: 44px;
-		min-height: 44px;
+		min-width: var(--tap);
+		min-height: var(--tap);
 		margin-left: -10px;
 		border-radius: 8px;
 	}

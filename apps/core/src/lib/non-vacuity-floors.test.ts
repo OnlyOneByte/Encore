@@ -122,10 +122,17 @@ const FLOORS: Record<string, Floor[]> = {
 		},
 		{
 			subject: 'FILES.length',
+			min: 12,
+			count: 1,
+			guards:
+				'the scanned POPULATION, added by #841 and RE-ANCHORED by #831. FILES is a walk over lib/components AND lib/ui plus five hand-named route pages, so a walk contributing nothing still leaves five files \u2014 and five files carry enough control rules that `controlRulesSeen` above stays green (measured). The two floors fail on different regressions. Raised 10\u219212 because lib/ui/ joined the walk: re-anchoring, not a lowered number.'
+		},
+		{
+			subject: 'boxRulesSeen',
 			min: 10,
 			count: 1,
 			guards:
-				'the scanned POPULATION, added by #841. FILES is a walk over lib/components plus five hand-named route pages, so a walk contributing nothing still leaves five files \u2014 and five files carry enough control rules that `controlRulesSeen` above stays green (measured). The two floors fail on different regressions.'
+				'the population of the EXPRESSION arm (#831, XR-PH-01), which filters harder than the value arm above \u2014 control rules that declare a width/height, not merely a box. A derivation that stopped finding box rules would report zero bare-literal offenders and pass, which is the exact vacuity that let 15 hand-written `44px` declarations sit under a green value guard.'
 		}
 	],
 	'apps/core/src/lib/components/motion.test.ts': [
