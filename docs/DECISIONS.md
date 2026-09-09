@@ -254,6 +254,40 @@ illegal**. Scope reality: a library replaces **~1,060 of ~4,950** hand-written C
 no per-family opt-out. Keep `--accent`, `--grad` and the player hues in `:root` and **never
 register them**; use `@theme` for non-colour tokens only.
 
+#### Installed configuration (decided 2026-09-09, #853)
+
+Three questions the adoption above left open, each settled by measurement rather than preference.
+`apps/core/src/lib/tailwind-toolchain.test.ts` pins all three, so none can be reversed silently.
+
+**The Vite plugin, not PostCSS.** `@tailwindcss/vite` was a real question because this app runs
+**Vite 8**, and the plugin only widened its peer range to `^8` in **4.2.2** — every release up to
+4.2.1 declares `^5.2.0 || ^6 || ^7`. Pinned at **4.3.3**, verified by a real `bun run build` against
+**Vite 8.1.0**, so the authorised PostCSS fallback is unused. Tailwind v4 configures through
+**`@theme` in CSS**, so there is no `tailwind.config.ts` at all — a JS config would be the v3 shape.
+
+**Preflight is DISABLED** (option A). Not a preference: `e2e/probes/preflight-reset-audit.mjs` reads
+the 36 computed properties Preflight writes on every element of 8 surfaces, and enabling it moved
+**2,696 of ~3,200 boxes** — 1,167 of 1,201 on `/components` alone, largest displacement 264 px. Named
+fallout: **74 `<h2>` headings** dropped from weight 700 to 400 and lost their bottom margin (Preflight
+unstyles every heading), 75 buttons lost padding, 24 buttons and 21 inputs changed colour via
+`color: inherit`, and the lyrics overlay's `.word.done` changed hue. Most of that is Preflight
+*undoing* deliberate styling rather than supplying anything missing — `app.css` already sets
+`box-sizing: border-box` on `*` itself, which is Preflight's largest single contribution. Option B
+(enable it, fix the fallout) stays available as its own issue once the redesign surfaces settle;
+taking it now would put a global restyle underneath four issues already contending on
+`routes/+page.svelte`. **Consequence:** a copied-in component cannot assume the reset ran.
+
+**Utilities are minted from the copy-in target only** — `source(none)` plus one `@source`, scoped to
+`.svelte` files under `src/lib/components/ui/`. Tailwind's auto-detection scans the whole project and
+mints a utility for any token that parses as one, **including tokens in tests and markdown**. It
+emitted 50 that way, and two collided
+with class names the app really applies: `.underline` painted a genuine `text-decoration-line` on the
+lyrics ball (`class="ball {ball}"` with `ball === 'underline'`), and `.block` was saved only by the
+app's own `.ball.block` outranking it on specificity. `ball` is a **room setting whose values are
+English words**, so that is a family exposure, not two unlucky names. The `*.svelte` half of the glob
+matters too: scoped to the bare directory, `.underline` came back out of `ui/README.md`, which names
+it in prose in order to warn about it.
+
 ### Palette — Chromatic, 48 stops, player colour = UI accent
 
 Each stop ships four values: `fill` (identity and accent), `onFill` (the only ink permitted on it),
