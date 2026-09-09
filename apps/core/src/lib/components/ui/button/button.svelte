@@ -1,114 +1,75 @@
 <script lang="ts" module>
 	/*
-	 * BUTTON — shadcn-svelte's component, repointed at Encore's tokens (#913 S1).
+	 * ── DEVIATIONS FROM REGISTRY OUTPUT (#913) ───────────────────────────────────────────────────────
 	 *
-	 * Copied in with `shadcn-svelte add button` (v1.6.1, style `vega`), then edited. Three classes of
-	 * change were required, and each is a rule for every later component:
+	 * Copied with `shadcn-svelte add button` (v1.6.1, style `vega`), then edited. shadcn is copy-in
+	 * precisely so the component is yours to own, so editing is the intended workflow — but an edit
+	 * nobody wrote down is an edit an upgrade silently reverts. This block is the diff to re-apply after
+	 * any `add --overwrite`, and EVERY item is enforced by a named test, so a reverted edit reds rather
+	 * than shipping.
 	 *
-	 * 1. EVERY COLOUR UTILITY WAS REPLACED. The stock variants reference `bg-primary`,
-	 *    `text-primary-foreground`, `bg-muted`, `border-ring`, `bg-destructive` and friends — Tailwind
-	 *    theme colours that DO NOT EXIST in this app and cannot be made to. `app.css`'s `@theme inline`
-	 *    block registers no colour on purpose: minting is all-or-nothing per namespace, so
-	 *    `--color-accent` would hand out `text-accent` alongside `bg-accent`, and `--accent` measures
-	 *    3.10:1 as ink on `--card2` — below AA, which is the whole reason `--accent-ink` exists as a
-	 *    separate token. `lib/tailwind-toolchain.test.ts` reds if a colour is ever registered.
-	 *    So colour arrives as ARBITRARY VALUES over `:root` tokens — `bg-[var(--accent)]` — which need
-	 *    no registration and cannot mint an illegal sibling.
+	 * 1. `transition-all` REMOVED from the base class. Encore does not want it: it animates layout
+	 *    properties, `components/motion.test.ts` bans the name across the whole tree, and the incumbent
+	 *    `.btn-accent` had no transition at all — so removing it is also what makes the migration
+	 *    invisible. That guard's net arm is what caught it here, and is what will catch its return.
+	 * 2. `size: icon` is `size-tap`, not `size-9`. The registry's 36px is under this app's 44px `--tap`
+	 *    standard; `size-tap` reads the token rather than restating the number. Guarded by
+	 *    `touch-targets.test.ts`. `grid place-items-center` comes with it because Icon renders as a block
+	 *    and without a centring context the mark sits off-centre (the reported off-centre X).
+	 * 3. A `press` axis and its scoped styles at the bottom of this file — three incumbent behaviours
+	 *    over one shape. `touch-action: none` on the grab case is load-bearing for the #836 drag:
+	 *    without it the browser claims the vertical gesture for scrolling and `onpointerdown` never
+	 *    fires. `cursor: grab` must stay pinned to this control and never reach a row (XR-PH-17,
+	 *    guarded by `reorder-mode-source-836.test.ts`).
+	 * 4. An `iconPrimary` variant for NowPlayingHero's transport: accent fill while actionable, falling
+	 *    back to the icon surface when disabled, which is what says the transport is dead not idle.
 	 *
-	 * 2. `transition-all` WAS REMOVED, not narrowed. It is in the stock base class, and
-	 *    `components/motion.test.ts` treats it as an offender (#830, XR-VER-15) because it animates
-	 *    layout properties. The incumbent `.btn-accent` had NO transition at all — its `:active` was a
-	 *    bare `transform: scale(0.96)` — so removing it is also what makes this migration invisible.
-	 *    Only `transform`, `opacity`, `background`, `background-color`, `color` and `box-shadow` are
-	 *    composited enough for that guard; a later variant that wants motion names one of those.
-	 *
-	 * 3. GEOMETRY IS A VARIANT, NEVER A CALL-SITE CLASS. `app.css` sets Tailwind to
-	 *    `source(none)` plus a single `@source '../src/lib/components/ui/**\/*.svelte'`, so utilities are
-	 *    minted from THIS DIRECTORY ONLY. A `class="w-full"` written at a call site is scanned by
-	 *    nothing and emitted nowhere — verified by building with one and finding no `.w-full` rule in
-	 *    any of the 16 built CSS assets. Svelte's scoped CSS cannot reach in here either: a class the
-	 *    page passes down gets no scoping attribute for the page's own scoped style block. Both roads are
-	 *    closed, so a call site that needs a different shape asks for a VARIANT, and page-level layout
-	 *    (a margin that positions the button in its column, a width that fills a form) stays on a
-	 *    wrapper element in the page, where scoped CSS still works.
-	 *
-	 * Variants are deliberately minimal: exactly the two shapes the app has today, `accent` and `icon`.
-	 * The stock `outline` / `secondary` / `ghost` / `destructive` / `link` were dropped rather than
-	 * repointed — an unused variant is invented API, and each would need its own contrast decision.
+	 * NOT a deviation: colour. `app.css`'s semantic layer aliases `--primary`, `--muted`, `--ring` and
+	 * friends onto Encore's tokens, so every stock class here resolves untouched. That layer is why this
+	 * diff is four items instead of a rewrite.
 	 */
-	import { type VariantProps, tv } from 'tailwind-variants';
-	import { cn, type WithElementRef } from '$lib/utils.js';
-	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from 'svelte/elements';
+	import { type VariantProps, tv } from "tailwind-variants";
+	import { cn, type WithElementRef } from "$lib/utils.js";
+	import type { HTMLAnchorAttributes, HTMLButtonAttributes } from "svelte/elements";
 
 	export const buttonVariants = tv({
-		base: 'inline-flex shrink-0 cursor-pointer items-center justify-center gap-[var(--space-sm)] border-0 whitespace-nowrap outline-none select-none disabled:cursor-default [&_svg]:pointer-events-none [&_svg]:shrink-0',
+		base: "rounded-md border border-transparent bg-clip-padding text-sm font-medium focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 active:not-aria-[haspopup]:translate-y-px aria-invalid:border-destructive aria-invalid:ring-3 aria-invalid:ring-destructive/20 dark:aria-invalid:border-destructive/50 dark:aria-invalid:ring-destructive/40 [&_svg:not([class*='size-'])]:size-4 group/button inline-flex shrink-0 items-center justify-center whitespace-nowrap outline-none select-none disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
 		variants: {
 			variant: {
-				/* The incumbent `.btn-accent`: the fill and its only legal ink, per #840's per-stop pair. */
-				accent: 'bg-[var(--accent)] font-bold text-[var(--on-accent)] disabled:opacity-45',
-				/*
-				 * The incumbent `.icon-btn`: a 44px box on `--card2` with a dimmed glyph. `place-items`
-				 * over `items-center` is load-bearing — Icon renders as a block, and without a centring
-				 * context the mark sits off-centre (the reported off-centre X).
-				 */
-				icon: 'grid size-tap place-items-center border border-[var(--line)] bg-[var(--card2)] text-[20px] text-[var(--ink-dim)] disabled:opacity-35',
-				/*
-				 * `NowPlayingHero`'s play/pause. The incumbent `.play` — the accent fill while actionable,
-				 * falling back to the icon button's own surface when disabled, which is what tells a guest
-				 * the transport is dead rather than merely idle.
-				 */
 				iconPrimary:
-					'grid size-tap place-items-center border border-[var(--line)] bg-[var(--accent)] text-[20px] text-[var(--on-accent)] disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-35'
-			},
-			shape: {
-				/* `--radius-btn` (10px). The incumbent hardcoded `10px`; this names it instead. */
-				btn: 'rounded-[var(--radius-btn)]',
-				/* `--radius-sm` (12px), the icon button's box. */
-				sm: 'rounded-[var(--radius-sm)]',
-				/* `--radius` (18px), the card/sheet radius, for a full-width primary button. */
-				lg: 'rounded-[var(--radius)]'
+					"bg-[var(--accent)] text-[var(--on-accent)] disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-35",
+				default: "bg-primary text-primary-foreground hover:bg-primary/80",
+				outline: "border-border bg-background shadow-xs hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:border-input dark:bg-input/30 dark:hover:bg-input/50",
+				secondary: "bg-secondary text-secondary-foreground hover:bg-[color-mix(in_oklch,var(--secondary),var(--foreground)_5%)] aria-expanded:bg-secondary aria-expanded:text-secondary-foreground",
+				ghost: "hover:bg-muted hover:text-foreground aria-expanded:bg-muted aria-expanded:text-foreground dark:hover:bg-muted/50",
+				destructive: "bg-destructive/10 text-destructive hover:bg-destructive/20 focus-visible:border-destructive/40 focus-visible:ring-destructive/20 dark:bg-destructive/20 dark:hover:bg-destructive/30 dark:focus-visible:ring-destructive/40",
+				link: "text-primary underline-offset-4 hover:underline",
 			},
 			size: {
-				/* The icon button is a fixed 44px box; `variant: icon` already sizes it. */
-				none: '',
-				/*
-				 * A full-width form commit. Reproduces settings' `.save`: fills its column, clears the
-				 * 44px tap floor by padding rather than by height, base phone type.
-				 */
-				block: 'w-full min-h-tap p-[13px] text-[length:var(--ph-text-base)]',
-				/*
-				 * The same shape one step up, for a page whose primary action is the page's purpose —
-				 * join's `.submit`. Padding and type keep it well over the tap floor.
-				 */
-				blockLg: 'w-full p-[var(--space-2xl)] text-[length:var(--ph-text-lg)]'
-			}
+				default: "h-9 gap-1.5 px-2.5 in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+				xs: "h-6 gap-1 rounded-[min(var(--radius-md),8px)] px-2 text-xs in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
+				sm: "h-8 gap-1 rounded-[min(var(--radius-md),10px)] px-2.5 in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5",
+				lg: "h-10 gap-1.5 px-2.5 has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
+				icon: "size-tap grid place-items-center",
+				"icon-xs": "size-6 rounded-[min(var(--radius-md),8px)] in-data-[slot=button-group]:rounded-md [&_svg:not([class*='size-'])]:size-3",
+				"icon-sm": "size-8 rounded-[min(var(--radius-md),10px)] in-data-[slot=button-group]:rounded-md",
+				"icon-lg": "size-10",
+			},
 		},
-		defaultVariants: { variant: 'accent', shape: 'btn', size: 'none' }
+		defaultVariants: {
+			variant: "default",
+			size: "default",
+		},
 	});
 
-	/**
-	 * PRESS FEEDBACK, as a data attribute rather than a variant class (#913 S1b).
-	 *
-	 * The three incumbent icon buttons pressed differently: `.act:not(:disabled):active` and
-	 * `.grip:active` tinted to `--ink`, `.remove:active` to `--accent2`, and `.ic` had no press state at
-	 * all. That is four behaviours over one shape, so it is its own axis — folding it into `variant`
-	 * would have multiplied every shape by every press.
-	 *
-	 * It resolves in the scoped style block below rather than as `active:` utilities, for the same reason
-	 * S1's scale did: CSS in `src/` is what this repo's ~30 source-scan guards can read, and
-	 * `touch-action` in particular is load-bearing for the #836 drag rather than decorative.
-	 */
-	export type ButtonPress = 'none' | 'ink' | 'accent2' | 'grab';
-
-	export type ButtonVariant = VariantProps<typeof buttonVariants>['variant'];
-	export type ButtonShape = VariantProps<typeof buttonVariants>['shape'];
-	export type ButtonSize = VariantProps<typeof buttonVariants>['size'];
+	export type ButtonVariant = VariantProps<typeof buttonVariants>["variant"];
+	export type ButtonSize = VariantProps<typeof buttonVariants>["size"];
+	export type ButtonPress = "none" | "ink" | "accent2" | "grab";
 
 	export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
 		WithElementRef<HTMLAnchorAttributes> & {
 			variant?: ButtonVariant;
 			press?: ButtonPress;
-			shape?: ButtonShape;
 			size?: ButtonSize;
 		};
 </script>
@@ -116,13 +77,12 @@
 <script lang="ts">
 	let {
 		class: className,
-		variant = 'accent',
-		press = 'none',
-		shape = 'btn',
-		size = 'none',
+		variant = "default",
+		press = "none",
+		size = "default",
 		ref = $bindable(null),
 		href = undefined,
-		type = 'button',
+		type = "button",
 		disabled,
 		children,
 		...restProps
@@ -134,10 +94,10 @@
 		bind:this={ref}
 		data-slot="button"
 		data-press={press}
-		class={cn(buttonVariants({ variant, shape, size }), className)}
+		class={cn(buttonVariants({ variant, size }), className)}
 		href={disabled ? undefined : href}
 		aria-disabled={disabled}
-		role={disabled ? 'link' : undefined}
+		role={disabled ? "link" : undefined}
 		tabindex={disabled ? -1 : undefined}
 		{...restProps}
 	>
@@ -147,9 +107,10 @@
 	<button
 		bind:this={ref}
 		data-slot="button"
-		class={cn(buttonVariants({ variant, shape, size }), className)}
-		type={type}
-		disabled={disabled}
+		data-press={press}
+		class={cn(buttonVariants({ variant, size }), className)}
+		{type}
+		{disabled}
 		{...restProps}
 	>
 		{@render children?.()}
@@ -158,30 +119,14 @@
 
 <style>
 	/*
-	 * THE ACTIVE PRESS IS A DECLARATION, NOT A UTILITY, AND THAT IS THE RULE (#913 S1).
-	 *
-	 * `active:scale-[0.96]` is what the incumbent `.btn-accent:active` did, and it is what shadcn would
-	 * reach for — but `components/motion.test.ts` flags a motion utility that is not accompanied by a
-	 * transition whose properties are all composited (#830, XR-VER-15), and the incumbent had no
-	 * transition at all. Adding one to satisfy the guard would change the feel; widening the guard's
-	 * allowlist to silence it is the move XR-VER-06 explicitly forbids. So the motion is expressed here,
-	 * where the DECLARATION scans can see `transform` and pass it on its merits.
-	 *
-	 * This is also the copy-in rationale doing its job rather than being talked about: the reason
-	 * shadcn was chosen over a headless dependency is that a copied component's CSS lands in `src/`,
-	 * where this repo's ~30 source-scan guards still reach it. A scoped style block in a copied component
-	 * is therefore not a retreat from the library — it is the property that made the library adoptable.
+	 * PRESS FEEDBACK AS DECLARATIONS (deviation 3), not `active:` utilities: motion.test.ts judges a
+	 * motion utility with no composited transition beside it, the incumbents had no transition at all,
+	 * and CSS in `src/` is what this repo's source scans can read — the reason copy-in beat a headless
+	 * dependency.
 	 */
-	[data-slot='button']:active:not(:disabled) {
+	[data-press='none']:active:not(:disabled) {
 		transform: scale(0.96);
 	}
-
-	/*
-	 * THE ICON BUTTONS' PRESS STATES (#913 S1b), one selector per incumbent behaviour.
-	 *
-	 * `scale(0.9)` rather than the accent button's 0.96 — a 44px square needs more travel than a
-	 * full-width bar to read as pressed, which is what the incumbents chose and this preserves.
-	 */
 	[data-press='ink']:not(:disabled):active {
 		transform: scale(0.9);
 		color: var(--ink);
@@ -190,14 +135,6 @@
 		transform: scale(0.9);
 		color: var(--accent2);
 	}
-
-	/*
-	 * THE #836 DRAG HANDLE. `cursor: grab` is pinned to THIS control and must never reach a row —
-	 * XR-PH-17's last clause, recorded at `QueueRow.svelte:152`, because a grab cursor on another
-	 * guest's row promised a reorder that could not happen. `touch-action: none` is not decoration
-	 * either: without it the browser claims the vertical gesture for scrolling and `onpointerdown`
-	 * never sees the drag.
-	 */
 	[data-press='grab'] {
 		cursor: grab;
 		touch-action: none;

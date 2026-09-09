@@ -126,6 +126,17 @@ function themeBlocks(css: string): string[] {
  *     minted from #840's palette is caught the day it is bridged, not the day someone remembers to add
  *     it to a list.
  */
+/** The per-stop tokens whose ink/fill split is load-bearing. Registering one of these mints an illegal pairing. */
+const PLAYER_HUE_BRIDGE =
+	/var\(\s*--(?:accent2|accent-ink|on-accent|on-fill-\d+|fill-\d+|hue-\d+|accent|grad|singer)\b/;
+/*
+ * `--accent` and `--on-accent` stay banned as DIRECT bridge values even though the semantic layer
+ * ultimately resolves to them. That is not a contradiction: the layer bridges `var(--primary)`, and
+ * `--primary: var(--accent)` lives in `:root` where nothing is minted. The indirection is what makes
+ * the pairing decidable in one place — a `@theme` entry naming `--accent` outright would mint over a
+ * per-stop fill with no such single place.
+ */
+
 const COLOUR_TOKEN_RE =
 	/var\(\s*--(?:accent2|accent-ink|on-accent|on-fill-\d+|on-[a-z0-9-]+|fill-\d+|hue-\d+|accent|grad|ok|warn|danger|ink|bg|card|line|focus|scrim|track|stage|singer|stage-glow)\b/;
 // A global-flag twin for matchAll; `.test()` callers use the non-global one above to avoid lastIndex state.
@@ -137,7 +148,23 @@ const COLOUR_TOKEN_RE_G = new RegExp(COLOUR_TOKEN_RE.source, 'g');
  */
 function colourOffences(name: string, value: string): string[] {
 	const out: string[] = [];
-	if (/^--color-/.test(name)) out.push(`${name}: in Tailwind's --color-* namespace (mints text-* and bg-*)`);
+	/*
+	 * #913: a `--color-*` name is no longer an offence by itself — the semantic layer (`--color-primary`
+	 * and friends) is registered deliberately so vendored components work unedited, and the ink
+	 * direction is banned by NAME in `shadcn-ink-ban-913.test.ts` instead. What stays an offence is
+	 * registering a PLAYER HUE, because those vary per stop and `onFill`/`ink` differ for 13 of the 48 —
+	 * a minted `text-<hue>` would offer the illegal pairing for every one of them.
+	 */
+	if (/^--color-/.test(name) && PLAYER_HUE_BRIDGE.test(value)) {
+		out.push(`${name}: registers a PLAYER HUE (${value}) — mints text-* over a per-stop fill`);
+	}
+	// A raw colour VALUE is an offence under any name: it cannot be a semantic alias, because an alias
+	// by definition points at the token that already decided the question.
+	if (/#[0-9a-fA-F]{3,8}\b/.test(value)) out.push(`${name}: raw hex colour value ${value}`);
+	if (/\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix|light-dark)\s*\(/.test(value)) {
+		out.push(`${name}: raw colour-function value ${value}`);
+	}
+	if (/\bgradient\s*\(/.test(value)) out.push(`${name}: gradient value ${value}`);
 	if (/#[0-9a-fA-F]{3,8}\b/.test(value)) out.push(`${name}: hex colour value ${value}`);
 	if (/\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix|light-dark)\s*\(/.test(value)) {
 		out.push(`${name}: colour-function value ${value}`);
@@ -145,7 +172,7 @@ function colourOffences(name: string, value: string): string[] {
 	if (/\bgradient\s*\(/.test(value)) out.push(`${name}: gradient value ${value}`);
 	// a bridge to one of the app's own colour tokens is the same violation wearing a var() — now
 	// including the per-stop ink names (`--on-accent`, `--on-fill-N`) that used to slip the anchor.
-	if (COLOUR_TOKEN_RE.test(value)) out.push(`${name}: bridges the colour token ${value}`);
+	if (PLAYER_HUE_BRIDGE.test(value)) out.push(`${name}: bridges the per-stop hue token ${value}`);
 	return out;
 }
 
@@ -226,7 +253,28 @@ describe('#853 the @theme block registers no colour', () => {
 		expect(blocks.join('\n')).toContain('--text-tv-lyric');
 	});
 
-	it('registers no colour, so no `text-<hue>` utility can be minted', () => {
+	/*
+	 * ── RETIRED BY #913'S RESTRUCTURE, ON THE RECORD (XR-VER-07) ─────────────────────────────────────
+	 *
+	 * This arm asserted `@theme` registers NO colour, so `text-<hue>` could never be minted. Its
+	 * measurement was never wrong: `--accent` as ink is 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2
+	 * and 2.90 on --card-tint2 — four AA failures.
+	 *
+	 * What it could not see is the cost on the other side. Refusing to register the semantic colours
+	 * made every vendored shadcn component non-functional unedited, which forced a hand-repointing of
+	 * each one and made `shadcn-svelte add --overwrite` destructive — a price paid once per component
+	 * across the whole registry migration, to prevent a class from EXISTING when the hazard is the class
+	 * being USED.
+	 *
+	 * SUCCESSOR: `shadcn-ink-ban-913.test.ts` bans those utility NAMES in app source, exempting the
+	 * vendored tree by path. That is the same mechanism `components/motion.test.ts`'s net arm already
+	 * uses for `transition-all`. The per-stop half stays with `contrast.test.ts`, which records
+	 * accent-as-ink leaving scope as a universal fact and becoming per-stop across #840's 48 stops.
+	 *
+	 * The PLAYER HUES are still unregistered and still un-mintable: `--accent2`, `--grad`, `--fill-N`
+	 * and `--hue-N` appear nowhere in `@theme`, which the arm below now pins directly.
+	 */
+	it('registers no PLAYER HUE, so no per-stop `text-<hue>` utility can be minted', () => {
 		/*
 		 * Two independent tests per declaration, because a colour can enter by NAME or by VALUE and
 		 * either one mints the family:

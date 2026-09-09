@@ -127,15 +127,15 @@
 	{#if !pending}
 		<div class="actions">
 			{#if reorderable}
-				<Button variant="icon" shape="sm" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
+				<Button variant="outline" size="icon" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
 					><Icon name="arrow-up" /></Button
 				>
-				<Button variant="icon" shape="sm" press="ink" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
+				<Button variant="outline" size="icon" press="ink" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
 					><Icon name="arrow-down" /></Button
 				>
 			{/if}
 			{#if removable}
-				<Button variant="icon" shape="sm" press="accent2" aria-label="remove from queue" onclick={() => onremove?.()}
+				<Button variant="outline" size="icon" press="accent2" aria-label="remove from queue" onclick={() => onremove?.()}
 					><Icon name="close" /></Button
 				>
 			{/if}
@@ -155,8 +155,7 @@
 			-->
 			{#if grip}
 				<Button
-					variant="icon"
-					shape="sm"
+					variant="outline" size="icon"
 					press="grab"
 					aria-label="Reorder your songs"
 					data-grip={gripId}

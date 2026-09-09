@@ -118,19 +118,18 @@
 		ready" is a real intent and the server, not the phone, decides when that is.
 	-->
 	<div class="transport">
-		<Button variant="icon" shape="sm" aria-label="restart" disabled={!hasSong} onclick={() => onrestart?.()}>
+		<Button variant="outline" size="icon" aria-label="restart" disabled={!hasSong} onclick={() => onrestart?.()}>
 			<Icon name="prev" />
 		</Button>
 		<Button
-			variant="iconPrimary"
-			shape="sm"
+			variant="iconPrimary" size="icon"
 			aria-label="play/pause"
 			disabled={!hasSong && !canStart}
 			onclick={() => ontoggleplay?.()}
 		>
 			<Icon name={isPlaying ? 'pause' : 'play'} />
 		</Button>
-		<Button variant="icon" shape="sm" aria-label="skip" disabled={!hasSong} onclick={() => onskip?.()}>
+		<Button variant="outline" size="icon" aria-label="skip" disabled={!hasSong} onclick={() => onskip?.()}>
 			<Icon name="next" />
 		</Button>
 	</div>
