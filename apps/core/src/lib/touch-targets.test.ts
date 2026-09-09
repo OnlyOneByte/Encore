@@ -41,7 +41,6 @@ const FILES = [
 	// redundant is retired with it.
 	...svelteFiles(join(SRC, 'lib', 'ui')),
 	join(SRC, 'routes', '+page.svelte'),
-	join(SRC, 'routes', 'join', '+page.svelte'),
 	join(SRC, 'routes', 'settings', '+page.svelte'),
 	// The operator metrics pages are phone surfaces by their own CSS's admission (they harden for the
 	// 320px layout) and each has exactly one navigation control, yet neither was ever scanned — which

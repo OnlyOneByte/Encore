@@ -10,8 +10,9 @@ import { join } from 'node:path';
  *
  * This is the line that was missing when /stats and /metrics shipped as dead ends with no heading
  * consistency and no way back — nothing asserted the invariant, so the next new page could repeat it.
- * The h1 + back now come from the shared PageHeader component; the ROOT surfaces (/ and /join) carry
- * their wordmark as their own <h1 class="brand"> and are entry points, so they need no back.
+ * The h1 + back now come from the shared PageHeader component; the ROOT surface (`/`) carries its
+ * wordmark as its own <h1 class="brand"> and is an entry point, so it needs no back. (`/join` was such
+ * a root too until #834 retired it — its join UI is now the unjoined branch of `/`.)
  *
  * The exemption list is the explicit decision, written down here so removing a page from it is a
  * conscious act a reviewer sees:
@@ -29,7 +30,7 @@ const EXEMPT: Record<string, string> = {
 
 // Root / entry surfaces: they carry the Encore wordmark as their h1 and are the top of navigation,
 // so the invariant requires their h1 but NOT a back affordance.
-const ROOTS = new Set(['/', '/join']);
+const ROOTS = new Set(['/']);
 
 /**
  * Every routed page under src/routes, as { route, file, src }.

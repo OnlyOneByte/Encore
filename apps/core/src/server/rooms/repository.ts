@@ -13,7 +13,12 @@ import { randomBytes } from 'node:crypto';
 import { asc, eq } from 'drizzle-orm';
 import type { DB } from '../db/index';
 import { rooms } from '../db/schema';
-import { ulid } from '@encore/shared';
+import { ulid, CODE_ALPHABET, CODE_LENGTH } from '@encore/shared';
+
+// The join-code vocabulary now lives in @encore/shared/room-code so the phone's six-segment entry
+// (XR-PH-14) rejects exactly the characters this server rejects, with no second copy to drift (#834).
+// Re-exported here so this module's existing importers keep their import site.
+export { CODE_ALPHABET, CODE_LENGTH } from '@encore/shared';
 
 /** A persisted room. Shape mirrors the `rooms` table row. */
 export interface Room {
@@ -21,15 +26,6 @@ export interface Room {
 	code: string;
 	createdAt: number;
 }
-
-/**
- * Join-code alphabet: uppercase letters + digits with the visually confusable characters removed
- * (no 0/O, 1/I/L) so a code read off a TV and typed on a phone cannot be mistyped into a different
- * valid code. Six characters over this 30-symbol alphabet is ~7.3e8 possibilities — collisions are
- * vanishingly unlikely, and the unique index + retry below makes even one harmless.
- */
-const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-const CODE_LENGTH = 6;
 
 /** Mint a random join code over {@link CODE_ALPHABET}. */
 export function mintRoomCode(): string {

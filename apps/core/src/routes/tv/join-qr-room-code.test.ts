@@ -1,6 +1,7 @@
-// The TV attract QR must encode THIS room's join code (`/join?room=CODE`), so a scan lands the
-// phone in this party rather than at a bare /join (#654). Drives the REAL `load` with a real
-// RoomRepository behind the app singleton.
+// The TV attract QR must encode THIS room's join code (`/?room=CODE`), so a scan lands the phone in
+// this party rather than at a bare landing (#654). `/join` was retired (#834 Q2-A), so the QR now
+// points at the landing page `/`, not `/join`. Drives the REAL `load` with a real RoomRepository
+// behind the app singleton.
 //
 // BASE-RED: on origin/main the join URL is always a bare `${origin}/join` with no room code.
 import { test, expect, afterEach } from 'bun:test';
@@ -15,7 +16,7 @@ afterEach(() => {
 	delete (globalThis as Record<PropertyKey, unknown>)[APP_KEY];
 });
 
-test("the join URL (and thus the QR) carries the active room's code", async () => {
+test("the join URL (and thus the QR) carries the active room's code, at the landing page", async () => {
 	const db = migratedDb();
 	const rooms = new RoomRepository(db);
 	const active = rooms.ensureActive(1);
@@ -29,4 +30,7 @@ test("the join URL (and thus the QR) carries the active room's code", async () =
 	const request = new Request(url, { headers: { host: 'tv.lan:3000' } });
 	const data = (await load({ url, request } as never)) as { joinUrl: string };
 	expect(data.joinUrl).toContain(`?room=${active.code}`);
+	// #834 Q2-A: the QR points at `/`, not the retired `/join`. A revert of the path change reds here.
+	expect(data.joinUrl).toBe(`http://tv.lan:3000/?room=${active.code}`);
+	expect(data.joinUrl).not.toContain('/join');
 });

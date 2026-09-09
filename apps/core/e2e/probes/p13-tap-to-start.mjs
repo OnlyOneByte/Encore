@@ -85,7 +85,7 @@ try {
 	// -- a singer joins and queues the cooked song, through the real UI --
 	const phone = await browser.newPage();
 	await phone.viewport(390, 844);
-	await phone.goto(base + '/join');
+	await phone.goto(base + '/');
 	await phone.fill(SEL.nameInput, 'Singer' + (Date.now() % 100000));
 	await phone.clickByText('Start singing');
 	await phone.waitFor("location.pathname === '/'");

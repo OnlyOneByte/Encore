@@ -641,7 +641,7 @@ async function main() {
 						'HIGH',
 						'name-collision error is not human-legible',
 						`phone displayed: ${JSON.stringify(msg)}`,
-						`apps/core/src/routes/join/+page.svelte:26 error rendering; server: apps/core/src/server/singers/join.ts:21 NameTakenError message`
+						`apps/core/src/lib/components/JoinLanding.svelte:26 error rendering; server: apps/core/src/server/singers/join.ts:21 NameTakenError message`
 					);
 				} else {
 					// The form must remain usable — the input the user can now edit is the whole point of
@@ -667,7 +667,7 @@ async function main() {
 							'HIGH',
 							'join form is not recoverable after a 409',
 							`state=${JSON.stringify(usable)} — the form must let the user retype and resubmit`,
-							`apps/core/src/routes/join/+page.svelte:14 submitting flag reset`
+							`apps/core/src/lib/components/JoinLanding.svelte:14 submitting flag reset`
 						);
 					} else {
 						// And prove recovery actually works: type a fresh name and submit.

@@ -419,9 +419,9 @@
 	async function leaveRoom() {
 		leaving = true;
 		await fetch('/api/leave', { method: 'POST' });
-		// The cookie is gone, so /join is the only honest destination — and a reload here would 401 into
-		// the same place with a flash of an empty page on the way.
-		await goto('/join');
+		// The cookie is gone, so `/` — the landing/join page (#834 Q2-A) — is the only honest destination,
+		// and a reload here would 401 into the same place with a flash of an empty page on the way.
+		await goto('/');
 	}
 
 	/**

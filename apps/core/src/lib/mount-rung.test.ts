@@ -87,10 +87,14 @@ test('every component importing a $app/$env virtual module loads under the mount
 		const specifiers = [...readFileSync(file, 'utf8').matchAll(KIT_IMPORT)].map((m) => m[1]!);
 		if (specifiers.length > 0) importers.push({ file, specifiers });
 	}
-	// Floor: six import sites across five route components at the time of writing (#822's triage).
-	expect(importers.length, 'no $app/$env importer found — the walk is broken, not the tree').toBeGreaterThanOrEqual(5);
+	// Floor: importers across the route/component tree. Re-anchored 5 -> 4 (sites 6 -> 5) by #834:
+	// `/join` was retired (its `$app/navigation` + `$app/state` importer went with it) and its join UI
+	// moved to JoinLanding.svelte (still both specifiers); at the same time `routes/+page.svelte` dropped
+	// its `goto('/join')` bounce, so it no longer imports `$app/navigation` at all. Net one fewer
+	// importer. Still non-vacuous — a broken walk enumerates zero and reds here.
+	expect(importers.length, 'no $app/$env importer found — the walk is broken, not the tree').toBeGreaterThanOrEqual(4);
 	const sites = importers.reduce((n, i) => n + i.specifiers.length, 0);
-	expect(sites).toBeGreaterThanOrEqual(6);
+	expect(sites).toBeGreaterThanOrEqual(5);
 
 	for (const { file } of importers) {
 		// A bare `import()` of the component is the whole assertion: before the preload aliased these
@@ -154,10 +158,13 @@ test('an unstubbed SvelteKit virtual module fails with a message naming the stub
 });
 
 // ── 3. A route component mounts, and both stubs are wired through it ──────────────────────────
-test('the /join route mounts, reads the stubbed page.url, and its goto lands in the stub (#822)', async () => {
+test('the landing join surface mounts, reads the stubbed page.url, and its goto lands in the stub (#822)', async () => {
 	const { setPage } = await stateStub();
 	const { calls } = await navStub();
-	setPage({ url: '/join?room=WXYZ&next=/settings' });
+	// `/join` was retired (#834 Q2-A); its join UI is the JoinLanding component rendered in the
+	// unjoined branch of `/`. A bare landing (no `?room`) joins the active room, and `?next=` is read
+	// here exactly as the old route read it — which is the `page.url` wiring this rung proves.
+	setPage({ url: '/?next=/settings' });
 	const bodies: string[] = [];
 	const realFetch = globalThis.fetch;
 	globalThis.fetch = ((_url: string, init?: { body?: string }) => {
@@ -167,17 +174,17 @@ test('the /join route mounts, reads the stubbed page.url, and its goto lands in 
 
 	const target = document.createElement('div');
 	document.body.appendChild(target);
-	const Join = (await import('../routes/join/+page.svelte')).default as never;
+	const Join = (await import('../lib/components/JoinLanding.svelte')).default as never;
 	const instance = mount(Join, { target });
 	flushSync();
 
 	try {
 		// Effects ran and the component rendered — the mount half of XR-VER-01.
 		const input = target.querySelector('input.name-input') as HTMLInputElement | null;
-		expect(input, '/join mounted but rendered no name field').not.toBeNull();
+		expect(input, 'JoinLanding mounted but rendered no name field').not.toBeNull();
 
 		// Drive the real action. `bind:value` listens for `input`; the submit handler reads
-		// `page.url.searchParams` for the room code and then calls `goto`.
+		// `page.url.searchParams` for `next` and then calls `goto`.
 		// The Event constructor must come from the happy-dom window: bun defines its own global
 		// `Event`, so the preload's `g[name] === undefined` copy leaves it in place, and happy-dom's
 		// `dispatchEvent` rejects an event that is not an instance of ITS Event class.
@@ -188,18 +195,18 @@ test('the /join route mounts, reads the stubbed page.url, and its goto lands in 
 		// #913 S1 moved `.submit`'s page layout to a `.submit-slot` wrapper and the button itself to
 		// <Button>, whose element carries `data-slot="button"`. The class is no longer on the control.
 		const submit = target.querySelector('.submit-slot button') as HTMLButtonElement | null;
-		expect(submit, '/join rendered no submit button').not.toBeNull();
+		expect(submit, 'JoinLanding rendered no submit button').not.toBeNull();
 		submit!.click();
 		flushSync();
 		await Promise.resolve();
 		await Promise.resolve();
 
-		// `$app/state`: the room code in the request body came from the URL this test stubbed. A test
-		// that only asserted "it mounted" would pass with `page` stubbed as an empty object.
+		// The join button reached fetch — the action wired through the mount, not just static markup.
 		expect(bodies.length, 'the join button did not reach fetch').toBe(1);
-		expect(JSON.parse(bodies[0]!).code).toBe('WXYZ');
+		// A bare landing carries no room code, so the active room is joined (`code` omitted).
+		expect(JSON.parse(bodies[0]!).code).toBeUndefined();
 		// `$app/navigation`: the navigation is recorded rather than silently swallowed, and it carries
-		// the destination the stubbed `next` param asked for.
+		// the destination the stubbed `next` param asked for — the `page.url` read this rung proves.
 		expect(calls.map((c) => c.fn)).toContain('goto');
 		expect(String(calls.find((c) => c.fn === 'goto')!.args[0])).toBe('/settings');
 	} finally {
