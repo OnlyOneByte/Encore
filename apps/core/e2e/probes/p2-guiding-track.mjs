@@ -780,8 +780,8 @@ async function main() {
 		'LOW',
 		'vocalsRef absent: unmeasured (environment limit; fake worker always publishes vocals artifact)',
 		true,
-		`packages/shared/src/guide-level.ts:hasGuidingTrack requires !!m.vocalsRef`,
-		`covered by unit tests packages/shared/src/guide-level.test.ts:hasGuidingTrack; not reproducible via the fake worker without editing it`
+		`packages/shared/src/lyrics/guide-level.ts:hasGuidingTrack requires !!m.vocalsRef`,
+		`covered by unit tests packages/shared/src/lyrics/guide-level.test.ts:hasGuidingTrack; not reproducible via the fake worker without editing it`
 	);
 
 	// ── screenshot for the record ─────────────────────────────────────────

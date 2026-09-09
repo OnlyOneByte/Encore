@@ -259,7 +259,7 @@ three paths have to hold or a restart quietly turns a cited artist back into a g
 Client-minted ULID per op; server holds a monotonic `rev`; client keeps a pending-op Map and applies
 the inverse on reject; server broadcasts `queue:patch{rev, ops, causedBy, entries, media}` with the
 authoritative snapshot **inline**; rev-gap detection triggers resync. The shared reducer
-`packages/shared/src/rotation.ts` (`applyAndReseq`) runs on **both** sides — keep them on the same
+`packages/shared/src/queue/rotation.ts` (`applyAndReseq`) runs on **both** sides — keep them on the same
 function or the invariant breaks.
 
 **Validate every field a client sends.** An `add` with a missing `singerId` once reached the

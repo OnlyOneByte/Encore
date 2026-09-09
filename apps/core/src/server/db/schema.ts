@@ -68,7 +68,7 @@ export const media = sqliteTable('media', {
 	// rather than left on the search response so a song already in the library carries it too; NULL
 	// means "never learned one", which the row renders as no chip rather than as "0 views".
 	viewCount: integer('view_count'),
-	// The lyrics half of the cook gate (see packages/shared/src/gates.ts). NULL on rows written before
+	// The lyrics half of the cook gate (see packages/shared/src/queue/gates.ts). NULL on rows written before
 	// the gate existed, which the gate reads as "done if a lyrics artifact is already present" so an
 	// existing library does not become unsingable on upgrade.
 	lyricsStatus: text('lyrics_status', { enum: ['none', 'queued', 'ready'] }),
@@ -91,7 +91,7 @@ export const media = sqliteTable('media', {
 	// "measured, and it was 0" apart from "we never measured this one".
 	guideOffsetMs: integer('guide_offset_ms'),
 	// The stems job's THIRD artifact: what the cook learned about the song's music — its key and the
-	// sung range — as one JSON blob (see packages/shared/src/song-profile.ts, SongProfile). Stored the
+	// sung range — as one JSON blob (see packages/shared/src/cook/song-profile.ts, SongProfile). Stored the
 	// same way as lyrics_candidates: nothing queries INSIDE it (transposition and range math all happen
 	// in the client from the whole record), so one JSON column beats a key_range table with no query to
 	// justify it. NULLABLE, and the null carries meaning: null ⇔ "the stems job has not run / this row
