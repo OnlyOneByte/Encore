@@ -2,7 +2,7 @@
 """
 Encore 48-stop player palette, where a guest's identity colour IS their UI accent.
 
-This is the generator behind `packages/shared/src/player-palette-48.json`, the one machine-readable
+This is the generator behind `packages/shared/src/presentation/player-palette-48.json`, the one machine-readable
 source of truth for the 48 stops (`XR-COL-01`). Run it from anywhere; paths are repo-relative:
 
     python3 packages/shared/scripts/_player_palette.py
@@ -44,7 +44,7 @@ APP_CSS = REPO / "apps" / "core" / "src" / "app.css"
 # The committed registry, unless a caller redirects it. `PLAYER_PALETTE_OUT` is how the freshness
 # guard regenerates into a temp file without dirtying the working tree.
 OUT = pathlib.Path(os.environ.get("PLAYER_PALETTE_OUT")
-                   or REPO / "packages" / "shared" / "src" / "player-palette-48.json")
+                   or REPO / "packages" / "shared" / "src" / "presentation" / "player-palette-48.json")
 
 N_STOPS = 48
 START_HUE = 29.0            # red, so the wheel reads red -> ... -> magenta -> red

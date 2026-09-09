@@ -104,12 +104,12 @@
 	 * darkened accent would be two tokens claiming one job with no rule for which wins.
 	 *
 	 * So `--accent` below is a REGISTRY STOP rather than the old free-standing brand hex: stop 41
-	 * `Periwinkle` from `packages/shared/src/player-palette-48.json` (`variants.chromatic`), which is
+	 * `Periwinkle` from `packages/shared/src/presentation/player-palette-48.json` (`variants.chromatic`), which is
 	 * the nearest stop to the retired #7c5cff by OKLab ΔE (0.0445 — a hair). Choosing it keeps white
 	 * as the ink at every label site AND improves the measured ratio: 4.88:1 → 5.09:1. The value is a
 	 * literal here because a stylesheet cannot import JSON; `lib/colour-tokens.test.ts` asserts the
 	 * pair below IS a registry pair, so it cannot drift from the single source silently — the same
-	 * price, for the same reason, as `SURFACES` in `packages/shared/src/colors.ts`.
+	 * price, for the same reason, as `SURFACES` in `packages/shared/src/presentation/colors.ts`.
 	 *
 	 * Every pre-existing `var(--accent)` read is NON-TEXT (chart and progress fills, gradient stops,
 	 * borders, a `color-mix` wash, the identity-dot fallback), and stop 41 clears the 3:1 non-text

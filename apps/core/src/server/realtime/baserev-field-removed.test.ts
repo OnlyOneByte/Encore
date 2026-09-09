@@ -23,7 +23,7 @@ function stripComments(src: string): string {
 
 // import.meta.dir === apps/core/src/server/realtime → repo root is five levels up.
 const REPO_ROOT = join(import.meta.dir, '..', '..', '..', '..', '..');
-const OPS_PATH = join(REPO_ROOT, 'packages', 'shared', 'src', 'ops.ts');
+const OPS_PATH = join(REPO_ROOT, 'packages', 'shared', 'src', 'core', 'ops.ts');
 // apps/core/src — the server + client TypeScript that could read the field.
 const CORE_SRC = join(import.meta.dir, '..', '..');
 const CORE_ENTRY = join(import.meta.dir, '..', '..', '..', 'server.ts');

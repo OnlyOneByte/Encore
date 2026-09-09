@@ -13,7 +13,7 @@
 // The incentive was inverted — the incomplete edit was silent, the complete one punished. For (2)
 // `deps.publish` is typed `(event: ServerEvent) => void` (hub.ts) but the resync writes through
 // `ws.send(JSON.stringify(...))`, which accepts anything: adding one required field to the
-// nowplaying:changed variant (packages/shared/src/events.ts) produced exactly ONE tsc error, at
+// nowplaying:changed variant (packages/shared/src/core/events.ts) produced exactly ONE tsc error, at
 // player.ts, and ZERO at server.ts. So a reconnecting TV or a reloading phone would be served the
 // old projection while every live client got the new one — #636's class (an advertised next that
 // disagrees with the truth) reached from the resync seam.

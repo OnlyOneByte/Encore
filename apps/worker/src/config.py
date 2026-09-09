@@ -247,7 +247,7 @@ class WorkerConfig:
     #: Which faster-whisper checkpoint the ASR tier transcribes with, and how words get timestamps.
     #: These are a DEPLOYMENT choice and normally arrive per-job in `params` from the core's global
     #: settings; these env values are the fallback for a job that carries neither — an older core, or a
-    #: worker driven directly in a test. Whitelist lives in packages/shared/src/lyrics-engines.ts.
+    #: worker driven directly in a test. Whitelist lives in packages/shared/src/lyrics/lyrics-engines.ts.
     asr_model: str = "base"
     sync_mode: str = "forced"
 

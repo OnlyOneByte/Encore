@@ -80,7 +80,7 @@ Self-contained HTML using the real tokens, in the **workspace, not the repo** â€
 
 Two of those files are now **exceptions**: the 48-stop player palette's generator and its registry
 moved into the repo as `packages/shared/scripts/_player_palette.py` and
-`packages/shared/src/player-palette-48.json` (#820), because `XR-COL-01`/`XR-COL-02` require the
+`packages/shared/src/presentation/player-palette-48.json` (#820), because `XR-COL-01`/`XR-COL-02` require the
 registry to be tracked and its regeneration to be checkable. The HTML mockups stay in the workspace.
 
 `tv-chosen.html` is the decided TV design (split-panel attract, full roster lobby, full-screen

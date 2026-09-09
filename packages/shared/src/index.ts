@@ -1,24 +1,27 @@
 // @encore/shared — the single import surface for the realtime contract.
 // Imported by BOTH apps/core/src/server (authoritative) and apps/core/src/lib (client).
-export * from './registry';
-export * from './types';
-export * from './guide-level';
-export * from './gates';
-export * from './ops';
-export * from './rotation';
-export * from './membership';
-export * from './queue-order';
-export * from './lyrics';
-export * from './song-profile';
-export * from './loudness-normalization';
-export * from './events';
-export * from './cook-progress';
-export * from './separators';
-export * from './settings';
-export * from './fetchers';
-export * from './lyrics-engines';
-export * from './ulid';
-export * from './colors';
-export * from './song-display';
-export * from './days-window';
-export * from './room-code';
+//
+// Modules are grouped into domain subdirectories (#776); the barrel is the only public surface, so
+// these re-exports keep every `@encore/shared` import path byte-identical for consumers.
+export * from './core/registry';
+export * from './core/types';
+export * from './lyrics/guide-level';
+export * from './queue/gates';
+export * from './core/ops';
+export * from './queue/rotation';
+export * from './queue/membership';
+export * from './queue/queue-order';
+export * from './lyrics/lyrics';
+export * from './cook/song-profile';
+export * from './lyrics/loudness-normalization';
+export * from './core/events';
+export * from './cook/cook-progress';
+export * from './lyrics/separators';
+export * from './core/settings';
+export * from './cook/fetchers';
+export * from './lyrics/lyrics-engines';
+export * from './core/ulid';
+export * from './presentation/colors';
+export * from './presentation/song-display';
+export * from './core/days-window';
+export * from './core/room-code';

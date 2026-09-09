@@ -36,7 +36,7 @@ from src.lyrics.chain import (  # noqa: E402
 # production truth is the file it parses, so it cannot be defeated by reverting a hunk.
 _REPO = Path(__file__).resolve().parents[3]
 _TV_LYRICS_TS = _REPO / "apps" / "core" / "src" / "lib" / "tv" / "lyrics.ts"
-_SHARED_LYRICS_TS = _REPO / "packages" / "shared" / "src" / "lyrics.ts"
+_SHARED_LYRICS_TS = _REPO / "packages" / "shared" / "src" / "lyrics" / "lyrics.ts"
 
 
 def _ts_number(src_path: Path, name: str) -> float:
@@ -60,7 +60,7 @@ def _ts_is_authoritative(text_source: str, text_confidence: str) -> bool:
         text,
     )
     assert body, (
-        "isAuthoritativeText in packages/shared/src/lyrics.ts no longer matches the mirrored shape "
+        "isAuthoritativeText in packages/shared/src/lyrics/lyrics.ts no longer matches the mirrored shape "
         "`c.textSource !== '<x>' && c.textConfidence !== '<y>'` — the Python mirror in chain.py must "
         "be updated to match the new definition and this parser taught the new shape"
     )

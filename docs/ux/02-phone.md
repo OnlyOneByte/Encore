@@ -8,7 +8,7 @@ Direction is **A + B**, and drag reorder, landing/join, and live singing control
 
 Two repo facts these rows lean on, verified in this pass and worth stating once:
 
-- **`move` is not the only way an entry crosses singers.** `packages/shared/src/ops.ts:12` scopes
+- **`move` is not the only way an entry crosses singers.** `packages/shared/src/core/ops.ts:12` scopes
   `move`'s `toSeq` to the singer's own QUEUED picks. Crossing singers is now a **direct rewrite of the
   stored ordered list** — the list is the source of truth, so a placement is durable by construction and
   there is no pin: pinning (`move-global`/`unpin`, `pinnedSeq`, `placePins`, and the client's
@@ -247,7 +247,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | A drag grip renders only on a row that is the guest's own, when the guest has more than one queued pick, **and** the room's ordering honours a per-singer reorder. It never renders on another guest's row, and no row without a reorder path carries `cursor: grab`. |
 | **Surfaces** | Phone |
 | **Rationale** | `QueueRow.svelte`'s comment records that a grip previously rendered *only* on rows that were neither removable nor reorderable — another guest's song — where it was the sole affordance, promising a drag that does not exist; and under `shuffle` (`respectsAddedAt: false`) a `move` is a legal no-op, so a grip there promises a reorder the reducer discards. |
-| **Source** | Repo: `apps/core/src/lib/components/QueueRow.svelte` (the removed-grip comment and the `reorderable` prop), `packages/shared/src/queue-order.ts` (`respectsAddedAt`, `reorderIsMeaningful`), already consumed at `routes/+page.svelte:97`. |
+| **Source** | Repo: `apps/core/src/lib/components/QueueRow.svelte` (the removed-grip comment and the `reorderable` prop), `packages/shared/src/queue/queue-order.ts` (`respectsAddedAt`, `reorderIsMeaningful`), already consumed at `routes/+page.svelte:97`. |
 | **Acceptance** | Given a room ordered by `shuffle` and a guest with three of their own picks, When home renders, Then no grip renders on any row. Given `fair` ordering with exactly one of the guest's picks queued, Then no grip renders. Given `fair` with two, Then a grip renders on both of the guest's rows and on no other row. |
 | **Check** | Unit test over the grip-visibility predicate (pure), plus captured frames for the three arms. |
 | **Priority** | Must. |
@@ -259,7 +259,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | In the reorder mode, the number of drop targets equals the guest's own queued pick count, each target is labelled with the ordinal it represents among the guest's picks, other guests' rows are non-interactive and de-emphasised, and a release outside a legal target commits nothing. |
 | **Surfaces** | Phone |
 | **Rationale** | `move`'s `toSeq` is an index into the singer's own queued picks, so a drop that appears to cross singers cannot be expressed and would snap back — which reads as a bug rather than as a rule. The guest's picks are **not adjacent** in a flat list, which is why the mode must draw the slots rather than let the list imply them. |
-| **Source** | Repo: `packages/shared/src/ops.ts:12`; `reorderWithinSinger` at `packages/shared/src/rotation.ts:127`, which indexes queued picks only and clamps an out-of-range target. |
+| **Source** | Repo: `packages/shared/src/core/ops.ts:12`; `reorderWithinSinger` at `packages/shared/src/queue/rotation.ts:127`, which indexes queued picks only and clamps an out-of-range target. |
 | **Acceptance** | Given 6 queued entries of which 2 are the guest's, When the mode is entered, Then exactly 2 drop targets render and the other 4 rows expose no pointer or keyboard interaction; When a row is released over a non-target, Then no `move` op is emitted. |
 | **Check** | Driven browser for the target count and release behaviour; a unit test asserts the count derives from the guest's queued picks, not from the visible list length. Cross-singer placement is now a **direct rewrite of the stored ordered list** (no pin — pinning was deleted in #856 step 3), wired to the arrows and the drag in #856 step 4, and is out of scope for this within-singer row. |
 | **Priority** | Must. |
@@ -271,7 +271,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | The mode is exited by an explicit Done, by Cancel, and by `Escape`; Cancel and `Escape` commit nothing. If a concurrent change invalidates the mode — the guest's queued picks fall below two, or their pick begins playing — the mode closes itself, states why, and returns focus to the row the guest was moving. |
 | **Surfaces** | Phone |
 | **Rationale** | `assignSeqs` re-derives `rotationSeq` on **every** mutation, so any other guest's add re-orders the list under an open drag; a mode whose slots silently stop matching the list is how a drop lands somewhere the guest did not choose. |
-| **Source** | Repo: `packages/shared/src/rotation.ts` — `assignSeqs` re-derivation, and `reorderWithinSinger` returning a no-op for a playing entry. |
+| **Source** | Repo: `packages/shared/src/queue/rotation.ts` — `assignSeqs` re-derivation, and `reorderWithinSinger` returning a no-op for a playing entry. |
 | **Acceptance** | Given the mode is open, When `Escape` is pressed, Then no op is emitted and focus returns to the grip that opened it. Given the mode is open and the guest's second pick is removed elsewhere, Then the mode closes with a stated reason within one render and no op is emitted. |
 | **Check** | Driven browser for `Escape` and focus return; a harness test drives real ops through `handleQueueCommand` to produce the invalidating states (the `AuthoritativeState` + `HubDeps` idiom used by `autostart.test.ts` is the working template). |
 | **Priority** | Must. |

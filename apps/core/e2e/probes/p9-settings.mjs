@@ -210,7 +210,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		gotJoin === 'http://phones.example:8080' ? 'PASS' : 'HIGH',
 		'persistence',
 		'#join-origin persists via PUT /api/settings',
-		`stored=${JSON.stringify(gotJoin)}  — packages/shared/src/settings.ts:normalizeJoinOrigin`
+		`stored=${JSON.stringify(gotJoin)}  — packages/shared/src/core/settings.ts:normalizeJoinOrigin`
 	);
 
 	// sync-mode (global) — a real GlobalSettings field with two live modes.
@@ -219,7 +219,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 		patch2.body?.global?.syncMode === 'lines' ? 'PASS' : 'HIGH',
 		'persistence',
 		'#sync-mode persists via PUT /api/settings',
-		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — packages/shared/src/lyrics-engines.ts:118`
+		`stored=${JSON.stringify(patch2.body?.global?.syncMode)}  — packages/shared/src/lyrics/lyrics-engines.ts:118`
 	);
 
 	// All room-scope SEL.SETTING_IDS in one write to prove the persistence contract; per-field errors
@@ -295,7 +295,7 @@ const { cookie: aliceCookie } = await joinAs('AliceProbe');
 // ═══ 3. Validation — garbage must not persist. ═══════════════════════════════
 {
 	// Each garbage payload targets one field. Normalizer contract is "reject-to-current per-field",
-	// asserted in packages/shared/src/settings.ts (normalizeGlobalSettings/normalizeRoomSettings).
+	// asserted in packages/shared/src/core/settings.ts (normalizeGlobalSettings/normalizeRoomSettings).
 	const baseline = await getSettings();
 	/** @type {{ scope: 'global' | 'room', body: Record<string, unknown>, field: string, expect: unknown }[]} */
 	const garbage = [

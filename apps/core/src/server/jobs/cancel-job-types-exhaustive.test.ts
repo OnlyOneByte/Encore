@@ -27,7 +27,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const cancelSrc = readFileSync(join(import.meta.dir, 'cancel.ts'), 'utf8');
-const typesSrc = readFileSync(join(import.meta.dir, '../../../../../packages/shared/src/types.ts'), 'utf8');
+const typesSrc = readFileSync(join(import.meta.dir, '../../../../../packages/shared/src/core/types.ts'), 'utf8');
 
 /** Strip line and block comments so prose describing the old layout cannot satisfy or trip a scan. */
 function stripComments(s: string): string {
@@ -38,7 +38,7 @@ function stripComments(s: string): string {
 function jobTypeMembers(): string[] {
 	const src = stripComments(typesSrc);
 	const m = src.match(/export type JobType\s*=\s*([^;]+);/);
-	expect(m, 'JobType union declaration must exist in packages/shared/src/types.ts').not.toBeNull();
+	expect(m, 'JobType union declaration must exist in packages/shared/src/core/types.ts').not.toBeNull();
 	const members = m![1]
 		.split('|')
 		.map((part) => part.trim().replace(/^['"]|['"]$/g, ''))
