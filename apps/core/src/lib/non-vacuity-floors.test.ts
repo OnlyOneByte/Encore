@@ -165,6 +165,29 @@ const FLOORS: Record<string, Floor[]> = {
 			count: 1,
 			guards: 'the route-page walk behind the h1-landmark and back-affordance rules'
 		}
+	],
+	'apps/core/src/lib/phone-inventory.test.ts': [
+		{
+			subject: 'PHONE_ROUTES.length',
+			min: 4,
+			count: 1,
+			guards:
+				'the filesystem-derived phone route set behind the XR-PH-08 state inventory; an over-broad exemption match or a moved routes/ dir would enumerate nothing and pass'
+		},
+		{
+			subject: 'filesScanned',
+			min: 10,
+			count: 2,
+			guards:
+				'the phone style-file walk behind the XR-PH-02 absolute-font-size floor and the XR-PH-03 inline-opacity ban'
+		},
+		{
+			subject: 'declarationsSeen',
+			min: 10,
+			count: 1,
+			guards:
+				'the width-declaration scan behind the XR-PH-02 320px reflow floor; a regex that matches no declarations reports zero offenders'
+		}
 	]
 };
 
