@@ -18,11 +18,13 @@
 // genuinely token-less colour, and needs no hand-maintained list -- add a token and the guard starts
 // enforcing it everywhere by itself.
 import { test, expect } from 'bun:test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { svelteFiles } from './test-helpers';
+import { svelteFiles, styleFiles } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..');
+// Repo root, for the #852 breakpoint scan which must reach packages/*/src as well as apps/*/src.
+const REPO = join(SRC, '..', '..', '..');
 // Read app.css comment-stripped: the `defined`-token set and the palette are built from this text and
 // compared against comment-stripped component source, so a token or colour that exists only inside a
 // comment in app.css must NOT count as real (issue #453 -- the asymmetric-stripping hole).
@@ -605,6 +607,66 @@ test('the phone type ladder never reaches a TV surface', () => {
 			);
 		}
 	}
+	expect(offences).toEqual([]);
+});
+
+test('every @media width literal in source is a declared breakpoint (#852)', () => {
+	// THE SIXTH NON-COLOUR DIMENSION (#829 named it, #852 lands it). The defect this closes: the seven
+	// `@media` width queries in source branch at four widths (380/520/768/1200), the reviewer checklist
+	// names three others (390/820/1440), and NOTHING compared either list against a declaration — so a
+	// new `@media (min-width: 900px)` could ship at a width no token knows about and no reviewer checks.
+	//
+	// MEMBERSHIP, NOT EQUALITY — the owner's #831 Q1-C ruling. The reviewer widths are eyeballing
+	// widths; these are switch widths. The two are DIFFERENT lists on purpose, so this asserts only
+	// that every `@media` width literal is a MEMBER of the declared `--bp-*` set. It does NOT touch
+	// `docs/loop/REVIEW-PASSES.md` and does NOT assert the two lists are equal.
+	//
+	// The set is read from app.css's `:root` at run time (never a copy here), so adding a `--bp-*`
+	// step starts permitting that width by itself — the same self-updating property the colour and
+	// spacing scans have. `max-height` queries are out of scope (the one at +page.svelte is a landscape
+	// guard, not a responsive width); comments are stripped so a width mentioned in prose cannot count.
+	const BP = new Map<number, string>();
+	for (const [name, value] of ROOT_DECLS) {
+		const m = /^bp-/.test(name) && /^(\d+)px$/.exec(value.trim());
+		if (m) BP.set(Number(m[1]), name);
+	}
+	// Non-vacuous on the DECLARATION side: if the `--bp-*` block is renamed or emptied this set goes
+	// empty and every literal below becomes a false offence, so pin it here rather than let the scan
+	// pass by having nothing to compare against.
+	expect(BP.size).toBeGreaterThanOrEqual(4);
+	// 320px (WCAG 2.2 SC 1.4.10 Reflow) is a declared member even though no rule branches at it — the
+	// "320 is a member, or one line says why not" half of XR-VER-21's acceptance.
+	expect(BP.has(320)).toBe(true);
+
+	// Collect `@media (min-width|max-width: Npx)` literals across apps/*/src AND packages/*/src, per the
+	// acceptance's scope. styleFiles walks .svelte + .css (the widths live in component <style> blocks
+	// AND in app.css), and *.test.* files are excluded — the 5000px in motion.test.ts and the 380px in
+	// song-row-sparkle-sibling.test.ts are guard prose about queries, not queries.
+	const roots = [join(REPO, 'apps'), join(REPO, 'packages')].filter((d) => existsSync(d));
+	const WIDTH_RE = /@media[^{]*?\b(?:min|max)-width\s*:\s*(\d+)px/g;
+	const offences: string[] = [];
+	let literalsFound = 0;
+	for (const root of roots) {
+		for (const f of styleFiles(root)) {
+			if (/\.test\./.test(f)) continue;
+			const src = stripComments(readFileSync(f, 'utf8'));
+			for (const m of src.matchAll(WIDTH_RE)) {
+				literalsFound++;
+				const w = Number(m[1]);
+				if (!BP.has(w)) {
+					offences.push(
+						`${f.replace(REPO + '/', '')}:${lineOf(src, m.index!)}: @media width ${w}px is not a declared breakpoint — ` +
+							`add --bp-${w} to app.css :root, or move this query onto an existing --bp-* width. Declared: ${[...BP.keys()].sort((a, b) => a - b).join('/')}px`
+					);
+				}
+			}
+		}
+	}
+	// NON-VACUITY FLOOR (#830, registered in non-vacuity-floors.test.ts). The scan derives its own
+	// scope by walking, so an empty walk (a moved src/ dir, a renamed extension) would find zero
+	// literals and pass while examining nothing — the exact vacuity that dimension's floors guard. Seven
+	// width queries exist today; the floor sits at 7 so a walk that stops seeing `@media` reds instead.
+	expect(literalsFound).toBeGreaterThanOrEqual(7);
 	expect(offences).toEqual([]);
 });
 

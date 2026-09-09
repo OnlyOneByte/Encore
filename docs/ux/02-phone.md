@@ -107,12 +107,12 @@ each one leaves.
 
 | | |
 |---|---|
-| **Statement** | The product has one canonical list of breakpoints, referenced by both the stylesheets and the review checklist, and every `@media` width in source appears in it. |
+| **Statement** | The product declares one canonical breakpoint set, and every `@media` width literal in source is a **member** of it. The reviewer checklist's widths (390 / 820 / 1440 px) are a separate, eyeballing list and are deliberately not required to match — the two are different things (owner #831 Q1-C). |
 | **Surfaces** | Phone, Ops, TV |
-| **Rationale** | `REVIEW.md` tells reviewers to check 390 / 820 / 1440px; the only widths in source are 380 / 520 / 768 / 1200px. **Zero overlap** — so every reviewer to date has measured widths the app does not branch at. |
-| **Source** | `DERIVED` — model: set intersection of the two lists, both read from the repo. Nothing enforces either list. |
-| **Acceptance** | Given the canonical list, When every `@media (min-width|max-width)` in source is collected, Then the two sets are equal. Falsified by one width on either side. |
-| **Check** | Source scan comparing the stylesheet widths to the documented list. |
+| **Rationale** | `REVIEW.md` tells reviewers to check 390 / 820 / 1440px; the only widths in source are 380 / 520 / 768 / 1200px. The two lists mean different things — widths eyeballed vs widths switched at — but until a declaration existed, **nothing** pinned the switch widths, so a new `@media` could branch at a width no token and no reviewer knew about. |
+| **Source** | `DERIVED` — model: membership of every source `@media` width literal in the declared `--bp-*` set, read from `app.css`. The reviewer list is left as-is and not compared for equality. |
+| **Acceptance** | Given the declared breakpoint set, When every `@media (min-width\|max-width)` width literal in source is collected, Then each is a member of the set. Falsified by one `@media` width that is not declared. 320 px (WCAG 2.2 SC 1.4.10 Reflow) is a declared member even though no rule branches at it. |
+| **Check** | Source scan collecting `@media` width literals across `apps/*/src` + `packages/*/src` and asserting each is a declared `--bp-*` member, with a non-vacuity floor on the count found. |
 | **Priority** | Must — cheap, and it repairs the review process rather than a pixel. |
 
 ---

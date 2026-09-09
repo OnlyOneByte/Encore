@@ -448,7 +448,7 @@ what is measured.
 
 ---
 
-# H. Documented and implemented breakpoints agree
+# H. Every implemented breakpoint is a declared member
 
 ### XR-VER-21 — One breakpoint list exists, and something enforces it
 
@@ -458,7 +458,7 @@ what is measured.
 | **Surfaces** | Phone remote, operator dashboards. TV is excluded — it is a fixed-viewport surface, not a responsive one. |
 | **Rationale** | Reviewers are currently directed at three widths at which no rule changes, and four widths at which rules do change are reviewed by nobody. |
 | **Source** | Documented: `.kiro/autoloop/REVIEW.md:206` — 390 / 820 / 1440 px. Implemented: `@media` widths across `apps` + `packages` source — 380 / 520 / 768 / 1200 px, of which 768 and 1200 also switch `--max-w`. Zero overlap, verified by grep. WCAG 2.2 SC 1.4.10 Reflow — https://www.w3.org/WAI/WCAG22/Understanding/reflow.html — independently requires 320 px CSS width to work, which appears on **neither** list. |
-| **Acceptance** | **Given** a breakpoint declaration (a token axis, since breakpoints are one of the six dimensions with zero tokens), **When** every `@media` width literal in source is compared against it, **Then** every literal is a member. **And When** the reviewer-facing document's width list is compared against it, **Then** the two lists are equal. **And** 320 px is a member or the declaration records why it is not. |
+| **Acceptance** | **Given** a breakpoint declaration (a token axis, since breakpoints are one of the six dimensions with zero tokens), **When** every `@media` width literal in source is compared against it, **Then** every literal is a member. The reviewer-facing list (390 / 820 / 1440 px) is a **different** list — widths a reviewer eyeballs, not widths the CSS switches at (owner #831 Q1-C) — so it is left as-is and is **not** asserted equal to the declaration. **And** 320 px is a member or the declaration records why it is not. |
 | **Check** | A guard extracting `@media` width literals and the reviewer list, both compared against the declaration, with a non-vacuity floor on the count of literals found. Currently unenforceable in this form — the declaration does not exist, which is the requirement. |
 | **Priority** | **MUST** — cheap, and until it lands every responsive review is aimed at the wrong widths. |
 
