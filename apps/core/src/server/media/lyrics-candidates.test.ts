@@ -116,3 +116,44 @@ test('a sidecar rewrite from an index-only Media does not lose the candidate set
 	const rewritten = sidecarFromMedia(indexOnly, 2000, prior);
 	expect(rewritten.artifacts.lyricsCandidates).toHaveLength(1);
 });
+
+// ── #640: a human override outranks the ranker, everywhere the chosen candidate is resolved ──
+
+test('#640 setMediaLyrics HONORS a human override over pickBestLyrics on a later align completion', () => {
+	// The song already has a pinned override on the ASR candidate; a re-time completes reporting both.
+	// Without the pin, pickBestLyrics would move lyricsRef to lrclib (rank 5). The pin must hold.
+	const m = media({ lyricsOverrideRef: 'derived/lyrics/m1-asr.json' });
+	const by = withMedia(m);
+	expect(setMediaLyrics('m1', undefined, by, [cand('asr', 'word'), cand('lrclib', 'word')])).toBe(true);
+	expect(m.lyricsRef).toBe('derived/lyrics/m1-asr.json'); // the pin wins — reds if setMediaLyrics reverts to pickBestLyrics
+});
+
+test('#640 chosenLyricsRef HONORS a human override on a sidecar restore', () => {
+	const s = sidecarFromMedia(media(), SIDECAR_SCHEMA);
+	s.artifacts.lyricsCandidates = [cand('asr', 'word'), cand('lrclib', 'word')];
+	s.artifacts.lyricsOverrideRef = 'derived/lyrics/m1-asr.json';
+	// Ranking alone would pick lrclib; the override wins on restore.
+	expect(chosenLyricsRef(s)).toBe('derived/lyrics/m1-asr.json');
+});
+
+test('#640 a STALE override (ref no longer stored) falls back to the ranking, never blanks the overlay', () => {
+	const s = sidecarFromMedia(media(), SIDECAR_SCHEMA);
+	s.artifacts.lyricsCandidates = [cand('lrclib', 'word')];
+	s.artifacts.lyricsOverrideRef = 'derived/lyrics/m1-gone.json';
+	expect(chosenLyricsRef(s)).toBe('derived/lyrics/m1-lrclib.json');
+});
+
+test('#640 the override round-trips through the sidecar and back onto runtime Media', () => {
+	const m = media({ lyricsOverrideRef: 'derived/lyrics/m1-asr.json' });
+	m.lyricsCandidates = [cand('asr', 'word'), cand('lrclib', 'word')];
+	const s = sidecarFromMedia(m, SIDECAR_SCHEMA);
+	expect(s.artifacts.lyricsOverrideRef).toBe('derived/lyrics/m1-asr.json');
+	const back = mediaFromSidecar(s);
+	expect(back.lyricsOverrideRef).toBe('derived/lyrics/m1-asr.json');
+	expect(back.lyricsRef).toBe('derived/lyrics/m1-asr.json'); // resolved via the honored override
+});
+
+test('#640 the sidecar schema is bumped to 5 for the additive override field', () => {
+	expect(SIDECAR_SCHEMA).toBeGreaterThanOrEqual(5);
+});
+

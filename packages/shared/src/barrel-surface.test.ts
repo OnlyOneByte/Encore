@@ -35,7 +35,7 @@ const EXPECTED = [
 	'dimTowardBlack', 'duetPartColors', 'effectiveGuideLevel', 'effectiveSongIntroMs', 'fetcherFor',
 	'getAsrModel', 'getEngine', 'getFetcher', 'getLyricsBallStyle', 'getLyricsCase', 'getLyricsFont',
 	'getLyricsHighlight', 'getQueueOrder', 'getSyncMode', 'getTvBackgroundStyle', 'getTvProgressStyle',
-	'getTvVisualizer', 'graceMsOf', 'guideOffsetSec', 'hasGuidingTrack', 'hasKey', 'hasUsableTiming',
+	'getTvVisualizer', 'graceMsOf', 'guideOffsetSec', 'hasGuidingTrack', 'hasKey', 'hasNewerCandidateThanOverride', 'hasUsableTiming',
 	'hasVocalRange', 'hueOfColor', 'hueToHex', 'insertEntry', 'insertIndexFor', 'isAuthoritativeText',
 	'isCookableSource', 'isCooking', 'isLegibleSingerColor', 'isLikelyWrongSong', 'isLiveSelectable',
 	'isPlayable', 'isQualityUpgrade', 'isQueueOrder', 'isRoomCodeChar', 'isTerminal', 'isTerminalJob', 'isTvBackgroundStyle',
@@ -49,7 +49,7 @@ const EXPECTED = [
 	'oklchToRgb', 'originalKeyLabel', 'overallCookPct', 'parseHex', 'pendingGates', 'pickBestLyrics',
 	'playbackRef', 'presetTabStopIndex', 'qualityRank', 'queueOrderLabel', 'rangeBarFractions',
 	'rangeLabel', 'rangeOctaves', 'readyToSing', 'realtimeFactor', 'reorderWithinSinger',
-	'resolveCookSeparator', 'resolveLyricsPresentation', 'roomTopic', 'separatorCost', 'shouldClearClock',
+	'resolveCookSeparator', 'resolveLyricsPresentation', 'resolveLyricsRef', 'roomTopic', 'separatorCost', 'shouldClearClock',
 	'shouldStartClock', 'singHistoryFrom', 'songDisplay', 'soundingKeyLabel', 'sourceUriFor',
 	'stageHueToHex', 'stageLightnessForHue', 'storedOrder', 'transposePitchClass', 'ulid', 'voiceBandFor',
 	'voiceBandSentence', 'voiceBandZones'

@@ -15,7 +15,7 @@
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Media, LyricsCandidate } from '@encore/shared';
-import { pickBestLyrics } from '@encore/shared';
+import { resolveLyricsRef } from '@encore/shared';
 import type { SongProfile } from '@encore/shared';
 import { normalizeSongProfile } from '@encore/shared';
 import { metaDir } from './paths';
@@ -30,7 +30,9 @@ import { parseTrackTitle, type TrackParseRule } from './track-title';
 // 4: `artifacts.guideOffsetMs` added (#766, the measured guide/instrumental offset). Purely additive: a
 // schema-3 record has no offset, restored as absent, which the client's guideOffsetSec maps to 0 — so an
 // un-upgraded song is held exactly as today until a re-cook measures one.
-export const SIDECAR_SCHEMA = 4;
+// 5: `artifacts.lyricsOverrideRef` added (#640, a human's explicit lyrics pick). Purely additive: a
+// schema-4 record has no override, so chosenLyricsRef falls through to the ranking exactly as before.
+export const SIDECAR_SCHEMA = 5;
 
 /** How a derived field was obtained. Mirrors the lyrics chain's provenance idea on purpose. */
 export interface FieldProvenance {
@@ -81,6 +83,13 @@ export interface MediaSidecar {
 		 * which is what makes re-alignment possible later without re-fetching audio. Absent on schema-1.
 		 */
 		lyricsCandidates?: LyricsCandidate[];
+		/**
+		 * A human's explicit lyrics pick, by candidate `ref` (#640). Authoritative here so the choice
+		 * survives a DB wipe like every other derived fact. Optional/absent on schema-4 and earlier;
+		 * absent means "no override" and `chosenLyricsRef` falls through to the ranking. A stored ref that
+		 * no longer names a candidate is ignored on read, not honoured blindly.
+		 */
+		lyricsOverrideRef?: string;
 		/**
 		 * The key + vocal-range analysis (see SongProfile). Authoritative here so a DB wipe restores it
 		 * without re-cooking — the durability claim the media layer makes for every derived artifact.
@@ -185,6 +194,9 @@ export function sidecarFromMedia(m: Media, now: number, previous?: MediaSidecar 
 			// Runtime first, else a prior write: an index-only hydrate leaves lyricsCandidates undefined,
 			// and losing the set here would silently destroy the upgrade path the set exists for.
 			lyricsCandidates: m.lyricsCandidates ?? prev?.artifacts.lyricsCandidates,
+			// Same runtime-first / preserve-prior rule as lyricsCandidates: a human's pick must not be
+			// erased by an index-only hydrate that carries no override on the Media (#640).
+			lyricsOverrideRef: m.lyricsOverrideRef ?? prev?.artifacts.lyricsOverrideRef,
 			// Same runtime-first / preserve-prior rule as lyricsCandidates: an index-only hydrate that has
 			// not read the sidecar yet carries no profile on the Media, so falling back to the prior
 			// write is what stops a sidecar rewrite from erasing an already-recorded key/range.
@@ -257,6 +269,9 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 		vocalsRef: s.artifacts.vocals ?? undefined,
 		lyricsRef: chosenLyricsRef(s),
 		lyricsCandidates: s.artifacts.lyricsCandidates,
+		// Carry the human override onto the runtime Media so the phone can show which pick is pinned and
+		// whether a newer candidate now out-ranks it (#640), and so a re-persist does not lose it.
+		lyricsOverrideRef: s.artifacts.lyricsOverrideRef,
 		// Restore the key/range so a wiped DB comes back with the analysis intact — no re-cook. The
 		// stored value is authoritative but still untrusted (an older writer, a hand edit), so it is
 		// re-normalized on the way out; a schema-2 sidecar has none and this stays undefined, which the
@@ -277,14 +292,19 @@ export function mediaFromSidecar(s: MediaSidecar): Media {
 /**
  * Which lyrics artifact a restored song should show.
  *
- * RE-PICKS from the candidate set rather than trusting the stored `lyrics` pointer, so a ranking change
- * (or a candidate written by an older worker that mis-chose) is corrected on the next restore instead
- * of being frozen into the record. Falls back to the stored pointer for schema-1 records, which have no
- * candidates — those still work, they just carry no provenance.
+ * A HUMAN OVERRIDE wins first (#640): if `lyricsOverrideRef` names a candidate still in the set, it is
+ * honoured over the ranking — the one thing that may show a lower-ranked candidate, because a person
+ * outranks the heuristic. Otherwise RE-PICKS from the candidate set rather than trusting the stored
+ * `lyrics` pointer, so a ranking change (or a candidate written by an older worker that mis-chose) is
+ * corrected on the next restore instead of being frozen into the record. Falls back to the stored
+ * pointer for schema-1 records, which have no candidates — those still work, they just carry no
+ * provenance.
+ *
+ * Override-then-rank lives in the shared `resolveLyricsRef`, the SAME resolver `setMediaLyrics` uses, so
+ * a restore and a live align completion can never disagree about which candidate a human's pick selects.
  */
 export function chosenLyricsRef(s: MediaSidecar): string | undefined {
-	const best = pickBestLyrics(s.artifacts.lyricsCandidates ?? []);
-	return best?.ref ?? s.artifacts.lyrics ?? undefined;
+	return resolveLyricsRef(s.artifacts.lyricsCandidates, s.artifacts.lyricsOverrideRef) ?? s.artifacts.lyrics ?? undefined;
 }
 
 /** The browse-safe canonical artist: null when we only guessed (see track-title.ts). */

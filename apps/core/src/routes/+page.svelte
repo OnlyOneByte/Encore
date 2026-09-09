@@ -9,7 +9,9 @@
 		rangeLabel,
 		rangeOctaves,
 		voiceBandSentence,
-		songDisplay
+		songDisplay,
+		chosenCandidate,
+		hasNewerCandidateThanOverride
 	} from '@encore/shared';
 	import { onMount, tick } from 'svelte';
 	import type {
@@ -31,6 +33,7 @@
 	import ProcessingCard from '$lib/components/ProcessingCard.svelte';
 	import GuidingTrack from '$lib/components/GuidingTrack.svelte';
 	import RangeBar from '$lib/components/RangeBar.svelte';
+	import LyricsReselect from '$lib/components/LyricsReselect.svelte';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { cookAndQueue } from '$lib/cook-and-queue';
 	import { gripVisible, ownSlots, dropTarget, modeInvalidation } from '$lib/reorder-mode';
@@ -374,6 +377,26 @@
 		} catch {
 			mediaStatus = new Map([...mediaStatus].filter(([id]) => id !== mediaId));
 			showError('Could not start make-karaoke — check your connection');
+		}
+	}
+
+	/** Re-pick a song's lyrics (#640): pick a stored candidate by ref, or paste new words. Either way
+	 *  the server pins the choice and re-times it; the live media:status broadcasts drive the row. Like
+	 *  makeKaraoke, the network call lives here and the LyricsReselect control just reports the choice. */
+	async function reselectLyrics(mediaId: string, choice: { ref?: string; text?: string }) {
+		if (navigator.vibrate) navigator.vibrate(12);
+		try {
+			const res = await fetch('/api/lyrics-reselect', {
+				method: 'POST',
+				headers: { 'content-type': 'application/json' },
+				body: JSON.stringify({ mediaId, ...choice })
+			});
+			const body = await res.json().catch(() => ({}));
+			if (!res.ok) {
+				showError(body.error ?? 'Could not re-time the lyrics');
+			}
+		} catch {
+			showError('Could not re-time the lyrics — check your connection');
 		}
 	}
 
@@ -1299,6 +1322,22 @@
 					The server command, PlaybackState.background field and the TV resolver are deliberately kept —
 					with no writer the field simply stays null and the resolver already falls back to the room style.
 				-->
+
+				<!--
+					Lyrics re-select (#640): the per-song fallback for wrong / wrongly-chosen lyrics. Any joined
+					singer may re-pick (Q1=A). Only shown once the song has candidates on disk; the control itself
+					hides when there is nothing to choose. The pick is re-timed server-side from the retained vocals.
+				-->
+				{#if nowMedia && nowMedia.lyricsCandidates?.length}
+					<LyricsReselect
+						candidates={nowMedia.lyricsCandidates}
+						chosenRef={chosenCandidate(nowMedia)?.ref}
+						overrideRef={nowMedia.lyricsOverrideRef}
+						newerExists={hasNewerCandidateThanOverride(nowMedia.lyricsCandidates, nowMedia.lyricsOverrideRef)}
+						onpick={(ref) => reselectLyrics(nowMedia.id, { ref })}
+						onpaste={(text) => reselectLyrics(nowMedia.id, { text })}
+					/>
+				{/if}
 
 			{/snippet}
 		</NowPlayingHero>

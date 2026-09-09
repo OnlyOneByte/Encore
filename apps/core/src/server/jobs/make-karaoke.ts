@@ -7,7 +7,8 @@
 import type { Job, JobType, Media, QueueEntry, LyricsCandidate, GlobalSettings } from '@encore/shared';
 import {
 	mergeLyricsCandidate,
-	pickBestLyrics,
+	resolveLyricsRef,
+	isTerminalJob,
 	isQualityUpgrade,
 	isPlayable,
 	isCookableSource,
@@ -199,6 +200,93 @@ export function requestMakeKaraoke(mediaId: string, deps: MakeKaraokeDeps, singe
 	// media to the job instead.
 	if (job.status === 'ready') markMediaReady(mediaId, deps.mediaById);
 	return job;
+}
+
+/** Why a lyrics re-select could not start — the honest refusal the endpoint maps to a status code. */
+export type ReselectRefusal =
+	| 'unknown-media'
+	| 'not-cooked' // the vocals stem does not exist yet, so there is nothing to re-time against
+	| 'unknown-candidate' // a pick that names a ref not in the stored set
+	| 'no-text'; // a paste with no usable words
+
+export interface ReselectResult {
+	job: Job;
+	/** The candidate ref now pinned — an existing candidate's ref, or the minted manual ref. */
+	ref: string;
+}
+
+/**
+ * The MediaStore key a pasted manual candidate is written under (#640). Deterministic so a repeated
+ * paste OVERWRITES the same artifact rather than stacking duplicates — the worker computes the same
+ * key from `pinnedRef` and `mergeLyricsCandidate` dedupes on it. Mirrors the worker's `candidate_key`
+ * for the (manual, word) tier; a re-time always lands word timings, so the tier is fixed.
+ */
+export function manualLyricsRef(mediaId: string): string {
+	return `derived/lyrics/${mediaId}-manual-word.json`;
+}
+
+/**
+ * A HUMAN RE-PICK of the lyrics set, then a re-time (#640). Two shapes: pick an already-stored
+ * candidate by `ref`, or paste new `text` (a `manual`-source candidate the worker will time). Either
+ * way the choice is pinned on the media (`lyricsOverrideRef`) so it OUTRANKS `pickBestLyrics`
+ * everywhere the chosen candidate is resolved, and an `align` job is made to actually RUN.
+ *
+ * The re-run is the load-bearing part. A finished `align` sits `ready`, and `ready` does not free the
+ * dedup slot (`SLOT_FREEING_STATUSES`), so a bare `enqueue(id,'align',...)` would hand back the OLD
+ * job and nothing would run — silently. So we CANCEL the live align first (cancel frees the slot),
+ * then enqueue a fresh one, and reopen the lyrics gate. The owner rejected special-casing `align`
+ * inside `findLive` (it would let a chained align race a manual one); cancel-then-enqueue is the
+ * durable seam. `dispatch.ts` then reads `media.lyricsOverrideRef` and sends the worker `pinnedRef`.
+ *
+ * Q1=A: no capability gate here — any joined singer may re-pick, like every other room control. The
+ * endpoint enforces "joined"; this function does not re-check identity.
+ */
+export function requestLyricsReselect(
+	mediaId: string,
+	choice: { ref?: string; text?: string },
+	deps: Pick<MakeKaraokeDeps, 'jobs' | 'mediaById' | 'state' | 'now'>,
+	singerId?: string
+): ReselectResult | ReselectRefusal {
+	const media = deps.mediaById.get(mediaId);
+	if (!media) return 'unknown-media';
+	// Re-timing runs the aligner over the retained VOCALS stem, so the song must be cooked. Without a
+	// vocals ref there is nothing to align against — refuse rather than enqueue a job that cannot work.
+	if (!media.vocalsRef) return 'not-cooked';
+
+	const pasted = typeof choice.text === 'string' ? choice.text.trim() : '';
+	let ref: string;
+	if (pasted) {
+		ref = manualLyricsRef(mediaId);
+	} else {
+		const picked = typeof choice.ref === 'string' ? choice.ref : '';
+		// A pick must name a candidate actually on disk — a ref not in the set would pin the media to a
+		// pointer nothing resolves, blanking the overlay. The paste path is the way to introduce a NEW ref.
+		if (!picked || !(media.lyricsCandidates ?? []).some((c) => c.ref === picked)) return 'unknown-candidate';
+		ref = picked;
+	}
+
+	// Pin the human choice BEFORE enqueue so `dispatch.assignParams` reads it onto the align's params.
+	media.lyricsOverrideRef = ref;
+
+	const priority = soonestSeqFor(mediaId, deps.state.entries);
+	const now = deps.now();
+	// Make the re-run reachable. A finished `align` sits `ready`, which occupies the dedup slot AND is
+	// terminal, so it can be neither reused nor cancelled — a bare enqueue would hand it straight back
+	// and nothing would run (the silent no-op this whole feature exists to defeat). Two shapes:
+	//   • a still-live align (queued/assigned/running) — CANCEL it; cancel frees the slot.
+	//   • a terminal align (ready/failed) — SUPERSEDE it; deleting the terminal row frees the slot.
+	// A song that never aligned has neither and both are no-ops — the enqueue then starts the first one.
+	const live = deps.jobs.findLive(mediaId, 'align');
+	if (live && !isTerminalJob(live.status)) deps.jobs.cancel(live.id, now);
+	else deps.jobs.supersedeForRerun(mediaId, 'align');
+	const job = deps.jobs.enqueue(mediaId, 'align', priority, now, undefined, singerId);
+	// Reopen the lyrics gate so the room sees the re-time in progress. NOT via markLyricsQueued: that
+	// helper deliberately refuses to walk a SETTLED ('ready') gate backwards, and a re-timed song's gate
+	// is exactly settled — a re-pick is the one case where re-opening a finished lyrics gate is correct,
+	// because a NEW align really is about to run. Rotation does not gate on lyrics (it gates on stems),
+	// so this cannot un-play a live song; it only drives the phone's cooking indicator.
+	media.lyricsStatus = 'queued';
+	return { job, ref };
 }
 
 /**
@@ -445,7 +533,7 @@ export function setMediaLyrics(
 	if (!media) return false;
 
 	// An align job reports EVERY artifact it produced, one per text source. Merge into the stored set
-	// and let pickBestLyrics choose — never "last write wins", which would let a later line-level
+	// and let the resolver choose — never "last write wins", which would let a later line-level
 	// source silently replace existing word timings.
 	if (candidates?.length) {
 		let merged = media.lyricsCandidates ?? [];
@@ -455,11 +543,14 @@ export function setMediaLyrics(
 			merged = mergeLyricsCandidate(merged, { ...c, ref });
 		}
 		media.lyricsCandidates = merged;
-		const best = pickBestLyrics(merged);
+		// Resolve through the SHARED resolver so a human override (#640) wins over the ranking here just
+		// as it does on a sidecar restore — the SAME function, so a live align completion and a restore
+		// can never disagree. With no override this is exactly pickBestLyrics as before.
+		const chosen = resolveLyricsRef(merged, media.lyricsOverrideRef);
 		// Only move the pointer if something is actually showable; a set of unusable candidates must not
 		// clear a working lyricsRef.
-		if (best) {
-			media.lyricsRef = best.ref;
+		if (chosen) {
+			media.lyricsRef = chosen;
 			return true;
 		}
 	}
