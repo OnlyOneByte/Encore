@@ -383,6 +383,28 @@ function assertedLiterals(src: string, subject: string): number[] {
 	return [...src.matchAll(re)].map((m) => Number(m[1]));
 }
 
+/**
+ * The per-site anchor for issue #849's option C. Every registered floor assertion carries a fixed
+ * `// @nvf-floor <subject>` comment at its site. `located` above counts what the SCAN finds in each
+ * source; this tag is the SITE marker the bidirectional scan below cross-checks against FLOORS, so a
+ * floor cannot be registered without a real assertion (an entry whose site has no tag reds) and a
+ * tagged floor cannot exist unregistered (an orphan tag reds). It closes the one hole the `located`
+ * literal cannot see — a floor planted in FLOORS pointing at nothing — WITHOUT surrendering the
+ * `located` literal, which stays as the only thing that reds on a deleted registration.
+ *
+ * The tag is the anchor precisely because an extractor over `toBeGreaterThan` is NOT usable here: the
+ * suite carries 40+ non-floor `>=` assertions (`start >= 0`, `fnIdx >= 0`, `w >= 44`), so the
+ * snapshot-not-extractor ruling at the top of this file stands. A tag is a deliberate, greppable mark
+ * that only a floor assertion carries.
+ */
+const NVF_TAG = '@nvf-floor';
+
+/** Every `// @nvf-floor <subject>` tag in `src`, as the list of subject strings it marks. */
+function taggedFloorSubjects(src: string): string[] {
+	const re = new RegExp(String.raw`//\s*${NVF_TAG}\s+(.+?)\s*$`, 'gm');
+	return [...src.matchAll(re)].map((m) => m[1]);
+}
+
 test('every recorded non-vacuity floor is still present, and no weaker than recorded', () => {
 	const offenders: string[] = [];
 	let located = 0;
@@ -440,6 +462,61 @@ test('every recorded non-vacuity floor is still present, and no weaker than reco
 	// prescribes rather than counted: raised absurdly high, read `Received: 40`.
 	expect(located).toBeGreaterThanOrEqual(41);
 	expect(Object.keys(FLOORS).length).toBeGreaterThanOrEqual(12);
+});
+
+test('every registered floor is tagged at its site, and every tag is registered (issue #849, option C)', () => {
+	// The bidirectional per-site anchor. The `located` literal above catches a DELETED registration
+	// (both a deleted source floor and a deleted-together entry+source drop `located` below 41). What it
+	// cannot catch is a floor planted in FLOORS that points at no real assertion — `assertedLiterals`
+	// would simply find nothing and push a `GONE` offender only if the SUBJECT never appears, but a
+	// FLOORS entry whose subject is invented could name any expression. The tag closes that: a
+	// registration is real only if its assertion site is tagged, and a tagged site is legitimate only if
+	// it is registered. Neither direction touches `located`, so this ADDS coverage without trading any
+	// away.
+	const offenders: string[] = [];
+	let taggedSitesSeen = 0;
+	for (const [rel, floors] of Object.entries(FLOORS)) {
+		const abs = join(REPO, rel);
+		if (!existsSync(abs)) continue; // the located test above already reds on a missing file
+		const src = readFileSync(abs, 'utf8');
+		const tags = taggedFloorSubjects(src);
+		taggedSitesSeen += tags.length;
+
+		// Direction A — every registered floor carries at least `count` tags at its sites. A FLOORS
+		// entry with no matching tag is an unanchored registration (the "plant a floor in FLOORS with no
+		// real source assertion" hole).
+		for (const f of floors) {
+			const marked = tags.filter((t) => t === f.subject).length;
+			if (marked < f.count) {
+				offenders.push(
+					`${rel}: floor on \`${f.subject}\` needs ${f.count} \`// ${NVF_TAG} ${f.subject}\` tag(s) at its ` +
+						`assertion site(s), found ${marked}. A registered floor must mark its own site — it guarded ${f.guards}.`
+				);
+			}
+		}
+
+		// Direction B — every tag in a registered file maps to a FLOORS entry for that file. An orphan
+		// tag is a floor that exists in source but was never registered (the row-3 hole from #849's
+		// triage: "plant a floor in a source file, never register it").
+		const registered = new Set(floors.map((f) => f.subject));
+		for (const t of tags) {
+			if (!registered.has(t)) {
+				offenders.push(
+					`${rel}: \`// ${NVF_TAG} ${t}\` marks a floor with no FLOORS entry — register it or remove the tag. ` +
+						`A tagged floor must be recorded, so it cannot be lowered or deleted unnoticed.`
+				);
+			}
+		}
+	}
+	expect(offenders).toEqual([]);
+	// This scan's OWN non-vacuity floor (issue #849 re-triage step 4), a zero-slack literal on the tag
+	// count exactly like `located` above. Without it, an emptied FLOORS or a broken tag regex would make
+	// the loop examine nothing and pass. MUST equal the total number of `// @nvf-floor` tags across every
+	// registered file (== the `located` count sum, since every registered floor is tagged once per
+	// count). Measured the way `located`'s comment prescribes: raise absurdly high, run this file alone,
+	// read `Received: N`. 41 as of #913/#903. Raise it in lockstep with `located` whenever a floor is
+	// registered (a new entry adds both a `count` to `located` and a tag to this scan).
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(41);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

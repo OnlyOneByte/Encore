@@ -264,7 +264,7 @@ describe('#853 the @theme block registers no colour', () => {
 		// LOUDLY here instead — the day Tailwind is uninstalled, or the @theme regex stops matching, is
 		// the day this arm must go red rather than green. `blocks.length >= 1` above is the app.css leg;
 		// this is the whole-scan leg, and it is the floor registered in non-vacuity-floors.test.ts.
-		expect(mintSurfaces).toBeGreaterThanOrEqual(1);
+		expect(mintSurfaces).toBeGreaterThanOrEqual(1); // @nvf-floor mintSurfaces
 	});
 
 	it('MUTATION: registering a player hue in @theme reds the arm above (issue #859)', () => {

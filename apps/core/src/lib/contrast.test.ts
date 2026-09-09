@@ -409,7 +409,7 @@ test('no card root dims its own subtree with opacity', () => {
 	expect(fails).toEqual([]);
 	// Non-vacuity: the scan must still be FINDING card roots. Renaming the shared `card list-row`
 	// pair would otherwise turn this test green by discovering nothing.
-	expect(rootsScanned).toBeGreaterThanOrEqual(3);
+	expect(rootsScanned).toBeGreaterThanOrEqual(3); // @nvf-floor rootsScanned
 });
 
 /*

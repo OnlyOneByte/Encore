@@ -118,7 +118,7 @@ test('#903: no live code imports, renders or reads the deleted drawer surface', 
 	// offenders over zero files, which is the exact failure this arm exists to prevent. Measured, not
 	// counted by eye: 140 production .svelte/.ts/.css files under apps/core/src today, floored at 100 so
 	// ordinary growth and deletion do not touch it but a collapsed walk reds.
-	expect(scanned).toBeGreaterThanOrEqual(100);
+	expect(scanned).toBeGreaterThanOrEqual(100); // @nvf-floor scanned
 });
 
 test('#903: the three vaul-only dependencies are gone from package.json', () => {
