@@ -1,7 +1,7 @@
 // Core domain types — shared by the Bun server (authoritative) and the SvelteKit client.
 // See docs/ARCHITECTURE.md (Data model).
 
-import type { LyricsCandidate } from '../lyrics/lyrics';
+import { pickBestLyrics, type LyricsCandidate } from '../lyrics/lyrics';
 import type { SongProfile } from '../cook/song-profile';
 import type { TvBackgroundStyle } from '../presentation/tv-background';
 
@@ -151,6 +151,19 @@ export interface Media {
 	 * `chosenCandidate(media)` rather than duplicating the fields here.
 	 */
 	lyricsCandidates?: LyricsCandidate[];
+	/**
+	 * A HUMAN'S explicit lyrics pick, by candidate `ref` — the fallback for when the ranker chose
+	 * wrong (#640). When set and still present in `lyricsCandidates`, it OUTRANKS `pickBestLyrics`
+	 * everywhere the chosen candidate is resolved (`chosenLyricsRef` on restore, `setMediaLyrics` on a
+	 * later align completion). `undefined` means no override — the ranking decides, as before.
+	 *
+	 * This is the one thing that can make the shown candidate WORSE by rank, so it is a SEPARATE field
+	 * the resolver consults, never a change to `pickBestLyrics`: the never-regress guarantee
+	 * (`mergeLyricsCandidate`) stays intact, and a later re-cook that produces a better candidate is
+	 * still KEPT beside the pick — which is what lets the phone say "a better version exists" (#640,
+	 * owner ruling Q2=C: sticky, plus surface the newer candidate) instead of silently losing it.
+	 */
+	lyricsOverrideRef?: string;
 	/**
 	 * How far the `align` step has got — the lyrics half of the cook gate (see gates.ts).
 	 *
@@ -559,4 +572,44 @@ export function realtimeFactor(a: Pick<JobAttempt, 'startedAt' | 'finishedAt' | 
 export function chosenCandidate(m: Pick<Media, 'lyricsRef' | 'lyricsCandidates'>): LyricsCandidate | null {
 	if (!m.lyricsRef || !m.lyricsCandidates?.length) return null;
 	return m.lyricsCandidates.find((c) => c.ref === m.lyricsRef) ?? null;
+}
+
+/**
+ * The single place that resolves WHICH candidate wins: a human override if one is set and still on
+ * disk, otherwise `pickBestLyrics` (#640). Returns the winning `ref`, or `undefined` when nothing is
+ * showable.
+ *
+ * Both rank-derivation sites route through here so override-then-rank has ONE definition:
+ * `chosenLyricsRef` (sidecar restore, which re-ranks on every boot) and `setMediaLyrics` (which
+ * re-ranks on every align completion). An override that names a `ref` no longer in the set is IGNORED,
+ * not honoured blindly — a stale pointer must fall back to the ranking rather than blank the overlay.
+ *
+ * It does NOT touch `pickBestLyrics`: the override is layered ABOVE the ranking, so never-regress
+ * (`mergeLyricsCandidate`) is untouched and a later better candidate is still kept for the
+ * "newer version exists" affordance (`hasNewerCandidateThanOverride`).
+ */
+export function resolveLyricsRef(
+	candidates: readonly LyricsCandidate[] | undefined,
+	overrideRef: string | null | undefined
+): string | undefined {
+	const set = candidates ?? [];
+	if (overrideRef && set.some((c) => c.ref === overrideRef)) return overrideRef;
+	return pickBestLyrics(set)?.ref;
+}
+
+/**
+ * Under a sticky human override (Q2=C), would the RANKER now prefer a different candidate — i.e. has a
+ * later re-cook produced something the ranking rates above the pinned pick? Drives the phone's "a
+ * better version exists" hint. `false` when there is no override, when the ranker agrees with the pick,
+ * or when the pinned ref is no longer present (a stale override is not "beaten", it is gone).
+ */
+export function hasNewerCandidateThanOverride(
+	candidates: readonly LyricsCandidate[] | undefined,
+	overrideRef: string | null | undefined
+): boolean {
+	if (!overrideRef) return false;
+	const set = candidates ?? [];
+	if (!set.some((c) => c.ref === overrideRef)) return false;
+	const ranked = pickBestLyrics(set)?.ref;
+	return ranked !== undefined && ranked !== overrideRef;
 }

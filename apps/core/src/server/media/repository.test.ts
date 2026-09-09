@@ -42,6 +42,7 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 			artist: 'A-ha',
 			thumbnail: 'https://i.ytimg.com/vi/x/hq.jpg',
 			lyricsRef: 'lyrics/m1-aligned.json',
+			lyricsOverrideRef: 'derived/lyrics/m1-manual-word.json',
 			durationSec: 225,
 			songProfile: {
 				keyTonic: 7,
@@ -65,6 +66,9 @@ test('upsert → byId round-trips every field, optional ones included', () => {
 	expect(got.sourceRef).toBe('vid-m1'); // ORIGIN identity survives the cook (search dedupe key)
 	// the derived artifacts must survive too, or a library song replays with no lyrics
 	expect(got.lyricsRef).toBe('lyrics/m1-aligned.json');
+	// #640: the human's lyrics override is an index column that must survive the round trip — reverting
+	// either the toRow persist or the fromRow hydrate leaves this undefined and reds here.
+	expect(got.lyricsOverrideRef).toBe('derived/lyrics/m1-manual-word.json');
 	// the key/range/level profile is the third derived artifact — it must survive the JSON round-trip
 	// intact, INCLUDING the measured level: this column is the whole persistence path for #462, and a
 	// field dropped at this boundary is a measurement the room can never act on.
