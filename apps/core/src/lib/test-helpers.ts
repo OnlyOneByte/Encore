@@ -3,9 +3,11 @@
 // Dedup batch (#626, follows #618/#455): the recursive `.svelte` walker below was hand-copied
 // verbatim into every guard that scans the component tree (motion, contrast, design-system,
 // icon-centring, settings-scopes, singer-color, touch-targets, tv/stage-scale, …), and the 44px
-// touch-target threshold `TAP` was re-declared in each touch guard. There is no production
-// constant for 44 — the standard lives only in these tests — so it is single-sourced here rather
-// than imported from src.
+// touch-target threshold `TAP` was re-declared in each touch guard. It is single-sourced here — and
+// since #831 it is READ FROM `app.css` rather than hand-written, so the guards and the components
+// resolve the same token instead of two numbers that merely agreed.
+import { join } from 'node:path';
+import { readdirSync, readFileSync } from 'node:fs';
 //
 // SCOPE IS THE POINT (#841, XR-VER-14). Four of the five named scan helpers were still per-file
 // copies: `styleFiles` in components/motion.test.ts, `markupControls` in touch-targets.test.ts,
@@ -17,8 +19,6 @@
 // reds if any of these five NAMES is declared or called in a consumer without importing it. That
 // guard is name-keyed and does not catch a rival walker under a different name — three consumers
 // carry one today (`tsSources`, `tsFiles`, `allDrivers`), which is a separate, reported issue.
-import { join } from 'node:path';
-import { readdirSync } from 'node:fs';
 
 /**
  * Directories a source walk must never descend into (XR-VER-14 Acceptance).
@@ -68,9 +68,63 @@ export function styleFiles(dir: string): string[] {
 	return walk(dir, (n) => n.endsWith('.svelte') || n.endsWith('.css'));
 }
 
-/** The app's self-imposed minimum interactive touch-target size, in px (WCAG 2.5.8 is 24; the app
- *  set itself the stricter 44). Only the touch-target guards reference it. */
-export const TAP = 44;
+/**
+ * THE STANDARD ITSELF, as a number the design committed to (WCAG 2.5.8 is 24; the app set itself the
+ * stricter 44). This is the one place 44 is written down outside `app.css`, and it is deliberately a
+ * FLOOR rather than an equality: raising `--tap` is a design decision the guards must allow, lowering
+ * it below the commitment is the regression they exist to catch.
+ */
+export const TAP_FLOOR = 44;
+
+/**
+ * The app's minimum interactive touch-target size, in px, READ OUT OF `app.css` (issue #831, XR-PH-01).
+ *
+ * It used to be a hand-written `44` here, and the comment above said outright that no production
+ * constant existed. That made every touch guard measure against a number the design layer did not
+ * supply: `--tap: 48px` in `app.css` left this at 44, so a control still spelling the old literal
+ * measured GREEN against a standard that had moved. The number was pinned; the BINDING was not.
+ *
+ * Parsing it here is what makes `var(--tap)` in a component and `TAP` in a guard the same fact. Two
+ * consequences the guards rely on, both intentional:
+ *
+ *   - Changing `--tap` in `app.css` alone stays GREEN, because every control names the token and this
+ *     constant follows it. That is the point: the value is the design's to choose.
+ *   - Reverting any one control to a bare `44px` REDS, because `expressesTap` below asks for the token
+ *     rather than for the number. That is the expression being bound rather than coincidentally equal.
+ *
+ * `TAP_FLOOR` keeps the other direction honest: a `--tap` edited BELOW the commitment reds too, since
+ * a derived constant on its own would happily lower the bar and report success.
+ */
+export const TAP = readTapToken();
+
+function readTapToken(): number {
+	const css = readFileSync(join(import.meta.dir, '..', 'app.css'), 'utf8');
+	const m = css.match(/--tap:\s*([0-9.]+)px\s*;/);
+	// not a soft fallback to 44: a missing declaration means the token layer moved and every touch
+	// guard downstream would silently measure against a number nothing declares any more.
+	if (!m) throw new Error('app.css declares no `--tap: <n>px` token — the touch guards have no standard to read');
+	return Number(m[1]);
+}
+
+/**
+ * Does a CSS rule body express a box dimension as the TOKEN rather than as the token's number?
+ *
+ * The two forms that count are `var(--tap)` on its own and `clamp(var(--tap), …)`, which is how the TV
+ * expresses the same floor while still scaling with the room. A bare `44px` does not count even while
+ * 44 is what `--tap` happens to hold — that equality is the coincidence this predicate refuses to
+ * accept as a binding.
+ */
+export function expressesTap(body: string): boolean {
+	return /(?:min-)?(?:width|height)\s*:[^;]*var\(--tap\)/.test(body);
+}
+
+/**
+ * Does a CSS rule body size a box with the token's number written as a BARE px literal? This is the
+ * offender shape for XR-PH-01: the control is the right size today and drifts the moment `--tap` moves.
+ */
+export function restatesTapNumber(body: string, tap: number = TAP): boolean {
+	return new RegExp(`(?:min-)?(?:width|height)\\s*:[^;]*(?<![0-9.])${tap}px`).test(body);
+}
 
 // Bare element selectors we honour as controls. `input` is deliberately absent: no box-sizing
 // input rule in these surfaces is written element-only — text inputs carry a class

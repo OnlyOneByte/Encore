@@ -13,7 +13,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { TAP, markupControls, svelteFiles } from './test-helpers';
+import { TAP, TAP_FLOOR, expressesTap, restatesTapNumber, markupControls, svelteFiles } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..'); // src/
 
@@ -35,6 +35,11 @@ function stripComments(src: string): string {
  */
 const FILES = [
 	...svelteFiles(join(SRC, 'lib', 'components')),
+	// `lib/ui/` was NOT walked (issue #831). PageHeader.svelte is the single source for the back link on
+	// four routes, and its box survived only on a hand-written pin below — so a second control added
+	// under lib/ui/ was invisible to this guard entirely. The walk closes that, and the pin it made
+	// redundant is retired with it.
+	...svelteFiles(join(SRC, 'lib', 'ui')),
 	join(SRC, 'routes', '+page.svelte'),
 	join(SRC, 'routes', 'join', '+page.svelte'),
 	join(SRC, 'routes', 'settings', '+page.svelte'),
@@ -61,9 +66,15 @@ function subjectIsControl(sel: string, ctrl: { tags: Set<string>; classes: Set<s
 	return false;
 }
 
-test('every phone control that sizes its own box reaches 44px', () => {
-	const offenders: string[] = [];
-	let controlRulesSeen = 0;
+/**
+ * Every CSS rule in `FILES` whose SUBJECT is an interactive control AND which declares its own box.
+ *
+ * Both touch-target tests below iterate THIS, rather than each carrying its own copy of the split +
+ * `subjectIsControl` + `declaresBox` sequence. A second private copy of a scan is how one guard ends up
+ * measuring a different population from its sibling while both stay green (#841's finding, applied to
+ * this file's own two arms).
+ */
+function* controlRules(): Generator<{ file: string; sel: string; body: string }> {
 	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
 		const ctrl = markupControls(src);
@@ -77,19 +88,26 @@ test('every phone control that sizes its own box reaches 44px', () => {
 			// derive "is this a control?" from the markup, not a literal allowlist (issue #400)
 			if (!sel.split(',').some((s) => subjectIsControl(s.trim(), ctrl))) continue;
 			// a rule that declares no box has not taken a position on target size
-			const declaresBox = /(min-height|height|padding)\s*:/.test(body);
-			if (!declaresBox) continue;
-			controlRulesSeen++;
-			// an explicit min-height/height at or above the standard passes
-			const explicit = [...body.matchAll(/(?:min-)?height:\s*([0-9.]+)px/g)].map((x) => Number(x[1]));
-			if (explicit.some((h) => h >= TAP)) continue;
-			// so does a percentage/auto/var-driven box, which we cannot resolve statically
-			if (/(?:min-)?height:\s*(?:var\(|100%|auto|1em)/.test(body)) continue;
-			// a hard height BELOW the standard is a real offender
-			const tooShort = explicit.filter((h) => h < TAP && h > 0);
-			if (tooShort.length) {
-				offenders.push(`${f.replace(SRC, 'src')}: ${sel} → height ${tooShort[0]}px < ${TAP}px`);
-			}
+			if (!/(min-height|height|padding)\s*:/.test(body)) continue;
+			yield { file: f.replace(SRC, 'src'), sel, body };
+		}
+	}
+}
+
+test('every phone control that sizes its own box reaches the tap standard', () => {
+	const offenders: string[] = [];
+	let controlRulesSeen = 0;
+	for (const { file, sel, body } of controlRules()) {
+		controlRulesSeen++;
+		// an explicit min-height/height at or above the standard passes
+		const explicit = [...body.matchAll(/(?:min-)?height:\s*([0-9.]+)px/g)].map((x) => Number(x[1]));
+		if (explicit.some((h) => h >= TAP)) continue;
+		// so does a percentage/auto/var-driven box, which we cannot resolve statically
+		if (/(?:min-)?height:\s*(?:var\(|100%|auto|1em|clamp\()/.test(body)) continue;
+		// a hard height BELOW the standard is a real offender
+		const tooShort = explicit.filter((h) => h < TAP && h > 0);
+		if (tooShort.length) {
+			offenders.push(`${file}: ${sel} → height ${tooShort[0]}px < ${TAP}px`);
 		}
 	}
 	expect(offenders).toEqual([]);
@@ -97,36 +115,76 @@ test('every phone control that sizes its own box reaches 44px', () => {
 	// pin a floor so the guard fails loudly if the derivation ever stops finding controls.
 	expect(controlRulesSeen).toBeGreaterThan(10);
 	// …and pin the SCANNED POPULATION too (#841, XR-VER-14 Acceptance). FILES is a tree walk over
-	// lib/components PLUS five hand-named route pages, so a walk that stops finding components still
-	// leaves five files — and five files carry enough control rules to clear the floor above. The two
-	// floors fail on different regressions: `controlRulesSeen` on a broken derivation, this one on a
-	// narrowed walk. 12 files today.
-	expect(FILES.length).toBeGreaterThanOrEqual(10);
+	// lib/components and lib/ui PLUS five hand-named route pages, so a walk that stops finding
+	// components still leaves five files — and five files carry enough control rules to clear the floor
+	// above. The two floors fail on different regressions: `controlRulesSeen` on a broken derivation,
+	// this one on a narrowed walk. 14 files today (12 before lib/ui/ joined the walk, issue #831).
+	expect(FILES.length).toBeGreaterThanOrEqual(12);
+});
+
+/**
+ * THE EXPRESSION, not the number (issue #831, XR-PH-01).
+ *
+ * The test above pins the VALUE, and it was green on a repo where 15 control declarations across five
+ * files spelled `44px` by hand. That is the whole defect this arm exists for: `--tap` and the controls
+ * agreed on 44 by coincidence, so `--tap: 48px` moved the token and left every one of those controls
+ * at the old size, silently, with the value guard still green because `TAP` was hand-written 44 too.
+ *
+ * So this asks a different question: does the control NAME the standard? A rule that sizes its box with
+ * the token's own number, written out, is the offender — it is correct today and drifts tomorrow. Both
+ * directions are now bound:
+ *
+ *   - `--tap: 48px` in app.css alone → GREEN. `TAP` follows the token, every control names it.
+ *   - any one control back to `min-height: 44px` → RED, naming that control.
+ *
+ * Scope note: only rules the value guard above already examines, and only the token's own number. A
+ * control legitimately taller than the floor (a 56px primary button) is not restating the standard and
+ * is left alone; `--tap` itself lives in app.css, which is not in FILES.
+ */
+test('every phone control expresses the tap standard as var(--tap), never the number', () => {
+	const offenders: string[] = [];
+	let boxRulesSeen = 0;
+	for (const { file, sel, body } of controlRules()) {
+		// a rule that declares no width/height at all sizes by padding; nothing to express here
+		if (!/(?:min-)?(?:width|height)\s*:/.test(body)) continue;
+		boxRulesSeen++;
+		if (!restatesTapNumber(body)) continue;
+		// `44px` AND `var(--tap)` on different properties of one rule is still half-bound: the literal
+		// half drifts. Report it either way, and say which state it is in.
+		offenders.push(
+			`${file}: ${sel} → restates ${TAP}px instead of var(--tap)${expressesTap(body) ? ' (mixed: the rule names the token on another property)' : ''}`
+		);
+	}
+	expect(offenders).toEqual([]);
+	// non-vacuity: this arm filters harder than the value guard (box-declaring rules only), so it needs
+	// its own floor — a derivation that stopped finding box rules would report zero offenders happily.
+	expect(boxRulesSeen).toBeGreaterThan(10);
 });
 
 /**
  * The specific controls that regressed before, asserted by name. A structural rule can be satisfied
  * while the exact control that broke slips through a gap in it, so these are pinned.
  *
- * `44px` OR `var(--tap)` satisfies each one. Pinning only the literal made this guard fight the
- * design system it belongs to: once app.css named the standard as `--tap: 44px`, expressing a control
- * in the token FAILED the very test that exists to enforce the token's value. A guard that punishes
- * the correct spelling teaches people to work around it, so both forms are accepted and `--tap` is
- * checked to still BE 44px -- which is the part that actually matters.
+ * `SIZE` is TOKEN-ONLY since issue #831. It used to accept `44px` OR `var(--tap)`, for a good reason at
+ * the time: pinning only the literal made this guard fight the design system it belongs to, failing a
+ * control for the correct spelling. Accepting both fixed that and left the other half open — a control
+ * could satisfy this pin with the number forever. Now the token is the only accepted form here, and the
+ * value it resolves to is checked separately below, so neither spelling can drift unnoticed.
  */
-test('the controls that previously fell short declare 44px explicitly', () => {
+test('the controls that previously fell short declare the tap standard as the token', () => {
 	const phone = readFileSync(join(SRC, 'routes', '+page.svelte'), 'utf8');
 	const settings = readFileSync(join(SRC, 'routes', 'settings', '+page.svelte'), 'utf8');
 	const metrics = readFileSync(join(SRC, 'routes', 'metrics', '+page.svelte'), 'utf8');
-	// The back link is now a single shared control in PageHeader (issue #644), adopted by /settings,
-	// /stats, /metrics and /metrics/[mediaId]. Its 44px box is pinned here, at its one source.
-	const pageHeader = readFileSync(join(SRC, 'lib', 'ui', 'PageHeader.svelte'), 'utf8');
 	const css = readFileSync(join(SRC, 'app.css'), 'utf8');
 
-	// If --tap ever drifts off the standard, accepting it below would silently lower the bar.
-	expect(css).toMatch(new RegExp(`--tap:\\s*${TAP}px\\s*;`));
+	// `TAP` is PARSED from this declaration (test-helpers.ts), so asserting it equals TAP would be a
+	// tautology — it cannot disagree with itself. What is still a real question is whether the token
+	// holds the standard the app committed to: a `--tap` raised to 48 is a design decision, one lowered
+	// to 40 silently drops every control below the floor while every var(--tap) spelling stays green.
+	expect(css).toMatch(/--tap:\s*[0-9.]+px\s*;/);
+	expect(TAP).toBeGreaterThanOrEqual(TAP_FLOOR);
 
-	const SIZE = `(?:${TAP}px|var\\(--tap\\))`;
+	const SIZE = `var\\(--tap\\)`;
 	const declares = (src: string, cls: string, prop: string) =>
 		new RegExp(`\\.${cls}\\s*\\{[^}]*${prop}:\\s*${SIZE}`, 's').test(src);
 
@@ -136,9 +194,10 @@ test('the controls that previously fell short declare 44px explicitly', () => {
 	expect(declares(phone, 'chip', 'min-height')).toBe(true);
 	// the browse disclosure is new and must not repeat the mistake
 	expect(declares(phone, 'browse-toggle', 'min-height')).toBe(true);
-	// the back link (formerly ~26px in settings and 32px on the audit page, issue #140) is now the
-	// single shared PageHeader control, adopted by /settings /stats /metrics /metrics/[mediaId] (#644)
-	expect(declares(pageHeader, 'back', 'min-(?:width|height)')).toBe(true);
+	// The back link (formerly ~26px in settings and 32px on the audit page, issue #140) is the single
+	// shared PageHeader control adopted by /settings /stats /metrics /metrics/[mediaId] (#644). Its
+	// hand-written pin is GONE: `lib/ui/` is in FILES now (#831), so both arms above examine it like any
+	// other control, and a pin that duplicates the walk only hides whether the walk still reaches it.
 	// the /metrics slowest-songs links and the audit-page back link were both 32px (issue #140), and
 	// neither page was in FILES, so the structural test above never saw them. Pinned by name here.
 	expect(declares(metrics, 'cooks a', 'min-height')).toBe(true);

@@ -23,14 +23,17 @@ function ruleBody(src: string, sel: string): string | null {
 	return m ? m[1]! : null;
 }
 
-test('the Undo toast control reaches the 44px floor (padding-only guard gap)', () => {
+test('the Undo toast control reaches the tap floor (padding-only guard gap)', () => {
 	const src = readFileSync(PAGE, 'utf8');
 	const body = ruleBody(src, '.undo-toast button');
 	expect(body).not.toBeNull();
-	// 44px must come from a height the box actually reserves, not from padding the structural guard
+	// The floor must come from a height the box actually reserves, not from padding the structural guard
 	// cannot resolve. Pre-fix this rule had only `padding` and no height → this assertion is RED.
+	// Accepts the TOKEN as well as a literal at or above the floor, because the control now names
+	// var(--tap) (#831) — the number-only regex here would have failed the correct spelling.
 	const heights = [...body!.matchAll(/(?:min-)?height:\s*([0-9.]+)px/g)].map((x) => Number(x[1]));
-	expect(heights.some((h) => h >= TAP)).toBe(true);
+	const tokened = /(?:min-)?height:\s*var\(--tap\)/.test(body!);
+	expect(tokened || heights.some((h) => h >= TAP)).toBe(true);
 });
 
 // ── Issue #108: the error toast was drawn across the Undo button (5s timer, un-tappable). ─────────

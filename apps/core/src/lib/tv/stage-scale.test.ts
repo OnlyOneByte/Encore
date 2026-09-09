@@ -11,7 +11,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { svelteFiles } from '../test-helpers';
+import { svelteFiles, TAP, TAP_FLOOR } from '../test-helpers';
 
 const SRC = join(import.meta.dir, '..', '..');
 const TV_DIRS = [join(SRC, 'lib', 'tv'), join(SRC, 'routes', 'tv')];
@@ -177,6 +177,34 @@ test('the --tv-qr token exists and scales the QR in vmin, not a fixed px', () =>
 	expect(decl).not.toBeNull();
 	// vmin (the shorter viewport side) is what makes the QR grow with the panel instead of capping.
 	expect(decl![1]!).toContain('vmin');
+});
+
+/*
+ * The fullscreen button's tap floor, bound to the TOKEN (issue #831, XR-PH-01).
+ *
+ * `touch-targets.test.ts` walks the PHONE surfaces only, deliberately — the TV's controls are not a
+ * phone in someone's hand — so `.fs-btn` sat outside every touch guard while its own comment claimed
+ * "the 44px clamp floor is the room's own tap-target minimum (--tap in app.css)". It was a bare `44px`:
+ * a comment asserting a binding the code did not have, and unreachable by the guard that would have
+ * caught it. Pinned here instead of by widening the phone walk, which would change that walk's scope
+ * for one control.
+ *
+ * The clamp shape is the point. `clamp(var(--tap), 5.2vmin, 88px)` keeps the room's scaling AND the
+ * floor; a bare literal floor keeps the scaling and loses the binding.
+ */
+test('the TV fullscreen button floors its clamp on var(--tap), never the number', () => {
+	const css = stripComments(TV_ROUTE);
+	const rule = /\.fs-btn\s*\{([^}]*)\}/s.exec(css);
+	expect(rule).not.toBeNull();
+	const body = rule![1]!;
+	// both axes, so a half-converted rule (one axis tokened, one literal) is still a failure
+	const axes = [...body.matchAll(/(width|height):\s*clamp\(([^,]+),/g)];
+	expect(axes.length).toBe(2);
+	for (const [, axis, floor] of axes) {
+		expect(floor!.trim(), `.fs-btn ${axis} clamp floor`).toBe('var(--tap)');
+	}
+	// and the token it names still holds the app's committed floor, so naming it cannot lower the bar
+	expect(TAP).toBeGreaterThanOrEqual(TAP_FLOOR);
 });
 
 test('every HERO join badge sizes from the --tv-qr token, never a bare pixel number', () => {

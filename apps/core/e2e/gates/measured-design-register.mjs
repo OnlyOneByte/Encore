@@ -31,8 +31,36 @@
  * on the record, never to nudge a number.
  */
 
-/** Encore's own tap floor, stricter than WCAG 2.2 SC 2.5.8's 24px. Read live from `--tap` too. */
-export const TAP = 44;
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+/**
+ * Encore's own tap floor, stricter than WCAG 2.2 SC 2.5.8's 24px — READ OUT OF `--tap` (issue #831).
+ *
+ * The line here used to be `export const TAP = 44` under a comment that said "Read live from `--tap`
+ * too". The gate does read the token live per box; THIS constant did not, so the sentence was true of
+ * the gate and false of the register, and the two agreed on 44 only because nobody had moved the token.
+ * `--tap: 48px` moved the design and left this measuring against 44, which is the same
+ * pinned-number/unbound-expression defect XR-PH-01 names in the components.
+ *
+ * `TAP_FLOOR` is the half that must stay a written-down number: it is the commitment, not the current
+ * value, so raising `--tap` is allowed and lowering it below the commitment is not.
+ */
+export const TAP_FLOOR = 44;
+export const TAP = readTapToken();
+
+function readTapToken() {
+	const css = readFileSync(join(import.meta.dirname, '..', '..', 'src', 'app.css'), 'utf8');
+	const m = css.match(/--tap:\s*([0-9.]+)px\s*;/);
+	if (!m) throw new Error('app.css declares no `--tap: <n>px` token — the measured gate has no floor to read');
+	const tap = Number(m[1]);
+	// a token below the commitment would quietly lower the measured floor for every control on every
+	// viewport, and the gate would report a clean pass while doing it.
+	if (tap < TAP_FLOOR) {
+		throw new Error(`--tap is ${tap}px, below the ${TAP_FLOOR}px floor this app committed to (XR-VER-09)`);
+	}
+	return tap;
+}
 
 /** The 16px iOS-zoom threshold — XR-VER-10. A WebKit behaviour, not a published success criterion. */
 export const MIN_FIELD_PX = 16;

@@ -10,7 +10,7 @@
 import { test, expect } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { TAP } from '../test-helpers';
+import { TAP, TAP_FLOOR } from '../test-helpers';
 
 const SRC = join(import.meta.dir, '..', '..'); // src/
 const TREND = readFileSync(join(SRC, 'lib', 'charts', 'Trend.svelte'), 'utf8');
@@ -29,9 +29,13 @@ function ruleBody(src: string, cls: string): string {
 	return m[1]!;
 }
 
-test('--tap is still the 44px standard this guard leans on', () => {
-	// If --tap ever drifts below 44, accepting a column expressed in it would silently lower the bar.
-	expect(CSS).toMatch(new RegExp(`--tap:\\s*${TAP}px\\s*;`));
+test('--tap still holds the tap standard this guard leans on', () => {
+	// `TAP` is parsed out of app.css (test-helpers.ts, issue #831), so asserting `--tap: ${TAP}px` would
+	// compare the value to itself. The real question is whether the token still holds the app's
+	// committed floor: a `--tap` lowered below it would let a column expressed in the token — which is
+	// exactly what `.col` does — silently drop under the reliable-tap threshold.
+	expect(CSS).toMatch(/--tap:\s*[0-9.]+px\s*;/);
+	expect(TAP).toBeGreaterThanOrEqual(TAP_FLOOR);
 });
 
 test('each trend day-button claims a >=44px tap target, not a 3px sliver', () => {

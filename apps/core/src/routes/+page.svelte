@@ -1566,12 +1566,12 @@
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
-	/* 44px, matching every other control in the app. The emoji gear this replaced was ~18px. */
+	/* var(--tap), matching every other control in the app. The emoji gear this replaced was ~18px. */
 	.gear {
 		display: grid;
 		place-items: center;
-		min-width: 44px;
-		min-height: 44px;
+		min-width: var(--tap);
+		min-height: var(--tap);
 		margin-right: -10px;
 		font-size: 1.15rem;
 		color: var(--ink-dim);
@@ -1633,7 +1633,7 @@
 		margin-bottom: 8px;
 	}
 	.browse-toggle {
-		min-height: 44px;
+		min-height: var(--tap);
 		display: inline-flex;
 		align-items: center;
 		gap: 7px;
@@ -1687,10 +1687,10 @@
 		font-variant-numeric: tabular-nums;
 	}
 	.chip {
-		/* 44px, matching the queue actions and the row buttons. These were ~30px: above the 24px WCAG
-		   floor, but below the threshold this app had already set for itself everywhere else — and the
-		   readiness chips are the most-tapped controls on the screen. */
-		min-height: 44px;
+		/* var(--tap), matching the queue actions and the row buttons. These were ~30px: above the 24px
+		   WCAG floor, but below the threshold this app had already set for itself everywhere else — and
+		   the readiness chips are the most-tapped controls on the screen. */
+		min-height: var(--tap);
 		display: inline-flex;
 		align-items: center;
 		gap: 6px;
@@ -1783,7 +1783,7 @@
 		padding: 6px;
 		font-size: 0.8rem;
 		cursor: pointer;
-		min-height: 44px;
+		min-height: var(--tap);
 	}
 	/* Centre the mark with its word. The glyphs these replaced were U+2212 and U+FF0B — the fullwidth
 	   plus carries CJK metrics, so it sat off-baseline beside Latin text at every size. */
@@ -1855,7 +1855,7 @@
 	}
 	.range-toggle {
 		width: 100%;
-		min-height: 44px;
+		min-height: var(--tap);
 		display: inline-flex;
 		align-items: center;
 		gap: 7px;
@@ -2000,15 +2000,15 @@
 		max-width: 90vw;
 	}
 	.undo-toast button {
-		/* The only interactive control on the phone that fell under the app's own 44px floor — and the
-		   one on a 5-second timer, so the hardest to hit in time. Raised to 44px via min-height (the
+		/* The only interactive control on the phone that fell under the app's own tap floor — and the
+		   one on a 5-second timer, so the hardest to hit in time. Raised to var(--tap) via min-height (the
 		   row is align-items:center, so it grows to fit and nothing else shifts); the padding-only box
 		   it had (6px 12px) slipped past the generic touch-target guard, which only flags an explicit
 		   height. touch-targets.test.ts now covers padding-only controls too. */
 		display: inline-flex;
 		align-items: center;
 		justify-content: center;
-		min-height: 44px;
+		min-height: var(--tap);
 		border: 0;
 		background: var(--accent-strong);
 		color: var(--on-accent);
@@ -2036,15 +2036,15 @@
 		max-width: 90vw;
 	}
 
-	/* Matches the gear beside it: a real 44px target, not text that happens to be tappable. An anchor
-	   now (it navigates to /settings?tab=you), so the underline a link would default to is dropped —
-	   the tappable affordance here is the 44px box and the colour dot, as it was as a button. */
+	/* Matches the gear beside it: a real var(--tap) target, not text that happens to be tappable. An
+	   anchor now (it navigates to /settings?tab=you), so the underline a link would default to is
+	   dropped — the affordance here is the var(--tap) box and the colour dot, as it was as a button. */
 	.me-btn {
 		display: inline-flex;
 		align-items: center;
 		gap: 8px;
 		min-width: 0;
-		min-height: 44px;
+		min-height: var(--tap);
 		padding: 0 6px;
 		background: none;
 		border: 0;
