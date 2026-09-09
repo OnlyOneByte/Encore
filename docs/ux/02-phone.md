@@ -62,10 +62,15 @@ Two repo facts these rows lean on, verified in this pass and worth stating once:
 
 ## 2 · Token dimensions that must exist
 
-Six dimensions have **zero** tokens and ~391 literals live in them. `design-system.test.ts` passes
-*correctly* and reports nothing, because a "no literal that duplicates a token" guard cannot compare
-against a token that does not exist. The four rows below cover all six dimensions and close the hole
-each one leaves.
+When these rows were written, six dimensions had **zero** tokens and ~391 literals lived in them, so
+`design-system.test.ts` passed *correctly* and reported nothing — a "no literal that duplicates a token"
+guard cannot compare against a token that does not exist. The four rows below cover all six dimensions
+and close the hole each one leaves.
+
+**Status:** five of the six shipped (#829/#875, plus breakpoints via #852) — `--space-*` ×10, `--lh-*`
+×5, `--z-*` ×14, `--duration-*` ×4, `--bp-*` ×5. Still open: **`font-family`** (never tokenised; raw
+literal at `app.css:782`) and **easing** (motion shipped duration only). The literal counts below are
+the pre-migration figures and are kept as the rationale that justified the work, not as current state.
 
 ### XR-PH-04 — The layout axes exist: a spacing scale and a z-index scale
 

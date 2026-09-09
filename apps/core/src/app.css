@@ -494,10 +494,18 @@
 
 	/*
 	 * TV / STAGE SCALE. A separate scale because the stage is not a big phone: it is read from three
-	 * metres, so the phone's tokens produce 12–19px text on a wall. Each clamp's MINIMUM is the
-	 * ten-foot legibility floor; the vh term lets a larger panel scale up instead of capping every set
-	 * at the smallest supported size. Global rather than scoped to the TV route so the same components
-	 * size correctly in the /components gallery, which renders them outside it.
+	 * metres, so the phone's tokens produce 12–19px text on a wall. The vh term lets a larger panel
+	 * scale up instead of capping every set at the smallest supported size. Global rather than scoped to
+	 * the TV route so the same components size correctly in the /components gallery, which renders them
+	 * outside it.
+	 *
+	 * ⚠️ THE CLAMP MINIMUMS ARE NOT ALL AT THE TEN-FOOT FLOOR. This comment used to claim they were;
+	 * it was false. Against this repo's own floor — `MIN_TV_PX` in `lib/tv/stage-scale.test.ts:35`,
+	 * which is 24px — `--tv-eyebrow`'s minimum is 16px and `--tv-label`'s is 20px. Both are also what
+	 * BINDS on a 720p panel, where the vh term falls below the minimum for every tier. At 1080p the vh
+	 * term wins everywhere, resolving eyebrow to 16.2px and label to 21.6px — still under 24px. See
+	 * #821, which also carries why the ratified single-declaration fix cannot be applied literally
+	 * without regressing SC 1.4.4 on the phone.
 	 */
 	--tv-safe-x: max(48px, 5vw);
 	/* 6vh (64.8px at 1080p), not 5vh: the old max(32px,5vh) resolved to exactly 54px, sitting right on
@@ -508,7 +516,10 @@
 	 * (the stage was reading as a dashboard: singer name at 54px, title at 35px, competing with the
 	 * words) also shrank the lyric context rows, and enlarging the words also enlarged the furniture.
 	 * They are split here so each can be tuned against what it is for: the reel is READ AND SUNG, the
-	 * corners are GLANCED AT. Every minimum is still at or above the ten-foot floor.
+	 * corners are GLANCED AT. The reel's minimums clear the 24px ten-foot floor; the two smallest
+	 * corner tiers (`--tv-eyebrow` 16px, `--tv-label` 20px) do NOT — see the ⚠️ note above and #821.
+	 * This comment previously asserted "every minimum is still at or above the ten-foot floor", which
+	 * was false and read as certification.
 	 */
 	/* THE REEL. The sung line is the reason the screen exists, so it is the largest thing on it — but
 	   not so large it wraps to three rows, which pushed the marked word off the optical centre.
