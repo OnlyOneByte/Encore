@@ -51,6 +51,14 @@ them) · `design-system:84` (`>15`), `:439` (`>=2`), `:488` (`>=3`), `:562` (`>=
 `stage-scale:217` (`>=2`) · `icons:127` (`>15`), `:128` (`>10`) · `contract:715` (`>20`),
 `:970` (`>=19`).
 
+**Now 22 across 12 files, and inventoried.** Issue #830 closed the XR-VER-05 gap — the two enumerating
+walks that carried no floor, `apps/core/e2e/lib/chromium.test.ts` (the `.mjs` driver walk) and
+`apps/core/src/lib/ui/page-header.test.ts` (the route-page walk), each of which fed two tests asserting
+an `offenders` array empty and so passed with zero items examined — and added two more on the motion
+guard's new utility-class arm. All 22 are now enumerated in
+`apps/core/src/lib/non-vacuity-floors.test.ts`, which reds on any decrease or deletion and carries its
+own floor on the count it located. XR-VER-06's Check is therefore implemented, not merely specified.
+
 **Breakpoints, both lists located.** Documented: `.kiro/autoloop/REVIEW.md:206` — 390 / 820 /
 1440 px (**not** repo-root `REVIEW.md`, which does not exist). Implemented `@media` widths across
 `apps` + `packages` source: **380 / 520 / 768 / 1200**. Confirmed zero overlap.
@@ -187,10 +195,27 @@ one of the four claims checkable. Rows below are written against the correct run
 | **Statement** | When an invariant stops applying, its guard is removed in the same change that removes the invariant, and the removal records why; no guard remains in the suite whose assertions can no longer fail on any reachable input. |
 | **Surfaces** | All (process-level) |
 | **Rationale** | A rule that has stopped biting is indistinguishable from a rule that is working, and the redesign dissolves at least one by construction. |
-| **Source** | `encore-design-handoff.md` §3 — the `--accent`-as-text ban dissolves because every Chromatic stop clears AA as ink (worst 4.50:1), so its guard "will now pass **vacuously**". Also the 27 RETIRE cases in `encore-redesign-decision.md` §2. |
+| **Source** | `encore-design-handoff.md` §3 — the `--accent`-as-text ban dissolves because every Chromatic stop clears AA as ink (worst 4.50:1), so its guard "will now pass **vacuously**". Also the 27 RETIRE cases in `encore-redesign-decision.md` §2. **⚠ That specific claim is BACKWARDS, verified** — see the correction below the table. |
 | **Acceptance** | **Given** the 27 RETIRE entries plus any guard whose premise a change invalidates, **When** the change lands, **Then** each is either deleted with a one-line reason in the retirement record, or re-anchored to a still-falsifiable claim with a fresh XR-VER-04 mutation record. **Then** no entry remains that is neither deleted nor re-anchored. |
-| **Check** | Diff the retirement record against the register; a RETIRE entry still present in the suite with an unchanged premise is reported. |
+| **Check** | Diff the retirement record against the register; a RETIRE entry still present in the suite with an unchanged premise is reported. **Implemented in part** by `apps/core/src/lib/non-vacuity-floors.test.ts`: its `RETIRED` map requires a substantive reason and asserts the retired assertion is genuinely absent, and its `PENDING_RULING` map holds a decided retire-or-re-anchor call whose anchor text must still be present in the guard it describes. |
 | **Priority** | **MUST** |
+
+**⚠ Correction to this row's Source — the `--accent` guard does NOT go vacuous, it REDS.**
+
+The handoff predicted `contrast.test.ts`'s accent-as-ink ban would "pass vacuously" once the palette
+clears AA as ink. Verified against the guard: its first arm is
+`expect(ratio(token(t), token('card'))).toBeLessThan(AA_TEXT)` — an assertion that the pairs **fail** AA.
+So a stop that clears AA as ink makes that line **red**, before the offenders scan below it is reached.
+The guard self-reports the dissolution of its own premise; there is no vacuous window.
+
+That inverts the fix direction. The hazard is not that nobody notices — it is the reviewer who meets an
+unexpected red, reads it as a broken guard, and deletes the assertion, taking the **usage** scan with it.
+That scan is not dissolving: "accent tokens are backgrounds, not ink" survives as a design rule after it
+stops being a contrast fact, and it is what caught the `/metrics` links. So the work this row actually
+demands is to **decide the retire-or-re-anchor question before the palette lands** and record it next to
+the guard, which is done: the ruling is at `contrast.test.ts` ("RECORDED RULING FOR THE PALETTE
+MIGRATION") and is held to the guard by `non-vacuity-floors.test.ts`'s `PENDING_RULING` check.
+
 
 ---
 
@@ -304,7 +329,7 @@ what is measured.
 | **Rationale** | `class="transition-all"` expresses the banned rule with no CSS declaration anywhere in source, so the existing guard's regex cannot see it and the ban stops being enforced without failing. |
 | **Source** | `encore-design-handoff.md` §1 and `encore-redesign-decision.md` §2 AT RISK #2. WCAG 2.2 SC 2.3.3 Animation from Interactions — https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html. Verified: `transition-all` occurs **zero** times in the tree today, so this is prospective. |
 | **Acceptance** | **Given** the source tree, **When** markup is scanned for class names, **Then** none matches `transition-all`, `transition-{width,height,spacing,inset,margin,padding,gap,flex}`, `animate-*` for a keyframe touching a layout property, or a duration/easing utility applied to one; **and Then** the scan reads `class:` directives, `class={…}` expressions and composed strings, and fails on a class expression it cannot resolve rather than skipping it. **And** the guard reds when `class="transition-all"` is injected into any component. |
-| **Check** | Extend the register's motion entry to a class-name arm with its own mutation record. The unresolvable-expression clause matters: a blocklist that silently skips what it cannot parse is vacuous exactly where Tailwind is most idiomatic. |
+| **Check** | Extend the register's motion entry to a class-name arm with its own mutation record. The unresolvable-expression clause matters: a blocklist that silently skips what it cannot parse is vacuous exactly where Tailwind is most idiomatic. **Implemented** by issue #830 as two arms at the foot of `apps/core/src/lib/components/motion.test.ts`: an extractor that reads all four class spellings (quoted attribute, `class={…}` expression, `class:` directive, interpolation) and resolves each `transition-*` utility through the file's own `COMPOSITED_PROPS` allowlist — an unknown utility key and an unresolvable `class={…}` are OFFENDERS, not skips — plus a whole-source name net over `.svelte` **and** `.ts` that catches a utility composed anywhere the extractor cannot see. |
 | **Priority** | **MUST**, and **before** utilities enter the tree — after they enter, the guard's first run has violations to triage and the temptation is to weaken it. |
 
 ### XR-VER-16 — The copied drawer's animation mechanism is established from its source, not inferred from its styling hooks

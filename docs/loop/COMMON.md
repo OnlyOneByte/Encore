@@ -74,6 +74,19 @@ bun run typecheck                       # expect exit 0, 0 errors, 0 warnings
   reads as green. Redirect to a file, test `$?`, then read the file.
 - **Never trust a pinned test count — re-measure.** Counts move by tens within an hour. A pinned floor
   reads a normal head as a regression. Judge `0 fail`, not a number.
+- **A firing NON-VACUITY FLOOR is the exception, and it is a FINDING, never a number to adjust.** The
+  rule directly above is about *suite pass counts*, which drift innocently. It does **not** extend to a
+  floor assertion inside a guard — `expect(files.length).toBeGreaterThan(50)` and its ~21 siblings,
+  inventoried in `apps/core/src/lib/non-vacuity-floors.test.ts`. Those guards derive their own scope by
+  walking a tree, then assert an `offenders` array is empty; an empty array is what a working guard
+  produces *and* what a guard examining nothing produces, so the floor on the size of what was examined
+  is the only thing separating the two. A firing floor therefore does not mean the guard broke. It means
+  **the guard can no longer see the surface it was enforcing on** — a real defect it just caught.
+  Restore the scope, or re-anchor the scan to where the surface moved, or retire the floor on the record
+  in `non-vacuity-floors.test.ts` (`RETIRED`, with the invariant, the sites that left scope, and what
+  covers them now). Lowering the literal to make the red go away converts a *detected* loss of
+  enforcement into a *silent* one, which is worse than never having planted the floor.
+
 - **For typecheck, read the `found N errors` line**, not `grep -c error`, which counts the literal
   string inside "found 0 errors". `bun run typecheck` also chains `typecheck:e2e`, so `svelte-check`
   can print "0 errors" while the chained leg fails — confirm the whole chain exits 0.

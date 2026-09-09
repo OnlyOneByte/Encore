@@ -37,6 +37,18 @@ function styleFiles(dir: string): string[] {
 	return out;
 }
 
+// non-test .ts sources, for the utility-name net at the bottom of this file (issue #830): a class list
+// can be composed in TypeScript as easily as in markup, and a scan restricted to .svelte is blind to it.
+function tsSources(dir: string): string[] {
+	const out: string[] = [];
+	for (const ent of readdirSync(dir, { withFileTypes: true })) {
+		const p = join(dir, ent.name);
+		if (ent.isDirectory()) out.push(...tsSources(p));
+		else if (ent.name.endsWith('.ts') && !ent.name.endsWith('.test.ts')) out.push(p);
+	}
+	return out;
+}
+
 // strip BOTH comment forms before a whole-file scan: CSS `/* … */` AND HTML `<!-- … -->`. Tests 1 and 2
 // read entire .svelte files (markup + <style>), so a `transition:` written in prose inside an HTML
 // comment (e.g. tv/+page.svelte's 'not a transition: work in progress' note) must not false-positive
@@ -604,6 +616,209 @@ test('every animation declaration honours prefers-reduced-motion', () => {
 			for (const m of markup.matchAll(/(^|\s)(transition|in|out|animate):([a-z][a-zA-Z0-9]*)/g)) {
 				offenders.push(`${f}: Svelte motion directive (cannot honour Reduce Motion): ${m[2]}:${m[3]}`);
 			}
+		}
+	}
+	expect(offenders).toEqual([]);
+});
+
+/*
+ * ── The utility-class arm (issue #830, XR-VER-15) ──────────────────────────────────────────────────
+ *
+ * THE INVISIBILITY TRAP THIS CLOSES. Every scan above reads CSS DECLARATIONS or Svelte DIRECTIVES. A
+ * Tailwind-style utility class expresses the same motion with NEITHER: `class="transition-all"` puts no
+ * `transition:` anywhere in source and is not a `transition:fn` directive, so the moment utilities enter
+ * the tree this file's ban **silently stops being enforced** rather than failing. That is the exact
+ * failure class this issue exists to make detectable — a guard that stops biting must go red, not green.
+ *
+ * `transition-all` occurs ZERO times in the tree today, so this arm is PROSPECTIVE by construction.
+ * That is the reason to land it now: after utilities arrive there is no moment at which the ban's
+ * silence is distinguishable from its enforcement.
+ *
+ * ALLOWLIST, NOT A DENYLIST — the same #290 decision the rest of the file rests on. A `transition-x`
+ * utility is resolved to the CSS properties it animates and each is looked up in COMPOSITED_PROPS, the
+ * file's single source of truth. Two consequences worth stating, because both are deliberate:
+ *   - an UNKNOWN utility key (a project-specific `transition-foo`) is an OFFENDER, not a skip. A
+ *     blocklist that waves through what it cannot parse is vacuous exactly where utilities are most
+ *     idiomatic (XR-VER-15 Check).
+ *   - a utility that resolves to a real property outside COMPOSITED_PROPS reds and NAMES that property.
+ *     The correct response is to add the property to COMPOSITED_PROPS as a recorded decision — never to
+ *     delete this arm. See XR-VER-06 and `../non-vacuity-floors.test.ts`.
+ */
+
+// Tailwind's built-in `transition-*` keys and the properties each animates, plus the layout-hazard keys
+// XR-VER-15 enumerates (a config can mint these, and `spacing`/`inset`/`gap`/`flex` are layout by
+// definition). `all` resolves to the pseudo-property `all`, which is never in COMPOSITED_PROPS — that is
+// how `transition-all`, the row's headline case, reds.
+const UTILITY_TRANSITION_PROPS: Record<string, string[]> = {
+	// built-ins
+	'': ['color', 'background-color', 'border-color', 'opacity', 'box-shadow', 'transform', 'filter'],
+	none: [],
+	all: ['all'],
+	colors: ['color', 'background-color', 'border-color', 'fill', 'stroke'],
+	opacity: ['opacity'],
+	shadow: ['box-shadow'],
+	transform: ['transform'],
+	// layout-hazard keys named by XR-VER-15
+	width: ['width'],
+	height: ['height'],
+	spacing: ['margin', 'padding'],
+	inset: ['inset'],
+	margin: ['margin'],
+	padding: ['padding'],
+	gap: ['gap'],
+	flex: ['flex']
+};
+
+// A motion utility of any family: the `transition-*` family, `animate-*`, and the timing families.
+const MOTION_UTILITY = /^(?:transition|animate|duration|ease|delay)(?:-[a-zA-Z0-9[\]./%_-]+)?$/;
+
+/**
+ * Judge ONE class list (already split into tokens) and return offender descriptions.
+ *
+ * `UNRESOLVED` is a sentinel token the extractor pushes for an expression it could not read; it is
+ * reported rather than dropped, which is the whole point of the row.
+ */
+function utilityOffenders(tokens: string[]): string[] {
+	const out: string[] = [];
+	const motion = tokens.filter((t) => MOTION_UTILITY.test(t));
+	// does this list carry a transition utility whose properties are ALL composited? if so the timing
+	// utilities beside it are tuning an allowed transition and are not themselves a finding.
+	const allowedTransition = motion.some((t) => {
+		if (!/^transition(-|$)/.test(t)) return false;
+		const key = t === 'transition' ? '' : t.slice('transition-'.length);
+		const props = UTILITY_TRANSITION_PROPS[key];
+		return props !== undefined && props.every((p) => COMPOSITED_PROPS.has(p));
+	});
+	for (const t of tokens) {
+		if (t === 'UNRESOLVED') {
+			// XR-VER-15 Check: a class expression the scan cannot resolve is where a utility hides, so it
+			// is an offender. Zero such expressions exist today, so this cannot fire on current source.
+			out.push('unresolvable class expression (a motion utility here would be invisible)');
+			continue;
+		}
+		if (!MOTION_UTILITY.test(t)) continue;
+		if (/^transition(-|$)/.test(t)) {
+			const key = t === 'transition' ? '' : t.slice('transition-'.length);
+			const props = UTILITY_TRANSITION_PROPS[key];
+			if (props === undefined) {
+				out.push(`unknown transition utility \`${t}\` — cannot resolve which property it animates`);
+				continue;
+			}
+			for (const p of props) {
+				if (!COMPOSITED_PROPS.has(p)) out.push(`utility \`${t}\` animates ${p}`);
+			}
+			continue;
+		}
+		if (/^animate(-|$)/.test(t)) {
+			// An `animate-*` utility applies a keyframes animation from a class. Whatever it animates, no
+			// `@media (prefers-reduced-motion)` wrapper and no reduce reset in source can cover it — the
+			// same argument test 3 already makes for an inline `style="animation: …"` and for a
+			// `transition:` directive. So the UTILITY is what is rejected, in that same shape.
+			out.push(`utility \`${t}\` applies a keyframes animation that cannot honour Reduce Motion`);
+			continue;
+		}
+		// duration/ease/delay: inert on their own, and correct beside an allowed transition. Reported only
+		// when nothing in the list says WHAT they are timing — then they are tuning motion this scan
+		// cannot attribute, which is the invisibility XR-VER-15 exists to close.
+		if (!allowedTransition) out.push(`timing utility \`${t}\` with no resolvable transition property`);
+	}
+	return out;
+}
+
+/** Split a literal class-attribute value into tokens, marking each `{…}` interpolation. */
+function classTokens(value: string): string[] {
+	const out: string[] = [];
+	// Pull every string literal out of an interpolation so `{a ? 'x' : 'y'}` contributes x and y, then
+	// decide whether what is LEFT of the interpolation is readable.
+	let rest = value;
+	for (const m of value.matchAll(/\{([\s\S]*?)\}/g)) {
+		const expr = m[1]!;
+		const lits = [...expr.matchAll(/'([^']*)'|"([^"]*)"|`([^`$]*)`/g)].map((l) => l[1] ?? l[2] ?? l[3] ?? '');
+		for (const l of lits) out.push(...l.split(/\s+/).filter(Boolean));
+		// A CALL or a CONCATENATION is the composition shape a utility list is built with, so it must be
+		// readable or reported. A bare identifier / member access / ternary of literals (`{kind}`,
+		// `{z.id}`, `{cook.outcome}`) is a value from the component's own closed, class-named domain — it
+		// is exempted here BY NAME, and the whole-source net below is what keeps that exemption honest:
+		// were such a variable ever assigned a utility list, the literal would be in the source and the
+		// net would catch it.
+		const composed = /[(+]|\$\{/.test(expr);
+		if (composed && lits.length === 0) out.push('UNRESOLVED');
+		rest = rest.replace(m[0]!, ' ');
+	}
+	out.push(...rest.split(/\s+/).filter(Boolean));
+	return out;
+}
+
+/** Every class list in a Svelte source, from each of the four spellings a class can be written in. */
+function classLists(markup: string): { where: string; tokens: string[] }[] {
+	const out: { where: string; tokens: string[] }[] = [];
+	// 1 + 2. quoted attribute, both delimiters, interpolations included.
+	for (const m of markup.matchAll(/\bclass=("([^"]*)"|'([^']*)')/g)) {
+		out.push({ where: 'class attribute', tokens: classTokens(m[2] ?? m[3] ?? '') });
+	}
+	// 3. the whole-expression form `class={…}` — Tailwind's idiomatic composition site. Read every string
+	// literal inside; an expression yielding NO literal at all is UNRESOLVED, never skipped.
+	for (const m of markup.matchAll(/\bclass=\{([\s\S]*?)\}/g)) {
+		const expr = m[1]!;
+		const lits = [...expr.matchAll(/'([^']*)'|"([^"]*)"|`([^`$]*)`/g)].map((l) => l[1] ?? l[2] ?? l[3] ?? '');
+		const tokens = lits.flatMap((l) => l.split(/\s+/).filter(Boolean));
+		out.push({ where: 'class={…} expression', tokens: tokens.length ? tokens : ['UNRESOLVED'] });
+	}
+	// 4. the `class:name` directive — the token IS the class name.
+	for (const m of markup.matchAll(/\bclass:([a-zA-Z0-9_-]+)/g)) {
+		out.push({ where: 'class: directive', tokens: [m[1]!] });
+	}
+	return out;
+}
+
+test('no utility class expresses motion the declaration scans cannot see', () => {
+	const svelte = [
+		...svelteFiles(join(import.meta.dir, '..', '..', 'lib')),
+		...svelteFiles(join(import.meta.dir, '..', '..', 'routes'))
+	];
+	// Non-vacuity floor + which-files sentinel, the same pair tests 1-3 carry (XR-VER-05). A firing
+	// floor is a FINDING, never a number to adjust — XR-VER-06.
+	expect(svelte.length).toBeGreaterThanOrEqual(20);
+	expect(svelte.some((f) => f.includes(join('lib', 'tv')))).toBe(true);
+
+	const offenders: string[] = [];
+	for (const f of svelte) {
+		const markup = markupRegion(stripAllComments(readFileSync(f, 'utf8')));
+		for (const { where, tokens } of classLists(markup)) {
+			for (const o of utilityOffenders(tokens)) offenders.push(`${f}: ${where}: ${o}`);
+		}
+	}
+	expect(offenders).toEqual([]);
+});
+
+test('no motion utility name appears anywhere in source, in any position', () => {
+	// THE NET, and the reason the extractor above is allowed a named exemption. A class list can be
+	// composed anywhere — a `.ts` constant, a `classList.add`, a string handed to a component prop — and
+	// no extractor sees every spelling. What IS decidable is that these utility NAMES do not occur in
+	// source at all. So the extractor above supplies the precise message, and this arm supplies the
+	// coverage: a spelling the extractor misses still reds here rather than passing silently.
+	const netFiles = [
+		...svelteFiles(join(import.meta.dir, '..', '..', 'lib')),
+		...svelteFiles(join(import.meta.dir, '..', '..', 'routes')),
+		...tsSources(join(import.meta.dir, '..', '..', 'lib'))
+	];
+	expect(netFiles.length).toBeGreaterThanOrEqual(40);
+
+	// Only the names that are unambiguously motion utilities: `transition-all` and the layout-hazard
+	// keys XR-VER-15 enumerates, plus `animate-<name>`. A bare `duration-`/`ease-` is deliberately NOT
+	// in the net — those are ordinary English fragments and the extractor above judges them in context.
+	const LAYOUT_KEYS = Object.keys(UTILITY_TRANSITION_PROPS).filter(
+		(k) => k !== '' && k !== 'none' && !UTILITY_TRANSITION_PROPS[k]!.every((p) => COMPOSITED_PROPS.has(p))
+	);
+	const NET = new RegExp(String.raw`\b(?:transition-(?:${LAYOUT_KEYS.join('|')})|animate-[a-z][a-zA-Z0-9-]*)\b`, 'g');
+	// The net must have something to look for: an empty or collapsed key list would make it vacuous.
+	expect(LAYOUT_KEYS).toContain('all');
+	expect(LAYOUT_KEYS.length).toBeGreaterThanOrEqual(8);
+
+	const offenders: string[] = [];
+	for (const f of netFiles) {
+		for (const m of stripAllComments(readFileSync(f, 'utf8')).matchAll(NET)) {
+			offenders.push(`${f}: motion utility name \`${m[0]}\` in source`);
 		}
 	}
 	expect(offenders).toEqual([]);

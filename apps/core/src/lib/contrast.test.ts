@@ -173,6 +173,38 @@ test('--on-accent passes AA on --accent-strong (the actionable pair)', () => {
  * "fix" it by switching to --accent-strong, which would have made the contrast worse while looking
  * like a remedy. So this test asserts the pairs are unusable AND scans for anyone using them, the
  * same belt-and-braces shape as the --grad usage scan.
+ *
+ * ── RECORDED RULING FOR THE PALETTE MIGRATION (issue #830, XR-VER-07) ──────────────────────────────
+ *
+ * READ THIS BEFORE TOUCHING THE `toBeLessThan(AA_TEXT)` LOOP BELOW.
+ *
+ * The redesign handoff (`encore-design-handoff.md` §3) predicted this guard would begin passing
+ * VACUOUSLY once every Chromatic stop clears AA as ink, and XR-VER-07 quotes that prediction.
+ *
+ * **That prediction is backwards, and the direction matters.** The first arm is an assertion that the
+ * pairs are UNUSABLE (`toBeLessThan`), not that they are safe. So the moment a stop clears AA as ink
+ * this test does not go quiet -- it REDS, on that exact line, before the offenders scan below is ever
+ * reached. This guard self-reports the dissolution of its own premise. There is no vacuous window.
+ *
+ * Which changes what has to be decided in advance. The hazard is no longer "nobody notices"; it is the
+ * reviewer who meets that red, reads it as a broken guard, and deletes or inverts the assertion --
+ * taking the USAGE scan below with it. That scan is NOT dissolving: it is what caught the /metrics
+ * links, and "accent tokens are backgrounds, not ink" stays a design rule after it stops being a
+ * contrast fact.
+ *
+ * THE RULING, so that the reviewer who meets the red does not have to make it under pressure:
+ *
+ *   RE-ANCHOR, DO NOT DELETE. When this line reds:
+ *     1. Delete the `toBeLessThan(AA_TEXT)` loop ONLY -- it is the arm whose premise expired, and its
+ *        expiry is a real finding worth one line in the retirement record, not a silent edit.
+ *     2. KEEP the offenders scan verbatim, and keep this test. Re-anchor its name to the surviving
+ *        claim: the accent tokens are backgrounds by design, so nothing sets them as `color:`.
+ *     3. Record the swap per XR-VER-06: which invariant left scope (accent-as-ink fails AA) and what
+ *        still covers the surface (the usage scan). Do NOT relax the loop's threshold to keep it green
+ *        -- a threshold nudged to preserve a green is the exact reflex XR-VER-06 exists to stop.
+ *
+ * `non-vacuity-floors.test.ts` holds the machine-checkable half of this: it asserts this record and the
+ * guard it describes are still both present, so the ruling cannot rot out from under the guard.
  */
 test('the accent tokens are not safe as text, and nothing uses them that way', () => {
 	for (const t of ['accent', 'accent-strong']) {
