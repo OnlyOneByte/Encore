@@ -19,7 +19,7 @@
 import { makeRegistry } from './registry';
 import type { QueueEntry } from './types';
 
-export type QueueOrderId = 'fair' | 'fcfs' | 'shuffle' | 'least-recently-sung';
+export type QueueOrderId = 'fair' | 'fcfs' | 'shuffle' | 'least-recently-sung' | 'manual';
 
 /**
  * Everything an ordering policy is allowed to read beyond the entries themselves.
@@ -154,6 +154,32 @@ function orderLeastRecentlySung(entries: QueueEntry[], ordering: Ordering): Queu
 	return interleave(entries, (id) => sung?.get(id) ?? -Infinity);
 }
 
+/**
+ * MANUAL: keep the order someone already put the queue in, rather than deriving one.
+ *
+ * Every other policy computes an order from scratch on each re-derivation, so a raw cross-singer
+ * reorder cannot survive the next add — that is why the durable pin exists today. Manual is the
+ * ordering that DOES survive: it sorts by each entry's own `rotationSeq`, the server-owned position
+ * that is already persisted (`schema.ts` `rotation_seq NOT NULL`) and broadcast on every entry. So the
+ * stored order IS the authority, and re-derivation reproduces it instead of overwriting it. No new
+ * column and no new `Ordering` field — the signal was always on the entry.
+ *
+ * Still PURE, TOTAL and DETERMINISTIC like its siblings: it reads only `rotationSeq` off its input, so
+ * the phone and the server compute the identical result from the identical broadcast entries. Ties
+ * (equal or unset `rotationSeq` — e.g. a just-added entry the server has not numbered yet) fall back to
+ * `addedAt`, then to `id`, so the ordering stays total and stable rather than depending on input order.
+ *
+ * `respectsAddedAt` is false: under manual a singer's own-picks reorder (which permutes `addedAt`) does
+ * not change the stored order, because manual reads `rotationSeq`, not `addedAt`. Wiring a reorder to
+ * WRITE the stored order is step 2 of #856; this step only adds the ordering so a room can opt in while
+ * pinning still works unchanged beside it.
+ */
+function orderManual(entries: QueueEntry[]): QueueEntry[] {
+	return [...entries].sort(
+		(a, b) => a.rotationSeq - b.rotationSeq || a.addedAt - b.addedAt || (a.id < b.id ? -1 : 1)
+	);
+}
+
 /** FNV-1a, 32-bit. Small, dependency-free, and identical on both sides — all this needs to be. */
 function hash32(s: string): number {
 	let h = 0x811c9dc5;
@@ -200,6 +226,15 @@ const QUEUE_ORDER_POLICIES = [
 		respectsAddedAt: true,
 		usesSingHistory: true,
 		order: orderLeastRecentlySung
+	},
+	{
+		id: 'manual',
+		label: 'Manual order',
+		queueLabel: 'custom order',
+		note: 'Keeps the exact order the queue is put in. Songs stay put until someone moves them.',
+		respectsAddedAt: false,
+		usesSingHistory: false,
+		order: orderManual
 	}
 ] as const satisfies readonly QueueOrderPolicy[];
 
