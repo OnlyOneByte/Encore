@@ -25,6 +25,7 @@ from typing import Protocol
 
 from ..retry_policy import PermanentError
 from . import demucs as d
+from . import mlx as m
 from . import roformer as r
 
 
@@ -39,6 +40,18 @@ class SeparatorEngine(Protocol):
     def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]: ...
     def parse_progress(self, line: str) -> int | None: ...
     def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]: ...
+
+    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
+        """Extra commands to run AFTER `separate_argv`, before `find_outputs` — each a full argv the
+        step runs through the same runner, in order.
+
+        The seam for an engine whose CLI does not itself produce the 2-stem
+        `{no_vocals,vocals}` layout the rest of the pipeline reads. demucs and roformer produce it
+        directly and return `[]` (nothing to derive). `MlxDemucsEngine` returns the single ffmpeg
+        mix-minus pass that sums demucs-mlx's non-vocal stems into `no_vocals.wav`, because demucs-mlx
+        has no `--two-stems` flag and emits four/six stems with no instrumental file.
+        """
+        ...
 
 
 class DemucsEngine:
@@ -103,63 +116,107 @@ class DemucsEngine:
             "vocals": vox if os.path.exists(vox) else None,
         }
 
+    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
+        # demucs --two-stems writes no_vocals.wav directly; nothing to derive.
+        return []
+
 
 class MlxDemucsEngine:
     """The demucs family through `demucs-mlx` — Apple-Silicon Metal execution of the SAME htdemucs
     checkpoints, selected by `backends.resolve_backend` when MLX is available (Apple Silicon + the
-    `demucs_mlx` package importable).
+    `demucs_mlx` package importable). #595.
 
-    NOT YET IMPLEMENTED, and it refuses at construction on purpose (#119). The backend selection is now
-    genuinely wired — a Mac that resolves `mlx` builds THIS engine rather than silently building
-    `DemucsEngine` under an "mlx" label, which was the whole defect: the startup log announced `mlx`
-    while `facts.backend` recorded `torch`, and the accelerated path never ran.
+    The backend selection is genuinely wired (#119): a Mac that resolves `mlx` builds THIS engine
+    rather than silently building `DemucsEngine` under an "mlx" label, so `facts.backend` matches the
+    startup log instead of announcing `mlx` while recording `torch`.
 
-    The runtime is deferred because its CLI output contract cannot be verified without a real
-    Apple-Silicon Mac with `demucs-mlx` installed: `demucs-mlx` may accept `--two-stems vocals` and
-    yield the 2-stem `<model>/{vocals,no_vocals}.wav` layout the rest of the pipeline expects, OR it may
-    emit four stems (vocals/drums/bass/other) with the instrumental derived as a mix-minus-vocals ffmpeg
-    pass. Guessing that contract wrong would ship a broken instrumental on every Mac worker, so the
-    implementation is tracked as a needs-owner / needs-repro follow-up.
+    THE CLI CONTRACT, measured, is CASE C (owner ruling on #595): `demucs-mlx` has NO `--two-stems` and
+    NO `--filename` flag, so it emits every source the model carries (4 for htdemucs/_ft, 6 for
+    htdemucs_6s) into the demucs-native nested layout `<out>/<track-stem>/<source>.wav`, and there is no
+    instrumental file. The instrumental is DERIVED by an ffmpeg mix-minus pass that sums the non-vocal
+    stems (`amix ... normalize=0`, a true sum, not the level-halving default) into a `no_vocals.wav`
+    sitting beside them — so `find_outputs` returns the same 2-stem shape the torch engine does and the
+    rest of the pipeline (ProbeSilence, PublishStems) is untouched. All the MLX-specific behaviour is the
+    pure argv/path/derivation helpers in `separation/mlx.py`; this class is the seam adapter.
 
-    PermanentError (retryable=False, #443/#571/#583): an unimplemented backend is a deterministic
-    configuration state — every retry fails identically — so it refuses fast and loud at CONSTRUCTION
-    (plan selection, when a cook resolves to this engine) rather than burn three attempts or, worse,
-    downgrade silently to CPU torch. It does NOT refuse at worker startup — nothing constructs a
-    separator engine then (`engine_for`'s only callers are `plans.py` at plan selection and the
-    `steps/separate.py` fallback). What keeps a cook from ever reaching this refusal is upstream: a box
-    whose resolved backend has no demucs engine (`separation.engines.demucs_engine_backed_by`) does not
-    advertise `stems` at all (`config.resolve` -> `capabilities.narrow_for_backend`, #606), so the core
-    never routes it a stems cook. This construction-time refusal is the backstop for the paths that
-    bypass that narrowing — the docgen/test fallback, or any future caller.
+    STILL REFUSES LOUDLY when MLX is genuinely unavailable — but that refusal is now UPSTREAM of
+    construction, not at it: a box whose resolved backend is `mlx` has already passed
+    `backend_available(MLX)` (Apple Silicon AND `demucs_mlx` importable, `backends.py`), and only such a
+    box advertises `stems` (`capabilities.narrow_for_backend` reads `demucs_engine_backed_by("mlx")`,
+    now True). A box without MLX either resolves to `torch` (never builds this) or, if `mlx` was
+    explicitly configured on unsupported hardware, `resolve_backend` raises at worker startup before any
+    engine is built. So the honest-degradation contract #119 established is preserved: an `mlx` label
+    never runs a torch cook, and unavailable MLX fails loud rather than downgrading silently.
+
+    `input_wav` is stashed on the instance at `separate_argv` time so `derive_argvs` and `find_outputs`
+    can compute the per-track output directory demucs-mlx names from the INPUT filename. The seam calls
+    the three in that fixed order (separate → derive → find), so the stash is always set before it is
+    read; it defaults to the conventional `input.wav` the DecodeToWav step always produces, so a direct
+    unit call to `find_outputs` without a prior `separate_argv` still resolves the standard path.
     """
 
     id = "demucs"
     backend = "mlx"
 
-    def __init__(self, **_kwargs: object) -> None:
-        raise PermanentError(
-            "mlx backend selected but the demucs-mlx engine is not implemented; "
-            "set ENCORE_SEPARATOR_BACKEND=torch, or leave it unset to auto-select an available backend"
+    def __init__(
+        self,
+        *,
+        default_model: str = m.DEFAULT_MODEL,
+        mlx_bin: str = "demucs-mlx",
+        ffmpeg_bin: str = "ffmpeg",
+        overlap: float | None = None,
+        segment: int | None = None,
+        shifts: int | None = None,
+        batch_size: int | None = None,
+    ) -> None:
+        self._default_model = default_model
+        self._bin = mlx_bin
+        self._ffmpeg = ffmpeg_bin
+        self._overlap = overlap
+        self._segment = segment
+        self._shifts = shifts
+        self._batch_size = batch_size
+        # The decoded input this cook separates, set by separate_argv. demucs-mlx names its per-track
+        # output folder from this filename (see separation/mlx.py), so derive_argvs/find_outputs need it.
+        self._input_wav = "input.wav"
+
+    def resolve_model(self, params: dict) -> str:
+        return m.resolve_mlx_model(params, self._default_model)
+
+    def input_wav(self, work: str) -> str:
+        # Same convention as the torch engine: one WAV in the shared scratch dir. demucs-mlx separates a
+        # named file (not a folder), so no dedicated directory is needed.
+        return os.path.join(work, "input.wav")
+
+    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:
+        self._input_wav = input_wav
+        return m.mlx_argv(
+            input_wav,
+            out_dir,
+            model,
+            self._bin,
+            overlap=self._overlap,
+            segment=self._segment,
+            shifts=self._shifts,
+            batch_size=self._batch_size,
         )
 
-    # The SeparatorEngine protocol members below are declared so this class conforms to the seam's type
-    # (engine_for returns a SeparatorEngine), but they are UNREACHABLE: __init__ raises, so no instance
-    # ever exists to call them. They exist to make "this is a real engine slot, not yet implemented"
-    # a type-checked statement rather than a comment.
-    def resolve_model(self, params: dict) -> str:  # pragma: no cover - construction always raises
-        raise PermanentError("demucs-mlx engine is not implemented")
+    def parse_progress(self, line: str) -> int | None:
+        # demucs-mlx renders a tqdm bar (separate.py, `tqdm(...)`), same shape demucs uses, so reuse the
+        # demucs percentage parser rather than a second copy of the same regex.
+        return d.parse_demucs_progress(line)
 
-    def input_wav(self, work: str) -> str:  # pragma: no cover - construction always raises
-        raise PermanentError("demucs-mlx engine is not implemented")
+    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
+        # The single mix-minus ffmpeg pass that builds no_vocals.wav from the model's non-vocal stems.
+        return [m.mix_minus_instrumental_argv(out_dir, input_wav, model, self._ffmpeg)]
 
-    def separate_argv(self, input_wav: str, out_dir: str, model: str) -> list[str]:  # pragma: no cover
-        raise PermanentError("demucs-mlx engine is not implemented")
-
-    def parse_progress(self, line: str) -> int | None:  # pragma: no cover - construction always raises
-        raise PermanentError("demucs-mlx engine is not implemented")
-
-    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]:  # pragma: no cover
-        raise PermanentError("demucs-mlx engine is not implemented")
+    def find_outputs(self, out_dir: str, model: str) -> dict[str, str | None]:
+        inst = m.mlx_instrumental_path(out_dir, self._input_wav)
+        vox = m.mlx_vocals_path(out_dir, self._input_wav)
+        return {
+            "instrumental": inst if os.path.exists(inst) else None,
+            "vocals": vox if os.path.exists(vox) else None,
+        }
 
 
 class RoformerEngine:
@@ -205,6 +262,10 @@ class RoformerEngine:
             "vocals": r.find_roformer_vocals(out_dir),
         }
 
+    def derive_argvs(self, input_wav: str, out_dir: str, model: str) -> list[list[str]]:
+        # bs-roformer-infer writes an instrumental stem directly; nothing to derive.
+        return []
+
 
 def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorEngine:
     """The engine this job resolved to, executed through the resolved `backend`.
@@ -216,9 +277,9 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     selects WHICH demucs implementation runs and is recorded into `facts.backend`, so the ledger matches
     the backend the startup log announced (#119). Before this it reached nothing but a print, so a Mac
     resolving `mlx` still built the torch `DemucsEngine` and recorded `torch` — the log lied. `mlx` now
-    builds `MlxDemucsEngine`, which refuses loudly at construction until the demucs-mlx runtime is
-    implemented; `torch` (or None, the portable default) builds the real `DemucsEngine`. Roformer runs
-    only through its own CLI, so a backend other than that impl is not applicable to it.
+    builds `MlxDemucsEngine`, which runs the demucs-mlx CLI and derives the instrumental via a mix-minus
+    ffmpeg pass (#595); `torch` (or None, the portable default) builds the real `DemucsEngine`. Roformer
+    runs only through its own CLI, so a backend other than that impl is not applicable to it.
 
     None-valued kwargs are DROPPED, not forwarded. A caller that has no opinion about `jobs` or a model
     passes None, and forwarding it would override the engine's own default with nothing — and for the model
@@ -230,6 +291,11 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
     lone production caller supplied the demucs default, which reached `RoformerEngine` and made
     `DEFAULT_ROFORMER_MODEL` unreachable — a roformer cook without a `model` then raised naming a demucs
     checkpoint). Keeping the names engine-specific makes that cross-wiring inexpressible.
+
+    The MLX branch reuses the demucs-family kwargs: `demucs_model` maps to its `default_model` (mlx runs
+    the same htdemucs checkpoints), and `overlap`/`segment`/`shifts` are the perf knobs demucs-mlx shares
+    with demucs. It ignores `demucs_bin`/`device`/`jobs`: mlx has its own binary (`demucs-mlx`), takes no
+    torch device string, and parallelises with `-b`, not demucs's `-j`.
     """
     given = {k: v for k, v in kwargs.items() if v is not None}
     if name == RoformerEngine.id:
@@ -240,10 +306,14 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
         return RoformerEngine(**kw)
     if name == DemucsEngine.id:
         if backend == "mlx":
-            # Wired, not silent: an mlx-resolved cook builds the MLX engine, which raises at construction
-            # until its runtime lands. This is what makes facts.backend honest — a torch DemucsEngine can
-            # never be built under an "mlx" label (#119).
-            return MlxDemucsEngine()
+            # Wired, not silent: an mlx-resolved cook builds the MLX engine, which runs demucs-mlx and
+            # derives the instrumental (#595). This is what makes facts.backend honest — a torch
+            # DemucsEngine can never be built under an "mlx" label (#119).
+            allowed = {"overlap", "segment", "shifts"}
+            kw = {k: v for k, v in given.items() if k in allowed}
+            if "demucs_model" in given:
+                kw["default_model"] = given["demucs_model"]
+            return MlxDemucsEngine(**kw)
         allowed = {"demucs_bin", "device", "jobs", "overlap", "segment", "shifts"}
         kw = {k: v for k, v in given.items() if k in allowed}
         if "demucs_model" in given:
@@ -257,18 +327,23 @@ def engine_for(name: str, *, backend: str | None = None, **kwargs) -> SeparatorE
 
 
 def demucs_engine_backed_by(backend: str | None) -> bool:
-    """Whether a demucs `SeparatorEngine` can actually be CONSTRUCTED through `backend`.
+    """Whether a demucs `SeparatorEngine` can actually be CONSTRUCTED and RUN through `backend`.
 
     The single source of truth for "does this backend have a demucs engine implementation", read by
     the capability-declaration site so the worker never advertises `stems` on a box whose resolved
     backend cannot build one. `torch` (and None, the portable default) build the real `DemucsEngine`;
-    `mlx` builds `MlxDemucsEngine`, which raises `PermanentError` at construction until its runtime
-    lands, so it is NOT backed; any other/unknown backend is not backed either.
+    `mlx` builds `MlxDemucsEngine`, which runs the demucs-mlx CLI and derives the instrumental (#595),
+    so it IS backed. Any other/unknown backend is not backed.
 
-    Kept next to `engine_for` on purpose: `engine_for("demucs", backend=b)` raises for exactly the
-    values this returns False for, so the two cannot drift — a new demucs backend adds a branch to
+    A box only ever resolves to `mlx` after passing `backends.backend_available(MLX)` — Apple Silicon
+    AND `demucs_mlx` importable — so returning True here does not advertise `stems` on a box that
+    cannot actually run it; the availability gate upstream still does that job, and an explicit `mlx`
+    on unsupported hardware already raises at `resolve_backend` before this is consulted.
+
+    Kept next to `engine_for` on purpose: `engine_for("demucs", backend=b)` builds an engine for exactly
+    the values this returns True for, so the two cannot drift — a new demucs backend adds a branch to
     both. Deliberately does NOT construct the engine (that would import torch just to answer a probe),
     so it stays cheap enough to run in the dial-home process alongside the import-free capability
     probes.
     """
-    return backend in (None, "torch")
+    return backend in (None, "torch", "mlx")

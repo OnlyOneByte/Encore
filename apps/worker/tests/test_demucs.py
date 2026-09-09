@@ -15,6 +15,7 @@ from src import plans  # noqa: E402
 from src.acquisition import fetch as fetch_mod  # noqa: E402
 from src.processor import CompleteResult, JobSpec, ProgressEvent  # noqa: E402
 from src.separation import demucs  # noqa: E402
+from src.separation import mlx as mlx_mod  # noqa: E402
 from tests.cli_fakes import fake_cli_runner  # noqa: E402
 from tests.conftest import drain  # noqa: E402
 
@@ -544,19 +545,20 @@ def test_demucs_engine_backend_is_the_resolved_value_not_a_hardcoded_constant():
     assert DemucsEngine(backend="a-resolved-backend").backend == "a-resolved-backend"
 
 
-def test_engine_for_mlx_backend_refuses_rather_than_silently_building_torch():
-    """`engine_for('demucs', backend='mlx')` builds the MLX engine, which refuses at construction — it
-    NEVER returns a torch DemucsEngine under an mlx label.
+def test_engine_for_mlx_backend_builds_the_mlx_engine_not_torch():
+    """`engine_for('demucs', backend='mlx')` builds the MLX engine (backend 'mlx') — it NEVER returns a
+    torch DemucsEngine under an mlx label.
 
-    Red on base: `engine_for` ignored the backend entirely and returned a `DemucsEngine` whose
-    `.backend` was "torch". This is the machine-checkable form of the log-lies-to-you bug: an mlx
-    resolution silently produced a torch cook.
+    This is the machine-checkable form of the log-lies-to-you bug (#119): an mlx resolution must not
+    silently produce a torch cook. #595 implemented the MLX engine, so it now builds and runs rather than
+    refusing — but it is still a distinct engine reporting backend 'mlx', never the torch DemucsEngine.
     """
-    from src.retry_policy import PermanentError
-    from src.separation.engines import engine_for
+    from src.separation.engines import DemucsEngine, MlxDemucsEngine, engine_for
 
-    with pytest.raises(PermanentError, match="demucs-mlx engine is not implemented"):
-        engine_for("demucs", backend="mlx")
+    mlx = engine_for("demucs", backend="mlx")
+    assert isinstance(mlx, MlxDemucsEngine)
+    assert mlx.backend == "mlx"
+    assert not isinstance(mlx, DemucsEngine)
     # torch (and the None default) still build the real engine, so the portable path is untouched.
     assert engine_for("demucs", backend="torch").backend == "torch"
     assert engine_for("demucs").backend == "torch"
@@ -576,18 +578,31 @@ async def test_a_torch_stems_cook_records_torch_because_torch_ran(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_an_mlx_resolved_stems_cook_fails_loudly_instead_of_running_torch(tmp_path):
-    """The wire, end-to-end: stems_runner(backend='mlx') fails the cook at engine construction and the
-    demucs CLI NEVER runs, so a Mac announcing mlx cannot silently produce a torch cook.
+async def test_an_mlx_resolved_stems_cook_runs_demucs_mlx_and_derives_the_instrumental(tmp_path):
+    """The wire, end-to-end (#595): stems_runner(backend='mlx') runs the `demucs-mlx` CLI (never the
+    torch `demucs` CLI), derives the instrumental with an ffmpeg mix-minus pass over the non-vocal
+    stems, publishes it, and records facts.backend == 'mlx' because MLX actually RAN.
 
-    Red on base: stems_runner took no `backend`, so this cook completed, ran the demucs CLI, and
-    recorded facts.backend == 'torch' — the exact contradiction #119 is about.
+    Before #595 this cook failed loudly at construction ('demucs-mlx engine is not implemented'); the
+    MLX runtime is now implemented, so it completes. The torch demucs CLI must still never run for an
+    mlx cook — that is the #119 honesty contract preserved.
     """
-    from src.retry_policy import PermanentError
-
     ran: list[str] = []
 
-    inner = fake_runner({"yt-dlp": ["[download] 100% of 4MiB"], "demucs": ["100%|██| 2/2"]})
+    async def mlx_handler(argv):
+        # demucs-mlx: emit four source stems in the nested <out>/<input-stem>/<source>.wav layout.
+        out_dir = argv[argv.index("-o") + 1]
+        input_wav = argv[-1]
+        for source in ("vocals", "drums", "bass", "other"):
+            p = mlx_mod.mlx_stem_path(out_dir, input_wav, source)
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            Path(p).write_bytes(b"FAKE_STEM")
+        yield "100%|██| 2/2"
+
+    inner = fake_cli_runner(
+        scripted={"yt-dlp": ["[download] 100% of 4MiB"]},
+        handlers={"demucs-mlx": mlx_handler},
+    )
 
     async def tracking_runner(argv):
         ran.append(argv[0])
@@ -595,6 +610,15 @@ async def test_an_mlx_resolved_stems_cook_fails_loudly_instead_of_running_torch(
             yield line
 
     proc = plans.stems_runner(runner=tracking_runner, backend="mlx")
-    with pytest.raises(PermanentError, match="demucs-mlx engine is not implemented"):
-        await drain(proc, spec(tmp_path))
+    events = await drain(proc, spec(tmp_path))
+
+    completes = [e for e in events if isinstance(e, CompleteResult)]
+    assert len(completes) == 1
+    assert completes[0].facts["backend"] == "mlx"
+    assert completes[0].facts["engine"] == "demucs"
+    # demucs-mlx ran; the torch demucs CLI never did.
+    assert "demucs-mlx" in ran
     assert "demucs" not in ran, "the torch demucs CLI must never run for an mlx-resolved cook"
+    # the mix-minus ffmpeg pass ran (an ffmpeg invocation whose non-vocal inputs feed amix normalize=0)
+    ffmpeg_calls = [a for a in ran if a == "ffmpeg"]
+    assert ffmpeg_calls, "the mix-minus ffmpeg derivation must run for an mlx cook"
