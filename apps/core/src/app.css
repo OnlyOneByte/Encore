@@ -253,7 +253,19 @@ body {
 	background: radial-gradient(120% 80% at 50% -10%, var(--stage-glow) 0%, var(--bg) 55%);
 	color: var(--ink);
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, system-ui, sans-serif;
-	font-size: 16px;
+	/* 100%, not 16px, to remove a LATENT trap rather than to fix a measured one — stated precisely
+	   because the obvious reading of this line is wrong. `rem` resolves against the ROOT element, and
+	   `html` declares no font-size here, so every rem-sized rule in the app (53 across the four phone
+	   routes) already tracked the guest's browser text-size setting; this declaration never touched
+	   them. Measured at a doubled root font-size in Chromium, the only thing the old `16px` pinned
+	   anywhere was SvelteKit's own generated route announcer — hidden text, no guest impact.
+	   What it WAS is a trap: font-size inherits, so the first phone text added without a font-size of
+	   its own would silently become unscalable, and nothing would say so. `100%` resolves to the same
+	   browser default (identical rendering for a guest who has not changed the setting) and inherits
+	   the setting for one who has. SC 1.4.4 Resize Text, XR-PH-02; enforced by
+	   lib/phone-inventory.test.ts, which bans absolute font sizes on phone surfaces with no exemption
+	   for the base — this line is what lets that rule have no hole in it. */
+	font-size: 100%;
 	-webkit-font-smoothing: antialiased;
 }
 
