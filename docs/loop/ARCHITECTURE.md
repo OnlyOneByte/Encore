@@ -70,10 +70,19 @@ cannot drift.
 That marker is therefore load-bearing twice: it prevents the lane waking itself on its own words, and
 it is how "answered" is distinguished from "awaiting an answer".
 
-Two label edges are still used as triggers rather than state, and both have cost a real issue:
-`review:pending` added means "a PR needs review" (#707: a PR opened without it was invisible), and
-`review:blocked` → `review:pending` means "I pushed a fix, re-review me" (#681: a worker that pushed
-without flipping it waited forever, and its comment asking for re-review was inert).
+One label edge is still *described* as a trigger rather than state: `review:blocked` →
+`review:pending`, meaning "I pushed a fix, re-review me" (#681 — a worker that pushed without flipping
+it waited, and its comment asking for re-review was inert). That description is **unverified**. On every
+PR measured, the flip and a new head arrived together, so the two are confounded, and the head-based
+probe in the table above would need no flip at all. Tracked on #783; do not read it as settled in
+either direction.
+
+`review:pending` added is **not** in that category, despite this file previously saying it was. The
+review probe is label-blind, so the label is board state the reviewer clears, not an entry trigger.
+#707 was cited here as a PR left unreviewed for want of the label; its timeline does not support that —
+opened `02:16:00Z`, labelled `02:28:31Z`, verdict `02:39:56Z`, so the verdict came *after* the label, by
+about one patrol interval. On #772 a verdict landed while the PR carried no review label at all. See
+[`LABELS.md`](LABELS.md#labels-still-doing-trigger-duty); measured on #781.
 
 ## What polling does not change
 

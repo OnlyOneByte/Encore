@@ -86,24 +86,41 @@ the record — do not rewrite it.**
 
 A label is coordination **state**. Some edges are additionally being used as an *event* — a lane
 notices the label changed since it last looked. That is edge detection by polling, and a missed edge is
-silent and permanent; it is what cost #707 and #681.
+silent and permanent, which is why the edges doing trigger duty are worth naming one at a time.
 
-Triage no longer works this way, and it needed no event to stop. It POLLS, so these two are **retired
-as triggers** while the labels themselves keep their meaning:
+Triage no longer works this way, and it needed no event to stop: it POLLS. The review lane never
+worked this way either — its probe lists every open PR with **no label filter** and buckets on "no
+verdict at the current head", so `review:pending` is an **output the reviewer clears**, not an input it
+selects on. These three are **retired as triggers** while the labels themselves keep their meaning:
 
 | Label edge | Now found by |
 |---|---|
 | `triaged` removed — the owner's re-triage lever | the untriaged query, on the next ~360s patrol |
 | the owner answering a question | the `needs-decision` query, whose newest comment is not bot-authored |
+| `review:pending` added | the review probe, which reads every open PR and asks whether its **current head** has a verdict |
 
-These three are **still label-triggered**, and none of them is polled for directly yet:
+That third row used to be listed as still label-triggered, citing #707 as what losing the edge cost.
+**That was wrong, and the measurement is the record now.** On PR #772 the first verdict posted at
+`18:32:38Z` while the PR carried no review label at all; the first review label of any kind was
+`review:blocked` at `18:32:45Z` — seven seconds later, posted by the reviewer itself. #707's own
+timeline says the same: opened `02:16:00Z`, `review:pending` applied `02:28:31Z`, verdict `02:39:56Z`,
+so the verdict came 11m25s *after* the label. Both gaps are one or two ~360s patrol intervals. A
+patrol-interval wait was misread as invisibility. The committed reviewer brief
+[`PR-BOT.md`](PR-BOT.md) agrees: it carries no selection probe at all and only *clears* the label as an
+output. Settled on #781.
+
+These two are **still described as label-triggered**, and neither is polled for directly yet:
 
 | Label edge | Used to mean | The event that would replace it |
 |---|---|---|
 | `triaged` added | "this is dispatchable" | `issues.labeled` |
-| `review:pending` added | "a PR needs review" | `pull_request.opened` |
-| `review:blocked` → `review:pending` | "I pushed a fix, re-review me" | `pull_request.synchronize` |
+| `review:blocked` → `review:pending` | "I pushed a fix, re-review me" — **unverified**, see below | `pull_request.synchronize` |
 
-The third row is the expensive one. A worker cannot clear its own `review:blocked`, so a fix that is
-pushed without that flip waits forever, and the comment asking for re-review is inert. The manual flip
-protocol exists only to synthesise an edge GitHub already emits.
+The second row is not the entry claim over again, and it is not disproven either — it is **untested**.
+On every PR checked, the flip and a new head arrived together, so the two are confounded and the data
+cannot say which one the lane reacted to; a head-based probe would need no flip at all. Read that row
+as an open question, not as a mechanism in either direction. It is tracked on **#783**, which waits on
+the review orchestrator's real selection rule being committed (**#780**). Keep flipping the label
+meanwhile: it is cheap, and it is the board state that says a fixed PR is waiting again. Whether a
+worker may flip its own `review:blocked` is answered in [`CONDUCTOR.md`](CONDUCTOR.md) under
+"Coding-bot seed rule — re-review after a block", which records a worker doing exactly that on #681.

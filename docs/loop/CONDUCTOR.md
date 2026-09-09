@@ -224,41 +224,47 @@ conventional-format — set it that way at `gh pr create`.
 - Two workers (**#655**, **#669**) independently hit the in-place-`0000` boot-failure trap — do not
   repeat it.
 
-## Review re-trigger mechanism (learned #681)
+## Review re-trigger mechanism (#681 — mechanism unverified, see #783)
 
-- The review-orchestrator (pr-bot) is NOT CI: no GitHub Actions, no push-trigger, no comment command. It
-  fires on the LABEL TRANSITION `review:blocked` → `review:pending`.
-- A worker CANNOT clear its own `review:blocked` → that flip is an owner/orchestrator action. So a worker
-  that fixed a block and pushed a new head will sit forever if the label stays `review:blocked` (its
-  comment re-request does nothing).
+- The review-orchestrator (pr-bot) is NOT CI: no GitHub Actions, no push-trigger, no comment command. For
+  ENTRY its probe is **label-blind** — it reads every open PR and buckets on "no verdict at the current
+  head" (measured on #781).
+- Whether the LABEL TRANSITION `review:blocked` → `review:pending` is what re-triggers a **re**-review is
+  **unverified**: on every PR measured the flip and a new head arrived together, so the two are
+  confounded, and a head-based probe would need no flip. Tracked on **#783**. Treat the flip as required
+  anyway — it is cheap, and it is the board state that says a fixed PR is waiting again.
+- A worker CAN flip its own PR label (chat-409 did on **#681**), so this is not a permission gap.
 - When a worker reports it addressed a block + pushed + is awaiting re-review but the label is still
-  `review:blocked`: that is the trigger gap. Surface to the owner to flip `review:blocked` →
-  `review:pending` (do NOT try to flip it yourself unless tooling allows).
+  `review:blocked`: have it flip the label to `review:pending` so the board reads correctly, and do not
+  assume the missing flip is why no verdict has arrived — check the patrol interval first.
 - SEQUENCING: if the branch went DIRTY while parked, have the worker REBASE + re-verify + force-push
   FIRST, then flip the label, so the orchestrator reviews a mergeable head.
 
 ## Coding-bot seed rule — re-review after a block (bake into EVERY worker seed §6/§7)
 
-- The review-orchestrator (pr-bot) re-reviews ONLY on the LABEL TRANSITION `review:blocked` →
-  `review:pending`. It does NOT watch pushes or PR comments.
-- Therefore: after you push a fix that addresses a `review:blocked` finding, YOU must flip your PR label
+- Treat the `review:blocked` → `review:pending` flip as **required board state**, not as a proven
+  trigger: whether the lane re-reviews *because* of the flip is unverified (**#783**), and a head-based
+  probe would need no flip. Either way a prose comment ALONE is inert.
+- So: after you push a fix that addresses a `review:blocked` finding, YOU flip your PR label
   `review:blocked` → `review:pending`
   (`gh pr edit <N> --remove-label review:blocked --add-label review:pending`), then post a one-line
-  "addressed X in `<head>`, re-review" comment. A prose comment ALONE is inert.
+  "addressed X in `<head>`, re-review" comment.
 - Confirmed a worker can flip its OWN PR label (chat-409 did on **#681**). Do NOT rely on the conductor
   or owner to flip it.
 - If the branch is DIRTY, rebase + re-verify + force-push BEFORE flipping the label, so the orchestrator
   reviews a mergeable head.
 - Seed this verbatim into the review/babysit section of every dispatched worker going forward.
 
-## PR entry rule — set `review:pending` ON OPEN (learned #707)
+## PR entry rule — RETIRED (premise disproven, #781)
 
-- The orchestrator queues a PR only when it carries `review:pending`. A freshly-opened PR with NO label
-  is INVISIBLE to it — the worker will babysit a verdict that never comes (happened on **#707**).
-- So §5 of every worker seed: immediately after `gh pr create`, run
-  `gh pr edit <N> --add-label review:pending`. The label is the entry trigger for a NEW PR, exactly as
-  the flip is the re-entry trigger for a fixed blocked PR.
-- Seed this into §5 of every dispatched worker.
+- There used to be a rule here asserting the orchestrator queues a PR only when it carries
+  `review:pending`, and that an unlabelled PR is INVISIBLE to it (attributed to **#707**). **That is
+  false.** The review probe is label-blind; on #772 the first verdict posted while the PR carried no
+  review label at all, and #707's own verdict came *after* its label, by about one patrol interval. What
+  #707 recorded as invisibility was a patrol-interval wait.
+- Workers still add `review:pending` right after `gh pr create` — as board state, not as an entry
+  trigger. See [`CODING-BOT.md`](CODING-BOT.md) §5 and
+  [`LABELS.md`](LABELS.md#labels-still-doing-trigger-duty).
 
 ## Worker write mechanism (seed into EVERY worker SAFETY line — learned #424 + #517)
 
