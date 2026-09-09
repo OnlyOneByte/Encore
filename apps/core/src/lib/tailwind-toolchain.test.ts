@@ -27,11 +27,13 @@
  * nor trip an arm. That strip is load-bearing: without it arm 2 fails on app.css's own prose.
  */
 import { describe, expect, it } from 'bun:test';
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { svelteFiles, styleFiles, SKIP_DIRS } from './test-helpers';
 
 const SRC = join(import.meta.dir, '..');
+// repo root: apps/core/src/lib -> up four -> repo. Used to walk for any tailwind.config.* (issue #859).
+const REPO = join(SRC, '..', '..', '..');
 const APP_CSS_PATH = join(SRC, 'app.css');
 const APP_CSS = readFileSync(APP_CSS_PATH, 'utf8');
 
@@ -101,6 +103,120 @@ function themeBlocks(css: string): string[] {
 	return out;
 }
 
+/*
+ * ── THE COLOUR-TOKEN VOCABULARY (issue #859, XR-COL-14) ────────────────────────────────────────────
+ *
+ * The value-bridge arm below must red on a `@theme` entry that FORWARDS to one of the app's own colour
+ * tokens (`--color-x: var(--accent)` mints `text-accent` just as surely as a literal hex does). The
+ * original #853 regex anchored the family list immediately after `--`:
+ *
+ *     var\(\s*--(?:accent|grad|ok|warn|danger|ink|bg|card|line|focus|scrim|track|stage)
+ *
+ * which the #840 investigation (#876 history) flagged as leaky in exactly the direction #840's palette
+ * makes load-bearing: the per-stop INK tokens are named `--on-accent` and — under the 48-stop palette —
+ * `--on-fill-N`, and both begin `--on`, so the anchored alternation never reaches `accent`/`fill` and
+ * they slip straight through. Those are the tokens whose whole point is that ink ≠ fill; a minted
+ * `text-*` off one of them is the precise class this rule exists to forbid.
+ *
+ * So the vocabulary is matched as a WHOLE `--token` word (bounded, not prefix-anchored) and the ink
+ * names are named explicitly:
+ *   - the incumbent fill/surface families, now including `accent2`;
+ *   - the ink tokens: `--on-accent`, `--accent-ink`, and any `--on-fill-N` per-stop ink;
+ *   - any `--on-*` ink token and any `--fill-N` / `--hue-N` player-hue stop, so a future stop token
+ *     minted from #840's palette is caught the day it is bridged, not the day someone remembers to add
+ *     it to a list.
+ */
+const COLOUR_TOKEN_RE =
+	/var\(\s*--(?:accent2|accent-ink|on-accent|on-fill-\d+|on-[a-z0-9-]+|fill-\d+|hue-\d+|accent|grad|ok|warn|danger|ink|bg|card|line|focus|scrim|track|stage|singer|stage-glow)\b/;
+// A global-flag twin for matchAll; `.test()` callers use the non-global one above to avoid lastIndex state.
+const COLOUR_TOKEN_RE_G = new RegExp(COLOUR_TOKEN_RE.source, 'g');
+
+/**
+ * Every offence a single `--name: value` declaration commits against XR-COL-14, or []. Shared by the
+ * app.css `@theme` scan and the tailwind-config scan so the two cannot drift apart.
+ */
+function colourOffences(name: string, value: string): string[] {
+	const out: string[] = [];
+	if (/^--color-/.test(name)) out.push(`${name}: in Tailwind's --color-* namespace (mints text-* and bg-*)`);
+	if (/#[0-9a-fA-F]{3,8}\b/.test(value)) out.push(`${name}: hex colour value ${value}`);
+	if (/\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix|light-dark)\s*\(/.test(value)) {
+		out.push(`${name}: colour-function value ${value}`);
+	}
+	if (/\bgradient\s*\(/.test(value)) out.push(`${name}: gradient value ${value}`);
+	// a bridge to one of the app's own colour tokens is the same violation wearing a var() — now
+	// including the per-stop ink names (`--on-accent`, `--on-fill-N`) that used to slip the anchor.
+	if (COLOUR_TOKEN_RE.test(value)) out.push(`${name}: bridges the colour token ${value}`);
+	return out;
+}
+
+/*
+ * ── SCAN ANY TAILWIND CONFIG, NOT JUST app.css (issue #859) ────────────────────────────────────────
+ *
+ * This setup is Tailwind v4 CSS-first: the theme lives in app.css's `@theme` block and there is no
+ * `tailwind.config.*` (a JS config would be the v3 shape — app.css says so at its bridge comment). But
+ * the #840 investigation flagged that the #853 guard reads ONLY app.css, so a v3-style config file
+ * reintroduced later — `theme: { extend: { colors: { accent: '#7254e6' } } }` — would register the
+ * whole colour family completely outside the guard's sight. XR-COL-14 must hold "given a Tailwind
+ * config exists in the tree", whatever its shape.
+ *
+ * So the guard walks the repo for `tailwind.config.{js,cjs,mjs,ts,cts,mts}` and text-scans each for a
+ * `colors`/`color` key inside a `theme` block. A JS config is not CSS, so the by-name `--color-*` and
+ * by-value literal checks are applied to the STRING VALUES a colour key would carry; a text scan is the
+ * right tool for the same reason the app.css arms text-scan rather than parse — the question is what the
+ * file SAYS registers a colour, and answering it by executing the config would need the whole toolchain.
+ */
+const CONFIG_GLOB = /^tailwind\.config\.(?:c|m)?[jt]s$/;
+
+/** Absolute paths of every tailwind.config.* in the repo, excluding node_modules and build output. */
+function tailwindConfigs(root: string): string[] {
+	const out: string[] = [];
+	const walk = (dir: string) => {
+		let entries: import('node:fs').Dirent[];
+		try {
+			entries = readdirSync(dir, { withFileTypes: true });
+		} catch {
+			return;
+		}
+		for (const e of entries) {
+			const p = join(dir, e.name);
+			if (e.isDirectory()) {
+				if (SKIP_DIRS.has(e.name) || e.name === 'node_modules' || e.name === 'build') continue;
+				walk(p);
+			} else if (CONFIG_GLOB.test(e.name)) {
+				out.push(p);
+			}
+		}
+	};
+	walk(root);
+	return out;
+}
+
+/**
+ * Offences a tailwind.config.* commits by declaring theme colours. Scans for a `colors`/`color` key
+ * under a `theme` (or `theme.extend`) block and reports every colour literal or app-token bridge it
+ * hands to the palette — the config-file equivalent of a `--color-*` registration in `@theme`.
+ */
+function configColourOffences(src: string, rel: string): string[] {
+	const out: string[] = [];
+	// strip JS/TS comments so a `// colors: {…}` note or block comment cannot satisfy or trip this
+	const code = src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+	// a colors/color key anywhere in the config is a v3 colour registration; each mints text-* + bg-*
+	const keyRe = /\bcolors?\s*:/g;
+	if (!keyRe.test(code)) return out;
+	// any colour literal in the file body is a registered palette value
+	for (const m of code.matchAll(/#[0-9a-fA-F]{3,8}\b/g))
+		out.push(`${rel}: registers hex colour ${m[0]} in a theme config`);
+	for (const m of code.matchAll(/\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix)\s*\([^)]*\)/g)) {
+		out.push(`${rel}: registers colour-function ${m[0]} in a theme config`);
+	}
+	for (const m of code.matchAll(COLOUR_TOKEN_RE_G))
+		out.push(`${rel}: bridges the colour token ${m[0]} in a theme config`);
+	// the mere presence of a colors key is itself the violation — the family is minted with or without a
+	// value the scans above recognise, so report it so a `colors: { accent: someImportedConst }` is caught
+	out.push(`${rel}: declares a \`colors\` key in a Tailwind config — registers a colour utility family (XR-COL-14)`);
+	return out;
+}
+
 describe('#853 the @theme block registers no colour', () => {
 	it('finds the @theme block at all — the other arm is worthless if this regex stops matching', () => {
 		const blocks = themeBlocks(CSS);
@@ -120,29 +236,87 @@ describe('#853 the @theme block registers no colour', () => {
 		 *     `bg-grad`/`text-grad` pair would hand out as ordinary.
 		 * The `ball`-marker lesson applies here too: the check is on what the declaration IS, not on
 		 * whether its name looks colour-ish.
+		 *
+		 * XR-COL-14 (#859) widens this two ways over the #853 original: the value-bridge now catches the
+		 * per-stop INK tokens (`--on-accent`, `--on-fill-N`) that the anchored family list used to miss,
+		 * and the scan covers any `tailwind.config.*` in the tree as well as app.css's `@theme`, since a
+		 * v3-shape config would register colours entirely outside app.css. `mintSurfaces` counts every
+		 * surface actually examined so the arm cannot pass by looking at nothing (XR-VER-05/06).
 		 */
 		const offenders: string[] = [];
+		let mintSurfaces = 0;
 		for (const block of themeBlocks(CSS)) {
+			mintSurfaces++;
 			for (const line of block.split('\n')) {
 				const decl = /^\s*(--[a-zA-Z0-9-]+)\s*:\s*([^;]+);/.exec(line);
 				if (!decl) continue;
 				const [, name, rawValue] = decl;
-				const value = rawValue!.trim();
-				if (/^--color-/.test(name!)) {
-					offenders.push(`${name}: in Tailwind's --color-* namespace (mints text-* and bg-*)`);
-				}
-				if (/#[0-9a-fA-F]{3,8}\b/.test(value)) offenders.push(`${name}: hex colour value ${value}`);
-				if (/\b(?:rgba?|hsla?|oklch|oklab|lab|lch|color-mix|light-dark)\s*\(/.test(value)) {
-					offenders.push(`${name}: colour-function value ${value}`);
-				}
-				if (/\bgradient\s*\(/.test(value)) offenders.push(`${name}: gradient value ${value}`);
-				// a bridge to one of the app's own colour tokens is the same violation wearing a var()
-				if (/var\(\s*--(?:accent|grad|ok|warn|danger|ink|bg|card|line|focus|scrim|track|stage)/.test(value)) {
-					offenders.push(`${name}: bridges the colour token ${value}`);
-				}
+				offenders.push(...colourOffences(name!, rawValue!.trim()));
 			}
 		}
+		for (const cfg of tailwindConfigs(REPO)) {
+			mintSurfaces++;
+			offenders.push(...configColourOffences(readFileSync(cfg, 'utf8'), cfg.slice(REPO.length + 1)));
+		}
 		expect(offenders).toEqual([]);
+		// NON-VACUITY (XR-VER-05/06): the rule is unenforceable if no @theme block and no config were
+		// seen, and an empty `offenders` from an empty scan reads identically to a clean tree. Fail
+		// LOUDLY here instead — the day Tailwind is uninstalled, or the @theme regex stops matching, is
+		// the day this arm must go red rather than green. `blocks.length >= 1` above is the app.css leg;
+		// this is the whole-scan leg, and it is the floor registered in non-vacuity-floors.test.ts.
+		expect(mintSurfaces).toBeGreaterThanOrEqual(1);
+	});
+
+	it('MUTATION: registering a player hue in @theme reds the arm above (issue #859)', () => {
+		/*
+		 * The arm is only worth its floor if it actually fires. Prove it: take the real app.css, splice
+		 * a player-hue registration into its `@theme inline` block in each of the shapes the guard must
+		 * catch — a `--color-*` name, a raw hex, and a bridge to the per-stop ink token that used to slip
+		 * the anchor — and assert each one produces an offence. This is the mutation the issue asks for,
+		 * run in-process against the guard's own logic rather than against a throwaway file on disk.
+		 */
+		const mutate = (decl: string): string[] => {
+			const mutated = stripCssComments(APP_CSS).replace(/@theme\b([^{]*)\{/, `@theme$1{\n\t${decl}\n`);
+			const found: string[] = [];
+			for (const block of themeBlocks(mutated)) {
+				for (const line of block.split('\n')) {
+					const d = /^\s*(--[a-zA-Z0-9-]+)\s*:\s*([^;]+);/.exec(line);
+					if (!d) continue;
+					found.push(...colourOffences(d[1]!, d[2]!.trim()));
+				}
+			}
+			return found;
+		};
+		// by-name in the --color-* namespace
+		expect(mutate('--color-accent: var(--accent);').length).toBeGreaterThan(0);
+		// by-value raw hex (a player hue pasted straight in)
+		expect(mutate('--player-hue-3: #7254e6;').length).toBeGreaterThan(0);
+		// THE HOLE #859 CLOSES: a bridge to the per-stop ink token, whose name begins `--on` and used to
+		// walk past the anchored family alternation untouched.
+		expect(mutate('--text-hue-41: var(--on-accent);').length).toBeGreaterThan(0);
+		expect(mutate('--text-hue-7: var(--on-fill-7);').length).toBeGreaterThan(0);
+		// and confirm the OLD anchored regex would have missed the ink bridge, so the widening is real
+		expect(
+			/var\(\s*--(?:accent|grad|ok|warn|danger|ink|bg|card|line|focus|scrim|track|stage)/.test('var(--on-accent)')
+		).toBe(false);
+		expect(COLOUR_TOKEN_RE.test('var(--on-accent)')).toBe(true);
+		expect(COLOUR_TOKEN_RE.test('var(--on-fill-7)')).toBe(true);
+	});
+
+	it('MUTATION: a v3-shape tailwind.config that registers colours reds the config scan (issue #859)', () => {
+		// The other half of #859: prove the config-file leg fires on a reintroduced v3 config. In-process
+		// against configColourOffences, so no file is written into the tree.
+		const cfg = "export default { theme: { extend: { colors: { accent: '#7254e6' } } } };";
+		expect(configColourOffences(cfg, 'tailwind.config.ts').length).toBeGreaterThan(0);
+		// a config with a colours key but no recognisable literal is STILL caught — the family is minted
+		// regardless of whether the value is a hex the scan can read.
+		expect(
+			configColourOffences('export default { theme: { colors: { accent: brand } } };', 'tailwind.config.js').length
+		).toBeGreaterThan(0);
+		// and a config that touches no colours is clean, so the leg is not vacuously red
+		expect(
+			configColourOffences('export default { theme: { extend: { spacing: { tap: "44px" } } } };', 'tailwind.config.ts')
+		).toEqual([]);
 	});
 });
 
