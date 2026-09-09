@@ -18,6 +18,7 @@ How the lanes connect, and how work reaches each one. Reference material — no 
           ▼                        ▼                        ▼
    TRIAGE orchestrator      DEV conductor           REVIEW orchestrator
    ~360s, 5 slots           ~90s, 5 slots           ~120s, 5 slots
+   TRIAGE-ORCHESTRATOR.md   CONDUCTOR.md            REVIEW-ORCHESTRATOR.md
           │                        │                        │
           ▼                        ▼                        ▼
    Encore/triage            Encore/dev              Encore/review
@@ -59,6 +60,10 @@ generalises:
 | Triage | `review` and not `triaged` · neither · `needs-decision` with a non-bot newest comment |
 | Dev | `triaged`, not `needs-decision`/`wontfix`, unclaimed, no open PR |
 | Review | open PRs whose current head has no matching verdict — the probe is label-blind |
+
+Each query's full rule, and the dispatch mechanics around it, live in that lane's supervisor brief:
+[`TRIAGE-ORCHESTRATOR.md`](TRIAGE-ORCHESTRATOR.md), [`CONDUCTOR.md`](CONDUCTOR.md),
+[`REVIEW-ORCHESTRATOR.md`](REVIEW-ORCHESTRATOR.md).
 
 The third triage query is the interesting one. "The owner answered a question" has no label of its
 own, which is what once justified a durable event queue. It needs none: check whether the newest

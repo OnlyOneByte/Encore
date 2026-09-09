@@ -21,13 +21,19 @@ of agent's context, so a rule in the wrong file is a rule some agent will act on
 | File | Read by |
 |---|---|
 | [`COMMON.md`](COMMON.md) | **every lane** — the shared rules the others point at |
+| [`TRIAGE-ORCHESTRATOR.md`](TRIAGE-ORCHESTRATOR.md) | the triage orchestrator — one supervisor session |
 | [`TRIAGE.md`](TRIAGE.md) | each triage worker — up to 5 sessions, one issue each |
 | [`CONDUCTOR.md`](CONDUCTOR.md) | the dev conductor — one supervisor session |
 | [`CODING-BOT.md`](CODING-BOT.md) | each coding worker — up to 5 sessions, seeded verbatim |
+| [`REVIEW-ORCHESTRATOR.md`](REVIEW-ORCHESTRATOR.md) | the review orchestrator — one supervisor session |
 | [`PR-BOT.md`](PR-BOT.md) | each PR reviewer — up to 5 sessions, seeded verbatim |
 | [`REVIEW-PASSES.md`](REVIEW-PASSES.md) | the 5 scheduled `ISSUEGEN-*` passes that file issues |
 
-Two of those are easy to confuse: `PR-BOT.md` reviews **one open pull request** and posts a verdict.
+**An orchestrator's brief is separate from its worker's, and that separation is load-bearing.** A worker
+is seeded with its brief *verbatim*, so a dispatch rule folded into the worker's file hands every worker
+the authority to dispatch. Each supervisor file sits directly above the worker file it dispatches.
+
+Two files are easy to confuse: `PR-BOT.md` reviews **one open pull request** and posts a verdict.
 `REVIEW-PASSES.md` reads **one slice of the codebase** and files new issues. It never touches a PR.
 
 Reference, not read by a lane:
