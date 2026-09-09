@@ -1468,9 +1468,9 @@
 		gap: 8px;
 		border: 0;
 		border-radius: var(--radius);
-		/* --accent-strong, never --grad: this button carries a LABEL, and white on the gradient's pink
-		   stop measures 2.84:1. app.css states that rule at the token itself. */
-		background: var(--accent-strong);
+		/* --accent + --on-accent, never --grad: this button carries a LABEL, and no stop's gradient is
+		   certified to carry one (#840, XR-COL-13). app.css states that rule at the token itself. */
+		background: var(--accent);
 		color: var(--on-accent);
 		font-size: 0.95rem;
 		font-weight: 700;
@@ -1710,7 +1710,7 @@
 		color: var(--warn);
 	}
 	.chip.active {
-		background: var(--accent-strong);
+		background: var(--accent);
 		border-color: transparent;
 		color: var(--on-accent);
 	}
@@ -2010,7 +2010,7 @@
 		justify-content: center;
 		min-height: 44px;
 		border: 0;
-		background: var(--accent-strong);
+		background: var(--accent);
 		color: var(--on-accent);
 		font-weight: 700;
 		border-radius: 8px;

@@ -1034,9 +1034,9 @@
 				</div>
 				{#if p.id === 'card'}
 					<!-- Inline placement: a stand-in for the now-singing card. This surface CARRIES TEXT
-					     (the time readouts), so it uses --accent-strong + --on-accent, never --grad
-					     (decoration only, no text label). -->
-					<div style="padding:14px 18px;border-radius:16px;background:var(--accent-strong);color:var(--on-accent);">
+					     (the time readouts), so it uses --accent + --on-accent, never --grad
+					     (decoration only, no text label on any stop). -->
+					<div style="padding:14px 18px;border-radius:16px;background:var(--accent);color:var(--on-accent);">
 						<TvProgress style={p.id} elapsedSec={82} durationSec={358} />
 					</div>
 				{:else}

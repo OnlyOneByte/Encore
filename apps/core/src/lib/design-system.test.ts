@@ -90,9 +90,14 @@ test('no component hard-codes a colour the palette already owns', () => {
 	const offences: string[] = [];
 
 	// Pure white and pure black are UNIVERSAL, not owned by any token. `--on-accent` happens to equal
-	// #ffffff, but it means "the ink that may sit on --accent-strong" -- so demanding it for a QR cell,
+	// #ffffff, but it means "the ink that may sit on --accent" -- so demanding it for a QR cell,
 	// a letterbox bar, or contrast-critical lyric text over video would assert a relationship that is
 	// not there, and would break the moment --on-accent stopped being white.
+	//
+	// #840 MADE THAT LAST CLAUSE LIVE. `--on-accent` is no longer a constant: it is the current stop's
+	// `on_fill`, and across the 48-stop registry that is 36 DARK / 12 white. It reads #ffffff today only
+	// because the seeded stop's ink is white. So the carve-out is not a convenience -- it is what keeps
+	// every unrelated white in the tree from being rewritten into a token that will stop being white.
 	const UNIVERSAL = new Set(['#ffffff', '#000000']);
 
 	// A colour inside an SVG paint attribute is markup built as a STRING (a data: URI), and a CSS

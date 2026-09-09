@@ -268,7 +268,7 @@
 		cursor: default;
 	}
 	.play {
-		background: var(--accent-strong);
+		background: var(--accent);
 		color: var(--on-accent);
 	}
 	.play:disabled {

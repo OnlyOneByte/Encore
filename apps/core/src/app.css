@@ -92,27 +92,68 @@
 	--ink: #f3f3fb;
 	--ink-dim: #9a9ab5;
 
-	/* accents */
-	--accent: #7c5cff;
+	/*
+	 * accents
+	 *
+	 * ── THE FILL IS THE ACTIONABLE ACCENT (#840, XR-COL-11) ───────────────────────────────────────
+	 *
+	 * `--accent-strong` USED TO LIVE HERE and is RETIRED, not renamed. It was defined as "a 3% darken
+	 * of --accent" and existed for exactly one reason: white on `--accent` #7c5cff measures 4.35:1,
+	 * under AA's 4.5, and white on the darkened #7455f0 measures 4.88:1. Under the 48-stop palette
+	 * every stop ships its own `on_fill`, so THE FILL IS ALREADY THE STRONG VALUE — carrying a second
+	 * darkened accent would be two tokens claiming one job with no rule for which wins.
+	 *
+	 * So `--accent` below is a REGISTRY STOP rather than the old free-standing brand hex: stop 41
+	 * `Periwinkle` from `packages/shared/src/player-palette-48.json` (`variants.chromatic`), which is
+	 * the nearest stop to the retired #7c5cff by OKLab ΔE (0.0445 — a hair). Choosing it keeps white
+	 * as the ink at every label site AND improves the measured ratio: 4.88:1 → 5.09:1. The value is a
+	 * literal here because a stylesheet cannot import JSON; `lib/colour-tokens.test.ts` asserts the
+	 * pair below IS a registry pair, so it cannot drift from the single source silently — the same
+	 * price, for the same reason, as `SURFACES` in `packages/shared/src/colors.ts`.
+	 *
+	 * Every pre-existing `var(--accent)` read is NON-TEXT (chart and progress fills, gradient stops,
+	 * borders, a `color-mix` wash, the identity-dot fallback), and stop 41 clears the 3:1 non-text
+	 * floor on both dark surfaces: 3.85:1 on --bg, 3.38:1 on --card.
+	 */
+	--accent: #7254e6;
+	/*
+	 * The gradient's SECOND stop. Still the brand pink, deliberately: the registry derives a per-stop
+	 * `accent2` at +42° hue (stop 41's is #b235af), but this token is also the lyrics overlay's "sing
+	 * this now" active-word cue, and `colors.ts`'s `ACCENT2_HUE` is computed from #ff5cae. Re-pointing
+	 * it is the picker's job when a stop is APPLIED (#839), not the token layer's — see the per-stop
+	 * pairing contract below.
+	 */
 	--accent2: #ff5cae;
 	--ok: #33d6a6;
 	--warn: #ffb84d;
 	/*
 	 * --grad is DECORATION ONLY: progress fills, the wordmark via background-clip. NEVER put a text
-	 * label on it. White on the pink stop measures 2.84:1 — below even the 3:1 non-text floor, let
-	 * alone AA's 4.5:1 for the 0.82rem/700 labels these buttons actually use. There is no ink that
-	 * fixes it either: pure black scrapes 4.83:1 on the violet stop and a barely-tinted #12081f
-	 * already fails at 4.47:1, because #7c5cff sits at OKLCH L≈0.56 — too light for white, too dark
-	 * for black. Text-bearing surfaces use --accent-strong instead.
+	 * label on it, ON ANY STOP (#840, XR-COL-13).
+	 *
+	 * THE BAN STANDS; ITS REASON IS NO LONGER ONE NUMBER. It used to rest on a single measurement —
+	 * white on the pink stop, 2.84:1 — but with `accent2` derived per stop this is 48 gradients, so
+	 * that figure licenses nothing about the other 47. Re-measured across `variants.chromatic`:
+	 *
+	 *   - A stop's OWN certified `on_fill` clears AA at BOTH gradient endpoints for only 36 of 48.
+	 *     Worst is `Scarlet` at 1.85:1 — with the one ink the registry certifies for it.
+	 *   - White specifically: 1.33:1 (Mint) to 5.25:1 (Orchid) on the fill, and 1.33:1 (Acid) to
+	 *     5.23:1 (Violet) on `accent2`. No single ink is safe across the palette.
+	 *   - And the 36 are NOT a licence either: the registry certifies the two ENDPOINTS, while a
+	 *     label sits over the interpolated interior, which nothing measures.
+	 *
+	 * DO NOT assume any stop's gradient can carry a label without measuring it. Text-bearing surfaces
+	 * use `--accent` + `--on-accent`, which is a certified pair.
 	 */
 	--grad: linear-gradient(135deg, var(--accent), var(--accent2));
 	/*
-	 * The actionable accent: a solid fill that CAN carry a label. A 3% darken of --accent, visually
-	 * near-identical, but white on it measures 4.88:1 — AA with margin. Solid rather than a gradient
-	 * is also the honest signal: gradient reads as brand chrome, one flat colour reads as "tap this".
+	 * The only ink permitted on --accent, and NO LONGER A CONSTANT (#840, XR-COL-12).
+	 *
+	 * It reads #ffffff because that is stop 41's `on_fill` — not because white is the rule. Across the
+	 * 48 stops `on_fill` is 36 DARK / 12 white, a per-stop fact. So the pairing discipline that used to
+	 * be free (there was one ink) now has 48 chances to go wrong, and the rule is stronger than
+	 * adjacency: a fill and its ink are EMITTED AS ONE PAIR, from the same registry lookup, and never
+	 * separately. `lib/colour-tokens.test.ts` fails on any site that sets one without the other.
 	 */
-	--accent-strong: #7455f0;
-	/* The only ink permitted on --accent-strong. Paired so the two can never drift apart. */
 	--on-accent: #ffffff;
 
 	/* Surfaces tinted toward the accent, for a row that is cooking or is yours. Tokens because the
@@ -135,8 +176,32 @@
 	--ok-line: #1d5344;
 	--warn-bg: #33260f;
 	--warn-line: #5a441a;
-	/* Accent as INK, lightened until it clears AA on a card. --accent itself is too dark to read at
-	   0.65rem, which is why a one-off #c4a9ff kept reappearing wherever accent-coloured text was wanted. */
+	/*
+	 * Accent as INK, lightened until it clears AA on a card. `--accent` itself is too dark to read at
+	 * 0.65rem, which is why a one-off #c4a9ff kept reappearing wherever accent-coloured text was wanted.
+	 *
+	 * A REQUIRED, DISTINCT TOKEN — do not collapse it into `--accent` (#840, XR-COL-10). In the 48-stop
+	 * registry `accent_ink` differs from `fill` for 13 of 48 stops (Redline, Scarlet, Cerulean, Cobalt,
+	 * Denim, Periwinkle, Iris, Violet, Magenta, Fuchsia, Orchid, Rose, Hibiscus), because a deep stop
+	 * cannot be its own card ink. Collapsing the two silently downgrades those 13 to sub-AA text.
+	 *
+	 * ── WHY THIS VALUE IS NOT YET STOP 41's `accent_ink`, WHICH IS A MEASURED GAP, NOT AN OVERSIGHT ──
+	 *
+	 * `XR-COL-07` certifies `accent_ink` against `--card`, and there all 48 pass (min 4.56:1).
+	 * But the app draws accent ink on `--card-tint2` — `SongRow.svelte`'s `.chip.kind.lyric` and
+	 * `.chip.tag`, the only two `var(--accent-ink)` read sites in the tree. Measured on that surface:
+	 *
+	 *   --card-tint2 (#2a2440):  16 of 48 stops FAIL AA, min 3.92:1 (Fuchsia). Stop 41 is 3.99:1.
+	 *   --card-tint  (#201a2e):   7 of 48 fail, min 4.47:1.
+	 *   --card       (#1a1a28):   0 of 48 fail, min 4.56:1.  ← the only surface the registry measured
+	 *
+	 * The incumbent #c4a9ff is 7.35:1 on `--card-tint2`, so adopting stop 41's #866eff would REGRESS
+	 * both sites. This is #820's defect class one surface further out: the registry's `surfaces` block
+	 * carries bg/card/card2 and has never seen the two tint surfaces the app actually paints ink on.
+	 * Resolving it is a palette-generation change (or a decision to move those two chips onto `--card`),
+	 * both wider than the token layer — so the per-stop `accent_ink` wiring is deliberately NOT done
+	 * here, and `lib/colour-tokens.test.ts` pins the gap so it cannot be wired without meeting it.
+	 */
 	--accent-ink: #c4a9ff;
 	/* The inner stop of the stage's radial background. */
 	--stage-glow: #1b1430;
@@ -302,11 +367,11 @@
  *
  * Minting is all-or-nothing per namespace: there is no per-family opt-out. Registering `--color-accent`
  * would mint `text-accent` in the same breath as `bg-accent`, and `text-accent` is a class this design
- * system must NOT hand out — `--accent` (#7c5cff) measures 3.63:1 as ink on `--card2`, below AA, which
- * is the entire reason `--accent-ink` (#c4a9ff) exists as a separate token. #840's 48-stop palette
- * makes that ink-vs-fill split load-bearing per stop, with `onFill` 36-dark/12-white and `ink`
- * differing from `fill` for 13 of 48. A minted `text-<hue>` would silently offer the illegal pairing
- * for all 48. So the player hues, `--accent`, `--accent2`, `--grad` and every other colour stay in
+ * system must NOT hand out — `--accent` (#7254e6, registry stop 41) measures 3.10:1 as ink on `--card2`,
+ * below AA, which is the entire reason `--accent-ink` (#c4a9ff) exists as a separate token. #840's
+ * 48-stop palette makes that ink-vs-fill split load-bearing per stop, with `onFill` 36-dark/12-white and
+ * `accent_ink` differing from `fill` for 13 of 48. A minted `text-<hue>` would silently offer the illegal
+ * pairing for all 48. So the player hues, `--accent`, `--accent2`, `--grad` and every other colour stay in
  * `:root` above, unregistered and utility-less, and are reached the way they always were: `var(--…)`
  * in a component's own CSS. `lib/tailwind-toolchain.test.ts` reds if a colour is ever added here.
  *
@@ -452,7 +517,7 @@ body {
 .btn-accent {
 	border: 0;
 	border-radius: 10px;
-	background: var(--accent-strong);
+	background: var(--accent);
 	color: var(--on-accent);
 	font-weight: 700;
 	cursor: pointer;

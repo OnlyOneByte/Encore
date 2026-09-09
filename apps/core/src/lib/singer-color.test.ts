@@ -21,6 +21,17 @@ function stripComments(src: string): string {
 	return src.replace(/<!--[\s\S]*?-->/g, blank).replace(/\/\*[\s\S]*?\*\//g, blank);
 }
 
+/**
+ * The four per-stop roles an interpolated colour can now carry (#840, XR-COL-24).
+ *
+ * The scans below used to look for the identifier `color` alone, which was complete while a stop was
+ * ONE value. A stop now ships four — `fill`, `on_fill`, `accent_ink` and `accent2` — and the trap is
+ * identical for every one of them: `{stop.onFill}30` works by accident for 6-digit hex and silently
+ * drops the whole declaration for anything else. Naming the roles rather than matching any identifier
+ * keeps the scan from firing on unrelated interpolations that merely end in two hex-ish characters.
+ */
+const COLOUR_ROLE = String.raw`(?:[cC]olor|[cC]olour|[fF]ill|[iI]nk|[aA]ccent|[hH]ue)`;
+
 const FILES = [...svelteFiles(join(SRC, 'lib')), ...svelteFiles(join(SRC, 'routes'))];
 
 // Non-vacuity floor (issue #453): both scans below assert `offenders` empty, so a walk returning
@@ -31,12 +42,13 @@ test('the singer-colour scans actually read a non-empty surface', () => {
 
 test('no hex alpha digits are concatenated onto an interpolated colour', () => {
 	const offenders: string[] = [];
+	const concat = new RegExp(String.raw`\{[^{}]*${COLOUR_ROLE}[^{}]*\}[0-9a-fA-F]{2}`, 'g');
 	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
 		// `}` closing an interpolation immediately followed by hex digits inside a style attribute
-		for (const m of src.matchAll(/\{[^{}]*(?:color|Color)[^{}]*\}[0-9a-fA-F]{2}/g)) {
+		for (const m of src.matchAll(concat)) {
 			const line = src.slice(0, m.index!).split('\n').length;
-			offenders.push(`${f.replace(SRC, 'src')}:${line}: ${m[0]} — use color-mix() with --singer`);
+			offenders.push(`${f.replace(SRC, 'src')}:${line}: ${m[0]} — use color-mix() with the custom property`);
 		}
 	}
 	expect(offenders).toEqual([]);
@@ -44,12 +56,13 @@ test('no hex alpha digits are concatenated onto an interpolated colour', () => {
 
 test('singer colour is passed as a custom property, not straight into background', () => {
 	const offenders: string[] = [];
+	const bare = new RegExp(String.raw`background:\s*\{[^{}]*${COLOUR_ROLE}[^{}]*\}`, 'g');
 	for (const f of FILES) {
 		const src = stripComments(readFileSync(f, 'utf8'));
 		// `background: {something.color}` — the form that cannot be composed against
-		for (const m of src.matchAll(/background:\s*\{[^{}]*[cC]olor[^{}]*\}/g)) {
+		for (const m of src.matchAll(bare)) {
 			const line = src.slice(0, m.index!).split('\n').length;
-			offenders.push(`${f.replace(SRC, 'src')}:${line}: ${m[0]} — set --singer instead`);
+			offenders.push(`${f.replace(SRC, 'src')}:${line}: ${m[0]} — set a custom property instead`);
 		}
 	}
 	expect(offenders).toEqual([]);
