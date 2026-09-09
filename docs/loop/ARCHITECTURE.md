@@ -70,12 +70,15 @@ cannot drift.
 That marker is therefore load-bearing twice: it prevents the lane waking itself on its own words, and
 it is how "answered" is distinguished from "awaiting an answer".
 
-One label edge is still *described* as a trigger rather than state: `review:blocked` →
-`review:pending`, meaning "I pushed a fix, re-review me" (#681 — a worker that pushed without flipping
-it waited, and its comment asking for re-review was inert). That description is **unverified**. On every
-PR measured, the flip and a new head arrived together, so the two are confounded, and the head-based
-probe in the table above would need no flip at all. Tracked on #783; do not read it as settled in
-either direction.
+No label edge is a review trigger, in either direction. `review:blocked` → `review:pending` was the
+last one *described* as one, meaning "I pushed a fix, re-review me" (#681 — a worker that pushed without
+flipping it waited, and its comment asking for re-review was inert). That description was carried as
+unverified, because the flip and a new head had always arrived together. **PR #201 separates them:**
+verdict 3 posted at `04:31:41Z` against head `b48581f` while the PR carried `review:blocked` and no
+`review:pending`, and the flip did not arrive until `04:35:32Z` — 3m51s later. The head had been
+force-pushed at `04:14:38Z`, before the block was applied. So the re-review is the head-based probe in
+the table above doing its ordinary job on an unjudged head; the flip is board state the reviewer clears.
+Keep flipping it — the instruction is unchanged, only its stated reason is. Settled on #783.
 
 `review:pending` added is **not** in that category, despite this file previously saying it was. The
 review probe is label-blind, so the label is board state the reviewer clears, not an entry trigger.

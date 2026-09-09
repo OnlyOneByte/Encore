@@ -224,15 +224,17 @@ conventional-format — set it that way at `gh pr create`.
 - Two workers (**#655**, **#669**) independently hit the in-place-`0000` boot-failure trap — do not
   repeat it.
 
-## Review re-trigger mechanism (#681 — mechanism unverified, see #783)
+## Review re-trigger mechanism (#681 — head-based, settled on #783)
 
 - The review-orchestrator (pr-bot) is NOT CI: no GitHub Actions, no push-trigger, no comment command. For
   ENTRY its probe is **label-blind** — it reads every open PR and buckets on "no verdict at the current
   head" (measured on #781).
-- Whether the LABEL TRANSITION `review:blocked` → `review:pending` is what re-triggers a **re**-review is
-  **unverified**: on every PR measured the flip and a new head arrived together, so the two are
-  confounded, and a head-based probe would need no flip. Tracked on **#783**. Treat the flip as required
-  anyway — it is cheap, and it is the board state that says a fixed PR is waiting again.
+- **RE-review works the same way, and the label flip is not what causes it.** A pushed fix moves the
+  head, which invalidates the prior verdict and re-selects the PR on its own. Measured on **#201**:
+  verdict 3 posted at `04:31:41Z` against head `b48581f` while the PR carried `review:blocked` and no
+  `review:pending`; the flip to `review:pending` came at `04:35:32Z`, 3m51s *later*; and that head had
+  been force-pushed at `04:14:38Z`, before the block was applied. Still have the worker flip the label —
+  it is the board state that says a fixed PR is waiting again — but do not treat it as the trigger.
 - A worker CAN flip its own PR label (chat-409 did on **#681**), so this is not a permission gap.
 - When a worker reports it addressed a block + pushed + is awaiting re-review but the label is still
   `review:blocked`: have it flip the label to `review:pending` so the board reads correctly, and do not
@@ -242,9 +244,9 @@ conventional-format — set it that way at `gh pr create`.
 
 ## Coding-bot seed rule — re-review after a block (bake into EVERY worker seed §6/§7)
 
-- Treat the `review:blocked` → `review:pending` flip as **required board state**, not as a proven
-  trigger: whether the lane re-reviews *because* of the flip is unverified (**#783**), and a head-based
-  probe would need no flip. Either way a prose comment ALONE is inert.
+- Treat the `review:blocked` → `review:pending` flip as **required board state**, not as the trigger:
+  the lane re-reviews because your push moved the head, which is measured on **#201** and settled on
+  **#783**. A prose comment ALONE is inert either way, and so is the flip alone without a new head.
 - So: after you push a fix that addresses a `review:blocked` finding, YOU flip your PR label
   `review:blocked` → `review:pending`
   (`gh pr edit <N> --remove-label review:blocked --add-label review:pending`), then post a one-line
