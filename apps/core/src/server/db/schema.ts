@@ -316,6 +316,10 @@ export const roomSettings = sqliteTable('room_settings', {
 	// it is a fraction. NOT NULL default 0 so an existing room upgrades to today's behaviour
 	// (pure karaoke) rather than to an unexpected mix.
 	guideLevelDefault: real('guide_level_default').notNull().default(0),
+	// Whether this room pulls loud outlier songs down at playback (#462). Boolean like
+	// song_intro_enabled. NOT NULL default false (0) so an existing room upgrades to today's behaviour
+	// — every song at unity — rather than silently changing its levels.
+	loudnessNormalization: integer('loudness_normalization', { mode: 'boolean' }).notNull().default(false),
 	// How long someone stays in the room after their socket drops AND their last pending song leaves
 	// the queue. 0 = no grace once their songs are done.
 	presenceGraceMinutes: integer('presence_grace_minutes').notNull().default(90)

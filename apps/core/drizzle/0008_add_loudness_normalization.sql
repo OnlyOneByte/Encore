@@ -1,0 +1,18 @@
+-- #462 (PR3, "apply the gain"): room_settings gains loudness_normalization — a per-room toggle that,
+-- when on, pulls loud OUTLIER songs down at playback (a song whose measured songProfile.loudnessLufs
+-- is more than 6 dB above the library median is attenuated to median + 6, once at least 8 songs carry
+-- a measured level). Owner ruling 2026-09-09. The decision + pulldown happen at playback in TvPlayer;
+-- the measurement (PR1 #747) and its persistence (PR2 #785) already landed.
+--
+-- A real numbered migration (0008, after #782's 0007_add_tv_background_dim), NOT an in-place edit of a
+-- baseline: drizzle replays on the journal `when`, so a rewritten baseline never re-applies to an
+-- existing box and the column would be missing at boot the first time a reader selected it — the exact
+-- trap the 0004/0005/0006/0007 headers each record. This replays only on DBs that have not recorded
+-- idx:8.
+--
+-- ADDITIVE, and today's behaviour by default. A plain `ADD COLUMN`, not the __new_ create-copy-drop-
+-- rename idiom, because room_settings needs no primary-key change (it keeps its `room_id text PRIMARY
+-- KEY`). NOT NULL DEFAULT false: every existing row upgrades to "no normalization" — every song at
+-- unity — so a configured box sounds byte-identical after the upgrade with no backfill. INTEGER with a
+-- 0/1 value, the same shape song_intro_enabled uses for a boolean.
+ALTER TABLE `room_settings` ADD `loudness_normalization` integer DEFAULT false NOT NULL;
