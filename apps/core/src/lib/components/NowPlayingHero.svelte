@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	/*
 	 * The now-playing HERO — direction A's home screen (docs/DECISIONS.md, issue #832).
 	 *
@@ -117,20 +118,21 @@
 		ready" is a real intent and the server, not the phone, decides when that is.
 	-->
 	<div class="transport">
-		<button class="ic icon-btn" aria-label="restart" disabled={!hasSong} onclick={() => onrestart?.()}>
+		<Button variant="icon" shape="sm" aria-label="restart" disabled={!hasSong} onclick={() => onrestart?.()}>
 			<Icon name="prev" />
-		</button>
-		<button
-			class="ic play icon-btn"
+		</Button>
+		<Button
+			variant="iconPrimary"
+			shape="sm"
 			aria-label="play/pause"
 			disabled={!hasSong && !canStart}
 			onclick={() => ontoggleplay?.()}
 		>
 			<Icon name={isPlaying ? 'pause' : 'play'} />
-		</button>
-		<button class="ic icon-btn" aria-label="skip" disabled={!hasSong} onclick={() => onskip?.()}>
+		</Button>
+		<Button variant="icon" shape="sm" aria-label="skip" disabled={!hasSong} onclick={() => onskip?.()}>
 			<Icon name="next" />
-		</button>
+		</Button>
 	</div>
 
 	<!--
@@ -263,18 +265,6 @@
 	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css, which derives its box from
 	   var(--tap) — no literal here (XR-PH-01). */
-	.ic:disabled {
-		color: var(--ink-dim);
-		cursor: default;
-	}
-	.play {
-		background: var(--accent);
-		color: var(--on-accent);
-	}
-	.play:disabled {
-		background: var(--card2);
-		color: var(--ink-dim);
-	}
 	.tools {
 		margin-top: var(--space-lg);
 		border-top: 1px solid var(--line);

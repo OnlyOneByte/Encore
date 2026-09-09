@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	// A row in the rotation queue. Ported from docs/mocks.
 	import { SINGER_COLORS } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
@@ -126,16 +127,16 @@
 	{#if !pending}
 		<div class="actions">
 			{#if reorderable}
-				<button class="act icon-btn" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
-					><Icon name="arrow-up" /></button
+				<Button variant="icon" shape="sm" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
+					><Icon name="arrow-up" /></Button
 				>
-				<button class="act icon-btn" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
-					><Icon name="arrow-down" /></button
+				<Button variant="icon" shape="sm" press="ink" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
+					><Icon name="arrow-down" /></Button
 				>
 			{/if}
 			{#if removable}
-				<button class="remove icon-btn" aria-label="remove from queue" onclick={() => onremove?.()}
-					><Icon name="close" /></button
+				<Button variant="icon" shape="sm" press="accent2" aria-label="remove from queue" onclick={() => onremove?.()}
+					><Icon name="close" /></Button
 				>
 			{/if}
 			<!--
@@ -153,12 +154,14 @@
 				never on a row (XR-PH-17's last clause).
 			-->
 			{#if grip}
-				<button
-					class="grip icon-btn"
+				<Button
+					variant="icon"
+					shape="sm"
+					press="grab"
 					aria-label="Reorder your songs"
 					data-grip={gripId}
 					onpointerdown={(e) => ongripdown?.(e)}
-					onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></button
+					onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
 				>
 			{/if}
 		</div>
@@ -259,18 +262,6 @@
 	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css -- this block and
 	   ProcessingCard's were byte-identical, each with its own copy of the same rationale. */
-	.act:disabled {
-		opacity: 0.35;
-		cursor: default;
-	}
-	.act:not(:disabled):active {
-		transform: scale(0.9);
-		color: var(--ink);
-	}
-	.remove:active {
-		transform: scale(0.9);
-		color: var(--accent2);
-	}
 	/*
 	 * XR-PH-18 — another guest's row while the reorder mode is open: not a legal drop target, so it is
 	 * de-emphasised and made non-interactive (the `inert` attribute is set by the caller, which is what
@@ -327,12 +318,4 @@
 	/* XR-PH-17's last clause: `cursor: grab` lives on the grip BUTTON and on nothing else, so it can
 	   never appear on a row that has no reorder path. `touch-action: none` because a vertical drag
 	   starting on this button must move the row rather than scroll the page. */
-	.grip {
-		cursor: grab;
-		touch-action: none;
-	}
-	.grip:active {
-		cursor: grabbing;
-		color: var(--ink);
-	}
 </style>

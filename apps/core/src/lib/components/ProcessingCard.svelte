@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Button } from '$lib/components/ui/button';
 	import { overallCookPct, SINGER_COLORS } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
@@ -111,16 +112,16 @@
 	{#if !pending && (onremove || reorderable)}
 		<div class="actions">
 			{#if reorderable}
-				<button class="act icon-btn" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
-					><Icon name="arrow-up" /></button
+				<Button variant="icon" shape="sm" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
+					><Icon name="arrow-up" /></Button
 				>
-				<button class="act icon-btn" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
-					><Icon name="arrow-down" /></button
+				<Button variant="icon" shape="sm" press="ink" aria-label="move down" disabled={!canDown} onclick={() => ondown?.()}
+					><Icon name="arrow-down" /></Button
 				>
 			{/if}
 			{#if onremove}
-				<button class="remove icon-btn" aria-label="remove from queue" onclick={() => onremove?.()}
-					><Icon name="close" /></button
+				<Button variant="icon" shape="sm" press="accent2" aria-label="remove from queue" onclick={() => onremove?.()}
+					><Icon name="close" /></Button
 				>
 			{/if}
 		</div>
@@ -305,16 +306,4 @@
 		flex: 0 0 auto;
 	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css. */
-	.act:disabled {
-		opacity: 0.35;
-		cursor: default;
-	}
-	.act:not(:disabled):active {
-		transform: scale(0.9);
-		color: var(--ink);
-	}
-	.remove:active {
-		transform: scale(0.9);
-		color: var(--accent2);
-	}
 </style>

@@ -967,22 +967,15 @@ body {
  * NOT the transport buttons. Those are round, sit on --card, and carry --ink -- a different control
  * with a different job, and folding them in here would only be tidiness pretending to be reuse.
  */
-.icon-btn {
-	width: var(--tap);
-	height: var(--tap);
-	border-radius: var(--radius-sm);
-	border: 1px solid var(--line);
-	background: var(--card2);
-	color: var(--ink-dim);
-	font-size: 20px;
-	cursor: pointer;
-	display: grid;
-	place-items: center;
-}
-.icon-btn:disabled {
-	opacity: 0.35;
-	cursor: default;
-}
+/*
+ * `.icon-btn` was DELETED by #913 S1b. Its ten consumers across QueueRow, ProcessingCard and
+ * NowPlayingHero are now <Button variant="icon">, whose variant carries the 44px box, the
+ * --radius-sm corner, the --card2 surface and the dimmed glyph. `display: grid` + `place-items`
+ * survives as `grid place-items-center` and is still load-bearing: Icon renders as a block, and
+ * without a centring context the mark sits off-centre (the reported off-centre X).
+ *
+ * The four press behaviours the companion classes carried are the Button's `press` axis.
+ */
 
 /* GPU-composited motion only (transform/opacity) — never animate layout props. */
 @media (prefers-reduced-motion: no-preference) {

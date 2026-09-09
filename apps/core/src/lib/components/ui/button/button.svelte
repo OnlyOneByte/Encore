@@ -51,7 +51,14 @@
 				 * over `items-center` is load-bearing — Icon renders as a block, and without a centring
 				 * context the mark sits off-centre (the reported off-centre X).
 				 */
-				icon: 'grid size-tap place-items-center border border-[var(--line)] bg-[var(--card2)] text-[20px] text-[var(--ink-dim)] disabled:opacity-35'
+				icon: 'grid size-tap place-items-center border border-[var(--line)] bg-[var(--card2)] text-[20px] text-[var(--ink-dim)] disabled:opacity-35',
+				/*
+				 * `NowPlayingHero`'s play/pause. The incumbent `.play` — the accent fill while actionable,
+				 * falling back to the icon button's own surface when disabled, which is what tells a guest
+				 * the transport is dead rather than merely idle.
+				 */
+				iconPrimary:
+					'grid size-tap place-items-center border border-[var(--line)] bg-[var(--accent)] text-[20px] text-[var(--on-accent)] disabled:bg-[var(--card2)] disabled:text-[var(--ink-dim)] disabled:opacity-35'
 			},
 			shape: {
 				/* `--radius-btn` (10px). The incumbent hardcoded `10px`; this names it instead. */
@@ -79,6 +86,20 @@
 		defaultVariants: { variant: 'accent', shape: 'btn', size: 'none' }
 	});
 
+	/**
+	 * PRESS FEEDBACK, as a data attribute rather than a variant class (#913 S1b).
+	 *
+	 * The three incumbent icon buttons pressed differently: `.act:not(:disabled):active` and
+	 * `.grip:active` tinted to `--ink`, `.remove:active` to `--accent2`, and `.ic` had no press state at
+	 * all. That is four behaviours over one shape, so it is its own axis — folding it into `variant`
+	 * would have multiplied every shape by every press.
+	 *
+	 * It resolves in the scoped style block below rather than as `active:` utilities, for the same reason
+	 * S1's scale did: CSS in `src/` is what this repo's ~30 source-scan guards can read, and
+	 * `touch-action` in particular is load-bearing for the #836 drag rather than decorative.
+	 */
+	export type ButtonPress = 'none' | 'ink' | 'accent2' | 'grab';
+
 	export type ButtonVariant = VariantProps<typeof buttonVariants>['variant'];
 	export type ButtonShape = VariantProps<typeof buttonVariants>['shape'];
 	export type ButtonSize = VariantProps<typeof buttonVariants>['size'];
@@ -86,6 +107,7 @@
 	export type ButtonProps = WithElementRef<HTMLButtonAttributes> &
 		WithElementRef<HTMLAnchorAttributes> & {
 			variant?: ButtonVariant;
+			press?: ButtonPress;
 			shape?: ButtonShape;
 			size?: ButtonSize;
 		};
@@ -95,6 +117,7 @@
 	let {
 		class: className,
 		variant = 'accent',
+		press = 'none',
 		shape = 'btn',
 		size = 'none',
 		ref = $bindable(null),
@@ -110,6 +133,7 @@
 	<a
 		bind:this={ref}
 		data-slot="button"
+		data-press={press}
 		class={cn(buttonVariants({ variant, shape, size }), className)}
 		href={disabled ? undefined : href}
 		aria-disabled={disabled}
@@ -150,5 +174,36 @@
 	 */
 	[data-slot='button']:active:not(:disabled) {
 		transform: scale(0.96);
+	}
+
+	/*
+	 * THE ICON BUTTONS' PRESS STATES (#913 S1b), one selector per incumbent behaviour.
+	 *
+	 * `scale(0.9)` rather than the accent button's 0.96 — a 44px square needs more travel than a
+	 * full-width bar to read as pressed, which is what the incumbents chose and this preserves.
+	 */
+	[data-press='ink']:not(:disabled):active {
+		transform: scale(0.9);
+		color: var(--ink);
+	}
+	[data-press='accent2']:not(:disabled):active {
+		transform: scale(0.9);
+		color: var(--accent2);
+	}
+
+	/*
+	 * THE #836 DRAG HANDLE. `cursor: grab` is pinned to THIS control and must never reach a row —
+	 * XR-PH-17's last clause, recorded at `QueueRow.svelte:152`, because a grab cursor on another
+	 * guest's row promised a reorder that could not happen. `touch-action: none` is not decoration
+	 * either: without it the browser claims the vertical gesture for scrolling and `onpointerdown`
+	 * never sees the drag.
+	 */
+	[data-press='grab'] {
+		cursor: grab;
+		touch-action: none;
+	}
+	[data-press='grab']:active {
+		cursor: grabbing;
+		color: var(--ink);
 	}
 </style>
