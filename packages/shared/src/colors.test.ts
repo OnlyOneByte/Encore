@@ -26,7 +26,8 @@ import {
 	STAGE_BG_L,
 	SINGER_L,
 	SURFACES,
-	oklchToRgb
+	oklchToRgb,
+	duetPartColors
 } from './colors';
 
 // Every colour the wheel can emit. Derived here, not exported from `colors.ts`: production picks a
@@ -49,10 +50,7 @@ const appCss = readFileSync(join(REPO, 'apps/core/src/app.css'), 'utf8');
  */
 function token(name: string): string {
 	const m = appCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
-	if (!m)
-		throw new Error(
-			`token --${name} not found in apps/core/src/app.css (renamed? then update this guard)`
-		);
+	if (!m) throw new Error(`token --${name} not found in apps/core/src/app.css (renamed? then update this guard)`);
 	return m[1]!;
 }
 
@@ -529,4 +527,60 @@ test('#782: normalizeStageDim clamps to [0,1], rounds to a hundredth, and keeps 
 	for (const junk of [NaN, Infinity, -Infinity, '0.5', null, undefined, {}]) {
 		expect(normalizeStageDim(junk as never, 0.42)).toBe(0.42);
 	}
+});
+
+// ── duet part colours (#692) ───────────────────────────────────────────────
+//
+// The visible half of the duet feature: the worker (#691) writes an abstract `part` letter on each
+// line of a CONFIDENT duet and NOTHING on a solo/undiarized song, and `duetPartColors` maps those
+// letters onto DISTINCT, LEGIBLE colours drawn from the singer-identity palette. This is the pure,
+// mutation-strong half of the discriminating test the issue asks for — the rendered `--reel-part`
+// wiring is scanned in `apps/core/src/lib/tv/lyrics-duet-part-wiring.test.ts` and the pixels are in
+// the PR's CDP frames. Reverting `duetPartColors` reds these.
+
+test('a diarized duet gets two DISTINCT, LEGIBLE part colours (#692)', () => {
+	// A confident two-part duet: lines carry "A"/"B" as the worker's attribution would write them.
+	const lines = [{ part: 'A' }, { part: 'B' }, { part: 'A' }, { part: 'B' }];
+	const colours = duetPartColors(lines);
+	// Exactly the two parts present, each mapped.
+	expect([...colours.keys()].sort()).toEqual(['A', 'B']);
+	const a = colours.get('A')!;
+	const b = colours.get('B')!;
+	// DISTINCT — two singers must not be painted the same colour, or the feature is pointless.
+	expect(a).not.toBe(b);
+	// LEGIBLE — the mandated reuse. A hard-coded pair is rejected precisely because it would skip
+	// this floor; every colour handed back must clear `isLegibleSingerColor` over the app surfaces.
+	expect(isLegibleSingerColor(a)).toBe(true);
+	expect(isLegibleSingerColor(b)).toBe(true);
+	// …and it draws from the established singer-identity vocabulary, not an invented pair.
+	expect(SINGER_COLORS as readonly string[]).toContain(a);
+	expect(SINGER_COLORS as readonly string[]).toContain(b);
+});
+
+test('part colours are assigned by ORDER OF APPEARANCE and are stable per doc (#692)', () => {
+	// "B" opens the song here, so it takes the first palette colour — content-driven, deterministic,
+	// and identical on a re-render of the same doc.
+	const opensWithB = duetPartColors([{ part: 'B' }, { part: 'A' }, { part: 'B' }]);
+	const opensWithA = duetPartColors([{ part: 'A' }, { part: 'B' }, { part: 'A' }]);
+	// Non-vacuous: both maps actually carry two colours (an always-empty helper would pass the
+	// equality arms below vacuously otherwise).
+	expect(opensWithB.size).toBe(2);
+	expect(opensWithA.size).toBe(2);
+	expect(opensWithB.get('B')).toBe(opensWithA.get('A')); // both are the first-appearing part
+	expect(opensWithB.get('A')).toBe(opensWithA.get('B')); // both are the second-appearing part
+	// Same input → same map (no hidden per-call state).
+	expect([...duetPartColors([{ part: 'B' }, { part: 'A' }])]).toEqual([...opensWithB].slice(0, 2));
+});
+
+test('an UNDIARIZED song gets NO part colour — the single-colour fallback, by absence (#692)', () => {
+	// No line carries a part (a solo, or a song diarization could not split): the map is EMPTY, which
+	// the reel reads as "keep the single-colour path" — an undiarized song renders exactly as today.
+	expect(duetPartColors([{}, {}, {}]).size).toBe(0);
+	// A blank / whitespace part is not a part (mirrors parseLyricsDoc's if-available rule).
+	expect(duetPartColors([{ part: '' }, { part: '   ' }]).size).toBe(0);
+	// A single part is one colour, not two — a lone attributed voice is not a duet worth two colours.
+	expect(duetPartColors([{ part: 'A' }, { part: 'A' }]).size).toBe(1);
+	// Null/undefined input never throws (untrusted, like every model-derived field).
+	expect(duetPartColors(null).size).toBe(0);
+	expect(duetPartColors(undefined).size).toBe(0);
 });

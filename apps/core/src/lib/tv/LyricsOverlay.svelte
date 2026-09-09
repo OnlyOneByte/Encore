@@ -26,6 +26,7 @@
 		getLyricsCase,
 		getLyricsFont,
 		lyricHighlightColor,
+		duetPartColors,
 		type LyricsBallStyleId,
 		type LyricsCaseId,
 		type LyricsFontId,
@@ -263,13 +264,36 @@
 	 * `var(--x, var(--accent2))` chain to drift out of step with it.
 	 */
 	const singerHighlight = $derived(lyricHighlightColor(singerColor));
+	/*
+	 * WHICH PART colour the current line paints (#692). The worker's diarization (#691) writes an
+	 * abstract `part` letter ("A", "B") on each line of a CONFIDENT duet, and NOTHING on a solo or a
+	 * song it could not split. `duetPartColors` maps those letters onto distinct, legible
+	 * `SINGER_COLORS` — the same identity-dot palette #634's singer colour draws from, gated by the
+	 * same `isLegibleSingerColor` floor — so two singers see which lines are theirs in the app's
+	 * established vocabulary.
+	 *
+	 * The map is derived per DOC (parts and their colour assignment are a property of the song, not
+	 * the frame); `partColor` picks out the CURRENT line's colour. It is `null`/undefined for an
+	 * undiarized song — no line carries a part, the map is empty — so `--reel-part` is not written and
+	 * the reel keeps its single-colour path, rendering EXACTLY as today. That is the owner's fallback,
+	 * reached by absence, mirroring the worker.
+	 *
+	 * Part colour LAYERS OVER singer colour: on a duet the line's part is the honest cue (whose line
+	 * it is), so `--reel-part` overrides `--reel-singer`; off a duet it is absent and `--reel-singer`
+	 * (else `--accent2`) shows through. One property, appended conditionally, same discipline as #634.
+	 */
+	const partColors = $derived(duetPartColors(doc?.lines));
+	const partColor = $derived(
+		curLine && typeof curLine.part === 'string' ? (partColors.get(curLine.part) ?? null) : null
+	);
 	const typeStyle = $derived(
 		// REBASED: the neutral 100 renders what 80 rendered before — see LYRICS_SCALE_BASE.
 		`--lyrics-scale: ${(scalePct / 100) * LYRICS_SCALE_BASE}; --lyrics-rows: ${rowCount}; ` +
 			`--lyrics-font: ${fontStack}; --lyrics-case: ${caseTransform}; ` +
 			// An edge with no context rows must not be faded — there the current line IS the edge row.
 			`--lyrics-fade-top-on: ${linesBefore > 0 ? 1 : 0}; --lyrics-fade-bot-on: ${linesAfter > 0 ? 1 : 0}` +
-			(singerHighlight ? `; --reel-singer: ${singerHighlight}` : '')
+			(singerHighlight ? `; --reel-singer: ${singerHighlight}` : '') +
+			(partColor ? `; --reel-part: ${partColor}` : '')
 	);
 </script>
 
@@ -409,8 +433,21 @@
 		 * colour at all is enforced upstream by `lyricHighlightColor`.
 		 */
 		--reel-singer: var(--accent2);
-		--reel-line: var(--reel-singer);
-		--reel-now: var(--reel-singer);
+		/*
+		 * WHICH PART's colour the current line paints (#692). Layered ON TOP of `--reel-singer`: the
+		 * component appends `--reel-part` to its inline style ONLY when the current line carries a
+		 * `part` on a confident duet, so an undiarized song, a solo, and the dev gallery all fall
+		 * through to `--reel-singer` (itself `--accent2` unless a singer colour is up) and render
+		 * exactly what they rendered before this feature existed. This is the single place the duet
+		 * fallback is named, the same discipline `--reel-singer` uses for #634's fallback one line up.
+		 *
+		 * `--reel-line` and `--reel-now` read THIS rather than `--reel-singer` so the `word` and
+		 * `line` treatments agree about which colour is showing, and adding the part axis is one
+		 * default plus a redirected reference — no competing selector, nothing to out-specify.
+		 */
+		--reel-part: var(--reel-singer);
+		--reel-line: var(--reel-part);
+		--reel-now: var(--reel-part);
 	}
 	/*
 	 * Unverified text is tinted WARM AMBER rather than set in italic.

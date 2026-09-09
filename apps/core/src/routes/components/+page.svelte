@@ -295,6 +295,18 @@
 		words: []
 	};
 	/*
+	 * A CONFIDENT DUET (#692), as the worker's diarization (#691) would write it: alternating lines
+	 * carry an abstract `part` letter ("A"/"B"). The overlay maps the two parts onto two DISTINCT
+	 * legible SINGER_COLORS through `duetPartColors`, so the two frames below show line 0 (part A) and
+	 * line 1 (part B) painted in different colours. An undiarized song has no `part` on any line and
+	 * renders exactly as the VERIFIED card above — that fallback is the demoLyrics cards, unchanged.
+	 */
+	const demoDuet: LyricsDoc = {
+		language: 'en',
+		lines: demoLyrics.lines.map((l, i) => ({ ...l, part: i % 2 === 0 ? 'A' : 'B' })),
+		words: []
+	};
+	/*
 	 * THE LINE-ONLY SONG, as a candidate — the fixture the per-song clamp is judged against.
 	 *
 	 * `demoLineOnly` above is only half of a line-only song: it is the DOC, and the resolver never sees
@@ -987,6 +999,31 @@
 				ball="bounce"
 				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }}
 				singerColor={c.singer}
+			/>
+		</div>
+	{/each}
+
+	<!--
+		DUET PARTS IN TWO COLOURS (#692) — the visible half of the duet feature. The worker's
+		diarization (#691) writes an abstract `part` letter on each line of a confident duet; the reel
+		maps the parts onto two DISTINCT legible SINGER_COLORS (the same palette + `isLegibleSingerColor`
+		floor the singer colour above uses — a hard-coded second colour is rejected because it would skip
+		that floor). The two cards are the SAME duet doc at two positions: the first frame's current line
+		is part A, the second's is part B, so the two colours are visible side by side. Frames pinned
+		(playing={false}) so the two are comparable. An undiarized song has no `part` and renders as the
+		VERIFIED card far above — nothing here changes that path.
+	-->
+	{#each [{ what: 'duet part A sings (line 0) — first part colour', pos: 0.8 }, { what: 'duet part B sings (line 1) — second, distinct part colour', pos: 3.3 }] as c (c.what)}
+		<h2 class="section">LyricsOverlay · {c.what}</h2>
+		<div style="position:relative;height:280px;border-radius:16px;overflow:hidden;background:{stageBg};">
+			<LyricsOverlay
+				doc={demoDuet}
+				positionSec={c.pos}
+				playing={false}
+				visible
+				highlight="word"
+				ball="bounce"
+				provenance={{ textSource: 'lrclib', textConfidence: 'high', timing: 'word' }}
 			/>
 		</div>
 	{/each}
