@@ -1,4 +1,6 @@
 import { test, expect } from 'bun:test';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import {
 	SINGER_COLORS,
 	SINGER_HUES,
@@ -18,6 +20,7 @@ import {
 	DEFAULT_STAGE_COLOR,
 	STAGE_BG_L,
 	SINGER_L,
+	SURFACES,
 	oklchToRgb
 } from './colors';
 
@@ -26,8 +29,33 @@ import {
 // was a second, unread representation of this same set.
 const SINGER_WHEEL: readonly string[] = SINGER_HUES.map((h) => hueToHex(h));
 
-const BG = '#0b0b12'; // --bg
-const CARD = '#1a1a28'; // --card
+// import.meta.dir === packages/shared/src. The token layer lives under apps/core, four levels up.
+// Reading it from here has precedent: `song-display.test.ts:59`, `pin-base-prose-790.test.ts:32`.
+const REPO = join(import.meta.dir, '..', '..', '..');
+const appCss = readFileSync(join(REPO, 'apps/core/src/app.css'), 'utf8');
+
+/**
+ * Pull a `--name: #hex;` declaration out of `app.css` — the single source of truth for what the app
+ * paints. Throws rather than silently defaulting, so a renamed or deleted token reds this suite
+ * instead of leaving it measuring a value nothing declares.
+ *
+ * A local ~4-line reader rather than an import of `contrast.test.ts`'s `token()`: that helper lives
+ * in `apps/core`, which `packages/shared` cannot import across the package boundary.
+ */
+function token(name: string): string {
+	const m = appCss.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{3,8})\\s*;`));
+	if (!m)
+		throw new Error(
+			`token --${name} not found in apps/core/src/app.css (renamed? then update this guard)`
+		);
+	return m[1]!;
+}
+
+// The two surfaces production measures a dot against, read FROM production rather than restated. The
+// literals that used to sit here were tied to `--bg`/`--card` by a trailing comment only, so either
+// token could change and three contrast tests would keep passing while measuring colours the app no
+// longer paints (#819). The token-drift guard below is what now keeps this pair honest.
+const [BG, CARD] = SURFACES;
 
 test('parseHex accepts 3- and 6-digit hex and rejects everything else', () => {
 	expect(parseHex('#7c5cff')).toEqual([124, 92, 255]);
@@ -47,6 +75,19 @@ test('contrastRatio matches known WCAG values', () => {
 	expect(contrastRatio('#ffffff', '#ffffff')).toBeCloseTo(1, 5);
 	// the measurement that condemned white-on-gradient: white on --accent2
 	expect(contrastRatio('#ffffff', '#ff5cae')).toBeCloseTo(2.84, 1);
+});
+
+test('the surfaces production measures against are the tokens app.css declares', () => {
+	// The guard #819 exists for. `SURFACES` in `colors.ts` cannot read `app.css` (browser bundle, no
+	// filesystem), so this assertion is the only thing standing between `isLegibleSingerColor` and a
+	// surface the app stopped painting: change `--bg` or `--card` in `app.css` without updating
+	// `colors.ts` and this reds, naming both values. It also covers the three contrast tests below,
+	// which now take their surfaces from this same array rather than restating the hexes.
+	// `readonly string[]` rather than the `as const` tuple's literal type: comparing the tuple against
+	// values read at run time otherwise narrows the expectation to the very literals under test, and
+	// `toEqual` refuses a `string` on that side.
+	const measured: readonly string[] = SURFACES;
+	expect([...measured]).toEqual([token('bg'), token('card')]);
 });
 
 test('every wheel hue is visible on both dark surfaces (3:1 non-text)', () => {
@@ -81,8 +122,8 @@ test('hueToHex is canonical 6-digit hex and wraps hues', () => {
 
 test('near-black and near-surface picks are refused', () => {
 	expect(isLegibleSingerColor('#000000')).toBe(false);
-	expect(isLegibleSingerColor('#0b0b12')).toBe(false); // exactly the page background
-	expect(isLegibleSingerColor('#1a1a28')).toBe(false); // exactly a card
+	expect(isLegibleSingerColor(BG)).toBe(false); // exactly the page background
+	expect(isLegibleSingerColor(CARD)).toBe(false); // exactly a card
 	expect(isLegibleSingerColor('#101018')).toBe(false);
 });
 

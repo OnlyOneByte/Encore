@@ -45,8 +45,17 @@ export const SINGER_C = 0.16;
  */
 export const SINGER_HUE_STEP = 15;
 
-/** The surfaces a dot has to stay visible against. */
-const SURFACES = ['#0b0b12', '#1a1a28'] as const; // --bg, --card
+/**
+ * The surfaces a dot has to stay visible against: the live values of `--bg` and `--card`.
+ *
+ * LITERALS rather than a read of `apps/core/src/app.css`, because this module is browser-bundled and
+ * has no filesystem at runtime. That duplication is the risk — change a token and
+ * `isLegibleSingerColor` starts accepting colours that are invisible on the real card — so the pair
+ * is EXPORTED and `colors.test.ts` asserts it still equals the tokens `app.css` declares. It cannot
+ * drift away from the surfaces the app actually paints without reddening a named test. Same price,
+ * for the same reason, as `DEFAULT_STAGE_COLOR` below.
+ */
+export const SURFACES = ['#0b0b12', '#1a1a28'] as const; // --bg, --card
 /** WCAG minimum for a non-text UI object. A dot carries no text, so this is the applicable bar. */
 const MIN_DOT_CONTRAST = 3;
 
