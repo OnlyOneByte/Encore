@@ -494,57 +494,88 @@
 
 	/*
 	 * TV / STAGE SCALE. A separate scale because the stage is not a big phone: it is read from three
-	 * metres, so the phone's tokens produce 12–19px text on a wall. The vh term lets a larger panel
-	 * scale up instead of capping every set at the smallest supported size. Global rather than scoped to
-	 * the TV route so the same components size correctly in the /components gallery, which renders them
-	 * outside it.
+	 * metres, so the phone's tokens produce 12–19px text on a wall. The tiers are now `rem` multiples of
+	 * a single root floor (see the ladder note below), which lets a larger panel scale up instead of
+	 * capping every set at the smallest supported size. The tokens are global rather than scoped to the
+	 * TV route so the same components size correctly in the /components gallery, which renders them
+	 * outside it; the ROOT that gives the rem its px is what is scoped to /tv (routes/tv/+page.svelte).
 	 *
-	 * ⚠️ THE CLAMP MINIMUMS ARE NOT ALL AT THE TEN-FOOT FLOOR. This comment used to claim they were;
-	 * it was false. Against this repo's own floor — `MIN_TV_PX` in `lib/tv/stage-scale.test.ts:35`,
-	 * which is 24px — `--tv-eyebrow`'s minimum is 16px and `--tv-label`'s is 20px. Both are also what
-	 * BINDS on a 720p panel, where the vh term falls below the minimum for every tier. At 1080p the vh
-	 * term wins everywhere, resolving eyebrow to 16.2px and label to 21.6px — still under 24px. See
-	 * #821, which also carries why the ratified single-declaration fix cannot be applied literally
-	 * without regressing SC 1.4.4 on the phone.
+	 * HISTORY (#906 → #821). #906 recorded that the previous clamp minimums were NOT all at the ten-foot
+	 * floor and that the comment which claimed they were had read as false certification: against
+	 * `MIN_TV_PX` (24px) in `lib/tv/stage-scale.test.ts`, `--tv-eyebrow` bound at 16px and `--tv-label`
+	 * at 20px, both also binding on a 720p panel and resolving to 16.2px / 21.6px at 1080p. #821 lands
+	 * the fix #906 said could not be applied literally: the floor moved into ONE declaration on the /tv
+	 * document's `:root` (so the phone root is untouched and SC 1.4.4 does not regress), the whole ladder
+	 * became rem off it, and eyebrow/label now resolve to 27px / 29px — clear of the 24px floor.
 	 */
-	--tv-safe-x: max(48px, 5vw);
+	/* env(safe-area-inset-*) is specified for NON-RECTANGULAR displays, so a rectangular TV reports 0
+	   and cannot help today — but folding it into the max() costs nothing now and improves automatically
+	   if this is ever wrapped in a webview that DOES report insets (#821 "Also in scope", XR-TV-03). The
+	   5vw floor is the ratified action-safe margin. */
+	--tv-safe-x: max(env(safe-area-inset-left), env(safe-area-inset-right), 48px, 5vw);
 	/* 6vh (64.8px at 1080p), not 5vh: the old max(32px,5vh) resolved to exactly 54px, sitting right on
-	   the ~5% overscan boundary with zero margin, while --tv-safe-x (5vw ≈ 96px) had ample room. */
-	--tv-safe-y: max(40px, 6vh);
+	   the ~5% overscan boundary with zero margin, while --tv-safe-x (5vw ≈ 96px) had ample room. env()
+	   folded in for the same reason as --tv-safe-x above; the ratified 6vh floor is unchanged. */
+	--tv-safe-y: max(env(safe-area-inset-top), env(safe-area-inset-bottom), 40px, 6vh);
 	/*
-	 * TWO LADDERS, NOT ONE. The reel and the corner chrome were sharing tiers, so shrinking the corners
-	 * (the stage was reading as a dashboard: singer name at 54px, title at 35px, competing with the
-	 * words) also shrank the lyric context rows, and enlarging the words also enlarged the furniture.
-	 * They are split here so each can be tuned against what it is for: the reel is READ AND SUNG, the
-	 * corners are GLANCED AT. The reel's minimums clear the 24px ten-foot floor; the two smallest
-	 * corner tiers (`--tv-eyebrow` 16px, `--tv-label` 20px) do NOT — see the ⚠️ note above and #821.
-	 * This comment previously asserted "every minimum is still at or above the ten-foot floor", which
-	 * was false and read as certification.
+	 * ── TV TYPE LADDER — rem OFF THE ONE ROOT FLOOR (issue #821, XR-TV-01/02) ──────────────────────
+	 *
+	 * THE FLOOR LIVES IN EXACTLY ONE DECLARATION. It is NOT here: it is `font-size` on `:root`, injected
+	 * by the /tv route (routes/tv/+page.svelte's <svelte:head>) only while that route is mounted, and it
+	 * computes to `calc(max(2.7vh, 20px) * clamp(0.8, var(--ui-scale), 1.6))` — 29.16px at a 1080-tall
+	 * CSS viewport and --ui-scale 1. Every tier below is a `rem` multiple of THAT root, so raising the
+	 * floor is a one-line change and no tier can drift off it. Scoped to the /tv document, not global
+	 * :root here, because a global root would re-root the phone's --ph-* rem ladder (XR-TV-02).
+	 *
+	 * WHY THE FLOOR CARRIES THE ONLY VIEWPORT TERM (XR-TV-02). These tokens used to each carry their
+	 * own `clamp(px, Nvh, px)`. Under a `vh`-scaled root a second `vh` on the token multiplies the
+	 * panel twice and the ladder stops being a ladder — so the root owns the `vh`/`px` scale and the
+	 * tokens own only ratios. A source scan (stage-scale.test.ts) pins that none of these carries a
+	 * viewport term and that no TV font-size is a px literal. The geometry tokens above
+	 * (--tv-safe-*, --tv-qr) are the named exemption: they size BOXES, not type, so they keep their
+	 * own vw/vh/vmin and are not multiplied by the root.
+	 *
+	 * WHY THE ROOT IS `max()` OF A vh AND A px TERM. A browser cannot observe anything physical — no
+	 * DPI, no viewing distance, no panel size (Tizen/webOS expose it only to packaged apps) — so both
+	 * cases are satisfied at once. A TV browser presents a fixed 1920×1080 CSS viewport regardless of
+	 * panel pixels, on which one CSS px subtends ~0.70′ (≈0.55× CSS's 1.28′ reference px), so the
+	 * phone-derived coefficients ran ~1.8× too small: 16 × 1.8 ≈ 29px ≈ 2.7vh, which reproduces
+	 * Google's and Apple's 24px TV starting point. The 20px term is the windowed case (2.2vh on a
+	 * 900px-tall dev laptop = 20px), below which every physical assumption collapses.
+	 *
+	 * THE RECORDED px→rem LADDER (29.16px root). Numbers preserve the incumbent visual ordering while
+	 * lifting the two tiers that failed the floor: eyebrow was 16px and label 20px, both below 24px.
+	 * TWO LADDERS still, one for the reel (READ AND SUNG) and one for the corners (GLANCED AT).
 	 */
 	/* THE REEL. The sung line is the reason the screen exists, so it is the largest thing on it — but
 	   not so large it wraps to three rows, which pushed the marked word off the optical centre.
 	   Every row uses this ONE size: the rows are differentiated by colour, not scale. That is what
 	   keeps the reel's scroll arithmetic exact — measureReel() derives its asymmetry bias from a row
 	   height, so a second row tier would make that bias wrong whenever a room ran an asymmetric
-	   linesBefore/linesAfter. Colour already separates sung / singing / coming. */
-	--tv-lyric: clamp(48px, 8.4vh, 210px);
+	   linesBefore/linesAfter. Colour already separates sung / singing / coming. 3.121rem ≈ 91px. */
+	--tv-lyric: 3.121rem;
 	/* THE CORNERS. Sized DOWN from the reel on purpose — see the ladder note above. */
-	/* eyebrow labels ("Now singing", "Up next", "In the room") */
-	--tv-eyebrow: clamp(16px, 1.5vh, 36px);
-	/* key, clock, and other edge metadata */
-	--tv-label: clamp(20px, 2vh, 50px);
-	/* song titles, and the corner join URL */
-	--tv-body: clamp(24px, 2.5vh, 62px);
-	/* who is singing */
-	--tv-name: clamp(26px, 3.4vh, 84px);
+	/* the smallest TV tier and the floor of this ladder (XR-TV-01: no tier below 0.93rem). 0.93rem
+	   ≈ 27px, the composited-contrast dependency in XR-TV-04 — dropping it below 24px breaks --ink-dim. */
+	--tv-small: 0.93rem;
+	/* eyebrow labels ("Now singing", "Up next", "In the room"). Was 16px (failed the floor). */
+	--tv-eyebrow: 0.93rem;
+	/* key, clock, and other edge metadata. Was 20px (failed the floor); now the root itself, ≈29px. */
+	--tv-label: 1rem;
+	/* song titles, and the corner join URL. 1.132rem ≈ 33px. */
+	--tv-body: 1.132rem;
+	/* who is singing. 1.509rem ≈ 44px. */
+	--tv-name: 1.509rem;
 	/*
 	 * The idle screens' join URL. Its own tier because it is PRIMARY content there — the typed fallback
 	 * for a phone whose camera will not scan — while the same URL in the playback corner is chrome. One
 	 * token for both would force a choice between an unreadable fallback and inflated corner furniture.
+	 * 3.02rem ≈ 88px (the recorded room-code band 88–96px).
 	 */
-	--tv-joinurl: clamp(26px, 3.4vh, 86px);
-	/* the one thing on an otherwise empty screen: the idle headline, and whose turn it is */
-	--tv-hero: clamp(40px, 5.6vh, 140px);
+	--tv-joinurl: 3.02rem;
+	/* the one thing on an otherwise empty screen: the idle headline, and whose turn it is. The takeover
+	   hero, 3.567rem ≈ 104px. */
+	--tv-hero: 3.567rem;
 	/*
 	 * The hero join QR, sized in vmin so it GROWS with the panel. The old fixed 320px (attract) / 238px
 	 * (lobby) meant the code stayed a phone-sized square on a 4K wall while everything around it scaled
@@ -678,6 +709,7 @@
 	 * nothing to bridge and inventing a phone scale here would have been the same second-source-of-truth
 	 * problem the motion namespace was being kept clear of.
 	 */
+	--text-tv-small: var(--tv-small);
 	--text-tv-eyebrow: var(--tv-eyebrow);
 	--text-tv-label: var(--tv-label);
 	--text-tv-body: var(--tv-body);
