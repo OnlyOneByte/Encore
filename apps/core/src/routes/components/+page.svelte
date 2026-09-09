@@ -785,6 +785,12 @@
 			durationSec={358}
 			ontoggle={(v) => (queueOpen = v)}
 		>
+			{#snippet listHeader()}
+				<!-- Pinned pane (#791): the per-song controls and the list heading stay put while the rows
+				     below scroll. GuidingTrack stands in for the full control group. -->
+				<GuidingTrack pct={40} available oninput={() => {}} oncommit={() => {}} />
+				<h3 style="margin:var(--space-md) 0 var(--space-2xs);font-size:var(--ph-text-sm)">Up next</h3>
+			{/snippet}
 			<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
 			<QueueRow seq={2} title="Sweet Caroline" singerName="Liam" singerColor={SKY} />
 			<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
@@ -800,6 +806,11 @@
 			durationSec={358}
 			ontoggle={(v) => (queueOpen = v)}
 		>
+			{#snippet listHeader()}
+				<!-- Pinned pane (#791): controls + heading, fixed while the rows scroll. -->
+				<GuidingTrack pct={40} available oninput={() => {}} oncommit={() => {}} />
+				<h3 style="margin:var(--space-md) 0 var(--space-2xs);font-size:var(--ph-text-sm)">Up next</h3>
+			{/snippet}
 			<QueueRow seq={1} title="Take On Me" singerName="Sam" singerColor={GREEN} up subtitle="now playing" />
 			<QueueRow seq={2} title="Sweet Caroline" singerName="Liam" singerColor={SKY} />
 			<QueueRow seq={3} title="Dancing Queen" singerName="You" singerColor={PINK} mine subtitle="after Liam" />
