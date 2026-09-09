@@ -38,6 +38,9 @@
 		durationSec?: number;
 		children: Snippet;
 		controls?: Snippet;
+		/** Pinned pane above the scrolling list (#791). Identical to QueueSheet.svelte's prop — the
+		 *  spike's surface must not diverge from the incumbent. */
+		listHeader?: Snippet;
 		ontoggle?: (open: boolean) => void;
 	}
 	let {
@@ -50,6 +53,7 @@
 		durationSec = 0,
 		children,
 		controls,
+		listHeader,
 		ontoggle
 	}: Props = $props();
 
@@ -168,7 +172,12 @@
 			</div>
 
 			<div class="body" inert={!open}>
-				{@render children()}
+				<!-- Pinned pane (#791): controls + list heading, flex:0 0 auto, never scrolls. -->
+				{#if listHeader}<div class="body-head">{@render listHeader()}</div>{/if}
+				<!-- The one scroll region: the queue rows. -->
+				<div class="list">
+					{@render children()}
+				</div>
 			</div>
 		</Drawer.Content>
 	</Drawer.Portal>
@@ -303,9 +312,25 @@
 		color: var(--ink-dim);
 		margin-top: 9px;
 	}
+	/* #791 — mirrors QueueSheet.svelte: the body is a non-scrolling flex column; only .list scrolls.
+	   min-height:0 is load-bearing (the #201 shape). */
 	.body {
+		flex: 1 1 auto;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		overflow: hidden;
+		padding-inline: var(--space-xl);
+	}
+	.body-head {
+		flex: 0 0 auto;
+		padding-top: var(--space-2xs);
+	}
+	.list {
+		flex: 1 1 auto;
+		min-height: 0;
 		overflow-y: auto;
-		padding: var(--space-2xs) var(--space-xl) calc(var(--space-4xl) + env(safe-area-inset-bottom, 0px));
+		padding-block: var(--space-2xs) calc(var(--space-4xl) + env(safe-area-inset-bottom, 0px));
 		-webkit-overflow-scrolling: touch;
 	}
 </style>

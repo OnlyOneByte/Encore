@@ -69,3 +69,57 @@ test('#253: ProcessingCard drops the per-stage status pills, keeps bar + stage l
 	expect(code).not.toContain('mediaStagePosition');
 	expect(code).not.toContain('cookStageChipLabel');
 });
+
+// Guard for issue #791: the pull-up drawer had ONE scroll container wrapping both the per-song
+// controls and the queue list, so a long queue scrolled the controls (Guiding track, Key, Vocal
+// range) off the top of the drawer — the whole drawer had a scrollbar. Fix: the scroll region is
+// contained to the queue rows alone; the controls/heading live in a pinned pane that never scrolls.
+//
+// Applies to BOTH sheet variants — the incumbent QueueSheet.svelte and the #827 spike port
+// QueueSheetDrawer.svelte, whose prop/markup surface is deliberately identical. The assertions are
+// STRUCTURAL (positional), not class-name literals, so a rename of `.list`/`.body-head` cannot make
+// this pass vacuously: what is pinned is "the rows scroll, everything above them does not".
+for (const file of ['QueueSheet.svelte', 'QueueSheetDrawer.svelte']) {
+	test(`#791: ${file} scrolls ONLY the queue list, with the controls/heading pinned above it`, () => {
+		const code = read(file);
+
+		// The queue rows ({@render children()}) must be wrapped in a dedicated region, and that region
+		// — not the outer .body — is the scroller. We find the innermost wrapper of children() and
+		// require it to carry overflow-y:auto in the stylesheet.
+		const childRender = /\{@render children\(\)\}/;
+		expect(code).toMatch(childRender);
+
+		// The immediate element wrapping children() is the list. Capture its class.
+		const listWrap = code.match(/<div class="([a-z0-9-]+)"[^>]*>\s*\{@render children\(\)\}\s*<\/div>/);
+		expect(listWrap).not.toBeNull();
+		const listClass = listWrap![1]!;
+
+		// That list class must be the scroller: it carries overflow-y:auto AND min-height:0 (the #201
+		// shape — without min-height:0 the flex child won't shrink and the list pushes the pane past
+		// the cap instead of scrolling).
+		const listRule = code.match(new RegExp(`\\.${listClass}\\s*\\{([\\s\\S]*?)\\}`));
+		expect(listRule).not.toBeNull();
+		expect(listRule![1]).toMatch(/overflow-y:\s*auto/);
+		expect(listRule![1]).toMatch(/min-height:\s*0/);
+
+		// The OUTER .body must NOT be a scroller anymore — that was the whole defect. It must not carry
+		// overflow-y:auto; it clips instead (overflow:hidden) and is a flex column.
+		const bodyRule = code.match(/\.body\s*\{([\s\S]*?)\}/);
+		expect(bodyRule).not.toBeNull();
+		expect(bodyRule![1]).not.toMatch(/overflow-y:\s*auto/);
+		expect(bodyRule![1]).toMatch(/flex-direction:\s*column/);
+
+		// A pinned pane exists for the listHeader snippet, rendered OUTSIDE (before) the scrolling list,
+		// and it is flex:0 0 auto so it cannot scroll.
+		expect(code).toMatch(/\{@render listHeader\(\)\}/);
+		const headerBeforeList =
+			code.indexOf('{@render listHeader()}') < code.indexOf('{@render children()}');
+		expect(headerBeforeList).toBe(true);
+		const headRule = code.match(/\.body-head\s*\{([\s\S]*?)\}/);
+		expect(headRule).not.toBeNull();
+		expect(headRule![1]).toMatch(/flex:\s*0\s+0\s+auto/);
+
+		// Not vacuous: the component still renders a queue body at all.
+		expect(code).toContain('class="body"');
+	});
+}
