@@ -53,7 +53,7 @@ get along, so we shut typescript up by casting `value` to `never`.
 	data-variant={variant}
 	{orientation}
 	class={cn(
-		"encore-slider data-disabled:cursor-not-allowed data-vertical:min-h-40 relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col",
+		"data-disabled:cursor-not-allowed data-vertical:min-h-40 relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:w-auto data-vertical:flex-col",
 		className
 	)}
 	{...restProps}
@@ -95,7 +95,17 @@ get along, so we shut typescript up by casting `value` to `never`.
 </SliderPrimitive.Root>
 
 <style>
-	.encore-slider {
+	/*
+	 * `:global`, keyed on shadcn's own data-slot. This was `.encore-slider` — a SCOPED class — and the
+	 * rule compiled to `.encore-slider.svelte-<hash>`, which can never match: the root is a Bits UI
+	 * COMPONENT, so Svelte puts the hash on nothing. The whole rule was dead in the build, the 44px tap
+	 * floor with it, and the 28px thumb overflowed upward into the label above every settings slider.
+	 *
+	 * Nothing in the suite could see it. touch-targets.test.ts reads the RULE, so it passed on a rule
+	 * that never applied — which is why `ui-scoped-style-reach-913.test.ts` now checks reach, and why
+	 * this was found by a screenshot instead.
+	 */
+	:global([data-slot='slider']) {
 		min-height: var(--tap);
 		width: 100%;
 		cursor: pointer;

@@ -60,32 +60,38 @@
 		<p class="note" role="status">Loading…</p>
 	{:else}
 		<div class="tiles">
-			<div class="tile primary">
+			<div class="tile-slot primary">
 <Card.Root>
 	<Card.Content>
+		<div class="tile">
 				<span class="n">{stats.sings.total}</span>
 				<span class="k">songs sung</span>
 				<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
+		</div>
 	</Card.Content>
 </Card.Root>
 </div>
-			<div class="tile">
+			<div class="tile-slot">
 <Card.Root>
 	<Card.Content>
+		<div class="tile">
 				<span class="n">{stats.library.ready}</span>
 				<span class="k">ready to sing</span>
 				<!-- The catalog count is a footnote, never the headline: it counts every search result ever
 				     seen (271 behind 7 singable songs on the live box), so quoting it as "the library"
 				     overstates it by ~40x. -->
 				<span class="sub">of {stats.library.catalog} found</span>
+		</div>
 	</Card.Content>
 </Card.Root>
 </div>
-			<div class="tile">
+			<div class="tile-slot">
 <Card.Root>
 	<Card.Content>
+		<div class="tile">
 				<span class="n">{stats.sings.distinctSongs}</span>
 				<span class="k">different songs</span>
+		</div>
 	</Card.Content>
 </Card.Root>
 </div>
@@ -217,6 +223,12 @@
 			grid-column: 1 / -1;
 		}
 	}
+	/*
+	 * #913 S8 fix: the grid is on the element that CONTAINS the spans, INSIDE Card.Content. It was on the
+	 * outer wrapper for one build, where it did nothing — Card.Content sits between, so each tile's
+	 * number, label and footnote laid out inline and read as a single wrapping line. A screenshot caught
+	 * it; nothing else could, because both elements exist and both rules apply, just not to each other.
+	 */
 	.tile {
 		display: grid;
 		gap: 0.2rem;

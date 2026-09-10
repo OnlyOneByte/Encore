@@ -998,14 +998,29 @@ body {
 
 /* shared primitives used across surfaces */
 /*
- * `.card` was DELETED here by #913 S4. It was a global three-declaration surface class used 51 times
- * across six files; every one of those is <Card.Root> now, except the search dock, which carries the
- * three declarations itself because it is a composed control whose children are styled by descendant
- * selectors from its own page.
+ * THE SHARED CARD SURFACE.
  *
- * Nothing minted `.card` — it was hand-written CSS — so its deletion is verified by there being no
- * `class="card"` left in src, which `shadcn-ink-ban-913.test.ts`'s sibling scans keep true.
+ * #913 S4 deleted this rule, on the premise that every `.card` had become a <Card.Root>. That premise
+ * was WRONG, and the audit behind it was wrong in a specific way worth recording: it grepped
+ * `class="card[ "]`, which only matches a class list STARTING with `card`. Nine elements spell it in
+ * the middle — `class="row card list-row"`, `class="hero card"`, `class="track card"` — and every one
+ * of them silently lost its background, border and radius. Search results rendered as a flat list on
+ * the page background with no row separation, and the ready row's green ring had no border to colour.
+ *
+ * No test could see it: nothing asserted these elements HAVE a surface, and `.card` is a global class,
+ * so no unused-selector warning fires for markup that references a rule which no longer exists. It was
+ * found by comparing before/after screenshots.
+ *
+ * The 28 CONTENT cards did migrate and are <Card.Root>. These nine are a different thing: a surface on
+ * a bespoke component — a hero, three list rows, a progress track, a code-entry segment, a reorder bar.
+ * shadcn's Card is a container with Header/Title/Content; none of these want that structure, they want
+ * three declarations. `ui-card-surface-913.test.ts` now keeps this rule and its callers together.
  */
+.card {
+	background: var(--card);
+	border: 1px solid var(--line);
+	border-radius: var(--radius-sm);
+}
 /*
  * `.btn-accent` was DELETED by #913 S1. Its two consumers — settings' Save and join's Start
  * singing — are now <Button variant="accent">, whose `accent` variant reproduces it: the fill and

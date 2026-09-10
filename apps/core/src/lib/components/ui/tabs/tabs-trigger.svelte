@@ -58,7 +58,14 @@
 	 * fill and its ink are set together, never separately). `data-active` is Bits UI's own state
 	 * attribute, verified by a real mount rather than assumed.
 	 */
-	:global([data-slot='tabs-trigger'][data-active]) {
+	/*
+	 * `data-state="active"`, NOT `data-active`. The registry's class string uses a `data-active:` Tailwind
+	 * variant, and this rule was written from that spelling — but raw CSS needs the attribute Bits UI
+	 * actually emits, and it emits `data-state`. Verified by mounting a tablist and dumping the
+	 * attributes; the earlier mount arm checked `aria-selected` and the roving tabindex, which are both
+	 * correct, so it never noticed the selected tab had no fill.
+	 */
+	:global([data-slot='tabs-trigger'][data-state='active']) {
 		background: var(--accent);
 		color: var(--on-accent);
 	}

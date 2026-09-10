@@ -321,7 +321,14 @@ test('every text-entry control is sized to the tap floor by a var(--tap) rule (i
 		},
 		{
 			file: join(SRC, 'lib', 'components', 'ui', 'slider', 'slider.svelte'),
-			token: /\.encore-slider\b/,
+			/*
+			 * `data-slot`, not a class. The rule was `.encore-slider` until a screenshot showed it applying
+			 * to nothing: the root is a Bits UI component, so Svelte's scope hash lands on no element and
+			 * the whole rule was dead in the build — WHILE THIS ARM PASSED, because it reads the rule text
+			 * and the text was correct. `ui-scoped-style-reach-913.test.ts` is the check for that gap; this
+			 * token follows the rule to the selector that actually reaches the element.
+			 */
+			token: /data-slot='slider'/,
 			name: 'the settings sliders (Slider)'
 		}
 	];

@@ -560,6 +560,20 @@ const KNOWN_OFFENDERS: Record<string, string[]> = {
 		'video,audio'
 	],
 	'probes/p14-playhead-vs-cook.mjs': ['#ff5cae', 'audio'],
+	/*
+	 * `shoot-913.mjs` is a CAPTURE script, not a driver: it produces the before/after evidence for #913's
+	 * accepted visual change and asserts nothing. It still goes through this guard because the guard
+	 * enumerates every driver under `e2e/` rather than a hand-kept list, which is the right default.
+	 */
+	'shoot-913.mjs': [
+		// The join colour: a swatch VALUE, the same shape rule p2, p14 and p16 rely on.
+		'#ff5cae',
+		// The join/continue control, found by accessible text — #913 moved it onto the vendored <Button>,
+		// where a class belongs to the component rather than the app.
+		'button',
+		// A file extension, not a selector: this is the only script here that writes files.
+		'.png'
+	],
 	'probes/p16-hero-live-controls.mjs': [
 		// The join colour: a swatch VALUE, not a selector — the same shape rule p2 and p14 rely on.
 		'#ff5cae',
