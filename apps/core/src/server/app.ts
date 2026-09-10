@@ -471,35 +471,18 @@ export function getApp(): EncoreApp {
 
 	// The app object is built below; the hub's sinks (toWorker/broadcast) read THROUGH the app so
 	// server.ts can replace the real socket map at boot without rebuilding the hub.
-	const app: EncoreApp = {
-		db,
-		state,
-		singers,
-		rooms,
-		activeRoomId,
-		presence: new PresenceTracker(),
-		// Set just below — the sink needs `app` to reach the media catalog.
-		plays: null as never,
-		jobs,
-		attempts,
-		playLog,
-		settings,
-		reaper: null as never, // set below (needs onReaped → workerHub.dispatch)
-		workers,
-		workerHub: null as never, // set below (needs app.toWorker/publish indirection)
-		mediaById,
-		media: mediaRepo,
-		localLibrary: new LocalLibrary(),
-		youtube: new YouTubeResolver(ytDlpSearch),
-		spotify: new SpotifyResolver((q, n) => spotifySearch(q, n)),
-		popularity: createPopularityTracker(),
-		mediaStore,
-		mediaStoreConfig,
-		// no-op sinks until server.ts wires Bun.serve; routes/state still work without them
-		publish: () => {},
-		toWorker: () => {},
-		now: () => Date.now()
-	};
+	//
+	// plays/workerHub/reaper are genuinely circular: each closes over `app` (its now/publish/toWorker
+	// and, for reaper, workerHub.dispatch), and `app` cannot exist until they do. Rather than fill the
+	// three fields with `null as never` and patch them in after — which lied to EncoreApp's type for
+	// the window in between — build them as locals that capture `app` by reference (the closures only
+	// run long after construction, so the forward reference is safe), then place the real values in
+	// the literal. `app` is therefore never observed as null-typed.
+	//
+	// `let` (not `const`) is required: the plays/workerHub/reaper closures below capture `app` by
+	// reference, so it cannot be a `const` initialised from its own literal.
+	// eslint-disable-next-line prefer-const
+	let app: EncoreApp;
 
 	// A play is recorded TWICE, deliberately, because the two answer different questions:
 	//   - the SIDECAR carries the authoritative lifetime total and the recency retention's LRU reads.
@@ -508,7 +491,7 @@ export function getApp(): EncoreApp {
 	//     counter cannot produce a trend line, and queue_entries is wiped on every flush and on boot.
 	// The log write is synchronous and tiny (one indexed insert); the sidecar write stays
 	// fire-and-forget because it is file I/O and bookkeeping must never delay the song starting.
-	app.plays = new PlayTracker((mediaId, entryId) => {
+	const plays = new PlayTracker((mediaId, entryId) => {
 		playLog.record(mediaId, entryId, app.now());
 		void (async () => {
 			try {
@@ -522,7 +505,7 @@ export function getApp(): EncoreApp {
 		})();
 	});
 
-	app.workerHub = new WorkerHub({
+	const workerHub = new WorkerHub({
 		jobs,
 		attempts,
 		registry: workers,
@@ -572,8 +555,8 @@ export function getApp(): EncoreApp {
 	});
 
 	// When the reaper requeues/fails a job (lease expiry), capacity may have changed → redispatch.
-	app.reaper = new JobReaper(jobs, {
-		onReaped: () => app.workerHub.dispatch(),
+	const reaper = new JobReaper(jobs, {
+		onReaped: () => workerHub.dispatch(),
 		// A reaper-killed cook (worker box died, attempts exhausted) reaches terminal `failed` without
 		// the worker reporting it, so it never hits #onFailed. The reaper has no catalog, so it hands
 		// the job up and we do here EXACTLY what the reported (#onFailed) and unservable-TTL paths do —
@@ -588,6 +571,37 @@ export function getApp(): EncoreApp {
 		// path apart (issue #451).
 		onFailed: (job) => reportTerminalFailure(job, 'reaper', { broadcast: (e) => app.publish(e), mediaById })
 	});
+
+	app = {
+		db,
+		state,
+		singers,
+		rooms,
+		activeRoomId,
+		presence: new PresenceTracker(),
+		plays,
+		jobs,
+		attempts,
+		playLog,
+		settings,
+		reaper,
+		workers,
+		workerHub,
+		mediaById,
+		media: mediaRepo,
+		localLibrary: new LocalLibrary(),
+		youtube: new YouTubeResolver(ytDlpSearch),
+		spotify: new SpotifyResolver((q, n) => spotifySearch(q, n)),
+		popularity: createPopularityTracker(),
+		mediaStore,
+		mediaStoreConfig,
+		// no-op sinks until server.ts wires Bun.serve; routes/state still work without them
+		publish: () => {},
+		toWorker: () => {},
+		now: () => Date.now()
+	};
+
+	// A play is recorded TWICE, deliberately, because the two answer different questions:
 	// Boot recovery (§3): a core restart drops every worker WS session, so any job still marked
 	// assigned/running is orphaned — reset it to queued for redispatch. One-shot, before the tick
 	// loop (server.ts starts the loop). No-op on a fresh/in-memory DB.

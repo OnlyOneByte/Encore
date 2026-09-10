@@ -41,48 +41,22 @@
 
 // ── pure ratio + framing maths (unit-tested; no DOM, no AudioContext) ─────────────────────────────
 
-/** Frames per octave in equal temperament. 12 semitones == one octave == a 2× frequency ratio. */
-export const SEMITONES_PER_OCTAVE = 12;
-
 /**
  * Playback-speed ratio for a semitone shift. +12 -> 2.0 (up an octave), -12 -> 0.5 (down an octave),
  * 0 -> exactly 1.0. This is the factor the resampler reads the input at; the time-stretch stage undoes
- * the tempo change it would otherwise cause.
+ * the tempo change it would otherwise cause. 12 is the semitones-per-octave of equal temperament.
  *
  * Returns exactly 1 at 0 so the caller's "ratio === 1 means bypass" check is bit-exact, never a
  * 0.9999999 that would keep the graph doing needless work.
  */
 export function semitonesToRatio(semitones: number): number {
 	if (!Number.isFinite(semitones) || semitones === 0) return 1;
-	return Math.pow(2, semitones / SEMITONES_PER_OCTAVE);
+	return Math.pow(2, semitones / 12);
 }
 
 /** Is this shift audible, i.e. does it need the graph at all? Exactly 0 (or non-finite) -> no. */
 export function needsShift(semitones: number): boolean {
 	return semitonesToRatio(semitones) !== 1;
-}
-
-/**
- * A periodic Hann window of length `n`. Periodic (denominator `n`, not `n-1`) is the correct form for
- * overlap-add: with 50%+ overlap the squared windows sum to a constant, so no amplitude ripple is
- * introduced across grain boundaries. Returns a fresh Float32Array; callers cache it.
- */
-export function hannWindow(n: number): Float32Array {
-	const w = new Float32Array(n);
-	for (let i = 0; i < n; i++) {
-		w[i] = 0.5 * (1 - Math.cos((2 * Math.PI * i) / n));
-	}
-	return w;
-}
-
-/**
- * The synthesis hop (output stride between grains) for a given analysis grain size and overlap.
- * With `overlap` of 4 and a 1024 grain the hop is 256 — i.e. 75% overlap. The analysis hop is this
- * scaled by the pitch ratio, which is what accomplishes the time-stretch that cancels the resample's
- * tempo change.
- */
-export function synthesisHop(grainSize: number, overlap: number): number {
-	return Math.max(1, Math.floor(grainSize / overlap));
 }
 
 /**
@@ -128,25 +102,14 @@ export function readLag(grainSize: number, synthesisHopSamples: number, ratio: n
 	return grainLookahead(grainSize, ratio) + ALIGN_SEARCH + synthesisHopSamples;
 }
 
-/** Linear-interpolated sample read at a fractional index into `buf`; 0 outside the buffer. */
-export function sampleAt(buf: Float32Array, pos: number): number {
-	if (pos <= 0) return buf.length ? buf[0] : 0;
-	const i = Math.floor(pos);
-	if (i >= buf.length - 1) return buf.length ? buf[buf.length - 1] : 0;
-	const frac = pos - i;
-	return buf[i] * (1 - frac) + buf[i + 1] * frac;
-}
-
 // ── the AudioWorklet processor, as a self-contained source string ─────────────────────────────────
 //
 // A worklet runs in a SEPARATE global scope (AudioWorkletGlobalScope) and CANNOT import app modules,
-// so the OLA loop is written out in full here rather than importing the helpers above. The grain
-// windowing and hop maths mirror the exported `hannWindow`/`synthesisHop`, kept deliberately
-// simple so the two stay legible side by side. One boundary rule is INTENTIONALLY different and
-// must not be "unified": the exported `sampleAt` edge-CLAMPS out-of-range reads (correct for a
-// standalone interpolator), while the worklet's `histSample` returns 0 out of range on purpose —
-// a wrapped/clamped ring read would be unrelated audio (the aliasing the free-running pointer
-// once produced). `sampleAt` is the tested reference for the in-range interpolation only.
+// so the OLA loop is written out in full here rather than importing anything above. It carries its
+// own Hann window, its own `SYNTH_HOP = GRAIN / OVERLAP`, and its own inline lerp. One boundary rule
+// is deliberate: the worklet's `histSample` returns 0 out of range ON PURPOSE — a wrapped/clamped
+// ring read would be unrelated audio (the aliasing the free-running pointer once produced), so it is
+// NOT an edge-clamping interpolator and must not be "unified" into one.
 // This string is turned into a Blob URL and passed to `audioWorklet.addModule`, which keeps the whole
 // shifter in ONE file with no separate static asset to serve or cache-bust.
 //
