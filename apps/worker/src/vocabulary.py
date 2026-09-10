@@ -160,7 +160,9 @@ class Timing(_StrEnum):
 # used as grading evidence — it simply does not participate until a role is stamped. This closes the
 # fail-OPEN hole where the old default (ROLE_CANDIDATE, the publishable tier) let an unspecified hand-
 # built or rehydrated text silently publish. Every real path stamps a role via the registry's
-# SourceSpec; the default only reaches hand-built texts (tests, disk rehydration).
+# SourceSpec — the fetched text AND its alternates (#873), since an alternate is graded alongside its
+# parent by select_by_baselines and may itself be published; the default only reaches hand-built texts
+# (tests, disk rehydration).
 ROLE_BASELINE = "baseline"
 ROLE_CANDIDATE = "candidate"
 ROLE_UNSPECIFIED = "unspecified"
