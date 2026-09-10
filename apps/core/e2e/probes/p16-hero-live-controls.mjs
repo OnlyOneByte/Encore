@@ -442,7 +442,10 @@ async function main() {
 	 * looked filled in. The control itself is found by accessible text rather than position, because the
 	 * colour swatches are buttons too and they come first in document order.
 	 */
-	await phone.goto(`${BASE}/join`);
+	// #834 replaced the standalone /join route with the landing surface at `/`, which renders the join
+	// form while unjoined. Going to the old path would 404 and the probe would time out on a page that
+	// never had a name field.
+	await phone.goto(`${BASE}/`);
 	await waitFor(async () => await phone.evaluate(`!!document.querySelector(${JSON.stringify(SEL.nameInput)})`), {
 		timeout: 15_000,
 		name: 'the join name field'

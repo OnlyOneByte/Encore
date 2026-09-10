@@ -306,6 +306,13 @@ const FLOORS: Record<string, Floor[]> = {
  * stays in the source.
  */
 const RETIRED: Record<string, { subject: string; reason: string }[]> = {
+	'apps/core/src/lib/ui-foreign-theme-913.test.ts': [
+		{
+			subject: 'files.length (the copied-in-component theme scan)',
+			reason:
+				"RETIRED BY #913's restructure. XR-VER-06/07 record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban-913.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts's net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what \"never leave a guard passing vacuously\" requires."
+		}
+	],
 	'apps/core/src/lib/design-system.test.ts': [
 		{
 			subject: 'scanned',
@@ -506,9 +513,11 @@ test('every registered floor is tagged at its site, and every tag is registered 
 	// the loop examine nothing and pass. MUST equal the total number of `// @nvf-floor` tags across every
 	// registered file (== the `located` count sum, since every registered floor is tagged once per
 	// count). Measured the way `located`'s comment prescribes: raise absurdly high, run this file alone,
-	// read `Received: N`. 41 as of #913/#903. Raise it in lockstep with `located` whenever a floor is
-	// registered (a new entry adds both a `count` to `located` and a tag to this scan).
-	expect(taggedSitesSeen).toBeGreaterThanOrEqual(41);
+	// read `Received: N`. 40 as of #913's restructure, down from 41: retiring the copied-in-component
+	// theme scan removed its tagged site along with its `located` count, and BOTH literals move together
+	// or this arm reports a broken tag regex when the truth is simply one fewer floor. Raise it in
+	// lockstep with `located` whenever a floor is registered (a new entry adds a `count` AND a tag).
+	expect(taggedSitesSeen).toBeGreaterThanOrEqual(40);
 });
 
 test('a retired floor is retired on the record: substantive reason, and genuinely gone', () => {

@@ -55,6 +55,18 @@
 				 * because a vendored component elsewhere happened to use the same class.
 				 */
 				block: "w-full min-h-tap",
+				/*
+				 * The same shape one step up, for a page whose primary action IS the page's purpose — the
+				 * landing screen's join button. Padding and type keep it well over the tap floor, and the
+				 * radius is `--radius` (18px), the card/sheet radius rather than the button's own 10px,
+				 * because at full width it reads as a surface.
+				 *
+				 * #913 rebase note: this arrived on main as `size="blockLg" shape="lg"` — a separate
+				 * `shape` axis that existed only to carry a radius. Folded into one size here rather than
+				 * reintroducing that axis: the registry's sizes already own their radius, and a second
+				 * axis for it would be two ways to say one thing.
+				 */
+				blockLg: "w-full p-[var(--space-2xl)] text-[length:var(--ph-text-lg)] rounded-[var(--radius)]",
 				default: "h-9 gap-1.5 px-2.5 in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-2 has-data-[icon=inline-start]:pl-2",
 				xs: "h-6 gap-1 rounded-[min(var(--radius-md),8px)] px-2 text-xs in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5 [&_svg:not([class*='size-'])]:size-3",
 				sm: "h-8 gap-1 rounded-[min(var(--radius-md),10px)] px-2.5 in-data-[slot=button-group]:rounded-md has-data-[icon=inline-end]:pr-1.5 has-data-[icon=inline-start]:pl-1.5",

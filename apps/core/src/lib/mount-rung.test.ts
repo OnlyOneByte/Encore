@@ -187,7 +187,9 @@ test('the landing join surface mounts, reads the stubbed page.url, and its goto 
 
 	try {
 		// Effects ran and the component rendered — the mount half of XR-VER-01.
-		const input = target.querySelector('input.name-input') as HTMLInputElement | null;
+		// #913: the field is <Input>, whose appearance lives in the component, so `.name-input` is gone.
+		// `data-slot` is shadcn's own contract for the rendered element and survives a re-vendor.
+		const input = target.querySelector("input[data-slot='input']") as HTMLInputElement | null;
 		expect(input, 'JoinLanding mounted but rendered no name field').not.toBeNull();
 
 		// Drive the real action. `bind:value` listens for `input`; the submit handler reads
