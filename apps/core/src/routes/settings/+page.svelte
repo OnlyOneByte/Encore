@@ -27,6 +27,7 @@
 	import { Slider } from '$lib/components/ui/slider';
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Card from '$lib/components/ui/card';
+	import * as Field from '$lib/components/ui/field';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -483,7 +484,7 @@
 		<Card.Title>Who you are</Card.Title>
 	</Card.Header>
 	<Card.Content>
-						<label class="field" for="profile-name">Your name</label>
+						<Field.Label for="profile-name">Your name</Field.Label>
 						<Input
 							id="profile-name"
 							variant="comfortable"
@@ -521,7 +522,7 @@
 	<Card.Content>
 						{#if !confirmingLeave}
 							<button class="leave" onclick={askLeave}>Leave the room</button>
-							<p class="hint">Your queued songs go with you.</p>
+							<Field.Description>Your queued songs go with you.</Field.Description>
 						{:else}
 							<p class="leave-warn" role="alert">{leaveWarning}</p>
 							<div class="pair">
@@ -550,7 +551,7 @@
 		<Card.Title>Rotation</Card.Title>
 	</Card.Header>
 	<Card.Content>
-						<label class="field" for="queue-order">Who sings next</label>
+						<Field.Label for="queue-order">Who sings next</Field.Label>
 						<NativeSelect
 							id="queue-order"
 							value={settings.room.queueOrder}
@@ -560,11 +561,11 @@
 								<option value={o.id}>{o.label}</option>
 							{/each}
 						</NativeSelect>
-						{#if queueOrderNote}<p class="hint">{queueOrderNote}</p>{/if}
+						{#if queueOrderNote}<Field.Description>{queueOrderNote}</Field.Description>{/if}
 
-						<label class="field" for="presence-grace">
+						<Field.Label for="presence-grace">
 							Keep people in the room for · {graceLabel}
-						</label>
+						</Field.Label>
 						<Slider
 							id="presence-grace"
 							type="single"
@@ -575,7 +576,7 @@
 							onValueChange={(v) => liveRoom('presenceGraceMinutes', v)}
 							onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
 						/>
-						<p class="hint">A locked phone is not someone leaving, so they stay on the roster this long.</p>
+						<Field.Description>A locked phone is not someone leaving, so they stay on the roster this long.</Field.Description>
 					</Card.Content>
 </Card.Root>
 
@@ -584,7 +585,7 @@
 		<Card.Title>Cook quality</Card.Title>
 	</Card.Header>
 	<Card.Content>
-						<label class="field" for="quality-ceiling">Cap this room at</label>
+						<Field.Label for="quality-ceiling">Cap this room at</Field.Label>
 						<!--
 						A ceiling, offered as real engine+model pairings valued by their rank, not a raw
 						integer. The value is the `qualityRank`; the empty option is `null` = no cap. The
@@ -608,9 +609,9 @@
 						Downward-only, and this is where a party learns it: the server's default is already
 						bounded by what the worker fleet can run, so a room can only ask for the same or less.
 					-->
-						<p class="hint">
+						<Field.Description>
 							Only ever lowers cook quality below the server's default, to keep a busy queue moving. It cannot raise it.
-						</p>
+						</Field.Description>
 						{#if capAboveDefault}
 							<p class="warn">
 								This cap is at or above the server's current default, so it changes nothing. Pick a lower one to
@@ -627,7 +628,7 @@
 	<Card.Content>
 						<div class="pair">
 							<div class="cell">
-								<label class="field" for="tv-background">Background</label>
+								<Field.Label for="tv-background">Background</Field.Label>
 								<NativeSelect
 									id="tv-background"
 									value={settings.room.tvBackgroundStyle}
@@ -639,7 +640,7 @@
 								</NativeSelect>
 							</div>
 							<div class="cell">
-								<label class="field" for="tv-progress">Song progress</label>
+								<Field.Label for="tv-progress">Song progress</Field.Label>
 								<NativeSelect
 									id="tv-progress"
 									value={settings.room.tvProgressStyle}
@@ -651,15 +652,15 @@
 								</NativeSelect>
 							</div>
 						</div>
-						{#if tvBackgroundNote}<p class="hint">{tvBackgroundNote}</p>{/if}
-						{#if tvProgressNote}<p class="hint">{tvProgressNote}</p>{/if}
+						{#if tvBackgroundNote}<Field.Description>{tvBackgroundNote}</Field.Description>{/if}
+						{#if tvProgressNote}<Field.Description>{tvProgressNote}</Field.Description>{/if}
 
 						<!--
 						Gated, not disabled: a visualizer picker means nothing for a black stage, and a control
 						that does nothing for the current selection implies it does something.
 					-->
 						{#if settings.room.tvBackgroundStyle === 'visualizer'}
-							<label class="field" for="tv-visualizer">Which visualizer</label>
+							<Field.Label for="tv-visualizer">Which visualizer</Field.Label>
 							<NativeSelect
 								id="tv-visualizer"
 								value={settings.room.tvVisualizer}
@@ -669,15 +670,15 @@
 									<option value={v.id}>{v.label}</option>
 								{/each}
 							</NativeSelect>
-							{#if tvVisualizerNote}<p class="hint">{tvVisualizerNote}</p>{/if}
+							{#if tvVisualizerNote}<Field.Description>{tvVisualizerNote}</Field.Description>{/if}
 						{/if}
 
 						<!-- The colour is BOTH the `solid` stage and the visualizer's palette, so it reveals for either. -->
 						{#if settings.room.tvBackgroundStyle === 'solid' || settings.room.tvBackgroundStyle === 'visualizer'}
-							<label class="field field-swatch" for="tv-background-color">
+							<Field.Label data-inline for="tv-background-color">
 								Background colour
 								<span class="swatch" style="background: {tvBackgroundPreview}" aria-hidden="true"></span>
-							</label>
+							</Field.Label>
 							<!--
 							A real colour input, not the hue slider this was until #425: the room names a colour
 							outright now rather than an angle rendered at a pinned lightness. oninput/onchange are
@@ -694,9 +695,9 @@
 								onchange={(e) => onroom({ tvBackgroundColor: e.currentTarget.value })}
 							/>
 
-							<label class="field" for="tv-background-dim">
+							<Field.Label for="tv-background-dim">
 								Dim · {Math.round(settings.room.tvBackgroundDim * 100)}%
-							</label>
+							</Field.Label>
 							<!--
 							Dims the stage colour toward black (#782, owner ruling Q2 = A) — a lightness control, not
 							a layer over the video. Split oninput/onchange like every other slider here (#134): the
@@ -714,7 +715,7 @@
 								onValueChange={(v) => liveRoom('tvBackgroundDim', v / 100)}
 								onValueCommit={(v) => onroom({ tvBackgroundDim: v / 100 })}
 							/>
-							<p class="hint">How far the stage colour is darkened toward black. 0% is the colour itself.</p>
+							<Field.Description>How far the stage colour is darkened toward black. 0% is the colour itself.</Field.Description>
 						{/if}
 
 						<label class="check" for="song-intro-on">
@@ -725,11 +726,11 @@
 							/>
 							Song intro before each turn
 						</label>
-						<p class="hint">A card naming the song, artist and singer.</p>
+						<Field.Description>A card naming the song, artist and singer.</Field.Description>
 
-						<label class="field" class:dim={!settings.room.songIntroEnabled} for="song-intro-ms">
+						<Field.Label data-dim={!settings.room.songIntroEnabled || undefined} for="song-intro-ms">
 							Intro holds for · {(settings.room.songIntroMs / 1000).toFixed(1)}s
-						</label>
+						</Field.Label>
 						<!--
 					  The range MUST match the server clamp exactly (MIN/MAX_SONG_INTRO_MS). A slider narrower
 					  than the clamp has shipped here before: the UI silently refuses values the server takes.
@@ -755,7 +756,7 @@
 	<Card.Content>
 						<div class="pair">
 							<div class="cell">
-								<label class="field" for="lyrics-highlight">Highlight</label>
+								<Field.Label for="lyrics-highlight">Highlight</Field.Label>
 								<NativeSelect
 									id="lyrics-highlight"
 									value={settings.room.lyricsHighlight}
@@ -767,7 +768,7 @@
 								</NativeSelect>
 							</div>
 							<div class="cell">
-								<label class="field" for="lyrics-ball">Marker</label>
+								<Field.Label for="lyrics-ball">Marker</Field.Label>
 								<NativeSelect
 									id="lyrics-ball"
 									value={settings.room.lyricsBall}
@@ -779,8 +780,8 @@
 								</NativeSelect>
 							</div>
 						</div>
-						{#if highlightNote}<p class="hint">{highlightNote}</p>{/if}
-						{#if ballNote}<p class="hint">{ballNote}</p>{/if}
+						{#if highlightNote}<Field.Description>{highlightNote}</Field.Description>{/if}
+						{#if ballNote}<Field.Description>{ballNote}</Field.Description>{/if}
 
 						<!--
 						Say when a choice is not being honoured. The server's sync mode decides whether per-word
@@ -796,7 +797,7 @@
 
 						<div class="pair">
 							<div class="cell">
-								<label class="field" for="lyrics-font">Font</label>
+								<Field.Label for="lyrics-font">Font</Field.Label>
 								<NativeSelect
 									id="lyrics-font"
 									value={settings.room.lyricsFont}
@@ -808,7 +809,7 @@
 								</NativeSelect>
 							</div>
 							<div class="cell">
-								<label class="field" for="lyrics-case">Letter case</label>
+								<Field.Label for="lyrics-case">Letter case</Field.Label>
 								<NativeSelect
 									id="lyrics-case"
 									value={settings.room.lyricsCase}
@@ -820,10 +821,10 @@
 								</NativeSelect>
 							</div>
 						</div>
-						{#if fontNote}<p class="hint">{fontNote}</p>{/if}
-						{#if caseNote}<p class="hint">{caseNote}</p>{/if}
+						{#if fontNote}<Field.Description>{fontNote}</Field.Description>{/if}
+						{#if caseNote}<Field.Description>{caseNote}</Field.Description>{/if}
 
-						<label class="field" for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</label>
+						<Field.Label for="lyrics-scale">Text size · {settings.room.lyricsScalePct}%</Field.Label>
 						<Slider
 							id="lyrics-scale"
 							type="single"
@@ -838,11 +839,11 @@
 						Says PERCENT OF, not a size, because that is what it is: the TV already picks a size from
 						its own height and this scales it. "48px" would mean nothing on a different screen.
 					-->
-						<p class="hint">Relative to the size the TV picks for its own screen.</p>
+						<Field.Description>Relative to the size the TV picks for its own screen.</Field.Description>
 
-						<label class="field" for="lyrics-lead">
+						<Field.Label for="lyrics-lead">
 							Highlight runs ahead · {(settings.room.lyricsLeadMs / 1000).toFixed(2)}s
-						</label>
+						</Field.Label>
 						<Slider
 							id="lyrics-lead"
 							type="single"
@@ -856,7 +857,7 @@
 
 						<div class="pair">
 							<div class="cell">
-								<label class="field" for="lyrics-before">Lines sung · {settings.room.lyricsLinesBefore}</label>
+								<Field.Label for="lyrics-before">Lines sung · {settings.room.lyricsLinesBefore}</Field.Label>
 								<Slider
 									id="lyrics-before"
 									type="single"
@@ -869,7 +870,7 @@
 								/>
 							</div>
 							<div class="cell">
-								<label class="field" for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</label>
+								<Field.Label for="lyrics-after">Lines ahead · {settings.room.lyricsLinesAfter}</Field.Label>
 								<Slider
 									id="lyrics-after"
 									type="single"
@@ -890,9 +891,9 @@
 		<Card.Title>Sound</Card.Title>
 	</Card.Header>
 	<Card.Content>
-						<label class="field" for="guide-default">
+						<Field.Label for="guide-default">
 							Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
-						</label>
+						</Field.Label>
 						<Slider
 							id="guide-default"
 							type="single"
@@ -903,9 +904,9 @@
 							onValueChange={(v) => liveRoom('guideLevelDefault', v / 100)}
 							onValueCommit={(v) => onroom({ guideLevelDefault: v / 100 })}
 						/>
-						<p class="hint">Starting vocal level. Singers can change it per song.</p>
+						<Field.Description>Starting vocal level. Singers can change it per song.</Field.Description>
 						{#if settings.room.guideLevelDefault > 0}
-							<p class="hint">Only songs cooked with their vocals kept can offer a guide.</p>
+							<Field.Description>Only songs cooked with their vocals kept can offer a guide.</Field.Description>
 						{/if}
 
 						<label class="check" for="loudness-norm">
@@ -916,10 +917,10 @@
 							/>
 							Even out loud songs
 						</label>
-						<p class="hint">
+						<Field.Description>
 							Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet
 							songs are left alone.
-						</p>
+						</Field.Description>
 					</Card.Content>
 </Card.Root>
 
@@ -946,7 +947,7 @@
 	</Card.Header>
 	<Card.Content>
 						<!-- Stacked for the same measured reason as the lyrics engine below: "BS-RoFormer 1297". -->
-						<label class="field" for="engine">Stem splitter</label>
+						<Field.Label for="engine">Stem splitter</Field.Label>
 						<NativeSelect
 							id="engine"
 							value={settings.global.defaultEngine}
@@ -957,7 +958,7 @@
 							{/each}
 						</NativeSelect>
 
-						<label class="field" for="model">Model</label>
+						<Field.Label for="model">Model</Field.Label>
 						<NativeSelect
 							id="model"
 							value={settings.global.defaultModel}
@@ -967,12 +968,12 @@
 								<option value={model.id}>{model.label}</option>
 							{/each}
 						</NativeSelect>
-						{#if liveNote}<p class="hint">{liveNote}</p>{/if}
+						{#if liveNote}<Field.Description>{liveNote}</Field.Description>{/if}
 						{#if liveSlow}
 							<p class="warn">Slow on CPU — around 45 minutes per song. Better suited to upgrades.</p>
 						{/if}
 
-						<label class="field" for="fetcher">Where audio comes from</label>
+						<Field.Label for="fetcher">Where audio comes from</Field.Label>
 						<NativeSelect
 							id="fetcher"
 							value={settings.global.defaultFetcher}
@@ -982,7 +983,7 @@
 								<option value={f.id}>{f.label}</option>
 							{/each}
 						</NativeSelect>
-						{#if fetcherNote}<p class="hint">{fetcherNote}</p>{/if}
+						{#if fetcherNote}<Field.Description>{fetcherNote}</Field.Description>{/if}
 						<!--
 						Explicit blast radius, matched to the splitter warning above it: this is the acquirer
 						EVERY new cook downloads its source through, and a worker that cannot run it fails the
@@ -1006,7 +1007,7 @@
 						The room's pairs were checked at the same width and fit. A truncated option is worse
 						than a longer page, and this is the tab you visit once.
 					-->
-						<label class="field" for="asr-model">Reader</label>
+						<Field.Label for="asr-model">Reader</Field.Label>
 						<NativeSelect
 							id="asr-model"
 							value={settings.global.asrModel}
@@ -1016,12 +1017,12 @@
 								<option value={model.id}>{model.label} · {model.params}</option>
 							{/each}
 						</NativeSelect>
-						{#if asrNote}<p class="hint">{asrNote}</p>{/if}
+						{#if asrNote}<Field.Description>{asrNote}</Field.Description>{/if}
 						{#if asrSlow}
 							<p class="warn">A big reader needs real memory and adds minutes to every cook on a CPU box.</p>
 						{/if}
 
-						<label class="field" for="sync-mode">Timing</label>
+						<Field.Label for="sync-mode">Timing</Field.Label>
 						<NativeSelect
 							id="sync-mode"
 							value={settings.global.syncMode}
@@ -1031,7 +1032,7 @@
 								<option value={mode.id}>{mode.label}</option>
 							{/each}
 						</NativeSelect>
-						{#if syncNote}<p class="hint">{syncNote}</p>{/if}
+						{#if syncNote}<Field.Description>{syncNote}</Field.Description>{/if}
 					</Card.Content>
 </Card.Root>
 
@@ -1040,7 +1041,7 @@
 		<Card.Title>Joining</Card.Title>
 	</Card.Header>
 	<Card.Content>
-						<label class="field" for="join-origin">Address phones join at</label>
+						<Field.Label for="join-origin">Address phones join at</Field.Label>
 						<Input
 							id="join-origin"
 							variant="mono"
@@ -1054,9 +1055,9 @@
 							bind:value={joinDraft}
 							onchange={commitJoinOrigin}
 						/>
-						<p class="hint" id="join-origin-hint">
+						<Field.Description id="join-origin-hint">
 							What the TV's QR code points at. Empty means <strong>{data.joinOriginFallback}</strong>.
-						</p>
+						</Field.Description>
 						{#if joinError}<p class="warn" role="alert">{joinError}</p>{/if}
 						{#if joinSchemeMismatch}
 							<p class="warn">This party runs over plain http, so phones cannot open an https address.</p>
@@ -1089,10 +1090,10 @@
 							/>
 								Re-cook at higher quality after each song
 							</label>
-							<p class="hint">Runs from the audio already saved — no re-download.</p>
+							<Field.Description>Runs from the audio already saved — no re-download.</Field.Description>
 
 							<!-- Stacked: these default to the roformer names, the longest labels in any registry. -->
-							<label class="field" for="upgrade-engine">Upgrade splitter</label>
+							<Field.Label for="upgrade-engine">Upgrade splitter</Field.Label>
 							<NativeSelect
 								id="upgrade-engine"
 								value={settings.global.upgradeEngine}
@@ -1103,7 +1104,7 @@
 								{/each}
 							</NativeSelect>
 
-							<label class="field" for="upgrade-model">Upgrade model</label>
+							<Field.Label for="upgrade-model">Upgrade model</Field.Label>
 							<NativeSelect
 								id="upgrade-model"
 								value={settings.global.upgradeModel}
@@ -1207,23 +1208,14 @@
 		}
 	}
 
-	.field {
-		display: block;
-		margin: var(--space-lg) 0 var(--space-2xs);
-		font-size: 0.82rem;
-		color: var(--ink-dim);
-	}
+	/*
+	 * #913 S4: `.field`, `.field-swatch`, `.hint` and the `.dim` label state left this file for
+	 * ui/field. The vertical rhythm they carried moved with them, because the registry's label has no
+	 * margins and 27 stacked fields would otherwise collapse against each other.
+	 */
 	/* The duration is inert while the intro is off; the label recedes with its control. */
-	.field.dim {
-		opacity: 0.5;
-	}
 	/* A trailing 1em swatch after flowing text can wrap onto its own line at 320px, reading as an orphan
 	   dot. A flex row keeps text and swatch together and lets them wrap as a unit if ever needed. */
-	.field-swatch {
-		display: flex;
-		flex-wrap: wrap;
-		align-items: center;
-	}
 	/*
 	 * #913 S2: `select`, `.text` and `.name-input` left this rule — their appearance moved INTO
 	 * ui/input and ui/native-select, because Svelte's scoped CSS cannot reach an element inside a child
@@ -1236,11 +1228,6 @@
 	 * ::-moz-range-* rule sets a native range needed. Bits UI builds the control from real elements, so
 	 * one set of rules replaces both. Width comes from the component too.
 	 */
-	.hint {
-		margin: var(--space-xs) 0 0;
-		font-size: 0.76rem;
-		color: var(--ink-dim);
-	}
 	/*
 	 * A live swatch beside the label, so the choice is visible without walking to the TV. It carries no
 	 * text, so it needs no contrast bar of its own — and since #425 there is no bar on the stage colour

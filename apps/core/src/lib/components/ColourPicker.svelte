@@ -196,6 +196,13 @@
 		justify-content: space-between;
 		gap: var(--space-lg);
 	}
+	/*
+	 * #913 S4: NOT migrated to ui/field, and the name is a coincidence rather than a shared pattern.
+	 * These are presentational headings for a `role="radiogroup"` that carries its own `aria-label`, so
+	 * there is no control for a <label> to point at — `Field.Label` renders a real <label>, which would
+	 * be a label with no control, and `Field.Title` carries `data-slot="field-label"` and would inherit
+	 * the settings page's 27-field vertical rhythm into this flex head row.
+	 */
 	.field-label {
 		font-size: 0.78rem;
 		letter-spacing: 0.12em;
