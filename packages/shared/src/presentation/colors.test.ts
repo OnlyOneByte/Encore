@@ -26,6 +26,7 @@ import {
 	STAGE_BG_L,
 	SINGER_L,
 	SURFACES,
+	ACCENT2,
 	oklchToRgb,
 	duetPartColors
 } from './colors';
@@ -77,7 +78,7 @@ test('contrastRatio matches known WCAG values', () => {
 	expect(contrastRatio('#ffffff', '#000000')).toBeCloseTo(21, 1);
 	expect(contrastRatio('#ffffff', '#ffffff')).toBeCloseTo(1, 5);
 	// the measurement that condemned white-on-gradient: white on --accent2
-	expect(contrastRatio('#ffffff', '#ff5cae')).toBeCloseTo(2.84, 1);
+	expect(contrastRatio('#ffffff', ACCENT2)).toBeCloseTo(2.84, 1);
 });
 
 test('the surfaces production measures against are the tokens app.css declares', () => {
@@ -91,6 +92,10 @@ test('the surfaces production measures against are the tokens app.css declares',
 	// `toEqual` refuses a `string` on that side.
 	const measured: readonly string[] = SURFACES;
 	expect([...measured]).toEqual([token('bg'), token('card')]);
+	// Same guard for the stage-guard centre: `ACCENT2` is a browser-bundled copy of `--accent2`, and
+	// `ACCENT2_HUE` (and the whole stage ramp built on it) is derived from it. Move the token and this
+	// reds, naming the value — without it, the guard darkens the wrong hues and no other test bites (#845).
+	expect(ACCENT2).toBe(token('accent2'));
 });
 
 test('every wheel hue is visible on both dark surfaces (3:1 non-text)', () => {
@@ -192,7 +197,6 @@ test('nearestSingerHue maps each preset to a plausible hue', () => {
 // gamut-clipping tweak; the thing that must never regress is that lyrics stay readable on the stage.
 
 const WHITE = '#ffffff';
-const ACCENT2 = '#ff5cae'; // the "sing this now" active-word colour
 
 test('every stage background is far darker than the singer dot palette', () => {
 	// The dot tier on a full screen would wash out the lyric reel. This is the whole reason the stage
