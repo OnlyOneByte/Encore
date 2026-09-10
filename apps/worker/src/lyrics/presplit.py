@@ -374,25 +374,21 @@ def _relineate_segments(text: LyricsText, max_chars: int, lineator: Callable[[st
 
     `timing` is deliberately NOT changed: subdividing a line-timed segment yields more line-timed
     segments, and the tier's own claim about what it supplies is still true.
+
+    The walk itself lives in `_relineate_with_opens` — that function produces exactly this `segments`
+    list as its `windows` (same passthrough/subdivide decision on the same condition), plus the
+    `opens` map `bound_blob_text` needs. Delegating here keeps ONE copy of the passthrough/subdivide
+    rule, so a change to it cannot silently diverge between the line-sync and aligner-window paths.
+    `opens` is discarded: this tier publishes `segments`, not a segment->window map. `max_chars` is
+    unused — the split happens inside the injected `lineator` — but stays in the signature for the
+    caller (`split_blob_text`), which passes it positionally.
     """
-    segments: list[dict[str, Any]] = []
-    for seg in text.segments:
-        if not isinstance(seg, dict):
-            continue
-        body = seg.get("text")
-        if seg.get("words") or not isinstance(body, str) or not body.strip():
-            segments.append(seg)
-            continue
-        pieces = [p for p in lineator(body) if p.strip()]
-        if len(pieces) <= 1:
-            segments.append(seg)
-            continue
-        segments.extend(_subdivide(seg, pieces))
+    windows, _opens = _relineate_with_opens(text, lineator)
     # Copy-with-replacement rather than a hand-listed constructor. Re-lineating changes SEGMENTS and
     # nothing else, so every other field must survive verbatim — and a hand-written list silently drops
     # whatever is added to LyricsText later. It already did: `role` was lost here, which turned a BASELINE
     # into a candidate on its way through and left the grader with nothing to grade against.
-    return replace(text, segments=segments)
+    return replace(text, segments=windows)
 
 
 def split_blob_text(
