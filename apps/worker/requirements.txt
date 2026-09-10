@@ -48,6 +48,18 @@ pyannote.audio==4.0.0
 # cost.
 bs-roformer-infer==0.1.5
 
+# python-audio-separator — the MEL-BAND RoFormer engine, adopted ALONGSIDE bs-roformer-infer (issue
+# #483, owner ruling Q1(b): both engines, not one over the other — docs/DECISIONS.md). It reaches the
+# fast mel-band checkpoints bs-roformer-infer cannot (bs_roformer's get_model_from_config implements
+# only model_type=='bs_roformer' and ships no mel_band module), running them as a first-class MDXC path.
+# The win is large and measured: `mel instrumental_becruily` benchmarks rt 1.28 vs bs_roformer-1297's
+# rt 13.29 on the reference box (32-core Graviton 3, CPU) — a 10.4x RoFormer-family instrumental cook,
+# no GPU (docs/benchmarks/SUMMARY.md §4). Only a worker that advertises the `stems:audiosep` capability
+# loads it (capabilities.py probes for it), so the default (demucs-only) worker never pays its startup
+# cost. Pinned like everything else here (no bare latest); NOT the `[cpu]` extra, which pins its own
+# torch — this rides the existing torch 2.8 set above, adds no numpy rebuild.
+python-audio-separator==0.47.0
+
 # ── lyrics line-splitting ──────────────────────────────────────────────────────────────
 # `karaoke-lyrics-processor` supplies the LENGTH-BOUNDING half of re-lineating an ASR blob (hard char
 # budget with an iteration cap, nested-parenthesis isolation, punctuation cleanup); src/lyrics_presplit

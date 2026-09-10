@@ -54,7 +54,11 @@ def _either(module: str, binary: str) -> tuple[bool, str]:
 
 
 def probe_all(
-    *, ytdlp_bin: str = "yt-dlp", demucs_bin: str = "demucs", roformer_bin: str = "bs-roformer-infer"
+    *,
+    ytdlp_bin: str = "yt-dlp",
+    demucs_bin: str = "demucs",
+    roformer_bin: str = "bs-roformer-infer",
+    audiosep_bin: str = "audio-separator",
 ) -> list[Probe]:
     """Probe every capability this worker could advertise. Order is the cook order, so the startup
     log reads as the pipeline it describes."""
@@ -68,6 +72,13 @@ def probe_all(
 
     rof_ok, rof_why = _either("bs_roformer", roformer_bin)
     probes.append(Probe("stems:roformer", rof_ok, rof_why))
+
+    # python-audio-separator: the mel-band RoFormer engine (#483), run through the `audio-separator`
+    # CLI. Advertised only when the dep is present — the same honesty contract as every other token, so
+    # the #118 parity guard (test_every_advertised_stems_capability_resolves_to_a_real_engine) holds:
+    # engine_for("audiosep") builds a real AudioSepEngine, so a box advertising this can actually run it.
+    asep_ok, asep_why = _either("audio_separator", audiosep_bin)
+    probes.append(Probe("stems:audiosep", asep_ok, asep_why))
 
     # An ensemble would run both engines and keep the better result, so it would need both present.
     # But no ensemble engine is implemented: `engine_for` (separation/engines.py) has branches for
@@ -146,6 +157,7 @@ def resolve(
     ytdlp_bin: str = "yt-dlp",
     demucs_bin: str = "demucs",
     roformer_bin: str = "bs-roformer-infer",
+    audiosep_bin: str = "audio-separator",
 ) -> tuple[tuple[str, ...], list[Probe], list[str]]:
     """The capability set this worker advertises.
 
@@ -154,7 +166,9 @@ def resolve(
     unprovable claim is the whole failure mode, and silently dropping it without saying so just moves
     the mystery somewhere else.
     """
-    probes = probe_all(ytdlp_bin=ytdlp_bin, demucs_bin=demucs_bin, roformer_bin=roformer_bin)
+    probes = probe_all(
+        ytdlp_bin=ytdlp_bin, demucs_bin=demucs_bin, roformer_bin=roformer_bin, audiosep_bin=audiosep_bin
+    )
     proven = {p.token for p in probes if p.available}
     warnings: list[str] = []
 
