@@ -28,6 +28,7 @@
 	import * as Tabs from '$lib/components/ui/tabs';
 	import * as Card from '$lib/components/ui/card';
 	import * as Field from '$lib/components/ui/field';
+	import * as Collapsible from '$lib/components/ui/collapsible';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -1067,21 +1068,27 @@
 
 				<Card.Root>
 	<Card.Content>
-					<button
-						class="disclose"
-						aria-expanded={advancedOpen}
-						aria-controls="advanced-body"
-						onclick={() => (advancedOpen = !advancedOpen)}
-					>
+					<!--
+						#913 S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> STAYS
+						here via Bits UI's `child` snippet — `.disclose` is scoped CSS in this file, and a class handed
+						to a component is scoped to the CALLER and stripped there as unused.
+					-->
+					<Collapsible.Root bind:open={advancedOpen}>
+						<Collapsible.Trigger>
+							{#snippet child({ props })}
+								<button class="disclose" {...props}>
 						<Icon name={advancedOpen ? 'chevron-down' : 'chevron-right'} />
 						Advanced
 						<span class="disclose-now">
 							{settings.global.enqueueUpgrade ? 'Re-cook on' : 'Re-cook off'}
-						</span>
-					</button>
+									</span>
+								</button>
+							{/snippet}
+						</Collapsible.Trigger>
 
-					{#if advancedOpen}
-						<Card.Content id="advanced-body">
+						<Collapsible.Content>
+							{#snippet child({ props })}
+								<Card.Content id="advanced-body" {...props}>
 							<label class="check" for="enqueue-upgrade">
 							<Checkbox
 								id="enqueue-upgrade"
@@ -1119,7 +1126,10 @@
 								<p class="warn">This is not better than the splitter above, so no upgrade will run.</p>
 							{/if}
 						</Card.Content>
-					{/if}
+							{/snippet}
+						</Collapsible.Content>
+					</Collapsible.Root>
+
 				</Card.Content>
 </Card.Root>
 

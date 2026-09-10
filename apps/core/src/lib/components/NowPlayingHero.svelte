@@ -17,6 +17,7 @@
 	import type { Snippet } from 'svelte';
 	import { formatClock, formatRemaining, progressFraction } from '$lib/clock';
 	import Icon from '$lib/ui/Icon.svelte';
+	import * as Collapsible from '$lib/components/ui/collapsible';
 
 	interface Props {
 		/** The song, or the empty-state line when nothing is playing. */
@@ -146,20 +147,37 @@
 		     glance. Same idiom as the Browse and Vocal-range toggles: a real <button> carrying
 		     aria-expanded, a chevron-down/right Icon swap, and the app's shared tap target. -->
 		<div class="tools">
-			<button class="tools-toggle" aria-expanded={controlsOpen} onclick={() => (controlsOpen = !controlsOpen)}>
+			<Collapsible.Root bind:open={controlsOpen}>
+				<Collapsible.Trigger>
+					{#snippet child({ props })}
+						<button class="tools-toggle" {...props}>
 				<Icon name={controlsOpen ? 'chevron-down' : 'chevron-right'} />
 				<span class="tools-label">Adjust while you sing</span>
 				{#if controlsSummary}<span class="tools-peek">{controlsSummary}</span>{/if}
 			</button>
-			{#if controlsOpen}
-				<div class="tools-body">
+					{/snippet}
+				</Collapsible.Trigger>
+				<Collapsible.Content>
+					{#snippet child({ props })}
+						<!--
+							The {#if} INSIDE the content is deliberate. This body holds a Bits UI Slider
+							(GuidingTrack), which reads `offsetWidth`; the mount rung replaces that with a throw
+							(XR-VER-03), so it must not mount while the disclosure is collapsed. Collapsible renders
+							its content always and hides it, which would mount the slider on every hero.
+						-->
+						<div class="tools-body" {...props}>
+							{#if controlsOpen}
 					<!-- Ahead of the controls, so the reason is read BEFORE the dead control it explains rather
 					     than after it — and outside the snippet, so no `opacity` on a disabled control can dim
 					     it (XR-PH-15 / XR-PH-03). -->
 					{#if controlsNote}<p class="tools-note">{controlsNote}</p>{/if}
 					{@render controls()}
-				</div>
-			{/if}
+											{/if}
+						</div>
+					{/snippet}
+				</Collapsible.Content>
+			</Collapsible.Root>
+
 		</div>
 	{/if}
 </section>

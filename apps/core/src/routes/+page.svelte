@@ -53,6 +53,7 @@
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '@encore/shared';
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
+	import * as Collapsible from '$lib/components/ui/collapsible';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
@@ -1291,13 +1292,21 @@
 				-->
 				{#if hasRange}
 					<div class="range">
-						<button class="range-toggle" aria-expanded={rangeOpen} onclick={() => (rangeOpen = !rangeOpen)}>
+						<!-- #913 S5: Collapsible owns `aria-expanded`, `aria-controls` and the toggle. The <button> stays
+							here via Bits UI's `child` snippet, so its scoped class in this file still applies. -->
+						<Collapsible.Root bind:open={rangeOpen}>
+							<Collapsible.Trigger>
+								{#snippet child({ props })}
+									<button class="range-toggle" {...props}>
 							<Icon name={rangeOpen ? 'chevron-down' : 'chevron-right'} />
 							Vocal range
 							<span class="range-peek">{rangeText}</span>
 						</button>
-						{#if rangeOpen}
-							<div class="range-body">
+								{/snippet}
+							</Collapsible.Trigger>
+							<Collapsible.Content>
+								{#snippet child({ props })}
+									<div class="range-body" {...props}>
 								<div class="range-facts">
 									<span class="range-label">{rangeText}</span>
 									{#if octaves !== null}<span class="range-oct">{octaves} oct</span>{/if}
@@ -1305,7 +1314,10 @@
 								{#if bandSentence}<p class="range-band">{bandSentence}</p>{/if}
 								<RangeBar profile={profile} keyShift={playback.keyShift} />
 							</div>
-						{/if}
+								{/snippet}
+							</Collapsible.Content>
+						</Collapsible.Root>
+
 					</div>
 				{/if}
 

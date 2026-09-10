@@ -295,6 +295,7 @@ const STATE_EXPR = `(() => {
 		heroPresent: !!document.querySelector(${JSON.stringify(SEL.hero)}),
 		toolsOpen: document.querySelector(${JSON.stringify(SEL.toolsToggle)})?.getAttribute('aria-expanded') === 'true',
 		sliderPresent: !!slider,
+		sliderInsideToggle: !!(slider && document.querySelector(${JSON.stringify(SEL.toolsToggle)})?.contains(slider)),
 		// PRESENCE, not value: Bits UI emits data-disabled="" when disabled and omits it entirely when
 		// enabled, which the non-vacuity mutation above confirmed.
 		sliderDisabled: !!slider && (slider.hasAttribute('data-disabled') || slider.getAttribute('aria-disabled') === 'true'),
@@ -308,6 +309,36 @@ const STATE_EXPR = `(() => {
 		gtDimmed: !!gt && gt.classList.contains('disabled')
 	};
 })()`;
+
+/**
+ * Read the disclosure while it is still CLOSED. Ported from phone-home-832's mount test by #913 S5:
+ * the hero's disclosure is a Bits UI Collapsible now, which reads `getBoundingClientRect()` for its
+ * height, and the mount rung replaces that with a throw (XR-VER-03). So the claim moved to the rung
+ * where the hero can actually render.
+ * @param {Page} phone @param {string} title
+ */
+async function readCollapsedFor(phone, title) {
+	await waitFor(
+		async () =>
+			(await phone.evaluate(`document.querySelector(${JSON.stringify(SEL.heroTitle)})?.textContent ?? ''`))?.includes?.(
+				title
+			),
+		{ timeout: 20_000, name: `hero showing "${title}"` }
+	);
+	return /** @type {any} */ (
+		await phone.evaluate(`(() => {
+			const toggle = document.querySelector(${JSON.stringify(SEL.toolsToggle)});
+			const slider = document.querySelector(${JSON.stringify(SEL.slider)});
+			return {
+				togglePresent: !!toggle,
+				expanded: toggle?.getAttribute('aria-expanded') === 'true',
+				peekText: document.querySelector(${JSON.stringify(SEL.toolsPeek)})?.textContent?.trim() ?? null,
+				sliderVisible: !!slider && !!slider.getClientRects().length,
+				sliderInsideToggle: !!(slider && toggle && toggle.contains(slider))
+			};
+		})()`)
+	);
+}
 
 /** @param {Page} phone @param {string} title */
 async function openToolsFor(phone, title) {
@@ -448,7 +479,13 @@ async function main() {
 	// ── ARM 1: a song WITH an isolated stem ──
 	await queueAdd(phone, withStem.id, actor);
 	await sendPlayer(phone, { cmd: 'play' });
+	// COLLAPSED first: the summary says where the controls stand, and the control itself is not on screen.
+	const closed = await readCollapsedFor(phone, withStem.title);
+	check('the disclosure starts CLOSED, with a summary standing in for the controls', closed.togglePresent && !closed.expanded && !!closed.peekText, JSON.stringify(closed));
+	check('the control is not visible while the disclosure is closed (XR-PH-15)', !closed.sliderVisible, JSON.stringify(closed));
+
 	const live = await openToolsFor(phone, withStem.title);
+	check('the control lives in the disclosure BODY, never inside its toggle (XR-PH-15)', live.sliderPresent && !live.sliderInsideToggle, JSON.stringify(live));
 	check('the hero renders with its tools disclosure open (with-stem arm)', live.heroPresent && live.toolsOpen, JSON.stringify(live));
 	check('a song WITH an isolated stem gets a live control (XR-PH-15)', live.sliderPresent && !live.sliderDisabled, JSON.stringify(live));
 	check('…and no explanation, because a working control needs none (XR-PH-15)', !live.notePresent && !live.pageTextHasFragment, JSON.stringify(live));
