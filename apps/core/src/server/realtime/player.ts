@@ -12,6 +12,7 @@ import {
 	type ServerEvent
 } from '@encore/shared';
 import { nextPlayable, upNextAfter, isEntryReady } from '../rotation/index';
+import { entryResolves } from '../state/store';
 import { mediaFor, orderingOf, type HubDeps } from './hub';
 
 /**
@@ -127,13 +128,15 @@ export function reconcileOnReady(deps: HubDeps): void {
 	// such pairing, so a remove/status of the PLAYING entry leaves currentEntryId dangling. Enforce it
 	// here, at the recovery entry point, by treating a dangling id exactly like a null one.
 	//
-	// #803: this is the SOLE production statement of the #128 recovery predicate. server.ts's
-	// queue:command arm used to re-derive it to decide whether to call this function at all, so
-	// widening the predicate at one copy and not the other was silent (the suite could not see the
-	// two disagree) while the correct two-site edit red two guards. Callers now call unconditionally
-	// and this decides — every branch below falls through to the emitNowPlaying at the tail, which is
-	// exactly what a "current resolves, nothing to recover" caller needs.
-	const currentResolves = state.entries.some((e) => e.id === state.playback.currentEntryId);
+	// #128 recovery predicate, now single-sourced: `entryResolves` (state/store.ts) is the ONE
+	// production statement of "does currentEntryId name a live entry?". #803 removed server.ts's
+	// copy that decided whether to CALL this function, but left two copies of the predicate itself —
+	// this runtime recovery and store.ts's boot self-heal — byte-identical modulo the receiver, which
+	// is the drift #848 closed by extracting the shared helper both askers call. Callers now call
+	// this function unconditionally and it decides — every branch below falls through to the
+	// emitNowPlaying at the tail, which is exactly what a "current resolves, nothing to recover"
+	// caller needs.
+	const currentResolves = entryResolves(state.entries, state.playback.currentEntryId);
 	if (!currentResolves) {
 		const { next } = nextPlayable(state.entries, deps.mediaById, orderingOf(deps));
 		if (next) {
