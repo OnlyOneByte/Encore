@@ -21,10 +21,11 @@ interface PendingOp {
 	op: QueueOp;
 	/**
 	 * The FULL entries array as it stands immediately BEFORE this op is applied — with every EARLIER
-	 * still-pending op baked in, ON THE CURRENT SERVER TRUTH. Kept in sync: the rebase loops in
-	 * #onPatch/#onSync/#onReject re-derive it each time truth moves, so it is never stale (issue
-	 * #101 regression — a snapshot frozen at op-issue time drops any server patch that lands before
-	 * the reject). Rollback restores this snapshot
+	 * still-pending op baked in, ON THE CURRENT SERVER TRUTH. Kept in sync by ONE writer,
+	 * #rebasePending, which every truth-moving path (#onPatch/#onSync/#onReject) rebases through, so
+	 * it is never stale (issue #101 regression — a snapshot frozen at op-issue time drops any server
+	 * patch that lands before the reject; issue #869 — the invariant used to be copied into three
+	 * loops that could drift). Rollback restores this snapshot
 	 * rather than deriving an undo from the op (issue #101): a per-op inverse must agree with the
 	 * forward reducer, and for `move` it did not — the forward step routes through
 	 * `applyAndReseq`/`reorderWithinSinger` (permutes `addedAt`) while the inverse ran `applyOp`
@@ -235,6 +236,33 @@ export class QueueStore {
 		if (rev > this.#rev) this.#rev = rev;
 	}
 
+	/**
+	 * THE one place that maintains the pending-snapshot invariant (issue #101 / PR #168).
+	 *
+	 * Starting from `base` (the new authoritative truth), walk the given pending ops in issue order
+	 * and, for each, (1) refresh its `snapshot` rollback target to the current rebased pre-op state,
+	 * then (2) re-apply the op through the shared reducer so the next op — and the returned view —
+	 * sits on top of it. The refresh is the invariant: every pending op's `snapshot` must be the
+	 * pre-op state ON CURRENT SERVER TRUTH, so a later `op:reject` rolls back to the world as it is
+	 * now, not to a stale one frozen at op-issue time (the #101 regression PR #168 fixed).
+	 *
+	 * All three writers that move truth — `#onPatch`, `#onSync`, `#onReject` — rebase through here so
+	 * the invariant is stated ONCE rather than copied into three loops that can drift (the two hotter
+	 * reconnect-path copies were unpinned; issue #869). `#onReject` passes only the ops issued AFTER
+	 * the rejected one, because the earlier ops are already baked into the rejected op's snapshot;
+	 * the loop body is otherwise identical, which is exactly why it is shared.
+	 *
+	 * Returns the rebased entries; the caller assigns `#entries`.
+	 */
+	#rebasePending(base: QueueEntry[], pendingOps: Iterable<PendingOp>): QueueEntry[] {
+		let acc = base;
+		for (const p of pendingOps) {
+			p.snapshot = acc.map((x) => ({ ...x }));
+			acc = applyAndReseq(acc, p.op, this.#ordering());
+		}
+		return acc;
+	}
+
 	#onPatch(e: Extract<ServerEvent, { type: 'queue:patch' }>): void {
 		// Advance-only, through the SAME rule #noteRev enforces: the server never intentionally emits
 		// a lower rev (hub/player/leave all publish state.rev at publish time), and a lower rev here
@@ -248,16 +276,10 @@ export class QueueStore {
 			// Authoritative snapshot present (normal mutation): adopt it as truth, then re-apply any
 			// STILL-pending local ops on top so in-flight changes survive. This is what makes the
 			// originator's optimistic row snap to the server's canonical rotationSeq with zero flicker
-			// (Finding #2/#3) and drops terminal entries the server pruned.
-			let base = e.patch.entries.map((x) => ({ ...x }));
-			for (const p of this.#pending.values()) {
-				// Refresh each op's rollback target to the rebased pre-op state (issue #101): server
-				// truth just replaced #entries, so a snapshot frozen at op-issue time would roll a
-				// later reject back to a stale world and silently drop this patch.
-				p.snapshot = base.map((x) => ({ ...x }));
-				base = applyAndReseq(base, p.op, this.#ordering());
-			}
-			this.#entries = base;
+			// (Finding #2/#3) and drops terminal entries the server pruned. #rebasePending refreshes
+			// each pending op's rollback target to the rebased pre-op state (the #101 invariant).
+			const base = e.patch.entries.map((x) => ({ ...x }));
+			this.#entries = this.#rebasePending(base, this.#pending.values());
 		} else {
 			// Pure re-ack (dedup path) carries no entries and no ops — nothing to apply.
 			for (const op of e.patch.ops) this.#entries = applyAndReseq(this.#entries, op, this.#ordering());
@@ -269,14 +291,11 @@ export class QueueStore {
 		this.#rev = e.rev;
 		// REBASE: authoritative truth, then re-apply still-pending local ops on top (via the shared
 		// reducer so seqs match the server) so the user's in-flight changes don't vanish on resync.
-		let base = e.entries.map((x) => ({ ...x }));
-		for (const p of this.#pending.values()) {
-			// Refresh each op's rollback target to the rebased pre-op state (issue #101) — same reason
-			// as #onPatch: a resync replaces truth, and a stale snapshot would lose it on a later reject.
-			p.snapshot = base.map((x) => ({ ...x }));
-			base = applyAndReseq(base, p.op, this.#ordering());
-		}
-		this.#entries = base;
+		// #rebasePending refreshes each op's rollback target to the rebased pre-op state — same #101
+		// invariant as #onPatch: a resync replaces truth, and a stale snapshot would lose it on a
+		// later reject.
+		const base = e.entries.map((x) => ({ ...x }));
+		this.#entries = this.#rebasePending(base, this.#pending.values());
 		this.#emit();
 	}
 
@@ -286,18 +305,18 @@ export class QueueStore {
 		this.#pending.delete(e.clientOpId);
 		// ROLLBACK by restoring the pre-op snapshot (issue #101): a per-op inverse cannot be trusted
 		// to undo what the forward reducer actually did (it failed for `move`). The snapshot already
-		// carries every EARLIER pending op, so re-apply only the ops issued AFTER the rejected one
-		// (via the shared reducer, the same rebase the patch/sync paths use) — that keeps a concurrent
-		// in-flight op alive without double-applying the earlier ones already baked into the snapshot.
-		let base = pending.snapshot.map((x) => ({ ...x }));
+		// carries every EARLIER pending op, so re-apply only the ops issued AFTER the rejected one —
+		// that keeps a concurrent in-flight op alive without double-applying the earlier ones already
+		// baked into the snapshot. Rebasing through #rebasePending refreshes each survivor's rollback
+		// target too, so a later reject of IT rolls back to the correct rebased pre-op world (the same
+		// #101 invariant #onPatch/#onSync hold).
+		const survivors: PendingOp[] = [];
 		for (const p of this.#pending.values()) {
 			if (p.seq <= pending.seq) continue; // earlier ops are already baked into the snapshot
-			// Refresh the survivor's rollback target too, so a later reject of IT rolls back to the
-			// correct rebased pre-op world (keeps the same snapshot invariant #onPatch/#onSync hold).
-			p.snapshot = base.map((x) => ({ ...x }));
-			base = applyAndReseq(base, p.op, this.#ordering());
+			survivors.push(p);
 		}
-		this.#entries = base;
+		const base = pending.snapshot.map((x) => ({ ...x }));
+		this.#entries = this.#rebasePending(base, survivors);
 		this.#emit();
 		this.#deps.onReject?.(e.reason); // surface to the UI (toast)
 	}

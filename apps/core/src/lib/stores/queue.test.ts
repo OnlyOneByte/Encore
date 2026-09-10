@@ -160,6 +160,76 @@ test('reject rolls back to CURRENT truth, preserving a server patch that arrived
 	expect(store.pendingCount).toBe(0);
 });
 
+// Issue #869 Finding 1: #onSync must refresh each pending op's rollback target to CURRENT truth,
+// exactly as #onPatch does (#168) — the two share #rebasePending. This is the reconnect path:
+// resendPending fires on every queue:sync, so a reject after a resync rolls back through here.
+// RED with the snapshot-refresh in #rebasePending removed on the #onSync path: the reject would
+// then roll back to a stale pre-sync world and silently drop the entries the resync brought.
+test('reject after a queue:sync rolls back to the post-sync truth, not a stale one (#869 F1)', () => {
+	const { store } = makeStore();
+	// A resync settles the world at [o1], with my add still pending on top.
+	const mine = store.addSong('mine'); // id0 entry / id1 opId (pending)
+	store.onServerEvent({
+		type: 'queue:sync',
+		rev: 1,
+		entries: [{ id: 'o1', mediaId: 'm1', singerId: 'sam', status: 'queued', rotationSeq: 0, addedAt: 1 }]
+	});
+	expect(store.entries.map((e) => e.id)).toContain(mine); // my add rebased on top
+	expect(store.entries.map((e) => e.id)).toContain('o1');
+
+	// A SECOND resync moves truth forward — o2 was added while my add was still in flight.
+	store.onServerEvent({
+		type: 'queue:sync',
+		rev: 2,
+		entries: [
+			{ id: 'o1', mediaId: 'm1', singerId: 'sam', status: 'queued', rotationSeq: 0, addedAt: 1 },
+			{ id: 'o2', mediaId: 'm2', singerId: 'sam', status: 'queued', rotationSeq: 1, addedAt: 2 }
+		]
+	});
+	expect(store.entries.map((e) => e.id)).toContain('o2'); // the new server entry is present
+	expect(store.pendingCount).toBe(1); // my add still pending
+
+	// The server rejects my resent add. The rollback MUST land on the post-sync world minus my add —
+	// o2 (which arrived on the second sync) must survive, not be discarded by a stale snapshot.
+	store.onServerEvent({ type: 'op:reject', clientOpId: 'id1', reason: 'unknown media' });
+	expect(store.entries.map((e) => e.id)).toEqual(['o1', 'o2']); // #869 F1: post-sync truth preserved
+	expect(store.pendingCount).toBe(0);
+});
+
+// Issue #869 Finding 2: #onReject's `p.seq <= pending.seq` filter (skip ops already baked into the
+// rejected op's snapshot) must be exercised by rejecting the LATER op first, then the EARLIER one.
+// The #101 test rejects the EARLIER op, so its surviving op is later and the `<=` branch is never
+// taken — its comment claims a branch its test does not enter. This test rejects B (later) then A
+// (earlier): rejecting A must roll back to A's pre-op snapshot AND drop B's already-rejected effect.
+// RED with the seq filter removed: the loop then refreshes A's snapshot from a base that already
+// contains A's own effect, so A's rollback target stops being pre-op and A survives its own reject.
+test('reject the LATER pending op then the EARLIER one — both roll back cleanly (#869 F2)', () => {
+	const { store } = makeStore();
+	// Settle the world at [o1] so the ops under test are the only pending ones.
+	store.onServerEvent({
+		type: 'queue:sync',
+		rev: 1,
+		entries: [{ id: 'o1', mediaId: 'm0', singerId: 'sam', status: 'queued', rotationSeq: 0, addedAt: 1 }]
+	});
+	const a = store.addSong('mA'); // pending A (seq 0)
+	const b = store.addSong('mB'); // pending B (seq 1)
+	expect(store.pendingCount).toBe(2);
+	expect(store.entries.map((e) => e.id)).toContain(a);
+	expect(store.entries.map((e) => e.id)).toContain(b);
+
+	// Reject B (the LATER op) first. A must remain, B gone.
+	store.onServerEvent({ type: 'op:reject', clientOpId: 'id3', reason: 'unknown media' });
+	expect(store.entries.map((e) => e.id)).toContain(a);
+	expect(store.entries.map((e) => e.id)).not.toContain(b);
+	expect(store.pendingCount).toBe(1);
+
+	// Reject A (the EARLIER op). Its rollback target is its own pre-op snapshot ([o1]); with B already
+	// gone, the world must return to exactly [o1] — A must not survive its own reject.
+	store.onServerEvent({ type: 'op:reject', clientOpId: 'id1', reason: 'unknown media' });
+	expect(store.entries.map((e) => e.id)).toEqual(['o1']); // #869 F2: A gone, no half-applied third state
+	expect(store.pendingCount).toBe(0);
+});
+
 test('observer applies a remote add (no pending, just inserts)', () => {
 	const { store } = makeStore();
 	const remote: QueueEntry = {
