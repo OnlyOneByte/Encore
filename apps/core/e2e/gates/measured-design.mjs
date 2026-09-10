@@ -851,6 +851,117 @@ try {
 	}
 
 	/*
+	 * ── CLAIM 5b (XR-TV-889): .fs-btn overlaps NO z-tier-7 chrome box, on the RENDER ─────────────────
+	 *
+	 * #889: the fullscreen button and the corner chrome (join QR, lower-third, Up-next) all sit at
+	 * z-tier 7. Whichever is later in the DOM paints on top at equal z, so a shared anchor is a silent
+	 * occlusion a source scan cannot see. The first #889 fix moved the button off the join QR and onto
+	 * `.upnext` — a string-inequality guard on ONE anchor pair stayed green while the button still
+	 * overlapped ~3000px². This measures the invariant the fix actually claims: `.fs-btn` intersects
+	 * NO other z-tier-7 box, at 1080p AND 4K.
+	 *
+	 * WHY SYNTHETIC BOXES. `.fs-btn` and `.upnext`/`.corner`/`.lower-third` render only in the PLAYING
+	 * branch, which needs live WS playback the self-hosting drive has no cooked media for (same reason
+	 * CLAIM 6 covers only attract/lobby). So the probe MOUNTS one element per class under the real
+	 * `.tv` — the tokens (`--tv-safe-x/y`, `--tv-upnext-h`, `--z-tv-card`) resolve on `.tv` and the
+	 * loaded /tv stylesheet positions each element exactly as production does. `.upnext` is given a
+	 * realistic wrapped height so `--tv-upnext-h` is exercised at a non-zero value. The DOM order
+	 * mirrors production (chrome first, `.fs-btn` last) so paint order is honest. Boxes are removed
+	 * after measuring so nothing leaks into a later claim.
+	 */
+	await page.viewport(1920, 1080);
+	await page.goto(base + '/tv');
+	await page.waitFor(`document.querySelector(${JSON.stringify(SEL.tvRoot)}) !== null`, { timeout: 15000 });
+	await sleep(300);
+
+	const overlapProbe = `(() => {
+		const tv = document.querySelector(${JSON.stringify(SEL.tvRoot)});
+		if (!tv) return null;
+		// The route's CSS is Svelte-SCOPED: rules are '.fs-btn.svelte-HASH', so a bare class="fs-btn"
+		// gets NONE of the production positioning. Worse, .corner belongs to a DIFFERENT component
+		// (JoinBadge) with its OWN hash. So resolve each class's own scope hash by scanning the live
+		// stylesheets for the rule that positions it, and stamp THAT hash on the synthetic element.
+		// Fail loudly if any class's hash cannot be found — an unscoped box measures unstyled geometry.
+		function scopeFor(cls) {
+			const re = new RegExp('\\\\.' + cls + '\\\\.(svelte-[a-z0-9]+)');
+			for (const sheet of document.styleSheets) {
+				let rules; try { rules = sheet.cssRules; } catch (e) { continue; }
+				if (!rules) continue;
+				for (const r of rules) {
+					const m = r.selectorText && re.exec(r.selectorText);
+					if (m) return m[1];
+				}
+			}
+			return null;
+		}
+		const scopes = {};
+		for (const cls of ['fs-btn', 'upnext', 'lower-third', 'corner']) {
+			const s = scopeFor(cls);
+			if (!s) return { noScope: cls };
+			scopes[cls] = s;
+		}
+		const holder = document.createElement('div');
+		holder.setAttribute('data-889-probe', '1');
+		// One element per z-tier-7 chrome class, in production DOM order (chrome first, fs-btn LAST so it
+		// paints on top at equal z — the exact condition the guard must catch). .upnext gets its real
+		// child classes so it renders at a production-realistic (multi-line, wrapping) height. Each box
+		// carries ITS OWN component's scope hash so the scoped rules actually apply.
+		const uh = scopes['upnext'], lh = scopes['lower-third'], ch = scopes['corner'];
+		const specs = [
+			{ cls: 'lower-third', html: '<div class="ls-name ' + lh + '">Now singing</div><div class="ls-song ' + lh + '">A Song Title</div>' },
+			{ cls: 'upnext', html: '<span class="un-label ' + uh + '">Up next</span><span class="un-name ' + uh + '">A Fairly Long Singer Name Here</span><span class="un-song ' + uh + '">An Even Longer Wrapping Song Title That Grows The Block Past One Line On A Wall</span>' },
+			{ cls: 'corner', html: '<div class="qr ' + ch + '"><img width="88" height="88"></div><div class="meta ' + ch + '"><div class="t ' + ch + '">Scan to join</div><div class="u ' + ch + '">192.168.1.20:5173/join</div></div>' },
+			{ cls: 'fs-btn', html: '' }
+		];
+		const made = {};
+		for (const s of specs) {
+			const el = document.createElement(s.cls === 'fs-btn' ? 'button' : 'div');
+			el.className = s.cls + ' ' + scopes[s.cls] + (s.cls === 'fs-btn' ? ' shown' : '');
+			el.innerHTML = s.html;
+			holder.appendChild(el);
+			made[s.cls] = el;
+		}
+		tv.appendChild(holder);
+		// Publish .upnext's REAL rendered height as --tv-upnext-h, exactly as the production
+		// ResizeObserver does. This is what makes the fix's offset (which reads --tv-upnext-h) correct
+		// AND what makes a fixed-offset regression (one that ignores it) overlap the block.
+		const upH = Math.ceil(made['upnext'].getBoundingClientRect().height);
+		tv.style.setProperty('--tv-upnext-h', upH + 'px');
+		// Reflow so .fs-btn's top:calc(... + var(--tv-upnext-h) ...) re-resolves against the new value.
+		void made['fs-btn'].getBoundingClientRect();
+		const rect = (el) => { const r = el.getBoundingClientRect(); return { l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; };
+		const fs = rect(made['fs-btn']);
+		const others = ['lower-third', 'upnext', 'corner'].map((c) => ({ cls: c, box: rect(made[c]) }));
+		const overlaps = [];
+		for (const o of others) {
+			const ix = Math.max(0, Math.min(fs.r, o.box.r) - Math.max(fs.l, o.box.l));
+			const iy = Math.max(0, Math.min(fs.b, o.box.b) - Math.max(fs.t, o.box.t));
+			const area = Math.round(ix * iy);
+			if (area > 0) overlaps.push({ cls: o.cls, area, box: o.box });
+		}
+		const out = { fs, upH, scopes, overlaps, viewport: window.innerWidth + 'x' + window.innerHeight };
+		holder.remove();
+		tv.style.removeProperty('--tv-upnext-h');
+		return out;
+	})()`;
+
+	for (const [w, h] of [[1920, 1080], [3840, 2160]]) {
+		await page.viewport(w, h);
+		await sleep(150);
+		const o = await page.evaluate(overlapProbe);
+		check(
+			`CLAIM 5b (XR-TV-889) .fs-btn overlaps no z-tier-7 chrome box at ${w}x${h}`,
+			o !== null && !o.noScope && o.overlaps.length === 0,
+			o === null
+				? 'no .tv root to mount the probe on'
+				: o.noScope
+					? `could not recover the Svelte scope hash for .${o.noScope} from /tv — the probe would measure an unstyled box, so it is failed rather than trusted`
+					: `fs-btn ${Math.round(o.fs.w)}x${Math.round(o.fs.h)} @(${Math.round(o.fs.l)},${Math.round(o.fs.t)}) upnext-h=${o.upH} overlaps: ${JSON.stringify(o.overlaps)} — the button must clear the lower-third, Up-next and join QR entirely, not merely differ in one anchor`
+		);
+	}
+	await page.viewport(1920, 1080);
+
+	/*
 	 * ── CLAIM 6 (issue #826, XR-TV-14 / XR-TV-19): the ratified TV states measured on the render ──────
 	 *
 	 * The source-scan half (room-code-is-largest, the CSS-gated crossfade, the family borders) lives in

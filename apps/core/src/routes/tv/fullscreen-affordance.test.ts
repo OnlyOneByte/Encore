@@ -107,3 +107,61 @@ test('.fs-btn sits on the --z-tv-card tier — above the reel and video, below t
 	expect(rule).not.toBeNull();
 	expect(rule![1]!).toMatch(/z-index\s*:\s*var\(--z-tv-card\)\s*;/);
 });
+
+test('.fs-btn and the corner join QR do NOT share the same bottom-right anchor (#889)', () => {
+	// PINS the #889 fix hunk: the fullscreen button and the during-playback join QR are BOTH z-tv-card
+	// (tier 7) persistent chrome, and both are position:absolute. Before #889 both anchored to
+	// `right: var(--tv-safe-x); bottom: var(--tv-safe-y)`, so at equal z-index the later-in-DOM button
+	// painted its translucent tile over the QR card's "Scan to join" text — the readable half of the
+	// invitation. The button is now pinned TOP-right (below the status dot) so the two never share a
+	// corner. This scans BOTH files (the route + the sibling JoinBadge), reads each rule's OWN anchor
+	// declarations, and asserts the resolved (right, bottom|top) anchor pair differs — reverting the
+	// fs-btn move (back to bottom: var(--tv-safe-y)) makes the pairs identical and reds this test.
+
+	// Non-vacuous by construction: both rules MUST be found (a rename/removal reds here, not silently
+	// passes), and both MUST carry --z-tv-card (this guard only speaks to same-tier chrome).
+	const fsStyle = /<style[^>]*>([\s\S]*?)<\/style>/.exec(raw);
+	expect(fsStyle).not.toBeNull();
+	const fsRule = /\.fs-btn\s*\{([^}]*)\}/.exec(fsStyle![1]!);
+	expect(fsRule).not.toBeNull();
+	const fsBody = fsRule![1]!;
+	expect(fsBody).toMatch(/z-index\s*:\s*var\(--z-tv-card\)\s*;/);
+
+	const JOIN = join(import.meta.dir, '..', '..', 'lib', 'tv', 'JoinBadge.svelte');
+	const joinRaw = readFileSync(JOIN, 'utf8');
+	const joinStyle = /<style[^>]*>([\s\S]*?)<\/style>/.exec(joinRaw);
+	expect(joinStyle).not.toBeNull();
+	// `.corner:not(.badqr)` — the during-playback QR card treatment (NOT the unreachable-join alert).
+	const cornerRule = /\.corner:not\(\.badqr\)\s*\{([^}]*)\}/.exec(joinStyle![1]!);
+	expect(cornerRule).not.toBeNull();
+	const cornerBody = cornerRule![1]!;
+	expect(cornerBody).toMatch(/z-index\s*:\s*var\(--z-tv-card\)\s*;/);
+
+	// The anchor of an absolutely-positioned box is its (right, and one of bottom|top) declarations.
+	// Read them from each rule's OWN body so the comparison is between the two real anchors.
+	function anchor(body: string): { right: string | null; vert: string | null } {
+		const right = /(?:^|[;{]|\s)right\s*:\s*([^;]+);/.exec(body);
+		const bottom = /(?:^|[;{]|\s)bottom\s*:\s*([^;]+);/.exec(body);
+		const top = /(?:^|[;{]|\s)top\s*:\s*([^;]+);/.exec(body);
+		return {
+			right: right ? right[1]!.trim() : null,
+			// A box pins vertically via bottom OR top; capture whichever it declares, tagged so
+			// `bottom: X` and `top: X` (same length, different edge) never compare equal.
+			vert: bottom ? `bottom:${bottom[1]!.trim()}` : top ? `top:${top[1]!.trim()}` : null
+		};
+	}
+	const fsAnchor = anchor(fsBody);
+	const cornerAnchor = anchor(cornerBody);
+
+	// Both boxes anchor to the right edge (they always shared the horizontal axis; the corner is the
+	// right one for both by design). What must differ is the VERTICAL edge, so the button leaves the
+	// QR's bottom-right slot entirely rather than merely relying on z-index/DOM order.
+	expect(fsAnchor.right).not.toBeNull();
+	expect(cornerAnchor.right).not.toBeNull();
+	expect(fsAnchor.vert).not.toBeNull();
+	expect(cornerAnchor.vert).not.toBeNull();
+
+	const fsPair = `${fsAnchor.right} | ${fsAnchor.vert}`;
+	const cornerPair = `${cornerAnchor.right} | ${cornerAnchor.vert}`;
+	expect(fsPair).not.toBe(cornerPair);
+});
