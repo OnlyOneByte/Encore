@@ -5,6 +5,7 @@
 	// The live "make karaoke" progress card — the watching-not-waiting feel. Ported from docs/mocks.
 	import type { MediaStatus } from '@encore/shared';
 	import { cookStageLabel } from '$lib/cook-phrasing';
+	import { Progress } from '$lib/components/ui/progress';
 	interface Props {
 		// Queue-slot number + the singer who asked for it. Both absent when the card renders OUTSIDE
 		// the rotation list — a song cooking for someone else's turn still needs somewhere to show its
@@ -133,7 +134,7 @@
 			     karaoke", tinted as a failure so the card is legible as broken at a glance. -->
 			<div class="stage bad" aria-live="polite"><span>{stageLabel}</span></div>
 		{:else}
-			<div class="bar"><i style="transform:scaleX({overall / 100})"></i></div>
+			<div class="bar-slot"><Progress value={overall} aria-label="Cook progress" /></div>
 			<div class="stage" aria-live="polite"><span>{stageLabel}</span><span>{Math.round(overall)}%</span></div>
 		{/if}
 	</div>
@@ -271,23 +272,17 @@
 		border-radius: 50%;
 		background: var(--singer);
 	}
-	.bar {
-		height: 6px;
-		border-radius: 6px;
-		background: var(--card-tint2);
-		overflow: hidden;
+	/*
+	 * #913 S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
+	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:
+	 * `role="progressbar"` with aria-valuenow, so a cook's progress is finally visible to assistive
+	 * tech. Spacing from the element above stays HERE, because that is this component's layout rather
+	 * than the bar's own metric.
+	 */
+	.bar-slot {
 		margin-top: 9px;
 	}
 	/* GPU-composited fill: scaleX from the left edge, never animates layout width */
-	.bar > i {
-		display: block;
-		height: 100%;
-		width: 100%;
-		background: var(--grad);
-		border-radius: 6px;
-		transform-origin: left center;
-		transition: transform var(--motion-slow) ease;
-	}
 	.stage {
 		display: flex;
 		justify-content: space-between;

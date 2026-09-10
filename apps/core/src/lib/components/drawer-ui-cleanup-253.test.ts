@@ -53,7 +53,9 @@ test('#253: GuidingTrack drops the out-of-place "No isolated vocals" line, keeps
 test('#253: ProcessingCard drops the per-stage status pills, keeps bar + stage line', () => {
 	const code = read('ProcessingCard.svelte');
 	expect(code).toContain('class="progress"');
-	expect(code).toContain('class="bar"');
+	// #913 S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
+	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
+	expect(code).toContain('<Progress');
 	expect(code).toContain('class="stage"');
 	expect(code).not.toContain('class="chips"');
 	expect(code).not.toMatch(/\bchips\b/);

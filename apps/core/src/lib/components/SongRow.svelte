@@ -23,6 +23,7 @@
 	import { overallCookPct, type MediaStatus } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Progress } from '$lib/components/ui/progress';
 	import {
 		classifyVideoKind,
 		durationHint,
@@ -321,7 +322,7 @@
 		{/if}
 		{#if readiness === 'cooking'}
 			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
-			<div class="bar"><i style="transform:scaleX({barPct / 100})"></i></div>
+			<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Cook progress" /></div>
 		{/if}
 	</div>
 
@@ -529,21 +530,15 @@
 	 */
 	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
 
-	.bar {
-		height: 4px;
-		border-radius: 4px;
-		background: var(--card-tint2);
-		overflow: hidden;
+	/*
+	 * #913 S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
+	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:
+	 * `role="progressbar"` with aria-valuenow, so a cook's progress is finally visible to assistive
+	 * tech. Spacing from the element above stays HERE, because that is this component's layout rather
+	 * than the bar's own metric.
+	 */
+	.bar-slot {
 		margin-top: 7px;
-	}
-	.bar > i {
-		display: block;
-		height: 100%;
-		width: 100%;
-		background: var(--grad);
-		border-radius: 4px;
-		transform-origin: left center;
-		transition: transform var(--motion-slow) ease;
 	}
 
 	/*

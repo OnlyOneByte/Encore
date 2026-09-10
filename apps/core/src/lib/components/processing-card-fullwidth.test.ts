@@ -64,7 +64,9 @@ test('#176: the card is a grid and the .progress block spans every column', () =
 	// not-vacuous sentinel: the .progress block must exist and hold the bar.
 	const progIdx = CODE.indexOf('<div class="progress">');
 	expect(progIdx).toBeGreaterThanOrEqual(0);
-	expect(CODE.slice(progIdx)).toContain('class="bar"');
+	// #913 S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
+	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
+	expect(CODE.slice(progIdx)).toContain('<Progress');
 
 	// the card overrides .list-row's flex to a grid, and .progress spans column 1 through the last.
 	expect(CODE).toMatch(/\.qrow\.proc\s*\{[^}]*display:\s*grid/);
