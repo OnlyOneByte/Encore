@@ -85,6 +85,30 @@ test('valid join creates a singer and broadcasts singer:joined', () => {
 	expect(ev.singer.id).toBe(singer.id);
 });
 
+test('the singer:joined broadcast carries NO session token (#796)', () => {
+	// The frame reaches every socket in the room, including a cookie-less spectator that never joined.
+	// The session token IS the whole auth axis (bySessionToken resolves who you are), so a token on
+	// this wire hands any listener the credential to impersonate the new singer. Serialise it exactly
+	// as server.ts does before broadcasting — a raw JSON.stringify with no further redaction — and
+	// assert the token appears nowhere in the bytes. Reverting either half of the fix (the runtime
+	// strip in join.ts or the PublicSinger retype in events.ts) reds this.
+	const { app, published } = appHarness();
+	const { singer } = doJoin(app, { displayName: 'Dana', color: '#ff5cae' });
+
+	// Non-vacuous sentinel: a token was in fact minted, so the assertion below is testing a real
+	// exclusion and not passing trivially because minting stopped producing one.
+	expect(singer.sessionToken.length).toBeGreaterThan(20);
+
+	const ev = published[0] as Extract<ServerEvent, { type: 'singer:joined' }>;
+	const wire = JSON.stringify(ev);
+	expect(wire).not.toContain(singer.sessionToken);
+	expect(wire).not.toContain('sessionToken');
+	// The public fields still ride the wire — the strip removes only the credential.
+	expect(ev.singer.id).toBe(singer.id);
+	expect(ev.singer.displayName).toBe('Dana');
+	expect((ev.singer as Record<string, unknown>).sessionToken).toBeUndefined();
+});
+
 test('invalid color falls back to the first palette color', () => {
 	const { app } = appHarness();
 	const { singer } = doJoin(app, { displayName: 'Sam', color: '#nonsense' });

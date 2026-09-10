@@ -126,6 +126,13 @@ export function doJoin(app: EncoreApp, input: JoinInput): JoinResult {
 	app.presence.connect(singer.id);
 	app.presence.disconnect(singer.id, app.now());
 
-	app.publish({ type: 'singer:joined', singer });
+	// SECURITY (#796): the broadcast reaches every socket in the room — including a cookie-less
+	// spectator that never joined (server.ts upgrades it, room-scope subscribes it to the served
+	// room's topic). `singer` is the full row minted WITH the session token, and that token IS the
+	// whole auth axis (bySessionToken resolves who you are). Strip it before it hits the wire, the
+	// same redaction api/join, api/me and settings already open-code. events.ts types this event as
+	// PublicSinger so the compiler enforces the exclusion.
+	const { sessionToken: _t, ...publicSinger } = singer;
+	app.publish({ type: 'singer:joined', singer: publicSinger });
 	return { singer, roomId: room.id };
 }
