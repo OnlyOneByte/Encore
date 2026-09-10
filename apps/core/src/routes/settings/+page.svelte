@@ -26,6 +26,7 @@
 	import { Checkbox } from '$lib/components/ui/checkbox';
 	import { Slider } from '$lib/components/ui/slider';
 	import * as Tabs from '$lib/components/ui/tabs';
+	import * as Card from '$lib/components/ui/card';
 	import {
 		SEPARATOR_ENGINES,
 		TV_PROGRESS_STYLES,
@@ -477,9 +478,11 @@
 			<Tabs.Content value="you">
 			<!-- ── YOU ────────────────────────────────────────────────────────── -->
 			<div class="panel" id="panel-you" role="tabpanel" aria-labelledby="tab-you" tabindex="-1">
-				<div class="card">
-					<h2 class="cardhead">Who you are</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Who you are</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<label class="field" for="profile-name">Your name</label>
 						<Input
 							id="profile-name"
@@ -504,16 +507,18 @@
 								{#if saving}Saving…{:else}Save{/if}
 							</Button>
 						</div>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
 				<!--
 				Its own card, below the reversible one: leaving cannot be undone, so the boundary is drawn
 				rather than implied by being last in a list.
 			-->
-				<div class="card">
-					<h2 class="cardhead">Leaving</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Leaving</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						{#if !confirmingLeave}
 							<button class="leave" onclick={askLeave}>Leave the room</button>
 							<p class="hint">Your queued songs go with you.</p>
@@ -526,8 +531,8 @@
 								</button>
 							</div>
 						{/if}
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
 				<!--
 				The same footer exit the other two tabs have. Save is disabled until something is dirty, so
@@ -540,9 +545,11 @@
 			<Tabs.Content value="party">
 			<!-- ── PARTY ──────────────────────────────────────────────────────── -->
 			<div class="panel" id="panel-party" role="tabpanel" aria-labelledby="tab-party" tabindex="-1">
-				<div class="card">
-					<h2 class="cardhead">Rotation</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Rotation</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<label class="field" for="queue-order">Who sings next</label>
 						<NativeSelect
 							id="queue-order"
@@ -569,12 +576,14 @@
 							onValueCommit={(v) => onroom({ presenceGraceMinutes: v })}
 						/>
 						<p class="hint">A locked phone is not someone leaving, so they stay on the roster this long.</p>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Cook quality</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Cook quality</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<label class="field" for="quality-ceiling">Cap this room at</label>
 						<!--
 						A ceiling, offered as real engine+model pairings valued by their rank, not a raw
@@ -608,12 +617,14 @@
 								actually cap this room.
 							</p>
 						{/if}
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">The TV</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>The TV</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<div class="pair">
 							<div class="cell">
 								<label class="field" for="tv-background">Background</label>
@@ -734,12 +745,14 @@
 							onValueChange={(v) => liveRoom('songIntroMs', v)}
 							onValueCommit={(v) => onroom({ songIntroMs: v })}
 						/>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Lyrics on the TV</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Lyrics on the TV</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<div class="pair">
 							<div class="cell">
 								<label class="field" for="lyrics-highlight">Highlight</label>
@@ -869,12 +882,14 @@
 								/>
 							</div>
 						</div>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Sound</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Sound</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<label class="field" for="guide-default">
 							Guiding track · {Math.round(settings.room.guideLevelDefault * 100)}%
 						</label>
@@ -905,8 +920,8 @@
 							Turns down the few songs that are much louder than the rest, so you stop reaching for the volume. Quiet
 							songs are left alone.
 						</p>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
 				<!--
 				/stats is the GUEST page, so it is the one dashboard safe to reach from a surface any phone
@@ -925,9 +940,11 @@
 			<div class="panel" id="panel-server" role="tabpanel" aria-labelledby="tab-server" tabindex="-1">
 				<p class="scope-note">Affects every room on this server.</p>
 
-				<div class="card">
-					<h2 class="cardhead">Making karaoke</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Making karaoke</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<!-- Stacked for the same measured reason as the lyrics engine below: "BS-RoFormer 1297". -->
 						<label class="field" for="engine">Stem splitter</label>
 						<NativeSelect
@@ -974,12 +991,14 @@
 						<p class="warn">
 							Changes where every new cook gets its audio. A worker that cannot run it will fail the download.
 						</p>
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Lyrics engine</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Lyrics engine</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<!--
 						NOT paired two-up like the room controls, and measured rather than assumed: at 390px a
 						half-width select leaves ~120px for its text, and these registries carry the app's
@@ -1013,12 +1032,14 @@
 							{/each}
 						</NativeSelect>
 						{#if syncNote}<p class="hint">{syncNote}</p>{/if}
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
-					<h2 class="cardhead">Joining</h2>
-					<div class="cardbody">
+				<Card.Root>
+	<Card.Header>
+		<Card.Title>Joining</Card.Title>
+	</Card.Header>
+	<Card.Content>
 						<label class="field" for="join-origin">Address phones join at</label>
 						<Input
 							id="join-origin"
@@ -1040,10 +1061,11 @@
 						{#if joinSchemeMismatch}
 							<p class="warn">This party runs over plain http, so phones cannot open an https address.</p>
 						{/if}
-					</div>
-				</div>
+					</Card.Content>
+</Card.Root>
 
-				<div class="card">
+				<Card.Root>
+	<Card.Content>
 					<button
 						class="disclose"
 						aria-expanded={advancedOpen}
@@ -1058,7 +1080,7 @@
 					</button>
 
 					{#if advancedOpen}
-						<div class="cardbody" id="advanced-body">
+						<Card.Content id="advanced-body">
 							<label class="check" for="enqueue-upgrade">
 							<Checkbox
 								id="enqueue-upgrade"
@@ -1095,9 +1117,10 @@
 							{#if settings.global.enqueueUpgrade && !upgradeIsBetter}
 								<p class="warn">This is not better than the splitter above, so no upgrade will run.</p>
 							{/if}
-						</div>
+						</Card.Content>
 					{/if}
-				</div>
+				</Card.Content>
+</Card.Root>
 
 				<!--
 				/metrics is ungated (there is no operator identity — any phone can POST /api/join), so it
@@ -1148,24 +1171,12 @@
 	 * The same `.card` shape the remote uses for every row, so this page stops reading as a different
 	 * application. The uppercase head matches the remote's `.grouphead` treatment.
 	 */
-	.card {
-		background: var(--card);
-		border: 1px solid var(--line);
-		border-radius: var(--radius-sm);
-		margin-bottom: var(--space-md);
-	}
-	.cardhead {
-		margin: 0;
-		padding: var(--space-lg) var(--space-lg) 0;
-		font-size: var(--ph-text-2xs);
-		font-weight: 700;
-		letter-spacing: 0.14em;
-		text-transform: uppercase;
-		color: var(--ink-dim);
-	}
-	.cardbody {
-		padding: var(--space-3xs) var(--space-lg) var(--space-lg);
-	}
+	/*
+	 * #913 S4: `.card`, `.cardhead` and `.cardbody` left this file for ui/card. The visual change is
+	 * accepted deliberately — shadcn's card is a ring rather than a border, with its own spacing scale
+	 * and a normal-weight title where Encore's was small uppercase tracking. What it buys is the
+	 * Header/Title/Content structure this page was already hand-rolling eleven times.
+	 */
 	/* Only the server scope needs saying out loud; "You" and "Party" say it in the tab. */
 	.scope-note {
 		margin: 0 0 var(--space-md) var(--space-3xs);

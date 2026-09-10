@@ -1602,7 +1602,7 @@
 -->
 {#if me}
 	<div class="search-dock" bind:clientHeight={dockH}>
-		<div class="card searchbox">
+		<div class="searchbox">
 			<span class="search-mark"><Icon name="search" /></span>
 			<input
 				bind:value={query}
@@ -1906,7 +1906,19 @@
 		background: linear-gradient(to top, var(--bg), color-mix(in srgb, var(--bg) 88%, transparent));
 		border-top: 1px solid var(--line);
 	}
+	/*
+	 * #913 S4: the dock carries the card SURFACE itself rather than the global `.card` class, and is
+	 * deliberately NOT a <Card.Root>. It is a composed control — mark, input, spinner in a row — and its
+	 * children are styled from this file by descendant selectors like `.searchbox input`. Moving the
+	 * container into a component would leave those selectors with no matching ancestor, because Svelte
+	 * scopes the page's `.searchbox` to this file and the component's element does not carry that scope.
+	 * shadcn's Card is also `flex flex-col` with its own padding, which is the opposite of what a
+	 * single-row search field needs.
+	 */
 	.searchbox {
+		background: var(--card);
+		border: 1px solid var(--line);
+		border-radius: var(--radius-sm);
 		display: flex;
 		align-items: center;
 		gap: var(--space-md);

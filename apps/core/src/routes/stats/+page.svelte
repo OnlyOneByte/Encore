@@ -10,6 +10,7 @@
 	import Bars from '$lib/charts/Bars.svelte';
 	import Trend from '$lib/charts/Trend.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
+	import * as Card from '$lib/components/ui/card';
 
 	interface Stats {
 		library: { ready: number; catalog: number };
@@ -59,44 +60,70 @@
 		<p class="note" role="status">Loading…</p>
 	{:else}
 		<div class="tiles">
-			<div class="card tile primary">
+			<div class="tile primary">
+<Card.Root>
+	<Card.Content>
 				<span class="n">{stats.sings.total}</span>
 				<span class="k">songs sung</span>
 				<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
-			</div>
-			<div class="card tile">
+	</Card.Content>
+</Card.Root>
+</div>
+			<div class="tile">
+<Card.Root>
+	<Card.Content>
 				<span class="n">{stats.library.ready}</span>
 				<span class="k">ready to sing</span>
 				<!-- The catalog count is a footnote, never the headline: it counts every search result ever
 				     seen (271 behind 7 singable songs on the live box), so quoting it as "the library"
 				     overstates it by ~40x. -->
 				<span class="sub">of {stats.library.catalog} found</span>
-			</div>
-			<div class="card tile">
+	</Card.Content>
+</Card.Root>
+</div>
+			<div class="tile">
+<Card.Root>
+	<Card.Content>
 				<span class="n">{stats.sings.distinctSongs}</span>
 				<span class="k">different songs</span>
-			</div>
+	</Card.Content>
+</Card.Root>
+</div>
 		</div>
 
-		<div class="card">
-			<h2>Most sung</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Most sung</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			<Bars
 				rows={stats.topSongs.map((s) => ({ label: s.title, value: s.plays }))}
 				unit="sings"
 				empty="Nobody has sung yet"
 			/>
-		</div>
+	</Card.Content>
+</Card.Root>
 
 		{#if recentDiffers}
-			<div class="card">
-				<h2>Hot lately</h2>
+			<Card.Root>
+	<Card.Header>
+		<Card.Title>Hot lately</Card.Title>
+	</Card.Header>
+	<Card.Content>
+				
 				<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
 				<p class="note">Last {stats.window.days} days.</p>
-			</div>
+	</Card.Content>
+</Card.Root>
 		{/if}
 
-		<div class="card">
-			<h2>Top artists</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Top artists</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			<Bars
 				rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))}
 				unit="sings"
@@ -105,13 +132,19 @@
 			<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
 			     guessing a low-confidence artist, so some sung songs cannot be attributed at all. -->
 			<p class="note">Songs we couldn't match to an artist aren't counted.</p>
-		</div>
+	</Card.Content>
+</Card.Root>
 
-		<div class="card">
-			<h2>Sings per day</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Sings per day</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			<Trend points={stats.perDay} since={stats.window.since} until={now} />
 			<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
-		</div>
+	</Card.Content>
+</Card.Root>
 	{/if}
 </section>
 
@@ -138,27 +171,15 @@
 	 * card rendered its content flush against its own border, which makes the border read as a line
 	 * drawn THROUGH the content rather than a frame around it.
 	 */
-	.card {
-		padding: 1rem 1.1rem;
-		/* A grid item defaults to min-width:auto = its min-content, so the Trend chart's row of
-		   44px-wide day buttons (#144) would otherwise size this card to its full scroll width and
-		   overflow the page. min-width:0 lets the card shrink to its track, which bounds the chart
-		   so its own overflow-x scrolls the days instead of stretching the layout. */
-		min-width: 0;
-	}
 	/*
 	 * Section headers are the wayfinding on a page that is one long scroll, so they take full-strength
 	 * ink. At --ink-dim they were the same grey as the footnotes they sit above, which put the
 	 * navigation and the fine print at the same visual level.
 	 */
-	h2 {
-		font-size: var(--ph-text-base);
-		margin: 0 0 0.9rem;
-		color: var(--ink);
-		font-weight: 600;
-		letter-spacing: 0.02em;
-		text-transform: uppercase;
-	}
+	/*
+	 * #913 S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
+	 * title where this was hand-styled, which is part of the visual change accepted for S4.
+	 */
 	/*
 	 * 1fr is safe now that .stats itself is capped — the reason for a fixed max was an uncapped shell
 	 * stretching each tile to ~350px, and capping the container solved that at the root. A fixed 260px

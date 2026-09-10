@@ -12,6 +12,7 @@
 	import Bars from '$lib/charts/Bars.svelte';
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
+	import * as Card from '$lib/components/ui/card';
 
 	interface StepRow {
 		jobType: string;
@@ -129,8 +130,12 @@
 			Songs processed before this page existed have no timings.
 		</p>
 
-		<div class="card">
-			<h2>Start to finish</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Start to finish</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			<div class="kv">
 				<div><span class="k">typical</span><span class="v">{dur(m.e2e.p50Ms)}</span></div>
 				<div><span class="k">average</span><span class="v">{dur(m.e2e.meanMs)}</span></div>
@@ -138,10 +143,15 @@
 				<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
 			</div>
 			<p class="note">From asking for a song to it being ready to sing, waiting included.</p>
-		</div>
+	</Card.Content>
+</Card.Root>
 
-		<div class="card">
-			<h2>Each step</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Each step</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			{#if m.steps.length === 0}
 				<p class="note">Nothing processed yet.</p>
 			{:else}
@@ -183,10 +193,15 @@
 					<strong>failed</strong> runs are left out of the averages.
 				</p>
 			{/if}
-		</div>
+	</Card.Content>
+</Card.Root>
 
-		<div class="card">
-			<h2>Vocal removal — this machine vs the benchmark</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Vocal removal — this machine vs the benchmark</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			{#if m.models.length === 0}
 				<p class="note">No vocals removed yet.</p>
 			{:else}
@@ -226,10 +241,15 @@
 					fail.
 				</p>
 			{/if}
-		</div>
+	</Card.Content>
+</Card.Root>
 
-		<div class="card">
-			<h2>Lyrics transcription</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Lyrics transcription</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			{#if m.asr.length === 0}
 				<p class="note">No lyrics timed yet.</p>
 			{:else}
@@ -264,11 +284,16 @@
 					measurement.
 				</p>
 			{/if}
-		</div>
+	</Card.Content>
+</Card.Root>
 
 		{#if m.stages.length}
-			<div class="card">
-				<h2>Where the time goes</h2>
+			<Card.Root>
+	<Card.Header>
+		<Card.Title>Where the time goes</Card.Title>
+	</Card.Header>
+	<Card.Content>
+				
 				<Bars
 					rows={m.stages.map((s) => ({
 						label: stageLabel(s.stage),
@@ -278,12 +303,17 @@
 					unit="s avg"
 				/>
 				<p class="note">Measured by the worker inside each step.</p>
-			</div>
+	</Card.Content>
+</Card.Root>
 		{/if}
 
 		{#if m.slowestCooks.length}
-			<div class="card">
-				<h2>Slowest songs</h2>
+			<Card.Root>
+	<Card.Header>
+		<Card.Title>Slowest songs</Card.Title>
+	</Card.Header>
+	<Card.Content>
+				
 				<ol class="cooks">
 					{#each m.slowestCooks as c (c.cookId)}
 						<li>
@@ -294,11 +324,16 @@
 					{/each}
 				</ol>
 				<p class="note">The gap between the two numbers was spent waiting for a free worker.</p>
-			</div>
+	</Card.Content>
+</Card.Root>
 		{/if}
 
-		<div class="card">
-			<h2>Workers</h2>
+		<Card.Root>
+	<Card.Header>
+		<Card.Title>Workers</Card.Title>
+	</Card.Header>
+	<Card.Content>
+			
 			{#if m.workers.length === 0}
 				<p class="note">Nothing is connected, so no song can be processed.</p>
 			{:else}
@@ -322,7 +357,8 @@
 					</div>
 				{/each}
 			{/if}
-		</div>
+	</Card.Content>
+</Card.Root>
 	{/if}
 </section>
 
@@ -372,21 +408,18 @@
 		background: var(--card);
 	}
 	/* .card in app.css has no padding — see the note in routes/stats/+page.svelte. */
-	.card {
-		padding: 1rem 1.1rem;
-	}
+	/*
+	 * #913 S4: `.card`'s local padding left this file — shadcn's Card owns its spacing through
+	 * `--card-spacing`. The visual change is accepted deliberately (a ring rather than a border, its
+	 * own scale). Layout classes that must apply to the GRID ITEM stay on a wrapper element, because a
+	 * scoped rule cannot reach an element a child component renders.
+	 */
 	/* Full-strength ink and a rule beneath, so a section title out-ranks the dim column headers
 	   directly below it. Both were --ink-dim uppercase, which made them compete. */
-	h2 {
-		font-size: var(--ph-text-base);
-		margin: 0 0 0.75rem;
-		padding-bottom: 0.5rem;
-		border-bottom: 1px solid var(--line);
-		color: var(--ink);
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.02em;
-	}
+	/*
+	 * #913 S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
+	 * title where this was hand-styled, which is part of the visual change accepted for S4.
+	 */
 	/* Stopped, not merely slow — the one state that invalidates every number below it. --warn-bg gives
 	   it a fill (it painted transparent while the token was undefined, hiding the page's most important
 	   state); --warn-line is the matching border. */

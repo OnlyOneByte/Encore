@@ -725,6 +725,14 @@
 	--popover: var(--card);
 	--popover-foreground: var(--ink);
 	--card-surface: var(--card);
+	/*
+	 * #913 S4: shadcn's Card is styled in `bg-card` / `text-card-foreground`. `--card` already exists
+	 * in this file and already means exactly "the card surface", so the bridge below points straight at
+	 * it rather than aliasing — an alias would have been the circular `--card: var(--card)`. Only the
+	 * INK half was missing, because Encore never needed to name it: a card inherits `--ink` from the
+	 * page. shadcn sets it explicitly on the element, so it has to be a token.
+	 */
+	--card-foreground: var(--ink);
 
 	color-scheme: dark;
 }
@@ -812,6 +820,8 @@
 	--color-ring: var(--ring);
 	--color-popover: var(--popover);
 	--color-popover-foreground: var(--popover-foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
 
 	/*
 	 * SPACING — mints p-tap / size-tap / min-h-tap / gap-tap and the two TV safe insets.
@@ -987,11 +997,15 @@ body {
 }
 
 /* shared primitives used across surfaces */
-.card {
-	background: var(--card);
-	border: 1px solid var(--line);
-	border-radius: var(--radius-sm);
-}
+/*
+ * `.card` was DELETED here by #913 S4. It was a global three-declaration surface class used 51 times
+ * across six files; every one of those is <Card.Root> now, except the search dock, which carries the
+ * three declarations itself because it is a composed control whose children are styled by descendant
+ * selectors from its own page.
+ *
+ * Nothing minted `.card` — it was hand-written CSS — so its deletion is verified by there being no
+ * `class="card"` left in src, which `shadcn-ink-ban-913.test.ts`'s sibling scans keep true.
+ */
 /*
  * `.btn-accent` was DELETED by #913 S1. Its two consumers — settings' Save and join's Start
  * singing — are now <Button variant="accent">, whose `accent` variant reproduces it: the fill and

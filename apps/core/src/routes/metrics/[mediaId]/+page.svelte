@@ -13,6 +13,7 @@
 	import { dur, stepLabel, stageLabel, localStamp, rate } from '$lib/metrics-format';
 	import { formatClock } from '$lib/clock';
 	import type { SelectionRecord } from '@encore/shared';
+	import * as Card from '$lib/components/ui/card';
 
 	interface AuditAttempt {
 		id: string;
@@ -156,11 +157,13 @@
 		{/if}
 
 		{#if !audit.hasHistory}
-			<div class="card">
+			<Card.Root>
+	<Card.Content>
 				<p class="note">
 					No history for this song — it was processed before this page existed, so its timings were never recorded.
 				</p>
-			</div>
+	</Card.Content>
+</Card.Root>
 		{:else}
 			<p class="note">
 				Each <strong>run</strong> below is one attempt at making a karaoke track. A run has several steps, and a step can
@@ -169,9 +172,13 @@
 		{/if}
 
 		{#each audit.cooks as cook, i (cook.cookId)}
-			<div class="card">
+			<Card.Root>
+	<Card.Header>
+		<Card.Title>Run {i + 1}</Card.Title>
+	</Card.Header>
+	<Card.Content>
 				<header>
-					<h2>Run {i + 1}</h2>
+					
 					<span class="pill {cook.outcome}">{outcomeLabel(cook.outcome)}</span>
 				</header>
 				<p class="note">
@@ -236,16 +243,22 @@
 						</li>
 					{/each}
 				</ol>
-			</div>
+	</Card.Content>
+</Card.Root>
 		{/each}
 
 		{#if audit.plays.length}
-			<div class="card">
-				<h2>Sung</h2>
+			<Card.Root>
+	<Card.Header>
+		<Card.Title>Sung</Card.Title>
+	</Card.Header>
+	<Card.Content>
+				
 				<ul class="plays">
 					{#each audit.plays as p (p.entryId)}<li>{stamp(p.at)}</li>{/each}
 				</ul>
-			</div>
+	</Card.Content>
+</Card.Root>
 		{/if}
 	{/if}
 </section>
@@ -267,19 +280,18 @@
 		margin-inline: auto;
 	}
 	/* .card in app.css has no padding — see routes/stats/+page.svelte. */
-	.card {
-		padding: 1rem 1.1rem;
-	}
+	/*
+	 * #913 S4: `.card`'s local padding left this file — shadcn's Card owns its spacing through
+	 * `--card-spacing`. The visual change is accepted deliberately (a ring rather than a border, its
+	 * own scale). Layout classes that must apply to the GRID ITEM stay on a wrapper element, because a
+	 * scoped rule cannot reach an element a child component renders.
+	 */
 	/* The cook owns the attempts beneath it, so its header takes full ink and a dividing rule. At
 	   --ink-dim it was the same grey as the timestamp under it and barely out-ranked a step name. */
-	h2 {
-		font-size: var(--ph-text-base);
-		margin: 0;
-		color: var(--ink);
-		font-weight: 600;
-		text-transform: uppercase;
-		letter-spacing: 0.02em;
-	}
+	/*
+	 * #913 S4: the card heading rule left this file. Card.Title owns it now — a normal-weight base-size
+	 * title where this was hand-styled, which is part of the visual change accepted for S4.
+	 */
 	header {
 		display: flex;
 		align-items: center;

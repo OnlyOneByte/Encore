@@ -386,7 +386,14 @@ test('no card root dims its own subtree with opacity', () => {
 		rootsScanned++;
 		const rs = rules(src);
 
-		// Surfaces this card root paints on ITSELF, plus the shared `.card` default from app.css.
+		/*
+		 * Surfaces this card root paints on ITSELF, seeded with `card`.
+		 *
+		 * #913 S4 note: that seed used to be justified as "the shared `.card` default from app.css", and
+		 * that rule is now deleted — every card is <Card.Root>. The seed is still correct, and for a
+		 * better reason: the component paints `bg-card`, which resolves through the semantic bridge to
+		 * the same `--card` token. So a card root still sits on `--card` whether or not it says so.
+		 */
 		const surfaces = new Set(['card']);
 		// Text tokens the subtree draws in, plus the body ink it inherits. Two exclusions: a rule that
 		// sets BOTH a colour and a background carries its own surface (the .seq bubble), and an
