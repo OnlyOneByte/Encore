@@ -30,26 +30,32 @@ const CODE = strip(SRC);
 // Slice out the .meta element's inner content: from `<div class="meta">` to its matching close.
 // A simple depth counter over <div ...>/</div> within the markup region is enough here because
 // .meta contains only divs.
+/*
+ * The row-sharing container's interior. #913 S8: that container is <Item.Content> now, not
+ * `<div class="meta">` — the row's grammar moved onto ui/item, whose `min-width: 0; flex: 1` is what
+ * `.meta` used to carry. The CLAIM is unchanged: whatever shares the row with the action cluster must
+ * not also hold the progress bar or the stage line, because that is the squeeze #176 fixed.
+ */
 function metaInner(code: string): string {
-	const start = code.indexOf('<div class="meta">');
-	expect(start).toBeGreaterThanOrEqual(0); // not-vacuous: .meta must exist
-	let i = code.indexOf('>', start) + 1;
+	const start = code.indexOf('<Item.Content>');
+	expect(start, 'not vacuous: the row-sharing container must exist').toBeGreaterThanOrEqual(0);
+	const bodyStart = code.indexOf('>', start) + 1;
+	let i = bodyStart;
 	let depth = 1;
-	const bodyStart = i;
 	while (i < code.length && depth > 0) {
-		const openDiv = code.indexOf('<div', i);
-		const closeDiv = code.indexOf('</div>', i);
-		if (closeDiv === -1) break;
-		if (openDiv !== -1 && openDiv < closeDiv) {
+		const open = code.indexOf('<Item.Content', i);
+		const close = code.indexOf('</Item.Content>', i);
+		if (close === -1) break;
+		if (open !== -1 && open < close) {
 			depth++;
-			i = openDiv + 4;
+			i = open + '<Item.Content'.length;
 		} else {
 			depth--;
-			if (depth === 0) return code.slice(bodyStart, closeDiv);
-			i = closeDiv + 6;
+			if (depth === 0) return code.slice(bodyStart, close);
+			i = close + '</Item.Content>'.length;
 		}
 	}
-	throw new Error('.meta close not found');
+	throw new Error('the row-sharing container is never closed');
 }
 
 test('#176: the progress block is NOT nested inside .meta (which shares the row with .actions)', () => {

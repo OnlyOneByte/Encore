@@ -24,6 +24,7 @@
 	import Icon from '$lib/ui/Icon.svelte';
 	import { Badge } from '$lib/components/ui/badge';
 	import { Progress } from '$lib/components/ui/progress';
+	import * as Item from '$lib/components/ui/item';
 	import {
 		classifyVideoKind,
 		durationHint,
@@ -261,8 +262,21 @@
 	which announced one control to a screen reader while offering three, and let a keyboard user add the
 	same song twice (Enter on the row, then Tab-Enter on the button). The two buttons carry the actions.
 -->
-<div class="row card list-row" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}>
-	<div class="thumb">
+<!--
+	#913 S8: <Item.Root> supplies the row grammar via Item's own `child` snippet, so this file keeps the
+	row element and its readiness state classes — a `class:` directive is not valid on a component. The
+	class attribute stays STATIC, because contrast.test.ts splits it on whitespace to derive the row's
+	classes. `bare`: `.card` paints the row, `.list-row` lays it out.
+-->
+<Item.Root variant="bare" size="bare">
+	{#snippet child({ props })}
+		<div
+			{...props}
+			class="row card list-row"
+			class:ready={readiness === 'ready'}
+			class:cooking={readiness === 'cooking'}
+		>
+			<Item.Media data-media="thumb"><div class="thumb">
 		{#if thumbSrc}
 			<!--
 				alt="" on purpose: the title sits immediately beside it, so a described thumbnail would make
@@ -277,9 +291,9 @@
 		{#if duration}
 			<span class="dur" class:odd={oddDuration}>{duration}</span>
 		{/if}
-	</div>
+	</div></Item.Media>
 
-	<div class="meta">
+			<Item.Content>
 		<!--
 			The title and the cooking mark share a flex line so the mark is a SIBLING of .t, not a child of it.
 			.t clamps to two lines with overflow:hidden; a mark rendered INSIDE that box is laid out on the
@@ -324,7 +338,7 @@
 			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
 			<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Cook progress" /></div>
 		{/if}
-	</div>
+				</Item.Content>
 
 	{#if onmake}
 		<!--
@@ -368,8 +382,15 @@
 		>
 	{/if}
 </div>
+	{/snippet}
+</Item.Root>
 
 <style>
+	/*
+	 * #913 S8: `.meta` moved to ui/item as Encore's shared row grammar (`min-width: 0; flex: 1`), which
+	 * all three rows carried identically. `.thumb` STAYS: it declares a background, and contrast.test.ts
+	 * reasons about this row's surfaces from the rules in this file.
+	 */
 	/* Geometry comes from .list-row in app.css, shared with the two queue rows -- this row had drifted
 	   to gap 11 / padding 10 against their 12 / 11px 12px. */
 	.row {
@@ -449,10 +470,6 @@
 		color: var(--danger-bg);
 	}
 
-	.meta {
-		min-width: 0;
-		flex: 1;
-	}
 	/*
 	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)". The title text
 	 * shares .title-line with the cooking mark; min-width:0 + the two-line clamp bound ONLY the title

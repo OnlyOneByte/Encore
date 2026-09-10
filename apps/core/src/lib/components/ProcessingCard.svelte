@@ -6,6 +6,7 @@
 	import type { MediaStatus } from '@encore/shared';
 	import { cookStageLabel } from '$lib/cook-phrasing';
 	import { Progress } from '$lib/components/ui/progress';
+	import * as Item from '$lib/components/ui/item';
 	interface Props {
 		// Queue-slot number + the singer who asked for it. Both absent when the card renders OUTSIDE
 		// the rotation list — a song cooking for someone else's turn still needs somewhere to show its
@@ -85,11 +86,28 @@
 	const overall = $derived(overallCookPct(status, pct));
 </script>
 
-<div class="qrow proc card list-row" class:pending={pending} class:failed={failed} class:dimmed={dimmed}>
-	<div class="seq">
+<!--
+	#913 S8: <Item.Root> supplies the row grammar through Item's own `child` snippet, so this file keeps
+	the row ELEMENT — its conditional state classes cannot become a component's props, because a `class:`
+	directive is not valid on a component and a class handed to one is scoped to the caller. `bare`
+	because `.card` paints the row and `.list-row` lays it out.
+
+	The root's `class` attribute stays STATIC: contrast.test.ts derives the row's classes by splitting it
+	on whitespace, so an interpolation there can hand it a token it then uses as a regex.
+-->
+<Item.Root variant="bare" size="bare">
+	{#snippet child({ props })}
+		<div
+			{...props}
+			class="qrow proc card list-row"
+			class:pending={pending}
+			class:failed={failed}
+			class:dimmed={dimmed}
+		>
+			<Item.Media><div class="seq">
 		{#if seq}{seq}{:else}<Icon name="sparkle" />{/if}
-	</div>
-	<div class="meta">
+	</div></Item.Media>
+			<Item.Content>
 		<div class="t">
 			{title}{#if !failed}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
 		</div>
@@ -109,9 +127,9 @@
 					>{/if}
 			</div>
 		{/if}
-	</div>
+				</Item.Content>
 	{#if !pending && (onremove || reorderable)}
-		<div class="actions">
+		<Item.Actions data-align="start">
 			{#if reorderable}
 				<Button variant="outline" size="icon" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
 					><Icon name="arrow-up" /></Button
@@ -125,7 +143,7 @@
 					><Icon name="close" /></Button
 				>
 			{/if}
-		</div>
+		</Item.Actions>
 	{/if}
 	<div class="progress">
 		{#if failed}
@@ -139,8 +157,16 @@
 		{/if}
 	</div>
 </div>
+	{/snippet}
+</Item.Root>
 
 <style>
+	/*
+	 * #913 S8: `.meta` and `.actions` moved to ui/item as Encore's shared row grammar — both were
+	 * verbatim duplicates of QueueRow's. `.seq`, `.t` and `.who` STAY, because they declare COLOUR and
+	 * contrast.test.ts reasons about this row by reading those rules in this file (its exclusion list
+	 * names "the .seq bubble" directly, and a sibling arm reads the singer dot's own rule).
+	 */
 	/* .list-row gives the padding, margin and gap; ProcessingCard overrides its display to a two-row
 	   grid. Row 1: seq (auto) / title+singer (1fr) / actions (auto). Row 2: the progress block, spanning
 	   every column so it always gets the card's full inner width — the actions cluster can no longer eat
@@ -213,10 +239,6 @@
 		background: var(--card2);
 		color: var(--ink-dim);
 		flex: 0 0 auto;
-	}
-	.meta {
-		flex: 1;
-		min-width: 0;
 	}
 	.t {
 		font-weight: 600;
@@ -294,11 +316,5 @@
 	   finishes cooking and its card becomes a row. The card is taller than a row, so the cluster aligns
 	   to the title line (flex-start) rather than the card's centre — its own comment already claimed
 	   this, but align-items:center floated the buttons mid-card. */
-	.actions {
-		display: flex;
-		align-items: flex-start;
-		gap: var(--space-sm);
-		flex: 0 0 auto;
-	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css. */
 </style>

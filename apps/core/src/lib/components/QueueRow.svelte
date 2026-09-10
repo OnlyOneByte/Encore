@@ -3,6 +3,7 @@
 	// A row in the rotation queue. Ported from docs/mocks.
 	import { SINGER_COLORS } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
+	import * as Item from '$lib/components/ui/item';
 	interface Props {
 		seq: number; // 1-based display position
 		title: string;
@@ -102,18 +103,34 @@
 	const pendingLabel = $derived(pending === 'move' ? 'moving…' : 'adding…');
 </script>
 
-<div
-	class="qrow card list-row pop-in"
-	class:mine={mine}
+<!--
+	#913 S8: <Item.Root> supplies the row GRAMMAR — the `group/item` context its parts read — while this
+	file keeps the row ELEMENT through Item's own `child` snippet. That is load-bearing: the root carries
+	five conditional state classes and the drag offset as a custom property, and a `class:` directive is
+	not valid on a component while a class handed to one is scoped to the caller and stripped there.
+	`bare` because `.card` already paints this row and `.list-row` already lays it out.
+
+	The root's `class` attribute stays STATIC and is written after the spread, so it wins. No
+	interpolation belongs in it: contrast.test.ts derives this row's classes by splitting that attribute
+	on whitespace, and a `{props.class ?? ''}` handed it the token `??`, which its selector matching then
+	applied as a regex quantifier — matching every rule in the file and reporting the singer dot as the
+	card root dimming its own subtree. `{...props}` already supplies the data-slot the grammar keys on.
+-->
+<Item.Root variant="bare" size="bare">
+	{#snippet child({ props })}
+		<div
+			{...props}
+			class="qrow card list-row pop-in"
+			class:mine={mine}
 	class:up={up}
 	class:pending={pending}
 	class:dimmed={dimmed}
 	class:moving={moving}
 	style="--drag-y:{dragY}px"
 >
-	<div class="seq">{seq}</div>
-	<div class="meta">
-		<div class="t">{title}</div>
+			<Item.Media><div class="seq">{seq}</div></Item.Media>
+			<Item.Content>
+				<div class="t">{title}</div>
 		<div class="who">
 			<!-- The separators are {' · '} expressions, not literal " · " text: Svelte trims the leading
 			     whitespace of a text node that opens a block, so the plain form rendered "Sam· now
@@ -122,10 +139,10 @@
 			<i class:dim={singerAway} style="--singer:{singerColor}"></i>
 			{singerName}{#if singerAway}<span class="away">· away</span
 				>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">{pendingLabel}</span>{/if}
-		</div>
-	</div>
-	{#if !pending}
-		<div class="actions">
+				</div>
+			</Item.Content>
+			{#if !pending}
+				<Item.Actions>
 			{#if reorderable}
 				<Button variant="outline" size="icon" press="ink" aria-label="move up" disabled={!canUp} onclick={() => onup?.()}
 					><Icon name="arrow-up" /></Button
@@ -163,11 +180,19 @@
 					onclick={(e) => ongrip?.(e.currentTarget as HTMLElement)}><Icon name="grip" /></Button
 				>
 			{/if}
-		</div>
+				</Item.Actions>
 	{/if}
 </div>
+	{/snippet}
+</Item.Root>
 
 <style>
+	/*
+	 * #913 S8: `.seq`, `.meta` and `.actions` moved to ui/item as Encore's shared ROW GRAMMAR — `.seq`
+	 * and `.actions` were verbatim duplicates of ProcessingCard's. `.t` and `.who` STAY, because their
+	 * descendants do: the subtitle line holds a singer identity dot whose rule two contrast guards read
+	 * directly, and a descendant rule cannot follow its ancestor into a component with no `child` snippet.
+	 */
 	/* Geometry comes from .list-row in app.css, shared with the search row and the cooking card.
 	   The entry animation is app.css's .pop-in helper (added to the root class list above), which
 	   is wrapped in @media (prefers-reduced-motion: no-preference) so it honours Reduce Motion.
@@ -191,6 +216,13 @@
 		background: var(--warn-bg);
 		border-color: var(--warn-line);
 	}
+	/*
+	 * #913 S8: `.seq` STAYS here, inside <Item.Media>. It sets both a colour and a background, which is
+	 * exactly the shape contrast.test.ts's exclusion list names by name ("the .seq bubble") when
+	 * reasoning about what surface this row's subtree paints on. Moving it into ui/item changed that
+	 * model and the dimming guard fired. ui/item carries the BOX (`flex: 0 0 auto`); the colours stay
+	 * attributable to this file.
+	 */
 	.seq {
 		width: 26px;
 		height: 26px;
@@ -206,9 +238,6 @@
 	.up .seq {
 		background: var(--accent);
 		color: var(--on-accent);
-	}
-	.meta {
-		min-width: 0;
 	}
 	.t {
 		font-weight: 600;
@@ -251,13 +280,6 @@
 	}
 	.adding {
 		color: var(--warn);
-	}
-	.actions {
-		margin-left: auto;
-		display: flex;
-		align-items: center;
-		gap: var(--space-sm);
-		flex: 0 0 auto;
 	}
 	/* Sizing, radius, surface and glyph size come from .icon-btn in app.css -- this block and
 	   ProcessingCard's were byte-identical, each with its own copy of the same rationale. */
