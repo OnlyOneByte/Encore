@@ -38,7 +38,7 @@ import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { Window } from 'happy-dom';
 import { compile, compileModule } from 'svelte/compiler';
-import { readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
 // ── 1. DOM globals ────────────────────────────────────────────────────────────────────────────
 const g = globalThis as unknown as Record<string, unknown>;
@@ -191,6 +191,42 @@ plugin({
 		}));
 	}
 });
+
+// ── 3c. `runed`, for svelte-sonner ────────────────────────────────────────────────────────────
+//
+// #913 S5. svelte-sonner's `dist/internal/ctx.js` imports the bare specifier `runed`. bun installs it
+// — it is a declared dependency of svelte-sonner, present in the store AND linked as a sibling — but
+// under `bun test` the resolution from inside bun's ISOLATED store fails anyway:
+//
+//   Cannot find package 'runed' from …/.bun/svelte-sonner@…/node_modules/svelte-sonner/dist/internal/ctx.js
+//
+// Declaring it in apps/core AND at the workspace root, and a forced reinstall, all left it failing, so
+// this is the test runtime's module resolution rather than the manifest. The consequence is not
+// cosmetic: the home route imports the Toaster, so WITHOUT this the #822 mount rung cannot load
+// `routes/+page.svelte` at all.
+//
+// Same mechanism and same reason as the `svelte` alias above — a DEPENDENCY's bare import does go
+// through the plugin — and scoped to the exact specifier, so nothing else is affected.
+const RUNED_ENTRY = (() => {
+	const store = join(import.meta.dir, '..', 'node_modules', '.bun');
+	const dirs = existsSync(store) ? readdirSync(store).filter((d) => d.startsWith('runed@')).sort() : [];
+	for (const d of dirs.reverse()) {
+		const entry = join(store, d, 'node_modules', 'runed', 'dist', 'index.js');
+		if (existsSync(entry)) return entry;
+	}
+	return null;
+})();
+if (RUNED_ENTRY) {
+	plugin({
+		name: 'runed-bare-specifier',
+		setup(build) {
+			build.module('runed', () => ({
+				contents: `export * from ${JSON.stringify(RUNED_ENTRY)};`,
+				loader: 'js'
+			}));
+		}
+	});
+}
 
 // ── 4. Svelte loader ──────────────────────────────────────────────────────────────────────────
 const transpiler = new Transpiler({ loader: 'ts' });

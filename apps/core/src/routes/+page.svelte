@@ -51,6 +51,8 @@
 	import { positionWords } from '$lib/position-sentence';
 	import type { MediaStatus } from '@encore/shared';
 	import { isPlayable, hasGuidingTrack, effectiveGuideLevel, isCookableSource } from '@encore/shared';
+	import { Toaster } from '$lib/components/ui/sonner';
+	import { toast } from 'svelte-sonner';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
@@ -553,46 +555,38 @@
 		}
 	}
 
-	// transient error toast
-	let errorMsg = $state('');
-	let errorTimer: ReturnType<typeof setTimeout> | undefined;
+	/*
+	 * TOASTS ARE SONNER'S NOW (#913 S5).
+	 *
+	 * What this replaced: two hand-rolled fixed-position surfaces, two `setTimeout` timers, a
+	 * `bind:clientHeight` measurement of the undo toast, and an `$effect` publishing `--undo-h` to
+	 * `documentElement` with a teardown against the #598 §14 leak class. The error toast's offset had to
+	 * track that MEASURED height because a real “title — artist” wraps to an unpredictable number of
+	 * lines, and the two surfaces had already collided once — "both sat at the same bottom and z-index,
+	 * so one drew over the other and a guest saw only whichever rendered last".
+	 *
+	 * Sonner stacks its own toasts, so every part of that chain is deleted rather than ported: no
+	 * measurement, no published custom property, no leak to tear down, and the overlap it existed to fix
+	 * cannot recur. The 5s undo window and the 4s error window are `duration`, and Undo is a real toast
+	 * ACTION rather than a button this page positions and sizes itself.
+	 *
+	 * The Toaster docks above the measured band with `offset="var(--dock-h, 0px)"`, which works because
+	 * `--dock-h` is published on `documentElement` (see the note at its writer above) and so is readable
+	 * from sonner's portal.
+	 */
 	function showError(msg: string) {
-		errorMsg = msg;
-		clearTimeout(errorTimer);
-		errorTimer = setTimeout(() => (errorMsg = ''), 4000);
+		toast.error(msg, { duration: 4000 });
 	}
 
-	// remove + undo toast
-	let undo = $state<{ mediaId: string; title: string } | null>(null);
-	let undoTimer: ReturnType<typeof setTimeout> | undefined;
-	// The undo toast's real rendered height, bound to its clientHeight in the markup. The error toast
-	// docks ABOVE it, and the toast wraps to as many lines as a real “title — artist” needs, so the
-	// error toast's offset must track this MEASURED value, not a constant (the same reason --dock-h is
-	// measured). Published as 0 when no undo toast is up, so the error toast then docks above the band.
-	let undoH = $state(0);
-	$effect(() => {
-		document.documentElement.style.setProperty('--undo-h', `${undo ? undoH : 0}px`);
-		// Tear the inline property down on unmount. Without this it OUTLIVES the page on documentElement,
-		// so a stale --undo-h keeps skewing the --error-dock stack (calc(... + var(--undo-h) ...)) after
-		// this route is gone — the same leak class #598 §14, documented in full at --dock-h above. This
-		// effect always writes (0 when no toast), so it always owns the property and clears it
-		// unconditionally.
-		return () => {
-			document.documentElement.style.removeProperty('--undo-h');
-		};
-	});
 	function removeWithUndo(entry: QueueEntry) {
+		const mediaId = entry.mediaId;
+		const title = mediaTitle(mediaId);
 		store?.removeEntry(entry.id);
 		if (navigator.vibrate) navigator.vibrate(8);
-		undo = { mediaId: entry.mediaId, title: mediaTitle(entry.mediaId) };
-		clearTimeout(undoTimer);
-		undoTimer = setTimeout(() => (undo = null), 5000);
-	}
-	function doUndo() {
-		if (!undo) return;
-		store?.addSong(undo.mediaId);
-		undo = null;
-		clearTimeout(undoTimer);
+		toast(`Removed \u201c${title}\u201d`, {
+			duration: 5000,
+			action: { label: 'Undo', onClick: () => store?.addSong(mediaId) }
+		});
 	}
 
 	// zero-keystroke shortcuts (shown when the search box is empty)
@@ -1615,16 +1609,15 @@
 	</div>
 {/if}
 
-{#if undo}
-	<div class="undo-toast" role="status" bind:clientHeight={undoH}>
-		<span>Removed “{undo.title}”</span>
-		<button onclick={doUndo}>Undo</button>
-	</div>
-{/if}
-
-{#if errorMsg}
-	<div class="error-toast" role="alert">{errorMsg}</div>
-{/if}
+<!--
+	One toast surface for the whole page, docked above the measured band. `richColors` is off: the error
+	tone comes from Encore's own `--destructive`, which the vendored component points at.
+-->
+<Toaster
+	position="bottom-center"
+	offset="var(--dock-h, 0px)"
+	style="--width: min(92vw, 420px);"
+/>
 
 <!--
 	Polite live region for ambient queue activity a screen reader would otherwise miss (a guest's add,
@@ -2238,61 +2231,6 @@
 	:root {
 		--undo-dock: calc(var(--dock-h, 0px) + 14px);
 		--error-dock: calc(var(--undo-dock) + var(--undo-h, 0px) + 14px);
-	}
-	.undo-toast {
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: var(--undo-dock);
-		margin-inline: auto;
-		width: fit-content;
-		display: flex;
-		align-items: center;
-		gap: var(--space-xl);
-		z-index: var(--z-dock);
-		background: var(--card2);
-		border: 1px solid var(--line);
-		border-radius: 14px;
-		padding: var(--space-lg) var(--space-2xl);
-		box-shadow: var(--shadow);
-		font-size: var(--ph-text-md);
-		max-width: 90vw;
-	}
-	.undo-toast button {
-		/* The only interactive control on the phone that fell under the app's own tap floor — and the
-		   one on a 5-second timer, so the hardest to hit in time. Raised to var(--tap) via min-height (the
-		   row is align-items:center, so it grows to fit and nothing else shifts); the padding-only box
-		   it had (6px 12px) slipped past the generic touch-target guard, which only flags an explicit
-		   height. touch-targets.test.ts now covers padding-only controls too. */
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		min-height: var(--tap);
-		border: 0;
-		background: var(--accent);
-		color: var(--on-accent);
-		font-weight: 700;
-		border-radius: 8px;
-		padding: var(--space-xs) var(--space-xl);
-		cursor: pointer;
-	}
-	.error-toast {
-		/* Offset above the undo toast: both sat at the same bottom and z-index, so one drew over the
-		   other and a guest saw only whichever rendered last. */
-		position: fixed;
-		left: 0;
-		right: 0;
-		bottom: var(--error-dock);
-		margin-inline: auto;
-		width: fit-content;
-		z-index: var(--z-dock);
-		background: var(--danger-bg);
-		color: var(--danger-ink);
-		border: 1px solid var(--danger-line);
-		padding: 11px var(--space-2xl);
-		border-radius: var(--radius-sm);
-		font-size: 0.88rem;
-		max-width: 90vw;
 	}
 
 	/* Matches the gear beside it: a real var(--tap) target, not text that happens to be tappable. An
