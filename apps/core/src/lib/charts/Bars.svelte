@@ -6,6 +6,7 @@
   always fills the row: with a handful of plays a 0-to-10 axis would render every bar as a stub.
 -->
 <script lang="ts">
+	import * as Empty from '$lib/components/ui/empty';
 	interface Row {
 		label: string;
 		value: number;
@@ -24,7 +25,11 @@
 </script>
 
 {#if rows.length === 0}
-	<p class="empty">{empty}</p>
+	<Empty.Root>
+		<Empty.Header>
+			<Empty.Description>{empty}</Empty.Description>
+		</Empty.Header>
+	</Empty.Root>
 {:else}
 	<ol class="bars">
 		{#each rows as row, i (row.label + i)}
@@ -99,9 +104,5 @@
 		color: var(--ink-dim);
 		margin-top: 0.25rem;
 	}
-	.empty {
-		color: var(--ink-dim);
-		font-size: var(--ph-text-md);
-		margin: 0;
-	}
+	/* #913 S7: `.empty` is ui/empty's now. */
 </style>

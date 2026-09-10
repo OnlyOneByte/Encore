@@ -8,6 +8,7 @@
   and expands the calendar itself instead of just plotting the rows it was handed.
 -->
 <script lang="ts">
+	import * as Empty from '$lib/components/ui/empty';
 	interface Point {
 		day: string;
 		plays: number;
@@ -43,7 +44,11 @@
 </script>
 
 {#if total === 0}
-	<p class="empty">{empty}</p>
+	<Empty.Root>
+		<Empty.Header>
+			<Empty.Description>{empty}</Empty.Description>
+		</Empty.Header>
+	</Empty.Root>
 {:else}
 	<!-- role=group (not img): img would make the per-day buttons presentational to AT, hiding the
 	     counts. The group carries the summary via aria-label; each column button exposes its own day. -->
@@ -162,9 +167,5 @@
 		margin: 0.4rem 0 0;
 		font-variant-numeric: tabular-nums;
 	}
-	.empty {
-		color: var(--ink-dim);
-		font-size: var(--ph-text-md);
-		margin: 0;
-	}
+	/* #913 S7: `.empty` is ui/empty's now. */
 </style>

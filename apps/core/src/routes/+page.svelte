@@ -54,6 +54,9 @@
 	import { Toaster } from '$lib/components/ui/sonner';
 	import { toast } from 'svelte-sonner';
 	import * as Collapsible from '$lib/components/ui/collapsible';
+	import { Skeleton } from '$lib/components/ui/skeleton';
+	import { Spinner } from '$lib/components/ui/spinner';
+	import * as Empty from '$lib/components/ui/empty';
 
 	let me = $state<PublicSinger | null>(null);
 	let entries = $state<QueueEntry[]>([]);
@@ -1374,7 +1377,11 @@
 			<p class="reorder-note">{reorderNote}</p>
 		{/if}
 		{#if queued.length === 0}
-			<p class="empty">Queue's empty — add a song to start the party.</p>
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>Queue's empty — add a song to start the party.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
 		{:else}
 			{#each queued as e, i (e.id)}
 				{@const s = singerOf(e.singerId)}
@@ -1500,17 +1507,21 @@
 			<div aria-busy="true" aria-label="Searching…">
 				{#each [0, 1, 2] as i (i)}
 					<div class="skel-row">
-						<div class="skel-thumb"></div>
+						<Skeleton variant="thumb" />
 						<div class="skel-text">
-							<div class="skel-line"></div>
-							<div class="skel-line short"></div>
+							<Skeleton />
+							<Skeleton variant="line-short" />
 						</div>
 					</div>
 				{/each}
 			</div>
 		{/if}
 		{#if !searching && rawResults.length === 0 && readyResults.length === 0}
-			<p class="empty">No results. YouTube search needs yt-dlp installed on the server.</p>
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>No results. YouTube search needs yt-dlp installed on the server.</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
 		{/if}
 		{@const rawRows = unaccounted(rawResults).reverse()}
 		{#if rawRows.length}
@@ -1573,7 +1584,11 @@
 		-->
 		{#if searchActive && !readyStack.length && library.length}
 			{@const empty = readyEmptyState({ searchActive, libraryCount: library.length, query })}
-			<p class="empty">{empty.message}</p>
+			<Empty.Root>
+				<Empty.Header>
+					<Empty.Description>{empty.message}</Empty.Description>
+				</Empty.Header>
+			</Empty.Root>
 			{#if empty.showAllCount !== null}
 				<div class="showall-row">
 					<button class="chip ok chip-icon" onclick={clearSearch}
@@ -1616,7 +1631,7 @@
 				aria-label="Search a song or artist"
 				placeholder="Search a song or artist…"
 			/>
-			{#if searching}<span class="search-spinner" aria-label="Searching"></span>{/if}
+			{#if searching}<Spinner aria-label="Searching" />{/if}
 		</div>
 	</div>
 {/if}
@@ -2170,20 +2185,6 @@
 		margin: var(--space-2xs) 0 0;
 	}
 
-	.search-spinner {
-		width: 15px;
-		height: 15px;
-		flex: none;
-		border-radius: 50%;
-		border: 2px solid var(--line);
-		border-top-color: var(--accent2);
-		animation: spin 0.7s linear infinite;
-	}
-	@keyframes spin {
-		to {
-			transform: rotate(360deg);
-		}
-	}
 	.skel-row {
 		display: flex;
 		align-items: center;
@@ -2194,39 +2195,13 @@
 		background: var(--card);
 		border: 1px solid var(--line);
 	}
-	.skel-thumb {
-		width: 44px;
-		height: 44px;
-		flex: none;
-		border-radius: var(--radius-btn);
-	}
 	.skel-text {
 		flex: 1;
 		display: flex;
 		flex-direction: column;
 		gap: var(--space-sm);
 	}
-	.skel-line {
-		height: 12px;
-		border-radius: 6px;
-	}
-	.skel-line.short {
-		width: 55%;
-	}
 	.skel-thumb,
-	.skel-line {
-		background: linear-gradient(90deg, var(--card2) 25%, var(--line) 37%, var(--card2) 63%);
-		background-size: 400% 100%;
-		animation: shimmer 1.3s ease-in-out infinite;
-	}
-	@keyframes shimmer {
-		0% {
-			background-position: 100% 0;
-		}
-		100% {
-			background-position: -100% 0;
-		}
-	}
 	/*
 	 * Docked-toast stacking, measured UP from the docked primary button. --dock-h is bound to that band's
 	 * clientHeight, and the BAND's own padding already includes env(safe-area-inset-bottom), so the
@@ -2309,17 +2284,12 @@
 	}
 
 	/*
-	 * Respect a reduced-motion preference. Both remaining animations otherwise run unguarded and
-	 * indefinitely: the search spinner and the skeleton shimmer. Disable them; a static spinner is a
-	 * fine resting state. (The mic pulse this block also covered went away with live scoring.)
+	 * #913 S7: this file's reduce arm is GONE, because the two animations it covered left with their
+	 * elements — the search spinner to ui/spinner and the skeleton shimmer to ui/skeleton. Both are
+	 * now declared inside a `prefers-reduced-motion: no-preference` block in those components, which
+	 * makes motion OPT-IN rather than declared-then-reset: there is no reset left to lose the cascade
+	 * to a later rule (#337). Nothing in this file animates any more.
 	 */
-	@media (prefers-reduced-motion: reduce) {
-		.search-spinner,
-		.skel-thumb,
-		.skel-line {
-			animation: none;
-		}
-	}
 
 	/*
 	 * Landscape / short viewports (e.g. a phone held sideways at 844×390). The docked band plus header
