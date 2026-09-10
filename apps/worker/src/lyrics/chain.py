@@ -149,7 +149,10 @@ class LyricsText:
     #: only to a text built by hand (a test, or one rehydrated from disk by `split_blob_text`) — and it is
     #: fail-CLOSED (#605): ROLE_UNSPECIFIED is in neither `candidates_of` nor `baselines_of`, so an
     #: unspecified text is NOT published as the song's words (and is not used as grading evidence) until a
-    #: role is stamped. The old default was ROLE_CANDIDATE — the PUBLISHABLE tier — which silently let an
+    #: role is stamped. The registry stamps a fetched text AND its `alternates` (#873), because
+    #: `select_by_baselines` grades `[cand, *cand.alternates]` and may publish an alternate — so an
+    #: alternate left unspecified could win and publish as unspecified, the very hole this default guards.
+    #: The old default was ROLE_CANDIDATE — the PUBLISHABLE tier — which silently let an
     #: unspecified construction publish, exactly the fail-open the `presplit.py` replace() note guards
     #: against (a dropped role once turned a baseline into a candidate).
     role: str = ROLE_UNSPECIFIED

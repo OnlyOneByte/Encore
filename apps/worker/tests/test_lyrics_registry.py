@@ -145,12 +145,18 @@ def test_a_hand_built_text_with_no_role_is_NON_publishable_fail_closed():
     assert baselines_of([t]) == [], "an unspecified-role text must not be counted as grading evidence"
 
 
-def test_an_unspecified_text_is_never_published_by_select_by_baselines():
-    """The same fail-closed property proved end-to-end through the selector: a lone unspecified text
-    yields nothing to publish, rather than being published as the winner. On base (default CANDIDATE) it
-    would have been the sole candidate and published."""
+def test_a_lone_unspecified_top_level_text_is_never_published_by_select_by_baselines():
+    """The fail-closed property proved end-to-end through the selector for a LONE TOP-LEVEL text: a
+    single unspecified text yields nothing to publish, rather than being published as the winner. On
+    base (default CANDIDATE) it would have been the sole candidate and published.
+
+    Scope note (#873): this covers the top-level list only. The alternates arrangement — where an
+    unspecified ALTERNATE of a candidate wins and publishes — is a different reachable path, guarded by
+    `test_a_winning_alternate_carries_the_role_the_registry_stamped` below. The old name
+    (`..._an_unspecified_text_is_never_published...`) claimed the universal property this test does not
+    drive, which is exactly the hole #873 closes."""
     sel = select_by_baselines([LyricsText(text_source="lrclib", segments=[{"text": "some words here"}])])
-    assert sel.publish == [], "an unspecified-role text must not be selected for publication"
+    assert sel.publish == [], "an unspecified-role top-level text must not be selected for publication"
 
 
 def test_select_by_baselines_does_not_mutate_a_caller_held_candidate_alternates():
@@ -170,3 +176,92 @@ def test_select_by_baselines_does_not_mutate_a_caller_held_candidate_alternates(
     select_by_baselines([cand, baseline])
     assert cand.alternates == before, "selection must not clear the caller's candidate.alternates in place"
     assert len(cand.alternates) == 1
+
+
+def test_a_winning_alternate_carries_the_role_the_registry_stamped():
+    """#873: the role stamp must reach a candidate's ALTERNATES, not just the parent it is attached to.
+
+    Driven end to end through the REAL path — `build_sources` builds the `_Classified`-wrapped
+    `LrclibSource`, the source fetches two records for one track (metadata-best is the WRONG version,
+    the correct one lands in `alternates`), the registry stamps the tier, and `select_by_baselines`
+    grades `[cand, *cand.alternates]` against an ASR baseline whose text is the alternate's, so the
+    ALTERNATE wins. Nothing here hand-stamps a role: every role on the published text comes from the
+    registry, which is the whole point (every existing alternates fixture supplies the stamp production
+    does not, so none of them can see this hole).
+
+    RED ON BASE: base stamps only the parent, so the winning alternate publishes at the fail-closed
+    ROLE_UNSPECIFIED default. The `role == ROLE_CANDIDATE` assertion reds. GREEN after the fix stamps
+    the alternates too.
+
+    NOT VACUOUS: the sentinel asserts the ALTERNATE actually won (`variant == "feat"`), so the guard
+    cannot pass by the parent winning instead — in which case the role would be present for the wrong
+    reason and the hole would be invisible again.
+    """
+    from src.lyrics import ROLE_CANDIDATE, SOURCE_LRCLIB, select_by_baselines
+    from src.lyrics.artifact import lrclib_to_segments
+    from src.lyrics.source import LrclibResult
+
+    shared = "hello hello baby you called i cant hear a thing i have got no service in the club you say"
+    guest = "boy the way you blowing up my phone wont make me leave no faster put my coat on faster"
+    solo = shared  # the WRONG version for this audio
+    feat = f"{shared} {guest}"  # the version the audio actually sings
+    asr_of_feat = f"{shared} boy the way you blowing up my fone wont make me leave no faster put my coat on"
+
+    # Duration 243s audio. The SOLO record sits closest in duration (metadata-best → ranked first,
+    # becomes the parent), the FEAT record is farther (→ lands in `alternates`). candidate_sort_key
+    # ranks on duration proximity, so this ordering is what production would see.
+    solo_rec = LrclibResult(
+        id=1,
+        instrumental=False,
+        synced_lyrics=None,
+        plain_lyrics=solo,
+        track_name="Telephone",
+        artist_name="Lady Gaga",
+        album_name=None,
+        duration=243.0,
+    )
+    feat_rec = LrclibResult(
+        id=2,
+        instrumental=False,
+        synced_lyrics=None,
+        plain_lyrics=feat,
+        track_name="Telephone",
+        artist_name="Lady Gaga",
+        album_name=None,
+        duration=210.0,
+    )
+
+    class FakeClient:
+        def search(self, artist, track):
+            return [solo_rec, feat_rec]
+
+    req = full_request(duration=243.0)
+    sources, _ = build_sources(
+        req, client=FakeClient(), to_segments=lrclib_to_segments, transcriber=object(), normalize=lambda d: d
+    )
+    lrclib_source = next(s for s in sources if s.name == SOURCE_LRCLIB)
+
+    cand = lrclib_source.fetch(req)
+    assert cand is not None
+    assert cand.variant == "Lady Gaga — Telephone (243s, #1)"  # solo is the metadata-best parent
+    assert len(cand.alternates) == 1  # feat is the alternate, i.e. the version the audio matches
+
+    # An ASR baseline whose words are the FEAT version, so the alternate wins on agreement.
+    baseline = LyricsText(
+        text_source="asr",
+        role=ROLE_BASELINE,
+        baseline_rank=0,
+        segments=[{"start": 0.0, "end": 1.0, "text": w} for w in asr_of_feat.split(" ")],
+        text_confidence="low",
+    )
+
+    sel = select_by_baselines([cand, baseline])
+
+    assert sel.publish, "the alternate arrangement must publish a winner"
+    # NOT-VACUOUS SENTINEL: the ALTERNATE won, not the parent.
+    assert sel.publish[0].variant == "Lady Gaga — Telephone (210s, #2)"
+    assert sel.publish[0].text_source == SOURCE_LRCLIB
+    # THE PROPERTY (#873): the winning alternate carries the tier the registry stamped, not the
+    # fail-closed ROLE_UNSPECIFIED default. RED on base.
+    assert sel.publish[0].role == ROLE_CANDIDATE
+    assert sel.publish[0].role != ROLE_UNSPECIFIED
