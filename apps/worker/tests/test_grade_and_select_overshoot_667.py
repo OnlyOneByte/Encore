@@ -22,6 +22,8 @@ from src.lyrics.chain import (
     TIMING_LINE,
     LyricsText,
     candidate_last_end,
+    composite_score,
+    select_by_baselines,
 )
 from src.processor import JobSpec
 from src.steps.lyrics import GradeAndSelect
@@ -84,15 +86,27 @@ def _run_step(texts, duration_sec, tmp_path):
 
 
 def test_step_passes_duration_through_so_overcovered_candidate_is_demoted(tmp_path):
-    """A rival exists: duration must reach selection so the fitting candidate wins over the higher-
-    agreement over-covered one. On base the step never passes a duration, so the over-covered candidate
-    wins and this reds on the variant assertion."""
-    over = _timed(SOURCE_LRCLIB, f"{SHARED} {GUEST}", "wrong-longer-master", per_word_end=180.0)
-    fits = _timed(SOURCE_CAPTIONS, SHARED, "fits-the-audio", per_word_end=90.0)
-    baseline = _timed(SOURCE_ASR, SHARED, "whisper/vocals", per_word_end=90.0, role=ROLE_BASELINE)
+    """#851 F1: the pin must BITE. A rival exists whose RAW agreement is LOWER than the over-covered
+    candidate's, so ONLY the #667 overshoot penalty can flip the pick to it. On base the step never
+    passes a duration, so the penalty never fires and the higher-raw over-covered candidate wins — this
+    reds on the variant assertion. The fixture is the discriminating one #816 committed; the overshooter
+    is timed to 330s (+23% of 268s) so it clears OVERSHOOT_FRACTION_MAX and its raw lead (0.646 vs 0.506)
+    is what the penalty has to overturn."""
+    over = _timed(SOURCE_LRCLIB, LONGER_MASTER_300, "longer-master", per_word_end=330.0)
+    fits = _timed(SOURCE_CAPTIONS, FITS_THIS_RECORDING_265, "fits-the-audio", per_word_end=241.0)
+    baseline = _timed(SOURCE_ASR, AUDIBLE_268, "whisper/vocals", per_word_end=241.0, role=ROLE_BASELINE)
 
-    ctx, _ = _run_step([over, fits, baseline], 100.0, tmp_path)
+    # Non-vacuity floor: the over-covered candidate MUST out-score the fitting one on RAW agreement,
+    # otherwise the fitting one wins with or without the penalty and this test proves nothing. This
+    # fires if the two fixtures are ever swapped back to a byte-identical-to-baseline rival (the exact
+    # way the old fixture went vacuous).
+    assert composite_score(over, [baseline]).score > composite_score(fits, [baseline]).score, (
+        "fixture is vacuous: the fitting rival already out-scores the overshooter on raw agreement"
+    )
 
+    ctx, _ = _run_step([over, fits, baseline], 268.0, tmp_path)
+
+    # RED ON BASE: without the duration the penalty is off and `longer-master` wins on its raw lead.
     assert ctx.lyrics.selection.publish[0].variant == "fits-the-audio"
 
 
@@ -115,23 +129,25 @@ def test_step_reports_overshoot_in_the_cook_log_when_the_published_pick_overshoo
 
 
 def test_a_demoted_overshooting_candidate_still_gets_an_overshoot_note_naming_the_demotion(tmp_path):
-    """F1: across-source, the wrong-longer-master demotes to a fitting rival, so it is NOT published.
-    On base the note loop only visited sel.publish, so the demoted loser produced ZERO overshoot notes
-    — the exact case #667 piece 2 exists for. Head must emit a note that names the overshooting LOSER
-    and says it was demoted."""
-    over = _timed(SOURCE_LRCLIB, f"{SHARED} {GUEST}", "wrong-longer-master", per_word_end=180.0)
-    fits = _timed(SOURCE_CAPTIONS, SHARED, "fits-the-audio", per_word_end=90.0)
-    baseline = _timed(SOURCE_ASR, SHARED, "whisper/vocals", per_word_end=90.0, role=ROLE_BASELINE)
+    """#851 F1 + F2: across-source, `longer-master` out-scores the fitting rival on RAW agreement, so
+    ONLY the #667 penalty demotes it below `fits-the-audio` — the pick genuinely turns on the demotion.
+    On base the note loop only visited sel.publish, so the demoted loser produced ZERO overshoot notes,
+    and once the loop was fixed (#731) the verdict hardcoded a false causal "DEMOTED, published X". Head
+    must emit a note that names the overshooting LOSER, says it was NOT published, and names the winner."""
+    over = _timed(SOURCE_LRCLIB, LONGER_MASTER_300, "longer-master", per_word_end=330.0)
+    fits = _timed(SOURCE_CAPTIONS, FITS_THIS_RECORDING_265, "fits-the-audio", per_word_end=241.0)
+    baseline = _timed(SOURCE_ASR, AUDIBLE_268, "whisper/vocals", per_word_end=241.0, role=ROLE_BASELINE)
 
-    ctx, notes = _run_step([over, fits, baseline], 100.0, tmp_path)
+    ctx, notes = _run_step([over, fits, baseline], 268.0, tmp_path)
 
-    # the demotion worked: the fitting rival is what publishes
+    # the demotion worked: the fitting rival is what publishes (and the penalty is why — see the F1
+    # test above, whose non-vacuity floor proves the overshooter led on raw agreement)
     assert ctx.lyrics.selection.publish[0].variant == "fits-the-audio"
     overshoot_notes = [n for n in notes if "overshoot" in n.lower()]
-    assert overshoot_notes, notes  # RED ON BASE: base emits zero overshoot notes here
-    demoted = [n for n in overshoot_notes if "wrong-longer-master" in n and "+80s" in n]
+    assert overshoot_notes, notes  # RED ON BASE: base emits zero overshoot notes for the demoted loser
+    demoted = [n for n in overshoot_notes if "longer-master" in n and "+62s" in n]
     assert demoted, overshoot_notes
-    assert "DEMOTED" in demoted[0], demoted[0]
+    assert "NOT published" in demoted[0], demoted[0]
     assert "fits-the-audio" in demoted[0], demoted[0]
 
 
@@ -153,6 +169,49 @@ def test_an_overshooting_published_pick_is_not_reported_as_demoted(tmp_path):
     assert "PUBLISHED anyway" in note, note
 
 
+# --- #851 F2: the DEMOTED arm claimed the overshoot penalty CAUSED the pick, from `is_published`, which
+# cannot say so. A wrong-song candidate loses on AGREEMENT by a margin the comparative penalty never
+# comes near — switch the penalty off and the SAME winner publishes — yet the base note printed the
+# causal "DEMOTED, published X instead". This is the third arm of the ladder #739 corrected the other
+# two of.
+
+#: A genuinely DIFFERENT song, and a LONGER one (its own timings run to 180s against 100s of audio).
+#: Low agreement with the audible words, so it loses on the metric — the penalty is not why.
+WRONG_SONG_LONGER = (
+    "humpty dumpty sat on a wall humpty dumpty had a great fall all the kings horses and "
+    "all the kings men couldnt put humpty together again not once not ever no how no way"
+)
+
+
+def test_a_demoted_wrong_song_pick_is_not_reported_as_caused_by_the_overshoot_penalty(tmp_path):
+    """#851 F2: a wrong-song candidate overshoots AND scores near-zero agreement, so it loses on the
+    metric, not on the penalty. The CONTROL — `select_by_baselines(texts, None)`, the penalty switched
+    off entirely — publishes the SAME winner, proving the demotion decided nothing. Base still worded
+    the note "DEMOTED, published fits-the-audio instead", asserting a causation it never checked and
+    doing so on the one line an operator reads to decide whether #667's demotion did anything. Head must
+    NOT claim it was demoted, must say it was NOT published, and must name the winner it lost to."""
+    wrong = _timed(SOURCE_LRCLIB, WRONG_SONG_LONGER, "wrong-song-longer", per_word_end=180.0)
+    fits = _timed(SOURCE_CAPTIONS, AUDIBLE_268, "fits-the-audio", per_word_end=90.0)
+    baseline = _timed(SOURCE_ASR, AUDIBLE_268, "whisper/vocals", per_word_end=90.0, role=ROLE_BASELINE)
+
+    # control: with the penalty OFF, the same candidate still wins — the demotion is not what rejected it
+    control = select_by_baselines([wrong, fits, baseline], None)
+    ctx, notes = _run_step([wrong, fits, baseline], 100.0, tmp_path)
+    assert [p.variant for p in control.publish] == [p.variant for p in ctx.lyrics.selection.publish], (
+        "control invalid: the penalty DID flip this pick, so it is not an F2 case"
+    )
+    assert ctx.lyrics.selection.publish[0].variant == "fits-the-audio"
+
+    overshoot_notes = [n for n in notes if "overshoot" in n.lower() and "wrong-song-longer" in n]
+    assert overshoot_notes, notes
+    note = overshoot_notes[0]
+    # RED ON BASE: base's verdict is "DEMOTED, published fits-the-audio instead" — a causal claim
+    assert "DEMOTED" not in note, note
+    assert "demoted" not in note.lower(), note
+    assert "NOT published" in note, note
+    assert "fits-the-audio" in note, note
+
+
 # --- #739: the verdict ladder PR #733 added (steps/lyrics.py) wrote two claims its one local fact,
 # `is_published`, does not carry. F1 asserted "no candidate that fits the audio" from it, which is
 # false whenever the COMPARATIVE overshoot penalty is smaller than the overshooter's score lead. F2
@@ -167,9 +226,7 @@ AUDIBLE_268 = (
 )
 #: A LONGER MASTER: every audible word plus a tail this recording does not contain. High agreement,
 #: and its own timings run to 300s against 268s of audio — +12%, just past OVERSHOOT_FRACTION_MAX.
-LONGER_MASTER_300 = (
-    AUDIBLE_268 + " turn around bright eyes turn around bright eyes every now and then i know"
-)
+LONGER_MASTER_300 = AUDIBLE_268 + " turn around bright eyes turn around bright eyes every now and then i know"
 #: A poorer transcription of THIS recording: lower agreement, but its timings stop at 265s, inside
 #: the audio. Chosen so the +12% penalty (0.646 -> 0.526) does NOT close the gap to its 0.506, which
 #: is the whole reachable trigger — the overshooter publishes with a fitting rival in the pool.

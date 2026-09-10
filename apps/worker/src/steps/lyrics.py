@@ -421,8 +421,16 @@ class GradeAndSelect(Step):
                         else ", no candidate that fits the audio"
                     )
                 else:
-                    # Over the limit and demoted — the case #667 piece 2 was written to surface.
-                    verdict = f"past the OVERSHOOT limit — DEMOTED, published {winner_label} instead"
+                    # Over the limit and NOT published — the case #667 piece 2 was written to surface.
+                    # #851 F2: this is the third arm of the ladder #739 corrected the other two of, and
+                    # it repeated their exact defect. `is_published` False means only that THIS text is
+                    # not in `sel.publish`; it does NOT mean the overshoot penalty is why. The wrong-song
+                    # case loses on AGREEMENT by a margin the comparative `overshoot_penalized` never came
+                    # near — the winner is identical with the penalty switched off — so "DEMOTED" here
+                    # asserted a causation the step cannot see, and did so on the one line an operator
+                    # reads to decide whether #667's demotion did anything. Word it from the fact the step
+                    # actually has, mirroring the `PUBLISHED anyway` / `within tolerance` sibling arms.
+                    verdict = f"past the OVERSHOOT limit — NOT published, {winner_label} was"
                 ctx.note(
                     f"lyrics overshoot — {label} runs "
                     f"+{over:.0f}s past audio-end ({over / duration_sec:.0%} of {duration_sec:.0f}s) "
