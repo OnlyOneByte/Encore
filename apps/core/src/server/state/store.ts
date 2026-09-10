@@ -19,6 +19,20 @@ export interface StatePersistence {
 
 const NOOP_PERSIST: StatePersistence = { persist() {} };
 
+/**
+ * The #128 resolution predicate: does `currentEntryId` name a live entry? This is the SINGLE
+ * production statement of it. It was stated twice before (#803 removed server.ts's copy but left
+ * this store boot-heal and player.ts's runtime recovery as two byte-identical copies modulo the
+ * receiver, #848), and a developer narrowing one and not the other left boot and runtime disagreeing
+ * about whether the room is idle. Both askers — `hydrate`'s boot self-heal and
+ * `reconcileOnReady`'s runtime recovery (player.ts) — now call this, so "what resolves" has one
+ * answer. Lives here because store owns both `entries` and `PlaybackState`; `realtime` already
+ * imports from `state`.
+ */
+export function entryResolves(entries: readonly QueueEntry[], currentEntryId: string | null): boolean {
+	return entries.some((e) => e.id === currentEntryId);
+}
+
 export class AuthoritativeState {
 	#entries: QueueEntry[] = [];
 	// Both per-song overrides start null = "defer to the room default", NOT a concrete value.
@@ -95,10 +109,7 @@ export class AuthoritativeState {
 			// queue:command (apps/core/server.ts, on a dangling/absent current), a cook completing
 			// (reconcileOnReady in onMediaReady, apps/core/src/server/app.ts), or a manual play — the play
 			// control stays enabled because a non-empty queue satisfies its gate (routes/+page.svelte).
-			if (
-				this.#playback.currentEntryId !== null &&
-				!this.#entries.some((e) => e.id === this.#playback.currentEntryId)
-			) {
+			if (this.#playback.currentEntryId !== null && !entryResolves(this.#entries, this.#playback.currentEntryId)) {
 				this.#playback = { ...this.#playback, currentEntryId: null, isPlaying: false };
 			}
 		}
