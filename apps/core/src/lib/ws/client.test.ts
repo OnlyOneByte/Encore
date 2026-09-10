@@ -1,6 +1,7 @@
 // done-when: kill+restore socket -> client re-syncs to authoritative rev.
 import { test, expect } from 'bun:test';
 import { WsClient, type MinimalSocket } from './client';
+import { WS_OPEN } from './send';
 import { QueueStore } from '../stores/queue';
 import type { ServerEvent, ClientEvent } from '@encore/shared';
 
@@ -11,7 +12,14 @@ class FakeSocket implements MinimalSocket {
 	onmessage: ((ev: { data: string }) => void) | null = null;
 	sent: ClientEvent[] = [];
 	closed = false;
+	// A real WebSocket exposes readyState and throws InvalidStateError from send() when it is not
+	// OPEN. Model both: default OPEN so every existing test is unchanged, but let a test drive it to
+	// CONNECTING/CLOSING/CLOSED and have send() throw exactly like the browser does.
+	readyState: number = WS_OPEN;
 	send(data: string) {
+		if (this.readyState !== WS_OPEN) {
+			throw new Error('InvalidStateError: still in CONNECTING state');
+		}
 		this.sent.push(JSON.parse(data));
 	}
 	close() {
@@ -200,4 +208,28 @@ test('an out-of-order playback:state does not rewind rev (Fix 1)', () => {
 		state: { currentEntryId: null, positionSec: 0, isPlaying: false, keyShift: 0, background: null, guideLevel: null }
 	});
 	expect(store.rev).toBe(9);
+});
+
+// The readyState guard is the whole reason send.ts exists (#871). It funnels every phone command and
+// every TV telemetry frame, and a real WebSocket throws InvalidStateError from send() while it is
+// CONNECTING/CLOSING/CLOSED — which happens on first connect, every reconnect, and after a mobile
+// freeze. This drives #sock into a non-OPEN state and proves WsClient.send GUARDS it (skips the send,
+// returns false, does not throw, records nothing) rather than letting the throw escape.
+//
+// Discriminating: revert client.ts:115 to the pre-fix `this.#sock?.send(JSON.stringify(e))` and this
+// reds — that raw form calls send() directly, so FakeSocket throws InvalidStateError, and the throw
+// escapes client.send() instead of being turned into a clean `false`.
+test('send on a non-OPEN socket is guarded, not thrown (#871)', () => {
+	const h = makeClient();
+	h.client.open();
+	// The socket exists but has not fired onopen — a real WebSocket is CONNECTING here and send() throws.
+	const sock = h.sockets[0]!;
+	sock.readyState = 0; // WebSocket.CONNECTING
+
+	let result: boolean | undefined;
+	expect(() => {
+		result = h.client.send({ type: 'hello', lastRev: 0 });
+	}).not.toThrow();
+	expect(result).toBe(false); // reported not-sent, not swallowed as success
+	expect(sock.sent).toHaveLength(0); // nothing went out
 });
