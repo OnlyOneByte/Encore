@@ -41,13 +41,12 @@ function render<P extends Record<string, unknown>>(Comp: unknown, props: P): HTM
 	return host;
 }
 
-/** Open the live-controls disclosure, the way a singer reaching for the controls does. */
-function openTools(host: HTMLElement): void {
-	const toggle = host.querySelector('.tools-toggle') as HTMLButtonElement | null;
-	expect(toggle).not.toBeNull();
-	toggle!.click();
-	flushSync();
-}
+/*
+ * #913: `openTools` was deleted with the four arms that used it. Opening the disclosure is only
+ * meaningful for a claim about what is INSIDE it, and every such claim now runs on the layout rung in
+ * `apps/core/e2e/probes/p16-hero-live-controls.mjs` — the hero cannot be mounted here at all while its
+ * disclosure is a Bits UI Collapsible, which reads getBoundingClientRect (XR-VER-03).
+ */
 
 const NOTE = 'No isolated vocals for this song, so the guiding track stays off. Key and vocal range still work.';
 

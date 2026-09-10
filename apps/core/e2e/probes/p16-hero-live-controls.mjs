@@ -504,7 +504,8 @@ async function main() {
 	check('the sentence is in the disclosure BODY, never the collapsed summary', degraded.noteInBody && !(degraded.peekText ?? '').toLowerCase().includes(NOTE_FRAGMENT), JSON.stringify({ inBody: degraded.noteInBody, peek: degraded.peekText }));
 }
 
-let code = 0;
+/** @type {number} */
+let code;
 try {
 	await main();
 	const failed = checks.filter((c) => !c.ok);
@@ -517,7 +518,10 @@ try {
 } finally {
 	try {
 		await browser?.close?.();
-	} catch {}
+	} catch {
+		// A browser that already died closes with a throw. The child processes below are killed either
+		// way, and failing teardown must not mask the verdict this probe already reported.
+	}
 	await kill(chrome);
 	await kill(worker);
 	await kill(server);

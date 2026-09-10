@@ -15,7 +15,8 @@ import { TAP, TAP_FLOOR } from '../test-helpers';
 const SRC = join(import.meta.dir, '..', '..'); // src/
 const TREND = readFileSync(join(SRC, 'lib', 'charts', 'Trend.svelte'), 'utf8');
 const CSS = readFileSync(join(SRC, 'app.css'), 'utf8');
-const STATS = readFileSync(join(SRC, 'routes', 'stats', '+page.svelte'), 'utf8');
+// #913 S4: /stats' own source is no longer read here — the containment claim moved to ui/card
+// with the rule, and the chart's tap-target arms read Trend.svelte directly.
 const CARD_COMPONENT = join(SRC, 'lib', 'components', 'ui', 'card', 'card.svelte');
 
 function stripComments(src: string): string {

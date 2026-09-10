@@ -5,7 +5,12 @@
 	import type { Snippet } from "svelte";
 	import type { HTMLAttributes } from "svelte/elements";
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
+	/*
+	 * #913: the second parameter is part of the formatter SIGNATURE a caller may override, so it cannot
+	 * be dropped — an override receives the payload positionally. The default simply has no use for it.
+	 * Kept vendored-verbatim apart from this disable.
+	 */
+	// eslint-disable-next-line @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
 	function defaultFormatter(value: any, _payload: TooltipPayload[]) {
 		return `${value}`;
 	}
