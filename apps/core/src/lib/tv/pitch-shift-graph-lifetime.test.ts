@@ -225,3 +225,52 @@ test('#694 guard (not-vacuous): a dedicated effect releases the guide graph when
 	expect(body).toMatch(/guideGraph[?][.]detach[(]/);
 	expect(body).toMatch(/guideGraph = undefined/);
 });
+
+// -- #825: the MASTER element genuinely dies when a drained room unmounts the <audio> behind
+//    {#if media && isPlayable(media)}. The `if (!master)` element-unmount effect (the #674 shadow
+//    clear) is where that death is detected, so it must ALSO release the master graph and DROP its
+//    reference -- detach() alone leaves `masterGraph` truthy and the build site's `!masterGraph` guard
+//    stays false forever, so the next song's fresh element is never captured and the instrumental
+//    stops transposing for the page's life (the master counterpart of the guide's #694 release). The
+//    per-song reset must NOT do this (that is #477); the release lives only where the ELEMENT dies.
+function masterUnmountEffectBody(s: string): string {
+	// Anchor on the shadow-clear the #674 fix does when the element is gone: `currentEntryId = null`
+	// sits inside the `if (!master)` block and survives comment stripping. This is distinct from the
+	// per-song reset (which keys on `resetForId`) and the destroy effect (which uses `return () =>`).
+	const marker = s.indexOf('currentEntryId = null');
+	expect(marker).toBeGreaterThanOrEqual(0);
+	const from = s.lastIndexOf('$effect', marker);
+	expect(from).toBeGreaterThanOrEqual(0);
+	let i = s.indexOf('{', from);
+	const start = i;
+	let depth = 0;
+	for (; i < s.length; i++) {
+		if (s[i] === '{') depth++;
+		else if (s[i] === '}') {
+			depth--;
+			if (depth === 0) break;
+		}
+	}
+	return s.slice(start, i + 1);
+}
+
+test('#825 guard: the element-unmount effect releases the master graph AND drops the reference', () => {
+	const stripped = stripComments(TV);
+	const body = masterUnmountEffectBody(stripped);
+	// Not-vacuous: this really is the `if (!master)` shadow-clear effect (renaming it away reds here).
+	expect(body).toMatch(/if\s*[(]\s*!master\s*[)]/);
+	expect(body).toMatch(/currentSrc = ''/);
+	// The fix: detach frees the context, and dropping the reference is the load-bearing half -- without
+	// it `!masterGraph` at the build site stays false forever and the next song is never captured.
+	expect(body).toMatch(/masterGraph[?][.]detach[(]/);
+	expect(body).toMatch(/masterGraph = undefined/);
+});
+
+test('#825 guard (symmetry): master graph is released in BOTH destroy and element unmount', () => {
+	// destroy alone is not enough -- it needs the whole slot torn down (a page reload), which no host
+	// would do. There must be more than one `masterGraph?.detach()` in the file: the destroy effect
+	// plus the element-unmount effect.
+	const stripped = stripComments(TV);
+	const detaches = stripped.match(/masterGraph[?][.]detach[(]/g) ?? [];
+	expect(detaches.length).toBeGreaterThan(1);
+});
