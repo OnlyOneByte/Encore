@@ -215,6 +215,16 @@
 	function applyNowPlaying(cur: QueueEntry | null, next: QueueEntry | null) {
 		current = cur;
 		upNext = next;
+		// Reset the drawn-position anchor on the entry change itself. Both `positionSec` and
+		// `durationSec` have exactly two writers — the active slot's `onposition` at the two sites
+		// below — and neither runs until the NEW <audio> fires its first `timeupdate` (~250ms in
+		// Chromium). Until then `drawPosition` extrapolates FORWARD from the previous song's anchor,
+		// so the reel opens the turn parked on (and sweeping past) the old song's last lines and the
+		// progress bar opens two-thirds full. `nowplaying:changed` is the exact event that marks the
+		// new song's zero, so re-anchor here rather than relaxing `drawPosition`'s floor (#54 — that
+		// purity is load-bearing) or guarding inside `LyricsOverlay`. See issue #868.
+		positionSec = 0;
+		durationSec = 0;
 		// held-slot: if the server handed us a current whose media has no instrumental yet (a cooking
 		// make-karaoke song), show WAITING rather than a black player. Server normally skips these via
 		// nextPlayable, so this is a belt-and-suspenders guard.
