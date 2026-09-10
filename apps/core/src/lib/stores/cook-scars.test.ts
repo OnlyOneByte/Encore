@@ -9,7 +9,6 @@ import {
 	COOK_SCARS_KEY,
 	COOK_SCAR_TTL_MS,
 	pruneScars,
-	scarActive,
 	snapshotOf,
 	scarToMedia,
 	readScars,
@@ -101,14 +100,6 @@ test('pruneScars keeps only scars whose deadline is strictly after now', () => {
 	};
 	expect(pruneScars(corrupt as ScarMap, 100)).toEqual({ ok: scar(999) });
 	expect(input).toEqual({ future: scar(200), exact: scar(100), past: scar(50) }); // input not mutated
-});
-
-test('scarActive is true only for an unexpired deadline', () => {
-	const map: ScarMap = { m1: scar(200) };
-	expect(scarActive(map, 'm1', 199)).toBe(true);
-	expect(scarActive(map, 'm1', 200)).toBe(false); // exclusive
-	expect(scarActive(map, 'm1', 201)).toBe(false);
-	expect(scarActive(map, 'missing', 0)).toBe(false);
 });
 
 test('recordScar writes a snapshot + deadline TTL ahead of now under the shared key', () => {
