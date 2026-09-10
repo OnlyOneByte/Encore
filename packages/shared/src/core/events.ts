@@ -78,7 +78,7 @@ export type ServerEvent =
 	// informational: the phone does not render it yet, but the distinction has to exist on the wire
 	// before any surface can show it, and it is what separates "cooking soon" from "stuck forever".
 	| { type: 'media:status'; mediaId: string; status: MediaStatus; pct: number; etaSec?: number; unservable?: boolean }
-	| { type: 'singer:joined'; singer: Singer }
+	| { type: 'singer:joined'; singer: PublicSinger }
 	| { type: 'singer:updated'; singer: PublicSinger }
 	| { type: 'singer:left'; singerId: string }
 	// Who is in the room RIGHT NOW — the full set of singer ids holding a live socket,
