@@ -1,3 +1,21 @@
+<!--
+  ── ENCORE DEVIATIONS (#913 S8) ───────────────────────────────────────────────────────────────────
+  What Encore uses this for is the CONFIG CONTRACT — `config` → a `--color-<series>` custom property
+  per series, emitted by ChartStyle onto `[data-chart=<id>]` — not layerchart's marks.
+
+  That is deliberate, and the reason is accessibility. /stats' Trend is not an SVG chart: every column
+  is a real <button> with its own `aria-label` naming that day and its count, and the group carries
+  `role="group"` rather than `role="img"` precisely so those per-day counts are NOT presentational.
+  #144 additionally sizes each column to a 44px tap target, pinned by trend-tap-target.test.ts.
+  layerchart draws `<rect>`/`<path>` marks, which are neither focusable nor individually labelled, so
+  adopting them would delete the chart's entire keyboard and screen-reader surface. Bars is likewise a
+  labelled proportional list rather than a plotted series.
+
+  So the container wraps Encore's own accessible marks, and the marks paint from the config's
+  variables. `min-width: 0` is added because this container now sits between /stats' card and the
+  chart's own scroll region: a flex/grid item defaults to min-content, and #144's containment chain
+  (measured: document overflow 21px → 0) breaks if any link in it can be sized by its content.
+-->
 <script lang="ts">
 	import { cn, type WithElementRef } from "$lib/utils.js";
 	import ChartStyle from "./chart-style.svelte";
@@ -31,6 +49,7 @@
 	data-chart={chartId}
 	data-slot="chart"
 	class={cn(
+		"encore-chart-container",
 		"flex aspect-video justify-center overflow-visible text-xs",
 		// Overrides
 		//
@@ -78,3 +97,10 @@
 	<ChartStyle id={chartId} {config} />
 	{@render children?.()}
 </div>
+
+<style>
+	/* See the note above: a link in #144's containment chain must not min-content-size. */
+	.encore-chart-container {
+		min-width: 0;
+	}
+</style>

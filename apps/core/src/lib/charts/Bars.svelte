@@ -7,6 +7,7 @@
 -->
 <script lang="ts">
 	import * as Empty from '$lib/components/ui/empty';
+	import * as Chart from '$lib/components/ui/chart';
 	interface Row {
 		label: string;
 		value: number;
@@ -31,7 +32,14 @@
 		</Empty.Header>
 	</Empty.Root>
 {:else}
-	<ol class="bars">
+	<!--
+		#913 S8: <Chart.Container> supplies the series config, so the fill paints from `--color-plays`
+		rather than naming a token directly. The marks stay a labelled <ol> — this is a proportional LIST,
+		where each row's label and value are real text, not a plotted series whose values live in an SVG
+		path a screen reader cannot read.
+	-->
+	<Chart.Container config={{ plays: { label: 'Plays', color: 'var(--grad)' } }}>
+		<ol class="bars">
 		{#each rows as row, i (row.label + i)}
 			<li>
 				<div class="line">
@@ -47,6 +55,7 @@
 			</li>
 		{/each}
 	</ol>
+	</Chart.Container>
 {/if}
 
 <style>
@@ -95,7 +104,12 @@
 	.fill {
 		height: 100%;
 		border-radius: var(--radius-pill);
-		background: var(--grad);
+		/*
+		 * The fallback is deliberate, not defensive noise: `--color-<series>` is emitted at RUNTIME by
+		 * ChartStyle from the `config` above, so no static scan can see it — and if a series ever leaves
+		 * that config, the mark still paints its own token instead of nothing.
+		 */
+		background: var(--color-plays, var(--grad));
 		min-width: 2px;
 	}
 	.hint {
