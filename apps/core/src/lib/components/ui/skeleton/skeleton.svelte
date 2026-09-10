@@ -46,7 +46,7 @@
 	 */
 	@media (prefers-reduced-motion: no-preference) {
 		.encore-skel {
-			animation: shimmer 1.3s ease-in-out infinite;
+			animation: shimmer 1.3s infinite;
 		}
 	}
 	.encore-skel[data-variant='line'],

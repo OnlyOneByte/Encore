@@ -13,6 +13,7 @@
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
+	import * as Table from '$lib/components/ui/table';
 
 	interface StepRow {
 		jobType: string;
@@ -156,36 +157,36 @@
 				<p class="note">Nothing processed yet.</p>
 			{:else}
 				<div class="scroller">
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">step</th>
-								<th scope="col">runs</th>
-								<th scope="col">average</th>
-								<th scope="col">typical</th>
-								<th scope="col">worst</th>
-								<th scope="col">waited</th>
-								<th scope="col">speed</th>
-								<th scope="col">failed</th>
-							</tr>
-						</thead>
-						<tbody>
+					<Table.Root>
+						<Table.Header>
+							<Table.Row>
+								<Table.Head scope="col">step</Table.Head>
+								<Table.Head scope="col">runs</Table.Head>
+								<Table.Head scope="col">average</Table.Head>
+								<Table.Head scope="col">typical</Table.Head>
+								<Table.Head scope="col">worst</Table.Head>
+								<Table.Head scope="col">waited</Table.Head>
+								<Table.Head scope="col">speed</Table.Head>
+								<Table.Head scope="col">failed</Table.Head>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
 							{#each m.steps as s (s.jobType)}
-								<tr>
-									<td class="name"
-										>{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</td
+								<Table.Row>
+									<Table.Cell
+										>{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
 									>
-									<td>{s.n}</td>
-									<td class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</td>
-									<td>{dur(s.p50Ms)}</td>
-									<td>{dur(s.p95Ms)}</td>
-									<td>{dur(s.meanQueueWaitMs)}</td>
-									<td>{rate(s.meanRtFactor)}</td>
-									<td>{s.failed + s.abandoned}</td>
-								</tr>
+									<Table.Cell>{s.n}</Table.Cell>
+									<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
+									<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
+									<Table.Cell>{dur(s.p95Ms)}</Table.Cell>
+									<Table.Cell>{dur(s.meanQueueWaitMs)}</Table.Cell>
+									<Table.Cell>{rate(s.meanRtFactor)}</Table.Cell>
+									<Table.Cell>{s.failed + s.abandoned}</Table.Cell>
+								</Table.Row>
 							{/each}
-						</tbody>
-					</table>
+						</Table.Body>
+					</Table.Root>
 				</div>
 				<p class="note">
 					Times are work only — <strong>waited</strong> is time sitting in the queue.
@@ -206,33 +207,36 @@
 				<p class="note">No vocals removed yet.</p>
 			{:else}
 				<div class="scroller">
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">model</th>
-								<th scope="col">runs</th>
-								<th scope="col">here</th>
-								<th scope="col">benchmark</th>
-								<th scope="col">vs</th>
-							</tr>
-						</thead>
-						<tbody>
+					<Table.Root>
+						<Table.Header>
+							<Table.Row>
+								<Table.Head scope="col">model</Table.Head>
+								<Table.Head scope="col">runs</Table.Head>
+								<Table.Head scope="col">here</Table.Head>
+								<Table.Head scope="col">benchmark</Table.Head>
+								<Table.Head scope="col">vs</Table.Head>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
 							{#each m.models as r (String(r.engine) + String(r.model))}
-								<tr>
-									<td class="name"
-										>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td
+								<Table.Row>
+									<Table.Cell
+										>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
 									>
-									<td>{r.n}</td>
-									<td>{rate(r.meanRtFactor)}</td>
-									<td>{rate(r.declared?.rtFactor ?? null)}</td>
-									<td
-										class:slower={(r.ratioToDeclared ?? 1) > 1.5}
-										class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}>{rate(r.ratioToDeclared)}</td
+									<Table.Cell>{r.n}</Table.Cell>
+									<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+									<Table.Cell>{rate(r.declared?.rtFactor ?? null)}</Table.Cell>
+									<Table.Cell
+										><span
+											class:slower={(r.ratioToDeclared ?? 1) > 1.5}
+											class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
+											>{rate(r.ratioToDeclared)}</span
+										></Table.Cell
 									>
-								</tr>
+								</Table.Row>
 							{/each}
-						</tbody>
-					</table>
+						</Table.Body>
+					</Table.Root>
 				</div>
 				<p class="note">
 					<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
@@ -254,30 +258,30 @@
 				<p class="note">No lyrics timed yet.</p>
 			{:else}
 				<div class="scroller">
-					<table>
-						<thead>
-							<tr>
-								<th scope="col">model</th>
-								<th scope="col">timing</th>
-								<th scope="col">runs</th>
-								<th scope="col">average</th>
-								<th scope="col">speed</th>
-							</tr>
-						</thead>
-						<tbody>
+					<Table.Root>
+						<Table.Header>
+							<Table.Row>
+								<Table.Head scope="col">model</Table.Head>
+								<Table.Head scope="col">timing</Table.Head>
+								<Table.Head scope="col">runs</Table.Head>
+								<Table.Head scope="col">average</Table.Head>
+								<Table.Head scope="col">speed</Table.Head>
+							</Table.Row>
+						</Table.Header>
+						<Table.Body>
 							{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
-								<tr>
-									<td class="name"
-										>{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</td
+								<Table.Row>
+									<Table.Cell
+										>{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
 									>
-									<td class="name">{r.syncMode ?? '—'}</td>
-									<td>{r.n}</td>
-									<td>{dur(r.meanMs)}</td>
-									<td>{rate(r.meanRtFactor)}</td>
-								</tr>
+									<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
+									<Table.Cell>{r.n}</Table.Cell>
+									<Table.Cell>{dur(r.meanMs)}</Table.Cell>
+									<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+								</Table.Row>
 							{/each}
-						</tbody>
-					</table>
+						</Table.Body>
+					</Table.Root>
 				</div>
 				<p class="note">
 					These models have never been timed anywhere, so there is no benchmark to compare against. This is the first
@@ -393,19 +397,16 @@
 	 * a shared right edge you can run your eye down. Scrolling keeps the grid intact and costs one
 	 * gesture. The first column stays put so a scrolled row is still identifiable.
 	 */
+	/*
+	 * #913 S8: the table's own rules moved to ui/table — including the two that are behaviour rather
+	 * than decoration: the 34rem minimum that makes eight numeric columns scroll instead of crushing,
+	 * and the sticky first column that keeps the step name beside its numbers while they do. `.scroller`
+	 * stays HERE because it is this page's layout, and the component's rules key off it as an ancestor.
+	 */
 	.scroller {
 		overflow-x: auto;
 		/* Room for the sticky column's own background to cover what slides under it. */
 		margin: 0 -0.1rem;
-	}
-	.scroller table {
-		min-width: 34rem;
-	}
-	.scroller th:first-child,
-	.scroller td:first-child {
-		position: sticky;
-		left: 0;
-		background: var(--card);
 	}
 	/* .card in app.css has no padding — see the note in routes/stats/+page.svelte. */
 	/*
@@ -433,38 +434,16 @@
 		font-size: 0.85rem;
 		font-weight: 600;
 	}
-	table {
-		width: 100%;
-		border-collapse: collapse;
-		font-size: 0.82rem;
-		font-variant-numeric: tabular-nums;
-	}
 	/*
-	 * NUMERIC COLUMNS ARE RIGHT-ALIGNED. tabular-nums was already on, which does half the job by making
-	 * every digit the same width — but left-aligned cells still put "9.0s" and "2m 34s" on different
-	 * right edges, so a reader cannot run an eye down a column and compare. Alignment is what makes a
-	 * numeric table scannable; the first column stays left because it is a name, not a quantity.
+	 * NUMERIC COLUMNS ARE RIGHT-ALIGNED, and the first column stays left because it is a name rather
+	 * than a quantity. tabular-nums does half that job by making every digit the same width, but
+	 * left-aligned cells still put "9.0s" and "2m 34s" on different right edges, so a reader cannot run
+	 * an eye down a column and compare.
+	 *
+	 * #913 S8: both halves moved to ui/table, keyed on shadcn's data-slot attributes — a table's
+	 * appearance is inherently descendant, and the cells are rendered by sibling components that a
+	 * scoped rule here cannot reach. What stays below is this page's own MEANING, not table styling.
 	 */
-	th,
-	td {
-		text-align: right;
-		padding: 0.4rem 0 0.4rem 0.5rem;
-	}
-	th:first-child,
-	td:first-child,
-	td.name {
-		text-align: left;
-		padding-left: 0;
-	}
-	th {
-		font-weight: 600;
-		color: var(--ink-dim);
-		border-bottom: 1px solid var(--line);
-		white-space: nowrap;
-	}
-	td {
-		border-bottom: 1px solid var(--line-tint);
-	}
 	/* The dominant step, so "what is slow" is a glance rather than a comparison. */
 	.lead {
 		color: var(--ink);
