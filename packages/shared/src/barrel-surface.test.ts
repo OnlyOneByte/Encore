@@ -13,7 +13,7 @@ import * as barrel from './index';
 // The complete set of names `@encore/shared` exports. Sorted; regenerate with:
 //   bun -e "import * as b from './src/index.ts'; console.log(Object.keys(b).sort().join('\n'))"
 const EXPECTED = [
-	'ASR_MODELS', 'ATTEMPT_OUTCOMES', 'AXIS_HIGH_MIDI', 'AXIS_LOW_MIDI', 'CODE_ALPHABET',
+	'ACCENT2', 'ASR_MODELS', 'ATTEMPT_OUTCOMES', 'AXIS_HIGH_MIDI', 'AXIS_LOW_MIDI', 'CODE_ALPHABET',
 	'CODE_EXCLUDED_NOTE', 'CODE_LENGTH', 'DEFAULT_ASR_MODEL',
 	'DEFAULT_EFFECTIVE_SETTINGS', 'DEFAULT_ENGINE', 'DEFAULT_FETCHER', 'DEFAULT_GLOBAL_SETTINGS',
 	'DEFAULT_LYRICS_BALL', 'DEFAULT_LYRICS_CASE', 'DEFAULT_LYRICS_FONT', 'DEFAULT_LYRICS_HIGHLIGHT',

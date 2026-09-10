@@ -198,10 +198,23 @@ export const STAGE_BG_L = 0.22;
 export const STAGE_BG_C = 0.07;
 
 /**
- * Hue of `--accent2` (#ff5cae) — the "sing this now" active-word colour in the lyrics overlay.
- * Derived, not hardcoded, so it cannot drift away from the token it mirrors.
+ * `--accent2` — the "sing this now" active-word colour in the lyrics overlay, and the centre the
+ * stage guard below is built around.
+ *
+ * LITERAL rather than a read of `apps/core/src/app.css`, because this module is browser-bundled and
+ * has no filesystem at runtime. That duplication is the risk — move the token and the guard darkens
+ * the wrong hues while nothing reds — so it is EXPORTED and `colors.test.ts` asserts it still equals
+ * the `--accent2` token `app.css` declares. It cannot drift away from the colour the app paints
+ * without reddening a named test. Same price, for the same reason, as `SURFACES` above.
  */
-const ACCENT2_HUE = nearestSingerHue('#ff5cae');
+export const ACCENT2 = '#ff5cae';
+
+/**
+ * Hue of `--accent2` — the "sing this now" active-word colour in the lyrics overlay.
+ * The hue ANGLE is derived; the hex it starts from is a pinned copy of the token, guarded by the
+ * parity assertion on `ACCENT2` above so it cannot drift.
+ */
+const ACCENT2_HUE = nearestSingerHue(ACCENT2);
 
 /**
  * Angular width of the guard, in degrees. Inside it, a stage hue gives up brightness on a RAMP.
