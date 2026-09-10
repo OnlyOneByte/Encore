@@ -14,6 +14,7 @@
 	import { formatClock } from '$lib/clock';
 	import type { SelectionRecord } from '@encore/shared';
 	import * as Card from '$lib/components/ui/card';
+	import { Badge } from '$lib/components/ui/badge';
 
 	interface AuditAttempt {
 		id: string;
@@ -179,7 +180,7 @@
 	<Card.Content>
 				<header>
 					
-					<span class="pill {cook.outcome}">{outcomeLabel(cook.outcome)}</span>
+					<Badge variant={cook.outcome === 'ready' ? 'ok' : cook.outcome === 'failed' || cook.outcome === 'abandoned' ? 'bad' : 'warn'}>{outcomeLabel(cook.outcome)}</Badge>
 				</header>
 				<p class="note">
 					{stamp(cook.startedAt)}{#if cook.totalMs !== null}{' · took '}{dur(
@@ -193,7 +194,7 @@
 							<div class="row">
 								<strong>{stepLabel(a.jobType)}</strong>
 								{#if a.attempt > 1}<span class="retry">try {a.attempt}</span>{/if}
-								<span class="pill {a.outcome ?? 'running'}">{outcomeLabel(a.outcome)}</span>
+								<Badge variant={a.outcome === 'ready' ? 'ok' : a.outcome === 'failed' || a.outcome === 'abandoned' ? 'bad' : 'warn'}>{outcomeLabel(a.outcome)}</Badge>
 							</div>
 							<div class="metrics-row">
 								<span class="ran">{dur(a.processingMs)}</span>
@@ -404,29 +405,11 @@
 		font-size: 0.72rem;
 		color: var(--warn);
 	}
-	.pill {
-		font-size: var(--ph-text-2xs);
-		text-transform: uppercase;
-		letter-spacing: 0.04em;
-		padding: 0.1rem 0.45rem;
-		border-radius: 999px;
-		border: 1px solid var(--line-strong);
-		color: var(--ink-dim);
-		white-space: nowrap;
-	}
-	.pill.ready {
-		color: var(--ok);
-		border-color: var(--ok);
-	}
-	.pill.failed {
-		color: var(--danger);
-		border-color: var(--danger);
-	}
-	.pill.abandoned,
-	.pill.running {
-		color: var(--warn);
-		border-color: var(--warn);
-	}
+	/*
+	 * #913 S6: `.pill` and its three outcome tones are ui/badge's now. The outcome→tone mapping moved to
+	 * the call site because the tone IS the meaning, and the certified triples live with the component.
+	 */
+	/* `abandoned` reads as a failure, so it maps to the `bad` tone at the call sites above (#913 S6). */
 	.err {
 		font-size: var(--ph-text-xs);
 		color: var(--danger-ink);
