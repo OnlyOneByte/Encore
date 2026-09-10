@@ -17,7 +17,10 @@
 import { test, expect } from 'bun:test';
 import * as colors from './colors';
 
-const CARD = '#1a1a28'; // --card — always the binding surface of the two the dot rule tests
+// `--card`, the binding surface the dot rule tests here — read FROM `colors.SURFACES` rather than
+// restated, so it cannot drift from the token `app.css` declares (#845; same fix #842 made in
+// `colors.test.ts`). `SURFACES` is `[--bg, --card]`; the highlight rule binds on the card.
+const [, CARD] = colors.SURFACES;
 
 test('lyricHighlightColor returns a legible singer colour, canonicalised', () => {
 	// Already canonical — returned as-is.
