@@ -71,39 +71,46 @@ test('the census actually covers this package, including the harness-less Bun.se
 	const rel = SOURCES.map(REL);
 	expect(rel).toContain('server.ts');
 	expect(rel).toContain('src/server/realtime/player.ts');
+	// #848: a walk BLIND to store.ts is exactly how #803's census missed the third copy, so assert
+	// store.ts's membership rather than assume it.
+	expect(rel).toContain('src/server/state/store.ts');
 	// And the stripper must really blank comments, or a commented-out copy would count as a live one.
 	const planted = stripComments(
 		[
-			"// entries.some((e) => e.id === state.playback.currentEntryId) in a line comment",
+			'// entries.some((e) => e.id === state.playback.currentEntryId) in a line comment',
 			"/* type: 'nowplaying:changed' and upNextAfter(cur?.id ?? null, in a block comment */",
 			'const live = 1;'
 		].join('\n')
 	);
-	expect(planted).not.toMatch(/\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.]*playback\.currentEntryId/);
+	expect(planted).not.toMatch(/\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.#]*currentEntryId/);
 	expect(planted).not.toMatch(/type:\s*'nowplaying:changed'/);
 	expect(planted).not.toMatch(/upNextAfter\(\s*cur\?\.id\s*\?\?\s*null,/);
 	expect(planted).toContain('const live = 1;'); // it blanks comments, not code
 });
 
 // ── ARM 1: the #128 recovery predicate is written ONCE ─────────────────────────────────────────────
-// `deps.` prefix is optional in the pattern so a copy reached through HubDeps counts the same as one
-// reading a destructured `state` — the two spellings are what made the base pair look different.
-const RECOVERY_PREDICATE = /\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.]*playback\.currentEntryId/;
+// Anchored on `currentEntryId` alone, NOT on a receiver spelling: #803's `[\w.]*playback\.`
+// pattern could not see store.ts's `this.#playback.` copy, which is the hole #848 closed. After the
+// #848 extraction the predicate is the bare-parameter comparison inside `entryResolves`
+// (state/store.ts), so anchoring on the field name is what makes this census survive the relocation
+// and still find a receiver-prefixed re-inlined copy if one ever comes back.
+const RECOVERY_PREDICATE = /\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*[\w.#]*currentEntryId/;
 
-test('the #128 recovery predicate exists in exactly one production file, player.ts (#803)', () => {
-	// Base FAILS with 2: src/server/realtime/player.ts (the copy that DECIDES whether recovery
-	// happens) and server.ts (the copy that decided whether to CALL the decider).
-	expect(filesMatching(RECOVERY_PREDICATE)).toEqual(['src/server/realtime/player.ts']);
+test('the #128 recovery predicate exists in exactly one production file, store.ts (#803, #848)', () => {
+	// Base (pre-#848) FAILS with 2: src/server/realtime/player.ts and src/server/state/store.ts, the
+	// two byte-identical-modulo-receiver copies #848 consolidated into `entryResolves`. #803 had
+	// already removed server.ts's third copy. After #848 the sole home is the extracted helper.
+	expect(filesMatching(RECOVERY_PREDICATE)).toEqual(['src/server/state/store.ts']);
 });
 
 test('ARM 1 cannot be satisfied by deleting the invariant — the resolution test still exists (#128)', () => {
-	// Sentinel. A census counting sites passes at ZERO, so reverting player.ts's predicate to the
-	// pre-#128 nullness form (`!state.playback.currentEntryId`) would satisfy ARM 1 while re-opening
-	// #128. Require the resolution form to be present in player.ts, inside reconcileOnReady.
-	const PLAYER = stripComments(readFileSync(join(import.meta.dir, 'player.ts'), 'utf8'));
-	const fnIdx = PLAYER.indexOf('export function reconcileOnReady(');
+	// Sentinel. A census counting sites passes at ZERO, so deleting the predicate outright would
+	// satisfy ARM 1 while re-opening #128. Require the resolution form to be present in store.ts,
+	// inside the exported `entryResolves` helper that both askers now call.
+	const STORE = stripComments(readFileSync(join(SRC_ROOT, 'server', 'state', 'store.ts'), 'utf8'));
+	const fnIdx = STORE.indexOf('export function entryResolves(');
 	expect(fnIdx).toBeGreaterThanOrEqual(0);
-	expect(PLAYER.slice(fnIdx)).toMatch(RECOVERY_PREDICATE);
+	expect(STORE.slice(fnIdx)).toMatch(RECOVERY_PREDICATE);
 });
 
 // ── PROSE ARM: the comment that tells the next developer the predicate is single-sourced ────────────
@@ -119,7 +126,7 @@ test('ARM 1 cannot be satisfied by deleting the invariant — the resolution tes
 // Delete the disclosure and the duplication grows back for the same reason it grew the first time.
 const PLAYER_RAW = readFileSync(join(import.meta.dir, 'player.ts'), 'utf8');
 
-test('player.ts discloses that it is the SOLE home of the recovery predicate (#803)', () => {
+test('player.ts discloses where the recovery predicate is single-sourced (#803, #848)', () => {
 	// Non-vacuous: anchor on the symbol the prose documents, so a rename reds here rather than passing
 	// over a comment that no longer sits beside anything.
 	const fnIdx = PLAYER_RAW.indexOf('export function reconcileOnReady(');
@@ -130,18 +137,22 @@ test('player.ts discloses that it is the SOLE home of the recovery predicate (#8
 	// file where a reader standing at the predicate would never see it.
 	const preamble = PLAYER_RAW.slice(fnIdx, declIdx);
 
-	// Claim 1: this file is named as the single production statement, and #803 is cited so the next
-	// reader can find the measurement. Wrap-tolerant — the phrase spans comment lines, so `//`, tabs
-	// and newlines are allowed between words (same technique as the #254 guard in
+	// Claim 1: the disclosure NAMES the single home of the predicate — the shared `entryResolves`
+	// helper — rather than claiming player.ts states it (which #848 made false: player.ts now calls
+	// the helper and states the predicate not at all). #803 AND #848 are cited so the next reader can
+	// find both measurements. Wrap-tolerant — the phrase spans comment lines, so `//`, tabs and
+	// newlines are allowed between words (same technique as the #254 guard in
 	// dangling-current-entry.test.ts).
 	const ws = String.raw`(?:\s|\/\/)+`;
 	expect(preamble).toMatch(/#803/);
-	expect(preamble).toMatch(new RegExp(`SOLE${ws}production${ws}statement`, 'i'));
+	expect(preamble).toMatch(/#848/);
+	expect(preamble).toMatch(/entryResolves/);
+	expect(preamble).toMatch(new RegExp(`single(?:${ws})?-?(?:${ws})?sourced`, 'i'));
 
 	// Claim 2: it states that callers now delegate instead of pre-deciding. This is the half that
-	// prevents the duplication returning — a reader who knows the caller re-derives it will keep the
-	// caller's copy in sync; one who knows the caller decides NOTHING deletes any copy they find.
-	expect(preamble).toMatch(new RegExp(`[Cc]allers${ws}now${ws}call${ws}unconditionally`));
+	// prevents the duplication returning — a reader who knows the caller decides NOTHING keeps the
+	// single home in sync instead of re-inlining a copy.
+	expect(preamble).toMatch(new RegExp(`[Cc]allers${ws}now${ws}call${ws}(?:this${ws}function${ws})?unconditionally`));
 });
 
 // ── ARM 2: the queue:command arm delegates the decision rather than re-deriving it ─────────────────
@@ -194,7 +205,7 @@ test('the upNext projection exists in exactly one production file, player.ts (#8
 	expect(filesMatching(UPNEXT_PROJECTION)).toEqual(['src/server/realtime/player.ts']);
 });
 
-test("the nowplaying:changed payload is stated in exactly one production file, player.ts (#803)", () => {
+test('the nowplaying:changed payload is stated in exactly one production file, player.ts (#803)', () => {
 	// Base FAILS with 2. Counted per FILE, not per occurrence: player.ts legitimately names the
 	// literal twice after the fix — once in nowPlayingEvent's `Extract<ServerEvent, …>` return type
 	// and once in the returned object — and an occurrence count would read that as unfixed.

@@ -186,8 +186,11 @@ test('server.ts recovers a DANGLING currentEntryId after a queue:command, keying
 	const fnIdx = PLAYER.indexOf('export function reconcileOnReady(');
 	expect(fnIdx).toBeGreaterThanOrEqual(0);
 	const body = PLAYER.slice(fnIdx);
+	// #848: the predicate is now the shared `entryResolves` helper (state/store.ts); recovery keys on
+	// its result. Pin the CALL, not a re-inlined `.some(...)` — a re-inlined copy here would be the
+	// drift #848 removed.
 	expect(body).toMatch(
-		/const currentResolves = state\.entries\.some\(\s*\(e\)\s*=>\s*e\.id\s*===\s*state\.playback\.currentEntryId\s*\)/
+		/const currentResolves = entryResolves\(\s*state\.entries\s*,\s*state\.playback\.currentEntryId\s*\)/
 	);
 	expect(body).toMatch(/if\s*\(\s*!currentResolves\s*\)/);
 	// The caller must NOT carry a second copy of it — that duplication IS #803, and re-adding it makes
