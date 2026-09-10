@@ -14,6 +14,15 @@ export interface MinimalSocket {
 	onopen: (() => void) | null;
 	onclose: (() => void) | null;
 	onmessage: ((ev: { data: string }) => void) | null;
+	/**
+	 * OPTIONAL. A real `WebSocket` always has it (the default factory casts one straight in), and
+	 * `trySend`'s guard (`send.ts` `canSend`) reads it to skip a send on a non-OPEN socket. Kept
+	 * optional so a test double or wrapper that omits it is still valid — `canSend` treats an absent
+	 * readyState as sendable on purpose (`send.ts:30-37`), so this only lets a double EXPRESS the
+	 * state, never forces it to. Without this field the guard's readyState branch is unreachable in
+	 * every `WsClient` test.
+	 */
+	readyState?: number;
 }
 
 export interface WsClientOptions {
