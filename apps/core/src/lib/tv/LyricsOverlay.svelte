@@ -131,6 +131,12 @@
 		}
 		if (ref === loadedRef) return;
 		loadedRef = ref;
+		// Clear the previous song's doc on the ref CHANGE, not only when the ref goes falsy. Without
+		// this the derived `doc` keeps the old artifact until the async fetch resolves, so for one
+		// frame after an entry change the reel renders the PREVIOUS song's lyrics under the NEW song's
+		// title. `show` (below) already no-ops on a null doc, so rendering nothing for that frame is
+		// correct. See issue #868 (F3).
+		fetched = null;
 		let cancelled = false;
 		fetch(`/media/${ref}`)
 			.then((r) => (r.ok ? r.json() : null))
