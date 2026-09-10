@@ -77,12 +77,6 @@ export function pruneScars(map: ScarMap, now: number): ScarMap {
 	return out;
 }
 
-/** Is there an unexpired scar for this media at `now`? */
-export function scarActive(map: ScarMap, mediaId: string, now: number): boolean {
-	const scar = map[mediaId];
-	return !!scar && typeof scar.expiresAt === 'number' && scar.expiresAt > now;
-}
-
 // ── browser I/O (SSR-safe, storage-failure-tolerant) ──────────────────────────
 
 // Resolve the backing store. Injectable so the I/O layer is testable without a real `localStorage`
