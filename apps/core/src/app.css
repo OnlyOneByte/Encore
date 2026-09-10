@@ -691,6 +691,10 @@
 	--tv-chrome-h: calc(
 		var(--tv-safe-y) + 1.2 * (var(--tv-label) + var(--tv-name) + var(--tv-body) + var(--tv-label)) + 54px
 	);
+	/* Measured height of the top-right "Up next" block, published by routes/tv/+page.svelte's
+	   ResizeObserver so the fullscreen button (.fs-btn) can sit below it (#889). 0px fallback stands
+	   before the first measure and whenever no next song is queued (the block is absent). */
+	--tv-upnext-h: 0px;
 
 	color-scheme: dark;
 }

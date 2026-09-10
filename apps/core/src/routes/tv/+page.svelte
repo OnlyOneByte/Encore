@@ -468,6 +468,37 @@
 		measuredCardPx === null ? undefined : `--tv-chrome-h: calc(var(--tv-safe-y) + ${Math.ceil(measuredCardPx)}px)`
 	);
 
+	/*
+	 * Measure the top-right "Up next" block the same way (#889). `.fs-btn` and `.upnext` both pin to
+	 * the top-right at z-tier 7, so the fullscreen button must sit BELOW the whole Up-next block, not
+	 * below a guessed height — the block grows when the next title wraps. A ResizeObserver on the real
+	 * element publishes its rendered height as `--tv-upnext-h` on `.tv`; the button offsets by
+	 * `.upnext`'s own top (safe-y + 2.6vh) + that height + a gap. Null before the first measure and
+	 * whenever `.upnext` is absent (no next song) -> the app.css `--tv-upnext-h: 0px` fallback stands,
+	 * so the button just sits at the top-right inset with nothing to clear.
+	 */
+	let upnextEl = $state<HTMLElement | undefined>();
+	let measuredUpnextPx = $state<number | null>(null);
+	$effect(() => {
+		const el = upnextEl;
+		if (!el || typeof ResizeObserver === 'undefined') return;
+		const ro = new ResizeObserver((entries) => {
+			for (const e of entries) {
+				const box = e.borderBoxSize?.[0]?.blockSize;
+				measuredUpnextPx = typeof box === 'number' ? box : el.offsetHeight;
+			}
+		});
+		ro.observe(el);
+		return () => ro.disconnect();
+	});
+	// Combined style written onto `.tv`: the chrome band AND the up-next height, each falling back to
+	// its app.css default before the first measurement / when its element is absent.
+	const tvStyle = $derived(
+		[chromeBandStyle, measuredUpnextPx === null ? undefined : `--tv-upnext-h: ${Math.ceil(measuredUpnextPx)}px`]
+			.filter(Boolean)
+			.join('; ') || undefined
+	);
+
 	// Which surface the TV shows. Replaces the old `isAttract` (which collapsed "nobody here"
 	// and "people here, nothing queued" into one screen).
 	const screen = $derived(
@@ -837,7 +868,7 @@
 	});
 </script>
 
-<div class="tv" style={chromeBandStyle}>
+<div class="tv" style={tvStyle}>
 	<!--
 		z-index 0 — the stage background, beneath both player slots (1 and 2). First child so the
 		document order matches the paint order. `.tv` keeps its own black as the floor under it, which is
@@ -1078,7 +1109,7 @@
 		-->
 		{#if upNext && upNext.id !== current?.id}
 			{@const nextMedia = mediaOf(upNext)}
-			<div class="upnext">
+			<div class="upnext" bind:this={upnextEl}>
 				<span class="un-label">Up next</span>
 				<span class="un-name"
 					><span class="un-dot" style="--singer: {singers.get(upNext.singerId)?.color ?? 'var(--ink-dim)'}"
@@ -1253,8 +1284,9 @@
 		it is not permanent chrome on a wall. z-tier 7 (see the z-scheme below), the persistent-chrome tier:
 		ABOVE the lyrics reel (6) and the player slots so it stays tappable during a song, and BELOW the
 		transient full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares
-		tier 7 with the lower-third and the join QR but sits bottom-RIGHT, overlapping neither; inset with
-		the safe-area tokens so a television's overscan cannot crop it.
+		tier 7 with the lower-third (bottom-left), the join QR (bottom-right) and the Up-next block
+		(top-right), so it is pinned TOP-right BELOW the whole Up-next block (#889) to overlap none;
+		inset with the safe-area tokens so a television's overscan cannot crop it.
 
 		The mark is an INLINE SVG, not a Unicode codepoint: icons.test.ts bans a functional control whose
 		drawing the platform picks (a bare glyph renders as colour emoji on one device and tofu on a
@@ -1338,10 +1370,11 @@
 	 *   1  hidden player slot / 2  visible player slot (TvPlayer .slot, inline z-index)
 	 *   5  idle full-screen screens: attract, lobby (.attract, TvLobby .lobby)
 	 *   6  lyrics reel (LyricsOverlay .lyrics — SIBLING-owned, not editable here)
-	 *   7  persistent chrome that must sit ABOVE the reel and the video: lower-third, brand-float,
-	 *      progress bar (TvProgress), join corner/badqr (JoinBadge), fullscreen button (.fs-btn, #424 —
-	 *      shares this tier but sits bottom-right, overlapping none of them; a transient overlay at 8 and
-	 *      the autoplay hint at 10 correctly cover it)
+	 *   7  persistent chrome that must sit ABOVE the reel and the video: lower-third (bottom-left),
+	 *      brand-float, progress bar (TvProgress), join corner/badqr (JoinBadge, bottom-right),
+	 *      fullscreen button (.fs-btn, #424 — shares this tier but pinned TOP-right BELOW the whole
+	 *      "Up next" block since #889, so it overlaps none of them; a transient overlay at 8 and the
+	 *      autoplay hint at 10 correctly cover it)
 	 *   8  transient full-screen overlays: interstitial / error / waiting / loading (.interstitial) —
 	 *      must cover ALL chrome, which the old shared 7 did only by DOM luck
 	 *   9  connection status dot (.status) — tiny, always visible, never occluded
@@ -1892,8 +1925,10 @@
 	 * dissolve rather than a pop. Sits at z 7 — the documented persistent-chrome tier: ABOVE the lyrics
 	 * reel (6) and the player slots (1/2) so it stays tappable during a song, and BELOW the transient
 	 * full-screen overlays (8) and the autoplay hint (10) so those always cover it. It shares the tier
-	 * with the lower-third and the join QR but never overlaps them positionally (bottom-right, the
-	 * opposite corner). Safe-area-inset on both axes so overscan cannot clip it, and `pointer-events`
+	 * with the lower-third (bottom-LEFT) and the join QR (bottom-RIGHT); it is pinned TOP-right below
+	 * the status dot so it overlaps NEITHER — before #889 it sat bottom-right too, sharing the join
+	 * QR's exact anchor, and at equal z-index the later-in-DOM button painted over the QR's text.
+	 * Safe-area-inset on both axes so overscan cannot clip it, and `pointer-events`
 	 * drops with the fade so a hidden button can never eat a tap meant for the stage.
 	 *
 	 * The clamp's floor is var(--tap) — app.css's own tap-target minimum, named rather than restated
@@ -1904,7 +1939,18 @@
 	.fs-btn {
 		position: absolute;
 		right: var(--tv-safe-x);
-		bottom: var(--tv-safe-y);
+		/* TOP-right, tucked BELOW the whole "Up next" block (#889). The bottom-right corner is owned by
+		   the join QR (JoinBadge `.corner`) and the bottom-LEFT by the lower-third — both z-tier 7. The
+		   top-right holds the status dot (16px, tier 9) AND `.upnext` (tier 7, right:var(--tv-safe-x),
+		   top:calc(var(--tv-safe-y) + 2.6vh)). `.upnext` is the same right edge and same z-tier, and
+		   `.fs-btn` is later in the DOM, so anchoring level with it would paint over the Up-next readout
+		   just as the first #889 attempt (safe-y + 28px) did. So the button sits below `.upnext`'s own
+		   top PLUS its MEASURED height (`--tv-upnext-h`, a ResizeObserver on the block — its title
+		   wraps, so a fixed offset would fail when it grows) PLUS a gap. `--tv-upnext-h` is 0px when no
+		   next song is queued, so the button just sits at the top-right inset with nothing to clear.
+		   Raising the QR's `bottom` to stack them would eat its overscan clearance, and bumping the
+		   button's z-index would cover chrome OPAQUELY — both worse; the button moves instead. */
+		top: calc(var(--tv-safe-y) + 2.6vh + var(--tv-upnext-h) + var(--space-lg));
 		z-index: var(--z-tv-card);
 		display: grid;
 		place-items: center;
