@@ -279,8 +279,10 @@
 		//     ratio 1 via setShift(0): on a routed graph that keeps source→node→gain→destination intact
 		//     and merely posts ratio 1 (`PitchShiftGraph.setShift` posts the ratio to the worklet via
 		//     `postMessage`), so the element stays audible on the new song;
-		//     on an un-built graph it is a documented no-op. Teardown happens only on slot unmount (the
-		//     destroy effect below).
+		//     on an un-built graph it is a documented no-op. Teardown happens where the element GENUINELY
+		//     dies: the destroy effect below on component teardown, AND the `if (!master)` element-unmount
+		//     effect that releases the master graph when a drained room unmounts the <audio> (#825). A song
+		//     CHANGE keeps the element mounted, so it must NOT detach here.
 		//   • GUIDE lives as long as its <audio> element is MOUNTED — which is exactly as long as
 		//     `guideMountable` holds ({#if guideMountable && guideRef} below; mount-worthiness is a
 		//     playable song WITH a guide ref, INDEPENDENT of the level — #586). The earlier model here
@@ -462,6 +464,16 @@
 		if (!master) {
 			currentSrc = '';
 			currentEntryId = null;
+			// The element is GONE (a drained room unmounts the <audio> behind {#if media && isPlayable(media)}),
+			// so the master's pitch graph now holds a PERMANENT MediaElementSource on a dead element. Release
+			// it AND drop the reference: detach() alone frees the context but leaves `masterGraph` truthy, so the
+			// build site's `!masterGraph` guard stays false forever and the NEXT song's fresh element is never
+			// captured — the instrumental transposes on song 1, then stops for the rest of the page's life while
+			// the phones still read `Key · +N` (#825, the master counterpart of the guide's #694 release). This is
+			// the element's own death, NOT the per-song reset (#477): a song CHANGE keeps the element and must NOT
+			// detach, which is why this lives here and not in the reset effect above.
+			masterGraph?.detach();
+			masterGraph = undefined;
 		}
 	});
 
