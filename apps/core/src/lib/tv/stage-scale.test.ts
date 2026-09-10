@@ -364,9 +364,13 @@ test('the TV route measures the lower-third with a ResizeObserver', () => {
 
 test('the measured card height overrides --tv-chrome-h on the stage', () => {
 	const clean = stripComments(TV_ROUTE);
-	// the override must be written from the measured value and applied to the .tv container
+	// the override must be written from the measured value and applied to the .tv container. The style
+	// binding is now `tvStyle`, which COMPOSES `chromeBandStyle` (the measured --tv-chrome-h) with the
+	// measured --tv-upnext-h (#889); assert both the composition and that .tv reads the composed value.
 	expect(/--tv-chrome-h:\s*calc\(/.test(clean)).toBe(true);
-	expect(/style=\{chromeBandStyle\}/.test(clean)).toBe(true);
+	expect(/const\s+tvStyle\s*=\s*\$derived\(/.test(clean)).toBe(true);
+	expect(/tvStyle[\s\S]*chromeBandStyle/.test(clean)).toBe(true);
+	expect(/style=\{tvStyle\}/.test(clean)).toBe(true);
 });
 
 /*
