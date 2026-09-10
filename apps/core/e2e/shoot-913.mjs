@@ -154,7 +154,7 @@ async function main() {
 			'--disable-gpu',
 			'--no-first-run',
 			`--user-data-dir=${join(RUN, 'chrome')}`,
-			'--force-device-scale-factor=2',
+			
 			'--autoplay-policy=no-user-gesture-required',
 			'about:blank'
 		],
