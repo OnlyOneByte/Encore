@@ -74,7 +74,7 @@ server and its own headless Chromium and MEASURES the four claims a source scan 
 rendered control heights, computed field font size, the drawer's viewport cap and safe-area term, and
 the focus ring's painted form. **It has no skip path**: a missing Chromium, an unbuilt app or a
 server that will not boot are FAILURES, because option B — skip when the environment is missing — is
-the shape `apps/core/e2e/contract.test.ts:23` already ruled is indistinguishable from silent rot. Run
+the shape `tests/guards/hygiene/contract.test.ts:23` already ruled is indistinguishable from silent rot. Run
 it after `bun run build`; it drives the real bundle.
 
 ### Measurement discipline — three rules, each from a real false pass
@@ -86,7 +86,7 @@ it after `bun run build`; it drives the real bundle.
 - **A firing NON-VACUITY FLOOR is the exception, and it is a FINDING, never a number to adjust.** The
   rule directly above is about *suite pass counts*, which drift innocently. It does **not** extend to a
   floor assertion inside a guard — `expect(files.length).toBeGreaterThan(50)` and its ~21 siblings,
-  inventoried in `apps/core/src/lib/non-vacuity-floors.test.ts`. Those guards derive their own scope by
+  inventoried in `tests/guards/meta/non-vacuity-floors.test.ts`. Those guards derive their own scope by
   walking a tree, then assert an `offenders` array is empty; an empty array is what a working guard
   produces *and* what a guard examining nothing produces, so the floor on the size of what was examined
   is the only thing separating the two. A firing floor therefore does not mean the guard broke. It means

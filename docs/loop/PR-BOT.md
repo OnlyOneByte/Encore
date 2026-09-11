@@ -138,7 +138,7 @@ Then, the traps a green table still cannot see:
 - **Does the diff lower, delete, or bypass a NON-VACUITY FLOOR?** That is a blocker on its own unless the
   same diff records why. A floor is the `expect(files.length).toBeGreaterThan(50)`-shaped assertion a
   scope-deriving guard carries so that an emptied walk reds instead of passing with nothing examined;
-  `apps/core/src/lib/non-vacuity-floors.test.ts` inventories every one of them and reds on a decrease.
+  `tests/guards/meta/non-vacuity-floors.test.ts` inventories every one of them and reds on a decrease.
   **A firing floor is a FINDING, never a number to adjust** — it says the guard can no longer see the
   surface it enforces on, so a diff that "fixes" it by editing the literal downward has converted a
   detected loss of enforcement into a silent one. Accept only: the scope restored, the scan re-anchored

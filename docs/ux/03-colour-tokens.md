@@ -20,7 +20,7 @@ WCAG criteria cited throughout:
 > copy, so the figures below are the pre-fix state. The regenerated registry clears every floor with
 > margin > 0 (worst ink 4.56 against the real `--card`), and the lift now targets `4.5 + 0.05` so the
 > next surface drift fails loudly rather than crossing a zero margin. Guards:
-> `packages/shared/src/presentation/palette-registry-820.test.ts`.
+> `tests/guards/design-system/palette-registry-820.test.ts`.
 
 `packages/shared/src/presentation/player-palette-48.json` exists. Top-level keys: **`surfaces`** and
 **`variants`**. `variants` holds `uniform` and `chromatic`; each is `{ stops: [48], stats: {…} }`.
@@ -85,9 +85,9 @@ drift at all was going to cross it. It is carried as `XR-COL-04`.
 | **Statement** | The picker renders exactly the stops the registry contains, in registry order, with no locally-declared subset, reorder or addition. |
 | **Surfaces** | Phone (settings, join) |
 | **Rationale** | Today's picker couples `PRESET_NAMES` to `SINGER_COLORS` **by array position**, and its own comment records that no guard can detect a consistent same-length reorder — at 8 entries a human can still read it; at 48 nobody will. |
-| **Source** | `apps/core/src/lib/components/ColourPicker.svelte:35–50` and `apps/core/src/lib/design-system.test.ts:175–187` (the length-parity guard, and its stated inability to check order). |
+| **Source** | `apps/core/src/lib/components/ColourPicker.svelte:35–50` and `tests/guards/design-system/design-system.test.ts:175–187` (the length-parity guard, and its stated inability to check order). |
 | **Acceptance** | **Given** the rendered picker, **When** its swatches are read in DOM order, **Then** the sequence of their colour values equals `variants.chromatic.stops[].fill` in registry order, and the count is 48. |
-| **Check** | Rendered-DOM assertion where reachable; otherwise a source scan asserting the picker's swatch list is a direct `map` over the registry import with no intervening literal array. Note the rendered rung is currently blocked for components importing `$app` (see `apps/core/src/lib/tv/wake-lock.test.ts:18–27`). |
+| **Check** | Rendered-DOM assertion where reachable; otherwise a source scan asserting the picker's swatch list is a direct `map` over the registry import with no intervening literal array. Note the rendered rung is currently blocked for components importing `$app` (see `tests/guards/subsystem-tv/wake-lock.test.ts:18–27`). |
 | **Priority** | **High.** This is what retires the by-position name coupling instead of scaling it 6×. |
 
 ### XR-COL-04 — Every stop is measured against the surfaces the app actually paints
@@ -151,8 +151,8 @@ is not a checkable statement, "stop 39 passes role 4" is.
 |---|---|
 | **Statement** | No test asserting a contrast figure contains a hex literal that duplicates a token declared in `app.css`. |
 | **Surfaces** | Build |
-| **Rationale** | `packages/shared/src/presentation/colors.test.ts:32–33` hard-codes `#0b0b12` and `#1a1a28`, tied to `--bg`/`--card` by a trailing comment only, so changing either token leaves three contrast tests passing while measuring colours the app no longer paints — and `XR-COL-04` shows that exact mechanism already producing six unnoticed AA failures. |
-| **Source** | `packages/shared/src/presentation/colors.test.ts:32–33`; the token declarations at `apps/core/src/app.css:7–10`. |
+| **Rationale** | `tests/guards/design-system/colors.test.ts:32–33` hard-codes `#0b0b12` and `#1a1a28`, tied to `--bg`/`--card` by a trailing comment only, so changing either token leaves three contrast tests passing while measuring colours the app no longer paints — and `XR-COL-04` shows that exact mechanism already producing six unnoticed AA failures. |
+| **Source** | `tests/guards/design-system/colors.test.ts:32–33`; the token declarations at `apps/core/src/app.css:7–10`. |
 | **Acceptance** | **Given** every `*.test.ts` under `packages/shared/src` and `apps/core/src`, **When** hex literals in them are compared against the set of hexes declared in `app.css`'s `:root`, **Then** the intersection is empty. |
 | **Check** | Source scan, using the token-reading helper `contrast.test.ts` already has. |
 | **Priority** | **Blocking, and first.** Everything in Groups 2 and 3 measures nothing until this holds. |
@@ -221,7 +221,7 @@ artifact, but it will read as a broken test the first time it fires.
 | **Statement** | No text label is drawn on the brand gradient, on any stop. |
 | **Surfaces** | Phone, TV, operator dashboards |
 | **Rationale** | The ban was justified by one fixed measurement (white on the pink stop, 2.84:1); with `accent2` derived per stop at +42° hue, the gradient is now 48 different gradients and no single measurement licenses a label on any of them. |
-| **Source** | [WCAG 2.2 SC 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html); the ban and its measurement at `apps/core/src/app.css:22–30`; the existing guard at `apps/core/src/lib/contrast.test.ts:241`. |
+| **Source** | [WCAG 2.2 SC 1.4.3](https://www.w3.org/WAI/WCAG22/Understanding/contrast-minimum.html); the ban and its measurement at `apps/core/src/app.css:22–30`; the existing guard at `tests/guards/a11y/contrast.test.ts:241`. |
 | **Acceptance** | **Given** the source tree, **When** rule blocks containing the gradient token are collected, **Then** none sets a `color` other than the `background-clip: text` wordmark exemption already carved out at `contrast.test.ts:248`. The guard's *justifying* measurement must additionally be re-stated per stop, or explicitly recorded as unmeasured. |
 | **Check** | The existing `contrast.test.ts:241` scan survives unchanged; what changes is the comment above it, which currently asserts one number as the reason. |
 | **Priority** | **High.** The rule holds; the *reason* recorded next to it becomes false, and a false reason invites someone to re-derive it and reach the wrong answer. |
@@ -311,7 +311,7 @@ right in build. Do **not** apply it unilaterally and do **not** write a guard en
 | **Statement** | For each design guard whose justifying premise ceases to hold under the 48-stop palette, the repo contains either (a) its deletion with the superseding reason recorded at the deletion site, or (b) a re-anchored assertion of something still true. No such guard remains in the suite passing vacuously. |
 | **Surfaces** | Build |
 | **Rationale** | The `--accent`-as-text ban exists because the current violet measures **3.95:1** on `--card`; every Chromatic stop clears AA as ink, so the guard's first half (`expect(ratio(...)).toBeLessThan(AA_TEXT)`) becomes false and its scan half becomes pointless — and a guard that has stopped biting is indistinguishable in a green suite from one that is working. |
-| **Source** | Handoff §3 ("the guard that enforced the ban will now pass **vacuously**, which is the silent-green failure class… Either retire the guard deliberately and record why, or re-anchor it to something still true"); the guard itself at `apps/core/src/lib/contrast.test.ts:163–199`. |
+| **Source** | Handoff §3 ("the guard that enforced the ban will now pass **vacuously**, which is the silent-green failure class… Either retire the guard deliberately and record why, or re-anchor it to something still true"); the guard itself at `tests/guards/a11y/contrast.test.ts:163–199`. |
 | **Acceptance** | **Given** the named inventory below, **When** each entry is inspected after the palette lands, **Then** it is deleted-with-reason or re-anchored-and-asserting. Falsified by any entry still present and passing without its premise holding. Inventory: (1) `contrast.test.ts:177` *the accent tokens are not safe as text* — premise dissolves, both tokens; (2) `contrast.test.ts:158` *`--on-accent` passes AA on `--accent-strong`* — left operand retired by `XR-COL-11`, re-anchor to per-stop `onFill`/`fill`; (3) the `--grad` measurement comment at `app.css:22–30` — number no longer singular (`XR-COL-13`); (4) `colors.test.ts` *all eight presets remain legible* and *a wheel pick survives a normalize round-trip* — both premised on a wheel and eight presets that cease to exist; (5) `colors.test.ts` *the 3:1 dot rule is pinned at its boundary* — survives, and is the model the re-anchored tests should copy; (6) `presetTabStopIndex` / `nextSwatchIndex` and their tests — premised on an 8-swatch roving group whose fallback exists *because* the wheel provably never lands on a preset, a premise `XR-COL-15` removes. |
 | **Check** | Enumeration against that six-entry list — it is the exemption list, and it is closed. Also: any **non-vacuity floor** that fires during this migration is a **FINDING, never a number to adjust**. |
 | **Priority** | **Blocking.** This is the failure mode the whole migration is most likely to ship. |
@@ -323,7 +323,7 @@ right in build. Do **not** apply it unilaterally and do **not** write a guard en
 | **Statement** | Every source-scanning colour guard asserts a non-zero count of scanned files and a non-zero count of matched declarations before asserting zero offenders. |
 | **Surfaces** | Build |
 | **Rationale** | An offender-collecting scan passes when it reads nothing — a moved directory, a renamed token or a changed file extension turns the guard off silently, which is the same silent-green class as `XR-COL-18` arriving by a different route. |
-| **Source** | `apps/core/src/lib/singer-color.test.ts:28` (`the singer-colour scans actually read a non-empty surface`) — the pattern already exists in the repo and is applied to one file's scans, not to the colour guards generally. |
+| **Source** | `tests/guards/design-system/singer-color.test.ts:28` (`the singer-colour scans actually read a non-empty surface`) — the pattern already exists in the repo and is applied to one file's scans, not to the colour guards generally. |
 | **Acceptance** | **Given** each colour-related scanning test, **When** its scan surface is emptied, **Then** it fails. Falsified by any such test staying green over an empty file set. |
 | **Check** | Enumerate scanning tests in `contrast.test.ts`, `design-system.test.ts`, `singer-color.test.ts`; each carries the floor. |
 | **Priority** | **High.** |
@@ -404,7 +404,7 @@ are discarded", but "an unbounded set of *un-certified* colours is admitted." `X
 | **Statement** | A stop's `fill`, `onFill`, `ink` and `accent2` each reach CSS as a custom property; none is string-concatenated with alpha digits, and derived translucency uses `color-mix()`. |
 | **Surfaces** | Phone, TV |
 | **Rationale** | Concatenation happens to work for 6-digit hex and silently drops the declaration for anything else, and this palette multiplies the number of interpolated colour values per stop from one to four. |
-| **Source** | `apps/core/src/lib/singer-color.test.ts:1–10` (the class, and the fix); the fixed call site at `apps/core/src/routes/+page.svelte:1363`. |
+| **Source** | `tests/guards/design-system/singer-color.test.ts:1–10` (the class, and the fix); the fixed call site at `apps/core/src/routes/+page.svelte:1363`. |
 | **Acceptance** | **Given** the source tree, **When** interpolated colour expressions are scanned, **Then** none is followed by hex-alpha digits, for **any** of the four per-stop properties. Falsified by one site concatenating onto an ink or `accent2` value. |
 | **Check** | The existing `singer-color.test.ts:32` scan, with its pattern widened from the single `--singer` property to all four. |
 | **Priority** | **Medium.** |

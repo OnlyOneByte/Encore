@@ -299,7 +299,7 @@ the pre-migration figures and are kept as the rationale that justified the work,
 | **Statement** | Every requirement in this section whose acceptance is a computed value — geometry, contrast, paint order, focus location — names a rendered-DOM or driven-browser check, or is marked `EXEMPT`. None is satisfied by a source scan. |
 | **Surfaces** | Phone |
 | **Rationale** | No source scan can make a measurement claim, and the repo's own record is that every real defect found lately was invisible to a passing suite and surfaced only by driving the app; 4 of the 19 at-risk guards are measurement claims for this reason. |
-| **Source** | Repo: `apps/core/src/lib/tv/wake-lock.test.ts:18-27` states the blocker — `bunfig.toml` preloads the happy-dom + Svelte harness but does not alias the `$app` / `$env` virtual modules, so only components with zero `$app` imports can mount. |
+| **Source** | Repo: `tests/guards/subsystem-tv/wake-lock.test.ts:18-27` states the blocker — `bunfig.toml` preloads the happy-dom + Svelte harness but does not alias the `$app` / `$env` virtual modules, so only components with zero `$app` imports can mount. |
 | **Acceptance** | Given this section, When each row's Check field is read, Then every measurement row names a rendered/driven mechanism or `EXEMPT`. Falsified by one measurement row whose only check is a scan. |
 | **Check** | Review of this document. Mechanically the prerequisite is aliasing those two modules, which converts XR-PH-02, -03, -04, -12 and -18 from honour-system to checkable. |
 | **Priority** | Must — it is the gate on five other rows here. |

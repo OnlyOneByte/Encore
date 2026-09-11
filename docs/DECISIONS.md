@@ -297,7 +297,7 @@ outranks any stylesheet rule, and its motion duration is a hardcoded `TRANSITION
 with no prop to override it — where the incumbent's own transition is `0.28s`. The decision to adopt
 anyway (Q1 · C on #827: accept the hole, on the record) stands; what is retracted is the claim that
 adoption costs no guard coverage here. The two named assertions it will red are recorded in advance
-in `apps/core/src/lib/non-vacuity-floors.test.ts`'s `PENDING_RULING`. Compounding it from the other
+in `tests/guards/meta/non-vacuity-floors.test.ts`'s `PENDING_RULING`. Compounding it from the other
 side: Preflight is off (below), so a copied-in drawer cannot assume the reset ran either — it arrives
 with neither the utilities' reset nor a readable stylesheet of its own.
 
@@ -308,7 +308,7 @@ register them**; use `@theme` for non-colour tokens only.
 #### Installed configuration (decided 2026-09-09, #853)
 
 Three questions the adoption above left open, each settled by measurement rather than preference.
-`apps/core/src/lib/tailwind-toolchain.test.ts` pins all three, so none can be reversed silently.
+`tests/guards/design-system/tailwind-toolchain.test.ts` pins all three, so none can be reversed silently.
 
 **The Vite plugin, not PostCSS.** `@tailwindcss/vite` was a real question because this app runs
 **Vite 8**, and the plugin only widened its peer range to `^8` in **4.2.2** — every release up to

@@ -20,6 +20,10 @@ Measured on `d325c64`, branch `spike/queuesheet-shadcn-827`, `vaul-svelte@1.0.0-
 
 Reproduce:
 
+> **The file this spike measured no longer exists.** `drawer-spike-827.test.ts` was deleted with the
+> dead drawer surface it pinned. The command below is kept verbatim because this document is a record
+> of a measurement that was taken, not an instruction to re-run it — repointing it at a file that
+> never held these numbers would make the record false rather than current.
 ```bash
 cd apps/core && bun run build
 ENCORE_EPHEMERAL=1 PORT=5271 HOST=127.0.0.1 bun run ./server.ts &

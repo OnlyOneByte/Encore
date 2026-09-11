@@ -28,19 +28,19 @@ doc now counts by, stated so a later recount lands on the same set:
 
 The two prior counts are the **bounds** of this rule, not rival answers to it:
 
-- **Lower bound — scan-helper consumers: 14 files / 140 cases.** Files that import a shared scan
+- **Lower bound — scan-helper consumers: 14 files / 141 cases.** Files that import a shared scan
   helper (`svelteFiles`, `styleFiles`, `classPresent`, `markupControls`; `allSvelte` is deleted).
   This understates the population because most per-component design pins inline their own reader
   instead of importing a helper. The 14:
 
-  `apps/core/e2e/contract.test.ts` · `apps/core/src/lib/colour-tokens.test.ts` ·
-  `apps/core/src/lib/components/drawer-spike-827.test.ts` ·
-  `apps/core/src/lib/components/motion.test.ts` · `apps/core/src/lib/contrast.test.ts` ·
-  `apps/core/src/lib/design-system.test.ts` · `apps/core/src/lib/icon-centring.test.ts` ·
-  `apps/core/src/lib/settings-scopes.test.ts` · `apps/core/src/lib/singer-color.test.ts` ·
-  `apps/core/src/lib/tailwind-toolchain.test.ts` · `apps/core/src/lib/test-helpers.test.ts` ·
-  `apps/core/src/lib/touch-targets.test.ts` · `apps/core/src/lib/tv/stage-scale.test.ts` ·
-  `apps/core/src/lib/ui/icons.test.ts`
+  `tests/guards/hygiene/contract.test.ts` · `tests/guards/design-system/colour-tokens.test.ts` ·
+  `tests/guards/design-system/shadcn-ink-ban-913.test.ts` ·
+  `tests/guards/motion/motion.test.ts` · `tests/guards/a11y/contrast.test.ts` ·
+  `tests/guards/design-system/design-system.test.ts` · `tests/guards/hygiene/icon-centring.test.ts` ·
+  `tests/guards/hygiene/settings-scopes.test.ts` · `tests/guards/design-system/singer-color.test.ts` ·
+  `tests/guards/design-system/tailwind-toolchain.test.ts` · `tests/guards/meta/test-helpers.test.ts` ·
+  `tests/guards/a11y/touch-targets.test.ts` · `tests/guards/layout/stage-scale.test.ts` ·
+  `tests/guards/hygiene/icons.test.ts`
 
 - **Upper bound — any `.svelte`/`.css` reader: 87 files / 766 cases.** Every test that
   `readFileSync`/`readdirSync`-reads component or stylesheet source, including the per-component
@@ -68,7 +68,7 @@ regardless of the harvesting method since every sub-population was counted the s
 and no recount reproduces it, so it is treated as a stale figure from an earlier tree, superseded
 by 70 files / 624 cases.
 
-**Repo-wide `*.test.ts` file count is 265, and the whole suite is 2566 cases** (files counted
+**Repo-wide `*.test.ts` file count is 287, and the whole suite is 2652 cases** (files counted
 across `apps/*` + `packages/*` excluding `node_modules`; the case total is `bun test`'s own
 authoritative `Ran N tests` count). The brief's "242" matched **neither** unit on
 this base: it is neither the 265 repo-wide files nor the 2566 repo-wide cases, and it is not the 70
@@ -123,7 +123,7 @@ verbatim copy of `svelteFiles` under another name.
 All five walk through **one** recursive `walk()` with a single `SKIP_DIRS` set
 (`node_modules`, `build`, `.svelte-kit`, `dist`, `.git`) and **no** directory allowlist, so
 `src/lib/components/ui/` is in scope by construction rather than by someone remembering to add it.
-`apps/core/src/lib/test-helpers.test.ts` reds if a consumer declares or calls **one of these five names**
+`tests/guards/meta/test-helpers.test.ts` reds if a consumer declares or calls **one of these five names**
 without importing it, or if the shared walk gains a second `readdirSync` or an allowlist. Its scan is
 **name-keyed, and that is its limit**: a rival walker reintroduced under a *different* name leaves the
 suite green. Measured, not assumed — three consumers carry exactly such a walker today (`tsSources` in
@@ -139,17 +139,17 @@ their own globs remain out of this set and out of scope here — `e2eDrivers`, `
 | Helper | Defined at | Shared? |
 |---|---|---|
 | `svelteFiles` | `apps/core/src/lib/test-helpers.ts:13` | exported, shared |
-| `styleFiles` | `apps/core/src/lib/components/motion.test.ts:30` | local copy |
-| `markupControls` | `apps/core/src/lib/touch-targets.test.ts:47` | local copy |
-| `allSvelte` | `apps/core/e2e/contract.test.ts:147` | local copy |
-| `classPresent` | `apps/core/e2e/contract.test.ts:172` | local copy |
+| `styleFiles` | `tests/guards/motion/motion.test.ts:30` | local copy |
+| `markupControls` | `tests/guards/a11y/touch-targets.test.ts:47` | local copy |
+| `allSvelte` | `tests/guards/hygiene/contract.test.ts:147` | local copy |
+| `classPresent` | `tests/guards/hygiene/contract.test.ts:172` | local copy |
 
 **Non-vacuity floors — 18 assertions across 10 files**, more than the decision record's 7:
 
 **Non-vacuity floors — the decision record said 7; the live guard now enumerates 40 floor
 assertions across 14 files.** The "7" was already known low when the record was written; on
 `3f6ee2f` the authoritative count is not a prose figure at all but the machine-checked snapshot in
-`apps/core/src/lib/non-vacuity-floors.test.ts`, whose own accounting asserts
+`tests/guards/meta/non-vacuity-floors.test.ts`, whose own accounting asserts
 `located >= 39` and `Object.keys(FLOORS).length >= 12` (those are floors, not exact counts; the map
 lists 14 files today and its `count` fields sum to 40). Count the unit carefully: **40 is the sum
 of every floor entry's `count`** (three entries require more than one assertion — `motion`
@@ -275,7 +275,7 @@ one of the four claims checkable. Rows below are written against the correct run
 | **Statement** | The product's test harness provides a mount rung and a layout rung, and a written record states which classes of claim each rung can decide. |
 | **Surfaces** | Phone remote, TV, operator dashboards (harness-level; surface-agnostic) |
 | **Rationale** | An honour-system invariant and a checked one are indistinguishable to a reviewer unless the harness's reach is stated. |
-| **Source** | `bunfig.toml`; `test-setup/svelte-dom-preload.ts`; `apps/core/src/lib/tv/wake-lock.test.ts:18-27`; `apps/core/e2e/cdp.mjs`, `apps/core/e2e/HARNESS.md`; happy-dom limit at `node_modules/happy-dom/lib/nodes/element/Element.js:795-798`. **DERIVED** for the two-rung split — model: a claim is decidable on a rung iff the rung implements the API the claim reads; happy-dom returns a zero `DOMRect`, therefore geometry is not decidable on rung M. |
+| **Source** | `bunfig.toml`; `test-setup/svelte-dom-preload.ts`; `tests/guards/subsystem-tv/wake-lock.test.ts:18-27`; `apps/core/e2e/cdp.mjs`, `apps/core/e2e/HARNESS.md`; happy-dom limit at `node_modules/happy-dom/lib/nodes/element/Element.js:795-798`. **DERIVED** for the two-rung split — model: a claim is decidable on a rung iff the rung implements the API the claim reads; happy-dom returns a zero `DOMRect`, therefore geometry is not decidable on rung M. |
 | **Acceptance** | **Given** the preload aliases `$app` and `$env`, **When** a test imports and mounts `apps/core/src/routes/tv/+page.svelte`, `SongRow.svelte`, `QueueRow.svelte` and `ColourPicker.svelte`, **Then** every mount returns without throwing and `flushSync()` runs their effects. **And** a checked-in document names, per rung, at least: box geometry, clipping/overflow, `env()`, `dvh`/`vh`, computed colour, computed `font-size`, and states which rung decides each. |
 | **Check** | The five mounts are themselves tests. The capability document is enforced by XR-VER-02, which cites it. |
 | **Priority** | **BLOCKER** — migration cannot begin without it; four at-risk concerns are undecidable until it lands. |
@@ -344,7 +344,7 @@ Chromium. That is the trade this invariant asks for, not a defect in it.
 | **Statement** | Any guard that derives its own scope by walking a tree or filtering a file list asserts a minimum on the size of what it actually examined. |
 | **Surfaces** | All (harness-level) |
 | **Rationale** | A scope regression — a moved directory, a renamed extension, a copy-in path outside the walk — otherwise turns the guard green rather than red. |
-| **Source** | The 40 floor assertions across 14 files enumerated above and snapshotted in `apps/core/src/lib/non-vacuity-floors.test.ts`, e.g. `design-system.test.ts` (`FILES.length`), `motion.test.ts` (`files.length >=24`, ×3), `contract.test.ts` (`DRIVERS.length`, `lits.length`, `sources.length`). **DERIVED**: the same class already caught `/metrics` (#140) and `lib/charts` (Trend) escaping hand-listed `FILES` arrays. |
+| **Source** | The 40 floor assertions across 14 files enumerated above and snapshotted in `tests/guards/meta/non-vacuity-floors.test.ts`, e.g. `design-system.test.ts` (`FILES.length`), `motion.test.ts` (`files.length >=24`, ×3), `contract.test.ts` (`DRIVERS.length`, `lits.length`, `sources.length`). **DERIVED**: the same class already caught `/metrics` (#140) and `lib/charts` (Trend) escaping hand-listed `FILES` arrays. |
 | **Acceptance** | **Given** a guard that computes its file or rule set at run time, **When** the computed set is emptied by pointing the walk at a non-existent directory, **Then** the guard fails on its floor rather than passing with zero items examined. |
 | **Check** | For each register entry marked *enumerating*, assert a floor assertion exists in the file and mutation-prove it by redirecting the walk root. |
 | **Priority** | **MUST** |
@@ -370,7 +370,7 @@ Chromium. That is the trade this invariant asks for, not a defect in it.
 | **Rationale** | A rule that has stopped biting is indistinguishable from a rule that is working, and the redesign dissolves at least one by construction. |
 | **Source** | `encore-design-handoff.md` §3 — the `--accent`-as-text ban dissolves because every Chromatic stop clears AA as ink (worst 4.50:1), so its guard "will now pass **vacuously**". Also the 27 RETIRE cases in `encore-redesign-decision.md` §2. **⚠ That specific claim is BACKWARDS, verified** — see the correction below the table. |
 | **Acceptance** | **Given** the 27 RETIRE entries plus any guard whose premise a change invalidates, **When** the change lands, **Then** each is either deleted with a one-line reason in the retirement record, or re-anchored to a still-falsifiable claim with a fresh XR-VER-04 mutation record. **Then** no entry remains that is neither deleted nor re-anchored. |
-| **Check** | Diff the retirement record against the register; a RETIRE entry still present in the suite with an unchanged premise is reported. **Implemented in part** by `apps/core/src/lib/non-vacuity-floors.test.ts`: its `RETIRED` map requires a substantive reason and asserts the retired assertion is genuinely absent, and its `PENDING_RULING` map holds a decided retire-or-re-anchor call whose anchor text must still be present in the guard it describes. |
+| **Check** | Diff the retirement record against the register; a RETIRE entry still present in the suite with an unchanged premise is reported. **Implemented in part** by `tests/guards/meta/non-vacuity-floors.test.ts`: its `RETIRED` map requires a substantive reason and asserts the retired assertion is genuinely absent, and its `PENDING_RULING` map holds a decided retire-or-re-anchor call whose anchor text must still be present in the guard it describes. |
 | **Priority** | **MUST** |
 
 **⚠ Correction to this row's Source — the `--accent` guard does NOT go vacuous, it REDS.**
@@ -401,7 +401,7 @@ MIGRATION") and is held to the guard by `non-vacuity-floors.test.ts`'s `PENDING_
 | **Statement** | No test hard-codes a copy of a value that is declared elsewhere in the product — a token, a palette hex, a breakpoint, a threshold constant — where that declaration is readable from the test. |
 | **Surfaces** | All (harness-level) |
 | **Rationale** | A duplicated value decouples the test from the thing it tests, so the test keeps passing while measuring something the product no longer does. |
-| **Source** | `packages/shared/src/presentation/colors.test.ts:29-30` — `const BG = '#0b0b12'; // --bg` and `const CARD = '#1a1a28'; // --card`, verified in place, against the live `:root` declarations; three contrast tests consume them. Counter-example of the correct shape: `apps/core/src/lib/charts/trend-tap-target.test.ts:32` bridges `--tap` from the token rather than copying `44`. |
+| **Source** | `tests/guards/design-system/colors.test.ts:29-30` — `const BG = '#0b0b12'; // --bg` and `const CARD = '#1a1a28'; // --card`, verified in place, against the live `:root` declarations; three contrast tests consume them. Counter-example of the correct shape: `tests/guards/a11y/trend-tap-target.test.ts:32` bridges `--tap` from the token rather than copying `44`. |
 | **Acceptance** | **Given** `--bg` or `--card` is changed in `app.css` and nothing else, **When** the suite runs, **Then** at least one test fails. **And Given** any test file in the register, **When** its literals are compared against the token block, the 48-stop palette JSON, and the breakpoint list, **Then** no literal equals a declared value it does not read. |
 | **Check** | Two parts: (1) the falsification above, run as a mutation; (2) a guard extracting literals from register files and diffing them against the declared sets. A trailing comment naming the token is **not** a link and does not exempt. |
 | **Priority** | **BLOCKER** — the handoff sequences this first (§7 step 1, §3 "Do this first"), and every palette-contrast claim depends on it. |
@@ -486,7 +486,7 @@ what is measured.
 | **Rationale** | Four of the five helpers are per-file copies, so a scope fix lands in one guard and silently leaves the others narrow — and a register that cannot point at one definition cannot verify scope centrally. |
 | **Source** | Definition sites enumerated above: all five are now defined once in `apps/core/src/lib/test-helpers.ts` and imported (issue #841); `allSvelte` was a verbatim copy of `svelteFiles` and is deleted. **DERIVED**: `motion.test.ts` needed its scope widened in isolation (#177) precisely because its `styleFiles` was private. |
 | **Acceptance** | **Given** the register's implementing files, **When** each is parsed for local function declarations named in the helper set, **Then** none declares one; every use resolves to an import from the shared helper module. **And** the shared module's walk excludes `node_modules`, `build`, `.svelte-kit`, `dist`, `.git` and includes `src/lib/components/ui/`. |
-| **Check** | A source guard over the register's files. **Implemented** by `apps/core/src/lib/test-helpers.test.ts` (issue #841): a comment-stripped scan of the ten consumers for a local declaration of any helper name and for a call without a matching import, plus arms asserting the exported `SKIP_DIRS` set, that the module contains exactly one `readdirSync` and no directory allowlist (so `src/lib/components/ui/` is in scope by construction), and that the walk behaviourally skips `node_modules`. Note `.svelte-kit/` currently contains built copies of every component's CSS — a walk that fails to exclude it will read stale duplicates and report on colours the app no longer paints, which is XR-VER-08's failure mode arriving through the scope door. |
+| **Check** | A source guard over the register's files. **Implemented** by `tests/guards/meta/test-helpers.test.ts` (issue #841): a comment-stripped scan of the ten consumers for a local declaration of any helper name and for a call without a matching import, plus arms asserting the exported `SKIP_DIRS` set, that the module contains exactly one `readdirSync` and no directory allowlist (so `src/lib/components/ui/` is in scope by construction), and that the walk behaviourally skips `node_modules`. Note `.svelte-kit/` currently contains built copies of every component's CSS — a walk that fails to exclude it will read stale duplicates and report on colours the app no longer paints, which is XR-VER-08's failure mode arriving through the scope door. |
 | **Priority** | **SHOULD** — shipping with copies is survivable; shipping without knowing which copies exist is not, and XR-VER-13 covers that. |
 
 ---
@@ -502,7 +502,7 @@ what is measured.
 | **Rationale** | `class="transition-all"` expresses the banned rule with no CSS declaration anywhere in source, so the existing guard's regex cannot see it and the ban stops being enforced without failing. |
 | **Source** | `encore-design-handoff.md` §1 and `encore-redesign-decision.md` §2 AT RISK #2. WCAG 2.2 SC 2.3.3 Animation from Interactions — https://www.w3.org/WAI/WCAG22/Understanding/animation-from-interactions.html. Verified: `transition-all` occurs **zero** times in the tree today, so this is prospective. |
 | **Acceptance** | **Given** the source tree, **When** markup is scanned for class names, **Then** none matches `transition-all`, `transition-{width,height,spacing,inset,margin,padding,gap,flex}`, `animate-*` for a keyframe touching a layout property, or a duration/easing utility applied to one; **and Then** the scan reads `class:` directives, `class={…}` expressions and composed strings, and fails on a class expression it cannot resolve rather than skipping it. **And** the guard reds when `class="transition-all"` is injected into any component. |
-| **Check** | Extend the register's motion entry to a class-name arm with its own mutation record. The unresolvable-expression clause matters: a blocklist that silently skips what it cannot parse is vacuous exactly where Tailwind is most idiomatic. **Implemented** by issue #830 as two arms at the foot of `apps/core/src/lib/components/motion.test.ts`: an extractor that reads all four class spellings (quoted attribute, `class={…}` expression, `class:` directive, interpolation) and resolves each `transition-*` utility through the file's own `COMPOSITED_PROPS` allowlist — an unknown utility key and an unresolvable `class={…}` are OFFENDERS, not skips — plus a whole-source name net over `.svelte` **and** `.ts` that catches a utility composed anywhere the extractor cannot see. |
+| **Check** | Extend the register's motion entry to a class-name arm with its own mutation record. The unresolvable-expression clause matters: a blocklist that silently skips what it cannot parse is vacuous exactly where Tailwind is most idiomatic. **Implemented** by issue #830 as two arms at the foot of `tests/guards/motion/motion.test.ts`: an extractor that reads all four class spellings (quoted attribute, `class={…}` expression, `class:` directive, interpolation) and resolves each `transition-*` utility through the file's own `COMPOSITED_PROPS` allowlist — an unknown utility key and an unresolvable `class={…}` are OFFENDERS, not skips — plus a whole-source name net over `.svelte` **and** `.ts` that catches a utility composed anywhere the extractor cannot see. |
 | **Priority** | **MUST**, and **before** utilities enter the tree — after they enter, the guard's first run has violations to triage and the temptation is to weaken it. |
 
 ### XR-VER-16 — The copied drawer's animation mechanism is established from its source, not inferred from its styling hooks
@@ -644,7 +644,7 @@ an open action. `src/lib/components/ui/` remains deliberately empty.
   population is larger and un-recounted, which is why a fixed number here would be doubly invented.)
 - **A re-derivation of the 128/68/27/19 buckets themselves.** #838 resolved their **unit** (files,
   not cases) and resolved the "242 == 242" coincidence (it does not hold at `3f6ee2f`; the
-  repo-wide count is now 265 files / 2566 cases). Re-deriving the four buckets means re-bucketing
+  repo-wide count is now 287 files / 2652 cases). Re-deriving the four buckets means re-bucketing
   the design-enforcing population by retirement fate on the current tree — the analysis owner's
   call, and unnecessary downstream: XR-VER-13's register surfaces the true 70-file / 624-case
   population, so nothing waits on the old buckets.
