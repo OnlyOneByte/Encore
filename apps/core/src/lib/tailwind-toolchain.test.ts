@@ -8,7 +8,7 @@
  *
  *   1. NO COLOUR IN `@theme`. Registering a colour mints the whole utility family with no per-family
  *      opt-out, so `--color-accent` hands out `text-accent` beside `bg-accent` — and `--accent` as ink
- *      measures 3.63:1 on `--card2`, below AA, which is why `--accent-ink` exists as a distinct token.
+ *      measures 3.10:1 on `--card2`, below AA, which is why `--accent-ink` exists as a distinct token.
  *      #840's 48-stop palette makes that ink-vs-fill split load-bearing for all 48. A colour added here
  *      would be a legal-looking class that fails contrast.
  *   2. PREFLIGHT STAYS OUT. Measured cost of letting it in: 9,892 computed-value changes and 2,696

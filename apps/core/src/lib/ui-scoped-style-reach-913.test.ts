@@ -203,8 +203,11 @@ function scopedRuleClasses(css: string): Map<string, string> {
 	// Blank every `:global(...)` interior first: a class named in there is explicitly global and fine.
 	// COMMENTS FIRST. Without this the guard reds on its own documentation: a commented-out
 	// `/* .encore-seg { … } was replaced by the data-slot rule */` is read as a live scoped rule and
-	// reported as a defect. `styleOnly` in this same file already strips them, and this function did not —
-	// the fourth instance of that anti-pattern on this branch and the one that was missed.
+	// reported as a defect. `styleOnly` in this same file already strips them, and this function did not, so
+	// a guard carrying a stripper in one helper still reported a defect from a comment read by another.
+	// Stripping comments first is a long-standing convention here rather than anything this branch worked
+	// out — around a hundred test files on main already do it. #913 still had to add it in five places, TWICE
+	// in this file, which is a fair measure of how readily a text-scanning guard criminalises its own notes.
 	const css2 = css.replace(/\/\*[\s\S]*?\*\//g, ' ');
 	const scoped = css2.replace(/:global\([^)]*\)/g, (m) => ' '.repeat(m.length));
 	for (const rule of scoped.matchAll(/([^{}]+)\{[^{}]*\}/g)) {

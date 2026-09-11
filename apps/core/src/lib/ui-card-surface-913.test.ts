@@ -81,9 +81,10 @@ function callersInTree(): string[] {
 		 * MARKUP ONLY. A class list written inside a comment, a style block or a script string applies to
 		 * nothing, and counting it makes this guard fire on its own documentation: a comment explaining that
 		 * S8 replaced `<div class="card tile primary">` registered the stats page as a live `card` caller and
-		 * redded the suite. That is the fourth guard on this branch to have been defeated by prose about
-		 * itself, so the stripper is applied here rather than the sentence being reworded — a rule you cannot
-		 * describe next to the code it governs is a rule that goes undocumented.
+		 * redded the suite. Several guards on this branch were defeated by prose about themselves, this file
+		 * twice — once on the CSS side and once here on the markup side. The stripper is applied rather than
+		 * the sentence reworded, because a rule you cannot describe next to the code it governs is a rule
+		 * that goes undocumented.
 		 */
 		const src = markupOf(readFileSync(f, 'utf8'));
 		for (const m of src.matchAll(/class="([^"]*)"/g)) {

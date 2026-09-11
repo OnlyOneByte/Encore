@@ -270,7 +270,7 @@ test('the focus ring is visible against every surface it can appear on', () => {
 /*
  * The test above proves --focus is SAFE on every surface a ring can land on, but it never looks at
  * what colour any rule actually draws a ring IN -- so a rule ringing in --accent (a darker
- * background token, 3.63:1 on --card2 vs --focus's 5.08:1) or, worse, in the surface colour itself
+ * background token, 3.10:1 on --card2 vs --focus's 5.08:1) or, worse, in the surface colour itself
  * (an invisible ring) sailed past it. #149: the queue peek and every Trend column rang in --accent.
  * This closes the class in the same belt-and-braces shape as the --grad and --accent scans: every
  * `outline`/`outline-color` that names a colour must name --focus. A bare reset (`outline: none`,

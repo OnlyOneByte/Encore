@@ -17,7 +17,8 @@ import { join } from 'node:path';
  *   4. `.encore-slider` scoped onto a Bits UI root, so the rule could never match (see
  *      ui-scoped-style-reach-913.test.ts, which owns that direction).
  *   5. `.tile-slot` — a wrapper introduced with no rule at all, so `Card.Root` never filled its grid
- *      slot and the three stats tiles stair-stepped by 50.9px at desktop width.
+ *      slot and the three stats tiles stair-stepped at desktop width instead of lining up. The size of
+ *      the gap depends on the tiles' text; the defect is the absent rule.
  *   6. `.name` — the rule deleted from the page while the class stayed on the markup, silently
  *      right-aligning the ASR table's syncMode column.
  *
@@ -175,10 +176,20 @@ test('the pre-existing list stays honest in both directions (#913)', () => {
 	}
 });
 
-test('the resolution check catches all six shapes the migration actually shipped (#913)', () => {
+test('the resolution check catches the shapes it can reach (#913)', () => {
 	/*
-	 * Mutation proof on synthetic sources. Each arm is one of the real defects, so a future refactor of
-	 * this file cannot quietly stop detecting them.
+	 * Mutation proof on synthetic sources, so a refactor of this file cannot quietly stop detecting them.
+	 *
+	 * THREE of the six shapes above, not all six, and the difference is structural rather than laziness:
+	 *   - shapes 1, 5 and 6 are missing-rule defects in app markup, which is what this file scans, so each
+	 *     has an arm below.
+	 *   - shapes 2 and 3 were layout on the wrong ELEMENT. Both classes resolved fine; what was wrong was
+	 *     which box carried them. No class-resolution check can see that, and nothing here claims to.
+	 *   - shape 4 (`.encore-slider`) is a scoped rule that cannot reach a child component's element. That
+	 *     is `ui-scoped-style-reach-913.test.ts`'s territory and is mutation-proved there, including the
+	 *     `data-slot` direction the fix opened.
+	 * The remaining arms are hygiene, not shapes: a comment must not define a class, a style-block-only
+	 * class must not count as applied, and a clean file must report nothing.
 	 */
 	const resolves = (markup: string, style: string, global = new Set<string>()) => {
 		const own = classNamesIn(style.replace(/\/\*[\s\S]*?\*\//g, ' '));

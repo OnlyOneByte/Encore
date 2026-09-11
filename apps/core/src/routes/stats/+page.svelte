@@ -204,13 +204,21 @@
 	 *
 	 * S8 replaced a single element that was grid item, surface and layout at once with a wrapper around
 	 * <Card.Root>. The wrapper became the grid item and stretches to the row's height, but `Card.Root` is
-	 * `flex flex-col` with no `h-full`, so it sized to its own content and the three cards' bottom edges
-	 * stair-stepped — measured 26.6px of spread at 1080px against 0.0px once this rule exists.
-	 * `display: grid` makes the single child fill the slot, which is what the shared surface used to do for
-	 * free by BEING the grid item.
+	 * `flex flex-col` with no `h-full`, so it sized to its own CONTENT and the three cards' bottom edges
+	 * stair-stepped instead of lining up. `display: grid` makes the single child fill the slot, which is
+	 * what the shared surface used to do for free by BEING the grid item.
 	 *
-	 * Phone width hid it: `auto-fit` collapses to one column, so every tile is its own row and there is no
-	 * shared height to disagree with. That is why the eyes-on pass at 390px missed it.
+	 * The gap is content-dependent, so no single number describes it: tile 1 sets `.primary .n` to 2.6rem
+	 * against the others' 1.5rem, and only two of the three carry a `.sub` line, which itself wraps at
+	 * narrow columns. Measured examples ranged from ~27px to ~51px of bottom-edge spread at 1080px
+	 * depending on the strings, against 0.0px with this rule present. Deliberately NOT asserted as a
+	 * figure anywhere: rendered geometry cannot be measured on the mount rung, which breaks
+	 * `getBoundingClientRect` on purpose (XR-VER-03). What IS guarded is that the class resolves to a rule
+	 * at all — `app-class-resolution-913.test.ts` — because the defect was the missing rule, not the pixel
+	 * count.
+	 *
+	 * Phone width hid it entirely: `auto-fit` collapses to one column, so every tile is its own row and
+	 * there is no shared height to disagree with. That is why the eyes-on pass at 390px missed it.
 	 */
 	.tile-slot {
 		display: grid;

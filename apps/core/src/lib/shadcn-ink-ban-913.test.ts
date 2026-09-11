@@ -73,9 +73,10 @@ function sources(): string[] {
  *
  * Without this the guard criminalises its own documentation: a CSS comment that merely NAMES
  * `text-primary` to explain why it is banned changes no behaviour and yet fails the build. That makes
- * the rule unwritable next to the code it governs — and this repo has already had to fix exactly this
- * anti-pattern in `ui-foreign-theme-913`, `tailwind-toolchain` and both name-scanning arms of
- * `motion.test.ts`. The mutation arm below proves the stripper does not also blind the scan.
+ * the rule unwritable next to the code it governs. Stripping comments first is the established convention
+ * here — roughly a hundred test files on main already do it, and `tailwind-toolchain` needed this same fix
+ * earlier on this very branch. The mutation arm below proves the stripper does not also BLIND the scan,
+ * which is the half that is easy to get wrong.
  */
 function withoutComments(src: string): string {
 	return src
