@@ -926,6 +926,40 @@
 }
 
 /*
+ * THE TWO PREFLIGHT RESETS THE VENDORED PRIMITIVES ASSUME (issue #853, Preflight OFF).
+ *
+ * Preflight is deliberately off (its universal reset would restyle ~4,950 lines of hand-written CSS —
+ * see the top-of-file note), and this app supplies `box-sizing: border-box` above. But two of Preflight's
+ * resets are load-bearing for the shadcn components and were NOT hand-supplied, so a vendored control
+ * rendered wrong:
+ *
+ *   - `button, input, select, textarea { font: inherit }`. Without it a control keeps the UA font
+ *     family — `body` sets font-family but it does not reach a form control, and no rule targeted a
+ *     bare control. So every vendored Button/Input/NativeSelect rendered in the browser's default UI
+ *     font. (Nine hand-rolled controls in app source set `font: inherit` themselves; the vendored
+ *     primitives were the only ones that did not, which is the tell.)
+ *   - `ul, ol { margin: 0; padding: 0 }`. Field.Error is a `<ul class="ml-4 ...">`; without the reset
+ *     the UA adds `margin-block: 1em` + `padding-inline-start: 40px`, so `ml-4` stacks on top of a 40px
+ *     UA indent. list-style is left to the components (Field.Error opts back into `list-disc`).
+ *
+ * This is scoped to the four element types rather than re-enabling Preflight wholesale, which
+ * tailwind-toolchain.test.ts bans and which owes a large acceptance-evidence bar (thousands of moved
+ * boxes). App-source lists that relied on the UA indent set their own padding; a spot check found the
+ * only rendered list (routes/admin) already resets it explicitly.
+ */
+button,
+input,
+select,
+textarea {
+	font: inherit;
+}
+ul,
+ol {
+	margin: 0;
+	padding: 0;
+}
+
+/*
  * Global focus ring. Every interactive element gets one, because -webkit-tap-highlight-color is
  * suppressed above and most controls here are custom-styled, so without this a keyboard or switch user
  * can operate the whole app while never seeing where they are.
@@ -957,7 +991,20 @@ body {
 }
 
 body {
-	background: radial-gradient(120% 80% at 50% -10%, var(--stage-glow) 0%, var(--bg) 55%);
+	/*
+	 * The glow is a top-of-page vignette. `background-attachment` stays `scroll` (the default), so it
+	 * scrolls away with the content, which is what `at 50% -10%` already describes it as — a vignette
+	 * anchored above the fold, not a fixed backdrop.
+	 *
+	 * `no-repeat` + a matching `background-color` is load-bearing, not tidiness. The body's background
+	 * propagates to the canvas and is treated as if set on the root, whose positioning area is one
+	 * viewport tall (html/body height:100%); with `background-repeat` at its default the one-viewport
+	 * gradient TILED, restarting at every multiple of the viewport height (measured seams at 844/1688/
+	 * 2532px on a 2646px page). It is seamless rather than seam-shifted because the gradient's final
+	 * stop is already `var(--bg) 55%`, so the flat colour that continues below the tile IS the end of
+	 * the tile — the two are one token so they cannot drift.
+	 */
+	background: var(--bg) radial-gradient(120% 80% at 50% -10%, var(--stage-glow) 0%, var(--bg) 55%) no-repeat;
 	color: var(--ink);
 	font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Inter, system-ui, sans-serif;
 	/* 100%, not 16px, to remove a LATENT trap rather than to fix a measured one — stated precisely

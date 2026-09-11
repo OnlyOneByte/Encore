@@ -149,11 +149,11 @@
 	/* The h1 rule that lived here is gone with the hand-rolled heading — PageHeader owns the h1 now, so
 	   a local `h1 {}` would be an unused selector (a svelte warning, and typecheck must be 0/0). */
 	.lede {
-		color: var(--muted, #8a8a8a);
+		color: var(--ink-dim);
 		margin: 0 0 1.5rem;
 	}
 	.muted {
-		color: var(--muted, #8a8a8a);
+		color: var(--ink-dim);
 	}
 	.notice {
 		background: color-mix(in srgb, var(--accent2) 12%, transparent);
@@ -191,7 +191,7 @@
 		white-space: nowrap;
 	}
 	.artist {
-		color: var(--muted, #8a8a8a);
+		color: var(--ink-dim);
 		font-size: 0.85rem;
 	}
 	button {
@@ -213,7 +213,7 @@
 	}
 	.confirm-q {
 		font-size: 0.85rem;
-		color: var(--muted, #8a8a8a);
+		color: var(--ink-dim);
 	}
 	.danger {
 		background: #ff5c5c;
