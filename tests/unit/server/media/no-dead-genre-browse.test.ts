@@ -11,17 +11,24 @@
 // re-introduction in either code or a copied comment is caught. Mutation-proven on base: every
 // assertion below reds when the deleted code is restored.
 import { describe, expect, it } from 'bun:test';
-import { existsSync, readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
+import { existsSync } from 'node:fs';
+import { appSrc, read as readRepoFile } from '@encore/test-support';
+import { join } from 'node:path';
 
-const HERE = dirname(fileURLToPath(import.meta.url));
-const CORE_SRC = join(HERE, '..', '..'); // apps/core/src
-const read = (rel: string) => readFileSync(join(CORE_SRC, rel), 'utf8');
+// Anchored on `appSrc` rather than on this file's own location (#775). The previous form was
+// `dirname(fileURLToPath(import.meta.url))` then `join(HERE, '..', '..')` to mean apps/core/src — a
+// statement about where the TEST lived, embedded in a statement about where the SOURCE lived. Moving the
+// file broke it, and the four assertions that read a file broke LOUDLY while the one asserting a file is
+// ABSENT would have started passing for the wrong reason: a wrong root makes `existsSync` false, which is
+// exactly what this guard wants to see.
+const read = (rel: string) => readRepoFile('apps/core/src', rel);
 
-describe('#121 — the unreachable browse-by-genre feature stays removed', () => {
+describe('the unreachable browse-by-genre feature stays removed', () => {
 	it('the uncalled POST /api/tag route is gone', () => {
-		expect(existsSync(join(CORE_SRC, 'routes/api/tag/+server.ts'))).toBe(false);
+		// Deliberately still an existsSync, but on an anchor that cannot silently be wrong: `appSrc` is
+		// derived from the repo root marker and self-checked on load, so a false here means the route is
+		// absent rather than that the path was.
+		expect(existsSync(join(appSrc, 'routes/api/tag/+server.ts'))).toBe(false);
 	});
 
 	it('the dead genre read methods are gone from the media repository', () => {
