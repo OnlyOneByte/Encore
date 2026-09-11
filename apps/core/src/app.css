@@ -1101,6 +1101,31 @@ body {
 }
 
 /*
+ * THE SINGER IDENTITY DOT (#913 Phase 2). Four independent copies existed — QueueRow's `.who i`,
+ * ProcessingCard's `.who i`, NowPlayingHero's `.eyebrow .dot`, and ColourPicker's 14px `.colour-chip` —
+ * all the same five declarations. The hue is per-singer and arrives as `--singer`, set inline at the
+ * call site. It lives here for the same reason `.list-row` does: three of those four sit in the same
+ * list, so a dot that differs between them is a bug rather than a variation.
+ *
+ * `flex: 0 0 auto` is load-bearing: the dot sits in a flex line beside a name that ellipsises, and
+ * without it the dot is the thing that shrinks — it vanished from its own row (issue #89).
+ *
+ * NOT extended to the row STATE classes (`.pending`, `.dimmed`), which are also byte-identical across
+ * QueueRow and ProcessingCard. Those names are too generic to be safe as globals: this repo has already
+ * been bitten by a component class colliding with a global rule of the same name, and a guard pins
+ * `class:pending` in the markup, so renaming them to something specific is not free either. Six
+ * duplicated lines is a smaller cost than that collision risk.
+ */
+.singer-dot {
+	flex: 0 0 auto;
+	display: inline-block;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: var(--singer);
+}
+
+/*
  * The square icon button that ends a list row.
  *
  * QueueRow and ProcessingCard had byte-identical copies of this, each carrying its own copy of the

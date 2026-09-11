@@ -238,7 +238,13 @@ const FLOORS: Record<string, Floor[]> = {
 	],
 	'apps/core/src/lib/design-system.test.ts': [
 		{ subject: 'FILES.length', min: 15, count: 1, guards: 'the design-system source walk' },
-		{ subject: 'seen', min: 2, count: 1, guards: 'the rules examined by the token-duplication scan' },
+		{
+			subject: 'dotRules.length',
+			min: 1,
+			count: 1,
+			guards:
+				'the identity-dot rules examined by the non-shrinking-flex scan. RE-ANCHORED from `seen` >= 2 by #913 Phase 2: the dot was four byte-identical copies (QueueRow/.who i, ProcessingCard/.who i, NowPlayingHero/.eyebrow .dot, ColourPicker/.colour-chip) and is now ONE shared `.singer-dot` rule in app.css, so a scan of component files counts zero and the old floor of 2 was unreachable. The floor follows the population: one shared declaration. The arm still sweeps components for a reintroduced local copy under either historical selector, so collapsing the copies did not narrow what is enforced — only where it is declared. Its firing means the dot rule was renamed or deleted, i.e. the #89 collapse-to-0px protection went unenforceable.'
+		},
 		{ subject: 'checked', min: 3, count: 1, guards: 'the surfaces examined by the surface-token scan' },
 		{
 			subject: 'bridgeRefsScanned',
@@ -383,7 +389,7 @@ const RETIRED: Record<string, { subject: string; reason: string }[]> = {
 		{
 			subject: 'files.length',
 			reason:
-				"The copied-in-component theme scan. RETIRED BY #913's restructure. XR-VER-06/07 record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban-913.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts's net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what \"never leave a guard passing vacuously\" requires."
+				'The copied-in-component theme scan. RETIRED BY #913\'s restructure. XR-VER-06/07 record. (a) The invariant: a copied-in shadcn component must reference NO shadcn theme name (bg-primary, text-muted-foreground, border-ring), because app.css defined none of them, so such a class resolved to nothing and the element rendered unstyled, which looks like a design choice in a screenshot rather than a defect. (b) What left scope: the PREMISE, deliberately inverted. app.css now defines the semantic layer (--primary: var(--accent) and friends) and bridges it in @theme, precisely so a vendored component works UNEDITED and `shadcn-svelte add --overwrite` stays safe across the fourteen components S2-S8 brought in. Those class names are the intended mechanism now; a guard banning them would forbid the architecture. (c) What covers it now, together strictly more than this file did: shadcn-ink-ban-913.test.ts bans the INK direction (text-primary, text-destructive) in app source while exempting the vendored tree by path, which is the real hazard since --accent as ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2, four AA failures; tailwind-toolchain.test.ts still refuses to register a PLAYER HUE in @theme, whose per-stop ink/fill split no single minted utility can respect; and motion.test.ts\'s net arm is what caught transition-all shipping in the stock Button and is what catches its return after any --overwrite. The floor was retired rather than lowered to 0, which is what "never leave a guard passing vacuously" requires.'
 		}
 	],
 	'apps/core/src/lib/design-system.test.ts': [

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { Slider } from '$lib/components/ui/slider';
+	import * as Field from '$lib/components/ui/field';
 	// The GUIDING TRACK control — how loud the original vocals sit under the instrumental.
 	//
 	// Presentational: it owns the label copy, the shape and the disabled state, and reports raw
@@ -30,11 +31,25 @@
 </script>
 
 <div class="gt" class:disabled={!available}>
-	<div class="gt-head">
+	<!--
+		#913: the label/value row is <Field.Label>, the settings page's own idiom (27 of them), reached
+		with `data-inline` — the field primitive's existing hook for a label that lays out beside content
+		it contains. It supplies the flex row, the `var(--space-lg)` top rhythm and `--ink-dim`, which is
+		what `.gt-head` and `.lab`'s `color` used to do here.
+
+		`.lab` KEEPS its three typographic declarations rather than handing the text straight to
+		<Field.Label>. That is a role difference, not a preference: the label primitive resolves to
+		`text-sm` (14px, sentence case) through ui/label, and this is an 11px uppercase EYEBROW sitting
+		beside a bold readout — adopting the primitive's type would make the label larger than the value
+		it labels. The declarations sit on a plain <span> this file renders, so the scoped rule reaches it
+		(a class handed to <Field.Label> would not — ui-scoped-style-reach-913.test.ts).
+	-->
+	<Field.Label data-inline for="guiding-track">
 		<span class="lab">Guiding track</span>
 		<span class="gt-val">{valueLabel}</span>
-	</div>
+	</Field.Label>
 	<Slider
+		id="guiding-track"
 		variant="guiding"
 		type="single"
 		min={0}
@@ -46,6 +61,11 @@
 		onValueChange={(v) => oninput?.(v)}
 		onValueCommit={(v) => oncommit?.(v)}
 	/>
+	<!--
+		NOT <Field.Description>: `drawer-ui-cleanup-253.test.ts:50` pins this hint as
+		`{#if hint}<p class="gt-hint">`, and that guard is not editable here. The class would also have to
+		ride on the component to keep resolving, which a scoped rule cannot reach.
+	-->
 	{#if hint}<p class="gt-hint">{hint}</p>{/if}
 </div>
 
@@ -55,30 +75,43 @@
 	   native — that one sits in a form, this one sits in the performance surface next to the transport,
 	   where an unstyled OS slider reads as a different application. */
 	.gt {
-		margin: var(--space-md) 0 var(--space-3xs);
-	}
-	.gt.disabled {
-		opacity: 0.5;
+		/* The TOP margin moved to <Field.Label>'s own `var(--space-lg)` rhythm — the same rhythm that
+		   separates one settings control from the next. Keeping `var(--space-md)` here as well would
+		   stack the two. */
+		margin: 0 0 var(--space-3xs);
 	}
 	/*
 	 * #913 S3: the disabled rail/thumb recolouring that lived here as four ::-webkit-slider-* and
 	 * ::-moz-range-* rules is ui/slider's `data-disabled` treatment on the guiding variant now —
-	 * scoped CSS cannot reach an element a child component renders. `.gt.disabled { opacity }` is
-	 * untouched, and XR-PH-03 still holds: the reason sentence sits OUTSIDE this dimmed subtree.
+	 * scoped CSS cannot reach an element a child component renders.
+	 *
+	 * `.gt.disabled { opacity: 0.5 }` is GONE, and that is a contrast fix rather than tidying. The
+	 * wrapper's alpha flattened its whole subtree against --bg, and neither element it dimmed is the
+	 * disabled control: MEASURED, `.lab` fell from 6.27:1 to 2.43:1 and `.gt-val` from 15.56:1 to
+	 * 4.67:1 — the label under AA outright. contrast.test.ts's ancestor-opacity ban never reached it
+	 * because that arm scopes itself to card ROOTS and `.gt` is not one, which is how this survived.
+	 *
+	 * The replacement is XR-PH-03's rule, the one QueueRow, ProcessingCard, MyPositionCard and
+	 * RangeBar all record: dim by TOKEN, never by opacity on a subtree. The readout drops --ink →
+	 * --ink-dim (6.27:1, its own measured pair with the card) and says "Off"; the CONTROL keeps its own
+	 * `data-disabled:opacity-50`, which is a single leaf carrying no text, the in-repo pattern
+	 * contrast.test.ts explicitly steers toward.
+	 *
+	 * XR-PH-03's containment claim is untouched: the reason sentence still sits OUTSIDE `.gt` entirely,
+	 * on the hero (#835 Q1-D), and `class:disabled` remains the anchor p16 reads it by.
 	 */
-	.gt-head {
-		display: flex;
-		align-items: baseline;
-		justify-content: space-between;
-		gap: var(--space-sm);
+	.gt.disabled .gt-val {
+		color: var(--ink-dim);
 	}
 	.lab {
 		font-size: 0.7rem;
-		color: var(--ink-dim);
 		letter-spacing: 0.1em;
 		text-transform: uppercase;
 	}
 	.gt-val {
+		/* What `.gt-head`'s `justify-content: space-between` used to do, from the value's own side —
+		   <Field.Label data-inline> is a plain flex row, and the row has exactly these two children. */
+		margin-left: auto;
 		font-size: 0.78rem;
 		font-weight: 700;
 		color: var(--ink);
@@ -90,9 +123,4 @@
 		margin: var(--space-xs) 0 0;
 		line-height: var(--lh-normal);
 	}
-	/* --fill is set inline from the current value: a gradient stop is how a native range shows a
-	   filled portion without a second element, and it keeps the paint on the track itself. */
-	/* A 22px thumb on a 4px track: the TRACK is a hairline for legibility, the THUMB is the visible
-	   grab affordance, and the 44px input box (above) supplies the touch target — the box is centered
-	   on the track, so margin-top: -9px still centers the 22px thumb on the 4px runnable track. */
 </style>

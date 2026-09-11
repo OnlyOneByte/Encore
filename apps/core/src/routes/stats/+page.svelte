@@ -52,102 +52,133 @@
 <svelte:head><title>Encore — stats</title></svelte:head>
 
 <section class="stats">
+	<!--
+		`title="Party stats"` is spelled as a LITERAL, and the same string is repeated on <main> below rather
+		than hoisted into a const both read. That is deliberate: SEL.statsPage's anchor in
+		apps/core/e2e/contract.ts is the exact text `title="Party stats"`, so interpolating the attribute
+		(`title={PAGE_TITLE}`) deletes the anchor the e2e flow uses to know it landed on this page — the
+		guard reds, correctly. Two occurrences of a four-word string is the cheaper of the two costs.
+	-->
 	<PageHeader title="Party stats" back={{ href: '/settings', label: 'Back to settings' }} />
 
-	{#if failed}
-		<p class="note" role="alert">Could not load stats.</p>
-	{:else if !stats}
-		<p class="note" role="status">Loading…</p>
-	{:else}
-		<div class="tiles">
-			<div class="tile-slot primary">
-				<Card.Root>
-					<Card.Content>
-						<div class="tile">
-							<span class="n">{stats.sings.total}</span>
-							<span class="k">songs sung</span>
-							<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
-						</div>
-					</Card.Content>
-				</Card.Root>
-			</div>
-			<div class="tile-slot">
-				<Card.Root>
-					<Card.Content>
-						<div class="tile">
-							<span class="n">{stats.library.ready}</span>
-							<span class="k">ready to sing</span>
-							<!-- The catalog count is a footnote, never the headline: it counts every search result ever
+	<!--
+		#913: the content is a <main> landmark, the shape /admin and /settings already use. The cap,
+		--page-measure and the auto inline margin stay on .stats so the PageHeader inside it still shares
+		the content's 720px measure; <main> only carries the grid the cards lay out in.
+	-->
+	<main aria-label="Party stats">
+		{#if failed}
+			<p class="note" role="alert">Could not load stats.</p>
+		{:else}
+			<!--
+				ONE live region that EXISTS BEFORE ITS CONTENT CHANGES (#913). This was
+				`{:else if !stats}<p role="status">Loading…</p>`, a region CREATED by the load rather than
+				updated by it — a live region announces when its contents change, so a region that arrives
+				already holding its message announces nothing, and a guest waiting on this page heard silence
+				both while it loaded and when it arrived. Persisting the element and swapping only its text
+				makes the transition the change. The loaded copy states the window every figure below is
+				measured over, which the page named only inside a tile's footnote before.
+			-->
+			<p class="note" role="status">
+				{#if !stats}
+					Loading…
+				{:else}
+					Party stats for the last {stats.window.days} days.
+				{/if}
+			</p>
+
+			{#if stats}
+				<div class="tiles">
+					<div class="tile-slot primary">
+						<Card.Root>
+							<Card.Content>
+								<div class="tile">
+									<span class="n">{stats.sings.total}</span>
+									<span class="k">songs sung</span>
+									<span class="sub">{stats.sings.window} in the last {stats.window.days} days</span>
+								</div>
+							</Card.Content>
+						</Card.Root>
+					</div>
+					<div class="tile-slot">
+						<Card.Root>
+							<Card.Content>
+								<div class="tile">
+									<span class="n">{stats.library.ready}</span>
+									<span class="k">ready to sing</span>
+									<!-- The catalog count is a footnote, never the headline: it counts every search result ever
 				     seen (271 behind 7 singable songs on the live box), so quoting it as "the library"
 				     overstates it by ~40x. -->
-							<span class="sub">of {stats.library.catalog} found</span>
-						</div>
-					</Card.Content>
-				</Card.Root>
-			</div>
-			<div class="tile-slot">
+									<span class="sub">of {stats.library.catalog} found</span>
+								</div>
+							</Card.Content>
+						</Card.Root>
+					</div>
+					<div class="tile-slot">
+						<Card.Root>
+							<Card.Content>
+								<div class="tile">
+									<span class="n">{stats.sings.distinctSongs}</span>
+									<span class="k">different songs</span>
+								</div>
+							</Card.Content>
+						</Card.Root>
+					</div>
+				</div>
+
 				<Card.Root>
+					<Card.Header>
+						<Card.Title>Most sung</Card.Title>
+					</Card.Header>
 					<Card.Content>
-						<div class="tile">
-							<span class="n">{stats.sings.distinctSongs}</span>
-							<span class="k">different songs</span>
-						</div>
+						<Bars
+							rows={stats.topSongs.map((s) => ({ label: s.title, value: s.plays }))}
+							unit="sings"
+							empty="Nobody has sung yet"
+						/>
 					</Card.Content>
 				</Card.Root>
-			</div>
-		</div>
 
-		<Card.Root>
-			<Card.Header>
-				<Card.Title>Most sung</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				<Bars
-					rows={stats.topSongs.map((s) => ({ label: s.title, value: s.plays }))}
-					unit="sings"
-					empty="Nobody has sung yet"
-				/>
-			</Card.Content>
-		</Card.Root>
+				{#if recentDiffers}
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Hot lately</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
+							<p class="note">Last {stats.window.days} days.</p>
+						</Card.Content>
+					</Card.Root>
+				{/if}
 
-		{#if recentDiffers}
-			<Card.Root>
-				<Card.Header>
-					<Card.Title>Hot lately</Card.Title>
-				</Card.Header>
-				<Card.Content>
-					<Bars rows={stats.topRecent.map((s) => ({ label: s.title, value: s.plays }))} unit="sings" />
-					<p class="note">Last {stats.window.days} days.</p>
-				</Card.Content>
-			</Card.Root>
-		{/if}
-
-		<Card.Root>
-			<Card.Header>
-				<Card.Title>Top artists</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				<Bars
-					rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))}
-					unit="sings"
-					empty="No artists identified yet"
-				/>
-				<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
+				<Card.Root>
+					<Card.Header>
+						<Card.Title>Top artists</Card.Title>
+					</Card.Header>
+					<Card.Content>
+						<Bars
+							rows={stats.topArtists.map((a) => ({ label: a.artist, value: a.plays }))}
+							unit="sings"
+							empty="No artists identified yet"
+						/>
+						<!-- Honest about the gap rather than silently short: the normalizer stores null instead of
 			     guessing a low-confidence artist, so some sung songs cannot be attributed at all. -->
-				<p class="note">Songs we couldn't match to an artist aren't counted.</p>
-			</Card.Content>
-		</Card.Root>
+						<p class="note">Songs we couldn't match to an artist aren't counted.</p>
+					</Card.Content>
+				</Card.Root>
 
-		<Card.Root>
-			<Card.Header>
-				<Card.Title>Sings per day</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				<Trend points={stats.perDay} since={stats.window.since} until={now} />
-				<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
-			</Card.Content>
-		</Card.Root>
-	{/if}
+				<Card.Root>
+					<Card.Header>
+						<Card.Title>Sings per day</Card.Title>
+					</Card.Header>
+					<Card.Content>
+						<Trend points={stats.perDay} since={stats.window.since} until={now} />
+						<p class="note">No bar means nothing was sung — or the server was off. We can't tell those apart.</p>
+					</Card.Content>
+				</Card.Root>
+			{/if}
+		{/if}
+	</main>
 </section>
 
 <style>
@@ -156,9 +187,21 @@
 	 * full desktop width the two ends of one row sat ~1000px apart and stopped reading as a pair —
 	 * proximity is what binds them. This is a reading-width surface, not a data grid.
 	 */
+	/*
+	 * SPACING HERE STAYS IN rem, DELIBERATELY (#913 Phase 2 reverted a conversion to --space-*).
+	 * app.css's "what this deliberately does not do" note rules on exactly this: "a rem gap tracks the
+	 * guest's text-size setting while a px one does not -- so converting one to the other is a behaviour
+	 * change under text zoom, not a rename. Whether phone spacing should scale with text at all is a
+	 * design question, and it is not answered by this issue." The px --space-* scale is 16px flat, so
+	 * tokenising `gap: 1rem` would freeze these gaps at 200% text instead of letting them grow with the
+	 * type they separate. The three operator routes are not outliers to be normalised; they are the
+	 * surfaces that scale. Font SIZES on these pages did move onto the --ph-text-* ladder, which is rem
+	 * and therefore keeps that property.
+	 */
 	.stats {
 		display: grid;
 		gap: 1rem;
+		/* 3rem (48px) is off-scale — the scale stops at --space-4xl (20px) — so it stays a literal. */
 		padding: 1rem 0 3rem;
 		max-width: 720px;
 		/* The PageHeader inside this block caps on --page-measure; match it to the content width so the
@@ -170,6 +213,15 @@
 		   re-centres the full capped block instead of collapsing it to content width. */
 		width: 100%;
 		margin-inline: auto;
+	}
+	/*
+	 * The <main> landmark (#913). It carries the CARD grid and nothing else: the cap, --page-measure and
+	 * the auto inline margin stay on .stats so the PageHeader sitting inside that block keeps sharing the
+	 * content's measure.
+	 */
+	main {
+		display: grid;
+		gap: 1rem;
 	}
 	/*
 	 * The .card primitive in app.css carries background/border/radius ONLY — no padding, and nothing

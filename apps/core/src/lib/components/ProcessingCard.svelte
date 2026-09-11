@@ -104,8 +104,17 @@
 				</div></Item.Media
 			>
 			<Item.Content>
-				<div class="t">
-					{title}{#if !failed}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
+				<!--
+					The sparkle is a SIBLING of `.t`, not nested inside it — the #194 shape SongRow already
+					uses. `.t` now carries `overflow: hidden` (so a long title ellipsises instead of growing
+					the card), and `overflow: hidden` makes the box a scroll container: a mark inside it is
+					clipped off-box the moment the title is long enough to need the ellipsis, which is
+					precisely the state the mark exists to announce. As a sibling with `flex: 0 0 auto` it
+					always paints, and it no longer competes with the title for the last line's characters.
+				-->
+				<div class="title-line">
+					<span class="t">{title}</span>
+					{#if !failed}<span class="sparkle"><Icon name="sparkle" /></span>{/if}
 				</div>
 				{#if singerName}
 					<div class="who">
@@ -117,7 +126,7 @@
 				     state alongside process-phrasing.ts's "Making karaoke..." and SongRow's chip -- and it sat
 				     one line above the .stage row that already says exactly that, from the shared source.
 				     Redundant AND divergent, so it is gone. -->
-						<i class:dim={singerAway} style="--singer:{singerColor}"></i>
+						<i class="singer-dot" class:dim={singerAway} style="--singer:{singerColor}"></i>
 						{singerName}{#if singerAway}<span class="away">· away</span>{/if}{#if pending}{' · '}<span class="adding"
 								>{pendingLabel}</span
 							>{/if}
@@ -250,16 +259,36 @@
 		color: var(--ink-dim);
 		flex: 0 0 auto;
 	}
+	/* Byte-identical to QueueRow's `.t`, deliberately: the two row kinds sit in the SAME phone list, so a
+	   long title that grew THIS card while the queue row beside it ellipsised read as a layout bug rather
+	   than as a difference. This rule was `font-weight: 600` and nothing else, so an unbreakable title
+	   pushed the `1fr` title column wider and the whole card with it. `overflow: hidden` also makes this
+	   box a scroll container, whose inline min-content contribution is 0 — that is what stops the grid
+	   track being forced wide, and it is the same mechanism QueueRow relies on (neither needs
+	   `min-width: 0`). */
+	/* The title and the processing mark share one flex line, so the mark is a sibling that always paints
+	   while the title takes the ellipsis (the #194 shape, matching SongRow). */
+	.title-line {
+		display: flex;
+		align-items: baseline;
+		min-width: 0;
+	}
 	.t {
+		flex: 0 1 auto;
+		min-width: 0;
 		font-weight: 600;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
 	}
 	/* Spacing via margin, matching SongRow — one mechanism, not a literal space in one place and
-	   CSS in the other. */
+	   CSS in the other. `flex: 0 0 auto` is load-bearing: as a flex sibling of a shrinking title the
+	   mark is otherwise the thing that shrinks, which is the #194 defect in a different disguise. */
 	.sparkle {
+		flex: 0 0 auto;
 		color: var(--warn);
 		display: inline-grid;
 		place-items: center;
-		vertical-align: -2px;
 		margin-left: 5px;
 	}
 	.who {
@@ -277,14 +306,17 @@
 		color: var(--warn);
 		margin-left: 0.35em;
 	}
-	/* flex: 0 0 auto is load-bearing HERE, not just QueueRow parity (issue #89). .who is a
+	/* The dot's `flex: 0 0 auto is load-bearing` HERE, not just QueueRow parity (issue #89) — and since
+	   #913 Phase 2 the declaration itself lives in app.css's shared `.singer-dot` rule, because this
+	   dot was one of four byte-identical copies. The measured reasoning stays with the card it was
+	   measured on. .who is a
 	   `display: flex` container; the dot is an empty flex item whose automatic minimum size is 0, so
 	   without a non-shrinking basis it is the item that gives up width first. When the actions cluster
 	   renders (the normal in-rotation card) it cuts .who from ~282px to 134px (actions = 3x44 + 2x8 =
 	   148px), and a name at the 32-char profile maxlength then overflows it. How far the dot shrinks
 	   depends on whether the name can WRAP, not on QueueRow's trio: what holds a name's width is the
 	   absence of a break opportunity, and an empty dot has no intrinsic content to protect it either
-	   way. So without this rule (measured at 390px on the fixture below):
+	   way. So without that shared rule (measured at 390px on the fixture below):
 	     • a name with spaces (e.g. "Christopher Alexander Montgomery") wraps, sharing the deficit, and
 	       the dot shrinks 10px -> ~5.45px — a ~45% loss;
 	     • an UNBROKEN name at the maxlength (e.g. "ChristopherAlexanderMontgomeryJr", 32 chars, reachable — both
@@ -295,15 +327,9 @@
 	   The mechanism is the same as QueueRow's 0px collapse in #89; the only difference is that
 	   QueueRow.svelte's .who adds `min-width:0; white-space:nowrap; overflow:hidden`, which makes EVERY
 	   name unbreakable (that is why #89 hit 0px even with a spaced name), whereas here only an unbroken
-	   token is unbreakable. design-system.test.ts's identity-dot guard reds if this rule is dropped;
-	   the long-name fixture below carries an unbroken maxlength name so the 0px case is eyes-on. */
-	.who i {
-		flex: 0 0 auto;
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		background: var(--singer);
-	}
+	   token is unbreakable. design-system.test.ts's identity-dot guard reds if the shared rule drops the
+	   basis OR if a local copy reappears without it; the long-name fixture below carries an unbroken
+	   maxlength name so the 0px case is eyes-on. */
 	/*
 	 * #913 S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
 	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:

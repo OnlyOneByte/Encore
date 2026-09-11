@@ -29,6 +29,8 @@
 	import { safeNextPath } from '$lib/next-path';
 	import { roomPresenceSentence, type RoomPreview } from '$lib/room-presence-sentence';
 	import { Input } from '$lib/components/ui/input';
+	import * as Item from '$lib/components/ui/item';
+	import { Spinner } from '$lib/components/ui/spinner';
 
 	let name = $state('');
 	let color = $state<string>(SINGER_COLORS[0]);
@@ -148,7 +150,17 @@
 	{#if arrivedWithCode}
 		<!-- SCANNED PATH: the room is confirmed in words, and no code input is shown (the QR typed it). -->
 		{#if previewLoading}
-			<p class="confirm" role="status">Finding the room…</p>
+			<!--
+				#913: <Spinner>, whose ring honours Reduce Motion in its own file. It is `aria-hidden`
+				DECORATION, not the announcement: the sentence stays, because this `role="status"` region
+				is what a screen-reader guest hears while the room resolves.
+
+				NOT <Skeleton>, which is what it looks like it is for. A skeleton stands in for content of
+				known shape and says nothing; swapping the sentence for a silent grey bar would leave the
+				status region empty and announce nothing at all. So ui/skeleton still has no consumer —
+				reported rather than forced.
+			-->
+			<p class="confirm" role="status"><Spinner aria-hidden="true" /> Finding the room…</p>
 		{:else if preview}
 			<p class="confirm" role="status">{confirmSentence}</p>
 		{:else}
@@ -158,14 +170,31 @@
 			<CodeEntry bind:value={typedCode} label="Room code" oncomplete={join} />
 		{/if}
 	{:else}
-		<!-- UNTYPED / TYPED PATH: both scan and type are present. -->
-		<div class="scan-row card">
-			<Icon name="search" />
-			<div class="scan-copy">
-				<span class="scan-head">Scan the TV's code</span>
-				<span class="scan-sub">Point your camera at the QR on the big screen to join in one tap.</span>
-			</div>
-		</div>
+		<!-- UNTYPED / TYPED PATH: both scan and type are present.
+
+		     #913: the icon + heading + subtitle shape is <Item.*> — Media / Content / Title — with the row
+		     ELEMENT kept here through Item's own `child` snippet, because `.scan-row`'s surface is a
+		     scoped rule and a class handed to a component cannot be reached by one. `bare` because
+		     `.card` already paints this row.
+
+		     `.scan-sub` stays a plain <span> rather than <Item.Description>. Item.Description is
+		     `line-clamp-2`, and this sentence is ~63 characters at `text-sm` inside a card that is about
+		     220px wide at the 320px reflow viewport — three lines, so the clamp would truncate the scan
+		     instruction. That instruction is what makes this screen conformant under SC 3.3.8 (a typed
+		     code alone is a cognitive-function test), so it is the one line here that must not be
+		     clipped. Item.Description's only other consumer in the tree is a song artist on /admin,
+		     which is short. -->
+		<Item.Root variant="bare" size="bare">
+			{#snippet child({ props })}
+				<div {...props} class="scan-row card">
+					<Item.Media variant="icon"><Icon name="search" /></Item.Media>
+					<Item.Content>
+						<Item.Title>Scan the TV's code</Item.Title>
+						<span class="scan-sub">Point your camera at the QR on the big screen to join in one tap.</span>
+					</Item.Content>
+				</div>
+			{/snippet}
+		</Item.Root>
 		<p class="or">or type the six-character code</p>
 		<CodeEntry bind:value={typedCode} label="Room code" oncomplete={join} />
 	{/if}
@@ -240,6 +269,24 @@
 		margin: var(--space-xs) 0 0;
 		font-size: var(--ph-text-md);
 	}
+	/*
+	 * `.confirm`, `.err` and `.cta-reason` deliberately stay ordinary elements rather than becoming
+	 * <Field.Description> / <Field.Error>. Each has a specific reason, none of them preference:
+	 *
+	 *   `.err`   — `e2e/contract.ts` addresses it as `.err[role=alert]`, so the class has to sit on the
+	 *              alerting element itself. <Field.Error> emits the role, but a class handed to it could
+	 *              not carry a scoped rule (ui-scoped-style-reach-913.test.ts), and contract.ts is not
+	 *              editable from here.
+	 *   `.confirm` — this is the scanned path's HEADLINE ("Maya and Dana are here"), the one sentence
+	 *              that surface exists to state: --ink, --ph-text-lg, 600. <Field.Description> is
+	 *              `text-sm text-muted-foreground`, which would dim and shrink exactly that.
+	 *   `.cta-reason` — <Field.Description> carries `margin: var(--space-xs) 0 0` in the primitive, and
+	 *              this sits ABOVE the Continue button needing the gap BELOW it (`0 0 var(--space-sm)`)
+	 *              plus `text-align: center` against the primitive's `text-left`. Overriding all three
+	 *              needs either a class on the component (unreachable) or an app-side
+	 *              `:global([data-slot='field-description'])`, which would land on settings' own
+	 *              descriptions too.
+	 */
 	.confirm {
 		margin: 0;
 		font-size: var(--ph-text-lg);
@@ -250,21 +297,14 @@
 		color: var(--danger-ink);
 		font-size: var(--ph-text-md);
 	}
+	/* `display: flex` and `align-items: center` are GONE — Item.Root's base carries both. The `gap`
+	   stays: Item's `bare` size contributes none. `.scan-copy` is Item.Content and `.scan-head` is
+	   Item.Title, so neither has a rule here any more; Item.Title resolves to `font-medium` rather than
+	   the 700 this had, which is the same typography trade S4 accepted across the migration. */
 	.scan-row {
-		display: flex;
-		align-items: center;
 		gap: var(--space-md);
 		padding: var(--space-lg);
 		background: var(--card);
-	}
-	.scan-copy {
-		display: flex;
-		flex-direction: column;
-		gap: var(--space-3xs);
-	}
-	.scan-head {
-		font-weight: 700;
-		color: var(--ink);
 	}
 	.scan-sub {
 		color: var(--ink-dim);

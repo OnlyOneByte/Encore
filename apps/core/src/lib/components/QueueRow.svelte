@@ -151,7 +151,7 @@
 				-->
 				<!-- prettier-ignore -->
 				<div class="who">
-					<i class:dim={singerAway} style="--singer:{singerColor}"></i>
+					<i class="singer-dot" class:dim={singerAway} style="--singer:{singerColor}"></i>
 					{singerName}{#if singerAway}<span class="away">· away</span
 						>{/if}{#if subtitle}{' · '}{subtitle}{/if}{#if pending}{' · '}<span class="adding">{pendingLabel}</span>{/if}
 				</div>
@@ -291,17 +291,11 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
-	/* flex: 0 0 auto so the identity dot never shrinks: .who is a nowrap/overflow flex container,
-	   and an empty element's automatic minimum size is 0, so under a long name the dot collapsed to 0px
-	   and the singer's colour vanished from their own row (issue #89). Same protection .seq/.actions carry. */
-	.who i {
-		flex: 0 0 auto;
-		width: 10px;
-		height: 10px;
-		border-radius: 50%;
-		display: inline-block;
-		background: var(--singer);
-	}
+	/* The dot is app.css's shared `.singer-dot` since #913 Phase 2 (it was four byte-identical copies).
+	   Its `flex: 0 0 auto` is what stops it shrinking: .who is a nowrap/overflow flex container, and an
+	   empty element's automatic minimum size is 0, so under a long name the dot collapsed to 0px and the
+	   singer's colour vanished from their own row (issue #89). Same protection .seq/.actions carry.
+	   design-system.test.ts's identity-dot guard pins the basis on the shared rule. */
 	/* Hue kept (it is the singer's identity), presence dimmed. */
 	.who i.dim {
 		opacity: 0.5;

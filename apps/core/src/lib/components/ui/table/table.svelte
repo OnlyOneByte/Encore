@@ -35,7 +35,19 @@
 	:global([data-slot='table']) {
 		width: 100%;
 		border-collapse: collapse;
-		font-size: 0.82rem;
+		/*
+		 * --ph-text-md (0.9rem / 14.4px), raised from 0.82rem / 13.1px (#913 goal 6). EVERY cell on both
+		 * metrics tables inherited that size, so the entire numeric content of the operator dashboard —
+		 * the durations and rates the page exists to be read for — was the smallest text on it, smaller
+		 * even than the dim `.note` footnotes explaining it at --ph-text-xs (0.75rem). A ladder step
+		 * rather than a nudged literal, so the table sizes from the same scale as its captions.
+		 *
+		 * SAFE TO GROW, because this table's answer to not fitting is already SCROLL rather than crush:
+		 * the `min-width: 34rem` below is a floor inside an `overflow-x: auto` container, so wider cells
+		 * widen the scrollable table and never the page. That is the same designed response the eight
+		 * columns needed at the old size on a phone.
+		 */
+		font-size: var(--ph-text-md);
 		/* Durations are compared down a column; proportional digits make that ragged. */
 		font-variant-numeric: tabular-nums;
 	}

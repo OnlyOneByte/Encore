@@ -65,7 +65,10 @@ test('the hero renders the playing song as a heading, with the singer named (#83
 
 test('the hero carries the singer identity colour on a dot that cannot collapse', () => {
 	const host = render(NowPlayingHero, PLAYING);
-	const dot = host.querySelector('.eyebrow .dot') as HTMLElement | null;
+	// #913 Phase 2: the four byte-identical identity dots became app.css's shared `.singer-dot`, which
+	// is where `flex: 0 0 auto` — the "cannot collapse" half of this claim — now lives. The claim is
+	// unchanged, and the shared rule is what QueueRow and ProcessingCard already read.
+	const dot = host.querySelector('.eyebrow .singer-dot') as HTMLElement | null;
 	expect(dot).not.toBeNull();
 	// The colour arrives as the custom property the rule reads, so a long name cannot silently drop it.
 	expect(dot!.getAttribute('style')).toContain('#33d6a6');
@@ -75,15 +78,21 @@ test('an unknown song length hides the progress row rather than pinning a bar at
 	// durationSec 0 is the real shape for a local file or an older catalog row.
 	const unknown = render(NowPlayingHero, { ...PLAYING, durationSec: 0 });
 	expect(unknown.querySelector('.seekrow')).toBeNull();
-	expect(unknown.querySelector('.track')).toBeNull();
+	expect(unknown.querySelector('[role="progressbar"]')).toBeNull();
 
+	// #913 S6: the bar is <Progress> now — the same hand-rolled idiom lived in three components, and it
+	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged; the fill is found by
+	// the vendored bar's data-slot rather than by `.track > i`.
 	const known = render(NowPlayingHero, PLAYING);
-	const fill = known.querySelector('.track > i') as HTMLElement | null;
-	expect(fill).not.toBeNull();
+	const bar = known.querySelector('[role="progressbar"]') as HTMLElement | null;
+	expect(bar).not.toBeNull();
 	// 30s of 120s is a quarter. Written out, not computed with progressFraction — the same operation
 	// the component performs cannot be the source of the expectation (#165).
-	expect(fill!.getAttribute('style')).toContain('scaleX(0.25)');
-	// scaleX, not width: a width animation triggers layout every frame, which motion.test.ts forbids.
+	expect(bar!.getAttribute('aria-valuenow')).toBe('25');
+	const fill = bar!.querySelector('[data-slot="progress-indicator"]') as HTMLElement | null;
+	expect(fill).not.toBeNull();
+	expect(fill!.getAttribute('style')).toContain('translateX(-75%)');
+	// A transform, not width: a width animation triggers layout every frame, which motion.test.ts forbids.
 	expect(fill!.getAttribute('style')).not.toContain('width:');
 });
 
@@ -119,7 +128,6 @@ test('the transport is disabled when there is nothing for it to act on', () => {
  * the controls and the control not visible, and that once opened the control sits in the body and never
  * inside the toggle. p16 is where the neighbouring XR-PH-15 and XR-PH-03 claims already live.
  */
-
 
 test('no disclosure renders at all when there are no live controls to put in it', () => {
 	const host = render(NowPlayingHero, PLAYING);

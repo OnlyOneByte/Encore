@@ -13,7 +13,9 @@
 	import PageHeader from '$lib/ui/PageHeader.svelte';
 	import { dur, stepLabel, stageLabel, rate } from '$lib/metrics-format';
 	import * as Card from '$lib/components/ui/card';
+	import * as Item from '$lib/components/ui/item';
 	import * as Table from '$lib/components/ui/table';
+	import FactList from '$lib/components/FactList.svelte';
 
 	interface StepRow {
 		jobType: string;
@@ -109,255 +111,290 @@
 <svelte:head><title>Encore — metrics</title></svelte:head>
 
 <section class="metrics">
+	<!--
+		`title="Processing metrics"` is spelled as a LITERAL, and the same string is repeated on <main> below
+		rather than hoisted into a const both read. That is deliberate: SEL.metricsPage's anchor in
+		apps/core/e2e/contract.ts is the exact text `title="Processing metrics"`, so interpolating the
+		attribute deletes the anchor the e2e flow uses to know it landed on this page — the guard reds,
+		correctly. Two occurrences of a two-word string is the cheaper of the two costs.
+	-->
 	<PageHeader title="Processing metrics" back={{ href: '/settings', label: 'Back to settings' }} />
 
-	{#if failed}
-		<p class="note" role="alert">Could not load metrics.</p>
-	{:else if !m}
-		<p class="note" role="status">Loading…</p>
-	{:else}
-		<!--
-			Worker state leads. It was last on the page, but it is the difference between "processing is
-			slow" and "processing is STOPPED" — with no worker connected every timing below is history
-			rather than live state, and that is the first thing an operator needs to know.
-		-->
-		{#if m.workers.length === 0}
-			<p class="banner" role="status">No worker connected — songs can't be processed right now.</p>
-		{/if}
+	<!--
+		#913: the content is a <main> landmark, the shape /admin and /settings already use. The cap,
+		--page-measure and the auto inline margin stay on .metrics so the PageHeader inside it still shares
+		the content's 900px measure; <main> only carries the grid the cards lay out in.
+	-->
+	<main aria-label="Processing metrics">
+		{#if failed}
+			<p class="note" role="alert">Could not load metrics.</p>
+		{:else}
+			<!--
+				Worker state leads. It was last on the page, but it is the difference between "processing is
+				slow" and "processing is STOPPED" — with no worker connected every timing below is history
+				rather than live state, and that is the first thing an operator needs to know.
+			-->
+			{#if m && m.workers.length === 0}
+				<p class="banner" role="status">No worker connected — songs can't be processed right now.</p>
+			{/if}
 
-		<p class="note">
-			{m.sample.attempts} runs across {m.sample.processes} songs.
-			{#if m.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
-			Songs processed before this page existed have no timings.
-		</p>
-
-		<Card.Root>
-			<Card.Header>
-				<Card.Title>Start to finish</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				<div class="kv">
-					<div><span class="k">typical</span><span class="v">{dur(m.e2e.p50Ms)}</span></div>
-					<div><span class="k">average</span><span class="v">{dur(m.e2e.meanMs)}</span></div>
-					<div><span class="k">worst</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
-					<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
-				</div>
-				<p class="note">From asking for a song to it being ready to sing, waiting included.</p>
-			</Card.Content>
-		</Card.Root>
-
-		<Card.Root>
-			<Card.Header>
-				<Card.Title>Each step</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				{#if m.steps.length === 0}
-					<p class="note">Nothing processed yet.</p>
+			<!--
+				ONE live region that EXISTS BEFORE ITS CONTENT CHANGES (#913). This was
+				`{:else if !m}<p role="status">Loading…</p>`, a region CREATED by the load rather than updated
+				by it — a live region is announced when its contents change, so a region that arrives already
+				holding its message announces nothing, and the operator heard silence both while waiting and
+				on arrival. Persisting the element and swapping only its text makes the transition the change.
+				The loaded copy is the sample summary this paragraph already carried, so the announcement is
+				the page's own first fact rather than a second sentence added to be announced.
+			-->
+			<p class="note" role="status">
+				{#if !m}
+					Loading…
 				{:else}
-					<div class="scroller">
-						<Table.Root>
-							<Table.Header>
-								<Table.Row>
-									<Table.Head scope="col">step</Table.Head>
-									<Table.Head scope="col">runs</Table.Head>
-									<Table.Head scope="col">average</Table.Head>
-									<Table.Head scope="col">typical</Table.Head>
-									<Table.Head scope="col">worst</Table.Head>
-									<Table.Head scope="col">waited</Table.Head>
-									<Table.Head scope="col">speed</Table.Head>
-									<Table.Head scope="col">failed</Table.Head>
-								</Table.Row>
-							</Table.Header>
-							<Table.Body>
-								{#each m.steps as s (s.jobType)}
-									<Table.Row>
-										<Table.Cell
-											>{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
-										>
-										<Table.Cell>{s.n}</Table.Cell>
-										<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
-										<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
-										<Table.Cell>{dur(s.p95Ms)}</Table.Cell>
-										<Table.Cell>{dur(s.meanQueueWaitMs)}</Table.Cell>
-										<Table.Cell>{rate(s.meanRtFactor)}</Table.Cell>
-										<Table.Cell>{s.failed + s.abandoned}</Table.Cell>
-									</Table.Row>
-								{/each}
-							</Table.Body>
-						</Table.Root>
-					</div>
-					<p class="note">
-						Times are work only — <strong>waited</strong> is time sitting in the queue.
-						<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as the music.
-						<strong>failed</strong> runs are left out of the averages.
-					</p>
+					{m.sample.attempts} runs across {m.sample.processes} songs.
+					{#if m.sample.provisional}<strong>Too few to trust the averages yet.</strong>{/if}
+					Songs processed before this page existed have no timings.
 				{/if}
-			</Card.Content>
-		</Card.Root>
+			</p>
 
-		<Card.Root>
-			<Card.Header>
-				<Card.Title>Vocal removal — this machine vs the benchmark</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				{#if m.models.length === 0}
-					<p class="note">No vocals removed yet.</p>
-				{:else}
-					<div class="scroller">
-						<Table.Root>
-							<Table.Header>
-								<Table.Row>
-									<Table.Head scope="col">model</Table.Head>
-									<Table.Head scope="col">runs</Table.Head>
-									<Table.Head scope="col">here</Table.Head>
-									<Table.Head scope="col">benchmark</Table.Head>
-									<Table.Head scope="col">vs</Table.Head>
-								</Table.Row>
-							</Table.Header>
-							<Table.Body>
-								{#each m.models as r (String(r.engine) + String(r.model))}
-									<Table.Row>
-										<Table.Cell
-											>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span
-												>{/if}</Table.Cell
-										>
-										<Table.Cell>{r.n}</Table.Cell>
-										<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
-										<Table.Cell>{rate(r.declared?.rtFactor ?? null)}</Table.Cell>
-										<Table.Cell
-											><span
-												class:slower={(r.ratioToDeclared ?? 1) > 1.5}
-												class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
-												>{rate(r.ratioToDeclared)}</span
-											></Table.Cell
-										>
-									</Table.Row>
-								{/each}
-							</Table.Body>
-						</Table.Root>
-					</div>
-					<p class="note">
-						<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
-						<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is slower here,
-						<span class="faster">under 0.67×</span> means the benchmark was too pessimistic. Use it to plan, not to pass or
-						fail.
-					</p>
-				{/if}
-			</Card.Content>
-		</Card.Root>
-
-		<Card.Root>
-			<Card.Header>
-				<Card.Title>Lyrics transcription</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				{#if m.asr.length === 0}
-					<p class="note">No lyrics timed yet.</p>
-				{:else}
-					<div class="scroller">
-						<Table.Root>
-							<Table.Header>
-								<Table.Row>
-									<Table.Head scope="col">model</Table.Head>
-									<Table.Head scope="col">timing</Table.Head>
-									<Table.Head scope="col">runs</Table.Head>
-									<Table.Head scope="col">average</Table.Head>
-									<Table.Head scope="col">speed</Table.Head>
-								</Table.Row>
-							</Table.Header>
-							<Table.Body>
-								{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
-									<Table.Row>
-										<Table.Cell
-											>{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
-										>
-										<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
-										<Table.Cell>{r.n}</Table.Cell>
-										<Table.Cell>{dur(r.meanMs)}</Table.Cell>
-										<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
-									</Table.Row>
-								{/each}
-							</Table.Body>
-						</Table.Root>
-					</div>
-					<p class="note">
-						These models have never been timed anywhere, so there is no benchmark to compare against. This is the first
-						measurement.
-					</p>
-				{/if}
-			</Card.Content>
-		</Card.Root>
-
-		{#if m.stages.length}
-			<Card.Root>
-				<Card.Header>
-					<Card.Title>Where the time goes</Card.Title>
-				</Card.Header>
-				<Card.Content>
-					<Bars
-						rows={m.stages.map((s) => ({
-							label: stageLabel(s.stage),
-							value: Math.round((s.meanMs ?? 0) / 1000),
-							hint: `${s.n} runs`
-						}))}
-						unit="s avg"
-					/>
-					<p class="note">Measured by the worker inside each step.</p>
-				</Card.Content>
-			</Card.Root>
-		{/if}
-
-		{#if m.slowestProcesses.length}
-			<Card.Root>
-				<Card.Header>
-					<Card.Title>Slowest songs</Card.Title>
-				</Card.Header>
-				<Card.Content>
-					<ol class="processes">
-						{#each m.slowestProcesses as c (c.processingId)}
-							<li>
-								<a href="/metrics/{c.mediaId}">{c.title ?? c.mediaId}</a>
-								<span class="v">{dur(c.totalMs)}</span>
-								<span class="note">{dur(c.workMs)} working, {c.steps} steps</span>
-							</li>
-						{/each}
-					</ol>
-					<p class="note">The gap between the two numbers was spent waiting for a free worker.</p>
-				</Card.Content>
-			</Card.Root>
-		{/if}
-
-		<Card.Root>
-			<Card.Header>
-				<Card.Title>Workers</Card.Title>
-			</Card.Header>
-			<Card.Content>
-				{#if m.workers.length === 0}
-					<p class="note">Nothing is connected, so no song can be processed.</p>
-				{:else}
-					{#each m.workers as w (w.workerId)}
-						<div class="worker">
-							<strong>{w.workerId}</strong>
-							<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} free</span>
-							{#if w.host}
-								{@const facts = hostFacts(w.host)}
-								{#if facts.length}
-									<dl class="facts">
-										{#each facts as [k, v] (k)}
-											<div>
-												<dt>{k}</dt>
-												<dd>{v}</dd>
-											</div>
-										{/each}
-									</dl>
-								{/if}
-							{/if}
+			{#if m}
+				<Card.Root>
+					<Card.Header>
+						<Card.Title>Start to finish</Card.Title>
+					</Card.Header>
+					<Card.Content>
+						<div class="kv">
+							<div><span class="k">typical</span><span class="v">{dur(m.e2e.p50Ms)}</span></div>
+							<div><span class="k">average</span><span class="v">{dur(m.e2e.meanMs)}</span></div>
+							<div><span class="k">worst</span><span class="v">{dur(m.e2e.p95Ms)}</span></div>
+							<div><span class="k">songs</span><span class="v">{m.e2e.n}</span></div>
 						</div>
-					{/each}
+						<p class="note">From asking for a song to it being ready to sing, waiting included.</p>
+					</Card.Content>
+				</Card.Root>
+
+				<Card.Root>
+					<Card.Header>
+						<Card.Title>Each step</Card.Title>
+					</Card.Header>
+					<Card.Content>
+						{#if m.steps.length === 0}
+							<p class="note">Nothing processed yet.</p>
+						{:else}
+							<div class="scroller">
+								<Table.Root>
+									<Table.Header>
+										<Table.Row>
+											<Table.Head scope="col">step</Table.Head>
+											<Table.Head scope="col">runs</Table.Head>
+											<Table.Head scope="col">average</Table.Head>
+											<Table.Head scope="col">typical</Table.Head>
+											<Table.Head scope="col">worst</Table.Head>
+											<Table.Head scope="col">waited</Table.Head>
+											<Table.Head scope="col">speed</Table.Head>
+											<Table.Head scope="col">failed</Table.Head>
+										</Table.Row>
+									</Table.Header>
+									<Table.Body>
+										{#each m.steps as s (s.jobType)}
+											<Table.Row>
+												<Table.Cell
+													>{stepLabel(s.jobType)}{#if s.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
+												>
+												<Table.Cell>{s.n}</Table.Cell>
+												<Table.Cell><span class:lead={s.jobType === slowestStep}>{dur(s.meanMs)}</span></Table.Cell>
+												<Table.Cell>{dur(s.p50Ms)}</Table.Cell>
+												<Table.Cell>{dur(s.p95Ms)}</Table.Cell>
+												<Table.Cell>{dur(s.meanQueueWaitMs)}</Table.Cell>
+												<Table.Cell>{rate(s.meanRtFactor)}</Table.Cell>
+												<Table.Cell>{s.failed + s.abandoned}</Table.Cell>
+											</Table.Row>
+										{/each}
+									</Table.Body>
+								</Table.Root>
+							</div>
+							<p class="note">
+								Times are work only — <strong>waited</strong> is time sitting in the queue.
+								<strong>speed</strong> is computer time per second of song, so 0.5× means twice as fast as the music.
+								<strong>failed</strong> runs are left out of the averages.
+							</p>
+						{/if}
+					</Card.Content>
+				</Card.Root>
+
+				<Card.Root>
+					<Card.Header>
+						<Card.Title>Vocal removal — this machine vs the benchmark</Card.Title>
+					</Card.Header>
+					<Card.Content>
+						{#if m.models.length === 0}
+							<p class="note">No vocals removed yet.</p>
+						{:else}
+							<div class="scroller">
+								<Table.Root>
+									<Table.Header>
+										<Table.Row>
+											<Table.Head scope="col">model</Table.Head>
+											<Table.Head scope="col">runs</Table.Head>
+											<Table.Head scope="col">here</Table.Head>
+											<Table.Head scope="col">benchmark</Table.Head>
+											<Table.Head scope="col">vs</Table.Head>
+										</Table.Row>
+									</Table.Header>
+									<Table.Body>
+										{#each m.models as r (String(r.engine) + String(r.model))}
+											<Table.Row>
+												<Table.Cell
+													>{r.engine ?? '—'} / {r.model ?? '—'}{#if r.provisional}<span class="flag">few runs</span
+														>{/if}</Table.Cell
+												>
+												<Table.Cell>{r.n}</Table.Cell>
+												<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+												<Table.Cell>{rate(r.declared?.rtFactor ?? null)}</Table.Cell>
+												<Table.Cell
+													><span
+														class:slower={(r.ratioToDeclared ?? 1) > 1.5}
+														class:faster={r.ratioToDeclared !== null && r.ratioToDeclared < 0.67}
+														>{rate(r.ratioToDeclared)}</span
+													></Table.Cell
+												>
+											</Table.Row>
+										{/each}
+									</Table.Body>
+								</Table.Root>
+							</div>
+							<p class="note">
+								<strong>benchmark</strong> is the speed this model was timed at once, on a different machine.
+								<strong>vs</strong> compares it to here: 1.0× matches, <span class="slower">over 1.5×</span> is slower
+								here,
+								<span class="faster">under 0.67×</span> means the benchmark was too pessimistic. Use it to plan, not to pass
+								or fail.
+							</p>
+						{/if}
+					</Card.Content>
+				</Card.Root>
+
+				<Card.Root>
+					<Card.Header>
+						<Card.Title>Lyrics transcription</Card.Title>
+					</Card.Header>
+					<Card.Content>
+						{#if m.asr.length === 0}
+							<p class="note">No lyrics timed yet.</p>
+						{:else}
+							<div class="scroller">
+								<Table.Root>
+									<Table.Header>
+										<Table.Row>
+											<Table.Head scope="col">model</Table.Head>
+											<Table.Head scope="col">timing</Table.Head>
+											<Table.Head scope="col">runs</Table.Head>
+											<Table.Head scope="col">average</Table.Head>
+											<Table.Head scope="col">speed</Table.Head>
+										</Table.Row>
+									</Table.Header>
+									<Table.Body>
+										{#each m.asr as r (String(r.asrModel) + String(r.syncMode))}
+											<Table.Row>
+												<Table.Cell
+													>{r.asrModel ?? '—'}{#if r.provisional}<span class="flag">few runs</span>{/if}</Table.Cell
+												>
+												<Table.Cell class="name">{r.syncMode ?? '—'}</Table.Cell>
+												<Table.Cell>{r.n}</Table.Cell>
+												<Table.Cell>{dur(r.meanMs)}</Table.Cell>
+												<Table.Cell>{rate(r.meanRtFactor)}</Table.Cell>
+											</Table.Row>
+										{/each}
+									</Table.Body>
+								</Table.Root>
+							</div>
+							<p class="note">
+								These models have never been timed anywhere, so there is no benchmark to compare against. This is the
+								first measurement.
+							</p>
+						{/if}
+					</Card.Content>
+				</Card.Root>
+
+				{#if m.stages.length}
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Where the time goes</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<Bars
+								rows={m.stages.map((s) => ({
+									label: stageLabel(s.stage),
+									value: Math.round((s.meanMs ?? 0) / 1000),
+									hint: `${s.n} runs`
+								}))}
+								unit="s avg"
+							/>
+							<p class="note">Measured by the worker inside each step.</p>
+						</Card.Content>
+					</Card.Root>
 				{/if}
-			</Card.Content>
-		</Card.Root>
-	{/if}
+
+				{#if m.slowestProcesses.length}
+					<Card.Root>
+						<Card.Header>
+							<Card.Title>Slowest songs</Card.Title>
+						</Card.Header>
+						<Card.Content>
+							<!--
+						#913: each row is <Item.Root> for the shared row GRAMMAR, with the <li> kept through Item's own
+						`child` snippet — the same shape QueueRow uses. The list element matters here: these are ranked
+						entries, so the <ol>/<li> pair is the meaning, and a component-rendered <div> would drop it.
+						`bare`/`bare` because `.processes` already lays the list out and the row needs no second surface.
+
+						The duration moves into <Item.Actions>, which is the visual change this buys: the three lines
+						were a stacked grid, so the number a reader is ranking by sat mid-cell under the name. It is now
+						the row's trailing value on a shared right edge — the same argument the tables make for
+						right-aligning a numeric column. Item.Title is deliberately NOT used: its `line-clamp-1` would
+						truncate the raw media id a title-less song falls back to, which `.processes a` deliberately
+						wraps with `overflow-wrap: anywhere` instead.
+					-->
+							<ol class="processes">
+								{#each m.slowestProcesses as c (c.processingId)}
+									<Item.Root variant="bare" size="bare">
+										{#snippet child({ props })}
+											<li {...props}>
+												<Item.Content>
+													<a href="/metrics/{c.mediaId}">{c.title ?? c.mediaId}</a>
+													<Item.Description>{dur(c.workMs)} working, {c.steps} steps</Item.Description>
+												</Item.Content>
+												<Item.Actions><span class="v">{dur(c.totalMs)}</span></Item.Actions>
+											</li>
+										{/snippet}
+									</Item.Root>
+								{/each}
+							</ol>
+							<p class="note">The gap between the two numbers was spent waiting for a free worker.</p>
+						</Card.Content>
+					</Card.Root>
+				{/if}
+
+				<Card.Root>
+					<Card.Header>
+						<Card.Title>Workers</Card.Title>
+					</Card.Header>
+					<Card.Content>
+						{#if m.workers.length === 0}
+							<p class="note">Nothing is connected, so no song can be processed.</p>
+						{:else}
+							{#each m.workers as w (w.workerId)}
+								<div class="worker">
+									<strong>{w.workerId}</strong>
+									<span class="note">{w.capabilities.join(', ')} · {w.slotsFree} free</span>
+									{#if w.host}<FactList facts={hostFacts(w.host)} />{/if}
+								</div>
+							{/each}
+						{/if}
+					</Card.Content>
+				</Card.Root>
+			{/if}
+		{/if}
+	</main>
 </section>
 
 <style>
@@ -375,6 +412,7 @@
 		 */
 		grid-template-columns: minmax(0, 1fr);
 		gap: 1rem;
+		/* 3rem (48px) is off-scale — the scale stops at --space-4xl (20px) — so it stays a literal. */
 		padding: 1rem 0 3rem;
 		max-width: 900px;
 		/* Match the PageHeader's --page-measure cap to this block's width so header and content share one
@@ -385,6 +423,18 @@
 		   re-centres the full capped block instead of collapsing it to content width. */
 		width: 100%;
 		margin-inline: auto;
+	}
+	/*
+	 * The <main> landmark (#913). It carries the CARD grid and nothing else: the cap, --page-measure and
+	 * the auto inline margin stay on .metrics so the PageHeader sitting inside that block keeps sharing
+	 * the content's measure. Same track sizing as its parent, and for the same reason — main is now the
+	 * grid the 8-column tables are items of, so it needs the minmax(0, …) floor too or a wide table
+	 * stretches this column instead of scrolling inside its own.
+	 */
+	main {
+		display: grid;
+		grid-template-columns: minmax(0, 1fr);
+		gap: 1rem;
 	}
 	/*
 	 * Wide numeric tables SCROLL on a phone rather than squashing or reflowing into cards.
@@ -428,7 +478,15 @@
 		background: var(--warn-bg);
 		border: 1px solid var(--warn-line);
 		color: var(--warn);
-		font-size: 0.85rem;
+		/*
+		 * --ph-text-base (1rem / 16px), raised from 0.85rem / 13.6px (#913). This banner is the page's most
+		 * important state — with no worker connected every number below it is history rather than live —
+		 * and it was set SMALLER than the body copy it interrupts. Bold at 13.6px is not a substitute for
+		 * size: weight does not restore the stroke contrast small type loses, and the sentence is one short
+		 * line in a full-width block, so there is no layout cost to reading it at body size. It is a ladder
+		 * step rather than a nudged literal so it stays on the scale the rest of the page sizes from.
+		 */
+		font-size: var(--ph-text-base);
 		font-weight: 600;
 	}
 	/*
@@ -468,6 +526,15 @@
 		font-variant-numeric: tabular-nums;
 		white-space: nowrap;
 	}
+	/*
+	 * #913: considered for <Item.Group> and REJECTED. Item.Group is `flex w-full flex-col` — a vertical
+	 * stack of rows — and this is a horizontal strip of four small stat cells in an auto-fit grid, so the
+	 * primitive would have stacked typical/average/worst/songs into four full-width rows and lost the
+	 * side-by-side comparison that is the whole point of the strip. Overriding it back to a grid is not
+	 * available either: a `class` handed to Item.Group is scoped to THIS file and cannot reach the
+	 * element the component renders (ui-scoped-style-reach-913.test.ts), and Tailwind mints no utilities
+	 * for app source (`source(none)`), so there is no spelling of the override that would apply.
+	 */
 	.kv {
 		display: grid;
 		grid-template-columns: repeat(auto-fit, minmax(90px, 140px));
@@ -498,15 +565,21 @@
 		display: grid;
 		gap: 0.6rem;
 	}
-	.processes li {
-		display: grid;
-		gap: 0.15rem;
-	}
+	/*
+	 * #913: `.processes li { display: grid; gap: 0.15rem }` is GONE — <Item.Root> lays the row out now
+	 * (its base is the flex row, `[data-slot='item-content']` the stacked left column), and this rule
+	 * would have overridden the display it sets. `.processes .note { margin: 0 }` went with it: the
+	 * subtitle is <Item.Description>, which carries its own type and spacing.
+	 */
 	/*
 	 * --ink with an underline, NOT an accent colour. --accent measures 3.38:1 on --card — it is built
 	 * to CARRY --on-accent, not to be text — so it fails AA for normal-size link text. (The old
 	 * --accent-strong was worse at 3.52:1 and is retired; #840, XR-COL-11.) The underline also stops
 	 * the link being signalled by colour alone. min-height gives the stacked links a real tap target.
+	 *
+	 * The <a> is still rendered BY THIS PAGE (inside Item.Content's slot), so it carries this file's
+	 * scope hash and a descendant selector from `.processes` — a plain <ol> this page renders — reaches
+	 * it. That is why the class did not have to move anywhere when the row became a component.
 	 */
 	.processes a {
 		color: var(--ink);
@@ -520,30 +593,12 @@
 		/* A title-less song shows its raw media id; an unbroken id would push the 320px layout wide. */
 		overflow-wrap: anywhere;
 	}
-	.processes .note {
-		margin: 0;
-	}
-	/* Aligned key/value pairs for the worker's host — the same pattern the per-song audit uses for its
-	   model facts. Replaces a raw JSON dump: keys stay dim, values take ink. */
-	.facts {
-		display: grid;
-		grid-template-columns: repeat(auto-fit, minmax(150px, max-content));
-		gap: 0.2rem 1.2rem;
-		margin: 0.45rem 0 0;
-		font-size: var(--ph-text-xs);
-	}
-	.facts div {
-		display: flex;
-		gap: 0.35rem;
-	}
-	.facts dt {
-		color: var(--ink-dim);
-	}
-	.facts dd {
-		margin: 0;
-		color: var(--ink);
-		overflow-wrap: anywhere;
-	}
+	/*
+	 * #913: `.facts` and its three descendant rules are GONE from this file. They were duplicated
+	 * VERBATIM in routes/metrics/[mediaId]/+page.svelte — four rules and seven lines of markup in each,
+	 * already diverging by one `overflow-wrap` — and are now lib/components/FactList.svelte, which both
+	 * pages import. A scoped rule here could not reach that component's <dl> anyway.
+	 */
 	.worker {
 		display: grid;
 		gap: 0.15rem;

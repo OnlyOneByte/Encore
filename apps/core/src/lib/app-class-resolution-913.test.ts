@@ -94,7 +94,6 @@ function globallyDefined(): Set<string> {
 const PRE_EXISTING: Record<string, string> = {
 	qrow: 'QueueRow.svelte — only `.qrow.proc` exists, and it is scoped to ProcessingCard, so the bare token has never resolved',
 	'reselect-body': 'LyricsReselect.svelte — dialog body wrapper, no rule on main',
-	'opt-src': 'LyricsReselect.svelte — per-option source label, no rule on main',
 	'reselect-paste': 'LyricsReselect.svelte — paste affordance, no rule on main',
 	meta: 'tv/JoinBadge.svelte — the TV badge lays out by its own grid; this token adds nothing on main either',
 	'stub-controls': 'phone-home-832.harness.svelte — a TEST fixture, never rendered in the app'
