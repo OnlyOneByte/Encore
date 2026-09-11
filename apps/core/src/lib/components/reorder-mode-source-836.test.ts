@@ -17,6 +17,13 @@ const ROW = join(import.meta.dir, 'QueueRow.svelte');
 const PAGE = join(import.meta.dir, '..', '..', 'routes', '+page.svelte');
 const row = () => readFileSync(ROW, 'utf8');
 const page = () => readFileSync(PAGE, 'utf8');
+/*
+ * #913 S1b moved the grip's own declarations out of QueueRow and into the shared Button, so the file
+ * that must be scanned for XR-PH-17's `cursor: grab` is now this one. The invariant is UNCHANGED — the
+ * declaration is still on the grip control and on no row — only its address moved.
+ */
+const BUTTON = join(import.meta.dir, 'ui', 'button', 'button.svelte');
+const button = () => readFileSync(BUTTON, 'utf8');
 
 /** Blank both comment forms: this file's own rationale names the very strings it forbids. */
 function stripComments(src: string): string {
@@ -123,11 +130,23 @@ test('XR-PH-03 · the dimmed row is not hidden from assistive tech', () => {
 const GRAB_RULE = /([^{}]+)\{([^}]*cursor:\s*grab\s*(?=[;}])[^}]*)\}/g;
 
 test('XR-PH-17 · cursor:grab is declared on the grip button and on no row', () => {
-	const src = stripComments(row());
+	/*
+	 * RE-ANCHORED BY #913 S1b (XR-VER-07). This previously scanned QueueRow, where `.grip` declared its
+	 * own cursor. The grip is now <Button press="grab">, so the declaration lives on the shared control
+	 * keyed by that attribute. What is asserted is the same thing it always was: the grab cursor is on
+	 * ONE selector, and that selector is the grip control rather than a row.
+	 *
+	 * The row is still scanned, by the sibling test below — a row-level grab reintroduced in QueueRow
+	 * would red there, which is the regression this pair exists for.
+	 */
+	const src = stripComments(button());
 	// Sentinel: the declaration exists at all, so an empty scan cannot pass this.
 	expect(/cursor:\s*grab\s*[;}]/.test(src)).toBe(true);
 	const grabRules = [...src.matchAll(GRAB_RULE)].map((m) => m[1]!.trim());
-	expect(grabRules).toEqual(['.grip']); // exactly one, and it is the button
+	expect(grabRules).toEqual(["[data-press='grab']"]); // exactly one, and it is the grip control
+
+	// …and the row itself declares none, which is the half that must never regress.
+	expect(/cursor:\s*grab\s*[;}]/.test(stripComments(row()))).toBe(false);
 });
 
 test('XR-PH-17 · no other component reintroduces a row-level grab cursor', () => {

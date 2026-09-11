@@ -90,7 +90,17 @@ const IDIOMS: Record<Condition, { name: string; find: (src: string) => boolean }
 			find: (s) => /\{#if\s+!?\s*(?:submitting|loading|saving|sending|pending|busy)\b/.test(s)
 		}
 	],
-	error: [{ name: 'a `role="alert"` region', find: (s) => /role\s*=\s*["']alert["']/.test(s) }],
+	error: [
+		{ name: 'a `role="alert"` region', find: (s) => /role\s*=\s*["']alert["']/.test(s) },
+		/*
+		 * #913 S5: a `toast.error(...)` call is a designed error state too. The home route's error surface
+		 * is sonner's now, and sonner renders the region with its own `role="alert"` at RUNTIME -- which a
+		 * source scan cannot see, so without this idiom the guard reports a route that HAS a working
+		 * designed error state as having none. This recognises a new spelling of the same claim rather than
+		 * loosening it: a route with neither an alert region nor an error toast still reds.
+		 */
+		{ name: 'a sonner `toast.error(...)` call', find: (s) => /\btoast\.error\s*\(/.test(s) }
+	],
 	offline: [
 		{
 			name: 'a branch on the connection flag',

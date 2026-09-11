@@ -22,6 +22,9 @@
 	import { cookStageLabel } from '$lib/cook-phrasing';
 	import { overallCookPct, type MediaStatus } from '@encore/shared';
 	import Icon from '$lib/ui/Icon.svelte';
+	import { Badge } from '$lib/components/ui/badge';
+	import { Progress } from '$lib/components/ui/progress';
+	import * as Item from '$lib/components/ui/item';
 	import {
 		classifyVideoKind,
 		durationHint,
@@ -259,8 +262,21 @@
 	which announced one control to a screen reader while offering three, and let a keyboard user add the
 	same song twice (Enter on the row, then Tab-Enter on the button). The two buttons carry the actions.
 -->
-<div class="row card list-row" class:ready={readiness === 'ready'} class:cooking={readiness === 'cooking'}>
-	<div class="thumb">
+<!--
+	#913 S8: <Item.Root> supplies the row grammar via Item's own `child` snippet, so this file keeps the
+	row element and its readiness state classes — a `class:` directive is not valid on a component. The
+	class attribute stays STATIC, because contrast.test.ts splits it on whitespace to derive the row's
+	classes. `bare`: `.card` paints the row, `.list-row` lays it out.
+-->
+<Item.Root variant="bare" size="bare">
+	{#snippet child({ props })}
+		<div
+			{...props}
+			class="row card list-row"
+			class:ready={readiness === 'ready'}
+			class:cooking={readiness === 'cooking'}
+		>
+			<Item.Media data-media="thumb"><div class="thumb">
 		{#if thumbSrc}
 			<!--
 				alt="" on purpose: the title sits immediately beside it, so a described thumbnail would make
@@ -275,9 +291,9 @@
 		{#if duration}
 			<span class="dur" class:odd={oddDuration}>{duration}</span>
 		{/if}
-	</div>
+	</div></Item.Media>
 
-	<div class="meta">
+			<Item.Content>
 		<!--
 			The title and the cooking mark share a flex line so the mark is a SIBLING of .t, not a child of it.
 			.t clamps to two lines with overflow:hidden; a mark rendered INSIDE that box is laid out on the
@@ -292,32 +308,37 @@
 		{#if kindLabel || stateChip || views || durationNote || showKey || showTags}
 			<div class="chips">
 				{#if stateChip}
-					<span
-						class="chip state"
-						class:ok={readiness === 'ready'}
-						class:warn={readiness === 'cooking'}
-						class:bad={readiness === 'failed'}
-						aria-live="polite">{stateChip}</span
+					<!--
+						The readiness tone is chosen HERE and passed as a variant, because the tone IS the meaning:
+						each one is a certified surface+border+ink triple in ui/badge, set together and never
+						separately. `wrap` because this chip carries a phrase rather than a token (#857).
+					-->
+					<Badge
+						variant={readiness === 'ready' ? 'ok' : readiness === 'cooking' ? 'warn' : readiness === 'failed' ? 'bad' : 'neutral'}
+						wrap
+						aria-live="polite">{stateChip}</Badge
 					>
 				{/if}
-				{#if kindLabel}<span class="chip kind {kind}">{kindLabel}</span>{/if}
+				{#if kindLabel}<Badge
+						variant={kind === 'official' ? 'ok' : kind === 'lyric' ? 'accent' : kind === 'live' ? 'warn' : kind === 'suspect' ? 'bad' : 'neutral'}
+					>{kindLabel}</Badge>{/if}
 				<!-- The detected key. A bare chip (no colour family) — it is a neutral musical fact, not a
 				     status or a warning, so it must not borrow the semantic tints. ASCII label only. -->
-				{#if showKey}<span class="chip">{keyName}</span>{/if}
+				{#if showKey}<Badge>{keyName}</Badge>{/if}
 				<!-- The red badge, said out loud. Ordered after the kind so "Live · Longer than a song"
 				     reads as one thought about the same recording. -->
-				{#if durationNote}<span class="chip odd-dur">{durationNote}</span>{/if}
-				{#if views}<span class="chip">{views} views</span>{/if}
+				{#if durationNote}<Badge variant="bad" wrap>{durationNote}</Badge>{/if}
+				{#if views}<Badge>{views} views</Badge>{/if}
 				<!-- Descriptive tags for a library song. A neutral chip family (no semantic tint) — a tag is a
 				     fact about the song, not a status or a warning. Keyed by value so Svelte can re-use nodes. -->
-				{#if showTags}{#each tags! as tag (tag)}<span class="chip tag">{tag}</span>{/each}{/if}
+				{#if showTags}{#each tags! as tag (tag)}<Badge variant="tag">{tag}</Badge>{/each}{/if}
 			</div>
 		{/if}
 		{#if readiness === 'cooking'}
 			<!-- GPU-composited fill: scaleX from the left edge, never animates layout width -->
-			<div class="bar"><i style="transform:scaleX({barPct / 100})"></i></div>
+			<div class="bar-slot"><Progress value={barPct} size="sm" aria-label="Cook progress" /></div>
 		{/if}
-	</div>
+				</Item.Content>
 
 	{#if onmake}
 		<!--
@@ -361,8 +382,15 @@
 		>
 	{/if}
 </div>
+	{/snippet}
+</Item.Root>
 
 <style>
+	/*
+	 * #913 S8: `.meta` moved to ui/item as Encore's shared row grammar (`min-width: 0; flex: 1`), which
+	 * all three rows carried identically. `.thumb` STAYS: it declares a background, and contrast.test.ts
+	 * reasons about this row's surfaces from the rules in this file.
+	 */
 	/* Geometry comes from .list-row in app.css, shared with the two queue rows -- this row had drifted
 	   to gap 11 / padding 10 against their 12 / 11px 12px. */
 	.row {
@@ -442,10 +470,6 @@
 		color: var(--danger-bg);
 	}
 
-	.meta {
-		min-width: 0;
-		flex: 1;
-	}
 	/*
 	 * TWO lines, not one. A single ellipsised line is what hid "(Official Music Video)". The title text
 	 * shares .title-line with the cooking mark; min-width:0 + the two-line clamp bound ONLY the title
@@ -503,106 +527,35 @@
 		gap: 5px;
 		margin-top: var(--space-xs);
 	}
-	.chip {
-		font-size: 0.65rem;
-		font-weight: 600;
-		padding: var(--space-3xs) 7px;
-		border-radius: 999px;
-		border: 1px solid var(--line);
-		background: var(--card2);
-		color: var(--ink-dim);
-		white-space: nowrap;
-	}
+	/*
+	 * #913 S6: `.chip` and its ten tone rules moved to ui/badge. The tones went with them verbatim —
+	 * each is a certified surface+border+ink triple — so no chip changes colour; only the element does.
+	 * `.chips` stays here because it is this row's LAYOUT, which a scoped rule can still reach.
+	 */
 	/*
 	 * The one chip allowed to wrap. Its text is the longest here ("Making karaoke… 68%"), so on a
 	 * narrow row nowrap would clip the trailing percent — the one moving part a singer standing there
 	 * waiting is watching. Letting it wrap keeps the whole line, and the percent, visible.
 	 */
-	.chip.state {
-		white-space: normal;
-	}
-	.chip.state.ok {
-		background: var(--ok-bg);
-		border-color: var(--ok-line);
-		color: var(--ok);
-	}
-	.chip.state.warn {
-		background: var(--warn-bg);
-		border-color: var(--warn-line);
-		color: var(--warn);
-	}
 	/* A dead cook, not a slow one. `warn` already means "in flight" on this chip, so reusing it would
 	   have made a failure look like progress — the whole defect this state exists to end. */
-	.chip.state.bad {
-		background: var(--danger-bg);
-		border-color: var(--danger-line);
-		color: var(--danger-ink);
-	}
 	/*
 	 * One colour per kind, and they are semantic rather than decorative: green = the studio recording
 	 * you probably want, purple = a lyric video, amber = a different recording (live), red = probably
 	 * not a song at all. The label carries the meaning on its own, so colour is reinforcement — never
 	 * the only cue.
 	 */
-	.chip.kind.official {
-		background: var(--ok-bg);
-		border-color: var(--ok-line);
-		color: var(--ok);
-	}
-	.chip.kind.lyric {
-		background: var(--card-tint2);
-		border-color: var(--line-tint);
-		color: var(--accent-ink);
-	}
-	.chip.kind.live {
-		background: var(--warn-bg);
-		border-color: var(--warn-line);
-		color: var(--warn);
-	}
-	.chip.kind.suspect {
-		background: var(--danger-bg);
-		border-color: var(--danger-line);
-		color: var(--danger-ink);
-	}
-	.chip.tag {
-		/* A song's descriptive tag ("acoustic", "80s"). A quiet accent wash — enough to read as a
-		   set apart from the neutral fact chips (views, key) beside it, but never a status colour:
-		   a tag is a describing word, not a warning. Reuses accent tokens rather than a new hex. */
-		background: var(--card-tint2);
-		border-color: var(--line-tint);
-		color: var(--accent-ink);
-		text-transform: capitalize;
-	}
 	/* Same treatment as the badge it explains, so the two read as one signal rather than two. */
-	.chip.odd-dur {
-		background: var(--danger-bg);
-		border-color: var(--danger-line);
-		color: var(--danger-ink);
-		/*
-		 * WRAP, like `.chip.state` (#857). Every other chip here is a short token that fits on one line
-		 * even at 200% text, but this one carries a whole phrase ("Longer than a song") — at doubled
-		 * type it is ~230px, wider than the row can hold, and `.chip`'s blanket `white-space: nowrap`
-		 * made its min-content width its FULL width, so it could not shrink and pushed the browse page
-		 * past a 320px viewport. Letting it wrap keeps the whole phrase and reflows the row instead.
-		 */
-		white-space: normal;
-	}
 
-	.bar {
-		height: 4px;
-		border-radius: 4px;
-		background: var(--card-tint2);
-		overflow: hidden;
+	/*
+	 * #913 S6: `.bar` and its `<i>` fill are ui/progress now — the same idiom lived in two components,
+	 * so this consolidated a duplicate. The swap also buys what neither hand-rolled bar had:
+	 * `role="progressbar"` with aria-valuenow, so a cook's progress is finally visible to assistive
+	 * tech. Spacing from the element above stays HERE, because that is this component's layout rather
+	 * than the bar's own metric.
+	 */
+	.bar-slot {
 		margin-top: 7px;
-	}
-	.bar > i {
-		display: block;
-		height: 100%;
-		width: 100%;
-		background: var(--grad);
-		border-radius: 4px;
-		transform-origin: left center;
-		transition: transform var(--motion-slow) ease;
 	}
 
 	/*
@@ -709,10 +662,6 @@
 		 * so how many fit at once IS the feature. Smaller chips and tighter gaps buy roughly a fifth of
 		 * a row back without shrinking the title or the 44px target.
 		 */
-		.chip {
-			font-size: 0.62rem;
-			padding: 1px var(--space-xs);
-		}
 		.chips {
 			gap: var(--space-2xs);
 			margin-top: 5px;

@@ -877,12 +877,27 @@ test('both documentElement custom-property writes (--undo-h, --dock-h) tear down
 	// height, the same leak shape on a third site). The leak CLASS is documented in full at --dock-h's
 	// declaration in routes/+page.svelte. Each site must both WRITE its property and RETURN a cleanup
 	// that removeProperty's it; reverting either teardown reds this.
-	const sites: Array<{ file: string; prop: string }> = [
-		{ file: 'routes/+page.svelte', prop: '--undo-h' },
-		{ file: 'routes/+page.svelte', prop: '--dock-h' }
-	];
-	// Non-vacuity floor: an emptied list would pass this test silently. Two live writers today.
-	expect(sites.length).toBeGreaterThanOrEqual(2);
+	/*
+	 * #913 S5 RETIRED the `--undo-h` site (XR-VER-07). It was a real instance of this leak class — a
+	 * setProperty $effect publishing the undo toast's measured height, skewing the --error-dock stack
+	 * after the route unmounted — and it no longer exists: the toasts are sonner's, sonner stacks its
+	 * own, and there is no second surface to offset. The property, its measurement and its teardown were
+	 * all deleted rather than ported, so a guard for its teardown can no longer fail.
+	 *
+	 * `--dock-h` (#832) is untouched and is still the site this guard protects. The leak CLASS is
+	 * documented in full at its declaration in routes/+page.svelte.
+	 */
+	const sites: Array<{ file: string; prop: string }> = [{ file: 'routes/+page.svelte', prop: '--dock-h' }];
+	/*
+	 * Non-vacuity floor: an emptied list would pass this test silently.
+	 *
+	 * It read `>= 2` under the comment "Two live writers today". #913 S5 deleted one of them — `--undo-h`
+	 * and the whole measured-height chain it fed went with the hand-rolled toasts — so the floor is
+	 * lowered to the ONE writer that remains, on the record, in the same change that removed the other.
+	 * That is the required shape: a floor is never nudged to make a suite pass, and a writer whose
+	 * premise a slice ends is retired with its reason (XR-VER-07).
+	 */
+	expect(sites.length).toBeGreaterThanOrEqual(1);
 	for (const { file, prop } of sites) {
 		const src = stripComments(readFileSync(join(SRC, file), 'utf8'));
 		const setRe = new RegExp(`documentElement\\.style\\.setProperty\\(\\s*['"]${prop}['"]`);

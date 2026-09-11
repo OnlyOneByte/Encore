@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { Slider } from '$lib/components/ui/slider';
 	// The GUIDING TRACK control — how loud the original vocals sit under the instrumental.
 	//
 	// Presentational: it owns the label copy, the shape and the disabled state, and reports raw
@@ -33,18 +34,17 @@
 		<span class="lab">Guiding track</span>
 		<span class="gt-val">{valueLabel}</span>
 	</div>
-	<input
-		class="gt-slider"
-		type="range"
-		min="0"
-		max="100"
-		step="1"
+	<Slider
+		variant="guiding"
+		type="single"
+		min={0}
+		max={100}
+		step={1}
 		value={shown}
 		disabled={!available}
 		aria-label="Guiding track — original vocal level"
-		style="--fill:{shown}%"
-		oninput={(e) => oninput?.(Number(e.currentTarget.value))}
-		onchange={(e) => oncommit?.(Number(e.currentTarget.value))}
+		onValueChange={(v) => oninput?.(v)}
+		onValueCommit={(v) => oncommit?.(v)}
 	/>
 	{#if hint}<p class="gt-hint">{hint}</p>{/if}
 </div>
@@ -60,6 +60,12 @@
 	.gt.disabled {
 		opacity: 0.5;
 	}
+	/*
+	 * #913 S3: the disabled rail/thumb recolouring that lived here as four ::-webkit-slider-* and
+	 * ::-moz-range-* rules is ui/slider's `data-disabled` treatment on the guiding variant now —
+	 * scoped CSS cannot reach an element a child component renders. `.gt.disabled { opacity }` is
+	 * untouched, and XR-PH-03 still holds: the reason sentence sits OUTSIDE this dimmed subtree.
+	 */
 	.gt-head {
 		display: flex;
 		align-items: baseline;
@@ -84,69 +90,9 @@
 		margin: var(--space-xs) 0 0;
 		line-height: var(--lh-normal);
 	}
-	.gt-slider {
-		-webkit-appearance: none;
-		appearance: none;
-		display: block;
-		width: 100%;
-		/* var(--tap) hit area — the project's minimum touch target, named rather than restated
-		   (XR-PH-01). The row was 24px (a 22px thumb + 2px), itself below the floor, so the row did not
-		   rescue the target. The PAINTED track stays a 4px hairline
-		   (::-webkit-slider-runnable-track below); only the interactive box grows. */
-		height: var(--tap);
-		margin: 3px 0 0;
-		background: transparent;
-		cursor: pointer;
-	}
 	/* --fill is set inline from the current value: a gradient stop is how a native range shows a
 	   filled portion without a second element, and it keeps the paint on the track itself. */
-	.gt-slider::-webkit-slider-runnable-track {
-		height: 4px;
-		border-radius: 4px;
-		background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) var(--fill), var(--track-bg) var(--fill));
-	}
-	.gt-slider::-moz-range-track {
-		height: 4px;
-		border-radius: 4px;
-		background: linear-gradient(90deg, var(--accent) 0%, var(--accent2) var(--fill), var(--track-bg) var(--fill));
-	}
 	/* A 22px thumb on a 4px track: the TRACK is a hairline for legibility, the THUMB is the visible
 	   grab affordance, and the 44px input box (above) supplies the touch target — the box is centered
 	   on the track, so margin-top: -9px still centers the 22px thumb on the 4px runnable track. */
-	.gt-slider::-webkit-slider-thumb {
-		-webkit-appearance: none;
-		appearance: none;
-		width: 22px;
-		height: 22px;
-		border-radius: 50%;
-		margin-top: -9px;
-		background: var(--ink);
-		border: 2px solid var(--accent);
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-	}
-	.gt-slider::-moz-range-thumb {
-		width: 22px;
-		height: 22px;
-		border-radius: 50%;
-		border: 2px solid var(--accent);
-		background: var(--ink);
-		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
-	}
-	.gt.disabled .gt-slider {
-		cursor: default;
-	}
-	.gt.disabled .gt-slider::-webkit-slider-runnable-track {
-		background: var(--track-bg);
-	}
-	.gt.disabled .gt-slider::-moz-range-track {
-		background: var(--track-bg);
-	}
-	.gt.disabled .gt-slider::-webkit-slider-thumb {
-		background: var(--ink-dim);
-		border-color: var(--line-strong);
-	}
-	.gt.disabled .gt-slider::-moz-range-thumb {
-		background: var(--ink-dim);
-		border-color: var(--line-strong);
-	}
 </style>

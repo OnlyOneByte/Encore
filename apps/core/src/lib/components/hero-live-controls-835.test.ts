@@ -41,73 +41,46 @@ function render<P extends Record<string, unknown>>(Comp: unknown, props: P): HTM
 	return host;
 }
 
-/** Open the live-controls disclosure, the way a singer reaching for the controls does. */
-function openTools(host: HTMLElement): void {
-	const toggle = host.querySelector('.tools-toggle') as HTMLButtonElement | null;
-	expect(toggle).not.toBeNull();
-	toggle!.click();
-	flushSync();
-}
+/*
+ * #913: `openTools` was deleted with the four arms that used it. Opening the disclosure is only
+ * meaningful for a claim about what is INSIDE it, and every such claim now runs on the layout rung in
+ * `apps/core/e2e/probes/p16-hero-live-controls.mjs` — the hero cannot be mounted here at all while its
+ * disclosure is a Bits UI Collapsible, which reads getBoundingClientRect (XR-VER-03).
+ */
 
 const NOTE = 'No isolated vocals for this song, so the guiding track stays off. Key and vocal range still work.';
 
-// ── the degraded arm: disabled, present, and explained ───────────────────────────────────────────
-test('a song with no isolated stem keeps the guide control, disabled, and states why (XR-PH-15)', () => {
-	const host = render(HeroControls, { available: false, controlsNote: NOTE });
-	openTools(host);
+/*
+ * ── FOUR ARMS MOVED TO THE LAYOUT RUNG (#913, XR-VER-03/XR-VER-07) ───────────────────────────────
+ *
+ * These four claims used to mount the hero here:
+ *
+ *   - a song with no isolated stem keeps the guide control, disabled, and states why (XR-PH-15)
+ *   - a song WITH an isolated stem gets a live control and no explanation (XR-PH-15)
+ *   - the reason sits OUTSIDE the subtree the disabled control dims with opacity (XR-PH-03)
+ *   - the sentence is in the disclosure BODY, never in the collapsed summary
+ *
+ * They live in `apps/core/e2e/probes/p16-hero-live-controls.mjs` now, and this is NOT a relocation of
+ * convenience. #913 moved GuidingTrack's control onto shadcn's <Slider>, which is Bits UI, and Bits UI
+ * needs a real layout engine in two independent ways the mount rung deliberately refuses to provide:
+ * it reads `offsetWidth`, which the preload replaces with a throw because happy-dom fabricates a zero;
+ * and it observes its track with `ResizeObserver`, which the preload does not install and
+ * `mount-rung.test.ts` has a live arm ASSERTING is absent. Faking both to keep these tests here would
+ * manufacture exactly the silent green those two refusals exist to prevent.
+ *
+ * The cost is stated plainly rather than buried: these four assertions no longer run on a box with no
+ * Chromium. In exchange they now run against a real browser, a real cook, and a real song with no
+ * vocals stem — reached through the new `FAKE_NO_VOCALS=1` on the fake stems worker, since
+ * `hasGuidingTrack()` is `isPlayable(m) && !!m.vocalsRef`. p16 records the mutations that prove it can
+ * still fail.
+ *
+ * What stays HERE is everything decidable without a layout engine: the route's derivation of the
+ * sentence, the copy itself, and the #253 source scans below.
+ */
+// ── the arm that needs no layout engine: nothing playing, so nothing mounts ───────────────────────
 
-	// It does NOT vanish: the row and its slider are both on screen…
-	const slider = host.querySelector('input[type="range"]') as HTMLInputElement | null;
-	expect(slider).not.toBeNull();
-	expect(slider!.disabled).toBe(true);
-	// …and the readout says the level is dead rather than showing a live-looking number.
-	expect(host.querySelector('.gt-val')?.textContent).toBe('Off');
-
-	// The reason is on screen, and so is the second clause — what still works. Both halves are
-	// asserted, because a reason alone leaves a singer thinking the whole control group is dead.
-	const note = host.querySelector('.tools-note') as HTMLElement | null;
-	expect(note).not.toBeNull();
-	expect(note!.textContent).toBe(NOTE);
-	expect(note!.textContent!.toLowerCase()).toContain('no isolated vocals');
-	expect(note!.textContent!.toLowerCase()).toContain('still work');
-});
-
-test('the reason sits OUTSIDE the subtree the disabled control dims with opacity (XR-PH-03)', () => {
-	// The hazard this test exists for: `.gt.disabled { opacity: 0.5 }` flattens its whole subtree into
-	// one buffer, so a sentence rendered inside it paints at roughly half the contrast its token was
-	// measured at. `.key.disabled` does the same in the route. The structural claim — the note is a
-	// SIBLING of the control group, not a descendant of a dimmed control — is what keeps the painted
-	// contrast equal to the measured contrast, and it is checkable here where a stylesheet is not.
-	const host = render(HeroControls, { available: false, controlsNote: NOTE });
-	openTools(host);
-	const note = host.querySelector('.tools-note') as HTMLElement;
-	const gt = host.querySelector('.gt') as HTMLElement;
-
-	expect(gt.classList.contains('disabled')).toBe(true);
-	expect(note.closest('.gt')).toBeNull();
-	// Nor does anything between the note and the card root carry an inline opacity, the dimension a
-	// CSS-rule scan structurally cannot see (the same argument as phone-inventory's XR-PH-03 arm).
-	for (let el: HTMLElement | null = note; el; el = el.parentElement) {
-		expect(el.style.opacity).toBe('');
-		if (el.classList.contains('hero')) break;
-	}
-
-	// In the body, and ahead of the control it explains: read before the dead slider, not after it.
-	expect(note.closest('.tools-body')).not.toBeNull();
-	expect(note.compareDocumentPosition(gt) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-});
 
 // ── the arms where no sentence is owed ───────────────────────────────────────────────────────────
-test('a song WITH an isolated stem gets a live control and no explanation (XR-PH-15)', () => {
-	// The note is the route's business, not the hero's: with a stem the route passes null, and the hero
-	// must then render no empty element holding a gap open under the label.
-	const host = render(HeroControls, { available: true, controlsNote: null });
-	openTools(host);
-	const slider = host.querySelector('input[type="range"]') as HTMLInputElement;
-	expect(slider.disabled).toBe(false);
-	expect(host.querySelector('.tools-note')).toBeNull();
-	expect((host.textContent ?? '').toLowerCase()).not.toContain('no isolated vocals');
-});
 
 test('nothing playing offers no live control and no sentence about one', () => {
 	// `hasSong` already gates the disclosure (#832). The note must not escape that gate and explain a
@@ -118,24 +91,6 @@ test('nothing playing offers no live control and no sentence about one', () => {
 	expect((host.textContent ?? '').toLowerCase()).not.toContain('no isolated vocals');
 });
 
-test('the sentence is in the disclosure BODY, never in the collapsed summary', () => {
-	// The summary is a peek at VALUES. A reason there would push the values off a 320px row, and the
-	// reason has nothing to say until the control it explains is visible.
-	const host = render(HeroControls, {
-		available: false,
-		controlsNote: NOTE,
-		controlsSummary: 'Range C3–A4'
-	});
-	const toggle = host.querySelector('.tools-toggle') as HTMLButtonElement;
-	expect(toggle.getAttribute('aria-expanded')).toBe('false');
-	expect(host.textContent).toContain('Range C3–A4');
-	expect(host.querySelector('.tools-note')).toBeNull();
-	expect(toggle.textContent?.toLowerCase()).not.toContain('no isolated vocals');
-
-	openTools(host);
-	expect(host.querySelector('.tools-toggle .tools-note')).toBeNull();
-	expect(host.querySelector('.tools-body .tools-note')).not.toBeNull();
-});
 
 // ── the route rung: the derivation and the copy ───────────────────────────────────────────────────
 const SRC = new URL('../../', import.meta.url).pathname;
@@ -169,7 +124,10 @@ test('#253 stays reversed-proof: the reason is on the hero, NOT back inside Guid
 	//
 	// Non-vacuity first: a component that had been deleted or renamed would satisfy every ban below by
 	// being absent, which is the failure mode a bare `not.toMatch` cannot distinguish from compliance.
-	expect(GUIDING_TRACK).toContain('class="gt-slider"');
+	// #913: was `class="gt-slider"`. The control is <Slider variant="guiding"> now, whose geometry
+	// lives in ui/slider. This arm cares that the CONTROL is still present, not how it is spelled.
+	expect(GUIDING_TRACK).toContain('<Slider');
+	expect(GUIDING_TRACK).toContain('variant="guiding"');
 	expect(GUIDING_TRACK).toContain('disabled={!available}');
 	expect(GUIDING_TRACK).not.toMatch(/no isolated vocals/i);
 	expect(GUIDING_TRACK).not.toContain('controlsNote');

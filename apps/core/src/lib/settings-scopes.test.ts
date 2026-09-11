@@ -83,14 +83,27 @@ test('every scope tab controls a panel that exists, and vice versa', () => {
 test('the scope tabs are reachable and named for assistive tech', () => {
 	const src = readFileSync(SETTINGS, 'utf8');
 
+	/*
+	 * #913 S4: this used to assert the hand-rolled implementation's exact SPELLING —
+	 * `tabindex={tab === t.id ? 0 : -1}`, `aria-selected={tab === t.id}`, and a grep for ArrowRight.
+	 * Those expressions are gone: the tablist is Bits UI's now.
+	 *
+	 * A text scan cannot follow behaviour into a dependency, so the claim was split rather than
+	 * weakened. What is checkable HERE is the wiring — that the page really uses the primitive, that
+	 * the tablist still carries its accessible name, and that the URL sync is still attached. The
+	 * BEHAVIOUR the old spelling stood in for — roving tabindex, arrows, Home/End, focus following
+	 * selection — is proven by mounting it in `tabs-keyboard-913.test.ts`, which is strictly more than
+	 * a grep for the string "ArrowRight" ever established.
+	 */
 	// A tablist with no accessible name is announced as an unlabelled group of three unrelated buttons.
 	expect(src).toContain('aria-label="Settings scope"');
-	// Roving tabindex: exactly one tab is in the tab order, arrows move between them. Without this every
-	// tab is a separate stop, which is the pattern the ARIA tabs spec exists to avoid.
-	expect(src).toContain('tabindex={tab === t.id ? 0 : -1}');
-	expect(src).toMatch(/aria-selected=\{tab === t\.id\}/);
-	// Arrow keys, or the roving tabindex above traps a keyboard user on whichever tab loaded.
-	expect(src).toMatch(/ArrowRight|ArrowLeft/);
+	expect(src).toContain('<Tabs.List');
+	expect(src).toContain('<Tabs.Trigger');
+	// One panel per scope, and the trigger keeps the id SEL.settingsTab and capture.mjs resolve.
+	expect(src.match(/<Tabs\.Content/g)?.length).toBe(3);
+	expect(src).toContain('id="tab-{t.id}"');
+	// The URL sync is Encore's half and no primitive can supply it: a scope must survive a reload.
+	expect(src).toMatch(/onValueChange=\{\(v\) => showTab\(/);
 });
 
 test('the room scope is what a bare /settings opens', () => {

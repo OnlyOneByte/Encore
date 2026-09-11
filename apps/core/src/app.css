@@ -696,6 +696,44 @@
 	   before the first measure and whenever no next song is queued (the block is absent). */
 	--tv-upnext-h: 0px;
 
+
+	/*
+	 * ── THE SHADCN SEMANTIC LAYER (#913, restructure) ────────────────────────────────────────────────
+	 *
+	 * Every component in the registry is styled in this vocabulary — `bg-primary`,
+	 * `text-muted-foreground`, `border-ring`. Encore did not define one of these names, which is the
+	 * ONLY reason the first copied-in Button had to be hand-edited: its stock classes resolved to
+	 * nothing. Defining the layer is what makes a vendored component work UNEDITED, so
+	 * `shadcn-svelte add --overwrite` stays safe forever and S2-S8 need no per-component repointing.
+	 *
+	 * These are aliases, not new colours. Each one points at the token that already decided this
+	 * question, so there is still exactly one place any colour is chosen.
+	 */
+	--primary: var(--accent);
+	--primary-foreground: var(--on-accent);
+	--secondary: var(--card2);
+	--secondary-foreground: var(--ink);
+	--muted: var(--card2);
+	--muted-foreground: var(--ink-dim);
+	--accent-surface: var(--card-tint);
+	--destructive: var(--danger);
+	--background: var(--bg);
+	--foreground: var(--ink);
+	--border: var(--line);
+	--input: var(--line);
+	--ring: var(--focus);
+	--popover: var(--card);
+	--popover-foreground: var(--ink);
+	--card-surface: var(--card);
+	/*
+	 * #913 S4: shadcn's Card is styled in `bg-card` / `text-card-foreground`. `--card` already exists
+	 * in this file and already means exactly "the card surface", so the bridge below points straight at
+	 * it rather than aliasing — an alias would have been the circular `--card: var(--card)`. Only the
+	 * INK half was missing, because Encore never needed to name it: a card inherits `--ink` from the
+	 * page. shadcn sets it explicitly on the element, so it has to be a token.
+	 */
+	--card-foreground: var(--ink);
+
 	color-scheme: dark;
 }
 
@@ -750,6 +788,41 @@
  *     declarations deliberately, in one commit, with the guards re-run.
  */
 @theme inline {
+	/*
+	 * COLOUR, REGISTERED DELIBERATELY (#913 restructure) — and the reason this is safe now.
+	 *
+	 * This block used to register no colour at all, because minting is all-or-nothing per namespace:
+	 * `--color-primary` hands out `text-primary` in the same breath as `bg-primary`, and `--accent` as
+	 * ink measures 3.85:1 on --bg, 3.38 on --card, 3.10 on --card2 and 2.90 on --card-tint2 — four AA
+	 * failures. That measurement still stands.
+	 *
+	 * What changed is WHERE the invariant is enforced. Refusing to register the colour prevented the
+	 * class from EXISTING; it also made every vendored component unusable unedited, which is a cost
+	 * paid on all 13 remaining components. The hazard was never the class existing — it is the class
+	 * being USED. So `text-primary` and its siblings are now banned BY NAME in app source, exactly as
+	 * `transition-all` already is at `components/motion.test.ts`'s net arm, and the per-stop ink split
+	 * stays enforced independently by `contrast.test.ts` (which already records accent-as-ink leaving
+	 * scope as a universal fact and becoming per-stop).
+	 *
+	 * Prevent the road being TAKEN, not the road existing. See `shadcn-ink-ban-913.test.ts`.
+	 */
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-destructive: var(--destructive);
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+
 	/*
 	 * SPACING — mints p-tap / size-tap / min-h-tap / gap-tap and the two TV safe insets.
 	 * `--tap` is the 44px minimum touch target the touch-target guards enforce; a ported component
@@ -924,6 +997,25 @@ body {
 }
 
 /* shared primitives used across surfaces */
+/*
+ * THE SHARED CARD SURFACE.
+ *
+ * #913 S4 deleted this rule, on the premise that every `.card` had become a <Card.Root>. That premise
+ * was WRONG, and the audit behind it was wrong in a specific way worth recording: it grepped
+ * `class="card[ "]`, which only matches a class list STARTING with `card`. Nine elements spell it in
+ * the middle — `class="row card list-row"`, `class="hero card"`, `class="track card"` — and every one
+ * of them silently lost its background, border and radius. Search results rendered as a flat list on
+ * the page background with no row separation, and the ready row's green ring had no border to colour.
+ *
+ * No test could see it: nothing asserted these elements HAVE a surface, and `.card` is a global class,
+ * so no unused-selector warning fires for markup that references a rule which no longer exists. It was
+ * found by comparing before/after screenshots.
+ *
+ * The 28 CONTENT cards did migrate and are <Card.Root>. These nine are a different thing: a surface on
+ * a bespoke component — a hero, three list rows, a progress track, a code-entry segment, a reorder bar.
+ * shadcn's Card is a container with Header/Title/Content; none of these want that structure, they want
+ * three declarations. `ui-card-surface-913.test.ts` now keeps this rule and its callers together.
+ */
 .card {
 	background: var(--card);
 	border: 1px solid var(--line);
@@ -967,22 +1059,15 @@ body {
  * NOT the transport buttons. Those are round, sit on --card, and carry --ink -- a different control
  * with a different job, and folding them in here would only be tidiness pretending to be reuse.
  */
-.icon-btn {
-	width: var(--tap);
-	height: var(--tap);
-	border-radius: var(--radius-sm);
-	border: 1px solid var(--line);
-	background: var(--card2);
-	color: var(--ink-dim);
-	font-size: 20px;
-	cursor: pointer;
-	display: grid;
-	place-items: center;
-}
-.icon-btn:disabled {
-	opacity: 0.35;
-	cursor: default;
-}
+/*
+ * `.icon-btn` was DELETED by #913 S1b. Its ten consumers across QueueRow, ProcessingCard and
+ * NowPlayingHero are now <Button variant="icon">, whose variant carries the 44px box, the
+ * --radius-sm corner, the --card2 surface and the dimmed glyph. `display: grid` + `place-items`
+ * survives as `grid place-items-center` and is still load-bearing: Icon renders as a block, and
+ * without a centring context the mark sits off-centre (the reported off-centre X).
+ *
+ * The four press behaviours the companion classes carried are the Button's `press` axis.
+ */
 
 /* GPU-composited motion only (transform/opacity) — never animate layout props. */
 @media (prefers-reduced-motion: no-preference) {

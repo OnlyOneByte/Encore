@@ -105,7 +105,7 @@
 		<span class="whisker-line" style="left:{frac.lo * 100}%;width:{(frac.hi - frac.lo) * 100}%"></span>
 
 		<!-- Layer 4: the lives-here BLOCK (p05..p95) — the honest headline of where the song sits. -->
-		<span class="block" style="left:{frac.blockLo * 100}%;width:{(frac.blockHi - frac.blockLo) * 100}%"></span>
+		<span class="lives-here" style="left:{frac.blockLo * 100}%;width:{(frac.blockHi - frac.blockLo) * 100}%"></span>
 	</div>
 
 	<!-- Axis end labels, so the shading is not a mystery gradient. C2 and C6 are the fixed ends. -->
@@ -184,7 +184,15 @@
 	}
 
 	/* The lives-here block: the solid, confident middle. Sits on top of the histogram shading. */
-	.block {
+	/*
+	 * Renamed from `.block` by #913 S2/S3. `block` is one of Tailwind's own utility names, and shadcn's
+	 * Switch and Slider both use it — so the same token meant "display:block" inside a vendored
+	 * component and "the singer's comfortable range" on this element. app.css records that `.underline`
+	 * and `.block` collided with these markers once already, which is why the `source(none)` fence
+	 * exists. `lives-here` is what the layer is actually called in the design, and no utility can claim
+	 * it.
+	 */
+	.lives-here {
 		position: absolute;
 		top: 50%;
 		height: 12px;

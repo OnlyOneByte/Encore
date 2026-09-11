@@ -175,8 +175,16 @@ test('the odd-duration chip wraps its phrase instead of forcing the row wider (#
 	// blanket `white-space: nowrap` is fine for them — but this one carries a whole phrase ("Longer than a
 	// song"), and nowrap made its min-content width its FULL width (~230px at 200%), so it could not shrink
 	// and pushed the browse page past 320px. It must be allowed to wrap, like `.chip.state` already is.
-	const oddDurRule = SONG_ROW.match(/\.chip\.odd-dur\s*\{([^}]*)\}/)?.[1] ?? '';
-	expect(oddDurRule).toMatch(/white-space:\s*normal/);
+	/*
+	 * #913 S6: the chip is <Badge> now, so the claim reads in two places instead of one rule. The
+	 * component must OFFER a wrapping tone, and this row must ASK for it on the phrase-carrying chip —
+	 * a component that can wrap is useless if the call site does not opt in, and an opt-in is useless if
+	 * the component ignores it. Checking both is what the single `.chip.odd-dur` rule used to do.
+	 */
+	const badge = readFileSync(join(CORE, 'src', 'lib', 'components', 'ui', 'badge', 'badge.svelte'), 'utf8');
+	const wrapRule = badge.match(/\.encore-chip-wrap\s*\{([^}]*)\}/)?.[1] ?? '';
+	expect(wrapRule, 'ui/badge must offer a wrapping tone').toMatch(/white-space:\s*normal/);
+	expect(SONG_ROW, 'the odd-duration chip must ask for it').toMatch(/durationNote\}<Badge variant="bad" wrap>/);
 });
 
 /*

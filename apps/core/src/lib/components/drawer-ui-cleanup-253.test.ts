@@ -36,7 +36,10 @@ function read(rel: string): string {
 
 test('#253: GuidingTrack drops the out-of-place "No isolated vocals" line, keeps the control', () => {
 	const code = read('GuidingTrack.svelte');
-	expect(code).toContain('class="gt-slider"');
+	// #913: was `class="gt-slider"`. The control is <Slider variant="guiding"> now, whose geometry
+	// lives in ui/slider. This arm cares that the CONTROL is still present, not how it is spelled.
+	expect(code).toContain('<Slider');
+	expect(code).toContain('variant="guiding"');
 	expect(code).toContain('disabled={!available}');
 	expect(code).not.toMatch(/no isolated vocals/i);
 	expect(code).not.toMatch(/re-?cook it to get a guiding track/i);
@@ -50,7 +53,9 @@ test('#253: GuidingTrack drops the out-of-place "No isolated vocals" line, keeps
 test('#253: ProcessingCard drops the per-stage status pills, keeps bar + stage line', () => {
 	const code = read('ProcessingCard.svelte');
 	expect(code).toContain('class="progress"');
-	expect(code).toContain('class="bar"');
+	// #913 S6: the bar is <Progress> now — same idiom, consolidated out of two components, and it
+	// finally carries role="progressbar" with aria-valuenow. The claim is unchanged.
+	expect(code).toContain('<Progress');
 	expect(code).toContain('class="stage"');
 	expect(code).not.toContain('class="chips"');
 	expect(code).not.toMatch(/\bchips\b/);

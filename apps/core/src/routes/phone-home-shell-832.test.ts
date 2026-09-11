@@ -48,7 +48,30 @@ test('the rotation rows render inside <main>, not inside a pull-up sheet', () =>
 test('the live singing controls came WITH the hero, into its disclosure body (XR-PH-15)', () => {
 	// The sheet was their only home. Deleting it without relocating them would silently drop guide
 	// vocals, key and range from the phone — a user-facing regression no other test would see.
-	const snippet = PAGE.slice(PAGE.indexOf('{#snippet controls()}'), PAGE.indexOf('{/snippet}'));
+	/*
+	 * The slice counts NESTING. It used to end at the first `{/snippet}` after the opening tag, which is
+	 * correct only while `controls()` is the ONLY snippet on the page — a property of today's markup,
+	 * not of the claim.
+	 *
+	 * #913 S5 demonstrated the fragility: trying the vocal-range disclosure on Bits UI's Collapsible
+	 * introduced a nested `child` snippet inside `controls()`, and this arm immediately reported
+	 * <RangeBar> missing from a page that plainly renders it. That migration was reverted for unrelated
+	 * reasons, so no nested snippet exists here today — the hardening is kept because the next one will
+	 * not announce itself, and a guard that reports a false absence is worse than one that reports none.
+	 */
+	const snippet = (() => {
+		const start = PAGE.indexOf('{#snippet controls()}');
+		expect(start, 'the page no longer declares a `controls()` snippet').toBeGreaterThan(-1);
+		let depth = 0;
+		for (let i = start; i < PAGE.length; i++) {
+			if (PAGE.startsWith('{#snippet', i)) depth++;
+			else if (PAGE.startsWith('{/snippet}', i)) {
+				depth--;
+				if (depth === 0) return PAGE.slice(start, i);
+			}
+		}
+		throw new Error('the `controls()` snippet is never closed');
+	})();
 	expect(snippet.length).toBeGreaterThan(0);
 	expect(snippet).toContain('<GuidingTrack');
 	expect(snippet).toContain('<RangeBar');
