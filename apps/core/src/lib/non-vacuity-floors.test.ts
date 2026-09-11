@@ -236,6 +236,38 @@ const FLOORS: Record<string, Floor[]> = {
 		{ subject: 'svelte.length', min: 20, count: 1, guards: 'the markup walk behind the utility-class arm' },
 		{ subject: 'netFiles.length', min: 40, count: 1, guards: 'the svelte + .ts walk behind the utility-name net' }
 	],
+	'apps/core/src/lib/field-rhythm-913.test.ts': [
+		{
+			subject: 'users.length',
+			min: 2,
+			count: 1,
+			guards:
+				'the files that render a shadcn Field LEAF part (#913 Phase 3). If no file uses a leaf there is no rhythm to supply and the arm is moot, so an empty population must be loud rather than a pass. Its firing means the Field leaves left the tree, at which point the whole file should be retired rather than believed.'
+		},
+		{
+			subject: 'usersSeen',
+			min: 2,
+			count: 1,
+			guards:
+				'the leaf users examined by the wrapper-or-local-spacing arm. Same population as above, counted at the point of enforcement so a scope regression in that loop cannot report clean by iterating nothing.'
+		}
+	],
+	'apps/core/src/lib/class-reachable-alone-913.test.ts': [
+		{
+			subject: 'files.length',
+			min: 20,
+			count: 1,
+			guards:
+				'the app-side walk of the element/class-list matchability scan (#913 Phase 3). An empty walk reports zero offenders exactly like a clean tree, so the population is pinned. Its firing means the scan lost the app source and the .chip/.chip.ghost defect class went unenforceable.'
+		},
+		{
+			subject: 'listsSeen',
+			min: 80,
+			count: 1,
+			guards:
+				'the class attributes actually examined by that scan. The reader deliberately SKIPS any list containing an interpolation (a class: directive can supply the token a compound rule needs), so a refactor that made more lists dynamic would shrink this population silently while still reporting clean.'
+		}
+	],
 	'apps/core/src/lib/design-system.test.ts': [
 		{ subject: 'FILES.length', min: 15, count: 1, guards: 'the design-system source walk' },
 		{
